@@ -17,14 +17,17 @@ Read-only checks were started on 2026-05-27.
 Observed state:
 
 - Local dry-run deploy command passed.
-- Active local `gcloud` account is `keisi.hirade.97@gmail.com`.
-- `gcloud projects describe medical-core-stg` failed with permission denied for that account.
-- `gcloud services list --enabled --project medical-core-stg` failed with permission denied.
+- Active local `gcloud` account was updated from `keisi.hirade.97@gmail.com` to `info@halunasu.com`.
+- `info@halunasu.com` can access `medical-core-stg`.
+- `medical-core-stg` project number is `866813206652`.
+- Billing is not enabled on `medical-core-stg`.
 - Artifact Registry API is currently disabled for `medical-core-stg`.
+- Cloud Build API is currently disabled for `medical-core-stg`.
 - Cloud Firestore API is currently disabled for `medical-core-stg`.
 - Cloud Run Admin API is currently disabled for `medical-core-stg`.
 - `halunasu-platform-api@medical-core-stg.iam.gserviceaccount.com` does not exist yet.
-- Read-only preflight result: 5 failure(s), 1 warning(s).
+- Read-only preflight result after billing check update: 9 failure(s), 1 warning(s).
+- API enablement was attempted once and failed before making changes because billing is not linked.
 - No deploy was run.
 - No GCP resource was created.
 - No Terraform was run.
@@ -50,6 +53,11 @@ Keep all of these true:
 ## Required Existing Resources
 
 P2 deploy needs these prerequisites in `medical-core-stg`:
+
+```text
+Billing must be linked to medical-core-stg before Cloud Run, Cloud Build,
+and Artifact Registry can be enabled.
+```
 
 ```text
 artifactregistry.googleapis.com
@@ -80,7 +88,7 @@ The deploy operator needs permission to submit Cloud Build, push to Artifact Reg
 
 ## Manual Prerequisite Commands
 
-Do not run these until the operator confirms the small expected costs and the project permission issue is resolved.
+Do not run these until the operator confirms the small expected costs and billing is linked to `medical-core-stg`.
 
 Enable only required APIs:
 

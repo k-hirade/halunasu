@@ -67,6 +67,21 @@ check_required "project access" \
     --format="value(projectId)" \
     --quiet
 
+billing_output="$(gcloud billing projects describe "${PROJECT_ID}" --format="value(billingEnabled)" --quiet 2>&1)"
+billing_status=$?
+if [[ "${billing_status}" -eq 0 && "${billing_output}" == "True" ]]; then
+  echo "OK   billing enabled"
+elif [[ "${billing_status}" -eq 0 ]]; then
+  echo "FAIL billing enabled"
+  echo "billingEnabled=${billing_output}"
+  failures=$((failures + 1))
+else
+  echo "FAIL billing enabled"
+  echo "${billing_output}"
+  failures=$((failures + 1))
+fi
+echo
+
 services_output="$(gcloud services list --enabled --project "${PROJECT_ID}" --format="value(config.name)" --quiet 2>&1)"
 services_status=$?
 if [[ "${services_status}" -eq 0 ]]; then
