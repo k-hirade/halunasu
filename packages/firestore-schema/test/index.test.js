@@ -10,7 +10,9 @@ import {
   organizationPath,
   patientAliasPath,
   patientPath,
-  productEntitlementPath
+  productEntitlementPath,
+  rateLimitPath,
+  signupApplicationPath
 } from "../src/index.js";
 
 test("builds platform document paths", () => {
@@ -23,6 +25,8 @@ test("builds platform document paths", () => {
     "organizations/org_123/product_entitlements/charting"
   );
   assert.equal(auditEventPath("org_123", "aud_456"), "organizations/org_123/audit_events/aud_456");
+  assert.equal(signupApplicationPath("app_123"), "signup_applications/app_123");
+  assert.equal(rateLimitPath("login:local:clinic:admin"), "rate_limits/login:local:clinic:admin");
   assert.equal(
     patientAliasPath("org_123", "pat_456", "alias_789"),
     "organizations/org_123/patients/pat_456/aliases/alias_789"

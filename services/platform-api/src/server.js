@@ -1,5 +1,8 @@
 import http from "node:http";
-import { validateLoginInput } from "../../../packages/platform-contracts/src/index.js";
+import {
+  normalizeOrganizationCode,
+  validateLoginInput
+} from "../../../packages/platform-contracts/src/index.js";
 import { createOtpAuthUrl, generateMfaSecret, verifyTotpCode } from "./auth/mfa.js";
 import { verifyPassword } from "./auth/password.js";
 import {
@@ -109,6 +112,24 @@ async function routePlatformApiRequest(input = {}) {
     return login(input, store);
   }
 
+  if (method === "GET" && matches(parts, ["v1", "signup", "applications"])) {
+    return ok({ signupApplications: await store.listSignupApplications() });
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "signup", "applications"])) {
+    await consumeSignupRateLimit(input, store);
+    const signupApplication = await store.createSignupApplication(input.body || {});
+    return created({ signupApplication });
+  }
+
+  if (method === "GET" && parts.length === 4 && matches(parts.slice(0, 3), ["v1", "signup", "applications"])) {
+    const signupApplication = await store.getSignupApplication(parts[3]);
+    if (!signupApplication) {
+      return notFound("signup application not found");
+    }
+    return ok({ signupApplication });
+  }
+
   if (method === "GET" && matches(parts, ["v1", "auth", "session"])) {
     const context = await requireSession(input, store);
     return ok({ authenticated: true, session: sessionView(context) });
@@ -197,7 +218,14 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "POST" && matches(parts, ["v1", "organizations"])) {
-    return created({ organization: await store.createOrganization(input.body || {}) });
+    const organization = await store.createOrganization(input.body || {});
+    await writeAuditEvent(input, store, organization.orgId, {
+      eventType: "organization.created",
+      targetType: "organization",
+      targetId: organization.orgId,
+      safePayload: { orgId: organization.orgId }
+    });
+    return created({ organization });
   }
 
   if (method === "GET" && parts.length === 3 && parts[0] === "v1" && parts[1] === "organizations") {
@@ -208,12 +236,33 @@ async function routePlatformApiRequest(input = {}) {
     return ok({ organization });
   }
 
+  if (method === "PATCH" && parts.length === 3 && parts[0] === "v1" && parts[1] === "organizations") {
+    const organization = await store.updateOrganization(parts[2], input.body || {});
+    await writeAuditEvent(input, store, parts[2], {
+      eventType: "organization.updated",
+      targetType: "organization",
+      targetId: parts[2],
+      safePayload: { changedFields: safeChangedFields(input.body) }
+    });
+    return ok({ organization });
+  }
+
   if (method === "GET" && isOrgChildCollection(parts, "members")) {
     return ok({ members: await store.listMembers(parts[2]) });
   }
 
   if (method === "POST" && isOrgChildCollection(parts, "members")) {
-    return created({ member: await store.createMember(parts[2], input.body || {}) });
+    const member = await store.createMember(parts[2], input.body || {});
+    await writeAuditEvent(input, store, parts[2], {
+      eventType: "member.created",
+      targetType: "member",
+      targetId: member.memberId,
+      safePayload: {
+        memberId: member.memberId,
+        loginIdentityCreated: input.body?.password !== undefined
+      }
+    });
+    return created({ member });
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "members")) {
@@ -224,12 +273,33 @@ async function routePlatformApiRequest(input = {}) {
     return ok({ member });
   }
 
+  if (method === "PATCH" && isOrgChildDocument(parts, "members")) {
+    const member = await store.updateMember(parts[2], parts[4], input.body || {});
+    await writeAuditEvent(input, store, parts[2], {
+      eventType: "member.updated",
+      targetType: "member",
+      targetId: member.memberId,
+      safePayload: {
+        memberId: member.memberId,
+        changedFields: safeChangedFields(input.body, ["password"])
+      }
+    });
+    return ok({ member });
+  }
+
   if (method === "GET" && isOrgChildCollection(parts, "facilities")) {
     return ok({ facilities: await store.listFacilities(parts[2]) });
   }
 
   if (method === "POST" && isOrgChildCollection(parts, "facilities")) {
-    return created({ facility: await store.createFacility(parts[2], input.body || {}) });
+    const facility = await store.createFacility(parts[2], input.body || {});
+    await writeAuditEvent(input, store, parts[2], {
+      eventType: "facility.created",
+      targetType: "facility",
+      targetId: facility.facilityId,
+      safePayload: { facilityId: facility.facilityId }
+    });
+    return created({ facility });
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "facilities")) {
@@ -240,12 +310,33 @@ async function routePlatformApiRequest(input = {}) {
     return ok({ facility });
   }
 
+  if (method === "PATCH" && isOrgChildDocument(parts, "facilities")) {
+    const facility = await store.updateFacility(parts[2], parts[4], input.body || {});
+    await writeAuditEvent(input, store, parts[2], {
+      eventType: "facility.updated",
+      targetType: "facility",
+      targetId: facility.facilityId,
+      safePayload: {
+        facilityId: facility.facilityId,
+        changedFields: safeChangedFields(input.body)
+      }
+    });
+    return ok({ facility });
+  }
+
   if (method === "GET" && isOrgChildCollection(parts, "departments")) {
     return ok({ departments: await store.listDepartments(parts[2]) });
   }
 
   if (method === "POST" && isOrgChildCollection(parts, "departments")) {
-    return created({ department: await store.createDepartment(parts[2], input.body || {}) });
+    const department = await store.createDepartment(parts[2], input.body || {});
+    await writeAuditEvent(input, store, parts[2], {
+      eventType: "department.created",
+      targetType: "department",
+      targetId: department.departmentId,
+      safePayload: { departmentId: department.departmentId }
+    });
+    return created({ department });
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "departments")) {
@@ -256,12 +347,33 @@ async function routePlatformApiRequest(input = {}) {
     return ok({ department });
   }
 
+  if (method === "PATCH" && isOrgChildDocument(parts, "departments")) {
+    const department = await store.updateDepartment(parts[2], parts[4], input.body || {});
+    await writeAuditEvent(input, store, parts[2], {
+      eventType: "department.updated",
+      targetType: "department",
+      targetId: department.departmentId,
+      safePayload: {
+        departmentId: department.departmentId,
+        changedFields: safeChangedFields(input.body)
+      }
+    });
+    return ok({ department });
+  }
+
   if (method === "GET" && isOrgChildCollection(parts, "patients")) {
     return ok({ patients: await store.listPatients(parts[2]) });
   }
 
   if (method === "POST" && isOrgChildCollection(parts, "patients")) {
-    return created({ patient: await store.createPatient(parts[2], input.body || {}) });
+    const patient = await store.createPatient(parts[2], input.body || {});
+    await writeAuditEvent(input, store, parts[2], {
+      eventType: "patient.created",
+      targetType: "patient",
+      targetId: patient.patientId,
+      safePayload: { patientId: patient.patientId }
+    });
+    return created({ patient });
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "patients")) {
@@ -272,12 +384,33 @@ async function routePlatformApiRequest(input = {}) {
     return ok({ patient });
   }
 
+  if (method === "PATCH" && isOrgChildDocument(parts, "patients")) {
+    const patient = await store.updatePatient(parts[2], parts[4], input.body || {});
+    await writeAuditEvent(input, store, parts[2], {
+      eventType: "patient.updated",
+      targetType: "patient",
+      targetId: patient.patientId,
+      safePayload: {
+        patientId: patient.patientId,
+        changedFields: safeChangedFields(input.body)
+      }
+    });
+    return ok({ patient });
+  }
+
   if (method === "GET" && isOrgChildCollection(parts, "product-entitlements")) {
     return ok({ productEntitlements: await store.listProductEntitlements(parts[2]) });
   }
 
   if (method === "POST" && isOrgChildCollection(parts, "product-entitlements")) {
-    return created({ productEntitlement: await store.upsertProductEntitlement(parts[2], input.body || {}) });
+    const productEntitlement = await store.upsertProductEntitlement(parts[2], input.body || {});
+    await writeAuditEvent(input, store, parts[2], {
+      eventType: "product_entitlement.upserted",
+      targetType: "product_entitlement",
+      targetId: productEntitlement.productId,
+      safePayload: { productId: productEntitlement.productId }
+    });
+    return created({ productEntitlement });
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "product-entitlements")) {
@@ -285,6 +418,20 @@ async function routePlatformApiRequest(input = {}) {
     if (!productEntitlement) {
       return notFound("product entitlement not found");
     }
+    return ok({ productEntitlement });
+  }
+
+  if (method === "PATCH" && isOrgChildDocument(parts, "product-entitlements")) {
+    const productEntitlement = await store.updateProductEntitlement(parts[2], parts[4], input.body || {});
+    await writeAuditEvent(input, store, parts[2], {
+      eventType: "product_entitlement.updated",
+      targetType: "product_entitlement",
+      targetId: productEntitlement.productId,
+      safePayload: {
+        productId: productEntitlement.productId,
+        changedFields: safeChangedFields(input.body)
+      }
+    });
     return ok({ productEntitlement });
   }
 
@@ -309,6 +456,7 @@ async function routePlatformApiRequest(input = {}) {
 
 async function login(input, store) {
   const credentials = validateLoginInput(input.body || {});
+  await consumeLoginRateLimit(input, store, credentials);
   const identity = await store.getLoginIdentity(credentials.organizationCode, credentials.loginId);
   if (!identity || identity.status !== "active") {
     throw unauthorizedError("Invalid credentials");
@@ -365,6 +513,34 @@ async function login(input, store) {
   }, sessionResponse.headers);
 }
 
+async function consumeLoginRateLimit(input, store, credentials) {
+  await store.consumeRateLimit(
+    rateLimitKey("login", input, credentials.organizationCode, credentials.loginId),
+    {
+      limit: input.loginRateLimit?.limit || 10,
+      windowSeconds: input.loginRateLimit?.windowSeconds || 5 * 60
+    }
+  );
+}
+
+async function consumeSignupRateLimit(input, store) {
+  const organizationCode = (() => {
+    try {
+      return normalizeOrganizationCode(input.body?.organizationCode || "unknown");
+    } catch {
+      return "unknown";
+    }
+  })();
+
+  await store.consumeRateLimit(
+    rateLimitKey("signup", input, organizationCode),
+    {
+      limit: input.signupRateLimit?.limit || 3,
+      windowSeconds: input.signupRateLimit?.windowSeconds || 60 * 60
+    }
+  );
+}
+
 async function requireSession(input, store) {
   const token = sessionTokenFromHeaders(input.headers || {});
   const session = verifySignedSession(token, sessionOptions(input));
@@ -384,6 +560,24 @@ async function requireSession(input, store) {
   }
 
   return { session, identity, member };
+}
+
+async function optionalSession(input, store) {
+  try {
+    return await requireSession(input, store);
+  } catch {
+    return null;
+  }
+}
+
+async function writeAuditEvent(input, store, orgId, event) {
+  const context = await optionalSession(input, store);
+
+  return store.createAuditEvent(orgId, {
+    ...event,
+    actorMemberId: event.actorMemberId || context?.session.memberId,
+    actorLoginId: event.actorLoginId || context?.session.loginId
+  });
 }
 
 function requireCsrf(input, session) {
@@ -480,6 +674,32 @@ function requiredBodyString(body = {}, field) {
   return body[field].trim();
 }
 
+function safeChangedFields(body = {}, redactedFields = []) {
+  const redacted = new Set(redactedFields);
+  return Object.keys(body || {})
+    .filter((field) => !redacted.has(field))
+    .sort();
+}
+
+function rateLimitKey(kind, input, ...parts) {
+  return [
+    kind,
+    clientKey(input),
+    ...parts.map((part) => String(part || "unknown").trim() || "unknown")
+  ].join(":");
+}
+
+function clientKey(input) {
+  const forwardedFor = headerValue(input.headers || {}, "x-forwarded-for");
+  const realIp = headerValue(input.headers || {}, "x-real-ip");
+  const raw = forwardedFor ? forwardedFor.split(",")[0] : realIp;
+
+  return String(raw || "local")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9:._-]/g, "_") || "local";
+}
+
 function sendJson(res, statusCode, body, headers = {}) {
   const payload = JSON.stringify(body);
   res.writeHead(statusCode, {
@@ -551,7 +771,8 @@ function errorResponse(error) {
     body: {
       error: errorCode,
       message: statusCode === 500 ? "Internal server error" : error.message,
-      field: error.field
+      field: error.field,
+      resetAt: error.resetAt
     }
   };
 }

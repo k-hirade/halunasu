@@ -8,6 +8,13 @@ import {
   validateCreateMemberInput,
   validateCreateOrganizationInput,
   validateCreatePatientInput,
+  validateCreateSignupApplicationInput,
+  validatePatchDepartmentInput,
+  validatePatchFacilityInput,
+  validatePatchMemberInput,
+  validatePatchOrganizationInput,
+  validatePatchPatientInput,
+  validatePatchProductEntitlementInput,
   validateUpsertProductEntitlementInput
 } from "../../../../packages/platform-contracts/src/index.js";
 import {
@@ -21,9 +28,11 @@ import {
   organizationCodePath,
   organizationPath,
   patientPath,
-  productEntitlementPath
+  productEntitlementPath,
+  rateLimitPath,
+  signupApplicationPath
 } from "../../../../packages/firestore-schema/src/index.js";
-import { conflictError, notFoundError } from "./memory-store.js";
+import { conflictError, notFoundError, rateLimitError } from "./memory-store.js";
 import { hashPassword } from "../auth/password.js";
 
 export class FirestorePlatformStore {
@@ -82,6 +91,44 @@ export class FirestorePlatformStore {
     return docDataOrNull(await this.doc(organizationPath(orgId)).get());
   }
 
+  async updateOrganization(orgId, input) {
+    const current = await this.requireOrganization(orgId);
+    const patch = validatePatchOrganizationInput(input);
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+
+    await this.doc(organizationPath(orgId)).set(updated);
+    return updated;
+  }
+
+  async createSignupApplication(input) {
+    const normalized = validateCreateSignupApplicationInput(input);
+    const now = this.timestamp();
+    const applicationId = this.idFactory("app");
+    const application = compactObject({
+      applicationId,
+      ...normalized,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    });
+
+    await this.doc(signupApplicationPath(applicationId)).set(application);
+    return application;
+  }
+
+  async getSignupApplication(applicationId) {
+    return docDataOrNull(await this.doc(signupApplicationPath(applicationId)).get());
+  }
+
+  async listSignupApplications() {
+    const snapshot = await this.db.collection(collections.signupApplications).orderBy("createdAt", "asc").get();
+    return docsFromSnapshot(snapshot);
+  }
+
   async createMember(orgId, input) {
     const organization = await this.requireOrganization(orgId);
     const normalized = validateCreateMemberInput(input);
@@ -130,6 +177,43 @@ export class FirestorePlatformStore {
   async getMember(orgId, memberId) {
     await this.requireOrganization(orgId);
     return docDataOrNull(await this.doc(memberPath(orgId, memberId)).get());
+  }
+
+  async updateMember(orgId, memberId, input) {
+    const organization = await this.requireOrganization(orgId);
+    const current = await this.getMember(orgId, memberId);
+    if (!current) {
+      throw notFoundError("member not found");
+    }
+
+    const patch = validatePatchMemberInput(input);
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+    const identity = await this.getLoginIdentity(organization.organizationCode, current.loginId);
+
+    await this.db.runTransaction(async (transaction) => {
+      transaction.set(this.doc(memberPath(orgId, memberId)), updated);
+
+      if (identity) {
+        const updatedIdentity = compactObject({
+          ...identity,
+          status: updated.status === "disabled" ? "disabled" : activeIdentityStatus(identity.status),
+          passwordHash: input.password !== undefined ? hashPassword(input.password) : identity.passwordHash,
+          passwordUpdatedAt: input.password !== undefined ? this.timestamp() : identity.passwordUpdatedAt,
+          tokenVersion: input.password !== undefined
+            ? Number(identity.tokenVersion || 0) + 1
+            : identity.tokenVersion,
+          mfaRequired: hasPrivilegedRole(updated),
+          updatedAt: this.timestamp()
+        });
+        transaction.set(this.doc(loginIdentityPath(identity.organizationCode, identity.loginId)), updatedIdentity);
+      }
+    });
+
+    return updated;
   }
 
   async getLoginIdentity(organizationCode, loginId) {
@@ -234,6 +318,24 @@ export class FirestorePlatformStore {
     return docDataOrNull(await this.doc(facilityPath(orgId, facilityId)).get());
   }
 
+  async updateFacility(orgId, facilityId, input) {
+    await this.requireOrganization(orgId);
+    const current = await this.getFacility(orgId, facilityId);
+    if (!current) {
+      throw notFoundError("facility not found");
+    }
+
+    const patch = validatePatchFacilityInput(input);
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+
+    await this.doc(facilityPath(orgId, facilityId)).set(updated);
+    return updated;
+  }
+
   async createDepartment(orgId, input) {
     await this.requireOrganization(orgId);
     const normalized = validateCreateDepartmentInput(input);
@@ -261,6 +363,24 @@ export class FirestorePlatformStore {
   async getDepartment(orgId, departmentId) {
     await this.requireOrganization(orgId);
     return docDataOrNull(await this.doc(departmentPath(orgId, departmentId)).get());
+  }
+
+  async updateDepartment(orgId, departmentId, input) {
+    await this.requireOrganization(orgId);
+    const current = await this.getDepartment(orgId, departmentId);
+    if (!current) {
+      throw notFoundError("department not found");
+    }
+
+    const patch = validatePatchDepartmentInput(input);
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+
+    await this.doc(departmentPath(orgId, departmentId)).set(updated);
+    return updated;
   }
 
   async createPatient(orgId, input) {
@@ -292,6 +412,24 @@ export class FirestorePlatformStore {
     return docDataOrNull(await this.doc(patientPath(orgId, patientId)).get());
   }
 
+  async updatePatient(orgId, patientId, input) {
+    await this.requireOrganization(orgId);
+    const current = await this.getPatient(orgId, patientId);
+    if (!current) {
+      throw notFoundError("patient not found");
+    }
+
+    const patch = validatePatchPatientInput(input);
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+
+    await this.doc(patientPath(orgId, patientId)).set(updated);
+    return updated;
+  }
+
   async upsertProductEntitlement(orgId, input) {
     await this.requireOrganization(orgId);
     const normalized = validateUpsertProductEntitlementInput(input);
@@ -321,6 +459,25 @@ export class FirestorePlatformStore {
     return docDataOrNull(await this.doc(productEntitlementPath(orgId, productId)).get());
   }
 
+  async updateProductEntitlement(orgId, productId, input) {
+    await this.requireOrganization(orgId);
+    const current = await this.getProductEntitlement(orgId, productId);
+    if (!current) {
+      throw notFoundError("product entitlement not found");
+    }
+
+    const patch = validatePatchProductEntitlementInput({ ...input, productId });
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      productId,
+      updatedAt: this.timestamp()
+    });
+
+    await this.doc(productEntitlementPath(orgId, productId)).set(updated);
+    return updated;
+  }
+
   async createAuditEvent(orgId, input) {
     await this.requireOrganization(orgId);
     const normalized = validateCreateAuditEventInput(input);
@@ -347,6 +504,43 @@ export class FirestorePlatformStore {
   async getAuditEvent(orgId, eventId) {
     await this.requireOrganization(orgId);
     return docDataOrNull(await this.doc(auditEventPath(orgId, eventId)).get());
+  }
+
+  async consumeRateLimit(key, options = {}) {
+    const limit = options.limit || 5;
+    const windowSeconds = options.windowSeconds || 60;
+    const nowMs = this.now().getTime();
+    const now = this.timestamp();
+    let record;
+
+    await this.db.runTransaction(async (transaction) => {
+      const ref = this.doc(rateLimitPath(key));
+      const snapshot = await transaction.get(ref);
+      const existing = docDataOrNull(snapshot);
+      const resetAtMs = existing?.resetAt ? new Date(existing.resetAt).getTime() : 0;
+      const windowIsActive = existing && resetAtMs > nowMs;
+      const count = windowIsActive ? Number(existing.count || 0) + 1 : 1;
+      const resetAt = windowIsActive
+        ? existing.resetAt
+        : new Date(nowMs + windowSeconds * 1000).toISOString();
+
+      record = {
+        key,
+        count,
+        limit,
+        resetAt,
+        updatedAt: now,
+        schemaVersion: 1
+      };
+
+      transaction.set(ref, record);
+    });
+
+    if (record.count > limit) {
+      throw rateLimitError("Too many requests", record.resetAt);
+    }
+
+    return record;
   }
 
   async requireOrganization(orgId) {
@@ -427,6 +621,10 @@ function createLoginIdentity({ organization, member, password, now }) {
 
 function hasPrivilegedRole(member) {
   return member.globalRoles.includes("org_admin") || member.globalRoles.includes("billing_admin");
+}
+
+function activeIdentityStatus(currentStatus) {
+  return currentStatus === "disabled" ? "active" : currentStatus;
 }
 
 function docsFromSnapshot(snapshot) {

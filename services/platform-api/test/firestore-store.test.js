@@ -112,6 +112,53 @@ test("updates login identity auth state", async () => {
   assert.equal(revoked.tokenVersion, 3);
 });
 
+test("updates platform resources and applies rate limits", async () => {
+  const store = createTestStore();
+  const organization = await store.createOrganization({
+    organizationCode: "Clinic Update",
+    displayName: "Clinic Update"
+  });
+  const signupApplication = await store.createSignupApplication({
+    organizationCode: "Signup Clinic",
+    organizationDisplayName: "Signup Clinic",
+    applicantName: "Applicant",
+    applicantEmail: "Applicant@example.com"
+  });
+  const member = await store.createMember(organization.orgId, {
+    loginId: "doctor",
+    displayName: "Doctor",
+    password: "correct horse battery staple"
+  });
+  const facility = await store.createFacility(organization.orgId, {
+    displayName: "Main Clinic"
+  });
+  const department = await store.createDepartment(organization.orgId, {
+    displayName: "Internal Medicine"
+  });
+  const patient = await store.createPatient(organization.orgId, {
+    displayName: "Patient"
+  });
+  await store.upsertProductEntitlement(organization.orgId, {
+    productId: "charting",
+    status: "trialing"
+  });
+
+  assert.equal((await store.updateOrganization(organization.orgId, { displayName: "Updated" })).displayName, "Updated");
+  assert.equal((await store.updateMember(organization.orgId, member.memberId, { displayName: "Updated Doctor" })).displayName, "Updated Doctor");
+  assert.equal((await store.updateFacility(organization.orgId, facility.facilityId, { medicalInstitutionCode: "1234567" })).medicalInstitutionCode, "1234567");
+  assert.equal((await store.updateDepartment(organization.orgId, department.departmentId, { facilityId: facility.facilityId })).facilityId, facility.facilityId);
+  assert.equal((await store.updatePatient(organization.orgId, patient.patientId, { displayNameKana: "YAMADA TARO" })).displayNameKana, "YAMADA TARO");
+  assert.equal((await store.updateProductEntitlement(organization.orgId, "charting", { status: "enabled" })).status, "enabled");
+  assert.equal((await store.getSignupApplication(signupApplication.applicationId)).organizationCode, "signup-clinic");
+  assert.equal((await store.listSignupApplications()).length, 1);
+
+  await store.consumeRateLimit("login:local:clinic:doctor", { limit: 1, windowSeconds: 60 });
+  await assert.rejects(
+    () => store.consumeRateLimit("login:local:clinic:doctor", { limit: 1, windowSeconds: 60 }),
+    /Too many requests/
+  );
+});
+
 test("rejects child writes for missing organization", async () => {
   const store = createTestStore();
 

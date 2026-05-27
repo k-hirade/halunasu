@@ -8,6 +8,13 @@ import {
   validateCreateMemberInput,
   validateCreateOrganizationInput,
   validateCreatePatientInput,
+  validateCreateSignupApplicationInput,
+  validatePatchDepartmentInput,
+  validatePatchFacilityInput,
+  validatePatchMemberInput,
+  validatePatchOrganizationInput,
+  validatePatchPatientInput,
+  validatePatchProductEntitlementInput,
   validateUpsertProductEntitlementInput
 } from "../../../../packages/platform-contracts/src/index.js";
 import { loginIdentityKey } from "../../../../packages/firestore-schema/src/index.js";
@@ -19,6 +26,8 @@ export class MemoryPlatformStore {
     this.idFactory = options.idFactory || defaultIdFactory;
     this.organizations = new Map();
     this.organizationCodes = new Map();
+    this.signupApplications = new Map();
+    this.rateLimits = new Map();
     this.loginIdentities = new Map();
     this.membersByOrg = new Map();
     this.facilitiesByOrg = new Map();
@@ -66,6 +75,43 @@ export class MemoryPlatformStore {
     return this.organizations.get(orgId) || null;
   }
 
+  updateOrganization(orgId, input) {
+    const current = this.requireOrganization(orgId);
+    const patch = validatePatchOrganizationInput(input);
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+
+    this.organizations.set(orgId, updated);
+    return updated;
+  }
+
+  createSignupApplication(input) {
+    const normalized = validateCreateSignupApplicationInput(input);
+    const now = this.timestamp();
+    const applicationId = this.idFactory("app");
+    const application = compactObject({
+      applicationId,
+      ...normalized,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    });
+
+    this.signupApplications.set(applicationId, application);
+    return application;
+  }
+
+  getSignupApplication(applicationId) {
+    return this.signupApplications.get(applicationId) || null;
+  }
+
+  listSignupApplications() {
+    return sortByCreatedAt([...this.signupApplications.values()]);
+  }
+
   createMember(orgId, input) {
     const organization = this.requireOrganization(orgId);
     const normalized = validateCreateMemberInput(input);
@@ -108,6 +154,43 @@ export class MemoryPlatformStore {
   getMember(orgId, memberId) {
     this.requireOrganization(orgId);
     return this.membersForOrg(orgId).get(memberId) || null;
+  }
+
+  updateMember(orgId, memberId, input) {
+    this.requireOrganization(orgId);
+    const current = this.getMember(orgId, memberId);
+    if (!current) {
+      throw notFoundError("member not found");
+    }
+
+    const patch = validatePatchMemberInput(input);
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+    const identity = this.getLoginIdentity(
+      this.requireOrganization(orgId).organizationCode,
+      current.loginId
+    );
+
+    if (identity) {
+      const updatedIdentity = compactObject({
+        ...identity,
+        status: updated.status === "disabled" ? "disabled" : activeIdentityStatus(identity.status),
+        passwordHash: input.password !== undefined ? hashPassword(input.password) : identity.passwordHash,
+        passwordUpdatedAt: input.password !== undefined ? this.timestamp() : identity.passwordUpdatedAt,
+        tokenVersion: input.password !== undefined
+          ? Number(identity.tokenVersion || 0) + 1
+          : identity.tokenVersion,
+        mfaRequired: hasPrivilegedRole(updated),
+        updatedAt: this.timestamp()
+      });
+      this.loginIdentities.set(identity.identityKey, updatedIdentity);
+    }
+
+    this.membersForOrg(orgId).set(memberId, updated);
+    return updated;
   }
 
   getLoginIdentity(organizationCode, loginId) {
@@ -213,6 +296,24 @@ export class MemoryPlatformStore {
     return this.facilitiesForOrg(orgId).get(facilityId) || null;
   }
 
+  updateFacility(orgId, facilityId, input) {
+    this.requireOrganization(orgId);
+    const current = this.getFacility(orgId, facilityId);
+    if (!current) {
+      throw notFoundError("facility not found");
+    }
+
+    const patch = validatePatchFacilityInput(input);
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+
+    this.facilitiesForOrg(orgId).set(facilityId, updated);
+    return updated;
+  }
+
   createDepartment(orgId, input) {
     this.requireOrganization(orgId);
     const normalized = validateCreateDepartmentInput(input);
@@ -239,6 +340,24 @@ export class MemoryPlatformStore {
   getDepartment(orgId, departmentId) {
     this.requireOrganization(orgId);
     return this.departmentsForOrg(orgId).get(departmentId) || null;
+  }
+
+  updateDepartment(orgId, departmentId, input) {
+    this.requireOrganization(orgId);
+    const current = this.getDepartment(orgId, departmentId);
+    if (!current) {
+      throw notFoundError("department not found");
+    }
+
+    const patch = validatePatchDepartmentInput(input);
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+
+    this.departmentsForOrg(orgId).set(departmentId, updated);
+    return updated;
   }
 
   createPatient(orgId, input) {
@@ -270,6 +389,24 @@ export class MemoryPlatformStore {
     return this.patientsForOrg(orgId).get(patientId) || null;
   }
 
+  updatePatient(orgId, patientId, input) {
+    this.requireOrganization(orgId);
+    const current = this.getPatient(orgId, patientId);
+    if (!current) {
+      throw notFoundError("patient not found");
+    }
+
+    const patch = validatePatchPatientInput(input);
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+
+    this.patientsForOrg(orgId).set(patientId, updated);
+    return updated;
+  }
+
   upsertProductEntitlement(orgId, input) {
     this.requireOrganization(orgId);
     const normalized = validateUpsertProductEntitlementInput(input);
@@ -298,6 +435,25 @@ export class MemoryPlatformStore {
     return this.productEntitlementsForOrg(orgId).get(productId) || null;
   }
 
+  updateProductEntitlement(orgId, productId, input) {
+    this.requireOrganization(orgId);
+    const current = this.getProductEntitlement(orgId, productId);
+    if (!current) {
+      throw notFoundError("product entitlement not found");
+    }
+
+    const patch = validatePatchProductEntitlementInput({ ...input, productId });
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      productId,
+      updatedAt: this.timestamp()
+    });
+
+    this.productEntitlementsForOrg(orgId).set(productId, updated);
+    return updated;
+  }
+
   createAuditEvent(orgId, input) {
     this.requireOrganization(orgId);
     const normalized = validateCreateAuditEventInput(input);
@@ -323,6 +479,35 @@ export class MemoryPlatformStore {
   getAuditEvent(orgId, eventId) {
     this.requireOrganization(orgId);
     return this.auditEventsForOrg(orgId).get(eventId) || null;
+  }
+
+  consumeRateLimit(key, options = {}) {
+    const limit = options.limit || 5;
+    const windowSeconds = options.windowSeconds || 60;
+    const nowMs = this.now().getTime();
+    const now = this.timestamp();
+    const existing = this.rateLimits.get(key);
+    const resetAtMs = existing?.resetAt ? new Date(existing.resetAt).getTime() : 0;
+    const windowIsActive = existing && resetAtMs > nowMs;
+    const count = windowIsActive ? Number(existing.count || 0) + 1 : 1;
+    const resetAt = windowIsActive
+      ? existing.resetAt
+      : new Date(nowMs + windowSeconds * 1000).toISOString();
+    const record = {
+      key,
+      count,
+      limit,
+      resetAt,
+      updatedAt: now,
+      schemaVersion: 1
+    };
+
+    this.rateLimits.set(key, record);
+    if (count > limit) {
+      throw rateLimitError("Too many requests", resetAt);
+    }
+
+    return record;
   }
 
   requireOrganization(orgId) {
@@ -407,6 +592,14 @@ export function conflictError(message, field) {
   return error;
 }
 
+export function rateLimitError(message, resetAt) {
+  const error = new Error(message);
+  error.name = "RateLimitError";
+  error.statusCode = 429;
+  error.resetAt = resetAt;
+  return error;
+}
+
 function defaultIdFactory(prefix) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 26)}`;
 }
@@ -443,4 +636,8 @@ function createLoginIdentity({ organization, member, password, now }) {
 
 function hasPrivilegedRole(member) {
   return member.globalRoles.includes("org_admin") || member.globalRoles.includes("billing_admin");
+}
+
+function activeIdentityStatus(currentStatus) {
+  return currentStatus === "disabled" ? "active" : currentStatus;
 }

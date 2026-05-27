@@ -83,10 +83,10 @@ test("creates organization members and patients", async () => {
   });
 
   assert.equal(createdMember.statusCode, 201);
-  assert.equal(createdMember.body.member.memberId, "mem_002");
+  assert.match(createdMember.body.member.memberId, /^mem_/);
   assert.equal(createdMember.body.member.orgId, orgId);
   assert.equal(createdPatient.statusCode, 201);
-  assert.equal(createdPatient.body.patient.patientId, "pat_003");
+  assert.match(createdPatient.body.patient.patientId, /^pat_/);
   assert.equal(createdPatient.body.patient.orgId, orgId);
 
   const listedMembers = await request(store, "GET", `/v1/organizations/${orgId}/members`);
@@ -126,10 +126,10 @@ test("creates shared master data resources", async () => {
   });
 
   assert.equal(facility.statusCode, 201);
-  assert.equal(facility.body.facility.facilityId, "fac_002");
-  assert.equal(department.body.department.departmentId, "dep_003");
+  assert.match(facility.body.facility.facilityId, /^fac_/);
+  assert.match(department.body.department.departmentId, /^dep_/);
   assert.equal(entitlement.body.productEntitlement.productId, "fee");
-  assert.equal(auditEvent.body.auditEvent.eventId, "aud_004");
+  assert.match(auditEvent.body.auditEvent.eventId, /^aud_/);
   assert.equal((await request(store, "GET", `/v1/organizations/${orgId}/facilities`)).body.facilities.length, 1);
   assert.equal((await request(store, "GET", `/v1/organizations/${orgId}/departments`)).body.departments.length, 1);
   assert.equal(
@@ -137,6 +137,116 @@ test("creates shared master data resources", async () => {
       .body.productEntitlement.status,
     "enabled"
   );
+});
+
+test("patches platform resources and records audit events", async () => {
+  const store = createTestStore();
+  const createdOrg = await request(store, "POST", "/v1/organizations", {
+    organizationCode: "Clinic Patch",
+    displayName: "Clinic Patch"
+  });
+  const orgId = createdOrg.body.organization.orgId;
+  const member = await request(store, "POST", `/v1/organizations/${orgId}/members`, {
+    loginId: "doctor",
+    displayName: "Doctor",
+    password: "correct horse battery staple"
+  });
+  const facility = await request(store, "POST", `/v1/organizations/${orgId}/facilities`, {
+    displayName: "Main Clinic"
+  });
+  const department = await request(store, "POST", `/v1/organizations/${orgId}/departments`, {
+    displayName: "Internal Medicine"
+  });
+  const patient = await request(store, "POST", `/v1/organizations/${orgId}/patients`, {
+    displayName: "Yamada Taro"
+  });
+  await request(store, "POST", `/v1/organizations/${orgId}/product-entitlements`, {
+    productId: "charting",
+    status: "trialing"
+  });
+
+  const patchedOrg = await request(store, "PATCH", `/v1/organizations/${orgId}`, {
+    displayName: "Clinic Patch Updated",
+    defaultFacilityId: facility.body.facility.facilityId
+  });
+  const patchedMember = await request(
+    store,
+    "PATCH",
+    `/v1/organizations/${orgId}/members/${member.body.member.memberId}`,
+    { displayName: "Doctor Updated", password: "new correct horse battery" }
+  );
+  const patchedFacility = await request(
+    store,
+    "PATCH",
+    `/v1/organizations/${orgId}/facilities/${facility.body.facility.facilityId}`,
+    { medicalInstitutionCode: "7654321" }
+  );
+  const patchedDepartment = await request(
+    store,
+    "PATCH",
+    `/v1/organizations/${orgId}/departments/${department.body.department.departmentId}`,
+    { facilityId: facility.body.facility.facilityId }
+  );
+  const patchedPatient = await request(
+    store,
+    "PATCH",
+    `/v1/organizations/${orgId}/patients/${patient.body.patient.patientId}`,
+    { displayNameKana: "YAMADA TARO" }
+  );
+  const patchedEntitlement = await request(
+    store,
+    "PATCH",
+    `/v1/organizations/${orgId}/product-entitlements/charting`,
+    { status: "enabled", features: { soap: true } }
+  );
+  const auditEvents = await request(store, "GET", `/v1/organizations/${orgId}/audit-events`);
+
+  assert.equal(patchedOrg.body.organization.displayName, "Clinic Patch Updated");
+  assert.equal(patchedMember.body.member.displayName, "Doctor Updated");
+  assert.equal(patchedFacility.body.facility.medicalInstitutionCode, "7654321");
+  assert.equal(patchedDepartment.body.department.facilityId, facility.body.facility.facilityId);
+  assert.equal(patchedPatient.body.patient.displayNameKana, "YAMADA TARO");
+  assert.equal(patchedEntitlement.body.productEntitlement.status, "enabled");
+  assert.ok(auditEvents.body.auditEvents.some((event) => event.eventType === "member.updated"));
+  assert.ok(auditEvents.body.auditEvents.some((event) => event.eventType === "patient.updated"));
+});
+
+test("creates signup applications and rate limits signup attempts", async () => {
+  const store = createTestStore();
+  const first = await request(
+    store,
+    "POST",
+    "/v1/signup/applications",
+    {
+      organizationCode: "Signup Clinic",
+      organizationDisplayName: "Signup Clinic",
+      applicantName: "Applicant",
+      applicantEmail: "Applicant@example.com",
+      requestedProducts: ["charting", "unknown"]
+    },
+    { "x-forwarded-for": "203.0.113.10" },
+    { signupRateLimit: { limit: 1, windowSeconds: 60 } }
+  );
+  const second = await request(
+    store,
+    "POST",
+    "/v1/signup/applications",
+    {
+      organizationCode: "Signup Clinic",
+      organizationDisplayName: "Signup Clinic",
+      applicantName: "Applicant",
+      applicantEmail: "Applicant@example.com"
+    },
+    { "x-forwarded-for": "203.0.113.10" },
+    { signupRateLimit: { limit: 1, windowSeconds: 60 } }
+  );
+  const fetched = await request(store, "GET", `/v1/signup/applications/${first.body.signupApplication.applicationId}`);
+
+  assert.equal(first.statusCode, 201);
+  assert.equal(first.body.signupApplication.applicantEmail, "applicant@example.com");
+  assert.deepEqual(first.body.signupApplication.requestedProducts, ["charting"]);
+  assert.equal(second.statusCode, 429);
+  assert.equal(fetched.body.signupApplication.applicationId, first.body.signupApplication.applicationId);
 });
 
 test("logs in, checks session, enrolls MFA, and logs out", async () => {
@@ -187,7 +297,7 @@ test("logs in, checks session, enrolls MFA, and logs out", async () => {
   assert.equal(login.statusCode, 200);
   assert.equal(login.body.session.loginId, "admin");
   assert.equal(session.statusCode, 200);
-  assert.equal(session.body.session.memberId, "mem_002");
+  assert.match(session.body.session.memberId, /^mem_/);
   assert.equal(mfaEnroll.statusCode, 201);
   assert.match(mfaEnroll.body.mfa.otpauthUrl, /^otpauth:\/\/totp\//);
   assert.equal(mfaVerify.statusCode, 200);
@@ -245,6 +355,50 @@ test("requires MFA code after enrollment", async () => {
   assert.equal(withMfa.statusCode, 200);
 });
 
+test("rate limits login attempts", async () => {
+  const store = createTestStore();
+  const createdOrg = await request(store, "POST", "/v1/organizations", {
+    organizationCode: "Clinic Rate",
+    displayName: "Clinic Rate"
+  });
+  const orgId = createdOrg.body.organization.orgId;
+
+  await request(store, "POST", `/v1/organizations/${orgId}/members`, {
+    loginId: "admin",
+    displayName: "Admin",
+    password: "correct horse battery staple"
+  });
+
+  const first = await request(
+    store,
+    "POST",
+    "/v1/auth/login",
+    {
+      organizationCode: "clinic-rate",
+      loginId: "admin",
+      password: "wrong horse battery staple"
+    },
+    { "x-forwarded-for": "203.0.113.20" },
+    { loginRateLimit: { limit: 1, windowSeconds: 60 } }
+  );
+  const second = await request(
+    store,
+    "POST",
+    "/v1/auth/login",
+    {
+      organizationCode: "clinic-rate",
+      loginId: "admin",
+      password: "wrong horse battery staple"
+    },
+    { "x-forwarded-for": "203.0.113.20" },
+    { loginRateLimit: { limit: 1, windowSeconds: 60 } }
+  );
+
+  assert.equal(first.statusCode, 401);
+  assert.equal(second.statusCode, 429);
+  assert.equal(second.body.error, "rate_limit");
+});
+
 test("returns validation and conflict errors as responses", async () => {
   const store = createTestStore();
 
@@ -276,7 +430,7 @@ function createTestStore() {
   });
 }
 
-function request(store, method, path, body, headers = {}) {
+function request(store, method, path, body, headers = {}, options = {}) {
   return handlePlatformApiRequest({
     method,
     path,
@@ -288,7 +442,9 @@ function request(store, method, path, body, headers = {}) {
     region: "asia-northeast1",
     startedAt: new Date("2026-05-27T00:00:00.000Z"),
     now: new Date("2026-05-27T00:00:00.000Z"),
-    sessionSecret: "test-session-secret"
+    sessionSecret: "test-session-secret",
+    loginRateLimit: options.loginRateLimit,
+    signupRateLimit: options.signupRateLimit
   });
 }
 

@@ -107,7 +107,7 @@ Exit criteria:
 
 ## P1: Platform Auth And Core Master Data
 
-Status: in progress.
+Status: complete for local implementation and tests. Not deployed to GCP yet.
 
 Purpose:
 
@@ -145,6 +145,17 @@ GET/POST/PATCH /v1/organizations/{orgId}/facilities
 GET/POST/PATCH /v1/organizations/{orgId}/departments
 GET/POST/PATCH /v1/organizations/{orgId}/patients
 GET/POST/PATCH /v1/organizations/{orgId}/product-entitlements
+```
+
+Implemented route shape uses document-level `PATCH` endpoints, for example:
+
+```text
+PATCH /v1/organizations/{orgId}
+PATCH /v1/organizations/{orgId}/members/{memberId}
+PATCH /v1/organizations/{orgId}/facilities/{facilityId}
+PATCH /v1/organizations/{orgId}/departments/{departmentId}
+PATCH /v1/organizations/{orgId}/patients/{patientId}
+PATCH /v1/organizations/{orgId}/product-entitlements/{productId}
 ```
 
 Cost notes:

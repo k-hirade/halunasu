@@ -25,6 +25,14 @@ export function organizationCodePath(organizationCode) {
   return joinPath(collections.organizationCodes, segment(organizationCode, "organizationCode"));
 }
 
+export function signupApplicationPath(applicationId) {
+  return joinPath(collections.signupApplications, segment(applicationId, "applicationId"));
+}
+
+export function rateLimitPath(key) {
+  return joinPath(collections.rateLimits, segment(key, "key"));
+}
+
 export function loginIdentityKey(organizationCode, loginId) {
   return `${segment(organizationCode, "organizationCode")}:${segment(loginId, "loginId")}`;
 }

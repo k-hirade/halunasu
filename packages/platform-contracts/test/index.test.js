@@ -9,7 +9,11 @@ import {
   validateCreateMemberInput,
   validateCreateOrganizationInput,
   validateCreatePatientInput,
+  validateCreateSignupApplicationInput,
   validateLoginInput,
+  validatePatchMemberInput,
+  validatePatchOrganizationInput,
+  validatePatchPatientInput,
   validateUpsertProductEntitlementInput
 } from "../src/index.js";
 
@@ -55,6 +59,31 @@ test("validates login input", () => {
   assert.equal(input.organizationCode, "clinic-a");
   assert.equal(input.loginId, "admin");
   assert.equal(input.password, "correct horse battery staple");
+});
+
+test("validates signup applications and patch input", () => {
+  const signup = validateCreateSignupApplicationInput({
+    organizationCode: "Signup Clinic",
+    organizationDisplayName: "Signup Clinic",
+    applicantName: "Applicant",
+    applicantEmail: "Applicant@Example.com",
+    requestedProducts: ["charting", "unknown"]
+  });
+
+  assert.equal(signup.organizationCode, "signup-clinic");
+  assert.equal(signup.applicantEmail, "applicant@example.com");
+  assert.deepEqual(signup.requestedProducts, ["charting"]);
+  assert.deepEqual(validatePatchOrganizationInput({ displayName: "Updated" }), {
+    displayName: "Updated"
+  });
+  assert.deepEqual(validatePatchMemberInput({ globalRoles: ["doctor", "doctor"] }), {
+    globalRoles: ["doctor"]
+  });
+  assert.deepEqual(validatePatchPatientInput({ displayNameKana: "YAMADA TARO" }), {
+    displayNameKana: "YAMADA TARO"
+  });
+  assert.throws(() => validatePatchOrganizationInput({ organizationCode: "new-code" }), /cannot be changed/);
+  assert.throws(() => validatePatchMemberInput({ loginId: "new-login" }), /cannot be changed/);
 });
 
 test("validates facility and department input", () => {

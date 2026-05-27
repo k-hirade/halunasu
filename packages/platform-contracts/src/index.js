@@ -12,6 +12,7 @@ export const departmentStatuses = Object.freeze(["active", "inactive"]);
 export const patientStatuses = Object.freeze(["active", "merged", "inactive"]);
 export const patientSexes = Object.freeze(["male", "female", "other", "unknown"]);
 export const productEntitlementStatuses = Object.freeze(["enabled", "trialing", "disabled"]);
+export const signupApplicationStatuses = Object.freeze(["submitted", "email_verified", "provisioned", "rejected"]);
 
 export function normalizeOrganizationCode(value) {
   return requiredString(value, "organizationCode")
@@ -43,6 +44,24 @@ export function validateCreateOrganizationInput(input = {}) {
   };
 }
 
+export function validatePatchOrganizationInput(input = {}) {
+  if (hasOwn(input, "organizationCode")) {
+    throw validationError("organizationCode cannot be changed", "organizationCode");
+  }
+
+  return compactObject({
+    displayName: hasOwn(input, "displayName") ? requiredString(input.displayName, "displayName") : undefined,
+    legalName: hasOwn(input, "legalName") ? optionalString(input.legalName) : undefined,
+    status: hasOwn(input, "status") ? optionalEnum(input.status, organizationStatuses, "status") : undefined,
+    timezone: hasOwn(input, "timezone") ? requiredString(input.timezone, "timezone") : undefined,
+    locale: hasOwn(input, "locale") ? requiredString(input.locale, "locale") : undefined,
+    billing: hasOwn(input, "billing") && isPlainObject(input.billing) ? input.billing : undefined,
+    access: hasOwn(input, "access") && isPlainObject(input.access) ? input.access : undefined,
+    defaultFacilityId: hasOwn(input, "defaultFacilityId") ? optionalString(input.defaultFacilityId) : undefined,
+    defaultDepartmentId: hasOwn(input, "defaultDepartmentId") ? optionalString(input.defaultDepartmentId) : undefined
+  });
+}
+
 export function validateCreateMemberInput(input = {}) {
   return {
     loginId: normalizeLoginId(input.loginId),
@@ -58,6 +77,24 @@ export function validateCreateMemberInput(input = {}) {
   };
 }
 
+export function validatePatchMemberInput(input = {}) {
+  if (hasOwn(input, "loginId")) {
+    throw validationError("loginId cannot be changed", "loginId");
+  }
+
+  return compactObject({
+    displayName: hasOwn(input, "displayName") ? requiredString(input.displayName, "displayName") : undefined,
+    email: hasOwn(input, "email") ? optionalString(input.email) : undefined,
+    status: hasOwn(input, "status") ? optionalEnum(input.status, memberStatuses, "status") : undefined,
+    globalRoles: hasOwn(input, "globalRoles") ? normalizeStringArray(input.globalRoles) : undefined,
+    productRoles: hasOwn(input, "productRoles") ? normalizeProductRoles(input.productRoles) : undefined,
+    facilityIds: hasOwn(input, "facilityIds") ? normalizeStringArray(input.facilityIds) : undefined,
+    departmentIds: hasOwn(input, "departmentIds") ? normalizeStringArray(input.departmentIds) : undefined,
+    defaultFacilityId: hasOwn(input, "defaultFacilityId") ? optionalString(input.defaultFacilityId) : undefined,
+    defaultDepartmentId: hasOwn(input, "defaultDepartmentId") ? optionalString(input.defaultDepartmentId) : undefined
+  });
+}
+
 export function validateLoginInput(input = {}) {
   const organizationCode = normalizeOrganizationCode(input.organizationCode);
   if (!organizationCode) {
@@ -69,6 +106,23 @@ export function validateLoginInput(input = {}) {
     loginId: normalizeLoginId(input.loginId),
     password: requiredString(input.password, "password"),
     mfaCode: optionalString(input.mfaCode)
+  };
+}
+
+export function validateCreateSignupApplicationInput(input = {}) {
+  const organizationCode = normalizeOrganizationCode(input.organizationCode);
+  if (!organizationCode) {
+    throw validationError("organizationCode must contain at least one letter or number", "organizationCode");
+  }
+
+  return {
+    organizationCode,
+    organizationDisplayName: requiredString(input.organizationDisplayName, "organizationDisplayName"),
+    applicantName: requiredString(input.applicantName, "applicantName"),
+    applicantEmail: requiredString(input.applicantEmail, "applicantEmail").toLowerCase(),
+    status: optionalEnum(input.status, signupApplicationStatuses, "status") || "submitted",
+    requestedProducts: normalizeRequestedProducts(input.requestedProducts),
+    safePayload: isPlainObject(input.safePayload) ? input.safePayload : {}
   };
 }
 
@@ -87,6 +141,25 @@ export function validateCreateFacilityInput(input = {}) {
   };
 }
 
+export function validatePatchFacilityInput(input = {}) {
+  return compactObject({
+    displayName: hasOwn(input, "displayName") ? requiredString(input.displayName, "displayName") : undefined,
+    legalName: hasOwn(input, "legalName") ? optionalString(input.legalName) : undefined,
+    facilityType: hasOwn(input, "facilityType") ? optionalString(input.facilityType) : undefined,
+    medicalInstitutionCode: hasOwn(input, "medicalInstitutionCode")
+      ? optionalString(input.medicalInstitutionCode)
+      : undefined,
+    regionalBureau: hasOwn(input, "regionalBureau") ? optionalString(input.regionalBureau) : undefined,
+    prefecture: hasOwn(input, "prefecture") ? optionalString(input.prefecture) : undefined,
+    address: hasOwn(input, "address") && isPlainObject(input.address) ? input.address : undefined,
+    phone: hasOwn(input, "phone") ? optionalString(input.phone) : undefined,
+    facilityStandardKeys: hasOwn(input, "facilityStandardKeys")
+      ? normalizeStringArray(input.facilityStandardKeys)
+      : undefined,
+    status: hasOwn(input, "status") ? optionalEnum(input.status, facilityStatuses, "status") : undefined
+  });
+}
+
 export function validateCreateDepartmentInput(input = {}) {
   return {
     facilityId: optionalString(input.facilityId),
@@ -95,6 +168,16 @@ export function validateCreateDepartmentInput(input = {}) {
     specialty: optionalString(input.specialty),
     status: optionalEnum(input.status, departmentStatuses, "status") || "active"
   };
+}
+
+export function validatePatchDepartmentInput(input = {}) {
+  return compactObject({
+    facilityId: hasOwn(input, "facilityId") ? optionalString(input.facilityId) : undefined,
+    displayName: hasOwn(input, "displayName") ? requiredString(input.displayName, "displayName") : undefined,
+    code: hasOwn(input, "code") ? optionalString(input.code) : undefined,
+    specialty: hasOwn(input, "specialty") ? optionalString(input.specialty) : undefined,
+    status: hasOwn(input, "status") ? optionalEnum(input.status, departmentStatuses, "status") : undefined
+  });
 }
 
 export function validateCreatePatientInput(input = {}) {
@@ -107,6 +190,21 @@ export function validateCreatePatientInput(input = {}) {
     status: optionalEnum(input.status, patientStatuses, "status") || "active",
     notes: optionalString(input.notes)
   };
+}
+
+export function validatePatchPatientInput(input = {}) {
+  return compactObject({
+    displayName: hasOwn(input, "displayName") ? requiredString(input.displayName, "displayName") : undefined,
+    displayNameKana: hasOwn(input, "displayNameKana") ? optionalString(input.displayNameKana) : undefined,
+    birthDate: hasOwn(input, "birthDate") ? optionalBirthDate(input.birthDate) : undefined,
+    sex: hasOwn(input, "sex") ? optionalEnum(input.sex, patientSexes, "sex") || "unknown" : undefined,
+    externalPatientIds: hasOwn(input, "externalPatientIds") ? normalizeStringArray(input.externalPatientIds) : undefined,
+    status: hasOwn(input, "status") ? optionalEnum(input.status, patientStatuses, "status") : undefined,
+    mergedIntoPatientId: hasOwn(input, "mergedIntoPatientId")
+      ? optionalString(input.mergedIntoPatientId)
+      : undefined,
+    notes: hasOwn(input, "notes") ? optionalString(input.notes) : undefined
+  });
 }
 
 export function validateUpsertProductEntitlementInput(input = {}) {
@@ -124,6 +222,26 @@ export function validateUpsertProductEntitlementInput(input = {}) {
     startsAt: optionalDateTime(input.startsAt, "startsAt"),
     endsAt: optionalDateTime(input.endsAt, "endsAt")
   };
+}
+
+export function validatePatchProductEntitlementInput(input = {}) {
+  if (hasOwn(input, "productId")) {
+    const productId = requiredString(input.productId, "productId");
+    if (!Object.values(productIds).includes(productId)) {
+      throw validationError(`productId must be one of: ${Object.values(productIds).join(", ")}`, "productId");
+    }
+  }
+
+  return compactObject({
+    status: hasOwn(input, "status")
+      ? optionalEnum(input.status, productEntitlementStatuses, "status")
+      : undefined,
+    plan: hasOwn(input, "plan") ? optionalString(input.plan) : undefined,
+    limits: hasOwn(input, "limits") && isPlainObject(input.limits) ? input.limits : undefined,
+    features: hasOwn(input, "features") && isPlainObject(input.features) ? input.features : undefined,
+    startsAt: hasOwn(input, "startsAt") ? optionalDateTime(input.startsAt, "startsAt") : undefined,
+    endsAt: hasOwn(input, "endsAt") ? optionalDateTime(input.endsAt, "endsAt") : undefined
+  });
 }
 
 export function validateCreateAuditEventInput(input = {}) {
@@ -268,6 +386,19 @@ function normalizeProductRoles(value) {
   return normalized;
 }
 
+function normalizeRequestedProducts(value) {
+  const products = normalizeStringArray(value).filter((productId) => Object.values(productIds).includes(productId));
+  return products.length > 0 ? products : [productIds.charting];
+}
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function compactObject(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
