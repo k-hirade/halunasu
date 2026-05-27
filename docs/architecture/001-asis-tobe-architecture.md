@@ -11,7 +11,7 @@ Because there are no current customers, we can prioritize the future architectur
 The target is a new monorepo and new GCP environment:
 
 - New repository: `halunasu`
-- New GCP projects: `halunasu-stg-*` and `halunasu-prod-*`
+- New core GCP projects: `medical-core-stg` and `medical-core-497610`
 - Shared Platform/Core data layer
 - Product services remain separated by responsibility
 - Firestore remains the primary operational store for the initial phase
@@ -224,7 +224,7 @@ flowchart LR
     NRW["referral-web"]
   end
 
-  subgraph GCPStg["GCP: halunasu-stg-*"]
+  subgraph GCPStg["GCP: medical-core-stg"]
     CPA["Cloud Run<br/>platform-api"]
     CCA["Cloud Run<br/>charting-api"]
     CCF["Cloud Run<br/>charting-finalize"]
@@ -281,8 +281,8 @@ flowchart LR
 Production mirrors staging:
 
 ```text
-halunasu-stg-*  -> staging, preview, synthetic/non-production PHI policy
-halunasu-prod-* -> production, real PHI, stricter IAM, backup, retention, audit
+medical-core-stg    -> staging, preview, synthetic/non-production PHI policy
+medical-core-497610 -> production/core, real PHI, stricter IAM, backup, retention, audit
 ```
 
 Initial cost controls:
@@ -539,7 +539,7 @@ gantt
   section Foundation
   Architecture docs and ADRs           :a1, 2026-05-27, 3d
   Monorepo skeleton                    :a2, after a1, 2d
-  New GCP staging via Terraform        :a3, after a2, 4d
+  medical-core-stg via Terraform       :a3, after a2, 4d
 
   section Platform
   Platform Firestore schema            :b1, after a3, 4d
@@ -573,17 +573,18 @@ Reasons:
 
 ## GCP Decision
 
-Create new projects.
+Use the newly created core projects.
 
 ```text
-halunasu-stg-*
-halunasu-prod-*
+medical-core-stg
+medical-core-497610
 ```
 
 Do not keep expanding:
 
 - `medical-stg-493105`
 - `medical-492407`
+- `medical-fee-calculation`
 - `medical-fee-calculation-stg`
 
 Reasons:

@@ -8,22 +8,31 @@ Owner: Halunasu platform
 
 This document defines the first GCP target environment for Halunasu.
 
-Because there are no current customers, the target is a clean environment instead of expanding the historical projects.
+Because there are no current customers, the target is a clean core environment instead of expanding the historical product projects.
 
 ## Decision
 
-Create new GCP projects:
+Use the newly created core GCP projects:
 
 ```text
-halunasu-stg-*
-halunasu-prod-*
+medical-core-stg
+medical-core-497610
 ```
 
-Do not continue product expansion in:
+Current role:
+
+| Project display/name | Project ID / number | Role |
+| --- | --- | --- |
+| `medical-core-stg` | `medical-core-stg` | New staging core/runtime project |
+| `medical-core` | `medical-core-497610` | New production/core runtime project |
+| `halunasu.com` | `634072823240` | Domain-related GCP entry/project; not the primary runtime project |
+
+Do not continue product expansion in the historical product projects:
 
 ```text
 medical-stg-493105
 medical-492407
+medical-fee-calculation
 medical-fee-calculation-stg
 ```
 
@@ -40,7 +49,7 @@ flowchart TB
     OPENAI["OpenAI / STT / LLM providers"]
   end
 
-  subgraph GCP["GCP project: halunasu-stg-* or halunasu-prod-*"]
+  subgraph GCP["GCP project: medical-core-stg or medical-core-497610"]
     AR["Artifact Registry"]
     SM["Secret Manager"]
     FS["Firestore Native"]
@@ -213,10 +222,10 @@ Avoid broad owner/editor roles for runtime service accounts.
 
 | Bucket | Principals | Role |
 | --- | --- | --- |
-| `halunasu-ENV-charting-artifacts` | charting-api, charting-finalize | `roles/storage.objectUser` |
-| `halunasu-ENV-fee-artifacts` | fee-api | `roles/storage.objectUser` |
-| `halunasu-ENV-referral-artifacts` | referral-api | `roles/storage.objectUser` |
-| `halunasu-ENV-tfstate` | Terraform/deployer identity | minimal state access |
+| `medical-core-stg-charting-artifacts` / `medical-core-497610-charting-artifacts` | charting-api, charting-finalize | `roles/storage.objectUser` |
+| `medical-core-stg-fee-artifacts` / `medical-core-497610-fee-artifacts` | fee-api | `roles/storage.objectUser` |
+| `medical-core-stg-referral-artifacts` / `medical-core-497610-referral-artifacts` | referral-api | `roles/storage.objectUser` |
+| `medical-core-stg-tfstate` / `medical-core-497610-tfstate` | Terraform/deployer identity | minimal state access |
 
 Do not grant fee-api access to charting audio by default.
 
@@ -245,19 +254,19 @@ Backups:
 Staging:
 
 ```text
-halunasu-stg-charting-artifacts
-halunasu-stg-fee-artifacts
-halunasu-stg-referral-artifacts
-halunasu-stg-tfstate
+medical-core-stg-charting-artifacts
+medical-core-stg-fee-artifacts
+medical-core-stg-referral-artifacts
+medical-core-stg-tfstate
 ```
 
 Production:
 
 ```text
-halunasu-prod-charting-artifacts
-halunasu-prod-fee-artifacts
-halunasu-prod-referral-artifacts
-halunasu-prod-tfstate
+medical-core-497610-charting-artifacts
+medical-core-497610-fee-artifacts
+medical-core-497610-referral-artifacts
+medical-core-497610-tfstate
 ```
 
 Default bucket settings:
@@ -438,7 +447,7 @@ Production before first customer:
 
 Because there are no customers:
 
-1. Build new staging in `halunasu-stg-*`.
+1. Build new staging in `medical-core-stg`.
 2. Migrate code into the monorepo.
 3. Seed only demo/test organizations and synthetic patients.
 4. Stop using old staging services once feature parity is confirmed.
@@ -469,4 +478,3 @@ No production PHI migration is required at this point.
 - BigQuery export for product analytics.
 - Multi-region disaster recovery.
 - Product-specific worker services beyond the initial Cloud Run API services.
-

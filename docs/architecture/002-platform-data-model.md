@@ -414,24 +414,24 @@ Do not update historical product snapshots automatically when the patient master
 Use product-specific buckets to reduce accidental cross-product access.
 
 ```text
-gs://halunasu-stg-charting-artifacts/
+gs://medical-core-stg-charting-artifacts/
   orgs/{orgId}/encounters/{encounterId}/audio/{objectId}
   orgs/{orgId}/encounters/{encounterId}/transcripts/{objectId}
   orgs/{orgId}/encounters/{encounterId}/soap/{objectId}
 
-gs://halunasu-stg-fee-artifacts/
+gs://medical-core-stg-fee-artifacts/
   orgs/{orgId}/fee-sessions/{feeSessionId}/inputs/{objectId}
   orgs/{orgId}/fee-sessions/{feeSessionId}/extractions/{objectId}
   orgs/{orgId}/fee-sessions/{feeSessionId}/receipts/{objectId}
   masters/{sourceVersion}/{objectId}
 
-gs://halunasu-stg-referral-artifacts/
+gs://medical-core-stg-referral-artifacts/
   orgs/{orgId}/referrals/{referralId}/drafts/{objectId}
   orgs/{orgId}/referrals/{referralId}/pdf/{objectId}
   orgs/{orgId}/referrals/{referralId}/attachments/{objectId}
 ```
 
-Production uses the same layout with `halunasu-prod-*` bucket names.
+Production uses the same layout with `medical-core-497610-*` bucket names.
 
 ## Initial Firestore Indexes
 
@@ -489,4 +489,3 @@ Recommended initial indexes:
 - Should `platform-api` expose internal HTTP endpoints for product services, or should product services validate signed session tokens locally?
 - Which patient fields are required for referral letter v1?
 - Which facility standard keys should be normalized for fee calculation v1?
-

@@ -1,0 +1,16 @@
+[project]
+name = "halunasu"
+version = "0.1.0"
+description = "Halunasu unified medical platform monorepo"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "python",
+  "services/fee-api/src"
+]
+testpaths = [
+  "python",
+  "services"
+]
+

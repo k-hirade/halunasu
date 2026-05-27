@@ -60,7 +60,7 @@ Use staged replacement instead of preserving all existing staging paths.
 flowchart LR
   S1["Existing repos and old staging"]
   S2["New halunasu monorepo"]
-  S3["New halunasu-stg GCP"]
+  S3["New medical-core-stg GCP"]
   S4["Feature parity smoke"]
   S5["Stop old staging"]
   S6["Archive old repos later"]
@@ -140,11 +140,11 @@ Exit criteria:
 
 ## Phase 2: New GCP Staging
 
-Goal: create a clean `halunasu-stg-*` project ready for service deployment.
+Goal: configure the clean `medical-core-stg` project ready for service deployment.
 
 Tasks:
 
-- Create GCP project.
+- Confirm `medical-core-stg` project, billing, and owner access.
 - Enable required APIs.
 - Create Artifact Registry.
 - Create Firestore Native database.
@@ -476,4 +476,3 @@ After this document:
 3. Add `platform-api` minimal health endpoint.
 4. Define Platform contract schemas.
 5. Implement organization/member/patient store tests before product migration.
-

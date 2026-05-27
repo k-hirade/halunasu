@@ -11,11 +11,11 @@ This repository starts with architecture documentation before code migration.
 
 ## Current Goal
 
-Define the target architecture before moving code from the existing repositories:
+Define the target architecture before moving code from the existing source repositories:
 
-- `medical`
-- `medical-fee-calculation`
-- `medical-lp`
+- `k-hirade/medical` via local `../halunasu-medical-record`
+- `k-hirade/medical-fee-calculation` via local `../halunasu-fee-calculation`
+- `k-hirade/medical-lp` via local `../medical-lp`
 
 The first architecture document is:
 
@@ -57,6 +57,22 @@ halunasu/
 Share platform master data. Do not merge product-owned clinical artifacts.
 
 Common platform data should be owned by `platform-api`. Product services should reference shared IDs and keep product-specific snapshots for historical reproducibility.
+
+## GCP Projects
+
+Target core projects:
+
+- Staging: `medical-core-stg`
+- Production/core: `medical-core-497610`
+
+Historical product projects remain migration sources until the new core environment is ready.
+
+## Local Commands
+
+```bash
+npm run test
+npm run start:platform-api
+```
 
 ## Source Repositories
 
