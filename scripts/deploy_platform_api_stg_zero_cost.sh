@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export CLOUDSDK_CORE_DISABLE_PROMPTS=1
 
 APPLY="false"
 if [[ "${1:-}" == "--apply" ]]; then
@@ -50,6 +51,7 @@ BUILD_CMD=(
   --project "${PROJECT_ID}"
   --config cloudbuild.platform-api.yaml
   --substitutions "_IMAGE=${IMAGE}"
+  --quiet
 )
 
 DEPLOY_CMD=(
@@ -100,10 +102,12 @@ fi
 echo "Checking required existing resources..."
 gcloud artifacts repositories describe "${REPOSITORY}" \
   --project "${PROJECT_ID}" \
-  --location "${REGION}" >/dev/null
+  --location "${REGION}" \
+  --quiet >/dev/null
 
 gcloud iam service-accounts describe "${SERVICE_ACCOUNT}" \
-  --project "${PROJECT_ID}" >/dev/null
+  --project "${PROJECT_ID}" \
+  --quiet >/dev/null
 
 echo "Building image..."
 "${BUILD_CMD[@]}"
@@ -114,6 +118,7 @@ echo "Deploying Cloud Run service..."
 SERVICE_URL="$(gcloud run services describe "${SERVICE_NAME}" \
   --project "${PROJECT_ID}" \
   --region "${REGION}" \
+  --quiet \
   --format='value(status.url)')"
 
 echo "Deployment complete."

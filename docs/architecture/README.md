@@ -9,6 +9,7 @@ This directory contains architecture decisions and system diagrams for the Halun
 - [003 GCP Environment Plan](003-gcp-environment-plan.md)
 - [004 Migration Execution Plan](004-migration-execution-plan.md)
 - [005 Rearchitecture Completion Roadmap](005-rearchitecture-completion-roadmap.md)
+- [006 P2 Staging Smoke Runbook](006-p2-staging-smoke-runbook.md)
 
 ## Reading Order
 
@@ -17,3 +18,4 @@ This directory contains architecture decisions and system diagrams for the Halun
 3. Review the GCP environment plan.
 4. Use the migration execution plan as the implementation checklist.
 5. Use the completion roadmap to track the remaining work through old environment shutdown and production readiness.
+6. Use the P2 staging smoke runbook before creating or deploying anything in `medical-core-stg`.

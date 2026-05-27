@@ -91,4 +91,6 @@ The deploy script in `scripts/deploy_platform_api_stg_zero_cost.sh`:
 - deploys Cloud Run with `min-instances=0` and `max-instances=1`
 - deploys Cloud Run with `--no-allow-unauthenticated`
 
+The preflight script in `scripts/preflight_platform_api_stg_p2.sh` is read-only and should pass before any `--apply` deploy.
+
 Create prerequisites manually only when needed, and check billing after each step.

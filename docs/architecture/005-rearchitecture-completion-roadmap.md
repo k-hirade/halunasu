@@ -176,6 +176,8 @@ Exit criteria:
 
 ## P2: Cost-safe `medical-core-stg` Smoke
 
+Status: in progress. Read-only preflight is blocked by GCP project permission/prerequisites.
+
 Purpose:
 
 - Verify the Platform API can run in GCP without opening cost or security risk.
@@ -184,6 +186,7 @@ Tasks:
 
 - Manually confirm billing alert exists for `medical-core-stg`.
 - Manually confirm required APIs only.
+- Run `scripts/preflight_platform_api_stg_p2.sh`.
 - Manually create or confirm Artifact Registry repository only if deploying.
 - Manually create or confirm `halunasu-platform-api` service account only if deploying.
 - Grant only minimum required IAM.

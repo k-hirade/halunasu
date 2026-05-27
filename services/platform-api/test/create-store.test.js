@@ -18,10 +18,42 @@ test("creates lazy firestore store when requested", () => {
   assert.ok(store instanceof LazyFirestorePlatformStore);
 });
 
+test("lazy firestore store exposes platform API surface", () => {
+  const store = createPlatformStoreFromEnv({
+    PLATFORM_STORE_BACKEND: "firestore",
+    GOOGLE_CLOUD_PROJECT: "medical-core-stg"
+  });
+  const methods = [
+    "createOrganization",
+    "updateOrganization",
+    "createSignupApplication",
+    "getSignupApplication",
+    "listSignupApplications",
+    "createMember",
+    "updateMember",
+    "getLoginIdentity",
+    "recordLoginSuccess",
+    "beginMfaEnrollment",
+    "createFacility",
+    "updateFacility",
+    "createDepartment",
+    "updateDepartment",
+    "createPatient",
+    "updatePatient",
+    "upsertProductEntitlement",
+    "updateProductEntitlement",
+    "createAuditEvent",
+    "consumeRateLimit"
+  ];
+
+  for (const method of methods) {
+    assert.equal(typeof store[method], "function", method);
+  }
+});
+
 test("rejects unsupported store backend", () => {
   assert.throws(
     () => createPlatformStoreFromEnv({ PLATFORM_STORE_BACKEND: "unknown" }),
     /Unsupported/
   );
 });
-

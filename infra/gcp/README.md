@@ -28,4 +28,9 @@ GOOGLE_CLOUD_REGION=asia-northeast1
 PLATFORM_STORE_BACKEND=firestore
 ```
 
-Terraform is intentionally deferred for now. Use the guarded deploy script for the first `platform-api` staging deploy.
+Terraform is intentionally deferred for now. Use the P2 preflight and guarded deploy script for the first `platform-api` staging deploy.
+
+```bash
+./scripts/preflight_platform_api_stg_p2.sh
+./scripts/deploy_platform_api_stg_zero_cost.sh
+```
