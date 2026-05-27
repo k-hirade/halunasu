@@ -15,7 +15,9 @@ import {
   validatePatchOrganizationInput,
   validatePatchPatientInput,
   validatePatchProductEntitlementInput,
-  validateUpsertProductEntitlementInput
+  validateSetupAdminPasswordInput,
+  validateUpsertProductEntitlementInput,
+  validateVerifySignupEmailInput
 } from "../../../../packages/platform-contracts/src/index.js";
 import {
   auditEventPath,
@@ -27,9 +29,11 @@ import {
   memberPath,
   organizationCodePath,
   organizationPath,
+  passwordSetupTokenPath,
   patientPath,
   productEntitlementPath,
   rateLimitPath,
+  signupEmailTokenPath,
   signupApplicationPath
 } from "../../../../packages/firestore-schema/src/index.js";
 import { conflictError, notFoundError, rateLimitError } from "./memory-store.js";
@@ -44,6 +48,7 @@ export class FirestorePlatformStore {
     this.db = options.db;
     this.now = options.now || (() => new Date());
     this.idFactory = options.idFactory || defaultIdFactory;
+    this.tokenFactory = options.tokenFactory || defaultTokenFactory;
   }
 
   async createOrganization(input) {
@@ -120,6 +125,16 @@ export class FirestorePlatformStore {
     return application;
   }
 
+  async createSignupApplicationWithEmailToken(input) {
+    const signupApplication = await this.createSignupApplication({
+      ...input,
+      status: "submitted"
+    });
+    const emailVerification = await this.createSignupEmailToken(signupApplication);
+
+    return { signupApplication, emailVerification };
+  }
+
   async getSignupApplication(applicationId) {
     return docDataOrNull(await this.doc(signupApplicationPath(applicationId)).get());
   }
@@ -127,6 +142,151 @@ export class FirestorePlatformStore {
   async listSignupApplications() {
     const snapshot = await this.db.collection(collections.signupApplications).orderBy("createdAt", "asc").get();
     return docsFromSnapshot(snapshot);
+  }
+
+  async verifySignupEmail(input) {
+    const { token } = validateVerifySignupEmailInput(input);
+    const tokenPath = signupEmailTokenPath(digestToken(token));
+    const tokenRecord = await this.requireActiveToken(tokenPath, "email verification token");
+    const currentApplication = await this.getSignupApplication(tokenRecord.applicationId);
+    if (!currentApplication) {
+      throw notFoundError("signup application not found");
+    }
+    if (currentApplication.status !== "submitted") {
+      throw conflictError("signup application is not waiting for email verification", "token");
+    }
+
+    const now = this.timestamp();
+    const requestedProducts = currentApplication.requestedProducts;
+    const organization = await this.createOrganization({
+      organizationCode: currentApplication.organizationCode,
+      displayName: currentApplication.organizationDisplayName,
+      status: "trialing",
+      billing: {
+        status: "trialing",
+        provider: "manual"
+      },
+      access: {
+        status: "active",
+        enabledProducts: requestedProducts
+      }
+    });
+    const adminMember = await this.createMember(organization.orgId, {
+      loginId: currentApplication.applicantEmail,
+      displayName: currentApplication.applicantName,
+      email: currentApplication.applicantEmail,
+      globalRoles: ["org_admin"],
+      productRoles: productAdminRoles(requestedProducts),
+      password: `${this.tokenFactory("initial_password")}_temporary`
+    });
+    const productEntitlements = [];
+    for (const productId of requestedProducts) {
+      productEntitlements.push(await this.upsertProductEntitlement(organization.orgId, {
+        productId,
+        status: "trialing",
+        plan: "trial",
+        startsAt: now,
+        endsAt: daysFromNow(this.now(), 14)
+      }));
+    }
+
+    const signupApplication = compactObject({
+      ...currentApplication,
+      status: "provisioned",
+      emailVerifiedAt: now,
+      provisionedAt: now,
+      orgId: organization.orgId,
+      adminMemberId: adminMember.memberId,
+      updatedAt: now
+    });
+    const consumedEmailToken = compactObject({
+      ...tokenRecord,
+      status: "consumed",
+      consumedAt: now,
+      updatedAt: now
+    });
+    const passwordSetup = await this.createPasswordSetupToken(signupApplication, organization, adminMember);
+
+    await this.doc(signupApplicationPath(signupApplication.applicationId)).set(signupApplication);
+    await this.doc(tokenPath).set(consumedEmailToken);
+    await this.createAuditEvent(organization.orgId, {
+      eventType: "signup.email_verified",
+      actorMemberId: adminMember.memberId,
+      actorLoginId: adminMember.loginId,
+      targetType: "signup_application",
+      targetId: signupApplication.applicationId,
+      safePayload: {
+        applicationId: signupApplication.applicationId
+      }
+    });
+    await this.createAuditEvent(organization.orgId, {
+      eventType: "signup.provisioned",
+      actorMemberId: adminMember.memberId,
+      actorLoginId: adminMember.loginId,
+      targetType: "organization",
+      targetId: organization.orgId,
+      safePayload: {
+        applicationId: signupApplication.applicationId,
+        adminMemberId: adminMember.memberId,
+        productIds: requestedProducts
+      }
+    });
+
+    return {
+      signupApplication,
+      organization,
+      adminMember,
+      productEntitlements,
+      passwordSetup
+    };
+  }
+
+  async setupAdminPassword(input) {
+    const { token, password } = validateSetupAdminPasswordInput(input);
+    const tokenPath = passwordSetupTokenPath(digestToken(token));
+    const tokenRecord = await this.requireActiveToken(tokenPath, "password setup token");
+    const adminMember = await this.updateMember(tokenRecord.orgId, tokenRecord.memberId, { password });
+    const currentApplication = await this.getSignupApplication(tokenRecord.applicationId);
+    const now = this.timestamp();
+    const signupApplication = currentApplication
+      ? compactObject({
+        ...currentApplication,
+        adminPasswordSetAt: now,
+        updatedAt: now
+      })
+      : null;
+    const consumedSetupToken = compactObject({
+      ...tokenRecord,
+      status: "consumed",
+      consumedAt: now,
+      updatedAt: now
+    });
+
+    if (signupApplication) {
+      await this.doc(signupApplicationPath(signupApplication.applicationId)).set(signupApplication);
+    }
+    await this.doc(tokenPath).set(consumedSetupToken);
+    await this.createAuditEvent(tokenRecord.orgId, {
+      eventType: "signup.admin_password_set",
+      actorMemberId: adminMember.memberId,
+      actorLoginId: adminMember.loginId,
+      targetType: "member",
+      targetId: adminMember.memberId,
+      safePayload: {
+        applicationId: tokenRecord.applicationId,
+        memberId: adminMember.memberId
+      }
+    });
+
+    return {
+      signupApplication,
+      organization: await this.requireOrganization(tokenRecord.orgId),
+      adminMember,
+      login: {
+        organizationCode: tokenRecord.organizationCode,
+        loginId: adminMember.loginId
+      }
+    };
   }
 
   async createMember(orgId, input) {
@@ -564,6 +724,60 @@ export class FirestorePlatformStore {
     return current;
   }
 
+  async createSignupEmailToken(signupApplication) {
+    const now = this.timestamp();
+    const token = this.tokenFactory("emv");
+    const tokenDigest = digestToken(token);
+    const record = {
+      tokenDigest,
+      applicationId: signupApplication.applicationId,
+      status: "active",
+      expiresAt: daysFromNow(this.now(), 1),
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    };
+
+    await this.doc(signupEmailTokenPath(tokenDigest)).set(record);
+    return tokenView(record, token);
+  }
+
+  async createPasswordSetupToken(signupApplication, organization, adminMember) {
+    const now = this.timestamp();
+    const token = this.tokenFactory("setup");
+    const tokenDigest = digestToken(token);
+    const record = {
+      tokenDigest,
+      applicationId: signupApplication.applicationId,
+      orgId: organization.orgId,
+      organizationCode: organization.organizationCode,
+      memberId: adminMember.memberId,
+      status: "active",
+      expiresAt: daysFromNow(this.now(), 7),
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    };
+
+    await this.doc(passwordSetupTokenPath(tokenDigest)).set(record);
+    return tokenView(record, token);
+  }
+
+  async requireActiveToken(path, label) {
+    const record = docDataOrNull(await this.doc(path).get());
+    if (!record) {
+      throw notFoundError(`${label} not found`);
+    }
+    if (record.status !== "active") {
+      throw conflictError(`${label} is already used`, "token");
+    }
+    if (new Date(record.expiresAt).getTime() <= this.now().getTime()) {
+      throw conflictError(`${label} expired`, "token");
+    }
+
+    return record;
+  }
+
   doc(path) {
     return this.db.doc(path);
   }
@@ -593,8 +807,31 @@ function defaultIdFactory(prefix) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 26)}`;
 }
 
+function defaultTokenFactory(prefix) {
+  return `${prefix}_${crypto.randomBytes(32).toString("base64url")}`;
+}
+
+function digestToken(token) {
+  return crypto.createHash("sha256").update(token).digest("base64url");
+}
+
+function daysFromNow(now, days) {
+  return new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function compactObject(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function tokenView(record, token) {
+  return {
+    token,
+    expiresAt: record.expiresAt
+  };
+}
+
+function productAdminRoles(productIds) {
+  return Object.fromEntries(productIds.map((productId) => [productId, ["admin"]]));
 }
 
 function createLoginIdentity({ organization, member, password, now }) {

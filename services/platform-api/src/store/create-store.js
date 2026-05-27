@@ -43,12 +43,24 @@ export class LazyFirestorePlatformStore {
     return this.call("createSignupApplication", input);
   }
 
+  async createSignupApplicationWithEmailToken(input) {
+    return this.call("createSignupApplicationWithEmailToken", input);
+  }
+
   async getSignupApplication(applicationId) {
     return this.call("getSignupApplication", applicationId);
   }
 
   async listSignupApplications() {
     return this.call("listSignupApplications");
+  }
+
+  async verifySignupEmail(input) {
+    return this.call("verifySignupEmail", input);
+  }
+
+  async setupAdminPassword(input) {
+    return this.call("setupAdminPassword", input);
   }
 
   async createMember(orgId, input) {

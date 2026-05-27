@@ -8,10 +8,12 @@ import {
   loginIdentityKey,
   loginIdentityPath,
   organizationPath,
+  passwordSetupTokenPath,
   patientAliasPath,
   patientPath,
   productEntitlementPath,
   rateLimitPath,
+  signupEmailTokenPath,
   signupApplicationPath
 } from "../src/index.js";
 
@@ -26,6 +28,8 @@ test("builds platform document paths", () => {
   );
   assert.equal(auditEventPath("org_123", "aud_456"), "organizations/org_123/audit_events/aud_456");
   assert.equal(signupApplicationPath("app_123"), "signup_applications/app_123");
+  assert.equal(signupEmailTokenPath("emv_123"), "signup_email_tokens/emv_123");
+  assert.equal(passwordSetupTokenPath("setup_123"), "password_setup_tokens/setup_123");
   assert.equal(rateLimitPath("login:local:clinic:admin"), "rate_limits/login:local:clinic:admin");
   assert.equal(
     patientAliasPath("org_123", "pat_456", "alias_789"),

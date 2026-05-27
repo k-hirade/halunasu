@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>利用マニュアル | ハルナス</title>
+<link rel="icon" type="image/png" href="../assets/brand/harunas-mark.png" />
+<link rel="shortcut icon" type="image/png" href="../assets/brand/harunas-mark.png" />
+<link rel="apple-touch-icon" href="../assets/brand/harunas-mark.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@400;500;600;700&display=swap" />
+<style>
+  :root {
+    --ink: #1A2A42;
+    --ink-2: #2A3B55;
+    --ink-3: #586B85;
+    --bg: #FFFFFF;
+    --bg-soft: #F3F7FC;
+    --rule: #DFE7F1;
+    --brand: #1E5CB8;
+    --brand-soft: #E6EFFA;
+    --max: 1120px;
+    --gutter: clamp(16px, 4vw, 32px);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Noto Sans JP", "Inter", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.8;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter); }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .topbar .wrap {
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .brand img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    flex: 0 0 auto;
+  }
+  .back-link {
+    color: var(--ink-2);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .back-link:hover { color: var(--brand); }
+  main { padding: 48px 0 88px; }
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 24px;
+    align-items: start;
+    padding: 0 0 32px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .eyebrow {
+    margin: 0 0 12px;
+    color: var(--brand);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(30px, 5vw, 44px);
+    line-height: 1.2;
+  }
+  .lede {
+    margin: 16px 0 0;
+    color: var(--ink-3);
+    max-width: 780px;
+  }
+  .meta {
+    margin: 16px 0 0;
+    color: var(--ink-3);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: flex-end;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 1px solid var(--rule);
+    background: #fff;
+    text-decoration: none;
+    color: var(--ink);
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .btn-primary {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: #fff;
+  }
+  .btn:hover { border-color: var(--brand); color: var(--brand); }
+  .btn-primary:hover { color: #fff; background: #17478F; border-color: #17478F; }
+  .content {
+    display: grid;
+    gap: 24px;
+    padding-top: 28px;
+  }
+  .notice {
+    padding: 20px 22px;
+    background: var(--bg-soft);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    color: var(--ink-2);
+  }
+  .notice p { margin: 0; }
+  .notice p + p { margin-top: 10px; }
+  .viewer {
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .viewer iframe {
+    width: 100%;
+    min-height: 78vh;
+    border: 0;
+    display: block;
+    background: #fff;
+  }
+  .fallback {
+    padding: 20px 22px 0;
+    color: var(--ink-3);
+    font-size: 13px;
+  }
+  .meta-footer {
+    border-top: 1px solid var(--rule);
+    color: var(--ink-3);
+    font-size: 13px;
+  }
+  .meta-footer .wrap {
+    min-height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .meta-footer .links {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .meta-footer a { text-decoration: none; }
+  @media (max-width: 820px) {
+    .hero {
+      grid-template-columns: 1fr;
+    }
+    .actions {
+      justify-content: flex-start;
+    }
+  }
+  @media (max-width: 720px) {
+    main { padding: 40px 0 72px; }
+    .topbar .wrap { min-height: 56px; }
+    .viewer iframe { min-height: 70vh; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="../index.html">
+      <img src="../assets/brand/harunas-mark.png" alt="ハルナス ロゴ" width="32" height="32" />
+      <span>ハルナス</span>
+    </a>
+    <a class="back-link" href="../index.html">サービス紹介へ戻る</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">MANUAL</p>
+        <h1>ハルナス利用マニュアル</h1>
+        <p class="meta">最終更新: 2026年4月30日</p>
+        <p class="lede">初回ログイン設定、二段階認証、診療セッションの開始、SOAP下書きの確認、設定画面の見方までをまとめています。メールから開く前提で、ログイン前でも閲覧できる公開ページにしています。</p>
+      </div>
+      <div class="actions">
+        <a class="btn btn-primary" href="./harunas-user-manual-v1.pdf" target="_blank" rel="noopener noreferrer">PDFを開く</a>
+        <a class="btn" href="./harunas-user-manual-v1.pdf" download>PDFをダウンロード</a>
+      </div>
+    </section>
+
+    <div class="content">
+      <section class="notice">
+        <p>このページでは、最新の利用マニュアルをブラウザ上で確認できます。端末やブラウザの設定によって埋め込み表示ができない場合は、上のボタンから PDF を開いてください。</p>
+        <p>管理者向けの内部運用手順やインシデント対応は含めていません。導入直後に必要な初回設定と基本操作だけを公開しています。</p>
+      </section>
+
+      <section class="viewer" aria-label="利用マニュアルPDF">
+        <p class="fallback">ブラウザ内で開けない場合は、<a href="./harunas-user-manual-v1.pdf" target="_blank" rel="noopener noreferrer">PDFを別タブで開く</a>か、<a href="./harunas-user-manual-v1.pdf" download>ダウンロード</a>してください。</p>
+        <iframe src="./harunas-user-manual-v1.pdf#view=FitH" title="ハルナス利用マニュアル PDF"></iframe>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer class="meta-footer">
+  <div class="wrap">
+    <div>© 2026 ハルナス</div>
+    <div class="links">
+      <a href="../tokushoho.html">特定商取引法に基づく表記</a>
+      <a href="../terms.html">利用規約</a>
+      <a href="../privacy.html">プライバシーポリシー</a>
+      <a href="../security.html">セキュリティ</a>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

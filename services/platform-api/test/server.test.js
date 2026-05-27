@@ -245,8 +245,53 @@ test("creates signup applications and rate limits signup attempts", async () => 
   assert.equal(first.statusCode, 201);
   assert.equal(first.body.signupApplication.applicantEmail, "applicant@example.com");
   assert.deepEqual(first.body.signupApplication.requestedProducts, ["charting"]);
+  assert.match(first.body.emailVerification.token, /^emv_/);
   assert.equal(second.statusCode, 429);
   assert.equal(fetched.body.signupApplication.applicationId, first.body.signupApplication.applicationId);
+});
+
+test("allows CORS preflight for signup routes from known LP origins", async () => {
+  const store = createTestStore();
+  const response = await request(store, "OPTIONS", "/v1/signup/applications", undefined, {
+    origin: "http://localhost:8080"
+  });
+
+  assert.equal(response.statusCode, 204);
+  assert.equal(response.headers["access-control-allow-origin"], "http://localhost:8080");
+  assert.equal(response.headers["access-control-allow-methods"], "POST, OPTIONS");
+});
+
+test("verifies signup email, provisions admin, and sets initial password", async () => {
+  const store = createTestStore();
+  const created = await request(store, "POST", "/v1/signup/applications", {
+    organizationCode: "Signup Clinic",
+    organizationDisplayName: "Signup Clinic",
+    applicantName: "Admin User",
+    applicantEmail: "Admin@example.com",
+    requestedProducts: ["charting", "fee"]
+  });
+  const provisioned = await request(store, "POST", "/v1/signup/verify-email", {
+    token: created.body.emailVerification.token
+  });
+  const setup = await request(store, "POST", "/v1/signup/setup-admin-password", {
+    token: provisioned.body.passwordSetup.token,
+    password: "correct horse battery staple"
+  });
+  const login = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: "signup-clinic",
+    loginId: "admin@example.com",
+    password: "correct horse battery staple"
+  });
+
+  assert.equal(created.statusCode, 201);
+  assert.equal(provisioned.statusCode, 200);
+  assert.equal(provisioned.body.signupApplication.status, "provisioned");
+  assert.equal(provisioned.body.organization.organizationCode, "signup-clinic");
+  assert.equal(provisioned.body.adminMember.loginId, "admin@example.com");
+  assert.equal(setup.statusCode, 200);
+  assert.equal(setup.body.login.organizationCode, "signup-clinic");
+  assert.equal(login.statusCode, 200);
+  assert.equal(login.body.session.organizationCode, "signup-clinic");
 });
 
 test("logs in, checks session, enrolls MFA, and logs out", async () => {
@@ -424,9 +469,11 @@ test("returns validation and conflict errors as responses", async () => {
 
 function createTestStore() {
   let counter = 0;
+  let tokenCounter = 0;
   return new MemoryPlatformStore({
     now: () => new Date("2026-05-27T00:00:00.000Z"),
-    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`,
+    tokenFactory: (prefix) => `${prefix}_${String(++tokenCounter).padStart(3, "0")}`
   });
 }
 

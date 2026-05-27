@@ -15,7 +15,9 @@ import {
   validatePatchOrganizationInput,
   validatePatchPatientInput,
   validatePatchProductEntitlementInput,
-  validateUpsertProductEntitlementInput
+  validateSetupAdminPasswordInput,
+  validateUpsertProductEntitlementInput,
+  validateVerifySignupEmailInput
 } from "../../../../packages/platform-contracts/src/index.js";
 import { loginIdentityKey } from "../../../../packages/firestore-schema/src/index.js";
 import { hashPassword } from "../auth/password.js";
@@ -24,9 +26,12 @@ export class MemoryPlatformStore {
   constructor(options = {}) {
     this.now = options.now || (() => new Date());
     this.idFactory = options.idFactory || defaultIdFactory;
+    this.tokenFactory = options.tokenFactory || defaultTokenFactory;
     this.organizations = new Map();
     this.organizationCodes = new Map();
     this.signupApplications = new Map();
+    this.signupEmailTokens = new Map();
+    this.passwordSetupTokens = new Map();
     this.rateLimits = new Map();
     this.loginIdentities = new Map();
     this.membersByOrg = new Map();
@@ -104,12 +109,163 @@ export class MemoryPlatformStore {
     return application;
   }
 
+  createSignupApplicationWithEmailToken(input) {
+    const signupApplication = this.createSignupApplication({
+      ...input,
+      status: "submitted"
+    });
+    const emailVerification = this.createSignupEmailToken(signupApplication);
+
+    return { signupApplication, emailVerification };
+  }
+
   getSignupApplication(applicationId) {
     return this.signupApplications.get(applicationId) || null;
   }
 
   listSignupApplications() {
     return sortByCreatedAt([...this.signupApplications.values()]);
+  }
+
+  verifySignupEmail(input) {
+    const { token } = validateVerifySignupEmailInput(input);
+    const tokenKey = digestToken(token);
+    const tokenRecord = this.requireActiveToken(this.signupEmailTokens, token, "email verification token");
+    const currentApplication = this.getSignupApplication(tokenRecord.applicationId);
+    if (!currentApplication) {
+      throw notFoundError("signup application not found");
+    }
+    if (currentApplication.status !== "submitted") {
+      throw conflictError("signup application is not waiting for email verification", "token");
+    }
+
+    const now = this.timestamp();
+    const requestedProducts = currentApplication.requestedProducts;
+    const organization = this.createOrganization({
+      organizationCode: currentApplication.organizationCode,
+      displayName: currentApplication.organizationDisplayName,
+      status: "trialing",
+      billing: {
+        status: "trialing",
+        provider: "manual"
+      },
+      access: {
+        status: "active",
+        enabledProducts: requestedProducts
+      }
+    });
+    const adminMember = this.createMember(organization.orgId, {
+      loginId: currentApplication.applicantEmail,
+      displayName: currentApplication.applicantName,
+      email: currentApplication.applicantEmail,
+      globalRoles: ["org_admin"],
+      productRoles: productAdminRoles(requestedProducts),
+      password: `${this.tokenFactory("initial_password")}_temporary`
+    });
+    const productEntitlements = requestedProducts.map((productId) => this.upsertProductEntitlement(organization.orgId, {
+      productId,
+      status: "trialing",
+      plan: "trial",
+      startsAt: now,
+      endsAt: daysFromNow(this.now(), 14)
+    }));
+    const signupApplication = compactObject({
+      ...currentApplication,
+      status: "provisioned",
+      emailVerifiedAt: now,
+      provisionedAt: now,
+      orgId: organization.orgId,
+      adminMemberId: adminMember.memberId,
+      updatedAt: now
+    });
+    const consumedEmailToken = compactObject({
+      ...tokenRecord,
+      status: "consumed",
+      consumedAt: now,
+      updatedAt: now
+    });
+    const passwordSetup = this.createPasswordSetupToken(signupApplication, organization, adminMember);
+
+    this.signupApplications.set(signupApplication.applicationId, signupApplication);
+    this.signupEmailTokens.set(tokenKey, consumedEmailToken);
+    this.createAuditEvent(organization.orgId, {
+      eventType: "signup.email_verified",
+      actorMemberId: adminMember.memberId,
+      actorLoginId: adminMember.loginId,
+      targetType: "signup_application",
+      targetId: signupApplication.applicationId,
+      safePayload: {
+        applicationId: signupApplication.applicationId
+      }
+    });
+    this.createAuditEvent(organization.orgId, {
+      eventType: "signup.provisioned",
+      actorMemberId: adminMember.memberId,
+      actorLoginId: adminMember.loginId,
+      targetType: "organization",
+      targetId: organization.orgId,
+      safePayload: {
+        applicationId: signupApplication.applicationId,
+        adminMemberId: adminMember.memberId,
+        productIds: requestedProducts
+      }
+    });
+
+    return {
+      signupApplication,
+      organization,
+      adminMember,
+      productEntitlements,
+      passwordSetup
+    };
+  }
+
+  setupAdminPassword(input) {
+    const { token, password } = validateSetupAdminPasswordInput(input);
+    const tokenKey = digestToken(token);
+    const tokenRecord = this.requireActiveToken(this.passwordSetupTokens, token, "password setup token");
+    const adminMember = this.updateMember(tokenRecord.orgId, tokenRecord.memberId, { password });
+    const currentApplication = this.getSignupApplication(tokenRecord.applicationId);
+    const now = this.timestamp();
+    const signupApplication = currentApplication
+      ? compactObject({
+        ...currentApplication,
+        adminPasswordSetAt: now,
+        updatedAt: now
+      })
+      : null;
+    const consumedSetupToken = compactObject({
+      ...tokenRecord,
+      status: "consumed",
+      consumedAt: now,
+      updatedAt: now
+    });
+
+    if (signupApplication) {
+      this.signupApplications.set(signupApplication.applicationId, signupApplication);
+    }
+    this.passwordSetupTokens.set(tokenKey, consumedSetupToken);
+    this.createAuditEvent(tokenRecord.orgId, {
+      eventType: "signup.admin_password_set",
+      actorMemberId: adminMember.memberId,
+      actorLoginId: adminMember.loginId,
+      targetType: "member",
+      targetId: adminMember.memberId,
+      safePayload: {
+        applicationId: tokenRecord.applicationId,
+        memberId: adminMember.memberId
+      }
+    });
+
+    return {
+      signupApplication,
+      organization: this.requireOrganization(tokenRecord.orgId),
+      adminMember,
+      login: {
+        organizationCode: tokenRecord.organizationCode,
+        loginId: adminMember.loginId
+      }
+    };
   }
 
   createMember(orgId, input) {
@@ -572,6 +728,60 @@ export class MemoryPlatformStore {
     return this.auditEventsByOrg.get(orgId);
   }
 
+  createSignupEmailToken(signupApplication) {
+    const now = this.timestamp();
+    const token = this.tokenFactory("emv");
+    const tokenDigest = digestToken(token);
+    const record = {
+      tokenDigest,
+      applicationId: signupApplication.applicationId,
+      status: "active",
+      expiresAt: daysFromNow(this.now(), 1),
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    };
+
+    this.signupEmailTokens.set(tokenDigest, record);
+    return tokenView(record, token);
+  }
+
+  createPasswordSetupToken(signupApplication, organization, adminMember) {
+    const now = this.timestamp();
+    const token = this.tokenFactory("setup");
+    const tokenDigest = digestToken(token);
+    const record = {
+      tokenDigest,
+      applicationId: signupApplication.applicationId,
+      orgId: organization.orgId,
+      organizationCode: organization.organizationCode,
+      memberId: adminMember.memberId,
+      status: "active",
+      expiresAt: daysFromNow(this.now(), 7),
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    };
+
+    this.passwordSetupTokens.set(tokenDigest, record);
+    return tokenView(record, token);
+  }
+
+  requireActiveToken(tokens, token, label) {
+    const record = tokens.get(digestToken(token));
+    if (!record) {
+      throw notFoundError(`${label} not found`);
+    }
+    if (record.status !== "active") {
+      throw conflictError(`${label} is already used`, "token");
+    }
+    if (new Date(record.expiresAt).getTime() <= this.now().getTime()) {
+      throw conflictError(`${label} expired`, "token");
+    }
+
+    return record;
+  }
+
   timestamp() {
     return this.now().toISOString();
   }
@@ -604,12 +814,35 @@ function defaultIdFactory(prefix) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 26)}`;
 }
 
+function defaultTokenFactory(prefix) {
+  return `${prefix}_${crypto.randomBytes(32).toString("base64url")}`;
+}
+
+function digestToken(token) {
+  return crypto.createHash("sha256").update(token).digest("base64url");
+}
+
+function daysFromNow(now, days) {
+  return new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function sortByCreatedAt(items) {
   return items.sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)));
 }
 
 function compactObject(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function tokenView(record, token) {
+  return {
+    token,
+    expiresAt: record.expiresAt
+  };
+}
+
+function productAdminRoles(productIds) {
+  return Object.fromEntries(productIds.map((productId) => [productId, ["admin"]]));
 }
 
 function createLoginIdentity({ organization, member, password, now }) {

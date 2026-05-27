@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>プライバシーポリシー | ハルナス</title>
+<link rel="icon" type="image/png" href="assets/brand/harunas-mark.png" />
+<link rel="shortcut icon" type="image/png" href="assets/brand/harunas-mark.png" />
+<link rel="apple-touch-icon" href="assets/brand/harunas-mark.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@400;500;600;700&display=swap" />
+<style>
+  :root {
+    --ink: #1A2A42;
+    --ink-2: #2A3B55;
+    --ink-3: #586B85;
+    --bg: #FFFFFF;
+    --bg-soft: #F3F7FC;
+    --rule: #DFE7F1;
+    --brand: #1E5CB8;
+    --max: 960px;
+    --gutter: clamp(16px, 4vw, 32px);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Noto Sans JP", "Inter", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.8;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter); }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .topbar .wrap {
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .brand img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    flex: 0 0 auto;
+  }
+  .back-link {
+    color: var(--ink-2);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .back-link:hover { color: var(--brand); }
+  main { padding: 56px 0 88px; }
+  .hero {
+    padding: 0 0 32px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .eyebrow {
+    margin: 0 0 12px;
+    color: var(--brand);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(30px, 5vw, 46px);
+    line-height: 1.2;
+  }
+  .lede {
+    margin: 16px 0 0;
+    color: var(--ink-3);
+    max-width: 720px;
+  }
+  .subdate {
+    margin: 16px 0 0;
+    color: var(--ink-3);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .section {
+    padding: 28px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .section h2 {
+    margin: 0 0 10px;
+    font-size: 18px;
+  }
+  .section p {
+    margin: 0;
+  }
+  .section p + p,
+  .section ul + p,
+  .section p + ul {
+    margin-top: 12px;
+  }
+  ul {
+    margin: 0;
+    padding-left: 1.25rem;
+  }
+  li + li { margin-top: 8px; }
+  .service-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+    font-size: 14px;
+  }
+  .service-table th,
+  .service-table td {
+    text-align: left;
+    vertical-align: top;
+    padding: 12px 14px;
+    border: 1px solid var(--rule);
+  }
+  .service-table th {
+    background: var(--bg-soft);
+    font-weight: 700;
+    color: var(--ink-2);
+  }
+  .meta-footer {
+    border-top: 1px solid var(--rule);
+    color: var(--ink-3);
+    font-size: 13px;
+  }
+  .meta-footer .wrap {
+    min-height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  @media (max-width: 720px) {
+    main { padding: 40px 0 72px; }
+    .topbar .wrap { min-height: 56px; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <img src="assets/brand/harunas-mark.png" alt="ハルナス ロゴ" width="32" height="32" />
+      <span>ハルナス</span>
+    </a>
+    <a class="back-link" href="index.html">サービス紹介へ戻る</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <section class="hero">
+      <p class="eyebrow">PRIVACY</p>
+      <h1>プライバシーポリシー</h1>
+      <p class="subdate">【2026年4月29日制定】</p>
+      <p class="lede">GENNAI株式会社（以下「当社」といいます。）は、当社が提供する医療機関等向けAI診療記録支援サービス「ハルナス」（以下「本サービス」といいます。）における個人情報の取扱いについて、以下のとおり定めます。</p>
+    </section>
+
+    <section class="section">
+      <h2>1. 当社の立場</h2>
+      <p>当社は、患者等に関する診療音声、文字起こし、SOAP下書きその他診療関連データについて、利用医療機関等を委託元とする処理委託先として取り扱います。当該取扱いは、個人情報保護法第27条第5項第1号の委託に基づくものです。</p>
+      <p>当社が個人情報取扱事業者として直接取得・管理する情報は、利用医療機関等の担当者情報、契約情報、請求情報、サポート対応情報等です。</p>
+      <p>当社が本サービス提供のために外部サービスを利用する場合、当該外部サービスへの再委託も、利用目的の達成に必要な範囲で行う委託として整理します。</p>
+      <p>患者等への説明、録音、同意取得、診療上の判断、診療録の作成・保存は、利用医療機関等の責任で行うものとします。</p>
+      <p>なお、本サービスで生成されるSOAP下書きは、医師その他医療従事者の確認・編集を経て電子カルテ等に転記される下書きであり、医師法・医療法上の保存義務を負う正式な診療録ではありません。</p>
+    </section>
+
+    <section class="section">
+      <h2>2. 取得・処理する情報</h2>
+      <p>当社は、以下の情報を取得または処理します。</p>
+      <ul>
+        <li>利用医療機関等に関する情報: 医療機関名、担当者名、メールアドレス、契約プラン、請求情報、問い合わせ内容等</li>
+        <li>診療関連データ: 診療音声、文字起こし、SOAP下書き、入力・編集されたメモ、患者氏名、年齢、症状、病歴、診療内容、処方、検査結果その他診療に関する情報</li>
+        <li>利用ログ等: IPアドレス、端末情報、ログイン履歴、操作履歴、監査ログ、エラーログ等</li>
+        <li>決済情報: 契約プラン、支払状況、決済結果、Stripeが発行する顧客ID・請求ID等</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>3. 利用目的</h2>
+      <ul>
+        <li>本サービスの提供、運営、保守、改善</li>
+        <li>診療音声の文字起こし、SOAP下書きその他文書案の生成、保存、閲覧、編集、出力</li>
+        <li>アカウント登録、認証、権限管理、契約管理</li>
+        <li>請求、決済、領収書発行、支払状況の確認</li>
+        <li>問い合わせ対応、サポート、障害対応</li>
+        <li>不正利用、不正アクセス、情報漏えい等の防止</li>
+        <li>法令、契約、本ポリシーへの違反対応</li>
+        <li>メンテナンス、仕様変更、重要なお知らせの通知</li>
+        <li>匿名加工情報または仮名加工情報としての統計分析およびサービス改善</li>
+        <li>上記に付随する目的</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>4. AIモデルの学習への不利用</h2>
+      <p>当社は、患者情報、診療音声、文字起こし、SOAP下書きその他診療関連データを、当社または第三者のAIモデルの学習、再学習、ファインチューニングその他AIモデル改善の目的で利用しません。</p>
+      <p>OpenAI APIについては、API経由のデータが明示的なオプトインなしにモデルの学習・改善に使用されない方針に基づき利用します。当社は、診療関連データを学習利用にオプトインしません。</p>
+      <p>ただし、外部サービス事業者において、不正利用防止、セキュリティ確保、障害対応、法令遵守等のため、契約条件に基づき必要なログ等が保存される場合があります。</p>
+    </section>
+
+    <section class="section">
+      <h2>5. 委託先・外部サービス・越境移転</h2>
+      <p>当社は、本サービスの提供に必要な範囲で、以下の外部サービスを利用します。</p>
+      <table class="service-table">
+        <thead>
+          <tr>
+            <th>外部サービス</th>
+            <th>主な用途</th>
+            <th>取扱情報</th>
+            <th>主な処理・保存先</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>OpenAI API</td>
+            <td>文字起こし、SOAP生成</td>
+            <td>診療関連データ</td>
+            <td>米国</td>
+          </tr>
+          <tr>
+            <td>Deepgram</td>
+            <td>ライブ文字起こしのフォールバック処理</td>
+            <td>診療関連データ</td>
+            <td>米国</td>
+          </tr>
+          <tr>
+            <td>Google Cloud（Cloud Run / Firestore / Cloud Storage）</td>
+            <td>アプリ処理、データ保存、ファイル保存</td>
+            <td>診療関連データ、担当者情報、ログ等</td>
+            <td>日本（東京）</td>
+          </tr>
+          <tr>
+            <td>Stripe</td>
+            <td>決済処理</td>
+            <td>担当者情報、請求情報、決済関連情報</td>
+            <td>米国</td>
+          </tr>
+          <tr>
+            <td>Resend</td>
+            <td>確認メール、初回設定メールその他サービス案内メールの送信</td>
+            <td>担当者情報、メールアドレス、送信履歴等</td>
+            <td>送信リージョンは日本（東京）、アカウントデータ・ログ等は米国</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>国外委託先として主に米国所在の事業者を利用する場合があります。米国には、連邦レベルで日本の個人情報保護法に相当する包括的な個人情報保護法はなく、医療、金融、通信等の分野別法および州法により規制されています。</p>
+      <p>当社は、外国にある事業者に個人データを提供または処理委託する場合、個人情報保護法第28条その他関係法令に従い、必要な情報提供、同意取得、相当措置の確認、契約上の保護措置、委託先管理を行います。</p>
+      <p>患者等に関する診療関連データについては、利用医療機関等が本人への説明・同意取得を行う主体となります。当社は、利用医療機関等が必要な説明を行えるよう、外部サービス、移転先、保護措置等に関する情報を提供します。</p>
+    </section>
+
+    <section class="section">
+      <h2>6. 第三者提供</h2>
+      <p>当社は、以下の場合を除き、本人の同意なく個人データを第三者に提供しません。</p>
+      <ul>
+        <li>法令に基づく場合</li>
+        <li>人の生命、身体または財産の保護のために必要な場合</li>
+        <li>公衆衛生の向上等のために特に必要な場合</li>
+        <li>国または地方公共団体等への協力が必要な場合</li>
+        <li>利用目的の達成に必要な範囲で取扱いを委託する場合</li>
+        <li>事業承継に伴い提供する場合</li>
+        <li>利用医療機関等の指示または契約に基づく場合</li>
+        <li>その他法令で認められる場合</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>7. 安全管理措置</h2>
+      <p>当社は、個人情報および診療関連データの漏えい、滅失、毀損、不正アクセス等を防止するため、アクセス制御、認証管理、暗号化、ログ管理、権限管理、従業者教育、委託先管理、インシデント対応体制の整備等、必要かつ適切な安全管理措置を講じます。</p>
+      <p>当社は、いわゆる3省2ガイドラインに沿って、安全管理措置の整備・改善に努めます。</p>
+      <ul>
+        <li>厚生労働省「医療情報システムの安全管理に関するガイドライン 第6.0版」</li>
+        <li>総務省・経済産業省「医療情報を取り扱う情報システム・サービスの提供事業者における安全管理ガイドライン 第2.0版」</li>
+        <li>厚生労働省「医療機関等におけるサイバーセキュリティ対策チェックリストマニュアル～医療機関等・事業者向け～（令和7年5月）」</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>8. 漏えい等発生時の対応</h2>
+      <p>個人データの漏えい、滅失、毀損その他の事故が発生し、または発生したおそれがある場合、当社は、速やかに事実関係を調査し、被害拡大防止、原因究明、再発防止に必要な措置を講じます。</p>
+      <p>法令上報告対象となる場合、当社は、個人情報保護委員会への速報、確報その他必要な報告を行い、本人への通知を行います。速報は原則として発覚日から概ね3〜5日以内、確報は原則として発覚日から30日以内に行います。ただし、不正の目的で行われたおそれがある場合は、確報期限が60日以内となる場合があります。</p>
+      <p>患者等に関する診療関連データについては、当社は利用医療機関等に速やかに通知し、利用医療機関等による本人通知、個人情報保護委員会への報告その他必要な対応に協力します。必要な場合には、利用医療機関等を通じて本人への通知を行います。</p>
+      <p>利用医療機関等の担当者情報等、当社が個人情報取扱事業者として直接管理する情報については、当社が法令に従って本人通知その他必要な対応を行います。</p>
+    </section>
+
+    <section class="section">
+      <h2>9. 保存期間・削除</h2>
+      <p>診療音声は原則として取得日から90日間、文字起こし、SOAP下書きその他診療関連テキストは原則として取得日から365日間保存します。これらの保存期間を経過したデータは、法令上、契約上、セキュリティ上または紛争対応上必要な場合を除き、削除または匿名化の対象となります。</p>
+      <p>監査ログは原則として取得日から365日間保存します。契約終了後も、セキュリティ、監査、法令対応または紛争対応のため必要な範囲で保存する場合があります。</p>
+      <p>診療録その他法令上保存義務のある記録の保存・管理は、利用医療機関等の責任で行うものとします。</p>
+    </section>
+
+    <section class="section">
+      <h2>10. 匿名加工情報・仮名加工情報</h2>
+      <p>当社は、法令に従い、個人を識別できないよう加工した匿名加工情報または仮名加工情報を作成し、統計分析およびサービス改善のために利用することがあります。</p>
+      <p>匿名加工情報を作成または第三者提供する場合、当社は法令に従い必要な事項を公表します。仮名加工情報を利用する場合、当社は法令に従い、再識別を行わず、適切に管理します。</p>
+    </section>
+
+    <section class="section">
+      <h2>11. 開示、訂正、利用停止等</h2>
+      <p>当社は、本人または代理人から、保有個人データの開示、訂正、追加、削除、利用停止、消去、第三者提供停止、第三者提供記録の開示等を求められた場合、本人確認のうえ、法令に従い対応します。</p>
+      <p>患者等に関する診療関連データについては、当社は利用医療機関等から委託を受けて処理しているため、原則として診療を受けた利用医療機関等を通じてご連絡ください。</p>
+    </section>
+
+    <section class="section">
+      <h2>12. Cookie・アクセス解析</h2>
+      <p>当社は、本サービスの認証、ログイン状態の維持、セキュリティ確保、不正利用防止のため、Cookieその他類似技術を利用することがあります。</p>
+      <p>当社は、本ポリシー改定日時点において、Google Analytics等のアクセス解析サービスを利用していません。</p>
+    </section>
+
+    <section class="section">
+      <h2>13. 本ポリシーの変更</h2>
+      <p>当社は、法令、サービス内容、外部サービス、セキュリティ上の必要性等に応じて、本ポリシーを変更することがあります。</p>
+      <p>変更後の内容は、本サービスまたは当社ウェブサイト上で公表します。利用目的、第三者提供、越境移転、安全管理措置その他重要な変更を行う場合、当社は、契約管理者宛にメールで個別通知し、必要に応じて効力発生日の7日前までに通知します。ただし、法令対応、セキュリティ対応、緊急対応その他やむを得ない場合は、この限りではありません。</p>
+    </section>
+
+    <section class="section">
+      <h2>14. 事業者情報・お問い合わせ先</h2>
+      <p>会社名：GENNAI株式会社</p>
+      <p>法人番号：6080401027397</p>
+      <p>本店所在地：静岡県浜松市中央区入野町4923番地の7</p>
+      <p>代表取締役：平出景詩</p>
+      <p>個人情報保護管理者：平出景詩</p>
+      <p>E-mail：tsukusuta@gmail.com</p>
+      <p>受付時間：平日9時から17時まで（土日祝日を除く）</p>
+    </section>
+  </div>
+</main>
+
+<footer class="meta-footer">
+  <div class="wrap">
+    <div>© 2026 ハルナス</div>
+    <div><a href="terms.html">利用規約</a> / <a href="security.html">セキュリティ</a> / <a href="tokushoho.html">特定商取引法に基づく表記</a></div>
+  </div>
+</footer>
+</body>
+</html>

@@ -73,6 +73,8 @@ flowchart TB
     CODES["organization_codes/{organizationCode}"]
     IDS["login_identities/{organizationCode:loginId}"]
     SIGNUP["signup_applications/{applicationId}"]
+    EMAILTOK["signup_email_tokens/{tokenDigest}"]
+    SETUPTOK["password_setup_tokens/{tokenDigest}"]
     RATE["rate_limits/{key}"]
   end
 
@@ -105,6 +107,9 @@ flowchart TB
 
   CODES --> ORGS
   IDS --> MEMBERS
+  EMAILTOK --> SIGNUP
+  SETUPTOK --> SIGNUP
+  SETUPTOK --> MEMBERS
 ```
 
 ## Platform Collections
@@ -173,6 +178,62 @@ Authentication identity. This remains top-level for efficient login lookup.
 | `lockedUntil` | timestamp | no |  |
 | `createdAt` | timestamp | yes |  |
 | `updatedAt` | timestamp | yes |  |
+
+### `signup_applications/{applicationId}`
+
+Acquisition/signup request owned by Platform. LP never writes Firestore directly.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `applicationId` | string | yes | Same as document ID |
+| `organizationCode` | string | yes | Desired login organization code |
+| `organizationDisplayName` | string | yes |  |
+| `applicantName` | string | yes | Initial admin name |
+| `applicantEmail` | string | yes | Initial admin login ID |
+| `requestedProducts` | array | yes | `charting`, `fee`, `referral` |
+| `status` | string | yes | `submitted`, `email_verified`, `provisioned`, `rejected` |
+| `safePayload` | map | yes | Non-PHI LP metadata |
+| `orgId` | string | no | Set after provisioning |
+| `adminMemberId` | string | no | Set after provisioning |
+| `emailVerifiedAt` | timestamp | no |  |
+| `provisionedAt` | timestamp | no |  |
+| `adminPasswordSetAt` | timestamp | no |  |
+| `createdAt` | timestamp | yes |  |
+| `updatedAt` | timestamp | yes |  |
+| `schemaVersion` | number | yes | Initial `1` |
+
+### `signup_email_tokens/{tokenDigest}`
+
+Short-lived email verification token for a signup application. Store only a SHA-256 digest in Firestore. In staging/local the raw token can be returned in the API response; production should send it by email.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `tokenDigest` | string | yes | Same as document ID |
+| `applicationId` | string | yes | Linked signup application |
+| `status` | string | yes | `active`, `consumed` |
+| `expiresAt` | timestamp | yes | Default 24 hours |
+| `consumedAt` | timestamp | no |  |
+| `createdAt` | timestamp | yes |  |
+| `updatedAt` | timestamp | yes |  |
+| `schemaVersion` | number | yes | Initial `1` |
+
+### `password_setup_tokens/{tokenDigest}`
+
+Short-lived admin password setup token created after email verification provisions an organization. Store only a SHA-256 digest in Firestore.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `tokenDigest` | string | yes | Same as document ID |
+| `applicationId` | string | yes | Linked signup application |
+| `orgId` | string | yes | Provisioned organization |
+| `organizationCode` | string | yes | Login organization code |
+| `memberId` | string | yes | Provisioned admin member |
+| `status` | string | yes | `active`, `consumed` |
+| `expiresAt` | timestamp | yes | Default 7 days |
+| `consumedAt` | timestamp | no |  |
+| `createdAt` | timestamp | yes |  |
+| `updatedAt` | timestamp | yes |  |
+| `schemaVersion` | number | yes | Initial `1` |
 
 ### `organizations/{orgId}/members/{memberId}`
 

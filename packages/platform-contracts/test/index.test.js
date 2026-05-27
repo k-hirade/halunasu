@@ -14,6 +14,8 @@ import {
   validatePatchMemberInput,
   validatePatchOrganizationInput,
   validatePatchPatientInput,
+  validateSetupAdminPasswordInput,
+  validateVerifySignupEmailInput,
   validateUpsertProductEntitlementInput
 } from "../src/index.js";
 
@@ -84,6 +86,21 @@ test("validates signup applications and patch input", () => {
   });
   assert.throws(() => validatePatchOrganizationInput({ organizationCode: "new-code" }), /cannot be changed/);
   assert.throws(() => validatePatchMemberInput({ loginId: "new-login" }), /cannot be changed/);
+});
+
+test("validates signup token inputs", () => {
+  assert.deepEqual(validateVerifySignupEmailInput({ token: " emv_token " }), {
+    token: "emv_token"
+  });
+  assert.deepEqual(validateSetupAdminPasswordInput({
+    token: " setup_token ",
+    password: "correct horse battery staple"
+  }), {
+    token: "setup_token",
+    password: "correct horse battery staple"
+  });
+  assert.throws(() => validateVerifySignupEmailInput({}), /token is required/);
+  assert.throws(() => validateSetupAdminPasswordInput({ token: "setup_token" }), /password is required/);
 });
 
 test("validates facility and department input", () => {

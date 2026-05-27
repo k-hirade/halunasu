@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { verifyPassword } from "../src/auth/password.js";
 import { FirestorePlatformStore } from "../src/store/firestore-store.js";
 
 test("stores organizations with organization code uniqueness", async () => {
@@ -159,6 +160,48 @@ test("updates platform resources and applies rate limits", async () => {
   );
 });
 
+test("provisions organizations from verified signup applications", async () => {
+  const store = createTestStore();
+  const created = await store.createSignupApplicationWithEmailToken({
+    organizationCode: "Signup Clinic",
+    organizationDisplayName: "Signup Clinic",
+    applicantName: "Admin User",
+    applicantEmail: "Admin@example.com",
+    requestedProducts: ["charting", "fee"]
+  });
+  const provisioned = await store.verifySignupEmail({
+    token: created.emailVerification.token
+  });
+  const setup = await store.setupAdminPassword({
+    token: provisioned.passwordSetup.token,
+    password: "correct horse battery staple"
+  });
+  const identity = await store.getLoginIdentity("signup-clinic", "admin@example.com");
+
+  assert.equal(created.signupApplication.status, "submitted");
+  assert.equal(created.emailVerification.token, "emv_001");
+  assert.equal(provisioned.signupApplication.status, "provisioned");
+  assert.equal(provisioned.organization.organizationCode, "signup-clinic");
+  assert.equal(provisioned.adminMember.loginId, "admin@example.com");
+  assert.deepEqual(provisioned.adminMember.productRoles, {
+    charting: ["admin"],
+    fee: ["admin"]
+  });
+  assert.equal(provisioned.productEntitlements.length, 2);
+  assert.equal(setup.login.organizationCode, "signup-clinic");
+  assert.equal(setup.login.loginId, "admin@example.com");
+  assert.equal(verifyPassword("correct horse battery staple", identity.passwordHash), true);
+  assert.equal((await store.listAuditEvents(provisioned.organization.orgId)).length, 3);
+  await assert.rejects(
+    () => store.verifySignupEmail({ token: created.emailVerification.token }),
+    /already used/
+  );
+  await assert.rejects(
+    () => store.setupAdminPassword({ token: provisioned.passwordSetup.token, password: "new secure password" }),
+    /already used/
+  );
+});
+
 test("rejects child writes for missing organization", async () => {
   const store = createTestStore();
 
@@ -170,10 +213,12 @@ test("rejects child writes for missing organization", async () => {
 
 function createTestStore() {
   let counter = 0;
+  let tokenCounter = 0;
   return new FirestorePlatformStore({
     db: new FakeFirestoreDb(),
     now: () => new Date("2026-05-27T00:00:00.000Z"),
-    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`,
+    tokenFactory: (prefix) => `${prefix}_${String(++tokenCounter).padStart(3, "0")}`
   });
 }
 

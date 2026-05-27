@@ -28,6 +28,8 @@ POST /v1/auth/mfa/verify
 GET /v1/signup/applications
 POST /v1/signup/applications
 GET /v1/signup/applications/{applicationId}
+POST /v1/signup/verify-email
+POST /v1/signup/setup-admin-password
 
 GET /v1/organizations
 POST /v1/organizations
@@ -76,6 +78,14 @@ Auth uses:
 
 Login and signup application creation are rate-limited through the shared `rate_limits` store.
 Mutating Platform routes write safe audit events without PHI-heavy payloads.
+
+Signup flow:
+
+1. `POST /v1/signup/applications` stores the application and creates a short-lived email verification token.
+2. `POST /v1/signup/verify-email` consumes the email token, provisions an organization, initial admin member, login identity, and product entitlements.
+3. `POST /v1/signup/setup-admin-password` consumes the setup token and sets the admin password.
+
+Staging/local responses include the token values so the flow can be tested without an email provider. Production should send those tokens through a mailer instead of showing them in the browser.
 
 Store backends:
 

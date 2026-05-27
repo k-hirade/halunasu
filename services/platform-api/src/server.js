@@ -91,9 +91,9 @@ export function resolvePlatformApiResponse(input = {}) {
 
 export async function handlePlatformApiRequest(input = {}) {
   try {
-    return await routePlatformApiRequest(input);
+    return withCors(input, await routePlatformApiRequest(input));
   } catch (error) {
-    return errorResponse(error);
+    return withCors(input, errorResponse(error));
   }
 }
 
@@ -108,6 +108,10 @@ async function routePlatformApiRequest(input = {}) {
   const parts = url.pathname.split("/").filter(Boolean);
   const store = input.store || createPlatformStoreFromEnv();
 
+  if (method === "OPTIONS" && isSignupPath(url.pathname)) {
+    return noContent();
+  }
+
   if (method === "POST" && matches(parts, ["v1", "auth", "login"])) {
     return login(input, store);
   }
@@ -118,8 +122,8 @@ async function routePlatformApiRequest(input = {}) {
 
   if (method === "POST" && matches(parts, ["v1", "signup", "applications"])) {
     await consumeSignupRateLimit(input, store);
-    const signupApplication = await store.createSignupApplication(input.body || {});
-    return created({ signupApplication });
+    const result = await store.createSignupApplicationWithEmailToken(input.body || {});
+    return created(result);
   }
 
   if (method === "GET" && parts.length === 4 && matches(parts.slice(0, 3), ["v1", "signup", "applications"])) {
@@ -128,6 +132,16 @@ async function routePlatformApiRequest(input = {}) {
       return notFound("signup application not found");
     }
     return ok({ signupApplication });
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "signup", "verify-email"])) {
+    const result = await store.verifySignupEmail(input.body || {});
+    return ok(result);
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "signup", "setup-admin-password"])) {
+    const result = await store.setupAdminPassword(input.body || {});
+    return ok(result);
   }
 
   if (method === "GET" && matches(parts, ["v1", "auth", "session"])) {
@@ -752,6 +766,14 @@ function created(body, headers = {}) {
   };
 }
 
+function noContent(headers = {}) {
+  return {
+    statusCode: 204,
+    body: {},
+    headers
+  };
+}
+
 function notFound(message) {
   return {
     statusCode: 404,
@@ -775,6 +797,45 @@ function errorResponse(error) {
       resetAt: error.resetAt
     }
   };
+}
+
+function withCors(input, response) {
+  return {
+    ...response,
+    headers: {
+      ...corsHeaders(input),
+      ...response.headers
+    }
+  };
+}
+
+function corsHeaders(input) {
+  if (!isSignupPath(new URL(input.path || "/", "http://localhost").pathname)) {
+    return {};
+  }
+
+  const origin = headerValue(input.headers || {}, "origin");
+  if (!origin || !isAllowedSignupOrigin(origin)) {
+    return {};
+  }
+
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    "vary": "Origin"
+  };
+}
+
+function isSignupPath(pathname) {
+  return pathname.startsWith("/v1/signup/");
+}
+
+function isAllowedSignupOrigin(origin) {
+  return /^https:\/\/(www\.)?halunasu\.com$/.test(origin)
+    || /^https:\/\/[a-z0-9-]+--halunasu\.netlify\.app$/.test(origin)
+    || /^http:\/\/localhost(:\d+)?$/.test(origin)
+    || /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin);
 }
 
 function toErrorCode(name) {

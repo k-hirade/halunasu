@@ -126,6 +126,19 @@ export function validateCreateSignupApplicationInput(input = {}) {
   };
 }
 
+export function validateVerifySignupEmailInput(input = {}) {
+  return {
+    token: requiredString(input.token, "token")
+  };
+}
+
+export function validateSetupAdminPasswordInput(input = {}) {
+  return {
+    token: requiredString(input.token, "token"),
+    password: requiredString(input.password, "password")
+  };
+}
+
 export function validateCreateFacilityInput(input = {}) {
   return {
     displayName: requiredString(input.displayName, "displayName"),

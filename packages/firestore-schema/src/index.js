@@ -3,6 +3,8 @@ export const collections = Object.freeze({
   organizationCodes: "organization_codes",
   loginIdentities: "login_identities",
   signupApplications: "signup_applications",
+  signupEmailTokens: "signup_email_tokens",
+  passwordSetupTokens: "password_setup_tokens",
   rateLimits: "rate_limits",
   members: "members",
   facilities: "facilities",
@@ -27,6 +29,14 @@ export function organizationCodePath(organizationCode) {
 
 export function signupApplicationPath(applicationId) {
   return joinPath(collections.signupApplications, segment(applicationId, "applicationId"));
+}
+
+export function signupEmailTokenPath(token) {
+  return joinPath(collections.signupEmailTokens, segment(token, "token"));
+}
+
+export function passwordSetupTokenPath(token) {
+  return joinPath(collections.passwordSetupTokens, segment(token, "token"));
 }
 
 export function rateLimitPath(key) {

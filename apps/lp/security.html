@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>セキュリティ | ハルナス</title>
+<link rel="icon" type="image/png" href="assets/brand/harunas-mark.png" />
+<link rel="shortcut icon" type="image/png" href="assets/brand/harunas-mark.png" />
+<link rel="apple-touch-icon" href="assets/brand/harunas-mark.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@400;500;600;700&display=swap" />
+<style>
+  :root {
+    --ink: #1A2A42;
+    --ink-2: #2A3B55;
+    --ink-3: #586B85;
+    --bg: #FFFFFF;
+    --rule: #DFE7F1;
+    --brand: #1E5CB8;
+    --max: 960px;
+    --gutter: clamp(16px, 4vw, 32px);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Noto Sans JP", "Inter", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.8;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter); }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .topbar .wrap {
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .brand img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    flex: 0 0 auto;
+  }
+  .back-link {
+    color: var(--ink-2);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .back-link:hover { color: var(--brand); }
+  main { padding: 56px 0 88px; }
+  .hero {
+    padding: 0 0 32px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .eyebrow {
+    margin: 0 0 12px;
+    color: var(--brand);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(30px, 5vw, 46px);
+    line-height: 1.2;
+  }
+  .lede {
+    margin: 16px 0 0;
+    color: var(--ink-3);
+    max-width: 720px;
+  }
+  .section {
+    padding: 28px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .section h2 {
+    margin: 0 0 10px;
+    font-size: 18px;
+  }
+  .section p {
+    margin: 0;
+  }
+  .section p + p,
+  .section ul + p,
+  .section p + ul {
+    margin-top: 12px;
+  }
+  ul {
+    margin: 0;
+    padding-left: 1.25rem;
+  }
+  li + li { margin-top: 8px; }
+  .meta-footer {
+    border-top: 1px solid var(--rule);
+    color: var(--ink-3);
+    font-size: 13px;
+  }
+  .meta-footer .wrap {
+    min-height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  @media (max-width: 720px) {
+    main { padding: 40px 0 72px; }
+    .topbar .wrap { min-height: 56px; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <img src="assets/brand/harunas-mark.png" alt="ハルナス ロゴ" width="32" height="32" />
+      <span>ハルナス</span>
+    </a>
+    <a class="back-link" href="index.html">サービス紹介へ戻る</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <section class="hero">
+      <p class="eyebrow">SECURITY</p>
+      <h1>セキュリティ</h1>
+      <p class="lede">ハルナスでは、医療機関向けサービスとして、情報保護とアクセス制御を重視した運用を行います。</p>
+    </section>
+
+    <section class="section">
+      <h2>1. アクセス制御</h2>
+      <p>役割に応じた権限管理、認証、セッション制御を行い、不要なアクセスを防止します。</p>
+    </section>
+
+    <section class="section">
+      <h2>2. 通信と保管</h2>
+      <p>通信の保護、クラウド基盤上での安全な保管、秘密情報の分離管理を前提に構成しています。</p>
+    </section>
+
+    <section class="section">
+      <h2>3. 監査と運用</h2>
+      <p>操作ログ、課金イベント、アカウント状態の監査情報を記録し、必要に応じて追跡できるようにしています。</p>
+    </section>
+
+    <section class="section">
+      <h2>4. 外部サービスの利用</h2>
+      <p>サービス提供のため、クラウド基盤、決済基盤、メール配信基盤、AI 処理基盤を利用することがあります。各外部サービスの利用は、必要な範囲に限定します。</p>
+    </section>
+
+    <section class="section">
+      <h2>5. 継続的改善</h2>
+      <p>設定、認証、公開導線、課金処理、運用フローについて、継続的に見直しと改善を行います。</p>
+    </section>
+  </div>
+</main>
+
+<footer class="meta-footer">
+  <div class="wrap">
+    <div>© 2026 ハルナス</div>
+    <div><a href="terms.html">利用規約</a> / <a href="privacy.html">プライバシーポリシー</a> / <a href="tokushoho.html">特定商取引法に基づく表記</a></div>
+  </div>
+</footer>
+</body>
+</html>
