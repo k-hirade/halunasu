@@ -20,6 +20,9 @@ Define the target architecture before moving code from the existing repositories
 The first architecture document is:
 
 - [ASIS / TOBE Architecture](docs/architecture/001-asis-tobe-architecture.md)
+- [Platform Data Model](docs/architecture/002-platform-data-model.md)
+- [GCP Environment Plan](docs/architecture/003-gcp-environment-plan.md)
+- [Migration Execution Plan](docs/architecture/004-migration-execution-plan.md)
 
 ## Initial Repository Shape
 
@@ -55,3 +58,12 @@ Share platform master data. Do not merge product-owned clinical artifacts.
 
 Common platform data should be owned by `platform-api`. Product services should reference shared IDs and keep product-specific snapshots for historical reproducibility.
 
+## Source Repositories
+
+The current local source repositories are:
+
+- `../halunasu-medical-record` for the existing charting and platform-like code
+- `../halunasu-fee-calculation` for the existing fee calculation code
+- `../medical-lp` for the existing LP
+
+Their GitHub remotes remain unchanged until code migration is complete.
