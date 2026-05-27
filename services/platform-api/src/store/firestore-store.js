@@ -1,17 +1,30 @@
 import crypto from "node:crypto";
 import {
+  normalizeLoginId,
+  normalizeOrganizationCode,
+  validateCreateAuditEventInput,
+  validateCreateDepartmentInput,
+  validateCreateFacilityInput,
   validateCreateMemberInput,
   validateCreateOrganizationInput,
-  validateCreatePatientInput
+  validateCreatePatientInput,
+  validateUpsertProductEntitlementInput
 } from "../../../../packages/platform-contracts/src/index.js";
 import {
+  auditEventPath,
   collections,
+  departmentPath,
+  facilityPath,
+  loginIdentityKey,
+  loginIdentityPath,
   memberPath,
   organizationCodePath,
   organizationPath,
-  patientPath
+  patientPath,
+  productEntitlementPath
 } from "../../../../packages/firestore-schema/src/index.js";
 import { conflictError, notFoundError } from "./memory-store.js";
+import { hashPassword } from "../auth/password.js";
 
 export class FirestorePlatformStore {
   constructor(options = {}) {
@@ -70,7 +83,7 @@ export class FirestorePlatformStore {
   }
 
   async createMember(orgId, input) {
-    await this.requireOrganization(orgId);
+    const organization = await this.requireOrganization(orgId);
     const normalized = validateCreateMemberInput(input);
     const now = this.timestamp();
     const memberId = this.idFactory("mem");
@@ -82,8 +95,29 @@ export class FirestorePlatformStore {
       updatedAt: now,
       schemaVersion: 1
     });
+    const identity = input.password !== undefined
+      ? createLoginIdentity({
+        organization,
+        member,
+        password: input.password,
+        now
+      })
+      : null;
 
-    await this.doc(memberPath(orgId, memberId)).set(member);
+    await this.db.runTransaction(async (transaction) => {
+      if (identity) {
+        const identityRef = this.doc(loginIdentityPath(organization.organizationCode, member.loginId));
+        const existingIdentity = await transaction.get(identityRef);
+        if (existingIdentity.exists) {
+          throw conflictError("loginId already exists for organization", "loginId");
+        }
+
+        transaction.set(identityRef, identity);
+      }
+
+      transaction.set(this.doc(memberPath(orgId, memberId)), member);
+    });
+
     return member;
   }
 
@@ -96,6 +130,137 @@ export class FirestorePlatformStore {
   async getMember(orgId, memberId) {
     await this.requireOrganization(orgId);
     return docDataOrNull(await this.doc(memberPath(orgId, memberId)).get());
+  }
+
+  async getLoginIdentity(organizationCode, loginId) {
+    return docDataOrNull(await this.doc(loginIdentityPath(
+      normalizeOrganizationCode(organizationCode),
+      normalizeLoginId(loginId)
+    )).get());
+  }
+
+  async recordLoginSuccess(identity) {
+    const current = await this.requireLoginIdentity(identity);
+    const updated = compactObject({
+      ...current,
+      failedLoginCount: 0,
+      lockedUntil: undefined,
+      lastLoginAt: this.timestamp(),
+      updatedAt: this.timestamp()
+    });
+
+    await this.doc(loginIdentityPath(current.organizationCode, current.loginId)).set(updated);
+    return updated;
+  }
+
+  async recordLoginFailure(identity) {
+    const current = await this.requireLoginIdentity(identity);
+    const updated = compactObject({
+      ...current,
+      failedLoginCount: Number(current.failedLoginCount || 0) + 1,
+      updatedAt: this.timestamp()
+    });
+
+    await this.doc(loginIdentityPath(current.organizationCode, current.loginId)).set(updated);
+    return updated;
+  }
+
+  async beginMfaEnrollment(identity, secret) {
+    const current = await this.requireLoginIdentity(identity);
+    const updated = compactObject({
+      ...current,
+      mfaPendingSecret: secret,
+      updatedAt: this.timestamp()
+    });
+
+    await this.doc(loginIdentityPath(current.organizationCode, current.loginId)).set(updated);
+    return updated;
+  }
+
+  async completeMfaEnrollment(identity) {
+    const current = await this.requireLoginIdentity(identity);
+    const updated = compactObject({
+      ...current,
+      mfaSecret: current.mfaPendingSecret || current.mfaSecret,
+      mfaPendingSecret: undefined,
+      mfaEnrolled: true,
+      mfaRequired: true,
+      tokenVersion: Number(current.tokenVersion || 0) + 1,
+      updatedAt: this.timestamp()
+    });
+
+    await this.doc(loginIdentityPath(current.organizationCode, current.loginId)).set(updated);
+    return updated;
+  }
+
+  async revokeMemberSessions(identity) {
+    const current = await this.requireLoginIdentity(identity);
+    const updated = compactObject({
+      ...current,
+      tokenVersion: Number(current.tokenVersion || 0) + 1,
+      updatedAt: this.timestamp()
+    });
+
+    await this.doc(loginIdentityPath(current.organizationCode, current.loginId)).set(updated);
+    return updated;
+  }
+
+  async createFacility(orgId, input) {
+    await this.requireOrganization(orgId);
+    const normalized = validateCreateFacilityInput(input);
+    const now = this.timestamp();
+    const facilityId = this.idFactory("fac");
+    const facility = compactObject({
+      facilityId,
+      orgId,
+      ...normalized,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    });
+
+    await this.doc(facilityPath(orgId, facilityId)).set(facility);
+    return facility;
+  }
+
+  async listFacilities(orgId) {
+    await this.requireOrganization(orgId);
+    const snapshot = await this.orgCollection(orgId, collections.facilities).orderBy("createdAt", "asc").get();
+    return docsFromSnapshot(snapshot);
+  }
+
+  async getFacility(orgId, facilityId) {
+    await this.requireOrganization(orgId);
+    return docDataOrNull(await this.doc(facilityPath(orgId, facilityId)).get());
+  }
+
+  async createDepartment(orgId, input) {
+    await this.requireOrganization(orgId);
+    const normalized = validateCreateDepartmentInput(input);
+    const now = this.timestamp();
+    const departmentId = this.idFactory("dep");
+    const department = compactObject({
+      departmentId,
+      orgId,
+      ...normalized,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    });
+
+    await this.doc(departmentPath(orgId, departmentId)).set(department);
+    return department;
+  }
+
+  async listDepartments(orgId) {
+    await this.requireOrganization(orgId);
+    const snapshot = await this.orgCollection(orgId, collections.departments).orderBy("createdAt", "asc").get();
+    return docsFromSnapshot(snapshot);
+  }
+
+  async getDepartment(orgId, departmentId) {
+    await this.requireOrganization(orgId);
+    return docDataOrNull(await this.doc(departmentPath(orgId, departmentId)).get());
   }
 
   async createPatient(orgId, input) {
@@ -127,12 +292,82 @@ export class FirestorePlatformStore {
     return docDataOrNull(await this.doc(patientPath(orgId, patientId)).get());
   }
 
+  async upsertProductEntitlement(orgId, input) {
+    await this.requireOrganization(orgId);
+    const normalized = validateUpsertProductEntitlementInput(input);
+    const now = this.timestamp();
+    const existing = await this.getProductEntitlement(orgId, normalized.productId);
+    const entitlement = compactObject({
+      productId: normalized.productId,
+      orgId,
+      ...normalized,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+      schemaVersion: 1
+    });
+
+    await this.doc(productEntitlementPath(orgId, normalized.productId)).set(entitlement);
+    return entitlement;
+  }
+
+  async listProductEntitlements(orgId) {
+    await this.requireOrganization(orgId);
+    const snapshot = await this.orgCollection(orgId, collections.productEntitlements).orderBy("createdAt", "asc").get();
+    return docsFromSnapshot(snapshot);
+  }
+
+  async getProductEntitlement(orgId, productId) {
+    await this.requireOrganization(orgId);
+    return docDataOrNull(await this.doc(productEntitlementPath(orgId, productId)).get());
+  }
+
+  async createAuditEvent(orgId, input) {
+    await this.requireOrganization(orgId);
+    const normalized = validateCreateAuditEventInput(input);
+    const now = this.timestamp();
+    const eventId = this.idFactory("aud");
+    const event = compactObject({
+      eventId,
+      orgId,
+      ...normalized,
+      createdAt: now,
+      schemaVersion: 1
+    });
+
+    await this.doc(auditEventPath(orgId, eventId)).set(event);
+    return event;
+  }
+
+  async listAuditEvents(orgId) {
+    await this.requireOrganization(orgId);
+    const snapshot = await this.orgCollection(orgId, collections.auditEvents).orderBy("createdAt", "asc").get();
+    return docsFromSnapshot(snapshot);
+  }
+
+  async getAuditEvent(orgId, eventId) {
+    await this.requireOrganization(orgId);
+    return docDataOrNull(await this.doc(auditEventPath(orgId, eventId)).get());
+  }
+
   async requireOrganization(orgId) {
     const organization = await this.getOrganization(orgId);
     if (!organization) {
       throw notFoundError("organization not found");
     }
     return organization;
+  }
+
+  async requireLoginIdentity(identity) {
+    if (!identity?.identityKey) {
+      throw notFoundError("login identity not found");
+    }
+
+    const current = await this.getLoginIdentity(identity.organizationCode, identity.loginId);
+    if (!current) {
+      throw notFoundError("login identity not found");
+    }
+
+    return current;
   }
 
   doc(path) {
@@ -168,6 +403,32 @@ function compactObject(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
 
+function createLoginIdentity({ organization, member, password, now }) {
+  const identityKey = loginIdentityKey(organization.organizationCode, member.loginId);
+
+  return {
+    identityKey,
+    organizationCode: organization.organizationCode,
+    loginId: member.loginId,
+    orgId: organization.orgId,
+    memberId: member.memberId,
+    passwordHash: hashPassword(password),
+    passwordUpdatedAt: now,
+    tokenVersion: 1,
+    mfaRequired: hasPrivilegedRole(member),
+    mfaEnrolled: false,
+    status: "active",
+    failedLoginCount: 0,
+    createdAt: now,
+    updatedAt: now,
+    schemaVersion: 1
+  };
+}
+
+function hasPrivilegedRole(member) {
+  return member.globalRoles.includes("org_admin") || member.globalRoles.includes("billing_admin");
+}
+
 function docsFromSnapshot(snapshot) {
   return snapshot.docs.map((doc) => doc.data());
 }
@@ -175,4 +436,3 @@ function docsFromSnapshot(snapshot) {
 function docDataOrNull(snapshot) {
   return snapshot.exists ? snapshot.data() : null;
 }
-

@@ -6,8 +6,12 @@ export const productIds = Object.freeze({
 
 export const organizationStatuses = Object.freeze(["active", "trialing", "suspended", "closed"]);
 export const memberStatuses = Object.freeze(["active", "invited", "disabled"]);
+export const loginIdentityStatuses = Object.freeze(["active", "locked", "disabled"]);
+export const facilityStatuses = Object.freeze(["active", "inactive"]);
+export const departmentStatuses = Object.freeze(["active", "inactive"]);
 export const patientStatuses = Object.freeze(["active", "merged", "inactive"]);
 export const patientSexes = Object.freeze(["male", "female", "other", "unknown"]);
+export const productEntitlementStatuses = Object.freeze(["enabled", "trialing", "disabled"]);
 
 export function normalizeOrganizationCode(value) {
   return requiredString(value, "organizationCode")
@@ -15,6 +19,10 @@ export function normalizeOrganizationCode(value) {
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+export function normalizeLoginId(value) {
+  return requiredString(value, "loginId").toLowerCase();
 }
 
 export function validateCreateOrganizationInput(input = {}) {
@@ -37,7 +45,7 @@ export function validateCreateOrganizationInput(input = {}) {
 
 export function validateCreateMemberInput(input = {}) {
   return {
-    loginId: requiredString(input.loginId, "loginId"),
+    loginId: normalizeLoginId(input.loginId),
     displayName: requiredString(input.displayName, "displayName"),
     email: optionalString(input.email),
     status: optionalEnum(input.status, memberStatuses, "status") || "active",
@@ -50,6 +58,45 @@ export function validateCreateMemberInput(input = {}) {
   };
 }
 
+export function validateLoginInput(input = {}) {
+  const organizationCode = normalizeOrganizationCode(input.organizationCode);
+  if (!organizationCode) {
+    throw validationError("organizationCode must contain at least one letter or number", "organizationCode");
+  }
+
+  return {
+    organizationCode,
+    loginId: normalizeLoginId(input.loginId),
+    password: requiredString(input.password, "password"),
+    mfaCode: optionalString(input.mfaCode)
+  };
+}
+
+export function validateCreateFacilityInput(input = {}) {
+  return {
+    displayName: requiredString(input.displayName, "displayName"),
+    legalName: optionalString(input.legalName),
+    facilityType: optionalString(input.facilityType),
+    medicalInstitutionCode: optionalString(input.medicalInstitutionCode),
+    regionalBureau: optionalString(input.regionalBureau),
+    prefecture: optionalString(input.prefecture),
+    address: isPlainObject(input.address) ? input.address : {},
+    phone: optionalString(input.phone),
+    facilityStandardKeys: normalizeStringArray(input.facilityStandardKeys),
+    status: optionalEnum(input.status, facilityStatuses, "status") || "active"
+  };
+}
+
+export function validateCreateDepartmentInput(input = {}) {
+  return {
+    facilityId: optionalString(input.facilityId),
+    displayName: requiredString(input.displayName, "displayName"),
+    code: optionalString(input.code),
+    specialty: optionalString(input.specialty),
+    status: optionalEnum(input.status, departmentStatuses, "status") || "active"
+  };
+}
+
 export function validateCreatePatientInput(input = {}) {
   return {
     displayName: requiredString(input.displayName, "displayName"),
@@ -59,6 +106,40 @@ export function validateCreatePatientInput(input = {}) {
     externalPatientIds: normalizeStringArray(input.externalPatientIds),
     status: optionalEnum(input.status, patientStatuses, "status") || "active",
     notes: optionalString(input.notes)
+  };
+}
+
+export function validateUpsertProductEntitlementInput(input = {}) {
+  const productId = requiredString(input.productId, "productId");
+  if (!Object.values(productIds).includes(productId)) {
+    throw validationError(`productId must be one of: ${Object.values(productIds).join(", ")}`, "productId");
+  }
+
+  return {
+    productId,
+    status: optionalEnum(input.status, productEntitlementStatuses, "status") || "trialing",
+    plan: optionalString(input.plan),
+    limits: isPlainObject(input.limits) ? input.limits : {},
+    features: isPlainObject(input.features) ? input.features : {},
+    startsAt: optionalDateTime(input.startsAt, "startsAt"),
+    endsAt: optionalDateTime(input.endsAt, "endsAt")
+  };
+}
+
+export function validateCreateAuditEventInput(input = {}) {
+  const productId = optionalString(input.productId);
+  if (productId && !Object.values(productIds).includes(productId)) {
+    throw validationError(`productId must be one of: ${Object.values(productIds).join(", ")}`, "productId");
+  }
+
+  return {
+    eventType: requiredString(input.eventType, "eventType"),
+    actorMemberId: optionalString(input.actorMemberId),
+    actorLoginId: optionalString(input.actorLoginId),
+    productId,
+    targetType: optionalString(input.targetType),
+    targetId: optionalString(input.targetId),
+    safePayload: isPlainObject(input.safePayload) ? input.safePayload : {}
   };
 }
 
@@ -139,6 +220,20 @@ function optionalBirthDate(value) {
   }
 
   return normalized;
+}
+
+function optionalDateTime(value, field) {
+  const normalized = optionalString(value);
+  if (!normalized) {
+    return undefined;
+  }
+
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    throw validationError(`${field} must be a valid ISO 8601 timestamp`, field);
+  }
+
+  return date.toISOString();
 }
 
 function normalizeStringArray(value) {

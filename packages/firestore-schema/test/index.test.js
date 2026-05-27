@@ -2,16 +2,27 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   collections,
+  auditEventPath,
+  departmentPath,
+  facilityPath,
   loginIdentityKey,
   loginIdentityPath,
   organizationPath,
   patientAliasPath,
-  patientPath
+  patientPath,
+  productEntitlementPath
 } from "../src/index.js";
 
 test("builds platform document paths", () => {
   assert.equal(organizationPath("org_123"), "organizations/org_123");
+  assert.equal(facilityPath("org_123", "fac_456"), "organizations/org_123/facilities/fac_456");
+  assert.equal(departmentPath("org_123", "dep_456"), "organizations/org_123/departments/dep_456");
   assert.equal(patientPath("org_123", "pat_456"), "organizations/org_123/patients/pat_456");
+  assert.equal(
+    productEntitlementPath("org_123", "charting"),
+    "organizations/org_123/product_entitlements/charting"
+  );
+  assert.equal(auditEventPath("org_123", "aud_456"), "organizations/org_123/audit_events/aud_456");
   assert.equal(
     patientAliasPath("org_123", "pat_456", "alias_789"),
     "organizations/org_123/patients/pat_456/aliases/alias_789"
@@ -32,4 +43,3 @@ test("exports canonical collection names", () => {
   assert.equal(collections.organizations, "organizations");
   assert.equal(collections.patients, "patients");
 });
-

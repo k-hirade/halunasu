@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   normalizeOrganizationCode,
+  validateCreateAuditEventInput,
+  validateCreateDepartmentInput,
+  validateCreateFacilityInput,
   patientSnapshot,
   validateCreateMemberInput,
   validateCreateOrganizationInput,
-  validateCreatePatientInput
+  validateCreatePatientInput,
+  validateLoginInput,
+  validateUpsertProductEntitlementInput
 } from "../src/index.js";
 
 test("normalizes organization code", () => {
@@ -26,7 +31,7 @@ test("validates organization input with defaults", () => {
 
 test("validates member roles", () => {
   const input = validateCreateMemberInput({
-    loginId: "doctor",
+    loginId: "Doctor",
     displayName: "Doctor",
     globalRoles: ["doctor", "doctor", ""],
     productRoles: {
@@ -35,8 +40,38 @@ test("validates member roles", () => {
     }
   });
 
+  assert.equal(input.loginId, "doctor");
   assert.deepEqual(input.globalRoles, ["doctor"]);
   assert.deepEqual(input.productRoles, { charting: ["doctor"] });
+});
+
+test("validates login input", () => {
+  const input = validateLoginInput({
+    organizationCode: " Clinic A ",
+    loginId: "Admin",
+    password: "correct horse battery staple"
+  });
+
+  assert.equal(input.organizationCode, "clinic-a");
+  assert.equal(input.loginId, "admin");
+  assert.equal(input.password, "correct horse battery staple");
+});
+
+test("validates facility and department input", () => {
+  const facility = validateCreateFacilityInput({
+    displayName: "Main Clinic",
+    facilityStandardKeys: ["basic", "basic", ""]
+  });
+  const department = validateCreateDepartmentInput({
+    facilityId: "fac_123",
+    displayName: "Internal Medicine",
+    status: "active"
+  });
+
+  assert.deepEqual(facility.facilityStandardKeys, ["basic"]);
+  assert.equal(facility.status, "active");
+  assert.equal(department.facilityId, "fac_123");
+  assert.equal(department.displayName, "Internal Medicine");
 });
 
 test("validates patient input and snapshot", () => {
@@ -59,10 +94,28 @@ test("validates patient input and snapshot", () => {
   });
 });
 
+test("validates product entitlements and audit events", () => {
+  const entitlement = validateUpsertProductEntitlementInput({
+    productId: "charting",
+    status: "enabled",
+    limits: { monthlyEncounters: 100 },
+    startsAt: "2026-05-27T00:00:00.000Z"
+  });
+  const auditEvent = validateCreateAuditEventInput({
+    eventType: "member.created",
+    actorMemberId: "mem_123",
+    productId: "charting",
+    safePayload: { changedFields: ["displayName"] }
+  });
+
+  assert.equal(entitlement.productId, "charting");
+  assert.equal(entitlement.startsAt, "2026-05-27T00:00:00.000Z");
+  assert.deepEqual(auditEvent.safePayload.changedFields, ["displayName"]);
+});
+
 test("rejects invalid patient birth date", () => {
   assert.throws(
     () => validateCreatePatientInput({ displayName: "Yamada Taro", birthDate: "19700101" }),
     /birthDate/
   );
 });
-

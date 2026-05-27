@@ -107,6 +107,8 @@ Exit criteria:
 
 ## P1: Platform Auth And Core Master Data
 
+Status: in progress.
+
 Purpose:
 
 - Make Platform usable as the source of truth before migrating products.
@@ -464,4 +466,3 @@ Order from here:
 9. Start referral app.
 
 Do not deploy public APIs before step 1 is complete.
-

@@ -44,6 +44,74 @@ test("stores members and patients below organization documents", async () => {
   assert.equal((await store.getPatient(organization.orgId, patient.patientId)).sex, "female");
 });
 
+test("stores login identities and shared master data", async () => {
+  const store = createTestStore();
+  const organization = await store.createOrganization({
+    organizationCode: "Clinic Auth",
+    displayName: "Clinic Auth"
+  });
+  const member = await store.createMember(organization.orgId, {
+    loginId: "Admin",
+    displayName: "Admin",
+    globalRoles: ["org_admin"],
+    password: "correct horse battery staple"
+  });
+  const identity = await store.getLoginIdentity("clinic-auth", "admin");
+  const facility = await store.createFacility(organization.orgId, {
+    displayName: "Main Clinic",
+    medicalInstitutionCode: "1234567"
+  });
+  const department = await store.createDepartment(organization.orgId, {
+    facilityId: facility.facilityId,
+    displayName: "Internal Medicine"
+  });
+  const entitlement = await store.upsertProductEntitlement(organization.orgId, {
+    productId: "charting",
+    status: "enabled"
+  });
+  const auditEvent = await store.createAuditEvent(organization.orgId, {
+    eventType: "member.created",
+    actorMemberId: member.memberId,
+    safePayload: { memberId: member.memberId }
+  });
+
+  assert.equal(member.loginId, "admin");
+  assert.equal(identity.memberId, member.memberId);
+  assert.match(identity.passwordHash, /^scrypt\$/);
+  assert.equal((await store.listFacilities(organization.orgId)).length, 1);
+  assert.equal((await store.getDepartment(organization.orgId, department.departmentId)).displayName, "Internal Medicine");
+  assert.equal((await store.listDepartments(organization.orgId)).length, 1);
+  assert.equal(entitlement.productId, "charting");
+  assert.equal((await store.getProductEntitlement(organization.orgId, "charting")).status, "enabled");
+  assert.equal(auditEvent.eventType, "member.created");
+  assert.equal((await store.listAuditEvents(organization.orgId)).length, 1);
+});
+
+test("updates login identity auth state", async () => {
+  const store = createTestStore();
+  const organization = await store.createOrganization({
+    organizationCode: "Clinic State",
+    displayName: "Clinic State"
+  });
+  await store.createMember(organization.orgId, {
+    loginId: "admin",
+    displayName: "Admin",
+    password: "correct horse battery staple"
+  });
+  const identity = await store.getLoginIdentity("clinic-state", "admin");
+
+  const failed = await store.recordLoginFailure(identity);
+  const enrolled = await store.beginMfaEnrollment(failed, "MZXW6YTBOI======");
+  const verified = await store.completeMfaEnrollment(enrolled);
+  const revoked = await store.revokeMemberSessions(verified);
+
+  assert.equal(failed.failedLoginCount, 1);
+  assert.equal(enrolled.mfaPendingSecret, "MZXW6YTBOI======");
+  assert.equal(verified.mfaEnrolled, true);
+  assert.equal(verified.tokenVersion, 2);
+  assert.equal(revoked.tokenVersion, 3);
+});
+
 test("rejects child writes for missing organization", async () => {
   const store = createTestStore();
 
@@ -159,4 +227,3 @@ function compare(left, right, direction) {
   const result = String(left).localeCompare(String(right));
   return direction === "desc" ? -result : result;
 }
-
