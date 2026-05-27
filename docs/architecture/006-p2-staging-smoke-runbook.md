@@ -1,6 +1,6 @@
 # P2 Staging Smoke Runbook
 
-Status: in progress
+Status: complete
 Date: 2026-05-27
 Owner: Halunasu platform
 
@@ -12,9 +12,9 @@ This phase must not create resources automatically by default.
 
 ## Current Preflight Result
 
-Read-only checks were started on 2026-05-27.
+Read-only checks were started on 2026-05-27. P2 deploy completed on 2026-05-27.
 
-Observed state:
+Initial observed state:
 
 - Local dry-run deploy command passed.
 - Active local `gcloud` account was updated from `keisi.hirade.97@gmail.com` to `info@halunasu.com`.
@@ -28,9 +28,41 @@ Observed state:
 - `halunasu-platform-api@medical-core-stg.iam.gserviceaccount.com` does not exist yet.
 - Read-only preflight result after billing check update: 9 failure(s), 1 warning(s).
 - API enablement was attempted once and failed before making changes because billing is not linked.
-- No deploy was run.
-- No GCP resource was created.
+Final state:
+
+- Billing was linked to `medical-core-stg`.
+- Required APIs were enabled.
+- Artifact Registry repository `halunasu-services` was created in `asia-northeast1`.
+- Service account `halunasu-platform-api@medical-core-stg.iam.gserviceaccount.com` was created.
+- The runtime service account was granted `roles/datastore.user`.
+- Firestore Native `(default)` database was created in `asia-northeast1`.
+- Firestore database reported `freeTier: true` at creation time.
+- Cloud Build used `866813206652-compute@developer.gserviceaccount.com`; this service account was granted:
+  - `roles/storage.objectViewer` on `gs://medical-core-stg_cloudbuild`
+  - `roles/artifactregistry.writer` on Artifact Registry repository `halunasu-services`
+- One Cloud Build ran successfully.
+- One image was pushed:
+  `asia-northeast1-docker.pkg.dev/medical-core-stg/halunasu-services/platform-api-stg:20260527-220836`
+- Artifact Registry repository size after deploy was `115.514MB`.
+- `platform-api-stg` was deployed to Cloud Run.
+- Cloud Run service URL:
+  `https://platform-api-stg-lp2t3inhza-an.a.run.app`
+- Cloud Run settings after deploy:
+  - `ready=True`
+  - `minScale=0`
+  - `maxScale=1`
+  - `serviceAccount=halunasu-platform-api@medical-core-stg.iam.gserviceaccount.com`
+- Cloud Run IAM policy is empty, so no `allUsers` unauthenticated public access is granted.
+- Unauthenticated `/readyz` returned `403`.
+- IAM-authenticated `/readyz` returned `200`.
+- One controlled Firestore write/read smoke succeeded:
+  - organizationCode: `p2-smoke-20260527221259`
+  - orgId: `org_1eefcbb152c24f8e806692bd8c`
 - No Terraform was run.
+
+Known warning:
+
+- Cloud Build reported that `866813206652-compute@developer.gserviceaccount.com` cannot write logs to Cloud Logging. The build still completed successfully. Do not add `roles/logging.logWriter` unless build log retention becomes necessary.
 
 ## Cost Guardrails
 

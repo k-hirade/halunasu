@@ -176,7 +176,7 @@ Exit criteria:
 
 ## P2: Cost-safe `medical-core-stg` Smoke
 
-Status: in progress. Read-only preflight is blocked by missing billing/prerequisites in `medical-core-stg`.
+Status: complete.
 
 Purpose:
 

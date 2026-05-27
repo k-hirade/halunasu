@@ -130,7 +130,7 @@ check_optional "Cloud Run service state if already deployed" \
   gcloud run services describe "${SERVICE_NAME}" \
     --project "${PROJECT_ID}" \
     --region "${REGION}" \
-    --format="value(status.url,spec.template.metadata.annotations.autoscaling\\.knative\\.dev/minScale,spec.template.metadata.annotations.autoscaling\\.knative\\.dev/maxScale)" \
+    --format="value(status.url)" \
     --quiet
 
 echo "Summary: ${failures} failure(s), ${warnings} warning(s)."
