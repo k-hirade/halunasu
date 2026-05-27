@@ -14,3 +14,9 @@ Initial scope:
 - Product entitlement
 - Audit event
 
+Implemented first:
+
+- Organization create validation
+- Member create validation
+- Patient create validation
+- Patient snapshot helper
