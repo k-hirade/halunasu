@@ -23,6 +23,7 @@ The first architecture document is:
 - [Platform Data Model](docs/architecture/002-platform-data-model.md)
 - [GCP Environment Plan](docs/architecture/003-gcp-environment-plan.md)
 - [Migration Execution Plan](docs/architecture/004-migration-execution-plan.md)
+- [Rearchitecture Completion Roadmap](docs/architecture/005-rearchitecture-completion-roadmap.md)
 
 ## Initial Repository Shape
 
