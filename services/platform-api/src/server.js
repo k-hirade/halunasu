@@ -1,12 +1,12 @@
 import http from "node:http";
-import { MemoryPlatformStore } from "./store/memory-store.js";
+import { createPlatformStoreFromEnv } from "./store/create-store.js";
 
 export function createPlatformApiServer(options = {}) {
   const startedAt = new Date();
   const env = options.env || process.env.HALUNASU_ENV || process.env.NODE_ENV || "local";
   const projectId = options.projectId || process.env.GOOGLE_CLOUD_PROJECT || "medical-core-stg";
   const region = options.region || process.env.GOOGLE_CLOUD_REGION || "asia-northeast1";
-  const store = options.store || new MemoryPlatformStore();
+  const store = options.store || createPlatformStoreFromEnv();
 
   return http.createServer(async (req, res) => {
     try {
@@ -71,13 +71,13 @@ export function resolvePlatformApiResponse(input = {}) {
 
 export async function handlePlatformApiRequest(input = {}) {
   try {
-    return routePlatformApiRequest(input);
+    return await routePlatformApiRequest(input);
   } catch (error) {
     return errorResponse(error);
   }
 }
 
-function routePlatformApiRequest(input = {}) {
+async function routePlatformApiRequest(input = {}) {
   const healthResponse = resolvePlatformApiResponse(input);
   if (healthResponse.statusCode !== 404 || !String(input.path || "").startsWith("/v1/")) {
     return healthResponse;
@@ -86,18 +86,18 @@ function routePlatformApiRequest(input = {}) {
   const method = input.method || "GET";
   const url = new URL(input.path || "/", "http://localhost");
   const parts = url.pathname.split("/").filter(Boolean);
-  const store = input.store || new MemoryPlatformStore();
+  const store = input.store || createPlatformStoreFromEnv();
 
   if (method === "GET" && matches(parts, ["v1", "organizations"])) {
-    return ok({ organizations: store.listOrganizations() });
+    return ok({ organizations: await store.listOrganizations() });
   }
 
   if (method === "POST" && matches(parts, ["v1", "organizations"])) {
-    return created({ organization: store.createOrganization(input.body || {}) });
+    return created({ organization: await store.createOrganization(input.body || {}) });
   }
 
   if (method === "GET" && parts.length === 3 && parts[0] === "v1" && parts[1] === "organizations") {
-    const organization = store.getOrganization(parts[2]);
+    const organization = await store.getOrganization(parts[2]);
     if (!organization) {
       return notFound("organization not found");
     }
@@ -105,15 +105,15 @@ function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && isOrgChildCollection(parts, "members")) {
-    return ok({ members: store.listMembers(parts[2]) });
+    return ok({ members: await store.listMembers(parts[2]) });
   }
 
   if (method === "POST" && isOrgChildCollection(parts, "members")) {
-    return created({ member: store.createMember(parts[2], input.body || {}) });
+    return created({ member: await store.createMember(parts[2], input.body || {}) });
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "members")) {
-    const member = store.getMember(parts[2], parts[4]);
+    const member = await store.getMember(parts[2], parts[4]);
     if (!member) {
       return notFound("member not found");
     }
@@ -121,15 +121,15 @@ function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && isOrgChildCollection(parts, "patients")) {
-    return ok({ patients: store.listPatients(parts[2]) });
+    return ok({ patients: await store.listPatients(parts[2]) });
   }
 
   if (method === "POST" && isOrgChildCollection(parts, "patients")) {
-    return created({ patient: store.createPatient(parts[2], input.body || {}) });
+    return created({ patient: await store.createPatient(parts[2], input.body || {}) });
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "patients")) {
-    const patient = store.getPatient(parts[2], parts[4]);
+    const patient = await store.getPatient(parts[2], parts[4]);
     if (!patient) {
       return notFound("patient not found");
     }

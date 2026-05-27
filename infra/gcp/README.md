@@ -18,3 +18,10 @@ Initial modules:
 - Secret Manager secret shells
 - Cloud Run services
 
+Initial Platform API environment:
+
+```text
+GOOGLE_CLOUD_PROJECT=medical-core-stg
+GOOGLE_CLOUD_REGION=asia-northeast1
+PLATFORM_STORE_BACKEND=firestore
+```

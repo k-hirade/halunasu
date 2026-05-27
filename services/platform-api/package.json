@@ -10,6 +10,8 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
   }
 }
-

@@ -29,7 +29,14 @@ POST /v1/organizations/{orgId}/patients
 GET /v1/organizations/{orgId}/patients/{patientId}
 ```
 
-The current implementation uses an in-memory store. Firestore persistence is the next implementation step.
+Store backends:
+
+```text
+PLATFORM_STORE_BACKEND=memory
+PLATFORM_STORE_BACKEND=firestore
+```
+
+Use `firestore` in `medical-core-stg` / `medical-core-497610` Cloud Run deployments. Local development defaults to `memory`.
 
 Local run:
 
@@ -42,3 +49,5 @@ Default local project:
 ```text
 medical-core-stg
 ```
+
+Firestore deployment requires Application Default Credentials locally, or the Cloud Run service account in GCP.
