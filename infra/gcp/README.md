@@ -2,12 +2,14 @@
 
 Terraform and GCP runbooks live here.
 
+Cost control comes first. Read [cost-control.md](cost-control.md) before creating any resource.
+
 Target projects:
 
 - Staging: `medical-core-stg`
 - Production/core: `medical-core-497610`
 
-Initial modules:
+Potential future modules:
 
 - Project services
 - Service accounts
@@ -25,3 +27,5 @@ GOOGLE_CLOUD_PROJECT=medical-core-stg
 GOOGLE_CLOUD_REGION=asia-northeast1
 PLATFORM_STORE_BACKEND=firestore
 ```
+
+Terraform is intentionally deferred for now. Use the guarded deploy script for the first `platform-api` staging deploy.

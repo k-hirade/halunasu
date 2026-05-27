@@ -74,6 +74,16 @@ npm run test
 npm run start:platform-api
 ```
 
+## Staging Deploy
+
+The first staging deploy is intentionally guarded for cost control.
+
+```bash
+scripts/deploy_platform_api_stg_zero_cost.sh
+```
+
+The command above is dry-run only. It prints the build/deploy commands and creates nothing. Use `--apply` only after confirming the required existing resources and expected cost impact. The first staging deploy is not public because `platform-api` auth is not implemented yet.
+
 ## Source Repositories
 
 The current local source repositories are:

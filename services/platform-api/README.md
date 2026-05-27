@@ -51,3 +51,5 @@ medical-core-stg
 ```
 
 Firestore deployment requires Application Default Credentials locally, or the Cloud Run service account in GCP.
+
+Do not deploy this service with unauthenticated public access until Platform auth is implemented.
