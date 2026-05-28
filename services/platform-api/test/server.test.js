@@ -351,6 +351,57 @@ test("logs in, checks session, enrolls MFA, and logs out", async () => {
   assert.equal(afterLogout.statusCode, 401);
 });
 
+test("uses secure session cookies outside local and test environments", async () => {
+  const store = createTestStore();
+  const createdOrg = await request(store, "POST", "/v1/organizations", {
+    organizationCode: "Secure Clinic",
+    displayName: "Secure Clinic"
+  });
+  const orgId = createdOrg.body.organization.orgId;
+
+  await request(store, "POST", `/v1/organizations/${orgId}/members`, {
+    loginId: "Admin",
+    displayName: "Admin",
+    globalRoles: ["org_admin"],
+    password: "correct horse battery staple"
+  });
+
+  const login = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: "secure-clinic",
+    loginId: "admin",
+    password: "correct horse battery staple"
+  }, {}, { env: "production" });
+
+  assert.equal(login.statusCode, 200);
+  assert.ok(login.headers["set-cookie"].every((header) => header.includes("Secure")));
+  assert.ok(login.headers["set-cookie"].every((header) => header.includes("SameSite=Lax")));
+});
+
+test("allows explicit local insecure cookie override for local development", async () => {
+  const store = createTestStore();
+  const createdOrg = await request(store, "POST", "/v1/organizations", {
+    organizationCode: "Local Cookie Clinic",
+    displayName: "Local Cookie Clinic"
+  });
+  const orgId = createdOrg.body.organization.orgId;
+
+  await request(store, "POST", `/v1/organizations/${orgId}/members`, {
+    loginId: "Admin",
+    displayName: "Admin",
+    globalRoles: ["org_admin"],
+    password: "correct horse battery staple"
+  });
+
+  const login = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: "local-cookie-clinic",
+    loginId: "admin",
+    password: "correct horse battery staple"
+  }, {}, { env: "production", secureCookies: false });
+
+  assert.equal(login.statusCode, 200);
+  assert.ok(login.headers["set-cookie"].every((header) => !header.includes("Secure")));
+});
+
 test("requires MFA code after enrollment", async () => {
   const store = createTestStore();
   const createdOrg = await request(store, "POST", "/v1/organizations", {
@@ -484,12 +535,13 @@ function request(store, method, path, body, headers = {}, options = {}) {
     body,
     headers,
     store,
-    env: "test",
+    env: options.env || "test",
     projectId: "medical-core-stg",
     region: "asia-northeast1",
     startedAt: new Date("2026-05-27T00:00:00.000Z"),
     now: new Date("2026-05-27T00:00:00.000Z"),
     sessionSecret: "test-session-secret",
+    secureCookies: options.secureCookies,
     loginRateLimit: options.loginRateLimit,
     signupRateLimit: options.signupRateLimit
   });

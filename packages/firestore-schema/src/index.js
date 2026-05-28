@@ -87,6 +87,10 @@ export function auditEventPath(orgId, eventId) {
   return orgDocPath(orgId, collections.auditEvents, eventId, "eventId");
 }
 
+export function dataRequestPath(orgId, requestId) {
+  return orgDocPath(orgId, collections.dataRequests, requestId, "requestId");
+}
+
 export function chartingEncounterPath(orgId, encounterId) {
   return orgDocPath(orgId, collections.chartingEncounters, encounterId, "encounterId");
 }

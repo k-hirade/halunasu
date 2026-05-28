@@ -671,9 +671,15 @@ function sessionOptions(input) {
 
 function cookieOptions(input) {
   return {
-    secure: Boolean(input.secureCookies),
+    secure: input.secureCookies === undefined
+      ? secureCookiesDefault(input.env)
+      : Boolean(input.secureCookies),
     ttlSeconds: input.sessionTtlSeconds
   };
+}
+
+function secureCookiesDefault(env) {
+  return !["local", "test", "development"].includes(String(env || "local").toLowerCase());
 }
 
 function requiredBodyString(body = {}, field) {

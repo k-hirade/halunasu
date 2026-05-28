@@ -383,6 +383,8 @@ Exit criteria:
 
 ## P8: Security, Operations, Compliance
 
+Status: complete for local code and runbooks as of 2026-05-28. No logging sinks, scheduled backups, Cloud Run deploys, GCS buckets, or new secrets were created.
+
 Purpose:
 
 - Make the system safe enough for real PHI planning.

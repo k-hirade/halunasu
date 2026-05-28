@@ -13,5 +13,6 @@ Packages:
 - `referral-contracts`
 - `referral-core`
 - `product-boundaries`
+- `security-boundaries`
 - `web-ui`
 - `firestore-schema`

@@ -15,6 +15,7 @@ This directory contains architecture decisions and system diagrams for the Halun
 - [009 P5 Fee Migration Runbook](009-p5-fee-migration-runbook.md)
 - [010 P6 Referral Foundation Runbook](010-p6-referral-foundation-runbook.md)
 - [011 P7 Product Boundaries](011-p7-product-boundaries.md)
+- [012 P8 Security Operations Compliance](012-p8-security-operations-compliance.md)
 
 ## Reading Order
 
@@ -29,3 +30,4 @@ This directory contains architecture decisions and system diagrams for the Halun
 9. Use the P5 fee migration runbook to verify the Platform-backed fee boundary.
 10. Use the P6 referral foundation runbook to verify the Platform-backed referral boundary.
 11. Use the P7 product boundaries document to keep product integration explicit and auditable.
+12. Use the P8 security operations compliance runbook before any real PHI or customer onboarding.

@@ -6,6 +6,7 @@ import {
   memberSnapshot,
   normalizeOrganizationCode,
   validateCreateAuditEventInput,
+  validateCreateDataRequestInput,
   validateCreateDepartmentInput,
   validateCreateFacilityInput,
   patientSnapshot,
@@ -16,6 +17,7 @@ import {
   validateLoginInput,
   validatePatchMemberInput,
   validatePatchOrganizationInput,
+  validatePatchDataRequestInput,
   validatePatchPatientInput,
   validateSetupAdminPasswordInput,
   validateVerifySignupEmailInput,
@@ -199,6 +201,27 @@ test("validates product entitlements and audit events", () => {
   assert.equal(entitlement.productId, "charting");
   assert.equal(entitlement.startsAt, "2026-05-27T00:00:00.000Z");
   assert.deepEqual(auditEvent.safePayload.changedFields, ["displayName"]);
+});
+
+test("validates data request model for deletion and retention workflows", () => {
+  const dataRequest = validateCreateDataRequestInput({
+    requestType: "deletion",
+    requesterMemberId: "mem_123",
+    subjectPatientId: "pat_123",
+    productIds: ["charting", "unknown", "fee"],
+    reason: "patient requested deletion"
+  });
+  const patch = validatePatchDataRequestInput({
+    status: "completed",
+    assignedMemberId: "mem_admin",
+    completedAt: "2026-05-28T00:00:00.000Z"
+  });
+
+  assert.equal(dataRequest.requestType, "deletion");
+  assert.deepEqual(dataRequest.productIds, ["charting", "fee"]);
+  assert.equal(dataRequest.status, "submitted");
+  assert.equal(patch.completedAt, "2026-05-28T00:00:00.000Z");
+  assert.throws(() => validateCreateDataRequestInput({ requestType: "erase" }), /requestType/);
 });
 
 test("rejects invalid patient birth date", () => {

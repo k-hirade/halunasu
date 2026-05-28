@@ -13,6 +13,8 @@ export const patientStatuses = Object.freeze(["active", "merged", "inactive"]);
 export const patientSexes = Object.freeze(["male", "female", "other", "unknown"]);
 export const productEntitlementStatuses = Object.freeze(["enabled", "trialing", "disabled"]);
 export const signupApplicationStatuses = Object.freeze(["submitted", "email_verified", "provisioned", "rejected"]);
+export const dataRequestTypes = Object.freeze(["access", "export", "deletion", "correction"]);
+export const dataRequestStatuses = Object.freeze(["submitted", "reviewing", "completed", "rejected", "cancelled"]);
 
 export function normalizeOrganizationCode(value) {
   return requiredString(value, "organizationCode")
@@ -274,6 +276,29 @@ export function validateCreateAuditEventInput(input = {}) {
   };
 }
 
+export function validateCreateDataRequestInput(input = {}) {
+  return {
+    requestType: optionalEnum(input.requestType, dataRequestTypes, "requestType") || "deletion",
+    requesterMemberId: optionalString(input.requesterMemberId),
+    requesterEmail: optionalString(input.requesterEmail),
+    subjectPatientId: optionalString(input.subjectPatientId),
+    productIds: normalizeProductIds(input.productIds || input.requestedProducts),
+    reason: optionalString(input.reason),
+    status: optionalEnum(input.status, dataRequestStatuses, "status") || "submitted",
+    safePayload: isPlainObject(input.safePayload) ? input.safePayload : {}
+  };
+}
+
+export function validatePatchDataRequestInput(input = {}) {
+  return compactObject({
+    status: hasOwn(input, "status") ? optionalEnum(input.status, dataRequestStatuses, "status") : undefined,
+    assignedMemberId: hasOwn(input, "assignedMemberId") ? optionalString(input.assignedMemberId) : undefined,
+    completedAt: hasOwn(input, "completedAt") ? optionalDateTime(input.completedAt, "completedAt") : undefined,
+    rejectionReason: hasOwn(input, "rejectionReason") ? optionalString(input.rejectionReason) : undefined,
+    safePayload: hasOwn(input, "safePayload") && isPlainObject(input.safePayload) ? input.safePayload : undefined
+  });
+}
+
 export function patientSnapshot(patient, snapshotAt = new Date()) {
   return {
     patientId: requiredString(patient.patientId, "patientId"),
@@ -445,6 +470,10 @@ function normalizeProductRoles(value) {
 function normalizeRequestedProducts(value) {
   const products = normalizeStringArray(value).filter((productId) => Object.values(productIds).includes(productId));
   return products.length > 0 ? products : [productIds.charting];
+}
+
+function normalizeProductIds(value) {
+  return normalizeStringArray(value).filter((productId) => Object.values(productIds).includes(productId));
 }
 
 function isPlainObject(value) {

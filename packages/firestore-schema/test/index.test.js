@@ -4,6 +4,7 @@ import {
   collections,
   auditEventPath,
   chartingEncounterPath,
+  dataRequestPath,
   departmentPath,
   facilityPath,
   feeSessionPath,
@@ -30,6 +31,10 @@ test("builds platform document paths", () => {
     "organizations/org_123/product_entitlements/charting"
   );
   assert.equal(auditEventPath("org_123", "aud_456"), "organizations/org_123/audit_events/aud_456");
+  assert.equal(
+    dataRequestPath("org_123", "drq_456"),
+    "organizations/org_123/data_requests/drq_456"
+  );
   assert.equal(
     chartingEncounterPath("org_123", "enc_456"),
     "organizations/org_123/charting_encounters/enc_456"
