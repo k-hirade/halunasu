@@ -12,8 +12,9 @@ The target is a new monorepo and new GCP environment:
 
 - New repository: `halunasu`
 - New core GCP projects: `medical-core-stg` and `medical-core-497610`
+- New product GCP projects: `halunasu-charting-*`, `halunasu-fee-*`, and `halunasu-referral-*`
 - Shared Platform/Core data layer
-- Product services remain separated by responsibility
+- Product services and product data remain separated by responsibility
 - Firestore remains the primary operational store for the initial phase
 - Cloud Storage holds large clinical artifacts
 - LP never writes directly to the database
@@ -224,18 +225,33 @@ flowchart LR
     NRW["referral-web"]
   end
 
-  subgraph GCPStg["GCP: medical-core-stg"]
+  subgraph CoreGCP["Core GCP: medical-core-stg / medical-core-497610"]
     CPA["Cloud Run<br/>platform-api"]
+    FS["Firestore<br/>Core master data"]
+    SEC["Core Secret Manager"]
+  end
+
+  subgraph ChartingGCP["Charting GCP: halunasu-charting-stg / prod"]
     CCA["Cloud Run<br/>charting-api"]
     CCF["Cloud Run<br/>charting-finalize"]
-    CFA["Cloud Run<br/>fee-api"]
-    CRA["Cloud Run<br/>referral-api"]
     CT["Cloud Tasks"]
-    FS["Firestore<br/>platform + product metadata"]
-    GCS["Cloud Storage<br/>product artifact buckets"]
-    SEC["Secret Manager"]
-    AR["Artifact Registry"]
-    LOG["Cloud Logging"]
+    CFS["Firestore<br/>encounters / SOAP metadata"]
+    CGCS["Cloud Storage<br/>audio / transcripts"]
+    CSEC["Charting secrets"]
+  end
+
+  subgraph FeeGCP["Fee GCP: halunasu-fee-stg / prod"]
+    CFA["Cloud Run<br/>fee-api"]
+    FFS["Firestore<br/>fee sessions / results"]
+    FGCS["Cloud Storage<br/>fee artifacts"]
+    FSEC["Fee secrets"]
+  end
+
+  subgraph ReferralGCP["Referral GCP: halunasu-referral-stg / prod"]
+    CRA["Cloud Run<br/>referral-api"]
+    RFS["Firestore<br/>drafts / PDF metadata"]
+    RGCS["Cloud Storage<br/>PDFs / attachments"]
+    RSEC["Referral secrets"]
   end
 
   D1 --> NLP
@@ -253,36 +269,41 @@ flowchart LR
   NRW --> CRA
 
   CPA --> FS
-  CCA --> FS
-  CFA --> FS
-  CRA --> FS
+  CCA -->|"session / patient refs"| CPA
+  CFA -->|"session / patient refs"| CPA
+  CRA -->|"session / patient refs"| CPA
 
-  CCA --> GCS
-  CCF --> GCS
-  CFA --> GCS
-  CRA --> GCS
+  CCA --> CFS
+  CCF --> CFS
+  CFA --> FFS
+  CRA --> RFS
+
+  CCA --> CGCS
+  CCF --> CGCS
+  CFA --> FGCS
+  CRA --> RGCS
 
   CCA --> CT
-  CFA --> CT
-  CRA --> CT
   CT --> CCF
 
   CPA --> SEC
-  CCA --> SEC
-  CFA --> SEC
-  CRA --> SEC
-  CPA --> LOG
-  CCA --> LOG
-  CCF --> LOG
-  CFA --> LOG
-  CRA --> LOG
+  CCA --> CSEC
+  CCF --> CSEC
+  CFA --> FSEC
+  CRA --> RSEC
 ```
 
-Production mirrors staging:
+Production mirrors staging by product boundary:
 
 ```text
-medical-core-stg    -> staging, preview, synthetic/non-production PHI policy
-medical-core-497610 -> production/core, real PHI, stricter IAM, backup, retention, audit
+medical-core-stg        -> Core staging
+medical-core-497610     -> Core production
+halunasu-charting-stg   -> Charting staging
+halunasu-charting-prod  -> Charting production
+halunasu-fee-stg        -> Fee staging
+halunasu-fee-prod       -> Fee production
+halunasu-referral-stg   -> Referral staging
+halunasu-referral-prod  -> Referral production
 ```
 
 Initial cost controls:
@@ -294,11 +315,11 @@ Initial cost controls:
 - No GKE, VM, Cloud SQL, NAT, or external Load Balancer in the initial phase
 - Cloud Storage lifecycle policies from the start
 
-## TOBE: Shared Platform DB Boundary
+## TOBE: Shared Platform And Product DB Boundary
 
 ```mermaid
 flowchart TB
-  subgraph Platform["Shared Platform/Core collections"]
+  subgraph Platform["Core project Firestore"]
     ORG2["organizations/{orgId}"]
     OC2["organization_codes/{organizationCode}"]
     LI2["login_identities/{organizationCode:loginId}"]
@@ -311,21 +332,21 @@ flowchart TB
     AUD2["organizations/{orgId}/audit_events/{eventId}"]
   end
 
-  subgraph Charting["Charting product data"]
+  subgraph Charting["Charting project Firestore / GCS"]
     CENC["organizations/{orgId}/charting_encounters/{encounterId}"]
     CTURN["turns / transcript refs"]
     SOAP["soap_versions"]
     AUDIO["GCS audio / transcript artifacts"]
   end
 
-  subgraph Fee["Fee calculation product data"]
+  subgraph Fee["Fee project Firestore / GCS"]
     FSES["organizations/{orgId}/fee_sessions/{feeSessionId}"]
     JOBS["jobs / extractions / review_items"]
     REC["receipt draft metadata"]
     FART["GCS calculation artifacts / masters"]
   end
 
-  subgraph Referral["Referral product data"]
+  subgraph Referral["Referral project Firestore / GCS"]
     REF["organizations/{orgId}/referrals/{referralId}"]
     RDRAFT["drafts / workflow status"]
     RPDF["GCS PDFs / attachments"]
@@ -347,6 +368,7 @@ Rule:
 
 - Product records store `orgId`, `patientId`, and a product-local snapshot.
 - Product services do not read sibling product records directly.
+- Product services call Platform/Core APIs for session, entitlement, and current master data.
 - Cross-product reuse, such as turning a SOAP note into a referral draft, must be an explicit user action through an API, not an implicit database dependency.
 
 ## TOBE: Firestore Entity Relationship

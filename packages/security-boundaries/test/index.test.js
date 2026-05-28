@@ -176,6 +176,28 @@ test("P9 old-environment scripts do not create GCP resources by default", () => 
   }
 });
 
+test("P10 project readiness preflight remains read-only", () => {
+  const source = readText(join(root, "scripts", "p10_project_split_preflight.sh"));
+  const forbidden = [
+    /gcloud\s+projects\s+create/,
+    /gcloud\s+projects\s+delete/,
+    /gcloud\s+services\s+enable/,
+    /gcloud\s+billing\s+projects\s+link/,
+    /gcloud\s+run\s+deploy/,
+    /gcloud\s+builds\s+submit/,
+    /gcloud\s+firestore\s+databases\s+create/,
+    /gcloud\s+firestore\s+export/,
+    /gcloud\s+storage\s+buckets\s+create/,
+    /gcloud\s+secrets\s+create/,
+    /terraform\s+apply/
+  ];
+
+  assert.match(source, /read-only preflight/, "P10 project preflight must be read-only");
+  for (const pattern of forbidden) {
+    assert.equal(pattern.test(source), false, `P10 preflight must not contain ${pattern}`);
+  }
+});
+
 function readDirectoryText(path, pattern) {
   return walkFiles(path)
     .filter((file) => pattern.test(file))

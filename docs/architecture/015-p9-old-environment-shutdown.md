@@ -18,6 +18,15 @@ The old environments are:
 
 The replacement path is the `halunasu` monorepo with Platform/Core plus product-specific services and apps.
 
+After the project rebuild, Core and product-owned data are separated by GCP project:
+
+| Boundary | Staging project | Production project |
+| --- | --- | --- |
+| Core/Platform | `medical-core-stg` | `medical-core-497610` |
+| Charting | `halunasu-charting-stg` | `halunasu-charting-prod` |
+| Fee calculation | `halunasu-fee-stg` | `halunasu-fee-prod` |
+| Referral | `halunasu-referral-stg` | `halunasu-referral-prod` |
+
 ## Current Decision
 
 No Firestore export, scheduled backup, GCS backup bucket, or Terraform workflow is created in P9.
@@ -75,6 +84,38 @@ Applied on 2026-05-28 to old staging projects only.
 
 No `minScale` annotation means the Cloud Run service idles at zero instances. The freeze did not create services, projects, databases, secrets, buckets, images, or backup artifacts. It did create the Cloud Run config revisions listed above.
 
+## Project Rebuild
+
+Executed on 2026-05-28.
+
+Deleted old projects by moving them to `DELETE_REQUESTED`:
+
+| Old project | Final state |
+| --- | --- |
+| `medical-stg-493105` | `DELETE_REQUESTED` |
+| `medical-fee-calculation-stg` | `DELETE_REQUESTED` |
+| `medical-492407` | `DELETE_REQUESTED` |
+| `medical-fee-calculation` | `DELETE_REQUESTED` |
+
+Undo is available for a limited period with:
+
+```bash
+gcloud projects undelete PROJECT_ID
+```
+
+Created new product project shells:
+
+| New project | Project number | Billing |
+| --- | --- | --- |
+| `halunasu-charting-stg` | `736866031020` | disabled |
+| `halunasu-charting-prod` | `589293200640` | disabled |
+| `halunasu-fee-stg` | `1048063060603` | disabled |
+| `halunasu-fee-prod` | `394223136118` | disabled |
+| `halunasu-referral-stg` | `903620057515` | disabled |
+| `halunasu-referral-prod` | `252775147719` | disabled |
+
+These are project shells only. Do not enable billing or product runtime APIs until an explicit P10 step requires a controlled smoke.
+
 ## Runbook
 
 ### 1. Verify Replacement
@@ -102,11 +143,11 @@ Optional local evidence file:
 ./scripts/p9_old_environment_inventory.sh | tee /tmp/halunasu-p9-old-environment-inventory.txt
 ```
 
-This is the P9 backup substitute while there are no customers: metadata evidence plus retained old projects, without storage export cost.
+This was the P9 backup substitute while there were no customers: metadata evidence plus the temporary undelete window, without storage export cost.
 
-### 3. Dry-Run Old Cloud Run Freeze
+### 3. Old Cloud Run Freeze
 
-Run:
+Before project deletion, run:
 
 ```bash
 ./scripts/p9_old_environment_shutdown.sh
@@ -131,7 +172,7 @@ P9_OLD_SERVICES="medical-finalize medical-gateway" ./scripts/p9_old_environment_
 
 ### 4. Apply Existing-Service Mutations Only
 
-Apply only after the dry-run output is reviewed:
+Apply only after the dry-run output is reviewed and only before project deletion:
 
 ```bash
 P9_ALLOW_MUTATION=yes ./scripts/p9_old_environment_shutdown.sh --apply
@@ -157,19 +198,19 @@ Do not archive until the current local clean states are pushed or intentionally 
 - `halunasu-fee-calculation`
 - `medical-lp`
 
-### 6. Retention Window
+### 6. Project Deletion Window
 
-Recommended default:
+Current state:
 
-- keep old projects until 2026-06-11
-- do not delete projects before confirming no secrets, docs, examples, or fixtures are still needed
-- after the window, delete old staging first, then old production placeholders
+- old projects are already in `DELETE_REQUESTED`
+- use `gcloud projects undelete PROJECT_ID` only if a missing secret, doc, fixture, or rollback need is discovered during the limited undelete window
+- do not recreate resources inside old project IDs
 
 ## Exit Criteria
 
 - Replacement Core/Admin/E2E checks pass.
 - Read-only inventory can be captured without creating resources.
-- Old staging Cloud Run shutdown can be dry-run and then applied with explicit confirmation.
+- Old staging Cloud Run shutdown can be dry-run and then applied with explicit confirmation before deletion.
 - Backup/export decision is documented.
 - Active development stays in `halunasu`.
 - Old project deletion/retention decision is documented.

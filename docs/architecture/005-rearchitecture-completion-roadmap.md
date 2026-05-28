@@ -477,7 +477,7 @@ Exit criteria:
 
 ## P9: Old Environment Shutdown
 
-Status: complete as of 2026-05-28. No new GCP services, buckets, exports, schedulers, queues, secrets, image builds, Terraform applies, project deletions, or backup resources were created. Old staging Cloud Run freeze was applied to existing services only, which created config revisions; old production placeholders are retained.
+Status: complete as of 2026-05-28. Old historical projects were moved to `DELETE_REQUESTED`. New product project shells were created with billing disabled. No buckets, exports, schedulers, queues, secrets, image builds, Terraform applies, or backup resources were created.
 
 Purpose:
 
@@ -501,6 +501,8 @@ Implemented:
 - `scripts/p9_old_environment_shutdown.sh` for dry-run-first Cloud Run freeze commands.
 - Backup/export decision: no backup resource or Firestore export while there are no customers.
 - Guardrail tests prevent P9 scripts from introducing resource creation commands.
+- Old projects deleted: `medical-stg-493105`, `medical-fee-calculation-stg`, `medical-492407`, `medical-fee-calculation`.
+- New billing-disabled project shells created: `halunasu-charting-stg`, `halunasu-charting-prod`, `halunasu-fee-stg`, `halunasu-fee-prod`, `halunasu-referral-stg`, `halunasu-referral-prod`.
 
 Cost notes:
 
@@ -524,6 +526,9 @@ Purpose:
 Tasks:
 
 - Create production env vars for `medical-core-497610`.
+- Link billing only for the next controlled deploy target.
+- Enable only the APIs needed by that target project.
+- Define cross-project IAM between Core and the selected product project.
 - Confirm production IAM.
 - Enable scheduled backup only when production PHI is near.
 - Confirm domain strategy.

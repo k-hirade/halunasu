@@ -1,33 +1,47 @@
 # GCP Environment Plan
 
-Status: draft  
-Date: 2026-05-27  
+Status: active
+Date: 2026-05-28
 Owner: Halunasu platform
 
 ## Purpose
 
 This document defines the first GCP target environment for Halunasu.
 
-Because there are no current customers, the target is a clean core environment instead of expanding the historical product projects.
+Because there are no current customers, the target is a clean Core plus product-project environment instead of expanding the historical product projects.
 
 ## Decision
 
-Use the newly created core GCP projects:
+Use Core projects for shared Platform data and one project pair per product for product-owned PHI and artifacts:
 
 ```text
 medical-core-stg
 medical-core-497610
+halunasu-charting-stg
+halunasu-charting-prod
+halunasu-fee-stg
+halunasu-fee-prod
+halunasu-referral-stg
+halunasu-referral-prod
 ```
 
 Current role:
 
 | Project display/name | Project ID / number | Role |
 | --- | --- | --- |
-| `medical-core-stg` | `medical-core-stg` | New staging core/runtime project |
-| `medical-core` | `medical-core-497610` | New production/core runtime project |
+| `medical-core-stg` | `medical-core-stg` / `866813206652` | Staging Core/Platform project |
+| `medical-core` | `medical-core-497610` / `387009254318` | Production Core/Platform project |
+| `halunasu-charting-stg` | `halunasu-charting-stg` / `736866031020` | Staging charting project |
+| `halunasu-charting-prod` | `halunasu-charting-prod` / `589293200640` | Production charting project |
+| `halunasu-fee-stg` | `halunasu-fee-stg` / `1048063060603` | Staging fee calculation project |
+| `halunasu-fee-prod` | `halunasu-fee-prod` / `394223136118` | Production fee calculation project |
+| `halunasu-referral-stg` | `halunasu-referral-stg` / `903620057515` | Staging referral project |
+| `halunasu-referral-prod` | `halunasu-referral-prod` / `252775147719` | Production referral project |
 | `halunasu.com` | `634072823240` | Domain-related GCP entry/project; not the primary runtime project |
 
-Do not continue product expansion in the historical product projects:
+The product projects are currently project shells with billing disabled. Do not enable billing, Firestore, Cloud Run, Secret Manager, Artifact Registry, or Storage until a specific staging/prod smoke requires it.
+
+Do not continue product expansion in the historical product projects. They were deleted on 2026-05-28 and are in `DELETE_REQUESTED` state:
 
 ```text
 medical-stg-493105
@@ -36,7 +50,7 @@ medical-fee-calculation
 medical-fee-calculation-stg
 ```
 
-Those projects become migration sources and later shutdown/archive candidates.
+They can be undeleted for a limited rollback window, but they are no longer migration targets.
 
 ## Environment Topology
 
@@ -49,31 +63,41 @@ flowchart TB
     OPENAI["OpenAI / STT / LLM providers"]
   end
 
-  subgraph GCP["GCP project: medical-core-stg or medical-core-497610"]
-    AR["Artifact Registry"]
-    SM["Secret Manager"]
-    FS["Firestore Native"]
+  subgraph CoreGCP["Core GCP: medical-core-stg or medical-core-497610"]
+    PA["Cloud Run<br/>platform-api"]
+    FS["Core Firestore"]
+    SM["Core Secret Manager"]
     LOG["Cloud Logging / Monitoring"]
-    TASKS["Cloud Tasks"]
+  end
 
-    subgraph Run["Cloud Run"]
-      PA["platform-api"]
-      CA["charting-api"]
-      CF["charting-finalize"]
-      FA["fee-api"]
-      RA["referral-api"]
-    end
+  subgraph ChartingGCP["Charting GCP: halunasu-charting-stg or halunasu-charting-prod"]
+    CA["Cloud Run<br/>charting-api"]
+    CF["Cloud Run<br/>charting-finalize"]
+    CT["Cloud Tasks"]
+    CFS["Charting Firestore"]
+    CGCS["Charting Cloud Storage"]
+    CSM["Charting Secret Manager"]
+  end
 
-    subgraph GCS["Cloud Storage"]
-      B1["charting artifacts"]
-      B2["fee artifacts"]
-      B3["referral artifacts"]
-      B4["terraform state"]
-    end
+  subgraph FeeGCP["Fee GCP: halunasu-fee-stg or halunasu-fee-prod"]
+    FA["Cloud Run<br/>fee-api"]
+    FFS["Fee Firestore"]
+    FGCS["Fee Cloud Storage"]
+    FSM["Fee Secret Manager"]
+  end
+
+  subgraph ReferralGCP["Referral GCP: halunasu-referral-stg or halunasu-referral-prod"]
+    RA["Cloud Run<br/>referral-api"]
+    RFS["Referral Firestore"]
+    RGCS["Referral Cloud Storage"]
+    RSM["Referral Secret Manager"]
   end
 
   DNS --> NET
-  DNS --> Run
+  DNS --> PA
+  DNS --> CA
+  DNS --> FA
+  DNS --> RA
 
   NET --> PA
   NET --> CA
@@ -81,26 +105,28 @@ flowchart TB
   NET --> RA
 
   PA --> FS
-  CA --> FS
-  FA --> FS
-  RA --> FS
-  CF --> FS
+  CA -->|"Platform session / patient refs"| PA
+  FA -->|"Platform session / patient refs"| PA
+  RA -->|"Platform session / patient refs"| PA
 
-  CA --> B1
-  CF --> B1
-  FA --> B2
-  RA --> B3
+  CA --> CFS
+  CF --> CFS
+  FA --> FFS
+  RA --> RFS
 
-  CA --> TASKS
-  FA --> TASKS
-  RA --> TASKS
-  TASKS --> CF
+  CA --> CGCS
+  CF --> CGCS
+  FA --> FGCS
+  RA --> RGCS
+
+  CA --> CT
+  CT --> CF
 
   PA --> SM
-  CA --> SM
-  FA --> SM
-  RA --> SM
-  CF --> SM
+  CA --> CSM
+  CF --> CSM
+  FA --> FSM
+  RA --> RSM
 
   PA --> STRIPE
   CA --> OPENAI
@@ -159,13 +185,13 @@ Important first step:
 
 ## Cloud Run Services
 
-| Service | Runtime | Source | Public ingress | Auth model |
-| --- | --- | --- | --- | --- |
-| `platform-api` | Node.js | `services/platform-api` | yes | App session, CSRF, internal service auth |
-| `charting-api` | Node.js | `services/charting-api` | yes | Platform session required |
-| `charting-finalize` | Node.js | `services/charting-finalize` | internal/task-only preferred | Cloud Tasks OIDC |
-| `fee-api` | Python/FastAPI | `services/fee-api` + `python/medical_fee_calculation` | yes | Platform session required |
-| `referral-api` | Node.js or Python | `services/referral-api` | yes | Platform session required |
+| Service | Runtime | Source | Staging project | Production project | Auth model |
+| --- | --- | --- | --- | --- | --- |
+| `platform-api` | Node.js | `services/platform-api` | `medical-core-stg` | `medical-core-497610` | App session, CSRF, internal service auth |
+| `charting-api` | Node.js | `services/charting-api` | `halunasu-charting-stg` | `halunasu-charting-prod` | Platform session required |
+| `charting-finalize` | Node.js | `services/charting-finalize` | `halunasu-charting-stg` | `halunasu-charting-prod` | Cloud Tasks OIDC |
+| `fee-api` | Node.js + Python package | `services/fee-api` + `python/medical_fee_calculation` | `halunasu-fee-stg` | `halunasu-fee-prod` | Platform session required |
+| `referral-api` | Node.js | `services/referral-api` | `halunasu-referral-stg` | `halunasu-referral-prod` | Platform session required |
 
 Initial staging settings:
 
@@ -193,15 +219,15 @@ Increase production min instances only after latency requirements justify the co
 
 Use one service account per service.
 
-| Service account | Used by | Purpose |
-| --- | --- | --- |
-| `halunasu-platform-api@PROJECT.iam.gserviceaccount.com` | `platform-api` | Platform DB, signup, billing, auth |
-| `halunasu-charting-api@PROJECT.iam.gserviceaccount.com` | `charting-api` | Charting DB, charting GCS, task enqueue |
-| `halunasu-charting-finalize@PROJECT.iam.gserviceaccount.com` | `charting-finalize` | Final transcript/SOAP worker |
-| `halunasu-fee-api@PROJECT.iam.gserviceaccount.com` | `fee-api` | Fee DB, fee GCS, masters |
-| `halunasu-referral-api@PROJECT.iam.gserviceaccount.com` | `referral-api` | Referral DB, referral GCS |
-| `halunasu-cloud-tasks@PROJECT.iam.gserviceaccount.com` | Cloud Tasks | OIDC task invocation |
-| `halunasu-deployer@PROJECT.iam.gserviceaccount.com` | CI/CD | Build/deploy only |
+| Service account | Project boundary | Used by | Purpose |
+| --- | --- | --- | --- |
+| `halunasu-platform-api@PROJECT.iam.gserviceaccount.com` | Core | `platform-api` | Platform DB, signup, billing, auth |
+| `halunasu-charting-api@PROJECT.iam.gserviceaccount.com` | Charting | `charting-api` | Charting DB, charting GCS, task enqueue |
+| `halunasu-charting-finalize@PROJECT.iam.gserviceaccount.com` | Charting | `charting-finalize` | Final transcript/SOAP worker |
+| `halunasu-fee-api@PROJECT.iam.gserviceaccount.com` | Fee | `fee-api` | Fee DB, fee GCS, masters |
+| `halunasu-referral-api@PROJECT.iam.gserviceaccount.com` | Referral | `referral-api` | Referral DB, referral GCS |
+| `halunasu-cloud-tasks@PROJECT.iam.gserviceaccount.com` | Charting initially | Cloud Tasks | OIDC task invocation |
+| `halunasu-deployer@PROJECT.iam.gserviceaccount.com` | Each active project | CI/CD | Build/deploy only |
 
 ## IAM Plan
 
@@ -222,22 +248,24 @@ Avoid broad owner/editor roles for runtime service accounts.
 
 | Bucket | Principals | Role |
 | --- | --- | --- |
-| `medical-core-stg-charting-artifacts` / `medical-core-497610-charting-artifacts` | charting-api, charting-finalize | `roles/storage.objectUser` |
-| `medical-core-stg-fee-artifacts` / `medical-core-497610-fee-artifacts` | fee-api | `roles/storage.objectUser` |
-| `medical-core-stg-referral-artifacts` / `medical-core-497610-referral-artifacts` | referral-api | `roles/storage.objectUser` |
+| `halunasu-charting-*-artifacts` | charting-api, charting-finalize | `roles/storage.objectUser` |
+| `halunasu-fee-*-artifacts` | fee-api | `roles/storage.objectUser` |
+| `halunasu-referral-*-artifacts` | referral-api | `roles/storage.objectUser` |
 | `medical-core-stg-tfstate` / `medical-core-497610-tfstate` | Terraform/deployer identity | minimal state access |
 
 Do not grant fee-api access to charting audio by default.
 
 ## Firestore
 
-One Firestore Native database per environment.
+One Firestore Native database per active project when that project is actually deployed.
 
 ```text
 database: (default)
 location: asia-northeast1
 mode: Native
 ```
+
+Core Firestore owns shared identifiers and master data. Product Firestore owns product-specific PHI and artifact metadata. Product records store `orgId`, `patientId`, and snapshots from Core; they do not duplicate Core as the source of truth.
 
 Client direct access:
 

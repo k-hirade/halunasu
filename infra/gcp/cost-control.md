@@ -6,7 +6,7 @@ Owner: Halunasu platform
 
 ## Goal
 
-Keep `medical-core-stg` as close to zero cost as possible while the product is still pre-customer.
+Keep all Halunasu projects as close to zero cost as possible while the product is still pre-customer.
 
 No command in this repository should create paid infrastructure by default. Scripts must default to dry-run or require an explicit `--apply`.
 
@@ -24,6 +24,7 @@ No command in this repository should create paid infrastructure by default. Scri
 - Do not create always-on Cloud Run instances.
 - Do not enable Cloud Run CPU always allocated.
 - Do not add Cloud Run minimum instances above `0`.
+- Do not enable billing on product projects until a specific staging or production smoke requires it.
 - Do not add production secrets or third-party API keys until a route needs them.
 - Do not allow unauthenticated public access until app-level auth is implemented.
 - Do not run Terraform apply for now.
@@ -39,6 +40,19 @@ Allowed only when explicitly needed:
 - Minimal service account for `platform-api`.
 
 Even these should not be created automatically by default.
+
+Product project shells exist with billing disabled:
+
+```text
+halunasu-charting-stg
+halunasu-charting-prod
+halunasu-fee-stg
+halunasu-fee-prod
+halunasu-referral-stg
+halunasu-referral-prod
+```
+
+Do not link billing or enable runtime APIs in these projects until P10 selects one controlled smoke target.
 
 ## Platform API Staging Settings
 

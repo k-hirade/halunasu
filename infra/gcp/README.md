@@ -6,8 +6,16 @@ Cost control comes first. Read [cost-control.md](cost-control.md) before creatin
 
 Target projects:
 
-- Staging: `medical-core-stg`
-- Production/core: `medical-core-497610`
+- Core staging: `medical-core-stg`
+- Core production: `medical-core-497610`
+- Charting staging: `halunasu-charting-stg`
+- Charting production: `halunasu-charting-prod`
+- Fee staging: `halunasu-fee-stg`
+- Fee production: `halunasu-fee-prod`
+- Referral staging: `halunasu-referral-stg`
+- Referral production: `halunasu-referral-prod`
+
+Product projects are currently billing-disabled shells. Keep them that way until P10 intentionally enables a specific service path.
 
 Potential future modules:
 
