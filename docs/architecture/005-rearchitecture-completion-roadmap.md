@@ -477,6 +477,8 @@ Exit criteria:
 
 ## P9: Old Environment Shutdown
 
+Status: complete as of 2026-05-28. No new GCP services, buckets, exports, schedulers, queues, secrets, image builds, Terraform applies, project deletions, or backup resources were created. Old staging Cloud Run freeze was applied to existing services only, which created config revisions; old production placeholders are retained.
+
 Purpose:
 
 - Stop paying for and developing against historical staging paths.
@@ -484,23 +486,34 @@ Purpose:
 Tasks:
 
 - Confirm replacement demo flow works in `halunasu`.
-- Stop old Cloud Run services that are no longer needed.
-- Disable old Netlify auto deploys or add banners/redirects.
-- Freeze old Firestore writes.
-- Export only non-sensitive debug fixtures if useful.
+- Capture read-only inventory for old projects.
+- Stop old Cloud Run services that are no longer needed through an explicit dry-run/apply script.
+- Disable old Netlify auto deploys or add banners/redirects outside this repo.
+- Freeze old Firestore writes by removing active app paths, not by creating backup/export infrastructure.
+- Do not export data unless real PHI or irreplaceable debug fixtures are found.
 - Document old project resources before deletion.
 - Archive old repos after code/docs migration.
+
+Implemented:
+
+- `docs/architecture/015-p9-old-environment-shutdown.md`.
+- `scripts/p9_old_environment_inventory.sh` for read-only project inventory.
+- `scripts/p9_old_environment_shutdown.sh` for dry-run-first Cloud Run freeze commands.
+- Backup/export decision: no backup resource or Firestore export while there are no customers.
+- Guardrail tests prevent P9 scripts from introducing resource creation commands.
 
 Cost notes:
 
 - Stopping old services may reduce current spend.
 - Do not delete resources until secrets/docs/code needed for migration are copied.
+- Do not create Firestore exports, scheduled backups, or GCS buckets for P9.
 
 Exit criteria:
 
 - Active development no longer uses old repos.
 - Old staging services are stopped or clearly deprecated.
 - Old projects have documented deletion/retention decision.
+- P9 scripts default to read-only/dry-run behavior.
 
 ## P10: Production Readiness
 

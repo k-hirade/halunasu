@@ -152,6 +152,30 @@ test("audit safePayload blocks avoid obvious PHI fields", () => {
   }
 });
 
+test("P9 old-environment scripts do not create GCP resources by default", () => {
+  const inventory = readText(join(root, "scripts", "p9_old_environment_inventory.sh"));
+  const shutdown = readText(join(root, "scripts", "p9_old_environment_shutdown.sh"));
+  const combined = `${inventory}\n${shutdown}`;
+  const forbidden = [
+    /gcloud\s+services\s+enable/,
+    /gcloud\s+run\s+deploy/,
+    /gcloud\s+builds\s+submit/,
+    /gcloud\s+firestore\s+export/,
+    /gcloud\s+storage\s+buckets\s+create/,
+    /gcloud\s+secrets\s+create/,
+    /gcloud\s+tasks\s+queues\s+create/,
+    /gcloud\s+scheduler\s+jobs\s+create/,
+    /terraform\s+apply/
+  ];
+
+  assert.match(inventory, /read-only inventory/, "P9 inventory must be read-only");
+  assert.match(shutdown, /APPLY="false"/, "P9 shutdown must dry-run by default");
+  assert.match(shutdown, /P9_ALLOW_MUTATION/, "P9 shutdown apply must require explicit mutation acknowledgement");
+  for (const pattern of forbidden) {
+    assert.equal(pattern.test(combined), false, `P9 scripts must not contain ${pattern}`);
+  }
+});
+
 function readDirectoryText(path, pattern) {
   return walkFiles(path)
     .filter((file) => pattern.test(file))
