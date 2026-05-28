@@ -154,6 +154,36 @@ test("rejects invalid CSRF tokens", () => {
   );
 });
 
+test("supports environment-specific Platform cookie names", () => {
+  const { token, session } = createSignedSession({
+    orgId: "org_stg",
+    memberId: "mem_stg",
+    organizationCode: "clinic",
+    loginId: "doctor@example.com",
+    tokenVersion: 1,
+    globalRoles: [],
+    productRoles: { fee: ["admin"] },
+    csrfToken: "csrf_stg"
+  }, {
+    now: new Date("2026-05-28T00:00:00.000Z"),
+    sessionSecret: "secret"
+  });
+  const headers = {
+    cookie: `halunasu_stg_session=${encodeURIComponent(token)}; halunasu_stg_csrf=csrf_stg`,
+    "x-csrf-token": "csrf_stg"
+  };
+  const verified = verifyPlatformSessionFromHeaders(headers, {
+    now: new Date("2026-05-28T00:01:00.000Z"),
+    sessionSecret: "secret",
+    sessionCookieName: "halunasu_stg_session"
+  });
+
+  assert.equal(verified.orgId, "org_stg");
+  assert.doesNotThrow(() => requirePlatformCsrf(headers, session, {
+    csrfCookieName: "halunasu_stg_csrf"
+  }));
+});
+
 test("builds forbidden errors with status code", () => {
   const error = forbiddenError("nope");
 

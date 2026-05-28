@@ -284,7 +284,19 @@ test("allows CORS preflight for signup routes from known LP origins", async () =
 
   assert.equal(response.statusCode, 204);
   assert.equal(response.headers["access-control-allow-origin"], "http://localhost:8080");
-  assert.equal(response.headers["access-control-allow-methods"], "POST, OPTIONS");
+  assert.equal(response.headers["access-control-allow-methods"], "GET, POST, PATCH, OPTIONS");
+  assert.equal(response.headers["access-control-allow-credentials"], "true");
+});
+
+test("allows CORS preflight for authenticated app routes from planned app origins", async () => {
+  const store = createTestStore();
+  const response = await request(store, "OPTIONS", "/v1/auth/login", undefined, {
+    origin: "https://charting.stg.halunasu.com"
+  });
+
+  assert.equal(response.statusCode, 204);
+  assert.equal(response.headers["access-control-allow-origin"], "https://charting.stg.halunasu.com");
+  assert.equal(response.headers["access-control-allow-headers"], "content-type, x-csrf-token");
 });
 
 test("verifies signup email, provisions admin, and sets initial password", async () => {
@@ -401,6 +413,43 @@ test("uses secure session cookies outside local and test environments", async ()
   assert.equal(login.statusCode, 200);
   assert.ok(login.headers["set-cookie"].every((header) => header.includes("Secure")));
   assert.ok(login.headers["set-cookie"].every((header) => header.includes("SameSite=Lax")));
+});
+
+test("supports environment-specific cookie names and domains", async () => {
+  const store = createTestStore();
+  const organization = store.createOrganization({
+    organizationCode: "Staging Cookie Clinic",
+    displayName: "Staging Cookie Clinic"
+  });
+  const orgId = organization.orgId;
+
+  store.createMember(orgId, {
+    loginId: "Admin",
+    displayName: "Admin",
+    globalRoles: ["org_admin"],
+    password: "correct horse battery staple"
+  });
+
+  const cookieOptions = {
+    env: "production",
+    cookieDomain: ".stg.halunasu.com",
+    sessionCookieName: "halunasu_stg_session",
+    csrfCookieName: "halunasu_stg_csrf"
+  };
+  const login = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: "staging-cookie-clinic",
+    loginId: "admin",
+    password: "correct horse battery staple"
+  }, {}, cookieOptions);
+  const session = await request(store, "GET", "/v1/auth/session", undefined, {
+    cookie: cookieHeaderFromSetCookie(login.headers["set-cookie"])
+  }, cookieOptions);
+
+  assert.equal(login.statusCode, 200);
+  assert.ok(login.headers["set-cookie"].some((header) => header.startsWith("halunasu_stg_session=")));
+  assert.ok(login.headers["set-cookie"].some((header) => header.startsWith("halunasu_stg_csrf=")));
+  assert.ok(login.headers["set-cookie"].every((header) => header.includes("Domain=.stg.halunasu.com")));
+  assert.equal(session.statusCode, 200);
 });
 
 test("allows explicit local insecure cookie override for local development", async () => {
@@ -718,6 +767,9 @@ function request(store, method, path, body, headers = {}, options = {}) {
     now: new Date("2026-05-27T00:00:00.000Z"),
     sessionSecret: options.noSessionSecret ? undefined : "test-session-secret",
     secureCookies: options.secureCookies,
+    cookieDomain: options.cookieDomain,
+    sessionCookieName: options.sessionCookieName,
+    csrfCookieName: options.csrfCookieName,
     loginRateLimit: options.loginRateLimit,
     signupRateLimit: options.signupRateLimit
   });

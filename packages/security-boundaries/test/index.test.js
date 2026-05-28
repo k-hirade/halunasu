@@ -252,6 +252,23 @@ test("P11 runtime endpoint config points static apps at Cloud Run APIs", () => {
   assert.match(script, /replaceMetaContent/, "P11 build must inject runtime meta values");
 });
 
+test("P12 domain plan separates staging and production browser cookies", () => {
+  const domains = JSON.parse(readText(join(root, "config", "runtime-domains.json")));
+
+  assert.equal(domains.stg.cookies.domain, ".stg.halunasu.com");
+  assert.equal(domains.stg.cookies.sessionCookieName, "halunasu_stg_session");
+  assert.equal(domains.stg.cookies.csrfCookieName, "halunasu_stg_csrf");
+  assert.equal(domains.prod.cookies.domain, ".halunasu.com");
+  assert.equal(domains.prod.cookies.sessionCookieName, "halunasu_session");
+  assert.equal(domains.prod.cookies.csrfCookieName, "halunasu_csrf");
+
+  for (const env of ["stg", "prod"]) {
+    for (const url of Object.values(domains[env].api)) {
+      assert.match(url, /^https:\/\/[a-z0-9-]+(\.stg)?\.halunasu\.com$/);
+    }
+  }
+});
+
 function readDirectoryText(path, pattern) {
   return walkFiles(path)
     .filter((file) => pattern.test(file))

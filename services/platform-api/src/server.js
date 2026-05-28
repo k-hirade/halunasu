@@ -6,10 +6,10 @@ import {
 import { createOtpAuthUrl, generateMfaSecret, verifyTotpCode } from "./auth/mfa.js";
 import { verifyPassword } from "./auth/password.js";
 import {
-  CSRF_COOKIE_NAME,
   clearSessionCookieHeaders,
   createCsrfToken,
   csrfCookieHeader,
+  csrfCookieName,
   csrfTokenFromHeaders,
   parseCookies,
   sessionCookieHeader,
@@ -108,7 +108,7 @@ async function routePlatformApiRequest(input = {}) {
   const parts = url.pathname.split("/").filter(Boolean);
   const store = input.store || createPlatformStoreFromEnv();
 
-  if (method === "OPTIONS" && isSignupPath(url.pathname)) {
+  if (method === "OPTIONS" && url.pathname.startsWith("/v1/")) {
     return noContent();
   }
 
@@ -654,7 +654,7 @@ async function consumeSignupRateLimit(input, store) {
 }
 
 async function requireSession(input, store) {
-  const token = sessionTokenFromHeaders(input.headers || {});
+  const token = sessionTokenFromHeaders(input.headers || {}, cookieOptions(input));
   const session = verifySignedSession(token, sessionOptions(input));
   const identity = await store.getLoginIdentity(session.organizationCode, session.loginId);
 
@@ -737,7 +737,7 @@ async function writeAuditEvent(input, store, orgId, event) {
 
 function requireCsrf(input, session) {
   const headerToken = csrfTokenFromHeaders(input.headers || {});
-  const cookieToken = parseCookies(headerValue(input.headers || {}, "cookie"))[CSRF_COOKIE_NAME];
+  const cookieToken = parseCookies(headerValue(input.headers || {}, "cookie"))[csrfCookieName(cookieOptions(input))];
 
   if (!headerToken || !cookieToken || headerToken !== session.csrfToken || cookieToken !== session.csrfToken) {
     const error = new Error("CSRF token mismatch");
@@ -831,7 +831,10 @@ function cookieOptions(input) {
     secure: input.secureCookies === undefined
       ? secureCookiesDefault(input.env)
       : Boolean(input.secureCookies),
-    ttlSeconds: input.sessionTtlSeconds
+    ttlSeconds: input.sessionTtlSeconds,
+    domain: input.cookieDomain || process.env.APP_COOKIE_DOMAIN,
+    sessionCookieName: input.sessionCookieName || process.env.APP_SESSION_COOKIE_NAME,
+    csrfCookieName: input.csrfCookieName || process.env.APP_CSRF_COOKIE_NAME
   };
 }
 
@@ -973,32 +976,54 @@ function withCors(input, response) {
 }
 
 function corsHeaders(input) {
-  if (!isSignupPath(new URL(input.path || "/", "http://localhost").pathname)) {
+  if (!new URL(input.path || "/", "http://localhost").pathname.startsWith("/v1/")) {
     return {};
   }
 
   const origin = headerValue(input.headers || {}, "origin");
-  if (!origin || !isAllowedSignupOrigin(origin)) {
+  if (!origin || !isAllowedWebOrigin(origin)) {
     return {};
   }
 
   return {
     "access-control-allow-origin": origin,
-    "access-control-allow-methods": "POST, OPTIONS",
-    "access-control-allow-headers": "content-type",
+    "access-control-allow-credentials": "true",
+    "access-control-allow-methods": "GET, POST, PATCH, OPTIONS",
+    "access-control-allow-headers": "content-type, x-csrf-token",
     "vary": "Origin"
   };
 }
 
-function isSignupPath(pathname) {
-  return pathname.startsWith("/v1/signup/");
-}
-
-function isAllowedSignupOrigin(origin) {
-  return /^https:\/\/(www\.)?halunasu\.com$/.test(origin)
+function isAllowedWebOrigin(origin) {
+  return defaultAllowedWebOrigins().includes(origin)
+    || configuredAllowedWebOrigins().includes(origin)
     || /^https:\/\/[a-z0-9-]+--halunasu\.netlify\.app$/.test(origin)
     || /^http:\/\/localhost(:\d+)?$/.test(origin)
     || /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin);
+}
+
+function defaultAllowedWebOrigins() {
+  return [
+    "https://halunasu.com",
+    "https://www.halunasu.com",
+    "https://admin.halunasu.com",
+    "https://charting.halunasu.com",
+    "https://fee.halunasu.com",
+    "https://referral.halunasu.com",
+    "https://stg.halunasu.com",
+    "https://www.stg.halunasu.com",
+    "https://admin.stg.halunasu.com",
+    "https://charting.stg.halunasu.com",
+    "https://fee.stg.halunasu.com",
+    "https://referral.stg.halunasu.com"
+  ];
+}
+
+function configuredAllowedWebOrigins() {
+  return String(process.env.HALUNASU_ALLOWED_WEB_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 }
 
 function toErrorCode(name) {

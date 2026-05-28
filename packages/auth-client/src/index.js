@@ -8,7 +8,7 @@ const ACTIVE_ENTITLEMENT_STATUSES = Object.freeze(["enabled", "trialing"]);
 const DEFAULT_GLOBAL_PRODUCT_ROLES = Object.freeze(["org_admin", "platform_admin"]);
 
 export function verifyPlatformSessionFromHeaders(headers = {}, options = {}) {
-  const token = platformSessionTokenFromHeaders(headers);
+  const token = platformSessionTokenFromHeaders(headers, options);
   return verifySignedPlatformSession(token, options);
 }
 
@@ -38,8 +38,8 @@ export function verifySignedPlatformSession(token, options = {}) {
   return session;
 }
 
-export function requirePlatformCsrf(headers = {}, session = {}) {
-  const cookieToken = parseCookies(headerValue(headers, "cookie"))[CSRF_COOKIE_NAME];
+export function requirePlatformCsrf(headers = {}, session = {}, options = {}) {
+  const cookieToken = parseCookies(headerValue(headers, "cookie"))[csrfCookieName(options)];
   const headerToken = headerValue(headers, "x-csrf-token");
 
   if (!cookieToken || !headerToken || cookieToken !== headerToken || cookieToken !== session.csrfToken) {
@@ -50,13 +50,21 @@ export function requirePlatformCsrf(headers = {}, session = {}) {
   }
 }
 
-export function platformSessionTokenFromHeaders(headers = {}) {
+export function platformSessionTokenFromHeaders(headers = {}, options = {}) {
   const bearer = bearerTokenFromHeaders(headers);
   if (bearer) {
     return bearer;
   }
 
-  return parseCookies(headerValue(headers, "cookie"))[SESSION_COOKIE_NAME];
+  return parseCookies(headerValue(headers, "cookie"))[sessionCookieName(options)];
+}
+
+export function sessionCookieName(options = {}) {
+  return options.sessionCookieName || process.env.APP_SESSION_COOKIE_NAME || SESSION_COOKIE_NAME;
+}
+
+export function csrfCookieName(options = {}) {
+  return options.csrfCookieName || process.env.APP_CSRF_COOKIE_NAME || CSRF_COOKIE_NAME;
 }
 
 export function hasProductRole(session = {}, productId, allowedRoles = []) {
@@ -94,7 +102,8 @@ export async function requireProductContext(input = {}, options = {}) {
   const session = verifyPlatformSessionFromHeaders(input.headers || {}, {
     env: input.env,
     now: input.now,
-    sessionSecret: input.sessionSecret
+    sessionSecret: input.sessionSecret,
+    sessionCookieName: input.sessionCookieName
   });
   const identity = await platformStore.getLoginIdentity(session.organizationCode, session.loginId);
   if (!identity || identity.status !== "active" || Number(identity.tokenVersion || 0) !== Number(session.tokenVersion || 0)) {

@@ -331,10 +331,35 @@ function corsHeaders(input) {
 }
 
 function isAllowedOrigin(origin) {
-  return /^https:\/\/(www\.)?halunasu\.com$/.test(origin)
+  return defaultAllowedWebOrigins().includes(origin)
+    || configuredAllowedWebOrigins().includes(origin)
     || /^https:\/\/[a-z0-9-]+--halunasu\.netlify\.app$/.test(origin)
     || /^http:\/\/localhost(:\d+)?$/.test(origin)
     || /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin);
+}
+
+function defaultAllowedWebOrigins() {
+  return [
+    "https://halunasu.com",
+    "https://www.halunasu.com",
+    "https://admin.halunasu.com",
+    "https://charting.halunasu.com",
+    "https://fee.halunasu.com",
+    "https://referral.halunasu.com",
+    "https://stg.halunasu.com",
+    "https://www.stg.halunasu.com",
+    "https://admin.stg.halunasu.com",
+    "https://charting.stg.halunasu.com",
+    "https://fee.stg.halunasu.com",
+    "https://referral.stg.halunasu.com"
+  ];
+}
+
+function configuredAllowedWebOrigins() {
+  return String(process.env.HALUNASU_ALLOWED_WEB_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 }
 
 function headerValue(headers, name) {

@@ -77,8 +77,8 @@ export function parseCookies(cookieHeader) {
   );
 }
 
-export function sessionTokenFromHeaders(headers = {}) {
-  return parseCookies(headerValue(headers, "cookie"))[SESSION_COOKIE_NAME];
+export function sessionTokenFromHeaders(headers = {}, options = {}) {
+  return parseCookies(headerValue(headers, "cookie"))[sessionCookieName(options)];
 }
 
 export function csrfTokenFromHeaders(headers = {}) {
@@ -86,34 +86,46 @@ export function csrfTokenFromHeaders(headers = {}) {
 }
 
 export function sessionCookieHeader(token, options = {}) {
-  return buildCookie(SESSION_COOKIE_NAME, token, {
+  return buildCookie(sessionCookieName(options), token, {
     httpOnly: true,
     maxAge: options.ttlSeconds || DEFAULT_SESSION_TTL_SECONDS,
-    secure: Boolean(options.secure)
+    secure: Boolean(options.secure),
+    domain: options.domain
   });
 }
 
 export function csrfCookieHeader(token, options = {}) {
-  return buildCookie(CSRF_COOKIE_NAME, token, {
+  return buildCookie(csrfCookieName(options), token, {
     httpOnly: false,
     maxAge: options.ttlSeconds || DEFAULT_SESSION_TTL_SECONDS,
-    secure: Boolean(options.secure)
+    secure: Boolean(options.secure),
+    domain: options.domain
   });
 }
 
 export function clearSessionCookieHeaders(options = {}) {
   return [
-    buildCookie(SESSION_COOKIE_NAME, "", {
+    buildCookie(sessionCookieName(options), "", {
       httpOnly: true,
       maxAge: 0,
-      secure: Boolean(options.secure)
+      secure: Boolean(options.secure),
+      domain: options.domain
     }),
-    buildCookie(CSRF_COOKIE_NAME, "", {
+    buildCookie(csrfCookieName(options), "", {
       httpOnly: false,
       maxAge: 0,
-      secure: Boolean(options.secure)
+      secure: Boolean(options.secure),
+      domain: options.domain
     })
   ];
+}
+
+export function sessionCookieName(options = {}) {
+  return options.sessionCookieName || process.env.APP_SESSION_COOKIE_NAME || SESSION_COOKIE_NAME;
+}
+
+export function csrfCookieName(options = {}) {
+  return options.csrfCookieName || process.env.APP_CSRF_COOKIE_NAME || CSRF_COOKIE_NAME;
 }
 
 export function unauthorizedError(message = "Unauthorized") {
@@ -164,6 +176,10 @@ function buildCookie(name, value, options = {}) {
 
   if (options.secure) {
     parts.push("Secure");
+  }
+
+  if (options.domain) {
+    parts.push(`Domain=${options.domain}`);
   }
 
   return parts.join("; ");
