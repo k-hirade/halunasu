@@ -79,8 +79,11 @@ Not yet applied to GCP:
 
 ## Recommended Hosting
 
-Use Netlify static hosting for frontend apps if possible:
+Use the existing Netlify operation for frontend static hosting:
 
+- Do not introduce a new frontend hosting provider for this phase.
+- Reuse the existing Netlify account/team and connect the new monorepo apps there.
+- Add separate Netlify sites per app/domain when operationally simpler than path-based routing.
 - It keeps GCP monthly cost unchanged.
 - Custom domains are free on Netlify.
 - Existing LP already has `netlify.toml`.
@@ -89,7 +92,7 @@ Use Cloud Run only for APIs. Avoid HTTPS Load Balancer, Cloud CDN, Cloud Storage
 
 ## Next Steps
 
-1. Create or configure Netlify sites for the five static apps.
+1. Configure the existing Netlify operation for the five static apps.
 2. Create Cloud Run custom domain mappings for API services.
 3. Add DNS records for app and API domains.
 4. Redeploy Cloud Run services with the correct cookie env vars per environment.
