@@ -1,0 +1,13 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - services/node-service.Dockerfile
+      - --build-arg
+      - SERVICE_PATH=${_SERVICE_PATH}
+      - -t
+      - ${_IMAGE}
+      - .
+images:
+  - ${_IMAGE}

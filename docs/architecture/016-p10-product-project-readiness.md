@@ -11,9 +11,9 @@ P10 starts from the new Core/product project split:
 | Boundary | Staging project | Production project | Current state |
 | --- | --- | --- | --- |
 | Core/Platform | `medical-core-stg` | `medical-core-497610` | active |
-| Charting | `halunasu-charting-stg` | `halunasu-charting-prod` | active, billing disabled |
-| Fee calculation | `halunasu-fee-stg` | `halunasu-fee-prod` | active, billing disabled |
-| Referral | `halunasu-referral-stg` | `halunasu-referral-prod` | active, billing disabled |
+| Charting | `halunasu-charting-stg` | `halunasu-charting-prod` | active; billing may be linked after P10.2 |
+| Fee calculation | `halunasu-fee-stg` | `halunasu-fee-prod` | active; billing may be linked after P10.2 |
+| Referral | `halunasu-referral-stg` | `halunasu-referral-prod` | active; billing may be linked after P10.2 |
 
 The goal is to prevent accidental cost growth while preparing the first production-ready path.
 
@@ -29,9 +29,9 @@ The preflight confirms:
 
 - Core projects are active.
 - Product project shells are active.
-- Product project shells have billing disabled.
+- Product project billing state is reported.
 - Old historical projects are in `DELETE_REQUESTED`.
-- Product projects have not had major runtime services enabled unexpectedly.
+- Product runtime service enablement is reported.
 
 Latest run on 2026-05-28:
 
@@ -39,44 +39,53 @@ Latest run on 2026-05-28:
 Summary: 0 failure(s), 0 warning(s).
 ```
 
-## Controlled Next Move
+## Controlled Runtime Build
 
-Do not enable all product projects at once.
+P10.2 makes all STG/PROD runtime projects usable while keeping idle cost near zero.
 
-Recommended order:
+Runtime guardrails:
 
-1. Keep product production projects billing-disabled.
-2. Select one staging product project for the first controlled smoke.
-3. Link billing only for that one staging project.
-4. Enable only the APIs required for that product.
-5. Deploy with Cloud Run `min-instances=0` and staging `max-instances=1`.
-6. Verify cross-project session, entitlement, and patient reference calls to Core.
-7. Add backup/restore only after real PHI is near.
+- Cloud Run `min-instances=0` for STG and PROD.
+- Cloud Run `max-instances=1` initially for STG and PROD.
+- No Cloud SQL, GKE, VM, NAT, static IP, or Load Balancer.
+- No Cloud Scheduler.
+- Secret versions are limited to required runtime secrets only.
+- Backup/restore is deferred until real PHI is near.
 
-Recommended first target: `halunasu-charting-stg`, because charting exercises the largest boundary surface: patient references, audio/transcript artifacts, SOAP generation, and worker-style finalize behavior.
-
-The guarded activation script is dry-run by default:
+Provisioning script:
 
 ```bash
-./scripts/p10_activate_product_project_guarded.sh charting stg
+./scripts/p10_provision_runtime_projects_low_cost.sh
+P10_ALLOW_BILLING=yes ./scripts/p10_provision_runtime_projects_low_cost.sh --apply
 ```
 
-Latest dry-run on 2026-05-28:
+Deploy script:
+
+```bash
+./scripts/p10_deploy_runtime_services_low_cost.sh
+./scripts/p10_deploy_runtime_services_low_cost.sh --apply
+```
+
+The deploy script creates these Cloud Run services:
 
 ```text
-Project: halunasu-charting-stg
-Current billingEnabled=False
-DRY RUN: gcloud billing projects link halunasu-charting-stg ...
-DRY RUN: gcloud services enable artifactregistry.googleapis.com cloudbuild.googleapis.com firestore.googleapis.com iam.googleapis.com run.googleapis.com secretmanager.googleapis.com storage.googleapis.com cloudtasks.googleapis.com ...
+platform-api-stg          medical-core-stg
+charting-api-stg          halunasu-charting-stg
+charting-finalize-stg     halunasu-charting-stg
+fee-api-stg               halunasu-fee-stg
+referral-api-stg          halunasu-referral-stg
+
+platform-api-prod         medical-core-497610
+charting-api-prod         halunasu-charting-prod
+charting-finalize-prod    halunasu-charting-prod
+fee-api-prod              halunasu-fee-prod
+referral-api-prod         halunasu-referral-prod
 ```
 
-Actual activation requires all of:
+Public access:
 
-```bash
-BILLING_ACCOUNT_ID=XXXXXX-XXXXXX-XXXXXX P10_ALLOW_BILLING=yes ./scripts/p10_activate_product_project_guarded.sh charting stg --apply
-```
-
-Do not run `--apply` for production without `P10_ALLOW_PROD=yes`.
+- `platform-api-*`, `charting-api-*`, `fee-api-*`, and `referral-api-*` allow unauthenticated Cloud Run ingress because app-level session, entitlement, CORS, and CSRF checks are implemented.
+- `charting-finalize-*` remains Cloud Run IAM-private.
 
 ## Runtime Project Variables
 
@@ -92,9 +101,4 @@ When product services move to their own projects, keep Core and product Firestor
 
 ## Not Yet Done
 
-- Billing is not linked to product projects.
-- Product Firestore databases are not created.
-- Product Cloud Run services are not deployed.
-- Product Secret Manager secrets are not created.
-- Cross-project IAM is not granted.
 - Production backup is not enabled.

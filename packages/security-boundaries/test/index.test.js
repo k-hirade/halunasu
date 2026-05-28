@@ -220,6 +220,23 @@ test("P10 product activation script remains guarded", () => {
   }
 });
 
+test("P10 runtime provisioning and deploy scripts keep low-cost guardrails", () => {
+  const provision = readText(join(root, "scripts", "p10_provision_runtime_projects_low_cost.sh"));
+  const deploy = readText(join(root, "scripts", "p10_deploy_runtime_services_low_cost.sh"));
+
+  assert.match(provision, /APPLY="false"/, "P10 provision must dry-run by default");
+  assert.match(provision, /P10_ALLOW_BILLING/, "P10 provision must require billing acknowledgement");
+  assert.match(provision, /no Cloud Run minimum instances/, "P10 provision must document no minimum instances");
+  assert.equal(/gcloud\s+run\s+deploy/.test(provision), false, "P10 provision must not deploy Cloud Run");
+  assert.equal(/terraform\s+apply/.test(provision), false, "P10 provision must not run Terraform");
+
+  assert.match(deploy, /MIN_INSTANCES="\$\{MIN_INSTANCES:-0\}"/, "P10 deploy must default min instances to zero");
+  assert.match(deploy, /MAX_INSTANCES="\$\{MAX_INSTANCES:-1\}"/, "P10 deploy must default max instances to one");
+  assert.match(deploy, /--cpu-throttling/, "P10 deploy must keep CPU throttling enabled");
+  assert.match(deploy, /--no-allow-unauthenticated/, "P10 deploy must support private worker services");
+  assert.equal(/terraform\s+apply/.test(deploy), false, "P10 deploy must not run Terraform");
+});
+
 function readDirectoryText(path, pattern) {
   return walkFiles(path)
     .filter((file) => pattern.test(file))

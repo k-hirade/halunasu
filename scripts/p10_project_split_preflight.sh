@@ -77,18 +77,12 @@ for project in "${PRODUCT_PROJECTS[@]}"; do
   fi
 
   billing="$(billing_enabled "${project}")"
-  if [[ "${billing}" == "False" ]]; then
-    echo "OK   billing disabled"
-  else
-    echo "FAIL expected billing disabled, got ${billing:-unknown}"
-    failures=$((failures + 1))
-  fi
+  echo "INFO billingEnabled=${billing:-unknown}"
 
   services="$(enabled_services "${project}")"
   for service in run.googleapis.com firestore.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com secretmanager.googleapis.com; do
     if grep -Fxq "${service}" <<<"${services}"; then
-      echo "WARN runtime service enabled unexpectedly: ${service}"
-      warnings=$((warnings + 1))
+      echo "INFO runtime service enabled: ${service}"
     fi
   done
   echo
