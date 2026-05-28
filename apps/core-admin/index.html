@@ -93,6 +93,10 @@
       gap: 18px;
     }
 
+    .main--single {
+      grid-template-columns: 1fr;
+    }
+
     .panel,
     .table-panel {
       background: var(--surface);
@@ -303,9 +307,84 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="auth.css" />
 </head>
 <body>
-  <div class="app">
+  <div class="operator-gate" id="login-gate">
+    <div class="operator-gate-shell">
+      <aside class="operator-gate-brand">
+        <div class="operator-gate-brand-top">
+          <img alt="ハルナス" class="operator-gate-mark" height="56" src="brand/harunas-mark.png" width="56" />
+          <span class="operator-gate-wordmark">ハルナス</span>
+        </div>
+
+        <div class="operator-gate-pitch">
+          <h2>共通基盤を、<br />ひとつの管理画面で。</h2>
+          <p>
+            病院、職員、施設、診療科、患者、権限を Halunasu Core で一元管理します。
+            各アプリは共通のログインとマスターデータを安全に利用できます。
+          </p>
+          <div class="operator-gate-features">
+            <div class="operator-gate-feature">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
+              <span>組織、職員、施設、診療科を同じ画面で管理</span>
+            </div>
+            <div class="operator-gate-feature">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
+              <span>患者インデックスとプロダクト権限を Core に集約</span>
+            </div>
+            <div class="operator-gate-feature">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
+              <span>監査ログとデータ請求を管理者が確認</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="operator-gate-foot">
+          <span>© ハルナス</span>
+        </div>
+      </aside>
+
+      <section class="operator-gate-form-area">
+        <form class="operator-gate-card" id="login-form">
+          <div>
+            <h1>ログイン</h1>
+            <p style="margin-top: 6px;">病院コード、個人ID、パスワードでログインしてください。</p>
+          </div>
+          <div class="field">
+            <label for="organization-code">病院コード</label>
+            <input id="organization-code" name="organizationCode" autocomplete="organization" placeholder="例: clinic_tokyo_001" required />
+          </div>
+          <div class="field">
+            <label for="login-id">個人ID</label>
+            <input id="login-id" name="loginId" autocomplete="username" placeholder="例: yamada" required />
+          </div>
+          <div class="field">
+            <label for="password">ログイン用パスワード</label>
+            <div class="field-password">
+              <input id="password" name="password" type="password" autocomplete="current-password" placeholder="パスワードを入力" required />
+              <button aria-label="パスワードを表示" class="password-toggle" data-password-toggle data-target="password" type="button">
+                <svg class="icon-eye" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <svg class="icon-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div id="login-message" class="inline-error" role="status" aria-live="polite"></div>
+          <div class="operator-gate-actions">
+            <button class="btn btn--primary btn--lg" type="submit" id="login-button">ログイン</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </div>
+
+  <div class="app hidden" id="app-shell">
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark">H</div>
@@ -314,38 +393,19 @@
       <div id="session-chip" class="session-chip">未ログイン</div>
     </header>
 
-    <main class="main">
-      <aside class="panel">
-        <form id="login-form" class="stack">
-          <h1>ログイン</h1>
-          <div class="field">
-            <label for="organization-code">組織コード</label>
-            <input id="organization-code" name="organizationCode" autocomplete="organization" required />
-          </div>
-          <div class="field">
-            <label for="login-id">ログインID</label>
-            <input id="login-id" name="loginId" autocomplete="username" required />
-          </div>
-          <div class="field">
-            <label for="password">パスワード</label>
-            <input id="password" name="password" type="password" autocomplete="current-password" required />
-          </div>
-          <div class="button-row">
-            <button class="accent" type="submit">ログイン</button>
-            <button class="secondary" id="session-button" type="button">再読込</button>
-          </div>
-          <div id="message" class="message"></div>
-        </form>
-      </aside>
-
+    <main class="main main--single">
       <section class="workspace">
+        <div id="message" class="message"></div>
         <div class="panel">
           <div class="toolbar">
             <div class="field">
               <label for="org-select">対象組織</label>
               <select id="org-select"></select>
             </div>
-            <button class="secondary" id="refresh-button" type="button">更新</button>
+            <div class="button-row">
+              <button class="secondary" id="session-button" type="button">セッション再読込</button>
+              <button class="secondary" id="refresh-button" type="button">更新</button>
+            </div>
           </div>
         </div>
 
@@ -618,6 +678,10 @@
     };
 
     const els = {
+      loginGate: document.querySelector("#login-gate"),
+      appShell: document.querySelector("#app-shell"),
+      loginMessage: document.querySelector("#login-message"),
+      loginButton: document.querySelector("#login-button"),
       sessionChip: document.querySelector("#session-chip"),
       message: document.querySelector("#message"),
       orgSelect: document.querySelector("#org-select")
@@ -626,6 +690,8 @@
     document.querySelector("#login-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const data = new FormData(event.currentTarget);
+      els.loginButton.disabled = true;
+      showLoginMessage("");
       try {
         const response = await api("/v1/auth/login", {
           method: "POST",
@@ -638,10 +704,18 @@
         state.session = response.session;
         state.csrfToken = response.csrfToken || "";
         state.orgId = response.session.orgId;
+        hide(els.loginGate);
+        show(els.appShell);
         showMessage("ログインしました", "success");
         await refreshAll();
       } catch (error) {
-        showMessage(error.message, "error");
+        if (state.session) {
+          showMessage(error.message, "error");
+        } else {
+          showLoginMessage(error.message);
+        }
+      } finally {
+        els.loginButton.disabled = false;
       }
     });
 
@@ -668,6 +742,7 @@
     document.querySelector("#entitlement-form").addEventListener("submit", submitEntitlement);
     document.querySelector("#data-request-form").addEventListener("submit", submitDataRequest);
 
+    setupPasswordToggle();
     loadSession();
 
     async function loadSession() {
@@ -927,9 +1002,13 @@
     function renderSession() {
       if (!state.session) {
         els.sessionChip.textContent = "未ログイン";
+        show(els.loginGate);
+        hide(els.appShell);
         return;
       }
       els.sessionChip.textContent = `${state.session.organizationCode} / ${state.session.loginId}`;
+      hide(els.loginGate);
+      show(els.appShell);
     }
 
     function renderOrganizations() {
@@ -985,6 +1064,30 @@
     function showMessage(message, kind = "") {
       els.message.textContent = message || "";
       els.message.className = `message ${kind}`;
+    }
+
+    function showLoginMessage(message) {
+      els.loginMessage.textContent = message || "";
+    }
+
+    function show(element) {
+      element.classList.remove("hidden");
+    }
+
+    function hide(element) {
+      element.classList.add("hidden");
+    }
+
+    function setupPasswordToggle() {
+      document.querySelectorAll("[data-password-toggle]").forEach((button) => {
+        const target = document.querySelector(`#${button.dataset.target}`);
+        button.addEventListener("click", () => {
+          const visible = target.type === "password";
+          target.type = visible ? "text" : "password";
+          button.classList.toggle("is-visible", visible);
+          button.setAttribute("aria-label", visible ? "パスワードを隠す" : "パスワードを表示");
+        });
+      });
     }
 
     function hasGlobalRole(role) {
