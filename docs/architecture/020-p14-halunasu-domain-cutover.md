@@ -1,6 +1,6 @@
 # P14 Halunasu Domain Cutover
 
-Status: in progress, browser apps unblocked by Netlify API proxy; Netlify custom domains are attached; Cloudflare DNS cleanup and certificate activation remain
+Status: in progress, browser apps unblocked by Netlify API proxy; Netlify custom domains and web DNS are attached; production admin/charting/referral certificates remain pending
 Date: 2026-05-29
 Cost profile: no new always-on resources; Cloud Run remains min instances 0 / max instances 1
 
@@ -60,23 +60,36 @@ On 2026-05-29, `app.halunasu.com` was assigned to `halunasu-charting-prod`.
 On 2026-05-29, `stg.app.halunasu.com` and `mfc-stg.halunasu.com` were assigned
 to the new staging sites.
 
-Cloudflare DNS observations on 2026-05-29:
+Cloudflare web DNS observations on 2026-05-29:
 
 | Domain | Current DNS target | Required target |
 | --- | --- | --- |
 | `halunasu.com` | Netlify A records `75.2.60.5`, `99.83.231.61` | OK |
-| `www.halunasu.com` | `harunas.netlify.app` | `halunasu-lp-prod.netlify.app` |
-| `app.halunasu.com` | `harunas-app.netlify.app` | `halunasu-charting-prod.netlify.app` |
-| `stg.app.halunasu.com` | `harunas-stg.netlify.app` | `halunasu-charting-stg.netlify.app` |
-| `mfc-stg.halunasu.com` | `medical-fee-calculation-stg.netlify.app` | `halunasu-fee-stg.netlify.app` |
-| `admin.halunasu.com` | unresolved | `halunasu-admin-prod.netlify.app` |
-| `charting.halunasu.com` | unresolved | `halunasu-charting-prod.netlify.app` |
-| `referral.halunasu.com` | unresolved | `halunasu-referral-prod.netlify.app` |
+| `www.halunasu.com` | `halunasu-lp-prod.netlify.app` | OK |
+| `admin.halunasu.com` | `halunasu-admin-prod.netlify.app` | OK |
+| `charting.halunasu.com` | `halunasu-charting-prod.netlify.app` | OK |
+| `app.halunasu.com` | `halunasu-charting-prod.netlify.app` | OK |
+| `fee.halunasu.com` | `halunasu-fee-prod.netlify.app` | OK |
+| `referral.halunasu.com` | `halunasu-referral-prod.netlify.app` | OK |
+| `stg.halunasu.com` | `halunasu-lp-stg.netlify.app` | OK |
+| `admin.stg.halunasu.com` | `halunasu-admin-stg.netlify.app` | OK |
+| `charting.stg.halunasu.com` | `halunasu-charting-stg.netlify.app` | OK |
+| `stg.app.halunasu.com` | `halunasu-charting-stg.netlify.app` | OK |
+| `fee.stg.halunasu.com` | `halunasu-fee-stg.netlify.app` | OK |
+| `mfc-stg.halunasu.com` | `halunasu-fee-stg.netlify.app` | OK |
+| `referral.stg.halunasu.com` | `halunasu-referral-stg.netlify.app` | OK |
+
+HTTPS observations on 2026-05-29:
+
+| Domain group | Status |
+| --- | --- |
+| `halunasu.com`, `www.halunasu.com`, `fee.halunasu.com`, all staging web domains and staging aliases | HTTPS OK |
+| `admin.halunasu.com`, `charting.halunasu.com`, `referral.halunasu.com` | DNS OK, Netlify certificate still pending |
 
 ## Cloud Run Domain Mappings
 
-Public API mappings exist and are waiting on Cloudflare DNS records for certificate
-provisioning. They are no longer required by the static app runtime while Netlify
+Public API mappings exist, but Cloudflare API DNS records are unresolved as of
+2026-05-29. They are no longer required by the static app runtime while Netlify
 same-origin proxying is active:
 
 | Domain | Target |
@@ -102,10 +115,9 @@ Use DNS-only records at least until certificates are active. Cloudflare API cred
 
 ## Remaining Steps
 
-1. Fix Cloudflare DNS web records from `config/cloudflare-dns-records.json`.
-2. Wait for Netlify certificates to become active.
-3. Optionally keep or remove Cloud Run API custom domains. The active static apps use Netlify proxy routes and do not require API DNS.
-4. Verify:
+1. Wait for Netlify certificates to become active for `admin.halunasu.com`, `charting.halunasu.com`, and `referral.halunasu.com`.
+2. Optionally keep or remove Cloud Run API custom domains. The active static apps use Netlify proxy routes and do not require API DNS.
+3. Verify:
    - `https://stg.halunasu.com`
    - `https://admin.stg.halunasu.com`
    - `https://charting.stg.halunasu.com`
@@ -120,5 +132,5 @@ Use DNS-only records at least until certificates are active. Cloudflare API cred
    - `https://referral.halunasu.com`
    - same-origin `/api/platform/readyz`
    - same-origin product API `/readyz`
-5. Run STG browser login/product flow.
-6. Repeat final browser verification for production domains.
+4. Run STG browser login/product flow.
+5. Repeat final browser verification for production domains after certificates are active.
