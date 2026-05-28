@@ -19,6 +19,9 @@
       "siteId": "f6781c37-f6ef-4fc5-941b-b36a5fd49bb5",
       "netlifyUrl": "https://halunasu-charting-stg.netlify.app",
       "targetDomain": "https://charting.stg.halunasu.com",
+      "aliasDomains": [
+        "https://stg.app.halunasu.com"
+      ],
       "publishDir": "dist/runtime-apps/stg/charting-web"
     },
     "fee-web": {
@@ -26,6 +29,9 @@
       "siteId": "84766d79-e6d0-4f80-b65a-9eea220d94f1",
       "netlifyUrl": "https://halunasu-fee-stg.netlify.app",
       "targetDomain": "https://fee.stg.halunasu.com",
+      "aliasDomains": [
+        "https://mfc-stg.halunasu.com"
+      ],
       "publishDir": "dist/runtime-apps/stg/fee-web"
     },
     "referral-web": {
@@ -59,6 +65,9 @@
       "siteId": "2dc7d619-afca-4f1b-8fb9-ea9c4dcc37a4",
       "netlifyUrl": "https://halunasu-charting-prod.netlify.app",
       "targetDomain": "https://charting.halunasu.com",
+      "aliasDomains": [
+        "https://app.halunasu.com"
+      ],
       "publishDir": "dist/runtime-apps/prod/charting-web"
     },
     "fee-web": {

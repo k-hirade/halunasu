@@ -1,6 +1,6 @@
 # P14 Halunasu Domain Cutover
 
-Status: in progress, browser apps unblocked by Netlify API proxy; custom domains still waiting on Cloudflare DNS
+Status: in progress, browser apps unblocked by Netlify API proxy; STG web domains and production Fee are attached; remaining production domains are gated by Netlify custom-domain rate limits and Cloudflare DNS cleanup
 Date: 2026-05-28
 Cost profile: no new always-on resources; Cloud Run remains min instances 0 / max instances 1
 
@@ -29,22 +29,47 @@ Assigned so far:
 | --- | --- |
 | `stg.halunasu.com` | `halunasu-lp-stg` |
 | `admin.stg.halunasu.com` | `halunasu-admin-stg` |
+| `charting.stg.halunasu.com` | `halunasu-charting-stg` |
+| `fee.stg.halunasu.com` | `halunasu-fee-stg` |
+| `referral.stg.halunasu.com` | `halunasu-referral-stg` |
 | `fee.halunasu.com` | `halunasu-fee-prod` |
 
 Pending because the current Netlify plan limits `custom_domain` changes to 3 per hour:
 
 | Domain | Netlify site |
 | --- | --- |
-| `charting.stg.halunasu.com` | `halunasu-charting-stg` |
-| `fee.stg.halunasu.com` | `halunasu-fee-stg` |
-| `referral.stg.halunasu.com` | `halunasu-referral-stg` |
+| `halunasu.com` | `halunasu-lp-prod` |
+| `www.halunasu.com` | `halunasu-lp-prod` alias |
 | `admin.halunasu.com` | `halunasu-admin-prod` |
 | `charting.halunasu.com` | `halunasu-charting-prod` |
 | `referral.halunasu.com` | `halunasu-referral-prod` |
-| `halunasu.com` | `halunasu-lp-prod` |
-| `www.halunasu.com` | `halunasu-lp-prod` alias |
 
-Existing production LP remains on `harunas` until explicit final cutover.
+The old `harunas`, `harunas-app`, `harunas-stg`, and
+`medical-fee-calculation-stg` Netlify sites no longer own custom domains.
+
+Legacy aliases to migrate:
+
+| Legacy domain | New Netlify site |
+| --- | --- |
+| `app.halunasu.com` | `halunasu-charting-prod` |
+| `stg.app.halunasu.com` | `halunasu-charting-stg` |
+| `mfc-stg.halunasu.com` | `halunasu-fee-stg` |
+
+On 2026-05-28, those legacy domains were removed from the old Netlify sites.
+Assigning them to the new sites is gated by the current Netlify Free plan custom
+domain rate limit.
+
+Cloudflare DNS observations on 2026-05-28:
+
+| Domain | Current DNS target | Required target |
+| --- | --- | --- |
+| `www.halunasu.com` | `harunas.netlify.app` | `halunasu-lp-prod.netlify.app` |
+| `app.halunasu.com` | `harunas-app.netlify.app` | `halunasu-charting-prod.netlify.app` |
+| `stg.app.halunasu.com` | `harunas-stg.netlify.app` | `halunasu-charting-stg.netlify.app` |
+| `mfc-stg.halunasu.com` | `medical-fee-calculation-stg.netlify.app` | `halunasu-fee-stg.netlify.app` |
+| `admin.halunasu.com` | unresolved | `halunasu-admin-prod.netlify.app` |
+| `charting.halunasu.com` | unresolved | `halunasu-charting-prod.netlify.app` |
+| `referral.halunasu.com` | unresolved | `halunasu-referral-prod.netlify.app` |
 
 ## Cloud Run Domain Mappings
 
@@ -75,18 +100,24 @@ Use DNS-only records at least until certificates are active. Cloudflare API cred
 
 ## Remaining Steps
 
-1. Add Cloudflare DNS web records from `config/cloudflare-dns-records.json`.
-2. Wait for Netlify custom-domain rate limit to reset and attach the remaining Netlify domains.
-3. Transfer `halunasu.com` and `www.halunasu.com` from old `harunas` to `halunasu-lp-prod` after confirming the new production LP deploy.
-4. Wait for Netlify certificates to become active.
-5. Optionally keep or remove Cloud Run API custom domains. The active static apps use Netlify proxy routes and do not require API DNS.
-6. Verify:
+1. Fix Cloudflare DNS web records from `config/cloudflare-dns-records.json`.
+2. Wait for Netlify custom-domain rate limit to reset and attach the remaining production and legacy alias domains.
+3. Wait for Netlify certificates to become active.
+4. Optionally keep or remove Cloud Run API custom domains. The active static apps use Netlify proxy routes and do not require API DNS.
+5. Verify:
    - `https://stg.halunasu.com`
    - `https://admin.stg.halunasu.com`
    - `https://charting.stg.halunasu.com`
    - `https://fee.stg.halunasu.com`
    - `https://referral.stg.halunasu.com`
+   - `https://halunasu.com`
+   - `https://www.halunasu.com`
+   - `https://admin.halunasu.com`
+   - `https://charting.halunasu.com`
+   - `https://app.halunasu.com`
+   - `https://fee.halunasu.com`
+   - `https://referral.halunasu.com`
    - same-origin `/api/platform/readyz`
    - same-origin product API `/readyz`
-7. Run STG browser login/product flow.
-8. Repeat final browser verification for production domains.
+6. Run STG browser login/product flow.
+7. Repeat final browser verification for production domains.

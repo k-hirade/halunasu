@@ -4,7 +4,7 @@
   "mode": "dns-only",
   "notes": [
     "Set proxied=false at least until Netlify and Cloud Run certificates are active.",
-    "The apex halunasu.com record already exists for the old Netlify site. During LP cutover, keep the existing Netlify-compatible apex setup or repoint CNAME flattening to halunasu-lp-prod.netlify.app."
+    "The apex halunasu.com record should keep Netlify-compatible A records or CNAME flattening. Netlify site assignment is handled on halunasu-lp-prod."
   ],
   "web": [
     {
@@ -27,7 +27,19 @@
     },
     {
       "type": "CNAME",
+      "name": "stg.app",
+      "content": "halunasu-charting-stg.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
       "name": "fee.stg",
+      "content": "halunasu-fee-stg.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "mfc-stg",
       "content": "halunasu-fee-stg.netlify.app",
       "proxied": false
     },
@@ -46,6 +58,12 @@
     {
       "type": "CNAME",
       "name": "charting",
+      "content": "halunasu-charting-prod.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "app",
       "content": "halunasu-charting-prod.netlify.app",
       "proxied": false
     },
