@@ -71,6 +71,7 @@ flowchart TB
   P6["P6: Referral foundation"]
   P7["P7: Product integration boundaries"]
   P8["P8: Security, operations, compliance"]
+  P85["P8.5: Core hardening"]
   P9["P9: Old environment shutdown"]
   P10["P10: Production readiness"]
 
@@ -81,7 +82,7 @@ flowchart TB
   P4 --> P7
   P5 --> P7
   P6 --> P7
-  P7 --> P8 --> P9 --> P10
+  P7 --> P8 --> P85 --> P9 --> P10
 ```
 
 ## P0: Freeze Target Architecture
@@ -417,6 +418,36 @@ Exit criteria:
 - PHI-safe logging is documented and tested.
 - Restore drill plan exists.
 - IAM is least-privilege for current services.
+
+## P8.5: Core Hardening
+
+Status: complete for local code and tests as of 2026-05-28. No GCP resources, deploys, secrets, buckets, queues, schedulers, backups, or Terraform applies were created.
+
+Purpose:
+
+- Close Core-specific gaps before old environment shutdown.
+- Make Platform/Core CRUD app-level protected, not only infrastructure-protected.
+- Make audit and data request handling safe enough for shared patient planning.
+
+Implemented:
+
+- Platform organization listing/creation requires `platform_admin`.
+- Organization-scoped Core admin routes require same-org `org_admin` or `platform_admin`.
+- Product entitlement routes require `org_admin`, `billing_admin`, or `platform_admin`.
+- Mutating protected Core routes require Platform CSRF.
+- Patient Core model includes patient numbers, structured identifiers, contact, insurance, public insurance, consent, duplicate candidates, and merge target support.
+- Audit and data request `safePayload` values are allowlisted.
+- `data_requests` API/store workflow is implemented and audited.
+- Production-like sessions require configured `APP_SESSION_SIGNING_SECRET`.
+
+Exit criteria:
+
+- Core CRUD cannot be used without a valid Platform session.
+- Cross-org Core access is rejected.
+- Non-admin members cannot mutate Core admin records.
+- Data request create/update/list/get works through Platform API.
+- Audit/data request payloads drop non-allowlisted PHI-prone fields.
+- Tests and build pass without adding GCP resources.
 
 ## P9: Old Environment Shutdown
 

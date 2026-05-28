@@ -18,12 +18,16 @@ test("stores organizations, members, and patients in org scope", () => {
     displayName: "Doctor"
   });
   const patient = store.createPatient(organization.orgId, {
-    displayName: "Patient"
+    displayName: "Patient",
+    primaryPatientNumber: "000123",
+    patientIdentifiers: [{ sourceSystem: "legacy", patientNumber: "legacy-001" }]
   });
 
   assert.equal(organization.orgId, "org_fixed");
   assert.equal(member.orgId, "org_fixed");
   assert.equal(patient.orgId, "org_fixed");
+  assert.equal(patient.primaryPatientNumber, "000123");
+  assert.equal(patient.patientIdentifiers[0].value, "legacy-001");
   assert.equal(store.listMembers(organization.orgId).length, 1);
   assert.equal(store.listPatients(organization.orgId).length, 1);
 });
@@ -61,7 +65,14 @@ test("stores login identities and shared master data", () => {
   const auditEvent = store.createAuditEvent(organization.orgId, {
     eventType: "member.created",
     actorMemberId: member.memberId,
-    safePayload: { memberId: member.memberId }
+    safePayload: { memberId: member.memberId, displayName: "Admin" }
+  });
+  const dataRequest = store.createDataRequest(organization.orgId, {
+    requestType: "deletion",
+    requesterMemberId: member.memberId,
+    subjectPatientId: "pat_123",
+    productIds: ["charting", "unknown"],
+    safePayload: { patientId: "pat_123", displayName: "Patient" }
   });
 
   assert.equal(member.loginId, "admin");
@@ -72,6 +83,11 @@ test("stores login identities and shared master data", () => {
   assert.equal(department.departmentId, "dep_004");
   assert.equal(entitlement.productId, "charting");
   assert.equal(auditEvent.eventId, "aud_005");
+  assert.equal(auditEvent.safePayload.displayName, undefined);
+  assert.equal(dataRequest.requestId, "drq_006");
+  assert.deepEqual(dataRequest.productIds, ["charting"]);
+  assert.equal(dataRequest.safePayload.displayName, undefined);
+  assert.equal(store.listDataRequests(organization.orgId).length, 1);
   assert.equal(store.listAuditEvents(organization.orgId).length, 1);
 });
 
@@ -116,6 +132,14 @@ test("updates platform resources and applies rate limits", () => {
   assert.equal(store.updateDepartment(organization.orgId, department.departmentId, { facilityId: facility.facilityId }).facilityId, facility.facilityId);
   assert.equal(store.updatePatient(organization.orgId, patient.patientId, { displayNameKana: "YAMADA TARO" }).displayNameKana, "YAMADA TARO");
   assert.equal(store.updateProductEntitlement(organization.orgId, "charting", { status: "enabled" }).status, "enabled");
+  const dataRequest = store.createDataRequest(organization.orgId, {
+    requestType: "access",
+    subjectPatientId: patient.patientId
+  });
+  assert.equal(store.updateDataRequest(organization.orgId, dataRequest.requestId, {
+    status: "completed",
+    completedAt: "2026-05-28T00:00:00.000Z"
+  }).status, "completed");
   assert.equal(store.getSignupApplication(signupApplication.applicationId).organizationCode, "signup-clinic");
   assert.equal(store.listSignupApplications().length, 1);
 

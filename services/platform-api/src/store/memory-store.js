@@ -3,6 +3,7 @@ import {
   normalizeLoginId,
   normalizeOrganizationCode,
   validateCreateAuditEventInput,
+  validateCreateDataRequestInput,
   validateCreateDepartmentInput,
   validateCreateFacilityInput,
   validateCreateMemberInput,
@@ -11,6 +12,7 @@ import {
   validateCreateSignupApplicationInput,
   validatePatchDepartmentInput,
   validatePatchFacilityInput,
+  validatePatchDataRequestInput,
   validatePatchMemberInput,
   validatePatchOrganizationInput,
   validatePatchPatientInput,
@@ -40,6 +42,7 @@ export class MemoryPlatformStore {
     this.patientsByOrg = new Map();
     this.productEntitlementsByOrg = new Map();
     this.auditEventsByOrg = new Map();
+    this.dataRequestsByOrg = new Map();
   }
 
   createOrganization(input) {
@@ -68,6 +71,7 @@ export class MemoryPlatformStore {
     this.patientsByOrg.set(orgId, new Map());
     this.productEntitlementsByOrg.set(orgId, new Map());
     this.auditEventsByOrg.set(orgId, new Map());
+    this.dataRequestsByOrg.set(orgId, new Map());
 
     return organization;
   }
@@ -627,6 +631,52 @@ export class MemoryPlatformStore {
     return event;
   }
 
+  createDataRequest(orgId, input) {
+    this.requireOrganization(orgId);
+    const normalized = validateCreateDataRequestInput(input);
+    const now = this.timestamp();
+    const requestId = this.idFactory("drq");
+    const dataRequest = compactObject({
+      requestId,
+      orgId,
+      ...normalized,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    });
+
+    this.dataRequestsForOrg(orgId).set(requestId, dataRequest);
+    return dataRequest;
+  }
+
+  listDataRequests(orgId) {
+    this.requireOrganization(orgId);
+    return sortByCreatedAt([...this.dataRequestsForOrg(orgId).values()]);
+  }
+
+  getDataRequest(orgId, requestId) {
+    this.requireOrganization(orgId);
+    return this.dataRequestsForOrg(orgId).get(requestId) || null;
+  }
+
+  updateDataRequest(orgId, requestId, input) {
+    this.requireOrganization(orgId);
+    const current = this.getDataRequest(orgId, requestId);
+    if (!current) {
+      throw notFoundError("data request not found");
+    }
+
+    const patch = validatePatchDataRequestInput(input);
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+
+    this.dataRequestsForOrg(orgId).set(requestId, updated);
+    return updated;
+  }
+
   listAuditEvents(orgId) {
     this.requireOrganization(orgId);
     return sortByCreatedAt([...this.auditEventsForOrg(orgId).values()]);
@@ -726,6 +776,14 @@ export class MemoryPlatformStore {
     }
 
     return this.auditEventsByOrg.get(orgId);
+  }
+
+  dataRequestsForOrg(orgId) {
+    if (!this.dataRequestsByOrg.has(orgId)) {
+      this.dataRequestsByOrg.set(orgId, new Map());
+    }
+
+    return this.dataRequestsByOrg.get(orgId);
   }
 
   createSignupEmailToken(signupApplication) {
@@ -868,7 +926,9 @@ function createLoginIdentity({ organization, member, password, now }) {
 }
 
 function hasPrivilegedRole(member) {
-  return member.globalRoles.includes("org_admin") || member.globalRoles.includes("billing_admin");
+  return member.globalRoles.includes("org_admin")
+    || member.globalRoles.includes("billing_admin")
+    || member.globalRoles.includes("platform_admin");
 }
 
 function activeIdentityStatus(currentStatus) {

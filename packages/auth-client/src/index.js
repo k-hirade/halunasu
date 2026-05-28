@@ -92,6 +92,7 @@ export async function requireProductContext(input = {}, options = {}) {
   }
 
   const session = verifyPlatformSessionFromHeaders(input.headers || {}, {
+    env: input.env,
     now: input.now,
     sessionSecret: input.sessionSecret
   });
@@ -169,7 +170,19 @@ function bearerTokenFromHeaders(headers = {}) {
 }
 
 function sessionSecret(options = {}) {
-  return options.sessionSecret || process.env.APP_SESSION_SIGNING_SECRET || LOCAL_SESSION_SECRET;
+  const configured = options.sessionSecret || process.env.APP_SESSION_SIGNING_SECRET;
+  if (configured) {
+    return configured;
+  }
+  if (requiresConfiguredSecret(options.env || process.env.HALUNASU_ENV || process.env.NODE_ENV)) {
+    throw new Error("APP_SESSION_SIGNING_SECRET is required outside local/test environments");
+  }
+
+  return LOCAL_SESSION_SECRET;
+}
+
+function requiresConfiguredSecret(env) {
+  return !["", "local", "test", "development"].includes(String(env || "local").toLowerCase());
 }
 
 function sign(payload, secret) {

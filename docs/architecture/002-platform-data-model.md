@@ -320,7 +320,14 @@ No global patient matching in the first version. A patient belongs to one organi
 | `displayNameKana` | string | no |  |
 | `birthDate` | string | no | `YYYY-MM-DD` |
 | `sex` | string | no | `male`, `female`, `other`, `unknown` |
+| `primaryPatientNumber` | string | no | Main local patient number for the organization |
+| `patientIdentifiers` | array | yes | Structured source/facility patient identifiers |
 | `externalPatientIds` | array | yes | Non-PHI aliases, or hashed where needed |
+| `contact` | map | yes | Contact fields, kept out of audit payloads |
+| `insurance` | map | yes | Health insurance summary for Core workflows |
+| `publicInsurance` | map | yes | Public medical aid summary |
+| `consent` | map | yes | Consent flags and timestamps |
+| `duplicateCandidateIds` | array | yes | Candidate patient IDs for manual merge review |
 | `status` | string | yes | `active`, `merged`, `inactive` |
 | `mergedIntoPatientId` | string | no | Only when `status=merged` |
 | `notes` | string | no | Avoid clinical narrative here |

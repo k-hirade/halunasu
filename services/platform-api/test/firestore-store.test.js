@@ -34,7 +34,9 @@ test("stores members and patients below organization documents", async () => {
   const patient = await store.createPatient(organization.orgId, {
     displayName: "Patient",
     birthDate: "1970-01-01",
-    sex: "female"
+    sex: "female",
+    primaryPatientNumber: "000123",
+    patientIdentifiers: [{ sourceSystem: "legacy", patientNumber: "legacy-001" }]
   });
 
   assert.equal(member.memberId, "mem_002");
@@ -43,6 +45,8 @@ test("stores members and patients below organization documents", async () => {
   assert.equal((await store.listPatients(organization.orgId)).length, 1);
   assert.equal((await store.getMember(organization.orgId, member.memberId)).loginId, "doctor");
   assert.equal((await store.getPatient(organization.orgId, patient.patientId)).sex, "female");
+  assert.equal((await store.getPatient(organization.orgId, patient.patientId)).primaryPatientNumber, "000123");
+  assert.equal((await store.getPatient(organization.orgId, patient.patientId)).patientIdentifiers[0].value, "legacy-001");
 });
 
 test("stores login identities and shared master data", async () => {
@@ -73,7 +77,14 @@ test("stores login identities and shared master data", async () => {
   const auditEvent = await store.createAuditEvent(organization.orgId, {
     eventType: "member.created",
     actorMemberId: member.memberId,
-    safePayload: { memberId: member.memberId }
+    safePayload: { memberId: member.memberId, displayName: "Admin" }
+  });
+  const dataRequest = await store.createDataRequest(organization.orgId, {
+    requestType: "deletion",
+    requesterMemberId: member.memberId,
+    subjectPatientId: "pat_123",
+    productIds: ["charting", "unknown"],
+    safePayload: { patientId: "pat_123", displayName: "Patient" }
   });
 
   assert.equal(member.loginId, "admin");
@@ -85,6 +96,11 @@ test("stores login identities and shared master data", async () => {
   assert.equal(entitlement.productId, "charting");
   assert.equal((await store.getProductEntitlement(organization.orgId, "charting")).status, "enabled");
   assert.equal(auditEvent.eventType, "member.created");
+  assert.equal(auditEvent.safePayload.displayName, undefined);
+  assert.equal(dataRequest.requestId, "drq_006");
+  assert.deepEqual(dataRequest.productIds, ["charting"]);
+  assert.equal(dataRequest.safePayload.displayName, undefined);
+  assert.equal((await store.listDataRequests(organization.orgId)).length, 1);
   assert.equal((await store.listAuditEvents(organization.orgId)).length, 1);
 });
 
@@ -150,6 +166,14 @@ test("updates platform resources and applies rate limits", async () => {
   assert.equal((await store.updateDepartment(organization.orgId, department.departmentId, { facilityId: facility.facilityId })).facilityId, facility.facilityId);
   assert.equal((await store.updatePatient(organization.orgId, patient.patientId, { displayNameKana: "YAMADA TARO" })).displayNameKana, "YAMADA TARO");
   assert.equal((await store.updateProductEntitlement(organization.orgId, "charting", { status: "enabled" })).status, "enabled");
+  const dataRequest = await store.createDataRequest(organization.orgId, {
+    requestType: "access",
+    subjectPatientId: patient.patientId
+  });
+  assert.equal((await store.updateDataRequest(organization.orgId, dataRequest.requestId, {
+    status: "completed",
+    completedAt: "2026-05-28T00:00:00.000Z"
+  })).status, "completed");
   assert.equal((await store.getSignupApplication(signupApplication.applicationId)).organizationCode, "signup-clinic");
   assert.equal((await store.listSignupApplications()).length, 1);
 

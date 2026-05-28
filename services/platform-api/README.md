@@ -12,6 +12,7 @@ Shared API for Halunasu platform concerns:
 - patients
 - product entitlements
 - audit events
+- data requests
 
 Current endpoints:
 
@@ -64,6 +65,11 @@ PATCH /v1/organizations/{orgId}/product-entitlements/{productId}
 GET /v1/organizations/{orgId}/audit-events
 POST /v1/organizations/{orgId}/audit-events
 GET /v1/organizations/{orgId}/audit-events/{eventId}
+
+GET /v1/organizations/{orgId}/data-requests
+POST /v1/organizations/{orgId}/data-requests
+GET /v1/organizations/{orgId}/data-requests/{requestId}
+PATCH /v1/organizations/{orgId}/data-requests/{requestId}
 ```
 
 Member creation accepts an optional `password` field. When supplied, Platform creates a top-level
@@ -73,11 +79,20 @@ Auth uses:
 
 - signed httpOnly `halunasu_session` cookie
 - non-httpOnly `halunasu_csrf` cookie
-- `x-csrf-token` header for mutating authenticated auth routes
+- `x-csrf-token` header for mutating authenticated auth and Core routes
 - TOTP MFA enrollment/verification for privileged members
 
+Core route authorization:
+
+- global organization listing/creation requires `platform_admin`
+- organization-scoped Core admin routes require same-org `org_admin` or `platform_admin`
+- product entitlement routes require `org_admin`, `billing_admin`, or `platform_admin`
+- same-org authenticated members may read shared org/facility/department/patient records
+- cross-org access is rejected at the application layer
+
 Login and signup application creation are rate-limited through the shared `rate_limits` store.
-Mutating Platform routes write safe audit events without PHI-heavy payloads.
+Mutating Platform routes write safe audit events. Audit and data request `safePayload`
+fields are allowlisted and drop PHI-prone fields instead of storing arbitrary payloads.
 
 Signup flow:
 

@@ -45,28 +45,33 @@ test("unknown route returns 404", async () => {
 
 test("creates and lists organizations", async () => {
   const store = createTestStore();
+  const { headers } = await createAuthenticatedMember(store, {
+    organizationCode: "Platform Admin",
+    displayName: "Platform Admin",
+    globalRoles: ["platform_admin"]
+  });
 
   const created = await request(store, "POST", "/v1/organizations", {
     organizationCode: "Clinic A",
     displayName: "Clinic A"
-  });
-  const listed = await request(store, "GET", "/v1/organizations");
+  }, headers);
+  const listed = await request(store, "GET", "/v1/organizations", undefined, headers);
 
   assert.equal(created.statusCode, 201);
-  assert.equal(created.body.organization.orgId, "org_001");
+  assert.match(created.body.organization.orgId, /^org_/);
   assert.equal(created.body.organization.organizationCode, "clinic-a");
   assert.equal(listed.statusCode, 200);
-  assert.equal(listed.body.organizations.length, 1);
-  assert.equal(listed.body.organizations[0].displayName, "Clinic A");
+  assert.ok(listed.body.organizations.some((organization) => organization.displayName === "Clinic A"));
 });
 
 test("creates organization members and patients", async () => {
   const store = createTestStore();
-  const createdOrg = await request(store, "POST", "/v1/organizations", {
+  const { organization, headers } = await createAuthenticatedMember(store, {
     organizationCode: "Clinic B",
-    displayName: "Clinic B"
+    displayName: "Clinic B",
+    globalRoles: ["org_admin"]
   });
-  const orgId = createdOrg.body.organization.orgId;
+  const orgId = organization.orgId;
 
   const createdMember = await request(store, "POST", `/v1/organizations/${orgId}/members`, {
     loginId: "doctor",
@@ -75,12 +80,13 @@ test("creates organization members and patients", async () => {
     productRoles: {
       charting: ["doctor"]
     }
-  });
+  }, headers);
   const createdPatient = await request(store, "POST", `/v1/organizations/${orgId}/patients`, {
     displayName: "Yamada Taro",
+    primaryPatientNumber: "000123",
     birthDate: "1970-01-01",
     sex: "male"
-  });
+  }, headers);
 
   assert.equal(createdMember.statusCode, 201);
   assert.match(createdMember.body.member.memberId, /^mem_/);
@@ -88,52 +94,55 @@ test("creates organization members and patients", async () => {
   assert.equal(createdPatient.statusCode, 201);
   assert.match(createdPatient.body.patient.patientId, /^pat_/);
   assert.equal(createdPatient.body.patient.orgId, orgId);
+  assert.equal(createdPatient.body.patient.primaryPatientNumber, "000123");
 
-  const listedMembers = await request(store, "GET", `/v1/organizations/${orgId}/members`);
-  const listedPatients = await request(store, "GET", `/v1/organizations/${orgId}/patients`);
+  const listedMembers = await request(store, "GET", `/v1/organizations/${orgId}/members`, undefined, headers);
+  const listedPatients = await request(store, "GET", `/v1/organizations/${orgId}/patients`, undefined, headers);
 
-  assert.equal(listedMembers.body.members.length, 1);
+  assert.equal(listedMembers.body.members.length, 2);
   assert.equal(listedPatients.body.patients.length, 1);
 });
 
 test("creates shared master data resources", async () => {
   const store = createTestStore();
-  const createdOrg = await request(store, "POST", "/v1/organizations", {
+  const { organization, headers } = await createAuthenticatedMember(store, {
     organizationCode: "Clinic Master",
-    displayName: "Clinic Master"
+    displayName: "Clinic Master",
+    globalRoles: ["org_admin"]
   });
-  const orgId = createdOrg.body.organization.orgId;
+  const orgId = organization.orgId;
 
   const facility = await request(store, "POST", `/v1/organizations/${orgId}/facilities`, {
     displayName: "Main Clinic",
     medicalInstitutionCode: "1234567",
     facilityStandardKeys: ["basic"]
-  });
+  }, headers);
   const department = await request(store, "POST", `/v1/organizations/${orgId}/departments`, {
     facilityId: facility.body.facility.facilityId,
     displayName: "Internal Medicine"
-  });
+  }, headers);
   const entitlement = await request(store, "POST", `/v1/organizations/${orgId}/product-entitlements`, {
     productId: "fee",
     status: "enabled",
     features: { receiptDraft: true }
-  });
+  }, headers);
   const auditEvent = await request(store, "POST", `/v1/organizations/${orgId}/audit-events`, {
     eventType: "facility.created",
     targetType: "facility",
     targetId: facility.body.facility.facilityId,
     safePayload: { displayName: "Main Clinic" }
-  });
+  }, headers);
 
   assert.equal(facility.statusCode, 201);
   assert.match(facility.body.facility.facilityId, /^fac_/);
   assert.match(department.body.department.departmentId, /^dep_/);
   assert.equal(entitlement.body.productEntitlement.productId, "fee");
   assert.match(auditEvent.body.auditEvent.eventId, /^aud_/);
-  assert.equal((await request(store, "GET", `/v1/organizations/${orgId}/facilities`)).body.facilities.length, 1);
-  assert.equal((await request(store, "GET", `/v1/organizations/${orgId}/departments`)).body.departments.length, 1);
+  assert.equal(auditEvent.body.auditEvent.safePayload.displayName, undefined);
+  assert.equal((await request(store, "GET", `/v1/organizations/${orgId}/facilities`, undefined, headers)).body.facilities.length, 1);
+  assert.equal((await request(store, "GET", `/v1/organizations/${orgId}/departments`, undefined, headers)).body.departments.length, 1);
   assert.equal(
-    (await request(store, "GET", `/v1/organizations/${orgId}/product-entitlements/fee`))
+    (await request(store, "GET", `/v1/organizations/${orgId}/product-entitlements/fee`, undefined, headers))
       .body.productEntitlement.status,
     "enabled"
   );
@@ -141,65 +150,71 @@ test("creates shared master data resources", async () => {
 
 test("patches platform resources and records audit events", async () => {
   const store = createTestStore();
-  const createdOrg = await request(store, "POST", "/v1/organizations", {
+  const { organization, headers } = await createAuthenticatedMember(store, {
     organizationCode: "Clinic Patch",
-    displayName: "Clinic Patch"
+    displayName: "Clinic Patch",
+    globalRoles: ["org_admin"]
   });
-  const orgId = createdOrg.body.organization.orgId;
+  const orgId = organization.orgId;
   const member = await request(store, "POST", `/v1/organizations/${orgId}/members`, {
     loginId: "doctor",
     displayName: "Doctor",
     password: "correct horse battery staple"
-  });
+  }, headers);
   const facility = await request(store, "POST", `/v1/organizations/${orgId}/facilities`, {
     displayName: "Main Clinic"
-  });
+  }, headers);
   const department = await request(store, "POST", `/v1/organizations/${orgId}/departments`, {
     displayName: "Internal Medicine"
-  });
+  }, headers);
   const patient = await request(store, "POST", `/v1/organizations/${orgId}/patients`, {
     displayName: "Yamada Taro"
-  });
+  }, headers);
   await request(store, "POST", `/v1/organizations/${orgId}/product-entitlements`, {
     productId: "charting",
     status: "trialing"
-  });
+  }, headers);
 
   const patchedOrg = await request(store, "PATCH", `/v1/organizations/${orgId}`, {
     displayName: "Clinic Patch Updated",
     defaultFacilityId: facility.body.facility.facilityId
-  });
+  }, headers);
   const patchedMember = await request(
     store,
     "PATCH",
     `/v1/organizations/${orgId}/members/${member.body.member.memberId}`,
-    { displayName: "Doctor Updated", password: "new correct horse battery" }
+    { displayName: "Doctor Updated", password: "new correct horse battery" },
+    headers
   );
   const patchedFacility = await request(
     store,
     "PATCH",
     `/v1/organizations/${orgId}/facilities/${facility.body.facility.facilityId}`,
-    { medicalInstitutionCode: "7654321" }
+    { medicalInstitutionCode: "7654321" },
+    headers
   );
   const patchedDepartment = await request(
     store,
     "PATCH",
     `/v1/organizations/${orgId}/departments/${department.body.department.departmentId}`,
-    { facilityId: facility.body.facility.facilityId }
+    { facilityId: facility.body.facility.facilityId },
+    headers
   );
   const patchedPatient = await request(
     store,
     "PATCH",
     `/v1/organizations/${orgId}/patients/${patient.body.patient.patientId}`,
-    { displayNameKana: "YAMADA TARO" }
+    { displayNameKana: "YAMADA TARO" },
+    headers
   );
   const patchedEntitlement = await request(
     store,
     "PATCH",
     `/v1/organizations/${orgId}/product-entitlements/charting`,
-    { status: "enabled", features: { soap: true } }
+    { status: "enabled", features: { soap: true } },
+    headers
   );
-  const auditEvents = await request(store, "GET", `/v1/organizations/${orgId}/audit-events`);
+  const auditEvents = await request(store, "GET", `/v1/organizations/${orgId}/audit-events`, undefined, headers);
 
   assert.equal(patchedOrg.body.organization.displayName, "Clinic Patch Updated");
   assert.equal(patchedMember.body.member.displayName, "Doctor Updated");
@@ -213,6 +228,11 @@ test("patches platform resources and records audit events", async () => {
 
 test("creates signup applications and rate limits signup attempts", async () => {
   const store = createTestStore();
+  const { headers: platformHeaders } = await createAuthenticatedMember(store, {
+    organizationCode: "Signup Reviewer",
+    displayName: "Signup Reviewer",
+    globalRoles: ["platform_admin"]
+  });
   const first = await request(
     store,
     "POST",
@@ -240,7 +260,13 @@ test("creates signup applications and rate limits signup attempts", async () => 
     { "x-forwarded-for": "203.0.113.10" },
     { signupRateLimit: { limit: 1, windowSeconds: 60 } }
   );
-  const fetched = await request(store, "GET", `/v1/signup/applications/${first.body.signupApplication.applicationId}`);
+  const fetched = await request(
+    store,
+    "GET",
+    `/v1/signup/applications/${first.body.signupApplication.applicationId}`,
+    undefined,
+    platformHeaders
+  );
 
   assert.equal(first.statusCode, 201);
   assert.equal(first.body.signupApplication.applicantEmail, "applicant@example.com");
@@ -296,13 +322,13 @@ test("verifies signup email, provisions admin, and sets initial password", async
 
 test("logs in, checks session, enrolls MFA, and logs out", async () => {
   const store = createTestStore();
-  const createdOrg = await request(store, "POST", "/v1/organizations", {
+  const organization = store.createOrganization({
     organizationCode: "Clinic Auth",
     displayName: "Clinic Auth"
   });
-  const orgId = createdOrg.body.organization.orgId;
+  const orgId = organization.orgId;
 
-  await request(store, "POST", `/v1/organizations/${orgId}/members`, {
+  store.createMember(orgId, {
     loginId: "Admin",
     displayName: "Admin",
     globalRoles: ["org_admin"],
@@ -353,13 +379,13 @@ test("logs in, checks session, enrolls MFA, and logs out", async () => {
 
 test("uses secure session cookies outside local and test environments", async () => {
   const store = createTestStore();
-  const createdOrg = await request(store, "POST", "/v1/organizations", {
+  const organization = store.createOrganization({
     organizationCode: "Secure Clinic",
     displayName: "Secure Clinic"
   });
-  const orgId = createdOrg.body.organization.orgId;
+  const orgId = organization.orgId;
 
-  await request(store, "POST", `/v1/organizations/${orgId}/members`, {
+  store.createMember(orgId, {
     loginId: "Admin",
     displayName: "Admin",
     globalRoles: ["org_admin"],
@@ -379,13 +405,13 @@ test("uses secure session cookies outside local and test environments", async ()
 
 test("allows explicit local insecure cookie override for local development", async () => {
   const store = createTestStore();
-  const createdOrg = await request(store, "POST", "/v1/organizations", {
+  const organization = store.createOrganization({
     organizationCode: "Local Cookie Clinic",
     displayName: "Local Cookie Clinic"
   });
-  const orgId = createdOrg.body.organization.orgId;
+  const orgId = organization.orgId;
 
-  await request(store, "POST", `/v1/organizations/${orgId}/members`, {
+  store.createMember(orgId, {
     loginId: "Admin",
     displayName: "Admin",
     globalRoles: ["org_admin"],
@@ -404,13 +430,13 @@ test("allows explicit local insecure cookie override for local development", asy
 
 test("requires MFA code after enrollment", async () => {
   const store = createTestStore();
-  const createdOrg = await request(store, "POST", "/v1/organizations", {
+  const organization = store.createOrganization({
     organizationCode: "Clinic MFA",
     displayName: "Clinic MFA"
   });
-  const orgId = createdOrg.body.organization.orgId;
+  const orgId = organization.orgId;
 
-  await request(store, "POST", `/v1/organizations/${orgId}/members`, {
+  store.createMember(orgId, {
     loginId: "admin",
     displayName: "Admin",
     globalRoles: ["org_admin"],
@@ -453,13 +479,13 @@ test("requires MFA code after enrollment", async () => {
 
 test("rate limits login attempts", async () => {
   const store = createTestStore();
-  const createdOrg = await request(store, "POST", "/v1/organizations", {
+  const organization = store.createOrganization({
     organizationCode: "Clinic Rate",
     displayName: "Clinic Rate"
   });
-  const orgId = createdOrg.body.organization.orgId;
+  const orgId = organization.orgId;
 
-  await request(store, "POST", `/v1/organizations/${orgId}/members`, {
+  store.createMember(orgId, {
     loginId: "admin",
     displayName: "Admin",
     password: "correct horse battery staple"
@@ -495,21 +521,141 @@ test("rate limits login attempts", async () => {
   assert.equal(second.body.error, "rate_limit");
 });
 
+test("requires Platform session and org admin role for Core resources", async () => {
+  const store = createTestStore();
+  const { organization, headers: adminHeaders } = await createAuthenticatedMember(store, {
+    organizationCode: "Protected Clinic",
+    displayName: "Protected Clinic",
+    globalRoles: ["org_admin"]
+  });
+  const viewer = await createAuthenticatedMember(store, {
+    organizationCode: "Viewer Clinic",
+    displayName: "Viewer Clinic",
+    globalRoles: ["viewer"]
+  });
+
+  const unauthenticated = await request(store, "GET", `/v1/organizations/${organization.orgId}/patients`);
+  const wrongOrg = await request(
+    store,
+    "GET",
+    `/v1/organizations/${organization.orgId}/patients`,
+    undefined,
+    viewer.headers
+  );
+  const viewerWrite = await request(
+    store,
+    "POST",
+    `/v1/organizations/${viewer.organization.orgId}/patients`,
+    { displayName: "Patient" },
+    viewer.headers
+  );
+  const missingCsrf = await request(
+    store,
+    "POST",
+    `/v1/organizations/${organization.orgId}/patients`,
+    { displayName: "Patient" },
+    { cookie: adminHeaders.cookie }
+  );
+
+  assert.equal(unauthenticated.statusCode, 401);
+  assert.equal(wrongOrg.statusCode, 403);
+  assert.equal(viewerWrite.statusCode, 403);
+  assert.equal(missingCsrf.statusCode, 403);
+});
+
+test("creates and updates data requests through Core API", async () => {
+  const store = createTestStore();
+  const { organization, headers } = await createAuthenticatedMember(store, {
+    organizationCode: "Data Request Clinic",
+    displayName: "Data Request Clinic",
+    globalRoles: ["org_admin"]
+  });
+  const patient = store.createPatient(organization.orgId, {
+    displayName: "Yamada Taro"
+  });
+  const created = await request(store, "POST", `/v1/organizations/${organization.orgId}/data-requests`, {
+    requestType: "deletion",
+    subjectPatientId: patient.patientId,
+    productIds: ["charting", "fee", "unknown"],
+    safePayload: {
+      patientId: patient.patientId,
+      displayName: "Yamada Taro"
+    }
+  }, headers);
+  const patched = await request(
+    store,
+    "PATCH",
+    `/v1/organizations/${organization.orgId}/data-requests/${created.body.dataRequest.requestId}`,
+    {
+      status: "completed",
+      completedAt: "2026-05-28T00:00:00.000Z"
+    },
+    headers
+  );
+  const listed = await request(store, "GET", `/v1/organizations/${organization.orgId}/data-requests`, undefined, headers);
+  const auditEvents = await request(store, "GET", `/v1/organizations/${organization.orgId}/audit-events`, undefined, headers);
+
+  assert.equal(created.statusCode, 201);
+  assert.deepEqual(created.body.dataRequest.productIds, ["charting", "fee"]);
+  assert.equal(created.body.dataRequest.safePayload.displayName, undefined);
+  assert.equal(patched.body.dataRequest.status, "completed");
+  assert.equal(listed.body.dataRequests.length, 1);
+  assert.ok(auditEvents.body.auditEvents.some((event) => event.eventType === "data_request.created"));
+  assert.ok(auditEvents.body.auditEvents.some((event) => event.eventType === "data_request.updated"));
+});
+
+test("requires configured session secret outside local and test environments", async () => {
+  const previousSecret = process.env.APP_SESSION_SIGNING_SECRET;
+  delete process.env.APP_SESSION_SIGNING_SECRET;
+  const store = createTestStore();
+  const organization = store.createOrganization({
+    organizationCode: "Secret Clinic",
+    displayName: "Secret Clinic"
+  });
+  store.createMember(organization.orgId, {
+    loginId: "admin",
+    displayName: "Admin",
+    password: "correct horse battery staple"
+  });
+
+  try {
+    const response = await request(store, "POST", "/v1/auth/login", {
+      organizationCode: "secret-clinic",
+      loginId: "admin",
+      password: "correct horse battery staple"
+    }, {}, { env: "production", noSessionSecret: true });
+
+    assert.equal(response.statusCode, 500);
+    assert.equal(response.body.error, "internal_error");
+  } finally {
+    if (previousSecret === undefined) {
+      delete process.env.APP_SESSION_SIGNING_SECRET;
+    } else {
+      process.env.APP_SESSION_SIGNING_SECRET = previousSecret;
+    }
+  }
+});
+
 test("returns validation and conflict errors as responses", async () => {
   const store = createTestStore();
+  const { headers } = await createAuthenticatedMember(store, {
+    organizationCode: "Conflict Admin",
+    displayName: "Conflict Admin",
+    globalRoles: ["platform_admin"]
+  });
 
   const invalid = await request(store, "POST", "/v1/organizations", {
     organizationCode: "",
     displayName: ""
-  });
+  }, headers);
   const first = await request(store, "POST", "/v1/organizations", {
     organizationCode: "Clinic C",
     displayName: "Clinic C"
-  });
+  }, headers);
   const duplicate = await request(store, "POST", "/v1/organizations", {
     organizationCode: "Clinic C",
     displayName: "Clinic C Duplicate"
-  });
+  }, headers);
 
   assert.equal(invalid.statusCode, 400);
   assert.equal(invalid.body.error, "validation");
@@ -528,6 +674,36 @@ function createTestStore() {
   });
 }
 
+async function createAuthenticatedMember(store, options = {}) {
+  const organization = store.createOrganization({
+    organizationCode: options.organizationCode || "Clinic",
+    displayName: options.displayName || options.organizationCode || "Clinic"
+  });
+  const member = store.createMember(organization.orgId, {
+    loginId: options.loginId || "admin",
+    displayName: options.memberName || "Admin",
+    globalRoles: options.globalRoles || ["org_admin"],
+    productRoles: options.productRoles || {},
+    password: options.password || "correct horse battery staple"
+  });
+  const login = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: organization.organizationCode,
+    loginId: member.loginId,
+    password: options.password || "correct horse battery staple"
+  });
+  const cookie = cookieHeaderFromSetCookie(login.headers["set-cookie"]);
+
+  return {
+    organization,
+    member,
+    login,
+    headers: {
+      cookie,
+      "x-csrf-token": login.body.csrfToken
+    }
+  };
+}
+
 function request(store, method, path, body, headers = {}, options = {}) {
   return handlePlatformApiRequest({
     method,
@@ -540,7 +716,7 @@ function request(store, method, path, body, headers = {}, options = {}) {
     region: "asia-northeast1",
     startedAt: new Date("2026-05-27T00:00:00.000Z"),
     now: new Date("2026-05-27T00:00:00.000Z"),
-    sessionSecret: "test-session-secret",
+    sessionSecret: options.noSessionSecret ? undefined : "test-session-secret",
     secureCookies: options.secureCookies,
     loginRateLimit: options.loginRateLimit,
     signupRateLimit: options.signupRateLimit

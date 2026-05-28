@@ -3,6 +3,7 @@ import {
   normalizeLoginId,
   normalizeOrganizationCode,
   validateCreateAuditEventInput,
+  validateCreateDataRequestInput,
   validateCreateDepartmentInput,
   validateCreateFacilityInput,
   validateCreateMemberInput,
@@ -11,6 +12,7 @@ import {
   validateCreateSignupApplicationInput,
   validatePatchDepartmentInput,
   validatePatchFacilityInput,
+  validatePatchDataRequestInput,
   validatePatchMemberInput,
   validatePatchOrganizationInput,
   validatePatchPatientInput,
@@ -22,6 +24,7 @@ import {
 import {
   auditEventPath,
   collections,
+  dataRequestPath,
   departmentPath,
   facilityPath,
   loginIdentityKey,
@@ -655,6 +658,53 @@ export class FirestorePlatformStore {
     return event;
   }
 
+  async createDataRequest(orgId, input) {
+    await this.requireOrganization(orgId);
+    const normalized = validateCreateDataRequestInput(input);
+    const now = this.timestamp();
+    const requestId = this.idFactory("drq");
+    const dataRequest = compactObject({
+      requestId,
+      orgId,
+      ...normalized,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    });
+
+    await this.doc(dataRequestPath(orgId, requestId)).set(dataRequest);
+    return dataRequest;
+  }
+
+  async listDataRequests(orgId) {
+    await this.requireOrganization(orgId);
+    const snapshot = await this.orgCollection(orgId, collections.dataRequests).orderBy("createdAt", "asc").get();
+    return docsFromSnapshot(snapshot);
+  }
+
+  async getDataRequest(orgId, requestId) {
+    await this.requireOrganization(orgId);
+    return docDataOrNull(await this.doc(dataRequestPath(orgId, requestId)).get());
+  }
+
+  async updateDataRequest(orgId, requestId, input) {
+    await this.requireOrganization(orgId);
+    const current = await this.getDataRequest(orgId, requestId);
+    if (!current) {
+      throw notFoundError("data request not found");
+    }
+
+    const patch = validatePatchDataRequestInput(input);
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+
+    await this.doc(dataRequestPath(orgId, requestId)).set(updated);
+    return updated;
+  }
+
   async listAuditEvents(orgId) {
     await this.requireOrganization(orgId);
     const snapshot = await this.orgCollection(orgId, collections.auditEvents).orderBy("createdAt", "asc").get();
@@ -857,7 +907,9 @@ function createLoginIdentity({ organization, member, password, now }) {
 }
 
 function hasPrivilegedRole(member) {
-  return member.globalRoles.includes("org_admin") || member.globalRoles.includes("billing_admin");
+  return member.globalRoles.includes("org_admin")
+    || member.globalRoles.includes("billing_admin")
+    || member.globalRoles.includes("platform_admin");
 }
 
 function activeIdentityStatus(currentStatus) {

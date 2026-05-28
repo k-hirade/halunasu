@@ -131,10 +131,27 @@ test("validates patient input and snapshot", () => {
     ...validateCreatePatientInput({
       displayName: "Yamada Taro",
       birthDate: "1970-01-01",
-      sex: "male"
+      sex: "male",
+      primaryPatientNumber: "000123",
+      patientIdentifiers: [
+        { sourceSystem: "legacy", facilityId: "fac_123", patientNumber: "legacy-001" },
+        { sourceSystem: "ignored" }
+      ],
+      contact: { phone: "03-0000-0000" },
+      insurance: { insurerNumber: "06123456" },
+      duplicateCandidateIds: ["pat_dup", "pat_dup"]
     })
   };
 
+  assert.equal(patient.primaryPatientNumber, "000123");
+  assert.deepEqual(patient.patientIdentifiers, [{
+    sourceSystem: "legacy",
+    facilityId: "fac_123",
+    patientNumber: "legacy-001",
+    value: "legacy-001",
+    status: "active"
+  }]);
+  assert.deepEqual(patient.duplicateCandidateIds, ["pat_dup"]);
   assert.deepEqual(patientSnapshot(patient, new Date("2026-05-27T00:00:00.000Z")), {
     patientId: "pat_123",
     displayName: "Yamada Taro",
@@ -195,12 +212,20 @@ test("validates product entitlements and audit events", () => {
     eventType: "member.created",
     actorMemberId: "mem_123",
     productId: "charting",
-    safePayload: { changedFields: ["displayName"] }
+    safePayload: {
+      changedFields: ["displayName"],
+      displayName: "Yamada Taro",
+      birthDate: "1970-01-01",
+      memberId: "mem_123"
+    }
   });
 
   assert.equal(entitlement.productId, "charting");
   assert.equal(entitlement.startsAt, "2026-05-27T00:00:00.000Z");
   assert.deepEqual(auditEvent.safePayload.changedFields, ["displayName"]);
+  assert.equal(auditEvent.safePayload.memberId, "mem_123");
+  assert.equal(auditEvent.safePayload.displayName, undefined);
+  assert.equal(auditEvent.safePayload.birthDate, undefined);
 });
 
 test("validates data request model for deletion and retention workflows", () => {

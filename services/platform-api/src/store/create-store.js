@@ -171,6 +171,22 @@ export class LazyFirestorePlatformStore {
     return this.call("createAuditEvent", orgId, input);
   }
 
+  async createDataRequest(orgId, input) {
+    return this.call("createDataRequest", orgId, input);
+  }
+
+  async listDataRequests(orgId) {
+    return this.call("listDataRequests", orgId);
+  }
+
+  async getDataRequest(orgId, requestId) {
+    return this.call("getDataRequest", orgId, requestId);
+  }
+
+  async updateDataRequest(orgId, requestId, input) {
+    return this.call("updateDataRequest", orgId, requestId, input);
+  }
+
   async listAuditEvents(orgId) {
     return this.call("listAuditEvents", orgId);
   }

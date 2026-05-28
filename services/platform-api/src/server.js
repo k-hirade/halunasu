@@ -117,6 +117,7 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && matches(parts, ["v1", "signup", "applications"])) {
+    await requirePlatformAdmin(input, store);
     return ok({ signupApplications: await store.listSignupApplications() });
   }
 
@@ -127,6 +128,7 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && parts.length === 4 && matches(parts.slice(0, 3), ["v1", "signup", "applications"])) {
+    await requirePlatformAdmin(input, store);
     const signupApplication = await store.getSignupApplication(parts[3]);
     if (!signupApplication) {
       return notFound("signup application not found");
@@ -228,10 +230,13 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && matches(parts, ["v1", "organizations"])) {
+    await requirePlatformAdmin(input, store);
     return ok({ organizations: await store.listOrganizations() });
   }
 
   if (method === "POST" && matches(parts, ["v1", "organizations"])) {
+    const context = await requirePlatformAdmin(input, store);
+    requireCsrf(input, context.session);
     const organization = await store.createOrganization(input.body || {});
     await writeAuditEvent(input, store, organization.orgId, {
       eventType: "organization.created",
@@ -243,6 +248,7 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && parts.length === 3 && parts[0] === "v1" && parts[1] === "organizations") {
+    await requireOrgRead(input, store, parts[2]);
     const organization = await store.getOrganization(parts[2]);
     if (!organization) {
       return notFound("organization not found");
@@ -251,6 +257,8 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "PATCH" && parts.length === 3 && parts[0] === "v1" && parts[1] === "organizations") {
+    const context = await requireOrgAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
     const organization = await store.updateOrganization(parts[2], input.body || {});
     await writeAuditEvent(input, store, parts[2], {
       eventType: "organization.updated",
@@ -262,10 +270,13 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && isOrgChildCollection(parts, "members")) {
+    await requireOrgAdmin(input, store, parts[2]);
     return ok({ members: await store.listMembers(parts[2]) });
   }
 
   if (method === "POST" && isOrgChildCollection(parts, "members")) {
+    const context = await requireOrgAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
     const member = await store.createMember(parts[2], input.body || {});
     await writeAuditEvent(input, store, parts[2], {
       eventType: "member.created",
@@ -280,6 +291,7 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "members")) {
+    await requireOrgAdmin(input, store, parts[2]);
     const member = await store.getMember(parts[2], parts[4]);
     if (!member) {
       return notFound("member not found");
@@ -288,6 +300,8 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "PATCH" && isOrgChildDocument(parts, "members")) {
+    const context = await requireOrgAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
     const member = await store.updateMember(parts[2], parts[4], input.body || {});
     await writeAuditEvent(input, store, parts[2], {
       eventType: "member.updated",
@@ -302,10 +316,13 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && isOrgChildCollection(parts, "facilities")) {
+    await requireOrgRead(input, store, parts[2]);
     return ok({ facilities: await store.listFacilities(parts[2]) });
   }
 
   if (method === "POST" && isOrgChildCollection(parts, "facilities")) {
+    const context = await requireOrgAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
     const facility = await store.createFacility(parts[2], input.body || {});
     await writeAuditEvent(input, store, parts[2], {
       eventType: "facility.created",
@@ -317,6 +334,7 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "facilities")) {
+    await requireOrgRead(input, store, parts[2]);
     const facility = await store.getFacility(parts[2], parts[4]);
     if (!facility) {
       return notFound("facility not found");
@@ -325,6 +343,8 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "PATCH" && isOrgChildDocument(parts, "facilities")) {
+    const context = await requireOrgAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
     const facility = await store.updateFacility(parts[2], parts[4], input.body || {});
     await writeAuditEvent(input, store, parts[2], {
       eventType: "facility.updated",
@@ -339,10 +359,13 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && isOrgChildCollection(parts, "departments")) {
+    await requireOrgRead(input, store, parts[2]);
     return ok({ departments: await store.listDepartments(parts[2]) });
   }
 
   if (method === "POST" && isOrgChildCollection(parts, "departments")) {
+    const context = await requireOrgAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
     const department = await store.createDepartment(parts[2], input.body || {});
     await writeAuditEvent(input, store, parts[2], {
       eventType: "department.created",
@@ -354,6 +377,7 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "departments")) {
+    await requireOrgRead(input, store, parts[2]);
     const department = await store.getDepartment(parts[2], parts[4]);
     if (!department) {
       return notFound("department not found");
@@ -362,6 +386,8 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "PATCH" && isOrgChildDocument(parts, "departments")) {
+    const context = await requireOrgAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
     const department = await store.updateDepartment(parts[2], parts[4], input.body || {});
     await writeAuditEvent(input, store, parts[2], {
       eventType: "department.updated",
@@ -376,10 +402,13 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && isOrgChildCollection(parts, "patients")) {
+    await requireOrgRead(input, store, parts[2]);
     return ok({ patients: await store.listPatients(parts[2]) });
   }
 
   if (method === "POST" && isOrgChildCollection(parts, "patients")) {
+    const context = await requireOrgAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
     const patient = await store.createPatient(parts[2], input.body || {});
     await writeAuditEvent(input, store, parts[2], {
       eventType: "patient.created",
@@ -391,6 +420,7 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "patients")) {
+    await requireOrgRead(input, store, parts[2]);
     const patient = await store.getPatient(parts[2], parts[4]);
     if (!patient) {
       return notFound("patient not found");
@@ -399,6 +429,8 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "PATCH" && isOrgChildDocument(parts, "patients")) {
+    const context = await requireOrgAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
     const patient = await store.updatePatient(parts[2], parts[4], input.body || {});
     await writeAuditEvent(input, store, parts[2], {
       eventType: "patient.updated",
@@ -413,10 +445,13 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && isOrgChildCollection(parts, "product-entitlements")) {
+    await requireBillingAdmin(input, store, parts[2]);
     return ok({ productEntitlements: await store.listProductEntitlements(parts[2]) });
   }
 
   if (method === "POST" && isOrgChildCollection(parts, "product-entitlements")) {
+    const context = await requireBillingAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
     const productEntitlement = await store.upsertProductEntitlement(parts[2], input.body || {});
     await writeAuditEvent(input, store, parts[2], {
       eventType: "product_entitlement.upserted",
@@ -428,6 +463,7 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "product-entitlements")) {
+    await requireBillingAdmin(input, store, parts[2]);
     const productEntitlement = await store.getProductEntitlement(parts[2], parts[4]);
     if (!productEntitlement) {
       return notFound("product entitlement not found");
@@ -436,6 +472,8 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "PATCH" && isOrgChildDocument(parts, "product-entitlements")) {
+    const context = await requireBillingAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
     const productEntitlement = await store.updateProductEntitlement(parts[2], parts[4], input.body || {});
     await writeAuditEvent(input, store, parts[2], {
       eventType: "product_entitlement.updated",
@@ -450,19 +488,79 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && isOrgChildCollection(parts, "audit-events")) {
+    await requireOrgAdmin(input, store, parts[2]);
     return ok({ auditEvents: await store.listAuditEvents(parts[2]) });
   }
 
   if (method === "POST" && isOrgChildCollection(parts, "audit-events")) {
+    const context = await requireOrgAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
     return created({ auditEvent: await store.createAuditEvent(parts[2], input.body || {}) });
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "audit-events")) {
+    await requireOrgAdmin(input, store, parts[2]);
     const auditEvent = await store.getAuditEvent(parts[2], parts[4]);
     if (!auditEvent) {
       return notFound("audit event not found");
     }
     return ok({ auditEvent });
+  }
+
+  if (method === "GET" && isOrgChildCollection(parts, "data-requests")) {
+    await requireOrgAdmin(input, store, parts[2]);
+    return ok({ dataRequests: await store.listDataRequests(parts[2]) });
+  }
+
+  if (method === "POST" && isOrgChildCollection(parts, "data-requests")) {
+    const context = await requireOrgAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
+    const dataRequest = await store.createDataRequest(parts[2], {
+      ...input.body,
+      requesterMemberId: context.session.memberId
+    });
+    await store.createAuditEvent(parts[2], {
+      eventType: "data_request.created",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "data_request",
+      targetId: dataRequest.requestId,
+      safePayload: {
+        dataRequestId: dataRequest.requestId,
+        requestType: dataRequest.requestType,
+        patientId: dataRequest.subjectPatientId,
+        productIds: dataRequest.productIds
+      }
+    });
+    return created({ dataRequest });
+  }
+
+  if (method === "GET" && isOrgChildDocument(parts, "data-requests")) {
+    await requireOrgAdmin(input, store, parts[2]);
+    const dataRequest = await store.getDataRequest(parts[2], parts[4]);
+    if (!dataRequest) {
+      return notFound("data request not found");
+    }
+    return ok({ dataRequest });
+  }
+
+  if (method === "PATCH" && isOrgChildDocument(parts, "data-requests")) {
+    const context = await requireOrgAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
+    const dataRequest = await store.updateDataRequest(parts[2], parts[4], input.body || {});
+    await store.createAuditEvent(parts[2], {
+      eventType: "data_request.updated",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "data_request",
+      targetId: dataRequest.requestId,
+      safePayload: {
+        dataRequestId: dataRequest.requestId,
+        status: dataRequest.status,
+        changedFields: safeChangedFields(input.body)
+      }
+    });
+    return ok({ dataRequest });
   }
 
   return notFound("Route not found");
@@ -487,7 +585,7 @@ async function login(input, store) {
       eventType: "auth.login_failed",
       actorMemberId: identity.memberId,
       actorLoginId: identity.loginId,
-      safePayload: { reason: "invalid_password" }
+      safePayload: { status: "invalid_password" }
     });
     throw unauthorizedError("Invalid credentials");
   }
@@ -584,6 +682,49 @@ async function optionalSession(input, store) {
   }
 }
 
+async function requirePlatformAdmin(input, store) {
+  const context = await requireSession(input, store);
+  if (!hasGlobalRole(context.member, "platform_admin")) {
+    throw forbiddenError("Platform admin role is required");
+  }
+
+  return context;
+}
+
+async function requireOrgRead(input, store, orgId) {
+  const context = await requireSession(input, store);
+  if (hasGlobalRole(context.member, "platform_admin")) {
+    return context;
+  }
+  if (context.session.orgId !== orgId) {
+    throw forbiddenError("Organization access is required");
+  }
+
+  return context;
+}
+
+async function requireOrgAdmin(input, store, orgId) {
+  const context = await requireOrgRead(input, store, orgId);
+  if (hasGlobalRole(context.member, "platform_admin") || hasGlobalRole(context.member, "org_admin")) {
+    return context;
+  }
+
+  throw forbiddenError("Organization admin role is required");
+}
+
+async function requireBillingAdmin(input, store, orgId) {
+  const context = await requireOrgRead(input, store, orgId);
+  if (
+    hasGlobalRole(context.member, "platform_admin")
+    || hasGlobalRole(context.member, "org_admin")
+    || hasGlobalRole(context.member, "billing_admin")
+  ) {
+    return context;
+  }
+
+  throw forbiddenError("Billing admin role is required");
+}
+
 async function writeAuditEvent(input, store, orgId, event) {
   const context = await optionalSession(input, store);
 
@@ -607,7 +748,11 @@ function requireCsrf(input, session) {
 }
 
 function requirePrivilegedMember(member) {
-  if (member.globalRoles.includes("org_admin") || member.globalRoles.includes("billing_admin")) {
+  if (
+    member.globalRoles.includes("org_admin")
+    || member.globalRoles.includes("billing_admin")
+    || member.globalRoles.includes("platform_admin")
+  ) {
     return;
   }
 
@@ -615,6 +760,17 @@ function requirePrivilegedMember(member) {
   error.name = "ForbiddenError";
   error.statusCode = 403;
   throw error;
+}
+
+function hasGlobalRole(member, role) {
+  return (member.globalRoles || []).includes(role);
+}
+
+function forbiddenError(message = "Forbidden") {
+  const error = new Error(message);
+  error.name = "ForbiddenError";
+  error.statusCode = 403;
+  return error;
 }
 
 function createSessionResponse({ input, identity, member, organizationCode, mfaVerified }) {
@@ -664,6 +820,7 @@ function publicSessionView(session) {
 function sessionOptions(input) {
   return {
     sessionSecret: input.sessionSecret || process.env.APP_SESSION_SIGNING_SECRET,
+    env: input.env,
     now: input.now,
     ttlSeconds: input.sessionTtlSeconds
   };

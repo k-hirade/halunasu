@@ -16,6 +16,7 @@ This directory contains architecture decisions and system diagrams for the Halun
 - [010 P6 Referral Foundation Runbook](010-p6-referral-foundation-runbook.md)
 - [011 P7 Product Boundaries](011-p7-product-boundaries.md)
 - [012 P8 Security Operations Compliance](012-p8-security-operations-compliance.md)
+- [013 P8.5 Core Hardening](013-p8-5-core-hardening.md)
 
 ## Reading Order
 
@@ -31,3 +32,4 @@ This directory contains architecture decisions and system diagrams for the Halun
 10. Use the P6 referral foundation runbook to verify the Platform-backed referral boundary.
 11. Use the P7 product boundaries document to keep product integration explicit and auditable.
 12. Use the P8 security operations compliance runbook before any real PHI or customer onboarding.
+13. Use the P8.5 core hardening note to verify Core authorization, audit safety, and data request handling.

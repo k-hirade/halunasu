@@ -201,7 +201,14 @@ export function validateCreatePatientInput(input = {}) {
     displayNameKana: optionalString(input.displayNameKana),
     birthDate: optionalBirthDate(input.birthDate),
     sex: optionalEnum(input.sex, patientSexes, "sex") || "unknown",
+    primaryPatientNumber: optionalString(input.primaryPatientNumber || input.patientNumber),
+    patientIdentifiers: normalizePatientIdentifiers(input.patientIdentifiers),
     externalPatientIds: normalizeStringArray(input.externalPatientIds),
+    contact: isPlainObject(input.contact) ? input.contact : {},
+    insurance: isPlainObject(input.insurance) ? input.insurance : {},
+    publicInsurance: isPlainObject(input.publicInsurance) ? input.publicInsurance : {},
+    consent: isPlainObject(input.consent) ? input.consent : {},
+    duplicateCandidateIds: normalizeStringArray(input.duplicateCandidateIds),
     status: optionalEnum(input.status, patientStatuses, "status") || "active",
     notes: optionalString(input.notes)
   };
@@ -213,7 +220,22 @@ export function validatePatchPatientInput(input = {}) {
     displayNameKana: hasOwn(input, "displayNameKana") ? optionalString(input.displayNameKana) : undefined,
     birthDate: hasOwn(input, "birthDate") ? optionalBirthDate(input.birthDate) : undefined,
     sex: hasOwn(input, "sex") ? optionalEnum(input.sex, patientSexes, "sex") || "unknown" : undefined,
+    primaryPatientNumber: hasOwn(input, "primaryPatientNumber") || hasOwn(input, "patientNumber")
+      ? optionalString(input.primaryPatientNumber || input.patientNumber)
+      : undefined,
+    patientIdentifiers: hasOwn(input, "patientIdentifiers")
+      ? normalizePatientIdentifiers(input.patientIdentifiers)
+      : undefined,
     externalPatientIds: hasOwn(input, "externalPatientIds") ? normalizeStringArray(input.externalPatientIds) : undefined,
+    contact: hasOwn(input, "contact") && isPlainObject(input.contact) ? input.contact : undefined,
+    insurance: hasOwn(input, "insurance") && isPlainObject(input.insurance) ? input.insurance : undefined,
+    publicInsurance: hasOwn(input, "publicInsurance") && isPlainObject(input.publicInsurance)
+      ? input.publicInsurance
+      : undefined,
+    consent: hasOwn(input, "consent") && isPlainObject(input.consent) ? input.consent : undefined,
+    duplicateCandidateIds: hasOwn(input, "duplicateCandidateIds")
+      ? normalizeStringArray(input.duplicateCandidateIds)
+      : undefined,
     status: hasOwn(input, "status") ? optionalEnum(input.status, patientStatuses, "status") : undefined,
     mergedIntoPatientId: hasOwn(input, "mergedIntoPatientId")
       ? optionalString(input.mergedIntoPatientId)
@@ -272,7 +294,7 @@ export function validateCreateAuditEventInput(input = {}) {
     productId,
     targetType: optionalString(input.targetType),
     targetId: optionalString(input.targetId),
-    safePayload: isPlainObject(input.safePayload) ? input.safePayload : {}
+    safePayload: sanitizeSafePayload(input.safePayload)
   };
 }
 
@@ -285,7 +307,7 @@ export function validateCreateDataRequestInput(input = {}) {
     productIds: normalizeProductIds(input.productIds || input.requestedProducts),
     reason: optionalString(input.reason),
     status: optionalEnum(input.status, dataRequestStatuses, "status") || "submitted",
-    safePayload: isPlainObject(input.safePayload) ? input.safePayload : {}
+    safePayload: sanitizeSafePayload(input.safePayload)
   };
 }
 
@@ -295,7 +317,7 @@ export function validatePatchDataRequestInput(input = {}) {
     assignedMemberId: hasOwn(input, "assignedMemberId") ? optionalString(input.assignedMemberId) : undefined,
     completedAt: hasOwn(input, "completedAt") ? optionalDateTime(input.completedAt, "completedAt") : undefined,
     rejectionReason: hasOwn(input, "rejectionReason") ? optionalString(input.rejectionReason) : undefined,
-    safePayload: hasOwn(input, "safePayload") && isPlainObject(input.safePayload) ? input.safePayload : undefined
+    safePayload: hasOwn(input, "safePayload") ? sanitizeSafePayload(input.safePayload) : undefined
   });
 }
 
@@ -474,6 +496,83 @@ function normalizeRequestedProducts(value) {
 
 function normalizeProductIds(value) {
   return normalizeStringArray(value).filter((productId) => Object.values(productIds).includes(productId));
+}
+
+function normalizePatientIdentifiers(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(isPlainObject)
+    .map((identifier) => compactObject({
+      sourceSystem: optionalString(identifier.sourceSystem),
+      facilityId: optionalString(identifier.facilityId),
+      patientNumber: optionalString(identifier.patientNumber),
+      value: optionalString(identifier.value),
+      status: optionalString(identifier.status) || "active"
+    }))
+    .filter((identifier) => identifier.patientNumber || identifier.value)
+    .map((identifier) => ({
+      ...identifier,
+      value: identifier.value || identifier.patientNumber
+    }));
+}
+
+function sanitizeSafePayload(value) {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+
+  const allowed = new Set([
+    "applicationId",
+    "assignedMemberId",
+    "authorMemberId",
+    "calculationId",
+    "changedFields",
+    "claimMonth",
+    "count",
+    "dataRequestId",
+    "departmentId",
+    "encounterId",
+    "eventId",
+    "facilityId",
+    "feeSessionId",
+    "loginIdentityCreated",
+    "memberId",
+    "mfaVerified",
+    "orgId",
+    "patientId",
+    "pdfPlaceholderId",
+    "productId",
+    "productIds",
+    "provider",
+    "referralId",
+    "requestType",
+    "soapDraftId",
+    "status",
+    "targetId",
+    "targetType",
+    "totalPoints"
+  ]);
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key, item]) => allowed.has(key) && safePayloadValue(item))
+  );
+}
+
+function safePayloadValue(value) {
+  if (value === null || value === undefined) {
+    return true;
+  }
+  if (["string", "number", "boolean"].includes(typeof value)) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every((item) => ["string", "number", "boolean"].includes(typeof item));
+  }
+  return false;
 }
 
 function isPlainObject(value) {

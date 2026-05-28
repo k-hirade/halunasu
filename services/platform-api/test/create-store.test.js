@@ -46,6 +46,10 @@ test("lazy firestore store exposes platform API surface", () => {
     "upsertProductEntitlement",
     "updateProductEntitlement",
     "createAuditEvent",
+    "createDataRequest",
+    "listDataRequests",
+    "getDataRequest",
+    "updateDataRequest",
     "consumeRateLimit"
   ];
 

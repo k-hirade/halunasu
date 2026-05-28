@@ -59,10 +59,25 @@ test("Platform auth has rate limits and secure cookie support", () => {
 
   assert.match(platformServer, /consumeLoginRateLimit/, "platform-api must rate-limit login");
   assert.match(platformServer, /consumeSignupRateLimit/, "platform-api must rate-limit signup");
+  assert.match(platformServer, /requirePlatformAdmin/, "platform-api must protect global Core admin routes");
+  assert.match(platformServer, /requireOrgAdmin/, "platform-api must protect organization-scoped Core admin routes");
+  assert.match(platformServer, /requireBillingAdmin/, "platform-api must protect billing/product entitlement routes");
   assert.match(platformServer, /secureCookiesDefault/, "platform-api must default secure cookies outside local/test");
+  assert.match(session, /APP_SESSION_SIGNING_SECRET is required/, "production-like sessions must require configured signing secret");
   assert.match(session, /SameSite=Lax/, "session cookies must use SameSite=Lax");
   assert.match(session, /HttpOnly/, "session cookie builder must support HttpOnly");
   assert.match(session, /Secure/, "session cookie builder must support Secure");
+});
+
+test("Core data request and audit payload hardening remain in Platform contracts", () => {
+  const contracts = readText(join(root, "packages", "platform-contracts", "src", "index.js"));
+  const platformServer = readText(join(root, "services", "platform-api", "src", "server.js"));
+
+  assert.match(contracts, /sanitizeSafePayload/, "audit/data request payloads must be allowlisted");
+  assert.match(contracts, /validateCreateDataRequestInput/, "data request creation contract must exist");
+  assert.match(platformServer, /data-requests/, "platform-api must expose data request workflow routes");
+  assert.match(platformServer, /data_request\.created/, "data request creation must be audited");
+  assert.match(platformServer, /data_request\.updated/, "data request updates must be audited");
 });
 
 test("browser apps do not import Firestore or Firebase client SDKs", () => {
