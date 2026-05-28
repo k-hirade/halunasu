@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import {
   validateCreateSoapDraftInput,
-  validatePatchChartingEncounterInput
+  validatePatchChartingEncounterInput,
+  validatePatchSoapDraftInput
 } from "../../charting-contracts/src/index.js";
 
 export function buildChartingEncounter(input = {}, options = {}) {
@@ -89,6 +90,34 @@ export function buildMockSoapDraft(encounter = {}, input = {}, options = {}) {
   };
 }
 
+export function patchSoapDraft(current = {}, input = {}, options = {}) {
+  const patch = validatePatchSoapDraftInput(input);
+  const now = options.now instanceof Date ? options.now.toISOString() : options.now || new Date().toISOString();
+
+  const next = compactObject({
+    ...current,
+    ...patch,
+    subjective: hasOwn(patch, "subjective") ? patch.subjective || "" : current.subjective,
+    objective: hasOwn(patch, "objective") ? patch.objective || "" : current.objective,
+    assessment: hasOwn(patch, "assessment") ? patch.assessment || "" : current.assessment,
+    plan: hasOwn(patch, "plan") ? patch.plan || "" : current.plan,
+    outputText: hasOwn(patch, "outputText") ? patch.outputText || "" : current.outputText,
+    approvedAt: patch.status === "approved" ? now : current.approvedAt,
+    updatedAt: now
+  });
+
+  if (!hasOwn(patch, "outputText") && hasSoapParts(patch)) {
+    next.outputText = [
+      `S\n${next.subjective || ""}`,
+      `O\n${next.objective || ""}`,
+      `A\n${next.assessment || ""}`,
+      `P\n${next.plan || ""}`
+    ].join("\n\n");
+  }
+
+  return next;
+}
+
 export function createId(prefix) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 26)}`;
 }
@@ -115,4 +144,8 @@ function compactObject(value) {
 
 function hasOwn(value, key) {
   return Object.prototype.hasOwnProperty.call(value || {}, key);
+}
+
+function hasSoapParts(value) {
+  return ["subjective", "objective", "assessment", "plan"].some((key) => hasOwn(value, key));
 }

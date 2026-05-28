@@ -48,6 +48,27 @@ test("creates Platform patients and product-owned fee sessions", async () => {
     {},
     headers
   );
+  const receiptDraft = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/receipt-draft`,
+    undefined,
+    headers
+  );
+  const reviewItems = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/review-items`,
+    undefined,
+    headers
+  );
+  const decision = await request(
+    stores,
+    "PATCH",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/review-items/${encodeURIComponent(reviewItems.body.reviewItems[0].reviewItemId)}`,
+    { status: "approved", note: "確認済み" },
+    headers
+  );
   const listed = await request(stores, "GET", "/v1/fee/sessions", undefined, headers);
   const auditEvents = stores.platformStore.listAuditEvents("org_001");
 
@@ -61,9 +82,14 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.equal(calculation.statusCode, 201);
   assert.equal(calculation.body.calculationResult.provider, "mock");
   assert.equal(calculation.body.calculationResult.totalPoints, 424);
+  assert.equal(calculation.body.feeSession.status, "needs_review");
+  assert.equal(receiptDraft.body.receiptDraft.totalPoints, 424);
+  assert.ok(reviewItems.body.reviewItems.length >= 1);
+  assert.equal(decision.body.feeSession.reviewDecisions[reviewItems.body.reviewItems[0].reviewItemId].status, "approved");
   assert.equal(listed.body.feeSessions.length, 1);
   assert.ok(auditEvents.some((event) => event.eventType === "fee.session_created"));
   assert.ok(auditEvents.some((event) => event.eventType === "fee.mock_calculated"));
+  assert.ok(auditEvents.some((event) => event.eventType === "fee.review_item_decided"));
 });
 
 test("can create inline Platform patient when creating fee session", async () => {

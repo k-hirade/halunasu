@@ -175,6 +175,34 @@ async function routeFeeApiRequest(input = {}) {
     return ok({ feeSession: session });
   }
 
+  if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "receipt-draft") {
+    return ok({ receiptDraft: await feeStore.getReceiptDraft(context.session.orgId, parts[3]) });
+  }
+
+  if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "review-items") {
+    return ok({ reviewItems: await feeStore.listReviewItems(context.session.orgId, parts[3]) });
+  }
+
+  if (method === "PATCH" && parts.length === 6 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "review-items") {
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const result = await feeStore.decideReviewItem(context.session.orgId, parts[3], decodeURIComponent(parts[5]), input.body || {});
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.review_item_decided",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "fee_review_item",
+      targetId: decodeURIComponent(parts[5]),
+      productId: PRODUCT_ID,
+      safePayload: {
+        feeSessionId: result.feeSession.feeSessionId,
+        reviewItemId: decodeURIComponent(parts[5]),
+        status: result.feeSession.reviewDecisions?.[decodeURIComponent(parts[5])]?.status
+      }
+    });
+
+    return ok(result);
+  }
+
   if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "mock-calculate") {
     requirePlatformCsrf(input.headers || {}, context.session);
     const result = await feeStore.createMockCalculation(context.session.orgId, parts[3], input.body || {});

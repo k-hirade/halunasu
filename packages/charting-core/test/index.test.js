@@ -3,7 +3,8 @@ import { test } from "node:test";
 import {
   buildChartingEncounter,
   buildMockSoapDraft,
-  patchChartingEncounter
+  patchChartingEncounter,
+  patchSoapDraft
 } from "../src/index.js";
 
 test("builds charting encounters with Platform patient references", () => {
@@ -74,4 +75,36 @@ test("builds product-owned mock SOAP drafts", () => {
   assert.equal(draft.patientSnapshot.displayName, "山田 太郎");
   assert.match(draft.outputText, /S\n咳/);
   assert.equal(draft.provider, "mock");
+});
+
+test("patches and approves SOAP drafts", () => {
+  const encounter = buildChartingEncounter({
+    orgId: "org_123",
+    patientId: "pat_123",
+    createdByMemberId: "mem_123",
+    visitReason: "咳"
+  }, {
+    encounterId: "enc_123",
+    now: "2026-05-28T00:00:00.000Z"
+  });
+  const draft = buildMockSoapDraft(encounter, {}, {
+    soapDraftId: "soap_123",
+    now: "2026-05-28T00:10:00.000Z"
+  });
+  const patched = patchSoapDraft(draft, {
+    assessment: "急性上気道炎疑い",
+    plan: "経過観察"
+  }, {
+    now: "2026-05-28T00:20:00.000Z"
+  });
+  const approved = patchSoapDraft(patched, {
+    status: "approved"
+  }, {
+    now: "2026-05-28T00:30:00.000Z"
+  });
+
+  assert.equal(patched.assessment, "急性上気道炎疑い");
+  assert.match(patched.outputText, /P\n経過観察/);
+  assert.equal(approved.status, "approved");
+  assert.equal(approved.approvedAt, "2026-05-28T00:30:00.000Z");
 });

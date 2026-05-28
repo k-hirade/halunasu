@@ -65,6 +65,19 @@ export function validateCreateSoapDraftInput(input = {}) {
   };
 }
 
+export function validatePatchSoapDraftInput(input = {}) {
+  return compactObject({
+    subjective: hasOwn(input, "subjective") ? optionalMultilineString(input.subjective, 10000) : undefined,
+    objective: hasOwn(input, "objective") ? optionalMultilineString(input.objective, 10000) : undefined,
+    assessment: hasOwn(input, "assessment") ? optionalMultilineString(input.assessment, 10000) : undefined,
+    plan: hasOwn(input, "plan") ? optionalMultilineString(input.plan, 10000) : undefined,
+    outputText: hasOwn(input, "outputText") ? optionalMultilineString(input.outputText, 40000) : undefined,
+    status: hasOwn(input, "status")
+      ? optionalEnum(input.status, soapDraftStatuses, "status")
+      : undefined
+  });
+}
+
 export function validationError(message, field) {
   const error = new Error(message);
   error.name = "ValidationError";

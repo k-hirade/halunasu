@@ -97,6 +97,14 @@ async function routeChartingApiRequest(input = {}) {
     return ok({ patients: await platformStore.listPatients(context.session.orgId) });
   }
 
+  if (method === "GET" && matches(parts, ["v1", "charting", "facilities"])) {
+    return ok({ facilities: await platformStore.listFacilities(context.session.orgId) });
+  }
+
+  if (method === "GET" && matches(parts, ["v1", "charting", "departments"])) {
+    return ok({ departments: await platformStore.listDepartments(context.session.orgId) });
+  }
+
   if (method === "POST" && matches(parts, ["v1", "charting", "patients"])) {
     requirePlatformCsrf(input.headers || {}, context.session);
     const patient = await platformStore.createPatient(
@@ -174,6 +182,44 @@ async function routeChartingApiRequest(input = {}) {
     return ok({ encounter });
   }
 
+  if (method === "POST" && parts.length === 6 && matches(parts.slice(0, 3), ["v1", "charting", "encounters"]) && parts[4] === "recording" && parts[5] === "start") {
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const encounter = await chartingStore.updateEncounter(context.session.orgId, parts[3], {
+      status: "recording"
+    });
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "charting.recording_started",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "charting_encounter",
+      targetId: encounter.encounterId,
+      productId: PRODUCT_ID,
+      safePayload: { encounterId: encounter.encounterId }
+    });
+
+    return ok({ encounter });
+  }
+
+  if (method === "POST" && parts.length === 6 && matches(parts.slice(0, 3), ["v1", "charting", "encounters"]) && parts[4] === "recording" && parts[5] === "stop") {
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const encounter = await chartingStore.updateEncounter(context.session.orgId, parts[3], {
+      status: "stopped",
+      transcript: input.body?.transcript,
+      notes: input.body?.notes
+    });
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "charting.recording_stopped",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "charting_encounter",
+      targetId: encounter.encounterId,
+      productId: PRODUCT_ID,
+      safePayload: { encounterId: encounter.encounterId }
+    });
+
+    return ok({ encounter });
+  }
+
   if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "charting", "encounters"]) && parts[4] === "mock-soap") {
     requirePlatformCsrf(input.headers || {}, context.session);
     const result = await chartingStore.createMockSoapDraft(context.session.orgId, parts[3], input.body || {});
@@ -196,6 +242,48 @@ async function routeChartingApiRequest(input = {}) {
 
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "charting", "encounters"]) && parts[4] === "soap-drafts") {
     return ok({ soapDrafts: await chartingStore.listSoapDrafts(context.session.orgId, parts[3]) });
+  }
+
+  if (method === "PATCH" && isSoapDraftDocument(parts)) {
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const result = await chartingStore.updateSoapDraft(context.session.orgId, parts[3], parts[5], input.body || {});
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "charting.soap_draft_updated",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "charting_soap_draft",
+      targetId: result.soapDraft.soapDraftId,
+      productId: PRODUCT_ID,
+      safePayload: {
+        encounterId: result.encounter.encounterId,
+        soapDraftId: result.soapDraft.soapDraftId,
+        status: result.soapDraft.status
+      }
+    });
+
+    return ok(result);
+  }
+
+  if (method === "POST" && parts.length === 7 && isSoapDraftDocument(parts.slice(0, 6)) && parts[6] === "approve") {
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const result = await chartingStore.updateSoapDraft(context.session.orgId, parts[3], parts[5], {
+      ...(input.body || {}),
+      status: "approved"
+    });
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "charting.soap_draft_approved",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "charting_soap_draft",
+      targetId: result.soapDraft.soapDraftId,
+      productId: PRODUCT_ID,
+      safePayload: {
+        encounterId: result.encounter.encounterId,
+        soapDraftId: result.soapDraft.soapDraftId
+      }
+    });
+
+    return ok(result);
   }
 
   return notFound("Route not found");
@@ -375,6 +463,12 @@ function headerValue(headers, name) {
 
 function isEncounterDocument(parts) {
   return parts.length === 4 && matches(parts.slice(0, 3), ["v1", "charting", "encounters"]);
+}
+
+function isSoapDraftDocument(parts) {
+  return parts.length === 6
+    && matches(parts.slice(0, 3), ["v1", "charting", "encounters"])
+    && parts[4] === "soap-drafts";
 }
 
 function matches(parts, expected) {

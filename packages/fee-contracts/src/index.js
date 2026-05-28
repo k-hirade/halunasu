@@ -16,6 +16,7 @@ export const feeOrderTypes = Object.freeze([
   "other",
   "unknown"
 ]);
+export const feeReviewDecisionStatuses = Object.freeze(["approved", "rejected", "edited"]);
 
 export function validateCreateFeePatientInput(input = {}) {
   return {
@@ -65,6 +66,14 @@ export function validateCreateMockCalculationInput(input = {}) {
       ? normalizeFeeOrders(input.orders ?? input.order_texts)
       : undefined
   });
+}
+
+export function validateReviewDecisionInput(input = {}) {
+  return {
+    status: optionalEnum(input.status, feeReviewDecisionStatuses, "status") || "approved",
+    note: optionalMultilineString(input.note, 5000),
+    replacementText: optionalMultilineString(input.replacementText ?? input.replacement_text, 20000)
+  };
 }
 
 export function normalizeFeeOrders(value) {

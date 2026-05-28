@@ -54,10 +54,18 @@ test("stores fee sessions by organization and applies mock calculation", () => {
     ]
   });
   const result = store.createMockCalculation("org_123", session.feeSessionId, {});
+  const receiptDraft = store.getReceiptDraft("org_123", session.feeSessionId);
+  const reviewItems = store.listReviewItems("org_123", session.feeSessionId);
+  const decided = store.decideReviewItem("org_123", session.feeSessionId, reviewItems[0].reviewItemId, {
+    status: "approved"
+  });
 
   assert.equal(session.feeSessionId, "fee_001");
   assert.equal(store.listSessions("org_123").length, 1);
   assert.equal(result.calculationResult.calculationId, "calc_002");
   assert.equal(result.calculationResult.provider, "mock");
-  assert.equal(result.feeSession.status, "calculated");
+  assert.equal(result.feeSession.status, "needs_review");
+  assert.equal(receiptDraft.totalPoints, 348);
+  assert.ok(reviewItems.length >= 1);
+  assert.equal(decided.feeSession.reviewDecisions[reviewItems[0].reviewItemId].status, "approved");
 });

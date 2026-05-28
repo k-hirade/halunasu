@@ -254,6 +254,40 @@
       overflow: auto;
     }
 
+    .review-list,
+    .receipt-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .review-item,
+    .receipt-line {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .review-item header,
+    .receipt-line header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .review-item p,
+    .receipt-line p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
     .hidden { display: none; }
 
     @media (max-width: 920px) {
@@ -447,6 +481,16 @@
           <h2>結果</h2>
           <pre id="result" class="result">未実行</pre>
         </section>
+
+        <section class="panel">
+          <h2>レビュー</h2>
+          <div id="review-list" class="review-list"></div>
+        </section>
+
+        <section class="panel">
+          <h2>レセプト案</h2>
+          <div id="receipt-list" class="receipt-list"></div>
+        </section>
       </section>
     </main>
   </div>
@@ -461,7 +505,9 @@
       facilities: [],
       departments: [],
       feeSessions: [],
-      selectedFeeSessionId: ""
+      selectedFeeSessionId: "",
+      receiptDraft: null,
+      reviewItems: []
     };
 
     const els = {
@@ -479,6 +525,8 @@
       departmentSelect: document.querySelector("#departmentId"),
       sessionList: document.querySelector("#session-list"),
       result: document.querySelector("#result"),
+      reviewList: document.querySelector("#review-list"),
+      receiptList: document.querySelector("#receipt-list"),
       calculateButton: document.querySelector("#calculate-button"),
       refreshButton: document.querySelector("#refresh-button"),
       serviceDate: document.querySelector("#serviceDate"),
@@ -577,6 +625,7 @@
           body: {}
         });
         await loadSessions();
+        await loadFeeSessionDetails(state.selectedFeeSessionId);
         renderResult(response);
         showMessage("mock算定が完了しました", "success");
       });
@@ -623,6 +672,18 @@
       renderSessions();
     }
 
+    async function loadFeeSessionDetails(feeSessionId) {
+      if (!feeSessionId) return;
+      const [receipt, reviews] = await Promise.all([
+        api(feeApiBaseUrl, `/v1/fee/sessions/${feeSessionId}/receipt-draft`),
+        api(feeApiBaseUrl, `/v1/fee/sessions/${feeSessionId}/review-items`)
+      ]);
+      state.receiptDraft = receipt.receiptDraft;
+      state.reviewItems = reviews.reviewItems || [];
+      renderReceiptDraft();
+      renderReviewItems();
+    }
+
     function renderSession() {
       if (!state.session) {
         els.sessionChip.textContent = "未ログイン";
@@ -665,12 +726,92 @@
           <strong>${escapeHtml(session.patientSnapshot?.displayName || session.patientId)}</strong>
           <span>${escapeHtml(session.serviceDate)} / ${escapeHtml(session.status)} / ${escapeHtml(session.feeSessionId)}</span>
         `;
-        button.addEventListener("click", () => {
+        button.addEventListener("click", async () => {
           state.selectedFeeSessionId = session.feeSessionId;
           renderResult(session);
+          await run(async () => {
+            await loadFeeSessionDetails(session.feeSessionId);
+          });
         });
         els.sessionList.appendChild(button);
       }
+    }
+
+    function renderReviewItems() {
+      els.reviewList.innerHTML = "";
+      if (!state.reviewItems.length) {
+        els.reviewList.textContent = state.selectedFeeSessionId ? "レビュー項目はありません" : "算定セッションを選択してください";
+        return;
+      }
+
+      for (const item of state.reviewItems) {
+        const wrapper = document.createElement("article");
+        wrapper.className = "review-item";
+        wrapper.innerHTML = `
+          <header>
+            <span>${escapeHtml(item.title)}</span>
+            <span>${escapeHtml(item.status)}</span>
+          </header>
+          <p>${escapeHtml(item.reason || "")}</p>
+          <div class="button-row">
+            <button class="secondary" data-review-action="approved" type="button">承認</button>
+            <button class="secondary" data-review-action="rejected" type="button">却下</button>
+            <button class="secondary" data-review-action="edited" type="button">修正済み</button>
+          </div>
+        `;
+        wrapper.querySelectorAll("[data-review-action]").forEach((button) => {
+          button.addEventListener("click", async () => {
+            await decideReviewItem(item.reviewItemId, button.dataset.reviewAction);
+          });
+        });
+        els.reviewList.appendChild(wrapper);
+      }
+    }
+
+    function renderReceiptDraft() {
+      els.receiptList.innerHTML = "";
+      if (!state.receiptDraft) {
+        els.receiptList.textContent = state.selectedFeeSessionId ? "レセプト案はまだありません" : "算定セッションを選択してください";
+        return;
+      }
+
+      const summary = document.createElement("article");
+      summary.className = "receipt-line";
+      summary.innerHTML = `
+        <header>
+          <span>${escapeHtml(state.receiptDraft.claimMonth)} / ${escapeHtml(state.receiptDraft.status)}</span>
+          <span>${Number(state.receiptDraft.totalPoints || 0).toLocaleString()} 点</span>
+        </header>
+        <p>${escapeHtml(state.receiptDraft.receiptDraftId)}</p>
+      `;
+      els.receiptList.appendChild(summary);
+
+      for (const group of state.receiptDraft.lineGroups || []) {
+        const groupElement = document.createElement("article");
+        groupElement.className = "receipt-line";
+        groupElement.innerHTML = `
+          <header>
+            <span>${escapeHtml(group.label)}</span>
+            <span>${Number(group.totalPoints || 0).toLocaleString()} 点</span>
+          </header>
+          <p>${escapeHtml((group.lines || []).map((line) => `${line.name} ${line.totalPoints}点`).join(" / "))}</p>
+        `;
+        els.receiptList.appendChild(groupElement);
+      }
+    }
+
+    async function decideReviewItem(reviewItemId, status) {
+      await run(async () => {
+        const response = await api(feeApiBaseUrl, `/v1/fee/sessions/${state.selectedFeeSessionId}/review-items/${encodeURIComponent(reviewItemId)}`, {
+          method: "PATCH",
+          csrf: true,
+          body: { status }
+        });
+        state.reviewItems = response.reviewItems || [];
+        renderReviewItems();
+        await loadSessions();
+        showMessage("レビューを更新しました", "success");
+      });
     }
 
     function renderOptions(select, items, config) {

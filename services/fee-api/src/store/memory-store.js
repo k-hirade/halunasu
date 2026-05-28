@@ -1,5 +1,8 @@
 import {
+  applyReviewDecision,
   applyMockCalculation,
+  buildReceiptDraft,
+  buildReviewItems,
   buildFeeSession,
   createId
 } from "../../../../packages/fee-core/src/index.js";
@@ -44,6 +47,43 @@ export class MemoryFeeStore {
     return {
       feeSession: updated,
       calculationResult: updated.calculationResult
+    };
+  }
+
+  getReceiptDraft(orgId, feeSessionId) {
+    const current = this.getSession(orgId, feeSessionId);
+    if (!current) {
+      throw notFoundError("fee session not found");
+    }
+
+    return buildReceiptDraft(current, {
+      now: this.timestamp()
+    });
+  }
+
+  listReviewItems(orgId, feeSessionId) {
+    const current = this.getSession(orgId, feeSessionId);
+    if (!current) {
+      throw notFoundError("fee session not found");
+    }
+
+    return buildReviewItems(current);
+  }
+
+  decideReviewItem(orgId, feeSessionId, reviewItemId, input) {
+    const current = this.getSession(orgId, feeSessionId);
+    if (!current) {
+      throw notFoundError("fee session not found");
+    }
+
+    const updated = applyReviewDecision(current, reviewItemId, input, {
+      now: this.timestamp()
+    });
+    this.sessionsForOrg(orgId).set(feeSessionId, updated);
+
+    return {
+      feeSession: updated,
+      reviewItems: buildReviewItems(updated)
     };
   }
 

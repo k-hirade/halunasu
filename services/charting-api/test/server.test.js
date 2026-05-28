@@ -23,29 +23,76 @@ test("creates Platform patients and product-owned charting encounters", async ()
     birthDate: "1970-01-01",
     sex: "male"
   }, headers);
+  const facilities = await request(stores, "GET", "/v1/charting/facilities", undefined, headers);
+  const departments = await request(stores, "GET", "/v1/charting/departments", undefined, headers);
   const encounter = await request(stores, "POST", "/v1/charting/encounters", {
     patientId: patient.body.patient.patientId,
-    facilityId: "fac_123",
-    departmentId: "dep_123",
+    facilityId: facilities.body.facilities[0].facilityId,
+    departmentId: departments.body.departments[0].departmentId,
     visitReason: "咳",
     transcript: "咳が続く。発熱なし。"
   }, headers);
+  const recording = await request(
+    stores,
+    "POST",
+    `/v1/charting/encounters/${encounter.body.encounter.encounterId}/recording/start`,
+    {},
+    headers
+  );
+  const stopped = await request(
+    stores,
+    "POST",
+    `/v1/charting/encounters/${encounter.body.encounter.encounterId}/recording/stop`,
+    { transcript: "咳が続く。発熱なし。食欲あり。" },
+    headers
+  );
   const draft = await request(stores, "POST", `/v1/charting/encounters/${encounter.body.encounter.encounterId}/mock-soap`, {
     transcript: "咳が続く。発熱なし。"
   }, headers);
+  const edited = await request(
+    stores,
+    "PATCH",
+    `/v1/charting/encounters/${encounter.body.encounter.encounterId}/soap-drafts/${draft.body.soapDraft.soapDraftId}`,
+    { assessment: "急性上気道炎疑い", plan: "経過観察" },
+    headers
+  );
+  const approved = await request(
+    stores,
+    "POST",
+    `/v1/charting/encounters/${encounter.body.encounter.encounterId}/soap-drafts/${draft.body.soapDraft.soapDraftId}/approve`,
+    { outputText: edited.body.soapDraft.outputText },
+    headers
+  );
   const listed = await request(stores, "GET", "/v1/charting/encounters", undefined, headers);
+  const soapDrafts = await request(
+    stores,
+    "GET",
+    `/v1/charting/encounters/${encounter.body.encounter.encounterId}/soap-drafts`,
+    undefined,
+    headers
+  );
   const auditEvents = stores.platformStore.listAuditEvents("org_001");
 
   assert.equal(patient.statusCode, 201);
+  assert.equal(facilities.body.facilities[0].displayName, "春ナスクリニック");
+  assert.equal(departments.body.departments[0].displayName, "内科");
   assert.equal(encounter.statusCode, 201);
   assert.equal(encounter.body.encounter.patientId, patient.body.patient.patientId);
   assert.equal(encounter.body.encounter.patientSnapshot.displayName, "山田 太郎");
-  assert.equal(encounter.body.encounter.facilityId, "fac_123");
-  assert.equal(encounter.body.encounter.departmentId, "dep_123");
+  assert.equal(encounter.body.encounter.facilityId, facilities.body.facilities[0].facilityId);
+  assert.equal(encounter.body.encounter.departmentId, departments.body.departments[0].departmentId);
+  assert.equal(recording.body.encounter.status, "recording");
+  assert.equal(stopped.body.encounter.status, "stopped");
+  assert.equal(stopped.body.encounter.transcript, "咳が続く。発熱なし。食欲あり。");
   assert.equal(draft.statusCode, 201);
   assert.equal(draft.body.soapDraft.provider, "mock");
+  assert.equal(edited.body.soapDraft.assessment, "急性上気道炎疑い");
+  assert.equal(approved.body.soapDraft.status, "approved");
+  assert.equal(approved.body.encounter.status, "approved");
+  assert.equal(soapDrafts.body.soapDrafts.length, 1);
   assert.equal(listed.body.encounters.length, 1);
   assert.ok(auditEvents.some((event) => event.eventType === "charting.encounter_created"));
+  assert.ok(auditEvents.some((event) => event.eventType === "charting.soap_draft_approved"));
   assert.equal(stores.platformStore.listOrganizations().length, 1);
 });
 
@@ -95,6 +142,17 @@ function createStores(options = {}) {
     globalRoles: ["org_admin"],
     productRoles: { charting: ["admin"] },
     password: "correct horse battery staple"
+  });
+  platformStore.createFacility(organization.orgId, {
+    displayName: "春ナスクリニック",
+    medicalInstitutionCode: "1312345",
+    regionalBureau: "kanto-shinetsu",
+    prefecture: "tokyo"
+  });
+  platformStore.createDepartment(organization.orgId, {
+    facilityId: "fac_001",
+    displayName: "内科",
+    code: "01"
   });
   if (options.entitlement !== false) {
     platformStore.upsertProductEntitlement(organization.orgId, {

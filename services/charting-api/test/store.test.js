@@ -45,10 +45,16 @@ test("stores charting encounters by organization", () => {
   const result = store.createMockSoapDraft("org_123", encounter.encounterId, {
     transcript: updated.transcript
   });
+  const approved = store.updateSoapDraft("org_123", encounter.encounterId, result.soapDraft.soapDraftId, {
+    outputText: "S\n咳\n\nO\n異常なし",
+    status: "approved"
+  });
 
   assert.equal(encounter.encounterId, "enc_001");
   assert.equal(updated.transcript, "咳が続く");
   assert.equal(result.encounter.status, "soap_ready");
   assert.equal(result.soapDraft.soapDraftId, "soap_002");
+  assert.equal(approved.soapDraft.status, "approved");
+  assert.equal(approved.encounter.status, "approved");
   assert.equal(store.listSoapDrafts("org_123", encounter.encounterId).length, 1);
 });

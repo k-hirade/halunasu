@@ -2,7 +2,8 @@ import {
   buildChartingEncounter,
   buildMockSoapDraft,
   createId,
-  patchChartingEncounter
+  patchChartingEncounter,
+  patchSoapDraft
 } from "../../../../packages/charting-core/src/index.js";
 
 export class MemoryChartingStore {
@@ -74,6 +75,34 @@ export class MemoryChartingStore {
     }
 
     return sortByCreatedAt([...this.soapDraftsForEncounter(encounterId).values()]);
+  }
+
+  updateSoapDraft(orgId, encounterId, soapDraftId, input) {
+    const encounter = this.getEncounter(orgId, encounterId);
+    if (!encounter) {
+      throw notFoundError("encounter not found");
+    }
+
+    const current = this.soapDraftsForEncounter(encounterId).get(soapDraftId);
+    if (!current || current.orgId !== orgId) {
+      throw notFoundError("soap draft not found");
+    }
+
+    const updatedSoapDraft = patchSoapDraft(current, input, {
+      now: this.timestamp()
+    });
+    const updatedEncounter = {
+      ...encounter,
+      status: updatedSoapDraft.status === "approved" ? "approved" : "soap_ready",
+      latestSoapDraftId: updatedSoapDraft.soapDraftId,
+      approvedAt: updatedSoapDraft.status === "approved" ? updatedSoapDraft.approvedAt : encounter.approvedAt,
+      updatedAt: this.timestamp()
+    };
+
+    this.soapDraftsForEncounter(encounterId).set(soapDraftId, updatedSoapDraft);
+    this.encountersForOrg(orgId).set(encounterId, updatedEncounter);
+
+    return { encounter: updatedEncounter, soapDraft: updatedSoapDraft };
   }
 
   encountersForOrg(orgId) {

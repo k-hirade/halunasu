@@ -1,5 +1,8 @@
 import {
+  applyReviewDecision,
   applyMockCalculation,
+  buildReceiptDraft,
+  buildReviewItems,
   buildFeeSession,
   createId
 } from "../../../../packages/fee-core/src/index.js";
@@ -55,6 +58,43 @@ export class FirestoreFeeStore {
     return {
       feeSession: updated,
       calculationResult: updated.calculationResult
+    };
+  }
+
+  async getReceiptDraft(orgId, feeSessionId) {
+    const current = await this.getSession(orgId, feeSessionId);
+    if (!current) {
+      throw notFoundError("fee session not found");
+    }
+
+    return buildReceiptDraft(current, {
+      now: this.timestamp()
+    });
+  }
+
+  async listReviewItems(orgId, feeSessionId) {
+    const current = await this.getSession(orgId, feeSessionId);
+    if (!current) {
+      throw notFoundError("fee session not found");
+    }
+
+    return buildReviewItems(current);
+  }
+
+  async decideReviewItem(orgId, feeSessionId, reviewItemId, input) {
+    const current = await this.getSession(orgId, feeSessionId);
+    if (!current) {
+      throw notFoundError("fee session not found");
+    }
+
+    const updated = applyReviewDecision(current, reviewItemId, input, {
+      now: this.timestamp()
+    });
+    await this.doc(feeSessionPath(orgId, feeSessionId)).set(updated);
+
+    return {
+      feeSession: updated,
+      reviewItems: buildReviewItems(updated)
     };
   }
 

@@ -30,6 +30,7 @@
 
     button,
     input,
+    select,
     textarea {
       font: inherit;
     }
@@ -122,6 +123,7 @@
     }
 
     input,
+    select,
     textarea {
       width: 100%;
       border: 1px solid #cbd7e6;
@@ -138,6 +140,7 @@
     }
 
     input:focus,
+    select:focus,
     textarea:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(15,159,143,0.13);
@@ -233,6 +236,12 @@
       padding: 14px;
       min-height: 180px;
       line-height: 1.7;
+    }
+
+    .soap-editor {
+      min-height: 260px;
+      line-height: 1.7;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
     }
 
     .hidden { display: none; }
@@ -368,7 +377,7 @@
             <div class="grid-2">
               <div class="field">
                 <label for="patientId">患者ID</label>
-                <input id="patientId" name="patientId" required />
+                <select id="patientId" name="patientId" required></select>
               </div>
               <div class="field">
                 <label for="visitReason">主訴</label>
@@ -377,12 +386,12 @@
             </div>
             <div class="grid-2">
               <div class="field">
-                <label for="facilityId">施設ID</label>
-                <input id="facilityId" name="facilityId" />
+                <label for="facilityId">施設</label>
+                <select id="facilityId" name="facilityId"></select>
               </div>
               <div class="field">
-                <label for="departmentId">診療科ID</label>
-                <input id="departmentId" name="departmentId" />
+                <label for="departmentId">診療科</label>
+                <select id="departmentId" name="departmentId"></select>
               </div>
             </div>
             <div class="field">
@@ -400,14 +409,18 @@
         <section class="panel hidden" id="selected-panel">
           <h2>選択中</h2>
           <div class="button-row">
+            <button type="button" class="secondary" id="recording-start-button">録音開始</button>
+            <button type="button" class="secondary" id="recording-stop-button">録音停止</button>
             <button type="button" class="accent" id="soap-button">SOAP下書き作成</button>
+            <button type="button" class="secondary" id="soap-save-button">SOAP保存</button>
+            <button type="button" id="soap-approve-button">SOAP承認</button>
           </div>
           <p id="selected-summary"></p>
         </section>
 
         <section class="panel">
           <h2>SOAP下書き</h2>
-          <div id="soap-output" class="soap"></div>
+          <textarea id="soap-output" class="soap soap-editor" placeholder="SOAP下書きがここに表示されます"></textarea>
         </section>
       </section>
     </main>
@@ -416,7 +429,13 @@
   <script>
     const state = {
       csrfToken: "",
-      selectedEncounterId: ""
+      session: null,
+      patients: [],
+      facilities: [],
+      departments: [],
+      encounters: [],
+      selectedEncounterId: "",
+      selectedSoapDraftId: ""
     };
     const platformApiBaseUrl = resolveBaseUrl("halunasu-platform-api-base-url", "platformApi");
     const chartingApiBaseUrl = resolveBaseUrl("halunasu-charting-api-base-url", "chartingApi");
@@ -431,6 +450,9 @@
     const encounterList = document.querySelector("#encounter-list");
     const soapOutput = document.querySelector("#soap-output");
     const selectedSummary = document.querySelector("#selected-summary");
+    const patientSelect = document.querySelector("#patientId");
+    const facilitySelect = document.querySelector("#facilityId");
+    const departmentSelect = document.querySelector("#departmentId");
 
     document.querySelector("#login-form").addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -444,12 +466,13 @@
           password: form.get("password")
         });
         state.csrfToken = response.csrfToken;
+        state.session = response.session;
         sessionChip.textContent = `${response.session.organizationCode} / ${response.session.loginId}`;
         hide(loginGate);
         show(appShell);
         show(patientPanel);
         show(listPanel);
-        await refreshEncounters();
+        await loadWorkspace();
       } catch (error) {
         if (state.csrfToken) {
           setMessage("#app-message", error.message, "error");
@@ -473,7 +496,10 @@
           birthDate: form.get("birthDate") || undefined,
           externalPatientIds: externalPatientId ? [externalPatientId] : []
         });
-        document.querySelector("#patientId").value = response.patient.patientId;
+        state.patients = [...state.patients, response.patient];
+        renderPatients();
+        patientSelect.value = response.patient.patientId;
+        event.currentTarget.reset();
         setMessage("#app-message", "患者を作成しました。", "success");
       } catch (error) {
         setMessage("#app-message", error.message, "error");
@@ -499,7 +525,31 @@
       }
     });
 
-    document.querySelector("#refresh-button").addEventListener("click", refreshEncounters);
+    document.querySelector("#refresh-button").addEventListener("click", loadWorkspace);
+    document.querySelector("#recording-start-button").addEventListener("click", async () => {
+      if (!state.selectedEncounterId) return;
+      try {
+        const response = await postCharting(`/v1/charting/encounters/${state.selectedEncounterId}/recording/start`, {});
+        selectEncounter(response.encounter);
+        await refreshEncounters();
+        setMessage("#app-message", "録音状態にしました。", "success");
+      } catch (error) {
+        setMessage("#app-message", error.message, "error");
+      }
+    });
+    document.querySelector("#recording-stop-button").addEventListener("click", async () => {
+      if (!state.selectedEncounterId) return;
+      try {
+        const response = await postCharting(`/v1/charting/encounters/${state.selectedEncounterId}/recording/stop`, {
+          transcript: document.querySelector("#transcript").value
+        });
+        selectEncounter(response.encounter);
+        await refreshEncounters();
+        setMessage("#app-message", "文字起こしを保存しました。", "success");
+      } catch (error) {
+        setMessage("#app-message", error.message, "error");
+      }
+    });
     document.querySelector("#soap-button").addEventListener("click", async () => {
       if (!state.selectedEncounterId) return;
       try {
@@ -507,22 +557,87 @@
         const response = await postCharting(`/v1/charting/encounters/${state.selectedEncounterId}/mock-soap`, {
           transcript
         });
-        soapOutput.textContent = response.soapDraft.outputText;
+        state.selectedSoapDraftId = response.soapDraft.soapDraftId;
+        soapOutput.value = response.soapDraft.outputText;
         selectEncounter(response.encounter);
+        await refreshEncounters();
+        setMessage("#app-message", "SOAP下書きを作成しました。", "success");
+      } catch (error) {
+        setMessage("#app-message", error.message, "error");
+      }
+    });
+    document.querySelector("#soap-save-button").addEventListener("click", async () => {
+      if (!state.selectedEncounterId || !state.selectedSoapDraftId) return;
+      try {
+        const response = await patchCharting(`/v1/charting/encounters/${state.selectedEncounterId}/soap-drafts/${state.selectedSoapDraftId}`, {
+          outputText: soapOutput.value
+        });
+        soapOutput.value = response.soapDraft.outputText;
+        selectEncounter(response.encounter);
+        setMessage("#app-message", "SOAP下書きを保存しました。", "success");
+      } catch (error) {
+        setMessage("#app-message", error.message, "error");
+      }
+    });
+    document.querySelector("#soap-approve-button").addEventListener("click", async () => {
+      if (!state.selectedEncounterId || !state.selectedSoapDraftId) return;
+      try {
+        const response = await postCharting(`/v1/charting/encounters/${state.selectedEncounterId}/soap-drafts/${state.selectedSoapDraftId}/approve`, {
+          outputText: soapOutput.value
+        });
+        soapOutput.value = response.soapDraft.outputText;
+        selectEncounter(response.encounter);
+        await refreshEncounters();
+        setMessage("#app-message", "SOAP下書きを承認しました。", "success");
       } catch (error) {
         setMessage("#app-message", error.message, "error");
       }
     });
 
+    async function loadWorkspace() {
+      await Promise.all([
+        refreshPatients(),
+        refreshFacilities(),
+        refreshDepartments(),
+        refreshEncounters()
+      ]);
+    }
+
+    async function refreshPatients() {
+      if (!state.csrfToken) return;
+      const response = await getCharting("/v1/charting/patients");
+      state.patients = response.patients || [];
+      renderPatients();
+    }
+
+    async function refreshFacilities() {
+      if (!state.csrfToken) return;
+      const response = await getCharting("/v1/charting/facilities");
+      state.facilities = response.facilities || [];
+      renderFacilities();
+    }
+
+    async function refreshDepartments() {
+      if (!state.csrfToken) return;
+      const response = await getCharting("/v1/charting/departments");
+      state.departments = response.departments || [];
+      renderDepartments();
+    }
+
     async function refreshEncounters() {
       if (!state.csrfToken) return;
       const response = await getCharting("/v1/charting/encounters");
+      state.encounters = response.encounters || [];
       encounterList.innerHTML = "";
-      for (const encounter of response.encounters || []) {
+      for (const encounter of state.encounters) {
         const item = document.createElement("button");
         item.type = "button";
         item.className = "encounter-item";
-        item.innerHTML = `<strong>${escapeHtml(encounter.patientSnapshot?.displayName || encounter.patientId)}</strong><span>${escapeHtml(encounter.status)} / ${escapeHtml(encounter.visitReason || "")}</span>`;
+        item.innerHTML = `
+          <strong>${escapeHtml(encounter.patientSnapshot?.displayName || encounter.patientId)}</strong>
+          <span>${escapeHtml(encounter.status)} / ${escapeHtml(encounter.visitReason || "")}</span>
+          <span>${escapeHtml(encounter.encounterId)}</span>
+        `;
         item.addEventListener("click", () => selectEncounter(encounter));
         encounterList.append(item);
       }
@@ -530,8 +645,64 @@
 
     function selectEncounter(encounter) {
       state.selectedEncounterId = encounter.encounterId;
-      selectedSummary.textContent = `${encounter.encounterId} / ${encounter.patientSnapshot?.displayName || encounter.patientId}`;
+      selectedSummary.textContent = `${encounter.status} / ${encounter.encounterId} / ${encounter.patientSnapshot?.displayName || encounter.patientId}`;
+      patientSelect.value = encounter.patientId || "";
+      facilitySelect.value = encounter.facilityId || "";
+      departmentSelect.value = encounter.departmentId || "";
+      document.querySelector("#visitReason").value = encounter.visitReason || "";
+      document.querySelector("#transcript").value = encounter.transcript || "";
       show(selectedPanel);
+      loadSoapDrafts(encounter.encounterId).catch((error) => setMessage("#app-message", error.message, "error"));
+    }
+
+    async function loadSoapDrafts(encounterId) {
+      const response = await getCharting(`/v1/charting/encounters/${encounterId}/soap-drafts`);
+      const drafts = response.soapDrafts || [];
+      const latest = drafts[drafts.length - 1];
+      state.selectedSoapDraftId = latest?.soapDraftId || "";
+      soapOutput.value = latest?.outputText || "";
+    }
+
+    function renderPatients() {
+      renderOptions(patientSelect, state.patients, {
+        empty: "患者を選択",
+        value: "patientId",
+        label: (patient) => `${patient.displayName} (${patient.patientId})`
+      });
+    }
+
+    function renderFacilities() {
+      renderOptions(facilitySelect, state.facilities, {
+        empty: "未指定",
+        value: "facilityId",
+        label: (facility) => `${facility.displayName} (${facility.medicalInstitutionCode || "code未設定"})`
+      });
+    }
+
+    function renderDepartments() {
+      renderOptions(departmentSelect, state.departments, {
+        empty: "未指定",
+        value: "departmentId",
+        label: (department) => `${department.displayName} (${department.departmentId})`
+      });
+    }
+
+    function renderOptions(select, items, config) {
+      const current = select.value;
+      select.innerHTML = "";
+      const empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = config.empty;
+      select.appendChild(empty);
+      for (const item of items) {
+        const option = document.createElement("option");
+        option.value = item[config.value];
+        option.textContent = config.label(item);
+        select.appendChild(option);
+      }
+      if ([...select.options].some((option) => option.value === current)) {
+        select.value = current;
+      }
     }
 
     async function postPlatform(path, payload) {
@@ -553,6 +724,18 @@
     async function postCharting(path, payload) {
       return requestJson(`${chartingApiBaseUrl}${path}`, {
         method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-csrf-token": state.csrfToken
+        },
+        credentials: "include",
+        body: JSON.stringify(payload)
+      });
+    }
+
+    async function patchCharting(path, payload) {
+      return requestJson(`${chartingApiBaseUrl}${path}`, {
+        method: "PATCH",
         headers: {
           "content-type": "application/json",
           "x-csrf-token": state.csrfToken

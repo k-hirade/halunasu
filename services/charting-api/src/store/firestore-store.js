@@ -2,7 +2,8 @@ import {
   buildChartingEncounter,
   buildMockSoapDraft,
   createId,
-  patchChartingEncounter
+  patchChartingEncounter,
+  patchSoapDraft
 } from "../../../../packages/charting-core/src/index.js";
 import {
   chartingEncounterPath,
@@ -90,6 +91,36 @@ export class FirestoreChartingStore {
       .orderBy("createdAt", "asc")
       .get();
     return docsFromSnapshot(snapshot);
+  }
+
+  async updateSoapDraft(orgId, encounterId, soapDraftId, input) {
+    const encounter = await this.getEncounter(orgId, encounterId);
+    if (!encounter) {
+      throw notFoundError("encounter not found");
+    }
+
+    const current = docDataOrNull(await this.soapDraftDoc(orgId, encounterId, soapDraftId).get());
+    if (!current || current.orgId !== orgId) {
+      throw notFoundError("soap draft not found");
+    }
+
+    const updatedSoapDraft = patchSoapDraft(current, input, {
+      now: this.timestamp()
+    });
+    const updatedEncounter = {
+      ...encounter,
+      status: updatedSoapDraft.status === "approved" ? "approved" : "soap_ready",
+      latestSoapDraftId: updatedSoapDraft.soapDraftId,
+      approvedAt: updatedSoapDraft.status === "approved" ? updatedSoapDraft.approvedAt : encounter.approvedAt,
+      updatedAt: this.timestamp()
+    };
+
+    await this.db.runTransaction(async (transaction) => {
+      transaction.set(this.doc(chartingEncounterPath(orgId, encounterId)), updatedEncounter);
+      transaction.set(this.soapDraftDoc(orgId, encounterId, soapDraftId), updatedSoapDraft);
+    });
+
+    return { encounter: updatedEncounter, soapDraft: updatedSoapDraft };
   }
 
   doc(path) {

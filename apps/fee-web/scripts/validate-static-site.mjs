@@ -16,6 +16,8 @@ assert(html.includes("/v1/fee/facilities"), "fee web must load Platform faciliti
 assert(html.includes("/v1/fee/departments"), "fee web must load Platform departments through fee-api");
 assert(html.includes("/v1/fee/sessions"), "fee web must create fee sessions through fee-api");
 assert(html.includes("mock-calculate"), "fee web must run mock calculation without external providers");
+assert(html.includes("receipt-draft"), "fee web must show Core receipt drafts");
+assert(html.includes("review-items"), "fee web must show and decide review items");
 assert(html.includes("patientId"), "fee web must expose patientId selection");
 assert(html.includes("facilityId"), "fee web must expose facilityId");
 assert(html.includes("departmentId"), "fee web must expose departmentId");
