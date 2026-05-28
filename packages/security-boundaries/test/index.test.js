@@ -282,9 +282,12 @@ test("P13 Netlify static sites are explicit and deploys are guarded", () => {
       assert.match(site.siteId, /^[0-9a-f-]{36}$/);
       assert.equal(site.netlifyUrl, `https://${site.siteName}.netlify.app`);
       assert.equal(site.publishDir, `dist/runtime-apps/${env}/${app}`);
-      assert.match(site.targetDomain, /^https:\/\/[a-z0-9-]+(\.stg)?\.halunasu\.com$/);
+      assert.match(site.targetDomain, /^https:\/\/([a-z0-9-]+(\.stg)?\.)?halunasu\.com$/);
     }
   }
+
+  assert.equal(sites.prod.lp.targetDomain, "https://halunasu.com");
+  assert.deepEqual(sites.prod.lp.aliasDomains, ["https://www.halunasu.com"]);
 
   assert.match(deployScript, /apply = args\.get\("apply"\) === "true"/, "P13 deploy must dry-run by default");
   assert.match(deployScript, /"netlify",\s+"deploy"/, "P13 deploy must use Netlify deploy");

@@ -41,7 +41,10 @@
       "siteName": "halunasu-lp-prod",
       "siteId": "384b9465-9f90-48a7-8fa9-d0b3ac429aa1",
       "netlifyUrl": "https://halunasu-lp-prod.netlify.app",
-      "targetDomain": "https://www.halunasu.com",
+      "targetDomain": "https://halunasu.com",
+      "aliasDomains": [
+        "https://www.halunasu.com"
+      ],
       "publishDir": "dist/runtime-apps/prod/lp"
     },
     "core-admin": {

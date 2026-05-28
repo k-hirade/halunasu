@@ -22,7 +22,7 @@ config/runtime-domains.json
 
 | Surface | Domain |
 | --- | --- |
-| LP | `https://www.halunasu.com` |
+| LP | `https://halunasu.com` |
 | Core Admin | `https://admin.halunasu.com` |
 | Charting app | `https://charting.halunasu.com` |
 | Fee app | `https://fee.halunasu.com` |
@@ -37,6 +37,12 @@ Production cookies:
 - Domain: `.halunasu.com`
 - Session cookie: `halunasu_session`
 - CSRF cookie: `halunasu_csrf`
+
+Existing production LP domain handling:
+
+- `halunasu.com` is the primary LP domain.
+- `www.halunasu.com` currently redirects to `halunasu.com` and should remain an alias/redirect after cutover.
+- The domain is managed in Cloudflare and currently points to Netlify, so the LP cutover should transfer the Netlify custom-domain assignment rather than recreate DNS from scratch.
 
 ### Staging
 

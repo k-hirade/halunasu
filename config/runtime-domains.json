@@ -21,7 +21,7 @@
   },
   "prod": {
     "web": {
-      "lp": "https://www.halunasu.com",
+      "lp": "https://halunasu.com",
       "coreAdmin": "https://admin.halunasu.com",
       "charting": "https://charting.halunasu.com",
       "fee": "https://fee.halunasu.com",

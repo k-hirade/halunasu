@@ -39,7 +39,7 @@ config/netlify-sites.json
 
 | App | Netlify site | Temporary URL | Target domain |
 | --- | --- | --- | --- |
-| LP | `halunasu-lp-prod` | `https://halunasu-lp-prod.netlify.app` | `https://www.halunasu.com` |
+| LP | `halunasu-lp-prod` | `https://halunasu-lp-prod.netlify.app` | `https://halunasu.com` |
 | Core Admin | `halunasu-admin-prod` | `https://halunasu-admin-prod.netlify.app` | `https://admin.halunasu.com` |
 | Charting | `halunasu-charting-prod` | `https://halunasu-charting-prod.netlify.app` | `https://charting.halunasu.com` |
 | Fee | `halunasu-fee-prod` | `https://halunasu-fee-prod.netlify.app` | `https://fee.halunasu.com` |
@@ -78,6 +78,7 @@ This avoids Netlify build-minute usage during the initial migration and keeps th
 ## Current Limits
 
 - Custom domains are not attached yet.
+- `halunasu.com` and `www.halunasu.com` remain attached to the existing `harunas` Netlify site until explicit production LP cutover.
 - DNS records are not changed yet.
 - Git-based automatic deploys are not configured yet.
 - The temporary `*.netlify.app` URLs are for static page verification only.
