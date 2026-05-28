@@ -445,7 +445,17 @@ function defaultAllowedWebOrigins() {
     "https://admin.stg.halunasu.com",
     "https://charting.stg.halunasu.com",
     "https://fee.stg.halunasu.com",
-    "https://referral.stg.halunasu.com"
+    "https://referral.stg.halunasu.com",
+    "https://halunasu-lp-stg.netlify.app",
+    "https://halunasu-admin-stg.netlify.app",
+    "https://halunasu-charting-stg.netlify.app",
+    "https://halunasu-fee-stg.netlify.app",
+    "https://halunasu-referral-stg.netlify.app",
+    "https://halunasu-lp-prod.netlify.app",
+    "https://halunasu-admin-prod.netlify.app",
+    "https://halunasu-charting-prod.netlify.app",
+    "https://halunasu-fee-prod.netlify.app",
+    "https://halunasu-referral-prod.netlify.app"
   ];
 }
 

@@ -237,29 +237,35 @@ test("P10 runtime provisioning and deploy scripts keep low-cost guardrails", () 
   assert.equal(/terraform\s+apply/.test(deploy), false, "P10 deploy must not run Terraform");
 });
 
-test("P11 runtime endpoint config points static apps at Halunasu API domains", () => {
+test("P11 runtime endpoint config points static apps at same-origin API proxies", () => {
   const config = JSON.parse(readText(join(root, "config", "runtime-endpoints.json")));
+  const proxyTargets = JSON.parse(readText(join(root, "config", "runtime-proxy-targets.json")));
   const script = readText(join(root, "scripts", "p11_build_static_apps_runtime_config.mjs"));
 
   for (const env of ["stg", "prod"]) {
     for (const key of ["platformApi", "chartingApi", "feeApi", "referralApi"]) {
-      assert.match(config[env][key], /^https:\/\/[a-z0-9-]+(\.stg)?\.halunasu\.com$/);
+      assert.match(config[env][key], /^\/api\/[a-z]+$/);
       assert.equal(config[env][key].includes("run.app"), false);
       assert.equal(config[env][key].includes("localhost"), false);
+    }
+    for (const key of ["platform", "charting", "fee", "referral"]) {
+      assert.match(proxyTargets[env][key], /^https:\/\/[a-z0-9-]+[a-z0-9.-]*\.run\.app$/);
     }
   }
 
   assert.match(script, /dist", "runtime-apps"/, "P11 build output must stay under ignored dist");
   assert.match(script, /replaceMetaContent/, "P11 build must inject runtime meta values");
+  assert.match(script, /runtime-proxy-targets\.json/, "P11 build must load Netlify proxy targets");
+  assert.match(script, /\/api\/platform\/\*/, "P11 build must emit same-origin API proxy redirects");
 });
 
 test("P12 domain plan separates staging and production browser cookies", () => {
   const domains = JSON.parse(readText(join(root, "config", "runtime-domains.json")));
 
-  assert.equal(domains.stg.cookies.domain, ".stg.halunasu.com");
+  assert.equal(domains.stg.cookies.domain, null);
   assert.equal(domains.stg.cookies.sessionCookieName, "halunasu_stg_session");
   assert.equal(domains.stg.cookies.csrfCookieName, "halunasu_stg_csrf");
-  assert.equal(domains.prod.cookies.domain, ".halunasu.com");
+  assert.equal(domains.prod.cookies.domain, null);
   assert.equal(domains.prod.cookies.sessionCookieName, "halunasu_session");
   assert.equal(domains.prod.cookies.csrfCookieName, "halunasu_csrf");
 

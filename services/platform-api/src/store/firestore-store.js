@@ -851,8 +851,9 @@ export async function createFirestoreDb(options = {}) {
     || process.env.CORE_GOOGLE_CLOUD_PROJECT
     || process.env.GOOGLE_CLOUD_PROJECT
     || "medical-core-stg";
-  const app = getApps().find((candidate) => candidate.name === "halunasu-platform-api")
-    || initializeApp({ projectId }, "halunasu-platform-api");
+  const appName = options.appName || "halunasu-platform-api";
+  const app = getApps().find((candidate) => candidate.name === appName)
+    || initializeApp({ projectId }, appName);
 
   return getFirestore(app);
 }

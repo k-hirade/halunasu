@@ -1,22 +1,25 @@
 # P14 Halunasu Domain Cutover
 
-Status: in progress, waiting on Netlify custom-domain rate limit and Cloudflare DNS updates
+Status: in progress, browser apps unblocked by Netlify API proxy; custom domains still waiting on Cloudflare DNS
 Date: 2026-05-28
 Cost profile: no new always-on resources; Cloud Run remains min instances 0 / max instances 1
 
 ## Purpose
 
-P14 moves browser apps and APIs from temporary `*.netlify.app` and raw `*.run.app` URLs to `halunasu.com` owned domains.
+P14 moves browser apps toward `halunasu.com` owned domains. P15 changed the active
+browser runtime to use same-origin Netlify `/api/...` proxy routes, so login and
+product flows no longer depend on browser-resolvable API custom domains.
 
 ## Completed
 
-- Static app runtime endpoints now use Halunasu API domains:
-  - STG: `api.stg.halunasu.com`, `charting-api.stg.halunasu.com`, `fee-api.stg.halunasu.com`, `referral-api.stg.halunasu.com`
-  - PROD: `api.halunasu.com`, `charting-api.halunasu.com`, `fee-api.halunasu.com`, `referral-api.halunasu.com`
+- Static app runtime endpoints now use same-origin API proxy paths:
+  - STG/PROD: `/api/platform`, `/api/charting`, `/api/fee`, `/api/referral`
+- Netlify `_redirects` maps those paths to raw Cloud Run `*.run.app` URLs from `config/runtime-proxy-targets.json`.
 - Rebuilt and deployed STG/PROD static apps to the new Netlify sites.
 - Created Cloud Run custom domain mappings for all STG/PROD public APIs.
-- Redeployed Cloud Run APIs with environment-specific cookie names and domains.
+- Updated Platform API deployment to use environment-specific cookie names with host-only cookie domains.
 - Verified raw Cloud Run `/readyz` for all public APIs after redeploy.
+- Verified Netlify same-origin proxy `/api/platform/readyz` and `/api/fee/readyz` on the production Fee app.
 
 ## Netlify Status
 
@@ -45,7 +48,9 @@ Existing production LP remains on `harunas` until explicit final cutover.
 
 ## Cloud Run Domain Mappings
 
-All public API mappings exist and are waiting on Cloudflare DNS records for certificate provisioning:
+Public API mappings exist and are waiting on Cloudflare DNS records for certificate
+provisioning. They are no longer required by the static app runtime while Netlify
+same-origin proxying is active:
 
 | Domain | Target |
 | --- | --- |
@@ -70,16 +75,18 @@ Use DNS-only records at least until certificates are active. Cloudflare API cred
 
 ## Remaining Steps
 
-1. Add Cloudflare DNS records from `config/cloudflare-dns-records.json`.
+1. Add Cloudflare DNS web records from `config/cloudflare-dns-records.json`.
 2. Wait for Netlify custom-domain rate limit to reset and attach the remaining Netlify domains.
 3. Transfer `halunasu.com` and `www.halunasu.com` from old `harunas` to `halunasu-lp-prod` after confirming the new production LP deploy.
-4. Wait for Netlify and Cloud Run certificates to become active.
-5. Verify:
+4. Wait for Netlify certificates to become active.
+5. Optionally keep or remove Cloud Run API custom domains. The active static apps use Netlify proxy routes and do not require API DNS.
+6. Verify:
    - `https://stg.halunasu.com`
    - `https://admin.stg.halunasu.com`
    - `https://charting.stg.halunasu.com`
    - `https://fee.stg.halunasu.com`
    - `https://referral.stg.halunasu.com`
-   - all STG API `/readyz`
-6. Run STG browser login/product flow.
-7. Repeat final browser verification for production domains.
+   - same-origin `/api/platform/readyz`
+   - same-origin product API `/readyz`
+7. Run STG browser login/product flow.
+8. Repeat final browser verification for production domains.

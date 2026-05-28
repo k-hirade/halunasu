@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const configPath = join(root, "config", "runtime-endpoints.json");
+const proxyTargetsPath = join(root, "config", "runtime-proxy-targets.json");
 const defaultOutDir = join(root, "dist", "runtime-apps");
 
 const apps = [
@@ -69,11 +70,15 @@ for (let index = 2; index < process.argv.length; index += 1) {
 const targetEnv = args.get("env") || "all";
 const outDir = args.get("out") ? join(root, args.get("out")) : defaultOutDir;
 const config = JSON.parse(await readFile(configPath, "utf8"));
+const proxyTargets = JSON.parse(await readFile(proxyTargetsPath, "utf8"));
 const envs = targetEnv === "all" ? Object.keys(config) : [targetEnv];
 
 for (const env of envs) {
   if (!config[env]) {
     throw new Error(`Unknown runtime environment: ${env}`);
+  }
+  if (!proxyTargets[env]) {
+    throw new Error(`Unknown runtime proxy environment: ${env}`);
   }
 }
 
@@ -98,7 +103,7 @@ for (const env of envs) {
       await writeFile(htmlPath, html);
     }
 
-    await writeNetlifyDeployFiles(destination);
+    await writeNetlifyDeployFiles(destination, proxyTargets[env]);
   }
 }
 
@@ -135,8 +140,15 @@ function shouldCopyStaticAsset(sourcePath) {
     && basename !== "package.json";
 }
 
-async function writeNetlifyDeployFiles(destination) {
-  await writeFile(join(destination, "_redirects"), "/* /index.html 200\n");
+async function writeNetlifyDeployFiles(destination, targets) {
+  await writeFile(join(destination, "_redirects"), [
+    `/api/platform/* ${requiredTarget(targets, "platform")}/:splat 200`,
+    `/api/charting/* ${requiredTarget(targets, "charting")}/:splat 200`,
+    `/api/fee/* ${requiredTarget(targets, "fee")}/:splat 200`,
+    `/api/referral/* ${requiredTarget(targets, "referral")}/:splat 200`,
+    "/* /index.html 200",
+    ""
+  ].join("\n"));
   await writeFile(join(destination, "_headers"), [
     "/*",
     "  X-Content-Type-Options: nosniff",
@@ -152,4 +164,13 @@ async function writeNetlifyDeployFiles(destination) {
     "  Cache-Control: public, max-age=0, must-revalidate",
     ""
   ].join("\n"));
+}
+
+function requiredTarget(targets, key) {
+  const value = targets[key];
+  if (!value || !/^https:\/\/[a-z0-9-]+[a-z0-9.-]*\.run\.app$/u.test(value)) {
+    throw new Error(`Missing or invalid Netlify proxy target for ${key}`);
+  }
+
+  return value.replace(/\/$/, "");
 }

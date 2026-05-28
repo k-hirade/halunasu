@@ -1,14 +1,14 @@
 {
   "stg": {
-    "platformApi": "https://api.stg.halunasu.com",
-    "chartingApi": "https://charting-api.stg.halunasu.com",
-    "feeApi": "https://fee-api.stg.halunasu.com",
-    "referralApi": "https://referral-api.stg.halunasu.com"
+    "platformApi": "/api/platform",
+    "chartingApi": "/api/charting",
+    "feeApi": "/api/fee",
+    "referralApi": "/api/referral"
   },
   "prod": {
-    "platformApi": "https://api.halunasu.com",
-    "chartingApi": "https://charting-api.halunasu.com",
-    "feeApi": "https://fee-api.halunasu.com",
-    "referralApi": "https://referral-api.halunasu.com"
+    "platformApi": "/api/platform",
+    "chartingApi": "/api/charting",
+    "feeApi": "/api/fee",
+    "referralApi": "/api/referral"
   }
 }

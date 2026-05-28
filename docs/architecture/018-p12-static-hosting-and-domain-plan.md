@@ -8,7 +8,7 @@ Cost profile: code/config only so far, no new GCP resources
 
 P12 prepares frontend hosting and custom domains without adding paid infrastructure.
 
-The key architectural constraint is browser cookies. Platform issues the signed session cookie, and product APIs must receive the same cookie. Therefore real STG/PROD browser flows should not use raw `*.run.app` API URLs. They should use Halunasu-owned API subdomains with shared same-site cookies.
+The key architectural constraint is browser cookies. Platform issues the signed session cookie, and product APIs must receive the same cookie. The active runtime now uses Netlify same-origin `/api/...` proxy routes, so the browser stores host-only cookies for the app origin and Netlify forwards product API requests to Cloud Run.
 
 ## Domain Map
 
@@ -34,7 +34,7 @@ config/runtime-domains.json
 
 Production cookies:
 
-- Domain: `.halunasu.com`
+- Domain: host-only on the active app origin
 - Session cookie: `halunasu_session`
 - CSRF cookie: `halunasu_csrf`
 
@@ -60,17 +60,17 @@ Existing production LP domain handling:
 
 Staging cookies:
 
-- Domain: `.stg.halunasu.com`
+- Domain: host-only on the active app origin
 - Session cookie: `halunasu_stg_session`
 - CSRF cookie: `halunasu_stg_csrf`
 
-Staging uses separate cookie names so production `.halunasu.com` cookies cannot collide with staging requests.
+Staging uses separate cookie names so production cookies cannot collide with staging requests, even while both use host-only app-origin cookies.
 
 ## Implementation Status
 
 Implemented in code:
 
-- Platform API can set `APP_COOKIE_DOMAIN`.
+- Platform API must not set `APP_COOKIE_DOMAIN` while browser apps use Netlify same-origin API proxy routes.
 - Platform API and product APIs can use `APP_SESSION_COOKIE_NAME` and `APP_CSRF_COOKIE_NAME`.
 - Platform API now returns credentialed CORS headers for all `/v1/*` routes, not only signup.
 - Product APIs allow the planned production and staging app origins.

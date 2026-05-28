@@ -14,7 +14,7 @@
       "referral": "https://referral-api.stg.halunasu.com"
     },
     "cookies": {
-      "domain": ".stg.halunasu.com",
+      "domain": null,
       "sessionCookieName": "halunasu_stg_session",
       "csrfCookieName": "halunasu_stg_csrf"
     }
@@ -34,7 +34,7 @@
       "referral": "https://referral-api.halunasu.com"
     },
     "cookies": {
-      "domain": ".halunasu.com",
+      "domain": null,
       "sessionCookieName": "halunasu_session",
       "csrfCookieName": "halunasu_csrf"
     }
