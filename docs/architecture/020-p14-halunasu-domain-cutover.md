@@ -1,6 +1,6 @@
 # P14 Halunasu Domain Cutover
 
-Status: in progress, browser apps unblocked by Netlify API proxy; most production web domains are attached; remaining domains are gated by Netlify custom-domain rate limits and Cloudflare DNS cleanup
+Status: in progress, browser apps unblocked by Netlify API proxy; Netlify custom domains are attached; Cloudflare DNS cleanup and certificate activation remain
 Date: 2026-05-29
 Cost profile: no new always-on resources; Cloud Run remains min instances 0 / max instances 1
 
@@ -38,14 +38,11 @@ Assigned so far:
 | `charting.halunasu.com` | `halunasu-charting-prod` |
 | `app.halunasu.com` | `halunasu-charting-prod` alias |
 | `fee.halunasu.com` | `halunasu-fee-prod` |
-
-Pending because the current Netlify plan limits `custom_domain` changes to 3 per hour:
-
-| Domain | Netlify site |
-| --- | --- |
 | `referral.halunasu.com` | `halunasu-referral-prod` |
 | `stg.app.halunasu.com` | `halunasu-charting-stg` alias |
 | `mfc-stg.halunasu.com` | `halunasu-fee-stg` alias |
+
+No Netlify domain assignments are pending as of 2026-05-29.
 
 The old `harunas`, `harunas-app`, `harunas-stg`, and
 `medical-fee-calculation-stg` Netlify sites no longer own custom domains.
@@ -60,8 +57,8 @@ Legacy aliases to migrate:
 
 On 2026-05-28, those legacy domains were removed from the old Netlify sites.
 On 2026-05-29, `app.halunasu.com` was assigned to `halunasu-charting-prod`.
-Assigning the remaining legacy aliases is gated by the current Netlify Free plan
-custom domain rate limit.
+On 2026-05-29, `stg.app.halunasu.com` and `mfc-stg.halunasu.com` were assigned
+to the new staging sites.
 
 Cloudflare DNS observations on 2026-05-29:
 
@@ -106,10 +103,9 @@ Use DNS-only records at least until certificates are active. Cloudflare API cred
 ## Remaining Steps
 
 1. Fix Cloudflare DNS web records from `config/cloudflare-dns-records.json`.
-2. Wait for Netlify custom-domain rate limit to reset and attach the remaining production and legacy alias domains.
-3. Wait for Netlify certificates to become active.
-4. Optionally keep or remove Cloud Run API custom domains. The active static apps use Netlify proxy routes and do not require API DNS.
-5. Verify:
+2. Wait for Netlify certificates to become active.
+3. Optionally keep or remove Cloud Run API custom domains. The active static apps use Netlify proxy routes and do not require API DNS.
+4. Verify:
    - `https://stg.halunasu.com`
    - `https://admin.stg.halunasu.com`
    - `https://charting.stg.halunasu.com`
@@ -124,5 +120,5 @@ Use DNS-only records at least until certificates are active. Cloudflare API cred
    - `https://referral.halunasu.com`
    - same-origin `/api/platform/readyz`
    - same-origin product API `/readyz`
-6. Run STG browser login/product flow.
-7. Repeat final browser verification for production domains.
+5. Run STG browser login/product flow.
+6. Repeat final browser verification for production domains.
