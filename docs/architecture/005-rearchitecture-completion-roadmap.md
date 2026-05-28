@@ -213,7 +213,7 @@ Exit criteria:
 
 ## P3: LP And Signup Migration
 
-Status: complete for local/staging code as of 2026-05-28. Real email delivery and public signup exposure remain intentionally deferred to keep cost and surface area low.
+Status: complete for local code and staging smoke as of 2026-05-28. Real email delivery and public signup exposure remain intentionally deferred to keep cost and surface area low.
 
 Purpose:
 
