@@ -97,6 +97,8 @@ for (const env of envs) {
       }
       await writeFile(htmlPath, html);
     }
+
+    await writeNetlifyDeployFiles(destination);
   }
 }
 
@@ -131,4 +133,23 @@ function shouldCopyStaticAsset(sourcePath) {
     && !normalized.includes("/scripts/")
     && basename !== "README.md"
     && basename !== "package.json";
+}
+
+async function writeNetlifyDeployFiles(destination) {
+  await writeFile(join(destination, "_redirects"), "/* /index.html 200\n");
+  await writeFile(join(destination, "_headers"), [
+    "/*",
+    "  X-Content-Type-Options: nosniff",
+    "  X-Frame-Options: DENY",
+    "  Referrer-Policy: strict-origin-when-cross-origin",
+    "  Strict-Transport-Security: max-age=31536000; includeSubDomains",
+    "  Permissions-Policy: camera=(), microphone=(), geolocation=()",
+    "",
+    "/assets/*",
+    "  Cache-Control: public, max-age=31536000, immutable",
+    "",
+    "/*.html",
+    "  Cache-Control: public, max-age=0, must-revalidate",
+    ""
+  ].join("\n"));
 }

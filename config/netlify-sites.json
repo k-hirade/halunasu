@@ -1,0 +1,76 @@
+{
+  "stg": {
+    "lp": {
+      "siteName": "halunasu-lp-stg",
+      "siteId": "fea99e80-55dd-4e00-a838-a6860e145b54",
+      "netlifyUrl": "https://halunasu-lp-stg.netlify.app",
+      "targetDomain": "https://stg.halunasu.com",
+      "publishDir": "dist/runtime-apps/stg/lp"
+    },
+    "core-admin": {
+      "siteName": "halunasu-admin-stg",
+      "siteId": "efc4e7ba-6eef-41a3-a812-d546e6f164b2",
+      "netlifyUrl": "https://halunasu-admin-stg.netlify.app",
+      "targetDomain": "https://admin.stg.halunasu.com",
+      "publishDir": "dist/runtime-apps/stg/core-admin"
+    },
+    "charting-web": {
+      "siteName": "halunasu-charting-stg",
+      "siteId": "f6781c37-f6ef-4fc5-941b-b36a5fd49bb5",
+      "netlifyUrl": "https://halunasu-charting-stg.netlify.app",
+      "targetDomain": "https://charting.stg.halunasu.com",
+      "publishDir": "dist/runtime-apps/stg/charting-web"
+    },
+    "fee-web": {
+      "siteName": "halunasu-fee-stg",
+      "siteId": "84766d79-e6d0-4f80-b65a-9eea220d94f1",
+      "netlifyUrl": "https://halunasu-fee-stg.netlify.app",
+      "targetDomain": "https://fee.stg.halunasu.com",
+      "publishDir": "dist/runtime-apps/stg/fee-web"
+    },
+    "referral-web": {
+      "siteName": "halunasu-referral-stg",
+      "siteId": "835a45a1-cd88-480a-90a7-33a5a0d23051",
+      "netlifyUrl": "https://halunasu-referral-stg.netlify.app",
+      "targetDomain": "https://referral.stg.halunasu.com",
+      "publishDir": "dist/runtime-apps/stg/referral-web"
+    }
+  },
+  "prod": {
+    "lp": {
+      "siteName": "halunasu-lp-prod",
+      "siteId": "384b9465-9f90-48a7-8fa9-d0b3ac429aa1",
+      "netlifyUrl": "https://halunasu-lp-prod.netlify.app",
+      "targetDomain": "https://www.halunasu.com",
+      "publishDir": "dist/runtime-apps/prod/lp"
+    },
+    "core-admin": {
+      "siteName": "halunasu-admin-prod",
+      "siteId": "da285b6c-afcb-4b75-934f-895eca782b04",
+      "netlifyUrl": "https://halunasu-admin-prod.netlify.app",
+      "targetDomain": "https://admin.halunasu.com",
+      "publishDir": "dist/runtime-apps/prod/core-admin"
+    },
+    "charting-web": {
+      "siteName": "halunasu-charting-prod",
+      "siteId": "2dc7d619-afca-4f1b-8fb9-ea9c4dcc37a4",
+      "netlifyUrl": "https://halunasu-charting-prod.netlify.app",
+      "targetDomain": "https://charting.halunasu.com",
+      "publishDir": "dist/runtime-apps/prod/charting-web"
+    },
+    "fee-web": {
+      "siteName": "halunasu-fee-prod",
+      "siteId": "5905c249-c575-4f88-9729-5115bafe9f39",
+      "netlifyUrl": "https://halunasu-fee-prod.netlify.app",
+      "targetDomain": "https://fee.halunasu.com",
+      "publishDir": "dist/runtime-apps/prod/fee-web"
+    },
+    "referral-web": {
+      "siteName": "halunasu-referral-prod",
+      "siteId": "0e944aa7-21d3-47aa-9070-a005858469e8",
+      "netlifyUrl": "https://halunasu-referral-prod.netlify.app",
+      "targetDomain": "https://referral.halunasu.com",
+      "publishDir": "dist/runtime-apps/prod/referral-web"
+    }
+  }
+}

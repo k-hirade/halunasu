@@ -269,6 +269,31 @@ test("P12 domain plan separates staging and production browser cookies", () => {
   }
 });
 
+test("P13 Netlify static sites are explicit and deploys are guarded", () => {
+  const sites = JSON.parse(readText(join(root, "config", "netlify-sites.json")));
+  const deployScript = readText(join(root, "scripts", "p13_deploy_netlify_static_apps.mjs"));
+  const buildScript = readText(join(root, "scripts", "p11_build_static_apps_runtime_config.mjs"));
+  const apps = ["lp", "core-admin", "charting-web", "fee-web", "referral-web"];
+
+  for (const env of ["stg", "prod"]) {
+    for (const app of apps) {
+      const site = sites[env][app];
+      assert.match(site.siteName, /^halunasu-[a-z-]+-(stg|prod)$/);
+      assert.match(site.siteId, /^[0-9a-f-]{36}$/);
+      assert.equal(site.netlifyUrl, `https://${site.siteName}.netlify.app`);
+      assert.equal(site.publishDir, `dist/runtime-apps/${env}/${app}`);
+      assert.match(site.targetDomain, /^https:\/\/[a-z0-9-]+(\.stg)?\.halunasu\.com$/);
+    }
+  }
+
+  assert.match(deployScript, /apply = args\.get\("apply"\) === "true"/, "P13 deploy must dry-run by default");
+  assert.match(deployScript, /"netlify",\s+"deploy"/, "P13 deploy must use Netlify deploy");
+  assert.match(deployScript, /"--no-build"/, "P13 deploy must use prebuilt output");
+  assert.match(deployScript, /"--prod"/, "P13 deploy should publish each env-specific site production deploy");
+  assert.match(buildScript, /"_headers"/, "runtime app build must emit Netlify headers");
+  assert.match(buildScript, /"_redirects"/, "runtime app build must emit Netlify redirects");
+});
+
 function readDirectoryText(path, pattern) {
   return walkFiles(path)
     .filter((file) => pattern.test(file))
