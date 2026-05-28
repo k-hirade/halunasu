@@ -248,6 +248,8 @@ Exit criteria:
 
 ## P4: Charting Migration
 
+Status: complete for local code as of 2026-05-28. Staging deploy, live STT, OpenAI/Deepgram secrets, Cloud Tasks, and GCS raw audio storage remain intentionally deferred for cost control.
+
 Purpose:
 
 - Move `halunasu-medical-record` charting behavior into the new architecture.

@@ -1,0 +1,22 @@
+{
+  "name": "@halunasu/charting-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@halunasu/auth-client": "file:../../packages/auth-client",
+    "@halunasu/charting-contracts": "file:../../packages/charting-contracts",
+    "@halunasu/charting-core": "file:../../packages/charting-core",
+    "@halunasu/firestore-schema": "file:../../packages/firestore-schema",
+    "@halunasu/platform-contracts": "file:../../packages/platform-contracts",
+    "firebase-admin": "^13.0.0"
+  }
+}

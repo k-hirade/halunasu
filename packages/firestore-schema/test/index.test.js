@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   collections,
   auditEventPath,
+  chartingEncounterPath,
   departmentPath,
   facilityPath,
   loginIdentityKey,
@@ -27,6 +28,10 @@ test("builds platform document paths", () => {
     "organizations/org_123/product_entitlements/charting"
   );
   assert.equal(auditEventPath("org_123", "aud_456"), "organizations/org_123/audit_events/aud_456");
+  assert.equal(
+    chartingEncounterPath("org_123", "enc_456"),
+    "organizations/org_123/charting_encounters/enc_456"
+  );
   assert.equal(signupApplicationPath("app_123"), "signup_applications/app_123");
   assert.equal(signupEmailTokenPath("emv_123"), "signup_email_tokens/emv_123");
   assert.equal(passwordSetupTokenPath("setup_123"), "password_setup_tokens/setup_123");

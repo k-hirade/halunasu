@@ -2,10 +2,11 @@
 
 Shared packages live here.
 
-Planned packages:
+Packages:
 
 - `platform-contracts`
 - `auth-client`
+- `charting-contracts`
+- `charting-core`
 - `web-ui`
 - `firestore-schema`
-

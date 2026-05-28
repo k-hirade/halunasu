@@ -73,6 +73,7 @@ Historical product projects remain migration sources until the new core environm
 ```bash
 npm run test
 npm run start:platform-api
+npm run start:charting-api
 ```
 
 ## Staging Deploy

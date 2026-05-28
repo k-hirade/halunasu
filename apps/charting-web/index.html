@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="halunasu-platform-api-base-url" content="" />
+  <meta name="halunasu-charting-api-base-url" content="" />
+  <title>ハルナス カルテ作成</title>
+  <style>
+    :root {
+      --ink: #10213f;
+      --muted: #64748b;
+      --line: #d9e2ef;
+      --bg: #f5f8fb;
+      --surface: #ffffff;
+      --accent: #0f9f8f;
+      --accent-dark: #0b7066;
+      --danger: #b42318;
+      --success: #087443;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: Inter, "Noto Sans JP", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      height: 64px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.94);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      font-weight: 800;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: var(--accent);
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 900;
+    }
+
+    .session-chip {
+      color: var(--muted);
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .main {
+      width: min(1240px, calc(100% - 32px));
+      margin: 24px auto 40px;
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 18px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .panel h1,
+    .panel h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    .panel h1 { font-size: 20px; }
+
+    .stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    label {
+      color: #26364f;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid #cbd7e6;
+      border-radius: 8px;
+      padding: 11px 12px;
+      color: var(--ink);
+      background: #fff;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 108px;
+      resize: vertical;
+    }
+
+    input:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(15,159,143,0.13);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      min-height: 42px;
+      padding: 10px 14px;
+      color: #fff;
+      background: var(--ink);
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      color: var(--ink);
+      background: #e8eef6;
+    }
+
+    button.accent {
+      background: var(--accent-dark);
+    }
+
+    button:disabled {
+      opacity: 0.62;
+      cursor: wait;
+    }
+
+    .message {
+      display: none;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .message.on { display: block; }
+    .message.error { color: var(--danger); background: #fff1f0; border: 1px solid #ffd2cf; }
+    .message.success { color: var(--success); background: #ecfdf3; border: 1px solid #abefc6; }
+
+    .encounter-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .encounter-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfdff;
+      display: grid;
+      gap: 4px;
+      cursor: pointer;
+      text-align: left;
+      color: var(--ink);
+    }
+
+    .encounter-item strong {
+      font-size: 14px;
+    }
+
+    .encounter-item span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-rows: auto auto minmax(240px, 1fr);
+      gap: 18px;
+    }
+
+    .soap {
+      white-space: pre-wrap;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fbff;
+      padding: 14px;
+      min-height: 180px;
+      line-height: 1.7;
+    }
+
+    .hidden { display: none; }
+
+    @media (max-width: 880px) {
+      .topbar { padding: 0 16px; }
+      .main {
+        width: min(100% - 24px, 1240px);
+        grid-template-columns: 1fr;
+      }
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">H</div>
+        <div>ハルナス カルテ作成</div>
+      </div>
+      <div id="session-chip" class="session-chip">未ログイン</div>
+    </header>
+
+    <main class="main">
+      <aside class="stack">
+        <section class="panel" id="login-panel">
+          <h1>Platformログイン</h1>
+          <form id="login-form" class="stack">
+            <div class="field">
+              <label for="organizationCode">組織コード</label>
+              <input id="organizationCode" name="organizationCode" autocomplete="organization" required />
+            </div>
+            <div class="field">
+              <label for="loginId">ログインID</label>
+              <input id="loginId" name="loginId" autocomplete="username" required />
+            </div>
+            <div class="field">
+              <label for="password">パスワード</label>
+              <input id="password" name="password" type="password" autocomplete="current-password" required />
+            </div>
+            <div id="login-message" class="message" role="status" aria-live="polite"></div>
+            <button type="submit" id="login-button">ログイン</button>
+          </form>
+        </section>
+
+        <section class="panel hidden" id="patient-panel">
+          <h2>患者</h2>
+          <form id="patient-form" class="stack">
+            <div class="field">
+              <label for="patientName">患者氏名</label>
+              <input id="patientName" name="displayName" required />
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label for="birthDate">生年月日</label>
+                <input id="birthDate" name="birthDate" type="date" />
+              </div>
+              <div class="field">
+                <label for="externalPatientId">患者番号</label>
+                <input id="externalPatientId" name="externalPatientId" />
+              </div>
+            </div>
+            <button type="submit" class="accent" id="patient-button">患者を作成</button>
+          </form>
+        </section>
+
+        <section class="panel hidden" id="list-panel">
+          <h2>診療記録</h2>
+          <div id="encounter-list" class="encounter-list"></div>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <section class="panel">
+          <h2>診療開始</h2>
+          <form id="encounter-form" class="stack">
+            <div class="grid-2">
+              <div class="field">
+                <label for="patientId">患者ID</label>
+                <input id="patientId" name="patientId" required />
+              </div>
+              <div class="field">
+                <label for="visitReason">主訴</label>
+                <input id="visitReason" name="visitReason" />
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label for="facilityId">施設ID</label>
+                <input id="facilityId" name="facilityId" />
+              </div>
+              <div class="field">
+                <label for="departmentId">診療科ID</label>
+                <input id="departmentId" name="departmentId" />
+              </div>
+            </div>
+            <div class="field">
+              <label for="transcript">文字起こし</label>
+              <textarea id="transcript" name="transcript"></textarea>
+            </div>
+            <div id="app-message" class="message" role="status" aria-live="polite"></div>
+            <div class="button-row">
+              <button type="submit" id="encounter-button">診療記録を作成</button>
+              <button type="button" class="secondary" id="refresh-button">更新</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel hidden" id="selected-panel">
+          <h2>選択中</h2>
+          <div class="button-row">
+            <button type="button" class="accent" id="soap-button">SOAP下書き作成</button>
+          </div>
+          <p id="selected-summary"></p>
+        </section>
+
+        <section class="panel">
+          <h2>SOAP下書き</h2>
+          <div id="soap-output" class="soap"></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      csrfToken: "",
+      selectedEncounterId: ""
+    };
+    const platformApiBaseUrl = resolveBaseUrl("halunasu-platform-api-base-url", "platformApi");
+    const chartingApiBaseUrl = resolveBaseUrl("halunasu-charting-api-base-url", "chartingApi");
+
+    const loginPanel = document.querySelector("#login-panel");
+    const patientPanel = document.querySelector("#patient-panel");
+    const listPanel = document.querySelector("#list-panel");
+    const selectedPanel = document.querySelector("#selected-panel");
+    const sessionChip = document.querySelector("#session-chip");
+    const encounterList = document.querySelector("#encounter-list");
+    const soapOutput = document.querySelector("#soap-output");
+    const selectedSummary = document.querySelector("#selected-summary");
+
+    document.querySelector("#login-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      try {
+        const response = await postPlatform("/v1/auth/login", {
+          organizationCode: form.get("organizationCode"),
+          loginId: form.get("loginId"),
+          password: form.get("password")
+        });
+        state.csrfToken = response.csrfToken;
+        sessionChip.textContent = `${response.session.organizationCode} / ${response.session.loginId}`;
+        show(patientPanel);
+        show(listPanel);
+        setMessage("#login-message", "ログインしました。", "success");
+        await refreshEncounters();
+      } catch (error) {
+        setMessage("#login-message", error.message, "error");
+      }
+    });
+
+    document.querySelector("#patient-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      try {
+        const externalPatientId = String(form.get("externalPatientId") || "").trim();
+        const response = await postCharting("/v1/charting/patients", {
+          displayName: form.get("displayName"),
+          birthDate: form.get("birthDate") || undefined,
+          externalPatientIds: externalPatientId ? [externalPatientId] : []
+        });
+        document.querySelector("#patientId").value = response.patient.patientId;
+        setMessage("#app-message", "患者を作成しました。", "success");
+      } catch (error) {
+        setMessage("#app-message", error.message, "error");
+      }
+    });
+
+    document.querySelector("#encounter-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      try {
+        const response = await postCharting("/v1/charting/encounters", {
+          patientId: form.get("patientId"),
+          facilityId: form.get("facilityId") || undefined,
+          departmentId: form.get("departmentId") || undefined,
+          visitReason: form.get("visitReason") || undefined,
+          transcript: form.get("transcript") || undefined
+        });
+        selectEncounter(response.encounter);
+        await refreshEncounters();
+        setMessage("#app-message", "診療記録を作成しました。", "success");
+      } catch (error) {
+        setMessage("#app-message", error.message, "error");
+      }
+    });
+
+    document.querySelector("#refresh-button").addEventListener("click", refreshEncounters);
+    document.querySelector("#soap-button").addEventListener("click", async () => {
+      if (!state.selectedEncounterId) return;
+      try {
+        const transcript = document.querySelector("#transcript").value;
+        const response = await postCharting(`/v1/charting/encounters/${state.selectedEncounterId}/mock-soap`, {
+          transcript
+        });
+        soapOutput.textContent = response.soapDraft.outputText;
+        selectEncounter(response.encounter);
+      } catch (error) {
+        setMessage("#app-message", error.message, "error");
+      }
+    });
+
+    async function refreshEncounters() {
+      if (!state.csrfToken) return;
+      const response = await getCharting("/v1/charting/encounters");
+      encounterList.innerHTML = "";
+      for (const encounter of response.encounters || []) {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "encounter-item";
+        item.innerHTML = `<strong>${escapeHtml(encounter.patientSnapshot?.displayName || encounter.patientId)}</strong><span>${escapeHtml(encounter.status)} / ${escapeHtml(encounter.visitReason || "")}</span>`;
+        item.addEventListener("click", () => selectEncounter(encounter));
+        encounterList.append(item);
+      }
+    }
+
+    function selectEncounter(encounter) {
+      state.selectedEncounterId = encounter.encounterId;
+      selectedSummary.textContent = `${encounter.encounterId} / ${encounter.patientSnapshot?.displayName || encounter.patientId}`;
+      show(selectedPanel);
+    }
+
+    async function postPlatform(path, payload) {
+      return requestJson(`${platformApiBaseUrl}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload)
+      });
+    }
+
+    async function getCharting(path) {
+      return requestJson(`${chartingApiBaseUrl}${path}`, {
+        method: "GET",
+        credentials: "include"
+      });
+    }
+
+    async function postCharting(path, payload) {
+      return requestJson(`${chartingApiBaseUrl}${path}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-csrf-token": state.csrfToken
+        },
+        credentials: "include",
+        body: JSON.stringify(payload)
+      });
+    }
+
+    async function requestJson(url, options) {
+      const response = await fetch(url, options);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.message || body.error || "request failed");
+      }
+      return body;
+    }
+
+    function resolveBaseUrl(metaName, queryName) {
+      const params = new URLSearchParams(window.location.search);
+      return String(
+        params.get(queryName)
+        || document.querySelector(`meta[name='${metaName}']`)?.content
+        || ""
+      ).replace(/\/$/, "");
+    }
+
+    function setMessage(selector, text, kind) {
+      const element = document.querySelector(selector);
+      element.textContent = text;
+      element.className = text ? `message ${kind || ""} on` : "message";
+    }
+
+    function show(element) {
+      element.classList.remove("hidden");
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+  </script>
+</body>
+</html>

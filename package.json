@@ -16,7 +16,10 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "start:platform-api": "npm run start --workspace @halunasu/platform-api",
-    "dev:platform-api": "npm run dev --workspace @halunasu/platform-api"
+    "dev:platform-api": "npm run dev --workspace @halunasu/platform-api",
+    "start:charting-api": "npm run start --workspace @halunasu/charting-api",
+    "dev:charting-api": "npm run dev --workspace @halunasu/charting-api",
+    "start:charting-finalize": "npm run start --workspace @halunasu/charting-finalize",
+    "dev:charting-finalize": "npm run dev --workspace @halunasu/charting-finalize"
   }
 }
-

@@ -11,6 +11,7 @@ This directory contains architecture decisions and system diagrams for the Halun
 - [005 Rearchitecture Completion Roadmap](005-rearchitecture-completion-roadmap.md)
 - [006 P2 Staging Smoke Runbook](006-p2-staging-smoke-runbook.md)
 - [007 P3 Staging Smoke Runbook](007-p3-staging-smoke-runbook.md)
+- [008 P4 Charting Migration Runbook](008-p4-charting-migration-runbook.md)
 
 ## Reading Order
 
@@ -21,3 +22,4 @@ This directory contains architecture decisions and system diagrams for the Halun
 5. Use the completion roadmap to track the remaining work through old environment shutdown and production readiness.
 6. Use the P2 staging smoke runbook before creating or deploying base Platform resources in `medical-core-stg`.
 7. Use the P3 staging smoke runbook to verify LP signup migration and Platform provisioning.
+8. Use the P4 charting migration runbook to verify the Platform-backed charting boundary.
