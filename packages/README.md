@@ -12,5 +12,6 @@ Packages:
 - `fee-core`
 - `referral-contracts`
 - `referral-core`
+- `product-boundaries`
 - `web-ui`
 - `firestore-schema`

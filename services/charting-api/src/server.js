@@ -1,11 +1,7 @@
 import http from "node:http";
 import {
-  forbiddenError,
-  hasGlobalRole,
-  hasProductRole,
   requirePlatformCsrf,
-  unauthorizedError,
-  verifyPlatformSessionFromHeaders
+  requireProductContext
 } from "../../../packages/auth-client/src/index.js";
 import {
   validateCreateChartingEncounterInput,
@@ -206,29 +202,12 @@ async function routeChartingApiRequest(input = {}) {
 }
 
 async function requireChartingContext(input, platformStore) {
-  const session = verifyPlatformSessionFromHeaders(input.headers || {}, {
-    now: input.now,
-    sessionSecret: input.sessionSecret
+  return requireProductContext(input, {
+    platformStore,
+    productId: PRODUCT_ID,
+    productLabel: "Charting",
+    allowedProductRoles: ["admin", "doctor", "nurse", "scribe"]
   });
-  const identity = await platformStore.getLoginIdentity(session.organizationCode, session.loginId);
-  if (!identity || identity.status !== "active" || Number(identity.tokenVersion || 0) !== Number(session.tokenVersion || 0)) {
-    throw unauthorizedError("Invalid session");
-  }
-
-  const member = await platformStore.getMember(session.orgId, session.memberId);
-  if (!member || member.status !== "active") {
-    throw unauthorizedError("Invalid session");
-  }
-
-  const entitlement = await platformStore.getProductEntitlement(session.orgId, PRODUCT_ID);
-  const entitlementAllowsUse = ["enabled", "trialing"].includes(entitlement?.status);
-  const roleAllowsUse = hasProductRole(session, PRODUCT_ID, ["admin", "doctor", "nurse", "scribe"])
-    || hasGlobalRole(session, ["org_admin", "platform_admin"]);
-  if (!entitlementAllowsUse || !roleAllowsUse) {
-    throw forbiddenError("Charting product access is required");
-  }
-
-  return { session, identity, member, entitlement };
 }
 
 async function resolveEncounterPatient(context, platformStore, input) {

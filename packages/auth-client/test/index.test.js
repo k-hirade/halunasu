@@ -6,8 +6,10 @@ import {
   SESSION_COOKIE_NAME,
   forbiddenError,
   hasGlobalRole,
+  hasProductAccess,
   hasProductRole,
   requirePlatformCsrf,
+  requireProductContext,
   verifyPlatformSessionFromHeaders
 } from "../src/index.js";
 
@@ -38,7 +40,111 @@ test("verifies Platform session cookies and product roles", () => {
   assert.equal(session.csrfToken, "csrf_test");
   assert.equal(hasProductRole(verified, "charting", ["admin"]), true);
   assert.equal(hasGlobalRole(verified, ["org_admin"]), true);
+  assert.equal(hasProductAccess(verified, "charting", ["doctor"]), true);
   assert.doesNotThrow(() => requirePlatformCsrf(headers, verified));
+});
+
+test("builds shared product context with entitlement and token version checks", async () => {
+  const { token } = createSignedSession({
+    orgId: "org_123",
+    memberId: "mem_123",
+    organizationCode: "clinic",
+    loginId: "doctor@example.com",
+    tokenVersion: 1,
+    globalRoles: [],
+    productRoles: { charting: ["doctor"] },
+    csrfToken: "csrf_test"
+  }, {
+    now: new Date("2026-05-28T00:00:00.000Z"),
+    sessionSecret: "secret"
+  });
+  const headers = {
+    cookie: `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; ${CSRF_COOKIE_NAME}=csrf_test`
+  };
+  const platformStore = {
+    getLoginIdentity: async () => ({
+      organizationCode: "clinic",
+      loginId: "doctor@example.com",
+      orgId: "org_123",
+      memberId: "mem_123",
+      tokenVersion: 1,
+      status: "active"
+    }),
+    getMember: async () => ({
+      memberId: "mem_123",
+      orgId: "org_123",
+      displayName: "Doctor",
+      status: "active"
+    }),
+    getProductEntitlement: async () => ({
+      productId: "charting",
+      orgId: "org_123",
+      status: "trialing"
+    })
+  };
+  const context = await requireProductContext({
+    headers,
+    now: new Date("2026-05-28T00:01:00.000Z"),
+    sessionSecret: "secret"
+  }, {
+    platformStore,
+    productId: "charting",
+    productLabel: "Charting",
+    allowedProductRoles: ["doctor"]
+  });
+
+  assert.equal(context.session.orgId, "org_123");
+  assert.equal(context.member.memberId, "mem_123");
+  assert.equal(context.entitlement.status, "trialing");
+});
+
+test("rejects shared product context without entitlement", async () => {
+  const { token } = createSignedSession({
+    orgId: "org_123",
+    memberId: "mem_123",
+    organizationCode: "clinic",
+    loginId: "doctor@example.com",
+    tokenVersion: 1,
+    globalRoles: [],
+    productRoles: { charting: ["doctor"] },
+    csrfToken: "csrf_test"
+  }, {
+    now: new Date("2026-05-28T00:00:00.000Z"),
+    sessionSecret: "secret"
+  });
+  const platformStore = {
+    getLoginIdentity: async () => ({
+      organizationCode: "clinic",
+      loginId: "doctor@example.com",
+      orgId: "org_123",
+      memberId: "mem_123",
+      tokenVersion: 1,
+      status: "active"
+    }),
+    getMember: async () => ({
+      memberId: "mem_123",
+      orgId: "org_123",
+      displayName: "Doctor",
+      status: "active"
+    }),
+    getProductEntitlement: async () => null
+  };
+
+  await assert.rejects(
+    () => requireProductContext({
+      headers: {
+        cookie: `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; ${CSRF_COOKIE_NAME}=csrf_test`
+      },
+      now: new Date("2026-05-28T00:01:00.000Z"),
+      sessionSecret: "secret"
+    }, {
+      platformStore,
+      productId: "charting",
+      productLabel: "Charting",
+      allowedProductRoles: ["doctor"]
+    }),
+    /Charting product access is required/
+  );
 });
 
 test("rejects invalid CSRF tokens", () => {

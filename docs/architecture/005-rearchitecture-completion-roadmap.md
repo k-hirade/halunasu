@@ -355,6 +355,8 @@ Exit criteria:
 
 ## P7: Product Integration Boundaries
 
+Status: complete for local code as of 2026-05-28. The explicit import API is defined as an architecture contract; real charting-to-referral import implementation remains deferred until the workflow is needed.
+
 Purpose:
 
 - Allow useful workflows without coupling product databases.

@@ -14,6 +14,7 @@ This directory contains architecture decisions and system diagrams for the Halun
 - [008 P4 Charting Migration Runbook](008-p4-charting-migration-runbook.md)
 - [009 P5 Fee Migration Runbook](009-p5-fee-migration-runbook.md)
 - [010 P6 Referral Foundation Runbook](010-p6-referral-foundation-runbook.md)
+- [011 P7 Product Boundaries](011-p7-product-boundaries.md)
 
 ## Reading Order
 
@@ -27,3 +28,4 @@ This directory contains architecture decisions and system diagrams for the Halun
 8. Use the P4 charting migration runbook to verify the Platform-backed charting boundary.
 9. Use the P5 fee migration runbook to verify the Platform-backed fee boundary.
 10. Use the P6 referral foundation runbook to verify the Platform-backed referral boundary.
+11. Use the P7 product boundaries document to keep product integration explicit and auditable.

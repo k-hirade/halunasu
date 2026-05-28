@@ -4,6 +4,8 @@ export const SESSION_COOKIE_NAME = "halunasu_session";
 export const CSRF_COOKIE_NAME = "halunasu_csrf";
 
 const LOCAL_SESSION_SECRET = "local-only-halunasu-platform-session-secret";
+const ACTIVE_ENTITLEMENT_STATUSES = Object.freeze(["enabled", "trialing"]);
+const DEFAULT_GLOBAL_PRODUCT_ROLES = Object.freeze(["org_admin", "platform_admin"]);
 
 export function verifyPlatformSessionFromHeaders(headers = {}, options = {}) {
   const token = platformSessionTokenFromHeaders(headers);
@@ -68,6 +70,55 @@ export function hasProductRole(session = {}, productId, allowedRoles = []) {
 
 export function hasGlobalRole(session = {}, roles = []) {
   return (session.globalRoles || []).some((role) => roles.includes(role));
+}
+
+export function hasProductAccess(session = {}, productId, allowedProductRoles = [], globalRoles = DEFAULT_GLOBAL_PRODUCT_ROLES) {
+  return hasProductRole(session, productId, allowedProductRoles) || hasGlobalRole(session, globalRoles);
+}
+
+export async function requireProductContext(input = {}, options = {}) {
+  const {
+    platformStore,
+    productId,
+    allowedProductRoles = [],
+    globalRoles = DEFAULT_GLOBAL_PRODUCT_ROLES,
+    productLabel = productId || "Product"
+  } = options;
+  if (!platformStore) {
+    throw new TypeError("platformStore is required");
+  }
+  if (!productId) {
+    throw new TypeError("productId is required");
+  }
+
+  const session = verifyPlatformSessionFromHeaders(input.headers || {}, {
+    now: input.now,
+    sessionSecret: input.sessionSecret
+  });
+  const identity = await platformStore.getLoginIdentity(session.organizationCode, session.loginId);
+  if (!identity || identity.status !== "active" || Number(identity.tokenVersion || 0) !== Number(session.tokenVersion || 0)) {
+    throw unauthorizedError("Invalid session");
+  }
+
+  const member = await platformStore.getMember(session.orgId, session.memberId);
+  if (!member || member.status !== "active") {
+    throw unauthorizedError("Invalid session");
+  }
+
+  const entitlement = await platformStore.getProductEntitlement(session.orgId, productId);
+  const entitlementAllowsUse = ACTIVE_ENTITLEMENT_STATUSES.includes(entitlement?.status);
+  const roleAllowsUse = hasProductAccess(session, productId, allowedProductRoles, globalRoles);
+  if (!entitlementAllowsUse || !roleAllowsUse) {
+    throw forbiddenError(`${productLabel} product access is required`);
+  }
+
+  return {
+    session,
+    identity,
+    member,
+    entitlement,
+    productId
+  };
 }
 
 export function parseCookies(cookieHeader) {

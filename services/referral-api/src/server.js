@@ -1,11 +1,9 @@
 import http from "node:http";
 import {
   forbiddenError,
-  hasGlobalRole,
-  hasProductRole,
+  hasProductAccess,
   requirePlatformCsrf,
-  unauthorizedError,
-  verifyPlatformSessionFromHeaders
+  requireProductContext
 } from "../../../packages/auth-client/src/index.js";
 import {
   validateCreateReferralDraftInput,
@@ -220,34 +218,16 @@ async function routeReferralApiRequest(input = {}) {
 }
 
 async function requireReferralContext(input, platformStore) {
-  const session = verifyPlatformSessionFromHeaders(input.headers || {}, {
-    now: input.now,
-    sessionSecret: input.sessionSecret
+  return requireProductContext(input, {
+    platformStore,
+    productId: PRODUCT_ID,
+    productLabel: "Referral",
+    allowedProductRoles: READ_ROLES
   });
-  const identity = await platformStore.getLoginIdentity(session.organizationCode, session.loginId);
-  if (!identity || identity.status !== "active" || Number(identity.tokenVersion || 0) !== Number(session.tokenVersion || 0)) {
-    throw unauthorizedError("Invalid session");
-  }
-
-  const member = await platformStore.getMember(session.orgId, session.memberId);
-  if (!member || member.status !== "active") {
-    throw unauthorizedError("Invalid session");
-  }
-
-  const entitlement = await platformStore.getProductEntitlement(session.orgId, PRODUCT_ID);
-  const entitlementAllowsUse = ["enabled", "trialing"].includes(entitlement?.status);
-  const roleAllowsUse = hasProductRole(session, PRODUCT_ID, READ_ROLES)
-    || hasGlobalRole(session, ["org_admin", "platform_admin"]);
-  if (!entitlementAllowsUse || !roleAllowsUse) {
-    throw forbiddenError("Referral product access is required");
-  }
-
-  return { session, identity, member, entitlement };
 }
 
 function requireWriteAccess(context) {
-  const allowed = hasProductRole(context.session, PRODUCT_ID, WRITE_ROLES)
-    || hasGlobalRole(context.session, ["org_admin", "platform_admin"]);
+  const allowed = hasProductAccess(context.session, PRODUCT_ID, WRITE_ROLES);
   if (!allowed) {
     throw forbiddenError("Referral write access is required");
   }
