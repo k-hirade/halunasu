@@ -13,6 +13,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "build:runtime-apps": "node scripts/p11_build_static_apps_runtime_config.mjs",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "start:platform-api": "npm run start --workspace @halunasu/platform-api",

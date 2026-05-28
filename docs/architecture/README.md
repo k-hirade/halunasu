@@ -20,6 +20,7 @@ This directory contains architecture decisions and system diagrams for the Halun
 - [014 P8.6 Core Admin Synthetic E2E](014-p8-6-core-admin-synthetic-e2e.md)
 - [015 P9 Old Environment Shutdown](015-p9-old-environment-shutdown.md)
 - [016 P10 Product Project Readiness](016-p10-product-project-readiness.md)
+- [017 P11 Frontend Runtime Wiring](017-p11-frontend-runtime-wiring.md)
 
 ## Reading Order
 
@@ -39,3 +40,4 @@ This directory contains architecture decisions and system diagrams for the Halun
 14. Use the P8.6 core admin and synthetic E2E runbook to verify local Core operations before old environment shutdown.
 15. Use the P9 old environment shutdown runbook to capture read-only inventory and freeze old services without adding GCP resources.
 16. Use the P10 product project readiness gate before linking billing or enabling product runtime APIs.
+17. Use the P11 frontend runtime wiring note before deploying static apps against STG/PROD APIs.

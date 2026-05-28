@@ -237,6 +237,21 @@ test("P10 runtime provisioning and deploy scripts keep low-cost guardrails", () 
   assert.equal(/terraform\s+apply/.test(deploy), false, "P10 deploy must not run Terraform");
 });
 
+test("P11 runtime endpoint config points static apps at Cloud Run APIs", () => {
+  const config = JSON.parse(readText(join(root, "config", "runtime-endpoints.json")));
+  const script = readText(join(root, "scripts", "p11_build_static_apps_runtime_config.mjs"));
+
+  for (const env of ["stg", "prod"]) {
+    for (const key of ["platformApi", "chartingApi", "feeApi", "referralApi"]) {
+      assert.match(config[env][key], /^https:\/\/[a-z0-9-]+-[a-z0-9]+-an\.a\.run\.app$/);
+      assert.equal(config[env][key].includes("localhost"), false);
+    }
+  }
+
+  assert.match(script, /dist", "runtime-apps"/, "P11 build output must stay under ignored dist");
+  assert.match(script, /replaceMetaContent/, "P11 build must inject runtime meta values");
+});
+
 function readDirectoryText(path, pattern) {
   return walkFiles(path)
     .filter((file) => pattern.test(file))
