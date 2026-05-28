@@ -47,6 +47,10 @@ run_or_print() {
   fi
 }
 
+billing_enabled() {
+  gcloud billing projects describe "$1" --format="value(billingEnabled)" --quiet 2>/dev/null || true
+}
+
 deploy_service() {
   local project="$1"
   local service="$2"
@@ -62,6 +66,12 @@ deploy_service() {
   fi
 
   echo "== ${project}/${service} =="
+  if [[ "$(billing_enabled "${project}")" != "True" ]]; then
+    echo "Skipping ${service}; billing is not linked for ${project}."
+    echo
+    return
+  fi
+
   run_or_print gcloud builds submit . \
     --project "${project}" \
     --config cloudbuild.node-service.yaml \
@@ -89,9 +99,9 @@ deploy_service() {
   )
 
   if [[ "${public}" == "public" ]]; then
-    deploy_cmd+=(--allow-unauthenticated)
+    deploy_cmd+=(--no-invoker-iam-check)
   else
-    deploy_cmd+=(--no-allow-unauthenticated)
+    deploy_cmd+=(--invoker-iam-check --no-allow-unauthenticated)
   fi
 
   run_or_print "${deploy_cmd[@]}"

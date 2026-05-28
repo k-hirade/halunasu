@@ -10,7 +10,8 @@ elif [[ "${1:-}" != "" ]]; then
   exit 64
 fi
 
-BILLING_ACCOUNT_ID="${BILLING_ACCOUNT_ID:-01AF66-9333E9-4574D9}"
+BILLING_ACCOUNT_ID_PROD="${BILLING_ACCOUNT_ID_PROD:-${BILLING_ACCOUNT_ID:-01AF66-9333E9-4574D9}}"
+BILLING_ACCOUNT_ID_STG="${BILLING_ACCOUNT_ID_STG:-017363-055589-E21116}"
 REGION="${REGION:-asia-northeast1}"
 REPOSITORY="${REPOSITORY:-halunasu-services}"
 
@@ -25,10 +26,13 @@ PRODUCT_PROJECTS=(
   "halunasu-referral-prod"
 )
 ALL_RUNTIME_PROJECTS=("${CORE_STG}" "${CORE_PROD}" "${PRODUCT_PROJECTS[@]}")
+ACTIVE_RUNTIME_PROJECTS=()
+SKIPPED_RUNTIME_PROJECTS=()
 
 echo "P10 low-cost runtime project provisioning"
 echo "Apply: ${APPLY}"
-echo "Billing account: ${BILLING_ACCOUNT_ID}"
+echo "Billing account STG: ${BILLING_ACCOUNT_ID_STG}"
+echo "Billing account PROD: ${BILLING_ACCOUNT_ID_PROD}"
 echo "Region: ${REGION}"
 echo "Repository: ${REPOSITORY}"
 echo
@@ -68,6 +72,19 @@ billing_enabled() {
   gcloud billing projects describe "$1" --format="value(billingEnabled)" --quiet 2>/dev/null || true
 }
 
+billing_account_name() {
+  gcloud billing projects describe "$1" --format="value(billingAccountName)" --quiet 2>/dev/null || true
+}
+
+target_billing_account() {
+  local project="$1"
+  if [[ "${project}" == "${CORE_STG}" || "${project}" == *-stg ]]; then
+    printf '%s' "${BILLING_ACCOUNT_ID_STG}"
+  else
+    printf '%s' "${BILLING_ACCOUNT_ID_PROD}"
+  fi
+}
+
 enable_services() {
   local project="$1"
   shift
@@ -76,13 +93,37 @@ enable_services() {
 
 ensure_billing() {
   local project="$1"
-  local billing
-  billing="$(billing_enabled "${project}")"
-  if [[ "${billing}" == "True" ]]; then
-    echo "Billing already linked: ${project}"
-    return
+  local current_account
+  local target_account
+  current_account="$(billing_account_name "${project}")"
+  target_account="$(target_billing_account "${project}")"
+  if [[ "${current_account}" == "billingAccounts/${target_account}" ]]; then
+    echo "Billing already linked: ${project} -> ${target_account}"
+    return 0
   fi
-  run_or_print gcloud billing projects link "${project}" --billing-account "${BILLING_ACCOUNT_ID}" --quiet
+  if [[ "${APPLY}" == "true" ]]; then
+    local output
+    if output="$(gcloud billing projects link "${project}" --billing-account "${target_account}" --quiet 2>&1)"; then
+      echo "${output}"
+      return 0
+    fi
+    echo "WARN billing link failed for ${project}; skipping this project."
+    echo "${output}"
+    return 1
+  fi
+  run_or_print gcloud billing projects link "${project}" --billing-account "${target_account}" --quiet
+  return 0
+}
+
+project_is_active() {
+  local candidate="$1"
+  local project
+  for project in "${ACTIVE_RUNTIME_PROJECTS[@]}"; do
+    if [[ "${candidate}" == "${project}" ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 ensure_artifact_repo() {
@@ -113,6 +154,17 @@ ensure_firestore() {
     --quiet
 }
 
+ensure_cloud_build_account_roles() {
+  local project="$1"
+  local number
+  local member
+  number="$(project_number "${project}")"
+  member="serviceAccount:${number}-compute@developer.gserviceaccount.com"
+  add_project_role "${project}" "${member}" roles/logging.logWriter
+  add_project_role "${project}" "${member}" roles/artifactregistry.writer
+  add_project_role "${project}" "${member}" roles/storage.objectViewer
+}
+
 ensure_service_account() {
   local project="$1"
   local account_id="$2"
@@ -132,11 +184,32 @@ add_project_role() {
   local project="$1"
   local member="$2"
   local role="$3"
-  run_or_print gcloud projects add-iam-policy-binding "${project}" \
-    --member "${member}" \
-    --role "${role}" \
-    --condition=None \
-    --quiet
+  if [[ "${APPLY}" == "true" ]]; then
+    local attempt
+    local output
+    for attempt in 1 2 3 4 5; do
+      if output="$(gcloud projects add-iam-policy-binding "${project}" \
+        --member "${member}" \
+        --role "${role}" \
+        --condition=None \
+        --quiet 2>&1 >/dev/null)"; then
+        echo "Ensured IAM: ${project} ${role} ${member}"
+        return
+      fi
+      if grep -Eiq 'conflict|etag' <<<"${output}" && [[ "${attempt}" != "5" ]]; then
+        sleep "${attempt}"
+        continue
+      fi
+      echo "${output}" >&2
+      return 1
+    done
+  else
+    run_or_print gcloud projects add-iam-policy-binding "${project}" \
+      --member "${member}" \
+      --role "${role}" \
+      --condition=None \
+      --quiet
+  fi
 }
 
 ensure_secret() {
@@ -191,7 +264,12 @@ charting_services=("${product_services[@]}" cloudtasks.googleapis.com)
 
 for project in "${ALL_RUNTIME_PROJECTS[@]}"; do
   echo "== Project: ${project} =="
-  ensure_billing "${project}"
+  if ensure_billing "${project}"; then
+    ACTIVE_RUNTIME_PROJECTS+=("${project}")
+  else
+    SKIPPED_RUNTIME_PROJECTS+=("${project}")
+    continue
+  fi
   if [[ "${project}" == halunasu-charting-* ]]; then
     enable_services "${project}" "${charting_services[@]}"
   elif [[ "${project}" == halunasu-* ]]; then
@@ -201,6 +279,7 @@ for project in "${ALL_RUNTIME_PROJECTS[@]}"; do
   fi
   ensure_artifact_repo "${project}"
   ensure_firestore "${project}"
+  ensure_cloud_build_account_roles "${project}"
 done
 
 ensure_service_account "${CORE_STG}" "halunasu-platform-api" "Halunasu Platform API"
@@ -219,21 +298,30 @@ for env in stg prod; do
     referral_project="halunasu-referral-prod"
   fi
 
-  ensure_service_account "${charting_project}" "halunasu-charting-api" "Halunasu Charting API"
-  ensure_service_account "${charting_project}" "halunasu-charting-finalize" "Halunasu Charting Finalize"
-  ensure_service_account "${fee_project}" "halunasu-fee-api" "Halunasu Fee API"
-  ensure_service_account "${referral_project}" "halunasu-referral-api" "Halunasu Referral API"
+  project_is_active "${charting_project}" && ensure_service_account "${charting_project}" "halunasu-charting-api" "Halunasu Charting API"
+  project_is_active "${charting_project}" && ensure_service_account "${charting_project}" "halunasu-charting-finalize" "Halunasu Charting Finalize"
+  project_is_active "${fee_project}" && ensure_service_account "${fee_project}" "halunasu-fee-api" "Halunasu Fee API"
+  project_is_active "${referral_project}" && ensure_service_account "${referral_project}" "halunasu-referral-api" "Halunasu Referral API"
 
   session_secret="$(secret_value_or_generate "${core_project}" "APP_SESSION_SIGNING_SECRET")"
-  finalize_secret="$(secret_value_or_generate "${charting_project}" "CHARTING_FINALIZE_INTERNAL_SECRET")"
+  finalize_secret=""
+  if project_is_active "${charting_project}"; then
+    finalize_secret="$(secret_value_or_generate "${charting_project}" "CHARTING_FINALIZE_INTERNAL_SECRET")"
+  fi
 
   for project in "${core_project}" "${charting_project}" "${fee_project}" "${referral_project}"; do
+    if ! project_is_active "${project}"; then
+      echo "Skipping secrets for inactive project: ${project}"
+      continue
+    fi
     ensure_secret "${project}" "APP_SESSION_SIGNING_SECRET"
     add_secret_version "${project}" "APP_SESSION_SIGNING_SECRET" "${session_secret}"
   done
 
-  ensure_secret "${charting_project}" "CHARTING_FINALIZE_INTERNAL_SECRET"
-  add_secret_version "${charting_project}" "CHARTING_FINALIZE_INTERNAL_SECRET" "${finalize_secret}"
+  if project_is_active "${charting_project}"; then
+    ensure_secret "${charting_project}" "CHARTING_FINALIZE_INTERNAL_SECRET"
+    add_secret_version "${charting_project}" "CHARTING_FINALIZE_INTERNAL_SECRET" "${finalize_secret}"
+  fi
 
   add_project_role "${core_project}" "serviceAccount:halunasu-platform-api@${core_project}.iam.gserviceaccount.com" roles/datastore.user
   add_project_role "${core_project}" "serviceAccount:halunasu-platform-api@${core_project}.iam.gserviceaccount.com" roles/logging.logWriter
@@ -246,6 +334,10 @@ for env in stg prod; do
     "${referral_project}:halunasu-referral-api"; do
     project="${spec%%:*}"
     account_id="${spec##*:}"
+    if ! project_is_active "${project}"; then
+      echo "Skipping IAM for inactive project: ${project}/${account_id}"
+      continue
+    fi
     member="serviceAccount:${account_id}@${project}.iam.gserviceaccount.com"
     add_project_role "${project}" "${member}" roles/datastore.user
     add_project_role "${project}" "${member}" roles/logging.logWriter
@@ -255,3 +347,7 @@ for env in stg prod; do
 done
 
 echo "Provisioning complete."
+if [[ "${#SKIPPED_RUNTIME_PROJECTS[@]}" -gt 0 ]]; then
+  echo "Skipped projects due to billing/link readiness:"
+  printf ' - %s\n' "${SKIPPED_RUNTIME_PROJECTS[@]}"
+fi

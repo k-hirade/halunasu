@@ -1,8 +1,8 @@
 # P10 Product Project Readiness
 
-Status: started
+Status: completed
 Date: 2026-05-28
-Cost profile: read-only validation, no new resources
+Cost profile: low-cost runtime, Cloud Run `min-instances=0`, Firestore free tier databases
 
 ## Purpose
 
@@ -10,10 +10,10 @@ P10 starts from the new Core/product project split:
 
 | Boundary | Staging project | Production project | Current state |
 | --- | --- | --- | --- |
-| Core/Platform | `medical-core-stg` | `medical-core-497610` | active |
-| Charting | `halunasu-charting-stg` | `halunasu-charting-prod` | active; billing may be linked after P10.2 |
-| Fee calculation | `halunasu-fee-stg` | `halunasu-fee-prod` | active; billing may be linked after P10.2 |
-| Referral | `halunasu-referral-stg` | `halunasu-referral-prod` | active; billing may be linked after P10.2 |
+| Core/Platform | `medical-core-stg` | `medical-core-497610` | active and deployed |
+| Charting | `halunasu-charting-stg` | `halunasu-charting-prod` | active and deployed |
+| Fee calculation | `halunasu-fee-stg` | `halunasu-fee-prod` | active and deployed |
+| Referral | `halunasu-referral-stg` | `halunasu-referral-prod` | active and deployed |
 
 The goal is to prevent accidental cost growth while preparing the first production-ready path.
 
@@ -52,6 +52,13 @@ Runtime guardrails:
 - Secret versions are limited to required runtime secrets only.
 - Backup/restore is deferred until real PHI is near.
 
+Billing account split:
+
+| Environment | Billing account | Linked projects |
+| --- | --- | --- |
+| STG | `halunasu-billing-stg` / `017363-055589-E21116` | `medical-core-stg`, `halunasu-charting-stg`, `halunasu-fee-stg`, `halunasu-referral-stg` |
+| PROD | `halunasu-billing` / `01AF66-9333E9-4574D9` | `medical-core-497610`, `halunasu-charting-prod`, `halunasu-fee-prod`, `halunasu-referral-prod` |
+
 Provisioning script:
 
 ```bash
@@ -84,8 +91,27 @@ referral-api-prod         halunasu-referral-prod
 
 Public access:
 
-- `platform-api-*`, `charting-api-*`, `fee-api-*`, and `referral-api-*` allow unauthenticated Cloud Run ingress because app-level session, entitlement, CORS, and CSRF checks are implemented.
+- `platform-api-*`, `charting-api-*`, `fee-api-*`, and `referral-api-*` disable the Cloud Run Invoker IAM check with `--no-invoker-iam-check` because the organization policy rejects `allUsers` IAM bindings.
+- App-level session, entitlement, CORS, and CSRF checks remain the runtime access controls for product APIs.
 - `charting-finalize-*` remains Cloud Run IAM-private.
+
+Latest runtime validation on 2026-05-28:
+
+| Service | URL | Public `/readyz` |
+| --- | --- | --- |
+| `platform-api-stg` | `https://platform-api-stg-lp2t3inhza-an.a.run.app` | 200 |
+| `charting-api-stg` | `https://charting-api-stg-3rl7ei3i4a-an.a.run.app` | 200 |
+| `fee-api-stg` | `https://fee-api-stg-wmfrwcpzkq-an.a.run.app` | 200 |
+| `referral-api-stg` | `https://referral-api-stg-etybalq3oq-an.a.run.app` | 200 |
+| `platform-api-prod` | `https://platform-api-prod-3ia4p23nna-an.a.run.app` | 200 |
+| `charting-api-prod` | `https://charting-api-prod-6dyw4sykta-an.a.run.app` | 200 |
+| `fee-api-prod` | `https://fee-api-prod-litocmjdaa-an.a.run.app` | 200 |
+| `referral-api-prod` | `https://referral-api-prod-yuaxdhe3hq-an.a.run.app` | 200 |
+
+Internal finalize validation:
+
+- `charting-finalize-stg` and `charting-finalize-prod` return 403 without identity token.
+- Both return 200 on `/readyz` with `gcloud auth print-identity-token`.
 
 ## Runtime Project Variables
 
@@ -102,3 +128,5 @@ When product services move to their own projects, keep Core and product Firestor
 ## Not Yet Done
 
 - Production backup is not enabled.
+- Custom domains are not mapped yet.
+- Frontend applications have not yet been pointed at these runtime URLs.

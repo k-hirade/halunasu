@@ -1,22 +1,26 @@
-# Keep Platform API Cloud Build uploads small.
+# Keep Cloud Build uploads small while preserving all service runtime inputs.
 *
 
 !cloudbuild.platform-api.yaml
+!cloudbuild.node-service.yaml
+!package.json
 
 !services/
 services/*
-!services/platform-api/
-services/platform-api/*
-!services/platform-api/Dockerfile
-!services/platform-api/package.json
-!services/platform-api/src/
-!services/platform-api/src/**
+!services/node-service.Dockerfile
+!services/*/
+services/*/*
+!services/*/Dockerfile
+!services/*/package.json
+!services/*/src/
+!services/*/src/**
 
 !packages/
 packages/*
-!packages/firestore-schema/
-!packages/firestore-schema/**
-!packages/platform-contracts/
-!packages/platform-contracts/**
+!packages/*/
+packages/*/*
+!packages/*/package.json
+!packages/*/src/
+!packages/*/src/**
 packages/*/README.md
 packages/*/test/
