@@ -14,5 +14,6 @@ Packages:
 - `referral-core`
 - `product-boundaries`
 - `security-boundaries`
+- `core-e2e`
 - `web-ui`
 - `firestore-schema`

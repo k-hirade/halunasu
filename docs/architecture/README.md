@@ -17,6 +17,7 @@ This directory contains architecture decisions and system diagrams for the Halun
 - [011 P7 Product Boundaries](011-p7-product-boundaries.md)
 - [012 P8 Security Operations Compliance](012-p8-security-operations-compliance.md)
 - [013 P8.5 Core Hardening](013-p8-5-core-hardening.md)
+- [014 P8.6 Core Admin Synthetic E2E](014-p8-6-core-admin-synthetic-e2e.md)
 
 ## Reading Order
 
@@ -33,3 +34,4 @@ This directory contains architecture decisions and system diagrams for the Halun
 11. Use the P7 product boundaries document to keep product integration explicit and auditable.
 12. Use the P8 security operations compliance runbook before any real PHI or customer onboarding.
 13. Use the P8.5 core hardening note to verify Core authorization, audit safety, and data request handling.
+14. Use the P8.6 core admin and synthetic E2E runbook to verify local Core operations before old environment shutdown.

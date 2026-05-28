@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="halunasu-platform-api-base-url" content="" />
+  <title>Halunasu Core Admin</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #667085;
+      --line: #d7dee8;
+      --bg: #f4f7fa;
+      --surface: #ffffff;
+      --accent: #0d8b7a;
+      --accent-2: #3157a4;
+      --danger: #b42318;
+      --warn: #9a5b00;
+      --success: #087443;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: Inter, "Noto Sans JP", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      height: 64px;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.96);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      font-weight: 900;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+    }
+
+    .session-chip {
+      min-width: 160px;
+      color: var(--muted);
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: right;
+    }
+
+    .main {
+      width: min(1360px, calc(100% - 32px));
+      margin: 22px auto 40px;
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 18px;
+    }
+
+    .panel,
+    .table-panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .panel h1,
+    .panel h2,
+    .table-panel h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    .panel h1 { font-size: 20px; }
+
+    .stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    label {
+      color: #26364f;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid #cbd7e6;
+      border-radius: 8px;
+      padding: 10px 11px;
+      color: var(--ink);
+      background: #fff;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 86px;
+      resize: vertical;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(13,139,122,0.13);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .button-row,
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      min-height: 40px;
+      padding: 9px 13px;
+      color: #fff;
+      background: var(--ink);
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      color: var(--ink);
+      background: #e7edf5;
+    }
+
+    button.accent { background: var(--accent); }
+    button.warn { background: var(--warn); }
+    button.danger { background: var(--danger); }
+    button.tab { background: #e7edf5; color: var(--ink); }
+    button.tab.active { background: var(--accent-2); color: #fff; }
+
+    button:disabled {
+      opacity: 0.62;
+      cursor: not-allowed;
+    }
+
+    .message {
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .message.error { color: var(--danger); }
+    .message.success { color: var(--success); }
+
+    .workspace {
+      display: grid;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .view {
+      display: none;
+      gap: 18px;
+    }
+
+    .view.active {
+      display: grid;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr);
+      gap: 18px;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 620px;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e6edf5;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: #2d3c54;
+      background: #f7f9fc;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    td {
+      color: #26364f;
+      word-break: break-word;
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 6px;
+      padding: 2px 8px;
+      color: #123;
+      background: #edf2f7;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .status.good { color: var(--success); background: #e8f5ef; }
+    .status.warn { color: var(--warn); background: #fff4df; }
+    .status.bad { color: var(--danger); background: #fdeceb; }
+
+    @media (max-width: 960px) {
+      .main,
+      .split,
+      .toolbar {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar {
+        padding: 0 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">H</div>
+        <div>Halunasu Core Admin</div>
+      </div>
+      <div id="session-chip" class="session-chip">未ログイン</div>
+    </header>
+
+    <main class="main">
+      <aside class="panel">
+        <form id="login-form" class="stack">
+          <h1>ログイン</h1>
+          <div class="field">
+            <label for="organization-code">組織コード</label>
+            <input id="organization-code" name="organizationCode" autocomplete="organization" required />
+          </div>
+          <div class="field">
+            <label for="login-id">ログインID</label>
+            <input id="login-id" name="loginId" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label for="password">パスワード</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
+          </div>
+          <div class="button-row">
+            <button class="accent" type="submit">ログイン</button>
+            <button class="secondary" id="session-button" type="button">再読込</button>
+          </div>
+          <div id="message" class="message"></div>
+        </form>
+      </aside>
+
+      <section class="workspace">
+        <div class="panel">
+          <div class="toolbar">
+            <div class="field">
+              <label for="org-select">対象組織</label>
+              <select id="org-select"></select>
+            </div>
+            <button class="secondary" id="refresh-button" type="button">更新</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-view="organizations" type="button">組織</button>
+            <button class="tab" data-view="members" type="button">職員</button>
+            <button class="tab" data-view="facilities" type="button">施設</button>
+            <button class="tab" data-view="departments" type="button">診療科</button>
+            <button class="tab" data-view="patients" type="button">患者</button>
+            <button class="tab" data-view="entitlements" type="button">権限</button>
+            <button class="tab" data-view="data-requests" type="button">請求</button>
+            <button class="tab" data-view="audit" type="button">監査</button>
+          </div>
+        </div>
+
+        <section class="view active" id="view-organizations">
+          <div class="split">
+            <form class="panel stack" id="organization-form">
+              <h2>組織</h2>
+              <div class="field">
+                <label for="org-code-new">組織コード</label>
+                <input id="org-code-new" name="organizationCode" />
+              </div>
+              <div class="field">
+                <label for="org-name-new">表示名</label>
+                <input id="org-name-new" name="displayName" />
+              </div>
+              <button class="accent" type="submit">作成</button>
+            </form>
+            <div class="table-panel">
+              <h2>組織一覧</h2>
+              <div class="table-wrap" id="organizations-table"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-members">
+          <div class="split">
+            <form class="panel stack" id="member-form">
+              <h2>職員</h2>
+              <div class="grid-2">
+                <div class="field">
+                  <label for="member-login">ログインID</label>
+                  <input id="member-login" name="loginId" required />
+                </div>
+                <div class="field">
+                  <label for="member-name">表示名</label>
+                  <input id="member-name" name="displayName" required />
+                </div>
+              </div>
+              <div class="grid-2">
+                <div class="field">
+                  <label for="member-email">メール</label>
+                  <input id="member-email" name="email" type="email" />
+                </div>
+                <div class="field">
+                  <label for="member-password">初期パスワード</label>
+                  <input id="member-password" name="password" type="password" />
+                </div>
+              </div>
+              <div class="field">
+                <label for="member-global-roles">globalRoles</label>
+                <input id="member-global-roles" name="globalRoles" placeholder="org_admin,billing_admin,platform_admin" />
+              </div>
+              <div class="grid-3">
+                <div class="field">
+                  <label for="member-charting-roles">charting</label>
+                  <input id="member-charting-roles" name="chartingRoles" placeholder="admin,doctor" />
+                </div>
+                <div class="field">
+                  <label for="member-fee-roles">fee</label>
+                  <input id="member-fee-roles" name="feeRoles" placeholder="admin,medical_clerk" />
+                </div>
+                <div class="field">
+                  <label for="member-referral-roles">referral</label>
+                  <input id="member-referral-roles" name="referralRoles" placeholder="admin,doctor" />
+                </div>
+              </div>
+              <button class="accent" type="submit">作成</button>
+            </form>
+            <div class="table-panel">
+              <h2>職員一覧</h2>
+              <div class="table-wrap" id="members-table"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-facilities">
+          <div class="split">
+            <form class="panel stack" id="facility-form">
+              <h2>施設</h2>
+              <div class="field">
+                <label for="facility-name">表示名</label>
+                <input id="facility-name" name="displayName" required />
+              </div>
+              <div class="grid-2">
+                <div class="field">
+                  <label for="facility-code">医療機関コード</label>
+                  <input id="facility-code" name="medicalInstitutionCode" />
+                </div>
+                <div class="field">
+                  <label for="facility-bureau">厚生局</label>
+                  <input id="facility-bureau" name="regionalBureau" />
+                </div>
+              </div>
+              <div class="field">
+                <label for="facility-prefecture">都道府県</label>
+                <input id="facility-prefecture" name="prefecture" />
+              </div>
+              <button class="accent" type="submit">作成</button>
+            </form>
+            <div class="table-panel">
+              <h2>施設一覧</h2>
+              <div class="table-wrap" id="facilities-table"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-departments">
+          <div class="split">
+            <form class="panel stack" id="department-form">
+              <h2>診療科</h2>
+              <div class="field">
+                <label for="department-name">表示名</label>
+                <input id="department-name" name="displayName" required />
+              </div>
+              <div class="grid-2">
+                <div class="field">
+                  <label for="department-facility-id">facilityId</label>
+                  <input id="department-facility-id" name="facilityId" />
+                </div>
+                <div class="field">
+                  <label for="department-code">コード</label>
+                  <input id="department-code" name="code" />
+                </div>
+              </div>
+              <button class="accent" type="submit">作成</button>
+            </form>
+            <div class="table-panel">
+              <h2>診療科一覧</h2>
+              <div class="table-wrap" id="departments-table"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-patients">
+          <div class="split">
+            <form class="panel stack" id="patient-form">
+              <h2>患者</h2>
+              <div class="grid-2">
+                <div class="field">
+                  <label for="patient-name">表示名</label>
+                  <input id="patient-name" name="displayName" required />
+                </div>
+                <div class="field">
+                  <label for="patient-number">患者番号</label>
+                  <input id="patient-number" name="primaryPatientNumber" />
+                </div>
+              </div>
+              <div class="grid-2">
+                <div class="field">
+                  <label for="patient-birth-date">生年月日</label>
+                  <input id="patient-birth-date" name="birthDate" type="date" />
+                </div>
+                <div class="field">
+                  <label for="patient-sex">性別</label>
+                  <select id="patient-sex" name="sex">
+                    <option value="unknown">unknown</option>
+                    <option value="male">male</option>
+                    <option value="female">female</option>
+                    <option value="other">other</option>
+                  </select>
+                </div>
+              </div>
+              <button class="accent" type="submit">作成</button>
+            </form>
+            <div class="table-panel">
+              <h2>患者一覧</h2>
+              <div class="table-wrap" id="patients-table"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-entitlements">
+          <div class="split">
+            <form class="panel stack" id="entitlement-form">
+              <h2>Product Entitlement</h2>
+              <div class="grid-2">
+                <div class="field">
+                  <label for="entitlement-product">productId</label>
+                  <select id="entitlement-product" name="productId">
+                    <option value="charting">charting</option>
+                    <option value="fee">fee</option>
+                    <option value="referral">referral</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="entitlement-status">status</label>
+                  <select id="entitlement-status" name="status">
+                    <option value="trialing">trialing</option>
+                    <option value="enabled">enabled</option>
+                    <option value="disabled">disabled</option>
+                  </select>
+                </div>
+              </div>
+              <div class="field">
+                <label for="entitlement-plan">plan</label>
+                <input id="entitlement-plan" name="plan" />
+              </div>
+              <button class="warn" type="submit">保存</button>
+            </form>
+            <div class="table-panel">
+              <h2>権限一覧</h2>
+              <div class="table-wrap" id="entitlements-table"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-data-requests">
+          <div class="split">
+            <form class="panel stack" id="data-request-form">
+              <h2>Data Request</h2>
+              <div class="grid-2">
+                <div class="field">
+                  <label for="data-request-type">requestType</label>
+                  <select id="data-request-type" name="requestType">
+                    <option value="access">access</option>
+                    <option value="export">export</option>
+                    <option value="deletion">deletion</option>
+                    <option value="correction">correction</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="data-request-patient-id">subjectPatientId</label>
+                  <input id="data-request-patient-id" name="subjectPatientId" />
+                </div>
+              </div>
+              <div class="field">
+                <label for="data-request-products">productIds</label>
+                <input id="data-request-products" name="productIds" placeholder="charting,fee,referral" />
+              </div>
+              <button class="accent" type="submit">作成</button>
+            </form>
+            <div class="table-panel">
+              <h2>請求一覧</h2>
+              <div class="table-wrap" id="data-requests-table"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-audit">
+          <div class="table-panel">
+            <h2>監査イベント</h2>
+            <div class="table-wrap" id="audit-table"></div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const apiBaseUrl = metaContent("halunasu-platform-api-base-url") || param("platformApi") || "";
+    const state = {
+      session: null,
+      csrfToken: "",
+      organizations: [],
+      orgId: "",
+      activeView: "organizations"
+    };
+
+    const els = {
+      sessionChip: document.querySelector("#session-chip"),
+      message: document.querySelector("#message"),
+      orgSelect: document.querySelector("#org-select")
+    };
+
+    document.querySelector("#login-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      try {
+        const response = await api("/v1/auth/login", {
+          method: "POST",
+          body: {
+            organizationCode: data.get("organizationCode"),
+            loginId: data.get("loginId"),
+            password: data.get("password")
+          }
+        });
+        state.session = response.session;
+        state.csrfToken = response.csrfToken || "";
+        state.orgId = response.session.orgId;
+        showMessage("ログインしました", "success");
+        await refreshAll();
+      } catch (error) {
+        showMessage(error.message, "error");
+      }
+    });
+
+    document.querySelector("#session-button").addEventListener("click", loadSession);
+    document.querySelector("#refresh-button").addEventListener("click", refreshAll);
+    els.orgSelect.addEventListener("change", async () => {
+      state.orgId = els.orgSelect.value;
+      await refreshAll();
+    });
+
+    document.querySelectorAll("button.tab").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.activeView = button.dataset.view;
+        document.querySelectorAll("button.tab").forEach((tab) => tab.classList.toggle("active", tab === button));
+        document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `view-${state.activeView}`));
+      });
+    });
+
+    document.querySelector("#organization-form").addEventListener("submit", submitOrganization);
+    document.querySelector("#member-form").addEventListener("submit", submitMember);
+    document.querySelector("#facility-form").addEventListener("submit", submitFacility);
+    document.querySelector("#department-form").addEventListener("submit", submitDepartment);
+    document.querySelector("#patient-form").addEventListener("submit", submitPatient);
+    document.querySelector("#entitlement-form").addEventListener("submit", submitEntitlement);
+    document.querySelector("#data-request-form").addEventListener("submit", submitDataRequest);
+
+    loadSession();
+
+    async function loadSession() {
+      try {
+        const response = await api("/v1/auth/session");
+        state.session = response.session;
+        state.orgId = response.session.orgId;
+        showMessage("session loaded", "success");
+        await refreshAll();
+      } catch {
+        renderSession();
+      }
+    }
+
+    async function refreshAll() {
+      if (!state.session) {
+        renderSession();
+        return;
+      }
+      renderSession();
+      await loadOrganizations();
+      await Promise.allSettled([
+        loadMembers(),
+        loadFacilities(),
+        loadDepartments(),
+        loadPatients(),
+        loadEntitlements(),
+        loadDataRequests(),
+        loadAuditEvents()
+      ]);
+    }
+
+    async function loadOrganizations() {
+      if (!hasGlobalRole("platform_admin")) {
+        state.organizations = [{
+          orgId: state.session.orgId,
+          organizationCode: state.session.organizationCode,
+          displayName: state.session.organizationCode,
+          status: "active"
+        }];
+        renderOrganizations();
+        return;
+      }
+
+      const response = await api("/v1/organizations");
+      state.organizations = response.organizations || [];
+      if (!state.orgId && state.organizations[0]) state.orgId = state.organizations[0].orgId;
+      renderOrganizations();
+    }
+
+    async function loadMembers() {
+      if (!state.orgId) return;
+      renderTable("members-table", (await api(`/v1/organizations/${state.orgId}/members`)).members || [], [
+        ["memberId", "memberId"],
+        ["loginId", "loginId"],
+        ["displayName", "displayName"],
+        ["globalRoles", (item) => (item.globalRoles || []).join(",")],
+        ["status", "status"]
+      ]);
+    }
+
+    async function loadFacilities() {
+      if (!state.orgId) return;
+      renderTable("facilities-table", (await api(`/v1/organizations/${state.orgId}/facilities`)).facilities || [], [
+        ["facilityId", "facilityId"],
+        ["displayName", "displayName"],
+        ["medicalInstitutionCode", "medicalInstitutionCode"],
+        ["regionalBureau", "regionalBureau"],
+        ["status", "status"]
+      ]);
+    }
+
+    async function loadDepartments() {
+      if (!state.orgId) return;
+      renderTable("departments-table", (await api(`/v1/organizations/${state.orgId}/departments`)).departments || [], [
+        ["departmentId", "departmentId"],
+        ["facilityId", "facilityId"],
+        ["displayName", "displayName"],
+        ["code", "code"],
+        ["status", "status"]
+      ]);
+    }
+
+    async function loadPatients() {
+      if (!state.orgId) return;
+      renderTable("patients-table", (await api(`/v1/organizations/${state.orgId}/patients`)).patients || [], [
+        ["patientId", "patientId"],
+        ["primaryPatientNumber", "primaryPatientNumber"],
+        ["displayName", "displayName"],
+        ["birthDate", "birthDate"],
+        ["sex", "sex"],
+        ["status", "status"]
+      ]);
+    }
+
+    async function loadEntitlements() {
+      if (!state.orgId) return;
+      renderTable("entitlements-table", (await api(`/v1/organizations/${state.orgId}/product-entitlements`)).productEntitlements || [], [
+        ["productId", "productId"],
+        ["status", "status"],
+        ["plan", "plan"],
+        ["startsAt", "startsAt"],
+        ["endsAt", "endsAt"]
+      ]);
+    }
+
+    async function loadDataRequests() {
+      if (!state.orgId) return;
+      renderTable("data-requests-table", (await api(`/v1/organizations/${state.orgId}/data-requests`)).dataRequests || [], [
+        ["requestId", "requestId"],
+        ["requestType", "requestType"],
+        ["subjectPatientId", "subjectPatientId"],
+        ["productIds", (item) => (item.productIds || []).join(",")],
+        ["status", "status"]
+      ], {
+        action: (item) => `<button class="secondary" data-complete-request="${escapeHtml(item.requestId)}" type="button">完了</button>`
+      });
+      document.querySelectorAll("[data-complete-request]").forEach((button) => {
+        button.addEventListener("click", () => patchDataRequest(button.dataset.completeRequest));
+      });
+    }
+
+    async function loadAuditEvents() {
+      if (!state.orgId) return;
+      renderTable("audit-table", (await api(`/v1/organizations/${state.orgId}/audit-events`)).auditEvents || [], [
+        ["eventId", "eventId"],
+        ["eventType", "eventType"],
+        ["actorLoginId", "actorLoginId"],
+        ["targetType", "targetType"],
+        ["targetId", "targetId"],
+        ["createdAt", "createdAt"]
+      ]);
+    }
+
+    async function submitOrganization(event) {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      await mutate("/v1/organizations", {
+        organizationCode: data.get("organizationCode"),
+        displayName: data.get("displayName")
+      }, event.currentTarget);
+    }
+
+    async function submitMember(event) {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      await mutate(`/v1/organizations/${state.orgId}/members`, {
+        loginId: data.get("loginId"),
+        displayName: data.get("displayName"),
+        email: emptyToNull(data.get("email")),
+        password: emptyToNull(data.get("password")),
+        globalRoles: csv(data.get("globalRoles")),
+        productRoles: {
+          charting: csv(data.get("chartingRoles")),
+          fee: csv(data.get("feeRoles")),
+          referral: csv(data.get("referralRoles"))
+        }
+      }, event.currentTarget);
+    }
+
+    async function submitFacility(event) {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      await mutate(`/v1/organizations/${state.orgId}/facilities`, {
+        displayName: data.get("displayName"),
+        medicalInstitutionCode: emptyToNull(data.get("medicalInstitutionCode")),
+        regionalBureau: emptyToNull(data.get("regionalBureau")),
+        prefecture: emptyToNull(data.get("prefecture"))
+      }, event.currentTarget);
+    }
+
+    async function submitDepartment(event) {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      await mutate(`/v1/organizations/${state.orgId}/departments`, {
+        displayName: data.get("displayName"),
+        facilityId: emptyToNull(data.get("facilityId")),
+        code: emptyToNull(data.get("code"))
+      }, event.currentTarget);
+    }
+
+    async function submitPatient(event) {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      await mutate(`/v1/organizations/${state.orgId}/patients`, {
+        displayName: data.get("displayName"),
+        primaryPatientNumber: emptyToNull(data.get("primaryPatientNumber")),
+        birthDate: emptyToNull(data.get("birthDate")),
+        sex: data.get("sex")
+      }, event.currentTarget);
+    }
+
+    async function submitEntitlement(event) {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      await mutate(`/v1/organizations/${state.orgId}/product-entitlements`, {
+        productId: data.get("productId"),
+        status: data.get("status"),
+        plan: emptyToNull(data.get("plan"))
+      }, event.currentTarget);
+    }
+
+    async function submitDataRequest(event) {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      await mutate(`/v1/organizations/${state.orgId}/data-requests`, {
+        requestType: data.get("requestType"),
+        subjectPatientId: emptyToNull(data.get("subjectPatientId")),
+        productIds: csv(data.get("productIds"))
+      }, event.currentTarget);
+    }
+
+    async function patchDataRequest(requestId) {
+      try {
+        await api(`/v1/organizations/${state.orgId}/data-requests/${requestId}`, {
+          method: "PATCH",
+          csrf: true,
+          body: {
+            status: "completed",
+            completedAt: new Date().toISOString()
+          }
+        });
+        showMessage("更新しました", "success");
+        await refreshAll();
+      } catch (error) {
+        showMessage(error.message, "error");
+      }
+    }
+
+    async function mutate(path, body, form) {
+      try {
+        await api(path, { method: "POST", csrf: true, body });
+        form.reset();
+        showMessage("保存しました", "success");
+        await refreshAll();
+      } catch (error) {
+        showMessage(error.message, "error");
+      }
+    }
+
+    async function api(path, options = {}) {
+      const headers = { "content-type": "application/json" };
+      if (options.csrf && state.csrfToken) headers["x-csrf-token"] = state.csrfToken;
+      const response = await fetch(`${apiBaseUrl}${path}`, {
+        method: options.method || "GET",
+        headers,
+        credentials: "include",
+        body: options.body === undefined ? undefined : JSON.stringify(options.body)
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.message || payload.error || `HTTP ${response.status}`);
+      }
+      return payload;
+    }
+
+    function renderSession() {
+      if (!state.session) {
+        els.sessionChip.textContent = "未ログイン";
+        return;
+      }
+      els.sessionChip.textContent = `${state.session.organizationCode} / ${state.session.loginId}`;
+    }
+
+    function renderOrganizations() {
+      els.orgSelect.innerHTML = state.organizations
+        .map((organization) => `<option value="${escapeHtml(organization.orgId)}">${escapeHtml(organization.organizationCode || organization.orgId)}</option>`)
+        .join("");
+      els.orgSelect.value = state.orgId;
+      renderTable("organizations-table", state.organizations, [
+        ["orgId", "orgId"],
+        ["organizationCode", "organizationCode"],
+        ["displayName", "displayName"],
+        ["status", "status"]
+      ]);
+    }
+
+    function renderTable(targetId, rows, columns, options = {}) {
+      const target = document.querySelector(`#${targetId}`);
+      const actionHeader = options.action ? "<th></th>" : "";
+      const actionCells = (row) => options.action ? `<td>${options.action(row)}</td>` : "";
+      target.innerHTML = `
+        <table>
+          <thead>
+            <tr>${columns.map(([label]) => `<th>${escapeHtml(label)}</th>`).join("")}${actionHeader}</tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                ${columns.map(([, getter]) => `<td>${cell(row, getter)}</td>`).join("")}
+                ${actionCells(row)}
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function cell(row, getter) {
+      const value = typeof getter === "function" ? getter(row) : row[getter];
+      const text = value === undefined || value === null ? "" : String(value);
+      const className = /Id$|^orgId$|^productId$/.test(String(getter)) ? "mono" : "";
+      if (["enabled", "active", "completed", "provisioned"].includes(text)) {
+        return `<span class="status good">${escapeHtml(text)}</span>`;
+      }
+      if (["trialing", "submitted", "reviewing"].includes(text)) {
+        return `<span class="status warn">${escapeHtml(text)}</span>`;
+      }
+      if (["disabled", "rejected", "cancelled", "suspended"].includes(text)) {
+        return `<span class="status bad">${escapeHtml(text)}</span>`;
+      }
+      return `<span class="${className}">${escapeHtml(text)}</span>`;
+    }
+
+    function showMessage(message, kind = "") {
+      els.message.textContent = message || "";
+      els.message.className = `message ${kind}`;
+    }
+
+    function hasGlobalRole(role) {
+      return Boolean(state.session?.globalRoles?.includes(role));
+    }
+
+    function csv(value) {
+      return String(value || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    function emptyToNull(value) {
+      const normalized = String(value || "").trim();
+      return normalized || null;
+    }
+
+    function metaContent(name) {
+      return document.querySelector(`meta[name="${name}"]`)?.content?.trim() || "";
+    }
+
+    function param(name) {
+      return new URLSearchParams(window.location.search).get(name) || "";
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+  </script>
+</body>
+</html>

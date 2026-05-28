@@ -1,0 +1,10 @@
+{
+  "name": "@halunasu/core-admin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/validate-static-site.mjs",
+    "test": "node scripts/validate-static-site.mjs"
+  }
+}

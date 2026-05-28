@@ -72,6 +72,7 @@ flowchart TB
   P7["P7: Product integration boundaries"]
   P8["P8: Security, operations, compliance"]
   P85["P8.5: Core hardening"]
+  P86["P8.6: Core admin synthetic E2E"]
   P9["P9: Old environment shutdown"]
   P10["P10: Production readiness"]
 
@@ -82,7 +83,7 @@ flowchart TB
   P4 --> P7
   P5 --> P7
   P6 --> P7
-  P7 --> P8 --> P85 --> P9 --> P10
+  P7 --> P8 --> P85 --> P86 --> P9 --> P10
 ```
 
 ## P0: Freeze Target Architecture
@@ -448,6 +449,31 @@ Exit criteria:
 - Data request create/update/list/get works through Platform API.
 - Audit/data request payloads drop non-allowlisted PHI-prone fields.
 - Tests and build pass without adding GCP resources.
+
+## P8.6: Core Admin Synthetic E2E
+
+Status: complete for local code and tests as of 2026-05-28. No GCP resources, deploys, secrets, buckets, queues, schedulers, backups, Firestore writes, or Terraform applies were created.
+
+Purpose:
+
+- Make Core locally operable before old environment shutdown.
+- Verify signup, Core master data, product flows, data requests, and audit events end to end with synthetic data.
+- Confirm role and organization scope behavior from a user workflow, not only unit tests.
+
+Implemented:
+
+- `apps/core-admin` static Platform/Core administration console.
+- `packages/core-e2e` local synthetic E2E package.
+- Signup to Platform login synthetic flow.
+- Facility, department, patient, product flow, data request, and audit checks.
+- Viewer write denial, cross-org denial, and platform admin organization listing checks.
+
+Exit criteria:
+
+- Core Admin static validation passes.
+- Synthetic E2E passes without external services.
+- Full workspace test/build still pass.
+- No GCP resources are added.
 
 ## P9: Old Environment Shutdown
 
