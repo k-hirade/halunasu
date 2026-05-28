@@ -1,0 +1,44 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { MemoryFeeStore } from "../src/store/memory-store.js";
+
+test("stores fee sessions by organization and applies mock calculation", () => {
+  let counter = 0;
+  const store = new MemoryFeeStore({
+    now: () => new Date("2026-05-28T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const session = store.createSession({
+    orgId: "org_123",
+    patientId: "pat_123",
+    patientSnapshot: {
+      patientId: "pat_123",
+      displayName: "山田 太郎",
+      snapshotAt: "2026-05-28T00:00:00.000Z"
+    },
+    facilityId: "fac_123",
+    facilitySnapshot: {
+      facilityId: "fac_123",
+      displayName: "春ナスクリニック",
+      medicalInstitutionCode: "1312345",
+      regionalBureau: "kanto-shinetsu",
+      snapshotAt: "2026-05-28T00:00:00.000Z"
+    },
+    createdByMemberId: "mem_123",
+    serviceDate: "2026-05-28",
+    orders: [
+      {
+        orderId: "ord_1",
+        orderType: "lab",
+        localName: "血液検査"
+      }
+    ]
+  });
+  const result = store.createMockCalculation("org_123", session.feeSessionId, {});
+
+  assert.equal(session.feeSessionId, "fee_001");
+  assert.equal(store.listSessions("org_123").length, 1);
+  assert.equal(result.calculationResult.calculationId, "calc_002");
+  assert.equal(result.calculationResult.provider, "mock");
+  assert.equal(result.feeSession.status, "calculated");
+});

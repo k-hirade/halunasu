@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  departmentSnapshot,
+  facilitySnapshot,
   normalizeOrganizationCode,
   validateCreateAuditEventInput,
   validateCreateDepartmentInput,
@@ -138,6 +140,29 @@ test("validates patient input and snapshot", () => {
     sex: "male",
     snapshotAt: "2026-05-27T00:00:00.000Z"
   });
+});
+
+test("creates facility and department snapshots for product records", () => {
+  const snappedFacility = facilitySnapshot({
+    facilityId: "fac_123",
+    displayName: "春ナスクリニック",
+    medicalInstitutionCode: "1312345",
+    regionalBureau: "kanto-shinetsu",
+    prefecture: "tokyo",
+    facilityStandardKeys: ["basic-a"]
+  }, new Date("2026-05-28T00:00:00.000Z"));
+  const snappedDepartment = departmentSnapshot({
+    departmentId: "dep_123",
+    facilityId: "fac_123",
+    displayName: "内科",
+    code: "01"
+  }, new Date("2026-05-28T00:00:00.000Z"));
+
+  assert.equal(snappedFacility.medicalInstitutionCode, "1312345");
+  assert.equal(snappedFacility.regionalBureau, "kanto-shinetsu");
+  assert.deepEqual(snappedFacility.facilityStandardKeys, ["basic-a"]);
+  assert.equal(snappedDepartment.displayName, "内科");
+  assert.equal(snappedDepartment.snapshotAt, "2026-05-28T00:00:00.000Z");
 });
 
 test("validates product entitlements and audit events", () => {

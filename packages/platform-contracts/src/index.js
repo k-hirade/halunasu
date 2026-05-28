@@ -287,6 +287,35 @@ export function patientSnapshot(patient, snapshotAt = new Date()) {
   };
 }
 
+export function facilitySnapshot(facility, snapshotAt = new Date()) {
+  return {
+    facilityId: requiredString(facility.facilityId, "facilityId"),
+    displayName: requiredString(facility.displayName, "displayName"),
+    legalName: optionalString(facility.legalName),
+    facilityType: optionalString(facility.facilityType),
+    medicalInstitutionCode: optionalString(facility.medicalInstitutionCode),
+    regionalBureau: optionalString(facility.regionalBureau),
+    prefecture: optionalString(facility.prefecture),
+    facilityStandardKeys: normalizeStringArray(facility.facilityStandardKeys),
+    snapshotAt: snapshotAt instanceof Date
+      ? snapshotAt.toISOString()
+      : requiredString(snapshotAt, "snapshotAt")
+  };
+}
+
+export function departmentSnapshot(department, snapshotAt = new Date()) {
+  return {
+    departmentId: requiredString(department.departmentId, "departmentId"),
+    facilityId: optionalString(department.facilityId),
+    displayName: requiredString(department.displayName, "displayName"),
+    code: optionalString(department.code),
+    specialty: optionalString(department.specialty),
+    snapshotAt: snapshotAt instanceof Date
+      ? snapshotAt.toISOString()
+      : requiredString(snapshotAt, "snapshotAt")
+  };
+}
+
 export function validationError(message, field) {
   const error = new Error(message);
   error.name = "ValidationError";

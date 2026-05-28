@@ -12,6 +12,7 @@ This directory contains architecture decisions and system diagrams for the Halun
 - [006 P2 Staging Smoke Runbook](006-p2-staging-smoke-runbook.md)
 - [007 P3 Staging Smoke Runbook](007-p3-staging-smoke-runbook.md)
 - [008 P4 Charting Migration Runbook](008-p4-charting-migration-runbook.md)
+- [009 P5 Fee Migration Runbook](009-p5-fee-migration-runbook.md)
 
 ## Reading Order
 
@@ -23,3 +24,4 @@ This directory contains architecture decisions and system diagrams for the Halun
 6. Use the P2 staging smoke runbook before creating or deploying base Platform resources in `medical-core-stg`.
 7. Use the P3 staging smoke runbook to verify LP signup migration and Platform provisioning.
 8. Use the P4 charting migration runbook to verify the Platform-backed charting boundary.
+9. Use the P5 fee migration runbook to verify the Platform-backed fee boundary.

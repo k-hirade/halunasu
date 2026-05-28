@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="halunasu-platform-api-base-url" content="" />
+  <meta name="halunasu-fee-api-base-url" content="" />
+  <title>ハルナス 診療報酬算定</title>
+  <style>
+    :root {
+      --ink: #152033;
+      --muted: #667085;
+      --line: #d8e0eb;
+      --bg: #f6f8fb;
+      --surface: #ffffff;
+      --accent: #0f8f7f;
+      --accent-dark: #0a665d;
+      --warn: #a15c07;
+      --danger: #b42318;
+      --success: #087443;
+      --focus: rgba(15, 143, 127, 0.14);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: Inter, "Noto Sans JP", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      height: 64px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.94);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      font-weight: 800;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: var(--accent);
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 900;
+    }
+
+    .session-chip {
+      color: var(--muted);
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .main {
+      width: min(1280px, calc(100% - 32px));
+      margin: 24px auto 40px;
+      display: grid;
+      grid-template-columns: 330px minmax(0, 1fr);
+      gap: 18px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .panel h1,
+    .panel h2,
+    .panel h3 {
+      margin: 0 0 14px;
+      letter-spacing: 0;
+    }
+
+    .panel h1 { font-size: 20px; }
+    .panel h2,
+    .panel h3 { font-size: 17px; }
+
+    .stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    label {
+      color: #26364f;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid #cbd7e6;
+      border-radius: 8px;
+      padding: 11px 12px;
+      color: var(--ink);
+      background: #fff;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 112px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--focus);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      min-height: 42px;
+      padding: 10px 14px;
+      color: #fff;
+      background: var(--ink);
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      color: var(--ink);
+      background: #e8eef6;
+    }
+
+    button.accent {
+      background: var(--accent-dark);
+    }
+
+    button.warn {
+      background: var(--warn);
+    }
+
+    button:disabled {
+      opacity: 0.62;
+      cursor: wait;
+    }
+
+    .message {
+      display: none;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .message.on { display: block; }
+    .message.error { color: var(--danger); background: #fff1f0; border: 1px solid #ffd2cf; }
+    .message.success { color: var(--success); background: #ecfdf3; border: 1px solid #abefc6; }
+
+    .sessions {
+      display: grid;
+      gap: 10px;
+    }
+
+    .session-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfdff;
+      display: grid;
+      gap: 4px;
+      cursor: pointer;
+      text-align: left;
+      color: var(--ink);
+    }
+
+    .session-item strong {
+      font-size: 14px;
+    }
+
+    .session-item span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .workspace {
+      display: grid;
+      gap: 18px;
+    }
+
+    .result {
+      white-space: pre-wrap;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fbff;
+      padding: 14px;
+      min-height: 200px;
+      line-height: 1.7;
+      overflow: auto;
+    }
+
+    .hidden { display: none; }
+
+    @media (max-width: 920px) {
+      .topbar { padding: 0 16px; }
+      .main {
+        width: min(100% - 24px, 1280px);
+        grid-template-columns: 1fr;
+      }
+      .grid-2,
+      .grid-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">H</div>
+        <div>ハルナス 診療報酬算定</div>
+      </div>
+      <div id="session-chip" class="session-chip">未ログイン</div>
+    </header>
+
+    <main class="main">
+      <aside class="stack">
+        <section class="panel" id="login-panel">
+          <h1>ログイン</h1>
+          <form id="login-form" class="stack">
+            <div class="field">
+              <label for="organizationCode">組織コード</label>
+              <input id="organizationCode" name="organizationCode" autocomplete="organization" required />
+            </div>
+            <div class="field">
+              <label for="loginId">ログインID</label>
+              <input id="loginId" name="loginId" type="email" autocomplete="username" required />
+            </div>
+            <div class="field">
+              <label for="password">パスワード</label>
+              <input id="password" name="password" type="password" autocomplete="current-password" required />
+            </div>
+            <button class="accent" type="submit">ログイン</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>患者</h2>
+          <form id="patient-form" class="stack">
+            <div class="field">
+              <label for="patient-name">氏名</label>
+              <input id="patient-name" name="displayName" required />
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label for="patient-birth">生年月日</label>
+                <input id="patient-birth" name="birthDate" type="date" />
+              </div>
+              <div class="field">
+                <label for="patient-sex">性別</label>
+                <select id="patient-sex" name="sex">
+                  <option value="unknown">不明</option>
+                  <option value="male">男性</option>
+                  <option value="female">女性</option>
+                  <option value="other">その他</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label for="patient-ref">患者ID alias</label>
+              <input id="patient-ref" name="patientRef" placeholder="例: legacy-001" />
+            </div>
+            <button type="submit">患者作成</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>算定セッション</h2>
+          <div id="session-list" class="sessions"></div>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <div id="message" class="message"></div>
+
+        <section class="panel">
+          <h2>算定入力</h2>
+          <form id="fee-session-form" class="stack">
+            <div class="grid-3">
+              <div class="field">
+                <label for="patientId">患者</label>
+                <select id="patientId" name="patientId" required></select>
+              </div>
+              <div class="field">
+                <label for="facilityId">施設</label>
+                <select id="facilityId" name="facilityId" required></select>
+              </div>
+              <div class="field">
+                <label for="departmentId">診療科</label>
+                <select id="departmentId" name="departmentId"></select>
+              </div>
+            </div>
+            <div class="grid-3">
+              <div class="field">
+                <label for="serviceDate">診療日</label>
+                <input id="serviceDate" name="serviceDate" type="date" required />
+              </div>
+              <div class="field">
+                <label for="claimMonth">請求月</label>
+                <input id="claimMonth" name="claimMonth" type="month" />
+              </div>
+              <div class="field">
+                <label for="setting">区分</label>
+                <select id="setting" name="setting">
+                  <option value="outpatient">外来</option>
+                  <option value="inpatient">入院</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label for="clinicalText">診療テキスト</label>
+              <textarea id="clinicalText" name="clinicalText"></textarea>
+            </div>
+            <div class="field">
+              <label for="ordersText">オーダー</label>
+              <textarea id="ordersText" name="ordersText" placeholder="drug|カルボシステイン錠|2&#10;lab|血液検査|1"></textarea>
+            </div>
+            <div class="button-row">
+              <button class="accent" type="submit">セッション作成</button>
+              <button class="warn" id="calculate-button" type="button">mock算定</button>
+              <button class="secondary" id="refresh-button" type="button">再読み込み</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>結果</h2>
+          <pre id="result" class="result">未実行</pre>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const platformApiBaseUrl = metaContent("halunasu-platform-api-base-url");
+    const feeApiBaseUrl = metaContent("halunasu-fee-api-base-url");
+    const state = {
+      csrfToken: "",
+      session: null,
+      patients: [],
+      facilities: [],
+      departments: [],
+      feeSessions: [],
+      selectedFeeSessionId: ""
+    };
+
+    const els = {
+      sessionChip: document.querySelector("#session-chip"),
+      loginForm: document.querySelector("#login-form"),
+      patientForm: document.querySelector("#patient-form"),
+      feeSessionForm: document.querySelector("#fee-session-form"),
+      message: document.querySelector("#message"),
+      patientSelect: document.querySelector("#patientId"),
+      facilitySelect: document.querySelector("#facilityId"),
+      departmentSelect: document.querySelector("#departmentId"),
+      sessionList: document.querySelector("#session-list"),
+      result: document.querySelector("#result"),
+      calculateButton: document.querySelector("#calculate-button"),
+      refreshButton: document.querySelector("#refresh-button"),
+      serviceDate: document.querySelector("#serviceDate"),
+      claimMonth: document.querySelector("#claimMonth")
+    };
+
+    els.serviceDate.value = new Date().toISOString().slice(0, 10);
+    els.claimMonth.value = new Date().toISOString().slice(0, 7);
+
+    els.loginForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await run(async () => {
+        const form = new FormData(els.loginForm);
+        const response = await api(platformApiBaseUrl, "/v1/auth/login", {
+          method: "POST",
+          body: {
+            organizationCode: form.get("organizationCode"),
+            loginId: form.get("loginId"),
+            password: form.get("password")
+          }
+        });
+        state.csrfToken = response.csrfToken || "";
+        state.session = response.session;
+        renderSession();
+        await loadWorkspace();
+        showMessage("ログインしました", "success");
+      });
+    });
+
+    els.patientForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await run(async () => {
+        requireLogin();
+        const form = new FormData(els.patientForm);
+        const externalPatientIds = String(form.get("patientRef") || "").trim()
+          ? [String(form.get("patientRef")).trim()]
+          : [];
+        const response = await api(feeApiBaseUrl, "/v1/fee/patients", {
+          method: "POST",
+          csrf: true,
+          body: {
+            displayName: form.get("displayName"),
+            birthDate: emptyToNull(form.get("birthDate")),
+            sex: form.get("sex"),
+            externalPatientIds
+          }
+        });
+        state.patients = [...state.patients, response.patient];
+        renderPatients();
+        els.patientForm.reset();
+        showMessage("患者を作成しました", "success");
+      });
+    });
+
+    els.feeSessionForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await run(async () => {
+        requireLogin();
+        const form = new FormData(els.feeSessionForm);
+        const patient = state.patients.find((item) => item.patientId === form.get("patientId"));
+        const response = await api(feeApiBaseUrl, "/v1/fee/sessions", {
+          method: "POST",
+          csrf: true,
+          body: {
+            patientId: form.get("patientId"),
+            patientRef: patient?.externalPatientIds?.[0] || form.get("patientId"),
+            facilityId: form.get("facilityId"),
+            departmentId: emptyToNull(form.get("departmentId")),
+            serviceDate: form.get("serviceDate"),
+            claimMonth: emptyToNull(form.get("claimMonth")),
+            setting: form.get("setting"),
+            clinicalText: form.get("clinicalText"),
+            orders: parseOrders(form.get("ordersText"))
+          }
+        });
+        state.selectedFeeSessionId = response.feeSession.feeSessionId;
+        await loadSessions();
+        renderResult(response.feeSession);
+        showMessage("算定セッションを作成しました", "success");
+      });
+    });
+
+    els.calculateButton.addEventListener("click", async () => {
+      await run(async () => {
+        requireLogin();
+        if (!state.selectedFeeSessionId) {
+          throw new Error("算定セッションを選択してください");
+        }
+        const response = await api(feeApiBaseUrl, `/v1/fee/sessions/${state.selectedFeeSessionId}/mock-calculate`, {
+          method: "POST",
+          csrf: true,
+          body: {}
+        });
+        await loadSessions();
+        renderResult(response);
+        showMessage("mock算定が完了しました", "success");
+      });
+    });
+
+    els.refreshButton.addEventListener("click", async () => {
+      await run(async () => {
+        requireLogin();
+        await loadWorkspace();
+        showMessage("再読み込みしました", "success");
+      });
+    });
+
+    async function loadWorkspace() {
+      await Promise.all([
+        loadPatients(),
+        loadFacilities(),
+        loadDepartments(),
+        loadSessions()
+      ]);
+    }
+
+    async function loadPatients() {
+      const response = await api(feeApiBaseUrl, "/v1/fee/patients");
+      state.patients = response.patients || [];
+      renderPatients();
+    }
+
+    async function loadFacilities() {
+      const response = await api(feeApiBaseUrl, "/v1/fee/facilities");
+      state.facilities = response.facilities || [];
+      renderFacilities();
+    }
+
+    async function loadDepartments() {
+      const response = await api(feeApiBaseUrl, "/v1/fee/departments");
+      state.departments = response.departments || [];
+      renderDepartments();
+    }
+
+    async function loadSessions() {
+      const response = await api(feeApiBaseUrl, "/v1/fee/sessions");
+      state.feeSessions = response.feeSessions || [];
+      renderSessions();
+    }
+
+    function renderSession() {
+      if (!state.session) {
+        els.sessionChip.textContent = "未ログイン";
+        return;
+      }
+      els.sessionChip.textContent = `${state.session.organizationCode} / ${state.session.loginId}`;
+    }
+
+    function renderPatients() {
+      renderOptions(els.patientSelect, state.patients, {
+        empty: "患者を選択",
+        value: "patientId",
+        label: (patient) => `${patient.displayName} (${patient.patientId})`
+      });
+    }
+
+    function renderFacilities() {
+      renderOptions(els.facilitySelect, state.facilities, {
+        empty: "施設を選択",
+        value: "facilityId",
+        label: (facility) => `${facility.displayName} (${facility.medicalInstitutionCode || "code未設定"})`
+      });
+    }
+
+    function renderDepartments() {
+      renderOptions(els.departmentSelect, state.departments, {
+        empty: "未指定",
+        value: "departmentId",
+        label: (department) => `${department.displayName} (${department.departmentId})`
+      });
+    }
+
+    function renderSessions() {
+      els.sessionList.innerHTML = "";
+      for (const session of state.feeSessions) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "session-item";
+        button.innerHTML = `
+          <strong>${escapeHtml(session.patientSnapshot?.displayName || session.patientId)}</strong>
+          <span>${escapeHtml(session.serviceDate)} / ${escapeHtml(session.status)} / ${escapeHtml(session.feeSessionId)}</span>
+        `;
+        button.addEventListener("click", () => {
+          state.selectedFeeSessionId = session.feeSessionId;
+          renderResult(session);
+        });
+        els.sessionList.appendChild(button);
+      }
+    }
+
+    function renderOptions(select, items, config) {
+      const current = select.value;
+      select.innerHTML = "";
+      const empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = config.empty;
+      select.appendChild(empty);
+      for (const item of items) {
+        const option = document.createElement("option");
+        option.value = item[config.value];
+        option.textContent = config.label(item);
+        select.appendChild(option);
+      }
+      if ([...select.options].some((option) => option.value === current)) {
+        select.value = current;
+      }
+    }
+
+    function renderResult(value) {
+      els.result.textContent = JSON.stringify(value, null, 2);
+    }
+
+    function parseOrders(value) {
+      const allowedTypes = new Set(["lab", "drug", "injection", "treatment", "imaging", "procedure", "other", "unknown"]);
+      return String(value || "")
+        .split(/\n+/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line, index) => {
+          const parts = line.split("|").map((part) => part.trim());
+          const typed = allowedTypes.has(parts[0]);
+          const orderType = typed ? parts[0] : "unknown";
+          const localName = typed ? parts[1] || line : line;
+          const quantity = typed ? parts[2] || "1" : "1";
+          return {
+            orderId: `ui_order_${index + 1}`,
+            orderType,
+            localName: localName || line,
+            quantity: Number(quantity || 1)
+          };
+        });
+    }
+
+    async function api(baseUrl, path, options = {}) {
+      const headers = { "content-type": "application/json" };
+      if (options.csrf && state.csrfToken) {
+        headers["x-csrf-token"] = state.csrfToken;
+      }
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: options.method || "GET",
+        headers,
+        credentials: "include",
+        body: options.body === undefined ? undefined : JSON.stringify(options.body)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || `HTTP ${response.status}`);
+      }
+      return data;
+    }
+
+    async function run(task) {
+      setBusy(true);
+      try {
+        hideMessage();
+        await task();
+      } catch (error) {
+        showMessage(error.message || "処理に失敗しました", "error");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function setBusy(busy) {
+      for (const button of document.querySelectorAll("button")) {
+        button.disabled = busy;
+      }
+    }
+
+    function requireLogin() {
+      if (!state.session || !state.csrfToken) {
+        throw new Error("ログインしてください");
+      }
+    }
+
+    function showMessage(text, type) {
+      els.message.textContent = text;
+      els.message.className = `message on ${type}`;
+    }
+
+    function hideMessage() {
+      els.message.textContent = "";
+      els.message.className = "message";
+    }
+
+    function emptyToNull(value) {
+      const text = String(value || "").trim();
+      return text || null;
+    }
+
+    function metaContent(name) {
+      return document.querySelector(`meta[name="${name}"]`)?.content || "";
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+  </script>
+</body>
+</html>

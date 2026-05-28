@@ -1,6 +1,24 @@
 # Fee API
 
-Target location for the current FastAPI service from `halunasu-fee-calculation/apps/api`.
+Platform-session-validated medical fee calculation API.
 
-This service should validate Platform sessions and keep the fee calculation engine independent from Platform-specific storage code.
+P5 local scope:
 
+- uses the signed Platform session from `platform-api`
+- checks `product_entitlements/fee`
+- uses `productRoles.fee` or global `org_admin`
+- stores fee product records under `organizations/{orgId}/fee_sessions`
+- resolves `patientId`, `facilityId`, and `departmentId` from Platform master data
+- stores patient/facility/department snapshots for historical reproducibility
+- runs only deterministic `mock` calculation
+
+No production path uses `OPERATOR_ACCOUNTS_JSON`, old `tenant_id`, OpenAI keys, Cloud Tasks, or GCS.
+
+## Local
+
+```bash
+npm run test --workspace @halunasu/fee-api
+npm run start --workspace @halunasu/fee-api
+```
+
+The default store backend is memory. Firestore is available only when `FEE_STORE_BACKEND=firestore` or `PLATFORM_STORE_BACKEND=firestore` is explicitly set.

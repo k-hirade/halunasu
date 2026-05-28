@@ -1,0 +1,54 @@
+import { FirestoreFeeStore, createFirestoreDb } from "./firestore-store.js";
+import { MemoryFeeStore } from "./memory-store.js";
+
+export function createFeeStoreFromEnv(env = process.env) {
+  const backend = (env.FEE_STORE_BACKEND || env.PLATFORM_STORE_BACKEND || "memory").toLowerCase();
+
+  if (backend === "memory") {
+    return new MemoryFeeStore();
+  }
+
+  if (backend === "firestore") {
+    return new LazyFirestoreFeeStore({
+      projectId: env.GOOGLE_CLOUD_PROJECT || "medical-core-stg"
+    });
+  }
+
+  throw new Error(`Unsupported FEE_STORE_BACKEND: ${backend}`);
+}
+
+export class LazyFirestoreFeeStore {
+  constructor(options = {}) {
+    this.options = options;
+    this.storePromise = null;
+  }
+
+  async createSession(input) {
+    return this.call("createSession", input);
+  }
+
+  async listSessions(orgId) {
+    return this.call("listSessions", orgId);
+  }
+
+  async getSession(orgId, feeSessionId) {
+    return this.call("getSession", orgId, feeSessionId);
+  }
+
+  async createMockCalculation(orgId, feeSessionId, input) {
+    return this.call("createMockCalculation", orgId, feeSessionId, input);
+  }
+
+  async call(methodName, ...args) {
+    const store = await this.store();
+    return store[methodName](...args);
+  }
+
+  async store() {
+    if (!this.storePromise) {
+      this.storePromise = createFirestoreDb(this.options).then((db) => new FirestoreFeeStore({ db }));
+    }
+
+    return this.storePromise;
+  }
+}

@@ -4,6 +4,16 @@ version = "0.1.0"
 description = "Halunasu unified medical platform monorepo"
 requires-python = ">=3.11"
 
+[project.scripts]
+medical-fee = "medical_fee_calculation.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["python"]
+
 [tool.pytest.ini_options]
 pythonpath = [
   "python",
@@ -13,4 +23,3 @@ testpaths = [
   "python",
   "services"
 ]
-

@@ -285,6 +285,8 @@ Exit criteria:
 
 ## P5: Fee Calculation Migration
 
+Status: complete for local code as of 2026-05-28. Staging deploy, OpenAI extraction, Cloud Tasks, GCS artifact storage, and real receipt export remain intentionally deferred for cost control.
+
 Purpose:
 
 - Move fee calculation to the new Platform tenant model.
