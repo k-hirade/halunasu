@@ -1,7 +1,7 @@
 # P14 Halunasu Domain Cutover
 
-Status: in progress, browser apps unblocked by Netlify API proxy; STG web domains and production Fee are attached; remaining production domains are gated by Netlify custom-domain rate limits and Cloudflare DNS cleanup
-Date: 2026-05-28
+Status: in progress, browser apps unblocked by Netlify API proxy; most production web domains are attached; remaining domains are gated by Netlify custom-domain rate limits and Cloudflare DNS cleanup
+Date: 2026-05-29
 Cost profile: no new always-on resources; Cloud Run remains min instances 0 / max instances 1
 
 ## Purpose
@@ -32,17 +32,20 @@ Assigned so far:
 | `charting.stg.halunasu.com` | `halunasu-charting-stg` |
 | `fee.stg.halunasu.com` | `halunasu-fee-stg` |
 | `referral.stg.halunasu.com` | `halunasu-referral-stg` |
+| `halunasu.com` | `halunasu-lp-prod` |
+| `www.halunasu.com` | `halunasu-lp-prod` alias |
+| `admin.halunasu.com` | `halunasu-admin-prod` |
+| `charting.halunasu.com` | `halunasu-charting-prod` |
+| `app.halunasu.com` | `halunasu-charting-prod` alias |
 | `fee.halunasu.com` | `halunasu-fee-prod` |
 
 Pending because the current Netlify plan limits `custom_domain` changes to 3 per hour:
 
 | Domain | Netlify site |
 | --- | --- |
-| `halunasu.com` | `halunasu-lp-prod` |
-| `www.halunasu.com` | `halunasu-lp-prod` alias |
-| `admin.halunasu.com` | `halunasu-admin-prod` |
-| `charting.halunasu.com` | `halunasu-charting-prod` |
 | `referral.halunasu.com` | `halunasu-referral-prod` |
+| `stg.app.halunasu.com` | `halunasu-charting-stg` alias |
+| `mfc-stg.halunasu.com` | `halunasu-fee-stg` alias |
 
 The old `harunas`, `harunas-app`, `harunas-stg`, and
 `medical-fee-calculation-stg` Netlify sites no longer own custom domains.
@@ -56,13 +59,15 @@ Legacy aliases to migrate:
 | `mfc-stg.halunasu.com` | `halunasu-fee-stg` |
 
 On 2026-05-28, those legacy domains were removed from the old Netlify sites.
-Assigning them to the new sites is gated by the current Netlify Free plan custom
-domain rate limit.
+On 2026-05-29, `app.halunasu.com` was assigned to `halunasu-charting-prod`.
+Assigning the remaining legacy aliases is gated by the current Netlify Free plan
+custom domain rate limit.
 
-Cloudflare DNS observations on 2026-05-28:
+Cloudflare DNS observations on 2026-05-29:
 
 | Domain | Current DNS target | Required target |
 | --- | --- | --- |
+| `halunasu.com` | Netlify A records `75.2.60.5`, `99.83.231.61` | OK |
 | `www.halunasu.com` | `harunas.netlify.app` | `halunasu-lp-prod.netlify.app` |
 | `app.halunasu.com` | `harunas-app.netlify.app` | `halunasu-charting-prod.netlify.app` |
 | `stg.app.halunasu.com` | `harunas-stg.netlify.app` | `halunasu-charting-stg.netlify.app` |
