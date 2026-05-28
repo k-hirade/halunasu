@@ -1,0 +1,22 @@
+# Keep Platform API Cloud Build uploads small.
+*
+
+!cloudbuild.platform-api.yaml
+
+!services/
+services/*
+!services/platform-api/
+services/platform-api/*
+!services/platform-api/Dockerfile
+!services/platform-api/package.json
+!services/platform-api/src/
+!services/platform-api/src/**
+
+!packages/
+packages/*
+!packages/firestore-schema/
+!packages/firestore-schema/**
+!packages/platform-contracts/
+!packages/platform-contracts/**
+packages/*/README.md
+packages/*/test/
