@@ -65,7 +65,7 @@ This avoids Netlify build-minute usage during the initial migration and keeps th
 - Created all 10 new Netlify sites in the existing GENNAI team.
 - Deployed STG static output to the five STG sites.
 - Verified the five STG temporary URLs return `200` and security headers.
-- Left production sites created but not deployed, so production browser rollout remains gated on STG verification.
+- Deployed production static output to the five production sites during P14, but production browser rollout remains gated on custom-domain and DNS verification.
 
 | App | STG deploy ID |
 | --- | --- |
@@ -78,6 +78,7 @@ This avoids Netlify build-minute usage during the initial migration and keeps th
 ## Current Limits
 
 - Custom domains are not attached yet.
+- Custom domains are only partially attached because Netlify limits `custom_domain` changes to 3 per hour on the current plan.
 - `halunasu.com` and `www.halunasu.com` remain attached to the existing `harunas` Netlify site until explicit production LP cutover.
 - DNS records are not changed yet.
 - Git-based automatic deploys are not configured yet.

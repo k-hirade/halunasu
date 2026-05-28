@@ -1,0 +1,121 @@
+{
+  "zone": "halunasu.com",
+  "managedBy": "Cloudflare",
+  "mode": "dns-only",
+  "notes": [
+    "Set proxied=false at least until Netlify and Cloud Run certificates are active.",
+    "The apex halunasu.com record already exists for the old Netlify site. During LP cutover, keep the existing Netlify-compatible apex setup or repoint CNAME flattening to halunasu-lp-prod.netlify.app."
+  ],
+  "web": [
+    {
+      "type": "CNAME",
+      "name": "stg",
+      "content": "halunasu-lp-stg.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "admin.stg",
+      "content": "halunasu-admin-stg.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "charting.stg",
+      "content": "halunasu-charting-stg.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "fee.stg",
+      "content": "halunasu-fee-stg.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "referral.stg",
+      "content": "halunasu-referral-stg.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "admin",
+      "content": "halunasu-admin-prod.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "charting",
+      "content": "halunasu-charting-prod.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "fee",
+      "content": "halunasu-fee-prod.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "referral",
+      "content": "halunasu-referral-prod.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "www",
+      "content": "halunasu-lp-prod.netlify.app",
+      "proxied": false
+    }
+  ],
+  "api": [
+    {
+      "type": "CNAME",
+      "name": "api.stg",
+      "content": "ghs.googlehosted.com",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "charting-api.stg",
+      "content": "ghs.googlehosted.com",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "fee-api.stg",
+      "content": "ghs.googlehosted.com",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "referral-api.stg",
+      "content": "ghs.googlehosted.com",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "api",
+      "content": "ghs.googlehosted.com",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "charting-api",
+      "content": "ghs.googlehosted.com",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "fee-api",
+      "content": "ghs.googlehosted.com",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "referral-api",
+      "content": "ghs.googlehosted.com",
+      "proxied": false
+    }
+  ]
+}

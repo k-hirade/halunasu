@@ -1,14 +1,14 @@
 {
   "stg": {
-    "platformApi": "https://platform-api-stg-lp2t3inhza-an.a.run.app",
-    "chartingApi": "https://charting-api-stg-3rl7ei3i4a-an.a.run.app",
-    "feeApi": "https://fee-api-stg-wmfrwcpzkq-an.a.run.app",
-    "referralApi": "https://referral-api-stg-etybalq3oq-an.a.run.app"
+    "platformApi": "https://api.stg.halunasu.com",
+    "chartingApi": "https://charting-api.stg.halunasu.com",
+    "feeApi": "https://fee-api.stg.halunasu.com",
+    "referralApi": "https://referral-api.stg.halunasu.com"
   },
   "prod": {
-    "platformApi": "https://platform-api-prod-3ia4p23nna-an.a.run.app",
-    "chartingApi": "https://charting-api-prod-6dyw4sykta-an.a.run.app",
-    "feeApi": "https://fee-api-prod-litocmjdaa-an.a.run.app",
-    "referralApi": "https://referral-api-prod-yuaxdhe3hq-an.a.run.app"
+    "platformApi": "https://api.halunasu.com",
+    "chartingApi": "https://charting-api.halunasu.com",
+    "feeApi": "https://fee-api.halunasu.com",
+    "referralApi": "https://referral-api.halunasu.com"
   }
 }

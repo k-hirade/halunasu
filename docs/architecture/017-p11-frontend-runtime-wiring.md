@@ -1,12 +1,12 @@
 # P11 Frontend Runtime Wiring
 
-Status: started
+Status: done, switched to Halunasu API domains in P14
 Date: 2026-05-28
 Cost profile: local build only, no GCP resources
 
 ## Purpose
 
-P11 connects the static frontend apps to the deployed STG/PROD Cloud Run APIs without hard-coding one environment into source HTML.
+P11 connects the static frontend apps to the deployed STG/PROD APIs without hard-coding one environment into source HTML.
 
 The source apps keep empty runtime meta tags. The build script creates environment-specific static output under `dist/runtime-apps`, which is ignored by git and can be deployed to Netlify or any static host.
 
@@ -60,7 +60,8 @@ Each generated HTML file receives the correct runtime meta values:
 
 - Deploy the generated app directory, not the source app directory, when using real STG/PROD APIs.
 - `dist/runtime-apps` is intentionally untracked.
-- Custom domains are still pending. Until domain mapping is complete, generated apps point directly at Cloud Run URLs.
+- Generated apps point at Halunasu API domains, not raw Cloud Run `*.run.app` URLs.
+- DNS and Cloud Run custom domain mappings must be complete before browser flows use those domains.
 - Product app login depends on Platform session cookies. Keep API and app origins aligned with the CORS allowlist before customer use.
 
 ## Next Work

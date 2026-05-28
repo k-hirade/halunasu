@@ -23,6 +23,7 @@ This directory contains architecture decisions and system diagrams for the Halun
 - [017 P11 Frontend Runtime Wiring](017-p11-frontend-runtime-wiring.md)
 - [018 P12 Static Hosting And Domain Plan](018-p12-static-hosting-and-domain-plan.md)
 - [019 P13 Netlify Sites](019-p13-netlify-sites.md)
+- [020 P14 Halunasu Domain Cutover](020-p14-halunasu-domain-cutover.md)
 
 ## Reading Order
 
@@ -45,3 +46,4 @@ This directory contains architecture decisions and system diagrams for the Halun
 17. Use the P11 frontend runtime wiring note before deploying static apps against STG/PROD APIs.
 18. Use the P12 static hosting and domain plan before mapping custom domains or onboarding browser users.
 19. Use the P13 Netlify sites note to deploy monorepo static apps without touching existing sites.
+20. Use the P14 domain cutover note to finish Cloudflare DNS, Netlify domain attachment, and API certificate activation.

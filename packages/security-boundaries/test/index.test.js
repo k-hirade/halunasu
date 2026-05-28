@@ -237,13 +237,14 @@ test("P10 runtime provisioning and deploy scripts keep low-cost guardrails", () 
   assert.equal(/terraform\s+apply/.test(deploy), false, "P10 deploy must not run Terraform");
 });
 
-test("P11 runtime endpoint config points static apps at Cloud Run APIs", () => {
+test("P11 runtime endpoint config points static apps at Halunasu API domains", () => {
   const config = JSON.parse(readText(join(root, "config", "runtime-endpoints.json")));
   const script = readText(join(root, "scripts", "p11_build_static_apps_runtime_config.mjs"));
 
   for (const env of ["stg", "prod"]) {
     for (const key of ["platformApi", "chartingApi", "feeApi", "referralApi"]) {
-      assert.match(config[env][key], /^https:\/\/[a-z0-9-]+-[a-z0-9]+-an\.a\.run\.app$/);
+      assert.match(config[env][key], /^https:\/\/[a-z0-9-]+(\.stg)?\.halunasu\.com$/);
+      assert.equal(config[env][key].includes("run.app"), false);
       assert.equal(config[env][key].includes("localhost"), false);
     }
   }
@@ -295,6 +296,29 @@ test("P13 Netlify static sites are explicit and deploys are guarded", () => {
   assert.match(deployScript, /"--prod"/, "P13 deploy should publish each env-specific site production deploy");
   assert.match(buildScript, /"_headers"/, "runtime app build must emit Netlify headers");
   assert.match(buildScript, /"_redirects"/, "runtime app build must emit Netlify redirects");
+});
+
+test("P14 Cloudflare DNS records cover Halunasu web and API domains", () => {
+  const records = JSON.parse(readText(join(root, "config", "cloudflare-dns-records.json")));
+  const webNames = new Set(records.web.map((record) => record.name));
+  const apiNames = new Set(records.api.map((record) => record.name));
+
+  for (const name of ["stg", "admin.stg", "charting.stg", "fee.stg", "referral.stg", "admin", "charting", "fee", "referral", "www"]) {
+    assert.equal(webNames.has(name), true, `missing web DNS record ${name}`);
+  }
+
+  for (const name of ["api.stg", "charting-api.stg", "fee-api.stg", "referral-api.stg", "api", "charting-api", "fee-api", "referral-api"]) {
+    assert.equal(apiNames.has(name), true, `missing API DNS record ${name}`);
+  }
+
+  for (const record of [...records.web, ...records.api]) {
+    assert.equal(record.type, "CNAME");
+    assert.equal(record.proxied, false, `${record.name} must be DNS-only during certificate provisioning`);
+  }
+
+  for (const record of records.api) {
+    assert.equal(record.content, "ghs.googlehosted.com");
+  }
 });
 
 function readDirectoryText(path, pattern) {

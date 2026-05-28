@@ -114,12 +114,24 @@ deploy_env() {
   local charting_project="$3"
   local fee_project="$4"
   local referral_project="$5"
+  local cookie_domain=".halunasu.com"
+  local session_cookie_name="halunasu_session"
+  local csrf_cookie_name="halunasu_csrf"
+
+  if [[ "${env}" == "stg" ]]; then
+    cookie_domain=".stg.halunasu.com"
+    session_cookie_name="halunasu_stg_session"
+    csrf_cookie_name="halunasu_stg_csrf"
+  fi
 
   deploy_service "${core_project}" "platform-api-${env}" "services/platform-api" "halunasu-platform-api" "public" \
     "HALUNASU_ENV=${env}" \
     "GOOGLE_CLOUD_PROJECT=${core_project}" \
     "GOOGLE_CLOUD_REGION=${REGION}" \
-    "PLATFORM_STORE_BACKEND=firestore"
+    "PLATFORM_STORE_BACKEND=firestore" \
+    "APP_COOKIE_DOMAIN=${cookie_domain}" \
+    "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
+    "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
 
   deploy_service "${charting_project}" "charting-api-${env}" "services/charting-api" "halunasu-charting-api" "public" \
     "HALUNASU_ENV=${env}" \
@@ -128,7 +140,9 @@ deploy_env() {
     "PLATFORM_GOOGLE_CLOUD_PROJECT=${core_project}" \
     "GOOGLE_CLOUD_REGION=${REGION}" \
     "CHARTING_STORE_BACKEND=firestore" \
-    "PLATFORM_STORE_BACKEND=firestore"
+    "PLATFORM_STORE_BACKEND=firestore" \
+    "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
+    "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
 
   deploy_service "${charting_project}" "charting-finalize-${env}" "services/charting-finalize" "halunasu-charting-finalize" "private" \
     "HALUNASU_ENV=${env}" \
@@ -144,7 +158,9 @@ deploy_env() {
     "PLATFORM_GOOGLE_CLOUD_PROJECT=${core_project}" \
     "GOOGLE_CLOUD_REGION=${REGION}" \
     "FEE_STORE_BACKEND=firestore" \
-    "PLATFORM_STORE_BACKEND=firestore"
+    "PLATFORM_STORE_BACKEND=firestore" \
+    "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
+    "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
 
   deploy_service "${referral_project}" "referral-api-${env}" "services/referral-api" "halunasu-referral-api" "public" \
     "HALUNASU_ENV=${env}" \
@@ -153,7 +169,9 @@ deploy_env() {
     "PLATFORM_GOOGLE_CLOUD_PROJECT=${core_project}" \
     "GOOGLE_CLOUD_REGION=${REGION}" \
     "REFERRAL_STORE_BACKEND=firestore" \
-    "PLATFORM_STORE_BACKEND=firestore"
+    "PLATFORM_STORE_BACKEND=firestore" \
+    "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
+    "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
 }
 
 deploy_env "stg" "medical-core-stg" "halunasu-charting-stg" "halunasu-fee-stg" "halunasu-referral-stg"
