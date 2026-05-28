@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="halunasu-platform-api-base-url" content="" />
+  <meta name="halunasu-referral-api-base-url" content="" />
+  <title>ハルナス 紹介状作成</title>
+  <style>
+    :root {
+      --ink: #152033;
+      --muted: #667085;
+      --line: #d8e0eb;
+      --bg: #f6f8fb;
+      --surface: #ffffff;
+      --accent: #0f8f7f;
+      --accent-dark: #0a665d;
+      --warn: #a15c07;
+      --danger: #b42318;
+      --success: #087443;
+      --focus: rgba(15, 143, 127, 0.14);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: Inter, "Noto Sans JP", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      height: 64px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.94);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      font-weight: 800;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: var(--accent);
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 900;
+    }
+
+    .session-chip {
+      color: var(--muted);
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .main {
+      width: min(1280px, calc(100% - 32px));
+      margin: 24px auto 40px;
+      display: grid;
+      grid-template-columns: 330px minmax(0, 1fr);
+      gap: 18px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .panel h1,
+    .panel h2,
+    .panel h3 {
+      margin: 0 0 14px;
+      letter-spacing: 0;
+    }
+
+    .panel h1 { font-size: 20px; }
+    .panel h2,
+    .panel h3 { font-size: 17px; }
+
+    .stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    label {
+      color: #26364f;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid #cbd7e6;
+      border-radius: 8px;
+      padding: 11px 12px;
+      color: var(--ink);
+      background: #fff;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 96px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--focus);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      min-height: 42px;
+      padding: 10px 14px;
+      color: #fff;
+      background: var(--ink);
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      color: var(--ink);
+      background: #e8eef6;
+    }
+
+    button.accent {
+      background: var(--accent-dark);
+    }
+
+    button.warn {
+      background: var(--warn);
+    }
+
+    button:disabled {
+      opacity: 0.62;
+      cursor: wait;
+    }
+
+    .message {
+      display: none;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .message.on { display: block; }
+    .message.error { color: var(--danger); background: #fff1f0; border: 1px solid #ffd2cf; }
+    .message.success { color: var(--success); background: #ecfdf3; border: 1px solid #abefc6; }
+
+    .referrals {
+      display: grid;
+      gap: 10px;
+    }
+
+    .referral-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfdff;
+      display: grid;
+      gap: 4px;
+      cursor: pointer;
+      text-align: left;
+      color: var(--ink);
+    }
+
+    .referral-item strong {
+      font-size: 14px;
+    }
+
+    .referral-item span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .workspace {
+      display: grid;
+      gap: 18px;
+    }
+
+    .result {
+      white-space: pre-wrap;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fbff;
+      padding: 14px;
+      min-height: 220px;
+      line-height: 1.7;
+      overflow: auto;
+    }
+
+    @media (max-width: 920px) {
+      .topbar { padding: 0 16px; }
+      .main {
+        width: min(100% - 24px, 1280px);
+        grid-template-columns: 1fr;
+      }
+      .grid-2,
+      .grid-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">H</div>
+        <div>ハルナス 紹介状作成</div>
+      </div>
+      <div id="session-chip" class="session-chip">未ログイン</div>
+    </header>
+
+    <main class="main">
+      <aside class="stack">
+        <section class="panel">
+          <h1>ログイン</h1>
+          <form id="login-form" class="stack">
+            <div class="field">
+              <label for="organizationCode">組織コード</label>
+              <input id="organizationCode" name="organizationCode" autocomplete="organization" required />
+            </div>
+            <div class="field">
+              <label for="loginId">ログインID</label>
+              <input id="loginId" name="loginId" type="email" autocomplete="username" required />
+            </div>
+            <div class="field">
+              <label for="password">パスワード</label>
+              <input id="password" name="password" type="password" autocomplete="current-password" required />
+            </div>
+            <button class="accent" type="submit">ログイン</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>患者</h2>
+          <form id="patient-form" class="stack">
+            <div class="field">
+              <label for="patient-name">氏名</label>
+              <input id="patient-name" name="displayName" required />
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label for="patient-birth">生年月日</label>
+                <input id="patient-birth" name="birthDate" type="date" />
+              </div>
+              <div class="field">
+                <label for="patient-sex">性別</label>
+                <select id="patient-sex" name="sex">
+                  <option value="unknown">不明</option>
+                  <option value="male">男性</option>
+                  <option value="female">女性</option>
+                  <option value="other">その他</option>
+                </select>
+              </div>
+            </div>
+            <button type="submit">患者作成</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>紹介状</h2>
+          <div id="referral-list" class="referrals"></div>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <div id="message" class="message"></div>
+
+        <section class="panel">
+          <h2>作成</h2>
+          <form id="referral-form" class="stack">
+            <div class="grid-3">
+              <div class="field">
+                <label for="patientId">患者</label>
+                <select id="patientId" name="patientId" required></select>
+              </div>
+              <div class="field">
+                <label for="facilityId">自院施設</label>
+                <select id="facilityId" name="facilityId" required></select>
+              </div>
+              <div class="field">
+                <label for="departmentId">診療科</label>
+                <select id="departmentId" name="departmentId" required></select>
+              </div>
+            </div>
+            <div class="field">
+              <label for="title">タイトル</label>
+              <input id="title" name="title" value="診療情報提供書" />
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label for="recipientInstitution">紹介先医療機関</label>
+                <input id="recipientInstitution" name="recipientInstitution" required />
+              </div>
+              <div class="field">
+                <label for="recipientDoctor">紹介先医師</label>
+                <input id="recipientDoctor" name="recipientDoctor" required />
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label for="recipientDepartment">紹介先診療科</label>
+                <input id="recipientDepartment" name="recipientDepartment" />
+              </div>
+              <div class="field">
+                <label for="recipientCode">紹介先医療機関コード</label>
+                <input id="recipientCode" name="recipientCode" />
+              </div>
+            </div>
+            <div class="field">
+              <label for="purpose">目的</label>
+              <textarea id="purpose" name="purpose" required></textarea>
+            </div>
+            <div class="field">
+              <label for="clinicalSummary">臨床経過</label>
+              <textarea id="clinicalSummary" name="clinicalSummary" required></textarea>
+            </div>
+            <div class="grid-3">
+              <div class="field">
+                <label for="diagnoses">傷病名</label>
+                <textarea id="diagnoses" name="diagnoses"></textarea>
+              </div>
+              <div class="field">
+                <label for="medications">処方</label>
+                <textarea id="medications" name="medications"></textarea>
+              </div>
+              <div class="field">
+                <label for="allergies">アレルギー</label>
+                <textarea id="allergies" name="allergies"></textarea>
+              </div>
+            </div>
+            <div class="field">
+              <label for="requestedAction">依頼事項</label>
+              <textarea id="requestedAction" name="requestedAction"></textarea>
+            </div>
+            <div class="button-row">
+              <button class="accent" type="submit">下書き作成</button>
+              <button class="warn" id="pdf-button" type="button">PDF placeholder</button>
+              <button class="secondary" id="refresh-button" type="button">再読み込み</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>結果</h2>
+          <pre id="result" class="result">未実行</pre>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const platformApiBaseUrl = metaContent("halunasu-platform-api-base-url");
+    const referralApiBaseUrl = metaContent("halunasu-referral-api-base-url");
+    const state = {
+      csrfToken: "",
+      session: null,
+      patients: [],
+      facilities: [],
+      departments: [],
+      referrals: [],
+      selectedReferralId: ""
+    };
+
+    const els = {
+      sessionChip: document.querySelector("#session-chip"),
+      loginForm: document.querySelector("#login-form"),
+      patientForm: document.querySelector("#patient-form"),
+      referralForm: document.querySelector("#referral-form"),
+      message: document.querySelector("#message"),
+      patientSelect: document.querySelector("#patientId"),
+      facilitySelect: document.querySelector("#facilityId"),
+      departmentSelect: document.querySelector("#departmentId"),
+      referralList: document.querySelector("#referral-list"),
+      result: document.querySelector("#result"),
+      pdfButton: document.querySelector("#pdf-button"),
+      refreshButton: document.querySelector("#refresh-button")
+    };
+
+    els.loginForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await run(async () => {
+        const form = new FormData(els.loginForm);
+        const response = await api(platformApiBaseUrl, "/v1/auth/login", {
+          method: "POST",
+          body: {
+            organizationCode: form.get("organizationCode"),
+            loginId: form.get("loginId"),
+            password: form.get("password")
+          }
+        });
+        state.csrfToken = response.csrfToken || "";
+        state.session = response.session;
+        renderSession();
+        await loadWorkspace();
+        showMessage("ログインしました", "success");
+      });
+    });
+
+    els.patientForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await run(async () => {
+        requireLogin();
+        const form = new FormData(els.patientForm);
+        const response = await api(referralApiBaseUrl, "/v1/referral/patients", {
+          method: "POST",
+          csrf: true,
+          body: {
+            displayName: form.get("displayName"),
+            birthDate: emptyToNull(form.get("birthDate")),
+            sex: form.get("sex")
+          }
+        });
+        state.patients = [...state.patients, response.patient];
+        renderPatients();
+        els.patientForm.reset();
+        showMessage("患者を作成しました", "success");
+      });
+    });
+
+    els.referralForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await run(async () => {
+        requireLogin();
+        const form = new FormData(els.referralForm);
+        const response = await api(referralApiBaseUrl, "/v1/referral/referrals", {
+          method: "POST",
+          csrf: true,
+          body: {
+            patientId: form.get("patientId"),
+            facilityId: form.get("facilityId"),
+            departmentId: form.get("departmentId"),
+            title: form.get("title"),
+            recipientInstitution: {
+              displayName: form.get("recipientInstitution"),
+              departmentName: emptyToNull(form.get("recipientDepartment")),
+              medicalInstitutionCode: emptyToNull(form.get("recipientCode"))
+            },
+            recipientDoctor: {
+              displayName: form.get("recipientDoctor"),
+              departmentName: emptyToNull(form.get("recipientDepartment"))
+            },
+            purpose: form.get("purpose"),
+            clinicalSummary: form.get("clinicalSummary"),
+            diagnoses: lines(form.get("diagnoses")),
+            medications: lines(form.get("medications")),
+            allergies: lines(form.get("allergies")),
+            requestedAction: form.get("requestedAction")
+          }
+        });
+        state.selectedReferralId = response.referral.referralId;
+        await loadReferrals();
+        renderResult(response.referral);
+        showMessage("下書きを作成しました", "success");
+      });
+    });
+
+    els.pdfButton.addEventListener("click", async () => {
+      await run(async () => {
+        requireLogin();
+        if (!state.selectedReferralId) {
+          throw new Error("紹介状を選択してください");
+        }
+        const response = await api(referralApiBaseUrl, `/v1/referral/referrals/${state.selectedReferralId}/pdf-placeholder`, {
+          method: "POST",
+          csrf: true,
+          body: {}
+        });
+        await loadReferrals();
+        renderResult(response);
+        showMessage("PDF placeholderを作成しました", "success");
+      });
+    });
+
+    els.refreshButton.addEventListener("click", async () => {
+      await run(async () => {
+        requireLogin();
+        await loadWorkspace();
+        showMessage("再読み込みしました", "success");
+      });
+    });
+
+    async function loadWorkspace() {
+      await Promise.all([
+        loadPatients(),
+        loadFacilities(),
+        loadDepartments(),
+        loadReferrals()
+      ]);
+    }
+
+    async function loadPatients() {
+      const response = await api(referralApiBaseUrl, "/v1/referral/patients");
+      state.patients = response.patients || [];
+      renderPatients();
+    }
+
+    async function loadFacilities() {
+      const response = await api(referralApiBaseUrl, "/v1/referral/facilities");
+      state.facilities = response.facilities || [];
+      renderFacilities();
+    }
+
+    async function loadDepartments() {
+      const response = await api(referralApiBaseUrl, "/v1/referral/departments");
+      state.departments = response.departments || [];
+      renderDepartments();
+    }
+
+    async function loadReferrals() {
+      const response = await api(referralApiBaseUrl, "/v1/referral/referrals");
+      state.referrals = response.referrals || [];
+      renderReferrals();
+    }
+
+    function renderSession() {
+      els.sessionChip.textContent = state.session
+        ? `${state.session.organizationCode} / ${state.session.loginId}`
+        : "未ログイン";
+    }
+
+    function renderPatients() {
+      renderOptions(els.patientSelect, state.patients, {
+        empty: "患者を選択",
+        value: "patientId",
+        label: (patient) => `${patient.displayName} (${patient.patientId})`
+      });
+    }
+
+    function renderFacilities() {
+      renderOptions(els.facilitySelect, state.facilities, {
+        empty: "施設を選択",
+        value: "facilityId",
+        label: (facility) => `${facility.displayName} (${facility.medicalInstitutionCode || "code未設定"})`
+      });
+    }
+
+    function renderDepartments() {
+      renderOptions(els.departmentSelect, state.departments, {
+        empty: "診療科を選択",
+        value: "departmentId",
+        label: (department) => `${department.displayName} (${department.departmentId})`
+      });
+    }
+
+    function renderReferrals() {
+      els.referralList.innerHTML = "";
+      for (const referral of state.referrals) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "referral-item";
+        button.innerHTML = `
+          <strong>${escapeHtml(referral.patientSnapshot?.displayName || referral.patientId)}</strong>
+          <span>${escapeHtml(referral.status)} / ${escapeHtml(referral.referralId)}</span>
+        `;
+        button.addEventListener("click", () => {
+          state.selectedReferralId = referral.referralId;
+          renderResult(referral);
+        });
+        els.referralList.appendChild(button);
+      }
+    }
+
+    function renderOptions(select, items, config) {
+      const current = select.value;
+      select.innerHTML = "";
+      const empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = config.empty;
+      select.appendChild(empty);
+      for (const item of items) {
+        const option = document.createElement("option");
+        option.value = item[config.value];
+        option.textContent = config.label(item);
+        select.appendChild(option);
+      }
+      if ([...select.options].some((option) => option.value === current)) {
+        select.value = current;
+      }
+    }
+
+    function renderResult(value) {
+      els.result.textContent = JSON.stringify(value, null, 2);
+    }
+
+    async function api(baseUrl, path, options = {}) {
+      const headers = { "content-type": "application/json" };
+      if (options.csrf && state.csrfToken) {
+        headers["x-csrf-token"] = state.csrfToken;
+      }
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: options.method || "GET",
+        headers,
+        credentials: "include",
+        body: options.body === undefined ? undefined : JSON.stringify(options.body)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || `HTTP ${response.status}`);
+      }
+      return data;
+    }
+
+    async function run(task) {
+      setBusy(true);
+      try {
+        hideMessage();
+        await task();
+      } catch (error) {
+        showMessage(error.message || "処理に失敗しました", "error");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function setBusy(busy) {
+      for (const button of document.querySelectorAll("button")) {
+        button.disabled = busy;
+      }
+    }
+
+    function requireLogin() {
+      if (!state.session || !state.csrfToken) {
+        throw new Error("ログインしてください");
+      }
+    }
+
+    function lines(value) {
+      return String(value || "")
+        .split(/\n+/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+    }
+
+    function showMessage(text, type) {
+      els.message.textContent = text;
+      els.message.className = `message on ${type}`;
+    }
+
+    function hideMessage() {
+      els.message.textContent = "";
+      els.message.className = "message";
+    }
+
+    function emptyToNull(value) {
+      const text = String(value || "").trim();
+      return text || null;
+    }
+
+    function metaContent(name) {
+      return document.querySelector(`meta[name="${name}"]`)?.content || "";
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+  </script>
+</body>
+</html>

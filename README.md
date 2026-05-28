@@ -75,6 +75,7 @@ npm run test
 npm run start:platform-api
 npm run start:charting-api
 npm run start:fee-api
+npm run start:referral-api
 ```
 
 ## Staging Deploy

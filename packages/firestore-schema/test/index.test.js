@@ -15,6 +15,7 @@ import {
   patientPath,
   productEntitlementPath,
   rateLimitPath,
+  referralPath,
   signupEmailTokenPath,
   signupApplicationPath
 } from "../src/index.js";
@@ -36,6 +37,10 @@ test("builds platform document paths", () => {
   assert.equal(
     feeSessionPath("org_123", "fee_456"),
     "organizations/org_123/fee_sessions/fee_456"
+  );
+  assert.equal(
+    referralPath("org_123", "ref_456"),
+    "organizations/org_123/referrals/ref_456"
   );
   assert.equal(signupApplicationPath("app_123"), "signup_applications/app_123");
   assert.equal(signupEmailTokenPath("emv_123"), "signup_email_tokens/emv_123");

@@ -1,6 +1,16 @@
 # Referral API
 
-Target location for the new referral letter backend.
+Platform-session-validated referral letter API.
 
-This service should use Platform organization, facility, department, member, and patient IDs from the start.
+P6 local scope:
 
+- uses signed Platform session from `platform-api`
+- checks `product_entitlements/referral`
+- uses `productRoles.referral` or global `org_admin`
+- stores product records under `organizations/{orgId}/referrals`
+- resolves Platform `patientId`, `facilityId`, `departmentId`, and `authorMemberId`
+- stores patient/facility/department/author snapshots
+- stores recipient institution and doctor snapshots
+- creates only an inline PDF placeholder
+
+No Cloud Run deploy, GCS bucket, external PDF renderer, LLM, or sibling product reads are required for P6.

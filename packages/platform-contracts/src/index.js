@@ -316,6 +316,20 @@ export function departmentSnapshot(department, snapshotAt = new Date()) {
   };
 }
 
+export function memberSnapshot(member, snapshotAt = new Date()) {
+  return {
+    memberId: requiredString(member.memberId, "memberId"),
+    displayName: requiredString(member.displayName, "displayName"),
+    loginId: optionalString(member.loginId),
+    email: optionalString(member.email),
+    globalRoles: normalizeStringArray(member.globalRoles),
+    productRoles: isPlainObject(member.productRoles) ? member.productRoles : {},
+    snapshotAt: snapshotAt instanceof Date
+      ? snapshotAt.toISOString()
+      : requiredString(snapshotAt, "snapshotAt")
+  };
+}
+
 export function validationError(message, field) {
   const error = new Error(message);
   error.name = "ValidationError";

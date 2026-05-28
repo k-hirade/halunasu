@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   departmentSnapshot,
   facilitySnapshot,
+  memberSnapshot,
   normalizeOrganizationCode,
   validateCreateAuditEventInput,
   validateCreateDepartmentInput,
@@ -163,6 +164,22 @@ test("creates facility and department snapshots for product records", () => {
   assert.deepEqual(snappedFacility.facilityStandardKeys, ["basic-a"]);
   assert.equal(snappedDepartment.displayName, "内科");
   assert.equal(snappedDepartment.snapshotAt, "2026-05-28T00:00:00.000Z");
+});
+
+test("creates member snapshots for product records", () => {
+  const snappedMember = memberSnapshot({
+    memberId: "mem_123",
+    displayName: "紹介 医師",
+    loginId: "doctor@example.com",
+    productRoles: {
+      referral: ["doctor"]
+    }
+  }, new Date("2026-05-28T00:00:00.000Z"));
+
+  assert.equal(snappedMember.memberId, "mem_123");
+  assert.equal(snappedMember.displayName, "紹介 医師");
+  assert.deepEqual(snappedMember.productRoles, { referral: ["doctor"] });
+  assert.equal(snappedMember.snapshotAt, "2026-05-28T00:00:00.000Z");
 });
 
 test("validates product entitlements and audit events", () => {

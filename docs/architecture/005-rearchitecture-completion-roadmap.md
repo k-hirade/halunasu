@@ -321,6 +321,8 @@ Exit criteria:
 
 ## P6: Referral Foundation
 
+Status: complete for local code as of 2026-05-28. Staging deploy, real PDF rendering, GCS attachment storage, and any LLM-assisted drafting remain intentionally deferred for cost control.
+
 Purpose:
 
 - Build the referral app directly on the new architecture.

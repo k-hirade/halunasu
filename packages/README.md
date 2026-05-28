@@ -10,5 +10,7 @@ Packages:
 - `charting-core`
 - `fee-contracts`
 - `fee-core`
+- `referral-contracts`
+- `referral-core`
 - `web-ui`
 - `firestore-schema`

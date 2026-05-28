@@ -22,6 +22,8 @@
     "start:charting-finalize": "npm run start --workspace @halunasu/charting-finalize",
     "dev:charting-finalize": "npm run dev --workspace @halunasu/charting-finalize",
     "start:fee-api": "npm run start --workspace @halunasu/fee-api",
-    "dev:fee-api": "npm run dev --workspace @halunasu/fee-api"
+    "dev:fee-api": "npm run dev --workspace @halunasu/fee-api",
+    "start:referral-api": "npm run start --workspace @halunasu/referral-api",
+    "dev:referral-api": "npm run dev --workspace @halunasu/referral-api"
   }
 }
