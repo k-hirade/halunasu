@@ -1,6 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import {
+  createFeeStoreFromEnv,
+  feeProjectId,
+  LazyFirestoreFeeStore
+} from "../src/store/create-store.js";
 import { MemoryFeeStore } from "../src/store/memory-store.js";
+
+test("uses fee product project for Firestore", () => {
+  const env = {
+    FEE_STORE_BACKEND: "firestore",
+    FEE_GOOGLE_CLOUD_PROJECT: "halunasu-fee-stg",
+    PLATFORM_GOOGLE_CLOUD_PROJECT: "medical-core-stg",
+    GOOGLE_CLOUD_PROJECT: "halunasu-fee-stg"
+  };
+  const store = createFeeStoreFromEnv(env);
+
+  assert.ok(store instanceof LazyFirestoreFeeStore);
+  assert.equal(feeProjectId(env), "halunasu-fee-stg");
+  assert.equal(store.options.projectId, "halunasu-fee-stg");
+});
 
 test("stores fee sessions by organization and applies mock calculation", () => {
   let counter = 0;

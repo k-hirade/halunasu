@@ -55,6 +55,41 @@ Recommended order:
 
 Recommended first target: `halunasu-charting-stg`, because charting exercises the largest boundary surface: patient references, audio/transcript artifacts, SOAP generation, and worker-style finalize behavior.
 
+The guarded activation script is dry-run by default:
+
+```bash
+./scripts/p10_activate_product_project_guarded.sh charting stg
+```
+
+Latest dry-run on 2026-05-28:
+
+```text
+Project: halunasu-charting-stg
+Current billingEnabled=False
+DRY RUN: gcloud billing projects link halunasu-charting-stg ...
+DRY RUN: gcloud services enable artifactregistry.googleapis.com cloudbuild.googleapis.com firestore.googleapis.com iam.googleapis.com run.googleapis.com secretmanager.googleapis.com storage.googleapis.com cloudtasks.googleapis.com ...
+```
+
+Actual activation requires all of:
+
+```bash
+BILLING_ACCOUNT_ID=XXXXXX-XXXXXX-XXXXXX P10_ALLOW_BILLING=yes ./scripts/p10_activate_product_project_guarded.sh charting stg --apply
+```
+
+Do not run `--apply` for production without `P10_ALLOW_PROD=yes`.
+
+## Runtime Project Variables
+
+When product services move to their own projects, keep Core and product Firestore targets explicit:
+
+| Service | Product project env | Core project env |
+| --- | --- | --- |
+| `charting-api` | `GOOGLE_CLOUD_PROJECT=halunasu-charting-stg` or `CHARTING_GOOGLE_CLOUD_PROJECT=halunasu-charting-stg` | `PLATFORM_GOOGLE_CLOUD_PROJECT=medical-core-stg` |
+| `fee-api` | `GOOGLE_CLOUD_PROJECT=halunasu-fee-stg` or `FEE_GOOGLE_CLOUD_PROJECT=halunasu-fee-stg` | `PLATFORM_GOOGLE_CLOUD_PROJECT=medical-core-stg` |
+| `referral-api` | `GOOGLE_CLOUD_PROJECT=halunasu-referral-stg` or `REFERRAL_GOOGLE_CLOUD_PROJECT=halunasu-referral-stg` | `PLATFORM_GOOGLE_CLOUD_PROJECT=medical-core-stg` |
+
+`PLATFORM_GOOGLE_CLOUD_PROJECT` must point at Core so product runtimes never accidentally create or read Core records in a product project.
+
 ## Not Yet Done
 
 - Billing is not linked to product projects.

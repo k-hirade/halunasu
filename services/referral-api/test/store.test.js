@@ -1,6 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import {
+  createReferralStoreFromEnv,
+  LazyFirestoreReferralStore,
+  referralProjectId
+} from "../src/store/create-store.js";
 import { MemoryReferralStore } from "../src/store/memory-store.js";
+
+test("uses referral product project for Firestore", () => {
+  const env = {
+    REFERRAL_STORE_BACKEND: "firestore",
+    REFERRAL_GOOGLE_CLOUD_PROJECT: "halunasu-referral-stg",
+    PLATFORM_GOOGLE_CLOUD_PROJECT: "medical-core-stg",
+    GOOGLE_CLOUD_PROJECT: "halunasu-referral-stg"
+  };
+  const store = createReferralStoreFromEnv(env);
+
+  assert.ok(store instanceof LazyFirestoreReferralStore);
+  assert.equal(referralProjectId(env), "halunasu-referral-stg");
+  assert.equal(store.options.projectId, "halunasu-referral-stg");
+});
 
 test("stores referral drafts by organization and creates PDF placeholders", () => {
   let counter = 0;

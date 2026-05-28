@@ -198,6 +198,28 @@ test("P10 project readiness preflight remains read-only", () => {
   }
 });
 
+test("P10 product activation script remains guarded", () => {
+  const source = readText(join(root, "scripts", "p10_activate_product_project_guarded.sh"));
+  const forbidden = [
+    /gcloud\s+run\s+deploy/,
+    /gcloud\s+builds\s+submit/,
+    /gcloud\s+firestore\s+databases\s+create/,
+    /gcloud\s+firestore\s+export/,
+    /gcloud\s+artifacts\s+repositories\s+create/,
+    /gcloud\s+iam\s+service-accounts\s+create/,
+    /gcloud\s+storage\s+buckets\s+create/,
+    /gcloud\s+secrets\s+create/,
+    /terraform\s+apply/
+  ];
+
+  assert.match(source, /APPLY="false"/, "P10 activation must dry-run by default");
+  assert.match(source, /P10_ALLOW_BILLING/, "P10 activation must require billing acknowledgement");
+  assert.match(source, /BILLING_ACCOUNT_ID/, "P10 activation must require explicit billing account");
+  for (const pattern of forbidden) {
+    assert.equal(pattern.test(source), false, `P10 activation must not contain ${pattern}`);
+  }
+});
+
 function readDirectoryText(path, pattern) {
   return walkFiles(path)
     .filter((file) => pattern.test(file))

@@ -33,3 +33,13 @@ SOAP drafts are product-owned records under:
 ```text
 organizations/{orgId}/charting_encounters/{encounterId}
 ```
+
+In split GCP deployments, charting product data must use the charting project
+while Platform/Core lookups use the Core project:
+
+```text
+GOOGLE_CLOUD_PROJECT=halunasu-charting-stg
+CHARTING_STORE_BACKEND=firestore
+PLATFORM_STORE_BACKEND=firestore
+PLATFORM_GOOGLE_CLOUD_PROJECT=medical-core-stg
+```

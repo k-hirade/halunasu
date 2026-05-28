@@ -76,7 +76,10 @@ export async function createFirestoreDb(options = {}) {
     import("firebase-admin/app"),
     import("firebase-admin/firestore")
   ]);
-  const projectId = options.projectId || process.env.GOOGLE_CLOUD_PROJECT || "medical-core-stg";
+  const projectId = options.projectId
+    || process.env.FEE_GOOGLE_CLOUD_PROJECT
+    || process.env.GOOGLE_CLOUD_PROJECT
+    || "halunasu-fee-stg";
   const app = getApps().find((candidate) => candidate.name === "halunasu-fee-api")
     || initializeApp({ projectId }, "halunasu-fee-api");
 

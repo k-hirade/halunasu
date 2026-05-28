@@ -22,3 +22,13 @@ npm run start --workspace @halunasu/fee-api
 ```
 
 The default store backend is memory. Firestore is available only when `FEE_STORE_BACKEND=firestore` or `PLATFORM_STORE_BACKEND=firestore` is explicitly set.
+
+In split GCP deployments, fee product data must use the fee project while
+Platform/Core lookups use the Core project:
+
+```text
+GOOGLE_CLOUD_PROJECT=halunasu-fee-stg
+FEE_STORE_BACKEND=firestore
+PLATFORM_STORE_BACKEND=firestore
+PLATFORM_GOOGLE_CLOUD_PROJECT=medical-core-stg
+```

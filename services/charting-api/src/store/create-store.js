@@ -10,11 +10,15 @@ export function createChartingStoreFromEnv(env = process.env) {
 
   if (backend === "firestore") {
     return new LazyFirestoreChartingStore({
-      projectId: env.GOOGLE_CLOUD_PROJECT || "medical-core-stg"
+      projectId: chartingProjectId(env)
     });
   }
 
   throw new Error(`Unsupported CHARTING_STORE_BACKEND: ${backend}`);
+}
+
+export function chartingProjectId(env = process.env) {
+  return env.CHARTING_GOOGLE_CLOUD_PROJECT || env.GOOGLE_CLOUD_PROJECT || "halunasu-charting-stg";
 }
 
 export class LazyFirestoreChartingStore {

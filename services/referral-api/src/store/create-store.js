@@ -10,11 +10,15 @@ export function createReferralStoreFromEnv(env = process.env) {
 
   if (backend === "firestore") {
     return new LazyFirestoreReferralStore({
-      projectId: env.GOOGLE_CLOUD_PROJECT || "medical-core-stg"
+      projectId: referralProjectId(env)
     });
   }
 
   throw new Error(`Unsupported REFERRAL_STORE_BACKEND: ${backend}`);
+}
+
+export function referralProjectId(env = process.env) {
+  return env.REFERRAL_GOOGLE_CLOUD_PROJECT || env.GOOGLE_CLOUD_PROJECT || "halunasu-referral-stg";
 }
 
 export class LazyFirestoreReferralStore {

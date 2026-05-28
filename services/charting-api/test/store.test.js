@@ -1,6 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import {
+  chartingProjectId,
+  createChartingStoreFromEnv,
+  LazyFirestoreChartingStore
+} from "../src/store/create-store.js";
 import { MemoryChartingStore } from "../src/store/memory-store.js";
+
+test("uses charting product project for Firestore", () => {
+  const env = {
+    CHARTING_STORE_BACKEND: "firestore",
+    CHARTING_GOOGLE_CLOUD_PROJECT: "halunasu-charting-stg",
+    PLATFORM_GOOGLE_CLOUD_PROJECT: "medical-core-stg",
+    GOOGLE_CLOUD_PROJECT: "halunasu-charting-stg"
+  };
+  const store = createChartingStoreFromEnv(env);
+
+  assert.ok(store instanceof LazyFirestoreChartingStore);
+  assert.equal(chartingProjectId(env), "halunasu-charting-stg");
+  assert.equal(store.options.projectId, "halunasu-charting-stg");
+});
 
 test("stores charting encounters by organization", () => {
   let counter = 0;

@@ -10,11 +10,15 @@ export function createPlatformStoreFromEnv(env = process.env) {
 
   if (backend === "firestore") {
     return new LazyFirestorePlatformStore({
-      projectId: env.GOOGLE_CLOUD_PROJECT || "medical-core-stg"
+      projectId: platformProjectId(env)
     });
   }
 
   throw new Error(`Unsupported PLATFORM_STORE_BACKEND: ${backend}`);
+}
+
+export function platformProjectId(env = process.env) {
+  return env.PLATFORM_GOOGLE_CLOUD_PROJECT || env.CORE_GOOGLE_CLOUD_PROJECT || env.GOOGLE_CLOUD_PROJECT || "medical-core-stg";
 }
 
 export class LazyFirestorePlatformStore {

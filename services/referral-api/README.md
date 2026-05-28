@@ -14,3 +14,13 @@ P6 local scope:
 - creates only an inline PDF placeholder
 
 No Cloud Run deploy, GCS bucket, external PDF renderer, LLM, or sibling product reads are required for P6.
+
+In split GCP deployments, referral product data must use the referral project
+while Platform/Core lookups use the Core project:
+
+```text
+GOOGLE_CLOUD_PROJECT=halunasu-referral-stg
+REFERRAL_STORE_BACKEND=firestore
+PLATFORM_STORE_BACKEND=firestore
+PLATFORM_GOOGLE_CLOUD_PROJECT=medical-core-stg
+```

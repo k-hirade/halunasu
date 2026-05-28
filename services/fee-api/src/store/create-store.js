@@ -10,11 +10,15 @@ export function createFeeStoreFromEnv(env = process.env) {
 
   if (backend === "firestore") {
     return new LazyFirestoreFeeStore({
-      projectId: env.GOOGLE_CLOUD_PROJECT || "medical-core-stg"
+      projectId: feeProjectId(env)
     });
   }
 
   throw new Error(`Unsupported FEE_STORE_BACKEND: ${backend}`);
+}
+
+export function feeProjectId(env = process.env) {
+  return env.FEE_GOOGLE_CLOUD_PROJECT || env.GOOGLE_CLOUD_PROJECT || "halunasu-fee-stg";
 }
 
 export class LazyFirestoreFeeStore {
