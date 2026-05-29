@@ -1,6 +1,6 @@
 # P14 Halunasu Domain Cutover
 
-Status: in progress, browser apps unblocked by Netlify API proxy; Netlify custom domains and web DNS are attached; production admin/charting/referral certificates remain pending
+Status: complete for browser-app migration; optional API custom domains remain unresolved and unused by the active runtime
 Date: 2026-05-29
 Cost profile: no new always-on resources; Cloud Run remains min instances 0 / max instances 1
 
@@ -20,6 +20,8 @@ product flows no longer depend on browser-resolvable API custom domains.
 - Updated Platform API deployment to use environment-specific cookie names with host-only cookie domains.
 - Verified raw Cloud Run `/readyz` for all public APIs after redeploy.
 - Verified Netlify same-origin proxy `/api/platform/readyz` and `/api/fee/readyz` on the production Fee app.
+- Verified HTTPS for all production and staging web domains, including legacy aliases.
+- Verified production login and initial product data reads through custom domains for Admin, Charting, Fee, Referral, and the legacy `app.halunasu.com` Charting alias.
 
 ## Netlify Status
 
@@ -83,8 +85,18 @@ HTTPS observations on 2026-05-29:
 
 | Domain group | Status |
 | --- | --- |
-| `halunasu.com`, `www.halunasu.com`, `fee.halunasu.com`, all staging web domains and staging aliases | HTTPS OK |
-| `admin.halunasu.com`, `charting.halunasu.com`, `referral.halunasu.com` | DNS OK, Netlify certificate still pending |
+| All production web domains and aliases | HTTPS OK |
+| All staging web domains and aliases | HTTPS OK |
+
+Production app API observations on 2026-05-29:
+
+| Domain | Verified checks |
+| --- | --- |
+| `admin.halunasu.com` | login, session |
+| `charting.halunasu.com` | login, session, patients, facilities, departments, encounters |
+| `app.halunasu.com` | login, session, patients, facilities, departments, encounters |
+| `fee.halunasu.com` | login, session, patients, facilities, departments, fee sessions |
+| `referral.halunasu.com` | login, session, patients, facilities, departments, referrals |
 
 ## Cloud Run Domain Mappings
 
@@ -113,24 +125,8 @@ config/cloudflare-dns-records.json
 
 Use DNS-only records at least until certificates are active. Cloudflare API credentials are not present in the local environment, so DNS changes were not automated.
 
-## Remaining Steps
+## Remaining Optional Steps
 
-1. Wait for Netlify certificates to become active for `admin.halunasu.com`, `charting.halunasu.com`, and `referral.halunasu.com`.
-2. Optionally keep or remove Cloud Run API custom domains. The active static apps use Netlify proxy routes and do not require API DNS.
-3. Verify:
-   - `https://stg.halunasu.com`
-   - `https://admin.stg.halunasu.com`
-   - `https://charting.stg.halunasu.com`
-   - `https://fee.stg.halunasu.com`
-   - `https://referral.stg.halunasu.com`
-   - `https://halunasu.com`
-   - `https://www.halunasu.com`
-   - `https://admin.halunasu.com`
-   - `https://charting.halunasu.com`
-   - `https://app.halunasu.com`
-   - `https://fee.halunasu.com`
-   - `https://referral.halunasu.com`
-   - same-origin `/api/platform/readyz`
-   - same-origin product API `/readyz`
-4. Run STG browser login/product flow.
-5. Repeat final browser verification for production domains after certificates are active.
+1. Decide whether to keep or remove Cloud Run API custom domain mappings. The active static apps use Netlify proxy routes and do not require API DNS.
+2. If keeping API custom domains, add Cloudflare DNS records for the `*-api` names in `config/cloudflare-dns-records.json`.
+3. Optionally run a full browser-level STG/PROD regression after future UI changes; API-level custom-domain migration checks are complete.
