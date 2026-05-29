@@ -11,7 +11,7 @@ P6 local scope:
 - resolves Platform `patientId`, `facilityId`, `departmentId`, and `authorMemberId`
 - stores patient/facility/department/author snapshots
 - stores recipient institution and doctor snapshots
-- creates only an inline PDF placeholder
+- creates an inline printable referral document
 
 No Cloud Run deploy, GCS bucket, external PDF renderer, LLM, or sibling product reads are required for P6.
 

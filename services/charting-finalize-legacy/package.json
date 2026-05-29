@@ -1,0 +1,15 @@
+{
+  "name": "@halunasu/charting-finalize-legacy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@medical/contracts": "file:../../packages/medical-contracts",
+    "@medical/core": "file:../../packages/medical-core",
+    "express": "5.1.0"
+  }
+}

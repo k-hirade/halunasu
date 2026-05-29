@@ -21,7 +21,7 @@ test("uses referral product project for Firestore", () => {
   assert.equal(store.options.projectId, "halunasu-referral-stg");
 });
 
-test("stores referral drafts by organization and creates PDF placeholders", () => {
+test("stores referral drafts by organization and creates referral documents", () => {
   let counter = 0;
   const store = new MemoryReferralStore({
     now: () => new Date("2026-05-28T00:00:00.000Z"),
@@ -50,11 +50,11 @@ test("stores referral drafts by organization and creates PDF placeholders", () =
   const updated = store.updateReferral("org_123", referral.referralId, {
     status: "ready"
   });
-  const result = store.createPdfPlaceholder("org_123", referral.referralId, {});
+  const result = store.createReferralDocument("org_123", referral.referralId, {});
 
   assert.equal(referral.referralId, "ref_001");
   assert.equal(updated.status, "ready");
-  assert.equal(result.pdfPlaceholder.pdfPlaceholderId, "pdf_002");
-  assert.equal(result.pdfPlaceholder.provider, "placeholder");
+  assert.equal(result.documentArtifact.documentArtifactId, "doc_002");
+  assert.equal(result.documentArtifact.provider, "halunasu_html");
   assert.equal(store.listReferrals("org_123").length, 1);
 });

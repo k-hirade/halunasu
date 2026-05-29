@@ -19,6 +19,8 @@
       "siteId": "f6781c37-f6ef-4fc5-941b-b36a5fd49bb5",
       "netlifyUrl": "https://halunasu-charting-stg.netlify.app",
       "targetDomain": "https://charting.stg.halunasu.com",
+      "deploymentMode": "next",
+      "baseDir": "apps/charting-web",
       "aliasDomains": [
         "https://stg.app.halunasu.com"
       ],
@@ -65,6 +67,8 @@
       "siteId": "2dc7d619-afca-4f1b-8fb9-ea9c4dcc37a4",
       "netlifyUrl": "https://halunasu-charting-prod.netlify.app",
       "targetDomain": "https://charting.halunasu.com",
+      "deploymentMode": "next",
+      "baseDir": "apps/charting-web",
       "aliasDomains": [
         "https://app.halunasu.com"
       ],

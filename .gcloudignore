@@ -24,3 +24,8 @@ packages/*/*
 !packages/*/src/**
 packages/*/README.md
 packages/*/test/
+
+!python/
+python/*
+!python/medical_fee_calculation/
+!python/medical_fee_calculation/**

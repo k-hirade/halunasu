@@ -1,6 +1,8 @@
 .DS_Store
 node_modules/
 .next/
+.netlify/
+apps/charting-web/apps/
 dist/
 build/
 .venv/
@@ -11,4 +13,3 @@ __pycache__/
 !.env.example
 coverage/
 *.log
-

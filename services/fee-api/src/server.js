@@ -4,6 +4,7 @@ import {
   requireProductContext
 } from "../../../packages/auth-client/src/index.js";
 import {
+  validateCreateFeeCalculationInput,
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput
 } from "../../../packages/fee-contracts/src/index.js";
@@ -13,6 +14,7 @@ import {
   patientSnapshot
 } from "../../../packages/platform-contracts/src/index.js";
 import { createPlatformStoreFromEnv } from "../../platform-api/src/store/create-store.js";
+import { createFeeCalculatorFromEnv } from "./python-calculator.js";
 import { createFeeStoreFromEnv } from "./store/create-store.js";
 
 const PRODUCT_ID = "fee";
@@ -25,6 +27,7 @@ export function createFeeApiServer(options = {}) {
   const region = options.region || process.env.GOOGLE_CLOUD_REGION || "asia-northeast1";
   const platformStore = options.platformStore || createPlatformStoreFromEnv();
   const feeStore = options.feeStore || createFeeStoreFromEnv();
+  const feeCalculator = options.feeCalculator || createFeeCalculatorFromEnv();
 
   return http.createServer(async (req, res) => {
     try {
@@ -40,6 +43,7 @@ export function createFeeApiServer(options = {}) {
         startedAt,
         platformStore,
         feeStore,
+        feeCalculator,
         now: options.now,
         sessionSecret: options.sessionSecret
       });
@@ -66,6 +70,7 @@ async function routeFeeApiRequest(input = {}) {
   const parts = url.pathname.split("/").filter(Boolean);
   const platformStore = input.platformStore || createPlatformStoreFromEnv();
   const feeStore = input.feeStore || createFeeStoreFromEnv();
+  const feeCalculator = input.feeCalculator || createFeeCalculatorFromEnv();
 
   if (method === "GET" && url.pathname === "/healthz") {
     return ok({ status: "ok", service: "fee-api" });
@@ -203,11 +208,17 @@ async function routeFeeApiRequest(input = {}) {
     return ok(result);
   }
 
-  if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "mock-calculate") {
+  if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "calculate") {
     requirePlatformCsrf(input.headers || {}, context.session);
-    const result = await feeStore.createMockCalculation(context.session.orgId, parts[3], input.body || {});
+    const current = await feeStore.getSession(context.session.orgId, parts[3]);
+    if (!current) {
+      return notFound("fee session not found");
+    }
+    const calculationInput = validateCreateFeeCalculationInput(input.body || {});
+    const calculationResult = await feeCalculator.calculate(current, calculationInput);
+    const result = await feeStore.saveCalculation(context.session.orgId, parts[3], calculationResult);
     await platformStore.createAuditEvent(context.session.orgId, {
-      eventType: "fee.mock_calculated",
+      eventType: "fee.calculated",
       actorMemberId: context.session.memberId,
       actorLoginId: context.session.loginId,
       targetType: "fee_session",

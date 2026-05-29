@@ -4,8 +4,8 @@ Target location for final transcript and SOAP generation from `halunasu-medical-
 
 This worker should be invoked through Cloud Tasks OIDC where possible.
 
-P4 keeps this service local/undeployed and uses a mock SOAP finalizer so no STT,
-OpenAI, Cloud Tasks, or GCS cost is introduced.
+This service keeps the low-cost local finalize path and generates a rule-based
+SOAP draft without introducing STT, OpenAI, Cloud Tasks, or GCS cost.
 
 Implemented endpoint:
 

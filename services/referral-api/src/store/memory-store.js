@@ -1,5 +1,5 @@
 import {
-  attachPdfPlaceholder,
+  attachReferralDocument,
   buildReferralDraft,
   createId,
   patchReferralDraft
@@ -43,21 +43,21 @@ export class MemoryReferralStore {
     return updated;
   }
 
-  createPdfPlaceholder(orgId, referralId, input) {
+  createReferralDocument(orgId, referralId, input) {
     const current = this.getReferral(orgId, referralId);
     if (!current) {
       throw notFoundError("referral not found");
     }
 
-    const updated = attachPdfPlaceholder(current, input, {
-      pdfPlaceholderId: this.idFactory("pdf"),
+    const updated = attachReferralDocument(current, input, {
+      documentArtifactId: this.idFactory("doc"),
       now: this.timestamp()
     });
     this.referralsForOrg(orgId).set(referralId, updated);
 
     return {
       referral: updated,
-      pdfPlaceholder: updated.pdfPlaceholder
+      documentArtifact: updated.documentArtifact
     };
   }
 

@@ -299,6 +299,7 @@ for env in stg prod; do
   fi
 
   project_is_active "${charting_project}" && ensure_service_account "${charting_project}" "halunasu-charting-api" "Halunasu Charting API"
+  project_is_active "${charting_project}" && ensure_service_account "${charting_project}" "halunasu-charting-gateway" "Halunasu Charting Gateway"
   project_is_active "${charting_project}" && ensure_service_account "${charting_project}" "halunasu-charting-finalize" "Halunasu Charting Finalize"
   project_is_active "${fee_project}" && ensure_service_account "${fee_project}" "halunasu-fee-api" "Halunasu Fee API"
   project_is_active "${referral_project}" && ensure_service_account "${referral_project}" "halunasu-referral-api" "Halunasu Referral API"
@@ -321,6 +322,10 @@ for env in stg prod; do
   if project_is_active "${charting_project}"; then
     ensure_secret "${charting_project}" "CHARTING_FINALIZE_INTERNAL_SECRET"
     add_secret_version "${charting_project}" "CHARTING_FINALIZE_INTERNAL_SECRET" "${finalize_secret}"
+    ensure_secret "${charting_project}" "PAIRING_SIGNING_SECRET"
+    add_secret_version "${charting_project}" "PAIRING_SIGNING_SECRET" "$(secret_value_or_generate "${charting_project}" "PAIRING_SIGNING_SECRET")"
+    ensure_secret "${charting_project}" "APP_FIELD_ENCRYPTION_KEY"
+    add_secret_version "${charting_project}" "APP_FIELD_ENCRYPTION_KEY" "$(secret_value_or_generate "${charting_project}" "APP_FIELD_ENCRYPTION_KEY")"
   fi
 
   add_project_role "${core_project}" "serviceAccount:halunasu-platform-api@${core_project}.iam.gserviceaccount.com" roles/datastore.user
@@ -328,6 +333,7 @@ for env in stg prod; do
   add_project_role "${core_project}" "serviceAccount:halunasu-platform-api@${core_project}.iam.gserviceaccount.com" roles/secretmanager.secretAccessor
 
   for spec in \
+    "${charting_project}:halunasu-charting-gateway" \
     "${charting_project}:halunasu-charting-api" \
     "${charting_project}:halunasu-charting-finalize" \
     "${fee_project}:halunasu-fee-api" \

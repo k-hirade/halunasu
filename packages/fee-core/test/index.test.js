@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  applyMockCalculation,
+  applyCalculationResult,
   applyReviewDecision,
   buildReceiptDraft,
   buildFeeSession,
-  buildMockFeeCalculation,
+  normalizeCalculationResult,
   buildReviewItems
 } from "../src/index.js";
 
@@ -48,7 +48,7 @@ test("builds Platform-scoped fee sessions", () => {
   assert.equal(session.facilitySnapshot.medicalInstitutionCode, "1312345");
 });
 
-test("creates deterministic mock calculation without external providers", () => {
+test("normalizes external calculation results", () => {
   const session = buildFeeSession({
     orgId: "org_123",
     patientId: "pat_123",
@@ -73,19 +73,33 @@ test("creates deterministic mock calculation without external providers", () => 
     feeSessionId: "fee_001",
     now: new Date("2026-05-28T00:00:00.000Z")
   });
-  const calculation = buildMockFeeCalculation(session, {}, {
+  const calculation = normalizeCalculationResult(session, {
+    provider: "medical_fee_calculation",
+    source: "python.medical_fee_calculation",
+    totalPoints: 137,
+    lineItems: [{
+      code: "160000410",
+      name: "血液検査",
+      orderType: "lab",
+      points: 137,
+      quantity: 1,
+      totalPoints: 137,
+      status: "confirmed",
+      source: "medical_procedure_master"
+    }]
+  }, {
     calculationId: "calc_001",
     now: new Date("2026-05-28T00:00:00.000Z")
   });
-  const updated = applyMockCalculation(session, {}, {
+  const updated = applyCalculationResult(session, calculation, {
     calculationId: "calc_001",
     now: new Date("2026-05-28T00:00:00.000Z")
   });
 
-  assert.equal(calculation.provider, "mock");
-  assert.equal(calculation.totalPoints, 424);
+  assert.equal(calculation.provider, "medical_fee_calculation");
+  assert.equal(calculation.totalPoints, 137);
   assert.equal(calculation.facility.medicalInstitutionCode, "1312345");
-  assert.equal(updated.status, "needs_review");
+  assert.equal(updated.status, "calculated");
   assert.equal(updated.latestCalculationId, "calc_001");
 });
 
@@ -113,7 +127,22 @@ test("builds receipt drafts and resolves review items", () => {
     feeSessionId: "fee_001",
     now: "2026-05-28T00:00:00.000Z"
   });
-  const calculated = applyMockCalculation(session, {}, {
+  const calculated = applyCalculationResult(session, {
+    provider: "medical_fee_calculation",
+    source: "python.medical_fee_calculation",
+    totalPoints: 88,
+    lineItems: [{
+      lineId: "line_1",
+      code: "160000410",
+      name: "血液検査",
+      orderType: "lab",
+      points: 88,
+      quantity: 1,
+      totalPoints: 88,
+      status: "candidate",
+      source: "medical_procedure_master"
+    }]
+  }, {
     calculationId: "calc_001",
     now: "2026-05-28T00:10:00.000Z"
   });
@@ -128,8 +157,8 @@ test("builds receipt drafts and resolves review items", () => {
     now: "2026-05-28T00:12:00.000Z"
   });
 
-  assert.equal(receiptDraft.totalPoints, 348);
-  assert.equal(receiptDraft.lineGroups.length, 2);
+  assert.equal(receiptDraft.totalPoints, 88);
+  assert.equal(receiptDraft.lineGroups.length, 1);
   assert.ok(reviewItems.length >= 1);
   assert.equal(decided.reviewDecisions[reviewItems[0].reviewItemId].status, "approved");
 });

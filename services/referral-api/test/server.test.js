@@ -42,7 +42,7 @@ test("creates Platform patients and product-owned referral drafts", async () => 
   const pdf = await request(
     stores,
     "POST",
-    `/v1/referral/referrals/${draft.body.referral.referralId}/pdf-placeholder`,
+    `/v1/referral/referrals/${draft.body.referral.referralId}/document`,
     {},
     headers
   );
@@ -60,11 +60,11 @@ test("creates Platform patients and product-owned referral drafts", async () => 
   assert.equal(draft.body.referral.authorMemberSnapshot.displayName, "Admin");
   assert.equal(draft.body.referral.recipientInstitutionSnapshot.medicalInstitutionCode, "9912345");
   assert.equal(pdf.statusCode, 201);
-  assert.equal(pdf.body.pdfPlaceholder.provider, "placeholder");
-  assert.equal(pdf.body.referral.status, "pdf_placeholder_ready");
+  assert.equal(pdf.body.documentArtifact.provider, "halunasu_html");
+  assert.equal(pdf.body.referral.status, "document_ready");
   assert.equal(listed.body.referrals.length, 1);
   assert.ok(auditEvents.some((event) => event.eventType === "referral.draft_created"));
-  assert.ok(auditEvents.some((event) => event.eventType === "referral.pdf_placeholder_created"));
+  assert.ok(auditEvents.some((event) => event.eventType === "referral.document_created"));
 });
 
 test("patches referral drafts with validated product-owned fields", async () => {

@@ -19,6 +19,8 @@ MEMORY="${MEMORY:-512Mi}"
 CPU="${CPU:-1}"
 TIMEOUT="${TIMEOUT:-60}"
 CONCURRENCY="${CONCURRENCY:-80}"
+TARGET_ENV="${TARGET_ENV:-all}"
+TARGET_SERVICE="${TARGET_SERVICE:-all}"
 
 if [[ "${MIN_INSTANCES}" != "0" ]]; then
   echo "Refusing deploy: MIN_INSTANCES must be 0." >&2
@@ -35,6 +37,8 @@ echo "Apply: ${APPLY}"
 echo "Region: ${REGION}"
 echo "Tag: ${TAG}"
 echo "Cloud Run: min=${MIN_INSTANCES}, max=${MAX_INSTANCES}, cpu throttling enabled"
+echo "Target env: ${TARGET_ENV}"
+echo "Target service: ${TARGET_SERVICE}"
 echo
 
 run_or_print() {
@@ -61,6 +65,9 @@ deploy_service() {
   local env_vars=("$@")
   local image="${REGION}-docker.pkg.dev/${project}/${REPOSITORY}/${service}:${TAG}"
   local secret_vars="APP_SESSION_SIGNING_SECRET=APP_SESSION_SIGNING_SECRET:latest"
+  if [[ "${service}" == charting-gateway-* ]]; then
+    secret_vars="${secret_vars},PAIRING_SIGNING_SECRET=PAIRING_SIGNING_SECRET:latest"
+  fi
   if [[ "${service}" == charting-finalize-* ]]; then
     secret_vars="${secret_vars},CHARTING_FINALIZE_INTERNAL_SECRET=CHARTING_FINALIZE_INTERNAL_SECRET:latest"
   fi
@@ -122,15 +129,43 @@ deploy_env() {
     csrf_cookie_name="halunasu_stg_csrf"
   fi
 
-  deploy_service "${core_project}" "platform-api-${env}" "services/platform-api" "halunasu-platform-api" "public" \
+  local charting_app_base_url="https://charting.halunasu.com"
+  local charting_allowed_origins="https://charting.halunasu.com"
+  if [[ "${env}" == "stg" ]]; then
+    charting_app_base_url="https://charting.stg.halunasu.com"
+    charting_allowed_origins="https://charting.stg.halunasu.com"
+  fi
+
+  if should_deploy "${env}" "platform-api"; then
+    deploy_service "${core_project}" "platform-api-${env}" "services/platform-api" "halunasu-platform-api" "public" \
     "HALUNASU_ENV=${env}" \
     "GOOGLE_CLOUD_PROJECT=${core_project}" \
     "GOOGLE_CLOUD_REGION=${REGION}" \
     "PLATFORM_STORE_BACKEND=firestore" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
+  fi
 
-  deploy_service "${charting_project}" "charting-api-${env}" "services/charting-api" "halunasu-charting-api" "public" \
+  if should_deploy "${env}" "charting-gateway"; then
+    deploy_service "${charting_project}" "charting-gateway-${env}" "services/charting-gateway" "halunasu-charting-gateway" "public" \
+    "HALUNASU_ENV=${env}" \
+    "APP_ENV=production" \
+    "GOOGLE_CLOUD_PROJECT=${charting_project}" \
+    "PLATFORM_GOOGLE_CLOUD_PROJECT=${core_project}" \
+    "GOOGLE_CLOUD_REGION=${REGION}" \
+    "STORE_BACKEND=firestore" \
+    "PLATFORM_STORE_BACKEND=firestore" \
+    "CHARTING_GATEWAY_PLATFORM_AUTH_BRIDGE=true" \
+    "APP_BASE_URL=${charting_app_base_url}" \
+    "ALLOWED_ORIGINS=${charting_allowed_origins}" \
+    "APP_REQUIRE_PRIVILEGED_MFA=false" \
+    "APP_ALLOW_OPERATOR_BEARER_AUTH=false" \
+    "FINALIZE_MODE=inline" \
+    "FINAL_TRANSCRIPT_SEGMENT_PRECOMPUTE_ENABLED=false"
+  fi
+
+  if should_deploy "${env}" "charting-api"; then
+    deploy_service "${charting_project}" "charting-api-${env}" "services/charting-api" "halunasu-charting-api" "public" \
     "HALUNASU_ENV=${env}" \
     "GOOGLE_CLOUD_PROJECT=${charting_project}" \
     "CHARTING_GOOGLE_CLOUD_PROJECT=${charting_project}" \
@@ -140,15 +175,19 @@ deploy_env() {
     "PLATFORM_STORE_BACKEND=firestore" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
+  fi
 
-  deploy_service "${charting_project}" "charting-finalize-${env}" "services/charting-finalize" "halunasu-charting-finalize" "private" \
+  if should_deploy "${env}" "charting-finalize"; then
+    deploy_service "${charting_project}" "charting-finalize-${env}" "services/charting-finalize" "halunasu-charting-finalize" "private" \
     "HALUNASU_ENV=${env}" \
     "GOOGLE_CLOUD_PROJECT=${charting_project}" \
     "CHARTING_GOOGLE_CLOUD_PROJECT=${charting_project}" \
     "GOOGLE_CLOUD_REGION=${REGION}" \
     "CHARTING_STORE_BACKEND=firestore"
+  fi
 
-  deploy_service "${fee_project}" "fee-api-${env}" "services/fee-api" "halunasu-fee-api" "public" \
+  if should_deploy "${env}" "fee-api"; then
+    deploy_service "${fee_project}" "fee-api-${env}" "services/fee-api" "halunasu-fee-api" "public" \
     "HALUNASU_ENV=${env}" \
     "GOOGLE_CLOUD_PROJECT=${fee_project}" \
     "FEE_GOOGLE_CLOUD_PROJECT=${fee_project}" \
@@ -158,8 +197,10 @@ deploy_env() {
     "PLATFORM_STORE_BACKEND=firestore" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
+  fi
 
-  deploy_service "${referral_project}" "referral-api-${env}" "services/referral-api" "halunasu-referral-api" "public" \
+  if should_deploy "${env}" "referral-api"; then
+    deploy_service "${referral_project}" "referral-api-${env}" "services/referral-api" "halunasu-referral-api" "public" \
     "HALUNASU_ENV=${env}" \
     "GOOGLE_CLOUD_PROJECT=${referral_project}" \
     "REFERRAL_GOOGLE_CLOUD_PROJECT=${referral_project}" \
@@ -169,9 +210,21 @@ deploy_env() {
     "PLATFORM_STORE_BACKEND=firestore" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
+  fi
 }
 
-deploy_env "stg" "medical-core-stg" "halunasu-charting-stg" "halunasu-fee-stg" "halunasu-referral-stg"
-deploy_env "prod" "medical-core-497610" "halunasu-charting-prod" "halunasu-fee-prod" "halunasu-referral-prod"
+should_deploy() {
+  local env="$1"
+  local service="$2"
+  [[ "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "${env}" ]] &&
+    [[ "${TARGET_SERVICE}" == "all" || "${TARGET_SERVICE}" == "${service}" ]]
+}
+
+if [[ "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "stg" ]]; then
+  deploy_env "stg" "medical-core-stg" "halunasu-charting-stg" "halunasu-fee-stg" "halunasu-referral-stg"
+fi
+if [[ "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "prod" ]]; then
+  deploy_env "prod" "medical-core-497610" "halunasu-charting-prod" "halunasu-fee-prod" "halunasu-referral-prod"
+fi
 
 echo "Deploy script complete."

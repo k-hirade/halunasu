@@ -1,0 +1,16 @@
+{
+  "name": "@halunasu/charting-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@medical/contracts": "file:../../packages/medical-contracts",
+    "@medical/core": "file:../../packages/medical-core",
+    "express": "5.1.0",
+    "ws": "8.18.3"
+  }
+}

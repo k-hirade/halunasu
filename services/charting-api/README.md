@@ -19,7 +19,7 @@ GET /v1/charting/encounters
 POST /v1/charting/encounters
 GET /v1/charting/encounters/{encounterId}
 PATCH /v1/charting/encounters/{encounterId}
-POST /v1/charting/encounters/{encounterId}/mock-soap
+POST /v1/charting/encounters/{encounterId}/soap-drafts/generate
 GET /v1/charting/encounters/{encounterId}/soap-drafts
 ```
 

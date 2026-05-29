@@ -15,7 +15,7 @@ assert(html.includes("/v1/referral/patients"), "referral web must create patient
 assert(html.includes("/v1/referral/facilities"), "referral web must load Platform facilities through referral-api");
 assert(html.includes("/v1/referral/departments"), "referral web must load Platform departments through referral-api");
 assert(html.includes("/v1/referral/referrals"), "referral web must create referral drafts through referral-api");
-assert(html.includes("pdf-placeholder"), "referral web must create only PDF placeholders in P6");
+assert(html.includes("/document"), "referral web must render referral documents through referral-api");
 assert(html.includes("patientId"), "referral web must expose patientId selection");
 assert(html.includes("facilityId"), "referral web must expose facilityId");
 assert(html.includes("departmentId"), "referral web must expose departmentId");

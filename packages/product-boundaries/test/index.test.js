@@ -47,7 +47,7 @@ test("product service code does not import sibling product services or packages"
 
 test("product apps do not call sibling product API routes directly", () => {
   for (const [productId, product] of Object.entries(products)) {
-    const source = readText(join(root, "apps", product.app, "index.html"));
+    const source = readDirectoryText(join(root, "apps", product.app));
     const siblingRoutes = Object.entries(products)
       .filter(([candidateId]) => candidateId !== productId)
       .map(([, candidate]) => candidate.routePrefix);
@@ -77,6 +77,10 @@ function readDirectoryText(path) {
 function walkFiles(path) {
   const entries = readdirSync(path);
   return entries.flatMap((entry) => {
+    if ([".next", ".netlify", "coverage", "dist", "node_modules", "scripts", "test"].includes(entry)) {
+      return [];
+    }
+
     const entryPath = join(path, entry);
     return statSync(entryPath).isDirectory() ? walkFiles(entryPath) : [entryPath];
   });

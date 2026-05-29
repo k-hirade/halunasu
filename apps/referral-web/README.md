@@ -8,7 +8,7 @@ Local P6 scope:
 - creates/uses shared Platform patients
 - reads Platform facilities and departments
 - creates product-owned referral drafts through `referral-api`
-- creates an inline PDF placeholder without GCS or external rendering
+- creates an inline printable referral document without GCS or external rendering
 
 Configure API bases with:
 

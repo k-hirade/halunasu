@@ -1,0 +1,17 @@
+{
+  "name": "@medical/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "dependencies": {
+    "@medical/contracts": "file:../medical-contracts",
+    "firebase-admin": "13.5.0",
+    "ws": "8.18.3"
+  }
+}

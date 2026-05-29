@@ -1,0 +1,65 @@
+{
+  "entries": [
+    {
+      "kind": "medical_procedure_master",
+      "path": "data/raw/ssk/medical_procedure_master/2026-05-01/s_ALL20260501/s_ALL20260501.csv",
+      "source_version": "2026-05-01",
+      "published_at": "2026-05-01",
+      "retrieved_at": "2026-05-17",
+      "encoding": "cp932"
+    },
+    {
+      "kind": "drug_master",
+      "path": "data/raw/ssk/drug_master/2026-05-01/y_r07_ALL20260317/y_r07_ALL20260317.csv",
+      "source_version": "2026-05-01",
+      "published_at": "2026-03-17",
+      "retrieved_at": "2026-05-17",
+      "encoding": "cp932"
+    },
+    {
+      "kind": "specific_material_master",
+      "path": "data/raw/ssk/specific_material_master/2026-05-01/t_ALL20260227/t_ALL20260227.csv",
+      "source_version": "2026-05-01",
+      "published_at": "2026-02-27",
+      "retrieved_at": "2026-05-17",
+      "encoding": "cp932"
+    },
+    {
+      "kind": "comment_master",
+      "path": "data/raw/ssk/comment_master/2026-05-01/c_ALL20250715/c_ALL20250715.csv",
+      "source_version": "2026-05-01",
+      "published_at": "2025-07-15",
+      "retrieved_at": "2026-05-17",
+      "encoding": "cp932"
+    },
+    {
+      "kind": "comment_related_table",
+      "path": "data/raw/ssk/comment_related_table/2026-05-01/ck_ALL_20250901/ck_ALL_20250901.csv",
+      "source_version": "2026-05-01",
+      "published_at": "2025-09-01",
+      "retrieved_at": "2026-05-17",
+      "encoding": "cp932"
+    },
+    {
+      "kind": "medical_electronic_fee_table",
+      "source_version": "2026-05-01",
+      "published_at": "2026-05-01",
+      "retrieved_at": "2026-05-17",
+      "encoding": "cp932",
+      "csv_paths": {
+        "aux_master": "data/raw/ssk/medical_electronic_fee_table/2026-05-01/tensuhyo_02/01補助マスターテーブル.csv",
+        "bundles": "data/raw/ssk/medical_electronic_fee_table/2026-05-01/tensuhyo_02/02包括テーブル.csv",
+        "exclusions_day": "data/raw/ssk/medical_electronic_fee_table/2026-05-01/tensuhyo_02/03-1背反テーブル1.csv",
+        "exclusions_month": "data/raw/ssk/medical_electronic_fee_table/2026-05-01/tensuhyo_02/03-2背反テーブル2.csv",
+        "exclusions_simultaneous": "data/raw/ssk/medical_electronic_fee_table/2026-05-01/tensuhyo_02/03-3背反テーブル3.csv",
+        "exclusions_week": "data/raw/ssk/medical_electronic_fee_table/2026-05-01/tensuhyo_02/03-4背反テーブル4.csv",
+        "frequency_limits": "data/raw/ssk/medical_electronic_fee_table/2026-05-01/tensuhyo_02/05算定回数テーブル.csv",
+        "inpatient_basic": "data/raw/ssk/medical_electronic_fee_table/2026-05-01/tensuhyo_02/04入院基本料テーブル.csv"
+      }
+    },
+    {
+      "kind": "regional_manifest",
+      "path": "configs/regional-master/2026-05-01/regional_manifest.json"
+    }
+  ]
+}

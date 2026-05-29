@@ -43,8 +43,8 @@ export class LazyFirestoreReferralStore {
     return this.call("updateReferral", orgId, referralId, input);
   }
 
-  async createPdfPlaceholder(orgId, referralId, input) {
-    return this.call("createPdfPlaceholder", orgId, referralId, input);
+  async createReferralDocument(orgId, referralId, input) {
+    return this.call("createReferralDocument", orgId, referralId, input);
   }
 
   async call(methodName, ...args) {

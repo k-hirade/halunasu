@@ -1,7 +1,7 @@
 export const referralStatuses = Object.freeze([
   "draft",
   "ready",
-  "pdf_placeholder_ready",
+  "document_ready",
   "sent",
   "archived"
 ]);
@@ -69,7 +69,7 @@ export function validatePatchReferralDraftInput(input = {}) {
   });
 }
 
-export function validateCreatePdfPlaceholderInput(input = {}) {
+export function validateRenderReferralDocumentInput(input = {}) {
   return compactObject({
     fileName: optionalString(input.fileName ?? input.file_name),
     requestedAt: optionalDateTime(input.requestedAt ?? input.requested_at, "requestedAt")

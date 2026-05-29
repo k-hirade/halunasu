@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import {
-  validateCreatePdfPlaceholderInput,
+  validateRenderReferralDocumentInput,
   validatePatchReferralDraftInput
 } from "../../referral-contracts/src/index.js";
 
@@ -30,7 +30,7 @@ export function buildReferralDraft(input = {}, options = {}) {
     allergies: Array.isArray(input.allergies) ? input.allergies : [],
     requestedAction: input.requestedAction || "",
     notes: input.notes || "",
-    pdfPlaceholder: null,
+    documentArtifact: null,
     createdAt: now,
     updatedAt: now,
     schemaVersion: 1
@@ -68,33 +68,36 @@ export function patchReferralDraft(current = {}, input = {}, options = {}) {
   });
 }
 
-export function attachPdfPlaceholder(current = {}, input = {}, options = {}) {
-  const pdfPlaceholder = buildPdfPlaceholder(current, input, options);
+export function attachReferralDocument(current = {}, input = {}, options = {}) {
+  const documentArtifact = buildReferralDocument(current, input, options);
   const now = timestamp(options.now);
 
   return {
     ...current,
-    status: "pdf_placeholder_ready",
-    pdfPlaceholder,
+    status: "document_ready",
+    documentArtifact,
     updatedAt: now
   };
 }
 
-export function buildPdfPlaceholder(referral = {}, input = {}, options = {}) {
-  const normalized = validateCreatePdfPlaceholderInput(input);
+export function buildReferralDocument(referral = {}, input = {}, options = {}) {
+  const normalized = validateRenderReferralDocumentInput(input);
   const now = normalized.requestedAt || timestamp(options.now);
-  const fileName = normalized.fileName || `${referral.referralId || "referral"}-placeholder.pdf`;
+  const fileName = normalized.fileName || `${referral.referralId || "referral"}-referral.html`;
+  const renderedText = renderReferralText(referral);
+  const renderedHtml = renderReferralHtml(referral, renderedText);
 
   return {
-    pdfPlaceholderId: options.pdfPlaceholderId || createId("pdf"),
+    documentArtifactId: options.documentArtifactId || createId("doc"),
     referralId: requiredString(referral.referralId, "referralId"),
     orgId: requiredString(referral.orgId, "orgId"),
-    provider: "placeholder",
+    provider: "halunasu_html",
     status: "ready",
     fileName,
-    contentType: "application/pdf-placeholder",
-    storage: "inline-placeholder",
-    renderedText: renderReferralText(referral),
+    contentType: "text/html; charset=utf-8",
+    storage: "inline",
+    renderedText,
+    renderedHtml,
     createdAt: now,
     schemaVersion: 1
   };
@@ -116,6 +119,43 @@ function renderReferralText(referral) {
     "",
     referral.requestedAction || ""
   ].join("\n").trim();
+}
+
+function renderReferralHtml(referral, renderedText) {
+  const lines = String(renderedText || "")
+    .split("\n")
+    .map((line) => `<p>${escapeHtml(line) || "&nbsp;"}</p>`)
+    .join("");
+  return [
+    "<!doctype html>",
+    "<html lang=\"ja\">",
+    "<head>",
+    "<meta charset=\"utf-8\">",
+    `<title>${escapeHtml(referral.title || "診療情報提供書")}</title>`,
+    "<style>",
+    "body{font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans','Noto Sans JP',sans-serif;margin:32px;color:#111;line-height:1.8}",
+    "main{max-width:800px;margin:0 auto}",
+    "h1{text-align:center;font-size:22px;margin:0 0 28px}",
+    "p{margin:0 0 6px;white-space:pre-wrap}",
+    "@media print{body{margin:18mm}}",
+    "</style>",
+    "</head>",
+    "<body>",
+    "<main>",
+    `<h1>${escapeHtml(referral.title || "診療情報提供書")}</h1>`,
+    lines,
+    "</main>",
+    "</body>",
+    "</html>"
+  ].join("");
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function snapshotRecipientInstitution(input = {}, snapshotAt) {

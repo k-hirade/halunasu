@@ -1,5 +1,5 @@
 import {
-  attachPdfPlaceholder,
+  attachReferralDocument,
   buildReferralDraft,
   createId,
   patchReferralDraft
@@ -54,21 +54,21 @@ export class FirestoreReferralStore {
     return updated;
   }
 
-  async createPdfPlaceholder(orgId, referralId, input) {
+  async createReferralDocument(orgId, referralId, input) {
     const current = await this.getReferral(orgId, referralId);
     if (!current) {
       throw notFoundError("referral not found");
     }
 
-    const updated = attachPdfPlaceholder(current, input, {
-      pdfPlaceholderId: this.idFactory("pdf"),
+    const updated = attachReferralDocument(current, input, {
+      documentArtifactId: this.idFactory("doc"),
       now: this.timestamp()
     });
     await this.doc(referralPath(orgId, referralId)).set(updated);
 
     return {
       referral: updated,
-      pdfPlaceholder: updated.pdfPlaceholder
+      documentArtifact: updated.documentArtifact
     };
   }
 

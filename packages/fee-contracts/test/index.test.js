@@ -3,7 +3,7 @@ import { test } from "node:test";
 import {
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput,
-  validateCreateMockCalculationInput
+  validateCreateFeeCalculationInput
 } from "../src/index.js";
 
 test("normalizes fee session input to Platform identifiers", () => {
@@ -54,15 +54,19 @@ test("validates shared patient shape for fee patient creation", () => {
   assert.deepEqual(patient.externalPatientIds, ["legacy-001"]);
 });
 
-test("normalizes mock calculation override input", () => {
-  const input = validateCreateMockCalculationInput({
+test("normalizes calculation override input", () => {
+  const input = validateCreateFeeCalculationInput({
     orders: [
       {
         content: "採血",
         orderType: "lab"
       }
-    ]
+    ],
+    claimContext: {
+      procedure_codes: ["160000410"]
+    }
   });
 
   assert.equal(input.orders[0].orderType, "lab");
+  assert.deepEqual(input.claimContext.procedure_codes, ["160000410"]);
 });

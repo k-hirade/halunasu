@@ -37,7 +37,7 @@ test("requires selected or newly created patient when creating encounters", () =
   assert.throws(() => validateCreateChartingEncounterInput({ visitReason: "咳" }), /patientId or patient is required/);
 });
 
-test("validates mock SOAP draft input", () => {
+test("validates SOAP draft input", () => {
   assert.deepEqual(validateCreateSoapDraftInput({
     transcript: "S: 咳\nO: 発熱なし"
   }), {

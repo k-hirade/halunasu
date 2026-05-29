@@ -46,7 +46,7 @@ test("creates Platform patients and product-owned charting encounters", async ()
     { transcript: "咳が続く。発熱なし。食欲あり。" },
     headers
   );
-  const draft = await request(stores, "POST", `/v1/charting/encounters/${encounter.body.encounter.encounterId}/mock-soap`, {
+  const draft = await request(stores, "POST", `/v1/charting/encounters/${encounter.body.encounter.encounterId}/soap-drafts/generate`, {
     transcript: "咳が続く。発熱なし。"
   }, headers);
   const edited = await request(
@@ -85,7 +85,7 @@ test("creates Platform patients and product-owned charting encounters", async ()
   assert.equal(stopped.body.encounter.status, "stopped");
   assert.equal(stopped.body.encounter.transcript, "咳が続く。発熱なし。食欲あり。");
   assert.equal(draft.statusCode, 201);
-  assert.equal(draft.body.soapDraft.provider, "mock");
+  assert.equal(draft.body.soapDraft.provider, "halunasu_rule_based");
   assert.equal(edited.body.soapDraft.assessment, "急性上気道炎疑い");
   assert.equal(approved.body.soapDraft.status, "approved");
   assert.equal(approved.body.encounter.status, "approved");

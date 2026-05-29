@@ -220,9 +220,9 @@ async function routeChartingApiRequest(input = {}) {
     return ok({ encounter });
   }
 
-  if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "charting", "encounters"]) && parts[4] === "mock-soap") {
+  if (method === "POST" && parts.length === 6 && matches(parts.slice(0, 3), ["v1", "charting", "encounters"]) && parts[4] === "soap-drafts" && parts[5] === "generate") {
     requirePlatformCsrf(input.headers || {}, context.session);
-    const result = await chartingStore.createMockSoapDraft(context.session.orgId, parts[3], input.body || {});
+    const result = await chartingStore.createSoapDraft(context.session.orgId, parts[3], input.body || {});
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "charting.soap_draft_created",
       actorMemberId: context.session.memberId,

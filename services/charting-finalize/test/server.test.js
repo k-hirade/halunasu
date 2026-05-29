@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { MemoryChartingStore } from "../../charting-api/src/store/memory-store.js";
 import { handleChartingFinalizeRequest } from "../src/server.js";
 
-test("creates mock SOAP draft for an existing encounter", async () => {
+test("creates SOAP draft for an existing encounter", async () => {
   let counter = 0;
   const chartingStore = new MemoryChartingStore({
     now: () => new Date("2026-05-28T00:00:00.000Z"),
@@ -30,7 +30,7 @@ test("creates mock SOAP draft for an existing encounter", async () => {
 
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.encounter.status, "soap_ready");
-  assert.equal(response.body.soapDraft.provider, "mock");
+  assert.equal(response.body.soapDraft.provider, "halunasu_rule_based");
 });
 
 test("rejects invalid internal secret", async () => {

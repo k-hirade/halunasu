@@ -49,7 +49,7 @@ export function patchChartingEncounter(current = {}, input = {}, options = {}) {
   });
 }
 
-export function buildMockSoapDraft(encounter = {}, input = {}, options = {}) {
+export function buildSoapDraft(encounter = {}, input = {}, options = {}) {
   const normalized = validateCreateSoapDraftInput(input);
   const now = options.now instanceof Date ? options.now.toISOString() : options.now || new Date().toISOString();
   const sourceText = [
@@ -72,8 +72,8 @@ export function buildMockSoapDraft(encounter = {}, input = {}, options = {}) {
     patientId: requiredString(encounter.patientId, "patientId"),
     patientSnapshot: encounter.patientSnapshot || null,
     status: "ready",
-    provider: "mock",
-    source: "charting-core",
+    provider: options.provider || "halunasu_rule_based",
+    source: options.source || "charting-core",
     subjective: encounter.visitReason || "主訴は診療内容から確認してください。",
     objective: summary,
     assessment: "AI下書きのため、医師による確認が必要です。",

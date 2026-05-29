@@ -57,13 +57,19 @@ export function validateCreateFeeSessionInput(input = {}) {
   });
 }
 
-export function validateCreateMockCalculationInput(input = {}) {
+export function validateCreateFeeCalculationInput(input = {}) {
   return compactObject({
     clinicalText: hasOwn(input, "clinicalText") || hasOwn(input, "clinical_text")
       ? optionalMultilineString(input.clinicalText ?? input.clinical_text, 100000)
       : undefined,
     orders: hasOwn(input, "orders") || hasOwn(input, "order_texts")
       ? normalizeFeeOrders(input.orders ?? input.order_texts)
+      : undefined,
+    claimContext: hasOwn(input, "claimContext") || hasOwn(input, "claim_context")
+      ? optionalPlainObject(input.claimContext ?? input.claim_context, "claimContext")
+      : undefined,
+    calculationOptions: hasOwn(input, "calculationOptions") || hasOwn(input, "calculation_options")
+      ? optionalPlainObject(input.calculationOptions ?? input.calculation_options, "calculationOptions")
       : undefined
   });
 }
@@ -234,6 +240,18 @@ function optionalEnum(value, allowed, field) {
 
   if (typeof value !== "string" || !allowed.includes(value)) {
     throw validationError(`${field} must be one of: ${allowed.join(", ")}`, field);
+  }
+
+  return value;
+}
+
+function optionalPlainObject(value, field) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (!isPlainObject(value)) {
+    throw validationError(`${field} must be an object`, field);
   }
 
   return value;

@@ -1,0 +1,98 @@
+{
+  "charting": {
+    "requiredFiles": [
+      "apps/charting-web/app/sessions/page.js",
+      "apps/charting-web/app/sessions/[sessionId]/page.js",
+      "apps/charting-web/app/admin/page.js",
+      "apps/charting-web/app/mobile/join/page.js",
+      "apps/charting-web/app/mobile/recorder/page.js",
+      "apps/charting-web/components/session-launcher.js",
+      "apps/charting-web/components/encounter-workspace.js",
+      "apps/charting-web/test/e2e/encounter-ui-regression.test.js",
+      "services/charting-gateway/src/server.js",
+      "services/charting-finalize-legacy/src/server.js",
+      "services/billing-api-legacy/src/server.js",
+      "packages/medical-contracts/src/index.js",
+      "packages/medical-core/src/index.js"
+    ],
+    "forbiddenProductionMarkers": [
+      {
+        "file": "services/charting-api/src/server.js",
+        "text": "mock-soap"
+      },
+      {
+        "file": "services/charting-finalize/src/server.js",
+        "text": "createMockSoapDraft"
+      }
+    ],
+    "requiredApiMarkers": [
+      {
+        "file": "services/charting-gateway/src/server.js",
+        "text": "generate-soap"
+      },
+      {
+        "file": "services/charting-gateway/src/server.js",
+        "text": "regenerate-soap"
+      },
+      {
+        "file": "services/charting-gateway/src/server.js",
+        "text": "pairings"
+      }
+    ]
+  },
+  "fee": {
+    "requiredFiles": [
+      "python/tests/legacy_medical_fee_calculation/test_importer_and_d026.py",
+      "python/tests/legacy_medical_fee_calculation/test_regional_discovery.py",
+      "python/tests/legacy_medical_fee_calculation/test_regional_download.py",
+      "python/tests/legacy_medical_fee_calculation/test_ssk_download.py",
+      "config/migration-parity/fee-calculation-configs/official-master/2026-05-01/ssk-master-catalog.json",
+      "config/migration-parity/fee-calculation-contracts/order-csv/manifest.example.json"
+    ],
+    "forbiddenProductionMarkers": [
+      {
+        "file": "apps/fee-web/index.html",
+        "text": "mock算定"
+      },
+      {
+        "file": "services/fee-api/src/server.js",
+        "text": "mock-calculate"
+      }
+    ],
+    "requiredApiMarkers": [
+      {
+        "file": "services/fee-api/src/server.js",
+        "text": "calculate"
+      }
+    ]
+  },
+  "lp": {
+    "requiredFiles": [
+      "apps/lp/index.html",
+      "apps/lp/privacy.html",
+      "apps/lp/security.html",
+      "apps/lp/terms.html",
+      "apps/lp/tokushoho.html",
+      "apps/lp/manual/index.html",
+      "apps/lp/manual/harunas-user-manual-v1.pdf"
+    ]
+  },
+  "referral": {
+    "forbiddenProductionMarkers": [
+      {
+        "file": "apps/referral-web/index.html",
+        "text": "PDF placeholder"
+      },
+      {
+        "file": "services/referral-api/src/server.js",
+        "text": "pdf-placeholder"
+      }
+    ],
+    "requiredApiMarkers": [
+      {
+        "file": "services/referral-api/src/server.js",
+        "text": "referrals"
+      }
+    ]
+  }
+}

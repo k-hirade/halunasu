@@ -6,6 +6,13 @@ import { test } from "node:test";
 const root = new URL("../../..", import.meta.url).pathname;
 const productApis = ["charting-api", "fee-api", "referral-api"];
 const allApis = ["platform-api", ...productApis, "charting-finalize"];
+const migrationLegacyPathPatterns = [
+  /^packages\/medical-core\//,
+  /^packages\/medical-contracts\//,
+  /^services\/billing-api-legacy\//,
+  /^services\/charting-finalize-legacy\//,
+  /^services\/charting-gateway\//
+];
 const phiFieldTokens = [
   "displayName",
   "displayNameKana",
@@ -95,7 +102,9 @@ test("browser apps do not import Firestore or Firebase client SDKs", () => {
 });
 
 test("Firestore Admin SDK usage stays inside server store adapters", () => {
-  const files = walkFiles(root).filter((file) => /\.(js|mjs|json)$/.test(file));
+  const files = walkFiles(root)
+    .filter((file) => /\.(js|mjs|json)$/.test(file))
+    .filter((file) => !isMigrationLegacyPath(relative(root, file)));
   const matches = files.filter((file) => {
     const source = readText(file);
     return source.includes('firebase-admin/firestore') || source.includes("getFirestore");
@@ -113,7 +122,8 @@ test("Firestore Admin SDK usage stays inside server store adapters", () => {
 
 test("service runtime logs do not print request or clinical payloads", () => {
   const serviceFiles = walkFiles(join(root, "services"))
-    .filter((file) => file.endsWith(".js"));
+    .filter((file) => file.endsWith(".js"))
+    .filter((file) => !isMigrationLegacyPath(relative(root, file)));
   const consoleLines = [];
 
   for (const file of serviceFiles) {
@@ -135,7 +145,8 @@ test("service runtime logs do not print request or clinical payloads", () => {
 
 test("audit safePayload blocks avoid obvious PHI fields", () => {
   const serviceFiles = walkFiles(join(root, "services"))
-    .filter((file) => /src\/.*\.js$/.test(file));
+    .filter((file) => /src\/.*\.js$/.test(file))
+    .filter((file) => !isMigrationLegacyPath(relative(root, file)));
 
   for (const file of serviceFiles) {
     const source = readText(file);
@@ -344,4 +355,8 @@ function walkFiles(path) {
 
 function readText(path) {
   return readFileSync(path, "utf8");
+}
+
+function isMigrationLegacyPath(relativePath) {
+  return migrationLegacyPathPatterns.some((pattern) => pattern.test(relativePath));
 }

@@ -65,7 +65,7 @@ async function routeChartingFinalizeRequest(input = {}) {
     requireInternalSecret(input);
     const orgId = requiredString(input.body?.orgId, "orgId");
     const encounterId = requiredString(input.body?.encounterId, "encounterId");
-    const result = await input.chartingStore.createMockSoapDraft(orgId, encounterId, {
+    const result = await input.chartingStore.createSoapDraft(orgId, encounterId, {
       transcript: input.body?.transcript,
       notes: input.body?.notes
     });

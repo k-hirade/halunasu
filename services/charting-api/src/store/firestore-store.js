@@ -1,6 +1,6 @@
 import {
   buildChartingEncounter,
-  buildMockSoapDraft,
+  buildSoapDraft,
   createId,
   patchChartingEncounter,
   patchSoapDraft
@@ -55,13 +55,13 @@ export class FirestoreChartingStore {
     return updated;
   }
 
-  async createMockSoapDraft(orgId, encounterId, input) {
+  async createSoapDraft(orgId, encounterId, input) {
     const current = await this.getEncounter(orgId, encounterId);
     if (!current) {
       throw notFoundError("encounter not found");
     }
 
-    const soapDraft = buildMockSoapDraft(current, input, {
+    const soapDraft = buildSoapDraft(current, input, {
       soapDraftId: this.idFactory("soap"),
       now: this.timestamp()
     });

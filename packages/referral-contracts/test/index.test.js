@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  validateCreatePdfPlaceholderInput,
   validateCreateReferralDraftInput,
   validateCreateReferralPatientInput,
-  validatePatchReferralDraftInput
+  validatePatchReferralDraftInput,
+  validateRenderReferralDocumentInput
 } from "../src/index.js";
 
 test("normalizes referral draft input to Platform references", () => {
@@ -56,18 +56,18 @@ test("validates shared patient creation input", () => {
   assert.equal(patient.displayName, "山田 太郎");
 });
 
-test("normalizes patch and PDF placeholder input", () => {
+test("normalizes patch and document render input", () => {
   const patch = validatePatchReferralDraftInput({
     status: "ready",
     medications: "内服薬A\n内服薬B"
   });
-  const pdf = validateCreatePdfPlaceholderInput({
-    file_name: "referral.pdf",
+  const document = validateRenderReferralDocumentInput({
+    file_name: "referral.html",
     requested_at: "2026-05-28T00:00:00.000Z"
   });
 
   assert.equal(patch.status, "ready");
   assert.deepEqual(patch.medications, ["内服薬A", "内服薬B"]);
-  assert.equal(pdf.fileName, "referral.pdf");
-  assert.equal(pdf.requestedAt, "2026-05-28T00:00:00.000Z");
+  assert.equal(document.fileName, "referral.html");
+  assert.equal(document.requestedAt, "2026-05-28T00:00:00.000Z");
 });

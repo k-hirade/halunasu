@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  attachPdfPlaceholder,
+  attachReferralDocument,
   buildReferralDraft,
   patchReferralDraft
 } from "../src/index.js";
@@ -39,7 +39,7 @@ test("builds Platform-scoped referral drafts", () => {
   assert.equal(draft.recipientDoctorSnapshot.snapshotAt, "2026-05-28T00:00:00.000Z");
 });
 
-test("patches product-owned draft fields and creates PDF placeholder", () => {
+test("patches product-owned draft fields and creates printable document", () => {
   const draft = buildReferralDraft({
     orgId: "org_123",
     patientId: "pat_123",
@@ -64,14 +64,15 @@ test("patches product-owned draft fields and creates PDF placeholder", () => {
   }, {
     now: new Date("2026-05-28T01:00:00.000Z")
   });
-  const withPdf = attachPdfPlaceholder(patched, {}, {
-    pdfPlaceholderId: "pdf_001",
+  const withDocument = attachReferralDocument(patched, {}, {
+    documentArtifactId: "doc_001",
     now: new Date("2026-05-28T02:00:00.000Z")
   });
 
   assert.equal(patched.status, "ready");
   assert.deepEqual(patched.medications, ["内服薬A"]);
-  assert.equal(withPdf.status, "pdf_placeholder_ready");
-  assert.equal(withPdf.pdfPlaceholder.provider, "placeholder");
-  assert.match(withPdf.pdfPlaceholder.renderedText, /診療情報提供書/);
+  assert.equal(withDocument.status, "document_ready");
+  assert.equal(withDocument.documentArtifact.provider, "halunasu_html");
+  assert.match(withDocument.documentArtifact.renderedText, /診療情報提供書/);
+  assert.match(withDocument.documentArtifact.renderedHtml, /<!doctype html>/);
 });

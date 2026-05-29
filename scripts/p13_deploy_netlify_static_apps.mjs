@@ -46,6 +46,14 @@ console.log(`App: ${targetApp}`);
 console.log();
 
 for (const job of jobs) {
+  if (job.site.deploymentMode === "next") {
+    console.log(`== ${job.env}/${job.app} -> ${job.site.siteName} ==`);
+    console.log("SKIP: Next.js app is not deployed by the static deploy script.");
+    console.log(`Base dir: ${job.site.baseDir || "(not configured)"}`);
+    console.log();
+    continue;
+  }
+
   const publishDir = join(root, job.site.publishDir);
   const indexPath = join(publishDir, "index.html");
   if (!existsSync(indexPath)) {

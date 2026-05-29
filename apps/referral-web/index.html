@@ -456,7 +456,7 @@
             </div>
             <div class="button-row">
               <button class="accent" type="submit">下書き作成</button>
-              <button class="warn" id="pdf-button" type="button">PDF placeholder</button>
+              <button class="warn" id="pdf-button" type="button">文書生成</button>
               <button class="secondary" id="refresh-button" type="button">再読み込み</button>
             </div>
           </form>
@@ -590,14 +590,14 @@
         if (!state.selectedReferralId) {
           throw new Error("紹介状を選択してください");
         }
-        const response = await api(referralApiBaseUrl, `/v1/referral/referrals/${state.selectedReferralId}/pdf-placeholder`, {
+        const response = await api(referralApiBaseUrl, `/v1/referral/referrals/${state.selectedReferralId}/document`, {
           method: "POST",
           csrf: true,
           body: {}
         });
         await loadReferrals();
         renderResult(response);
-        showMessage("PDF placeholderを作成しました", "success");
+        showMessage("紹介状文書を生成しました", "success");
       });
     });
 

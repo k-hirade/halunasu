@@ -193,12 +193,12 @@ async function routeReferralApiRequest(input = {}) {
     return ok({ referral });
   }
 
-  if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "referral", "referrals"]) && parts[4] === "pdf-placeholder") {
+  if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "referral", "referrals"]) && parts[4] === "document") {
     requireWriteAccess(context);
     requirePlatformCsrf(input.headers || {}, context.session);
-    const result = await referralStore.createPdfPlaceholder(context.session.orgId, parts[3], input.body || {});
+    const result = await referralStore.createReferralDocument(context.session.orgId, parts[3], input.body || {});
     await platformStore.createAuditEvent(context.session.orgId, {
-      eventType: "referral.pdf_placeholder_created",
+      eventType: "referral.document_created",
       actorMemberId: context.session.memberId,
       actorLoginId: context.session.loginId,
       targetType: "referral",
@@ -206,8 +206,8 @@ async function routeReferralApiRequest(input = {}) {
       productId: PRODUCT_ID,
       safePayload: {
         referralId: result.referral.referralId,
-        pdfPlaceholderId: result.pdfPlaceholder.pdfPlaceholderId,
-        provider: result.pdfPlaceholder.provider
+        documentArtifactId: result.documentArtifact.documentArtifactId,
+        provider: result.documentArtifact.provider
       }
     });
 

@@ -1,19 +1,7 @@
 import crypto from "node:crypto";
 import {
-  validateCreateMockCalculationInput,
   validateReviewDecisionInput
 } from "../../fee-contracts/src/index.js";
-
-const ORDER_TYPE_POINTS = Object.freeze({
-  lab: 60,
-  drug: 68,
-  injection: 45,
-  treatment: 80,
-  imaging: 210,
-  procedure: 120,
-  other: 10,
-  unknown: 10
-});
 
 export function buildFeeSession(input = {}, options = {}) {
   const now = timestamp(options.now);
@@ -40,7 +28,7 @@ export function buildFeeSession(input = {}, options = {}) {
     diagnoses: Array.isArray(input.diagnoses) ? input.diagnoses : [],
     insurance: input.insurance || null,
     sourceSystem: input.sourceSystem || null,
-    calculationResult: null,
+    calculationResult: input.calculationResult || null,
     latestCalculationId: null,
     reviewDecisions: {},
     createdAt: now,
@@ -49,35 +37,29 @@ export function buildFeeSession(input = {}, options = {}) {
   });
 }
 
-export function applyMockCalculation(current = {}, input = {}, options = {}) {
-  const calculationResult = buildMockFeeCalculation(current, input, options);
+export function applyCalculationResult(current = {}, calculationResult = {}, options = {}) {
+  const normalizedResult = normalizeCalculationResult(current, calculationResult, options);
   const now = timestamp(options.now);
-  const status = calculationNeedsReview(calculationResult) ? "needs_review" : "calculated";
+  const status = calculationNeedsReview(normalizedResult) ? "needs_review" : "calculated";
 
   return {
     ...current,
     status,
-    calculationResult,
-    latestCalculationId: calculationResult.calculationId,
+    calculationResult: normalizedResult,
+    latestCalculationId: normalizedResult.calculationId,
     updatedAt: now
   };
 }
 
-export function buildMockFeeCalculation(session = {}, input = {}, options = {}) {
-  const normalized = validateCreateMockCalculationInput(input);
+export function normalizeCalculationResult(session = {}, calculation = {}, options = {}) {
   const now = timestamp(options.now);
-  const orders = normalized.orders ?? session.orders ?? [];
-  const clinicalText = normalized.clinicalText ?? session.clinicalText ?? "";
-  const lineItems = [
-    baseLine(session),
-    ...orders.map((order, index) => orderLine(order, index))
-  ];
-  const textHints = clinicalText
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 5);
-  const totalPoints = lineItems.reduce((sum, line) => sum + line.totalPoints, 0);
+  const lineItems = normalizeLineItems(calculation.lineItems || calculation.lines || []);
+  const totalPoints = Number(
+    calculation.totalPoints
+    ?? calculation.total_points
+    ?? lineItems.reduce((sum, line) => sum + line.totalPoints, 0)
+  );
+  const warnings = normalizeWarnings(calculation.warnings || calculation.messages || []);
 
   return {
     calculationId: options.calculationId || createId("calc"),
@@ -85,9 +67,10 @@ export function buildMockFeeCalculation(session = {}, input = {}, options = {}) 
     orgId: requiredString(session.orgId, "orgId"),
     patientId: requiredString(session.patientId, "patientId"),
     patientRef: session.patientRef || session.patientId,
-    provider: "mock",
-    source: "fee-core",
-    status: "completed",
+    provider: requiredString(calculation.provider || "medical_fee_calculation", "provider"),
+    source: calculation.source || "medical_fee_calculation",
+    status: calculation.status || "completed",
+    engineStatus: calculation.engineStatus || calculation.engine_status || null,
     setting: session.setting || "outpatient",
     serviceDate: requiredString(session.serviceDate, "serviceDate"),
     claimMonth: session.claimMonth || String(session.serviceDate).slice(0, 7),
@@ -99,11 +82,12 @@ export function buildMockFeeCalculation(session = {}, input = {}, options = {}) 
     },
     totalPoints,
     lineItems,
-    warnings: warningMessages(session),
-    evidence: textHints.map((text, index) => ({
-      evidenceId: `ev_${index + 1}`,
-      text
-    })),
+    warnings,
+    messages: Array.isArray(calculation.messages) ? calculation.messages : [],
+    evidence: normalizeEvidence(calculation.evidence || []),
+    inputCodes: Array.isArray(calculation.inputCodes) ? calculation.inputCodes : calculation.input_codes || [],
+    candidateCodes: Array.isArray(calculation.candidateCodes) ? calculation.candidateCodes : calculation.candidate_codes || [],
+    rawResult: isPlainObject(calculation.rawResult) ? calculation.rawResult : undefined,
     generatedAt: now,
     schemaVersion: 1
   };
@@ -216,58 +200,60 @@ export function createId(prefix) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 26)}`;
 }
 
-function baseLine(session) {
-  const inpatient = session.setting === "inpatient";
-  const points = inpatient ? 400 : 288;
-
-  return {
-    lineId: "mock_basic",
-    code: inpatient ? "A100-MOCK" : "A000-MOCK",
-    name: inpatient ? "入院基本料 mock" : "初診/再診料 mock",
-    orderType: "basic",
-    points,
-    quantity: 1,
-    totalPoints: points,
-    status: "candidate",
-    source: "mock"
-  };
-}
-
-function orderLine(order, index) {
-  const orderType = order.orderType || "unknown";
-  const points = ORDER_TYPE_POINTS[orderType] || ORDER_TYPE_POINTS.unknown;
-  const quantity = Number(order.quantity || 1);
-  const totalPoints = Math.round(points * quantity);
-
-  return {
-    lineId: `mock_order_${index + 1}`,
-    code: `MOCK-${orderType.toUpperCase()}-${index + 1}`,
-    name: order.standardName || order.localName || order.content || "未分類オーダー mock",
-    orderId: order.orderId,
-    orderType,
-    points,
-    quantity,
-    totalPoints,
-    status: "candidate",
-    source: "mock"
-  };
-}
-
-function warningMessages(session) {
-  const warnings = [];
-  if (!session.facilitySnapshot?.medicalInstitutionCode) {
-    warnings.push("medicalInstitutionCode is missing on Platform facility");
-  }
-  if (!session.facilitySnapshot?.regionalBureau) {
-    warnings.push("regionalBureau is missing on Platform facility");
-  }
-
-  return warnings;
-}
-
 function calculationNeedsReview(calculation) {
   return (calculation.warnings || []).length > 0
     || (calculation.lineItems || []).some((line) => ["candidate", "needs_review"].includes(line.status || "candidate"));
+}
+
+function normalizeLineItems(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item, index) => {
+    const points = Number(item.points || 0);
+    const quantity = Number(item.quantity || 1);
+    const totalPoints = Number(item.totalPoints ?? item.total_points ?? points * quantity);
+    return {
+      lineId: item.lineId || item.line_id || `line_${index + 1}`,
+      code: item.code || null,
+      name: item.name || item.label || "未分類",
+      orderId: item.orderId || item.order_id,
+      orderType: item.orderType || item.order_type || "unknown",
+      points,
+      quantity,
+      totalPoints,
+      status: item.status || "candidate",
+      reason: item.reason || null,
+      source: item.source || "medical_fee_calculation"
+    };
+  });
+}
+
+function normalizeWarnings(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item) => {
+      if (typeof item === "string") {
+        return item;
+      }
+      return item?.message || item?.reason || "";
+    })
+    .filter(Boolean);
+}
+
+function normalizeEvidence(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item, index) => ({
+    evidenceId: item.evidenceId || item.evidence_id || `ev_${index + 1}`,
+    text: item.text || item.message || ""
+  })).filter((item) => item.text);
 }
 
 function groupReceiptLines(lines) {

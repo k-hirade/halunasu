@@ -44,7 +44,7 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   const calculation = await request(
     stores,
     "POST",
-    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/mock-calculate`,
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
     {},
     headers
   );
@@ -80,15 +80,15 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.equal(session.body.feeSession.facilitySnapshot.medicalInstitutionCode, "1312345");
   assert.equal(session.body.feeSession.facilitySnapshot.regionalBureau, "kanto-shinetsu");
   assert.equal(calculation.statusCode, 201);
-  assert.equal(calculation.body.calculationResult.provider, "mock");
-  assert.equal(calculation.body.calculationResult.totalPoints, 424);
+  assert.equal(calculation.body.calculationResult.provider, "test_fee_engine");
+  assert.equal(calculation.body.calculationResult.totalPoints, 137);
   assert.equal(calculation.body.feeSession.status, "needs_review");
-  assert.equal(receiptDraft.body.receiptDraft.totalPoints, 424);
+  assert.equal(receiptDraft.body.receiptDraft.totalPoints, 137);
   assert.ok(reviewItems.body.reviewItems.length >= 1);
   assert.equal(decision.body.feeSession.reviewDecisions[reviewItems.body.reviewItems[0].reviewItemId].status, "approved");
   assert.equal(listed.body.feeSessions.length, 1);
   assert.ok(auditEvents.some((event) => event.eventType === "fee.session_created"));
-  assert.ok(auditEvents.some((event) => event.eventType === "fee.mock_calculated"));
+  assert.ok(auditEvents.some((event) => event.eventType === "fee.calculated"));
   assert.ok(auditEvents.some((event) => event.eventType === "fee.review_item_decided"));
 });
 
@@ -142,6 +142,28 @@ function createStores(options = {}) {
     now: () => new Date("2026-05-28T00:00:00.000Z"),
     idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
   });
+  const feeCalculator = {
+    async calculate(feeSession) {
+      return {
+        provider: "test_fee_engine",
+        source: "test",
+        status: "completed",
+        totalPoints: 137,
+        lineItems: [{
+          lineId: "line_1",
+          code: "160000410",
+          name: feeSession.orders[0]?.localName || "検査",
+          orderType: "lab",
+          points: 137,
+          quantity: 1,
+          totalPoints: 137,
+          status: "candidate",
+          source: "test"
+        }],
+        warnings: []
+      };
+    }
+  };
   const organization = platformStore.createOrganization({
     organizationCode: "Clinic",
     displayName: "Clinic"
@@ -171,7 +193,7 @@ function createStores(options = {}) {
     });
   }
 
-  return { platformStore, feeStore };
+  return { platformStore, feeStore, feeCalculator };
 }
 
 async function signedHeaders(platformStore) {
@@ -204,6 +226,7 @@ function request(stores, method, path, body, headers = {}) {
     headers,
     platformStore: stores.platformStore,
     feeStore: stores.feeStore,
+    feeCalculator: stores.feeCalculator,
     env: "test",
     projectId: "medical-core-stg",
     region: "asia-northeast1",

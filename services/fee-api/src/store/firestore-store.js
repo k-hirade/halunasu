@@ -1,6 +1,6 @@
 import {
   applyReviewDecision,
-  applyMockCalculation,
+  applyCalculationResult,
   buildReceiptDraft,
   buildReviewItems,
   buildFeeSession,
@@ -43,13 +43,13 @@ export class FirestoreFeeStore {
     return docDataOrNull(await this.doc(feeSessionPath(orgId, feeSessionId)).get());
   }
 
-  async createMockCalculation(orgId, feeSessionId, input) {
+  async saveCalculation(orgId, feeSessionId, calculationResult) {
     const current = await this.getSession(orgId, feeSessionId);
     if (!current) {
       throw notFoundError("fee session not found");
     }
 
-    const updated = applyMockCalculation(current, input, {
+    const updated = applyCalculationResult(current, calculationResult, {
       calculationId: this.idFactory("calc"),
       now: this.timestamp()
     });

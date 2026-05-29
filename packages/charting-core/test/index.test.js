@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildChartingEncounter,
-  buildMockSoapDraft,
+  buildSoapDraft,
   patchChartingEncounter,
   patchSoapDraft
 } from "../src/index.js";
@@ -53,7 +53,7 @@ test("patches encounter-owned metadata only", () => {
   assert.equal(patched.updatedAt, "2026-05-28T01:00:00.000Z");
 });
 
-test("builds product-owned mock SOAP drafts", () => {
+test("builds product-owned SOAP drafts", () => {
   const encounter = buildChartingEncounter({
     orgId: "org_123",
     patientId: "pat_123",
@@ -64,7 +64,7 @@ test("builds product-owned mock SOAP drafts", () => {
     encounterId: "enc_123",
     now: "2026-05-28T00:00:00.000Z"
   });
-  const draft = buildMockSoapDraft(encounter, {
+  const draft = buildSoapDraft(encounter, {
     transcript: "咳が続く。発熱なし。"
   }, {
     soapDraftId: "soap_123",
@@ -74,7 +74,7 @@ test("builds product-owned mock SOAP drafts", () => {
   assert.equal(draft.soapDraftId, "soap_123");
   assert.equal(draft.patientSnapshot.displayName, "山田 太郎");
   assert.match(draft.outputText, /S\n咳/);
-  assert.equal(draft.provider, "mock");
+  assert.equal(draft.provider, "halunasu_rule_based");
 });
 
 test("patches and approves SOAP drafts", () => {
@@ -87,7 +87,7 @@ test("patches and approves SOAP drafts", () => {
     encounterId: "enc_123",
     now: "2026-05-28T00:00:00.000Z"
   });
-  const draft = buildMockSoapDraft(encounter, {}, {
+  const draft = buildSoapDraft(encounter, {}, {
     soapDraftId: "soap_123",
     now: "2026-05-28T00:10:00.000Z"
   });

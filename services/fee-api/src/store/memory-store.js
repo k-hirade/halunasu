@@ -1,6 +1,6 @@
 import {
   applyReviewDecision,
-  applyMockCalculation,
+  applyCalculationResult,
   buildReceiptDraft,
   buildReviewItems,
   buildFeeSession,
@@ -32,13 +32,13 @@ export class MemoryFeeStore {
     return this.sessionsForOrg(orgId).get(feeSessionId) || null;
   }
 
-  createMockCalculation(orgId, feeSessionId, input) {
+  saveCalculation(orgId, feeSessionId, calculationResult) {
     const current = this.getSession(orgId, feeSessionId);
     if (!current) {
       throw notFoundError("fee session not found");
     }
 
-    const updated = applyMockCalculation(current, input, {
+    const updated = applyCalculationResult(current, calculationResult, {
       calculationId: this.idFactory("calc"),
       now: this.timestamp()
     });

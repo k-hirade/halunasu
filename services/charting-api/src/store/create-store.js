@@ -43,8 +43,8 @@ export class LazyFirestoreChartingStore {
     return this.call("updateEncounter", orgId, encounterId, input);
   }
 
-  async createMockSoapDraft(orgId, encounterId, input) {
-    return this.call("createMockSoapDraft", orgId, encounterId, input);
+  async createSoapDraft(orgId, encounterId, input) {
+    return this.call("createSoapDraft", orgId, encounterId, input);
   }
 
   async listSoapDrafts(orgId, encounterId) {

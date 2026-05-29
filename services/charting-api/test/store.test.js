@@ -42,7 +42,7 @@ test("stores charting encounters by organization", () => {
   const updated = store.updateEncounter("org_123", encounter.encounterId, {
     transcript: "咳が続く"
   });
-  const result = store.createMockSoapDraft("org_123", encounter.encounterId, {
+  const result = store.createSoapDraft("org_123", encounter.encounterId, {
     transcript: updated.transcript
   });
   const approved = store.updateSoapDraft("org_123", encounter.encounterId, result.soapDraft.soapDraftId, {

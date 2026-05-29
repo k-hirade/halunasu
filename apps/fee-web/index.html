@@ -467,11 +467,11 @@
             </div>
             <div class="field">
               <label for="ordersText">オーダー</label>
-              <textarea id="ordersText" name="ordersText" placeholder="drug|カルボシステイン錠|2&#10;lab|血液検査|1"></textarea>
+              <textarea id="ordersText" name="ordersText" placeholder="procedure|血液検査|160000410|1&#10;drug|内服薬|620000001|2"></textarea>
             </div>
             <div class="button-row">
               <button class="accent" type="submit">セッション作成</button>
-              <button class="warn" id="calculate-button" type="button">mock算定</button>
+              <button class="warn" id="calculate-button" type="button">算定実行</button>
               <button class="secondary" id="refresh-button" type="button">再読み込み</button>
             </div>
           </form>
@@ -619,7 +619,7 @@
         if (!state.selectedFeeSessionId) {
           throw new Error("算定セッションを選択してください");
         }
-        const response = await api(feeApiBaseUrl, `/v1/fee/sessions/${state.selectedFeeSessionId}/mock-calculate`, {
+        const response = await api(feeApiBaseUrl, `/v1/fee/sessions/${state.selectedFeeSessionId}/calculate`, {
           method: "POST",
           csrf: true,
           body: {}
@@ -627,7 +627,7 @@
         await loadSessions();
         await loadFeeSessionDetails(state.selectedFeeSessionId);
         renderResult(response);
-        showMessage("mock算定が完了しました", "success");
+        showMessage("算定が完了しました", "success");
       });
     });
 
@@ -847,11 +847,13 @@
           const typed = allowedTypes.has(parts[0]);
           const orderType = typed ? parts[0] : "unknown";
           const localName = typed ? parts[1] || line : line;
-          const quantity = typed ? parts[2] || "1" : "1";
+          const standardCode = typed ? parts[2] || "" : "";
+          const quantity = typed ? parts[3] || "1" : "1";
           return {
             orderId: `ui_order_${index + 1}`,
             orderType,
             localName: localName || line,
+            standardCode: standardCode || undefined,
             quantity: Number(quantity || 1)
           };
         });

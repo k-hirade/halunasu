@@ -25,15 +25,6 @@ const apps = [
     }
   },
   {
-    name: "charting-web",
-    path: "apps/charting-web",
-    htmlFiles: ["index.html"],
-    meta: {
-      "halunasu-platform-api-base-url": "platformApi",
-      "halunasu-charting-api-base-url": "chartingApi"
-    }
-  },
-  {
     name: "fee-web",
     path: "apps/fee-web",
     htmlFiles: ["index.html"],

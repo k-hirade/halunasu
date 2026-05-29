@@ -59,7 +59,7 @@ test("runs signup to Core and product synthetic flow", async () => {
   }, account.headers);
   const soap = await env.charting(
     "POST",
-    `/v1/charting/encounters/${encounter.body.encounter.encounterId}/mock-soap`,
+    `/v1/charting/encounters/${encounter.body.encounter.encounterId}/soap-drafts/generate`,
     { transcript: "咳が続く。発熱なし。" },
     account.headers
   );
@@ -75,7 +75,7 @@ test("runs signup to Core and product synthetic flow", async () => {
   }, account.headers);
   const calculation = await env.fee(
     "POST",
-    `/v1/fee/sessions/${feeSession.body.feeSession.feeSessionId}/mock-calculate`,
+    `/v1/fee/sessions/${feeSession.body.feeSession.feeSessionId}/calculate`,
     {},
     account.headers
   );
@@ -98,7 +98,7 @@ test("runs signup to Core and product synthetic flow", async () => {
   }, account.headers);
   const pdf = await env.referral(
     "POST",
-    `/v1/referral/referrals/${referral.body.referral.referralId}/pdf-placeholder`,
+    `/v1/referral/referrals/${referral.body.referral.referralId}/document`,
     {},
     account.headers
   );
@@ -118,11 +118,11 @@ test("runs signup to Core and product synthetic flow", async () => {
   assert.equal(patient.body.patient.primaryPatientNumber, "P-0001");
   assert.equal(patient.body.patient.patientIdentifiers[0].value, "SYN-001");
   assert.equal(encounter.body.encounter.patientId, patient.body.patient.patientId);
-  assert.equal(soap.body.soapDraft.provider, "mock");
+  assert.equal(soap.body.soapDraft.provider, "halunasu_rule_based");
   assert.equal(feeSession.body.feeSession.patientId, patient.body.patient.patientId);
-  assert.equal(calculation.body.calculationResult.provider, "mock");
+  assert.equal(calculation.body.calculationResult.provider, "synthetic_fee_engine");
   assert.equal(referral.body.referral.patientId, patient.body.patient.patientId);
-  assert.equal(pdf.body.pdfPlaceholder.provider, "placeholder");
+  assert.equal(pdf.body.documentArtifact.provider, "halunasu_html");
   assert.equal(dataRequest.body.dataRequest.safePayload.displayName, undefined);
   assert.ok(eventTypes.includes("charting.encounter_created"));
   assert.ok(eventTypes.includes("fee.session_created"));
@@ -201,6 +201,27 @@ function createSyntheticEnv() {
     now: () => NOW,
     idFactory: sequenceIdFactory()
   });
+  const feeCalculator = {
+    async calculate() {
+      return {
+        provider: "synthetic_fee_engine",
+        source: "core-e2e",
+        status: "completed",
+        totalPoints: 88,
+        lineItems: [{
+          lineId: "line_1",
+          code: "160000410",
+          name: "血液検査",
+          orderType: "lab",
+          points: 88,
+          quantity: 1,
+          totalPoints: 88,
+          status: "candidate",
+          source: "core-e2e"
+        }]
+      };
+    }
+  };
   const referralStore = new MemoryReferralStore({
     now: () => NOW,
     idFactory: sequenceIdFactory()
@@ -241,6 +262,7 @@ function createSyntheticEnv() {
       headers,
       platformStore,
       feeStore,
+      feeCalculator,
       env: "test",
       now: NOW,
       sessionSecret: SESSION_SECRET

@@ -39,8 +39,8 @@ export class LazyFirestoreFeeStore {
     return this.call("getSession", orgId, feeSessionId);
   }
 
-  async createMockCalculation(orgId, feeSessionId, input) {
-    return this.call("createMockCalculation", orgId, feeSessionId, input);
+  async saveCalculation(orgId, feeSessionId, calculationResult) {
+    return this.call("saveCalculation", orgId, feeSessionId, calculationResult);
   }
 
   async call(methodName, ...args) {

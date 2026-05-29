@@ -1,6 +1,6 @@
 import {
   buildChartingEncounter,
-  buildMockSoapDraft,
+  buildSoapDraft,
   createId,
   patchChartingEncounter,
   patchSoapDraft
@@ -45,13 +45,13 @@ export class MemoryChartingStore {
     return updated;
   }
 
-  createMockSoapDraft(orgId, encounterId, input) {
+  createSoapDraft(orgId, encounterId, input) {
     const current = this.getEncounter(orgId, encounterId);
     if (!current) {
       throw notFoundError("encounter not found");
     }
 
-    const soapDraft = buildMockSoapDraft(current, input, {
+    const soapDraft = buildSoapDraft(current, input, {
       soapDraftId: this.idFactory("soap"),
       now: this.timestamp()
     });
