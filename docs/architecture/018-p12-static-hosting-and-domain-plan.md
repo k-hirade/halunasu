@@ -1,6 +1,6 @@
 # P12 Static Hosting And Domain Plan
 
-Status: started
+Status: complete; direct API custom domains superseded by Netlify same-origin proxying
 Date: 2026-05-28
 Cost profile: code/config only so far, no new GCP resources
 
@@ -27,10 +27,7 @@ config/runtime-domains.json
 | Charting app | `https://charting.halunasu.com` |
 | Fee app | `https://fee.halunasu.com` |
 | Referral app | `https://referral.halunasu.com` |
-| Platform API | `https://api.halunasu.com` |
-| Charting API | `https://charting-api.halunasu.com` |
-| Fee API | `https://fee-api.halunasu.com` |
-| Referral API | `https://referral-api.halunasu.com` |
+| Platform/Product APIs | Same-origin `/api/...` proxy routes |
 
 Production cookies:
 
@@ -53,10 +50,7 @@ Existing production LP domain handling:
 | Charting app | `https://charting.stg.halunasu.com` |
 | Fee app | `https://fee.stg.halunasu.com` |
 | Referral app | `https://referral.stg.halunasu.com` |
-| Platform API | `https://api.stg.halunasu.com` |
-| Charting API | `https://charting-api.stg.halunasu.com` |
-| Fee API | `https://fee-api.stg.halunasu.com` |
-| Referral API | `https://referral-api.stg.halunasu.com` |
+| Platform/Product APIs | Same-origin `/api/...` proxy routes |
 
 Staging cookies:
 
@@ -76,12 +70,11 @@ Implemented in code:
 - Product APIs allow the planned production and staging app origins.
 - Existing Netlify preview and localhost origins remain allowed for development.
 
-Not yet applied to GCP:
+Final applied shape:
 
-- Cloud Run custom domain mappings are not created yet.
-- DNS records are not created yet.
-- Cloud Run services are not redeployed with custom cookie env vars yet.
-- Static app hosting targets are not created yet.
+- Browser apps use host-only cookies on each Netlify app domain.
+- Netlify `_redirects` proxies `/api/...` paths to raw Cloud Run `*.run.app` URLs.
+- Direct API custom domains are not active and their Cloud Run domain mappings were removed during old-asset cleanup.
 
 ## Recommended Hosting
 
@@ -98,9 +91,5 @@ Use Cloud Run only for APIs. Avoid HTTPS Load Balancer, Cloud CDN, Cloud Storage
 
 ## Next Steps
 
-1. Configure the existing Netlify operation for the five static apps.
-2. Create Cloud Run custom domain mappings for API services.
-3. Add DNS records for app and API domains.
-4. Redeploy Cloud Run services with the correct cookie env vars per environment.
-5. Switch frontend runtime endpoint config from raw Cloud Run URLs to custom API domains.
-6. Run browser E2E on STG login, patient creation, charting, fee, and referral flows.
+1. Keep using guarded local static deploys unless Git-based Netlify deploys are intentionally added.
+2. Run browser E2E after future UI changes.

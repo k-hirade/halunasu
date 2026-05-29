@@ -1,6 +1,6 @@
 # P13 Netlify Sites
 
-Status: started
+Status: complete; old Netlify sites deleted after P14/P15 cutover
 Date: 2026-05-28
 Cost profile: Netlify static sites only, no new GCP resources
 
@@ -8,14 +8,15 @@ Cost profile: Netlify static sites only, no new GCP resources
 
 P13 adds new Netlify sites in the existing GENNAI Netlify team for the unified Halunasu monorepo.
 
-Existing production/staging sites are intentionally left untouched:
+Historical production/staging sites used during the transition:
 
 - `harunas`
 - `harunas-stg`
 - `harunas-app`
 - `medical-fee-calculation-stg`
 
-The new sites let the monorepo be deployed and verified before DNS/custom-domain cutover.
+The new sites let the monorepo be deployed and verified before DNS/custom-domain
+cutover. After verification, the historical sites were deleted on 2026-05-29.
 
 ## Created Sites
 
@@ -75,22 +76,12 @@ This avoids Netlify build-minute usage during the initial migration and keeps th
 | Fee | `6a17e07f64f531580878bb83` |
 | Referral | `6a17e0875bf1278f1605baf1` |
 
-## Current Limits
+## Current State
 
-- Custom domains are not attached yet.
-- Custom domains are only partially attached because Netlify limits `custom_domain` changes to 3 per hour on the current plan.
-- `halunasu.com` and `www.halunasu.com` remain attached to the existing `harunas` Netlify site until explicit production LP cutover.
-- DNS records are not changed yet.
-- Git-based automatic deploys are not configured yet.
-- The temporary `*.netlify.app` URLs are for static page verification only.
-- Full login/product browser flows still require API custom domains and cookie env rollout.
-
-## Next Steps
-
-1. Deploy STG static output to the new Netlify STG sites.
-2. Verify STG pages load from the temporary Netlify URLs.
-3. Map API custom domains to Cloud Run.
-4. Redeploy Cloud Run with custom cookie/CORS env vars.
-5. Attach STG web custom domains and update DNS.
-6. Run browser E2E through STG custom domains.
-7. Repeat for production after STG passes.
+- Custom domains are attached to the `halunasu-*` Netlify sites.
+- Cloudflare web DNS points at the new Netlify sites.
+- HTTPS is active for all production and staging web domains.
+- The old `harunas`, `harunas-stg`, `harunas-app`, and
+  `medical-fee-calculation-stg` Netlify sites were deleted on 2026-05-29.
+- Git-based automatic deploys are not configured yet; static deploys are still
+  driven by the local guarded deploy script.

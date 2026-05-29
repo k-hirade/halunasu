@@ -1,6 +1,6 @@
 # P14 Halunasu Domain Cutover
 
-Status: complete for browser-app migration; optional API custom domains remain unresolved and unused by the active runtime
+Status: complete for browser-app migration; unused API custom domains removed
 Date: 2026-05-29
 Cost profile: no new always-on resources; Cloud Run remains min instances 0 / max instances 1
 
@@ -47,7 +47,8 @@ Assigned so far:
 No Netlify domain assignments are pending as of 2026-05-29.
 
 The old `harunas`, `harunas-app`, `harunas-stg`, and
-`medical-fee-calculation-stg` Netlify sites no longer own custom domains.
+`medical-fee-calculation-stg` Netlify sites were deleted on 2026-05-29 after
+the new domains were verified.
 
 Legacy aliases to migrate:
 
@@ -100,20 +101,9 @@ Production app API observations on 2026-05-29:
 
 ## Cloud Run Domain Mappings
 
-Public API mappings exist, but Cloudflare API DNS records are unresolved as of
-2026-05-29. They are no longer required by the static app runtime while Netlify
-same-origin proxying is active:
-
-| Domain | Target |
-| --- | --- |
-| `api.stg.halunasu.com` | `ghs.googlehosted.com` |
-| `charting-api.stg.halunasu.com` | `ghs.googlehosted.com` |
-| `fee-api.stg.halunasu.com` | `ghs.googlehosted.com` |
-| `referral-api.stg.halunasu.com` | `ghs.googlehosted.com` |
-| `api.halunasu.com` | `ghs.googlehosted.com` |
-| `charting-api.halunasu.com` | `ghs.googlehosted.com` |
-| `fee-api.halunasu.com` | `ghs.googlehosted.com` |
-| `referral-api.halunasu.com` | `ghs.googlehosted.com` |
+Public API domain mappings were removed on 2026-05-29. The active static apps
+use Netlify same-origin `/api/...` proxy routes to raw Cloud Run `*.run.app`
+URLs, so direct API custom domains are not part of the active runtime.
 
 ## Cloudflare DNS
 
@@ -127,6 +117,4 @@ Use DNS-only records at least until certificates are active. Cloudflare API cred
 
 ## Remaining Optional Steps
 
-1. Decide whether to keep or remove Cloud Run API custom domain mappings. The active static apps use Netlify proxy routes and do not require API DNS.
-2. If keeping API custom domains, add Cloudflare DNS records for the `*-api` names in `config/cloudflare-dns-records.json`.
-3. Optionally run a full browser-level STG/PROD regression after future UI changes; API-level custom-domain migration checks are complete.
+1. Optionally run a full browser-level STG/PROD regression after future UI changes; API-level custom-domain migration checks are complete.

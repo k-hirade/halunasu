@@ -7,17 +7,9 @@ Halunasu is the unified medical platform repository for:
 - Referral letter creation
 - Shared platform data such as organizations, facilities, departments, members, login identities, billing state, and patient index
 
-This repository starts with architecture documentation before code migration.
+This repository is now the active unified application repository.
 
-## Current Goal
-
-Define the target architecture before moving code from the existing source repositories:
-
-- `k-hirade/medical` via local `../halunasu-medical-record`
-- `k-hirade/medical-fee-calculation` via local `../halunasu-fee-calculation`
-- `k-hirade/medical-lp` via local `../medical-lp`
-
-The first architecture document is:
+## Architecture Documents
 
 - [ASIS / TOBE Architecture](docs/architecture/001-asis-tobe-architecture.md)
 - [Platform Data Model](docs/architecture/002-platform-data-model.md)
@@ -66,7 +58,7 @@ Target core projects:
 - Staging: `medical-core-stg`
 - Production/core: `medical-core-497610`
 
-Historical product projects remain migration sources until the new core environment is ready.
+Historical product projects are no longer active runtime targets for the migrated browser apps.
 
 ## Local Commands
 
@@ -78,22 +70,18 @@ npm run start:fee-api
 npm run start:referral-api
 ```
 
-## Staging Deploy
+## Deploy
 
-The first staging deploy is intentionally guarded for cost control.
+Cloud Run and Netlify deploy scripts are guarded for cost control. Cloud Run
+services default to min instances `0` and max instances `1`.
 
 ```bash
-scripts/deploy_platform_api_stg_zero_cost.sh
+npm run build:runtime-apps
+npm run deploy:netlify-static -- --env stg --apply
+npm run deploy:netlify-static -- --env prod --apply
 ```
 
-The command above is dry-run only. It prints the build/deploy commands and creates nothing. Use `--apply` only after confirming the required existing resources and expected cost impact. The first staging deploy is not public because `platform-api` auth is not implemented yet.
+## Migration Status
 
-## Source Repositories
-
-The current local source repositories are:
-
-- `../halunasu-medical-record` for the existing charting and platform-like code
-- `../halunasu-fee-calculation` for the existing fee calculation code
-- `../medical-lp` for the existing LP
-
-Their GitHub remotes remain unchanged until code migration is complete.
+The historical local source clones were removed after the Halunasu monorepo and
+custom-domain cutover were verified. New work should happen in this repository.

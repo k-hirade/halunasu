@@ -271,7 +271,7 @@ test("P12 domain plan separates staging and production browser cookies", () => {
 
   for (const env of ["stg", "prod"]) {
     for (const url of Object.values(domains[env].api)) {
-      assert.match(url, /^https:\/\/[a-z0-9-]+(\.stg)?\.halunasu\.com$/);
+      assert.equal(url, null, "direct API custom domains should stay disabled while Netlify /api proxying is active");
     }
   }
 });
@@ -304,26 +304,19 @@ test("P13 Netlify static sites are explicit and deploys are guarded", () => {
   assert.match(buildScript, /"_redirects"/, "runtime app build must emit Netlify redirects");
 });
 
-test("P14 Cloudflare DNS records cover Halunasu web and API domains", () => {
+test("P14 Cloudflare DNS records cover Halunasu web domains and omit unused API DNS", () => {
   const records = JSON.parse(readText(join(root, "config", "cloudflare-dns-records.json")));
   const webNames = new Set(records.web.map((record) => record.name));
-  const apiNames = new Set(records.api.map((record) => record.name));
 
   for (const name of ["stg", "admin.stg", "charting.stg", "fee.stg", "referral.stg", "admin", "charting", "fee", "referral", "www"]) {
     assert.equal(webNames.has(name), true, `missing web DNS record ${name}`);
   }
 
-  for (const name of ["api.stg", "charting-api.stg", "fee-api.stg", "referral-api.stg", "api", "charting-api", "fee-api", "referral-api"]) {
-    assert.equal(apiNames.has(name), true, `missing API DNS record ${name}`);
-  }
+  assert.deepEqual(records.api, [], "API DNS records should stay empty while active apps use Netlify /api proxy routes");
 
-  for (const record of [...records.web, ...records.api]) {
+  for (const record of records.web) {
     assert.equal(record.type, "CNAME");
-    assert.equal(record.proxied, false, `${record.name} must be DNS-only during certificate provisioning`);
-  }
-
-  for (const record of records.api) {
-    assert.equal(record.content, "ghs.googlehosted.com");
+    assert.equal(record.proxied, false, `${record.name} must be DNS-only unless proxying is intentionally enabled`);
   }
 });
 

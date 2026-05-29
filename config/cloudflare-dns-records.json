@@ -3,8 +3,9 @@
   "managedBy": "Cloudflare",
   "mode": "dns-only",
   "notes": [
-    "Set proxied=false at least until Netlify and Cloud Run certificates are active.",
-    "The apex halunasu.com record should keep Netlify-compatible A records or CNAME flattening. Netlify site assignment is handled on halunasu-lp-prod."
+    "Set proxied=false for Netlify-managed web records unless Netlify/Cloudflare proxy behavior is intentionally changed.",
+    "The apex halunasu.com record should keep Netlify-compatible A records or CNAME flattening. Netlify site assignment is handled on halunasu-lp-prod.",
+    "API DNS records are intentionally omitted. Active browser apps use same-origin Netlify /api/... proxy routes to raw Cloud Run run.app URLs."
   ],
   "web": [
     {
@@ -86,54 +87,5 @@
       "proxied": false
     }
   ],
-  "api": [
-    {
-      "type": "CNAME",
-      "name": "api.stg",
-      "content": "ghs.googlehosted.com",
-      "proxied": false
-    },
-    {
-      "type": "CNAME",
-      "name": "charting-api.stg",
-      "content": "ghs.googlehosted.com",
-      "proxied": false
-    },
-    {
-      "type": "CNAME",
-      "name": "fee-api.stg",
-      "content": "ghs.googlehosted.com",
-      "proxied": false
-    },
-    {
-      "type": "CNAME",
-      "name": "referral-api.stg",
-      "content": "ghs.googlehosted.com",
-      "proxied": false
-    },
-    {
-      "type": "CNAME",
-      "name": "api",
-      "content": "ghs.googlehosted.com",
-      "proxied": false
-    },
-    {
-      "type": "CNAME",
-      "name": "charting-api",
-      "content": "ghs.googlehosted.com",
-      "proxied": false
-    },
-    {
-      "type": "CNAME",
-      "name": "fee-api",
-      "content": "ghs.googlehosted.com",
-      "proxied": false
-    },
-    {
-      "type": "CNAME",
-      "name": "referral-api",
-      "content": "ghs.googlehosted.com",
-      "proxied": false
-    }
-  ]
+  "api": []
 }

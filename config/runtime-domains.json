@@ -8,10 +8,10 @@
       "referral": "https://referral.stg.halunasu.com"
     },
     "api": {
-      "platform": "https://api.stg.halunasu.com",
-      "charting": "https://charting-api.stg.halunasu.com",
-      "fee": "https://fee-api.stg.halunasu.com",
-      "referral": "https://referral-api.stg.halunasu.com"
+      "platform": null,
+      "charting": null,
+      "fee": null,
+      "referral": null
     },
     "cookies": {
       "domain": null,
@@ -28,10 +28,10 @@
       "referral": "https://referral.halunasu.com"
     },
     "api": {
-      "platform": "https://api.halunasu.com",
-      "charting": "https://charting-api.halunasu.com",
-      "fee": "https://fee-api.halunasu.com",
-      "referral": "https://referral-api.halunasu.com"
+      "platform": null,
+      "charting": null,
+      "fee": null,
+      "referral": null
     },
     "cookies": {
       "domain": null,
