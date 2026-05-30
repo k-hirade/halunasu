@@ -43,16 +43,18 @@ flowchart LR
 
 ユーザー要件としては、現行移行後に `LP -> 登録 -> Stripe支払い` まで進める必要がある。そのため、旧 `services/billing` をそのまま別サービスとして復活させるより、Core Platformにsignup、MFA、billing status、Checkout/Portal発行を寄せる方針にする。
 
-2026-05-30にStripe CLIを再調査した結果:
+2026-05-30にStripe CLIとGCP Secretを再調査した結果:
 
 - 旧 `$HOME/bin/medical-stripe` は旧 `medical/keys/stripe_key.txt` を読むラッパーだったが、旧repo整理後は参照先ファイルが存在しない。
-- Core STGの `medical-core-stg` Secret `STRIPE_SECRET_KEY` は、通常のStripe CLIプロファイル `ReportAI` とは別のStripeアカウントのrestricted test keyを参照している。
-- Core STGで確認した既存Productは `medical-ai` (`prod_UOKXlLjPn1DT6g`)。2026-04-24作成で、現Core/GCP移行作業より前から存在する。
-- Core STGで利用中のPriceは lookup key `medical_ai_monthly_jpy_v2` (`price_1TTss7A2mWuSL3XaT5CbcnOS`)、月額22,000円、2026-05-06作成。
-- 旧test webhook endpointは `medical-billing-...run.app/api/v1/stripe/webhook` を向いていたため、Core endpoint作成後にdisabledへ変更済み。
+- Stripeの正アカウントは `medical-ai` (`acct_1TPAYOADFhjr3GQS`)。
+- 正アカウントのPROD/live Productは `ハルナス` (`prod_UOMtOPqM6ZMlSI`)。Price v2は `medical_ai_monthly_jpy_v2` (`price_1TTss7ADFhjr3GQSZkTEOBcF`)、月額22,000円。
+- 正アカウントのSTG/test Productは `ハルナス` (`prod_UNxntCvcqendyQ`)。2026-05-30にSTG parity用Price v2 `medical_ai_monthly_jpy_v2` (`price_1Tcd88ADFhjr3GQSkOQfgEpB`)、月額22,000円を追加した。
+- 旧Core STGの `medical-core-stg` Secret `STRIPE_SECRET_KEY` は誤接続アカウント `acct_1TPAYbA2mWuSL3Xa` のrestricted test keyを参照していたため、正アカウント `acct_1TPAYOADFhjr3GQS` のtest keyへ差し替え済み。
+- 正アカウントのCore STG webhookは `we_1Tcd8EADFhjr3GQSH2U7lcxM`。URLは `https://stg.halunasu.com/api/platform/v1/stripe/webhook`。
+- 正アカウントの旧test webhook `we_1TRM5WADFhjr3GQS96BvzjJM` と、誤接続アカウント側のCore STG webhook `we_1TcbBPA2mWuSL3XaHhp431E3` はdisabledへ変更済み。
 - 旧GCPログ上、旧PROD/STG `medical-billing` は2026-05-06時点で `STRIPE_PRICE_LOOKUP_KEY=medical_ai_monthly_jpy_v2` を参照していた。
 - Core PROD `medical-core-497610` にはまだ `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` がない。旧PROD `medical-492407` は `DELETE_REQUESTED` で、旧Secret値は現状取得できない。
-- 現在の通常Stripe CLIプロファイル `ReportAI` のlive/test一覧には `medical-ai` が出ないため、PROD live確認には旧医療用Stripeアカウントのlive restricted key、またはそのDashboard上での確認が必要。
+- 正アカウントの現在のlive restricted keyはProduct/Priceのreadはできるが、Webhook Endpoint作成権限がない。PROD完了にはDashboardで恒久的なlive restricted keyとCore live webhook secretの発行が必要。
 
 ### MFA / Google Authenticator
 
@@ -122,15 +124,18 @@ Status: runtime deployed / master data pending
 
 ### L1 LP signup and Stripe
 
-Status: STG checkout and webhook verified / PROD live key pending
+Status: STG complete on canonical Stripe account / PROD restricted key pending
 
 1. `signup.html` はPlatform signup APIへ申込を送る。Done.
 2. メール確認相当のtoken flowで病院/管理者を作る。Done.
 3. 初回パスワード設定後にCheckout開始を要求する。Done.
 4. Stripe設定済み環境ではCheckout URLへ遷移する。Implemented and deployed.
 5. Stripe未設定環境では登録を止めず、管理画面で支払いを続行する。Implemented and deployed.
-6. STG/PRODのStripe test/live Price lookup keyと `STRIPE_SECRET_KEY` secretを設定する。STG Done / PROD live key invalid.
-7. Stripe Checkout completed webhookをCore Billingに反映する。STG Done / PROD live key invalid.
+6. STGのStripe test Price lookup keyと `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` secretを正アカウントへ設定する。Done.
+7. STGで `LP -> signup -> password setup -> Checkout URL -> signed webhook -> billing/access/entitlement active -> Portal URL` を確認する。Done.
+8. PRODのStripe live `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` を正アカウントで発行し、`medical-core-497610` に保存する。Pending.
+9. PROD Core live webhook `https://halunasu.com/api/platform/v1/stripe/webhook` を作成する。Pending: current live key lacks Webhook Endpoint write.
+10. PROD Platform APIを再deployし、Checkout URL/Portal URL生成とWebhook署名検証を確認する。Pending.
 
 ### L2 MFA
 
@@ -155,8 +160,10 @@ npm run test:migration-parity
 ## 2026-05-30反映結果
 
 - Platform API STG/PROD: signup billing API、MFA QR Data URLをdeploy済み。`/readyz` 200確認済み。
-- Platform API STG: Stripe test keyとCore webhook endpoint `we_1TcbBPA2mWuSL3XaHhp431E3` を設定済み。申込からStripe Checkout URL発行、署名済みwebhookによるCore billing/access/entitlement更新まで確認済み。
-- Stripe test mode: 旧 `medical-billing` webhook endpoint `we_1TRVE5A2mWuSL3XaP3cFPrm7` はdisabledへ変更済み。
+- Platform API STG: 正Stripeアカウント `medical-ai` (`acct_1TPAYOADFhjr3GQS`) のtest keyへ差し替え、Core webhook endpoint `we_1Tcd8EADFhjr3GQSH2U7lcxM` を設定済み。
+- Platform API STG: 申込からStripe Checkout URL発行、署名済みwebhookによるCore billing/access/entitlement更新、Customer Portal URL生成まで確認済み。Checkout session `cs_test_a1PTqQ6FrmmkZAlkhR7H46yuEBRthrJi3RUFFlXTgnW8z9z1mL3eZXrDi6` はPrice `price_1Tcd88ADFhjr3GQSkOQfgEpB` を使用。
+- Stripe test mode: 正アカウントの旧 `medical-billing` webhook endpoint `we_1TRM5WADFhjr3GQS96BvzjJM` と、誤接続アカウント側のCore STG webhook `we_1TcbBPA2mWuSL3XaHhp431E3` はdisabledへ変更済み。
+- Stripe live mode: 正アカウントに既存Product `prod_UOMtOPqM6ZMlSI` / Price `price_1TTss7ADFhjr3GQSZkTEOBcF` は存在する。Core live webhook作成は現live keyの権限不足で未完了。旧live webhook `we_1TPXYiADFhjr3GQSR83I19Fq` はまだ旧 `medical-billing-...run.app` を向いているため、Core PROD webhook確認後にdisabledにする。
 - Platform API local: Stripe webhook署名検証、receipt冪等化、Core billing/access/entitlement反映を実装し、unit test通過。
 - LP STG/PROD: 初回パスワード設定後にCheckout開始を要求するHTMLをNetlify production deploy済み。
 - Core Admin STG/PROD: MFA QR発行/確認UIをNetlify production deploy済み。
@@ -179,7 +186,14 @@ gcloud secrets create STRIPE_WEBHOOK_SECRET --project medical-core-497610 --repl
 gcloud secrets versions add STRIPE_WEBHOOK_SECRET --project medical-core-497610 --data-file /path/to/prod-stripe-webhook-secret.txt
 ```
 
-2026-05-30時点ではSTGは設定済み。PRODはStripe CLIのlive keyが401で無効なため、有効なlive secret keyとlive webhook secretの準備後に実行する。
+2026-05-30時点ではSTGは正Stripeアカウントで設定済み。PRODは以下をStripe Dashboardで先に準備する。
+
+- live restricted key: runtime用にProducts/Prices read、Customers read/write、Checkout Sessions read/write、Billing Portal Sessions writeを許可する。setup時に同じkeyでWebhook Endpointを作成する場合はWebhook Endpoints writeも一時的に許可する。
+- live webhook endpoint: `https://halunasu.com/api/platform/v1/stripe/webhook`
+- live webhook events: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_succeeded`, `invoice.payment_failed`
+- live webhook signing secret: `medical-core-497610` の `STRIPE_WEBHOOK_SECRET` に保存する。
+
+Stripe CLI loginで得られるlive keyは2026-08-28に失効するため、PROD Cloud Runの永続Secretには使わない。
 
 低費用設定のままPlatform APIだけ再deployする。
 

@@ -59,14 +59,15 @@ Steps:
 2. contact signup, verify, password setupをLP/Core signupと統合する。Done.
 3. LP初回パスワード設定後にStripe Checkoutへ進める。Done.
 4. Platform APIにbilling status / checkout-session / portal-sessionを追加。Done.
-5. Stripe Checkout/Portal/WebhookをCore entitlementへ接続する。STG Done / PROD live key invalid.
+5. Stripe Checkout/Portal/WebhookをCore entitlementへ接続する。STG Done on canonical Stripe account / PROD restricted key pending.
 6. 旧billing testsをCore Platform側へ移植する。Partial.
 7. Stripe調査結果:
-   - Core STGの `STRIPE_SECRET_KEY` は通常のStripe CLIプロファイル `ReportAI` とは別のStripeアカウントのrestricted test key。
-   - Core STGで確認した既存Productは `medical-ai` (`prod_UOKXlLjPn1DT6g`)。2026-04-24作成。
-   - Core STGで利用中のPriceは lookup key `medical_ai_monthly_jpy_v2` (`price_1TTss7A2mWuSL3XaT5CbcnOS`)、月額22,000円、2026-05-06作成。
-   - 旧GCPログ上、旧PROD/STG `medical-billing` も2026-05-06時点で `medical_ai_monthly_jpy_v2` を参照。
-   - Core PRODにはまだStripe secretがない。旧PROD projectは `DELETE_REQUESTED` のため旧Secret値は取得できない。PROD live確認には旧医療用Stripeアカウントのlive restricted key、またはDashboard上での確認が必要。
+   - 正Stripeアカウントは `medical-ai` (`acct_1TPAYOADFhjr3GQS`)。
+   - 正アカウントのPROD/live Productは `ハルナス` (`prod_UOMtOPqM6ZMlSI`)。Price v2は `medical_ai_monthly_jpy_v2` (`price_1TTss7ADFhjr3GQSZkTEOBcF`)、月額22,000円。
+   - 正アカウントのSTG/test Productは `ハルナス` (`prod_UNxntCvcqendyQ`)。STG parity用Price v2 `medical_ai_monthly_jpy_v2` (`price_1Tcd88ADFhjr3GQSkOQfgEpB`) を2026-05-30に追加。
+   - 旧Core STGは誤接続アカウント `acct_1TPAYbA2mWuSL3Xa` を参照していたため、`medical-core-stg` の `STRIPE_SECRET_KEY` を正アカウントtest keyへ差し替え済み。
+   - 正アカウントのCore STG webhook `we_1Tcd8EADFhjr3GQSH2U7lcxM` はenabled。正アカウント旧test webhook `we_1TRM5WADFhjr3GQS96BvzjJM` と誤接続アカウントのCore STG webhook `we_1TcbBPA2mWuSL3XaHhp431E3` はdisabled。
+   - Core PRODにはまだStripe secretがない。正アカウントlive keyはProduct/Price read可能だがWebhook Endpoint write権限がないため、Dashboardで恒久的なlive restricted keyとCore live webhook secretを発行する必要がある。
 
 ## P4: Connect Fee Web/API to Real Engine
 
