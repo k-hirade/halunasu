@@ -53,8 +53,9 @@ flowchart LR
 - 正アカウントのCore STG webhookは `we_1Tcd8EADFhjr3GQSH2U7lcxM`。URLは `https://stg.halunasu.com/api/platform/v1/stripe/webhook`。
 - 正アカウントの旧test webhook `we_1TRM5WADFhjr3GQS96BvzjJM` と、誤接続アカウント側のCore STG webhook `we_1TcbBPA2mWuSL3XaHhp431E3` はdisabledへ変更済み。
 - 旧GCPログ上、旧PROD/STG `medical-billing` は2026-05-06時点で `STRIPE_PRICE_LOOKUP_KEY=medical_ai_monthly_jpy_v2` を参照していた。
-- Core PROD `medical-core-497610` にはまだ `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` がない。旧PROD `medical-492407` は `DELETE_REQUESTED` で、旧Secret値は現状取得できない。
-- 正アカウントの現在のlive restricted keyはProduct/Priceのreadはできるが、Webhook Endpoint作成権限がない。PROD完了にはDashboardで恒久的なlive restricted keyとCore live webhook secretの発行が必要。
+- Core PROD `medical-core-497610` には正アカウントのlive restricted keyとCore live webhook secretを設定済み。
+- 正アカウントのCore PROD webhookは `we_1TcdVxADFhjr3GQSUv5L4qLt`。URLは `https://halunasu.com/api/platform/v1/stripe/webhook`。
+- 正アカウントの旧live webhook `we_1TPXYiADFhjr3GQSR83I19Fq` はdisabledへ変更済み。
 
 ### MFA / Google Authenticator
 
@@ -124,7 +125,7 @@ Status: runtime deployed / master data pending
 
 ### L1 LP signup and Stripe
 
-Status: STG complete on canonical Stripe account / PROD restricted key pending
+Status: STG/PROD complete on canonical Stripe account
 
 1. `signup.html` はPlatform signup APIへ申込を送る。Done.
 2. メール確認相当のtoken flowで病院/管理者を作る。Done.
@@ -133,9 +134,9 @@ Status: STG complete on canonical Stripe account / PROD restricted key pending
 5. Stripe未設定環境では登録を止めず、管理画面で支払いを続行する。Implemented and deployed.
 6. STGのStripe test Price lookup keyと `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` secretを正アカウントへ設定する。Done.
 7. STGで `LP -> signup -> password setup -> Checkout URL -> signed webhook -> billing/access/entitlement active -> Portal URL` を確認する。Done.
-8. PRODのStripe live `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` を正アカウントで発行し、`medical-core-497610` に保存する。Pending.
-9. PROD Core live webhook `https://halunasu.com/api/platform/v1/stripe/webhook` を作成する。Pending: current live key lacks Webhook Endpoint write.
-10. PROD Platform APIを再deployし、Checkout URL/Portal URL生成とWebhook署名検証を確認する。Pending.
+8. PRODのStripe live `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` を正アカウントで発行し、`medical-core-497610` に保存する。Done.
+9. PROD Core live webhook `https://halunasu.com/api/platform/v1/stripe/webhook` を作成する。Done.
+10. PROD Platform APIを再deployし、Checkout URL/Portal URL生成とWebhook署名検証を確認する。Done.
 
 ### L2 MFA
 
@@ -163,7 +164,9 @@ npm run test:migration-parity
 - Platform API STG: 正Stripeアカウント `medical-ai` (`acct_1TPAYOADFhjr3GQS`) のtest keyへ差し替え、Core webhook endpoint `we_1Tcd8EADFhjr3GQSH2U7lcxM` を設定済み。
 - Platform API STG: 申込からStripe Checkout URL発行、署名済みwebhookによるCore billing/access/entitlement更新、Customer Portal URL生成まで確認済み。Checkout session `cs_test_a1PTqQ6FrmmkZAlkhR7H46yuEBRthrJi3RUFFlXTgnW8z9z1mL3eZXrDi6` はPrice `price_1Tcd88ADFhjr3GQSkOQfgEpB` を使用。
 - Stripe test mode: 正アカウントの旧 `medical-billing` webhook endpoint `we_1TRM5WADFhjr3GQS96BvzjJM` と、誤接続アカウント側のCore STG webhook `we_1TcbBPA2mWuSL3XaHhp431E3` はdisabledへ変更済み。
-- Stripe live mode: 正アカウントに既存Product `prod_UOMtOPqM6ZMlSI` / Price `price_1TTss7ADFhjr3GQSZkTEOBcF` は存在する。Core live webhook作成は現live keyの権限不足で未完了。旧live webhook `we_1TPXYiADFhjr3GQSR83I19Fq` はまだ旧 `medical-billing-...run.app` を向いているため、Core PROD webhook確認後にdisabledにする。
+- Platform API PROD: 正Stripeアカウント `medical-ai` (`acct_1TPAYOADFhjr3GQS`) のlive keyとCore live webhook endpoint `we_1TcdVxADFhjr3GQSUv5L4qLt` を設定済み。
+- Platform API PROD: 申込からStripe Checkout URL発行、署名済みwebhookによるCore billing/access/entitlement更新、Customer Portal URL生成まで確認済み。Checkout session `cs_live_a1Z1FHojYlLyotIluQKeGhwBbVQjnXyNhLTden1qAm6jA16TO51Ga6noui` はPrice `price_1TTss7ADFhjr3GQSZkTEOBcF` を使用し、未払いのまま `expired` に変更済み。
+- Stripe live mode: 旧 `medical-billing` webhook endpoint `we_1TPXYiADFhjr3GQSR83I19Fq` はdisabledへ変更済み。
 - Platform API local: Stripe webhook署名検証、receipt冪等化、Core billing/access/entitlement反映を実装し、unit test通過。
 - LP STG/PROD: 初回パスワード設定後にCheckout開始を要求するHTMLをNetlify production deploy済み。
 - Core Admin STG/PROD: MFA QR発行/確認UIをNetlify production deploy済み。
@@ -186,7 +189,7 @@ gcloud secrets create STRIPE_WEBHOOK_SECRET --project medical-core-497610 --repl
 gcloud secrets versions add STRIPE_WEBHOOK_SECRET --project medical-core-497610 --data-file /path/to/prod-stripe-webhook-secret.txt
 ```
 
-2026-05-30時点ではSTGは正Stripeアカウントで設定済み。PRODは以下をStripe Dashboardで先に準備する。
+2026-05-30時点ではSTG/PRODとも正Stripeアカウントで設定済み。今後Stripe secretを再発行する場合は以下を準備する。
 
 - live restricted key: runtime用にProducts/Prices read、Customers read/write、Checkout Sessions read/write、Billing Portal Sessions writeを許可する。setup時に同じkeyでWebhook Endpointを作成する場合はWebhook Endpoints writeも一時的に許可する。
 - live webhook endpoint: `https://halunasu.com/api/platform/v1/stripe/webhook`

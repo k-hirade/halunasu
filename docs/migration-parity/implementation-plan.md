@@ -51,7 +51,7 @@ Steps:
 
 ## P3: Restore Billing / Signup Flow
 
-Status: STG checkout and webhook verified / PROD live key pending
+Status: STG/PROD checkout, webhook, and portal verified
 
 Steps:
 
@@ -59,7 +59,7 @@ Steps:
 2. contact signup, verify, password setupをLP/Core signupと統合する。Done.
 3. LP初回パスワード設定後にStripe Checkoutへ進める。Done.
 4. Platform APIにbilling status / checkout-session / portal-sessionを追加。Done.
-5. Stripe Checkout/Portal/WebhookをCore entitlementへ接続する。STG Done on canonical Stripe account / PROD restricted key pending.
+5. Stripe Checkout/Portal/WebhookをCore entitlementへ接続する。STG/PROD Done on canonical Stripe account.
 6. 旧billing testsをCore Platform側へ移植する。Partial.
 7. Stripe調査結果:
    - 正Stripeアカウントは `medical-ai` (`acct_1TPAYOADFhjr3GQS`)。
@@ -67,7 +67,7 @@ Steps:
    - 正アカウントのSTG/test Productは `ハルナス` (`prod_UNxntCvcqendyQ`)。STG parity用Price v2 `medical_ai_monthly_jpy_v2` (`price_1Tcd88ADFhjr3GQSkOQfgEpB`) を2026-05-30に追加。
    - 旧Core STGは誤接続アカウント `acct_1TPAYbA2mWuSL3Xa` を参照していたため、`medical-core-stg` の `STRIPE_SECRET_KEY` を正アカウントtest keyへ差し替え済み。
    - 正アカウントのCore STG webhook `we_1Tcd8EADFhjr3GQSH2U7lcxM` はenabled。正アカウント旧test webhook `we_1TRM5WADFhjr3GQS96BvzjJM` と誤接続アカウントのCore STG webhook `we_1TcbBPA2mWuSL3XaHhp431E3` はdisabled。
-   - Core PRODにはまだStripe secretがない。正アカウントlive keyはProduct/Price read可能だがWebhook Endpoint write権限がないため、Dashboardで恒久的なlive restricted keyとCore live webhook secretを発行する必要がある。
+   - Core PRODには正アカウントのlive restricted keyとCore live webhook secretを設定済み。Core live webhook `we_1TcdVxADFhjr3GQSUv5L4qLt` はenabled。旧live webhook `we_1TPXYiADFhjr3GQSR83I19Fq` はdisabled。
 
 ## P4: Connect Fee Web/API to Real Engine
 
@@ -99,7 +99,7 @@ Steps:
 3. `signup.html` をCore signup/contact signup flowに接続。Done.
 4. 初回パスワード設定後にStripe Checkoutへ進める。Done and deployed.
 5. LP link/form validationを追加。Done.
-6. `halunasu.com` / `www.halunasu.com` で確認。PROD root 200 Done / signup + Stripe end-to-end Pending.
+6. `halunasu.com` / `www.halunasu.com` で確認。PROD root 200 Done / signup + Stripe Checkout/Webhook/Portal verified.
 
 ## P6: Referral Production Foundation
 
