@@ -32,6 +32,7 @@ def calculate_fee_session(payload: dict[str, Any]) -> dict[str, Any]:
         conn.close()
 
     result_dict = result.to_dict()
+    line_items = _fee_line_items(result_dict["lines"])
     return {
         "calculationResult": {
             "provider": "medical_fee_calculation",
@@ -39,11 +40,12 @@ def calculate_fee_session(payload: dict[str, Any]) -> dict[str, Any]:
             "status": "failed" if result.status == "error" else "completed",
             "engineStatus": result.status,
             "totalPoints": result_dict["total_points"] or 0,
-            "lineItems": _fee_line_items(result_dict["lines"]),
+            "lineItems": line_items,
             "warnings": _warning_messages(result_dict),
             "messages": result_dict["messages"],
             "inputCodes": result_dict["input_codes"],
             "candidateCodes": result_dict["candidate_codes"],
+            "coverage": _calculation_coverage(result_dict, line_items),
             "rawResult": result_dict,
         },
         "claimPayload": claim_payload,
@@ -135,6 +137,7 @@ def build_claim_payload(session: dict[str, Any], calculation_input: dict[str, An
 def _fee_line_items(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for index, line in enumerate(lines):
+        coverage = _line_coverage(line)
         result.append(
             {
                 "lineId": f"line_{index + 1}",
@@ -147,9 +150,106 @@ def _fee_line_items(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "status": line.get("status") or "candidate",
                 "reason": line.get("reason"),
                 "source": line.get("source") or "medical_fee_calculation",
+                "coverage": coverage,
+                "supportLevel": coverage["supportLevel"],
+                "reviewRequired": coverage["reviewRequired"],
             }
         )
     return result
+
+
+def _calculation_coverage(result: dict[str, Any], line_items: list[dict[str, Any]]) -> dict[str, Any]:
+    review_line_count = sum(1 for line in line_items if line.get("reviewRequired"))
+    review_message_count = sum(
+        1
+        for message in result.get("messages") or []
+        if str(message.get("status") or "") in {"warning", "blocked", "needs_review"}
+    )
+    review_required = review_line_count > 0 or review_message_count > 0 or result.get("status") != "ok"
+    return {
+        "scope": "candidate_review_support",
+        "chapter": "multi",
+        "supportLevel": "partial",
+        "support_level": "partial",
+        "reviewRequired": review_required,
+        "review_required": review_required,
+        "lineCount": len(line_items),
+        "reviewLineCount": review_line_count,
+        "reviewMessageCount": review_message_count,
+        "description": (
+            "This result is a billing candidate and review-support draft. "
+            "It is not a finalized claim calculation."
+        ),
+    }
+
+
+def _line_coverage(line: dict[str, Any]) -> dict[str, Any]:
+    raw = line.get("coverage") if isinstance(line.get("coverage"), dict) else {}
+    status = str(line.get("status") or "candidate")
+    source = str(line.get("source") or "medical_fee_calculation")
+    support_level = str(
+        raw.get("supportLevel")
+        or raw.get("support_level")
+        or _default_line_support_level(status, source)
+    )
+    review_required = _raw_bool(
+        raw.get("reviewRequired", raw.get("review_required")),
+        default=status in {"candidate", "needs_review", "warning", "blocked"} or source == "medical_procedure_master",
+    )
+    return {
+        "scope": str(raw.get("scope") or _default_line_coverage_scope(status, source)),
+        "chapter": str(raw.get("chapter") or _default_line_coverage_chapter(source)),
+        "supportLevel": support_level,
+        "support_level": support_level,
+        "reviewRequired": review_required,
+        "review_required": review_required,
+    }
+
+
+def _default_line_support_level(status: str, source: str) -> str:
+    if source == "medical_procedure_master":
+        return "review_required"
+    if status == "confirmed":
+        return "supported"
+    if status == "candidate":
+        return "candidate"
+    return "review_required"
+
+
+def _default_line_coverage_scope(status: str, source: str) -> str:
+    if source == "medical_procedure_master":
+        return "master_lookup_only"
+    if status == "confirmed":
+        return "deterministic_rule"
+    if status == "candidate":
+        return "candidate_rule"
+    return "review_required"
+
+
+def _default_line_coverage_chapter(source: str) -> str:
+    return {
+        "outpatient_basic_fee": "A_basic_fee",
+        "inpatient_basic_fee": "A_inpatient_fee",
+        "drug_master": "F_drug",
+        "medication_fee": "F_drug",
+        "injection_fee": "G_injection",
+        "treatment_fee": "J_treatment",
+        "imaging_fee": "E_imaging",
+        "specific_material_master": "specific_material",
+        "medical_procedure_master": "procedure_code_master",
+    }.get(source, "unknown")
+
+
+def _raw_bool(value: Any, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes"}:
+            return True
+        if normalized in {"false", "0", "no"}:
+            return False
+    return default
 
 
 def _warning_messages(result: dict[str, Any]) -> list[str]:

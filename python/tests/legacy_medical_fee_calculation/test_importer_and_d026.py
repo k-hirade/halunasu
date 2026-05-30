@@ -2325,8 +2325,8 @@ class ImporterAndD026Test(unittest.TestCase):
         self.assertEqual(
             [line.status for line in standardized.lines],
             [
-                ClaimItemStatus.CONFIRMED,
-                ClaimItemStatus.CONFIRMED,
+                ClaimItemStatus.NEEDS_REVIEW,
+                ClaimItemStatus.NEEDS_REVIEW,
                 ClaimItemStatus.CONFIRMED,
                 ClaimItemStatus.CONFIRMED,
                 ClaimItemStatus.CONFIRMED,
@@ -2367,7 +2367,7 @@ class ImporterAndD026Test(unittest.TestCase):
             ),
         )
         self.assertEqual(standardized.total_candidate_points, 827.0)
-        self.assertEqual(standardized.total_confirmed_points, 206.0)
+        self.assertEqual(standardized.total_confirmed_points, 173.0)
         self.assertEqual(standardized.total_points, 1033.0)
         self.assertEqual(standardized.messages, ())
 
@@ -4872,6 +4872,10 @@ class ImporterAndD026Test(unittest.TestCase):
         )
 
         self.assertEqual([line.code for line in result.lines], ["160000410"])
+        self.assertEqual(result.lines[0].status, ClaimItemStatus.NEEDS_REVIEW)
+        self.assertEqual(result.lines[0].coverage_scope, "master_lookup_only")
+        self.assertEqual(result.lines[0].support_level, "review_required")
+        self.assertTrue(result.lines[0].review_required)
         self.assertEqual(len(result.messages), 1)
         self.assertEqual(result.messages[0].status, ClaimItemStatus.NEEDS_REVIEW)
         self.assertEqual(result.messages[0].code, "999999999")

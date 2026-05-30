@@ -49,9 +49,16 @@ def resolve_medical_procedure_lines(
                 name=str(row["short_name"]),
                 points=float(row["points"]),
                 quantity=1,
-                status=ClaimItemStatus.CONFIRMED,
-                reason="Input medical procedure code",
+                status=ClaimItemStatus.NEEDS_REVIEW,
+                reason=(
+                    "Input medical procedure code matched master only; "
+                    "chapter-specific billing rules are not confirmed"
+                ),
                 source="medical_procedure_master",
+                coverage_scope="master_lookup_only",
+                coverage_chapter="procedure_code_master",
+                support_level="review_required",
+                review_required=True,
             )
         )
 

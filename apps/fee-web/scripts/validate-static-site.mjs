@@ -22,6 +22,11 @@ assert(html.includes("/v1/fee/sessions"), "fee web must create fee sessions thro
 assert(html.includes("/calculate"), "fee web must run the fee calculation endpoint");
 assert(html.includes("receipt-draft"), "fee web must show Core receipt drafts");
 assert(html.includes("review-items"), "fee web must show and decide review items");
+assert(html.includes("算定候補・レビュー支援"), "fee web must clearly label candidate/review-support mode");
+assert(html.includes("確定請求ではありません"), "fee web must not present output as finalized claims");
+assert(html.includes("supportLevel"), "fee web must render support level metadata");
+assert(html.includes("reviewRequired"), "fee web must render reviewRequired metadata");
+assert(html.includes("coverageLabel"), "fee web must render coverage metadata");
 assert(html.includes("patientId"), "fee web must expose patientId selection");
 assert(html.includes("facilityId"), "fee web must expose facilityId");
 assert(html.includes("departmentId"), "fee web must expose departmentId");

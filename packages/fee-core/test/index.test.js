@@ -101,7 +101,10 @@ test("normalizes external calculation results", () => {
   assert.equal(calculation.facility.medicalInstitutionCode, "1312345");
   assert.equal(Object.hasOwn(calculation.lineItems[0], "orderId"), false);
   assert.equal(Object.hasOwn(calculation, "rawResult"), false);
-  assert.equal(updated.status, "calculated");
+  assert.equal(calculation.lineItems[0].supportLevel, "review_required");
+  assert.equal(calculation.lineItems[0].reviewRequired, true);
+  assert.equal(calculation.coverage.reviewRequired, true);
+  assert.equal(updated.status, "needs_review");
   assert.equal(updated.latestCalculationId, "calc_001");
 });
 
@@ -161,6 +164,7 @@ test("builds receipt drafts and resolves review items", () => {
 
   assert.equal(receiptDraft.totalPoints, 88);
   assert.equal(receiptDraft.lineGroups.length, 1);
+  assert.equal(receiptDraft.lines[0].supportLevel, "review_required");
   assert.ok(reviewItems.length >= 1);
   assert.equal(decided.reviewDecisions[reviewItems[0].reviewItemId].status, "approved");
 });

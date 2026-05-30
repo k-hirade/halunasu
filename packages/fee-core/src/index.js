@@ -60,6 +60,7 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
     ?? lineItems.reduce((sum, line) => sum + line.totalPoints, 0)
   );
   const warnings = normalizeWarnings(calculation.warnings || calculation.messages || []);
+  const coverage = normalizeCalculationCoverage(calculation.coverage, lineItems, warnings);
 
   return compactObject({
     calculationId: options.calculationId || createId("calc"),
@@ -83,6 +84,7 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
     totalPoints,
     lineItems,
     warnings,
+    coverage,
     messages: Array.isArray(calculation.messages) ? calculation.messages : [],
     evidence: normalizeEvidence(calculation.evidence || []),
     inputCodes: Array.isArray(calculation.inputCodes) ? calculation.inputCodes : calculation.input_codes || [],
@@ -107,7 +109,10 @@ export function buildReceiptDraft(session = {}, options = {}) {
     quantity: Number(line.quantity || 1),
     totalPoints: Number(line.totalPoints || 0),
     status: line.status || "candidate",
-    source: line.source || calculation.source || "fee-core"
+    source: line.source || calculation.source || "fee-core",
+    coverage: line.coverage,
+    supportLevel: line.supportLevel,
+    reviewRequired: line.reviewRequired
   }));
 
   return {
@@ -150,13 +155,16 @@ export function buildReviewItems(session = {}) {
     decision: decisions[`warning_${index + 1}`]
   }));
   const lineReviewItems = lineItems
-    .filter((line) => ["candidate", "needs_review"].includes(line.status || "candidate"))
+    .filter((line) => {
+      const status = line.status || "candidate";
+      return ["candidate", "needs_review"].includes(status) || line.reviewRequired === true;
+    })
     .map((line) => reviewItem({
       reviewItemId: `line_${line.lineId || line.code || line.name}`,
       sourceType: "line_item",
       severity: "review",
       title: line.name || line.code || "算定候補",
-      reason: "算定候補を確認してください。",
+      reason: line.reason || "算定候補を確認してください。",
       lineItem: line,
       decision: decisions[`line_${line.lineId || line.code || line.name}`]
     }));
@@ -202,7 +210,11 @@ export function createId(prefix) {
 
 function calculationNeedsReview(calculation) {
   return (calculation.warnings || []).length > 0
-    || (calculation.lineItems || []).some((line) => ["candidate", "needs_review"].includes(line.status || "candidate"));
+    || calculation.coverage?.reviewRequired === true
+    || (calculation.lineItems || []).some((line) => {
+      const status = line.status || "candidate";
+      return ["candidate", "needs_review"].includes(status) || line.reviewRequired === true;
+    });
 }
 
 function normalizeLineItems(items) {
@@ -214,6 +226,14 @@ function normalizeLineItems(items) {
     const points = Number(item.points || 0);
     const quantity = Number(item.quantity || 1);
     const totalPoints = Number(item.totalPoints ?? item.total_points ?? points * quantity);
+    const status = item.status || "candidate";
+    const source = item.source || "medical_fee_calculation";
+    const coverage = normalizeLineCoverage(item.coverage, { ...item, status, source });
+    const supportLevel = item.supportLevel || item.support_level || coverage.supportLevel;
+    const reviewRequired = coerceBoolean(
+      item.reviewRequired ?? item.review_required ?? coverage.reviewRequired,
+      ["candidate", "needs_review"].includes(status) || supportLevel === "review_required"
+    );
     return compactObject({
       lineId: item.lineId || item.line_id || `line_${index + 1}`,
       code: item.code || null,
@@ -223,11 +243,119 @@ function normalizeLineItems(items) {
       points,
       quantity,
       totalPoints,
-      status: item.status || "candidate",
+      status,
       reason: item.reason || null,
-      source: item.source || "medical_fee_calculation"
+      source,
+      coverage: {
+        ...coverage,
+        supportLevel,
+        support_level: supportLevel,
+        reviewRequired,
+        review_required: reviewRequired
+      },
+      supportLevel,
+      reviewRequired
     });
   });
+}
+
+function normalizeCalculationCoverage(coverage, lineItems, warnings) {
+  const input = isPlainObject(coverage) ? coverage : {};
+  const reviewLineCount = lineItems.filter((line) => line.reviewRequired === true).length;
+  const reviewRequired = coerceBoolean(
+    input.reviewRequired ?? input.review_required,
+    warnings.length > 0 || reviewLineCount > 0
+  );
+  const supportLevel = input.supportLevel || input.support_level || "partial";
+
+  return {
+    scope: input.scope || "candidate_review_support",
+    chapter: input.chapter || "multi",
+    supportLevel,
+    support_level: supportLevel,
+    reviewRequired,
+    review_required: reviewRequired,
+    lineCount: Number(input.lineCount ?? input.line_count ?? lineItems.length),
+    reviewLineCount: Number(input.reviewLineCount ?? input.review_line_count ?? reviewLineCount),
+    reviewMessageCount: Number(input.reviewMessageCount ?? input.review_message_count ?? warnings.length),
+    description: input.description || "This result is a billing candidate and review-support draft. It is not a finalized claim calculation."
+  };
+}
+
+function normalizeLineCoverage(coverage, item) {
+  const input = isPlainObject(coverage) ? coverage : {};
+  const source = String(item.source || "medical_fee_calculation");
+  const status = String(item.status || "candidate");
+  const supportLevel = input.supportLevel || input.support_level || defaultLineSupportLevel(status, source);
+  const reviewRequired = coerceBoolean(
+    input.reviewRequired ?? input.review_required,
+    ["candidate", "needs_review"].includes(status) || supportLevel === "review_required"
+  );
+
+  return {
+    scope: input.scope || defaultLineCoverageScope(status, source),
+    chapter: input.chapter || defaultLineCoverageChapter(source),
+    supportLevel,
+    support_level: supportLevel,
+    reviewRequired,
+    review_required: reviewRequired
+  };
+}
+
+function defaultLineSupportLevel(status, source) {
+  if (source === "medical_procedure_master") {
+    return "review_required";
+  }
+  if (status === "confirmed") {
+    return "supported";
+  }
+  if (status === "candidate") {
+    return "candidate";
+  }
+  return "review_required";
+}
+
+function defaultLineCoverageScope(status, source) {
+  if (source === "medical_procedure_master") {
+    return "master_lookup_only";
+  }
+  if (status === "confirmed") {
+    return "deterministic_rule";
+  }
+  if (status === "candidate") {
+    return "candidate_rule";
+  }
+  return "review_required";
+}
+
+function defaultLineCoverageChapter(source) {
+  return {
+    outpatient_basic_fee: "A_basic_fee",
+    inpatient_basic_fee: "A_inpatient_fee",
+    drug_master: "F_drug",
+    medication_fee: "F_drug",
+    injection_fee: "G_injection",
+    treatment_fee: "J_treatment",
+    imaging_fee: "E_imaging",
+    specific_material_master: "specific_material",
+    medical_procedure_master: "procedure_code_master"
+  }[source] || "unknown";
+}
+
+function coerceBoolean(value, fallback) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "0", "no"].includes(normalized)) {
+      return false;
+    }
+  }
+  return fallback;
 }
 
 function normalizeWarnings(items) {

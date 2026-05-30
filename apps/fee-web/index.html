@@ -19,6 +19,8 @@
       --danger: #b42318;
       --success: #087443;
       --focus: rgba(15, 143, 127, 0.14);
+      --soft-accent: #e8f5f2;
+      --soft-warn: #fff7ed;
     }
 
     * { box-sizing: border-box; }
@@ -77,6 +79,13 @@
       font-weight: 900;
     }
 
+    .topbar-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
     .session-chip {
       color: var(--muted);
       font-size: 13px;
@@ -111,6 +120,27 @@
     .panel h2,
     .panel h3 { font-size: 17px; }
 
+    .panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .panel-head h1,
+    .panel-head h2,
+    .panel-head h3 {
+      margin: 0;
+    }
+
+    .panel-copy {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
     .stack {
       display: grid;
       gap: 14px;
@@ -144,6 +174,19 @@
       color: var(--ink);
       background: #fff;
       outline: none;
+    }
+
+    select {
+      appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, #52637a 50%),
+        linear-gradient(135deg, #52637a 50%, transparent 50%);
+      background-position:
+        calc(100% - 18px) 50%,
+        calc(100% - 12px) 50%;
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      padding-right: 34px;
     }
 
     textarea {
@@ -219,6 +262,69 @@
     .message.error { color: var(--danger); background: #fff1f0; border: 1px solid #ffd2cf; }
     .message.success { color: var(--success); background: #ecfdf3; border: 1px solid #abefc6; }
 
+    .notice-card {
+      border: 1px solid #c9eadf;
+      border-radius: 8px;
+      background: var(--soft-accent);
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .notice-card strong {
+      font-size: 14px;
+    }
+
+    .notice-card p {
+      margin: 0;
+      color: #34574d;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+      padding: 12px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .metric strong {
+      font-size: 20px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 26px;
+      border-radius: 999px;
+      padding: 4px 10px;
+      background: #edf3f8;
+      color: #26364f;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .badge.review { color: #8a3b12; background: var(--soft-warn); border: 1px solid #fed7aa; }
+    .badge.supported { color: var(--success); background: #ecfdf3; border: 1px solid #abefc6; }
+    .badge.partial { color: #175cd3; background: #eff8ff; border: 1px solid #b2ddff; }
+
     .sessions {
       display: grid;
       gap: 10px;
@@ -251,7 +357,6 @@
     }
 
     .result {
-      white-space: pre-wrap;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #f8fbff;
@@ -259,6 +364,54 @@
       min-height: 200px;
       line-height: 1.7;
       overflow: auto;
+    }
+
+    .result-empty {
+      color: var(--muted);
+      display: grid;
+      place-items: center;
+      text-align: center;
+    }
+
+    .result-summary {
+      display: grid;
+      gap: 14px;
+    }
+
+    .line-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .line-table th,
+    .line-table td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .line-table th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      background: #f1f5f9;
+    }
+
+    .line-table td:last-child,
+    .line-table th:last-child {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .line-name {
+      display: grid;
+      gap: 3px;
+    }
+
+    .line-name small {
+      color: var(--muted);
     }
 
     .review-list,
@@ -305,6 +458,10 @@
       }
       .grid-2,
       .grid-3 { grid-template-columns: 1fr; }
+      .metric-row { grid-template-columns: 1fr; }
+      .line-table {
+        min-width: 680px;
+      }
     }
   </style>
   <link rel="stylesheet" href="auth.css" />
@@ -436,13 +593,31 @@
         <div class="brand-mark">H</div>
         <div>ハルナス 診療報酬算定</div>
       </div>
-      <div id="session-chip" class="session-chip">未ログイン</div>
+      <div class="topbar-meta">
+        <span class="badge partial">算定候補・レビュー支援</span>
+        <div id="session-chip" class="session-chip">未ログイン</div>
+      </div>
     </header>
 
     <main class="main">
       <aside class="stack">
         <section class="panel">
-          <h2>患者</h2>
+          <div class="notice-card">
+            <strong>本画面は確定請求ではありません</strong>
+            <p>
+              公式マスターと入力情報から算定候補を作成し、レビューが必要な理由を表示します。
+              請求確定前に算定根拠、施設基準、コメント、月内履歴を確認してください。
+            </p>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>患者</h2>
+              <p class="panel-copy">共通プラットフォームの患者を選択または新規作成します。</p>
+            </div>
+          </div>
           <form id="patient-form" class="stack">
             <div class="field">
               <label for="patient-name">氏名</label>
@@ -472,7 +647,12 @@
         </section>
 
         <section class="panel">
-          <h2>算定セッション</h2>
+          <div class="panel-head">
+            <div>
+              <h2>算定セッション</h2>
+              <p class="panel-copy">患者、診療日、レビュー状態を確認できます。</p>
+            </div>
+          </div>
           <div id="session-list" class="sessions"></div>
         </section>
       </aside>
@@ -481,9 +661,19 @@
         <div id="message" class="message"></div>
 
         <section class="panel">
-          <h2>算定入力</h2>
+          <div class="panel-head">
+            <div>
+              <h2>算定候補作成</h2>
+              <p class="panel-copy">オーダーと診療情報から、レセプト下書きとレビュー項目を作成します。</p>
+            </div>
+            <span class="badge review">要レビュー前提</span>
+          </div>
           <form id="fee-session-form" class="stack">
             <div class="grid-3">
+              <div class="field">
+                <label for="patient-search">患者検索</label>
+                <input id="patient-search" name="patientSearch" placeholder="氏名、患者ID、aliasで検索" />
+              </div>
               <div class="field">
                 <label for="patientId">患者</label>
                 <select id="patientId" name="patientId" required></select>
@@ -531,8 +721,13 @@
         </section>
 
         <section class="panel">
-          <h2>結果</h2>
-          <pre id="result" class="result">未実行</pre>
+          <div class="panel-head">
+            <div>
+              <h2>算定候補</h2>
+              <p class="panel-copy">coverage と support level を確認してからレビューしてください。</p>
+            </div>
+          </div>
+          <div id="result" class="result result-empty">算定セッションを作成または選択してください。</div>
         </section>
 
         <section class="panel">
@@ -561,6 +756,7 @@
       departments: [],
       feeSessions: [],
       selectedFeeSessionId: "",
+      patientFilter: "",
       receiptDraft: null,
       reviewItems: []
     };
@@ -587,6 +783,7 @@
       patientForm: document.querySelector("#patient-form"),
       feeSessionForm: document.querySelector("#fee-session-form"),
       message: document.querySelector("#message"),
+      patientSearch: document.querySelector("#patient-search"),
       patientSelect: document.querySelector("#patientId"),
       facilitySelect: document.querySelector("#facilityId"),
       departmentSelect: document.querySelector("#departmentId"),
@@ -673,6 +870,11 @@
 
     setupPasswordToggle();
     setupMfaCodeInput();
+
+    els.patientSearch.addEventListener("input", () => {
+      state.patientFilter = els.patientSearch.value;
+      renderPatients();
+    });
 
     els.patientForm.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -807,7 +1009,15 @@
     }
 
     function renderPatients() {
-      renderOptions(els.patientSelect, state.patients, {
+      const filter = normalizeSearch(state.patientFilter);
+      const patients = filter
+        ? state.patients.filter((patient) => normalizeSearch([
+          patient.displayName,
+          patient.patientId,
+          ...(Array.isArray(patient.externalPatientIds) ? patient.externalPatientIds : [])
+        ].join(" ")).includes(filter))
+        : state.patients;
+      renderOptions(els.patientSelect, patients, {
         empty: "患者を選択",
         value: "patientId",
         label: (patient) => `${patient.displayName} (${patient.patientId})`
@@ -838,7 +1048,7 @@
         button.className = "session-item";
         button.innerHTML = `
           <strong>${escapeHtml(session.patientSnapshot?.displayName || session.patientId)}</strong>
-          <span>${escapeHtml(session.serviceDate)} / ${escapeHtml(session.status)} / ${escapeHtml(session.feeSessionId)}</span>
+          <span>${escapeHtml(session.serviceDate)} / ${escapeHtml(statusLabel(session.status))} / ${escapeHtml(session.feeSessionId)}</span>
         `;
         button.addEventListener("click", async () => {
           state.selectedFeeSessionId = session.feeSessionId;
@@ -864,9 +1074,10 @@
         wrapper.innerHTML = `
           <header>
             <span>${escapeHtml(item.title)}</span>
-            <span>${escapeHtml(item.status)}</span>
+            <span class="${badgeClass(item.status)}">${escapeHtml(statusLabel(item.status))}</span>
           </header>
           <p>${escapeHtml(item.reason || "")}</p>
+          ${item.lineItem ? `<p>${escapeHtml(coverageLabel(item.lineItem.coverage))}</p>` : ""}
           <div class="button-row">
             <button class="secondary" data-review-action="approved" type="button">承認</button>
             <button class="secondary" data-review-action="rejected" type="button">却下</button>
@@ -893,7 +1104,7 @@
       summary.className = "receipt-line";
       summary.innerHTML = `
         <header>
-          <span>${escapeHtml(state.receiptDraft.claimMonth)} / ${escapeHtml(state.receiptDraft.status)}</span>
+          <span>${escapeHtml(state.receiptDraft.claimMonth)} / ${escapeHtml(statusLabel(state.receiptDraft.status))}</span>
           <span>${Number(state.receiptDraft.totalPoints || 0).toLocaleString()} 点</span>
         </header>
         <p>${escapeHtml(state.receiptDraft.receiptDraftId)}</p>
@@ -908,7 +1119,7 @@
             <span>${escapeHtml(group.label)}</span>
             <span>${Number(group.totalPoints || 0).toLocaleString()} 点</span>
           </header>
-          <p>${escapeHtml((group.lines || []).map((line) => `${line.name} ${line.totalPoints}点`).join(" / "))}</p>
+          <p>${escapeHtml((group.lines || []).map((line) => `${line.name} ${line.totalPoints}点 (${statusLabel(line.status)})`).join(" / "))}</p>
         `;
         els.receiptList.appendChild(groupElement);
       }
@@ -947,7 +1158,144 @@
     }
 
     function renderResult(value) {
-      els.result.textContent = JSON.stringify(value, null, 2);
+      const feeSession = value?.feeSession || value || {};
+      const calculation = value?.calculationResult || feeSession.calculationResult || null;
+      els.result.classList.remove("result-empty");
+
+      if (!calculation) {
+        els.result.innerHTML = `
+          <div class="result-summary">
+            <div class="notice-card">
+              <strong>算定セッションを準備しました</strong>
+              <p>${escapeHtml(feeSession.patientSnapshot?.displayName || feeSession.patientId || "患者未選択")} / ${escapeHtml(feeSession.serviceDate || "")} / ${escapeHtml(statusLabel(feeSession.status || "ready"))}</p>
+            </div>
+            <p class="field-note">オーダーと診療テキストを確認し、「算定実行」で候補を作成してください。</p>
+          </div>
+        `;
+        return;
+      }
+
+      const coverage = calculation.coverage || {};
+      const lineItems = Array.isArray(calculation.lineItems) ? calculation.lineItems : [];
+      els.result.innerHTML = `
+        <div class="result-summary">
+          <div class="metric-row">
+            <div class="metric">
+              <span>合計点数候補</span>
+              <strong>${Number(calculation.totalPoints || 0).toLocaleString()}</strong>
+            </div>
+            <div class="metric">
+              <span>レビュー対象</span>
+              <strong>${Number(coverage.reviewLineCount || lineItems.filter((line) => line.reviewRequired).length).toLocaleString()}</strong>
+            </div>
+            <div class="metric">
+              <span>対応範囲</span>
+              <strong>${escapeHtml(supportLevelLabel(coverage.supportLevel || coverage.support_level))}</strong>
+            </div>
+          </div>
+          <div class="notice-card">
+            <strong>${escapeHtml(scopeLabel(coverage.scope))}</strong>
+            <p>${escapeHtml(coverage.description || "算定候補・レビュー支援として表示しています。確定請求前に内容を確認してください。")}</p>
+          </div>
+          ${renderLineTable(lineItems)}
+        </div>
+      `;
+    }
+
+    function renderLineTable(lineItems) {
+      if (!lineItems.length) {
+        return '<p class="field-note">算定行はまだありません。</p>';
+      }
+      return `
+        <table class="line-table">
+          <thead>
+            <tr>
+              <th>算定候補</th>
+              <th>状態</th>
+              <th>対応</th>
+              <th>理由</th>
+              <th>点数</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${lineItems.map((line) => `
+              <tr>
+                <td>
+                  <div class="line-name">
+                    <strong>${escapeHtml(line.name || "未分類")}</strong>
+                    <small>${escapeHtml(line.code || "")} / ${escapeHtml(line.orderType || "unknown")}</small>
+                  </div>
+                </td>
+                <td><span class="${badgeClass(line.status)}">${escapeHtml(statusLabel(line.status))}</span></td>
+                <td>${escapeHtml(supportLevelLabel(line.supportLevel || line.support_level || line.coverage?.supportLevel || line.coverage?.support_level))}</td>
+                <td>${escapeHtml(line.reason || coverageLabel(line.coverage))}</td>
+                <td>${Number(line.totalPoints || 0).toLocaleString()}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function statusLabel(status) {
+      return {
+        ready: "準備完了",
+        calculated: "算定候補作成済み",
+        needs_review: "要確認",
+        completed: "完了",
+        failed: "失敗",
+        candidate: "候補",
+        confirmed: "確認済み",
+        approved: "承認",
+        rejected: "却下",
+        edited: "修正済み",
+        not_calculated: "未算定"
+      }[status] || status || "未設定";
+    }
+
+    function supportLevelLabel(level) {
+      return {
+        supported: "対応済み",
+        partial: "部分対応",
+        candidate: "候補",
+        review_required: "要確認",
+        unsupported: "未対応"
+      }[level] || level || "部分対応";
+    }
+
+    function scopeLabel(scope) {
+      return {
+        candidate_review_support: "算定候補・レビュー支援",
+        master_lookup_only: "マスターlookupのみ",
+        deterministic_rule: "ルール対応",
+        candidate_rule: "候補ルール",
+        review_required: "要確認"
+      }[scope] || scope || "算定候補・レビュー支援";
+    }
+
+    function coverageLabel(coverage = {}) {
+      if (!coverage || typeof coverage !== "object") {
+        return "対応範囲: 部分対応";
+      }
+      return [
+        scopeLabel(coverage.scope),
+        supportLevelLabel(coverage.supportLevel || coverage.support_level),
+        coverage.reviewRequired || coverage.review_required ? "レビュー必要" : "レビュー任意"
+      ].join(" / ");
+    }
+
+    function badgeClass(status) {
+      if (["needs_review", "candidate", "rejected"].includes(status)) {
+        return "badge review";
+      }
+      if (["confirmed", "approved", "calculated", "completed", "ready"].includes(status)) {
+        return "badge supported";
+      }
+      return "badge partial";
+    }
+
+    function normalizeSearch(value) {
+      return String(value || "").trim().toLowerCase();
     }
 
     function parseOrders(value) {

@@ -350,6 +350,10 @@ class CalculationLine:
     reason: str
     source: str
     calculated_total_points: float | None = None
+    coverage_scope: str | None = None
+    coverage_chapter: str | None = None
+    support_level: str | None = None
+    review_required: bool | None = None
 
     @property
     def total_points(self) -> float:

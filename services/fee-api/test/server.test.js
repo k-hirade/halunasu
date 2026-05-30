@@ -91,6 +91,9 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.equal(calculation.statusCode, 201);
   assert.equal(calculation.body.calculationResult.provider, "test_fee_engine");
   assert.equal(calculation.body.calculationResult.totalPoints, 137);
+  assert.equal(calculation.body.calculationResult.coverage.scope, "candidate_review_support");
+  assert.equal(calculation.body.calculationResult.lineItems[0].supportLevel, "candidate");
+  assert.equal(calculation.body.calculationResult.lineItems[0].reviewRequired, true);
   assert.equal(calculation.body.feeSession.status, "needs_review");
   assert.equal(receiptDraft.body.receiptDraft.totalPoints, 137);
   assert.ok(reviewItems.body.reviewItems.length >= 1);
@@ -174,7 +177,13 @@ function createStores(options = {}) {
           quantity: 1,
           totalPoints: 137,
           status: "candidate",
-          source: "test"
+          source: "test",
+          coverage: {
+            scope: "candidate_rule",
+            chapter: "D_lab",
+            supportLevel: "candidate",
+            reviewRequired: true
+          }
         }],
         warnings: []
       };

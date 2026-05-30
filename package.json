@@ -24,6 +24,7 @@
     "test:python": "PYTHONPATH=python python3 -m unittest discover -s python/tests",
     "test:python:legacy-fee": "PYTHONPATH=python python3 -m unittest discover -s python/tests/legacy_medical_fee_calculation",
     "build:fee-master": "PYTHONPATH=python python3 scripts/build_fee_master_official.py",
+    "audit:fee-master": "PYTHONPATH=python python3 scripts/audit_fee_master_coverage.py",
     "audit:migration-parity": "node scripts/migration_parity_check.mjs --report-only",
     "test:migration-parity": "node scripts/migration_parity_check.mjs",
     "lint": "npm run lint --workspaces --if-present",

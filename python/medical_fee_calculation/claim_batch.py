@@ -2530,7 +2530,61 @@ def _line_to_dict(line: CalculationLine) -> dict[str, Any]:
         "reason": line.reason,
         "source": line.source,
         "total_points": line.total_points,
+        "coverage": _line_coverage_to_dict(line),
     }
+
+
+def _line_coverage_to_dict(line: CalculationLine) -> dict[str, Any]:
+    support_level = line.support_level or _default_line_support_level(line)
+    review_required = line.review_required
+    if review_required is None:
+        review_required = line.status in {
+            ClaimItemStatus.CANDIDATE,
+            ClaimItemStatus.NEEDS_REVIEW,
+            ClaimItemStatus.WARNING,
+            ClaimItemStatus.BLOCKED,
+        } or line.source == "medical_procedure_master"
+
+    return {
+        "scope": line.coverage_scope or _default_line_coverage_scope(line),
+        "chapter": line.coverage_chapter or _default_line_coverage_chapter(line),
+        "support_level": support_level,
+        "review_required": bool(review_required),
+    }
+
+
+def _default_line_support_level(line: CalculationLine) -> str:
+    if line.source == "medical_procedure_master":
+        return "review_required"
+    if line.status == ClaimItemStatus.CONFIRMED:
+        return "supported"
+    if line.status == ClaimItemStatus.CANDIDATE:
+        return "candidate"
+    return "review_required"
+
+
+def _default_line_coverage_scope(line: CalculationLine) -> str:
+    if line.source == "medical_procedure_master":
+        return "master_lookup_only"
+    if line.status == ClaimItemStatus.CONFIRMED:
+        return "deterministic_rule"
+    if line.status == ClaimItemStatus.CANDIDATE:
+        return "candidate_rule"
+    return "review_required"
+
+
+def _default_line_coverage_chapter(line: CalculationLine) -> str:
+    return {
+        "outpatient_basic_fee": "A_basic_fee",
+        "inpatient_basic_fee": "A_inpatient_fee",
+        "drug_master": "F_drug",
+        "medication_fee": "F_drug",
+        "injection_fee": "G_injection",
+        "treatment_fee": "J_treatment",
+        "imaging_fee": "E_imaging",
+        "specific_material_master": "specific_material",
+        "medical_procedure_master": "procedure_code_master",
+    }.get(line.source, "unknown")
 
 
 def _message_to_dict(message: CalculationMessage) -> dict[str, str | None]:
