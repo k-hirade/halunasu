@@ -363,13 +363,6 @@ function notFound(message) {
 
 function errorResponse(error) {
   const statusCode = Number.isInteger(error.statusCode) ? error.statusCode : 500;
-  if (statusCode === 500) {
-    console.error("fee-api internal error", {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
-    });
-  }
   return {
     statusCode,
     body: {

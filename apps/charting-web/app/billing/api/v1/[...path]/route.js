@@ -27,5 +27,5 @@ export async function OPTIONS(request, context) {
 
 async function proxy(request, { params }) {
   const { path = [] } = await params;
-  return proxyApiRequest(request, path, target);
+  return proxyApiRequest(request, path, target, "/v1");
 }

@@ -1,0 +1,16 @@
+{
+  "entries": [
+    {
+      "id": "tohoku-0410001-missing-comments",
+      "csv": "../../data/work/example-orders/tohoku-0410001/orders-missing-comments.csv",
+      "contract": "tohoku/0410001/order-contract.json",
+      "evaluate_gold": true
+    },
+    {
+      "id": "tohoku-0410001-inpatient-facility-gap",
+      "csv": "../../data/work/example-orders/tohoku-0410001/inpatient-gold-backlog-orders.csv",
+      "contract": "tohoku/0410001/inpatient-gold-contract.json",
+      "evaluate_gold": true
+    }
+  ]
+}

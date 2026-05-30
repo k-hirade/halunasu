@@ -1091,15 +1091,7 @@ async function maybeSendPasswordSetupMail({ signupMailer, input, result, passwor
       loginUrl: defaultAppBaseUrl(input.env),
       passwordSetupUrl
     });
-  } catch (error) {
-    console.error("[platform-api] password setup mail failed", {
-      applicationId: result.signupApplication?.applicationId || null,
-      orgId: result.organization?.orgId || null,
-      memberId: result.adminMember?.memberId || null,
-      code: error?.code || null,
-      message: error?.message || null
-    });
-
+  } catch (_error) {
     return {
       mode: "error",
       delivered: false

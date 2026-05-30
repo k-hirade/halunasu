@@ -218,7 +218,7 @@ deploy_env() {
     "CHARTING_GATEWAY_PLATFORM_AUTH_BRIDGE=true" \
     "APP_BASE_URL=${charting_app_base_url}" \
     "ALLOWED_ORIGINS=${charting_allowed_origins}" \
-    "APP_REQUIRE_PRIVILEGED_MFA=false" \
+    "APP_REQUIRE_PRIVILEGED_MFA=true" \
     "APP_ALLOW_OPERATOR_BEARER_AUTH=false" \
     "FINALIZE_MODE=inline" \
     "FINAL_TRANSCRIPT_SEGMENT_PRECOMPUTE_ENABLED=false"

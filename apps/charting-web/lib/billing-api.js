@@ -1,7 +1,9 @@
 "use client";
 
 import { getBillingBaseUrl } from "./runtime-config";
-import { fetchWithOperatorAuth } from "./operator-access";
+
+let platformCsrfToken = null;
+const PLATFORM_CSRF_COOKIE_NAMES = ["halunasu_csrf", "halunasu_stg_csrf"];
 
 async function parseResponse(response) {
   const payload = await response.json().catch(() => ({}));
@@ -12,6 +14,63 @@ async function parseResponse(response) {
     throw error;
   }
 
+  return payload;
+}
+
+function readCookie(name) {
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  const prefix = `${name}=`;
+  const match = document.cookie
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(prefix));
+
+  return match ? decodeURIComponent(match.slice(prefix.length)) : null;
+}
+
+function setPlatformCsrfToken(token) {
+  platformCsrfToken = typeof token === "string" && token ? token : null;
+}
+
+function getPlatformCsrfToken() {
+  return platformCsrfToken || PLATFORM_CSRF_COOKIE_NAMES.map(readCookie).find(Boolean) || null;
+}
+
+async function fetchPlatformBillingApi(path, options = {}) {
+  const method = options.method || "GET";
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {})
+  };
+  const csrfToken = getPlatformCsrfToken();
+
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && csrfToken) {
+    headers["X-CSRF-Token"] = csrfToken;
+  }
+
+  return fetch(`${getBillingBaseUrl()}/api/v1${path}`, {
+    ...options,
+    method,
+    credentials: "include",
+    headers
+  });
+}
+
+export async function loginPlatformBillingSession({ organizationCode, loginId, password, mfaCode = "" }) {
+  const response = await fetchPlatformBillingApi("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      organizationCode,
+      loginId,
+      password,
+      ...(mfaCode ? { mfaCode } : {})
+    })
+  });
+  const payload = await parseResponse(response);
+  setPlatformCsrfToken(payload.csrfToken);
   return payload;
 }
 
@@ -81,24 +140,24 @@ export async function submitPasswordSetup(tokenId, password) {
 }
 
 export async function getCurrentBillingStatus(accessToken = null) {
-  const response = await fetchWithOperatorAuth(`${getBillingBaseUrl()}/api/v1/billing/status`, {
+  const response = await fetchPlatformBillingApi("/billing/status", {
     cache: "no-store"
-  }, accessToken);
+  });
   return parseResponse(response);
 }
 
 export async function createBillingPortalSession(accessToken = null) {
-  const response = await fetchWithOperatorAuth(`${getBillingBaseUrl()}/api/v1/billing/portal-session`, {
+  const response = await fetchPlatformBillingApi("/billing/portal-session", {
     method: "POST",
     body: JSON.stringify({})
-  }, accessToken);
+  });
   return parseResponse(response);
 }
 
 export async function createBillingCheckoutSession(accessToken = null) {
-  const response = await fetchWithOperatorAuth(`${getBillingBaseUrl()}/api/v1/billing/checkout-session`, {
+  const response = await fetchPlatformBillingApi("/billing/checkout-session", {
     method: "POST",
     body: JSON.stringify({})
-  }, accessToken);
+  });
   return parseResponse(response);
 }

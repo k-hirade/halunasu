@@ -1,0 +1,12 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Firestore is a server-side persistence layer.
+    // All application access must go through Cloud Run services, which enforce
+    // organization/member/product authorization.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

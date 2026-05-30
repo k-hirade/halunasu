@@ -40,7 +40,7 @@ for (const env of envs) {
   }
 
   const gatewayUrl = resolveGatewayUrl(env, proxyTargets[env] || {});
-  const billingUrl = proxyTargets[env]?.billingLegacy || "";
+  const billingUrl = proxyTargets[env]?.platform || "";
   const gatewayWsUrl = gatewayUrl.replace(/^http/u, "ws").replace(/\/$/u, "") + "/ws";
   const lpBaseUrl = env === "stg" ? "https://stg.halunasu.com" : "https://halunasu.com";
   const deployCommand = buildDeployCommand(site.siteId, `P16 ${env}/charting-web Next.js`);

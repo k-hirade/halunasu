@@ -1,0 +1,16 @@
+{
+  "entries": [
+    {
+      "id": "tohoku-0410001-outpatient-gold",
+      "csv": "../../data/work/example-orders/tohoku-0410001/orders.csv",
+      "contract": "tohoku/0410001/order-contract.json",
+      "evaluate_gold": true
+    },
+    {
+      "id": "tohoku-0410001-inpatient-gold",
+      "csv": "../../data/work/example-orders/tohoku-0410001/inpatient-gold-orders.csv",
+      "contract": "tohoku/0410001/inpatient-gold-contract.json",
+      "evaluate_gold": true
+    }
+  ]
+}

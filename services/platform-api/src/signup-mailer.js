@@ -97,14 +97,6 @@ async function sendMail({ config, fetchImpl, mail }) {
       throw error;
     }
 
-    console.log("[platform-api] signup mail preview", {
-      to: mail.to,
-      subject: mail.subject,
-      provider: config.provider || null,
-      verificationUrl: mail.verificationUrl || undefined,
-      passwordSetupUrl: mail.passwordSetupUrl || undefined
-    });
-
     return result;
   }
 

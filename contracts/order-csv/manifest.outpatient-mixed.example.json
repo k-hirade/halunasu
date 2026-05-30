@@ -1,0 +1,10 @@
+{
+  "entries": [
+    {
+      "id": "tohoku-0410001-outpatient-mixed",
+      "csv": "../../data/work/example-orders/tohoku-0410001/outpatient-mixed-orders.csv",
+      "contract": "tohoku/0410001/outpatient-mixed-contract.json",
+      "evaluate_gold": false
+    }
+  ]
+}

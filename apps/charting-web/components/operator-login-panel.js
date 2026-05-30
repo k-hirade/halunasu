@@ -3,6 +3,7 @@
 import QRCode from "qrcode";
 import { startTransition, useEffect, useState } from "react";
 import { BRAND_NAME } from "../lib/brand";
+import { loginPlatformBillingSession } from "../lib/billing-api";
 import { confirmOperatorMfaEnrollment, loginOperator, verifyOperatorMfa } from "../lib/operator-access";
 
 export function OperatorLoginPanel({
@@ -63,6 +64,7 @@ export function OperatorLoginPanel({
           setMfaCode("");
           return;
         }
+        await syncPlatformBillingSession({ organizationCode, loginId, password });
         onAuthenticated(result.accessToken);
       } catch (nextError) {
         setError(nextError.message);
@@ -88,6 +90,7 @@ export function OperatorLoginPanel({
           challengeId: mfaChallenge.challengeId,
           code: mfaCode
         });
+        await syncPlatformBillingSession({ organizationCode, loginId, password, mfaCode });
         onAuthenticated(result.accessToken);
       } catch (nextError) {
         setError(nextError.message);
@@ -95,6 +98,14 @@ export function OperatorLoginPanel({
         setIsPending(false);
       }
     });
+  }
+
+  async function syncPlatformBillingSession(credentials) {
+    try {
+      await loginPlatformBillingSession(credentials);
+    } catch (syncError) {
+      console.warn("platform billing session sync failed", syncError);
+    }
   }
 
   if (mfaChallenge) {

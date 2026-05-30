@@ -948,6 +948,19 @@ async function appendMfaFailureAuditSafe({ orgId, memberId, reason, purpose }) {
   }
 
   try {
+    if (platformAuthBridgeEnabled) {
+      await platformStore.createAuditEvent(orgId, {
+        eventType: "auth.mfa_failed",
+        actorMemberId: memberId || null,
+        safePayload: {
+          memberId: memberId || null,
+          reason,
+          purpose
+        }
+      });
+      return;
+    }
+
     await store.appendOrganizationAuditEvent(orgId, {
       type: "auth.mfa_failed",
       actorType: "user",
@@ -1502,18 +1515,21 @@ async function authenticatePlatformOperator({ organizationCode, loginId, passwor
   }
 
   const refreshedIdentity = await platformStore.recordLoginSuccess(identity).catch(() => identity);
+  const normalizedMember = normalizePlatformMemberForGateway(member);
+  const mfaRequired = Boolean(refreshedIdentity.mfaRequired) || operatorRequiresMfa(normalizedMember);
 
   return {
     organization: normalizePlatformOrganizationForGateway(organization),
-    member: normalizePlatformMemberForGateway(member),
+    member: normalizedMember,
     identity: {
       organizationCode: refreshedIdentity.organizationCode || organization.organizationCode || organizationCode,
       loginId: refreshedIdentity.loginId || loginId,
       orgId: refreshedIdentity.orgId,
       memberId: refreshedIdentity.memberId,
       tokenVersion: Number(refreshedIdentity.tokenVersion || 0),
-      mfaRequired: false,
-      mfaEnrolledAt: null,
+      mfaRequired,
+      mfaEnrolledAt: platformMfaEnrolledAt(refreshedIdentity),
+      mfaSecret: refreshedIdentity.mfaSecret || null,
       mfaSecretEncrypted: null
     }
   };
@@ -1550,6 +1566,8 @@ async function hydratePlatformOperatorPayload(payload) {
   const normalizedOrganization = normalizePlatformOrganizationForGateway(organization);
   const normalizedMember = normalizePlatformMemberForGateway(member);
 
+  const mfaRequired = Boolean(identity.mfaRequired) || operatorRequiresMfa(normalizedMember);
+
   return {
     ...payload,
     orgId: normalizedOrganization.orgId,
@@ -1565,9 +1583,64 @@ async function hydratePlatformOperatorPayload(payload) {
     roles: normalizedMember.roles,
     defaultRecordingSource: normalizeRecordingSource(normalizedMember.defaultRecordingSource),
     tokenVersion: Number(identity.tokenVersion || 0),
-    mfaRequired: false,
-    mfaEnrolledAt: null
+    mfaRequired,
+    mfaEnrolledAt: platformMfaEnrolledAt(identity)
   };
+}
+
+function platformMfaEnrolledAt(identity = {}) {
+  if (!identity.mfaEnrolled) {
+    return null;
+  }
+
+  return identity.mfaEnrolledAt || identity.updatedAt || identity.createdAt || new Date(0).toISOString();
+}
+
+async function getMfaAuthContext(challenge) {
+  if (platformAuthBridgeEnabled) {
+    const [organization, member] = await Promise.all([
+      platformStore.getOrganization(challenge.orgId),
+      platformStore.getMember(challenge.orgId, challenge.memberId)
+    ]);
+    if (!organization || !member) {
+      return null;
+    }
+    const identity = await platformStore.getLoginIdentity(organization.organizationCode, member.loginId);
+    if (!identity || identity.status !== "active") {
+      return null;
+    }
+
+    return {
+      organization: normalizePlatformOrganizationForGateway(organization),
+      member: normalizePlatformMemberForGateway(member),
+      identity: {
+        ...identity,
+        mfaEnrolledAt: platformMfaEnrolledAt(identity),
+        mfaSecretEncrypted: null
+      }
+    };
+  }
+
+  return store.getMemberAuthContext({
+    orgId: challenge.orgId,
+    memberId: challenge.memberId
+  });
+}
+
+function identityHasMfaSecret(identity = {}) {
+  return Boolean(identity.mfaSecretEncrypted || identity.mfaSecret);
+}
+
+function verifyIdentityTotpCode(identity = {}, code) {
+  if (identity.mfaSecret) {
+    return verifyTotpCode(code, identity.mfaSecret);
+  }
+
+  if (!identity.mfaSecretEncrypted) {
+    return false;
+  }
+
+  return verifyTotpCode(code, decryptField(identity.mfaSecretEncrypted));
 }
 
 function normalizePlatformOrganizationForGateway(organization) {
@@ -4020,7 +4093,7 @@ app.post("/api/v1/operator/login", rateLimit("operator-login", { limit: 10, wind
 
     const mfaRequired = Boolean(authenticated.identity.mfaRequired) || operatorRequiresMfa(authenticated.member);
 
-    if (mfaRequired && authenticated.identity.mfaEnrolledAt && authenticated.identity.mfaSecretEncrypted) {
+    if (mfaRequired && authenticated.identity.mfaEnrolledAt && identityHasMfaSecret(authenticated.identity)) {
       const expiresAt = mfaChallengeExpiresAt();
       const challengeId = createMfaChallengeId({
         purpose: "mfa_verify",
@@ -4077,12 +4150,9 @@ app.post("/api/v1/operator/mfa/verify", rateLimit("operator-mfa-verify", { limit
       return;
     }
 
-    const context = await store.getMemberAuthContext({
-      orgId: challenge.orgId,
-      memberId: challenge.memberId
-    });
+    const context = await getMfaAuthContext(challenge);
 
-    if (!context?.identity?.mfaSecretEncrypted) {
+    if (!context?.identity || !identityHasMfaSecret(context.identity)) {
       await appendMfaFailureAuditSafe({
         orgId: challenge.orgId,
         memberId: challenge.memberId,
@@ -4105,9 +4175,17 @@ app.post("/api/v1/operator/mfa/verify", rateLimit("operator-mfa-verify", { limit
       return;
     }
 
-    let secret;
     try {
-      secret = decryptField(context.identity.mfaSecretEncrypted);
+      if (!verifyIdentityTotpCode(context.identity, input.code)) {
+        await appendMfaFailureAuditSafe({
+          orgId: challenge.orgId,
+          memberId: challenge.memberId,
+          purpose: "mfa_verify",
+          reason: "invalid_code"
+        });
+        res.status(401).json({ error: "確認コードが違います。" });
+        return;
+      }
     } catch (decryptError) {
       await appendMfaFailureAuditSafe({
         orgId: challenge.orgId,
@@ -4120,17 +4198,6 @@ app.post("/api/v1/operator/mfa/verify", rateLimit("operator-mfa-verify", { limit
         memberId: challenge.memberId
       }));
       res.status(401).json({ error: "認証アプリの確認に失敗しました。管理者にMFAリセットを依頼してください。" });
-      return;
-    }
-
-    if (!verifyTotpCode(input.code, secret)) {
-      await appendMfaFailureAuditSafe({
-        orgId: challenge.orgId,
-        memberId: challenge.memberId,
-        purpose: "mfa_verify",
-        reason: "invalid_code"
-      });
-      res.status(401).json({ error: "確認コードが違います。" });
       return;
     }
 
@@ -4167,16 +4234,23 @@ app.post("/api/v1/operator/mfa/enroll/confirm", rateLimit("operator-mfa-enroll",
       return;
     }
 
-    await store.enableMemberMfa({
-      orgId: challenge.orgId,
-      memberId: challenge.memberId,
-      mfaSecretEncrypted: encryptField(challenge.secret),
-      actorId: challenge.memberId
-    });
-    const context = await store.getMemberAuthContext({
-      orgId: challenge.orgId,
-      memberId: challenge.memberId
-    });
+    if (platformAuthBridgeEnabled) {
+      const enrollmentContext = await getMfaAuthContext(challenge);
+      if (!enrollmentContext?.identity) {
+        res.status(401).json({ error: "ログイン情報を確認できません。もう一度ログインしてください。" });
+        return;
+      }
+      await platformStore.beginMfaEnrollment(enrollmentContext.identity, challenge.secret);
+      await platformStore.completeMfaEnrollment(enrollmentContext.identity);
+    } else {
+      await store.enableMemberMfa({
+        orgId: challenge.orgId,
+        memberId: challenge.memberId,
+        mfaSecretEncrypted: encryptField(challenge.secret),
+        actorId: challenge.memberId
+      });
+    }
+    const context = await getMfaAuthContext(challenge);
 
     if (!context) {
       res.status(401).json({ error: "ログイン情報を確認できません。もう一度ログインしてください。" });
