@@ -1,6 +1,7 @@
 import {
   applyReviewDecision,
   applyCalculationResult,
+  applyFeeSessionPatch,
   buildReceiptDraft,
   buildReviewItems,
   buildFeeSession,
@@ -50,6 +51,22 @@ export class MemoryFeeStore {
 
   getSession(orgId, feeSessionId) {
     return this.sessionsForOrg(orgId).get(feeSessionId) || null;
+  }
+
+  updateSession(orgId, feeSessionId, patch) {
+    const current = this.getSession(orgId, feeSessionId);
+    if (!current) {
+      throw notFoundError("fee session not found");
+    }
+
+    const updated = applyFeeSessionPatch(current, patch, {
+      now: this.timestamp()
+    });
+    this.sessionsForOrg(orgId).set(feeSessionId, updated);
+
+    return {
+      feeSession: updated
+    };
   }
 
   saveCalculation(orgId, feeSessionId, calculationResult) {

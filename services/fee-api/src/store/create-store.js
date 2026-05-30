@@ -39,6 +39,10 @@ export class LazyFirestoreFeeStore {
     return this.call("getSession", orgId, feeSessionId);
   }
 
+  async updateSession(orgId, feeSessionId, patch) {
+    return this.call("updateSession", orgId, feeSessionId, patch);
+  }
+
   async saveCalculation(orgId, feeSessionId, calculationResult) {
     return this.call("saveCalculation", orgId, feeSessionId, calculationResult);
   }

@@ -19,6 +19,12 @@ assert(html.includes("/v1/fee/patients"), "fee web must create patients through 
 assert(html.includes("/v1/fee/facilities"), "fee web must load Platform facilities through fee-api");
 assert(html.includes("/v1/fee/departments"), "fee web must load Platform departments through fee-api");
 assert(html.includes("/v1/fee/sessions"), "fee web must create fee sessions through fee-api");
+assert(html.includes('id="start-fee-session-button"'), "fee web must expose a charting-like quick start action");
+assert(html.includes("クイックスタート"), "fee web must keep the charting-like quick start block");
+assert(html.includes('class="session-history home-only"'), "fee web home must show session history as the primary surface");
+assert(html.includes('id="fee-session-detail"'), "fee web must separate fee session detail from the home history screen");
+assert(html.includes('id="back-to-fee-sessions-button"'), "fee web detail must provide a back-to-history action");
+assert(html.includes("method: \"PATCH\""), "fee web must update draft fee sessions instead of recreating from the detail form");
 assert(html.includes('href="${escapeHtml(feeSessionDetailPath(session.feeSessionId))}"'), "fee web session cards must link to /sessions/{feeSessionId}");
 assert(html.includes("window.history.pushState"), "fee web must update the URL when a fee session is opened");
 assert(html.includes('window.addEventListener("popstate"'), "fee web must handle browser back/forward for fee sessions");

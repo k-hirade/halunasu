@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput,
+  validateUpdateFeeSessionInput,
   validateCreateFeeCalculationInput
 } from "../src/index.js";
 
@@ -35,11 +36,29 @@ test("normalizes fee session input to Platform identifiers", () => {
   assert.equal(normalized.orders[0].quantity, 3);
 });
 
-test("requires patientId or inline patient", () => {
-  assert.throws(() => validateCreateFeeSessionInput({
-    facilityId: "fac_123",
-    serviceDate: "2026-05-28"
-  }), /patientId or patient is required/);
+test("allows draft fee session input before patient and facility are selected", () => {
+  const normalized = validateCreateFeeSessionInput({});
+
+  assert.equal(normalized.patientId, undefined);
+  assert.equal(normalized.facilityId, undefined);
+});
+
+test("normalizes fee session update input", () => {
+  const normalized = validateUpdateFeeSessionInput({
+    patient_id: "pat_123",
+    facility_id: "fac_123",
+    department_id: null,
+    service_date: "2026-05-29",
+    clinical_text: "",
+    orders: []
+  });
+
+  assert.equal(normalized.patientId, "pat_123");
+  assert.equal(normalized.facilityId, "fac_123");
+  assert.equal(normalized.departmentId, null);
+  assert.equal(normalized.claimMonth, "2026-05");
+  assert.equal(normalized.clinicalText, "");
+  assert.deepEqual(normalized.orders, []);
 });
 
 test("validates shared patient shape for fee patient creation", () => {

@@ -1,6 +1,7 @@
 import {
   applyReviewDecision,
   applyCalculationResult,
+  applyFeeSessionPatch,
   buildReceiptDraft,
   buildReviewItems,
   buildFeeSession,
@@ -123,6 +124,22 @@ export class FirestoreFeeStore {
 
   async getSession(orgId, feeSessionId) {
     return docDataOrNull(await this.doc(feeSessionPath(orgId, feeSessionId)).get());
+  }
+
+  async updateSession(orgId, feeSessionId, patch) {
+    const current = await this.getSession(orgId, feeSessionId);
+    if (!current) {
+      throw notFoundError("fee session not found");
+    }
+
+    const updated = applyFeeSessionPatch(current, patch, {
+      now: this.timestamp()
+    });
+    await this.doc(feeSessionPath(orgId, feeSessionId)).set(updated);
+
+    return {
+      feeSession: updated
+    };
   }
 
   async saveCalculation(orgId, feeSessionId, calculationResult) {

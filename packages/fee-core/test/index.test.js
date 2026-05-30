@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   applyCalculationResult,
+  applyFeeSessionPatch,
   applyReviewDecision,
   buildReceiptDraft,
   buildFeeSession,
@@ -46,6 +47,32 @@ test("builds Platform-scoped fee sessions", () => {
   assert.equal(session.patientId, "pat_123");
   assert.equal(session.patientRef, "legacy-001");
   assert.equal(session.facilitySnapshot.medicalInstitutionCode, "1312345");
+});
+
+test("builds draft fee sessions and promotes them when calculation context is saved", () => {
+  const draft = buildFeeSession({
+    orgId: "org_123",
+    createdByMemberId: "mem_123"
+  }, {
+    feeSessionId: "fee_draft",
+    now: new Date("2026-05-28T00:00:00.000Z")
+  });
+  const updated = applyFeeSessionPatch(draft, {
+    patientId: "pat_123",
+    patientSnapshot: { patientId: "pat_123", displayName: "山田 太郎" },
+    facilityId: "fac_123",
+    facilitySnapshot: { facilityId: "fac_123", displayName: "春ナスクリニック" },
+    serviceDate: "2026-05-29",
+    orders: [{ orderId: "ord_1", orderType: "lab", localName: "血液検査" }]
+  }, {
+    now: new Date("2026-05-28T00:05:00.000Z")
+  });
+
+  assert.equal(draft.status, "draft");
+  assert.equal(draft.serviceDate, "2026-05-28");
+  assert.equal(updated.status, "ready");
+  assert.equal(updated.patientId, "pat_123");
+  assert.equal(updated.claimMonth, "2026-05");
 });
 
 test("normalizes external calculation results", () => {

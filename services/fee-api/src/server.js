@@ -6,7 +6,8 @@ import {
 import {
   validateCreateFeeCalculationInput,
   validateCreateFeePatientInput,
-  validateCreateFeeSessionInput
+  validateCreateFeeSessionInput,
+  validateUpdateFeeSessionInput
 } from "../../../packages/fee-contracts/src/index.js";
 import {
   departmentSnapshot,
@@ -158,15 +159,19 @@ async function routeFeeApiRequest(input = {}) {
   if (method === "POST" && matches(parts, ["v1", "fee", "sessions"])) {
     requirePlatformCsrf(input.headers || {}, context.session);
     const normalized = validateCreateFeeSessionInput(input.body || {});
-    const patient = await resolveFeePatient(context, platformStore, normalized);
-    const facility = await requireFacility(context, platformStore, normalized.facilityId);
+    const patient = normalized.patientId || normalized.patient
+      ? await resolveFeePatient(context, platformStore, normalized)
+      : null;
+    const facility = normalized.facilityId
+      ? await requireFacility(context, platformStore, normalized.facilityId)
+      : null;
     const department = await resolveDepartment(context, platformStore, normalized.departmentId);
     const session = await feeStore.createSession({
       ...normalized,
       orgId: context.session.orgId,
-      patientId: patient.patientId,
-      patientSnapshot: patientSnapshot(patient, input.now || new Date()),
-      facilitySnapshot: facilitySnapshot(facility, input.now || new Date()),
+      patientId: patient?.patientId,
+      patientSnapshot: patient ? patientSnapshot(patient, input.now || new Date()) : null,
+      facilitySnapshot: facility ? facilitySnapshot(facility, input.now || new Date()) : null,
       departmentSnapshot: department ? departmentSnapshot(department, input.now || new Date()) : null,
       createdByMemberId: context.session.memberId
     });
@@ -196,6 +201,34 @@ async function routeFeeApiRequest(input = {}) {
     }
 
     return ok({ feeSession: session });
+  }
+
+  if (method === "PATCH" && isFeeSessionDocument(parts)) {
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const current = await feeStore.getSession(context.session.orgId, parts[3]);
+    if (!current) {
+      return notFound("fee session not found");
+    }
+    const normalized = validateUpdateFeeSessionInput(input.body || {});
+    const patch = await resolveFeeSessionPatch(context, platformStore, normalized, input.now || new Date());
+    const result = await feeStore.updateSession(context.session.orgId, parts[3], patch);
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.session_updated",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "fee_session",
+      targetId: result.feeSession.feeSessionId,
+      productId: PRODUCT_ID,
+      safePayload: {
+        feeSessionId: result.feeSession.feeSessionId,
+        patientId: result.feeSession.patientId || null,
+        facilityId: result.feeSession.facilityId || null,
+        departmentId: result.feeSession.departmentId || null,
+        claimMonth: result.feeSession.claimMonth || null
+      }
+    });
+
+    return ok(result);
   }
 
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "receipt-draft") {
@@ -232,6 +265,7 @@ async function routeFeeApiRequest(input = {}) {
     if (!current) {
       return notFound("fee session not found");
     }
+    assertFeeSessionReadyForCalculation(current);
     const calculationInput = validateCreateFeeCalculationInput(input.body || {});
     const calculationResult = await feeCalculator.calculate(current, calculationInput);
     const result = await feeStore.saveCalculation(context.session.orgId, parts[3], calculationResult);
@@ -307,6 +341,46 @@ async function resolveDepartment(context, platformStore, departmentId) {
   }
 
   return department;
+}
+
+async function resolveFeeSessionPatch(context, platformStore, normalized, now) {
+  const patch = { ...normalized };
+  if (normalized.patientId || normalized.patient) {
+    const patient = await resolveFeePatient(context, platformStore, normalized);
+    patch.patientId = patient.patientId;
+    patch.patientSnapshot = patientSnapshot(patient, now);
+  }
+
+  if (hasOwn(normalized, "facilityId")) {
+    const facility = normalized.facilityId
+      ? await requireFacility(context, platformStore, normalized.facilityId)
+      : null;
+    patch.facilitySnapshot = facility ? facilitySnapshot(facility, now) : null;
+  }
+
+  if (hasOwn(normalized, "departmentId")) {
+    const department = normalized.departmentId
+      ? await resolveDepartment(context, platformStore, normalized.departmentId)
+      : null;
+    patch.departmentSnapshot = department ? departmentSnapshot(department, now) : null;
+  }
+
+  delete patch.patient;
+  return patch;
+}
+
+function assertFeeSessionReadyForCalculation(session = {}) {
+  const missing = [];
+  if (!session.patientId) missing.push("患者");
+  if (!session.facilityId) missing.push("施設");
+  if (!session.serviceDate) missing.push("診療日");
+  if (missing.length) {
+    const error = new Error(`${missing.join("、")}を入力してから算定してください。`);
+    error.name = "ValidationError";
+    error.statusCode = 400;
+    error.field = "feeSession";
+    throw error;
+  }
 }
 
 function contextView(context) {
@@ -485,7 +559,7 @@ function feeStatusesFromQuery(searchParams) {
     return [];
   }
   const mapped = {
-    active: ["ready"],
+    active: ["draft", "ready"],
     review: ["needs_review"],
     calculated: ["calculated"],
     failed: ["failed"]
@@ -510,6 +584,10 @@ function parsePositiveInteger(value, fallback, max = Number.POSITIVE_INFINITY) {
 
 function matches(parts, expected) {
   return parts.length === expected.length && expected.every((part, index) => part === parts[index]);
+}
+
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(value || {}, key);
 }
 
 function toErrorCode(name) {

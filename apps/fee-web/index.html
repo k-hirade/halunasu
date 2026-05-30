@@ -102,7 +102,28 @@
       gap: 18px;
     }
 
-    .panel {
+    .dashboard {
+      width: min(1480px, calc(100% - 32px));
+      margin: 24px auto 40px;
+      display: grid;
+      gap: 28px;
+    }
+
+    .dashboard-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .dashboard-header h1 {
+      margin: 0;
+      font-size: 1.6rem;
+      line-height: 1.25;
+    }
+
+    .panel,
+    .card {
       background: var(--surface);
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -221,6 +242,68 @@
       align-items: center;
     }
 
+    .quick-start-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: center;
+      padding: 24px;
+    }
+
+    .quick-start-copy {
+      min-width: 0;
+    }
+
+    .quick-start-copy h2 {
+      margin: 6px 0 8px;
+      font-size: 1.28rem;
+      line-height: 1.35;
+    }
+
+    .quick-start-copy p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.94rem;
+      line-height: 1.7;
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 800;
+    }
+
+    .fee-session-detail {
+      display: grid;
+      gap: 18px;
+    }
+
+    .fee-session-detail-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .fee-session-detail-head h2 {
+      margin: 4px 0 0;
+      font-size: 1.24rem;
+    }
+
+    .fee-session-detail-grid {
+      display: grid;
+      grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.3fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .fee-session-detail-side,
+    .fee-session-detail-main {
+      display: grid;
+      gap: 18px;
+      min-width: 0;
+    }
+
     button {
       border: 0;
       border-radius: 8px;
@@ -230,6 +313,35 @@
       background: var(--ink);
       font-weight: 800;
       cursor: pointer;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 42px;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-weight: 800;
+    }
+
+    .btn--primary,
+    .btn.accent {
+      color: #fff;
+      background: var(--accent-dark);
+    }
+
+    .btn--ghost,
+    .btn.secondary {
+      color: var(--ink);
+      background: #e8eef6;
+    }
+
+    .btn--lg {
+      min-height: 48px;
+      padding-inline: 18px;
+      font-size: 0.98rem;
     }
 
     button.secondary {
@@ -622,6 +734,18 @@
         width: min(100% - 24px, 1280px);
         grid-template-columns: 1fr;
       }
+      .dashboard {
+        width: min(100% - 24px, 1480px);
+        gap: 22px;
+      }
+      .quick-start-panel,
+      .fee-session-detail-head {
+        grid-template-columns: 1fr;
+        display: grid;
+      }
+      .fee-session-detail-grid {
+        grid-template-columns: 1fr;
+      }
       .grid-2,
       .grid-3 { grid-template-columns: 1fr; }
       .session-history-toolbar { grid-template-columns: 1fr; }
@@ -767,62 +891,28 @@
       </div>
     </header>
 
-    <main class="main">
-      <aside class="stack">
-        <section class="panel">
-          <div class="notice-card">
-            <strong>本画面は確定請求ではありません</strong>
-            <p>
-              公式マスターと入力情報から算定候補を作成し、レビューが必要な理由を表示します。
-              請求確定前に算定根拠、施設基準、コメント、月内履歴を確認してください。
-            </p>
-          </div>
-        </section>
+    <main class="dashboard">
+      <div class="dashboard-header">
+        <h1>診療報酬算定セッション</h1>
+      </div>
 
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>患者</h2>
-              <p class="panel-copy">共通プラットフォームの患者を選択または新規作成します。</p>
-            </div>
-          </div>
-          <form id="patient-form" class="stack">
-            <div class="field">
-              <label for="patient-name">氏名</label>
-              <input id="patient-name" name="displayName" required />
-            </div>
-            <div class="grid-2">
-              <div class="field">
-                <label for="patient-birth">生年月日</label>
-                <input id="patient-birth" name="birthDate" type="date" />
-              </div>
-              <div class="field">
-                <label for="patient-sex">性別</label>
-                <select id="patient-sex" name="sex">
-                  <option value="unknown">不明</option>
-                  <option value="male">男性</option>
-                  <option value="female">女性</option>
-                  <option value="other">その他</option>
-                </select>
-              </div>
-            </div>
-            <div class="field">
-              <label for="patient-ref">患者ID alias</label>
-              <input id="patient-ref" name="patientRef" placeholder="例: legacy-001" />
-            </div>
-            <button type="submit">患者作成</button>
-          </form>
-        </section>
+      <div id="message" class="message"></div>
 
-      </aside>
+      <section class="card quick-start-panel home-only">
+        <div class="quick-start-copy">
+          <span class="label">クイックスタート</span>
+          <h2>すぐに算定を始められます</h2>
+          <p>患者、施設、オーダーは算定画面で入力します。ここではそのまま算定セッションを開始してください。</p>
+        </div>
+        <div class="quick-start-actions">
+          <button class="btn btn--primary btn--lg" id="start-fee-session-button" type="button">算定を開始</button>
+        </div>
+      </section>
 
-      <section class="workspace">
-        <div id="message" class="message"></div>
-
-        <section class="panel session-history">
+      <section class="session-history home-only">
           <div class="session-history-head">
             <div>
-              <p class="panel-copy">セッション履歴</p>
+              <span class="label">セッション履歴</span>
               <h2>算定履歴</h2>
             </div>
             <span id="session-history-count" class="session-history-count">0件</span>
@@ -836,7 +926,7 @@
               <span>状態</span>
               <select id="fee-session-status">
                 <option value="all">すべて</option>
-                <option value="active">作成済み</option>
+                <option value="active">作成中</option>
                 <option value="review">確認待ち</option>
                 <option value="calculated">算定済み</option>
                 <option value="failed">要確認</option>
@@ -846,85 +936,144 @@
           <div id="session-list" class="session-history-results" aria-live="polite"></div>
         </section>
 
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>算定候補作成</h2>
-              <p class="panel-copy">オーダーと診療情報から、レセプト下書きとレビュー項目を作成します。</p>
-            </div>
-            <span class="badge review">要レビュー前提</span>
+      <section class="fee-session-detail detail-only hidden" id="fee-session-detail">
+        <div class="fee-session-detail-head">
+          <div>
+            <span class="label">算定セッション</span>
+            <h2 id="fee-session-detail-title">算定画面</h2>
+            <p class="panel-copy" id="fee-session-detail-meta">患者情報とオーダーを入力して、算定候補を作成します。</p>
           </div>
-          <form id="fee-session-form" class="stack">
-            <div class="grid-3">
-              <div class="field">
-                <label for="patient-search">患者検索</label>
-                <input id="patient-search" name="patientSearch" placeholder="氏名、患者ID、aliasで検索" />
-              </div>
-              <div class="field">
-                <label for="patientId">患者</label>
-                <select id="patientId" name="patientId" required></select>
-              </div>
-              <div class="field">
-                <label for="facilityId">施設</label>
-                <select id="facilityId" name="facilityId" required></select>
-              </div>
-              <div class="field">
-                <label for="departmentId">診療科</label>
-                <select id="departmentId" name="departmentId"></select>
-              </div>
-            </div>
-            <div class="grid-3">
-              <div class="field">
-                <label for="serviceDate">診療日</label>
-                <input id="serviceDate" name="serviceDate" type="date" required />
-              </div>
-              <div class="field">
-                <label for="claimMonth">請求月</label>
-                <input id="claimMonth" name="claimMonth" type="month" />
-              </div>
-              <div class="field">
-                <label for="setting">区分</label>
-                <select id="setting" name="setting">
-                  <option value="outpatient">外来</option>
-                  <option value="inpatient">入院</option>
-                </select>
-              </div>
-            </div>
-            <div class="field">
-              <label for="clinicalText">診療テキスト</label>
-              <textarea id="clinicalText" name="clinicalText"></textarea>
-            </div>
-            <div class="field">
-              <label for="ordersText">オーダー</label>
-              <textarea id="ordersText" name="ordersText" placeholder="procedure|血液検査|160000410|1&#10;drug|内服薬|620000001|2"></textarea>
-            </div>
-            <div class="button-row">
-              <button class="accent" type="submit">セッション作成</button>
-              <button class="warn" id="calculate-button" type="button">算定実行</button>
-              <button class="secondary" id="refresh-button" type="button">再読み込み</button>
-            </div>
-          </form>
-        </section>
+          <button class="btn btn--ghost" id="back-to-fee-sessions-button" type="button">一覧へ戻る</button>
+        </div>
 
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>算定候補</h2>
-              <p class="panel-copy">coverage と support level を確認してからレビューしてください。</p>
-            </div>
+        <div class="notice-card">
+          <strong>本画面は確定請求ではありません</strong>
+          <p>
+            公式マスターと入力情報から算定候補を作成し、レビューが必要な理由を表示します。
+            請求確定前に算定根拠、施設基準、コメント、月内履歴を確認してください。
+          </p>
+        </div>
+
+        <div class="fee-session-detail-grid">
+          <div class="fee-session-detail-side">
+            <section class="card">
+              <div class="panel-head">
+                <div>
+                  <h2>患者</h2>
+                  <p class="panel-copy">共通プラットフォームの患者を選択または新規作成します。</p>
+                </div>
+              </div>
+              <form id="patient-form" class="stack">
+                <div class="field">
+                  <label for="patient-name">氏名</label>
+                  <input id="patient-name" name="displayName" required />
+                </div>
+                <div class="grid-2">
+                  <div class="field">
+                    <label for="patient-birth">生年月日</label>
+                    <input id="patient-birth" name="birthDate" type="date" />
+                  </div>
+                  <div class="field">
+                    <label for="patient-sex">性別</label>
+                    <select id="patient-sex" name="sex">
+                      <option value="unknown">不明</option>
+                      <option value="male">男性</option>
+                      <option value="female">女性</option>
+                      <option value="other">その他</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="patient-ref">患者ID alias</label>
+                  <input id="patient-ref" name="patientRef" placeholder="例: legacy-001" />
+                </div>
+                <button class="btn btn--ghost" type="submit">患者作成</button>
+              </form>
+            </section>
+
+            <section class="card">
+              <div class="panel-head">
+                <div>
+                  <h2>算定条件</h2>
+                  <p class="panel-copy">患者、施設、診療日、オーダーを保存してから算定します。</p>
+                </div>
+                <span class="badge review">要レビュー前提</span>
+              </div>
+              <form id="fee-session-form" class="stack">
+                <div class="field">
+                  <label for="patient-search">患者検索</label>
+                  <input id="patient-search" name="patientSearch" placeholder="氏名、患者ID、aliasで検索" />
+                </div>
+                <div class="grid-2">
+                  <div class="field">
+                    <label for="patientId">患者</label>
+                    <select id="patientId" name="patientId"></select>
+                  </div>
+                  <div class="field">
+                    <label for="facilityId">施設</label>
+                    <select id="facilityId" name="facilityId"></select>
+                  </div>
+                  <div class="field">
+                    <label for="departmentId">診療科</label>
+                    <select id="departmentId" name="departmentId"></select>
+                  </div>
+                  <div class="field">
+                    <label for="setting">区分</label>
+                    <select id="setting" name="setting">
+                      <option value="outpatient">外来</option>
+                      <option value="inpatient">入院</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="grid-2">
+                  <div class="field">
+                    <label for="serviceDate">診療日</label>
+                    <input id="serviceDate" name="serviceDate" type="date" />
+                  </div>
+                  <div class="field">
+                    <label for="claimMonth">請求月</label>
+                    <input id="claimMonth" name="claimMonth" type="month" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="clinicalText">診療テキスト</label>
+                  <textarea id="clinicalText" name="clinicalText"></textarea>
+                </div>
+                <div class="field">
+                  <label for="ordersText">オーダー</label>
+                  <textarea id="ordersText" name="ordersText" placeholder="procedure|血液検査|160000410|1&#10;drug|内服薬|620000001|2"></textarea>
+                </div>
+                <div class="button-row">
+                  <button class="btn btn--ghost" type="submit">入力を保存</button>
+                  <button class="btn btn--primary" id="calculate-button" type="button">算定実行</button>
+                  <button class="btn btn--ghost" id="refresh-button" type="button">再読み込み</button>
+                </div>
+              </form>
+            </section>
           </div>
-          <div id="result" class="result result-empty">算定セッションを作成または選択してください。</div>
-        </section>
 
-        <section class="panel">
-          <h2>レビュー</h2>
-          <div id="review-list" class="review-list"></div>
-        </section>
+          <div class="fee-session-detail-main">
+            <section class="card">
+              <div class="panel-head">
+                <div>
+                  <h2>算定候補</h2>
+                  <p class="panel-copy">coverage と support level を確認してからレビューしてください。</p>
+                </div>
+              </div>
+              <div id="result" class="result result-empty">算定セッションを作成または選択してください。</div>
+            </section>
 
-        <section class="panel">
-          <h2>レセプト案</h2>
-          <div id="receipt-list" class="receipt-list"></div>
-        </section>
+            <section class="card">
+              <h2>レビュー</h2>
+              <div id="review-list" class="review-list"></div>
+            </section>
+
+            <section class="card">
+              <h2>レセプト案</h2>
+              <div id="receipt-list" class="receipt-list"></div>
+            </section>
+          </div>
+        </div>
       </section>
     </main>
   </div>
@@ -955,6 +1104,7 @@
       feeSessionTotalCountApproximate: false,
       isLoadingFeeSessions: false,
       selectedFeeSessionId: "",
+      selectedFeeSession: null,
       patientFilter: "",
       receiptDraft: null,
       reviewItems: []
@@ -982,10 +1132,20 @@
       patientForm: document.querySelector("#patient-form"),
       feeSessionForm: document.querySelector("#fee-session-form"),
       message: document.querySelector("#message"),
+      homeSections: document.querySelectorAll(".home-only"),
+      detailSections: document.querySelectorAll(".detail-only"),
+      feeSessionDetail: document.querySelector("#fee-session-detail"),
+      feeSessionDetailTitle: document.querySelector("#fee-session-detail-title"),
+      feeSessionDetailMeta: document.querySelector("#fee-session-detail-meta"),
+      startFeeSessionButton: document.querySelector("#start-fee-session-button"),
+      backToFeeSessionsButton: document.querySelector("#back-to-fee-sessions-button"),
       patientSearch: document.querySelector("#patient-search"),
       patientSelect: document.querySelector("#patientId"),
       facilitySelect: document.querySelector("#facilityId"),
       departmentSelect: document.querySelector("#departmentId"),
+      settingSelect: document.querySelector("#setting"),
+      clinicalText: document.querySelector("#clinicalText"),
+      ordersText: document.querySelector("#ordersText"),
       sessionList: document.querySelector("#session-list"),
       sessionHistoryCount: document.querySelector("#session-history-count"),
       feeSessionSearch: document.querySelector("#fee-session-search"),
@@ -1094,6 +1254,26 @@
       loadSessions({ page: 1 }).catch((error) => showMessage(error.message || "算定履歴の絞り込みに失敗しました", "error"));
     });
 
+    els.startFeeSessionButton.addEventListener("click", async () => {
+      await run(async () => {
+        requireLogin();
+        const response = await api(feeApiBaseUrl, "/v1/fee/sessions", {
+          method: "POST",
+          csrf: true,
+          body: {}
+        });
+        await loadSessions({ page: 1 });
+        await navigateToFeeSession(response.feeSession.feeSessionId);
+      });
+    });
+
+    els.backToFeeSessionsButton.addEventListener("click", async () => {
+      window.history.pushState({}, "", "/");
+      clearSelectedFeeSession();
+      showHomeRoute();
+      await loadSessions({ page: state.feeSessionPage }).catch((error) => showMessage(error.message || "算定履歴の再読み込みに失敗しました", "error"));
+    });
+
     els.patientForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       await run(async () => {
@@ -1114,6 +1294,7 @@
         });
         state.patients = [...state.patients, response.patient];
         renderPatients();
+        els.patientSelect.value = response.patient.patientId;
         els.patientForm.reset();
         showMessage("患者を作成しました", "success");
       });
@@ -1122,27 +1303,7 @@
     els.feeSessionForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       await run(async () => {
-        requireLogin();
-        const form = new FormData(els.feeSessionForm);
-        const patient = state.patients.find((item) => item.patientId === form.get("patientId"));
-        const response = await api(feeApiBaseUrl, "/v1/fee/sessions", {
-          method: "POST",
-          csrf: true,
-          body: {
-            patientId: form.get("patientId"),
-            patientRef: patient?.externalPatientIds?.[0] || form.get("patientId"),
-            facilityId: form.get("facilityId"),
-            departmentId: emptyToNull(form.get("departmentId")),
-            serviceDate: form.get("serviceDate"),
-            claimMonth: emptyToNull(form.get("claimMonth")),
-            setting: form.get("setting"),
-            clinicalText: form.get("clinicalText"),
-            orders: parseOrders(form.get("ordersText"))
-          }
-        });
-        await loadSessions({ page: 1 });
-        await navigateToFeeSession(response.feeSession.feeSessionId);
-        showMessage("算定セッションを作成しました", "success");
+        await saveFeeSessionDetails();
       });
     });
 
@@ -1152,6 +1313,7 @@
         if (!state.selectedFeeSessionId) {
           throw new Error("算定セッションを選択してください");
         }
+        await saveFeeSessionDetails({ silent: true });
         const response = await api(feeApiBaseUrl, `/v1/fee/sessions/${state.selectedFeeSessionId}/calculate`, {
           method: "POST",
           csrf: true,
@@ -1216,18 +1378,52 @@
 
     async function loadFeeSessionDetails(feeSessionId) {
       if (!feeSessionId) return;
+      showDetailRoute();
       const [sessionResponse, receipt, reviews] = await Promise.all([
         api(feeApiBaseUrl, `/v1/fee/sessions/${feeSessionId}`),
         api(feeApiBaseUrl, `/v1/fee/sessions/${feeSessionId}/receipt-draft`),
         api(feeApiBaseUrl, `/v1/fee/sessions/${feeSessionId}/review-items`)
       ]);
       state.selectedFeeSessionId = feeSessionId;
+      state.selectedFeeSession = sessionResponse.feeSession;
       state.receiptDraft = receipt.receiptDraft;
       state.reviewItems = reviews.reviewItems || [];
+      populateFeeSessionForm(sessionResponse.feeSession);
       renderResult(sessionResponse.feeSession);
       renderSessions();
       renderReceiptDraft();
       renderReviewItems();
+    }
+
+    async function saveFeeSessionDetails(options = {}) {
+      requireLogin();
+      if (!state.selectedFeeSessionId) {
+        throw new Error("算定セッションを選択してください");
+      }
+      const form = new FormData(els.feeSessionForm);
+      const patient = state.patients.find((item) => item.patientId === form.get("patientId"));
+      const response = await api(feeApiBaseUrl, `/v1/fee/sessions/${state.selectedFeeSessionId}`, {
+        method: "PATCH",
+        csrf: true,
+        body: {
+          patientId: emptyToNull(form.get("patientId")),
+          patientRef: patient?.externalPatientIds?.[0] || emptyToNull(form.get("patientId")),
+          facilityId: emptyToNull(form.get("facilityId")),
+          departmentId: emptyToNull(form.get("departmentId")),
+          serviceDate: form.get("serviceDate"),
+          claimMonth: emptyToNull(form.get("claimMonth")),
+          setting: form.get("setting"),
+          clinicalText: form.get("clinicalText"),
+          orders: parseOrders(form.get("ordersText"))
+        }
+      });
+      state.selectedFeeSession = response.feeSession;
+      await loadSessions({ page: state.feeSessionPage });
+      await loadFeeSessionDetails(state.selectedFeeSessionId);
+      if (!options.silent) {
+        showMessage("入力を保存しました", "success");
+      }
+      return response;
     }
 
     async function navigateToFeeSession(feeSessionId) {
@@ -1238,6 +1434,7 @@
     async function syncSelectedFeeSessionFromRoute() {
       const feeSessionId = feeSessionIdFromRoute();
       if (!feeSessionId) {
+        showHomeRoute();
         return false;
       }
       await loadFeeSessionDetails(feeSessionId);
@@ -1246,6 +1443,7 @@
 
     function clearSelectedFeeSession() {
       state.selectedFeeSessionId = "";
+      state.selectedFeeSession = null;
       state.receiptDraft = null;
       state.reviewItems = [];
       els.result.classList.add("result-empty");
@@ -1253,6 +1451,30 @@
       renderSessions();
       renderReceiptDraft();
       renderReviewItems();
+    }
+
+    function showHomeRoute() {
+      els.homeSections.forEach(show);
+      els.detailSections.forEach(hide);
+    }
+
+    function showDetailRoute() {
+      els.homeSections.forEach(hide);
+      els.detailSections.forEach(show);
+    }
+
+    function populateFeeSessionForm(session = {}) {
+      const patientName = session.patientSnapshot?.displayName || session.patientRef || session.patientId || "患者未選択";
+      els.feeSessionDetailTitle.textContent = patientName;
+      els.feeSessionDetailMeta.textContent = `作成 ${formatTokyoDateTime(session.createdAt)} ・ ${session.serviceDate || "診療日未設定"} ・ ${session.feeSessionId}`;
+      els.patientSelect.value = session.patientId || "";
+      els.facilitySelect.value = session.facilityId || "";
+      els.departmentSelect.value = session.departmentId || "";
+      els.serviceDate.value = session.serviceDate || new Date().toISOString().slice(0, 10);
+      els.claimMonth.value = session.claimMonth || String(els.serviceDate.value || "").slice(0, 7);
+      els.settingSelect.value = session.setting || "outpatient";
+      els.clinicalText.value = session.clinicalText || "";
+      els.ordersText.value = serializeOrders(session.orders || []);
     }
 
     function feeSessionIdFromRoute() {
@@ -1695,6 +1917,7 @@
 
     function statusLabel(status) {
       return {
+        draft: "作成中",
         ready: "準備完了",
         calculated: "算定候補作成済み",
         needs_review: "要確認",
@@ -1775,6 +1998,23 @@
             quantity: Number(quantity || 1)
           };
         });
+    }
+
+    function serializeOrders(orders) {
+      if (!Array.isArray(orders) || !orders.length) {
+        return "";
+      }
+      return orders.map((order) => {
+        if (order.content) {
+          return order.content;
+        }
+        return [
+          order.orderType || "unknown",
+          order.localName || order.standardName || "",
+          order.standardCode || order.localCode || "",
+          order.quantity || 1
+        ].join("|");
+      }).join("\n");
     }
 
     async function api(baseUrl, path, options = {}) {
@@ -2077,6 +2317,7 @@
           return;
         }
         clearSelectedFeeSession();
+        showHomeRoute();
       });
     });
 

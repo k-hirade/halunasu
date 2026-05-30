@@ -1,5 +1,6 @@
 export const feeSettings = Object.freeze(["outpatient", "inpatient"]);
 export const feeSessionStatuses = Object.freeze([
+  "draft",
   "ready",
   "calculating",
   "calculated",
@@ -34,20 +35,17 @@ export function validateCreateFeeSessionInput(input = {}) {
     ? validateCreateFeePatientInput(input.patient)
     : undefined;
   const patientId = optionalString(input.patientId ?? input.patient_id);
-  if (!patientId && !patient) {
-    throw validationError("patientId or patient is required", "patientId");
-  }
 
-  const serviceDate = requiredDate(input.serviceDate ?? input.service_date, "serviceDate");
+  const serviceDate = optionalDate(input.serviceDate ?? input.service_date, "serviceDate");
 
   return compactObject({
     patientId,
     patient,
     patientRef: optionalString(input.patientRef ?? input.patient_ref),
-    facilityId: requiredString(input.facilityId ?? input.facility_id, "facilityId"),
+    facilityId: optionalString(input.facilityId ?? input.facility_id),
     departmentId: optionalString(input.departmentId ?? input.department_id),
     serviceDate,
-    claimMonth: optionalClaimMonth(input.claimMonth ?? input.claim_month) || serviceDate.slice(0, 7),
+    claimMonth: optionalClaimMonth(input.claimMonth ?? input.claim_month) || (serviceDate ? serviceDate.slice(0, 7) : undefined),
     setting: optionalEnum(input.setting, feeSettings, "setting") || "outpatient",
     clinicalText: optionalMultilineString(input.clinicalText ?? input.clinical_text, 100000),
     orders: normalizeFeeOrders(input.orders ?? input.order_texts),
@@ -55,6 +53,46 @@ export function validateCreateFeeSessionInput(input = {}) {
     insurance: isPlainObject(input.insurance) ? input.insurance : undefined,
     sourceSystem: optionalString(input.sourceSystem ?? input.source_system)
   });
+}
+
+export function validateUpdateFeeSessionInput(input = {}) {
+  const patient = isPlainObject(input.patient)
+    ? validateCreateFeePatientInput(input.patient)
+    : undefined;
+  const serviceDate = hasOwn(input, "serviceDate") || hasOwn(input, "service_date")
+    ? optionalDate(input.serviceDate ?? input.service_date, "serviceDate")
+    : undefined;
+  const patch = {
+    patientId: optionalString(input.patientId ?? input.patient_id),
+    patient,
+    patientRef: optionalString(input.patientRef ?? input.patient_ref),
+    facilityId: optionalString(input.facilityId ?? input.facility_id),
+    departmentId: hasOwn(input, "departmentId") || hasOwn(input, "department_id")
+      ? nullableString(input.departmentId ?? input.department_id)
+      : undefined,
+    serviceDate,
+    claimMonth: hasOwn(input, "claimMonth") || hasOwn(input, "claim_month")
+      ? optionalClaimMonth(input.claimMonth ?? input.claim_month)
+      : serviceDate
+        ? serviceDate.slice(0, 7)
+        : undefined,
+    setting: optionalEnum(input.setting, feeSettings, "setting"),
+    clinicalText: hasOwn(input, "clinicalText") || hasOwn(input, "clinical_text")
+      ? multilineStringValue(input.clinicalText ?? input.clinical_text, 100000)
+      : undefined,
+    orders: hasOwn(input, "orders") || hasOwn(input, "order_texts")
+      ? normalizeFeeOrders(input.orders ?? input.order_texts)
+      : undefined,
+    diagnoses: hasOwn(input, "diagnoses")
+      ? normalizeDiagnoses(input.diagnoses)
+      : undefined,
+    insurance: hasOwn(input, "insurance")
+      ? nullablePlainObject(input.insurance, "insurance")
+      : undefined,
+    sourceSystem: optionalString(input.sourceSystem ?? input.source_system)
+  };
+
+  return compactObject(patch);
 }
 
 export function validateCreateFeeCalculationInput(input = {}) {
@@ -207,6 +245,19 @@ function requiredDate(value, field) {
   return normalized;
 }
 
+function optionalDate(value, field) {
+  const normalized = optionalString(value);
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw validationError(`${field} must use YYYY-MM-DD`, field);
+  }
+
+  return normalized;
+}
+
 function optionalBirthDate(value) {
   const normalized = optionalString(value);
   if (!normalized) {
@@ -255,6 +306,35 @@ function optionalPlainObject(value, field) {
   }
 
   return value;
+}
+
+function nullablePlainObject(value, field) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (!isPlainObject(value)) {
+    throw validationError(`${field} must be an object`, field);
+  }
+  return value;
+}
+
+function nullableString(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return optionalString(value) || null;
+}
+
+function multilineStringValue(value, maxLength) {
+  const text = String(value ?? "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
+    .trim();
+  if (text.length > maxLength) {
+    throw validationError(`text must be ${maxLength} characters or less`, "text");
+  }
+
+  return text;
 }
 
 function optionalPositiveNumber(value, field) {

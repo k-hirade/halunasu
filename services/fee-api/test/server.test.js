@@ -132,6 +132,58 @@ test("can create inline Platform patient when creating fee session", async () =>
   assert.equal(session.body.feeSession.patientSnapshot.displayName, "佐藤 花子");
 });
 
+test("creates draft fee sessions and updates them before calculation", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "山田 太郎"
+  }, headers);
+  const draft = await request(stores, "POST", "/v1/fee/sessions", {}, headers);
+  const draftReceipt = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${draft.body.feeSession.feeSessionId}/receipt-draft`,
+    undefined,
+    headers
+  );
+  const rejected = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${draft.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+  const updated = await request(stores, "PATCH", `/v1/fee/sessions/${draft.body.feeSession.feeSessionId}`, {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-05-29",
+    clinicalText: "発熱。",
+    orders: [{
+      orderType: "lab",
+      localName: "血液検査"
+    }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${draft.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+
+  assert.equal(draft.statusCode, 201);
+  assert.equal(draft.body.feeSession.status, "draft");
+  assert.equal(draftReceipt.statusCode, 200);
+  assert.equal(draftReceipt.body.receiptDraft.status, "not_calculated");
+  assert.equal(rejected.statusCode, 400);
+  assert.match(rejected.body.message, /患者/);
+  assert.equal(updated.statusCode, 200);
+  assert.equal(updated.body.feeSession.status, "ready");
+  assert.equal(updated.body.feeSession.patientSnapshot.displayName, "山田 太郎");
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(calculation.body.feeSession.status, "needs_review");
+});
+
 test("rejects fee access without product entitlement", async () => {
   const stores = createStores({ entitlement: false });
   const headers = await signedHeaders(stores.platformStore);

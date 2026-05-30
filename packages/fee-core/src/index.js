@@ -6,22 +6,26 @@ import {
 export function buildFeeSession(input = {}, options = {}) {
   const now = timestamp(options.now);
   const feeSessionId = options.feeSessionId || createId("fee");
+  const patientId = optionalString(input.patientId);
+  const facilityId = optionalString(input.facilityId);
+  const serviceDate = optionalString(input.serviceDate) || now.slice(0, 10);
+  const status = input.status || (patientId && facilityId ? "ready" : "draft");
 
   return compactObject({
     feeSessionId,
     sessionId: feeSessionId,
     orgId: requiredString(input.orgId, "orgId"),
-    patientId: requiredString(input.patientId, "patientId"),
-    patientRef: input.patientRef || input.patientId,
+    patientId: patientId || null,
+    patientRef: input.patientRef || patientId || null,
     patientSnapshot: input.patientSnapshot || null,
-    facilityId: requiredString(input.facilityId, "facilityId"),
+    facilityId: facilityId || null,
     facilitySnapshot: input.facilitySnapshot || null,
     departmentId: input.departmentId || null,
     departmentSnapshot: input.departmentSnapshot || null,
     createdByMemberId: requiredString(input.createdByMemberId, "createdByMemberId"),
-    status: input.status || "ready",
-    serviceDate: requiredString(input.serviceDate, "serviceDate"),
-    claimMonth: input.claimMonth || String(input.serviceDate).slice(0, 7),
+    status,
+    serviceDate,
+    claimMonth: input.claimMonth || serviceDate.slice(0, 7),
     setting: input.setting || "outpatient",
     clinicalText: input.clinicalText || "",
     orders: Array.isArray(input.orders) ? input.orders : [],
@@ -36,6 +40,55 @@ export function buildFeeSession(input = {}, options = {}) {
     updatedAt: now,
     schemaVersion: 1
   });
+}
+
+export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
+  const now = timestamp(options.now);
+  const next = {
+    ...current,
+    ...compactObject({
+      patientId: hasOwn(patch, "patientId") ? patch.patientId || null : undefined,
+      patientRef: hasOwn(patch, "patientRef") ? patch.patientRef || patch.patientId || null : undefined,
+      patientSnapshot: hasOwn(patch, "patientSnapshot") ? patch.patientSnapshot || null : undefined,
+      facilityId: hasOwn(patch, "facilityId") ? patch.facilityId || null : undefined,
+      facilitySnapshot: hasOwn(patch, "facilitySnapshot") ? patch.facilitySnapshot || null : undefined,
+      departmentId: hasOwn(patch, "departmentId") ? patch.departmentId || null : undefined,
+      departmentSnapshot: hasOwn(patch, "departmentSnapshot") ? patch.departmentSnapshot || null : undefined,
+      serviceDate: patch.serviceDate,
+      claimMonth: patch.claimMonth || (patch.serviceDate ? String(patch.serviceDate).slice(0, 7) : undefined),
+      setting: patch.setting,
+      clinicalText: hasOwn(patch, "clinicalText") ? patch.clinicalText || "" : undefined,
+      orders: hasOwn(patch, "orders") ? patch.orders : undefined,
+      diagnoses: hasOwn(patch, "diagnoses") ? patch.diagnoses : undefined,
+      insurance: hasOwn(patch, "insurance") ? patch.insurance || null : undefined,
+      sourceSystem: patch.sourceSystem
+    }),
+    updatedAt: now
+  };
+  const changedCalculationInput = [
+    "patientId",
+    "facilityId",
+    "departmentId",
+    "serviceDate",
+    "claimMonth",
+    "setting",
+    "clinicalText",
+    "orders",
+    "diagnoses",
+    "insurance"
+  ].some((key) => hasOwn(patch, key));
+
+  if (changedCalculationInput && (next.calculationResult || next.calculationSummary)) {
+    next.calculationResult = null;
+    next.calculationSummary = null;
+    next.latestCalculationId = null;
+  }
+
+  if (["draft", "ready", "failed", "calculated", "needs_review"].includes(current.status || "")) {
+    next.status = feeSessionHasRequiredCalculationContext(next) ? "ready" : "draft";
+  }
+
+  return compactObject(next);
 }
 
 export function applyCalculationResult(current = {}, calculationResult = {}, options = {}) {
@@ -68,7 +121,7 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
     calculationId: options.calculationId || createId("calc"),
     feeSessionId: requiredString(session.feeSessionId, "feeSessionId"),
     orgId: requiredString(session.orgId, "orgId"),
-    patientId: requiredString(session.patientId, "patientId"),
+    patientId: session.patientId || null,
     patientRef: session.patientRef || session.patientId,
     provider: requiredString(calculation.provider || "medical_fee_calculation", "provider"),
     source: calculation.source || "medical_fee_calculation",
@@ -144,7 +197,7 @@ export function buildReceiptDraft(session = {}, options = {}) {
     receiptDraftId: `receipt_${requiredString(session.feeSessionId, "feeSessionId")}`,
     feeSessionId: session.feeSessionId,
     orgId: requiredString(session.orgId, "orgId"),
-    patientId: requiredString(session.patientId, "patientId"),
+    patientId: session.patientId || null,
     patientRef: session.patientRef || session.patientId,
     facilitySnapshot: session.facilitySnapshot || null,
     departmentSnapshot: session.departmentSnapshot || null,
@@ -469,6 +522,15 @@ function requiredString(value, field) {
   return value.trim();
 }
 
+function optionalString(value) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
 function timestamp(value) {
   if (value instanceof Date) {
     return value.toISOString();
@@ -494,4 +556,12 @@ function compactObject(value) {
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function feeSessionHasRequiredCalculationContext(session = {}) {
+  return Boolean(session.patientId && session.facilityId && session.serviceDate);
 }
