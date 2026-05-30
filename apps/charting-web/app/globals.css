@@ -3205,6 +3205,157 @@ body:has(.password-setup-page) .site-nav-wrap {
   gap: 12px;
 }
 
+.field-label {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.patient-search-select {
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+
+.patient-search-control {
+  padding: 0;
+}
+
+.patient-search-control--open {
+  border-color: var(--accent);
+}
+
+.patient-search-control input {
+  min-width: 0;
+  width: 100%;
+  height: 36px;
+  border: 0;
+  padding: 8px 0 8px 10px;
+  background: transparent;
+  color: var(--ink);
+  outline: none;
+  font: inherit;
+  font-size: 0.86rem;
+}
+
+.patient-search-control input::placeholder {
+  color: var(--muted);
+}
+
+.patient-search-clear {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  margin-right: 5px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.patient-search-clear:hover {
+  background: var(--neutral-soft);
+  color: var(--ink);
+}
+
+.patient-search-selected-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.patient-search-menu {
+  position: absolute;
+  z-index: 120;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: min(320px, 50dvh);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.patient-search-item {
+  width: 100%;
+  min-height: 44px;
+  display: grid;
+  gap: 2px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+}
+
+.patient-search-item:hover,
+.patient-search-item:focus-visible {
+  background: var(--neutral-soft);
+  outline: none;
+}
+
+.patient-search-item--selected {
+  background: var(--accent-soft);
+}
+
+.patient-search-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.patient-search-item small,
+.patient-search-empty {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.patient-search-empty {
+  padding: 12px;
+}
+
+.patient-info-static-select {
+  min-height: 38px;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--neutral-soft);
+  color: var(--ink);
+}
+
+.patient-info-static-select span,
+.patient-info-static-select small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.patient-info-static-select span {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.patient-info-static-select small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
 .patient-info-actions {
   display: flex;
   justify-content: flex-end;

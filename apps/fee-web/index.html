@@ -127,6 +127,13 @@
       font-weight: 800;
     }
 
+    .field-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
     input,
     select,
     textarea {
@@ -368,6 +375,11 @@
               </button>
             </div>
           </div>
+          <div class="field hidden" id="mfa-code-field">
+            <label for="mfaCode">認証コード</label>
+            <input id="mfaCode" name="mfaCode" inputmode="numeric" autocomplete="one-time-code" placeholder="6桁のコード" maxlength="6" pattern="[0-9]{6}" />
+            <p class="field-note">Google Authenticator などの認証アプリに表示されるコードを入力してください。</p>
+          </div>
           <div id="login-message" class="inline-error" role="status" aria-live="polite"></div>
           <div class="operator-gate-actions">
             <button class="btn btn--primary btn--lg" type="submit" id="login-button">ログイン</button>
@@ -501,6 +513,7 @@
     const state = {
       csrfToken: "",
       session: null,
+      mfaRequired: false,
       patients: [],
       facilities: [],
       departments: [],
@@ -515,6 +528,8 @@
       appShell: document.querySelector("#app-shell"),
       loginMessage: document.querySelector("#login-message"),
       loginButton: document.querySelector("#login-button"),
+      mfaCodeField: document.querySelector("#mfa-code-field"),
+      mfaCode: document.querySelector("#mfaCode"),
       sessionChip: document.querySelector("#session-chip"),
       loginForm: document.querySelector("#login-form"),
       patientForm: document.querySelector("#patient-form"),
@@ -540,16 +555,26 @@
       event.preventDefault();
       await runLogin(async () => {
         const form = new FormData(els.loginForm);
+        const mfaCode = String(form.get("mfaCode") || "").replace(/\s+/g, "").trim();
+        if (state.mfaRequired && !mfaCode) {
+          showMfaField();
+          throw new Error("認証アプリの6桁コードを入力してください。");
+        }
+        const body = {
+          organizationCode: form.get("organizationCode"),
+          loginId: form.get("loginId"),
+          password: form.get("password")
+        };
+        if (mfaCode) {
+          body.mfaCode = mfaCode;
+        }
         const response = await api(platformApiBaseUrl, "/v1/auth/login", {
           method: "POST",
-          body: {
-            organizationCode: form.get("organizationCode"),
-            loginId: form.get("loginId"),
-            password: form.get("password")
-          }
+          body
         });
         state.csrfToken = response.csrfToken || "";
         state.session = response.session;
+        resetMfaField();
         renderSession();
         hide(els.loginGate);
         show(els.appShell);
@@ -559,6 +584,7 @@
     });
 
     setupPasswordToggle();
+    setupMfaCodeInput();
 
     els.patientForm.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -872,7 +898,10 @@
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.message || `HTTP ${response.status}`);
+        const error = new Error(data.message || data.error || `HTTP ${response.status}`);
+        error.code = data.error || "";
+        error.status = response.status;
+        throw error;
       }
       return data;
     }
@@ -895,6 +924,12 @@
       try {
         await task();
       } catch (error) {
+        if (error.code === "mfa_required") {
+          showMfaField();
+          showLoginMessage("認証アプリの6桁コードを入力してください。");
+          return;
+        }
+
         if (state.session) {
           showMessage(error.message || "初期データの読み込みに失敗しました", "error");
         } else {
@@ -926,6 +961,20 @@
       els.loginMessage.textContent = text || "";
     }
 
+    function showMfaField() {
+      state.mfaRequired = true;
+      show(els.mfaCodeField);
+      els.mfaCode.required = true;
+      window.requestAnimationFrame(() => els.mfaCode.focus());
+    }
+
+    function resetMfaField() {
+      state.mfaRequired = false;
+      hide(els.mfaCodeField);
+      els.mfaCode.required = false;
+      els.mfaCode.value = "";
+    }
+
     function hideMessage() {
       els.message.textContent = "";
       els.message.className = "message";
@@ -948,6 +997,12 @@
           button.classList.toggle("is-visible", visible);
           button.setAttribute("aria-label", visible ? "パスワードを隠す" : "パスワードを表示");
         });
+      });
+    }
+
+    function setupMfaCodeInput() {
+      els.mfaCode.addEventListener("input", () => {
+        els.mfaCode.value = els.mfaCode.value.replace(/\D+/g, "").slice(0, 6);
       });
     }
 

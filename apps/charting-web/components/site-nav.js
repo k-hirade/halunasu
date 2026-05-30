@@ -88,6 +88,15 @@ export function SiteNav() {
   useEffect(() => {
     let cancelled = false;
 
+    if (pathname?.startsWith("/mobile")) {
+      setOperatorSession(null);
+      setHasAccess(false);
+      setHasCheckedAccess(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     async function refreshOperator() {
       const current = await getCurrentOperatorSession().catch(() => null);
 
@@ -144,7 +153,7 @@ export function SiteNav() {
       window.removeEventListener("storage", handleAccessChanged);
       window.removeEventListener("focus", handleFocus);
     };
-  }, []);
+  }, [pathname]);
 
   const canUseSettings = hasAccess && canOpenSettingsConsole(operatorSession);
   const isSettingsRoute = pathname?.startsWith("/admin");

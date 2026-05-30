@@ -11,6 +11,7 @@ for (const file of requiredFiles) {
 const html = readFileSync(join(root, "index.html"), "utf8");
 
 assert(html.includes("/v1/auth/login"), "fee web must log in through Platform");
+assert(html.includes("mfaCode"), "fee web must support Platform MFA login");
 assert(html.includes("/v1/fee/patients"), "fee web must create patients through fee-api");
 assert(html.includes("/v1/fee/facilities"), "fee web must load Platform facilities through fee-api");
 assert(html.includes("/v1/fee/departments"), "fee web must load Platform departments through fee-api");

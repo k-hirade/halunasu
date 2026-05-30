@@ -21,8 +21,11 @@ export const COOKIE_OPERATOR_ACCESS_TOKEN = "__cookie_operator_session__";
 export const OPERATOR_ACCESS_CHANGED_EVENT = "medical:operator-access-changed";
 const OPERATOR_CSRF_COOKIE_NAME = "soaplane_operator_csrf";
 const CSRF_FAILURE_MESSAGE = "セキュリティ確認に失敗しました。画面を再読み込みしてからもう一度お試しください。";
+const OPERATOR_SESSION_CACHE_TTL_MS = 3000;
 let operatorCsrfToken = null;
 let operatorCsrfRefreshPromise = null;
+const operatorSessionCache = new Map();
+const operatorSessionRequests = new Map();
 
 export { MEMBER_ROLE_DEFINITIONS };
 
@@ -141,7 +144,13 @@ export function notifyOperatorAccessChanged() {
     return;
   }
 
+  clearOperatorSessionCache();
   window.dispatchEvent(new Event(OPERATOR_ACCESS_CHANGED_EVENT));
+}
+
+function clearOperatorSessionCache() {
+  operatorSessionCache.clear();
+  operatorSessionRequests.clear();
 }
 
 function isCookieSessionAccessToken(token) {
@@ -150,6 +159,11 @@ function isCookieSessionAccessToken(token) {
 
 function hasBearerAccessToken(token) {
   return Boolean(token) && !isCookieSessionAccessToken(token);
+}
+
+function operatorSessionCacheKey(accessToken) {
+  const token = typeof accessToken === "string" ? accessToken.trim() : "";
+  return hasBearerAccessToken(token) ? `bearer:${token}` : "cookie";
 }
 
 export function getStoredOperatorAccessToken() {
@@ -162,6 +176,7 @@ export function storeOperatorAccessToken(_token) {
     return;
   }
 
+  clearOperatorSessionCache();
   window.localStorage.removeItem(STORAGE_KEY);
 }
 
@@ -322,6 +337,7 @@ export async function fetchWithOperatorAuth(url, options = {}, accessToken = nul
 }
 
 export async function loginOperator({ organizationCode, loginId, password }) {
+  clearOperatorSessionCache();
   const response = await fetch(`${getGatewayBaseUrl()}/api/v1/operator/login`, {
     method: "POST",
     credentials: "include",
@@ -341,10 +357,12 @@ export async function loginOperator({ organizationCode, loginId, password }) {
   }
 
   const result = await response.json();
+  clearOperatorSessionCache();
   return syncOperatorCsrfCookieAfterSession(result);
 }
 
 async function completeOperatorMfa(path, { challengeId, code }) {
+  clearOperatorSessionCache();
   const response = await fetch(`${getGatewayBaseUrl()}${path}`, {
     method: "POST",
     credentials: "include",
@@ -360,6 +378,7 @@ async function completeOperatorMfa(path, { challengeId, code }) {
   }
 
   const result = await response.json();
+  clearOperatorSessionCache();
   return syncOperatorCsrfCookieAfterSession(result);
 }
 
@@ -372,32 +391,63 @@ export function confirmOperatorMfaEnrollment(input) {
 }
 
 export async function getCurrentOperatorSession(accessToken = null) {
-  const response = await fetch(`${getGatewayBaseUrl()}/api/v1/operator/me`, {
+  const cacheKey = operatorSessionCacheKey(accessToken);
+  const cached = operatorSessionCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.payload;
+  }
+
+  const existingRequest = operatorSessionRequests.get(cacheKey);
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const request = fetch(`${getGatewayBaseUrl()}/api/v1/operator/me`, {
     cache: "no-store",
     credentials: "include",
     headers: buildOperatorAuthHeaders(accessToken)
-  });
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        operatorSessionCache.delete(cacheKey);
+        return null;
+      }
 
-  if (!response.ok) {
-    return null;
-  }
+      const payload = await response.json();
 
-  const payload = await response.json();
+      if (!hasBearerAccessToken(accessToken)) {
+        await refreshOperatorCsrfToken();
+      }
 
-  if (!hasBearerAccessToken(accessToken)) {
-    await refreshOperatorCsrfToken();
-  }
+      operatorSessionCache.set(cacheKey, {
+        payload,
+        expiresAt: Date.now() + OPERATOR_SESSION_CACHE_TTL_MS
+      });
 
-  return payload;
+      return payload;
+    })
+    .catch((error) => {
+      operatorSessionCache.delete(cacheKey);
+      throw error;
+    })
+    .finally(() => {
+      operatorSessionRequests.delete(cacheKey);
+    });
+
+  operatorSessionRequests.set(cacheKey, request);
+  return request;
 }
 
 export async function logoutOperator() {
+  clearOperatorSessionCache();
   await fetch(`${getGatewayBaseUrl()}/api/v1/operator/logout`, {
     method: "POST",
     credentials: "include",
     headers: buildOperatorAuthHeaders(COOKIE_OPERATOR_ACCESS_TOKEN)
   }).catch(() => {});
   setOperatorCsrfToken(null);
+  clearOperatorSessionCache();
 }
 
 export function useOperatorAccess() {

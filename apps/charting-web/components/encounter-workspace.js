@@ -59,6 +59,7 @@ const EMPTY_PATIENT_INFO_DRAFT = {
   patientDisplayName: "",
   visitReason: ""
 };
+const OPTIONAL_SELECT_NONE_VALUE = "__none__";
 
 const FINALIZING_SESSION_POLL_INTERVAL_MS = 1000;
 const AUDIO_ACTIVITY_HOLD_MS = 900;
@@ -102,6 +103,138 @@ function reviewDraftEquals(left, right) {
   return (
     left.transcript === right.transcript &&
     left.outputText === right.outputText
+  );
+}
+
+function optionalSelectValue(value) {
+  return value || OPTIONAL_SELECT_NONE_VALUE;
+}
+
+function optionalSelectToDraftValue(value) {
+  return value === OPTIONAL_SELECT_NONE_VALUE ? "" : value;
+}
+
+function compactPatientAliases(patient) {
+  const aliases = [
+    patient?.patientId,
+    patient?.patientCode,
+    patient?.patientRef,
+    patient?.displayNameKana,
+    patient?.kana,
+    patient?.externalPatientId,
+    ...(Array.isArray(patient?.externalPatientIds) ? patient.externalPatientIds : []),
+    ...(Array.isArray(patient?.aliases) ? patient.aliases : [])
+  ];
+
+  return aliases.map((item) => String(item || "").trim()).filter(Boolean);
+}
+
+function patientOptionDescription(patient) {
+  const aliases = compactPatientAliases(patient).filter((item) => item !== patient?.patientId);
+  return [patient?.patientId, aliases[0]].filter(Boolean).join(" / ");
+}
+
+function PatientSearchSelect({ id, patients, value, disabled, onChange }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selectedPatient = patients.find((patient) => patient.patientId === value) || null;
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredPatients = normalizedQuery
+    ? patients.filter((patient) => {
+        const haystack = [
+          patient.displayName,
+          ...compactPatientAliases(patient)
+        ].join(" ").toLowerCase();
+        return haystack.includes(normalizedQuery);
+      })
+    : patients.slice(0, 12);
+  const visiblePatients = filteredPatients.slice(0, 12);
+
+  function selectPatient(patient) {
+    onChange(patient?.patientId || "", patient || null);
+    setQuery("");
+    setIsOpen(false);
+  }
+
+  return (
+    <div
+      className={`patient-search-select ${disabled ? "patient-search-select--disabled" : ""}`}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setIsOpen(false);
+          setQuery("");
+        }
+      }}
+    >
+      <div className={`patient-search-control admin-select-trigger ${isOpen ? "patient-search-control--open" : ""}`}>
+        <input
+          id={id}
+          type="search"
+          value={isOpen ? query : selectedPatient?.displayName || ""}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => {
+            setQuery("");
+            setIsOpen(true);
+          }}
+          placeholder={selectedPatient ? "患者名・患者IDで検索" : "患者名・患者IDで検索"}
+          disabled={disabled}
+          autoComplete="off"
+          aria-autocomplete="list"
+          aria-expanded={isOpen}
+        />
+        {selectedPatient && !disabled ? (
+          <button
+            className="patient-search-clear"
+            type="button"
+            aria-label="患者選択を解除"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => selectPatient(null)}
+          >
+            <Icon name="x" size={14} />
+          </button>
+        ) : (
+          <span className="admin-select-affordance" aria-hidden="true">
+            <span className="admin-select-chevron" />
+          </span>
+        )}
+      </div>
+      {selectedPatient ? (
+        <span className="patient-search-selected-meta">{patientOptionDescription(selectedPatient)}</span>
+      ) : null}
+      {isOpen && !disabled ? (
+        <div className="patient-search-menu">
+          <button
+            className={`patient-search-item ${!value ? "patient-search-item--selected" : ""}`}
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => selectPatient(null)}
+          >
+            <span>患者を選択しない</span>
+            <small>患者名だけを手入力する場合はこちら</small>
+          </button>
+          {visiblePatients.map((patient) => (
+            <button
+              className={`patient-search-item ${patient.patientId === value ? "patient-search-item--selected" : ""}`}
+              key={patient.patientId}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => selectPatient(patient)}
+            >
+              <span>{patient.displayName}</span>
+              <small>{patientOptionDescription(patient)}</small>
+            </button>
+          ))}
+          {patients.length === 0 ? (
+            <div className="patient-search-empty">Core患者はまだ登録されていません。</div>
+          ) : visiblePatients.length === 0 ? (
+            <div className="patient-search-empty">該当する患者が見つかりません。</div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -765,6 +898,32 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
     loadSession().catch((e) => setError(e.message));
     loadCoreMasterData().catch((e) => addToast(e.message, "error"));
   }, [sessionId, accessToken]);
+
+  useEffect(() => {
+    if (coreFacilities.length !== 1) {
+      return;
+    }
+
+    const onlyFacility = coreFacilities[0];
+    if (!onlyFacility?.facilityId) {
+      return;
+    }
+
+    setPatientInfoDraft((current) => {
+      if (current.facilityId) {
+        return current;
+      }
+
+      const nextDepartments = coreDepartments.filter((department) => !department.facilityId || department.facilityId === onlyFacility.facilityId);
+      return {
+        ...current,
+        facilityId: onlyFacility.facilityId,
+        departmentId: current.departmentId && nextDepartments.some((department) => department.departmentId === current.departmentId)
+          ? current.departmentId
+          : ""
+      };
+    });
+  }, [coreFacilities, coreDepartments]);
 
   useEffect(() => {
     if (!accessToken || status !== "finalizing") {
@@ -2185,6 +2344,23 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
     const selectableDepartments = patientInfoDraft.facilityId
       ? coreDepartments.filter((department) => !department.facilityId || department.facilityId === patientInfoDraft.facilityId)
       : coreDepartments;
+    const onlyFacility = coreFacilities.length === 1 ? coreFacilities[0] : null;
+    const facilityOptions = [
+      { value: OPTIONAL_SELECT_NONE_VALUE, label: "施設を選択しない", description: "施設を未指定にします。" },
+      ...coreFacilities.map((facility) => ({
+        value: facility.facilityId,
+        label: facility.displayName,
+        description: facility.medicalInstitutionCode ? `医療機関コード ${facility.medicalInstitutionCode}` : "Core施設"
+      }))
+    ];
+    const departmentOptions = [
+      { value: OPTIONAL_SELECT_NONE_VALUE, label: "診療科を選択しない", description: "診療科を未指定にします。" },
+      ...selectableDepartments.map((department) => ({
+        value: department.departmentId,
+        label: department.displayName,
+        description: department.facilityId ? "選択中の施設に紐づく診療科" : "共通診療科"
+      }))
+    ];
 
     return (
       <div className={`patient-info-card ${showPatientInfo ? "patient-info-card--expanded" : "patient-info-card--collapsed"}`}>
@@ -2224,12 +2400,11 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
             <div className="patient-info-grid">
               <div className="field">
                 <label htmlFor="workspaceCorePatientId">Core患者</label>
-                <select
+                <PatientSearchSelect
                   id="workspaceCorePatientId"
+                  patients={corePatients}
                   value={patientInfoDraft.patientId}
-                  onChange={(event) => {
-                    const patientId = event.target.value;
-                    const patient = corePatients.find((item) => item.patientId === patientId);
+                  onChange={(patientId, patient) => {
                     setPatientInfoDraft((current) => ({
                       ...current,
                       patientId,
@@ -2239,64 +2414,52 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                     setPatientInfoMessage("未保存");
                   }}
                   disabled={patientInfoLocked}
-                >
-                  <option value="">患者を選択しない</option>
-                  {corePatients.map((patient) => (
-                    <option key={patient.patientId} value={patient.patientId}>
-                      {patient.displayName}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
               <div className="field">
-                <label htmlFor="workspaceFacilityId">施設</label>
-                <select
-                  id="workspaceFacilityId"
-                  value={patientInfoDraft.facilityId}
-                  onChange={(event) => {
-                    const facilityId = event.target.value;
-                    const nextDepartments = facilityId
-                      ? coreDepartments.filter((department) => !department.facilityId || department.facilityId === facilityId)
-                      : coreDepartments;
-                    setPatientInfoDraft((current) => ({
-                      ...current,
-                      facilityId,
-                      departmentId: current.departmentId && nextDepartments.some((department) => department.departmentId === current.departmentId)
-                        ? current.departmentId
-                        : ""
-                    }));
+                <span className="field-label">施設</span>
+                {onlyFacility ? (
+                  <div className="patient-info-static-select" title={onlyFacility.displayName}>
+                    <span>{onlyFacility.displayName}</span>
+                    <small>{onlyFacility.medicalInstitutionCode ? `医療機関コード ${onlyFacility.medicalInstitutionCode}` : "この病院では施設は固定です"}</small>
+                  </div>
+                ) : (
+                  <AdminSelect
+                    ariaLabel="施設"
+                    disabled={patientInfoLocked}
+                    onValueChange={(nextValue) => {
+                      const facilityId = optionalSelectToDraftValue(nextValue);
+                      const nextDepartments = facilityId
+                        ? coreDepartments.filter((department) => !department.facilityId || department.facilityId === facilityId)
+                        : coreDepartments;
+                      setPatientInfoDraft((current) => ({
+                        ...current,
+                        facilityId,
+                        departmentId: current.departmentId && nextDepartments.some((department) => department.departmentId === current.departmentId)
+                          ? current.departmentId
+                          : ""
+                      }));
+                      setPatientInfoSaveState("dirty");
+                      setPatientInfoMessage("未保存");
+                    }}
+                    options={facilityOptions}
+                    value={optionalSelectValue(patientInfoDraft.facilityId)}
+                  />
+                )}
+              </div>
+              <div className="field">
+                <span className="field-label">診療科</span>
+                <AdminSelect
+                  ariaLabel="診療科"
+                  disabled={patientInfoLocked}
+                  onValueChange={(nextValue) => {
+                    setPatientInfoDraft((current) => ({ ...current, departmentId: optionalSelectToDraftValue(nextValue) }));
                     setPatientInfoSaveState("dirty");
                     setPatientInfoMessage("未保存");
                   }}
-                  disabled={patientInfoLocked}
-                >
-                  <option value="">施設を選択しない</option>
-                  {coreFacilities.map((facility) => (
-                    <option key={facility.facilityId} value={facility.facilityId}>
-                      {facility.displayName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="workspaceDepartmentId">診療科</label>
-                <select
-                  id="workspaceDepartmentId"
-                  value={patientInfoDraft.departmentId}
-                  onChange={(event) => {
-                    setPatientInfoDraft((current) => ({ ...current, departmentId: event.target.value }));
-                    setPatientInfoSaveState("dirty");
-                    setPatientInfoMessage("未保存");
-                  }}
-                  disabled={patientInfoLocked}
-                >
-                  <option value="">診療科を選択しない</option>
-                  {selectableDepartments.map((department) => (
-                    <option key={department.departmentId} value={department.departmentId}>
-                      {department.displayName}
-                    </option>
-                  ))}
-                </select>
+                  options={departmentOptions}
+                  value={optionalSelectValue(patientInfoDraft.departmentId)}
+                />
               </div>
               <div className="field">
                 <label htmlFor="workspacePatientDisplayName">患者名</label>
