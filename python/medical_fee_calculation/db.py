@@ -514,6 +514,27 @@ CREATE INDEX IF NOT EXISTS idx_hospital_facility_standards_regional_code
 CREATE INDEX IF NOT EXISTS idx_hospital_facility_standards_abbrev
     ON hospital_facility_standards(source_id, standard_abbreviation);
 
+CREATE INDEX IF NOT EXISTS idx_hospital_facility_standards_profile_lookup
+    ON hospital_facility_standards(
+        source_id,
+        regional_bureau,
+        medical_institution_code,
+        standard_abbreviation,
+        standard_name,
+        receipt_number,
+        start_date
+    );
+
+CREATE INDEX IF NOT EXISTS idx_hospital_facility_standards_profile_lookup_no_source
+    ON hospital_facility_standards(
+        regional_bureau,
+        medical_institution_code,
+        standard_abbreviation,
+        standard_name,
+        receipt_number,
+        start_date
+    );
+
 CREATE VIEW IF NOT EXISTS hospital_profile_facility_standards AS
 SELECT
     medical_institution_code,

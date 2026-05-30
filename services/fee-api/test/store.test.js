@@ -78,6 +78,11 @@ test("stores fee sessions by organization and saves calculation results", () => 
 
   assert.equal(session.feeSessionId, "fee_001");
   assert.equal(store.listSessions("org_123").length, 1);
+  const page = store.listSessions("org_123", { page: 1, pageSize: 20 });
+  assert.equal(page.feeSessions.length, 1);
+  assert.equal(page.totalCount, 1);
+  assert.equal(page.feeSessions[0].calculationResult, undefined);
+  assert.equal(page.feeSessions[0].calculationSummary.totalPoints, 88);
   assert.equal(result.calculationResult.calculationId, "calc_002");
   assert.equal(result.calculationResult.provider, "test_fee_engine");
   assert.equal(result.feeSession.status, "needs_review");

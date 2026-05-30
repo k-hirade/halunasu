@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { getGatewayBaseUrl, getGatewayWsUrl } from "../lib/runtime-config";
 import { fetchWithOperatorAuth, getCurrentOperatorSession, useOperatorAccess } from "../lib/operator-access";
@@ -38,13 +38,16 @@ function formatRemaining(ms) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function buildFallbackHighlights(turns) {
-  const text = turns.map((t) => t.text).join(" ");
+function buildFallbackHighlightsFromText(text) {
   const items = [];
   if (text.includes("咳")) items.push({ label: "咳" });
   if (text.includes("熱")) items.push({ label: "発熱" });
   if (text.includes("血圧")) items.push({ label: "血圧" });
   return items;
+}
+
+function buildFallbackHighlights(turns) {
+  return buildFallbackHighlightsFromText(turns.map((t) => t.text).join(" "));
 }
 
 const EMPTY_REVIEW_DRAFT = {
@@ -65,9 +68,7 @@ const FINALIZING_SESSION_POLL_INTERVAL_MS = 1000;
 const AUDIO_ACTIVITY_HOLD_MS = 900;
 const AUDIO_ACTIVITY_LEVEL_THRESHOLD = 6;
 
-function buildReviewDraft(soap, turns) {
-  const liveTranscript = turns.map((turn) => turn.text.trim()).filter(Boolean).join("\n");
-
+function buildReviewDraft(soap, liveTranscript = "") {
   return {
     transcript: soap?.structuredJson?.finalTranscript || liveTranscript,
     outputText: buildSoapOutputText(soap)
@@ -91,12 +92,16 @@ function buildSoapOutputText(soap) {
   ].filter(Boolean).join("\n\n").trim();
 }
 
-function buildAiTranscript(soap, turns) {
+function buildAiTranscript(soap, liveTranscript = "") {
   return (
     soap?.structuredJson?.rawFinalTranscript ||
     soap?.structuredJson?.finalTranscript ||
-    turns.map((turn) => turn.text.trim()).filter(Boolean).join("\n")
+    liveTranscript
   );
+}
+
+function buildLiveTranscript(turns) {
+  return turns.map((turn) => turn.text.trim()).filter(Boolean).join("\n");
 }
 
 function reviewDraftEquals(left, right) {
@@ -636,7 +641,12 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
   const isLocalRecordingMode = selectedRecordingMode === "local";
   const isMobileRecordingMode = selectedRecordingMode === "mobile";
   const turns = sessionState?.turns || [];
-  const effectiveHighlights = highlights.length ? highlights : buildFallbackHighlights(turns);
+  const liveTranscript = useMemo(() => buildLiveTranscript(turns), [turns]);
+  const fallbackHighlights = useMemo(
+    () => buildFallbackHighlightsFromText(liveTranscript.replaceAll("\n", " ")),
+    [liveTranscript]
+  );
+  const effectiveHighlights = highlights.length ? highlights : fallbackHighlights;
   const pairingUrl = buildPairingUrl(pairingMeta.pairingId, pairingMeta.token);
   const soap = sessionState?.latestSoap;
   const soapGenerationPreview = String(sessionState?.session?.soapGenerationPreview || "");
@@ -655,7 +665,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
     patientInfoDraft.departmentId !== patientInfoBaseline.departmentId ||
     patientInfoDraft.patientDisplayName !== patientInfoBaseline.patientDisplayName ||
     patientInfoDraft.visitReason !== patientInfoBaseline.visitReason;
-  const aiTranscript = buildAiTranscript(soap, turns);
+  const aiTranscript = useMemo(() => buildAiTranscript(soap, liveTranscript), [soap, liveTranscript]);
   const finalTranscript = reviewReady
     ? hasReviewDraftForCurrentSoap
       ? reviewDraft.transcript
@@ -1060,7 +1070,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
       return;
     }
 
-    const nextDraft = buildReviewDraft(soap, turns);
+    const nextDraft = buildReviewDraft(soap, liveTranscript);
 
     setReviewBaseline(nextDraft);
     setReviewDraftState((current) => (reviewDirty ? current : nextDraft));
@@ -1069,7 +1079,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
       setReviewSaveState("saved");
     }
 
-  }, [soap?.versionId, soap?.updatedAt, reviewDirty, turns]);
+  }, [soap?.versionId, soap?.updatedAt, reviewDirty, liveTranscript]);
 
   useEffect(() => {
     if (status === "stopped" && previousStatusRef.current !== "stopped") {
@@ -1984,7 +1994,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
     try {
       const response = await postAction(`/api/v1/sessions/${sessionId}/review-note`, submittedDraft);
       const nextSoap = response.latestSoap;
-      const nextDraft = buildReviewDraft(nextSoap, turns);
+      const nextDraft = buildReviewDraft(nextSoap, liveTranscript);
       const draftChangedSinceSubmit = !reviewDraftEquals(reviewDraftRef.current, submittedDraft);
 
       setSessionState((current) =>

@@ -330,6 +330,171 @@
       gap: 10px;
     }
 
+    .session-history {
+      display: grid;
+      gap: 16px;
+    }
+
+    .session-history-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .session-history-head p,
+    .session-history-head h2 {
+      margin: 0;
+    }
+
+    .session-history-count {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .session-history-toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 220px;
+      gap: 12px;
+    }
+
+    .session-history-search,
+    .session-history-filter {
+      display: grid;
+      gap: 6px;
+    }
+
+    .session-history-results,
+    .session-history-groups,
+    .session-history-group,
+    .session-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .session-history-page-summary {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .session-history-date {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+
+    .session-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0;
+      background: #fbfdff;
+      color: var(--ink);
+      text-align: left;
+      overflow: hidden;
+    }
+
+    .session-card.is-active {
+      border-color: rgba(15, 143, 127, 0.55);
+      box-shadow: 0 0 0 3px var(--focus);
+    }
+
+    .session-card-link {
+      width: 100%;
+      min-height: 0;
+      padding: 16px 18px;
+      border: 0;
+      border-radius: 0;
+      color: inherit;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .session-card-link:hover {
+      background: var(--soft-accent);
+    }
+
+    .session-card-info {
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }
+
+    .session-card-info strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 15px;
+    }
+
+    .session-card-info span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .session-card--loading {
+      min-height: 82px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(90deg, #f3f6fa, #ffffff, #f3f6fa);
+      background-size: 220% 100%;
+      animation: session-shimmer 1.2s ease-in-out infinite;
+    }
+
+    @keyframes session-shimmer {
+      from { background-position: 0 0; }
+      to { background-position: -220% 0; }
+    }
+
+    .session-list-empty {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      color: var(--muted);
+      background: #fbfdff;
+      text-align: center;
+    }
+
+    .session-history-pagination,
+    .session-history-page-list {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .session-history-pagination {
+      justify-content: space-between;
+    }
+
+    .session-history-page-button,
+    .session-history-page-chip {
+      min-height: 34px;
+      padding: 7px 10px;
+      color: var(--ink);
+      background: #e8eef6;
+      font-size: 13px;
+    }
+
+    .session-history-page-chip.is-active {
+      color: #fff;
+      background: var(--accent-dark);
+    }
+
+    .session-history-page-ellipsis {
+      color: var(--muted);
+      padding: 0 4px;
+    }
+
     .session-item {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -458,6 +623,8 @@
       }
       .grid-2,
       .grid-3 { grid-template-columns: 1fr; }
+      .session-history-toolbar { grid-template-columns: 1fr; }
+      .session-history-head { display: grid; }
       .metric-row { grid-template-columns: 1fr; }
       .line-table {
         min-width: 680px;
@@ -646,19 +813,37 @@
           </form>
         </section>
 
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>算定セッション</h2>
-              <p class="panel-copy">患者、診療日、レビュー状態を確認できます。</p>
-            </div>
-          </div>
-          <div id="session-list" class="sessions"></div>
-        </section>
       </aside>
 
       <section class="workspace">
         <div id="message" class="message"></div>
+
+        <section class="panel session-history">
+          <div class="session-history-head">
+            <div>
+              <p class="panel-copy">セッション履歴</p>
+              <h2>算定履歴</h2>
+            </div>
+            <span id="session-history-count" class="session-history-count">0件</span>
+          </div>
+          <div class="session-history-toolbar" role="search">
+            <label class="session-history-search" for="fee-session-search">
+              <span>検索</span>
+              <input id="fee-session-search" type="search" placeholder="患者名、患者ID、算定IDで検索" autocomplete="off" />
+            </label>
+            <label class="session-history-filter" for="fee-session-status">
+              <span>状態</span>
+              <select id="fee-session-status">
+                <option value="all">すべて</option>
+                <option value="active">作成済み</option>
+                <option value="review">確認待ち</option>
+                <option value="calculated">算定済み</option>
+                <option value="failed">要確認</option>
+              </select>
+            </label>
+          </div>
+          <div id="session-list" class="session-history-results" aria-live="polite"></div>
+        </section>
 
         <section class="panel">
           <div class="panel-head">
@@ -746,6 +931,9 @@
   <script>
     const platformApiBaseUrl = metaContent("halunasu-platform-api-base-url");
     const feeApiBaseUrl = metaContent("halunasu-fee-api-base-url");
+    const FEE_SESSION_PAGE_SIZE = 20;
+    const MAX_RENDERED_LINE_ITEMS = 120;
+
     const state = {
       csrfToken: "",
       session: null,
@@ -755,6 +943,15 @@
       facilities: [],
       departments: [],
       feeSessions: [],
+      feeSessionPage: 1,
+      feeSessionPageSize: FEE_SESSION_PAGE_SIZE,
+      feeSessionTotalCount: 0,
+      feeSessionTotalPages: 0,
+      feeSessionSearch: "",
+      feeSessionSearchDraft: "",
+      feeSessionStatusFilter: "all",
+      feeSessionTotalCountApproximate: false,
+      isLoadingFeeSessions: false,
       selectedFeeSessionId: "",
       patientFilter: "",
       receiptDraft: null,
@@ -788,6 +985,9 @@
       facilitySelect: document.querySelector("#facilityId"),
       departmentSelect: document.querySelector("#departmentId"),
       sessionList: document.querySelector("#session-list"),
+      sessionHistoryCount: document.querySelector("#session-history-count"),
+      feeSessionSearch: document.querySelector("#fee-session-search"),
+      feeSessionStatus: document.querySelector("#fee-session-status"),
       result: document.querySelector("#result"),
       reviewList: document.querySelector("#review-list"),
       receiptList: document.querySelector("#receipt-list"),
@@ -796,6 +996,7 @@
       serviceDate: document.querySelector("#serviceDate"),
       claimMonth: document.querySelector("#claimMonth")
     };
+    let feeSessionSearchTimer = 0;
 
     els.serviceDate.value = new Date().toISOString().slice(0, 10);
     els.claimMonth.value = new Date().toISOString().slice(0, 7);
@@ -876,6 +1077,20 @@
       renderPatients();
     });
 
+    els.feeSessionSearch.addEventListener("input", () => {
+      state.feeSessionSearchDraft = els.feeSessionSearch.value;
+      window.clearTimeout(feeSessionSearchTimer);
+      feeSessionSearchTimer = window.setTimeout(() => {
+        state.feeSessionSearch = state.feeSessionSearchDraft.trim();
+        loadSessions({ page: 1 }).catch((error) => showMessage(error.message || "算定履歴の検索に失敗しました", "error"));
+      }, 220);
+    });
+
+    els.feeSessionStatus.addEventListener("change", () => {
+      state.feeSessionStatusFilter = els.feeSessionStatus.value;
+      loadSessions({ page: 1 }).catch((error) => showMessage(error.message || "算定履歴の絞り込みに失敗しました", "error"));
+    });
+
     els.patientForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       await run(async () => {
@@ -923,7 +1138,7 @@
           }
         });
         state.selectedFeeSessionId = response.feeSession.feeSessionId;
-        await loadSessions();
+        await loadSessions({ page: 1 });
         renderResult(response.feeSession);
         showMessage("算定セッションを作成しました", "success");
       });
@@ -940,7 +1155,7 @@
           csrf: true,
           body: {}
         });
-        await loadSessions();
+        await loadSessions({ page: state.feeSessionPage });
         await loadFeeSessionDetails(state.selectedFeeSessionId);
         renderResult(response);
         showMessage("算定が完了しました", "success");
@@ -956,12 +1171,17 @@
     });
 
     async function loadWorkspace() {
-      await Promise.all([
-        loadPatients(),
-        loadFacilities(),
-        loadDepartments(),
-        loadSessions()
-      ]);
+      state.isLoadingFeeSessions = true;
+      renderSessions();
+      const response = await api(feeApiBaseUrl, `/v1/fee/bootstrap${sessionListQuery({ page: 1 })}`);
+      state.patients = response.patients || [];
+      state.facilities = response.facilities || [];
+      state.departments = response.departments || [];
+      applySessionListResponse(response);
+      renderPatients();
+      renderFacilities();
+      renderDepartments();
+      renderSessions();
     }
 
     async function loadPatients() {
@@ -982,20 +1202,27 @@
       renderDepartments();
     }
 
-    async function loadSessions() {
-      const response = await api(feeApiBaseUrl, "/v1/fee/sessions");
-      state.feeSessions = response.feeSessions || [];
+    async function loadSessions(options = {}) {
+      const page = options.page || state.feeSessionPage || 1;
+      state.isLoadingFeeSessions = true;
+      renderSessions();
+      const response = await api(feeApiBaseUrl, `/v1/fee/sessions${sessionListQuery({ page })}`);
+      applySessionListResponse(response);
       renderSessions();
     }
 
     async function loadFeeSessionDetails(feeSessionId) {
       if (!feeSessionId) return;
-      const [receipt, reviews] = await Promise.all([
+      const [sessionResponse, receipt, reviews] = await Promise.all([
+        api(feeApiBaseUrl, `/v1/fee/sessions/${feeSessionId}`),
         api(feeApiBaseUrl, `/v1/fee/sessions/${feeSessionId}/receipt-draft`),
         api(feeApiBaseUrl, `/v1/fee/sessions/${feeSessionId}/review-items`)
       ]);
+      state.selectedFeeSessionId = feeSessionId;
       state.receiptDraft = receipt.receiptDraft;
       state.reviewItems = reviews.reviewItems || [];
+      renderResult(sessionResponse.feeSession);
+      renderSessions();
       renderReceiptDraft();
       renderReviewItems();
     }
@@ -1041,24 +1268,197 @@
     }
 
     function renderSessions() {
-      els.sessionList.innerHTML = "";
-      for (const session of state.feeSessions) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "session-item";
-        button.innerHTML = `
-          <strong>${escapeHtml(session.patientSnapshot?.displayName || session.patientId)}</strong>
-          <span>${escapeHtml(session.serviceDate)} / ${escapeHtml(statusLabel(session.status))} / ${escapeHtml(session.feeSessionId)}</span>
+      const shownCount = state.feeSessions.length;
+      const countPrefix = state.feeSessionTotalCountApproximate ? "直近" : "";
+      els.sessionHistoryCount.textContent = `${countPrefix}${Number(state.feeSessionTotalCount || shownCount).toLocaleString()}件`;
+
+      if (state.isLoadingFeeSessions) {
+        els.sessionList.innerHTML = `
+          <div class="session-history-groups">
+            <div class="session-card--loading"></div>
+            <div class="session-card--loading"></div>
+            <div class="session-card--loading"></div>
+          </div>
         `;
+        return;
+      }
+
+      if (!state.feeSessions.length) {
+        els.sessionList.innerHTML = '<div class="session-list-empty">条件に一致する算定履歴はありません。</div>';
+        return;
+      }
+
+      const start = (state.feeSessionPage - 1) * state.feeSessionPageSize + 1;
+      const end = start + state.feeSessions.length - 1;
+      const groups = groupFeeSessionsByDay(state.feeSessions);
+      els.sessionList.innerHTML = `
+        <div class="session-history-page-summary">
+          ${Number(start).toLocaleString()}-${Number(end).toLocaleString()}件を表示
+        </div>
+        <div class="session-history-groups">
+          ${groups.map((group) => `
+            <section class="session-history-group">
+              <div class="session-history-date">${escapeHtml(group.label)}</div>
+              <div class="session-list">
+                ${group.sessions.map((session) => renderFeeSessionCard(session)).join("")}
+              </div>
+            </section>
+          `).join("")}
+        </div>
+        ${renderFeeSessionPagination()}
+      `;
+
+      els.sessionList.querySelectorAll("[data-fee-session-id]").forEach((button) => {
         button.addEventListener("click", async () => {
-          state.selectedFeeSessionId = session.feeSessionId;
-          renderResult(session);
+          const feeSessionId = button.dataset.feeSessionId;
           await run(async () => {
-            await loadFeeSessionDetails(session.feeSessionId);
+            await loadFeeSessionDetails(feeSessionId);
           });
         });
-        els.sessionList.appendChild(button);
+      });
+      els.sessionList.querySelectorAll("[data-fee-session-page]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          await loadSessions({ page: Number(button.dataset.feeSessionPage || 1) });
+        });
+      });
+    }
+
+    function applySessionListResponse(response) {
+      state.feeSessions = response.feeSessions || [];
+      state.feeSessionPage = Number(response.page || 1);
+      state.feeSessionPageSize = Number(response.pageSize || FEE_SESSION_PAGE_SIZE);
+      state.feeSessionTotalCount = Number(response.totalCount || state.feeSessions.length);
+      state.feeSessionTotalPages = Number(response.totalPages || 0);
+      state.feeSessionTotalCountApproximate = Boolean(response.totalCountApproximate);
+      state.isLoadingFeeSessions = false;
+    }
+
+    function sessionListQuery(overrides = {}) {
+      const params = new URLSearchParams();
+      params.set("page", String(overrides.page || state.feeSessionPage || 1));
+      params.set("pageSize", String(state.feeSessionPageSize || FEE_SESSION_PAGE_SIZE));
+      const search = state.feeSessionSearch.trim();
+      if (search) {
+        params.set("q", search);
       }
+      if (state.feeSessionStatusFilter && state.feeSessionStatusFilter !== "all") {
+        params.set("status", state.feeSessionStatusFilter);
+      }
+      return `?${params.toString()}`;
+    }
+
+    function renderFeeSessionCard(session) {
+      const summary = session.calculationSummary || {};
+      const hasTotalPoints = summary.totalPoints !== undefined && summary.totalPoints !== null;
+      const totalPoints = hasTotalPoints ? `${Number(summary.totalPoints).toLocaleString()}点` : "未算定";
+      const reviewText = summary.reviewLineCount ? `レビュー ${Number(summary.reviewLineCount).toLocaleString()}件` : "レビューなし";
+      const createdText = formatTokyoDateTime(session.createdAt);
+      const isActive = state.selectedFeeSessionId === session.feeSessionId;
+
+      return `
+        <article class="session-card${isActive ? " is-active" : ""}">
+          <button class="session-card-link" type="button" data-fee-session-id="${escapeHtml(session.feeSessionId)}">
+            <div class="session-card-info">
+              <strong>${escapeHtml(session.patientSnapshot?.displayName || session.patientRef || session.patientId || "患者名未入力")}</strong>
+              <span>${escapeHtml(session.serviceDate || "診療日未設定")} ・ ${escapeHtml(session.facilitySnapshot?.displayName || "施設未設定")} ・ ${escapeHtml(session.departmentSnapshot?.displayName || "診療科未指定")}</span>
+              <span>作成 ${escapeHtml(createdText)} ・ ${escapeHtml(totalPoints)} ・ ${escapeHtml(reviewText)} ・ ${escapeHtml(session.feeSessionId)}</span>
+            </div>
+            <span class="${badgeClass(session.status)}">${escapeHtml(statusLabel(session.status))}</span>
+          </button>
+        </article>
+      `;
+    }
+
+    function renderFeeSessionPagination() {
+      if (state.feeSessionTotalPages <= 1) {
+        return "";
+      }
+      const pageItems = buildPageItems(state.feeSessionPage, state.feeSessionTotalPages);
+      return `
+        <nav class="session-history-pagination" aria-label="算定履歴ページ移動">
+          <button class="session-history-page-button" type="button" data-fee-session-page="${state.feeSessionPage - 1}" ${state.feeSessionPage <= 1 ? "disabled" : ""}>前へ</button>
+          <div class="session-history-page-list">
+            ${pageItems.map((item) => item === "ellipsis"
+              ? '<span class="session-history-page-ellipsis" aria-hidden="true">…</span>'
+              : `<button class="session-history-page-chip${item === state.feeSessionPage ? " is-active" : ""}" type="button" data-fee-session-page="${item}" ${item === state.feeSessionPage ? "disabled" : ""}>${item}</button>`
+            ).join("")}
+          </div>
+          <button class="session-history-page-button" type="button" data-fee-session-page="${state.feeSessionPage + 1}" ${state.feeSessionPage >= state.feeSessionTotalPages ? "disabled" : ""}>次へ</button>
+        </nav>
+      `;
+    }
+
+    function groupFeeSessionsByDay(sessions) {
+      const groups = new Map();
+      for (const session of sessions) {
+        const dayKey = getTokyoDayKey(session.serviceDate || session.createdAt);
+        if (!groups.has(dayKey)) {
+          groups.set(dayKey, {
+            dayKey,
+            label: formatFeeSessionGroupLabel(dayKey),
+            sessions: []
+          });
+        }
+        groups.get(dayKey).sessions.push(session);
+      }
+      return [...groups.values()];
+    }
+
+    function buildPageItems(current, total) {
+      if (total <= 7) {
+        return Array.from({ length: total }, (_, index) => index + 1);
+      }
+      const items = [1];
+      const start = Math.max(2, current - 1);
+      const end = Math.min(total - 1, current + 1);
+      if (start > 2) items.push("ellipsis");
+      for (let page = start; page <= end; page += 1) items.push(page);
+      if (end < total - 1) items.push("ellipsis");
+      items.push(total);
+      return items;
+    }
+
+    function getTokyoDayKey(value) {
+      const date = value ? new Date(value) : new Date();
+      if (Number.isNaN(date.getTime())) {
+        return "unknown";
+      }
+      return new Intl.DateTimeFormat("sv-SE", {
+        timeZone: "Asia/Tokyo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).format(date);
+    }
+
+    function formatFeeSessionGroupLabel(dayKey) {
+      if (dayKey === "unknown") {
+        return "日付未設定";
+      }
+      const today = getTokyoDayKey(new Date().toISOString());
+      const yesterdayDate = new Date();
+      yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+      const yesterday = getTokyoDayKey(yesterdayDate.toISOString());
+      if (dayKey === today) return "今日";
+      if (dayKey === yesterday) return "昨日";
+      return `${dayKey.slice(0, 4)}年${Number(dayKey.slice(5, 7))}月${Number(dayKey.slice(8, 10))}日`;
+    }
+
+    function formatTokyoDateTime(value) {
+      if (!value) {
+        return "日時未設定";
+      }
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return String(value);
+      }
+      return new Intl.DateTimeFormat("ja-JP", {
+        timeZone: "Asia/Tokyo",
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      }).format(date);
     }
 
     function renderReviewItems() {
@@ -1134,7 +1534,7 @@
         });
         state.reviewItems = response.reviewItems || [];
         renderReviewItems();
-        await loadSessions();
+        await loadSessions({ page: state.feeSessionPage });
         showMessage("レビューを更新しました", "success");
       });
     }
@@ -1206,7 +1606,10 @@
       if (!lineItems.length) {
         return '<p class="field-note">算定行はまだありません。</p>';
       }
+      const visibleLineItems = lineItems.slice(0, MAX_RENDERED_LINE_ITEMS);
+      const hiddenCount = lineItems.length - visibleLineItems.length;
       return `
+        ${hiddenCount > 0 ? `<p class="field-note">算定行が多いため、先頭${MAX_RENDERED_LINE_ITEMS}件を表示しています。残り${hiddenCount.toLocaleString()}件はレセプト案で確認してください。</p>` : ""}
         <table class="line-table">
           <thead>
             <tr>
@@ -1218,7 +1621,7 @@
             </tr>
           </thead>
           <tbody>
-            ${lineItems.map((line) => `
+            ${visibleLineItems.map((line) => `
               <tr>
                 <td>
                   <div class="line-name">

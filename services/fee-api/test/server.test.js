@@ -79,6 +79,7 @@ test("creates Platform patients and product-owned fee sessions", async () => {
     headers
   );
   const listed = await request(stores, "GET", "/v1/fee/sessions", undefined, headers);
+  const bootstrap = await request(stores, "GET", "/v1/fee/bootstrap?page=1&pageSize=20", undefined, headers);
   const auditEvents = stores.platformStore.listAuditEvents("org_001");
 
   assert.equal(patient.statusCode, 201);
@@ -99,6 +100,14 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.ok(reviewItems.body.reviewItems.length >= 1);
   assert.equal(decision.body.feeSession.reviewDecisions[reviewItems.body.reviewItems[0].reviewItemId].status, "approved");
   assert.equal(listed.body.feeSessions.length, 1);
+  assert.equal(listed.body.page, 1);
+  assert.equal(listed.body.totalCount, 1);
+  assert.equal(listed.body.feeSessions[0].calculationResult, undefined);
+  assert.equal(listed.body.feeSessions[0].calculationSummary.totalPoints, 137);
+  assert.equal(bootstrap.body.patients.length, 1);
+  assert.equal(bootstrap.body.facilities.length, 1);
+  assert.equal(bootstrap.body.departments.length, 1);
+  assert.equal(bootstrap.body.feeSessions.length, 1);
   assert.ok(auditEvents.some((event) => event.eventType === "fee.session_created"));
   assert.ok(auditEvents.some((event) => event.eventType === "fee.calculated"));
   assert.ok(auditEvents.some((event) => event.eventType === "fee.review_item_decided"));

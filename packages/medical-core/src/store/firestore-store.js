@@ -36,6 +36,41 @@ const MAX_FAILED_LOGIN_ATTEMPTS = 10;
 const ACCOUNT_LOCK_MS = 10 * 60 * 1000;
 const MFA_REQUIRED_ROLES = new Set(["platform_admin", "org_owner", "org_admin", "it_admin", "clinical_admin", "auditor"]);
 const ORG_ADMIN_LOCKOUT_ROLES = new Set(["platform_admin", "org_owner", "org_admin"]);
+const SESSION_SUMMARY_FIELDS = [
+  "sessionId",
+  "encounterId",
+  "orgId",
+  "clinicId",
+  "facilityId",
+  "departmentId",
+  "createdByMemberId",
+  "createdByUserId",
+  "doctorMemberId",
+  "assignedDoctorUserId",
+  "accessMemberIds",
+  "hiddenByMemberIds",
+  "status",
+  "title",
+  "patientId",
+  "patientSnapshot",
+  "patientDisplayName",
+  "visitReason",
+  "promptProfileId",
+  "promptProfileSelectedAt",
+  "promptProfileSelectedByMemberId",
+  "promptProfileSelectionSource",
+  "latestSoapVersionId",
+  "startedAt",
+  "stoppedAt",
+  "recordingMaxDurationMinutes",
+  "recordingExpiresAt",
+  "recordingAutoStopTaskName",
+  "recordingStopReason",
+  "finalizedAt",
+  "approvedAt",
+  "createdAt",
+  "updatedAt"
+];
 
 function initAdminApp(options = {}) {
   if (getApps().length > 0) {
@@ -1900,23 +1935,30 @@ export class FirestoreStore {
       ? this.#encountersRef(orgId)
       : this.#encountersRef(orgId).where("accessMemberIds", "array-contains", memberId);
 
-    if (Array.isArray(statuses) && statuses.length === 1) {
-      query = query.where("status", "==", statuses[0]);
-    } else if (Array.isArray(statuses) && statuses.length > 1) {
-      query = query.where("status", "in", statuses.slice(0, 10));
+    query = query.orderBy("createdAt", "desc");
+
+    if (String(search || "").trim() || (Array.isArray(statuses) && statuses.length > 0)) {
+      return this.#listSessionsByBoundedScan(query, {
+        memberId,
+        statuses,
+        search,
+        page,
+        pageSize
+      });
     }
 
-    const snap = await query.orderBy("createdAt", "desc").get();
-    const filtered = snap.docs
-      .map((doc) => doc.data())
-      .filter((session) => !memberId || !(session.hiddenByMemberIds || []).includes(memberId))
-      .filter((session) => sessionMatchesSearch(session, search));
-    const totalCount = filtered.length;
-    const safePageSize = Math.max(1, pageSize);
+    const safePageSize = Math.max(1, Math.min(50, pageSize));
+    const totalCount = await countQuery(query);
     const totalPages = totalCount > 0 ? Math.ceil(totalCount / safePageSize) : 0;
     const safePage = totalPages > 0 ? Math.min(Math.max(1, page), totalPages) : 1;
-    const startIndex = (safePage - 1) * safePageSize;
-    const sessions = filtered.slice(startIndex, startIndex + safePageSize);
+    const snap = await query
+      .select(...SESSION_SUMMARY_FIELDS)
+      .offset((safePage - 1) * safePageSize)
+      .limit(safePageSize)
+      .get();
+    const sessions = snap.docs
+      .map((doc) => clone(doc.data()))
+      .filter((session) => !memberId || !(session.hiddenByMemberIds || []).includes(memberId));
 
     return {
       sessions,
@@ -1924,6 +1966,37 @@ export class FirestoreStore {
       pageSize: safePageSize,
       totalCount,
       totalPages
+    };
+  }
+
+  async #listSessionsByBoundedScan(query, { memberId, statuses = [], search = "", page = 1, pageSize = 20 } = {}) {
+    const safePageSize = Math.max(1, Math.min(50, pageSize));
+    const safePage = Math.max(1, page);
+    const scanLimit = Math.max(
+      safePage * safePageSize,
+      Number.parseInt(process.env.CHARTING_SESSION_SEARCH_SCAN_LIMIT || "500", 10) || 500
+    );
+    const snap = await query
+      .select(...SESSION_SUMMARY_FIELDS)
+      .limit(scanLimit)
+      .get();
+    const filtered = snap.docs
+      .map((doc) => clone(doc.data()))
+      .filter((session) => !memberId || !(session.hiddenByMemberIds || []).includes(memberId))
+      .filter((session) => !Array.isArray(statuses) || statuses.length === 0 || statuses.includes(session.status))
+      .filter((session) => sessionMatchesSearch(session, search));
+    const totalCount = filtered.length;
+    const totalPages = totalCount > 0 ? Math.ceil(totalCount / safePageSize) : 0;
+    const normalizedPage = totalPages > 0 ? Math.min(safePage, totalPages) : 1;
+    const startIndex = (normalizedPage - 1) * safePageSize;
+
+    return {
+      sessions: filtered.slice(startIndex, startIndex + safePageSize),
+      page: normalizedPage,
+      pageSize: safePageSize,
+      totalCount,
+      totalPages,
+      totalCountApproximate: snap.size >= scanLimit
     };
   }
 
@@ -3624,4 +3697,14 @@ export class FirestoreStore {
       updatedAt: record.updatedAt || null
     });
   }
+}
+
+async function countQuery(query) {
+  if (typeof query.count === "function") {
+    const snapshot = await query.count().get();
+    return Number(snapshot.data().count || 0);
+  }
+
+  const snapshot = await query.select("sessionId").get();
+  return snapshot.size;
 }

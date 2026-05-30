@@ -31,8 +31,8 @@ export class LazyFirestoreFeeStore {
     return this.call("createSession", input);
   }
 
-  async listSessions(orgId) {
-    return this.call("listSessions", orgId);
+  async listSessions(orgId, options) {
+    return this.call("listSessions", orgId, options);
   }
 
   async getSession(orgId, feeSessionId) {
@@ -41,6 +41,18 @@ export class LazyFirestoreFeeStore {
 
   async saveCalculation(orgId, feeSessionId, calculationResult) {
     return this.call("saveCalculation", orgId, feeSessionId, calculationResult);
+  }
+
+  async getReceiptDraft(orgId, feeSessionId) {
+    return this.call("getReceiptDraft", orgId, feeSessionId);
+  }
+
+  async listReviewItems(orgId, feeSessionId) {
+    return this.call("listReviewItems", orgId, feeSessionId);
+  }
+
+  async decideReviewItem(orgId, feeSessionId, reviewItemId, input) {
+    return this.call("decideReviewItem", orgId, feeSessionId, reviewItemId, input);
   }
 
   async call(methodName, ...args) {

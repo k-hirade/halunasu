@@ -29,6 +29,7 @@ export function buildFeeSession(input = {}, options = {}) {
     insurance: input.insurance || null,
     sourceSystem: input.sourceSystem || null,
     calculationResult: input.calculationResult || null,
+    calculationSummary: input.calculationSummary || null,
     latestCalculationId: null,
     reviewDecisions: {},
     createdAt: now,
@@ -46,6 +47,7 @@ export function applyCalculationResult(current = {}, calculationResult = {}, opt
     ...current,
     status,
     calculationResult: normalizedResult,
+    calculationSummary: buildCalculationSummary(normalizedResult),
     latestCalculationId: normalizedResult.calculationId,
     updatedAt: now
   };
@@ -89,9 +91,32 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
     evidence: normalizeEvidence(calculation.evidence || []),
     inputCodes: Array.isArray(calculation.inputCodes) ? calculation.inputCodes : calculation.input_codes || [],
     candidateCodes: Array.isArray(calculation.candidateCodes) ? calculation.candidateCodes : calculation.candidate_codes || [],
-    rawResult: isPlainObject(calculation.rawResult) ? calculation.rawResult : undefined,
+    rawResult: options.includeRawResult === true && isPlainObject(calculation.rawResult)
+      ? calculation.rawResult
+      : undefined,
     generatedAt: now,
     schemaVersion: 1
+  });
+}
+
+export function buildCalculationSummary(calculation = {}) {
+  const lineItems = Array.isArray(calculation.lineItems) ? calculation.lineItems : [];
+  const coverage = isPlainObject(calculation.coverage) ? calculation.coverage : {};
+  return compactObject({
+    calculationId: calculation.calculationId || null,
+    provider: calculation.provider || null,
+    status: calculation.status || null,
+    engineStatus: calculation.engineStatus || calculation.engine_status || null,
+    totalPoints: Number(calculation.totalPoints || 0),
+    lineCount: Number(coverage.lineCount ?? coverage.line_count ?? lineItems.length),
+    reviewLineCount: Number(
+      coverage.reviewLineCount
+      ?? coverage.review_line_count
+      ?? lineItems.filter((line) => line.reviewRequired === true).length
+    ),
+    supportLevel: coverage.supportLevel || coverage.support_level || null,
+    reviewRequired: coverage.reviewRequired ?? coverage.review_required ?? calculationNeedsReview(calculation),
+    generatedAt: calculation.generatedAt || null
   });
 }
 

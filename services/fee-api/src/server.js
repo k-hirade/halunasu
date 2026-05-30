@@ -106,6 +106,21 @@ async function routeFeeApiRequest(input = {}) {
     return ok({ context: contextView(context) });
   }
 
+  if (method === "GET" && matches(parts, ["v1", "fee", "bootstrap"])) {
+    const [patients, facilities, departments, sessionList] = await Promise.all([
+      platformStore.listPatients(context.session.orgId),
+      platformStore.listFacilities(context.session.orgId),
+      platformStore.listDepartments(context.session.orgId),
+      feeStore.listSessions(context.session.orgId, feeSessionListOptionsFromUrl(url))
+    ]);
+    return ok({
+      patients,
+      facilities,
+      departments,
+      ...sessionList
+    });
+  }
+
   if (method === "GET" && matches(parts, ["v1", "fee", "patients"])) {
     return ok({ patients: await platformStore.listPatients(context.session.orgId) });
   }
@@ -137,7 +152,7 @@ async function routeFeeApiRequest(input = {}) {
   }
 
   if (method === "GET" && matches(parts, ["v1", "fee", "sessions"])) {
-    return ok({ feeSessions: await feeStore.listSessions(context.session.orgId) });
+    return ok(await feeStore.listSessions(context.session.orgId, feeSessionListOptionsFromUrl(url)));
   }
 
   if (method === "POST" && matches(parts, ["v1", "fee", "sessions"])) {
@@ -453,6 +468,44 @@ function headerValue(headers, name) {
 
 function isFeeSessionDocument(parts) {
   return parts.length === 4 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]);
+}
+
+function feeSessionListOptionsFromUrl(url) {
+  return {
+    page: parsePositiveInteger(url.searchParams.get("page"), 1),
+    pageSize: parsePositiveInteger(url.searchParams.get("pageSize"), 20, 50),
+    search: String(url.searchParams.get("q") || url.searchParams.get("search") || "").trim(),
+    statuses: feeStatusesFromQuery(url.searchParams)
+  };
+}
+
+function feeStatusesFromQuery(searchParams) {
+  const status = String(searchParams.get("status") || "all").trim();
+  if (!status || status === "all") {
+    return [];
+  }
+  const mapped = {
+    active: ["ready"],
+    review: ["needs_review"],
+    calculated: ["calculated"],
+    failed: ["failed"]
+  }[status];
+  if (mapped) {
+    return mapped;
+  }
+
+  return status
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parsePositiveInteger(value, fallback, max = Number.POSITIVE_INFINITY) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return Math.min(parsed, max);
 }
 
 function matches(parts, expected) {

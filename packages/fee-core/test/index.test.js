@@ -86,7 +86,8 @@ test("normalizes external calculation results", () => {
       totalPoints: 137,
       status: "confirmed",
       source: "medical_procedure_master"
-    }]
+    }],
+    rawResult: { rows: Array.from({ length: 10 }, (_, index) => ({ index })) }
   }, {
     calculationId: "calc_001",
     now: new Date("2026-05-28T00:00:00.000Z")
@@ -106,6 +107,9 @@ test("normalizes external calculation results", () => {
   assert.equal(calculation.coverage.reviewRequired, true);
   assert.equal(updated.status, "needs_review");
   assert.equal(updated.latestCalculationId, "calc_001");
+  assert.equal(updated.calculationSummary.totalPoints, 137);
+  assert.equal(updated.calculationSummary.lineCount, 1);
+  assert.equal(updated.calculationSummary.reviewRequired, true);
 });
 
 test("builds receipt drafts and resolves review items", () => {
