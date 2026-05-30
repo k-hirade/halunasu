@@ -34,6 +34,7 @@ export class MemoryPlatformStore {
     this.signupApplications = new Map();
     this.signupEmailTokens = new Map();
     this.passwordSetupTokens = new Map();
+    this.stripeEventReceipts = new Map();
     this.rateLimits = new Map();
     this.loginIdentities = new Map();
     this.membersByOrg = new Map();
@@ -95,6 +96,16 @@ export class MemoryPlatformStore {
 
     this.organizations.set(orgId, updated);
     return updated;
+  }
+
+  findOrganizationByStripeCustomerId(stripeCustomerId) {
+    return [...this.organizations.values()]
+      .find((organization) => organization.billing?.stripeCustomerId === stripeCustomerId) || null;
+  }
+
+  findOrganizationByStripeSubscriptionId(stripeSubscriptionId) {
+    return [...this.organizations.values()]
+      .find((organization) => organization.billing?.stripeSubscriptionId === stripeSubscriptionId) || null;
   }
 
   createSignupApplication(input) {
@@ -649,6 +660,48 @@ export class MemoryPlatformStore {
     return dataRequest;
   }
 
+  createStripeEventReceipt(input = {}) {
+    const now = this.timestamp();
+    const receipt = compactObject({
+      eventId: requiredString(input.eventId, "eventId"),
+      type: input.type || "unknown",
+      livemode: Boolean(input.livemode),
+      apiVersion: input.apiVersion || null,
+      objectId: input.objectId || null,
+      payloadHash: input.payloadHash || null,
+      status: input.status || "received",
+      receivedAt: input.receivedAt || now,
+      processedAt: input.processedAt || null,
+      errorMessageSafe: input.errorMessageSafe || null,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    });
+
+    this.stripeEventReceipts.set(receipt.eventId, receipt);
+    return receipt;
+  }
+
+  getStripeEventReceipt(eventId) {
+    return this.stripeEventReceipts.get(eventId) || null;
+  }
+
+  updateStripeEventReceipt(eventId, patch = {}) {
+    const current = this.getStripeEventReceipt(eventId);
+    if (!current) {
+      throw notFoundError("stripe event receipt not found");
+    }
+
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+
+    this.stripeEventReceipts.set(eventId, updated);
+    return updated;
+  }
+
   listDataRequests(orgId) {
     this.requireOrganization(orgId);
     return sortByCreatedAt([...this.dataRequestsForOrg(orgId).values()]);
@@ -890,6 +943,14 @@ function sortByCreatedAt(items) {
 
 function compactObject(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function requiredString(value, label) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new TypeError(`${label} is required`);
+  }
+
+  return value.trim();
 }
 
 function tokenView(record, token) {

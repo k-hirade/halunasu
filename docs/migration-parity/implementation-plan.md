@@ -51,7 +51,7 @@ Steps:
 
 ## P3: Restore Billing / Signup Flow
 
-Status: core checkout baseline implemented and deployed / secret and webhook pending
+Status: STG checkout and webhook verified / PROD live key pending
 
 Steps:
 
@@ -59,8 +59,11 @@ Steps:
 2. contact signup, verify, password setupをLP/Core signupと統合する。Done.
 3. LP初回パスワード設定後にStripe Checkoutへ進める。Done.
 4. Platform APIにbilling status / checkout-session / portal-sessionを追加。Done.
-5. Stripe Checkout/Portal/WebhookをCore entitlementへ接続する。Webhook Pending.
+5. Stripe Checkout/Portal/WebhookをCore entitlementへ接続する。STG Done / PROD live key invalid.
 6. 旧billing testsをCore Platform側へ移植する。Partial.
+7. Stripe CLI調査結果:
+   - test mode: Product `medical-ai`、Price lookup key `medical_ai_monthly_jpy_v2`、月額22,000円、Portal、旧webhook endpointあり。
+   - live mode: CLI設定のlive keyは401で無効。PRODは有効なlive key再発行が必要。
 
 ## P4: Connect Fee Web/API to Real Engine
 
@@ -154,6 +157,10 @@ Results on 2026-05-30:
 - STG/PROD LP and Core Admin Netlify production deploy completed after signup checkout and MFA QR UI changes.
 - STG/PROD Fee API `/readyz` passed after master readiness deploy and currently reports `masterDbConfigured=false`, `masterDbPathExists=false`.
 - Netlify same-origin proxies passed for PROD/STG Platform API and Fee API readyz.
+- Platform API local tests passed for Stripe webhook signature verification, event receipt idempotency, Core billing/access update, and product entitlement update.
+- STG signup -> password setup -> Stripe Checkout URL creation passed with existing test Price lookup key `medical_ai_monthly_jpy_v2`.
+- STG signed Core Stripe webhook passed and updated Core billing/access/product entitlement.
+- Stripe test mode old `medical-billing` webhook endpoint was disabled after Core endpoint creation.
 
 Remaining:
 

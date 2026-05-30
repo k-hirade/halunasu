@@ -7,6 +7,7 @@ import {
 import { createOtpAuthUrl, generateMfaSecret, verifyTotpCode } from "./auth/mfa.js";
 import { verifyPassword } from "./auth/password.js";
 import { createStripeBillingClientFromEnv } from "./billing/stripe-client.js";
+import { processStripeWebhookEvent, verifyStripeWebhookSignature } from "./billing/stripe-webhook.js";
 import {
   clearSessionCookieHeaders,
   createCsrfToken,
@@ -32,11 +33,12 @@ export function createPlatformApiServer(options = {}) {
 
   return http.createServer(async (req, res) => {
     try {
-      const body = await readJsonBody(req);
+      const { body, rawBody } = await readRequestBody(req);
       const response = await handlePlatformApiRequest({
         method: req.method,
         path: req.url,
         body,
+        rawBody,
         env,
         projectId,
         region,
@@ -155,6 +157,10 @@ async function routePlatformApiRequest(input = {}) {
       return ok({ ...result, billingCheckout });
     }
     return ok(result);
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "stripe", "webhook"])) {
+    return handleStripeWebhook(input, store);
   }
 
   if (method === "GET" && matches(parts, ["v1", "auth", "session"])) {
@@ -1046,6 +1052,33 @@ async function safeListProductEntitlements(store, orgId) {
   }
 }
 
+async function handleStripeWebhook(input, store) {
+  const rawPayload = input.rawBody || JSON.stringify(input.body || {});
+  verifyStripeWebhookSignature({
+    payload: rawPayload,
+    signatureHeader: headerValue(input.headers || {}, "stripe-signature"),
+    endpointSecret: input.stripeWebhookSecret || process.env.STRIPE_WEBHOOK_SECRET,
+    toleranceSeconds: input.stripeWebhookToleranceSeconds || Number(process.env.STRIPE_WEBHOOK_TOLERANCE_SECONDS || 300),
+    now: input.now ? input.now.getTime() : Date.now()
+  });
+
+  const event = input.body || JSON.parse(rawPayload);
+  const result = await processStripeWebhookEvent({
+    store,
+    event,
+    now: input.now || new Date()
+  });
+
+  return ok({
+    received: true,
+    outcome: result.outcome,
+    receipt: {
+      eventId: result.receipt?.eventId || event.id,
+      status: result.receipt?.status || "processed"
+    }
+  });
+}
+
 function sessionOptions(input) {
   return {
     sessionSecret: input.sessionSecret || process.env.APP_SESSION_SIGNING_SECRET,
@@ -1120,9 +1153,9 @@ function sendJson(res, statusCode, body, headers = {}) {
   res.end(payload);
 }
 
-async function readJsonBody(req) {
+async function readRequestBody(req) {
   if (req.method === "GET" || req.method === "HEAD") {
-    return undefined;
+    return { body: undefined, rawBody: "" };
   }
 
   const chunks = [];
@@ -1132,11 +1165,11 @@ async function readJsonBody(req) {
 
   const rawBody = Buffer.concat(chunks).toString("utf8").trim();
   if (!rawBody) {
-    return {};
+    return { body: {}, rawBody: "" };
   }
 
   try {
-    return JSON.parse(rawBody);
+    return { body: JSON.parse(rawBody), rawBody };
   } catch {
     const error = new Error("Request body must be valid JSON");
     error.name = "BadRequestError";

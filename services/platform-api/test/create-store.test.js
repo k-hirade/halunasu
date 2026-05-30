@@ -44,6 +44,8 @@ test("lazy firestore store exposes platform API surface", () => {
   const methods = [
     "createOrganization",
     "updateOrganization",
+    "findOrganizationByStripeCustomerId",
+    "findOrganizationByStripeSubscriptionId",
     "createSignupApplication",
     "createSignupApplicationWithEmailToken",
     "getSignupApplication",
@@ -68,6 +70,9 @@ test("lazy firestore store exposes platform API surface", () => {
     "listDataRequests",
     "getDataRequest",
     "updateDataRequest",
+    "createStripeEventReceipt",
+    "getStripeEventReceipt",
+    "updateStripeEventReceipt",
     "consumeRateLimit"
   ];
 

@@ -91,6 +91,14 @@
       },
       {
         "file": "services/platform-api/src/server.js",
+        "text": "v1\", \"stripe\", \"webhook"
+      },
+      {
+        "file": "services/platform-api/src/billing/stripe-webhook.js",
+        "text": "checkout.session.completed"
+      },
+      {
+        "file": "services/platform-api/src/server.js",
         "text": "qrCodeDataUrl"
       },
       {

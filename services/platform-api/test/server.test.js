@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { test } from "node:test";
 import { createTotpCode } from "../src/auth/mfa.js";
 import { handlePlatformApiRequest, resolvePlatformApiResponse } from "../src/server.js";
@@ -439,6 +440,91 @@ test("creates authenticated billing Checkout and exposes billing status", async 
   assert.equal(store.getOrganization(organization.orgId).billing.stripePriceId, "price_test_001");
 });
 
+test("processes signed Stripe webhook and updates Core billing state", async () => {
+  const store = createTestStore();
+  const { organization } = await createAuthenticatedMember(store, {
+    organizationCode: "Webhook Clinic",
+    displayName: "Webhook Clinic",
+    globalRoles: ["org_admin"]
+  });
+  await store.upsertProductEntitlement(organization.orgId, {
+    productId: "charting",
+    status: "trialing"
+  });
+  const event = {
+    id: "evt_checkout_completed_001",
+    type: "checkout.session.completed",
+    livemode: false,
+    api_version: "2026-03-25.dahlia",
+    data: {
+      object: {
+        id: "cs_test_webhook_001",
+        customer: "cus_test_webhook_001",
+        subscription: "sub_test_webhook_001",
+        client_reference_id: organization.orgId,
+        metadata: {
+          orgId: organization.orgId,
+          organizationCode: organization.organizationCode
+        }
+      }
+    }
+  };
+  const rawBody = JSON.stringify(event);
+  const secret = "whsec_test_secret";
+  const webhook = await request(
+    store,
+    "POST",
+    "/v1/stripe/webhook",
+    event,
+    { "stripe-signature": stripeSignature(rawBody, secret, 1779840000) },
+    {
+      rawBody,
+      stripeWebhookSecret: secret,
+      now: new Date("2026-05-27T00:00:00.000Z")
+    }
+  );
+  const updated = store.getOrganization(organization.orgId);
+  const entitlement = store.getProductEntitlement(organization.orgId, "charting");
+  const receipt = store.getStripeEventReceipt(event.id);
+
+  assert.equal(webhook.statusCode, 200);
+  assert.equal(webhook.body.received, true);
+  assert.equal(webhook.body.receipt.status, "processed");
+  assert.equal(updated.billing.status, "active");
+  assert.equal(updated.billing.stripeCustomerId, "cus_test_webhook_001");
+  assert.equal(updated.billing.stripeSubscriptionId, "sub_test_webhook_001");
+  assert.equal(updated.access.status, "active");
+  assert.equal(entitlement.status, "enabled");
+  assert.equal(receipt.status, "processed");
+});
+
+test("rejects Stripe webhook with invalid signature", async () => {
+  const store = createTestStore();
+  const event = {
+    id: "evt_bad_signature",
+    type: "checkout.session.completed",
+    data: {
+      object: {}
+    }
+  };
+  const rawBody = JSON.stringify(event);
+  const webhook = await request(
+    store,
+    "POST",
+    "/v1/stripe/webhook",
+    event,
+    { "stripe-signature": stripeSignature(rawBody, "wrong_secret", 1779840000) },
+    {
+      rawBody,
+      stripeWebhookSecret: "whsec_test_secret",
+      now: new Date("2026-05-27T00:00:00.000Z")
+    }
+  );
+
+  assert.equal(webhook.statusCode, 400);
+  assert.equal(webhook.body.error, "bad_request");
+});
+
 test("uses secure session cookies outside local and test environments", async () => {
   const store = createTestStore();
   const organization = store.createOrganization({
@@ -808,13 +894,14 @@ function request(store, method, path, body, headers = {}, options = {}) {
     method,
     path,
     body,
+    rawBody: options.rawBody,
     headers,
     store,
     env: options.env || "test",
     projectId: "medical-core-stg",
     region: "asia-northeast1",
     startedAt: new Date("2026-05-27T00:00:00.000Z"),
-    now: new Date("2026-05-27T00:00:00.000Z"),
+    now: options.now || new Date("2026-05-27T00:00:00.000Z"),
     sessionSecret: options.noSessionSecret ? undefined : "test-session-secret",
     secureCookies: options.secureCookies,
     cookieDomain: options.cookieDomain,
@@ -823,6 +910,7 @@ function request(store, method, path, body, headers = {}, options = {}) {
     loginRateLimit: options.loginRateLimit,
     signupRateLimit: options.signupRateLimit,
     stripeClient: options.stripeClient,
+    stripeWebhookSecret: options.stripeWebhookSecret,
     billingReturnBaseUrl: options.billingReturnBaseUrl
   });
 }
@@ -860,4 +948,12 @@ function createMockStripeClient() {
       return { url: "https://billing.stripe.test/session/bps_test_001" };
     }
   };
+}
+
+function stripeSignature(payload, secret, timestamp) {
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(`${timestamp}.${payload}`)
+    .digest("hex");
+  return `t=${timestamp},v1=${signature}`;
 }

@@ -15,8 +15,9 @@
 - Platform API: `/v1/auth/mfa/enroll` がGoogle Authenticator等で読める `qrCodeDataUrl` を返す。
 - Core Admin: MFA QR発行、6桁コード確認、次回ログイン時のMFAコード入力を追加。
 - Platform API: `/v1/billing/status`、`/v1/billing/checkout-session`、`/v1/billing/portal-session` を追加。
+- Platform API: `/v1/stripe/webhook` を追加し、Stripe署名検証、event receipt冪等化、Core billing/access/product entitlement反映を実装。
 - LP: 初回パスワード設定後に `startCheckout: true` を送り、Stripe Checkout URLが返った場合は支払い画面へ遷移する。
-- Cloud Run deploy script: `platform-api-*` にStripe設定と任意の `STRIPE_SECRET_KEY` secretを渡せるようにした。
+- Cloud Run deploy script: `platform-api-*` にStripe設定と任意の `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` secretを渡せるようにした。
 - Fee API: `/readyz` で公式master DBの設定有無とファイル存在を確認できるようにした。
 
 ## 旧アプリから確認した事実
@@ -41,6 +42,13 @@ flowchart LR
 ```
 
 ユーザー要件としては、現行移行後に `LP -> 登録 -> Stripe支払い` まで進める必要がある。そのため、旧 `services/billing` をそのまま別サービスとして復活させるより、Core Platformにsignup、MFA、billing status、Checkout/Portal発行を寄せる方針にする。
+
+2026-05-30にStripe CLIを再調査した結果:
+
+- 旧 `$HOME/bin/medical-stripe` は旧 `medical/keys/stripe_key.txt` を読むラッパーだったが、旧repo整理後は参照先ファイルが存在しない。
+- Stripe CLIのtest modeでは既存Product `medical-ai`、Price lookup key `medical_ai_monthly_jpy_v2`、月額22,000円、Billing Portal、旧webhook endpointを確認済み。
+- 旧test webhook endpointは `medical-billing-...run.app/api/v1/stripe/webhook` を向いていたため、Core endpoint作成後にdisabledへ変更済み。
+- Stripe CLIのlive mode keyは401で無効。PRODは有効なlive secret keyを再発行/再ログインするまで実Checkout設定できない。
 
 ### MFA / Google Authenticator
 
@@ -110,15 +118,15 @@ Status: runtime deployed / master data pending
 
 ### L1 LP signup and Stripe
 
-Status: implemented and deployed / Stripe secret and webhook pending
+Status: STG checkout and webhook verified / PROD live key pending
 
 1. `signup.html` はPlatform signup APIへ申込を送る。Done.
 2. メール確認相当のtoken flowで病院/管理者を作る。Done.
 3. 初回パスワード設定後にCheckout開始を要求する。Done.
 4. Stripe設定済み環境ではCheckout URLへ遷移する。Implemented and deployed.
 5. Stripe未設定環境では登録を止めず、管理画面で支払いを続行する。Implemented and deployed.
-6. STG/PRODのStripe test/live Price lookup keyと `STRIPE_SECRET_KEY` secretを設定する。Pending.
-7. Stripe Checkout completed webhookをCore Billingに反映する。Pending.
+6. STG/PRODのStripe test/live Price lookup keyと `STRIPE_SECRET_KEY` secretを設定する。STG Done / PROD live key invalid.
+7. Stripe Checkout completed webhookをCore Billingに反映する。STG Done / PROD live key invalid.
 
 ### L2 MFA
 
@@ -143,6 +151,9 @@ npm run test:migration-parity
 ## 2026-05-30反映結果
 
 - Platform API STG/PROD: signup billing API、MFA QR Data URLをdeploy済み。`/readyz` 200確認済み。
+- Platform API STG: Stripe test keyとCore webhook endpoint `we_1TcbBPA2mWuSL3XaHhp431E3` を設定済み。申込からStripe Checkout URL発行、署名済みwebhookによるCore billing/access/entitlement更新まで確認済み。
+- Stripe test mode: 旧 `medical-billing` webhook endpoint `we_1TRVE5A2mWuSL3XaP3cFPrm7` はdisabledへ変更済み。
+- Platform API local: Stripe webhook署名検証、receipt冪等化、Core billing/access/entitlement反映を実装し、unit test通過。
 - LP STG/PROD: 初回パスワード設定後にCheckout開始を要求するHTMLをNetlify production deploy済み。
 - Core Admin STG/PROD: MFA QR発行/確認UIをNetlify production deploy済み。
 - Fee API STG/PROD: master readiness付き `/readyz` をdeploy済み。現状は公式master未配置のため `masterDbConfigured=false`、`masterDbPathExists=false`。
@@ -156,9 +167,15 @@ Stripe設定を先に作る。
 ```bash
 gcloud secrets create STRIPE_SECRET_KEY --project medical-core-stg --replication-policy automatic
 gcloud secrets versions add STRIPE_SECRET_KEY --project medical-core-stg --data-file /path/to/stg-stripe-secret.txt
+gcloud secrets create STRIPE_WEBHOOK_SECRET --project medical-core-stg --replication-policy automatic
+gcloud secrets versions add STRIPE_WEBHOOK_SECRET --project medical-core-stg --data-file /path/to/stg-stripe-webhook-secret.txt
 gcloud secrets create STRIPE_SECRET_KEY --project medical-core-497610 --replication-policy automatic
 gcloud secrets versions add STRIPE_SECRET_KEY --project medical-core-497610 --data-file /path/to/prod-stripe-secret.txt
+gcloud secrets create STRIPE_WEBHOOK_SECRET --project medical-core-497610 --replication-policy automatic
+gcloud secrets versions add STRIPE_WEBHOOK_SECRET --project medical-core-497610 --data-file /path/to/prod-stripe-webhook-secret.txt
 ```
+
+2026-05-30時点ではSTGは設定済み。PRODはStripe CLIのlive keyが401で無効なため、有効なlive secret keyとlive webhook secretの準備後に実行する。
 
 低費用設定のままPlatform APIだけ再deployする。
 

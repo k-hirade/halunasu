@@ -5,6 +5,7 @@ export const collections = Object.freeze({
   signupApplications: "signup_applications",
   signupEmailTokens: "signup_email_tokens",
   passwordSetupTokens: "password_setup_tokens",
+  stripeEventReceipts: "stripe_event_receipts",
   rateLimits: "rate_limits",
   members: "members",
   facilities: "facilities",
@@ -37,6 +38,10 @@ export function signupEmailTokenPath(token) {
 
 export function passwordSetupTokenPath(token) {
   return joinPath(collections.passwordSetupTokens, segment(token, "token"));
+}
+
+export function stripeEventReceiptPath(eventId) {
+  return joinPath(collections.stripeEventReceipts, segment(eventId, "eventId"));
 }
 
 export function rateLimitPath(key) {

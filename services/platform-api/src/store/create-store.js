@@ -43,6 +43,14 @@ export class LazyFirestorePlatformStore {
     return this.call("updateOrganization", orgId, input);
   }
 
+  async findOrganizationByStripeCustomerId(stripeCustomerId) {
+    return this.call("findOrganizationByStripeCustomerId", stripeCustomerId);
+  }
+
+  async findOrganizationByStripeSubscriptionId(stripeSubscriptionId) {
+    return this.call("findOrganizationByStripeSubscriptionId", stripeSubscriptionId);
+  }
+
   async createSignupApplication(input) {
     return this.call("createSignupApplication", input);
   }
@@ -189,6 +197,18 @@ export class LazyFirestorePlatformStore {
 
   async updateDataRequest(orgId, requestId, input) {
     return this.call("updateDataRequest", orgId, requestId, input);
+  }
+
+  async createStripeEventReceipt(input) {
+    return this.call("createStripeEventReceipt", input);
+  }
+
+  async getStripeEventReceipt(eventId) {
+    return this.call("getStripeEventReceipt", eventId);
+  }
+
+  async updateStripeEventReceipt(eventId, patch) {
+    return this.call("updateStripeEventReceipt", eventId, patch);
   }
 
   async listAuditEvents(orgId) {

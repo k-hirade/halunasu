@@ -77,6 +77,9 @@ deploy_service() {
   if [[ "${service}" == platform-api-* ]] && secret_exists "${project}" "STRIPE_SECRET_KEY"; then
     secret_vars="${secret_vars},STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest"
   fi
+  if [[ "${service}" == platform-api-* ]] && secret_exists "${project}" "STRIPE_WEBHOOK_SECRET"; then
+    secret_vars="${secret_vars},STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest"
+  fi
   if [[ "${service}" == charting-gateway-* ]]; then
     secret_vars="${secret_vars},PAIRING_SIGNING_SECRET=PAIRING_SIGNING_SECRET:latest"
   fi

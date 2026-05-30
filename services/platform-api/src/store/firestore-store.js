@@ -37,7 +37,8 @@ import {
   productEntitlementPath,
   rateLimitPath,
   signupEmailTokenPath,
-  signupApplicationPath
+  signupApplicationPath,
+  stripeEventReceiptPath
 } from "../../../../packages/firestore-schema/src/index.js";
 import { conflictError, notFoundError, rateLimitError } from "./memory-store.js";
 import { hashPassword } from "../auth/password.js";
@@ -110,6 +111,22 @@ export class FirestorePlatformStore {
 
     await this.doc(organizationPath(orgId)).set(updated);
     return updated;
+  }
+
+  async findOrganizationByStripeCustomerId(stripeCustomerId) {
+    const snapshot = await this.db.collection(collections.organizations)
+      .where("billing.stripeCustomerId", "==", stripeCustomerId)
+      .limit(1)
+      .get();
+    return docsFromSnapshot(snapshot)[0] || null;
+  }
+
+  async findOrganizationByStripeSubscriptionId(stripeSubscriptionId) {
+    const snapshot = await this.db.collection(collections.organizations)
+      .where("billing.stripeSubscriptionId", "==", stripeSubscriptionId)
+      .limit(1)
+      .get();
+    return docsFromSnapshot(snapshot)[0] || null;
   }
 
   async createSignupApplication(input) {
@@ -676,6 +693,49 @@ export class FirestorePlatformStore {
     return dataRequest;
   }
 
+  async createStripeEventReceipt(input = {}) {
+    const now = this.timestamp();
+    const eventId = requiredString(input.eventId, "eventId");
+    const receipt = compactObject({
+      eventId,
+      type: input.type || "unknown",
+      livemode: Boolean(input.livemode),
+      apiVersion: input.apiVersion || null,
+      objectId: input.objectId || null,
+      payloadHash: input.payloadHash || null,
+      status: input.status || "received",
+      receivedAt: input.receivedAt || now,
+      processedAt: input.processedAt || null,
+      errorMessageSafe: input.errorMessageSafe || null,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    });
+
+    await this.doc(stripeEventReceiptPath(eventId)).set(receipt);
+    return receipt;
+  }
+
+  async getStripeEventReceipt(eventId) {
+    return docDataOrNull(await this.doc(stripeEventReceiptPath(eventId)).get());
+  }
+
+  async updateStripeEventReceipt(eventId, patch = {}) {
+    const current = await this.getStripeEventReceipt(eventId);
+    if (!current) {
+      throw notFoundError("stripe event receipt not found");
+    }
+
+    const updated = compactObject({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+
+    await this.doc(stripeEventReceiptPath(eventId)).set(updated);
+    return updated;
+  }
+
   async listDataRequests(orgId) {
     await this.requireOrganization(orgId);
     const snapshot = await this.orgCollection(orgId, collections.dataRequests).orderBy("createdAt", "asc").get();
@@ -876,6 +936,14 @@ function daysFromNow(now, days) {
 
 function compactObject(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function requiredString(value, label) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new TypeError(`${label} is required`);
+  }
+
+  return value.trim();
 }
 
 function tokenView(record, token) {
