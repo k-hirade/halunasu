@@ -200,7 +200,7 @@ deploy_env() {
     "STRIPE_API_VERSION=2026-03-25.dahlia" \
     "STRIPE_PRICE_LOOKUP_KEY=${STRIPE_PRICE_LOOKUP_KEY:-medical_ai_monthly_jpy_v2}" \
     "EMAIL_DELIVERY_PROVIDER=resend" \
-    "EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS:-Halunasu <noreply@halunasu.com>}" \
+    "EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS:-Halunasu <no-reply@mail.halunasu.com>}" \
     "EMAIL_REPLY_TO_ADDRESS=${EMAIL_REPLY_TO_ADDRESS:-info@halunasu.com}" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"

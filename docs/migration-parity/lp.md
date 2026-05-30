@@ -84,4 +84,4 @@ gcloud secrets add-iam-policy-binding RESEND_API_KEY \
   --role roles/secretmanager.secretAccessor
 ```
 
-Resendの送信元はdeploy scriptで `EMAIL_FROM_ADDRESS="Halunasu <noreply@halunasu.com>"`、返信先は `EMAIL_REPLY_TO_ADDRESS="info@halunasu.com"` を既定値にする。Resend側で `noreply@halunasu.com` または `halunasu.com` ドメイン認証が未完了なら、認証済み送信元に合わせて `EMAIL_FROM_ADDRESS` を指定してdeployする。
+Resendの送信元はdeploy scriptで `EMAIL_FROM_ADDRESS="Halunasu <no-reply@mail.halunasu.com>"`、返信先は `EMAIL_REPLY_TO_ADDRESS="info@halunasu.com"` を既定値にする。Resend側で `mail.halunasu.com` ドメイン認証が未完了なら、認証済み送信元に合わせて `EMAIL_FROM_ADDRESS` を指定してdeployする。
