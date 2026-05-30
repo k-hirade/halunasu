@@ -120,4 +120,4 @@ npm run test:migration-parity
 - sandbox内の通常実行ではNext dev serverがlistenできず `EPERM` になるため、E2Eを含む実行はsandbox外で確認した。
 - Netlify/GCPのSTG/PROD反映確認はCharting/Fee/ReferralのCore shared data利用と作成系APIまで完了。
 - Chartingの実AI STT/SOAP provider smokeは `OPENAI_API_KEY` / `DEEPGRAM_API_KEY` secret未設定かつ費用発生を避けるため未実施。secret追加後に短時間手動smokeを実施する。
-- LPのResend実メールsmokeは `RESEND_API_KEY` secret未設定のため未実施。Secret追加後にSTG/PRODで登録メール受信とリンク遷移を確認する。
+- LPのResend実送信smokeはSTGで `delivered=true` を確認済み。メールリンク遷移は受信メールから手動確認する。

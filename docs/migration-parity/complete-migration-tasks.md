@@ -8,7 +8,7 @@
 
 1. Charting: 旧Next.js UI、Gateway、Core患者/施設/診療科bridge、Netlify独自ドメイン配信、STG/PROD login/session作成はDone。実AI STT/SOAPは `OPENAI_API_KEY` / `DEEPGRAM_API_KEY` secret未設定のためlocal preview運用。
 2. Fee: Python算定エンジン、旧126テスト、公式master SQLite gzip同梱、STG/PROD `readyz`、代表コード実算定はDone。
-3. LP: 登録、Resend確認メール、初回パスワード設定、Stripe Checkout/Portal/Webhook、Core entitlement連携はコード移行済み。STG/PRODのResend実送信だけ `RESEND_API_KEY` Secret投入後に反映する。
+3. LP: 登録、Resend確認メール、初回パスワード設定、Stripe Checkout/Portal/Webhook、Core entitlement連携はコード移行済み。STG/PRODへResend反映済みで、STG実送信は成功。
 4. Referral: Core共有データを使った下書き作成、HTML文書生成、プレビュー/印刷導線、STG/PROD post-deploy確認はDone。
 
 今回、完全移行に向けて以下を実装した。
@@ -134,7 +134,7 @@ Status: done
 
 ### L1 LP signup, Resend, and Stripe
 
-Status: code complete. STG/PROD Resend deploy is blocked until `RESEND_API_KEY` exists in `medical-core-stg` and `medical-core-497610`.
+Status: deployed. STG Resend delivery smoke completed. Email-link click through remains a manual inbox check because production-like API responses no longer expose raw verification tokens.
 
 1. `signup.html` はPlatform signup APIへ申込を送る。Done.
 2. Resendで確認メールを送り、`/signup?token=...` から病院/管理者を作る。Code Done / Secret pending.
@@ -146,9 +146,10 @@ Status: code complete. STG/PROD Resend deploy is blocked until `RESEND_API_KEY` 
 8. PRODのStripe live `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` を正アカウントで発行し、`medical-core-497610` に保存する。Done.
 9. PROD Core live webhook `https://halunasu.com/api/platform/v1/stripe/webhook` を作成する。Done.
 10. PROD Platform APIを再deployし、Checkout URL/Portal URL生成とWebhook署名検証を確認する。Done.
-11. STG/PRODに `RESEND_API_KEY` Secretを追加し、Platform APIを再deployする。Pending.
-12. STG/PRODで実メール受信、確認リンク、初回設定メール受信、パスワード設定、Checkout遷移を確認する。Pending.
-13. Chartingの旧登録/初回設定URLはLP signupへredirectする。Code Done / deploy pending.
+11. STG/PRODに `RESEND_API_KEY` Secretを追加し、Platform APIを再deployする。Done.
+12. STGで実メール送信がResend `delivered=true` になることを確認する。Done.
+13. メール受信、確認リンク、初回設定メール受信、パスワード設定、Checkout遷移を受信メールから確認する。Manual pending.
+14. Chartingの旧登録/初回設定URLはLP signupへredirectする。Done.
 
 ### L2 MFA
 
@@ -181,8 +182,9 @@ npm run test:migration-parity
 - Stripe live mode: 旧 `medical-billing` webhook endpoint `we_1TPXYiADFhjr3GQSR83I19Fq` はdisabledへ変更済み。
 - Platform API local: Stripe webhook署名検証、receipt冪等化、Core billing/access/entitlement反映を実装し、unit test通過。
 - LP STG/PROD: 初回パスワード設定後にCheckout開始を要求するHTMLをNetlify production deploy済み。
-- LP/Platform API local: 旧Resend方式の確認メール/初回設定メールをPlatform APIに移植し、unit/static test通過。STG/PRODには `RESEND_API_KEY` Secret未設定のため未deploy。
-- Charting Web local: 旧contact signup/password setup URLを現行LP signupへredirectするコードを追加。STG/PROD deployはResend反映と同じタイミングで行う。
+- LP/Platform API: 旧Resend方式の確認メール/初回設定メールをPlatform APIに移植し、unit/static test通過。STG/PRODへdeploy済み。
+- Charting Web: 旧contact signup/password setup URLを現行LP signupへredirectするコードをSTG/PRODへdeploy済み。
+- Platform API STG Resend smoke: `resend-smoke-20260530-1754` / `info@halunasu.com` で `emailDelivery.mode=resend`、`delivered=true`、provider message id `e82b3fb1-131e-489a-bffb-481480bf6b7c` を確認。
 - Core Admin STG/PROD: MFA QR発行/確認UIをNetlify production deploy済み。
 - Fee API STG/PROD: 公式master gzip同梱版をdeploy済み。`/readyz` は `masterDbConfigured=true`、`masterDbPathExists=true`、`masterDbGzipPathExists=true` を返す。
 - Fee API STG/PROD: `standardCode=160000410` の代表算定で `medical_fee_calculation` provider、`totalPoints=41`、`lineItems=2` を確認済み。
