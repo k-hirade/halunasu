@@ -12,6 +12,9 @@ const html = readFileSync(join(root, "index.html"), "utf8");
 
 assert(html.includes("/v1/auth/login"), "fee web must log in through Platform");
 assert(html.includes("mfaCode"), "fee web must support Platform MFA login");
+assert(html.includes('id="mfa-gate"'), "fee web must use a separate MFA gate like charting");
+assert(html.includes("/v1/auth/mfa/enroll"), "fee web must support Platform MFA enrollment");
+assert(html.includes("/v1/auth/mfa/verify"), "fee web must support Platform MFA verification");
 assert(html.includes("/v1/fee/patients"), "fee web must create patients through fee-api");
 assert(html.includes("/v1/fee/facilities"), "fee web must load Platform facilities through fee-api");
 assert(html.includes("/v1/fee/departments"), "fee web must load Platform departments through fee-api");

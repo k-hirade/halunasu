@@ -375,15 +375,56 @@
               </button>
             </div>
           </div>
-          <div class="field hidden" id="mfa-code-field">
-            <label for="mfaCode">認証コード</label>
-            <input id="mfaCode" name="mfaCode" inputmode="numeric" autocomplete="one-time-code" placeholder="6桁のコード" maxlength="6" pattern="[0-9]{6}" />
-            <p class="field-note">Google Authenticator などの認証アプリに表示されるコードを入力してください。</p>
-          </div>
           <div id="login-message" class="inline-error" role="status" aria-live="polite"></div>
           <div class="operator-gate-actions">
             <button class="btn btn--primary btn--lg" type="submit" id="login-button">ログイン</button>
           </div>
+        </form>
+      </section>
+    </div>
+  </div>
+
+  <div class="operator-gate hidden" id="mfa-gate">
+    <div class="operator-gate-shell">
+      <aside class="operator-gate-brand">
+        <div class="operator-gate-brand-top">
+          <img alt="ハルナス" class="operator-gate-mark" src="brand/harunas-mark.png" />
+          <span class="operator-gate-wordmark">ハルナス</span>
+        </div>
+
+        <div class="operator-gate-pitch">
+          <h2>本人確認</h2>
+          <p>認証アプリの6桁コードを入力してください。</p>
+        </div>
+
+        <div class="operator-gate-foot">
+          <span>© ハルナス</span>
+        </div>
+      </aside>
+
+      <section class="operator-gate-form-area">
+        <form class="operator-gate-card" id="mfa-form">
+          <div>
+            <h1 id="mfa-title">確認コード</h1>
+            <p id="mfa-description" style="margin-top: 6px;">認証アプリに表示された6桁コードを入力してください。</p>
+          </div>
+          <div class="operator-mfa-qr hidden" id="mfa-qr-block">
+            <img alt="認証アプリ登録用QRコード" id="mfa-qr-image" />
+            <span>認証アプリでQRコードを読み取ってください。</span>
+          </div>
+          <div class="field hidden" id="mfa-secret-field">
+            <label for="mfaSecret">シークレット</label>
+            <input id="mfaSecret" readonly type="text" />
+          </div>
+          <div class="field">
+            <label for="mfaCode">6桁コード</label>
+            <input id="mfaCode" name="mfaCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="6" pattern="[0-9]{6}" />
+          </div>
+          <div class="operator-gate-actions">
+            <button class="btn btn--primary btn--lg" type="submit" id="mfa-button" disabled>確認</button>
+            <button class="btn btn--ghost btn--lg" type="button" id="mfa-back-button">戻る</button>
+          </div>
+          <div id="mfa-message" class="inline-error" role="status" aria-live="polite"></div>
         </form>
       </section>
     </div>
@@ -513,7 +554,8 @@
     const state = {
       csrfToken: "",
       session: null,
-      mfaRequired: false,
+      pendingLoginCredentials: null,
+      mfaMode: "",
       patients: [],
       facilities: [],
       departments: [],
@@ -528,8 +570,18 @@
       appShell: document.querySelector("#app-shell"),
       loginMessage: document.querySelector("#login-message"),
       loginButton: document.querySelector("#login-button"),
-      mfaCodeField: document.querySelector("#mfa-code-field"),
+      mfaGate: document.querySelector("#mfa-gate"),
+      mfaForm: document.querySelector("#mfa-form"),
+      mfaTitle: document.querySelector("#mfa-title"),
+      mfaDescription: document.querySelector("#mfa-description"),
+      mfaQrBlock: document.querySelector("#mfa-qr-block"),
+      mfaQrImage: document.querySelector("#mfa-qr-image"),
+      mfaSecretField: document.querySelector("#mfa-secret-field"),
+      mfaSecret: document.querySelector("#mfaSecret"),
       mfaCode: document.querySelector("#mfaCode"),
+      mfaMessage: document.querySelector("#mfa-message"),
+      mfaButton: document.querySelector("#mfa-button"),
+      mfaBackButton: document.querySelector("#mfa-back-button"),
       sessionChip: document.querySelector("#session-chip"),
       loginForm: document.querySelector("#login-form"),
       patientForm: document.querySelector("#patient-form"),
@@ -555,32 +607,68 @@
       event.preventDefault();
       await runLogin(async () => {
         const form = new FormData(els.loginForm);
-        const mfaCode = String(form.get("mfaCode") || "").replace(/\s+/g, "").trim();
-        if (state.mfaRequired && !mfaCode) {
-          showMfaField();
-          throw new Error("認証アプリの6桁コードを入力してください。");
-        }
         const body = {
           organizationCode: form.get("organizationCode"),
           loginId: form.get("loginId"),
           password: form.get("password")
         };
-        if (mfaCode) {
-          body.mfaCode = mfaCode;
-        }
+        state.pendingLoginCredentials = body;
         const response = await api(platformApiBaseUrl, "/v1/auth/login", {
           method: "POST",
           body
         });
-        state.csrfToken = response.csrfToken || "";
-        state.session = response.session;
-        resetMfaField();
-        renderSession();
-        hide(els.loginGate);
-        show(els.appShell);
-        await loadWorkspace();
-        showMessage("ログインしました", "success");
+        await continueAfterPlatformLogin(response);
       });
+    });
+
+    els.mfaForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await runMfa(async () => {
+        const code = normalizedMfaCode();
+        if (code.length !== 6) {
+          throw new Error("認証アプリの6桁コードを入力してください。");
+        }
+
+        if (state.mfaMode === "verify-login") {
+          const response = await api(platformApiBaseUrl, "/v1/auth/login", {
+            method: "POST",
+            body: {
+              ...state.pendingLoginCredentials,
+              mfaCode: code
+            }
+          });
+          await continueAfterPlatformLogin(response);
+          return;
+        }
+
+        if (state.mfaMode === "enroll") {
+          const response = await api(platformApiBaseUrl, "/v1/auth/mfa/verify", {
+            method: "POST",
+            csrf: true,
+            body: { code }
+          });
+          await finishLogin(response);
+          return;
+        }
+
+        throw new Error("本人確認をやり直してください。");
+      });
+    });
+
+    els.mfaBackButton.addEventListener("click", async () => {
+      if (state.session && state.csrfToken) {
+        await api(platformApiBaseUrl, "/v1/auth/logout", {
+          method: "POST",
+          csrf: true,
+          body: {}
+        }).catch(() => null);
+      }
+      resetMfaFlow();
+      state.csrfToken = "";
+      state.session = null;
+      els.loginForm.elements.password.value = "";
+      hide(els.mfaGate);
+      show(els.loginGate);
     });
 
     setupPasswordToggle();
@@ -925,19 +1013,65 @@
         await task();
       } catch (error) {
         if (error.code === "mfa_required") {
-          showMfaField();
-          showLoginMessage("認証アプリの6桁コードを入力してください。");
+          showMfaChallenge("verify-login");
           return;
         }
 
-        if (state.session) {
+        if (state.session && !els.appShell.classList.contains("hidden")) {
           showMessage(error.message || "初期データの読み込みに失敗しました", "error");
         } else {
+          state.csrfToken = "";
+          state.session = null;
           showLoginMessage(error.message || "ログインに失敗しました");
         }
       } finally {
         els.loginButton.disabled = false;
       }
+    }
+
+    async function runMfa(task) {
+      els.mfaButton.disabled = true;
+      showMfaMessage("");
+      try {
+        await task();
+      } catch (error) {
+        showMfaMessage(error.message || "本人確認に失敗しました。");
+      } finally {
+        updateMfaButtonState();
+      }
+    }
+
+    async function continueAfterPlatformLogin(response) {
+      state.csrfToken = response.csrfToken || "";
+      state.session = response.session || null;
+
+      if (shouldPromptMfaEnrollment(state.session)) {
+        await beginMfaEnrollment();
+        return;
+      }
+
+      await finishLogin(response);
+    }
+
+    async function beginMfaEnrollment() {
+      const response = await api(platformApiBaseUrl, "/v1/auth/mfa/enroll", {
+        method: "POST",
+        csrf: true,
+        body: {}
+      });
+      showMfaChallenge("enroll", response.mfa || {});
+    }
+
+    async function finishLogin(response) {
+      state.csrfToken = response.csrfToken || "";
+      state.session = response.session || null;
+      resetMfaFlow();
+      renderSession();
+      hide(els.loginGate);
+      hide(els.mfaGate);
+      show(els.appShell);
+      await loadWorkspace();
+      showMessage("ログインしました", "success");
     }
 
     function setBusy(busy) {
@@ -961,18 +1095,76 @@
       els.loginMessage.textContent = text || "";
     }
 
-    function showMfaField() {
-      state.mfaRequired = true;
-      show(els.mfaCodeField);
-      els.mfaCode.required = true;
+    function showMfaMessage(text) {
+      els.mfaMessage.textContent = text || "";
+    }
+
+    function showMfaChallenge(mode, mfa = {}) {
+      state.mfaMode = mode;
+      els.mfaCode.value = "";
+      showMfaMessage("");
+
+      if (mode === "enroll") {
+        els.mfaTitle.textContent = "認証アプリを登録";
+        els.mfaDescription.textContent = "認証アプリにシークレットを登録し、表示された6桁コードを入力してください。";
+        if (mfa.qrCodeDataUrl) {
+          els.mfaQrImage.src = mfa.qrCodeDataUrl;
+          show(els.mfaQrBlock);
+        } else {
+          els.mfaQrImage.removeAttribute("src");
+          hide(els.mfaQrBlock);
+        }
+        els.mfaSecret.value = mfa.secret || "";
+        if (mfa.secret) {
+          show(els.mfaSecretField);
+        } else {
+          hide(els.mfaSecretField);
+        }
+      } else {
+        els.mfaTitle.textContent = "確認コード";
+        els.mfaDescription.textContent = "認証アプリに表示された6桁コードを入力してください。";
+        els.mfaQrImage.removeAttribute("src");
+        els.mfaSecret.value = "";
+        hide(els.mfaQrBlock);
+        hide(els.mfaSecretField);
+      }
+
+      hide(els.loginGate);
+      hide(els.appShell);
+      show(els.mfaGate);
+      updateMfaButtonState();
       window.requestAnimationFrame(() => els.mfaCode.focus());
     }
 
-    function resetMfaField() {
-      state.mfaRequired = false;
-      hide(els.mfaCodeField);
-      els.mfaCode.required = false;
+    function resetMfaFlow() {
+      state.pendingLoginCredentials = null;
+      state.mfaMode = "";
       els.mfaCode.value = "";
+      els.mfaSecret.value = "";
+      els.mfaQrImage.removeAttribute("src");
+      hide(els.mfaQrBlock);
+      hide(els.mfaSecretField);
+      showMfaMessage("");
+      updateMfaButtonState();
+    }
+
+    function shouldPromptMfaEnrollment(session) {
+      if (!session || session.mfaVerified) {
+        return false;
+      }
+      const roles = Array.isArray(session.globalRoles) ? session.globalRoles : [];
+      return roles.includes("org_admin") || roles.includes("billing_admin") || roles.includes("platform_admin");
+    }
+
+    function normalizedMfaCode() {
+      return String(els.mfaCode.value || "").replace(/\D+/g, "").slice(0, 6);
+    }
+
+    function updateMfaButtonState() {
+      if (!els.mfaButton) {
+        return;
+      }
+      els.mfaButton.disabled = normalizedMfaCode().length !== 6 || !state.mfaMode;
     }
 
     function hideMessage() {
@@ -1002,7 +1194,8 @@
 
     function setupMfaCodeInput() {
       els.mfaCode.addEventListener("input", () => {
-        els.mfaCode.value = els.mfaCode.value.replace(/\D+/g, "").slice(0, 6);
+        els.mfaCode.value = normalizedMfaCode();
+        updateMfaButtonState();
       });
     }
 

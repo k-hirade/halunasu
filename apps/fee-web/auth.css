@@ -261,9 +261,38 @@
   background: var(--accent-hover);
 }
 
+.operator-gate .btn--ghost {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  color: var(--ink-soft);
+}
+
+.operator-gate .btn--ghost:hover {
+  background: var(--accent-soft);
+  border-color: rgba(13, 148, 136, 0.22);
+  color: var(--accent-hover);
+}
+
 .operator-gate .btn:disabled {
   opacity: 0.62;
   cursor: wait;
+}
+
+.operator-mfa-qr {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.operator-mfa-qr img {
+  width: 192px;
+  height: 192px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
 }
 
 .inline-error {
