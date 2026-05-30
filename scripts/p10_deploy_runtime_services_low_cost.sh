@@ -207,6 +207,8 @@ deploy_env() {
   fi
 
   if should_deploy "${env}" "charting-gateway"; then
+    # Browser HTTP uses same-origin Netlify proxy cookies, but session WebSocket connects to Cloud Run directly.
+    # Keep bearer auth enabled so the in-memory login token can authenticate WebSocket auth.hello.
     deploy_service "${charting_project}" "charting-gateway-${env}" "services/charting-gateway" "halunasu-charting-gateway" "public" \
     "HALUNASU_ENV=${env}" \
     "APP_ENV=production" \
@@ -219,7 +221,7 @@ deploy_env() {
     "APP_BASE_URL=${charting_app_base_url}" \
     "ALLOWED_ORIGINS=${charting_allowed_origins}" \
     "APP_REQUIRE_PRIVILEGED_MFA=true" \
-    "APP_ALLOW_OPERATOR_BEARER_AUTH=false" \
+    "APP_ALLOW_OPERATOR_BEARER_AUTH=true" \
     "FINALIZE_MODE=inline" \
     "FINAL_TRANSCRIPT_SEGMENT_PRECOMPUTE_ENABLED=false"
   fi
