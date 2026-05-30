@@ -81,7 +81,7 @@ export function createTotpSecret() {
   return base32Encode(crypto.randomBytes(20));
 }
 
-export function buildTotpUri({ issuer = "Medical", accountName, secret }) {
+export function buildTotpUri({ issuer = "Halunasu", accountName, secret }) {
   const label = encodeURIComponent(`${issuer}:${accountName}`);
   const params = new URLSearchParams({
     secret,

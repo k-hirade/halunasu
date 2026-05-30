@@ -4124,7 +4124,7 @@ app.post("/api/v1/operator/login", rateLimit("operator-login", { limit: 10, wind
         ...serializeMfaChallengeResponse(authenticated, challengeId, expiresAt, {
           secret,
           totpUri: buildTotpUri({
-            issuer: "Medical",
+            issuer: "Halunasu",
             accountName,
             secret
           })
