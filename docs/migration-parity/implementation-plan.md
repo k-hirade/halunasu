@@ -61,9 +61,12 @@ Steps:
 4. Platform APIにbilling status / checkout-session / portal-sessionを追加。Done.
 5. Stripe Checkout/Portal/WebhookをCore entitlementへ接続する。STG Done / PROD live key invalid.
 6. 旧billing testsをCore Platform側へ移植する。Partial.
-7. Stripe CLI調査結果:
-   - test mode: Product `medical-ai`、Price lookup key `medical_ai_monthly_jpy_v2`、月額22,000円、Portal、旧webhook endpointあり。
-   - live mode: CLI設定のlive keyは401で無効。PRODは有効なlive key再発行が必要。
+7. Stripe調査結果:
+   - Core STGの `STRIPE_SECRET_KEY` は通常のStripe CLIプロファイル `ReportAI` とは別のStripeアカウントのrestricted test key。
+   - Core STGで確認した既存Productは `medical-ai` (`prod_UOKXlLjPn1DT6g`)。2026-04-24作成。
+   - Core STGで利用中のPriceは lookup key `medical_ai_monthly_jpy_v2` (`price_1TTss7A2mWuSL3XaT5CbcnOS`)、月額22,000円、2026-05-06作成。
+   - 旧GCPログ上、旧PROD/STG `medical-billing` も2026-05-06時点で `medical_ai_monthly_jpy_v2` を参照。
+   - Core PRODにはまだStripe secretがない。旧PROD projectは `DELETE_REQUESTED` のため旧Secret値は取得できない。PROD live確認には旧医療用Stripeアカウントのlive restricted key、またはDashboard上での確認が必要。
 
 ## P4: Connect Fee Web/API to Real Engine
 

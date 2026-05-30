@@ -46,9 +46,13 @@ flowchart LR
 2026-05-30にStripe CLIを再調査した結果:
 
 - 旧 `$HOME/bin/medical-stripe` は旧 `medical/keys/stripe_key.txt` を読むラッパーだったが、旧repo整理後は参照先ファイルが存在しない。
-- Stripe CLIのtest modeでは既存Product `medical-ai`、Price lookup key `medical_ai_monthly_jpy_v2`、月額22,000円、Billing Portal、旧webhook endpointを確認済み。
+- Core STGの `medical-core-stg` Secret `STRIPE_SECRET_KEY` は、通常のStripe CLIプロファイル `ReportAI` とは別のStripeアカウントのrestricted test keyを参照している。
+- Core STGで確認した既存Productは `medical-ai` (`prod_UOKXlLjPn1DT6g`)。2026-04-24作成で、現Core/GCP移行作業より前から存在する。
+- Core STGで利用中のPriceは lookup key `medical_ai_monthly_jpy_v2` (`price_1TTss7A2mWuSL3XaT5CbcnOS`)、月額22,000円、2026-05-06作成。
 - 旧test webhook endpointは `medical-billing-...run.app/api/v1/stripe/webhook` を向いていたため、Core endpoint作成後にdisabledへ変更済み。
-- Stripe CLIのlive mode keyは401で無効。PRODは有効なlive secret keyを再発行/再ログインするまで実Checkout設定できない。
+- 旧GCPログ上、旧PROD/STG `medical-billing` は2026-05-06時点で `STRIPE_PRICE_LOOKUP_KEY=medical_ai_monthly_jpy_v2` を参照していた。
+- Core PROD `medical-core-497610` にはまだ `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` がない。旧PROD `medical-492407` は `DELETE_REQUESTED` で、旧Secret値は現状取得できない。
+- 現在の通常Stripe CLIプロファイル `ReportAI` のlive/test一覧には `medical-ai` が出ないため、PROD live確認には旧医療用Stripeアカウントのlive restricted key、またはそのDashboard上での確認が必要。
 
 ### MFA / Google Authenticator
 
