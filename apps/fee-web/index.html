@@ -416,6 +416,7 @@
       gap: 14px;
       text-align: left;
       cursor: pointer;
+      text-decoration: none;
     }
 
     .session-card-link:hover {
@@ -933,6 +934,7 @@
     const feeApiBaseUrl = metaContent("halunasu-fee-api-base-url");
     const FEE_SESSION_PAGE_SIZE = 20;
     const MAX_RENDERED_LINE_ITEMS = 120;
+    const FEE_SESSION_DETAIL_ROUTE = /^\/sessions\/([^/?#]+)\/?$/u;
 
     const state = {
       csrfToken: "",
@@ -1138,9 +1140,8 @@
             orders: parseOrders(form.get("ordersText"))
           }
         });
-        state.selectedFeeSessionId = response.feeSession.feeSessionId;
         await loadSessions({ page: 1 });
-        renderResult(response.feeSession);
+        await navigateToFeeSession(response.feeSession.feeSessionId);
         showMessage("算定セッションを作成しました", "success");
       });
     });
@@ -1183,6 +1184,7 @@
       renderFacilities();
       renderDepartments();
       renderSessions();
+      return syncSelectedFeeSessionFromRoute();
     }
 
     async function loadPatients() {
@@ -1226,6 +1228,55 @@
       renderSessions();
       renderReceiptDraft();
       renderReviewItems();
+    }
+
+    async function navigateToFeeSession(feeSessionId) {
+      setFeeSessionRoute(feeSessionId);
+      await loadFeeSessionDetails(feeSessionId);
+    }
+
+    async function syncSelectedFeeSessionFromRoute() {
+      const feeSessionId = feeSessionIdFromRoute();
+      if (!feeSessionId) {
+        return false;
+      }
+      await loadFeeSessionDetails(feeSessionId);
+      return true;
+    }
+
+    function clearSelectedFeeSession() {
+      state.selectedFeeSessionId = "";
+      state.receiptDraft = null;
+      state.reviewItems = [];
+      els.result.classList.add("result-empty");
+      els.result.textContent = "算定セッションを作成または選択してください。";
+      renderSessions();
+      renderReceiptDraft();
+      renderReviewItems();
+    }
+
+    function feeSessionIdFromRoute() {
+      const match = window.location.pathname.match(FEE_SESSION_DETAIL_ROUTE);
+      if (!match) {
+        return "";
+      }
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        return "";
+      }
+    }
+
+    function feeSessionDetailPath(feeSessionId) {
+      return `/sessions/${encodeURIComponent(feeSessionId)}`;
+    }
+
+    function setFeeSessionRoute(feeSessionId) {
+      const nextPath = feeSessionDetailPath(feeSessionId);
+      if (window.location.pathname === nextPath) {
+        return;
+      }
+      window.history.pushState({ feeSessionId }, "", nextPath);
     }
 
     function renderSession() {
@@ -1309,11 +1360,12 @@
         ${renderFeeSessionPagination()}
       `;
 
-      els.sessionList.querySelectorAll("[data-fee-session-id]").forEach((button) => {
-        button.addEventListener("click", async () => {
-          const feeSessionId = button.dataset.feeSessionId;
+      els.sessionList.querySelectorAll("[data-fee-session-id]").forEach((link) => {
+        link.addEventListener("click", async (event) => {
+          event.preventDefault();
+          const feeSessionId = link.dataset.feeSessionId;
           await run(async () => {
-            await loadFeeSessionDetails(feeSessionId);
+            await navigateToFeeSession(feeSessionId);
           });
         });
       });
@@ -1358,14 +1410,14 @@
 
       return `
         <article class="session-card${isActive ? " is-active" : ""}">
-          <button class="session-card-link" type="button" data-fee-session-id="${escapeHtml(session.feeSessionId)}">
+          <a class="session-card-link" href="${escapeHtml(feeSessionDetailPath(session.feeSessionId))}" data-fee-session-id="${escapeHtml(session.feeSessionId)}">
             <div class="session-card-info">
               <strong>${escapeHtml(session.patientSnapshot?.displayName || session.patientRef || session.patientId || "患者名未入力")}</strong>
               <span>${escapeHtml(session.serviceDate || "診療日未設定")} ・ ${escapeHtml(session.facilitySnapshot?.displayName || "施設未設定")} ・ ${escapeHtml(session.departmentSnapshot?.displayName || "診療科未指定")}</span>
               <span>作成 ${escapeHtml(createdText)} ・ ${escapeHtml(totalPoints)} ・ ${escapeHtml(reviewText)} ・ ${escapeHtml(session.feeSessionId)}</span>
             </div>
             <span class="${badgeClass(session.status)}">${escapeHtml(statusLabel(session.status))}</span>
-          </button>
+          </a>
         </article>
       `;
     }
@@ -1823,10 +1875,17 @@
         hide(els.loginGate);
         hide(els.mfaGate);
         show(els.appShell);
-        await loadWorkspace();
+        const openedRoute = await loadWorkspace();
+        if (!openedRoute) {
+          showMessage("ログインしました", "success");
+        }
       } catch (error) {
         if (error.status && error.status !== 401) {
-          showLoginMessage("セッションの復元に失敗しました。再ログインしてください。");
+          if (state.session && !els.appShell.classList.contains("hidden")) {
+            showMessage(error.message || "セッションの復元に失敗しました。", "error");
+          } else {
+            showLoginMessage("セッションの復元に失敗しました。再ログインしてください。");
+          }
         }
       }
     }
@@ -1848,8 +1907,10 @@
       hide(els.loginGate);
       hide(els.mfaGate);
       show(els.appShell);
-      await loadWorkspace();
-      showMessage("ログインしました", "success");
+      const openedRoute = await loadWorkspace();
+      if (!openedRoute) {
+        showMessage("ログインしました", "success");
+      }
     }
 
     function setBusy(busy) {
@@ -2004,6 +2065,20 @@
         updateMfaButtonState();
       });
     }
+
+    window.addEventListener("popstate", () => {
+      if (!state.session || !state.csrfToken) {
+        return;
+      }
+      run(async () => {
+        const feeSessionId = feeSessionIdFromRoute();
+        if (feeSessionId) {
+          await loadFeeSessionDetails(feeSessionId);
+          return;
+        }
+        clearSelectedFeeSession();
+      });
+    });
 
     function emptyToNull(value) {
       const text = String(value || "").trim();

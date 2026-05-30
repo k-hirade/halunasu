@@ -19,6 +19,10 @@ assert(html.includes("/v1/fee/patients"), "fee web must create patients through 
 assert(html.includes("/v1/fee/facilities"), "fee web must load Platform facilities through fee-api");
 assert(html.includes("/v1/fee/departments"), "fee web must load Platform departments through fee-api");
 assert(html.includes("/v1/fee/sessions"), "fee web must create fee sessions through fee-api");
+assert(html.includes('href="${escapeHtml(feeSessionDetailPath(session.feeSessionId))}"'), "fee web session cards must link to /sessions/{feeSessionId}");
+assert(html.includes("window.history.pushState"), "fee web must update the URL when a fee session is opened");
+assert(html.includes('window.addEventListener("popstate"'), "fee web must handle browser back/forward for fee sessions");
+assert(html.includes("syncSelectedFeeSessionFromRoute"), "fee web must restore a fee session from /sessions/{feeSessionId} on reload");
 assert(html.includes("/calculate"), "fee web must run the fee calculation endpoint");
 assert(html.includes("receipt-draft"), "fee web must show Core receipt drafts");
 assert(html.includes("review-items"), "fee web must show and decide review items");
