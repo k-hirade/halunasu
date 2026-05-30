@@ -1071,6 +1071,7 @@
 
     setupPasswordToggle();
     setupMfaCodeInput();
+    hydrateExistingPlatformSession().catch(() => {});
 
     els.patientSearch.addEventListener("input", () => {
       state.patientFilter = els.patientSearch.value;
@@ -1804,6 +1805,32 @@
       await finishLogin(response);
     }
 
+    async function hydrateExistingPlatformSession() {
+      try {
+        const response = await api(platformApiBaseUrl, "/v1/auth/session");
+        if (!response.authenticated || !response.session) {
+          return;
+        }
+        const csrfToken = readPlatformCsrfCookie();
+        if (!csrfToken) {
+          return;
+        }
+
+        state.csrfToken = csrfToken;
+        state.session = response.session;
+        resetMfaFlow();
+        renderSession();
+        hide(els.loginGate);
+        hide(els.mfaGate);
+        show(els.appShell);
+        await loadWorkspace();
+      } catch (error) {
+        if (error.status && error.status !== 401) {
+          showLoginMessage("セッションの復元に失敗しました。再ログインしてください。");
+        }
+      }
+    }
+
     async function beginMfaEnrollment() {
       const response = await api(platformApiBaseUrl, "/v1/auth/mfa/enroll", {
         method: "POST",
@@ -1835,6 +1862,34 @@
       if (!state.session || !state.csrfToken) {
         throw new Error("ログインしてください");
       }
+    }
+
+    function readPlatformCsrfCookie() {
+      const preferredNames = location.hostname.includes(".stg.")
+        ? ["halunasu_stg_csrf", "halunasu_csrf"]
+        : ["halunasu_csrf", "halunasu_stg_csrf"];
+      const cookies = Object.fromEntries(
+        document.cookie
+          .split(";")
+          .map((cookie) => cookie.trim())
+          .filter(Boolean)
+          .map((cookie) => {
+            const separatorIndex = cookie.indexOf("=");
+            if (separatorIndex === -1) {
+              return [cookie, ""];
+            }
+            return [
+              cookie.slice(0, separatorIndex),
+              decodeURIComponent(cookie.slice(separatorIndex + 1))
+            ];
+          })
+      );
+      for (const name of preferredNames) {
+        if (cookies[name]) {
+          return cookies[name];
+        }
+      }
+      return "";
     }
 
     function showMessage(text, type) {

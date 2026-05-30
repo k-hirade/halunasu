@@ -179,6 +179,9 @@ CREATE INDEX IF NOT EXISTS idx_comment_links_procedure_code
 CREATE INDEX IF NOT EXISTS idx_comment_links_comment_code
     ON comment_links(source_id, comment_code);
 
+CREATE INDEX IF NOT EXISTS idx_comment_links_procedure_comment
+    ON comment_links(source_id, procedure_code, comment_code);
+
 CREATE TABLE IF NOT EXISTS electronic_aux_master (
     source_id INTEGER NOT NULL REFERENCES master_sources(id) ON DELETE CASCADE,
     code TEXT NOT NULL,
@@ -226,6 +229,9 @@ CREATE INDEX IF NOT EXISTS idx_electronic_exclusions_base
 CREATE INDEX IF NOT EXISTS idx_electronic_exclusions_excluded
     ON electronic_exclusions(source_id, exclusion_table, excluded_code);
 
+CREATE INDEX IF NOT EXISTS idx_electronic_exclusions_base_pair
+    ON electronic_exclusions(source_id, exclusion_table, base_code, excluded_code);
+
 CREATE TABLE IF NOT EXISTS electronic_inpatient_basic (
     source_id INTEGER NOT NULL REFERENCES master_sources(id) ON DELETE CASCADE,
     inpatient_basic_code TEXT NOT NULL,
@@ -253,6 +259,9 @@ CREATE TABLE IF NOT EXISTS electronic_frequency_limits (
 
 CREATE INDEX IF NOT EXISTS idx_electronic_frequency_limits_code
     ON electronic_frequency_limits(source_id, procedure_code);
+
+CREATE INDEX IF NOT EXISTS idx_electronic_frequency_limits_code_limit
+    ON electronic_frequency_limits(source_id, procedure_code, limit_code);
 
 CREATE TABLE IF NOT EXISTS dpc_electronic_table_rows (
     source_id INTEGER NOT NULL REFERENCES master_sources(id) ON DELETE CASCADE,
@@ -514,7 +523,7 @@ CREATE INDEX IF NOT EXISTS idx_hospital_facility_standards_regional_code
 CREATE INDEX IF NOT EXISTS idx_hospital_facility_standards_abbrev
     ON hospital_facility_standards(source_id, standard_abbreviation);
 
-CREATE INDEX IF NOT EXISTS idx_hospital_facility_standards_profile_lookup
+CREATE INDEX IF NOT EXISTS idx_hfs_source_region_code_order
     ON hospital_facility_standards(
         source_id,
         regional_bureau,
