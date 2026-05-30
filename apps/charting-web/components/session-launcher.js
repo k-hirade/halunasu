@@ -274,7 +274,9 @@ export function SessionLauncher() {
           if (response.status === 401) {
             clearAccess();
           }
-          throw new Error("診療画面の準備に失敗しました。しばらくしてからもう一度お試しください。");
+
+          const body = await response.json().catch(() => ({ error: "" }));
+          throw new Error(body.error || "診療画面の準備に失敗しました。しばらくしてからもう一度お試しください。");
         }
 
         const data = await response.json();

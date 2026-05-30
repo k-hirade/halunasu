@@ -225,6 +225,26 @@ export async function refreshOperatorCsrfToken() {
   return operatorCsrfRefreshPromise;
 }
 
+async function syncOperatorCsrfCookieAfterSession(result) {
+  if (result?.csrfToken) {
+    setOperatorCsrfToken(result.csrfToken);
+  }
+
+  if (!result || result.requiresMfa || result.requiresMfaEnrollment) {
+    return result;
+  }
+
+  const refreshedCsrfToken = await refreshOperatorCsrfToken();
+  if (!refreshedCsrfToken) {
+    return result;
+  }
+
+  return {
+    ...result,
+    csrfToken: refreshedCsrfToken
+  };
+}
+
 async function ensureOperatorCsrfToken() {
   if (operatorCsrfRefreshPromise) {
     const refreshed = await operatorCsrfRefreshPromise;
@@ -321,8 +341,7 @@ export async function loginOperator({ organizationCode, loginId, password }) {
   }
 
   const result = await response.json();
-  setOperatorCsrfToken(result.csrfToken);
-  return result;
+  return syncOperatorCsrfCookieAfterSession(result);
 }
 
 async function completeOperatorMfa(path, { challengeId, code }) {
@@ -341,8 +360,7 @@ async function completeOperatorMfa(path, { challengeId, code }) {
   }
 
   const result = await response.json();
-  setOperatorCsrfToken(result.csrfToken);
-  return result;
+  return syncOperatorCsrfCookieAfterSession(result);
 }
 
 export function verifyOperatorMfa(input) {
