@@ -383,10 +383,60 @@ test("logs in, checks session, enrolls MFA, and logs out", async () => {
   assert.match(session.body.session.memberId, /^mem_/);
   assert.equal(mfaEnroll.statusCode, 201);
   assert.match(mfaEnroll.body.mfa.otpauthUrl, /^otpauth:\/\/totp\//);
+  assert.match(mfaEnroll.body.mfa.qrCodeDataUrl, /^data:image\/png;base64,/);
   assert.equal(mfaVerify.statusCode, 200);
   assert.equal(mfaVerify.body.mfa.enrolled, true);
   assert.equal(logout.statusCode, 200);
   assert.equal(afterLogout.statusCode, 401);
+});
+
+test("creates Stripe Checkout from LP signup password setup when configured", async () => {
+  const store = createTestStore();
+  const stripeClient = createMockStripeClient();
+  const created = await request(store, "POST", "/v1/signup/applications", {
+    organizationCode: "Stripe Signup Clinic",
+    organizationDisplayName: "Stripe Signup Clinic",
+    applicantName: "Admin User",
+    applicantEmail: "Admin@example.com",
+    requestedProducts: ["charting", "fee"]
+  }, {}, { stripeClient });
+  const provisioned = await request(store, "POST", "/v1/signup/verify-email", {
+    token: created.body.emailVerification.token
+  }, {}, { stripeClient });
+  const setup = await request(store, "POST", "/v1/signup/setup-admin-password", {
+    token: provisioned.body.passwordSetup.token,
+    password: "correct horse battery staple",
+    startCheckout: true
+  }, {}, { stripeClient, billingReturnBaseUrl: "https://charting.example.test" });
+  const organization = store.getOrganization(setup.body.organization.orgId);
+
+  assert.equal(setup.statusCode, 200);
+  assert.equal(setup.body.billingCheckout.status, "created");
+  assert.equal(setup.body.billingCheckout.checkoutUrl, "https://checkout.stripe.test/session/cs_test_001");
+  assert.equal(organization.billing.provider, "stripe");
+  assert.equal(organization.billing.stripeCustomerId, "cus_test_001");
+  assert.equal(organization.billing.stripeCheckoutSessionId, "cs_test_001");
+});
+
+test("creates authenticated billing Checkout and exposes billing status", async () => {
+  const store = createTestStore();
+  const stripeClient = createMockStripeClient();
+  const { organization, headers } = await createAuthenticatedMember(store, {
+    organizationCode: "Billing Clinic",
+    displayName: "Billing Clinic",
+    globalRoles: ["org_admin"]
+  });
+  const checkout = await request(store, "POST", "/v1/billing/checkout-session", {
+    seatQuantity: 2
+  }, headers, { stripeClient, billingReturnBaseUrl: "https://charting.example.test" });
+  const status = await request(store, "GET", "/v1/billing/status", undefined, headers, { stripeClient });
+
+  assert.equal(checkout.statusCode, 200);
+  assert.equal(checkout.body.billingCheckout.checkoutSessionId, "cs_test_001");
+  assert.equal(status.statusCode, 200);
+  assert.equal(status.body.billing.stripeCheckoutSessionId, "cs_test_001");
+  assert.equal(status.body.stripe.configured, true);
+  assert.equal(store.getOrganization(organization.orgId).billing.stripePriceId, "price_test_001");
 });
 
 test("uses secure session cookies outside local and test environments", async () => {
@@ -771,7 +821,9 @@ function request(store, method, path, body, headers = {}, options = {}) {
     sessionCookieName: options.sessionCookieName,
     csrfCookieName: options.csrfCookieName,
     loginRateLimit: options.loginRateLimit,
-    signupRateLimit: options.signupRateLimit
+    signupRateLimit: options.signupRateLimit,
+    stripeClient: options.stripeClient,
+    billingReturnBaseUrl: options.billingReturnBaseUrl
   });
 }
 
@@ -779,4 +831,33 @@ function cookieHeaderFromSetCookie(setCookieHeaders) {
   return setCookieHeaders
     .map((header) => header.split(";")[0])
     .join("; ");
+}
+
+function createMockStripeClient() {
+  return {
+    isConfigured: () => true,
+    configurationView: () => ({
+      configured: true,
+      apiVersion: "2026-03-25.dahlia",
+      priceConfiguredBy: "price_id",
+      trialDays: 0
+    }),
+    async createCustomer() {
+      return { id: "cus_test_001" };
+    },
+    async createSubscriptionCheckoutSession(input) {
+      return {
+        price: { id: "price_test_001" },
+        session: {
+          id: "cs_test_001",
+          url: "https://checkout.stripe.test/session/cs_test_001",
+          expires_at: 1780000000,
+          input
+        }
+      };
+    },
+    async createBillingPortalSession() {
+      return { url: "https://billing.stripe.test/session/bps_test_001" };
+    }
+  };
 }

@@ -83,6 +83,9 @@ async function routeFeeApiRequest(input = {}) {
       env: input.env || "local",
       projectId: input.projectId || "medical-core-stg",
       region: input.region || "asia-northeast1",
+      feeCalculator: typeof feeCalculator.readiness === "function"
+        ? feeCalculator.readiness()
+        : { provider: "custom", masterDbConfigured: null, masterDbPathExists: null },
       startedAt: input.startedAt instanceof Date
         ? input.startedAt.toISOString()
         : new Date().toISOString()

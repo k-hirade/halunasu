@@ -1,10 +1,12 @@
 import http from "node:http";
+import QRCode from "qrcode";
 import {
   normalizeOrganizationCode,
   validateLoginInput
 } from "../../../packages/platform-contracts/src/index.js";
 import { createOtpAuthUrl, generateMfaSecret, verifyTotpCode } from "./auth/mfa.js";
 import { verifyPassword } from "./auth/password.js";
+import { createStripeBillingClientFromEnv } from "./billing/stripe-client.js";
 import {
   clearSessionCookieHeaders,
   createCsrfToken,
@@ -26,6 +28,7 @@ export function createPlatformApiServer(options = {}) {
   const projectId = options.projectId || process.env.GOOGLE_CLOUD_PROJECT || "medical-core-stg";
   const region = options.region || process.env.GOOGLE_CLOUD_REGION || "asia-northeast1";
   const store = options.store || createPlatformStoreFromEnv();
+  const stripeClient = options.stripeClient || createStripeBillingClientFromEnv();
 
   return http.createServer(async (req, res) => {
     try {
@@ -39,6 +42,7 @@ export function createPlatformApiServer(options = {}) {
         region,
         startedAt,
         store,
+        stripeClient,
         headers: req.headers
       });
 
@@ -107,6 +111,7 @@ async function routePlatformApiRequest(input = {}) {
   const url = new URL(input.path || "/", "http://localhost");
   const parts = url.pathname.split("/").filter(Boolean);
   const store = input.store || createPlatformStoreFromEnv();
+  const stripeClient = input.stripeClient || createStripeBillingClientFromEnv();
 
   if (method === "OPTIONS" && url.pathname.startsWith("/v1/")) {
     return noContent();
@@ -143,6 +148,12 @@ async function routePlatformApiRequest(input = {}) {
 
   if (method === "POST" && matches(parts, ["v1", "signup", "setup-admin-password"])) {
     const result = await store.setupAdminPassword(input.body || {});
+    const billingCheckout = input.body?.startCheckout
+      ? await tryCreateSignupCheckout({ input, store, stripeClient, setupResult: result })
+      : null;
+    if (billingCheckout) {
+      return ok({ ...result, billingCheckout });
+    }
     return ok(result);
   }
 
@@ -174,6 +185,10 @@ async function routePlatformApiRequest(input = {}) {
     requirePrivilegedMember(context.member);
 
     const secret = generateMfaSecret();
+    const otpauthUrl = createOtpAuthUrl({
+      accountName: `${context.session.organizationCode}:${context.session.loginId}`,
+      secret
+    });
     await store.beginMfaEnrollment(context.identity, secret);
     await store.createAuditEvent(context.session.orgId, {
       eventType: "auth.mfa_enrollment_started",
@@ -186,12 +201,59 @@ async function routePlatformApiRequest(input = {}) {
       mfa: {
         status: "pending",
         secret,
-        otpauthUrl: createOtpAuthUrl({
-          accountName: `${context.session.organizationCode}:${context.session.loginId}`,
-          secret
-        })
+        otpauthUrl,
+        qrCodeDataUrl: await createMfaQrCodeDataUrl(otpauthUrl)
       }
     });
+  }
+
+  if (method === "GET" && matches(parts, ["v1", "billing", "status"])) {
+    const context = await requireSession(input, store);
+    const organization = await store.getOrganization(context.session.orgId);
+    if (!organization) {
+      return notFound("organization not found");
+    }
+
+    return ok({
+      billing: organization.billing || null,
+      access: organization.access || null,
+      stripe: stripeClient.configurationView?.() || { configured: false },
+      productEntitlements: await safeListProductEntitlements(store, context.session.orgId)
+    });
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "billing", "checkout-session"])) {
+    const context = await requireSession(input, store);
+    requireCsrf(input, context.session);
+    requireBillingManagementMember(context.member);
+    const checkout = await createBillingCheckout({
+      input,
+      store,
+      stripeClient,
+      context,
+      source: "core_billing"
+    });
+    return ok({ billingCheckout: checkout });
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "billing", "portal-session"])) {
+    const context = await requireSession(input, store);
+    requireCsrf(input, context.session);
+    requireBillingManagementMember(context.member);
+    const organization = await store.getOrganization(context.session.orgId);
+    if (!organization) {
+      return notFound("organization not found");
+    }
+    const customerId = organization.billing?.stripeCustomerId || null;
+    if (!customerId) {
+      const error = new Error("Stripe customer is not linked to this organization");
+      error.name = "ConflictError";
+      error.statusCode = 409;
+      throw error;
+    }
+    const returnUrl = billingReturnUrl(input, "portal");
+    const session = await stripeClient.createBillingPortalSession({ customerId, returnUrl });
+    return ok({ billingPortal: { url: session.url } });
   }
 
   if (method === "POST" && matches(parts, ["v1", "auth", "mfa", "verify"])) {
@@ -762,6 +824,21 @@ function requirePrivilegedMember(member) {
   throw error;
 }
 
+function requireBillingManagementMember(member) {
+  if (
+    member.globalRoles.includes("platform_admin")
+    || member.globalRoles.includes("org_admin")
+    || member.globalRoles.includes("billing_admin")
+  ) {
+    return;
+  }
+
+  const error = new Error("Billing management role is required");
+  error.name = "ForbiddenError";
+  error.statusCode = 403;
+  throw error;
+}
+
 function hasGlobalRole(member, role) {
   return (member.globalRoles || []).includes(role);
 }
@@ -815,6 +892,158 @@ function publicSessionView(session) {
     issuedAt: session.issuedAt,
     expiresAt: session.expiresAt
   };
+}
+
+async function createMfaQrCodeDataUrl(otpauthUrl) {
+  return QRCode.toDataURL(otpauthUrl, {
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 240
+  });
+}
+
+async function tryCreateSignupCheckout({ input, store, stripeClient, setupResult }) {
+  if (!stripeClient?.isConfigured?.()) {
+    return {
+      status: "not_configured",
+      message: "Stripe checkout is not configured"
+    };
+  }
+
+  try {
+    const context = {
+      session: {
+        orgId: setupResult.organization.orgId,
+        organizationCode: setupResult.organization.organizationCode,
+        loginId: setupResult.adminMember.loginId,
+        memberId: setupResult.adminMember.memberId
+      },
+      identity: {
+        loginId: setupResult.adminMember.loginId
+      },
+      member: setupResult.adminMember
+    };
+    const checkout = await createBillingCheckout({
+      input,
+      store,
+      stripeClient,
+      context,
+      source: "lp_signup"
+    });
+    return {
+      status: "created",
+      ...checkout
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      message: error.message
+    };
+  }
+}
+
+async function createBillingCheckout({ input, store, stripeClient, context, source }) {
+  if (!stripeClient?.isConfigured?.()) {
+    const error = new Error("Stripe checkout is not configured");
+    error.name = "StripeConfigurationError";
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const organization = await store.getOrganization(context.session.orgId);
+  if (!organization) {
+    const error = new Error("organization not found");
+    error.name = "NotFoundError";
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const customer = organization.billing?.stripeCustomerId
+    ? { id: organization.billing.stripeCustomerId }
+    : await stripeClient.createCustomer({
+      email: context.member.email || context.identity.loginId,
+      name: organization.displayName,
+      metadata: {
+        orgId: organization.orgId,
+        organizationCode: organization.organizationCode,
+        source
+      }
+    });
+  const checkout = await stripeClient.createSubscriptionCheckoutSession({
+    customerId: customer.id,
+    quantity: seatQuantity(organization, input.body),
+    successUrl: billingReturnUrl(input, "success"),
+    cancelUrl: billingReturnUrl(input, "cancel"),
+    clientReferenceId: organization.orgId,
+    metadata: {
+      orgId: organization.orgId,
+      organizationCode: organization.organizationCode,
+      source
+    }
+  });
+  const now = new Date().toISOString();
+  await store.updateOrganization(organization.orgId, {
+    billing: {
+      ...(organization.billing || {}),
+      provider: "stripe",
+      status: organization.billing?.status || "pending_checkout",
+      stripeCustomerId: customer.id,
+      stripeCheckoutSessionId: checkout.session.id,
+      stripePriceId: checkout.price.id,
+      updatedAt: now
+    }
+  });
+  await store.createAuditEvent(organization.orgId, {
+    eventType: "billing.checkout_session_created",
+    actorMemberId: context.session.memberId,
+    actorLoginId: context.session.loginId,
+    targetType: "organization",
+    targetId: organization.orgId,
+    safePayload: {
+      source,
+      checkoutSessionId: checkout.session.id,
+      stripePriceId: checkout.price.id
+    }
+  });
+
+  return {
+    checkoutSessionId: checkout.session.id,
+    checkoutUrl: checkout.session.url,
+    expiresAt: checkout.session.expires_at
+      ? new Date(Number(checkout.session.expires_at) * 1000).toISOString()
+      : null
+  };
+}
+
+function billingReturnUrl(input, status) {
+  const baseUrl = String(
+    input.billingReturnBaseUrl
+    || process.env.PLATFORM_PUBLIC_APP_BASE_URL
+    || process.env.PUBLIC_APP_BASE_URL
+    || defaultAppBaseUrl(input.env)
+  ).replace(/\/$/u, "");
+
+  return `${baseUrl}/billing?checkout=${encodeURIComponent(status)}`;
+}
+
+function defaultAppBaseUrl(env) {
+  return String(env || "").toLowerCase() === "stg"
+    ? "https://charting.stg.halunasu.com"
+    : "https://charting.halunasu.com";
+}
+
+function seatQuantity(organization, body = {}) {
+  const raw = body?.seatQuantity || organization.billing?.seatQuantity || 1;
+  const parsed = Number.parseInt(String(raw), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+async function safeListProductEntitlements(store, orgId) {
+  try {
+    return await store.listProductEntitlements(orgId);
+  } catch {
+    return [];
+  }
 }
 
 function sessionOptions(input) {

@@ -2,7 +2,7 @@
 
 ## Verdict
 
-部分完了。Pythonの算定エンジンは旧126テストが現行コードに対して通り、`fee-api` は `/v1/fee/sessions/{id}/calculate` から `python/medical_fee_calculation` を呼べる構造へ変更済み。Netlify静的配信はSTG/PRODへ反映済み。ただしSTG/PRODで使う公式マスターSQLiteの配置、Cloud Run環境変数、代表データでの実環境検証は未完了。
+部分完了。Pythonの算定エンジンは旧126テストが現行コードに対して通り、`fee-api` は `/v1/fee/sessions/{id}/calculate` から `python/medical_fee_calculation` を呼べる構造へ変更済み。Netlify静的配信はSTG/PRODへ反映済み。`/readyz` で `FEE_MASTER_DB_PATH` の設定有無とファイル存在を返す実装もSTG/PRODへdeploy済み。ただしSTG/PRODで使う公式マスターSQLiteの配置、Cloud Run環境変数、代表データでの実環境検証は未完了。
 
 ## 旧実装
 
@@ -89,10 +89,10 @@ PYTHONPATH=python python3 -m unittest python/tests/test_fee_api_bridge.py
 | --- | --- | --- |
 | Python engine | ほぼ移植済み | 旧テストを継続実行対象にする |
 | configs/contracts/docs | 移植開始 | 正式な配置場所を `config/fee-calculation` / `docs/fee-calculation` に整理 |
-| `fee-api` | calculate endpoint実装済み | STG/PRODへ `FEE_MASTER_DB_PATH` を設定 |
+| `fee-api` | calculate endpoint / master readinessをSTG/PRODへ反映済み | 公式master配置後に `FEE_MASTER_DB_PATH` を設定 |
 | `fee-web` | calculate UIへ変更済み | 旧契約に沿ったオーダーCSV/診療情報入力は追加実装が必要 |
 | master data | 未運用 | Fee product projectの低費用GCSまたはCloud Run image artifactで公式SQLiteを配置 |
-| STG/PROD | 静的配信は反映済み | 公式master付き実算定APIに切替後、代表ケースで検証 |
+| STG/PROD | 静的配信とFee API readiness deployは反映済み | 公式master付き実算定APIに切替後、代表ケースで検証 |
 
 ## TO-BE
 
@@ -106,4 +106,5 @@ PYTHONPATH=python python3 -m unittest python/tests/test_fee_api_bridge.py
 - `/v1/fee/sessions/{id}/calculate` がPython engineを呼ぶ。Done.
 - 旧126テストがrepo内で通る。
 - Fee API/Python bridgeテストで代表オーダーが実コード/点数を返す。
+- STG/PROD `/readyz` で `feeCalculator.masterDbConfigured=true`、`masterDbPathExists=true` を返す。
 - STG/PRODでログイン、患者選択、算定、レビュー、保存まで確認する。

@@ -16,6 +16,15 @@ test("requires Platform session for fee routes", async () => {
   assert.equal(response.statusCode, 401);
 });
 
+test("readyz reports fee master readiness", async () => {
+  const response = await request(createStores(), "GET", "/readyz");
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.feeCalculator.provider, "test_fee_engine");
+  assert.equal(response.body.feeCalculator.masterDbConfigured, true);
+  assert.equal(response.body.feeCalculator.masterDbPathExists, true);
+});
+
 test("creates Platform patients and product-owned fee sessions", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -143,6 +152,13 @@ function createStores(options = {}) {
     idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
   });
   const feeCalculator = {
+    readiness() {
+      return {
+        provider: "test_fee_engine",
+        masterDbConfigured: true,
+        masterDbPathExists: true
+      };
+    },
     async calculate(feeSession) {
       return {
         provider: "test_fee_engine",

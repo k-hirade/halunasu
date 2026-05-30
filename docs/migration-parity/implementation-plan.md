@@ -51,18 +51,20 @@ Steps:
 
 ## P3: Restore Billing / Signup Flow
 
-Status: pending
+Status: core checkout baseline implemented and deployed / secret and webhook pending
 
 Steps:
 
-1. 旧 `services/billing` をCore billingへ統合するか、`services/billing-api` として復元する。
-2. contact signup, verify, password setupをLP/Core signupと統合する。
-3. Stripe Checkout/Portal/WebhookをCore entitlementへ接続する。
-4. 旧billing testsを移植する。
+1. 旧 `services/billing` をCore billingへ統合するか、`services/billing-api` として復元する。Core統合方針に決定.
+2. contact signup, verify, password setupをLP/Core signupと統合する。Done.
+3. LP初回パスワード設定後にStripe Checkoutへ進める。Done.
+4. Platform APIにbilling status / checkout-session / portal-sessionを追加。Done.
+5. Stripe Checkout/Portal/WebhookをCore entitlementへ接続する。Webhook Pending.
+6. 旧billing testsをCore Platform側へ移植する。Partial.
 
 ## P4: Connect Fee Web/API to Real Engine
 
-Status: local done / deploy master data pending
+Status: runtime deployed / master data pending
 
 Steps:
 
@@ -76,19 +78,21 @@ Steps:
 6. representative calculation API testsを追加。Done.
 7. 旧config/contractsを正式配置へ移す。Pending.
 8. STG/PRODへ公式マスターSQLiteを配置し、`FEE_MASTER_DB_PATH` を設定する。Pending.
+   - `/readyz` master readiness reporting: Done and deployed.
 9. STG/PRODで代表オーダーを検証。Pending.
 
 ## P5: LP Parity and Signup
 
-Status: static deployed / signup parity pending
+Status: static deployed / signup checkout baseline deployed / Stripe secret and webhook pending
 
 Steps:
 
 1. 旧LPとの差分をHTML単位で確認。
 2. 旧optimized assetsを必要なら復元。
-3. `signup.html` をCore signup/contact signup flowに接続。
-4. LP link/form validationを追加。
-5. `halunasu.com` / `www.halunasu.com` で確認。PROD root 200 Done / signup end-to-end Pending.
+3. `signup.html` をCore signup/contact signup flowに接続。Done.
+4. 初回パスワード設定後にStripe Checkoutへ進める。Done and deployed.
+5. LP link/form validationを追加。Done.
+6. `halunasu.com` / `www.halunasu.com` で確認。PROD root 200 Done / signup + Stripe end-to-end Pending.
 
 ## P6: Referral Production Foundation
 
@@ -146,6 +150,10 @@ Results on 2026-05-30:
 - STG/PROD Charting Netlify `/sessions` passed.
 - STG/PROD Charting login and `/api/v1/sessions` passed with Core seeded users.
 - PROD LP/Core Admin/Fee/Referral custom domains returned 200.
+- STG/PROD Platform API `/readyz` passed after signup billing and MFA QR deploy.
+- STG/PROD LP and Core Admin Netlify production deploy completed after signup checkout and MFA QR UI changes.
+- STG/PROD Fee API `/readyz` passed after master readiness deploy and currently reports `masterDbConfigured=false`, `masterDbPathExists=false`.
+- Netlify same-origin proxies passed for PROD/STG Platform API and Fee API readyz.
 
 Remaining:
 

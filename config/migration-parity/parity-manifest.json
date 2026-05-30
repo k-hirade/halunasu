@@ -63,6 +63,10 @@
       {
         "file": "services/fee-api/src/server.js",
         "text": "calculate"
+      },
+      {
+        "file": "services/fee-api/src/server.js",
+        "text": "masterDbConfigured"
       }
     ]
   },
@@ -75,6 +79,24 @@
       "apps/lp/tokushoho.html",
       "apps/lp/manual/index.html",
       "apps/lp/manual/harunas-user-manual-v1.pdf"
+    ],
+    "requiredApiMarkers": [
+      {
+        "file": "apps/lp/signup.html",
+        "text": "startCheckout: true"
+      },
+      {
+        "file": "services/platform-api/src/server.js",
+        "text": "checkout-session"
+      },
+      {
+        "file": "services/platform-api/src/server.js",
+        "text": "qrCodeDataUrl"
+      },
+      {
+        "file": "apps/core-admin/index.html",
+        "text": "mfa-setup-panel"
+      }
     ]
   },
   "referral": {

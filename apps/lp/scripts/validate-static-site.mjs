@@ -28,6 +28,8 @@ assert((index.match(/href="signup\.html"/g) || []).length >= 5, "LP CTAs must po
 assert(signup.includes("/v1/signup/applications"), "signup form must post to Platform signup API");
 assert(signup.includes("/v1/signup/verify-email"), "signup form must support email verification");
 assert(signup.includes("/v1/signup/setup-admin-password"), "signup form must support admin password setup");
+assert(signup.includes("startCheckout: true"), "signup form must request Stripe checkout after password setup");
+assert(signup.includes("billingCheckout.checkoutUrl"), "signup form must redirect to Stripe checkout URL");
 assert(signup.includes('value="referral"'), "future referral product must be selectable");
 
 for (const header of [

@@ -548,11 +548,25 @@
         const data = new FormData(passwordForm);
         const response = await postJson("/v1/signup/setup-admin-password", {
           token: passwordSetupToken,
-          password: data.get("password")
+          password: data.get("password"),
+          startCheckout: true
         });
 
         loginInfo.textContent = `組織コード: ${response.login.organizationCode}\nログインID: ${response.login.loginId}`;
         show(completePanel);
+        if (response.billingCheckout?.status === "created" && response.billingCheckout.checkoutUrl) {
+          setMessage("初期パスワードを設定しました。Stripe の支払い画面へ移動します。", "success");
+          window.location.assign(response.billingCheckout.checkoutUrl);
+          return;
+        }
+        if (response.billingCheckout?.status === "not_configured") {
+          setMessage("初期パスワードを設定しました。支払い設定は管理画面から続行してください。", "success");
+          return;
+        }
+        if (response.billingCheckout?.status === "failed") {
+          setMessage(`初期パスワードを設定しました。支払い画面の作成に失敗しました: ${response.billingCheckout.message}`, "error");
+          return;
+        }
         setMessage("初期パスワードを設定しました。", "success");
       } catch (error) {
         setMessage(error.message, "error");

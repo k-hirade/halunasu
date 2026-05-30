@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -42,6 +43,15 @@ export class PythonFeeCalculator {
     });
 
     return output.calculationResult || output.calculation_result || output;
+  }
+
+  readiness() {
+    return {
+      provider: "python.medical_fee_calculation",
+      masterDbConfigured: Boolean(this.masterDbPath),
+      masterDbPathExists: this.masterDbPath ? existsSync(this.masterDbPath) : false,
+      timeoutMs: this.timeoutMs
+    };
   }
 }
 

@@ -39,6 +39,7 @@
 - [GCP / Netlify](./gcp-netlify.md)
 - [Test Plan](./test-plan.md)
 - [Implementation Plan](./implementation-plan.md)
+- [Complete Migration Tasks](./complete-migration-tasks.md)
 
 ## 現時点で復元済みのテスト資産
 

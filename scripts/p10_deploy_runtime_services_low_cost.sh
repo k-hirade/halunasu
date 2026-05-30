@@ -55,6 +55,15 @@ billing_enabled() {
   gcloud billing projects describe "$1" --format="value(billingEnabled)" --quiet 2>/dev/null || true
 }
 
+secret_exists() {
+  local project="$1"
+  local secret="$2"
+  if [[ "${APPLY}" != "true" ]]; then
+    return 0
+  fi
+  gcloud secrets describe "${secret}" --project "${project}" --quiet >/dev/null 2>&1
+}
+
 deploy_service() {
   local project="$1"
   local service="$2"
@@ -65,6 +74,9 @@ deploy_service() {
   local env_vars=("$@")
   local image="${REGION}-docker.pkg.dev/${project}/${REPOSITORY}/${service}:${TAG}"
   local secret_vars="APP_SESSION_SIGNING_SECRET=APP_SESSION_SIGNING_SECRET:latest"
+  if [[ "${service}" == platform-api-* ]] && secret_exists "${project}" "STRIPE_SECRET_KEY"; then
+    secret_vars="${secret_vars},STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest"
+  fi
   if [[ "${service}" == charting-gateway-* ]]; then
     secret_vars="${secret_vars},PAIRING_SIGNING_SECRET=PAIRING_SIGNING_SECRET:latest"
   fi
@@ -142,6 +154,9 @@ deploy_env() {
     "GOOGLE_CLOUD_PROJECT=${core_project}" \
     "GOOGLE_CLOUD_REGION=${REGION}" \
     "PLATFORM_STORE_BACKEND=firestore" \
+    "PLATFORM_PUBLIC_APP_BASE_URL=${charting_app_base_url}" \
+    "STRIPE_API_VERSION=2026-03-25.dahlia" \
+    "STRIPE_PRICE_LOOKUP_KEY=${STRIPE_PRICE_LOOKUP_KEY:-medical_ai_monthly_jpy_v2}" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
   fi

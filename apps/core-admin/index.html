@@ -295,6 +295,36 @@
     .status.warn { color: var(--warn); background: #fff4df; }
     .status.bad { color: var(--danger); background: #fdeceb; }
 
+    .mfa-setup {
+      display: none;
+      grid-template-columns: 180px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .mfa-setup.on {
+      display: grid;
+    }
+
+    .mfa-qr {
+      width: 180px;
+      height: 180px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 8px;
+    }
+
+    .mfa-secret {
+      display: inline-block;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 6px 8px;
+      background: #f7f9fc;
+    }
+
     @media (max-width: 960px) {
       .main,
       .split,
@@ -375,6 +405,10 @@
               </button>
             </div>
           </div>
+          <div class="field">
+            <label for="mfa-code">認証アプリの6桁コード</label>
+            <input id="mfa-code" name="mfaCode" inputmode="numeric" autocomplete="one-time-code" placeholder="登録済みの場合のみ入力" />
+          </div>
           <div id="login-message" class="inline-error" role="status" aria-live="polite"></div>
           <div class="operator-gate-actions">
             <button class="btn btn--primary btn--lg" type="submit" id="login-button">ログイン</button>
@@ -405,6 +439,30 @@
             <div class="button-row">
               <button class="secondary" id="session-button" type="button">セッション再読込</button>
               <button class="secondary" id="refresh-button" type="button">更新</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel stack">
+          <h2>二要素認証</h2>
+          <p style="margin: 0; color: var(--muted); font-size: 13px;">管理者権限を持つアカウントは、Google Authenticator などの認証アプリでTOTPを登録します。</p>
+          <div class="button-row">
+            <button class="secondary" id="mfa-enroll-button" type="button">QRコードを発行</button>
+          </div>
+          <div class="mfa-setup" id="mfa-setup-panel">
+            <img alt="認証アプリ登録用QRコード" class="mfa-qr" id="mfa-qr" />
+            <div class="stack">
+              <div>
+                <label>手入力用キー</label>
+                <div class="mfa-secret mono" id="mfa-secret"></div>
+              </div>
+              <div class="field">
+                <label for="mfa-confirm-code">認証アプリの6桁コード</label>
+                <input id="mfa-confirm-code" inputmode="numeric" autocomplete="one-time-code" />
+              </div>
+              <div class="button-row">
+                <button class="accent" id="mfa-verify-button" type="button">登録を確認</button>
+              </div>
             </div>
           </div>
         </div>
@@ -682,6 +740,12 @@
       appShell: document.querySelector("#app-shell"),
       loginMessage: document.querySelector("#login-message"),
       loginButton: document.querySelector("#login-button"),
+      mfaEnrollButton: document.querySelector("#mfa-enroll-button"),
+      mfaVerifyButton: document.querySelector("#mfa-verify-button"),
+      mfaSetupPanel: document.querySelector("#mfa-setup-panel"),
+      mfaQr: document.querySelector("#mfa-qr"),
+      mfaSecret: document.querySelector("#mfa-secret"),
+      mfaConfirmCode: document.querySelector("#mfa-confirm-code"),
       sessionChip: document.querySelector("#session-chip"),
       message: document.querySelector("#message"),
       orgSelect: document.querySelector("#org-select")
@@ -698,7 +762,8 @@
           body: {
             organizationCode: data.get("organizationCode"),
             loginId: data.get("loginId"),
-            password: data.get("password")
+            password: data.get("password"),
+            mfaCode: emptyToNull(data.get("mfaCode"))
           }
         });
         state.session = response.session;
@@ -721,6 +786,8 @@
 
     document.querySelector("#session-button").addEventListener("click", loadSession);
     document.querySelector("#refresh-button").addEventListener("click", refreshAll);
+    els.mfaEnrollButton.addEventListener("click", startMfaEnrollment);
+    els.mfaVerifyButton.addEventListener("click", verifyMfaEnrollment);
     els.orgSelect.addEventListener("change", async () => {
       state.orgId = els.orgSelect.value;
       await refreshAll();
@@ -967,6 +1034,42 @@
         });
         showMessage("更新しました", "success");
         await refreshAll();
+      } catch (error) {
+        showMessage(error.message, "error");
+      }
+    }
+
+    async function startMfaEnrollment() {
+      try {
+        const response = await api("/v1/auth/mfa/enroll", {
+          method: "POST",
+          csrf: true,
+          body: {}
+        });
+        els.mfaQr.src = response.mfa.qrCodeDataUrl;
+        els.mfaSecret.textContent = response.mfa.secret;
+        els.mfaConfirmCode.value = "";
+        els.mfaSetupPanel.classList.add("on");
+        showMessage("認証アプリでQRコードを読み取り、6桁コードを入力してください。", "success");
+      } catch (error) {
+        showMessage(error.message, "error");
+      }
+    }
+
+    async function verifyMfaEnrollment() {
+      try {
+        const response = await api("/v1/auth/mfa/verify", {
+          method: "POST",
+          csrf: true,
+          body: {
+            code: els.mfaConfirmCode.value
+          }
+        });
+        state.session = response.session;
+        state.csrfToken = response.csrfToken || state.csrfToken;
+        els.mfaSetupPanel.classList.remove("on");
+        showMessage("二要素認証を登録しました。次回ログインから6桁コードが必要です。", "success");
+        renderSession();
       } catch (error) {
         showMessage(error.message, "error");
       }
