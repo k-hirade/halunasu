@@ -155,7 +155,6 @@ test("validates patient input and snapshot", () => {
   assert.deepEqual(patientSnapshot(patient, new Date("2026-05-27T00:00:00.000Z")), {
     patientId: "pat_123",
     displayName: "Yamada Taro",
-    displayNameKana: undefined,
     birthDate: "1970-01-01",
     sex: "male",
     snapshotAt: "2026-05-27T00:00:00.000Z"

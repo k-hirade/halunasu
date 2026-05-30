@@ -53,6 +53,9 @@ const EMPTY_REVIEW_DRAFT = {
 };
 
 const EMPTY_PATIENT_INFO_DRAFT = {
+  patientId: "",
+  facilityId: "",
+  departmentId: "",
   patientDisplayName: "",
   visitReason: ""
 };
@@ -357,6 +360,9 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
   const [patientInfoBaseline, setPatientInfoBaseline] = useState(EMPTY_PATIENT_INFO_DRAFT);
   const [patientInfoSaveState, setPatientInfoSaveState] = useState("idle");
   const [patientInfoMessage, setPatientInfoMessage] = useState("");
+  const [corePatients, setCorePatients] = useState([]);
+  const [coreFacilities, setCoreFacilities] = useState([]);
+  const [coreDepartments, setCoreDepartments] = useState([]);
   const [promptOptions, setPromptOptions] = useState([]);
   const [promptOptionsLoading, setPromptOptionsLoading] = useState(false);
   const [promptOptionsError, setPromptOptionsError] = useState("");
@@ -511,6 +517,9 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
     reviewDraft.outputText
   );
   const patientInfoDirty =
+    patientInfoDraft.patientId !== patientInfoBaseline.patientId ||
+    patientInfoDraft.facilityId !== patientInfoBaseline.facilityId ||
+    patientInfoDraft.departmentId !== patientInfoBaseline.departmentId ||
     patientInfoDraft.patientDisplayName !== patientInfoBaseline.patientDisplayName ||
     patientInfoDraft.visitReason !== patientInfoBaseline.visitReason;
   const aiTranscript = buildAiTranscript(soap, turns);
@@ -582,7 +591,11 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
   const isLocalAudioSource = audioSourceType === "local_browser";
   const patientInfoLocked = status === "finalizing";
   const hasSavedPatientInfo = Boolean(
-    sessionState?.session?.patientDisplayName || sessionState?.session?.visitReason
+    sessionState?.session?.patientId ||
+    sessionState?.session?.facilityId ||
+    sessionState?.session?.departmentId ||
+    sessionState?.session?.patientDisplayName ||
+    sessionState?.session?.visitReason
   );
   const currentPromptProfile = sessionState?.promptProfile || null;
   const currentPromptId = sessionState?.session?.promptProfileId || currentPromptProfile?.profileId || "system-default";
@@ -652,6 +665,31 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
       setHighlights(buildFallbackHighlights(data.turns));
     }
     return data;
+  }
+
+  async function loadCoreMasterData() {
+    const [patientsResponse, facilitiesResponse, departmentsResponse] = await Promise.all([
+      fetchWithOperatorAuth(`${getGatewayBaseUrl()}/api/v1/core/patients`, { cache: "no-store" }, accessToken),
+      fetchWithOperatorAuth(`${getGatewayBaseUrl()}/api/v1/core/facilities`, { cache: "no-store" }, accessToken),
+      fetchWithOperatorAuth(`${getGatewayBaseUrl()}/api/v1/core/departments`, { cache: "no-store" }, accessToken)
+    ]);
+
+    if ([patientsResponse, facilitiesResponse, departmentsResponse].some((response) => response.status === 401)) {
+      clearAccess();
+      return;
+    }
+    if (!patientsResponse.ok || !facilitiesResponse.ok || !departmentsResponse.ok) {
+      throw new Error("Core患者・施設情報を取得できませんでした。");
+    }
+
+    const [patients, facilities, departments] = await Promise.all([
+      patientsResponse.json(),
+      facilitiesResponse.json(),
+      departmentsResponse.json()
+    ]);
+    setCorePatients(patients.patients || []);
+    setCoreFacilities(facilities.facilities || []);
+    setCoreDepartments(departments.departments || []);
   }
 
   useEffect(() => {
@@ -725,6 +763,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
     }
 
     loadSession().catch((e) => setError(e.message));
+    loadCoreMasterData().catch((e) => addToast(e.message, "error"));
   }, [sessionId, accessToken]);
 
   useEffect(() => {
@@ -764,6 +803,9 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
 
   useEffect(() => {
     const nextDraft = {
+      patientId: sessionState?.session?.patientId || "",
+      facilityId: sessionState?.session?.facilityId || "",
+      departmentId: sessionState?.session?.departmentId || "",
       patientDisplayName: sessionState?.session?.patientDisplayName || "",
       visitReason: sessionState?.session?.visitReason || ""
     };
@@ -777,6 +819,9 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
     }
 
   }, [
+    sessionState?.session?.patientId,
+    sessionState?.session?.facilityId,
+    sessionState?.session?.departmentId,
     sessionState?.session?.patientDisplayName,
     sessionState?.session?.visitReason,
     hasSavedPatientInfo,
@@ -1689,6 +1734,9 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
       const response = await postAction(`/api/v1/sessions/${sessionId}/metadata`, patientInfoDraft);
       const nextSession = response.session;
       const nextDraft = {
+        patientId: nextSession.patientId || "",
+        facilityId: nextSession.facilityId || "",
+        departmentId: nextSession.departmentId || "",
         patientDisplayName: nextSession.patientDisplayName || "",
         visitReason: nextSession.visitReason || ""
       };
@@ -2134,6 +2182,9 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
       : patientInfoDirty
         ? "未保存"
         : patientInfoMessage;
+    const selectableDepartments = patientInfoDraft.facilityId
+      ? coreDepartments.filter((department) => !department.facilityId || department.facilityId === patientInfoDraft.facilityId)
+      : coreDepartments;
 
     return (
       <div className={`patient-info-card ${showPatientInfo ? "patient-info-card--expanded" : "patient-info-card--collapsed"}`}>
@@ -2171,6 +2222,82 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 : "患者情報はこの画面で入力します。保存すると、診療記録の下書きに反映されます。"}
             </p>
             <div className="patient-info-grid">
+              <div className="field">
+                <label htmlFor="workspaceCorePatientId">Core患者</label>
+                <select
+                  id="workspaceCorePatientId"
+                  value={patientInfoDraft.patientId}
+                  onChange={(event) => {
+                    const patientId = event.target.value;
+                    const patient = corePatients.find((item) => item.patientId === patientId);
+                    setPatientInfoDraft((current) => ({
+                      ...current,
+                      patientId,
+                      patientDisplayName: patient?.displayName || current.patientDisplayName
+                    }));
+                    setPatientInfoSaveState("dirty");
+                    setPatientInfoMessage("未保存");
+                  }}
+                  disabled={patientInfoLocked}
+                >
+                  <option value="">患者を選択しない</option>
+                  {corePatients.map((patient) => (
+                    <option key={patient.patientId} value={patient.patientId}>
+                      {patient.displayName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="workspaceFacilityId">施設</label>
+                <select
+                  id="workspaceFacilityId"
+                  value={patientInfoDraft.facilityId}
+                  onChange={(event) => {
+                    const facilityId = event.target.value;
+                    const nextDepartments = facilityId
+                      ? coreDepartments.filter((department) => !department.facilityId || department.facilityId === facilityId)
+                      : coreDepartments;
+                    setPatientInfoDraft((current) => ({
+                      ...current,
+                      facilityId,
+                      departmentId: current.departmentId && nextDepartments.some((department) => department.departmentId === current.departmentId)
+                        ? current.departmentId
+                        : ""
+                    }));
+                    setPatientInfoSaveState("dirty");
+                    setPatientInfoMessage("未保存");
+                  }}
+                  disabled={patientInfoLocked}
+                >
+                  <option value="">施設を選択しない</option>
+                  {coreFacilities.map((facility) => (
+                    <option key={facility.facilityId} value={facility.facilityId}>
+                      {facility.displayName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="workspaceDepartmentId">診療科</label>
+                <select
+                  id="workspaceDepartmentId"
+                  value={patientInfoDraft.departmentId}
+                  onChange={(event) => {
+                    setPatientInfoDraft((current) => ({ ...current, departmentId: event.target.value }));
+                    setPatientInfoSaveState("dirty");
+                    setPatientInfoMessage("未保存");
+                  }}
+                  disabled={patientInfoLocked}
+                >
+                  <option value="">診療科を選択しない</option>
+                  {selectableDepartments.map((department) => (
+                    <option key={department.departmentId} value={department.departmentId}>
+                      {department.displayName}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="field">
                 <label htmlFor="workspacePatientDisplayName">患者名</label>
                 <input

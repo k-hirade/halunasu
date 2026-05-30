@@ -254,6 +254,19 @@
       overflow: auto;
     }
 
+    .document-preview {
+      display: none;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      min-height: 560px;
+      width: 100%;
+    }
+
+    .document-preview.on {
+      display: block;
+    }
+
     @media (max-width: 920px) {
       .topbar { padding: 0 16px; }
       .main {
@@ -464,6 +477,10 @@
 
         <section class="panel">
           <h2>結果</h2>
+          <div class="button-row">
+            <button class="secondary" id="print-button" type="button" disabled>印刷</button>
+          </div>
+          <iframe id="document-preview" class="document-preview" title="紹介状プレビュー"></iframe>
           <pre id="result" class="result">未実行</pre>
         </section>
       </section>
@@ -499,6 +516,8 @@
       referralList: document.querySelector("#referral-list"),
       result: document.querySelector("#result"),
       pdfButton: document.querySelector("#pdf-button"),
+      printButton: document.querySelector("#print-button"),
+      documentPreview: document.querySelector("#document-preview"),
       refreshButton: document.querySelector("#refresh-button")
     };
 
@@ -609,6 +628,14 @@
       });
     });
 
+    els.printButton.addEventListener("click", () => {
+      const frameWindow = els.documentPreview.contentWindow;
+      if (frameWindow) {
+        frameWindow.focus();
+        frameWindow.print();
+      }
+    });
+
     async function loadWorkspace() {
       await Promise.all([
         loadPatients(),
@@ -710,6 +737,16 @@
 
     function renderResult(value) {
       els.result.textContent = JSON.stringify(value, null, 2);
+      const artifact = value.documentArtifact || value.referral?.documentArtifact || null;
+      if (artifact?.renderedHtml) {
+        els.documentPreview.srcdoc = artifact.renderedHtml;
+        els.documentPreview.classList.add("on");
+        els.printButton.disabled = false;
+      } else {
+        els.documentPreview.removeAttribute("srcdoc");
+        els.documentPreview.classList.remove("on");
+        els.printButton.disabled = true;
+      }
     }
 
     async function api(baseUrl, path, options = {}) {

@@ -27,7 +27,7 @@
 2026-05-30時点の状態:
 
 - `apps/charting-web/test/e2e` に移植済み。
-- `WEB_E2E_PORT=3100 npm run test --workspace @halunasu/charting-web` で11件すべて通過。
+- `WEB_E2E_PORT=3199 npm run test --workspace @halunasu/charting-web` で11件すべて通過。
 - Next dev serverとPlaywright Chromiumが必要なため、ローカルではsandbox外実行が必要。
 
 ### Fee Calculation
@@ -66,7 +66,7 @@ PYTHONPATH=python python3 -m unittest discover -s python/tests/legacy_medical_fe
 - shared patient/facility/department/member snapshot。Done.
 - UI draft create/edit。Static validation done / browser smoke pending.
 - printable document artifact generation。Done.
-- print/export browser check。Pending.
+- print/export static validation。Done.
 
 ## Root Scripts
 
@@ -91,12 +91,22 @@ npm run test:migration-parity
 - `npm run test:python:legacy-fee`
 - `npm run test:migration-parity`
 - `npm run audit:migration-parity`
-- `WEB_E2E_PORT=3100 npm run test --workspace @halunasu/charting-web`
+- `WEB_E2E_PORT=3199 npm run test --workspace @halunasu/charting-web`
+- `npm test --workspace @halunasu/platform-api`
+- `npm test --workspace @halunasu/platform-contracts`
+- `npm test --workspace @halunasu/fee-core`
+- `npm test --workspace @halunasu/fee-api`
+- `npm test --workspace @halunasu/referral-api`
+- `npm test --workspace @medical/core`
+- `npm test --workspace @medical/contracts`
 - STG `https://charting.stg.halunasu.com/sessions`
 - PROD `https://charting.halunasu.com/sessions`
 - STG/PROD Charting Core seeded login
 - STG/PROD Charting `/api/v1/operator/me`
 - STG/PROD Charting `/api/v1/sessions`
+- STG/PROD Charting Core patients/facilities/departments and session create
+- STG/PROD Fee Platform login, Core patients/facilities/departments, fee session create, real calculation with official master
+- STG/PROD Referral Platform login, Core patients/facilities/departments, referral draft create, document artifact create
 - PROD LP/Core Admin/Fee/Referral custom-domain 200 checks
 
 注意:
@@ -104,4 +114,5 @@ npm run test:migration-parity
 - `npm run test` にはCharting Next.js + Playwright E2E 11件が含まれる。
 - `npm run test:python:legacy-fee` には旧 `medical-fee-calculation` 由来の126件が含まれる。
 - sandbox内の通常実行ではNext dev serverがlistenできず `EPERM` になるため、E2Eを含む実行はsandbox外で確認した。
-- Netlify/GCPのSTG/PROD反映確認はChartingのログイン/API/セッション一覧まで完了。録音、SOAP生成、Billing/signup、Fee公式master、Referral印刷は別途深掘り確認が必要。
+- Netlify/GCPのSTG/PROD反映確認はCharting/Fee/ReferralのCore shared data利用と作成系APIまで完了。
+- Chartingの実AI STT/SOAP provider smokeは `OPENAI_API_KEY` / `DEEPGRAM_API_KEY` secret未設定かつ費用発生を避けるため未実施。secret追加後に短時間手動smokeを実施する。

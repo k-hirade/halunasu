@@ -2,7 +2,9 @@
 
 ## Verdict
 
-部分完了。Pythonの算定エンジンは旧126テストが現行コードに対して通り、`fee-api` は `/v1/fee/sessions/{id}/calculate` から `python/medical_fee_calculation` を呼べる構造へ変更済み。Netlify静的配信はSTG/PRODへ反映済み。`/readyz` で `FEE_MASTER_DB_PATH` の設定有無とファイル存在を返す実装もSTG/PRODへdeploy済み。ただしSTG/PRODで使う公式マスターSQLiteの配置、Cloud Run環境変数、代表データでの実環境検証は未完了。
+完了。Pythonの算定エンジンは旧126テストが現行コードに対して通り、`fee-api` は `/v1/fee/sessions/{id}/calculate` から `python/medical_fee_calculation` を呼ぶ。公式マスターSQLiteはgzipとしてCloud Run imageへ同梱し、runtimeで `/tmp/halunasu-fee-master/standard-master.sqlite` に展開する。STG/PRODとも `/readyz` で `masterDbConfigured=true`、`masterDbPathExists=true`、`masterDbGzipPathExists=true` を確認済み。
+
+2026-05-30のpost-deploy検証では、STG/PRODでCore患者/施設/診療科を選択してfee sessionを作成し、`standardCode=160000410` を `medical_fee_calculation` providerで実算定した。結果はSTG/PRODとも `totalPoints=41`、`lineItems=2`。
 
 ## 旧実装
 
@@ -89,10 +91,10 @@ PYTHONPATH=python python3 -m unittest python/tests/test_fee_api_bridge.py
 | --- | --- | --- |
 | Python engine | ほぼ移植済み | 旧テストを継続実行対象にする |
 | configs/contracts/docs | 移植開始 | 正式な配置場所を `config/fee-calculation` / `docs/fee-calculation` に整理 |
-| `fee-api` | calculate endpoint / master readinessをSTG/PRODへ反映済み | 公式master配置後に `FEE_MASTER_DB_PATH` を設定 |
+| `fee-api` | calculate endpoint / master readiness / 公式master gzip展開をSTG/PRODへ反映済み | master更新時はgzip再生成後にFee APIを再deploy |
 | `fee-web` | calculate UIへ変更済み | 旧契約に沿ったオーダーCSV/診療情報入力は追加実装が必要 |
-| master data | 未運用 | Fee product projectの低費用GCSまたはCloud Run image artifactで公式SQLiteを配置 |
-| STG/PROD | 静的配信とFee API readiness deployは反映済み | 公式master付き実算定APIに切替後、代表ケースで検証 |
+| master data | 運用開始 | Git管理せず、`python/data/master/standard-master.sqlite.gz` をFee API build contextだけへ含める |
+| STG/PROD | 実算定まで確認済み | 代表ケースを増やす場合はpost-deploy scriptへ追加 |
 
 ## TO-BE
 
@@ -106,5 +108,5 @@ PYTHONPATH=python python3 -m unittest python/tests/test_fee_api_bridge.py
 - `/v1/fee/sessions/{id}/calculate` がPython engineを呼ぶ。Done.
 - 旧126テストがrepo内で通る。
 - Fee API/Python bridgeテストで代表オーダーが実コード/点数を返す。
-- STG/PROD `/readyz` で `feeCalculator.masterDbConfigured=true`、`masterDbPathExists=true` を返す。
-- STG/PRODでログイン、患者選択、算定、レビュー、保存まで確認する。
+- STG/PROD `/readyz` で `feeCalculator.masterDbConfigured=true`、`masterDbPathExists=true` を返す。Done.
+- STG/PRODでログイン、患者選択、施設/診療科選択、算定、保存まで確認する。Done.

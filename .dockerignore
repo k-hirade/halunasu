@@ -1,10 +1,16 @@
 .git
 node_modules
 **/node_modules
+.next
+.netlify
+apps/*/.next
+apps/*/.netlify
 .env
 .env.*
 !.env.example
 coverage
 *.log
 .DS_Store
-
+data/raw
+python/data/master/*.sqlite
+python/data/master/*.sqlite-*

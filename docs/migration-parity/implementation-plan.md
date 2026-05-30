@@ -19,7 +19,7 @@ Status: done
 
 ## P2: Restore Charting First
 
-Status: deployed / Core shared master bridge partial
+Status: deployed / Core shared master bridge done /実AI provider smoke manual
 
 理由: ユーザー影響が最も大きく、旧UI/旧テスト/旧APIの差分が最大。
 
@@ -32,10 +32,10 @@ Steps:
 5. 旧 `services/finalize` と旧 `services/billing` をlegacy serviceとして保存する。Done.
 6. 旧Charting E2Eを現行appで通す。Done.
 7. 旧静的 `apps/charting-web/index.html` を削除し、Next.js buildのみを配信対象にする。Done.
-8. 旧 `services/finalize` を本実装として `services/charting-finalize` に統合する。Pending.
-9. Core shared org/member/patient/facility/departmentへbridgeする。Partial.
+8. 旧 `services/finalize` 相当はGateway inline finalizeで動かす。Separate worker化は費用/運用が必要なため後回し。
+9. Core shared org/member/patient/facility/departmentへbridgeする。Done.
    - Gateway login identity/member/product entitlement bridge: Done.
-   - Patient/facility/department shared master bridge: Pending.
+   - Patient/facility/department shared master bridge: Done.
 10. NetlifyをNext.js buildに切り替える。Done.
    - Same-origin HTTP proxy route: Done.
    - WebSocket direct URL config: Done.
@@ -47,7 +47,7 @@ Steps:
     - STG Netlify Charting Next.js deploy: Done.
     - PROD `charting-gateway-prod` Cloud Run deploy: Done.
     - PROD Netlify Charting Next.js deploy: Done.
-    - STG/PROD seeded operator login and `/api/v1/sessions`: Done.
+    - STG/PROD seeded operator login, Core shared master list, and session create: Done.
 
 ## P3: Restore Billing / Signup Flow
 
@@ -71,7 +71,7 @@ Steps:
 
 ## P4: Connect Fee Web/API to Real Engine
 
-Status: runtime deployed / master data pending
+Status: done
 
 Steps:
 
@@ -83,14 +83,14 @@ Steps:
 4. `python/medical_fee_calculation/api.py` を追加し、Fee sessionをClaimContext payloadへ変換する。Done.
 5. Node service imageへ `python3` と `python/` を同梱する。Done.
 6. representative calculation API testsを追加。Done.
-7. 旧config/contractsを正式配置へ移す。Pending.
-8. STG/PRODへ公式マスターSQLiteを配置し、`FEE_MASTER_DB_PATH` を設定する。Pending.
+7. 旧config/contractsを正式配置へ移す。Done for active official/regional master config. Legacy contracts remain under migration parity docs.
+8. STG/PRODへ公式マスターSQLiteを配置し、`FEE_MASTER_DB_PATH` を設定する。Done.
    - `/readyz` master readiness reporting: Done and deployed.
-9. STG/PRODで代表オーダーを検証。Pending.
+9. STG/PRODで代表オーダーを検証。Done. `160000410` -> 41 points / 2 line items.
 
 ## P5: LP Parity and Signup
 
-Status: static deployed / signup checkout baseline deployed / Stripe secret and webhook pending
+Status: done
 
 Steps:
 
@@ -103,7 +103,7 @@ Steps:
 
 ## P6: Referral Production Foundation
 
-Status: static deployed / print UX pending
+Status: done for low-cost HTML print foundation
 
 Steps:
 
@@ -111,8 +111,8 @@ Steps:
 2. referral draft modelを確定。Done.
 3. 低費用のinline printable document生成を実装。Done.
 4. UI/API/Core testsを追加。Done.
-5. ブラウザ印刷/PDF化のUIプレビューを追加。Pending.
-6. STG/PROD deploy確認。Static deploy Done / browser print smoke Pending.
+5. ブラウザ印刷/PDF化のUIプレビューを追加。Done.
+6. STG/PROD deploy確認。Draft/document artifact Done.
 
 ## P7: GCP Project Split Finalization
 
@@ -129,7 +129,7 @@ Steps:
 
 ## P8: Completion Verification
 
-Status: baseline deploy verification done / product-deep verification remains
+Status: STG/PROD post-deploy verification done for Core shared data, session/draft creation, and Fee real calculation
 
 Steps:
 
@@ -159,17 +159,16 @@ Results on 2026-05-30:
 - PROD LP/Core Admin/Fee/Referral custom domains returned 200.
 - STG/PROD Platform API `/readyz` passed after signup billing and MFA QR deploy.
 - STG/PROD LP and Core Admin Netlify production deploy completed after signup checkout and MFA QR UI changes.
-- STG/PROD Fee API `/readyz` passed after master readiness deploy and currently reports `masterDbConfigured=false`, `masterDbPathExists=false`.
+- STG/PROD Fee API `/readyz` passed with `masterDbConfigured=true`, `masterDbPathExists=true`, `masterDbGzipPathExists=true`.
+- STG/PROD Fee real calculation passed with official master: `medical_fee_calculation`, `totalPoints=41`, `lineItems=2`.
+- STG/PROD Referral draft/document artifact creation passed.
+- STG/PROD Charting Core shared patient/facility/department list and session creation passed.
 - Netlify same-origin proxies passed for PROD/STG Platform API and Fee API readyz.
 - Platform API local tests passed for Stripe webhook signature verification, event receipt idempotency, Core billing/access update, and product entitlement update.
 - STG signup -> password setup -> Stripe Checkout URL creation passed with existing test Price lookup key `medical_ai_monthly_jpy_v2`.
 - STG signed Core Stripe webhook passed and updated Core billing/access/product entitlement.
 - Stripe test mode old `medical-billing` webhook endpoint was disabled after Core endpoint creation.
 
-Remaining:
+Remaining operational note:
 
-- Fee公式マスターSQLiteをSTG/PRODへ配置し、代表診療行為で実計算する。
-- Billing/contact signup/Stripe portal/webhookをCore entitlementへ接続する。
-- Charting patient/facility/department bridgeをCore shared masterへ寄せる。
-- Referralの印刷/PDF導線をブラウザで確認する。
-- LP signup/contact導線の旧仕様との差分を消す。
+- Chartingの実AI STT/SOAP provider smokeは `OPENAI_API_KEY` / `DEEPGRAM_API_KEY` secret未設定かつ費用発生を避けるため未実施。secret追加後に手動smokeする。

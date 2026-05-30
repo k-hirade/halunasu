@@ -73,6 +73,14 @@ deploy_service() {
   shift 5
   local env_vars=("$@")
   local image="${REGION}-docker.pkg.dev/${project}/${REPOSITORY}/${service}:${TAG}"
+  local service_memory="${MEMORY}"
+  local service_timeout="${TIMEOUT}"
+  local build_ignore_file=".gcloudignore"
+  if [[ "${service}" == fee-api-* ]]; then
+    build_ignore_file=".gcloudignore.fee-api"
+    service_memory="${FEE_MEMORY:-2Gi}"
+    service_timeout="${FEE_TIMEOUT:-180}"
+  fi
   local secret_vars="APP_SESSION_SIGNING_SECRET=APP_SESSION_SIGNING_SECRET:latest"
   if [[ "${service}" == platform-api-* ]] && secret_exists "${project}" "STRIPE_SECRET_KEY"; then
     secret_vars="${secret_vars},STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest"
@@ -83,22 +91,41 @@ deploy_service() {
   if [[ "${service}" == charting-gateway-* ]]; then
     secret_vars="${secret_vars},PAIRING_SIGNING_SECRET=PAIRING_SIGNING_SECRET:latest"
   fi
+  if [[ "${service}" == charting-gateway-* ]] && secret_exists "${project}" "APP_FIELD_ENCRYPTION_KEY"; then
+    secret_vars="${secret_vars},APP_FIELD_ENCRYPTION_KEY=APP_FIELD_ENCRYPTION_KEY:latest"
+  fi
+  if [[ "${service}" == charting-gateway-* ]] && secret_exists "${project}" "OPENAI_API_KEY"; then
+    secret_vars="${secret_vars},OPENAI_API_KEY=OPENAI_API_KEY:latest"
+  fi
+  if [[ "${service}" == charting-gateway-* ]] && secret_exists "${project}" "DEEPGRAM_API_KEY"; then
+    secret_vars="${secret_vars},DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest"
+  fi
   if [[ "${service}" == charting-finalize-* ]]; then
     secret_vars="${secret_vars},CHARTING_FINALIZE_INTERNAL_SECRET=CHARTING_FINALIZE_INTERNAL_SECRET:latest"
   fi
+  if [[ "${service}" == charting-finalize-* ]] && secret_exists "${project}" "OPENAI_API_KEY"; then
+    secret_vars="${secret_vars},OPENAI_API_KEY=OPENAI_API_KEY:latest"
+  fi
 
   echo "== ${project}/${service} =="
-  if [[ "$(billing_enabled "${project}")" != "True" ]]; then
+  billing_state="$(billing_enabled "${project}" | tr '[:upper:]' '[:lower:]')"
+  if [[ "${billing_state}" != "true" ]]; then
     echo "Skipping ${service}; billing is not linked for ${project}."
     echo
     return
   fi
 
-  run_or_print gcloud builds submit . \
-    --project "${project}" \
-    --config cloudbuild.node-service.yaml \
-    --substitutions "_IMAGE=${image},_SERVICE_PATH=${service_path}" \
+  build_cmd=(
+    gcloud builds submit .
+    --project "${project}"
+    --config cloudbuild.node-service.yaml
+    --substitutions "_IMAGE=${image},_SERVICE_PATH=${service_path}"
     --quiet
+  )
+  if [[ -f "${build_ignore_file}" ]]; then
+    build_cmd+=(--ignore-file "${build_ignore_file}")
+  fi
+  run_or_print "${build_cmd[@]}"
 
   deploy_cmd=(
     gcloud run deploy "${service}"
@@ -110,8 +137,8 @@ deploy_service() {
     --min-instances "${MIN_INSTANCES}"
     --max-instances "${MAX_INSTANCES}"
     --cpu "${CPU}"
-    --memory "${MEMORY}"
-    --timeout "${TIMEOUT}"
+    --memory "${service_memory}"
+    --timeout "${service_timeout}"
     --concurrency "${CONCURRENCY}"
     --execution-environment gen2
     --cpu-throttling
@@ -213,6 +240,8 @@ deploy_env() {
     "GOOGLE_CLOUD_REGION=${REGION}" \
     "FEE_STORE_BACKEND=firestore" \
     "PLATFORM_STORE_BACKEND=firestore" \
+    "FEE_MASTER_DB_PATH=/tmp/halunasu-fee-master/standard-master.sqlite" \
+    "FEE_MASTER_DB_GZIP_PATH=/app/python/data/master/standard-master.sqlite.gz" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
   fi

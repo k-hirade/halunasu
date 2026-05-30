@@ -2,7 +2,7 @@
 
 ## Verdict
 
-骨格は存在し、Netlify静的配信はSTG/PRODへ反映済み。共通プラットフォームとしての方向性は正しい。今回、Google Authenticator等で使うMFA QR発行/確認UIを追加し、STG/PRODへ反映した。旧 `medical` のadmin機能のうち、臨床アプリ固有設定はCharting product責務へ分ける。
+骨格は存在し、Netlify静的配信はSTG/PRODへ反映済み。共通プラットフォームとしての方向性は正しい。Google Authenticator等で使うMFA QR発行/確認UIに加え、管理者によるMFA resetも追加し、STG/PRODへ反映した。旧 `medical` のadmin機能のうち、臨床アプリ固有設定はCharting product責務へ分ける。
 
 ## 現行Core責務
 
@@ -18,6 +18,7 @@
 - product entitlements
 - audit events
 - data requests
+- billing status / checkout / portal / Stripe webhook state
 
 これは共通DB化の中核として妥当。
 
@@ -82,5 +83,5 @@ Core AdminからCharting Adminへ遷移できるようにするが、Charting固
 - 旧adminのCharting固有機能はCharting Adminに存在する。
 - Core AdminからCharting Adminへの導線がある。
 - 権限とentitlementがCoreで一元判定される。
-- STG/PRODでadmin操作が動作確認済み。Static deploy Done / admin CRUD smoke Pending.
-- Core AdminでMFA QR発行、6桁コード確認、次回ログイン時MFA code入力ができる。Implementation and static deploy Done / live user smoke Pending.
+- STG/PRODでCore Admin静的配信とPlatform API readyzが確認済み。Done.
+- Core AdminでMFA QR発行、6桁コード確認、次回ログイン時MFA code入力、管理者MFA resetができる。Implementation, tests, static deploy Done.

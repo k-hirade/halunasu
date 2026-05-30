@@ -144,6 +144,10 @@ function buildLegacySoapOutputText(soapInput = {}) {
 }
 
 function buildPatientSnapshot(input) {
+  if (input.patientSnapshot) {
+    return clone(input.patientSnapshot);
+  }
+
   if (!input.patientDisplayName && !input.visitReason) {
     return null;
   }

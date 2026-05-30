@@ -1,0 +1,263 @@
+{
+  "entries": [
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "hokkaido",
+      "path": "data/raw/kouseikyoku/hokkaido/2026-05-01/hospital_registry/000482050.xlsx",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/hokkaido/000482050.xlsx"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "hokkaido",
+      "path": "data/raw/kouseikyoku/hokkaido/2026-05-01/facility_standards/000482062.xlsx",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/hokkaido/000482062.xlsx"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "tohoku",
+      "path": "data/raw/kouseikyoku/tohoku/2026-05-01/hospital_registry/shitei-touhoku-ika-r0805.xlsx",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/tohoku/shitei-touhoku-ika-r0805.xlsx"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "tohoku",
+      "path": "data/raw/kouseikyoku/tohoku/2026-05-01/hospital_registry/shitei-touhoku-ikaheisetsu-r0805.xlsx",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/tohoku/shitei-touhoku-ikaheisetsu-r0805.xlsx"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "tohoku",
+      "path": "data/raw/kouseikyoku/tohoku/2026-05-01/facility_standards/koumoku01-touhoku-ika-r0804.xlsx",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/tohoku/koumoku01-touhoku-ika-r0804.xlsx"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "tohoku",
+      "path": "data/raw/kouseikyoku/tohoku/2026-05-01/facility_standards/shisetsu-touhoku-ika-r0804.xlsx",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/tohoku/shisetsu-touhoku-ika-r0804.xlsx"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "kanto_shinetsu",
+      "path": "data/raw/kouseikyoku/kanto_shinetsu/2026-05-01/hospital_registry/shitei_ika_r0805-1.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kantoshinetsu/shitei_ika_r0805-1.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kanto_shinetsu",
+      "path": "data/raw/kouseikyoku/kanto_shinetsu/2026-05-01/facility_standards/shisetsu_ika_r0805.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kantoshinetsu/shisetsu_ika_r0805.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kanto_shinetsu",
+      "path": "data/raw/kouseikyoku/kanto_shinetsu/2026-05-01/facility_standards/koumokubetsu1_r0805.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kantoshinetsu/koumokubetsu1_r0805.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kanto_shinetsu",
+      "path": "data/raw/kouseikyoku/kanto_shinetsu/2026-05-01/facility_standards/koumokubetsu2_r0805.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kantoshinetsu/koumokubetsu2_r0805.zip"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "tokai_hokuriku",
+      "path": "data/raw/kouseikyoku/tokai_hokuriku/2026-05-01/hospital_registry/2605-01-01.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/tokaihokuriku/2605-01-01.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "tokai_hokuriku",
+      "path": "data/raw/kouseikyoku/tokai_hokuriku/2026-05-01/facility_standards/2605-06_01-01.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/tokaihokuriku/2605-06_01-01.zip"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "kinki",
+      "path": "data/raw/kouseikyoku/kinki/2026-05-01/hospital_registry/2026.5_kikanzentai_ika.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kinki/2026.5_kikanzentai_ika.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kinki",
+      "path": "data/raw/kouseikyoku/kinki/2026-05-01/facility_standards/2026.5_sisetukijun_ika.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kinki/2026.5_sisetukijun_ika.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kinki",
+      "path": "data/raw/kouseikyoku/kinki/2026-05-01/facility_standards/2026.5_nyuuin.xlsx",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kinki/2026.5_nyuuin.xlsx"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kinki",
+      "path": "data/raw/kouseikyoku/kinki/2026-05-01/facility_standards/2026.5_tokutei.xlsx",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kinki/2026.5_tokutei.xlsx"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "chugoku_shikoku",
+      "path": "data/raw/kouseikyoku/chugoku_shikoku/2026-05-01/hospital_registry/000483046.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/chugokushikoku/000483046.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "chugoku_shikoku",
+      "path": "data/raw/kouseikyoku/chugoku_shikoku/2026-05-01/facility_standards/000485758.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/chugokushikoku/000485758.zip"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "shikoku",
+      "path": "data/raw/kouseikyoku/shikoku/2026-05-01/hospital_registry/000482152.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/shikoku/000482152.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "shikoku",
+      "path": "data/raw/kouseikyoku/shikoku/2026-05-01/facility_standards/000482227.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/shikoku/000482227.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "shikoku",
+      "path": "data/raw/kouseikyoku/shikoku/2026-05-01/facility_standards/000482171.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/shikoku/000482171.zip"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/hospital_registry/000483280.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483280.zip"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/hospital_registry/000483282.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483282.zip"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/hospital_registry/000483283.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483283.zip"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/hospital_registry/000483284.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483284.zip"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/hospital_registry/000483285.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483285.zip"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/hospital_registry/000483288.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483288.zip"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/hospital_registry/000483289.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483289.zip"
+    },
+    {
+      "kind": "hospital_registry",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/hospital_registry/000483290.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483290.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/facility_standards/000483237.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483237.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/facility_standards/000483238.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483238.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/facility_standards/000483239.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483239.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/facility_standards/000483240.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483240.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/facility_standards/000483241.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483241.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/facility_standards/000483242.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483242.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/facility_standards/000483243.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483243.zip"
+    },
+    {
+      "kind": "facility_standards",
+      "regional_bureau": "kyushu",
+      "path": "data/raw/kouseikyoku/kyushu/2026-05-01/facility_standards/000483244.zip",
+      "source_version": "2026-05-01",
+      "url": "https://kouseikyoku.mhlw.go.jp/kyushu/000483244.zip"
+    }
+  ]
+}

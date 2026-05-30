@@ -378,11 +378,15 @@ export const createSessionRequestSchema = z.object({
   doctorMemberId: normalizedText(120).optional(),
   promptProfileId: normalizedText(120).optional(),
   title: normalizedText(120).optional(),
+  patientId: normalizedText(120).optional(),
   patientDisplayName: normalizedText(120).optional(),
   visitReason: normalizedText(500).optional()
 });
 
 export const updateSessionMetadataRequestSchema = z.object({
+  facilityId: normalizedText(80).optional().nullable(),
+  departmentId: normalizedText(80).optional().nullable(),
+  patientId: normalizedText(120).optional().nullable(),
   patientDisplayName: normalizedText(120).optional(),
   visitReason: normalizedText(500).optional()
 });

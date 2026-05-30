@@ -16,6 +16,8 @@ assert(html.includes("/v1/referral/facilities"), "referral web must load Platfor
 assert(html.includes("/v1/referral/departments"), "referral web must load Platform departments through referral-api");
 assert(html.includes("/v1/referral/referrals"), "referral web must create referral drafts through referral-api");
 assert(html.includes("/document"), "referral web must render referral documents through referral-api");
+assert(html.includes("document-preview"), "referral web must show generated referral document preview");
+assert(html.includes(".print()"), "referral web must expose browser print for generated documents");
 assert(html.includes("patientId"), "referral web must expose patientId selection");
 assert(html.includes("facilityId"), "referral web must expose facilityId");
 assert(html.includes("departmentId"), "referral web must expose departmentId");

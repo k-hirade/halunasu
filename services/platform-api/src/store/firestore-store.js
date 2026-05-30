@@ -349,14 +349,24 @@ export class FirestorePlatformStore {
   }
 
   async listMembers(orgId) {
-    await this.requireOrganization(orgId);
+    const organization = await this.requireOrganization(orgId);
     const snapshot = await this.orgCollection(orgId, collections.members).orderBy("createdAt", "asc").get();
-    return docsFromSnapshot(snapshot);
+    const members = docsFromSnapshot(snapshot);
+    return Promise.all(members.map((member) => this.withMemberMfaState(organization, member)));
   }
 
   async getMember(orgId, memberId) {
     await this.requireOrganization(orgId);
     return docDataOrNull(await this.doc(memberPath(orgId, memberId)).get());
+  }
+
+  async withMemberMfaState(organization, member) {
+    const identity = await this.getLoginIdentity(organization.organizationCode, member.loginId);
+    return compactObject({
+      ...member,
+      mfaRequired: identity?.mfaRequired,
+      mfaEnrolled: identity?.mfaEnrolled
+    });
   }
 
   async updateMember(orgId, memberId, input) {
@@ -466,6 +476,30 @@ export class FirestorePlatformStore {
     });
 
     await this.doc(loginIdentityPath(current.organizationCode, current.loginId)).set(updated);
+    return updated;
+  }
+
+  async resetMemberMfa(orgId, memberId) {
+    const organization = await this.requireOrganization(orgId);
+    const member = await this.getMember(orgId, memberId);
+    if (!member) {
+      throw notFoundError("member not found");
+    }
+    const identity = await this.getLoginIdentity(organization.organizationCode, member.loginId);
+    if (!identity) {
+      throw notFoundError("login identity not found");
+    }
+
+    const updated = compactObject({
+      ...identity,
+      mfaSecret: undefined,
+      mfaPendingSecret: undefined,
+      mfaEnrolled: false,
+      mfaRequired: hasPrivilegedRole(member),
+      tokenVersion: Number(identity.tokenVersion || 0) + 1,
+      updatedAt: this.timestamp()
+    });
+    await this.doc(loginIdentityPath(identity.organizationCode, identity.loginId)).set(updated);
     return updated;
   }
 

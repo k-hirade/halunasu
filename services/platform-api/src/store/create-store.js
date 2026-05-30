@@ -115,6 +115,10 @@ export class LazyFirestorePlatformStore {
     return this.call("revokeMemberSessions", identity);
   }
 
+  async resetMemberMfa(orgId, memberId) {
+    return this.call("resetMemberMfa", orgId, memberId);
+  }
+
   async createFacility(orgId, input) {
     return this.call("createFacility", orgId, input);
   }

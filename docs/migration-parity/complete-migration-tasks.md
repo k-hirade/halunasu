@@ -4,11 +4,12 @@
 
 ## 結論
 
-カルテ作成、診療報酬算定、LPの完全移行は「画面が出る」だけでは完了にしない。旧3アプリを再確認した結果、完全移行の残タスクは以下に集約する。
+2026-05-30の最終移行パスで、カルテ作成、診療報酬算定、LP、Core Admin、紹介状作成は現行 `halunasu` monorepo とSTG/PROD環境へ反映済み。詳細な最終結果は `docs/migration-parity/2026-05-30-complete-migration-report.md` を正とする。
 
-1. Charting: 旧Next.js UIと旧Gatewayは復元/デプロイ済みだが、録音からSOAP生成/再生成/承認までの実環境操作確認、Core shared patient/facility/department bridge、Billing画面のCore Billing接続が残る。
-2. Fee: Python算定エンジンと旧126テストは移植済みだが、STG/PRODの公式マスターSQLite配置、`FEE_MASTER_DB_PATH` 設定、代表ケース実算定が残る。
-3. LP: 旧LPの静的ページはほぼ移植済みだが、旧 `medical` 側にあった登録/課金/MFA導線をCore Platformに寄せ切る必要がある。
+1. Charting: 旧Next.js UI、Gateway、Core患者/施設/診療科bridge、Netlify独自ドメイン配信、STG/PROD login/session作成はDone。実AI STT/SOAPは `OPENAI_API_KEY` / `DEEPGRAM_API_KEY` secret未設定のためlocal preview運用。
+2. Fee: Python算定エンジン、旧126テスト、公式master SQLite gzip同梱、STG/PROD `readyz`、代表コード実算定はDone。
+3. LP: 登録、メール確認相当、初回パスワード設定、Stripe Checkout/Portal/Webhook、Core entitlement連携はSTG/PROD Done。
+4. Referral: Core共有データを使った下書き作成、HTML文書生成、プレビュー/印刷導線、STG/PROD post-deploy確認はDone。
 
 今回、完全移行に向けて以下を実装した。
 
@@ -19,6 +20,10 @@
 - LP: 初回パスワード設定後に `startCheckout: true` を送り、Stripe Checkout URLが返った場合は支払い画面へ遷移する。
 - Cloud Run deploy script: `platform-api-*` にStripe設定と任意の `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` secretを渡せるようにした。
 - Fee API: `/readyz` で公式master DBの設定有無とファイル存在を確認できるようにした。
+- Fee API: 公式master gzipをCloud Run imageに同梱し、runtimeで `/tmp` に展開してPython算定へ渡すようにした。
+- Charting Gateway: Core患者/施設/診療科を読み、session metadataへCore ID/snapshotを保存するbridgeを追加した。
+- Referral Web: 生成HTMLのプレビューiframeと印刷ボタンを追加した。
+- Core Admin: 管理者によるMFA resetを追加した。
 
 ## 旧アプリから確認した事実
 
@@ -85,7 +90,7 @@ flowchart LR
 
 ### C1 Charting 実操作確認
 
-Status: pending
+Status: deployed and post-deploy verified for login/Core master/session creation. Cost-bearing live STT/SOAP provider smoke remains manual because `OPENAI_API_KEY` / `DEEPGRAM_API_KEY` secrets are not present in the new Charting projects.
 
 1. STGで `prod-test/goshi` または管理者ユーザーにMFAを登録。
 2. `/sessions` で新規セッションを作成。
@@ -96,11 +101,11 @@ Status: pending
 
 ### C2 Charting Core shared master bridge
 
-Status: partial
+Status: done
 
 1. GatewayがCore login/member/product entitlementを読む部分はDone。
-2. 患者、施設、診療科はCoreをsource of truthにする。
-3. 旧Gateway内のsession metadataにCore IDとsnapshotを保存する。
+2. 患者、施設、診療科はCoreをsource of truthにする。Done.
+3. 旧Gateway内のsession metadataにCore IDとsnapshotを保存する。Done.
 4. 旧Gatewayが旧schemaへ患者/施設/診療科を直接作る経路を塞ぐ。
 5. Charting Adminの共通管理機能はCore Adminへ寄せ、Charting固有設定だけ残す。
 
@@ -115,13 +120,13 @@ Status: pending
 
 ### F1 Fee master配置
 
-Status: runtime deployed / master data pending
+Status: done
 
 1. 公式master raw CSV/ZIPからSQLiteを生成する。
-2. `FEE_MASTER_DB_PATH` をCloud Run image内または低費用GCS同期先へ設定する。
-3. `/readyz` の `feeCalculator.masterDbConfigured=true` かつ `masterDbPathExists=true` をSTG/PRODで確認する。2026-05-30時点ではSTG/PRODともAPI deploy済みで、`masterDbConfigured=false`、`masterDbPathExists=false` を明示している。
-4. 代表外来検体検査、投薬、注射、処置、画像、入院/DPC代表ケースを実算定する。
-5. `fee-web` から患者選択、施設選択、算定、レビュー、保存まで確認する。
+2. `FEE_MASTER_DB_PATH` をCloud Run runtime `/tmp/halunasu-fee-master/standard-master.sqlite` に設定し、`FEE_MASTER_DB_GZIP_PATH=/app/python/data/master/standard-master.sqlite.gz` から展開する。Done.
+3. `/readyz` の `feeCalculator.masterDbConfigured=true` かつ `masterDbPathExists=true` をSTG/PRODで確認する。Done.
+4. 代表外来検体検査コード `160000410` をSTG/PRODで実算定する。Done.
+5. `fee-web` から患者選択、施設選択、算定、保存までpost-deploy scriptで確認する。Done.
 
 ### L1 LP signup and Stripe
 
@@ -140,13 +145,13 @@ Status: STG/PROD complete on canonical Stripe account
 
 ### L2 MFA
 
-Status: implemented and deployed / admin reset pending
+Status: implemented and deployed
 
 1. Platform APIがTOTP secret、otpauth URL、QR data URLを返す。Done.
 2. Core AdminでQRを表示する。Done.
 3. Google Authenticator等の6桁コードで登録を完了する。Done.
 4. 次回ログイン時にMFA codeを入力できる。Done and deployed.
-5. 管理者によるMFA resetをCore Adminに追加する。Pending.
+5. 管理者によるMFA resetをCore Adminに追加する。Done.
 
 ## デプロイ前チェック
 
@@ -170,7 +175,10 @@ npm run test:migration-parity
 - Platform API local: Stripe webhook署名検証、receipt冪等化、Core billing/access/entitlement反映を実装し、unit test通過。
 - LP STG/PROD: 初回パスワード設定後にCheckout開始を要求するHTMLをNetlify production deploy済み。
 - Core Admin STG/PROD: MFA QR発行/確認UIをNetlify production deploy済み。
-- Fee API STG/PROD: master readiness付き `/readyz` をdeploy済み。現状は公式master未配置のため `masterDbConfigured=false`、`masterDbPathExists=false`。
+- Fee API STG/PROD: 公式master gzip同梱版をdeploy済み。`/readyz` は `masterDbConfigured=true`、`masterDbPathExists=true`、`masterDbGzipPathExists=true` を返す。
+- Fee API STG/PROD: `standardCode=160000410` の代表算定で `medical_fee_calculation` provider、`totalPoints=41`、`lineItems=2` を確認済み。
+- Charting Gateway STG/PROD: Core患者/施設/診療科参照とsession作成を独自ドメイン経由で確認済み。
+- Referral STG/PROD: Core共有データで紹介状下書き作成、HTML文書artifact生成を確認済み。
 - Netlify same-origin proxy: `halunasu.com` / `stg.halunasu.com` のPlatform API readyz、`fee.halunasu.com` / `fee.stg.halunasu.com` のFee API readyzで200確認済み。
 - 追加GCPリソースは作らず、Cloud Runは既存の低費用設定 `min=0`、`max=1` を維持。
 
@@ -215,9 +223,15 @@ npm run deploy:netlify-static -- --env prod --app lp --apply
 npm run deploy:netlify-static -- --env prod --app core-admin --apply
 ```
 
-Fee master DBを配置した後、Fee APIだけ再deployする。
+Fee master DBを再生成した後、Fee APIだけ再deployする。
 
 ```bash
 TARGET_ENV=stg TARGET_SERVICE=fee-api ./scripts/p10_deploy_runtime_services_low_cost.sh --apply
 TARGET_ENV=prod TARGET_SERVICE=fee-api ./scripts/p10_deploy_runtime_services_low_cost.sh --apply
+```
+
+Chartingで実AI STT/SOAPを使う場合は、Charting projectへ `OPENAI_API_KEY` と必要に応じて `DEEPGRAM_API_KEY` を追加し、Gatewayを再deployする。secret未設定時はlocal preview SOAPにfallbackするため、費用は発生しない。
+
+```bash
+TARGET_SERVICE=charting-gateway ./scripts/p10_deploy_runtime_services_low_cost.sh --apply
 ```

@@ -318,13 +318,23 @@ export class MemoryPlatformStore {
   }
 
   listMembers(orgId) {
-    this.requireOrganization(orgId);
-    return sortByCreatedAt([...this.membersForOrg(orgId).values()]);
+    const organization = this.requireOrganization(orgId);
+    return sortByCreatedAt([...this.membersForOrg(orgId).values()])
+      .map((member) => this.withMemberMfaState(organization, member));
   }
 
   getMember(orgId, memberId) {
     this.requireOrganization(orgId);
     return this.membersForOrg(orgId).get(memberId) || null;
+  }
+
+  withMemberMfaState(organization, member) {
+    const identity = this.getLoginIdentity(organization.organizationCode, member.loginId);
+    return compactObject({
+      ...member,
+      mfaRequired: identity?.mfaRequired,
+      mfaEnrolled: identity?.mfaEnrolled
+    });
   }
 
   updateMember(orgId, memberId, input) {
@@ -437,6 +447,30 @@ export class MemoryPlatformStore {
 
     this.loginIdentities.set(current.identityKey, compactObject(updated));
     return this.loginIdentities.get(current.identityKey);
+  }
+
+  resetMemberMfa(orgId, memberId) {
+    const organization = this.requireOrganization(orgId);
+    const member = this.getMember(orgId, memberId);
+    if (!member) {
+      throw notFoundError("member not found");
+    }
+    const identity = this.getLoginIdentity(organization.organizationCode, member.loginId);
+    if (!identity) {
+      throw notFoundError("login identity not found");
+    }
+
+    const updated = compactObject({
+      ...identity,
+      mfaSecret: undefined,
+      mfaPendingSecret: undefined,
+      mfaEnrolled: false,
+      mfaRequired: hasPrivilegedRole(member),
+      tokenVersion: Number(identity.tokenVersion || 0) + 1,
+      updatedAt: this.timestamp()
+    });
+    this.loginIdentities.set(identity.identityKey, updated);
+    return updated;
   }
 
   createFacility(orgId, input) {

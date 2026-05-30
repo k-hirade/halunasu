@@ -69,6 +69,7 @@ test("create session and metadata schemas normalize unsafe text", () => {
     doctorMemberId: " doctor-1 ",
     promptProfileId: " profile-1 ",
     title: "  初診\t診療 ",
+    patientId: " pat-1 ",
     patientDisplayName: "  山田\n太郎 ",
     visitReason: "  咳\t 発熱\u0007 "
   });
@@ -79,15 +80,22 @@ test("create session and metadata schemas normalize unsafe text", () => {
     doctorMemberId: "doctor-1",
     promptProfileId: "profile-1",
     title: "初診 診療",
+    patientId: "pat-1",
     patientDisplayName: "山田 太郎",
     visitReason: "咳 発熱"
   });
 
   const metadata = updateSessionMetadataRequestSchema.parse({
+    facilityId: " FAC-2 ",
+    departmentId: " dep-2 ",
+    patientId: " pat-2 ",
     patientDisplayName: "  佐藤\u0000花子  ",
     visitReason: "  腰痛\n再診  "
   });
   assert.deepEqual(metadata, {
+    facilityId: "FAC-2",
+    departmentId: "dep-2",
+    patientId: "pat-2",
     patientDisplayName: "佐藤 花子",
     visitReason: "腰痛 再診"
   });

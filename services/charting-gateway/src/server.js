@@ -87,6 +87,7 @@ import {
   updateSessionMetadataRequestSchema,
   updateSessionPromptProfileRequestSchema
 } from "@medical/contracts";
+import { patientSnapshot as buildPlatformPatientSnapshot } from "../../../packages/platform-contracts/src/index.js";
 import { createPlatformStoreFromEnv } from "../../platform-api/src/store/create-store.js";
 import { verifyPassword as verifyPlatformPassword } from "../../platform-api/src/auth/password.js";
 
@@ -2655,6 +2656,88 @@ function serializeSessionSummary(session) {
     approvedAt: session.approvedAt,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt
+  };
+}
+
+async function resolveCoreSessionMetadata(orgId, input = {}, currentSession = {}) {
+  const hasPatientId = Object.prototype.hasOwnProperty.call(input, "patientId");
+  const hasFacilityId = Object.prototype.hasOwnProperty.call(input, "facilityId");
+  const hasDepartmentId = Object.prototype.hasOwnProperty.call(input, "departmentId");
+  const patientId = hasPatientId ? input.patientId || null : currentSession.patientId || null;
+  const facilityId = hasFacilityId ? input.facilityId || null : currentSession.facilityId || null;
+  const departmentId = hasDepartmentId ? input.departmentId || null : currentSession.departmentId || null;
+  const visitReason = Object.prototype.hasOwnProperty.call(input, "visitReason")
+    ? (input.visitReason || "").trim() || null
+    : currentSession.visitReason || null;
+  let patient = null;
+
+  if (!platformStore) {
+    const patientDisplayName = Object.prototype.hasOwnProperty.call(input, "patientDisplayName")
+      ? (input.patientDisplayName || "").trim() || null
+      : currentSession.patientDisplayName || null;
+    return {
+      patientId,
+      facilityId,
+      departmentId,
+      patientDisplayName,
+      visitReason,
+      patientSnapshot: patientDisplayName || visitReason
+        ? {
+            displayName: patientDisplayName,
+            visitReason
+          }
+        : null
+    };
+  }
+
+  if (patientId) {
+    patient = await platformStore.getPatient(orgId, patientId);
+    if (!patient) {
+      throw createPublicError("Core患者が見つかりません。", 404);
+    }
+  }
+
+  if (facilityId) {
+    const facility = await platformStore.getFacility(orgId, facilityId);
+    if (!facility) {
+      throw createPublicError("Core施設が見つかりません。", 404);
+    }
+  }
+
+  if (departmentId) {
+    const department = await platformStore.getDepartment(orgId, departmentId);
+    if (!department) {
+      throw createPublicError("Core診療科が見つかりません。", 404);
+    }
+    if (department.facilityId && facilityId && department.facilityId !== facilityId) {
+      throw createPublicError("診療科が選択した施設に紐づいていません。", 400);
+    }
+  }
+
+  const patientDisplayName = patient
+    ? patient.displayName
+    : Object.prototype.hasOwnProperty.call(input, "patientDisplayName")
+      ? (input.patientDisplayName || "").trim() || null
+      : currentSession.patientDisplayName || null;
+  const snapshot = patient
+    ? {
+        ...buildPlatformPatientSnapshot(patient),
+        visitReason
+      }
+    : patientDisplayName || visitReason
+      ? {
+          displayName: patientDisplayName,
+          visitReason
+        }
+      : null;
+
+  return {
+    patientId: patient?.patientId || null,
+    facilityId,
+    departmentId,
+    patientDisplayName,
+    visitReason,
+    patientSnapshot: snapshot
   };
 }
 
@@ -5293,6 +5376,42 @@ app.get("/api/v1/admin/audit-events", requireOperatorAuth, requireOperatorReadAc
   }
 });
 
+app.get("/api/v1/core/patients", requireOperatorAuth, requireOperatorReadAccess, rateLimit("core-patients", { limit: 240, windowMs: 10 * 60_000 }), async (req, res) => {
+  try {
+    if (!platformStore) {
+      res.json({ patients: [] });
+      return;
+    }
+    res.json({ patients: await platformStore.listPatients(getOrgIdForOperator(req.operator)) });
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+});
+
+app.get("/api/v1/core/facilities", requireOperatorAuth, requireOperatorReadAccess, rateLimit("core-facilities", { limit: 240, windowMs: 10 * 60_000 }), async (req, res) => {
+  try {
+    if (!platformStore) {
+      res.json({ facilities: [] });
+      return;
+    }
+    res.json({ facilities: await platformStore.listFacilities(getOrgIdForOperator(req.operator)) });
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+});
+
+app.get("/api/v1/core/departments", requireOperatorAuth, requireOperatorReadAccess, rateLimit("core-departments", { limit: 240, windowMs: 10 * 60_000 }), async (req, res) => {
+  try {
+    if (!platformStore) {
+      res.json({ departments: [] });
+      return;
+    }
+    res.json({ departments: await platformStore.listDepartments(getOrgIdForOperator(req.operator)) });
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+});
+
 app.post("/api/v1/sessions", requireOperatorAuth, requireOperatorClinicalAccess, rateLimit("create-session", { limit: 30, windowMs: 10 * 60_000 }), async (req, res) => {
   try {
     if (!operatorCanCreateSession(req.operator)) {
@@ -5305,6 +5424,7 @@ app.post("/api/v1/sessions", requireOperatorAuth, requireOperatorClinicalAccess,
     const memberId = getMemberIdForOperator(req.operator);
     const doctorMemberId = input.doctorMemberId || memberId;
     const doctorMember = await store.getMember?.({ orgId, memberId: doctorMemberId });
+    const coreMetadata = await resolveCoreSessionMetadata(orgId, input);
     if (input.promptProfileId) {
       const selectedPrompt = await findSelectablePromptOption(req.operator, input.promptProfileId);
       if (!selectedPrompt) {
@@ -5319,6 +5439,7 @@ app.post("/api/v1/sessions", requireOperatorAuth, requireOperatorClinicalAccess,
     });
     const created = await store.createSession({
       ...input,
+      ...coreMetadata,
       orgId,
       clinicId: orgId,
       createdByMemberId: memberId,
@@ -5625,17 +5746,13 @@ app.post("/api/v1/sessions/:sessionId/metadata", requireOperatorAuth, requireOpe
       return;
     }
 
-    const patientDisplayName = (input.patientDisplayName || "").trim() || null;
-    const visitReason = (input.visitReason || "").trim() || null;
+    const coreMetadata = await resolveCoreSessionMetadata(
+      state.session.orgId || state.session.clinicId || getOrgIdForOperator(req.operator),
+      input,
+      state.session
+    );
     const updatedSession = await store.updateSession(req.params.sessionId, {
-      patientDisplayName,
-      visitReason,
-      patientSnapshot: patientDisplayName || visitReason
-        ? {
-            displayName: patientDisplayName,
-            visitReason
-          }
-        : null
+      ...coreMetadata
     });
 
     await store.appendAuditEvent(req.params.sessionId, {
@@ -5643,8 +5760,11 @@ app.post("/api/v1/sessions/:sessionId/metadata", requireOperatorAuth, requireOpe
       actorType: "user",
       actorId: getMemberIdForOperator(req.operator),
       safePayload: {
-        patientDisplayNameSet: Boolean(patientDisplayName),
-        visitReasonSet: Boolean(visitReason)
+        patientIdSet: Boolean(coreMetadata.patientId),
+        facilityIdSet: Boolean(coreMetadata.facilityId),
+        departmentIdSet: Boolean(coreMetadata.departmentId),
+        patientDisplayNameSet: Boolean(coreMetadata.patientDisplayName),
+        visitReasonSet: Boolean(coreMetadata.visitReason)
       }
     });
 

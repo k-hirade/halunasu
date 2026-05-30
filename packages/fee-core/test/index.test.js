@@ -99,6 +99,8 @@ test("normalizes external calculation results", () => {
   assert.equal(calculation.provider, "medical_fee_calculation");
   assert.equal(calculation.totalPoints, 137);
   assert.equal(calculation.facility.medicalInstitutionCode, "1312345");
+  assert.equal(Object.hasOwn(calculation.lineItems[0], "orderId"), false);
+  assert.equal(Object.hasOwn(calculation, "rawResult"), false);
   assert.equal(updated.status, "calculated");
   assert.equal(updated.latestCalculationId, "calc_001");
 });

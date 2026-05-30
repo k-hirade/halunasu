@@ -391,6 +391,51 @@ test("logs in, checks session, enrolls MFA, and logs out", async () => {
   assert.equal(afterLogout.statusCode, 401);
 });
 
+test("organization admin can reset member MFA enrollment", async () => {
+  const store = createTestStore();
+  const organization = store.createOrganization({
+    organizationCode: "Clinic MFA Reset",
+    displayName: "Clinic MFA Reset"
+  });
+  const orgId = organization.orgId;
+  const member = store.createMember(orgId, {
+    loginId: "Admin",
+    displayName: "Admin",
+    globalRoles: ["org_admin"],
+    password: "correct horse battery staple"
+  });
+  const login = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: "clinic-mfa-reset",
+    loginId: "admin",
+    password: "correct horse battery staple"
+  });
+  const loginCookie = cookieHeaderFromSetCookie(login.headers["set-cookie"]);
+  const enroll = await request(store, "POST", "/v1/auth/mfa/enroll", {}, {
+    cookie: loginCookie,
+    "x-csrf-token": login.body.csrfToken
+  });
+  const code = createTotpCode(enroll.body.mfa.secret, {
+    now: new Date("2026-05-27T00:00:00.000Z")
+  });
+  const verify = await request(store, "POST", "/v1/auth/mfa/verify", { code }, {
+    cookie: loginCookie,
+    "x-csrf-token": login.body.csrfToken
+  });
+  const verifiedCookie = cookieHeaderFromSetCookie(verify.headers["set-cookie"]);
+  const reset = await request(store, "POST", `/v1/organizations/${orgId}/members/${member.memberId}/mfa-reset`, {}, {
+    cookie: verifiedCookie,
+    "x-csrf-token": verify.body.csrfToken
+  });
+  const identity = store.getLoginIdentity("clinic-mfa-reset", "admin");
+
+  assert.equal(reset.statusCode, 200);
+  assert.equal(reset.body.mfa.enrolled, false);
+  assert.equal(identity.mfaEnrolled, false);
+  assert.equal(identity.mfaSecret, undefined);
+  assert.equal(identity.mfaPendingSecret, undefined);
+  assert.equal(identity.tokenVersion, 3);
+});
+
 test("creates Stripe Checkout from LP signup password setup when configured", async () => {
   const store = createTestStore();
   const stripeClient = createMockStripeClient();

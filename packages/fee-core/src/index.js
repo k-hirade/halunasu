@@ -61,7 +61,7 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
   );
   const warnings = normalizeWarnings(calculation.warnings || calculation.messages || []);
 
-  return {
+  return compactObject({
     calculationId: options.calculationId || createId("calc"),
     feeSessionId: requiredString(session.feeSessionId, "feeSessionId"),
     orgId: requiredString(session.orgId, "orgId"),
@@ -90,7 +90,7 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
     rawResult: isPlainObject(calculation.rawResult) ? calculation.rawResult : undefined,
     generatedAt: now,
     schemaVersion: 1
-  };
+  });
 }
 
 export function buildReceiptDraft(session = {}, options = {}) {
@@ -214,7 +214,7 @@ function normalizeLineItems(items) {
     const points = Number(item.points || 0);
     const quantity = Number(item.quantity || 1);
     const totalPoints = Number(item.totalPoints ?? item.total_points ?? points * quantity);
-    return {
+    return compactObject({
       lineId: item.lineId || item.line_id || `line_${index + 1}`,
       code: item.code || null,
       name: item.name || item.label || "未分類",
@@ -226,7 +226,7 @@ function normalizeLineItems(items) {
       status: item.status || "candidate",
       reason: item.reason || null,
       source: item.source || "medical_fee_calculation"
-    };
+    });
   });
 }
 
@@ -325,7 +325,18 @@ function timestamp(value) {
 }
 
 function compactObject(value) {
-  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+  if (Array.isArray(value)) {
+    return value.map((item) => compactObject(item));
+  }
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => [key, compactObject(item)])
+  );
 }
 
 function isPlainObject(value) {

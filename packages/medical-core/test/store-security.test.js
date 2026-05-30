@@ -1644,6 +1644,32 @@ test("discarding an untouched recording attempt keeps disconnected state", async
   assert.equal(localStarted.audioDeviceLabel, "この端末のマイク");
 });
 
+test("session creation preserves Core patient snapshot overrides", async () => {
+  const { store, auth } = await createAuthenticatedStore();
+  const created = await store.createSession({
+    orgId: "org_a",
+    createdByMemberId: auth.member.memberId,
+    patientId: "pat_core_1",
+    patientDisplayName: "Core患者",
+    patientSnapshot: {
+      patientId: "pat_core_1",
+      displayName: "Core患者",
+      birthDate: "1980-01-01",
+      sex: "female",
+      snapshotAt: "2026-05-30T00:00:00.000Z"
+    }
+  });
+
+  assert.equal(created.session.patientId, "pat_core_1");
+  assert.deepEqual(created.session.patientSnapshot, {
+    patientId: "pat_core_1",
+    displayName: "Core患者",
+    birthDate: "1980-01-01",
+    sex: "female",
+    snapshotAt: "2026-05-30T00:00:00.000Z"
+  });
+});
+
 test("organization recording policy is persisted on recording sessions", async () => {
   const { store, auth } = await createAuthenticatedStore();
   const defaultOrganization = await store.getOrganization("org_a");

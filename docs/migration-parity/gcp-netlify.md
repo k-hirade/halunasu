@@ -4,7 +4,9 @@
 
 Netlifyの独自ドメイン設定とCloud Run proxyは構成済みだが、監査開始時点でデプロイされている中身は旧アプリ相当ではなかった。特に `charting.halunasu.com/sessions` はNetlify fallbackで `index.html` を返していたため、ルート存在確認だけでは移行完了を判断できなかった。
 
-2026-05-30時点で `apps/charting-web` はNext.jsへ戻し、旧静的 `index.html` は削除済み。STG/PRODともNetlify Next.js配信へ切り替え、Cloud Run Gatewayへの同一オリジンproxyと独自ドメイン上のログインを確認済み。
+2026-05-30時点で `apps/charting-web` はNext.jsへ戻し、旧静的 `index.html` は削除済み。STG/PRODともNetlify Next.js配信へ切り替え、Cloud Run Gatewayへの同一オリジンproxy、独自ドメイン上のログイン、Core共有患者/施設/診療科取得、session作成を確認済み。
+
+最終移行結果は `docs/migration-parity/2026-05-30-complete-migration-report.md` を正とする。
 
 ## Target Responsibility Split
 
@@ -70,6 +72,8 @@ npm run deploy:netlify-charting-next -- --env prod --apply
 - `platform-api-stg` Cloud Run再deploy成功。
 - `charting-gateway-stg` Cloud Run新規deploy成功。
 - `charting-gateway-prod` Cloud Run deploy成功。
+- `fee-api-stg` / `fee-api-prod` Cloud Run deploy成功。公式master gzip同梱、runtime展開、代表算定まで確認済み。
+- `referral-api-stg` / `referral-api-prod` Cloud Run deploy成功。紹介状draft/document artifact生成まで確認済み。
 - `apps/charting-web` をSTG/PRODのNetlify Next.js siteへdeploy。
 - LP/Core Admin/Fee/Referralの静的Netlify siteをSTG/PRODへdeploy。
 
@@ -82,6 +86,9 @@ npm run deploy:netlify-charting-next -- --env prod --apply
 - PROD `https://charting.halunasu.com/sessions` は200で旧Next.jsのセッション一覧を返す。
 - STG/PROD `GET /api/v1/operator/csrf` はNetlify proxy経由でGatewayへ到達し、未認証時401を返す。
 - PROD `prod-test/goshi` は `https://charting.halunasu.com` でlogin、`/api/v1/operator/me`、`/api/v1/sessions` まで成功。
+- STG/PROD `prod-test/migration-check` はCharting login、Core患者/施設/診療科取得、session作成まで成功。
+- STG/PROD FeeはNetlify proxy経由でPlatform login、Core患者/施設/診療科取得、fee session作成、公式master実算定まで成功。
+- STG/PROD ReferralはNetlify proxy経由でPlatform login、Core患者/施設/診療科取得、referral draft作成、HTML document artifact生成まで成功。
 - PROD `https://halunasu.com`、`https://admin.halunasu.com`、`https://fee.halunasu.com`、`https://referral.halunasu.com` は200。
 
 対応済み修正:
@@ -91,10 +98,10 @@ npm run deploy:netlify-charting-next -- --env prod --apply
 - `services/charting-gateway` に `/readyz` を追加。
 - `p10_deploy_runtime_services_low_cost.sh` に `TARGET_ENV` / `TARGET_SERVICE` を追加し、再deploy範囲を絞れるようにした。
 - Netlify Next Runtimeの生成物が `apps/charting-web/apps/charting-web/.netlify` 側へ出る問題を、`scripts/p16_deploy_charting_next_netlify.mjs` のsync/patch/deploy処理で再現可能にした。
+- `.gcloudignore.fee-api` を追加し、Fee APIだけ公式master gzipをCloud Build contextへ含めるようにした。
+- `p10_deploy_runtime_services_low_cost.sh` はFee APIを `memory=2Gi` / `timeout=180s` にしつつ、`min=0` / `maxScale=1` を維持する。
 
-未完了:
+運用メモ:
 
-- Fee公式マスターSQLiteをSTG/PRODに配置し、`FEE_MASTER_DB_PATH` を設定する。
-- Billing/contact signup/Stripe portal/webhookの本番導線をCore entitlementへ接続する。
-- Chartingのpatient/facility/department shared master bridgeを完了する。
-- Referralのブラウザ印刷/PDF UXを独自ドメインで確認する。
+- Chartingの `OPENAI_API_KEY` / `DEEPGRAM_API_KEY` secretは新projectに未設定。secret追加後の再deployに備え、deploy scriptは任意secretを自動接続する。
+- 実AI STT/SOAP smokeは費用が発生するため今回の自動post-deploy検証から外した。

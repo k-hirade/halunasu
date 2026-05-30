@@ -862,13 +862,35 @@
 
     async function loadMembers() {
       if (!state.orgId) return;
-      renderTable("members-table", (await api(`/v1/organizations/${state.orgId}/members`)).members || [], [
+      const members = (await api(`/v1/organizations/${state.orgId}/members`)).members || [];
+      renderTable("members-table", members, [
         ["memberId", "memberId"],
         ["loginId", "loginId"],
         ["displayName", "displayName"],
         ["globalRoles", (item) => (item.globalRoles || []).join(",")],
+        ["mfa", (item) => item.mfaEnrolled ? "enrolled" : item.mfaRequired ? "required" : ""],
         ["status", "status"]
-      ]);
+      ], {
+        action: (item) => `<button class="secondary" data-mfa-reset="${escapeHtml(item.memberId)}" type="button">MFAリセット</button>`
+      });
+      document.querySelectorAll("[data-mfa-reset]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const memberId = button.dataset.mfaReset;
+          if (!memberId) return;
+          if (!window.confirm("この職員のMFA登録をリセットしますか？")) return;
+          try {
+            await api(`/v1/organizations/${state.orgId}/members/${encodeURIComponent(memberId)}/mfa-reset`, {
+              method: "POST",
+              csrf: true,
+              body: {}
+            });
+            showMessage("MFA登録をリセットしました", "success");
+            await loadMembers();
+          } catch (error) {
+            showMessage(error.message, "error");
+          }
+        });
+      });
     }
 
     async function loadFacilities() {

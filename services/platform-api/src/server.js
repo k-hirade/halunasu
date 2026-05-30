@@ -367,6 +367,27 @@ async function routePlatformApiRequest(input = {}) {
     return ok({ member });
   }
 
+  if (method === "POST" && parts.length === 6 && matches(parts.slice(0, 5), ["v1", "organizations", parts[2], "members", parts[4]]) && parts[5] === "mfa-reset") {
+    const context = await requireOrgAdmin(input, store, parts[2]);
+    requireCsrf(input, context.session);
+    const identity = await store.resetMemberMfa(parts[2], parts[4]);
+    await writeAuditEvent(input, store, parts[2], {
+      eventType: "member.mfa_reset",
+      targetType: "member",
+      targetId: parts[4],
+      safePayload: {
+        memberId: parts[4],
+        tokenVersion: identity.tokenVersion
+      }
+    });
+    return ok({
+      mfa: {
+        enrolled: Boolean(identity.mfaEnrolled),
+        required: Boolean(identity.mfaRequired)
+      }
+    });
+  }
+
   if (method === "PATCH" && isOrgChildDocument(parts, "members")) {
     const context = await requireOrgAdmin(input, store, parts[2]);
     requireCsrf(input, context.session);

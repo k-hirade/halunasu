@@ -322,7 +322,7 @@ export function validatePatchDataRequestInput(input = {}) {
 }
 
 export function patientSnapshot(patient, snapshotAt = new Date()) {
-  return {
+  return compactObject({
     patientId: requiredString(patient.patientId, "patientId"),
     displayName: requiredString(patient.displayName, "displayName"),
     displayNameKana: optionalString(patient.displayNameKana),
@@ -331,11 +331,11 @@ export function patientSnapshot(patient, snapshotAt = new Date()) {
     snapshotAt: snapshotAt instanceof Date
       ? snapshotAt.toISOString()
       : requiredString(snapshotAt, "snapshotAt")
-  };
+  });
 }
 
 export function facilitySnapshot(facility, snapshotAt = new Date()) {
-  return {
+  return compactObject({
     facilityId: requiredString(facility.facilityId, "facilityId"),
     displayName: requiredString(facility.displayName, "displayName"),
     legalName: optionalString(facility.legalName),
@@ -347,11 +347,11 @@ export function facilitySnapshot(facility, snapshotAt = new Date()) {
     snapshotAt: snapshotAt instanceof Date
       ? snapshotAt.toISOString()
       : requiredString(snapshotAt, "snapshotAt")
-  };
+  });
 }
 
 export function departmentSnapshot(department, snapshotAt = new Date()) {
-  return {
+  return compactObject({
     departmentId: requiredString(department.departmentId, "departmentId"),
     facilityId: optionalString(department.facilityId),
     displayName: requiredString(department.displayName, "displayName"),
@@ -360,11 +360,11 @@ export function departmentSnapshot(department, snapshotAt = new Date()) {
     snapshotAt: snapshotAt instanceof Date
       ? snapshotAt.toISOString()
       : requiredString(snapshotAt, "snapshotAt")
-  };
+  });
 }
 
 export function memberSnapshot(member, snapshotAt = new Date()) {
-  return {
+  return compactObject({
     memberId: requiredString(member.memberId, "memberId"),
     displayName: requiredString(member.displayName, "displayName"),
     loginId: optionalString(member.loginId),
@@ -374,7 +374,7 @@ export function memberSnapshot(member, snapshotAt = new Date()) {
     snapshotAt: snapshotAt instanceof Date
       ? snapshotAt.toISOString()
       : requiredString(snapshotAt, "snapshotAt")
-  };
+  });
 }
 
 export function validationError(message, field) {
