@@ -30,7 +30,10 @@ assert(signup.includes("/v1/signup/verify-email"), "signup form must support ema
 assert(signup.includes("/v1/signup/setup-admin-password"), "signup form must support admin password setup");
 assert(signup.includes("startCheckout: true"), "signup form must request Stripe checkout after password setup");
 assert(signup.includes("billingCheckout.checkoutUrl"), "signup form must redirect to Stripe checkout URL");
-assert(signup.includes('value="referral"'), "future referral product must be selectable");
+assert(signup.includes("お問い合わせを送信する"), "signup form must keep the legacy contact CTA");
+assert(signup.includes("medical.contactSignupDraft.v1"), "signup form must keep the legacy contact draft storage key");
+assert(signup.includes("source: \"lp_contact_form\""), "signup form must preserve legacy contact signup source metadata");
+assert(signup.includes("[\"charting\", \"fee\", \"referral\"]"), "signup form must request all Halunasu products behind the legacy contact UI");
 
 for (const header of [
   "X-Content-Type-Options",

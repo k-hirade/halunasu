@@ -3,457 +3,565 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="ハルナスの無料トライアル申込" />
+  <meta name="description" content="ハルナスへのお問い合わせ" />
   <meta name="halunasu-platform-api-base-url" content="" />
-  <title>無料トライアル申込 | ハルナス</title>
+  <title>お問い合わせ | ハルナス</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --ink: #0b2553;
-      --muted: #617089;
-      --line: #d9e3f0;
-      --bg: #f5f8fb;
-      --surface: #ffffff;
-      --accent: #10a7a0;
-      --accent-2: #2368d9;
-      --danger: #b42318;
-      --success: #087443;
-      --shadow: 0 20px 70px rgba(11, 37, 83, 0.12);
+      --ink: #152033;
+      --ink-2: #26364d;
+      --muted: #64748b;
+      --muted-strong: #475569;
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --border: #dbe4ee;
+      --border-strong: #cbd5e1;
+      --accent: #0f766e;
+      --accent-hover: #115e59;
+      --danger-soft: #fef2f2;
+      --danger-ink: #991b1b;
+      --success-soft: #ecfdf5;
+      --success-ink: #065f46;
+      --radius-sm: 8px;
+      --radius-md: 8px;
+      --shadow: 0 18px 60px rgba(15, 23, 42, 0.08);
     }
 
     * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
+
     body {
       margin: 0;
+      min-height: 100vh;
       color: var(--ink);
       background:
-        linear-gradient(180deg, rgba(245,248,251,0.96), rgba(245,248,251,0.98)),
+        linear-gradient(180deg, rgba(246,248,251,0.95), rgba(246,248,251,0.98)),
         url("assets/optimized/doctor_pc-1672.webp") center top / cover no-repeat fixed;
       font-family: "Inter", "Noto Sans JP", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
       letter-spacing: 0;
     }
 
     a { color: inherit; }
-    .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
 
     .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 10;
       background: rgba(255,255,255,0.92);
-      border-bottom: 1px solid rgba(217,227,240,0.9);
+      border-bottom: 1px solid rgba(219,228,238,0.92);
       backdrop-filter: blur(14px);
     }
 
-    .topbar .wrap {
+    .topbar-inner {
+      width: min(1120px, calc(100% - 32px));
+      min-height: 72px;
+      margin: 0 auto;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      min-height: 72px;
-      gap: 22px;
+      gap: 18px;
     }
 
     .brand {
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: 10px;
+      color: var(--ink);
       text-decoration: none;
+      font-size: 1.12rem;
       font-weight: 800;
-      font-size: 20px;
     }
 
-    .brand img { width: 34px; height: 34px; }
-    .nav { display: flex; align-items: center; gap: 22px; font-size: 14px; color: var(--muted); }
-    .nav a { text-decoration: none; }
-
-    .page {
-      padding: 56px 0 64px;
+    .brand img {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
     }
 
-    .layout {
-      display: grid;
-      grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr);
-      gap: 38px;
-      align-items: start;
-    }
-
-    .intro {
-      padding-top: 16px;
-    }
-
-    .eyebrow {
-      color: var(--accent);
-      font-size: 13px;
-      font-weight: 800;
-      margin-bottom: 12px;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: clamp(32px, 4.2vw, 52px);
-      line-height: 1.16;
-      letter-spacing: 0;
-    }
-
-    .lead {
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.9;
-      margin: 22px 0 0;
-      max-width: 560px;
-    }
-
-    .facts {
-      display: grid;
-      gap: 12px;
-      margin-top: 30px;
-      max-width: 560px;
-    }
-
-    .fact {
+    .top-links {
       display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      color: #253858;
+      align-items: center;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 0.9rem;
       font-weight: 700;
-      line-height: 1.6;
     }
 
-    .fact .dot {
-      width: 10px;
-      height: 10px;
-      margin-top: 8px;
-      border-radius: 999px;
-      background: var(--accent);
-      flex: 0 0 auto;
+    .top-links a {
+      text-decoration: none;
     }
 
-    .panel {
-      background: rgba(255,255,255,0.96);
-      border: 1px solid rgba(217,227,240,0.95);
-      border-radius: 8px;
+    .signup-shell,
+    .signup-status-shell {
+      width: min(760px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 56px;
+      display: grid;
+      gap: 24px;
+    }
+
+    .signup-panel,
+    .signup-status-panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
       box-shadow: var(--shadow);
-      padding: 28px;
+      padding: 24px;
     }
 
-    .panel h2 {
-      margin: 0 0 20px;
-      font-size: 22px;
+    .signup-panel--single {
+      display: grid;
+      gap: 20px;
+    }
+
+    .signup-heading {
+      display: grid;
+      gap: 0;
+    }
+
+    .signup-heading h1,
+    .signup-status-panel h1 {
+      margin: 0;
+      font-size: 2rem;
+      line-height: 1.2;
       letter-spacing: 0;
     }
 
-    form { display: grid; gap: 16px; }
-
-    .field { display: grid; gap: 7px; }
-    .field label {
-      font-size: 13px;
-      font-weight: 800;
-      color: #253858;
+    .signup-lead {
+      margin: 12px 0 0;
+      color: var(--muted);
+      line-height: 1.75;
     }
 
-    input,
-    textarea {
+    .signup-form {
+      display: grid;
+      gap: 16px;
+    }
+
+    .signup-form label {
+      display: grid;
+      gap: 6px;
+    }
+
+    .signup-form span {
+      color: var(--muted-strong);
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    .signup-form input,
+    .signup-form textarea {
       width: 100%;
-      border: 1px solid #cbd8e7;
-      border-radius: 8px;
+      min-height: 44px;
+      padding: 10px 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
       background: #fff;
       color: var(--ink);
       font: inherit;
-      font-size: 15px;
-      padding: 13px 14px;
       outline: none;
-      transition: border-color 160ms ease, box-shadow 160ms ease;
+      transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
     }
 
-    input:focus,
-    textarea:focus {
-      border-color: var(--accent-2);
-      box-shadow: 0 0 0 4px rgba(35,104,217,0.12);
-    }
-
-    textarea {
-      min-height: 96px;
+    .signup-form textarea {
+      min-height: 132px;
       resize: vertical;
     }
 
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
+    .signup-form input:focus,
+    .signup-form textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
     }
 
-    .choices {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
+    .signup-form input[aria-invalid="true"],
+    .signup-form textarea[aria-invalid="true"] {
+      border-color: #dc2626;
+      background: #fff7f7;
     }
 
-    .choice {
-      position: relative;
-      display: flex;
-      min-height: 54px;
-      align-items: center;
+    .field-error {
+      color: var(--danger-ink);
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .signup-inline-note {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.65;
+    }
+
+    .signup-inline-note--form {
+      margin: -2px 0 0;
+    }
+
+    .signup-consent {
+      display: grid;
       gap: 8px;
-      border: 1px solid #cbd8e7;
-      border-radius: 8px;
-      padding: 10px 12px;
-      font-size: 13px;
-      font-weight: 800;
-      background: #fff;
-      color: #253858;
-      cursor: pointer;
     }
 
-    .choice input {
+    .signup-consent[aria-invalid="true"] {
+      color: var(--danger-ink);
+    }
+
+    .signup-consent-control {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--ink-2);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .signup-consent-control input {
       width: 16px;
       height: 16px;
-      padding: 0;
-      accent-color: var(--accent);
       flex: 0 0 auto;
+      accent-color: var(--accent);
     }
 
-    .actions {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-top: 6px;
-      flex-wrap: wrap;
+    .signup-consent-control a {
+      color: var(--ink);
+      font-weight: 700;
     }
 
-    button,
-    .button-link {
-      appearance: none;
-      border: 0;
-      border-radius: 8px;
-      background: var(--ink);
-      color: #fff;
-      font: inherit;
-      font-weight: 800;
-      padding: 13px 18px;
-      min-height: 48px;
-      cursor: pointer;
-      text-decoration: none;
+    .signup-submit,
+    .signup-submit-link,
+    .secondary-action {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      transition: transform 160ms ease, opacity 160ms ease;
+      min-height: 48px;
+      width: 100%;
+      border: 0;
+      border-radius: var(--radius-sm);
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 800;
+      text-decoration: none;
+      cursor: pointer;
     }
 
-    button:hover,
-    .button-link:hover {
-      transform: translateY(-1px);
+    .signup-submit:hover:not(:disabled),
+    .signup-submit-link:hover {
+      background: var(--accent-hover);
     }
 
-    button:disabled {
-      cursor: wait;
-      opacity: 0.62;
-      transform: none;
+    .signup-submit span {
+      color: #fff;
     }
 
-    .secondary {
-      background: #eaf1fb;
+    .signup-submit:disabled,
+    .secondary-action:disabled {
+      opacity: 0.7;
+      cursor: progress;
+    }
+
+    .secondary-action {
+      background: #eef5f4;
+      color: var(--accent);
+    }
+
+    .signup-error,
+    .signup-validation-summary,
+    .signup-notice {
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      line-height: 1.6;
+    }
+
+    .signup-error,
+    .signup-validation-summary {
+      background: var(--danger-soft);
+      color: var(--danger-ink);
+      border: 1px solid rgba(239, 68, 68, 0.24);
+    }
+
+    .signup-notice {
+      background: var(--success-soft);
+      color: var(--success-ink);
+      border: 1px solid rgba(16, 185, 129, 0.24);
+    }
+
+    .signup-validation-summary strong {
+      display: block;
+      margin: 0 0 8px;
+    }
+
+    .signup-validation-summary ul {
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .signup-status-primary-card {
+      display: grid;
+      gap: 14px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: #fff;
+    }
+
+    .signup-status-primary-title {
+      margin: 0;
       color: var(--ink);
+      font-size: 1rem;
+      font-weight: 800;
+      line-height: 1.45;
     }
 
-    .message {
-      border-radius: 8px;
-      padding: 13px 14px;
-      font-size: 14px;
+    .signup-status-primary-copy {
+      margin: 0;
+      color: var(--muted);
       line-height: 1.7;
-      display: none;
     }
 
-    .message.on { display: block; }
-    .message.error {
-      background: #fff1f0;
-      color: var(--danger);
-      border: 1px solid #ffd2cf;
+    .signup-status-meta {
+      display: grid;
+      gap: 12px;
     }
-    .message.success {
-      background: #ecfdf3;
-      color: var(--success);
-      border: 1px solid #abefc6;
+
+    .signup-status-meta div {
+      display: grid;
+      gap: 4px;
+    }
+
+    .signup-status-meta dt {
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .signup-status-meta dd {
+      margin: 0;
+      font-weight: 700;
+      word-break: break-word;
+    }
+
+    .contact-signup-actions {
+      display: grid;
+      gap: 12px;
     }
 
     .step-panel {
       display: none;
-      gap: 14px;
-      border-top: 1px solid var(--line);
-      padding-top: 18px;
-      margin-top: 4px;
     }
 
-    .step-panel.on { display: grid; }
-
-    .token {
-      overflow-wrap: anywhere;
-      border-radius: 8px;
-      border: 1px solid #cbd8e7;
-      background: #f8fbff;
-      color: #253858;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 12px;
-      padding: 10px 12px;
+    .step-panel.on {
+      display: grid;
+      gap: 18px;
     }
-
-    .fine {
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.7;
-      margin: 0;
-    }
-
-    .fine a { color: var(--accent-2); text-decoration: none; font-weight: 800; }
 
     .footer {
-      padding: 24px 0;
-      background: #0b2553;
-      color: rgba(255,255,255,0.72);
-      font-size: 12px;
+      padding: 0 0 32px;
+      color: var(--muted);
+      font-size: 0.84rem;
     }
 
-    .footer .wrap {
+    .footer-inner {
+      width: min(760px, calc(100% - 32px));
+      margin: 0 auto;
       display: flex;
       justify-content: space-between;
       gap: 14px;
       flex-wrap: wrap;
     }
 
-    .footer a { color: rgba(255,255,255,0.9); text-decoration: none; }
-    .footer .links { display: flex; gap: 18px; flex-wrap: wrap; }
+    .footer a {
+      color: var(--muted-strong);
+      font-weight: 700;
+      text-decoration: none;
+    }
 
-    @media (max-width: 860px) {
-      .wrap { width: min(100% - 28px, 1120px); }
-      .topbar .wrap { min-height: 64px; }
-      .nav { display: none; }
-      .layout { grid-template-columns: 1fr; gap: 24px; }
-      .intro { padding-top: 0; }
-      .panel { padding: 22px; }
-      .grid-2 { grid-template-columns: 1fr; }
-      .choices { grid-template-columns: 1fr; }
-      .page { padding-top: 34px; }
+    .footer-links {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 720px) {
+      .topbar-inner {
+        min-height: 64px;
+      }
+
+      .top-links {
+        display: none;
+      }
+
+      .signup-shell,
+      .signup-status-shell {
+        width: min(100% - 24px, 760px);
+        padding: 20px 0 40px;
+      }
+
+      .signup-panel,
+      .signup-status-panel {
+        padding: 20px;
+      }
+
+      .signup-heading h1,
+      .signup-status-panel h1 {
+        font-size: 1.65rem;
+      }
+
+      .footer-inner {
+        width: min(100% - 24px, 760px);
+      }
     }
   </style>
 </head>
 <body>
   <header class="topbar">
-    <div class="wrap">
+    <div class="topbar-inner">
       <a class="brand" href="index.html" aria-label="ハルナス トップへ">
         <img src="assets/brand/harunas-mark.png" alt="" width="34" height="34" />
         <span>ハルナス</span>
       </a>
-      <nav class="nav" aria-label="主要リンク">
-        <a href="index.html#result">特長</a>
+      <nav class="top-links" aria-label="主要リンク">
+        <a href="index.html">トップ</a>
         <a href="security.html">セキュリティ</a>
         <a href="privacy.html">プライバシー</a>
       </nav>
     </div>
   </header>
 
-  <main class="page">
-    <div class="wrap layout">
-      <section class="intro" aria-labelledby="signup-title">
-        <div class="eyebrow">FREE TRIAL</div>
-        <h1 id="signup-title">無料トライアル申込</h1>
-        <p class="lead">
-          医療機関単位で登録し、管理者アカウントを作成します。カルテ作成、診療報酬算定、紹介状作成の利用予定にあわせて権限を準備します。
+  <main class="signup-shell signup-shell--compact">
+    <section class="signup-panel signup-panel--single" id="signup-panel">
+      <div class="signup-heading">
+        <h1>お問い合わせ</h1>
+        <p class="signup-lead">
+          医療機関情報と担当者連絡先を入力してください。確認メールから初回設定へ進み、利用を開始できます。
         </p>
-        <div class="facts" aria-label="登録内容">
-          <div class="fact"><span class="dot"></span><span>初期費用0円、申込時のカード登録なし</span></div>
-          <div class="fact"><span class="dot"></span><span>医療機関情報と管理者アカウントをPlatform共通DBへ登録</span></div>
-          <div class="fact"><span class="dot"></span><span>患者情報は各プロダクト利用開始後に医療機関配下で管理</span></div>
-        </div>
-      </section>
+      </div>
 
-      <section class="panel" aria-labelledby="form-title">
-        <h2 id="form-title">医療機関情報</h2>
-        <form id="signup-form">
-          <div class="field">
-            <label for="organizationDisplayName">医療機関名</label>
-            <input id="organizationDisplayName" name="organizationDisplayName" autocomplete="organization" required placeholder="春那須クリニック" />
-          </div>
+      <div class="signup-validation-summary" id="validation-summary" role="alert" aria-live="polite" hidden>
+        <strong>入力内容を確認してください。</strong>
+        <ul id="validation-list"></ul>
+      </div>
 
-          <div class="grid-2">
-            <div class="field">
-              <label for="organizationCode">組織コード</label>
-              <input id="organizationCode" name="organizationCode" autocomplete="off" required pattern="[A-Za-z0-9-]+" placeholder="harunasu-clinic" />
-            </div>
-            <div class="field">
-              <label for="phone">電話番号</label>
-              <input id="phone" name="phone" autocomplete="tel" inputmode="tel" placeholder="03-0000-0000" />
-            </div>
-          </div>
+      <form class="signup-form" id="signup-form" novalidate>
+        <label>
+          <span>医療機関名</span>
+          <input id="organizationName" name="organizationName" autocomplete="organization" placeholder="例: さくら内科クリニック" />
+          <small class="field-error" id="organizationName-error"></small>
+        </label>
 
-          <div class="grid-2">
-            <div class="field">
-              <label for="applicantName">管理者氏名</label>
-              <input id="applicantName" name="applicantName" autocomplete="name" required placeholder="山田 太郎" />
-            </div>
-            <div class="field">
-              <label for="applicantEmail">管理者メールアドレス</label>
-              <input id="applicantEmail" name="applicantEmail" type="email" autocomplete="email" required placeholder="admin@example.com" />
-            </div>
-          </div>
+        <label>
+          <span>担当者名</span>
+          <input id="adminName" name="adminName" autocomplete="name" placeholder="例: 山田 太郎" />
+          <small class="field-error" id="adminName-error"></small>
+        </label>
 
-          <div class="field">
-            <label>利用予定サービス</label>
-            <div class="choices">
-              <label class="choice"><input type="checkbox" name="requestedProducts" value="charting" checked />カルテ作成</label>
-              <label class="choice"><input type="checkbox" name="requestedProducts" value="fee" />診療報酬算定</label>
-              <label class="choice"><input type="checkbox" name="requestedProducts" value="referral" />紹介状作成</label>
-            </div>
-          </div>
+        <label>
+          <span>メールアドレス</span>
+          <input id="adminEmail" name="adminEmail" type="email" autocomplete="email" placeholder="admin@example.com" />
+          <small class="field-error" id="adminEmail-error"></small>
+        </label>
 
-          <div class="field">
-            <label for="notes">補足</label>
-            <textarea id="notes" name="notes" placeholder="診療科、利用開始時期、確認したい内容など"></textarea>
-          </div>
+        <label>
+          <span>電話番号</span>
+          <input id="phoneNumber" name="phoneNumber" autocomplete="tel" inputmode="tel" placeholder="03-0000-0000" />
+          <small class="field-error" id="phoneNumber-error"></small>
+        </label>
 
-          <div id="signup-message" class="message" role="status" aria-live="polite"></div>
+        <label>
+          <span>想定利用人数</span>
+          <input id="seatEstimate" name="seatEstimate" inputmode="numeric" placeholder="5" />
+          <small class="field-error" id="seatEstimate-error"></small>
+        </label>
 
-          <div class="actions">
-            <button type="submit" id="submit-button">申込を送信</button>
-            <a class="button-link secondary" href="index.html">戻る</a>
-          </div>
+        <label>
+          <span>備考</span>
+          <textarea id="notes" name="notes" rows="5" placeholder="運用開始時期や相談事項があれば記入してください。"></textarea>
+          <small class="field-error" id="notes-error"></small>
+        </label>
 
-          <p class="fine">
-            送信により、<a href="terms.html">利用規約</a>、<a href="privacy.html">プライバシーポリシー</a>、<a href="security.html">セキュリティ</a>に同意したものとします。
+        <p class="signup-inline-note signup-inline-note--form">
+          送信後、担当者メールアドレス宛に確認メールをお送りします。
+        </p>
+
+        <label class="signup-consent" id="consent-label">
+          <span class="signup-consent-control">
+            <input id="consentAccepted" name="consentAccepted" type="checkbox" />
+            <span>
+              <a href="terms.html" target="_blank" rel="noreferrer">利用規約</a>
+              と
+              <a href="privacy.html" target="_blank" rel="noreferrer">プライバシーポリシー</a>
+              に同意して送信する
+            </span>
+          </span>
+          <small class="field-error" id="consentAccepted-error"></small>
+        </label>
+
+        <p class="signup-error" id="signup-error" hidden></p>
+        <button class="signup-submit" id="submit-button" type="submit">
+          <span>お問い合わせを送信する</span>
+        </button>
+      </form>
+    </section>
+
+    <section class="signup-panel signup-panel--single step-panel" id="submitted-panel" aria-live="polite">
+      <div class="signup-heading">
+        <h1>確認メールを開いてください</h1>
+        <p class="signup-lead">
+          メール内の確認リンクを開くと、病院アカウントの準備を開始します。
+        </p>
+      </div>
+      <div class="signup-status-primary-card">
+        <p class="signup-status-primary-title">申込を受け付けました</p>
+        <p class="signup-status-primary-copy" id="submitted-copy">
+          入力されたメールアドレス宛に確認リンクを送信しました。
+        </p>
+        <div class="contact-signup-actions" id="verification-actions">
+          <button class="secondary-action" id="verify-button" type="button">メール確認を完了</button>
+          <p class="signup-inline-note">
+            現在の Platform API ではメール送信サービスを追加せず、確認処理をこの画面から続行できるようにしています。
           </p>
-        </form>
-
-        <div id="verify-panel" class="step-panel" aria-live="polite">
-          <div class="message success on">申込を受け付けました。</div>
-          <div id="email-token" class="token"></div>
-          <button type="button" id="verify-button">メール確認を完了</button>
         </div>
+      </div>
+    </section>
 
-        <div id="password-panel" class="step-panel" aria-live="polite">
-          <div class="message success on">医療機関と管理者アカウントを作成しました。</div>
-          <div id="setup-token" class="token"></div>
-          <form id="password-form">
-            <div class="field">
-              <label for="password">管理者初期パスワード</label>
-              <input id="password" name="password" type="password" autocomplete="new-password" minlength="12" required />
-            </div>
-            <button type="submit" id="password-button">パスワードを設定</button>
-          </form>
-        </div>
+    <section class="signup-panel signup-panel--single step-panel" id="password-panel" aria-live="polite">
+      <div class="signup-heading">
+        <h1>初回パスワード設定</h1>
+        <p class="signup-lead">
+          管理者アカウントの初期パスワードを設定してください。設定後、継続利用のための決済画面へ進みます。
+        </p>
+      </div>
+      <dl class="signup-status-meta" id="provisioned-meta"></dl>
+      <form class="signup-form" id="password-form">
+        <label>
+          <span>管理者初期パスワード</span>
+          <input id="password" name="password" type="password" autocomplete="new-password" minlength="12" required />
+        </label>
+        <p class="signup-error" id="password-error" hidden></p>
+        <button class="signup-submit" id="password-button" type="submit">
+          <span>パスワードを設定する</span>
+        </button>
+      </form>
+    </section>
 
-        <div id="complete-panel" class="step-panel" aria-live="polite">
-          <div class="message success on">初期設定が完了しました。</div>
-          <div id="login-info" class="token"></div>
-        </div>
-      </section>
-    </div>
+    <section class="signup-panel signup-panel--single step-panel" id="complete-panel" aria-live="polite">
+      <div class="signup-heading">
+        <h1>初期設定が完了しました</h1>
+        <p class="signup-lead">
+          決済画面が開かない場合は、以下のログイン情報でアプリにログインし、設定画面から契約・支払いを続行してください。
+        </p>
+      </div>
+      <dl class="signup-status-meta" id="login-info"></dl>
+      <a class="signup-submit signup-submit-link" href="https://charting.halunasu.com/">ログイン画面へ進む</a>
+    </section>
   </main>
 
   <footer class="footer">
-    <div class="wrap">
+    <div class="footer-inner">
       <div>&copy; 2026 ハルナス</div>
-      <div class="links">
+      <div class="footer-links">
         <a href="terms.html">利用規約</a>
         <a href="privacy.html">プライバシーポリシー</a>
         <a href="tokushoho.html">特定商取引法に基づく表記</a>
@@ -462,54 +570,77 @@
   </footer>
 
   <script>
+    const CONTACT_SIGNUP_DRAFT_STORAGE_KEY = "medical.contactSignupDraft.v1";
+    const PRODUCT_IDS = ["charting", "fee", "referral"];
     const form = document.querySelector("#signup-form");
     const passwordForm = document.querySelector("#password-form");
     const submitButton = document.querySelector("#submit-button");
     const verifyButton = document.querySelector("#verify-button");
     const passwordButton = document.querySelector("#password-button");
-    const message = document.querySelector("#signup-message");
-    const verifyPanel = document.querySelector("#verify-panel");
+    const signupPanel = document.querySelector("#signup-panel");
+    const submittedPanel = document.querySelector("#submitted-panel");
     const passwordPanel = document.querySelector("#password-panel");
     const completePanel = document.querySelector("#complete-panel");
-    const emailToken = document.querySelector("#email-token");
-    const setupToken = document.querySelector("#setup-token");
+    const validationSummary = document.querySelector("#validation-summary");
+    const validationList = document.querySelector("#validation-list");
+    const signupError = document.querySelector("#signup-error");
+    const passwordError = document.querySelector("#password-error");
+    const provisionedMeta = document.querySelector("#provisioned-meta");
     const loginInfo = document.querySelector("#login-info");
     const apiBaseUrl = resolveApiBaseUrl();
     let emailVerificationToken = "";
     let passwordSetupToken = "";
+    let provisionedLogin = null;
+
+    restoreDraft();
+
+    form.addEventListener("input", () => {
+      persistDraft();
+    });
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      setBusy(submitButton, true);
-      setMessage("");
-      hide(verifyPanel);
-      hide(passwordPanel);
-      hide(completePanel);
+      setError(signupError, "");
+
+      const nextForm = readSignupForm();
+      const errors = validateSignupForm(nextForm);
+      renderFieldErrors(errors);
+      persistDraft();
+
+      if (Object.keys(errors).length > 0) {
+        renderValidationSummary(errors);
+        return;
+      }
+
+      hideValidationSummary();
+      setBusy(submitButton, true, "確認メールを準備中...");
 
       try {
-        const data = new FormData(form);
-        const requestedProducts = data.getAll("requestedProducts");
+        const organizationCode = generateOrganizationCode(nextForm.organizationName);
         const response = await postJson("/v1/signup/applications", {
-          organizationCode: data.get("organizationCode"),
-          organizationDisplayName: data.get("organizationDisplayName"),
-          applicantName: data.get("applicantName"),
-          applicantEmail: data.get("applicantEmail"),
-          requestedProducts,
+          organizationCode,
+          organizationDisplayName: nextForm.organizationName,
+          applicantName: nextForm.adminName,
+          applicantEmail: nextForm.adminEmail,
+          requestedProducts: PRODUCT_IDS,
           safePayload: {
-            source: "lp",
-            phone: data.get("phone") || undefined,
-            notes: data.get("notes") || undefined
+            source: "lp_contact_form",
+            phoneNumber: nextForm.phoneNumber || undefined,
+            seatEstimate: nextForm.seatEstimate ? Number(nextForm.seatEstimate) : undefined,
+            notes: nextForm.notes || undefined,
+            consentAccepted: true,
+            consentVersion: "halunasu-terms-privacy-2026-05-06"
           }
         });
 
         emailVerificationToken = response.emailVerification?.token || "";
-        if (emailVerificationToken) {
-          emailToken.textContent = emailVerificationToken;
-          show(verifyPanel);
+        if (!emailVerificationToken) {
+          throw new Error("確認リンクの準備に失敗しました。時間を置いてもう一度お試しください。");
         }
-        setMessage("申込を送信しました。", "success");
+        clearDraft();
+        showStep(submittedPanel);
       } catch (error) {
-        setMessage(error.message, "error");
+        setError(signupError, error.message || "お問い合わせの送信に失敗しました。");
       } finally {
         setBusy(submitButton, false);
       }
@@ -517,22 +648,22 @@
 
     verifyButton.addEventListener("click", async () => {
       if (!emailVerificationToken) return;
-      setBusy(verifyButton, true);
-      setMessage("");
+      setBusy(verifyButton, true, "確認中...");
 
       try {
         const response = await postJson("/v1/signup/verify-email", {
           token: emailVerificationToken
         });
-
         passwordSetupToken = response.passwordSetup?.token || "";
-        if (passwordSetupToken) {
-          setupToken.textContent = passwordSetupToken;
-          show(passwordPanel);
-        }
-        setMessage("メール確認が完了しました。", "success");
+        provisionedLogin = {
+          organizationCode: response.organization?.organizationCode || "",
+          loginId: response.adminMember?.loginId || ""
+        };
+        renderProvisionedMeta(provisionedLogin);
+        showStep(passwordPanel);
       } catch (error) {
-        setMessage(error.message, "error");
+        setError(signupError, error.message || "メール確認に失敗しました。");
+        showStep(submittedPanel);
       } finally {
         setBusy(verifyButton, false);
       }
@@ -540,40 +671,115 @@
 
     passwordForm.addEventListener("submit", async (event) => {
       event.preventDefault();
-      if (!passwordSetupToken) return;
-      setBusy(passwordButton, true);
-      setMessage("");
+      setError(passwordError, "");
+
+      const password = document.querySelector("#password").value;
+      if (!passwordSetupToken) {
+        setError(passwordError, "初回設定リンクを確認できません。もう一度お問い合わせから進めてください。");
+        return;
+      }
+      if (password.length < 12) {
+        setError(passwordError, "パスワードは12文字以上で入力してください。");
+        return;
+      }
+
+      setBusy(passwordButton, true, "設定中...");
 
       try {
-        const data = new FormData(passwordForm);
         const response = await postJson("/v1/signup/setup-admin-password", {
           token: passwordSetupToken,
-          password: data.get("password"),
+          password,
           startCheckout: true
         });
+        const login = response.login || provisionedLogin || {};
+        renderLoginInfo(login);
+        showStep(completePanel);
 
-        loginInfo.textContent = `組織コード: ${response.login.organizationCode}\nログインID: ${response.login.loginId}`;
-        show(completePanel);
         if (response.billingCheckout?.status === "created" && response.billingCheckout.checkoutUrl) {
-          setMessage("初期パスワードを設定しました。Stripe の支払い画面へ移動します。", "success");
           window.location.assign(response.billingCheckout.checkoutUrl);
-          return;
         }
-        if (response.billingCheckout?.status === "not_configured") {
-          setMessage("初期パスワードを設定しました。支払い設定は管理画面から続行してください。", "success");
-          return;
-        }
-        if (response.billingCheckout?.status === "failed") {
-          setMessage(`初期パスワードを設定しました。支払い画面の作成に失敗しました: ${response.billingCheckout.message}`, "error");
-          return;
-        }
-        setMessage("初期パスワードを設定しました。", "success");
       } catch (error) {
-        setMessage(error.message, "error");
+        setError(passwordError, error.message || "パスワード設定に失敗しました。");
       } finally {
         setBusy(passwordButton, false);
       }
     });
+
+    function readSignupForm() {
+      return {
+        organizationName: fieldValue("organizationName"),
+        adminName: fieldValue("adminName"),
+        adminEmail: fieldValue("adminEmail"),
+        phoneNumber: fieldValue("phoneNumber"),
+        seatEstimate: fieldValue("seatEstimate").replace(/[^0-9]/g, ""),
+        notes: fieldValue("notes"),
+        consentAccepted: document.querySelector("#consentAccepted").checked
+      };
+    }
+
+    function validateSignupForm(input) {
+      const errors = {};
+      if (!input.organizationName) {
+        errors.organizationName = "医療機関名を入力してください。";
+      } else if (input.organizationName.length > 120) {
+        errors.organizationName = "医療機関名は120文字以内で入力してください。";
+      }
+      if (!input.adminName) {
+        errors.adminName = "担当者名を入力してください。";
+      } else if (input.adminName.length > 120) {
+        errors.adminName = "担当者名は120文字以内で入力してください。";
+      }
+      if (!input.adminEmail) {
+        errors.adminEmail = "メールアドレスを入力してください。";
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.adminEmail)) {
+        errors.adminEmail = "メールアドレスの形式を確認してください。";
+      }
+      if (input.phoneNumber && input.phoneNumber.length > 40) {
+        errors.phoneNumber = "電話番号は40文字以内で入力してください。";
+      }
+      if (input.seatEstimate) {
+        const numeric = Number(input.seatEstimate);
+        if (!Number.isFinite(numeric) || numeric <= 0) {
+          errors.seatEstimate = "想定利用人数は1以上で入力してください。";
+        } else if (numeric > 10000) {
+          errors.seatEstimate = "想定利用人数が大きすぎます。";
+        }
+      }
+      if (input.notes.length > 2000) {
+        errors.notes = "備考は2000文字以内で入力してください。";
+      }
+      if (!input.consentAccepted) {
+        errors.consentAccepted = "利用規約とプライバシーポリシーへの同意が必要です。";
+      }
+      return errors;
+    }
+
+    function renderFieldErrors(errors) {
+      for (const key of ["organizationName", "adminName", "adminEmail", "phoneNumber", "seatEstimate", "notes"]) {
+        const input = document.querySelector(`#${key}`);
+        const error = errors[key] || "";
+        input.setAttribute("aria-invalid", error ? "true" : "false");
+        document.querySelector(`#${key}-error`).textContent = error;
+      }
+      const consentLabel = document.querySelector("#consent-label");
+      const consentError = errors.consentAccepted || "";
+      consentLabel.setAttribute("aria-invalid", consentError ? "true" : "false");
+      document.querySelector("#consentAccepted-error").textContent = consentError;
+    }
+
+    function renderValidationSummary(errors) {
+      validationList.replaceChildren(...Object.values(errors).map((message) => {
+        const item = document.createElement("li");
+        item.textContent = message;
+        return item;
+      }));
+      validationSummary.hidden = false;
+    }
+
+    function hideValidationSummary() {
+      validationSummary.hidden = true;
+      validationList.replaceChildren();
+    }
 
     async function postJson(path, payload) {
       const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -585,7 +791,7 @@
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(body.message || "送信に失敗しました");
+        throw new Error(body.message || body.error || "送信に失敗しました。");
       }
       return body;
     }
@@ -598,23 +804,102 @@
       return String(fromQuery || fromWindow || fromMeta || "").replace(/\/$/, "");
     }
 
-    function setBusy(button, busy) {
+    function generateOrganizationCode(organizationName) {
+      const normalized = String(organizationName || "")
+        .normalize("NFKD")
+        .replace(/[^\w\s-]/g, "")
+        .trim()
+        .toLowerCase()
+        .replace(/[_\s]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 28);
+      const suffix = Math.random().toString(36).slice(2, 8);
+      return `${normalized || "clinic"}-${suffix}`;
+    }
+
+    function renderProvisionedMeta(login) {
+      provisionedMeta.innerHTML = [
+        `<div><dt>医療機関コード</dt><dd>${escapeHtml(login.organizationCode || "-")}</dd></div>`,
+        `<div><dt>ログインID</dt><dd>${escapeHtml(login.loginId || "-")}</dd></div>`
+      ].join("");
+    }
+
+    function renderLoginInfo(login) {
+      loginInfo.innerHTML = [
+        `<div><dt>医療機関コード</dt><dd>${escapeHtml(login.organizationCode || "-")}</dd></div>`,
+        `<div><dt>ログインID</dt><dd>${escapeHtml(login.loginId || "-")}</dd></div>`
+      ].join("");
+    }
+
+    function showStep(panel) {
+      for (const element of [signupPanel, submittedPanel, passwordPanel, completePanel]) {
+        element.classList.toggle("on", element === panel);
+        element.hidden = element !== panel && element !== signupPanel;
+      }
+      if (panel !== signupPanel) {
+        signupPanel.hidden = true;
+      }
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function setBusy(button, busy, busyText = "送信中...") {
       button.disabled = busy;
-      button.dataset.originalText ||= button.textContent;
-      button.textContent = busy ? "送信中" : button.dataset.originalText;
+      const span = button.querySelector("span") || button;
+      if (!button.dataset.originalText) {
+        button.dataset.originalText = span.textContent;
+      }
+      span.textContent = busy ? busyText : button.dataset.originalText;
     }
 
-    function setMessage(text, kind) {
-      message.textContent = text;
-      message.className = text ? `message ${kind || ""} on` : "message";
+    function setError(element, message) {
+      element.textContent = message;
+      element.hidden = !message;
     }
 
-    function show(element) {
-      element.classList.add("on");
+    function fieldValue(name) {
+      return String(document.querySelector(`#${name}`)?.value || "").trim();
     }
 
-    function hide(element) {
-      element.classList.remove("on");
+    function persistDraft() {
+      try {
+        window.sessionStorage.setItem(CONTACT_SIGNUP_DRAFT_STORAGE_KEY, JSON.stringify(readSignupForm()));
+      } catch {
+        // ignore local draft write failure
+      }
+    }
+
+    function restoreDraft() {
+      try {
+        const raw = window.sessionStorage.getItem(CONTACT_SIGNUP_DRAFT_STORAGE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        for (const key of ["organizationName", "adminName", "adminEmail", "phoneNumber", "seatEstimate", "notes"]) {
+          if (saved[key]) {
+            document.querySelector(`#${key}`).value = saved[key];
+          }
+        }
+        document.querySelector("#consentAccepted").checked = Boolean(saved.consentAccepted);
+      } catch {
+        // ignore local draft read failure
+      }
+    }
+
+    function clearDraft() {
+      try {
+        window.sessionStorage.removeItem(CONTACT_SIGNUP_DRAFT_STORAGE_KEY);
+      } catch {
+        // ignore local draft clear failure
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
     }
   </script>
 </body>
