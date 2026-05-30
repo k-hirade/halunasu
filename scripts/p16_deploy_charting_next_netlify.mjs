@@ -42,6 +42,7 @@ for (const env of envs) {
   const gatewayUrl = resolveGatewayUrl(env, proxyTargets[env] || {});
   const billingUrl = proxyTargets[env]?.billingLegacy || "";
   const gatewayWsUrl = gatewayUrl.replace(/^http/u, "ws").replace(/\/$/u, "") + "/ws";
+  const lpBaseUrl = env === "stg" ? "https://stg.halunasu.com" : "https://halunasu.com";
   const deployCommand = buildDeployCommand(site.siteId, `P16 ${env}/charting-web Next.js`);
 
   console.log(`== ${env}/charting-web -> ${site.siteName} ==`);
@@ -49,6 +50,7 @@ for (const env of envs) {
   console.log(`Gateway proxy: ${gatewayUrl}`);
   console.log(`Gateway WS: ${gatewayWsUrl}`);
   console.log(`Billing proxy: ${billingUrl || "(not configured)"}`);
+  console.log(`LP signup base: ${lpBaseUrl}`);
 
   if (!apply) {
     console.log(`DRY RUN: netlify build`);
@@ -63,10 +65,14 @@ for (const env of envs) {
   setNetlifyEnv(site.siteId, "BILLING_BASE_URL", "/billing");
   setNetlifyEnv(site.siteId, "NEXT_PUBLIC_BILLING_BASE_URL", "/billing");
   setNetlifyEnv(site.siteId, "BILLING_PROXY_TARGET", billingUrl);
+  setNetlifyEnv(site.siteId, "HALUNASU_ENV", env);
+  setNetlifyEnv(site.siteId, "LP_BASE_URL", lpBaseUrl);
+  setNetlifyEnv(site.siteId, "NEXT_PUBLIC_LP_BASE_URL", lpBaseUrl);
 
   const buildEnv = {
     ...process.env,
     NETLIFY_SITE_ID: site.siteId,
+    HALUNASU_ENV: env,
     GATEWAY_BASE_URL: "",
     NEXT_PUBLIC_GATEWAY_BASE_URL: "",
     GATEWAY_PROXY_TARGET: gatewayUrl,
@@ -74,7 +80,9 @@ for (const env of envs) {
     NEXT_PUBLIC_GATEWAY_WS_URL: gatewayWsUrl,
     BILLING_BASE_URL: "/billing",
     NEXT_PUBLIC_BILLING_BASE_URL: "/billing",
-    BILLING_PROXY_TARGET: billingUrl
+    BILLING_PROXY_TARGET: billingUrl,
+    LP_BASE_URL: lpBaseUrl,
+    NEXT_PUBLIC_LP_BASE_URL: lpBaseUrl
   };
 
   runCommand(["netlify", "build"], {

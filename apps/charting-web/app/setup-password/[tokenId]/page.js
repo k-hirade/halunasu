@@ -1,7 +1,8 @@
-import { PasswordSetupPanel } from "../../../components/password-setup-panel";
+import { redirect } from "next/navigation";
+import { lpSignupUrl } from "../../../lib/lp-signup-url";
 
 export default async function SetupPasswordPage({ params }) {
   const awaitedParams = await params;
 
-  return <PasswordSetupPanel tokenId={awaitedParams.tokenId} />;
+  redirect(lpSignupUrl({ setup: awaitedParams.tokenId }));
 }

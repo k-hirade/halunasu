@@ -277,6 +277,71 @@ test("creates signup applications and rate limits signup attempts", async () => 
   assert.equal(fetched.body.signupApplication.applicationId, first.body.signupApplication.applicationId);
 });
 
+test("sends signup verification and password setup mail through signup mailer", async () => {
+  const store = createTestStore();
+  const deliveries = [];
+  const signupMailer = {
+    async sendVerificationMail(payload) {
+      deliveries.push({ type: "verification", payload });
+      return { mode: "resend", delivered: true, providerMessageId: "email_001" };
+    },
+    async sendPasswordSetupMail(payload) {
+      deliveries.push({ type: "password_setup", payload });
+      return { mode: "resend", delivered: true, providerMessageId: "email_002" };
+    }
+  };
+  const created = await request(store, "POST", "/v1/signup/applications", {
+    organizationCode: "Mail Clinic",
+    organizationDisplayName: "Mail Clinic",
+    applicantName: "Mail Admin",
+    applicantEmail: "mail-admin@example.com",
+    requestedProducts: ["charting"]
+  }, {}, {
+    signupMailer,
+    publicLpBaseUrl: "https://stg.halunasu.com"
+  });
+  const provisioned = await request(store, "POST", "/v1/signup/verify-email", {
+    token: created.body.emailVerification.token
+  }, {}, {
+    signupMailer,
+    publicLpBaseUrl: "https://stg.halunasu.com",
+    env: "stg"
+  });
+
+  assert.equal(created.statusCode, 201);
+  assert.equal(created.body.emailDelivery.delivered, true);
+  assert.equal(deliveries[0].type, "verification");
+  assert.equal(deliveries[0].payload.signupApplication.applicantEmail, "mail-admin@example.com");
+  assert.match(deliveries[0].payload.verificationUrl, /^https:\/\/stg\.halunasu\.com\/signup\?token=emv_/);
+  assert.equal(provisioned.statusCode, 200);
+  assert.equal(provisioned.body.passwordSetupEmailDelivery.delivered, true);
+  assert.equal(deliveries[1].type, "password_setup");
+  assert.match(deliveries[1].payload.passwordSetupUrl, /^https:\/\/stg\.halunasu\.com\/signup\?setup=setup_/);
+});
+
+test("hides signup verification token in production-like environments", async () => {
+  const store = createTestStore();
+  const signupMailer = {
+    async sendVerificationMail() {
+      return { mode: "resend", delivered: true };
+    }
+  };
+  const created = await request(store, "POST", "/v1/signup/applications", {
+    organizationCode: "Prod Mail Clinic",
+    organizationDisplayName: "Prod Mail Clinic",
+    applicantName: "Mail Admin",
+    applicantEmail: "mail-admin@example.com"
+  }, {}, {
+    env: "prod",
+    signupMailer
+  });
+
+  assert.equal(created.statusCode, 201);
+  assert.equal(created.body.emailVerification.token, undefined);
+  assert.equal(created.body.emailVerification.verificationUrl, undefined);
+  assert.equal(created.body.emailVerification.expiresAt, "2026-05-28T00:00:00.000Z");
+});
+
 test("allows CORS preflight for signup routes from known LP origins", async () => {
   const store = createTestStore();
   const response = await request(store, "OPTIONS", "/v1/signup/applications", undefined, {
@@ -956,7 +1021,10 @@ function request(store, method, path, body, headers = {}, options = {}) {
     signupRateLimit: options.signupRateLimit,
     stripeClient: options.stripeClient,
     stripeWebhookSecret: options.stripeWebhookSecret,
-    billingReturnBaseUrl: options.billingReturnBaseUrl
+    billingReturnBaseUrl: options.billingReturnBaseUrl,
+    signupMailer: options.signupMailer,
+    publicLpBaseUrl: options.publicLpBaseUrl,
+    signupTokenPreview: options.signupTokenPreview
   });
 }
 

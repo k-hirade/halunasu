@@ -1,11 +1,6 @@
-import { Suspense } from "react";
-
-import { ContactSignupSubmittedPanel } from "../../../components/contact-signup-submitted-panel";
+import { redirect } from "next/navigation";
+import { lpSignupUrl } from "../../../lib/lp-signup-url";
 
 export default function ContactSignupSubmittedPage() {
-  return (
-    <Suspense fallback={null}>
-      <ContactSignupSubmittedPanel />
-    </Suspense>
-  );
+  redirect(lpSignupUrl());
 }

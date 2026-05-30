@@ -27,7 +27,7 @@
 2026-05-30時点の状態:
 
 - `apps/charting-web/test/e2e` に移植済み。
-- `WEB_E2E_PORT=3199 npm run test --workspace @halunasu/charting-web` で11件すべて通過。
+- `WEB_E2E_PORT=3199 npm run test --workspace @halunasu/charting-web` で12件すべて通過。
 - Next dev serverとPlaywright Chromiumが必要なため、ローカルではsandbox外実行が必要。
 
 ### Fee Calculation
@@ -40,12 +40,15 @@ PYTHONPATH=python python3 -m unittest discover -s python/tests/legacy_medical_fe
 
 ### LP
 
-旧テストなし。追加する。
+旧テストなし。追加済み。
 
 - HTML link check
 - required page existence
 - CTA/form action existence
 - asset existence
+- 登録送信後の「確認メールを送信しました」表示
+- temporary inline verification button / no-mail noticeの不在
+- Platform API unit testでResend mailer呼び出し、`/signup?token=...` と `/signup?setup=...` URL生成を確認
 
 ### Core Admin
 
@@ -93,6 +96,7 @@ npm run test:migration-parity
 - `npm run audit:migration-parity`
 - `WEB_E2E_PORT=3199 npm run test --workspace @halunasu/charting-web`
 - `npm test --workspace @halunasu/platform-api`
+- `npm test --workspace @halunasu/lp`
 - `npm test --workspace @halunasu/platform-contracts`
 - `npm test --workspace @halunasu/fee-core`
 - `npm test --workspace @halunasu/fee-api`
@@ -111,8 +115,9 @@ npm run test:migration-parity
 
 注意:
 
-- `npm run test` にはCharting Next.js + Playwright E2E 11件が含まれる。
+- `npm run test` にはCharting Next.js + Playwright E2E 12件が含まれる。
 - `npm run test:python:legacy-fee` には旧 `medical-fee-calculation` 由来の126件が含まれる。
 - sandbox内の通常実行ではNext dev serverがlistenできず `EPERM` になるため、E2Eを含む実行はsandbox外で確認した。
 - Netlify/GCPのSTG/PROD反映確認はCharting/Fee/ReferralのCore shared data利用と作成系APIまで完了。
 - Chartingの実AI STT/SOAP provider smokeは `OPENAI_API_KEY` / `DEEPGRAM_API_KEY` secret未設定かつ費用発生を避けるため未実施。secret追加後に短時間手動smokeを実施する。
+- LPのResend実メールsmokeは `RESEND_API_KEY` secret未設定のため未実施。Secret追加後にSTG/PRODで登録メール受信とリンク遷移を確認する。

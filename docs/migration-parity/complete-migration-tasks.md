@@ -8,7 +8,7 @@
 
 1. Charting: 旧Next.js UI、Gateway、Core患者/施設/診療科bridge、Netlify独自ドメイン配信、STG/PROD login/session作成はDone。実AI STT/SOAPは `OPENAI_API_KEY` / `DEEPGRAM_API_KEY` secret未設定のためlocal preview運用。
 2. Fee: Python算定エンジン、旧126テスト、公式master SQLite gzip同梱、STG/PROD `readyz`、代表コード実算定はDone。
-3. LP: 登録、メール確認相当、初回パスワード設定、Stripe Checkout/Portal/Webhook、Core entitlement連携はSTG/PROD Done。
+3. LP: 登録、Resend確認メール、初回パスワード設定、Stripe Checkout/Portal/Webhook、Core entitlement連携はコード移行済み。STG/PRODのResend実送信だけ `RESEND_API_KEY` Secret投入後に反映する。
 4. Referral: Core共有データを使った下書き作成、HTML文書生成、プレビュー/印刷導線、STG/PROD post-deploy確認はDone。
 
 今回、完全移行に向けて以下を実装した。
@@ -18,7 +18,11 @@
 - Platform API: `/v1/billing/status`、`/v1/billing/checkout-session`、`/v1/billing/portal-session` を追加。
 - Platform API: `/v1/stripe/webhook` を追加し、Stripe署名検証、event receipt冪等化、Core billing/access/product entitlement反映を実装。
 - LP: 初回パスワード設定後に `startCheckout: true` を送り、Stripe Checkout URLが返った場合は支払い画面へ遷移する。
+- Platform API: LP登録の確認メール/初回設定メール送信を旧 `services/billing` 相当のResend方式で実装。
+- LP: 送信後にフォームを隠し、「確認メールを送信しました」ブロックのみ表示。メールリンク `/signup?token=...` と初回設定リンク `/signup?setup=...` を処理する。
+- Charting Web: 旧 `/contact-signup`、`/contact-signup/verify`、`/setup-password/:tokenId`、`/signup/*` を現行LP `/signup` へredirectし、旧billing API前提の登録画面を表に出さない。
 - Cloud Run deploy script: `platform-api-*` にStripe設定と任意の `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` secretを渡せるようにした。
+- Cloud Run deploy script: `platform-api-*` に任意の `RESEND_API_KEY` secretを渡し、Secret未設定時はPlatform API deployをskipしてLP登録メールの半端な反映を防ぐ。
 - Fee API: `/readyz` で公式master DBの設定有無とファイル存在を確認できるようにした。
 - Fee API: 公式master gzipをCloud Run imageに同梱し、runtimeで `/tmp` に展開してPython算定へ渡すようにした。
 - Charting Gateway: Core患者/施設/診療科を読み、session metadataへCore ID/snapshotを保存するbridgeを追加した。
@@ -128,12 +132,12 @@ Status: done
 4. 代表外来検体検査コード `160000410` をSTG/PRODで実算定する。Done.
 5. `fee-web` から患者選択、施設選択、算定、保存までpost-deploy scriptで確認する。Done.
 
-### L1 LP signup and Stripe
+### L1 LP signup, Resend, and Stripe
 
-Status: STG/PROD complete on canonical Stripe account
+Status: code complete. STG/PROD Resend deploy is blocked until `RESEND_API_KEY` exists in `medical-core-stg` and `medical-core-497610`.
 
 1. `signup.html` はPlatform signup APIへ申込を送る。Done.
-2. メール確認相当のtoken flowで病院/管理者を作る。Done.
+2. Resendで確認メールを送り、`/signup?token=...` から病院/管理者を作る。Code Done / Secret pending.
 3. 初回パスワード設定後にCheckout開始を要求する。Done.
 4. Stripe設定済み環境ではCheckout URLへ遷移する。Implemented and deployed.
 5. Stripe未設定環境では登録を止めず、管理画面で支払いを続行する。Implemented and deployed.
@@ -142,6 +146,9 @@ Status: STG/PROD complete on canonical Stripe account
 8. PRODのStripe live `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` を正アカウントで発行し、`medical-core-497610` に保存する。Done.
 9. PROD Core live webhook `https://halunasu.com/api/platform/v1/stripe/webhook` を作成する。Done.
 10. PROD Platform APIを再deployし、Checkout URL/Portal URL生成とWebhook署名検証を確認する。Done.
+11. STG/PRODに `RESEND_API_KEY` Secretを追加し、Platform APIを再deployする。Pending.
+12. STG/PRODで実メール受信、確認リンク、初回設定メール受信、パスワード設定、Checkout遷移を確認する。Pending.
+13. Chartingの旧登録/初回設定URLはLP signupへredirectする。Code Done / deploy pending.
 
 ### L2 MFA
 
@@ -174,6 +181,8 @@ npm run test:migration-parity
 - Stripe live mode: 旧 `medical-billing` webhook endpoint `we_1TPXYiADFhjr3GQSR83I19Fq` はdisabledへ変更済み。
 - Platform API local: Stripe webhook署名検証、receipt冪等化、Core billing/access/entitlement反映を実装し、unit test通過。
 - LP STG/PROD: 初回パスワード設定後にCheckout開始を要求するHTMLをNetlify production deploy済み。
+- LP/Platform API local: 旧Resend方式の確認メール/初回設定メールをPlatform APIに移植し、unit/static test通過。STG/PRODには `RESEND_API_KEY` Secret未設定のため未deploy。
+- Charting Web local: 旧contact signup/password setup URLを現行LP signupへredirectするコードを追加。STG/PROD deployはResend反映と同じタイミングで行う。
 - Core Admin STG/PROD: MFA QR発行/確認UIをNetlify production deploy済み。
 - Fee API STG/PROD: 公式master gzip同梱版をdeploy済み。`/readyz` は `masterDbConfigured=true`、`masterDbPathExists=true`、`masterDbGzipPathExists=true` を返す。
 - Fee API STG/PROD: `standardCode=160000410` の代表算定で `medical_fee_calculation` provider、`totalPoints=41`、`lineItems=2` を確認済み。
@@ -205,6 +214,24 @@ gcloud secrets versions add STRIPE_WEBHOOK_SECRET --project medical-core-497610 
 - live webhook signing secret: `medical-core-497610` の `STRIPE_WEBHOOK_SECRET` に保存する。
 
 Stripe CLI loginで得られるlive keyは2026-08-28に失効するため、PROD Cloud Runの永続Secretには使わない。
+
+LP登録メール送信用のResend secretを追加する。
+
+```bash
+gcloud secrets create RESEND_API_KEY --project medical-core-stg --replication-policy automatic
+gcloud secrets versions add RESEND_API_KEY --project medical-core-stg --data-file /path/to/stg-resend-api-key.txt
+gcloud secrets add-iam-policy-binding RESEND_API_KEY \
+  --project medical-core-stg \
+  --member serviceAccount:halunasu-platform-api@medical-core-stg.iam.gserviceaccount.com \
+  --role roles/secretmanager.secretAccessor
+
+gcloud secrets create RESEND_API_KEY --project medical-core-497610 --replication-policy automatic
+gcloud secrets versions add RESEND_API_KEY --project medical-core-497610 --data-file /path/to/prod-resend-api-key.txt
+gcloud secrets add-iam-policy-binding RESEND_API_KEY \
+  --project medical-core-497610 \
+  --member serviceAccount:halunasu-platform-api@medical-core-497610.iam.gserviceaccount.com \
+  --role roles/secretmanager.secretAccessor
+```
 
 低費用設定のままPlatform APIだけ再deployする。
 

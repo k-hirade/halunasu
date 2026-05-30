@@ -1,11 +1,7 @@
-import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { lpSignupUrl } from "../../../lib/lp-signup-url";
 
-import { ContactSignupVerifyPanel } from "../../../components/contact-signup-verify-panel";
-
-export default function ContactSignupVerifyPage() {
-  return (
-    <Suspense fallback={null}>
-      <ContactSignupVerifyPanel />
-    </Suspense>
-  );
+export default async function ContactSignupVerifyPage({ searchParams }) {
+  const params = await searchParams;
+  redirect(lpSignupUrl({ token: params?.token }));
 }

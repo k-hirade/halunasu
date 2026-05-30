@@ -31,9 +31,13 @@ assert(signup.includes("/v1/signup/setup-admin-password"), "signup form must sup
 assert(signup.includes("startCheckout: true"), "signup form must request Stripe checkout after password setup");
 assert(signup.includes("billingCheckout.checkoutUrl"), "signup form must redirect to Stripe checkout URL");
 assert(signup.includes("お問い合わせを送信する"), "signup form must keep the legacy contact CTA");
+assert(signup.includes("確認メールを送信しました"), "signup form must show the legacy submitted mail state");
+assert(signup.includes("[hidden]"), "signup form must force hidden step panels to disappear");
 assert(signup.includes("medical.contactSignupDraft.v1"), "signup form must keep the legacy contact draft storage key");
 assert(signup.includes("source: \"lp_contact_form\""), "signup form must preserve legacy contact signup source metadata");
 assert(signup.includes("[\"charting\", \"fee\", \"referral\"]"), "signup form must request all Halunasu products behind the legacy contact UI");
+assert(!signup.includes("現在の Platform API ではメール送信サービスを追加せず"), "signup form must not expose the temporary no-mail migration note");
+assert(!signup.includes("メール確認を完了"), "signup form must not keep the temporary inline verification button");
 
 for (const header of [
   "X-Content-Type-Options",

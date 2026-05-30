@@ -88,6 +88,9 @@ deploy_service() {
   if [[ "${service}" == platform-api-* ]] && secret_exists "${project}" "STRIPE_WEBHOOK_SECRET"; then
     secret_vars="${secret_vars},STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest"
   fi
+  if [[ "${service}" == platform-api-* ]] && secret_exists "${project}" "RESEND_API_KEY"; then
+    secret_vars="${secret_vars},RESEND_API_KEY=RESEND_API_KEY:latest"
+  fi
   if [[ "${service}" == charting-gateway-* ]]; then
     secret_vars="${secret_vars},PAIRING_SIGNING_SECRET=PAIRING_SIGNING_SECRET:latest"
   fi
@@ -111,6 +114,12 @@ deploy_service() {
   billing_state="$(billing_enabled "${project}" | tr '[:upper:]' '[:lower:]')"
   if [[ "${billing_state}" != "true" ]]; then
     echo "Skipping ${service}; billing is not linked for ${project}."
+    echo
+    return
+  fi
+  if [[ "${service}" == platform-api-* ]] && [[ "${APPLY}" == "true" ]] && ! secret_exists "${project}" "RESEND_API_KEY"; then
+    echo "Skipping ${service}; RESEND_API_KEY secret is missing for ${project}."
+    echo "Create the secret and grant halunasu-platform-api access before deploying LP signup mail parity."
     echo
     return
   fi
@@ -173,9 +182,11 @@ deploy_env() {
 
   local charting_app_base_url="https://charting.halunasu.com"
   local charting_allowed_origins="https://charting.halunasu.com"
+  local lp_base_url="https://halunasu.com"
   if [[ "${env}" == "stg" ]]; then
     charting_app_base_url="https://charting.stg.halunasu.com"
     charting_allowed_origins="https://charting.stg.halunasu.com"
+    lp_base_url="https://stg.halunasu.com"
   fi
 
   if should_deploy "${env}" "platform-api"; then
@@ -185,8 +196,12 @@ deploy_env() {
     "GOOGLE_CLOUD_REGION=${REGION}" \
     "PLATFORM_STORE_BACKEND=firestore" \
     "PLATFORM_PUBLIC_APP_BASE_URL=${charting_app_base_url}" \
+    "PLATFORM_PUBLIC_LP_BASE_URL=${lp_base_url}" \
     "STRIPE_API_VERSION=2026-03-25.dahlia" \
     "STRIPE_PRICE_LOOKUP_KEY=${STRIPE_PRICE_LOOKUP_KEY:-medical_ai_monthly_jpy_v2}" \
+    "EMAIL_DELIVERY_PROVIDER=resend" \
+    "EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS:-Halunasu <noreply@halunasu.com>}" \
+    "EMAIL_REPLY_TO_ADDRESS=${EMAIL_REPLY_TO_ADDRESS:-info@halunasu.com}" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
   fi

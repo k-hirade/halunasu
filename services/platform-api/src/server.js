@@ -9,6 +9,11 @@ import { verifyPassword } from "./auth/password.js";
 import { createStripeBillingClientFromEnv } from "./billing/stripe-client.js";
 import { processStripeWebhookEvent, verifyStripeWebhookSignature } from "./billing/stripe-webhook.js";
 import {
+  buildPasswordSetupUrl,
+  buildSignupVerificationUrl,
+  createSignupMailer
+} from "./signup-mailer.js";
+import {
   clearSessionCookieHeaders,
   createCsrfToken,
   csrfCookieHeader,
@@ -30,6 +35,7 @@ export function createPlatformApiServer(options = {}) {
   const region = options.region || process.env.GOOGLE_CLOUD_REGION || "asia-northeast1";
   const store = options.store || createPlatformStoreFromEnv();
   const stripeClient = options.stripeClient || createStripeBillingClientFromEnv();
+  const signupMailer = options.signupMailer || createSignupMailer();
 
   return http.createServer(async (req, res) => {
     try {
@@ -45,6 +51,7 @@ export function createPlatformApiServer(options = {}) {
         startedAt,
         store,
         stripeClient,
+        signupMailer,
         headers: req.headers
       });
 
@@ -114,6 +121,7 @@ async function routePlatformApiRequest(input = {}) {
   const parts = url.pathname.split("/").filter(Boolean);
   const store = input.store || createPlatformStoreFromEnv();
   const stripeClient = input.stripeClient || createStripeBillingClientFromEnv();
+  const signupMailer = input.signupMailer || createSignupMailer();
 
   if (method === "OPTIONS" && url.pathname.startsWith("/v1/")) {
     return noContent();
@@ -131,7 +139,13 @@ async function routePlatformApiRequest(input = {}) {
   if (method === "POST" && matches(parts, ["v1", "signup", "applications"])) {
     await consumeSignupRateLimit(input, store);
     const result = await store.createSignupApplicationWithEmailToken(input.body || {});
-    return created(result);
+    const verificationUrl = buildSignupVerificationUrl(input, result.emailVerification?.token);
+    const emailDelivery = await signupMailer.sendVerificationMail({
+      signupApplication: result.signupApplication,
+      verificationUrl,
+      expiresAt: result.emailVerification?.expiresAt || null
+    });
+    return created(signupApplicationCreatedResponse(input, result, emailDelivery, verificationUrl));
   }
 
   if (method === "GET" && parts.length === 4 && matches(parts.slice(0, 3), ["v1", "signup", "applications"])) {
@@ -145,7 +159,18 @@ async function routePlatformApiRequest(input = {}) {
 
   if (method === "POST" && matches(parts, ["v1", "signup", "verify-email"])) {
     const result = await store.verifySignupEmail(input.body || {});
-    return ok(result);
+    const passwordSetupUrl = buildPasswordSetupUrl(input, result.passwordSetup?.token);
+    const passwordSetupEmailDelivery = await maybeSendPasswordSetupMail({
+      signupMailer,
+      input,
+      result,
+      passwordSetupUrl
+    });
+    return ok({
+      ...result,
+      passwordSetupEmailDelivery,
+      passwordSetupUrl
+    });
   }
 
   if (method === "POST" && matches(parts, ["v1", "signup", "setup-admin-password"])) {
@@ -1051,6 +1076,64 @@ function billingReturnUrl(input, status) {
   ).replace(/\/$/u, "");
 
   return `${baseUrl}/billing?checkout=${encodeURIComponent(status)}`;
+}
+
+async function maybeSendPasswordSetupMail({ signupMailer, input, result, passwordSetupUrl }) {
+  if (!result?.passwordSetup?.token) {
+    return null;
+  }
+
+  try {
+    return await signupMailer.sendPasswordSetupMail({
+      signupApplication: result.signupApplication,
+      organization: result.organization,
+      adminMember: result.adminMember,
+      loginUrl: defaultAppBaseUrl(input.env),
+      passwordSetupUrl
+    });
+  } catch (error) {
+    console.error("[platform-api] password setup mail failed", {
+      applicationId: result.signupApplication?.applicationId || null,
+      orgId: result.organization?.orgId || null,
+      memberId: result.adminMember?.memberId || null,
+      code: error?.code || null,
+      message: error?.message || null
+    });
+
+    return {
+      mode: "error",
+      delivered: false
+    };
+  }
+}
+
+function signupApplicationCreatedResponse(input, result, emailDelivery, verificationUrl) {
+  const tokenPreviewAllowed = signupTokenPreviewAllowed(input);
+  const emailVerification = {
+    expiresAt: result.emailVerification?.expiresAt || null,
+    token: tokenPreviewAllowed ? result.emailVerification?.token || null : undefined,
+    verificationUrl: tokenPreviewAllowed ? verificationUrl : undefined
+  };
+
+  return {
+    signupApplication: result.signupApplication,
+    emailVerification,
+    emailDelivery
+  };
+}
+
+function signupTokenPreviewAllowed(input = {}) {
+  const explicit = input.signupTokenPreview;
+  if (typeof explicit === "boolean") {
+    return explicit;
+  }
+
+  const envValue = process.env.HALUNASU_SIGNUP_TOKEN_PREVIEW;
+  if (envValue !== undefined) {
+    return ["1", "true", "yes", "on"].includes(String(envValue).toLowerCase());
+  }
+
+  return !["stg", "prod", "production"].includes(String(input.env || process.env.HALUNASU_ENV || "").toLowerCase());
 }
 
 function defaultAppBaseUrl(env) {

@@ -1,5 +1,6 @@
-import { ContactSignupOnboarding } from "../../components/contact-signup-onboarding";
+import { redirect } from "next/navigation";
+import { lpSignupUrl } from "../../lib/lp-signup-url";
 
 export default function ContactSignupPage() {
-  return <ContactSignupOnboarding />;
+  redirect(lpSignupUrl());
 }

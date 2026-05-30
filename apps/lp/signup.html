@@ -32,6 +32,10 @@
 
     * { box-sizing: border-box; }
 
+    [hidden] {
+      display: none !important;
+    }
+
     body {
       margin: 0;
       min-height: 100vh;
@@ -507,9 +511,9 @@
 
     <section class="signup-panel signup-panel--single step-panel" id="submitted-panel" aria-live="polite">
       <div class="signup-heading">
-        <h1>確認メールを開いてください</h1>
+        <h1>確認メールを送信しました</h1>
         <p class="signup-lead">
-          メール内の確認リンクを開くと、病院アカウントの準備を開始します。
+          入力されたメールアドレス宛の確認リンクから、初回設定へ進んでください。
         </p>
       </div>
       <div class="signup-status-primary-card">
@@ -517,12 +521,7 @@
         <p class="signup-status-primary-copy" id="submitted-copy">
           入力されたメールアドレス宛に確認リンクを送信しました。
         </p>
-        <div class="contact-signup-actions" id="verification-actions">
-          <button class="secondary-action" id="verify-button" type="button">メール確認を完了</button>
-          <p class="signup-inline-note">
-            現在の Platform API ではメール送信サービスを追加せず、確認処理をこの画面から続行できるようにしています。
-          </p>
-        </div>
+        <p class="signup-error" id="submitted-error" hidden></p>
       </div>
     </section>
 
@@ -575,7 +574,6 @@
     const form = document.querySelector("#signup-form");
     const passwordForm = document.querySelector("#password-form");
     const submitButton = document.querySelector("#submit-button");
-    const verifyButton = document.querySelector("#verify-button");
     const passwordButton = document.querySelector("#password-button");
     const signupPanel = document.querySelector("#signup-panel");
     const submittedPanel = document.querySelector("#submitted-panel");
@@ -584,15 +582,17 @@
     const validationSummary = document.querySelector("#validation-summary");
     const validationList = document.querySelector("#validation-list");
     const signupError = document.querySelector("#signup-error");
+    const submittedError = document.querySelector("#submitted-error");
+    const submittedCopy = document.querySelector("#submitted-copy");
     const passwordError = document.querySelector("#password-error");
     const provisionedMeta = document.querySelector("#provisioned-meta");
     const loginInfo = document.querySelector("#login-info");
     const apiBaseUrl = resolveApiBaseUrl();
-    let emailVerificationToken = "";
     let passwordSetupToken = "";
     let provisionedLogin = null;
 
     restoreDraft();
+    hydrateFromUrl();
 
     form.addEventListener("input", () => {
       persistDraft();
@@ -633,39 +633,13 @@
           }
         });
 
-        emailVerificationToken = response.emailVerification?.token || "";
-        if (!emailVerificationToken) {
-          throw new Error("確認リンクの準備に失敗しました。時間を置いてもう一度お試しください。");
-        }
         clearDraft();
+        submittedCopy.textContent = `${nextForm.adminEmail} 宛に確認リンクを送信しました。メール内のリンクを開いて初回設定へ進んでください。`;
         showStep(submittedPanel);
       } catch (error) {
         setError(signupError, error.message || "お問い合わせの送信に失敗しました。");
       } finally {
         setBusy(submitButton, false);
-      }
-    });
-
-    verifyButton.addEventListener("click", async () => {
-      if (!emailVerificationToken) return;
-      setBusy(verifyButton, true, "確認中...");
-
-      try {
-        const response = await postJson("/v1/signup/verify-email", {
-          token: emailVerificationToken
-        });
-        passwordSetupToken = response.passwordSetup?.token || "";
-        provisionedLogin = {
-          organizationCode: response.organization?.organizationCode || "",
-          loginId: response.adminMember?.loginId || ""
-        };
-        renderProvisionedMeta(provisionedLogin);
-        showStep(passwordPanel);
-      } catch (error) {
-        setError(signupError, error.message || "メール確認に失敗しました。");
-        showStep(submittedPanel);
-      } finally {
-        setBusy(verifyButton, false);
       }
     });
 
@@ -704,6 +678,47 @@
         setBusy(passwordButton, false);
       }
     });
+
+    async function hydrateFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const verificationToken = params.get("token");
+      const setupToken = params.get("setup");
+
+      if (setupToken) {
+        passwordSetupToken = setupToken;
+        renderProvisionedMeta(null);
+        showStep(passwordPanel);
+        return;
+      }
+
+      if (!verificationToken) {
+        return;
+      }
+
+      showStep(submittedPanel);
+      submittedCopy.textContent = "確認リンクを確認しています。";
+      try {
+        await verifyEmailToken(verificationToken);
+      } catch (error) {
+        submittedCopy.textContent = "確認リンクを処理できませんでした。";
+        setError(submittedError, error.message || "メール確認に失敗しました。");
+      }
+    }
+
+    async function verifyEmailToken(token) {
+      const response = await postJson("/v1/signup/verify-email", { token });
+      passwordSetupToken = response.passwordSetup?.token || "";
+      if (!passwordSetupToken) {
+        throw new Error("初回設定リンクの準備に失敗しました。時間を置いてもう一度お試しください。");
+      }
+
+      provisionedLogin = {
+        organizationCode: response.organization?.organizationCode || "",
+        loginId: response.adminMember?.loginId || ""
+      };
+      renderProvisionedMeta(provisionedLogin);
+      showStep(passwordPanel);
+    }
 
     function readSignupForm() {
       return {
@@ -819,6 +834,10 @@
     }
 
     function renderProvisionedMeta(login) {
+      if (!login?.organizationCode && !login?.loginId) {
+        provisionedMeta.innerHTML = "";
+        return;
+      }
       provisionedMeta.innerHTML = [
         `<div><dt>医療機関コード</dt><dd>${escapeHtml(login.organizationCode || "-")}</dd></div>`,
         `<div><dt>ログインID</dt><dd>${escapeHtml(login.loginId || "-")}</dd></div>`
@@ -835,10 +854,7 @@
     function showStep(panel) {
       for (const element of [signupPanel, submittedPanel, passwordPanel, completePanel]) {
         element.classList.toggle("on", element === panel);
-        element.hidden = element !== panel && element !== signupPanel;
-      }
-      if (panel !== signupPanel) {
-        signupPanel.hidden = true;
+        element.hidden = element !== panel;
       }
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
