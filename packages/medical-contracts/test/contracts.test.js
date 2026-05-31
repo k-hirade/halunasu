@@ -292,7 +292,6 @@ test("contact signup and password setup schemas normalize public onboarding inpu
       organizationName: " A病院 ",
       adminName: " 事務 管理者 ",
       adminEmail: " ADMIN@EXAMPLE.COM ",
-      phoneNumber: " 090-1234-5678 ",
       seatEstimate: " 12 ",
       notes: " 初回導入の相談です。\nよろしくお願いします。 ",
       consentAccepted: true
@@ -301,7 +300,6 @@ test("contact signup and password setup schemas normalize public onboarding inpu
       organizationName: "A病院",
       adminName: "事務 管理者",
       adminEmail: "admin@example.com",
-      phoneNumber: "090-1234-5678",
       seatEstimate: 12,
       notes: "初回導入の相談です。\nよろしくお願いします。",
       consentAccepted: true
@@ -317,7 +315,6 @@ test("contact signup and password setup schemas normalize public onboarding inpu
       organizationName: "A病院",
       adminName: "管理者",
       adminEmail: "bad-email",
-      phoneNumber: "090-1234-5678",
       consentAccepted: true
     }),
     /email/

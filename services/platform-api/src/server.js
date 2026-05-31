@@ -151,7 +151,7 @@ async function routePlatformApiRequest(input = {}) {
 
   if (method === "POST" && matches(parts, ["v1", "signup", "applications"])) {
     await consumeSignupRateLimit(input, store);
-    const result = await store.createSignupApplicationWithEmailToken(input.body || {});
+    const result = await store.createSignupApplicationWithEmailToken(sanitizeSignupApplicationRequest(input.body || {}));
     const verificationUrl = buildSignupVerificationUrl(input, result.emailVerification?.token);
     const emailDelivery = await signupMailer.sendVerificationMail({
       signupApplication: result.signupApplication,
@@ -1414,6 +1414,27 @@ function signupApplicationCreatedResponse(input, result, emailDelivery, verifica
     emailVerification,
     emailDelivery
   };
+}
+
+function sanitizeSignupApplicationRequest(body = {}) {
+  const { phoneNumber: _phoneNumber, ...rest } = body || {};
+  const safePayload = sanitizeSignupSafePayload(rest.safePayload);
+  return {
+    ...rest,
+    safePayload
+  };
+}
+
+function sanitizeSignupSafePayload(value) {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+  const { phoneNumber: _phoneNumber, ...rest } = value;
+  return rest;
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function signupTokenPreviewAllowed(input = {}) {

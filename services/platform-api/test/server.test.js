@@ -249,7 +249,12 @@ test("creates signup applications and rate limits signup attempts", async () => 
       organizationDisplayName: "Signup Clinic",
       applicantName: "Applicant",
       applicantEmail: "Applicant@example.com",
-      requestedProducts: ["charting", "unknown"]
+      requestedProducts: ["charting", "unknown"],
+      safePayload: {
+        source: "lp_contact_form",
+        phoneNumber: "03-0000-0000",
+        seatEstimate: 5
+      }
     },
     { "x-forwarded-for": "203.0.113.10" },
     { signupRateLimit: { limit: 1, windowSeconds: 60 } }
@@ -278,6 +283,8 @@ test("creates signup applications and rate limits signup attempts", async () => 
   assert.equal(first.statusCode, 201);
   assert.equal(first.body.signupApplication.applicantEmail, "applicant@example.com");
   assert.deepEqual(first.body.signupApplication.requestedProducts, ["charting"]);
+  assert.equal(first.body.signupApplication.safePayload.phoneNumber, undefined);
+  assert.equal(first.body.signupApplication.safePayload.seatEstimate, 5);
   assert.match(first.body.emailVerification.token, /^emv_/);
   assert.equal(second.statusCode, 429);
   assert.equal(fetched.body.signupApplication.applicationId, first.body.signupApplication.applicationId);

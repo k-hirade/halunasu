@@ -11,7 +11,6 @@ const EMPTY_FORM = {
   organizationName: "",
   adminName: "",
   adminEmail: "",
-  phoneNumber: "",
   seatEstimate: "",
   notes: "",
   consentAccepted: false
@@ -42,10 +41,6 @@ function validateContactSignupForm(form) {
     errors.adminEmail = "メールアドレスの形式を確認してください。";
   }
 
-  if (String(form.phoneNumber || "").trim() && String(form.phoneNumber).trim().length > 40) {
-    errors.phoneNumber = "電話番号は40文字以内で入力してください。";
-  }
-
   if (String(form.seatEstimate || "").trim()) {
     const numeric = Number(form.seatEstimate);
     if (!Number.isFinite(numeric) || numeric <= 0) {
@@ -71,7 +66,6 @@ function buildValidationSummary(errors) {
     errors.organizationName,
     errors.adminName,
     errors.adminEmail,
-    errors.phoneNumber,
     errors.seatEstimate,
     errors.notes,
     errors.consentAccepted
@@ -147,7 +141,6 @@ export function ContactSignupOnboarding() {
         organizationName: true,
         adminName: true,
         adminEmail: true,
-        phoneNumber: true,
         seatEstimate: true,
         notes: true,
         consentAccepted: true
@@ -164,7 +157,6 @@ export function ContactSignupOnboarding() {
         organizationName: form.organizationName,
         adminName: form.adminName,
         adminEmail: form.adminEmail,
-        phoneNumber: form.phoneNumber || undefined,
         seatEstimate: form.seatEstimate ? Number(form.seatEstimate) : undefined,
         notes: form.notes || undefined,
         consentAccepted: true
@@ -251,21 +243,6 @@ export function ContactSignupOnboarding() {
               placeholder="admin@example.com"
             />
             {fieldErrors.adminEmail ? <small className="field-error">{fieldErrors.adminEmail}</small> : null}
-          </label>
-          <label>
-            <span>電話番号</span>
-            <input
-              aria-invalid={fieldErrors.phoneNumber ? "true" : "false"}
-              value={form.phoneNumber}
-              onChange={(event) => {
-                const nextForm = { ...form, phoneNumber: event.target.value };
-                setForm((current) => ({ ...current, phoneNumber: event.target.value }));
-                updateFieldError(nextForm, "phoneNumber");
-              }}
-              onBlur={() => handleBlur("phoneNumber")}
-              placeholder="03-0000-0000"
-            />
-            {fieldErrors.phoneNumber ? <small className="field-error">{fieldErrors.phoneNumber}</small> : null}
           </label>
           <label>
             <span>想定利用人数</span>

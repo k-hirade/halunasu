@@ -144,7 +144,7 @@ export function validateCreateSignupApplicationInput(input = {}) {
     applicantEmail: requiredString(input.applicantEmail, "applicantEmail").toLowerCase(),
     status: optionalEnum(input.status, signupApplicationStatuses, "status") || "submitted",
     requestedProducts: normalizeRequestedProducts(input.requestedProducts),
-    safePayload: isPlainObject(input.safePayload) ? input.safePayload : {}
+    safePayload: sanitizeSignupApplicationSafePayload(input.safePayload)
   };
 }
 
@@ -662,6 +662,14 @@ function sanitizeSafePayload(value) {
     Object.entries(value)
       .filter(([key, item]) => allowed.has(key) && safePayloadValue(item))
   );
+}
+
+function sanitizeSignupApplicationSafePayload(value) {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+  const { phoneNumber: _phoneNumber, ...rest } = value;
+  return rest;
 }
 
 function safePayloadValue(value) {

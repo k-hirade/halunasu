@@ -471,12 +471,6 @@
         </label>
 
         <label>
-          <span>電話番号</span>
-          <input id="phoneNumber" name="phoneNumber" autocomplete="tel" inputmode="tel" placeholder="03-0000-0000" />
-          <small class="field-error" id="phoneNumber-error"></small>
-        </label>
-
-        <label>
           <span>想定利用人数</span>
           <input id="seatEstimate" name="seatEstimate" inputmode="numeric" placeholder="5" />
           <small class="field-error" id="seatEstimate-error"></small>
@@ -638,7 +632,6 @@
           requestedProducts: [nextForm.requestedProduct],
           safePayload: {
             source: "lp_contact_form",
-            phoneNumber: nextForm.phoneNumber || undefined,
             seatEstimate: nextForm.seatEstimate ? Number(nextForm.seatEstimate) : undefined,
             notes: nextForm.notes || undefined,
             consentAccepted: true,
@@ -733,7 +726,6 @@
         organizationName: fieldValue("organizationName"),
         adminName: fieldValue("adminName"),
         adminEmail: fieldValue("adminEmail"),
-        phoneNumber: fieldValue("phoneNumber"),
         seatEstimate: fieldValue("seatEstimate").replace(/[^0-9]/g, ""),
         requestedProduct: fieldValue("requestedProduct") || "charting",
         notes: fieldValue("notes"),
@@ -758,9 +750,6 @@
       } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.adminEmail)) {
         errors.adminEmail = "メールアドレスの形式を確認してください。";
       }
-      if (input.phoneNumber && input.phoneNumber.length > 40) {
-        errors.phoneNumber = "電話番号は40文字以内で入力してください。";
-      }
       if (input.seatEstimate) {
         const numeric = Number(input.seatEstimate);
         if (!Number.isFinite(numeric) || numeric <= 0) {
@@ -782,7 +771,7 @@
     }
 
     function renderFieldErrors(errors) {
-      for (const key of ["organizationName", "adminName", "adminEmail", "phoneNumber", "seatEstimate", "requestedProduct", "notes"]) {
+      for (const key of ["organizationName", "adminName", "adminEmail", "seatEstimate", "requestedProduct", "notes"]) {
         const input = document.querySelector(`#${key}`);
         const error = errors[key] || "";
         input.setAttribute("aria-invalid", error ? "true" : "false");
@@ -931,7 +920,7 @@
         const raw = window.sessionStorage.getItem(CONTACT_SIGNUP_DRAFT_STORAGE_KEY);
         if (!raw) return;
         const saved = JSON.parse(raw);
-        for (const key of ["organizationName", "adminName", "adminEmail", "phoneNumber", "seatEstimate", "requestedProduct", "notes"]) {
+        for (const key of ["organizationName", "adminName", "adminEmail", "seatEstimate", "requestedProduct", "notes"]) {
           if (saved[key]) {
             document.querySelector(`#${key}`).value = saved[key];
           }

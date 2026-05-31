@@ -66,7 +66,6 @@ export async function createContactSignupHandler({ store, input, config, clientI
     adminDisplayName: input.adminName,
     adminName: input.adminName,
     adminEmail: input.adminEmail,
-    phoneNumber: input.phoneNumber,
     seatEstimate: input.seatEstimate ?? null,
     notes: input.notes || null,
     ...consentRecord,

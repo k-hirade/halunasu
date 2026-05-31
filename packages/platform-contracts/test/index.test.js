@@ -76,12 +76,19 @@ test("validates signup applications and patch input", () => {
     organizationDisplayName: "Signup Clinic",
     applicantName: "Applicant",
     applicantEmail: "Applicant@Example.com",
-    requestedProducts: ["charting", "unknown"]
+    requestedProducts: ["charting", "unknown"],
+    safePayload: {
+      source: "lp_contact_form",
+      phoneNumber: "03-0000-0000",
+      seatEstimate: 5
+    }
   });
 
   assert.equal(signup.organizationCode, "signup-clinic");
   assert.equal(signup.applicantEmail, "applicant@example.com");
   assert.deepEqual(signup.requestedProducts, ["charting"]);
+  assert.equal(signup.safePayload.phoneNumber, undefined);
+  assert.equal(signup.safePayload.seatEstimate, 5);
   assert.deepEqual(validatePatchOrganizationInput({ displayName: "Updated", defaultPromptProfileId: "system-default" }), {
     displayName: "Updated",
     defaultPromptProfileId: "system-default"

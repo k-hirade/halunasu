@@ -556,7 +556,7 @@ export const createContactSignupRequestSchema = z.object({
   organizationName: normalizedText(160).pipe(z.string().min(1)),
   adminName: normalizedText(120).pipe(z.string().min(1)),
   adminEmail: normalizedEmail(),
-  phoneNumber: normalizedText(40).pipe(z.string().min(1)),
+  phoneNumber: normalizedText(40).optional(),
   seatEstimate: z.coerce.number().int().min(1).max(1000).optional().nullable(),
   notes: normalizedMultilineText(4000).optional().default(""),
   consentAccepted: z.literal(true)
