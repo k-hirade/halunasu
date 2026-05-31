@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="ハルナスへのお問い合わせ" />
+  <meta name="description" content="ハルナスの無料トライアル申し込み" />
   <meta name="halunasu-platform-api-base-url" content="" />
-  <title>お問い合わせ | ハルナス</title>
+  <title>無料トライアル申し込み | ハルナス</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -440,7 +440,7 @@
   <main class="signup-shell signup-shell--compact">
     <section class="signup-panel signup-panel--single" id="signup-panel">
       <div class="signup-heading">
-        <h1>お問い合わせ</h1>
+        <h1>無料トライアル申し込み</h1>
         <p class="signup-lead">
           医療機関情報と担当者連絡先を入力してください。確認メールから初回設定へ進み、利用を開始できます。
         </p>
@@ -517,7 +517,7 @@
 
         <p class="signup-error" id="signup-error" hidden></p>
         <button class="signup-submit" id="submit-button" type="submit">
-          <span>お問い合わせを送信する</span>
+          <span>無料トライアルを申し込む</span>
         </button>
       </form>
     </section>
@@ -650,7 +650,7 @@
         submittedCopy.textContent = `${nextForm.adminEmail} 宛に確認リンクを送信しました。メール内のリンクを開いて初回設定へ進んでください。`;
         showStep(submittedPanel);
       } catch (error) {
-        setError(signupError, toUserFacingErrorMessage(error, "お問い合わせの送信に失敗しました。"));
+        setError(signupError, toUserFacingErrorMessage(error, "無料トライアル申し込みの送信に失敗しました。"));
       } finally {
         setBusy(submitButton, false);
       }
@@ -662,7 +662,7 @@
 
       const password = document.querySelector("#password").value;
       if (!passwordSetupToken) {
-        setError(passwordError, "初回設定リンクを確認できません。もう一度お問い合わせから進めてください。");
+        setError(passwordError, "初回設定リンクを確認できません。もう一度無料トライアル申し込みから進めてください。");
         return;
       }
       if (password.length < 12) {

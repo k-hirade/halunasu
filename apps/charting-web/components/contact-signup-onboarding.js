@@ -179,7 +179,7 @@ export function ContactSignupOnboarding() {
 
       router.push(`/contact-signup/submitted?${query.toString()}`);
     } catch (submitError) {
-      setError(toUserFacingErrorMessage(submitError, "お問い合わせの送信に失敗しました。"));
+      setError(toUserFacingErrorMessage(submitError, "無料トライアル申し込みの送信に失敗しました。"));
       setIsSubmitting(false);
     }
   }
@@ -190,7 +190,7 @@ export function ContactSignupOnboarding() {
     <main className="signup-shell signup-shell--compact">
       <section className="signup-panel signup-panel--single">
         <div className="signup-heading">
-          <h1>お問い合わせ</h1>
+          <h1>無料トライアル申し込み</h1>
           <p className="signup-lead">
             医療機関情報と担当者連絡先を入力してください。確認メールから初回設定へ進み、利用を開始できます。
           </p>
@@ -333,7 +333,7 @@ export function ContactSignupOnboarding() {
 
           <button className={`signup-submit ${isSubmitting ? "btn--loading" : ""}`} type="submit" disabled={isSubmitting}>
             {isSubmitting ? <span className="btn-spinner" aria-hidden="true" /> : null}
-            <span>{isSubmitting ? "確認メールを準備中..." : "お問い合わせを送信する"}</span>
+            <span>{isSubmitting ? "確認メールを準備中..." : "無料トライアルを申し込む"}</span>
           </button>
         </form>
       </section>

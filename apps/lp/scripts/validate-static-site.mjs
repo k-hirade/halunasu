@@ -30,7 +30,7 @@ assert(signup.includes("/v1/signup/verify-email"), "signup form must support ema
 assert(signup.includes("/v1/signup/setup-admin-password"), "signup form must support admin password setup");
 assert(!signup.includes("startCheckout: true"), "signup form must not start Stripe checkout during the 14-day trial");
 assert(!signup.includes("billingCheckout.checkoutUrl"), "signup form must not redirect to Stripe checkout after password setup");
-assert(signup.includes("お問い合わせを送信する"), "signup form must keep the legacy contact CTA");
+assert(signup.includes("無料トライアルを申し込む"), "signup form must show the trial signup CTA");
 assert(signup.includes("確認メールを送信しました"), "signup form must show the legacy submitted mail state");
 assert(signup.includes("[hidden]"), "signup form must force hidden step panels to disappear");
 assert(signup.includes("medical.contactSignupDraft.v1"), "signup form must keep the legacy contact draft storage key");

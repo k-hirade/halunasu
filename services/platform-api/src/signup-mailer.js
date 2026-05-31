@@ -172,7 +172,7 @@ function buildVerificationMail({ signupApplication, verificationUrl, expiresAt, 
   const text = [
     `${recipientName} 様`,
     "",
-    "ハルナスへのお問い合わせありがとうございます。",
+    "ハルナスの無料トライアルにお申し込みいただきありがとうございます。",
     "以下のリンクを開いてメールアドレス確認を完了してください。",
     "",
     verificationUrl,
@@ -183,7 +183,7 @@ function buildVerificationMail({ signupApplication, verificationUrl, expiresAt, 
   ].join("\n");
   const html = [
     `<p>${escapeHtml(recipientName)} 様</p>`,
-    "<p>ハルナスへのお問い合わせありがとうございます。<br />以下のリンクを開いてメールアドレス確認を完了してください。</p>",
+    "<p>ハルナスの無料トライアルにお申し込みいただきありがとうございます。<br />以下のリンクを開いてメールアドレス確認を完了してください。</p>",
     `<p><a href="${escapeHtmlAttr(verificationUrl)}">${escapeHtml(verificationUrl)}</a></p>`,
     `<p>有効期限: ${escapeHtml(expiresAt || "24時間以内")}</p>`,
     "<p>心当たりがない場合はこのメールを破棄してください。</p>"
