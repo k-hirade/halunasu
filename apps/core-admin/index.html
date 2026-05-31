@@ -295,6 +295,104 @@
     .status.warn { color: var(--warn); background: #fff4df; }
     .status.bad { color: var(--danger); background: #fdeceb; }
 
+    .row-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .admin-modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(15, 23, 42, 0.44);
+      backdrop-filter: blur(6px);
+    }
+
+    .admin-modal-card {
+      position: relative;
+      width: min(640px, 100%);
+      max-height: calc(100dvh - 40px);
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 22px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .admin-modal-head {
+      padding-right: 48px;
+    }
+
+    .admin-modal-head h2,
+    .admin-modal-head p {
+      margin: 0;
+    }
+
+    .admin-modal-head p {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .admin-modal-form {
+      display: grid;
+      gap: 14px;
+    }
+
+    .admin-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding-top: 4px;
+    }
+
+    .modal-close-button {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      min-height: 40px;
+      width: 40px;
+      padding: 0;
+      color: var(--ink);
+      background: #e7edf5;
+      display: grid;
+      place-items: center;
+    }
+
+    .modal-close-button:hover,
+    button.secondary:hover {
+      background: #dbe5f1;
+    }
+
+    .readonly-field {
+      display: grid;
+      gap: 6px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f7f9fc;
+    }
+
+    .readonly-field span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .readonly-field strong {
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
     .mfa-setup {
       display: none;
       grid-template-columns: 180px minmax(0, 1fr);
@@ -725,6 +823,21 @@
     </main>
   </div>
 
+  <div class="admin-modal-overlay hidden" id="edit-modal" aria-hidden="true">
+    <section class="admin-modal-card" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+      <button class="modal-close-button" id="edit-modal-close" type="button" aria-label="閉じる">×</button>
+      <div class="admin-modal-head">
+        <h2 id="edit-modal-title">編集</h2>
+        <p id="edit-modal-description">Coreの共通マスターを更新します。</p>
+      </div>
+      <form class="admin-modal-form" id="edit-modal-form"></form>
+      <div class="admin-modal-footer">
+        <button class="secondary" id="edit-modal-cancel" type="button">キャンセル</button>
+        <button class="accent" id="edit-modal-submit" type="submit" form="edit-modal-form">保存</button>
+      </div>
+    </section>
+  </div>
+
   <script>
     const apiBaseUrl = metaContent("halunasu-platform-api-base-url") || param("platformApi") || "";
     const state = {
@@ -732,7 +845,11 @@
       csrfToken: "",
       organizations: [],
       orgId: "",
-      activeView: "organizations"
+      activeView: "organizations",
+      facilities: [],
+      departments: [],
+      patients: [],
+      edit: null
     };
 
     const els = {
@@ -748,7 +865,12 @@
       mfaConfirmCode: document.querySelector("#mfa-confirm-code"),
       sessionChip: document.querySelector("#session-chip"),
       message: document.querySelector("#message"),
-      orgSelect: document.querySelector("#org-select")
+      orgSelect: document.querySelector("#org-select"),
+      editModal: document.querySelector("#edit-modal"),
+      editModalTitle: document.querySelector("#edit-modal-title"),
+      editModalDescription: document.querySelector("#edit-modal-description"),
+      editModalForm: document.querySelector("#edit-modal-form"),
+      editModalSubmit: document.querySelector("#edit-modal-submit")
     };
 
     document.querySelector("#login-form").addEventListener("submit", async (event) => {
@@ -808,6 +930,12 @@
     document.querySelector("#patient-form").addEventListener("submit", submitPatient);
     document.querySelector("#entitlement-form").addEventListener("submit", submitEntitlement);
     document.querySelector("#data-request-form").addEventListener("submit", submitDataRequest);
+    els.editModalForm.addEventListener("submit", submitEditModal);
+    document.querySelector("#edit-modal-close").addEventListener("click", closeEditModal);
+    document.querySelector("#edit-modal-cancel").addEventListener("click", closeEditModal);
+    els.editModal.addEventListener("click", (event) => {
+      if (event.target === els.editModal) closeEditModal();
+    });
 
     setupPasswordToggle();
     loadSession();
@@ -895,36 +1023,54 @@
 
     async function loadFacilities() {
       if (!state.orgId) return;
-      renderTable("facilities-table", (await api(`/v1/organizations/${state.orgId}/facilities`)).facilities || [], [
+      state.facilities = (await api(`/v1/organizations/${state.orgId}/facilities`)).facilities || [];
+      renderTable("facilities-table", state.facilities, [
         ["facilityId", "facilityId"],
         ["displayName", "displayName"],
         ["medicalInstitutionCode", "medicalInstitutionCode"],
         ["regionalBureau", "regionalBureau"],
         ["status", "status"]
-      ]);
+      ], {
+        action: (item) => `<div class="row-actions"><button class="secondary" data-edit-facility="${escapeHtml(item.facilityId)}" type="button">編集</button></div>`
+      });
+      document.querySelectorAll("[data-edit-facility]").forEach((button) => {
+        button.addEventListener("click", () => openEditModal("facility", button.dataset.editFacility));
+      });
     }
 
     async function loadDepartments() {
       if (!state.orgId) return;
-      renderTable("departments-table", (await api(`/v1/organizations/${state.orgId}/departments`)).departments || [], [
+      state.departments = (await api(`/v1/organizations/${state.orgId}/departments`)).departments || [];
+      renderTable("departments-table", state.departments, [
         ["departmentId", "departmentId"],
         ["facilityId", "facilityId"],
         ["displayName", "displayName"],
         ["code", "code"],
         ["status", "status"]
-      ]);
+      ], {
+        action: (item) => `<div class="row-actions"><button class="secondary" data-edit-department="${escapeHtml(item.departmentId)}" type="button">編集</button></div>`
+      });
+      document.querySelectorAll("[data-edit-department]").forEach((button) => {
+        button.addEventListener("click", () => openEditModal("department", button.dataset.editDepartment));
+      });
     }
 
     async function loadPatients() {
       if (!state.orgId) return;
-      renderTable("patients-table", (await api(`/v1/organizations/${state.orgId}/patients`)).patients || [], [
+      state.patients = (await api(`/v1/organizations/${state.orgId}/patients`)).patients || [];
+      renderTable("patients-table", state.patients, [
         ["patientId", "patientId"],
         ["primaryPatientNumber", "primaryPatientNumber"],
         ["displayName", "displayName"],
         ["birthDate", "birthDate"],
         ["sex", "sex"],
         ["status", "status"]
-      ]);
+      ], {
+        action: (item) => `<div class="row-actions"><button class="secondary" data-edit-patient="${escapeHtml(item.patientId)}" type="button">編集</button></div>`
+      });
+      document.querySelectorAll("[data-edit-patient]").forEach((button) => {
+        button.addEventListener("click", () => openEditModal("patient", button.dataset.editPatient));
+      });
     }
 
     async function loadEntitlements() {
@@ -1059,6 +1205,228 @@
       } catch (error) {
         showMessage(error.message, "error");
       }
+    }
+
+    function openEditModal(type, id) {
+      const item = findEditableItem(type, id);
+      if (!item) {
+        showMessage("編集対象が見つかりません。再読み込みしてください。", "error");
+        return;
+      }
+
+      state.edit = { type, id };
+      const titleMap = {
+        facility: "施設を編集",
+        department: "診療科を編集",
+        patient: "患者を編集"
+      };
+      const descriptionMap = {
+        facility: "病院内で共通利用する施設情報を更新します。",
+        department: "カルテ作成や診療報酬算定で参照する診療科情報を更新します。",
+        patient: "各アプリで参照するCore患者インデックスを更新します。"
+      };
+
+      els.editModalTitle.textContent = titleMap[type] || "編集";
+      els.editModalDescription.textContent = descriptionMap[type] || "Coreの共通マスターを更新します。";
+      els.editModalForm.innerHTML = renderEditForm(type, item);
+      els.editModalSubmit.disabled = false;
+      show(els.editModal);
+      els.editModal.setAttribute("aria-hidden", "false");
+      setTimeout(() => els.editModalForm.querySelector("input, select, textarea")?.focus(), 0);
+    }
+
+    function closeEditModal() {
+      state.edit = null;
+      els.editModalForm.innerHTML = "";
+      els.editModal.setAttribute("aria-hidden", "true");
+      hide(els.editModal);
+    }
+
+    function findEditableItem(type, id) {
+      if (type === "facility") return state.facilities.find((item) => item.facilityId === id);
+      if (type === "department") return state.departments.find((item) => item.departmentId === id);
+      if (type === "patient") return state.patients.find((item) => item.patientId === id);
+      return null;
+    }
+
+    function renderEditForm(type, item) {
+      if (type === "facility") return renderFacilityEditForm(item);
+      if (type === "department") return renderDepartmentEditForm(item);
+      if (type === "patient") return renderPatientEditForm(item);
+      return "";
+    }
+
+    function renderFacilityEditForm(facility) {
+      return `
+        ${readonlyField("facilityId", facility.facilityId)}
+        ${textField("表示名", "displayName", facility.displayName, { required: true })}
+        <div class="grid-2">
+          ${textField("医療機関コード", "medicalInstitutionCode", facility.medicalInstitutionCode)}
+          ${textField("厚生局", "regionalBureau", facility.regionalBureau)}
+        </div>
+        <div class="grid-2">
+          ${textField("都道府県", "prefecture", facility.prefecture)}
+          ${selectField("状態", "status", facility.status || "active", [
+            ["active", "active"],
+            ["inactive", "inactive"]
+          ])}
+        </div>
+      `;
+    }
+
+    function renderDepartmentEditForm(department) {
+      const facilityOptions = [
+        ["", "施設に紐づけない"],
+        ...state.facilities.map((facility) => [facility.facilityId, facility.displayName || facility.facilityId])
+      ];
+      return `
+        ${readonlyField("departmentId", department.departmentId)}
+        ${textField("表示名", "displayName", department.displayName, { required: true })}
+        <div class="grid-2">
+          ${selectField("施設", "facilityId", department.facilityId || "", facilityOptions)}
+          ${textField("コード", "code", department.code)}
+        </div>
+        <div class="grid-2">
+          ${textField("専門領域", "specialty", department.specialty)}
+          ${selectField("状態", "status", department.status || "active", [
+            ["active", "active"],
+            ["inactive", "inactive"]
+          ])}
+        </div>
+      `;
+    }
+
+    function renderPatientEditForm(patient) {
+      return `
+        ${readonlyField("patientId", patient.patientId)}
+        <div class="grid-2">
+          ${textField("表示名", "displayName", patient.displayName, { required: true })}
+          ${textField("かな", "displayNameKana", patient.displayNameKana)}
+        </div>
+        <div class="grid-2">
+          ${textField("患者番号", "primaryPatientNumber", patient.primaryPatientNumber)}
+          ${textField("生年月日", "birthDate", patient.birthDate, { type: "date" })}
+        </div>
+        <div class="grid-2">
+          ${selectField("性別", "sex", patient.sex || "unknown", [
+            ["unknown", "unknown"],
+            ["male", "male"],
+            ["female", "female"],
+            ["other", "other"]
+          ])}
+          ${selectField("状態", "status", patient.status || "active", [
+            ["active", "active"],
+            ["inactive", "inactive"],
+            ["merged", "merged"]
+          ])}
+        </div>
+        <div class="field">
+          <label for="edit-notes">メモ</label>
+          <textarea id="edit-notes" name="notes" rows="4">${escapeHtml(patient.notes || "")}</textarea>
+        </div>
+      `;
+    }
+
+    function readonlyField(label, value) {
+      return `
+        <div class="readonly-field">
+          <span>${escapeHtml(label)}</span>
+          <strong class="mono">${escapeHtml(value || "-")}</strong>
+        </div>
+      `;
+    }
+
+    function textField(label, name, value, options = {}) {
+      return `
+        <div class="field">
+          <label for="edit-${escapeHtml(name)}">${escapeHtml(label)}</label>
+          <input id="edit-${escapeHtml(name)}" name="${escapeHtml(name)}" type="${escapeHtml(options.type || "text")}" value="${escapeHtml(value || "")}" ${options.required ? "required" : ""} />
+        </div>
+      `;
+    }
+
+    function selectField(label, name, value, options) {
+      return `
+        <div class="field">
+          <label for="edit-${escapeHtml(name)}">${escapeHtml(label)}</label>
+          <select id="edit-${escapeHtml(name)}" name="${escapeHtml(name)}">
+            ${options.map(([optionValue, optionLabel]) => `
+              <option value="${escapeHtml(optionValue)}" ${String(optionValue) === String(value || "") ? "selected" : ""}>${escapeHtml(optionLabel)}</option>
+            `).join("")}
+          </select>
+        </div>
+      `;
+    }
+
+    async function submitEditModal(event) {
+      event.preventDefault();
+      if (!state.edit || !state.orgId) return;
+
+      const data = new FormData(event.currentTarget);
+      const { type, id } = state.edit;
+      const config = editPayload(type, data);
+      if (!config) return;
+
+      els.editModalSubmit.disabled = true;
+      try {
+        await api(`/v1/organizations/${state.orgId}/${config.collection}/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          csrf: true,
+          body: config.body
+        });
+        closeEditModal();
+        showMessage("更新しました", "success");
+        await refreshAll();
+      } catch (error) {
+        showMessage(error.message, "error");
+      } finally {
+        els.editModalSubmit.disabled = false;
+      }
+    }
+
+    function editPayload(type, data) {
+      if (type === "facility") {
+        return {
+          collection: "facilities",
+          body: {
+            displayName: data.get("displayName"),
+            medicalInstitutionCode: emptyToNull(data.get("medicalInstitutionCode")),
+            regionalBureau: emptyToNull(data.get("regionalBureau")),
+            prefecture: emptyToNull(data.get("prefecture")),
+            status: data.get("status")
+          }
+        };
+      }
+
+      if (type === "department") {
+        return {
+          collection: "departments",
+          body: {
+            displayName: data.get("displayName"),
+            facilityId: emptyToNull(data.get("facilityId")),
+            code: emptyToNull(data.get("code")),
+            specialty: emptyToNull(data.get("specialty")),
+            status: data.get("status")
+          }
+        };
+      }
+
+      if (type === "patient") {
+        return {
+          collection: "patients",
+          body: {
+            displayName: data.get("displayName"),
+            displayNameKana: emptyToNull(data.get("displayNameKana")),
+            primaryPatientNumber: emptyToNull(data.get("primaryPatientNumber")),
+            birthDate: emptyToNull(data.get("birthDate")),
+            sex: data.get("sex"),
+            status: data.get("status"),
+            notes: emptyToNull(data.get("notes"))
+          }
+        };
+      }
+
+      return null;
     }
 
     async function startMfaEnrollment() {

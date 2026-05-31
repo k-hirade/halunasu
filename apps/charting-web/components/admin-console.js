@@ -411,6 +411,19 @@ function clearBillingFlowHintFromUrl() {
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
+function resolveCoreAdminUrl() {
+  if (typeof window === "undefined") {
+    return "https://admin.halunasu.com";
+  }
+
+  const host = window.location.hostname;
+  if (host.includes("stg.halunasu.com") || host.includes("halunasu-charting-stg")) {
+    return "https://admin.stg.halunasu.com";
+  }
+
+  return "https://admin.halunasu.com";
+}
+
 function syncAdminSectionUrl(tabId, { replace = false } = {}) {
   if (typeof window === "undefined") {
     return;
@@ -3003,6 +3016,20 @@ export function AdminConsole() {
                       <option value={minutes} key={minutes}>{minutes}分</option>
                     ))}
                   </select>
+                </div>
+                <div className="admin-settings-row">
+                  <div className="editor-state editor-state--block">
+                    <span>共通マスター管理</span>
+                    <small>患者、施設、診療科は Core Admin で追加・編集します。</small>
+                  </div>
+                  <button
+                    className="btn btn--ghost"
+                    onClick={() => window.open(resolveCoreAdminUrl(), "_blank", "noopener,noreferrer")}
+                    type="button"
+                  >
+                    Core Adminを開く
+                    <Icon name="chevronRight" size={15} />
+                  </button>
                 </div>
                 <div className="admin-settings-row">
                   <div className="editor-state">

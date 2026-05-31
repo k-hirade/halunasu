@@ -42,5 +42,6 @@ test("global settings drawer scrolls independently", { timeout: 60_000 }, async 
     await accountLink.scrollIntoViewIfNeeded();
     await accountLink.click();
     await page.waitForURL(/section=account/);
+    await page.getByRole("button", { name: /Core Adminを開く/ }).waitFor({ state: "visible" });
   }, { viewport: { width: 1280, height: 420 } });
 });
