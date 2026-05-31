@@ -417,7 +417,7 @@ function resolveCoreAdminUrl() {
   }
 
   const host = window.location.hostname;
-  if (host.includes("stg.halunasu.com") || host.includes("halunasu-charting-stg")) {
+  if (host.startsWith("stg.") || host.includes(".stg.") || host.includes("halunasu-charting-stg")) {
     return "https://admin.stg.halunasu.com";
   }
 
