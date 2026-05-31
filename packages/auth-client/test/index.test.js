@@ -4,6 +4,7 @@ import { createSignedSession } from "../../../services/platform-api/src/auth/ses
 import {
   CSRF_COOKIE_NAME,
   SESSION_COOKIE_NAME,
+  entitlementAllowsProductUse,
   forbiddenError,
   hasGlobalRole,
   hasProductAccess,
@@ -42,6 +43,17 @@ test("verifies Platform session cookies and product roles", () => {
   assert.equal(hasGlobalRole(verified, ["org_admin"]), true);
   assert.equal(hasProductAccess(verified, "charting", ["doctor"]), true);
   assert.doesNotThrow(() => requirePlatformCsrf(headers, verified));
+});
+
+test("allows cancel_scheduled entitlement until currentPeriodEnd", () => {
+  assert.equal(entitlementAllowsProductUse({
+    status: "cancel_scheduled",
+    currentPeriodEnd: "2026-05-29T00:00:00.000Z"
+  }, new Date("2026-05-28T00:00:00.000Z")), true);
+  assert.equal(entitlementAllowsProductUse({
+    status: "cancel_scheduled",
+    currentPeriodEnd: "2026-05-27T00:00:00.000Z"
+  }, new Date("2026-05-28T00:00:00.000Z")), false);
 });
 
 test("builds shared product context with entitlement and token version checks", async () => {

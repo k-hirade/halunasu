@@ -69,7 +69,10 @@ export function validatePatchOrganizationInput(input = {}) {
     billing: hasOwn(input, "billing") && isPlainObject(input.billing) ? input.billing : undefined,
     access: hasOwn(input, "access") && isPlainObject(input.access) ? input.access : undefined,
     defaultFacilityId: hasOwn(input, "defaultFacilityId") ? optionalString(input.defaultFacilityId) : undefined,
-    defaultDepartmentId: hasOwn(input, "defaultDepartmentId") ? optionalString(input.defaultDepartmentId) : undefined
+    defaultDepartmentId: hasOwn(input, "defaultDepartmentId") ? optionalString(input.defaultDepartmentId) : undefined,
+    recordingMaxDurationMinutes: hasOwn(input, "recordingMaxDurationMinutes")
+      ? optionalPositiveInteger(input.recordingMaxDurationMinutes, "recordingMaxDurationMinutes")
+      : undefined
   });
 }
 
@@ -84,7 +87,8 @@ export function validateCreateMemberInput(input = {}) {
     facilityIds: normalizeStringArray(input.facilityIds),
     departmentIds: normalizeStringArray(input.departmentIds),
     defaultFacilityId: optionalString(input.defaultFacilityId),
-    defaultDepartmentId: optionalString(input.defaultDepartmentId)
+    defaultDepartmentId: optionalString(input.defaultDepartmentId),
+    defaultRecordingSource: optionalEnum(input.defaultRecordingSource, ["linked_mobile", "browser_microphone"], "defaultRecordingSource") || "linked_mobile"
   };
 }
 
@@ -102,7 +106,10 @@ export function validatePatchMemberInput(input = {}) {
     facilityIds: hasOwn(input, "facilityIds") ? normalizeStringArray(input.facilityIds) : undefined,
     departmentIds: hasOwn(input, "departmentIds") ? normalizeStringArray(input.departmentIds) : undefined,
     defaultFacilityId: hasOwn(input, "defaultFacilityId") ? optionalString(input.defaultFacilityId) : undefined,
-    defaultDepartmentId: hasOwn(input, "defaultDepartmentId") ? optionalString(input.defaultDepartmentId) : undefined
+    defaultDepartmentId: hasOwn(input, "defaultDepartmentId") ? optionalString(input.defaultDepartmentId) : undefined,
+    defaultRecordingSource: hasOwn(input, "defaultRecordingSource")
+      ? optionalEnum(input.defaultRecordingSource, ["linked_mobile", "browser_microphone"], "defaultRecordingSource")
+      : undefined
   });
 }
 

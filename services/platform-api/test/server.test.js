@@ -573,6 +573,108 @@ test("creates authenticated billing Checkout and exposes billing status", async 
   assert.equal(store.getOrganization(organization.orgId).billing.stripePriceId, "price_test_001");
 });
 
+test("adds paid app to an existing Stripe subscription as an item", async () => {
+  const store = createTestStore();
+  const stripeClient = createMockStripeClient();
+  const { organization, headers } = await createAuthenticatedMember(store, {
+    organizationCode: "Billing Item Clinic",
+    displayName: "Billing Item Clinic",
+    globalRoles: ["org_admin"]
+  });
+  store.updateOrganization(organization.orgId, {
+    billing: {
+      provider: "stripe",
+      billingModel: "app_addon",
+      status: "active",
+      stripeCustomerId: "cus_existing_001",
+      stripeSubscriptionId: "sub_existing_001"
+    }
+  });
+  store.upsertProductEntitlement(organization.orgId, {
+    productId: "charting",
+    status: "trialing",
+    plan: "trial",
+    stripePriceLookupKey: "halunasu_charting_flat_monthly_jpy_v1"
+  });
+
+  const checkout = await request(
+    store,
+    "POST",
+    "/v1/billing/products/charting/checkout-session",
+    {},
+    headers,
+    { stripeClient, billingReturnBaseUrl: "https://charting.example.test" }
+  );
+  const entitlement = store.getProductEntitlement(organization.orgId, "charting");
+
+  assert.equal(checkout.statusCode, 200);
+  assert.equal(checkout.body.billingCheckout.checkoutRequired, false);
+  assert.equal(checkout.body.billingCheckout.checkoutUrl, null);
+  assert.equal(entitlement.status, "enabled");
+  assert.equal(entitlement.stripeSubscriptionItemId, "si_test_added_001");
+});
+
+test("runs trial reminder and expiry maintenance", async () => {
+  const store = createTestStore();
+  const sentMail = [];
+  const signupMailer = {
+    async sendTrialReminderMail(input) {
+      sentMail.push(input);
+      return { delivered: true, mode: "test" };
+    }
+  };
+  const reminderOrg = store.createOrganization({
+    organizationCode: "Reminder Clinic",
+    displayName: "Reminder Clinic"
+  });
+  store.createMember(reminderOrg.orgId, {
+    loginId: "billing@example.com",
+    displayName: "Billing Admin",
+    email: "billing@example.com",
+    globalRoles: ["billing_admin"],
+    productRoles: { charting: ["admin"] },
+    password: "correct horse battery staple"
+  });
+  store.upsertProductEntitlement(reminderOrg.orgId, {
+    productId: "charting",
+    status: "trialing",
+    trialEndsAt: "2026-05-30T00:00:00.000Z",
+    reminderStartsAt: "2026-05-27T00:00:00.000Z",
+    reminderCount: 0
+  });
+  const expiredOrg = store.createOrganization({
+    organizationCode: "Expired Clinic",
+    displayName: "Expired Clinic"
+  });
+  store.upsertProductEntitlement(expiredOrg.orgId, {
+    productId: "charting",
+    status: "trialing",
+    trialEndsAt: "2026-05-26T00:00:00.000Z",
+    reminderStartsAt: "2026-05-23T00:00:00.000Z"
+  });
+
+  const response = await request(
+    store,
+    "POST",
+    "/v1/internal/billing/maintenance",
+    {},
+    { "x-halunasu-maintenance-secret": "maintenance-secret" },
+    {
+      signupMailer,
+      maintenanceSecret: "maintenance-secret",
+      billingReturnBaseUrl: "https://charting.example.test",
+      now: new Date("2026-05-28T00:00:00.000Z")
+    }
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.billingMaintenance.remindersSent, 1);
+  assert.equal(response.body.billingMaintenance.trialsExpired, 1);
+  assert.equal(sentMail.length, 1);
+  assert.equal(store.getProductEntitlement(expiredOrg.orgId, "charting").status, "payment_required");
+  assert.equal(store.getProductEntitlement(reminderOrg.orgId, "charting").reminderCount, 1);
+});
+
 test("processes signed Stripe webhook and updates Core billing state", async () => {
   const store = createTestStore();
   const { organization } = await createAuthenticatedMember(store, {
@@ -1059,6 +1161,7 @@ function request(store, method, path, body, headers = {}, options = {}) {
     signupRateLimit: options.signupRateLimit,
     stripeClient: options.stripeClient,
     stripeWebhookSecret: options.stripeWebhookSecret,
+    maintenanceSecret: options.maintenanceSecret,
     billingReturnBaseUrl: options.billingReturnBaseUrl,
     signupMailer: options.signupMailer,
     publicLpBaseUrl: options.publicLpBaseUrl,
@@ -1099,6 +1202,12 @@ function createMockStripeClient() {
           expires_at: 1780000000,
           input
         }
+      };
+    },
+    async createSubscriptionItem() {
+      return {
+        price: { id: "price_test_001" },
+        subscriptionItem: { id: "si_test_added_001" }
       };
     },
     async createBillingPortalSession() {

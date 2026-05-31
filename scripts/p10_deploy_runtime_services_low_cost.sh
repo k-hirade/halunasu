@@ -91,6 +91,9 @@ deploy_service() {
   if [[ "${service}" == platform-api-* ]] && secret_exists "${project}" "RESEND_API_KEY"; then
     secret_vars="${secret_vars},RESEND_API_KEY=RESEND_API_KEY:latest"
   fi
+  if [[ "${service}" == platform-api-* ]] && secret_exists "${project}" "PLATFORM_MAINTENANCE_SECRET"; then
+    secret_vars="${secret_vars},PLATFORM_MAINTENANCE_SECRET=PLATFORM_MAINTENANCE_SECRET:latest"
+  fi
   if [[ "${service}" == charting-gateway-* ]]; then
     secret_vars="${secret_vars},PAIRING_SIGNING_SECRET=PAIRING_SIGNING_SECRET:latest"
   fi

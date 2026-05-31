@@ -116,7 +116,7 @@ export async function requireProductContext(input = {}, options = {}) {
   }
 
   const entitlement = await platformStore.getProductEntitlement(session.orgId, productId);
-  const entitlementAllowsUse = ACTIVE_ENTITLEMENT_STATUSES.includes(entitlement?.status);
+  const entitlementAllowsUse = entitlementAllowsProductUse(entitlement, input.now);
   const roleAllowsUse = hasProductAccess(session, productId, allowedProductRoles, globalRoles);
   if (!entitlementAllowsUse || !roleAllowsUse) {
     throw forbiddenError(`${productLabel} product access is required`);
@@ -129,6 +129,20 @@ export async function requireProductContext(input = {}, options = {}) {
     entitlement,
     productId
   };
+}
+
+export function entitlementAllowsProductUse(entitlement = {}, nowInput = new Date()) {
+  const status = entitlement?.status || "";
+  if (ACTIVE_ENTITLEMENT_STATUSES.includes(status)) {
+    return true;
+  }
+  if (status !== "cancel_scheduled") {
+    return false;
+  }
+
+  const now = nowInput instanceof Date ? nowInput : new Date(nowInput || Date.now());
+  const currentPeriodEndMs = entitlement.currentPeriodEnd ? Date.parse(entitlement.currentPeriodEnd) : NaN;
+  return Number.isFinite(currentPeriodEndMs) && currentPeriodEndMs > now.getTime();
 }
 
 export function parseCookies(cookieHeader) {

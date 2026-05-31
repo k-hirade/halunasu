@@ -45,6 +45,20 @@ export function createSignupMailer(options = {}) {
       });
 
       return sendMail({ config, fetchImpl, mail });
+    },
+
+    async sendTrialReminderMail({ organization, entitlement, recipient, billingUrl, daysRemaining }) {
+      const mail = buildTrialReminderMail({
+        organization,
+        entitlement,
+        recipient,
+        billingUrl,
+        daysRemaining,
+        from: config.from,
+        replyTo: config.replyTo
+      });
+
+      return sendMail({ config, fetchImpl, mail });
     }
   };
 }
@@ -225,6 +239,58 @@ function buildPasswordSetupMail({ signupApplication, organization, adminMember, 
     html,
     passwordSetupUrl
   };
+}
+
+function buildTrialReminderMail({ organization, entitlement, recipient, billingUrl, daysRemaining, from, replyTo }) {
+  const recipientName = recipient.displayName || recipient.loginId || "ご担当者";
+  const productLabel = productDisplayName(entitlement.productId);
+  const remainingLabel = daysRemaining <= 0 ? "本日" : `あと${daysRemaining}日`;
+  const subject = `【ハルナス】無料利用期間終了前のご案内（${productLabel}）`;
+  const organizationCode = organization?.organizationCode || "";
+  const text = [
+    `${recipientName} 様`,
+    "",
+    `ハルナス ${productLabel} の無料利用期間は${remainingLabel}で終了します。`,
+    "継続して利用する場合は、以下の画面からお支払い手続きを完了してください。",
+    "",
+    `医療機関コード: ${organizationCode}`,
+    `契約・支払い画面: ${billingUrl}`,
+    "",
+    "すでにお支払い済みの場合、このご案内は停止されます。"
+  ].join("\n");
+  const html = [
+    `<p>${escapeHtml(recipientName)} 様</p>`,
+    `<p>ハルナス ${escapeHtml(productLabel)} の無料利用期間は${escapeHtml(remainingLabel)}で終了します。</p>`,
+    "<p>継続して利用する場合は、以下の画面からお支払い手続きを完了してください。</p>",
+    "<ul>",
+    `<li>医療機関コード: ${escapeHtml(organizationCode)}</li>`,
+    "</ul>",
+    `<p>契約・支払い画面: <a href="${escapeHtmlAttr(billingUrl)}">${escapeHtml(billingUrl)}</a></p>`,
+    "<p>すでにお支払い済みの場合、このご案内は停止されます。</p>"
+  ].join("");
+
+  return {
+    from,
+    replyTo,
+    to: recipient.email || recipient.loginId,
+    subject,
+    text,
+    html,
+    billingUrl
+  };
+}
+
+function productDisplayName(productId) {
+  switch (productId) {
+    case "charting":
+      return "カルテ作成";
+    case "fee":
+      return "診療報酬算定";
+    case "referral":
+      return "紹介状作成";
+    default:
+      return "アプリ";
+  }
 }
 
 function escapeHtml(value) {

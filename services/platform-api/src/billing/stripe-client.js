@@ -124,6 +124,30 @@ export class StripeBillingClient {
     });
   }
 
+  async createSubscriptionItem(input = {}) {
+    const price = await this.lookupPrice({
+      priceId: input.priceId,
+      lookupKey: input.priceLookupKey || input.lookupKey
+    });
+    const quantity = Number.parseInt(String(input.quantity || 1), 10);
+    const subscriptionItem = await this.request("POST", "/subscription_items", compactObject({
+      subscription: input.subscriptionId,
+      price: price.id,
+      quantity: Number.isFinite(quantity) && quantity > 0 ? String(quantity) : "1",
+      proration_behavior: input.prorationBehavior || "none",
+      "metadata[orgId]": input.metadata?.orgId,
+      "metadata[organizationCode]": input.metadata?.organizationCode,
+      "metadata[productId]": input.metadata?.productId,
+      "metadata[kind]": input.metadata?.kind || "flat",
+      "metadata[source]": input.metadata?.source || "platform-api"
+    }));
+
+    return {
+      price,
+      subscriptionItem
+    };
+  }
+
   async request(method, path, params = {}) {
     if (!this.secretKey) {
       const error = new Error("STRIPE_SECRET_KEY is not configured");

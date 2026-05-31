@@ -1,14 +1,14 @@
 {
   "stg": {
-    "platform": "https://platform-api-stg-866813206652.asia-northeast1.run.app",
-    "charting": "https://charting-api-stg-3rl7ei3i4a-an.a.run.app",
+    "platform": "https://platform-api-stg-lp2t3inhza-an.a.run.app",
+    "charting": "https://charting-gateway-stg-3rl7ei3i4a-an.a.run.app",
     "fee": "https://fee-api-stg-wmfrwcpzkq-an.a.run.app",
-    "referral": "https://referral-api-stg-903620057515.asia-northeast1.run.app"
+    "referral": "https://referral-api-stg-etybalq3oq-an.a.run.app"
   },
   "prod": {
-    "platform": "https://platform-api-prod-387009254318.asia-northeast1.run.app",
-    "charting": "https://charting-api-prod-6dyw4sykta-an.a.run.app",
+    "platform": "https://platform-api-prod-3ia4p23nna-an.a.run.app",
+    "charting": "https://charting-gateway-prod-6dyw4sykta-an.a.run.app",
     "fee": "https://fee-api-prod-litocmjdaa-an.a.run.app",
-    "referral": "https://referral-api-prod-252775147719.asia-northeast1.run.app"
+    "referral": "https://referral-api-prod-yuaxdhe3hq-an.a.run.app"
   }
 }

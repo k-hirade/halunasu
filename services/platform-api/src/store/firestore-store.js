@@ -1018,6 +1018,8 @@ function createLoginIdentity({ organization, member, password, now }) {
 
 function hasPrivilegedRole(member) {
   return member.globalRoles.includes("org_admin")
+    || member.globalRoles.includes("org_owner")
+    || member.globalRoles.includes("it_admin")
     || member.globalRoles.includes("billing_admin")
     || member.globalRoles.includes("platform_admin");
 }

@@ -305,6 +305,7 @@ for env in stg prod; do
   project_is_active "${referral_project}" && ensure_service_account "${referral_project}" "halunasu-referral-api" "Halunasu Referral API"
 
   session_secret="$(secret_value_or_generate "${core_project}" "APP_SESSION_SIGNING_SECRET")"
+  maintenance_secret="$(secret_value_or_generate "${core_project}" "PLATFORM_MAINTENANCE_SECRET")"
   finalize_secret=""
   if project_is_active "${charting_project}"; then
     finalize_secret="$(secret_value_or_generate "${charting_project}" "CHARTING_FINALIZE_INTERNAL_SECRET")"
@@ -318,6 +319,9 @@ for env in stg prod; do
     ensure_secret "${project}" "APP_SESSION_SIGNING_SECRET"
     add_secret_version "${project}" "APP_SESSION_SIGNING_SECRET" "${session_secret}"
   done
+
+  ensure_secret "${core_project}" "PLATFORM_MAINTENANCE_SECRET"
+  add_secret_version "${core_project}" "PLATFORM_MAINTENANCE_SECRET" "${maintenance_secret}"
 
   if project_is_active "${charting_project}"; then
     ensure_secret "${charting_project}" "CHARTING_FINALIZE_INTERNAL_SECRET"

@@ -13,6 +13,7 @@ import {
 } from "./billing/catalog.js";
 import { createStripeBillingClientFromEnv } from "./billing/stripe-client.js";
 import { processStripeWebhookEvent, verifyStripeWebhookSignature } from "./billing/stripe-webhook.js";
+import { runBillingTrialMaintenance } from "./billing/trial-maintenance.js";
 import {
   buildPasswordSetupUrl,
   buildSignupVerificationUrl,
@@ -185,6 +186,18 @@ async function routePlatformApiRequest(input = {}) {
 
   if (method === "POST" && matches(parts, ["v1", "stripe", "webhook"])) {
     return handleStripeWebhook(input, store);
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "internal", "billing", "maintenance"])) {
+    requireMaintenanceSecret(input);
+    const result = await runBillingTrialMaintenance({
+      store,
+      signupMailer,
+      now: input.now || new Date(),
+      dryRun: Boolean(input.body?.dryRun),
+      billingBaseUrl: input.billingReturnBaseUrl || process.env.PLATFORM_PUBLIC_APP_BASE_URL
+    });
+    return ok({ billingMaintenance: result });
   }
 
   if (method === "GET" && matches(parts, ["v1", "auth", "session"])) {
@@ -840,7 +853,11 @@ async function requireOrgRead(input, store, orgId) {
 
 async function requireOrgAdmin(input, store, orgId) {
   const context = await requireOrgRead(input, store, orgId);
-  if (hasGlobalRole(context.member, "platform_admin") || hasGlobalRole(context.member, "org_admin")) {
+  if (
+    hasGlobalRole(context.member, "platform_admin")
+    || hasGlobalRole(context.member, "org_owner")
+    || hasGlobalRole(context.member, "org_admin")
+  ) {
     return context;
   }
 
@@ -851,6 +868,7 @@ async function requireBillingAdmin(input, store, orgId) {
   const context = await requireOrgRead(input, store, orgId);
   if (
     hasGlobalRole(context.member, "platform_admin")
+    || hasGlobalRole(context.member, "org_owner")
     || hasGlobalRole(context.member, "org_admin")
     || hasGlobalRole(context.member, "billing_admin")
   ) {
@@ -882,9 +900,26 @@ function requireCsrf(input, session) {
   }
 }
 
+function requireMaintenanceSecret(input) {
+  const expected = input.maintenanceSecret || process.env.PLATFORM_MAINTENANCE_SECRET;
+  if (!expected) {
+    const error = new Error("Platform maintenance secret is not configured");
+    error.name = "ConfigurationError";
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const actual = headerValue(input.headers || {}, "x-halunasu-maintenance-secret");
+  if (!actual || actual !== expected) {
+    throw forbiddenError("Maintenance secret is required");
+  }
+}
+
 function requirePrivilegedMember(member) {
   if (
     member.globalRoles.includes("org_admin")
+    || member.globalRoles.includes("org_owner")
+    || member.globalRoles.includes("it_admin")
     || member.globalRoles.includes("billing_admin")
     || member.globalRoles.includes("platform_admin")
   ) {
@@ -900,6 +935,7 @@ function requirePrivilegedMember(member) {
 function requireBillingManagementMember(member) {
   if (
     member.globalRoles.includes("platform_admin")
+    || member.globalRoles.includes("org_owner")
     || member.globalRoles.includes("org_admin")
     || member.globalRoles.includes("billing_admin")
   ) {
@@ -1017,6 +1053,92 @@ async function createBillingCheckout({ input, store, stripeClient, context, prod
         source
       }
     });
+  if (entitlement.status === "enabled" && entitlement.stripeSubscriptionItemId) {
+    return {
+      checkoutSessionId: null,
+      checkoutUrl: null,
+      checkoutRequired: false,
+      alreadyActive: true,
+      productId,
+      productEntitlement: entitlement,
+      lineItems: [],
+      expiresAt: null
+    };
+  }
+
+  if (organization.billing?.stripeSubscriptionId && typeof stripeClient.createSubscriptionItem === "function") {
+    const lineItems = buildCheckoutLineItemsForEntitlement(product, entitlement);
+    const flatLineItem = lineItems.find((item) => item.kind === "flat") || lineItems[0] || null;
+    const subscriptionItem = await stripeClient.createSubscriptionItem({
+      subscriptionId: organization.billing.stripeSubscriptionId,
+      priceLookupKey: flatLineItem.priceLookupKey || entitlement.stripePriceLookupKey,
+      priceId: flatLineItem.priceId,
+      quantity: flatLineItem.quantity || 1,
+      prorationBehavior: product.seatBilling?.prorationBehavior || "none",
+      metadata: {
+        orgId: organization.orgId,
+        organizationCode: organization.organizationCode,
+        productId,
+        kind: flatLineItem.kind || "flat",
+        source
+      }
+    });
+    const now = new Date().toISOString();
+    await store.updateOrganization(organization.orgId, {
+      billing: {
+        ...(organization.billing || {}),
+        provider: "stripe",
+        billingModel: "app_addon",
+        status: "active",
+        stripeCustomerId: customer.id,
+        stripePriceId: subscriptionItem.price?.id || organization.billing?.stripePriceId || null,
+        updatedAt: now
+      }
+    });
+    const productEntitlement = await store.updateProductEntitlement(organization.orgId, productId, {
+      status: "enabled",
+      plan: "subscription",
+      stripePriceLookupKey: flatLineItem.priceLookupKey || entitlement.stripePriceLookupKey,
+      stripePriceId: subscriptionItem.price?.id || null,
+      stripeSubscriptionItemId: subscriptionItem.subscriptionItem?.id || null,
+      currentPeriodEnd: organization.billing?.currentPeriodEnd || entitlement.currentPeriodEnd || null,
+      cancelAtPeriodEnd: false,
+      cancelScheduledAt: null,
+      canceledAt: null
+    });
+    await store.createAuditEvent(organization.orgId, {
+      eventType: "billing.subscription_item_added",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "product_entitlement",
+      targetId: productId,
+      safePayload: {
+        source,
+        productId,
+        stripeSubscriptionId: organization.billing.stripeSubscriptionId,
+        stripeSubscriptionItemId: subscriptionItem.subscriptionItem?.id || null,
+        stripePriceId: subscriptionItem.price?.id || null
+      }
+    });
+
+    return {
+      checkoutSessionId: null,
+      checkoutUrl: null,
+      checkoutRequired: false,
+      productId,
+      productEntitlement,
+      lineItems: [{
+        kind: flatLineItem.kind || "flat",
+        productId,
+        priceId: subscriptionItem.price?.id || null,
+        priceLookupKey: flatLineItem.priceLookupKey || null,
+        quantity: flatLineItem.quantity || 1,
+        subscriptionItemId: subscriptionItem.subscriptionItem?.id || null
+      }],
+      expiresAt: null
+    };
+  }
+
   const checkout = await stripeClient.createSubscriptionCheckoutSession({
     customerId: customer.id,
     lineItems: buildCheckoutLineItemsForEntitlement(product, entitlement),

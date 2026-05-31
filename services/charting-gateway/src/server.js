@@ -199,6 +199,7 @@ const COOKIE_OPERATOR_SESSION_TOKEN = "__cookie_operator_session__";
 const OPERATOR_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const MFA_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const MFA_REQUIRED_ROLES = new Set(["platform_admin", "org_owner", "org_admin", "it_admin", "clinical_admin", "auditor"]);
+const CHARTING_PRODUCT_ID = "charting";
 
 function assertRequiredSecret(name, value) {
   if (!value || value === "replace-me") {
@@ -1503,14 +1504,14 @@ async function authenticatePlatformOperator({ organizationCode, loginId, passwor
   const [organization, member, entitlement] = await Promise.all([
     platformStore.getOrganization(identity.orgId),
     platformStore.getMember(identity.orgId, identity.memberId),
-    platformStore.getProductEntitlement(identity.orgId, "charting")
+    platformStore.getProductEntitlement(identity.orgId, CHARTING_PRODUCT_ID)
   ]);
 
-  if (!organization || organization.status !== "active" || !member || member.status !== "active") {
+  if (!platformOrganizationAllowsLogin(organization) || !member || member.status !== "active") {
     return null;
   }
 
-  if (!["enabled", "trialing"].includes(entitlement?.status || "")) {
+  if (!platformEntitlementAllowsChartingUse(entitlement)) {
     return null;
   }
 
@@ -1552,14 +1553,14 @@ async function hydratePlatformOperatorPayload(payload) {
   const [organization, member, entitlement] = await Promise.all([
     platformStore.getOrganization(identity.orgId),
     platformStore.getMember(identity.orgId, identity.memberId),
-    platformStore.getProductEntitlement(identity.orgId, "charting")
+    platformStore.getProductEntitlement(identity.orgId, CHARTING_PRODUCT_ID)
   ]);
 
-  if (!organization || organization.status !== "active" || !member || member.status !== "active") {
+  if (!platformOrganizationAllowsLogin(organization) || !member || member.status !== "active") {
     return null;
   }
 
-  if (!["enabled", "trialing"].includes(entitlement?.status || "")) {
+  if (!platformEntitlementAllowsChartingUse(entitlement)) {
     return null;
   }
 
@@ -1596,13 +1597,30 @@ function platformMfaEnrolledAt(identity = {}) {
   return identity.mfaEnrolledAt || identity.updatedAt || identity.createdAt || new Date(0).toISOString();
 }
 
+function platformEntitlementAllowsChartingUse(entitlement = {}, now = new Date()) {
+  const status = entitlement?.status || "";
+  if (status === "enabled" || status === "trialing") {
+    return true;
+  }
+  if (status !== "cancel_scheduled") {
+    return false;
+  }
+
+  const currentPeriodEndMs = entitlement.currentPeriodEnd ? Date.parse(entitlement.currentPeriodEnd) : NaN;
+  return Number.isFinite(currentPeriodEndMs) && currentPeriodEndMs > now.getTime();
+}
+
+function platformOrganizationAllowsLogin(organization = null) {
+  return Boolean(organization && ["active", "trialing"].includes(organization.status || "active"));
+}
+
 async function getMfaAuthContext(challenge) {
   if (platformAuthBridgeEnabled) {
     const [organization, member] = await Promise.all([
       platformStore.getOrganization(challenge.orgId),
       platformStore.getMember(challenge.orgId, challenge.memberId)
     ]);
-    if (!organization || !member) {
+    if (!platformOrganizationAllowsLogin(organization) || !member) {
       return null;
     }
     const identity = await platformStore.getLoginIdentity(organization.organizationCode, member.loginId);
@@ -1652,21 +1670,32 @@ function normalizePlatformOrganizationForGateway(organization) {
     displayName: organization.displayName || organization.organizationCode || "医療機関",
     status: organization.status || "active",
     billing: organization.billing || null,
+    defaultPromptProfileId: organization.defaultPromptProfileId || DEFAULT_SOAP_FORMAT_PROFILE.profileId,
+    recordingMaxDurationMinutes: normalizeRecordingMaxDurationMinutes(organization.recordingMaxDurationMinutes),
     access: {
       ...access,
       status: access.status || "active"
-    }
+    },
+    createdAt: organization.createdAt || null,
+    updatedAt: organization.updatedAt || null
   };
 }
 
 function normalizePlatformMemberForGateway(member) {
   return {
     memberId: member.memberId,
+    orgId: member.orgId || null,
+    clinicId: member.orgId || null,
     displayName: member.displayName || member.loginId || "メンバー",
     loginId: member.loginId || null,
     roles: mapPlatformRolesToGatewayRoles(member),
+    facilityIds: member.facilityIds || [],
+    departmentIds: member.departmentIds || [],
     status: member.status || "active",
-    defaultRecordingSource: normalizeRecordingSource(member.defaultRecordingSource)
+    defaultPromptProfileId: member.defaultPromptProfileId || DEFAULT_SOAP_FORMAT_PROFILE.profileId,
+    defaultRecordingSource: normalizeRecordingSource(member.defaultRecordingSource),
+    mfaRequired: Boolean(member.mfaRequired) || operatorRequiresMfa({ roles: mapPlatformRolesToGatewayRoles(member) }),
+    mfaEnrolledAt: member.mfaEnrolledAt || (member.mfaEnrolled ? member.updatedAt || member.createdAt || new Date(0).toISOString() : null)
   };
 }
 
@@ -1684,6 +1713,12 @@ function mapPlatformRolesToGatewayRoles(member) {
   if (globalRoles.has("org_admin") || globalRoles.has("billing_admin")) {
     roles.add("org_admin");
   }
+  if (globalRoles.has("it_admin")) {
+    roles.add("it_admin");
+  }
+  if (globalRoles.has("auditor")) {
+    roles.add("auditor");
+  }
   if (chartingRoles.has("admin")) {
     roles.add("clinical_admin");
   }
@@ -1695,6 +1730,264 @@ function mapPlatformRolesToGatewayRoles(member) {
   }
 
   return Array.from(roles);
+}
+
+function mapGatewayRolesToPlatformPatch(roles = [], currentMember = {}) {
+  const roleSet = new Set(Array.isArray(roles) && roles.length ? roles : ["doctor"]);
+  const globalRoles = new Set(currentMember.globalRoles || []);
+  const productRoles = {
+    ...(currentMember.productRoles || {})
+  };
+  const chartingRoles = new Set();
+
+  for (const role of ["platform_admin", "org_owner", "org_admin", "billing_admin", "it_admin", "auditor"]) {
+    globalRoles.delete(role);
+  }
+  if (roleSet.has("platform_admin")) globalRoles.add("platform_admin");
+  if (roleSet.has("org_owner")) globalRoles.add("org_owner");
+  if (roleSet.has("org_admin")) globalRoles.add("org_admin");
+  if (roleSet.has("it_admin")) globalRoles.add("it_admin");
+  if (roleSet.has("auditor")) globalRoles.add("auditor");
+
+  if (roleSet.has("clinical_admin")) chartingRoles.add("admin");
+  if (
+    roleSet.has("doctor")
+    || roleSet.has("nurse")
+    || roleSet.has("medical_scribe")
+  ) {
+    chartingRoles.add("editor");
+  }
+  if (
+    roleSet.has("readonly_clinical")
+    || roleSet.has("billing_staff")
+    || roleSet.has("reception")
+    || roleSet.has("auditor")
+  ) {
+    chartingRoles.add("viewer");
+  }
+  if (chartingRoles.size === 0 && !globalRoles.has("platform_admin") && !globalRoles.has("org_admin") && !globalRoles.has("org_owner")) {
+    chartingRoles.add("editor");
+  }
+
+  productRoles[CHARTING_PRODUCT_ID] = Array.from(chartingRoles);
+
+  return {
+    globalRoles: Array.from(globalRoles),
+    productRoles
+  };
+}
+
+async function getPlatformMemberWithGatewayView(orgId, memberId) {
+  const [organization, member] = await Promise.all([
+    platformStore.getOrganization(orgId),
+    platformStore.getMember(orgId, memberId)
+  ]);
+  if (!organization || !member) {
+    return null;
+  }
+  const identity = await platformStore.getLoginIdentity(organization.organizationCode, member.loginId).catch(() => null);
+  return normalizePlatformMemberForGateway({
+    ...member,
+    mfaRequired: identity?.mfaRequired,
+    mfaEnrolled: identity?.mfaEnrolled,
+    mfaEnrolledAt: platformMfaEnrolledAt(identity || {})
+  });
+}
+
+async function listAdminOrganizations() {
+  if (!platformAuthBridgeEnabled) {
+    return (await store.listOrganizations?.()) || [];
+  }
+
+  const organizations = (await platformStore.listOrganizations?.()) || [];
+  return organizations.map(normalizePlatformOrganizationForGateway);
+}
+
+async function listAdminMembers(orgId) {
+  if (!platformAuthBridgeEnabled) {
+    return (await store.listMembers?.({ orgId })) || [];
+  }
+
+  const members = (await platformStore.listMembers(orgId)) || [];
+  return members.map(normalizePlatformMemberForGateway);
+}
+
+async function updateAdminOrganizationRecordingPolicy({ orgId, recordingMaxDurationMinutes, actorId }) {
+  if (!platformAuthBridgeEnabled) {
+    return store.updateOrganizationRecordingPolicy?.({
+      orgId,
+      recordingMaxDurationMinutes,
+      actorId
+    });
+  }
+
+  return platformStore.updateOrganization(orgId, {
+    recordingMaxDurationMinutes
+  });
+}
+
+async function createAdminOrganizationWithMember({ input, actorId }) {
+  if (!platformAuthBridgeEnabled) {
+    return store.createOrganizationWithAdminMember?.({
+      ...input,
+      actorId
+    });
+  }
+
+  const organization = await platformStore.createOrganization({
+    organizationCode: input.organizationCode,
+    displayName: input.displayName,
+    status: "active",
+    access: {
+      status: "active",
+      enabledProducts: [CHARTING_PRODUCT_ID]
+    }
+  });
+  const member = await platformStore.createMember(organization.orgId, {
+    loginId: input.adminLoginId,
+    displayName: input.adminDisplayName,
+    password: input.adminPassword,
+    globalRoles: ["org_admin", "billing_admin"],
+    productRoles: {
+      [CHARTING_PRODUCT_ID]: ["admin"]
+    }
+  });
+  await platformStore.upsertProductEntitlement(organization.orgId, {
+    productId: CHARTING_PRODUCT_ID,
+    status: "enabled",
+    plan: "manual_admin_created"
+  });
+
+  return {
+    organization: normalizePlatformOrganizationForGateway(organization),
+    member: await getPlatformMemberWithGatewayView(organization.orgId, member.memberId)
+  };
+}
+
+async function createAdminMember({ orgId, input, actorId }) {
+  if (!platformAuthBridgeEnabled) {
+    return store.createMember?.({
+      orgId,
+      loginId: input.loginId,
+      displayName: input.displayName,
+      password: input.password,
+      roles: input.roles,
+      defaultRecordingSource: input.defaultRecordingSource,
+      actorId
+    });
+  }
+
+  const rolePatch = mapGatewayRolesToPlatformPatch(input.roles);
+  const created = await platformStore.createMember(orgId, {
+    loginId: input.loginId,
+    displayName: input.displayName,
+    password: input.password,
+    defaultRecordingSource: input.defaultRecordingSource,
+    ...rolePatch
+  });
+  return getPlatformMemberWithGatewayView(orgId, created.memberId);
+}
+
+async function updateAdminMemberPreferences({ orgId, memberId, defaultRecordingSource, actorId }) {
+  if (!platformAuthBridgeEnabled) {
+    return store.updateMemberPreferences?.({
+      orgId,
+      memberId,
+      defaultRecordingSource,
+      actorId
+    });
+  }
+
+  await platformStore.updateMember(orgId, memberId, {
+    defaultRecordingSource
+  });
+  return getPlatformMemberWithGatewayView(orgId, memberId);
+}
+
+async function resetAdminMemberPassword({ orgId, memberId, password, actorId }) {
+  if (!platformAuthBridgeEnabled) {
+    return store.resetMemberPassword?.({
+      orgId,
+      memberId,
+      password,
+      actorId
+    });
+  }
+
+  await platformStore.updateMember(orgId, memberId, { password });
+  return getPlatformMemberWithGatewayView(orgId, memberId);
+}
+
+async function updateAdminMemberRoles({ orgId, memberId, roles, actorId }) {
+  if (!platformAuthBridgeEnabled) {
+    return store.updateMemberRoles?.({
+      orgId,
+      memberId,
+      roles,
+      actorId
+    });
+  }
+
+  const currentMember = await platformStore.getMember(orgId, memberId);
+  if (!currentMember) {
+    return null;
+  }
+  await platformStore.updateMember(orgId, memberId, mapGatewayRolesToPlatformPatch(roles, currentMember));
+  return getPlatformMemberWithGatewayView(orgId, memberId);
+}
+
+async function updateAdminMemberStatus({ orgId, memberId, status, actorId }) {
+  if (!platformAuthBridgeEnabled) {
+    return store.updateMemberStatus?.({
+      orgId,
+      memberId,
+      status,
+      actorId
+    });
+  }
+
+  await platformStore.updateMember(orgId, memberId, { status });
+  return getPlatformMemberWithGatewayView(orgId, memberId);
+}
+
+async function revokeAdminMemberSessions({ orgId, memberId, actorId }) {
+  if (!platformAuthBridgeEnabled) {
+    return store.revokeMemberSessions?.({
+      orgId,
+      memberId,
+      actorId
+    });
+  }
+
+  const [organization, member] = await Promise.all([
+    platformStore.getOrganization(orgId),
+    platformStore.getMember(orgId, memberId)
+  ]);
+  if (!organization || !member) {
+    return null;
+  }
+  const identity = await platformStore.getLoginIdentity(organization.organizationCode, member.loginId);
+  if (!identity) {
+    return null;
+  }
+  const updated = await platformStore.revokeMemberSessions(identity);
+  return {
+    memberId,
+    tokenVersion: Number(updated.tokenVersion || 0)
+  };
+}
+
+async function resetAdminMemberMfa({ orgId, memberId, actorId }) {
+  if (!platformAuthBridgeEnabled) {
+    return store.resetMemberMfa?.({
+      orgId,
+      memberId,
+      actorId
+    });
+  }
+
+  await platformStore.resetMemberMfa(orgId, memberId);
+  return getPlatformMemberWithGatewayView(orgId, memberId);
 }
 
 function buildOperatorSessionToken(authenticated, { amr = ["pwd"] } = {}) {
@@ -2436,6 +2729,31 @@ function serializeSoapFormatForClient(format) {
     createdAt: format.createdAt || null,
     updatedAt: format.updatedAt || null
   };
+}
+
+function soapFormatId(format) {
+  return format?.formatId || format?.profileId || null;
+}
+
+function includeSystemDefaultSoapFormat(formats = []) {
+  const formatsById = new Map();
+  for (const format of formats) {
+    const id = soapFormatId(format);
+    if (id) {
+      formatsById.set(id, format);
+    }
+  }
+  if (!formatsById.has(DEFAULT_SOAP_FORMAT_PROFILE.profileId)) {
+    formatsById.set(DEFAULT_SOAP_FORMAT_PROFILE.profileId, DEFAULT_SOAP_FORMAT_PROFILE);
+  }
+
+  return Array.from(formatsById.values()).sort((left, right) => {
+    const leftId = soapFormatId(left);
+    const rightId = soapFormatId(right);
+    if (leftId === DEFAULT_SOAP_FORMAT_PROFILE.profileId) return -1;
+    if (rightId === DEFAULT_SOAP_FORMAT_PROFILE.profileId) return 1;
+    return String(left.displayName || "").localeCompare(String(right.displayName || ""), "ja");
+  });
 }
 
 function normalizePreviewSoapFormatInput(operatorPayload, input = {}) {
@@ -4344,7 +4662,7 @@ app.get("/api/v1/admin/organizations", requireOperatorAuth, requireOperatorReadA
     }
 
     const currentOrgId = getOrgIdForOperator(req.operator);
-    const organizations = (await store.listOrganizations?.()) || [];
+    const organizations = await listAdminOrganizations();
     const visibleOrganizations = canManagePlatformSettings(req.operator)
       ? organizations
       : organizations.filter((organization) => (organization.orgId || organization.clinicId) === currentOrgId);
@@ -4366,8 +4684,8 @@ app.post("/api/v1/admin/organizations", requireOperatorAuth, requireOperatorClin
     }
 
     const input = parseJsonBody(createOrganizationRequestSchema, req.body);
-    const result = await store.createOrganizationWithAdminMember?.({
-      ...input,
+    const result = await createAdminOrganizationWithMember({
+      input,
       actorId: getMemberIdForOperator(req.operator)
     });
 
@@ -4401,7 +4719,7 @@ app.patch("/api/v1/admin/organizations/:orgId/recording-policy", requireOperator
       return;
     }
 
-    const organization = await store.updateOrganizationRecordingPolicy?.({
+    const organization = await updateAdminOrganizationRecordingPolicy({
       orgId,
       recordingMaxDurationMinutes: input.recordingMaxDurationMinutes,
       actorId: getMemberIdForOperator(req.operator)
@@ -4445,7 +4763,7 @@ app.get("/api/v1/admin/members", requireOperatorAuth, requireOperatorReadAccess,
 
     const requestedOrgId = req.query.orgId ? String(req.query.orgId) : null;
     const orgId = canManagePlatformSettings(req.operator) && requestedOrgId ? requestedOrgId : getOrgIdForOperator(req.operator);
-    const members = (await store.listMembers?.({ orgId })) || [];
+    const members = await listAdminMembers(orgId);
 
     res.json({
       members: members.map(serializeMemberForClient)
@@ -4476,13 +4794,9 @@ app.post("/api/v1/admin/members", requireOperatorAuth, requireOperatorClinicalAc
       return;
     }
 
-    const member = await store.createMember?.({
+    const member = await createAdminMember({
       orgId,
-      loginId: input.loginId,
-      displayName: input.displayName,
-      password: input.password,
-      roles: input.roles,
-      defaultRecordingSource: input.defaultRecordingSource,
+      input,
       actorId: getMemberIdForOperator(req.operator)
     });
 
@@ -4517,7 +4831,7 @@ app.patch("/api/v1/admin/members/:memberId/preferences", requireOperatorAuth, re
       return;
     }
 
-    const member = await store.updateMemberPreferences?.({
+    const member = await updateAdminMemberPreferences({
       orgId,
       memberId: targetMemberId,
       defaultRecordingSource: input.defaultRecordingSource,
@@ -4553,7 +4867,7 @@ app.post("/api/v1/admin/members/:memberId/password", requireOperatorAuth, requir
       return;
     }
 
-    const member = await store.resetMemberPassword?.({
+    const member = await resetAdminMemberPassword({
       orgId,
       memberId: req.params.memberId,
       password: input.password,
@@ -4593,7 +4907,7 @@ app.patch("/api/v1/admin/members/:memberId/roles", requireOperatorAuth, requireO
       return;
     }
 
-    const member = await store.updateMemberRoles?.({
+    const member = await updateAdminMemberRoles({
       orgId,
       memberId: req.params.memberId,
       roles: input.roles,
@@ -4634,7 +4948,7 @@ app.patch("/api/v1/admin/members/:memberId/status", requireOperatorAuth, require
       return;
     }
 
-    const member = await store.updateMemberStatus?.({
+    const member = await updateAdminMemberStatus({
       orgId,
       memberId: req.params.memberId,
       status: input.status,
@@ -4670,7 +4984,7 @@ app.post("/api/v1/admin/members/:memberId/revoke-sessions", requireOperatorAuth,
       return;
     }
 
-    const result = await store.revokeMemberSessions?.({
+    const result = await revokeAdminMemberSessions({
       orgId,
       memberId: req.params.memberId,
       actorId: getMemberIdForOperator(req.operator)
@@ -4703,7 +5017,7 @@ app.post("/api/v1/admin/members/:memberId/mfa-reset", requireOperatorAuth, requi
       return;
     }
 
-    const member = await store.resetMemberMfa?.({
+    const member = await resetAdminMemberMfa({
       orgId,
       memberId: req.params.memberId,
       actorId: getMemberIdForOperator(req.operator)
@@ -4885,11 +5199,12 @@ app.get("/api/v1/admin/soap-formats", requireOperatorAuth, requireOperatorReadAc
     }
 
     const orgId = getAdminTargetOrgId(req);
-    const formats = ((await store.listSoapFormatProfiles?.({
+    const storedFormats = ((await store.listSoapFormatProfiles?.({
       orgId,
       memberId: getMemberIdForOperator(req.operator),
       roles: getRolesForOperator(req.operator)
     })) || []).filter((format) => canManageOrganizationSoapFormats(req.operator) || isOwnSoapFormat(req.operator, format));
+    const formats = includeSystemDefaultSoapFormat(storedFormats);
 
     res.json({
       formats: formats.map(serializeSoapFormatForClient)
@@ -4947,17 +5262,19 @@ app.get("/api/v1/admin/soap-formats/:formatId", requireOperatorAuth, requireOper
     }
 
     const orgId = getAdminTargetOrgId(req);
-    const format = await store.getSoapFormatProfile?.({
-      orgId,
-      profileId: req.params.formatId
-    });
+    const format = req.params.formatId === DEFAULT_SOAP_FORMAT_PROFILE.profileId
+      ? DEFAULT_SOAP_FORMAT_PROFILE
+      : await store.getSoapFormatProfile?.({
+          orgId,
+          profileId: req.params.formatId
+        });
 
     if (!format) {
       res.status(404).json({ error: "SOAPフォーマットが見つかりません。" });
       return;
     }
 
-    if (!canEditSoapFormat(req.operator, format)) {
+    if (req.params.formatId !== DEFAULT_SOAP_FORMAT_PROFILE.profileId && !canEditSoapFormat(req.operator, format)) {
       res.status(403).json({ error: "このSOAPフォーマットを閲覧できません。" });
       return;
     }
