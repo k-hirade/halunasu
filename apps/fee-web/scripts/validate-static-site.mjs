@@ -11,6 +11,7 @@ for (const file of requiredFiles) {
 const html = readFileSync(join(root, "index.html"), "utf8");
 
 assert(html.includes("/v1/auth/login"), "fee web must log in through Platform");
+assert(html.includes("data-icon"), "fee web must use shared SOAP-style icons");
 assert(html.includes("mfaCode"), "fee web must support Platform MFA login");
 assert(html.includes('id="mfa-gate"'), "fee web must use a separate MFA gate like charting");
 assert(html.includes("/v1/auth/mfa/enroll"), "fee web must support Platform MFA enrollment");

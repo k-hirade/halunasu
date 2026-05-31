@@ -11,6 +11,7 @@ for (const file of requiredFiles) {
 const html = readFileSync(join(root, "index.html"), "utf8");
 
 assert(html.includes("/v1/auth/login"), "referral web must log in through Platform");
+assert(html.includes("data-icon"), "referral web must use shared SOAP-style icons");
 assert(html.includes("/v1/referral/patients"), "referral web must create patients through referral-api");
 assert(html.includes("/v1/referral/facilities"), "referral web must load Platform facilities through referral-api");
 assert(html.includes("/v1/referral/departments"), "referral web must load Platform departments through referral-api");

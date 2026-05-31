@@ -14,6 +14,14 @@ assert(html.includes("halunasu-platform-api-base-url"), "core admin must configu
 assert(html.includes("/v1/auth/login"), "core admin must log in through Platform");
 assert(html.includes("login-mfa-form"), "core admin must use a separate MFA login step");
 assert(html.includes("mfa_required"), "core admin must branch to the MFA login step when Platform requires MFA");
+assert(html.includes("施設管理画面"), "core admin must use the Japanese hospital management label");
+assert(!html.includes("Halunasu Core Admin"), "core admin UI must not expose the old Core Admin label");
+assert(html.includes("/v1/auth/logout"), "core admin must expose logout");
+assert(html.includes("data-icon"), "core admin must use shared SOAP-style icons");
+assert(!html.includes("<th>memberId</th>"), "core admin must not expose memberId as a primary table column");
+assert(!html.includes("<th>patientId</th>"), "core admin must not expose patientId as a primary table column");
+assert(!html.includes("<th>eventId</th>"), "core admin must not expose eventId as a primary table column");
+assert(html.includes("データがありません") || html.includes("empty-state"), "core admin must render empty states");
 assert(html.includes("/v1/auth/session"), "core admin must read Platform session");
 assert(html.includes("/v1/auth/mfa/enroll"), "core admin must start MFA enrollment");
 assert(html.includes("/v1/auth/mfa/verify"), "core admin must verify MFA enrollment");

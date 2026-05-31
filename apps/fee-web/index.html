@@ -362,6 +362,26 @@
       cursor: wait;
     }
 
+    .icon {
+      width: 1em;
+      height: 1em;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .icon svg {
+      width: 1em;
+      height: 1em;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
     .message {
       display: none;
       border-radius: 8px;
@@ -826,7 +846,7 @@
           </div>
           <div id="login-message" class="inline-error" role="status" aria-live="polite"></div>
           <div class="operator-gate-actions">
-            <button class="btn btn--primary btn--lg" type="submit" id="login-button">ログイン</button>
+            <button class="btn btn--primary btn--lg" type="submit" id="login-button" data-icon="chevronRight">ログイン</button>
           </div>
         </form>
       </section>
@@ -870,7 +890,7 @@
             <input id="mfaCode" name="mfaCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="6" pattern="[0-9]{6}" />
           </div>
           <div class="operator-gate-actions">
-            <button class="btn btn--primary btn--lg" type="submit" id="mfa-button" disabled>確認</button>
+            <button class="btn btn--primary btn--lg" type="submit" id="mfa-button" disabled data-icon="check">確認</button>
             <button class="btn btn--ghost btn--lg" type="button" id="mfa-back-button">戻る</button>
           </div>
           <div id="mfa-message" class="inline-error" role="status" aria-live="polite"></div>
@@ -905,7 +925,7 @@
           <p>患者、施設、オーダーは算定画面で入力します。ここではそのまま算定セッションを開始してください。</p>
         </div>
         <div class="quick-start-actions">
-          <button class="btn btn--primary btn--lg" id="start-fee-session-button" type="button">算定を開始</button>
+          <button class="btn btn--primary btn--lg" id="start-fee-session-button" type="button" data-icon="fileText">算定を開始</button>
         </div>
       </section>
 
@@ -943,7 +963,7 @@
             <h2 id="fee-session-detail-title">算定画面</h2>
             <p class="panel-copy" id="fee-session-detail-meta">患者情報とオーダーを入力して、算定候補を作成します。</p>
           </div>
-          <button class="btn btn--ghost" id="back-to-fee-sessions-button" type="button">一覧へ戻る</button>
+          <button class="btn btn--ghost" id="back-to-fee-sessions-button" type="button" data-icon="arrowLeft">一覧へ戻る</button>
         </div>
 
         <div class="notice-card">
@@ -987,7 +1007,7 @@
                   <label for="patient-ref">患者ID alias</label>
                   <input id="patient-ref" name="patientRef" placeholder="例: legacy-001" />
                 </div>
-                <button class="btn btn--ghost" type="submit">患者作成</button>
+                <button class="btn btn--ghost" type="submit" data-icon="check">患者作成</button>
               </form>
             </section>
 
@@ -1044,9 +1064,9 @@
                   <textarea id="ordersText" name="ordersText" placeholder="procedure|血液検査|160000410|1&#10;drug|内服薬|620000001|2"></textarea>
                 </div>
                 <div class="button-row">
-                  <button class="btn btn--ghost" type="submit">入力を保存</button>
-                  <button class="btn btn--primary" id="calculate-button" type="button">算定実行</button>
-                  <button class="btn btn--ghost" id="refresh-button" type="button">再読み込み</button>
+                  <button class="btn btn--ghost" type="submit" data-icon="check">入力を保存</button>
+                  <button class="btn btn--primary" id="calculate-button" type="button" data-icon="checkCircle">算定実行</button>
+                  <button class="btn btn--ghost" id="refresh-button" type="button" data-icon="refreshCw">再読み込み</button>
                 </div>
               </form>
             </section>
@@ -1079,6 +1099,15 @@
   </div>
 
   <script>
+    const ICONS = {
+      arrowLeft: '<polyline points="15 18 9 12 15 6"/>',
+      check: '<polyline points="20 6 9 17 4 12"/>',
+      checkCircle: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+      chevronRight: '<polyline points="9 18 15 12 9 6"/>',
+      fileText: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/>',
+      refreshCw: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>'
+    };
+
     const platformApiBaseUrl = metaContent("halunasu-platform-api-base-url");
     const feeApiBaseUrl = metaContent("halunasu-fee-api-base-url");
     const FEE_SESSION_PAGE_SIZE = 20;
@@ -1231,6 +1260,7 @@
       show(els.loginGate);
     });
 
+    hydrateStaticIcons();
     setupPasswordToggle();
     setupMfaCodeInput();
     hydrateExistingPlatformSession().catch(() => {});
@@ -2297,6 +2327,17 @@
           button.setAttribute("aria-label", visible ? "パスワードを隠す" : "パスワードを表示");
         });
       });
+    }
+
+    function hydrateStaticIcons() {
+      document.querySelectorAll("[data-icon]").forEach((element) => {
+        if (element.querySelector(".icon")) return;
+        element.insertAdjacentHTML("afterbegin", icon(element.dataset.icon));
+      });
+    }
+
+    function icon(name, size = 16) {
+      return `<span class="icon" style="font-size:${Number(size) || 16}px" aria-hidden="true"><svg viewBox="0 0 24 24">${ICONS[name] || ""}</svg></span>`;
     }
 
     function setupMfaCodeInput() {
