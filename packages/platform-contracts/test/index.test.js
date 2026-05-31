@@ -48,12 +48,14 @@ test("validates member roles", () => {
     productRoles: {
       charting: ["doctor"],
       unknown: ["ignored"]
-    }
+    },
+    defaultRecordingSource: "local_browser"
   });
 
   assert.equal(input.loginId, "doctor");
   assert.deepEqual(input.globalRoles, ["doctor"]);
   assert.deepEqual(input.productRoles, { charting: ["doctor"] });
+  assert.equal(input.defaultRecordingSource, "local_browser");
 });
 
 test("validates login input", () => {
@@ -80,11 +82,16 @@ test("validates signup applications and patch input", () => {
   assert.equal(signup.organizationCode, "signup-clinic");
   assert.equal(signup.applicantEmail, "applicant@example.com");
   assert.deepEqual(signup.requestedProducts, ["charting"]);
-  assert.deepEqual(validatePatchOrganizationInput({ displayName: "Updated" }), {
-    displayName: "Updated"
+  assert.deepEqual(validatePatchOrganizationInput({ displayName: "Updated", defaultPromptProfileId: "system-default" }), {
+    displayName: "Updated",
+    defaultPromptProfileId: "system-default"
   });
-  assert.deepEqual(validatePatchMemberInput({ globalRoles: ["doctor", "doctor"] }), {
-    globalRoles: ["doctor"]
+  assert.deepEqual(validatePatchMemberInput({ globalRoles: ["doctor", "doctor"], defaultPromptProfileId: "fmt_123" }), {
+    globalRoles: ["doctor"],
+    defaultPromptProfileId: "fmt_123"
+  });
+  assert.deepEqual(validatePatchMemberInput({ defaultRecordingSource: "local_browser" }), {
+    defaultRecordingSource: "local_browser"
   });
   assert.deepEqual(validatePatchPatientInput({ displayNameKana: "YAMADA TARO" }), {
     displayNameKana: "YAMADA TARO"

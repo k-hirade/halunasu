@@ -24,6 +24,7 @@ export const productEntitlementStatuses = Object.freeze([
 export const signupApplicationStatuses = Object.freeze(["submitted", "email_verified", "provisioned", "rejected"]);
 export const dataRequestTypes = Object.freeze(["access", "export", "deletion", "correction"]);
 export const dataRequestStatuses = Object.freeze(["submitted", "reviewing", "completed", "rejected", "cancelled"]);
+export const recordingSources = Object.freeze(["linked_mobile", "local_browser"]);
 
 export function normalizeOrganizationCode(value) {
   return requiredString(value, "organizationCode")
@@ -70,6 +71,7 @@ export function validatePatchOrganizationInput(input = {}) {
     access: hasOwn(input, "access") && isPlainObject(input.access) ? input.access : undefined,
     defaultFacilityId: hasOwn(input, "defaultFacilityId") ? optionalString(input.defaultFacilityId) : undefined,
     defaultDepartmentId: hasOwn(input, "defaultDepartmentId") ? optionalString(input.defaultDepartmentId) : undefined,
+    defaultPromptProfileId: hasOwn(input, "defaultPromptProfileId") ? optionalString(input.defaultPromptProfileId) : undefined,
     recordingMaxDurationMinutes: hasOwn(input, "recordingMaxDurationMinutes")
       ? optionalPositiveInteger(input.recordingMaxDurationMinutes, "recordingMaxDurationMinutes")
       : undefined
@@ -88,7 +90,8 @@ export function validateCreateMemberInput(input = {}) {
     departmentIds: normalizeStringArray(input.departmentIds),
     defaultFacilityId: optionalString(input.defaultFacilityId),
     defaultDepartmentId: optionalString(input.defaultDepartmentId),
-    defaultRecordingSource: optionalEnum(input.defaultRecordingSource, ["linked_mobile", "browser_microphone"], "defaultRecordingSource") || "linked_mobile"
+    defaultPromptProfileId: optionalString(input.defaultPromptProfileId),
+    defaultRecordingSource: optionalEnum(input.defaultRecordingSource, recordingSources, "defaultRecordingSource") || "linked_mobile"
   };
 }
 
@@ -107,8 +110,9 @@ export function validatePatchMemberInput(input = {}) {
     departmentIds: hasOwn(input, "departmentIds") ? normalizeStringArray(input.departmentIds) : undefined,
     defaultFacilityId: hasOwn(input, "defaultFacilityId") ? optionalString(input.defaultFacilityId) : undefined,
     defaultDepartmentId: hasOwn(input, "defaultDepartmentId") ? optionalString(input.defaultDepartmentId) : undefined,
+    defaultPromptProfileId: hasOwn(input, "defaultPromptProfileId") ? optionalString(input.defaultPromptProfileId) : undefined,
     defaultRecordingSource: hasOwn(input, "defaultRecordingSource")
-      ? optionalEnum(input.defaultRecordingSource, ["linked_mobile", "browser_microphone"], "defaultRecordingSource")
+      ? optionalEnum(input.defaultRecordingSource, recordingSources, "defaultRecordingSource")
       : undefined
   });
 }

@@ -981,6 +981,30 @@ async function appendMfaFailureAuditSafe({ orgId, memberId, reason, purpose }) {
   }
 }
 
+async function appendOrganizationAuditEventSafe(orgId, eventInput = {}) {
+  if (!orgId) {
+    return;
+  }
+
+  try {
+    if (platformAuthBridgeEnabled && typeof platformStore?.createAuditEvent === "function") {
+      await platformStore.createAuditEvent(orgId, {
+        eventType: eventInput.type || eventInput.eventType || "organization.event",
+        actorMemberId: eventInput.actorId || eventInput.actorMemberId || null,
+        safePayload: eventInput.safePayload || {}
+      });
+      return;
+    }
+
+    await store.appendOrganizationAuditEvent?.(orgId, eventInput);
+  } catch (error) {
+    console.warn("organization audit event append failed", safeErrorLogFields(error, {
+      orgId,
+      type: eventInput?.type || eventInput?.eventType
+    }));
+  }
+}
+
 function createPairingUrl(pairingId, plainToken) {
   return `${config.appBaseUrl}/mobile/join#pairingId=${encodeURIComponent(pairingId)}&token=${encodeURIComponent(plainToken)}`;
 }
@@ -1785,7 +1809,12 @@ async function getPlatformMemberWithGatewayView(orgId, memberId) {
   if (!organization || !member) {
     return null;
   }
-  const identity = await platformStore.getLoginIdentity(organization.organizationCode, member.loginId).catch(() => null);
+  let identity = null;
+  try {
+    identity = await platformStore.getLoginIdentity(organization.organizationCode, member.loginId);
+  } catch {
+    identity = null;
+  }
   return normalizePlatformMemberForGateway({
     ...member,
     mfaRequired: identity?.mfaRequired,
@@ -1901,6 +1930,88 @@ async function updateAdminMemberPreferences({ orgId, memberId, defaultRecordingS
   await platformStore.updateMember(orgId, memberId, {
     defaultRecordingSource
   });
+  return getPlatformMemberWithGatewayView(orgId, memberId);
+}
+
+async function getAssignableSoapFormat({ orgId, profileId }) {
+  const resolvedProfileId = profileId || DEFAULT_SOAP_FORMAT_PROFILE.profileId;
+  if (resolvedProfileId === DEFAULT_SOAP_FORMAT_PROFILE.profileId) {
+    return DEFAULT_SOAP_FORMAT_PROFILE;
+  }
+
+  const profile = await store.getSoapFormatProfile?.({
+    orgId,
+    profileId: resolvedProfileId
+  });
+
+  if (!profile || profile.status !== "active" || profile.approved !== true) {
+    return null;
+  }
+
+  return profile;
+}
+
+async function assignAdminSoapFormatToOrganization({ orgId, profileId, actorId }) {
+  if (!platformAuthBridgeEnabled) {
+    return store.assignSoapFormatToOrganization?.({
+      orgId,
+      profileId,
+      actorId
+    });
+  }
+
+  const profile = await getAssignableSoapFormat({ orgId, profileId });
+  if (!profile) {
+    return null;
+  }
+
+  const defaultPromptProfileId = profile.profileId || profile.formatId || DEFAULT_SOAP_FORMAT_PROFILE.profileId;
+  const organization = await platformStore.updateOrganization(orgId, {
+    defaultPromptProfileId
+  });
+  await appendOrganizationAuditEventSafe(orgId, {
+    type: "soap_format.assigned",
+    actorId,
+    safePayload: {
+      targetType: "organization",
+      profileId: defaultPromptProfileId
+    }
+  });
+
+  return normalizePlatformOrganizationForGateway(organization);
+}
+
+async function assignAdminSoapFormatToMember({ orgId, memberId, profileId, actorId }) {
+  if (!platformAuthBridgeEnabled) {
+    return store.assignSoapFormatToMember?.({
+      orgId,
+      memberId,
+      profileId,
+      actorId
+    });
+  }
+
+  const [member, profile] = await Promise.all([
+    platformStore.getMember(orgId, memberId),
+    getAssignableSoapFormat({ orgId, profileId })
+  ]);
+  if (!member || !profile) {
+    return null;
+  }
+
+  const defaultPromptProfileId = profile.profileId || profile.formatId || DEFAULT_SOAP_FORMAT_PROFILE.profileId;
+  await platformStore.updateMember(orgId, memberId, {
+    defaultPromptProfileId
+  });
+  await appendOrganizationAuditEventSafe(orgId, {
+    type: "soap_format.assigned",
+    actorId,
+    safePayload: {
+      memberId,
+      profileId: defaultPromptProfileId
+    }
+  });
+
   return getPlatformMemberWithGatewayView(orgId, memberId);
 }
 
@@ -5685,7 +5796,7 @@ app.post("/api/v1/admin/soap-format-assignments", requireOperatorAuth, requireOp
         return;
       }
 
-      const organization = await store.assignSoapFormatToOrganization?.({
+      const organization = await assignAdminSoapFormatToOrganization({
         orgId,
         profileId: input.formatId || null,
         actorId: memberId
@@ -5729,7 +5840,7 @@ app.post("/api/v1/admin/soap-format-assignments", requireOperatorAuth, requireOp
       return;
     }
 
-    const member = await store.assignSoapFormatToMember?.({
+    const member = await assignAdminSoapFormatToMember({
       orgId,
       memberId: input.memberId,
       profileId: input.formatId || null,
@@ -7304,6 +7415,19 @@ setInterval(() => {
 
 }, 60_000).unref();
 
-server.listen(config.port, () => {
-  console.log(`medical-gateway listening on :${config.port}`);
-});
+if (process.env.CHARTING_GATEWAY_AUTOSTART !== "false") {
+  server.listen(config.port, () => {
+    console.log(`medical-gateway listening on :${config.port}`);
+  });
+}
+
+export {
+  app,
+  server
+};
+
+export const __testHooks = {
+  store,
+  platformStore,
+  buildOperatorSessionTokenFromPayload
+};
