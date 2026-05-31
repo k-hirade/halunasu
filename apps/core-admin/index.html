@@ -13,7 +13,6 @@
       --bg: #f4f7fa;
       --surface: #ffffff;
       --accent: #0d8b7a;
-      --accent-2: #3157a4;
       --danger: #b42318;
       --warn: #9a5b00;
       --success: #087443;
@@ -41,27 +40,21 @@
       min-height: 100vh;
       display: grid;
       grid-template-rows: auto 1fr;
+      background: var(--bg);
     }
 
     .topbar {
-      width: min(1360px, calc(100% - 32px));
-      min-height: 57px;
-      margin: 0 auto;
-      padding: 12px 0;
-      background: rgba(255,255,255,0.96);
-      display: flex;
+      min-height: 64px;
+      padding: 0 24px;
+      background: rgba(255,255,255,0.98);
+      border-bottom: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 0;
       align-items: center;
-      justify-content: space-between;
-      gap: 18px;
       position: sticky;
       top: 0;
       z-index: 10;
-    }
-
-    .app {
-      background:
-        linear-gradient(to bottom, rgba(255,255,255,0.96) 0 57px, transparent 57px),
-        var(--bg);
     }
 
     .brand {
@@ -78,6 +71,24 @@
       height: 36px;
       border-radius: 8px;
       object-fit: contain;
+    }
+
+    .topbar-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-width: 0;
+      padding-left: 24px;
+    }
+
+    .org-switcher {
+      width: min(380px, 44vw);
+      min-width: 220px;
+    }
+
+    .org-switcher label {
+      display: none;
     }
 
     .topbar-actions {
@@ -141,15 +152,12 @@
     }
 
     .main {
-      width: min(1360px, calc(100% - 32px));
-      margin: 22px auto 40px;
+      width: 100%;
+      min-height: calc(100dvh - 64px);
+      margin: 0;
       display: grid;
-      grid-template-columns: 320px minmax(0, 1fr);
-      gap: 18px;
-    }
-
-    .main--single {
-      grid-template-columns: 1fr;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 0;
     }
 
     .panel,
@@ -158,6 +166,51 @@
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 18px;
+    }
+
+    .sidebar {
+      min-width: 0;
+      padding: 18px 12px;
+      background: var(--surface);
+      border-right: 1px solid var(--line);
+    }
+
+    .side-nav {
+      display: grid;
+      gap: 22px;
+      position: sticky;
+      top: 82px;
+    }
+
+    .nav-group {
+      display: grid;
+      gap: 6px;
+    }
+
+    .nav-group-label {
+      padding: 0 10px 4px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    button.tab {
+      width: 100%;
+      justify-content: flex-start;
+      min-height: 38px;
+      color: #314158;
+      background: transparent;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    button.tab:hover {
+      background: #eef4f8;
+    }
+
+    button.tab.active {
+      color: var(--accent);
+      background: var(--focus);
     }
 
     .panel h1,
@@ -251,10 +304,8 @@
     }
 
     button.accent { background: var(--accent); }
-    button.warn { background: var(--warn); }
+    button.warn { background: var(--accent); }
     button.danger { background: var(--danger); }
-    button.tab { background: #e7edf5; color: var(--ink); }
-    button.tab.active { background: var(--accent-2); color: #fff; }
     button.icon-only {
       width: 38px;
       min-height: 38px;
@@ -291,15 +342,48 @@
 
     .workspace {
       display: grid;
-      gap: 18px;
+      align-content: start;
+      gap: 16px;
+      min-width: 0;
+      padding: 24px;
+    }
+
+    .workspace-head,
+    .view-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .workspace-title,
+    .view-title {
+      display: grid;
+      gap: 4px;
       min-width: 0;
     }
 
-    .toolbar {
-      display: grid;
-      grid-template-columns: minmax(220px, 1fr) auto;
-      gap: 12px;
-      align-items: end;
+    .workspace-title h1,
+    .view-title h1 {
+      margin: 0;
+      color: var(--ink);
+      font-size: 22px;
+      line-height: 1.35;
+    }
+
+    .workspace-title p,
+    .view-title p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .view-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
     }
 
     .view {
@@ -311,16 +395,10 @@
       display: grid;
     }
 
-    .split {
-      display: grid;
-      grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr);
-      gap: 18px;
-    }
-
     .table-wrap {
       overflow: auto;
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      border: 0;
+      border-radius: 0;
       background: #fff;
     }
 
@@ -343,7 +421,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 560px;
+      min-width: 720px;
       font-size: 13px;
     }
 
@@ -357,7 +435,7 @@
 
     th {
       color: #2d3c54;
-      background: #f7f9fc;
+      background: #fff;
       font-weight: 900;
       white-space: nowrap;
     }
@@ -458,6 +536,7 @@
       padding: 20px;
       background: rgba(15, 23, 42, 0.44);
       backdrop-filter: blur(6px);
+      animation: modal-fade 160ms ease-out;
     }
 
     .admin-modal-card {
@@ -471,6 +550,17 @@
       padding: 22px;
       display: grid;
       gap: 18px;
+      animation: modal-scale 180ms ease-out;
+    }
+
+    @keyframes modal-fade {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes modal-scale {
+      from { opacity: 0; transform: translateY(8px) scale(0.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
     }
 
     .admin-modal-head {
@@ -541,13 +631,55 @@
     }
 
     @media (max-width: 960px) {
+      .topbar,
       .main,
-      .split,
-      .toolbar {
+      .topbar-main,
+      .workspace-head,
+      .view-head {
         grid-template-columns: 1fr;
       }
 
-      .topbar { width: min(1360px, calc(100% - 32px)); }
+      .topbar {
+        position: static;
+        padding: 12px 16px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .topbar-main {
+        padding-left: 0;
+        display: grid;
+        gap: 10px;
+      }
+
+      .org-switcher {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .main {
+        min-height: auto;
+      }
+
+      .sidebar {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        overflow-x: auto;
+      }
+
+      .side-nav {
+        position: static;
+        display: flex;
+        gap: 12px;
+      }
+
+      .nav-group {
+        min-width: 160px;
+      }
+
+      .workspace {
+        padding: 18px 16px 32px;
+      }
     }
   </style>
   <link rel="stylesheet" href="auth.css" />
@@ -646,297 +778,188 @@
     <header class="topbar">
       <div class="brand">
         <img alt="ハルナス" class="brand-mark" height="36" src="brand/harunas-mark.png" width="36" />
-        <div>ハルナス 施設管理画面</div>
+        <div>施設管理画面</div>
       </div>
-      <div class="topbar-actions">
-        <button class="session-chip-button" id="session-menu-button" type="button" aria-expanded="false" aria-controls="session-menu" data-icon="settings">
-          <span id="session-chip" class="session-chip">未ログイン</span>
-        </button>
-        <div class="session-menu" id="session-menu" hidden>
-          <p class="session-menu-title" id="session-menu-title">ログイン情報</p>
-          <p class="session-menu-meta" id="session-menu-meta"></p>
-          <button class="danger" id="logout-button" type="button" data-icon="logOut">ログアウト</button>
+      <div class="topbar-main">
+        <div class="field org-switcher">
+          <label for="org-select">対象組織</label>
+          <select id="org-select" aria-label="対象組織"></select>
+        </div>
+        <div class="topbar-actions">
+          <button class="secondary icon-only" id="refresh-button" type="button" data-icon="refreshCw" aria-label="再読み込み"></button>
+          <button class="session-chip-button" id="session-menu-button" type="button" aria-expanded="false" aria-controls="session-menu" data-icon="settings">
+            <span id="session-chip" class="session-chip">未ログイン</span>
+          </button>
+          <div class="session-menu" id="session-menu" hidden>
+            <p class="session-menu-title" id="session-menu-title">ログイン情報</p>
+            <p class="session-menu-meta" id="session-menu-meta"></p>
+            <button class="danger" id="logout-button" type="button" data-icon="logOut">ログアウト</button>
+          </div>
         </div>
       </div>
     </header>
 
-    <main class="main main--single">
-      <section class="workspace">
-        <div id="message" class="message"></div>
-        <div class="panel">
-          <div class="toolbar">
-            <div class="field">
-              <label for="org-select">対象組織</label>
-              <select id="org-select"></select>
-            </div>
-            <div class="button-row">
-              <button class="secondary" id="refresh-button" type="button" data-icon="refreshCw">再読み込み</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel">
-          <div class="tabs" role="tablist">
+    <main class="main">
+      <aside class="sidebar" aria-label="施設管理ナビゲーション">
+        <nav class="side-nav">
+          <div class="nav-group">
+            <div class="nav-group-label">マスター</div>
             <button class="tab active" data-view="organizations" role="tab" aria-selected="true" type="button" data-icon="settings">組織</button>
             <button class="tab" data-view="members" role="tab" aria-selected="false" type="button" data-icon="settings">職員</button>
             <button class="tab" data-view="facilities" role="tab" aria-selected="false" type="button" data-icon="fileText">施設</button>
             <button class="tab" data-view="departments" role="tab" aria-selected="false" type="button" data-icon="layoutSplit">診療科</button>
             <button class="tab" data-view="patients" role="tab" aria-selected="false" type="button" data-icon="fileText">患者</button>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-label">運用</div>
             <button class="tab" data-view="entitlements" role="tab" aria-selected="false" type="button" data-icon="checkCircle">プロダクト契約</button>
             <button class="tab" data-view="data-requests" role="tab" aria-selected="false" type="button" data-icon="fileText">開示請求</button>
             <button class="tab" data-view="audit" role="tab" aria-selected="false" type="button" data-icon="alertCircle">監査</button>
           </div>
+        </nav>
+      </aside>
+
+      <section class="workspace">
+        <div id="message" class="message"></div>
+        <div class="workspace-head">
+          <div class="workspace-title">
+            <h1>共通マスター</h1>
+            <p>カルテ作成、診療報酬算定、紹介状作成で共通利用する病院データを管理します。</p>
+          </div>
         </div>
 
         <section class="view active" id="view-organizations" role="tabpanel">
-          <div class="split">
-            <form class="panel stack" id="organization-form">
-              <h2>組織</h2>
-              <div class="field">
-                <label for="org-code-new">組織コード</label>
-                <input id="org-code-new" name="organizationCode" />
-              </div>
-              <div class="field">
-                <label for="org-name-new">表示名</label>
-                <input id="org-name-new" name="displayName" />
-              </div>
-              <button class="accent" type="submit">作成</button>
-            </form>
-            <div class="table-panel">
-              <h2>組織一覧</h2>
-              <div class="table-wrap" id="organizations-table"></div>
+          <div class="view-head">
+            <div class="view-title">
+              <h1>組織一覧</h1>
+              <p>病院コードと表示名を管理します。</p>
             </div>
+            <div class="view-actions">
+              <button class="accent" data-create="organization" type="button" data-icon="check">新規</button>
+            </div>
+          </div>
+          <div class="table-panel">
+            <div class="table-wrap" id="organizations-table"></div>
           </div>
         </section>
 
         <section class="view" id="view-members" role="tabpanel">
-          <div class="split">
-            <form class="panel stack" id="member-form">
-              <h2>職員</h2>
-              <div class="grid-2">
-                <div class="field">
-                  <label for="member-login">ログインID</label>
-                  <input id="member-login" name="loginId" required />
-                </div>
-                <div class="field">
-                  <label for="member-name">表示名</label>
-                  <input id="member-name" name="displayName" required />
-                </div>
-              </div>
-              <div class="grid-2">
-                <div class="field">
-                  <label for="member-email">メール</label>
-                  <input id="member-email" name="email" type="email" />
-                </div>
-                <div class="field">
-                  <label for="member-password">初期パスワード</label>
-                  <input id="member-password" name="password" type="password" />
-                </div>
-              </div>
-              <div class="field">
-                <label for="member-global-roles">共通権限ロール</label>
-                <input id="member-global-roles" name="globalRoles" placeholder="org_admin,billing_admin,platform_admin" />
-              </div>
-              <div class="grid-3">
-                <div class="field">
-                  <label for="member-charting-roles">カルテ作成ロール</label>
-                  <input id="member-charting-roles" name="chartingRoles" placeholder="admin,doctor" />
-                </div>
-                <div class="field">
-                  <label for="member-fee-roles">診療報酬算定ロール</label>
-                  <input id="member-fee-roles" name="feeRoles" placeholder="admin,medical_clerk" />
-                </div>
-                <div class="field">
-                  <label for="member-referral-roles">紹介状作成ロール</label>
-                  <input id="member-referral-roles" name="referralRoles" placeholder="admin,doctor" />
-                </div>
-              </div>
-              <button class="accent" type="submit">作成</button>
-            </form>
-            <div class="table-panel">
-              <h2>職員一覧</h2>
-              <div class="table-wrap" id="members-table"></div>
+          <div class="view-head">
+            <div class="view-title">
+              <h1>職員一覧</h1>
+              <p>ログイン、共通権限、アプリ別ロールを管理します。</p>
             </div>
+            <div class="view-actions">
+              <button class="accent" data-create="member" type="button" data-icon="check">新規</button>
+            </div>
+          </div>
+          <div class="table-panel">
+            <div class="table-wrap" id="members-table"></div>
           </div>
         </section>
 
         <section class="view" id="view-facilities" role="tabpanel">
-          <div class="split">
-            <form class="panel stack" id="facility-form">
-              <h2>施設</h2>
-              <div class="field">
-                <label for="facility-name">表示名</label>
-                <input id="facility-name" name="displayName" required />
-              </div>
-              <div class="grid-2">
-                <div class="field">
-                  <label for="facility-code">医療機関コード</label>
-                  <input id="facility-code" name="medicalInstitutionCode" />
-                </div>
-                <div class="field">
-                  <label for="facility-bureau">厚生局</label>
-                  <input id="facility-bureau" name="regionalBureau" />
-                </div>
-              </div>
-              <div class="field">
-                <label for="facility-prefecture">都道府県</label>
-                <input id="facility-prefecture" name="prefecture" />
-              </div>
-              <button class="accent" type="submit">作成</button>
-            </form>
-            <div class="table-panel">
-              <h2>施設一覧</h2>
-              <div class="table-wrap" id="facilities-table"></div>
+          <div class="view-head">
+            <div class="view-title">
+              <h1>施設一覧</h1>
+              <p>医療機関コードや厚生局情報を管理します。</p>
             </div>
+            <div class="view-actions">
+              <button class="accent" data-create="facility" type="button" data-icon="check">新規</button>
+            </div>
+          </div>
+          <div class="table-panel">
+            <div class="table-wrap" id="facilities-table"></div>
           </div>
         </section>
 
         <section class="view" id="view-departments" role="tabpanel">
-          <div class="split">
-            <form class="panel stack" id="department-form">
-              <h2>診療科</h2>
-              <div class="field">
-                <label for="department-name">表示名</label>
-                <input id="department-name" name="displayName" required />
-              </div>
-              <div class="grid-2">
-                <div class="field">
-                  <label for="department-facility-id">施設</label>
-                  <input id="department-facility-id" name="facilityId" />
-                </div>
-                <div class="field">
-                  <label for="department-code">コード</label>
-                  <input id="department-code" name="code" />
-                </div>
-              </div>
-              <button class="accent" type="submit">作成</button>
-            </form>
-            <div class="table-panel">
-              <h2>診療科一覧</h2>
-              <div class="table-wrap" id="departments-table"></div>
+          <div class="view-head">
+            <div class="view-title">
+              <h1>診療科一覧</h1>
+              <p>施設に紐づく診療科を管理します。</p>
             </div>
+            <div class="view-actions">
+              <button class="accent" data-create="department" type="button" data-icon="check">新規</button>
+            </div>
+          </div>
+          <div class="table-panel">
+            <div class="table-wrap" id="departments-table"></div>
           </div>
         </section>
 
         <section class="view" id="view-patients" role="tabpanel">
-          <div class="split">
-            <form class="panel stack" id="patient-form">
-              <h2>患者</h2>
-              <div class="grid-2">
-                <div class="field">
-                  <label for="patient-name">表示名</label>
-                  <input id="patient-name" name="displayName" required />
-                </div>
-                <div class="field">
-                  <label for="patient-number">患者番号</label>
-                  <input id="patient-number" name="primaryPatientNumber" />
-                </div>
-              </div>
-              <div class="grid-2">
-                <div class="field">
-                  <label for="patient-birth-date">生年月日</label>
-                  <input id="patient-birth-date" name="birthDate" type="date" />
-                </div>
-                <div class="field">
-                  <label for="patient-sex">性別</label>
-                  <select id="patient-sex" name="sex">
-                    <option value="unknown">不明</option>
-                    <option value="male">男性</option>
-                    <option value="female">女性</option>
-                    <option value="other">その他</option>
-                  </select>
-                </div>
-              </div>
-              <button class="accent" type="submit">作成</button>
-            </form>
-            <div class="table-panel">
-              <div class="table-toolbar">
-                <h2>患者一覧</h2>
-                <input class="table-search" id="patient-filter" type="search" placeholder="患者名・患者番号で検索" autocomplete="off" />
-              </div>
-              <div class="table-wrap" id="patients-table"></div>
+          <div class="view-head">
+            <div class="view-title">
+              <h1>患者一覧</h1>
+              <p>各アプリから参照する患者インデックスを管理します。</p>
             </div>
+            <div class="view-actions">
+              <input class="table-search" id="patient-filter" type="search" placeholder="患者名・患者番号で検索" autocomplete="off" />
+              <button class="accent" data-create="patient" type="button" data-icon="check">新規</button>
+            </div>
+          </div>
+          <div class="table-panel">
+            <div class="table-wrap" id="patients-table"></div>
           </div>
         </section>
 
         <section class="view" id="view-entitlements" role="tabpanel">
-          <div class="split">
-            <form class="panel stack" id="entitlement-form">
-              <h2>プロダクト契約</h2>
-              <div class="grid-2">
-                <div class="field">
-                  <label for="entitlement-product">対象プロダクト</label>
-                  <select id="entitlement-product" name="productId">
-                    <option value="charting">カルテ作成</option>
-                    <option value="fee">診療報酬算定</option>
-                    <option value="referral">紹介状作成</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label for="entitlement-status">契約状態</label>
-                  <select id="entitlement-status" name="status">
-                    <option value="trialing">無料期間</option>
-                    <option value="enabled">利用中</option>
-                    <option value="disabled">停止中</option>
-                  </select>
-                </div>
-              </div>
-              <div class="field">
-                <label for="entitlement-plan">プラン</label>
-                <input id="entitlement-plan" name="plan" />
-              </div>
-              <button class="warn" type="submit">保存</button>
-            </form>
-            <div class="table-panel">
-              <h2>プロダクト契約一覧</h2>
-              <div class="table-wrap" id="entitlements-table"></div>
+          <div class="view-head">
+            <div class="view-title">
+              <h1>プロダクト契約</h1>
+              <p>病院ごとのアプリ利用状態を管理します。</p>
             </div>
+            <div class="view-actions">
+              <button class="accent" data-create="entitlement" type="button" data-icon="check">新規</button>
+            </div>
+          </div>
+          <div class="table-panel">
+            <div class="table-wrap" id="entitlements-table"></div>
           </div>
         </section>
 
         <section class="view" id="view-data-requests" role="tabpanel">
-          <div class="split">
-            <form class="panel stack" id="data-request-form">
-              <h2>開示請求</h2>
-              <div class="grid-2">
-                <div class="field">
-                  <label for="data-request-type">請求種別</label>
-                  <select id="data-request-type" name="requestType">
-                    <option value="access">閲覧</option>
-                    <option value="export">エクスポート</option>
-                    <option value="deletion">削除</option>
-                    <option value="correction">訂正</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label for="data-request-patient-id">対象患者ID</label>
-                  <input id="data-request-patient-id" name="subjectPatientId" />
-                </div>
-              </div>
-              <div class="field">
-                <label for="data-request-products">対象プロダクト</label>
-                <input id="data-request-products" name="productIds" placeholder="charting,fee,referral" />
-              </div>
-              <button class="accent" type="submit">作成</button>
-            </form>
-            <div class="table-panel">
-              <h2>開示請求一覧</h2>
-              <div class="table-wrap" id="data-requests-table"></div>
+          <div class="view-head">
+            <div class="view-title">
+              <h1>開示請求</h1>
+              <p>個人情報の閲覧、出力、訂正、削除に関する依頼を管理します。</p>
             </div>
+            <div class="view-actions">
+              <button class="accent" data-create="dataRequest" type="button" data-icon="check">新規</button>
+            </div>
+          </div>
+          <div class="table-panel">
+            <div class="table-wrap" id="data-requests-table"></div>
           </div>
         </section>
 
         <section class="view" id="view-audit" role="tabpanel">
-          <div class="table-panel">
-            <div class="table-toolbar">
-              <h2>監査イベント</h2>
+          <div class="view-head">
+            <div class="view-title">
+              <h1>監査イベント</h1>
+              <p>ログインやマスター更新などの操作履歴を確認します。</p>
+            </div>
+            <div class="view-actions">
               <input class="table-search" id="audit-filter" type="search" placeholder="種別・操作者で検索" autocomplete="off" />
             </div>
+          </div>
+          <div class="table-panel">
             <div class="table-wrap" id="audit-table"></div>
           </div>
         </section>
       </section>
     </main>
+
+    <div class="create-form-templates hidden" aria-hidden="true">
+      <form id="organization-form"></form>
+      <form id="member-form"></form>
+      <form id="facility-form"></form>
+      <form id="department-form"></form>
+      <form id="patient-form"></form>
+      <form id="entitlement-form"></form>
+      <form id="data-request-form"></form>
+    </div>
   </div>
 
   <div class="admin-modal-overlay hidden" id="edit-modal" aria-hidden="true">
@@ -1119,6 +1142,9 @@
         next.focus();
         selectView(next.dataset.view);
       });
+    });
+    document.querySelectorAll("[data-create]").forEach((button) => {
+      button.addEventListener("click", () => openCreateModal(button.dataset.create));
     });
 
     document.querySelector("#organization-form").addEventListener("submit", submitOrganization);
@@ -1418,6 +1444,24 @@
       }
     }
 
+    function openCreateModal(type) {
+      if (!state.orgId && type !== "organization") {
+        showMessage("対象組織を選択してください。", "error");
+        return;
+      }
+
+      state.edit = { type, mode: "create" };
+      const meta = modalMeta(type, "create");
+      els.editModalTitle.textContent = meta.title;
+      els.editModalDescription.textContent = meta.description;
+      els.editModalForm.innerHTML = renderCreateForm(type);
+      els.editModalSubmit.textContent = "作成";
+      els.editModalSubmit.disabled = false;
+      show(els.editModal);
+      els.editModal.setAttribute("aria-hidden", "false");
+      setTimeout(() => els.editModalForm.querySelector("input, select, textarea")?.focus(), 0);
+    }
+
     function openEditModal(type, id) {
       const item = findEditableItem(type, id);
       if (!item) {
@@ -1425,21 +1469,12 @@
         return;
       }
 
-      state.edit = { type, id };
-      const titleMap = {
-        facility: "施設を編集",
-        department: "診療科を編集",
-        patient: "患者を編集"
-      };
-      const descriptionMap = {
-        facility: "病院内で共通利用する施設情報を更新します。",
-        department: "カルテ作成や診療報酬算定で参照する診療科情報を更新します。",
-        patient: "各アプリで参照するCore患者インデックスを更新します。"
-      };
-
-      els.editModalTitle.textContent = titleMap[type] || "編集";
-      els.editModalDescription.textContent = descriptionMap[type] || "共通マスターを更新します。";
+      state.edit = { type, id, mode: "edit" };
+      const meta = modalMeta(type, "edit");
+      els.editModalTitle.textContent = meta.title;
+      els.editModalDescription.textContent = meta.description;
       els.editModalForm.innerHTML = renderEditForm(type, item);
+      els.editModalSubmit.textContent = "保存";
       els.editModalSubmit.disabled = false;
       show(els.editModal);
       els.editModal.setAttribute("aria-hidden", "false");
@@ -1458,6 +1493,166 @@
       if (type === "department") return state.departments.find((item) => item.departmentId === id);
       if (type === "patient") return state.patients.find((item) => item.patientId === id);
       return null;
+    }
+
+    function modalMeta(type, mode) {
+      const action = mode === "create" ? "追加" : "編集";
+      return ({
+        organization: {
+          title: `組織を${action}`,
+          description: "病院コードと表示名を登録します。"
+        },
+        member: {
+          title: `職員を${action}`,
+          description: "ログイン情報、共通権限、アプリ別ロールを登録します。"
+        },
+        facility: {
+          title: `施設を${action}`,
+          description: "病院内で共通利用する施設情報を登録します。"
+        },
+        department: {
+          title: `診療科を${action}`,
+          description: "カルテ作成や診療報酬算定で参照する診療科情報を登録します。"
+        },
+        patient: {
+          title: `患者を${action}`,
+          description: "各アプリで参照するCore患者インデックスを登録します。"
+        },
+        entitlement: {
+          title: `プロダクト契約を${action}`,
+          description: "病院ごとのアプリ利用状態を登録します。"
+        },
+        dataRequest: {
+          title: `開示請求を${action}`,
+          description: "個人情報の閲覧、出力、訂正、削除に関する依頼を登録します。"
+        }
+      })[type] || {
+        title: mode === "create" ? "新規作成" : "編集",
+        description: "共通マスターを更新します。"
+      };
+    }
+
+    function renderCreateForm(type) {
+      if (type === "organization") {
+        return `
+          ${textField("組織コード", "organizationCode", "", { required: true })}
+          ${textField("表示名", "displayName", "", { required: true })}
+        `;
+      }
+
+      if (type === "member") {
+        return `
+          <div class="grid-2">
+            ${textField("ログインID", "loginId", "", { required: true })}
+            ${textField("表示名", "displayName", "", { required: true })}
+          </div>
+          <div class="grid-2">
+            ${textField("メール", "email", "", { type: "email" })}
+            ${textField("初期パスワード", "password", "", { type: "password" })}
+          </div>
+          ${textField("共通権限ロール", "globalRoles", "", { placeholder: "org_admin,billing_admin,platform_admin" })}
+          <div class="grid-3">
+            ${textField("カルテ作成ロール", "chartingRoles", "", { placeholder: "admin,doctor" })}
+            ${textField("診療報酬算定ロール", "feeRoles", "", { placeholder: "admin,medical_clerk" })}
+            ${textField("紹介状作成ロール", "referralRoles", "", { placeholder: "admin,doctor" })}
+          </div>
+        `;
+      }
+
+      if (type === "facility") {
+        return `
+          ${textField("表示名", "displayName", "", { required: true })}
+          <div class="grid-2">
+            ${textField("医療機関コード", "medicalInstitutionCode", "")}
+            ${textField("厚生局", "regionalBureau", "")}
+          </div>
+          ${textField("都道府県", "prefecture", "")}
+        `;
+      }
+
+      if (type === "department") {
+        const facilityOptions = [
+          ["", "施設に紐づけない"],
+          ...state.facilities.map((facility) => [facility.facilityId, facility.displayName || facility.facilityId])
+        ];
+        return `
+          ${textField("表示名", "displayName", "", { required: true })}
+          <div class="grid-2">
+            ${selectField("施設", "facilityId", "", facilityOptions)}
+            ${textField("コード", "code", "")}
+          </div>
+          ${textField("専門領域", "specialty", "")}
+        `;
+      }
+
+      if (type === "patient") {
+        return `
+          <div class="grid-2">
+            ${textField("表示名", "displayName", "", { required: true })}
+            ${textField("かな", "displayNameKana", "")}
+          </div>
+          <div class="grid-2">
+            ${textField("患者番号", "primaryPatientNumber", "")}
+            ${textField("生年月日", "birthDate", "", { type: "date" })}
+          </div>
+          <div class="grid-2">
+            ${selectField("性別", "sex", "unknown", [
+              ["unknown", "不明"],
+              ["male", "男性"],
+              ["female", "女性"],
+              ["other", "その他"]
+            ])}
+            ${selectField("状態", "status", "active", [
+              ["active", "有効"],
+              ["inactive", "無効"],
+              ["merged", "統合済み"]
+            ])}
+          </div>
+          <div class="field">
+            <label for="edit-notes">メモ</label>
+            <textarea id="edit-notes" name="notes" rows="4"></textarea>
+          </div>
+        `;
+      }
+
+      if (type === "entitlement") {
+        return `
+          <div class="grid-2">
+            ${selectField("対象プロダクト", "productId", "charting", [
+              ["charting", "カルテ作成"],
+              ["fee", "診療報酬算定"],
+              ["referral", "紹介状作成"]
+            ])}
+            ${selectField("契約状態", "status", "trialing", [
+              ["trialing", "無料期間"],
+              ["enabled", "利用中"],
+              ["disabled", "停止中"]
+            ])}
+          </div>
+          ${textField("プラン", "plan", "")}
+        `;
+      }
+
+      if (type === "dataRequest") {
+        const patientOptions = [
+          ["", "患者を指定しない"],
+          ...state.patients.map((patient) => [patient.patientId, patient.displayName || patient.primaryPatientNumber || patient.patientId])
+        ];
+        return `
+          <div class="grid-2">
+            ${selectField("請求種別", "requestType", "access", [
+              ["access", "閲覧"],
+              ["export", "エクスポート"],
+              ["deletion", "削除"],
+              ["correction", "訂正"]
+            ])}
+            ${selectField("対象患者", "subjectPatientId", "", patientOptions)}
+          </div>
+          ${textField("対象プロダクト", "productIds", "charting", { placeholder: "charting,fee,referral" })}
+        `;
+      }
+
+      return "";
     }
 
     function renderEditForm(type, item) {
@@ -1551,7 +1746,7 @@
       return `
         <div class="field">
           <label for="edit-${escapeHtml(name)}">${escapeHtml(label)}</label>
-          <input id="edit-${escapeHtml(name)}" name="${escapeHtml(name)}" type="${escapeHtml(options.type || "text")}" value="${escapeHtml(value || "")}" ${options.required ? "required" : ""} />
+          <input id="edit-${escapeHtml(name)}" name="${escapeHtml(name)}" type="${escapeHtml(options.type || "text")}" value="${escapeHtml(value || "")}" ${options.placeholder ? `placeholder="${escapeHtml(options.placeholder)}"` : ""} ${options.required ? "required" : ""} />
         </div>
       `;
     }
@@ -1574,7 +1769,29 @@
       if (!state.edit || !state.orgId) return;
 
       const data = new FormData(event.currentTarget);
-      const { type, id } = state.edit;
+      const { type, id, mode } = state.edit;
+      if (mode === "create") {
+        const config = createPayload(type, data);
+        if (!config) return;
+
+        els.editModalSubmit.disabled = true;
+        try {
+          await api(config.path, {
+            method: "POST",
+            csrf: true,
+            body: config.body
+          });
+          closeEditModal();
+          showMessage("作成しました", "success");
+          await config.reload();
+        } catch (error) {
+          showMessage(error.message, "error");
+        } finally {
+          els.editModalSubmit.disabled = false;
+        }
+        return;
+      }
+
       const config = editPayload(type, data);
       if (!config) return;
 
@@ -1600,6 +1817,106 @@
       if (type === "department") return loadDepartments();
       if (type === "patient") return loadPatients();
       return refreshCurrentView();
+    }
+
+    function createPayload(type, data) {
+      if (type === "organization") {
+        return {
+          path: "/v1/organizations",
+          body: {
+            organizationCode: data.get("organizationCode"),
+            displayName: data.get("displayName")
+          },
+          reload: loadOrganizations
+        };
+      }
+
+      if (type === "member") {
+        return {
+          path: `/v1/organizations/${state.orgId}/members`,
+          body: {
+            loginId: data.get("loginId"),
+            displayName: data.get("displayName"),
+            email: emptyToNull(data.get("email")),
+            password: emptyToNull(data.get("password")),
+            globalRoles: csv(data.get("globalRoles")),
+            productRoles: {
+              charting: csv(data.get("chartingRoles")),
+              fee: csv(data.get("feeRoles")),
+              referral: csv(data.get("referralRoles"))
+            }
+          },
+          reload: loadMembers
+        };
+      }
+
+      if (type === "facility") {
+        return {
+          path: `/v1/organizations/${state.orgId}/facilities`,
+          body: {
+            displayName: data.get("displayName"),
+            medicalInstitutionCode: emptyToNull(data.get("medicalInstitutionCode")),
+            regionalBureau: emptyToNull(data.get("regionalBureau")),
+            prefecture: emptyToNull(data.get("prefecture"))
+          },
+          reload: loadFacilities
+        };
+      }
+
+      if (type === "department") {
+        return {
+          path: `/v1/organizations/${state.orgId}/departments`,
+          body: {
+            displayName: data.get("displayName"),
+            facilityId: emptyToNull(data.get("facilityId")),
+            code: emptyToNull(data.get("code")),
+            specialty: emptyToNull(data.get("specialty"))
+          },
+          reload: loadDepartments
+        };
+      }
+
+      if (type === "patient") {
+        return {
+          path: `/v1/organizations/${state.orgId}/patients`,
+          body: {
+            displayName: data.get("displayName"),
+            displayNameKana: emptyToNull(data.get("displayNameKana")),
+            primaryPatientNumber: emptyToNull(data.get("primaryPatientNumber")),
+            birthDate: emptyToNull(data.get("birthDate")),
+            sex: data.get("sex"),
+            status: data.get("status"),
+            notes: emptyToNull(data.get("notes"))
+          },
+          reload: loadPatients
+        };
+      }
+
+      if (type === "entitlement") {
+        return {
+          path: `/v1/organizations/${state.orgId}/product-entitlements`,
+          body: {
+            productId: data.get("productId"),
+            status: data.get("status"),
+            plan: emptyToNull(data.get("plan"))
+          },
+          reload: loadEntitlements
+        };
+      }
+
+      if (type === "dataRequest") {
+        return {
+          path: `/v1/organizations/${state.orgId}/data-requests`,
+          body: {
+            requestType: data.get("requestType"),
+            subjectPatientId: emptyToNull(data.get("subjectPatientId")),
+            productIds: csv(data.get("productIds"))
+          },
+          reload: loadDataRequests
+        };
+      }
+
+      return null;
     }
 
     function editPayload(type, data) {
@@ -1874,14 +2191,18 @@
       setViewVisibility("data-requests", canManageOrganization);
       setViewVisibility("audit", canManageOrganization);
       setViewVisibility("entitlements", canManageContracts);
-      document.querySelector("#organization-form").classList.toggle("hidden", !canManagePlatform);
-      for (const selector of ["#member-form", "#facility-form", "#department-form", "#patient-form", "#data-request-form"]) {
-        document.querySelector(selector)?.classList.toggle("hidden", !canManageOrganization);
+      setCreateVisibility("organization", canManagePlatform);
+      for (const type of ["member", "facility", "department", "patient", "dataRequest"]) {
+        setCreateVisibility(type, canManageOrganization);
       }
-      document.querySelector("#entitlement-form").classList.toggle("hidden", !canManageContracts);
+      setCreateVisibility("entitlement", canManageContracts);
       if (document.querySelector(`[data-view="${state.activeView}"]`)?.classList.contains("hidden")) {
         selectView(visibleTabs()[0]?.dataset.view || "facilities");
       }
+    }
+
+    function setCreateVisibility(type, visible) {
+      document.querySelector(`[data-create="${type}"]`)?.classList.toggle("hidden", !visible);
     }
 
     function setViewVisibility(view, visible) {

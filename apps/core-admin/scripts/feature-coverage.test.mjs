@@ -26,12 +26,18 @@ test("always-visible authenticator setup block is removed", () => {
   assert.doesNotMatch(html, /id="mfa-setup-panel"/);
 });
 
-test("topbar uses the same shell alignment as the main content", () => {
-  assert.match(html, /\.topbar\s*\{[\s\S]*width: min\(1360px, calc\(100% - 32px\)\);/);
-  assert.match(html, /\.main\s*\{[\s\S]*width: min\(1360px, calc\(100% - 32px\)\);/);
+test("app shell uses sidebar navigation, topbar organization switcher, and account menu", () => {
+  assert.match(html, /class="sidebar"/);
+  assert.match(html, /class="side-nav"/);
+  assert.match(html, /class="topbar-main"/);
+  assert.match(html, /class="field org-switcher"/);
+  assert.match(html, /\.topbar\s*\{[\s\S]*grid-template-columns: 220px minmax\(0, 1fr\);/);
+  assert.match(html, /\.main\s*\{[\s\S]*grid-template-columns: 220px minmax\(0, 1fr\);/);
+  assert.doesNotMatch(html, /main--single/);
+  assert.doesNotMatch(html, /class="split"/);
 });
 
-test("master data screens cover create, edit, copy, search, and reload flows", () => {
+test("master data screens cover modal create, edit, copy, search, and reload flows", () => {
   for (const endpoint of [
     "/v1/organizations",
     "/members",
@@ -46,6 +52,13 @@ test("master data screens cover create, edit, copy, search, and reload flows", (
   }
 
   for (const token of [
+    "data-create=\"member\"",
+    "data-create=\"facility\"",
+    "data-create=\"department\"",
+    "data-create=\"patient\"",
+    "openCreateModal",
+    "renderCreateForm",
+    "createPayload",
     "data-edit-facility",
     "data-edit-department",
     "data-edit-patient",
@@ -101,6 +114,7 @@ test("role guards are present for admin-only and billing-only features", () => {
     "canManageOrg",
     "canManageBilling",
     "setViewVisibility",
+    "setCreateVisibility",
     'data-view="organizations"',
     'data-view="entitlements"',
     'data-view="data-requests"',
