@@ -1,4 +1,4 @@
-const DEFAULT_STRIPE_API_VERSION = "2026-03-25.dahlia";
+const DEFAULT_STRIPE_API_VERSION = "2026-05-27.dahlia";
 
 export function createStripeBillingClientFromEnv(env = process.env) {
   return new StripeBillingClient({
@@ -6,7 +6,9 @@ export function createStripeBillingClientFromEnv(env = process.env) {
     apiBaseUrl: env.STRIPE_API_BASE_URL || "https://api.stripe.com/v1",
     apiVersion: env.STRIPE_API_VERSION || DEFAULT_STRIPE_API_VERSION,
     priceId: env.STRIPE_PRICE_ID || "",
-    priceLookupKey: env.STRIPE_PRICE_LOOKUP_KEY || "medical_ai_monthly_jpy_v2",
+    priceLookupKey: env.STRIPE_PRICE_LOOKUP_KEY
+      || env.STRIPE_CHARTING_FLAT_PRICE_LOOKUP_KEY
+      || "halunasu_charting_flat_monthly_jpy_v1",
     trialDays: parseInteger(env.STRIPE_CHECKOUT_TRIAL_DAYS, 0)
   });
 }
@@ -17,7 +19,7 @@ export class StripeBillingClient {
     this.apiBaseUrl = (options.apiBaseUrl || "https://api.stripe.com/v1").replace(/\/$/u, "");
     this.apiVersion = options.apiVersion || DEFAULT_STRIPE_API_VERSION;
     this.priceId = options.priceId || "";
-    this.priceLookupKey = options.priceLookupKey || "medical_ai_monthly_jpy_v2";
+    this.priceLookupKey = options.priceLookupKey || "halunasu_charting_flat_monthly_jpy_v1";
     this.trialDays = Number.isFinite(Number(options.trialDays)) ? Number(options.trialDays) : 0;
   }
 
@@ -35,13 +37,15 @@ export class StripeBillingClient {
     };
   }
 
-  async lookupPrice() {
-    if (this.priceId) {
-      return { id: this.priceId };
+  async lookupPrice(input = {}) {
+    const priceId = input.priceId || this.priceId;
+    const lookupKey = input.lookupKey || this.priceLookupKey;
+    if (priceId) {
+      return { id: priceId };
     }
 
     const response = await this.request("GET", "/prices", {
-      "lookup_keys[]": this.priceLookupKey,
+      "lookup_keys[]": lookupKey,
       active: "true",
       limit: "1"
     });
@@ -67,22 +71,46 @@ export class StripeBillingClient {
   }
 
   async createSubscriptionCheckoutSession(input = {}) {
-    const price = await this.lookupPrice();
+    const requestedLineItems = Array.isArray(input.lineItems) && input.lineItems.length
+      ? input.lineItems
+      : [{ priceId: this.priceId, priceLookupKey: this.priceLookupKey, quantity: input.quantity || 1 }];
+    const lineItems = [];
+    for (const item of requestedLineItems) {
+      const price = await this.lookupPrice({
+        priceId: item.priceId,
+        lookupKey: item.priceLookupKey || item.lookupKey
+      });
+      const quantity = Number.parseInt(String(item.quantity || 1), 10);
+      lineItems.push({
+        ...item,
+        price,
+        quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1
+      });
+    }
+
+    const lineItemParams = {};
+    lineItems.forEach((item, index) => {
+      lineItemParams[`line_items[${index}][price]`] = item.price.id;
+      lineItemParams[`line_items[${index}][quantity]`] = String(item.quantity);
+    });
+
     return {
-      price,
+      price: lineItems[0]?.price || null,
+      lineItems,
       session: await this.request("POST", "/checkout/sessions", compactObject({
         mode: "subscription",
         customer: input.customerId,
-        "line_items[0][price]": price.id,
-        "line_items[0][quantity]": String(input.quantity || 1),
+        ...lineItemParams,
         success_url: input.successUrl,
         cancel_url: input.cancelUrl,
         client_reference_id: input.clientReferenceId,
         "metadata[orgId]": input.metadata?.orgId,
         "metadata[organizationCode]": input.metadata?.organizationCode,
+        "metadata[productIds]": input.metadata?.productIds,
         "metadata[source]": input.metadata?.source || "platform-api",
         "subscription_data[metadata][orgId]": input.metadata?.orgId,
         "subscription_data[metadata][organizationCode]": input.metadata?.organizationCode,
+        "subscription_data[metadata][productIds]": input.metadata?.productIds,
         "subscription_data[metadata][source]": input.metadata?.source || "platform-api",
         "subscription_data[trial_period_days]": this.trialDays > 0 ? String(this.trialDays) : undefined
       }))

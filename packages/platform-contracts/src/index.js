@@ -11,7 +11,16 @@ export const facilityStatuses = Object.freeze(["active", "inactive"]);
 export const departmentStatuses = Object.freeze(["active", "inactive"]);
 export const patientStatuses = Object.freeze(["active", "merged", "inactive"]);
 export const patientSexes = Object.freeze(["male", "female", "other", "unknown"]);
-export const productEntitlementStatuses = Object.freeze(["enabled", "trialing", "disabled"]);
+export const productEntitlementStatuses = Object.freeze([
+  "enabled",
+  "trialing",
+  "payment_required",
+  "checkout_pending",
+  "past_due",
+  "cancel_scheduled",
+  "canceled",
+  "disabled"
+]);
 export const signupApplicationStatuses = Object.freeze(["submitted", "email_verified", "provisioned", "rejected"]);
 export const dataRequestTypes = Object.freeze(["access", "export", "deletion", "correction"]);
 export const dataRequestStatuses = Object.freeze(["submitted", "reviewing", "completed", "rejected", "cancelled"]);
@@ -254,8 +263,24 @@ export function validateUpsertProductEntitlementInput(input = {}) {
     productId,
     status: optionalEnum(input.status, productEntitlementStatuses, "status") || "trialing",
     plan: optionalString(input.plan),
+    pricingModel: optionalString(input.pricingModel),
+    monthlyAmountJpy: optionalPositiveInteger(input.monthlyAmountJpy, "monthlyAmountJpy"),
+    currency: optionalString(input.currency),
     limits: isPlainObject(input.limits) ? input.limits : {},
     features: isPlainObject(input.features) ? input.features : {},
+    trialStartsAt: optionalDateTime(input.trialStartsAt, "trialStartsAt"),
+    trialEndsAt: optionalDateTime(input.trialEndsAt, "trialEndsAt"),
+    reminderStartsAt: optionalDateTime(input.reminderStartsAt, "reminderStartsAt"),
+    lastReminderSentAt: optionalDateTime(input.lastReminderSentAt, "lastReminderSentAt"),
+    reminderCount: optionalNonNegativeInteger(input.reminderCount, "reminderCount"),
+    stripePriceLookupKey: optionalString(input.stripePriceLookupKey),
+    stripePriceId: optionalString(input.stripePriceId),
+    stripeSubscriptionItemId: optionalString(input.stripeSubscriptionItemId),
+    seatBilling: isPlainObject(input.seatBilling) ? input.seatBilling : undefined,
+    currentPeriodEnd: optionalDateTime(input.currentPeriodEnd, "currentPeriodEnd"),
+    cancelAtPeriodEnd: optionalBoolean(input.cancelAtPeriodEnd),
+    cancelScheduledAt: optionalDateTime(input.cancelScheduledAt, "cancelScheduledAt"),
+    canceledAt: optionalDateTime(input.canceledAt, "canceledAt"),
     startsAt: optionalDateTime(input.startsAt, "startsAt"),
     endsAt: optionalDateTime(input.endsAt, "endsAt")
   };
@@ -274,8 +299,32 @@ export function validatePatchProductEntitlementInput(input = {}) {
       ? optionalEnum(input.status, productEntitlementStatuses, "status")
       : undefined,
     plan: hasOwn(input, "plan") ? optionalString(input.plan) : undefined,
+    pricingModel: hasOwn(input, "pricingModel") ? optionalString(input.pricingModel) : undefined,
+    monthlyAmountJpy: hasOwn(input, "monthlyAmountJpy")
+      ? optionalPositiveInteger(input.monthlyAmountJpy, "monthlyAmountJpy")
+      : undefined,
+    currency: hasOwn(input, "currency") ? optionalString(input.currency) : undefined,
     limits: hasOwn(input, "limits") && isPlainObject(input.limits) ? input.limits : undefined,
     features: hasOwn(input, "features") && isPlainObject(input.features) ? input.features : undefined,
+    trialStartsAt: hasOwn(input, "trialStartsAt") ? optionalDateTime(input.trialStartsAt, "trialStartsAt") : undefined,
+    trialEndsAt: hasOwn(input, "trialEndsAt") ? optionalDateTime(input.trialEndsAt, "trialEndsAt") : undefined,
+    reminderStartsAt: hasOwn(input, "reminderStartsAt") ? optionalDateTime(input.reminderStartsAt, "reminderStartsAt") : undefined,
+    lastReminderSentAt: hasOwn(input, "lastReminderSentAt")
+      ? optionalDateTime(input.lastReminderSentAt, "lastReminderSentAt")
+      : undefined,
+    reminderCount: hasOwn(input, "reminderCount")
+      ? optionalNonNegativeInteger(input.reminderCount, "reminderCount")
+      : undefined,
+    stripePriceLookupKey: hasOwn(input, "stripePriceLookupKey") ? optionalString(input.stripePriceLookupKey) : undefined,
+    stripePriceId: hasOwn(input, "stripePriceId") ? optionalString(input.stripePriceId) : undefined,
+    stripeSubscriptionItemId: hasOwn(input, "stripeSubscriptionItemId")
+      ? optionalString(input.stripeSubscriptionItemId)
+      : undefined,
+    seatBilling: hasOwn(input, "seatBilling") && isPlainObject(input.seatBilling) ? input.seatBilling : undefined,
+    currentPeriodEnd: hasOwn(input, "currentPeriodEnd") ? optionalDateTime(input.currentPeriodEnd, "currentPeriodEnd") : undefined,
+    cancelAtPeriodEnd: hasOwn(input, "cancelAtPeriodEnd") ? optionalBoolean(input.cancelAtPeriodEnd) : undefined,
+    cancelScheduledAt: hasOwn(input, "cancelScheduledAt") ? optionalDateTime(input.cancelScheduledAt, "cancelScheduledAt") : undefined,
+    canceledAt: hasOwn(input, "canceledAt") ? optionalDateTime(input.canceledAt, "canceledAt") : undefined,
     startsAt: hasOwn(input, "startsAt") ? optionalDateTime(input.startsAt, "startsAt") : undefined,
     endsAt: hasOwn(input, "endsAt") ? optionalDateTime(input.endsAt, "endsAt") : undefined
   });
@@ -455,6 +504,48 @@ function optionalDateTime(value, field) {
   }
 
   return date.toISOString();
+}
+
+function optionalPositiveInteger(value, field) {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw validationError(`${field} must be a positive integer`, field);
+  }
+
+  return parsed;
+}
+
+function optionalNonNegativeInteger(value, field) {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw validationError(`${field} must be a non-negative integer`, field);
+  }
+
+  return parsed;
+}
+
+function optionalBoolean(value) {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  return Boolean(value);
 }
 
 function normalizeStringArray(value) {

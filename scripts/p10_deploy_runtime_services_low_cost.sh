@@ -197,8 +197,9 @@ deploy_env() {
     "PLATFORM_STORE_BACKEND=firestore" \
     "PLATFORM_PUBLIC_APP_BASE_URL=${charting_app_base_url}" \
     "PLATFORM_PUBLIC_LP_BASE_URL=${lp_base_url}" \
-    "STRIPE_API_VERSION=2026-03-25.dahlia" \
-    "STRIPE_PRICE_LOOKUP_KEY=${STRIPE_PRICE_LOOKUP_KEY:-medical_ai_monthly_jpy_v2}" \
+    "STRIPE_API_VERSION=2026-05-27.dahlia" \
+    "STRIPE_PRICE_LOOKUP_KEY=${STRIPE_PRICE_LOOKUP_KEY:-halunasu_charting_flat_monthly_jpy_v1}" \
+    "STRIPE_CHARTING_FLAT_PRICE_LOOKUP_KEY=${STRIPE_CHARTING_FLAT_PRICE_LOOKUP_KEY:-halunasu_charting_flat_monthly_jpy_v1}" \
     "EMAIL_DELIVERY_PROVIDER=resend" \
     "EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS:-Halunasu <no-reply@mail.halunasu.com>}" \
     "EMAIL_REPLY_TO_ADDRESS=${EMAIL_REPLY_TO_ADDRESS:-info@halunasu.com}" \

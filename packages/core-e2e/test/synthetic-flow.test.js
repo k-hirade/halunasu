@@ -19,9 +19,18 @@ test("runs signup to Core and product synthetic flow", async () => {
     organizationDisplayName: "E2E Clinic",
     applicantName: "Admin User",
     applicantEmail: "admin@example.com",
-    requestedProducts: ["charting", "fee", "referral"]
+    requestedProducts: ["charting"]
   });
   const orgId = account.session.orgId;
+
+  await env.platform("POST", `/v1/organizations/${orgId}/product-entitlements`, {
+    productId: "fee",
+    status: "enabled"
+  }, account.headers);
+  await env.platform("POST", `/v1/organizations/${orgId}/product-entitlements`, {
+    productId: "referral",
+    status: "enabled"
+  }, account.headers);
 
   const facility = await env.platform("POST", `/v1/organizations/${orgId}/facilities`, {
     displayName: "Main Clinic",

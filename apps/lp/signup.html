@@ -153,6 +153,7 @@
     }
 
     .signup-form input,
+    .signup-form select,
     .signup-form textarea {
       width: 100%;
       min-height: 44px;
@@ -172,12 +173,14 @@
     }
 
     .signup-form input:focus,
+    .signup-form select:focus,
     .signup-form textarea:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
     }
 
     .signup-form input[aria-invalid="true"],
+    .signup-form select[aria-invalid="true"],
     .signup-form textarea[aria-invalid="true"] {
       border-color: #dc2626;
       background: #fff7f7;
@@ -480,6 +483,16 @@
         </label>
 
         <label>
+          <span>利用したいアプリ</span>
+          <select id="requestedProduct" name="requestedProduct">
+            <option value="charting">カルテ作成</option>
+            <option value="fee" disabled>診療報酬算定（準備中）</option>
+            <option value="referral" disabled>紹介状作成（準備中）</option>
+          </select>
+          <small class="field-error" id="requestedProduct-error"></small>
+        </label>
+
+        <label>
           <span>備考</span>
           <textarea id="notes" name="notes" rows="5" placeholder="運用開始時期や相談事項があれば記入してください。"></textarea>
           <small class="field-error" id="notes-error"></small>
@@ -529,7 +542,7 @@
       <div class="signup-heading">
         <h1>初回パスワード設定</h1>
         <p class="signup-lead">
-          管理者アカウントの初期パスワードを設定してください。設定後、継続利用のための決済画面へ進みます。
+          管理者アカウントの初期パスワードを設定してください。設定後、14日間の無料利用を開始できます。
         </p>
       </div>
       <dl class="signup-status-meta" id="provisioned-meta"></dl>
@@ -549,7 +562,7 @@
       <div class="signup-heading">
         <h1>初期設定が完了しました</h1>
         <p class="signup-lead">
-          決済画面が開かない場合は、以下のログイン情報でアプリにログインし、設定画面から契約・支払いを続行してください。
+          以下のログイン情報でアプリにログインしてください。無料利用期間の終了前に契約・支払いの案内をお送りします。
         </p>
       </div>
       <dl class="signup-status-meta" id="login-info"></dl>
@@ -570,7 +583,7 @@
 
   <script>
     const CONTACT_SIGNUP_DRAFT_STORAGE_KEY = "medical.contactSignupDraft.v1";
-    const PRODUCT_IDS = ["charting", "fee", "referral"];
+    const SIGNUP_SELECTABLE_PRODUCTS = new Set(["charting"]);
     const form = document.querySelector("#signup-form");
     const passwordForm = document.querySelector("#password-form");
     const submitButton = document.querySelector("#submit-button");
@@ -622,7 +635,7 @@
           organizationDisplayName: nextForm.organizationName,
           applicantName: nextForm.adminName,
           applicantEmail: nextForm.adminEmail,
-          requestedProducts: PRODUCT_IDS,
+          requestedProducts: [nextForm.requestedProduct],
           safePayload: {
             source: "lp_contact_form",
             phoneNumber: nextForm.phoneNumber || undefined,
@@ -662,16 +675,11 @@
       try {
         const response = await postJson("/v1/signup/setup-admin-password", {
           token: passwordSetupToken,
-          password,
-          startCheckout: true
+          password
         });
         const login = response.login || provisionedLogin || {};
         renderLoginInfo(login);
         showStep(completePanel);
-
-        if (response.billingCheckout?.status === "created" && response.billingCheckout.checkoutUrl) {
-          window.location.assign(response.billingCheckout.checkoutUrl);
-        }
       } catch (error) {
         setError(passwordError, error.message || "パスワード設定に失敗しました。");
       } finally {
@@ -727,6 +735,7 @@
         adminEmail: fieldValue("adminEmail"),
         phoneNumber: fieldValue("phoneNumber"),
         seatEstimate: fieldValue("seatEstimate").replace(/[^0-9]/g, ""),
+        requestedProduct: fieldValue("requestedProduct") || "charting",
         notes: fieldValue("notes"),
         consentAccepted: document.querySelector("#consentAccepted").checked
       };
@@ -760,6 +769,9 @@
           errors.seatEstimate = "想定利用人数が大きすぎます。";
         }
       }
+      if (!SIGNUP_SELECTABLE_PRODUCTS.has(input.requestedProduct)) {
+        errors.requestedProduct = "現在選択できるアプリはカルテ作成のみです。";
+      }
       if (input.notes.length > 2000) {
         errors.notes = "備考は2000文字以内で入力してください。";
       }
@@ -770,7 +782,7 @@
     }
 
     function renderFieldErrors(errors) {
-      for (const key of ["organizationName", "adminName", "adminEmail", "phoneNumber", "seatEstimate", "notes"]) {
+      for (const key of ["organizationName", "adminName", "adminEmail", "phoneNumber", "seatEstimate", "requestedProduct", "notes"]) {
         const input = document.querySelector(`#${key}`);
         const error = errors[key] || "";
         input.setAttribute("aria-invalid", error ? "true" : "false");
@@ -890,7 +902,7 @@
         const raw = window.sessionStorage.getItem(CONTACT_SIGNUP_DRAFT_STORAGE_KEY);
         if (!raw) return;
         const saved = JSON.parse(raw);
-        for (const key of ["organizationName", "adminName", "adminEmail", "phoneNumber", "seatEstimate", "notes"]) {
+        for (const key of ["organizationName", "adminName", "adminEmail", "phoneNumber", "seatEstimate", "requestedProduct", "notes"]) {
           if (saved[key]) {
             document.querySelector(`#${key}`).value = saved[key];
           }

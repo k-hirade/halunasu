@@ -25,12 +25,7 @@ export function createFeeCalculatorFromEnv(env = process.env) {
     workerMode: env.FEE_PYTHON_WORKER_MODE === "spawn" || env.FEE_PYTHON_WORKER === "0" ? false : true
   });
   if (env.FEE_MASTER_DB_PREPARE_ON_START === "true") {
-    calculator.ensureMasterDbReady().catch((error) => {
-      console.warn("fee master db background prepare failed", {
-        name: error.name,
-        message: error.message
-      });
-    });
+    calculator.ensureMasterDbReady().catch(() => {});
   }
   return calculator;
 }

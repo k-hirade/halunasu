@@ -42,6 +42,12 @@ import {
 } from "../../../../packages/firestore-schema/src/index.js";
 import { conflictError, notFoundError, rateLimitError } from "./memory-store.js";
 import { hashPassword } from "../auth/password.js";
+import {
+  buildOrganizationBillingState,
+  buildPendingSetupEntitlement,
+  buildTrialEntitlement,
+  normalizeSignupProductSelection
+} from "../billing/catalog.js";
 
 export class FirestorePlatformStore {
   constructor(options = {}) {
@@ -177,15 +183,12 @@ export class FirestorePlatformStore {
     }
 
     const now = this.timestamp();
-    const requestedProducts = currentApplication.requestedProducts;
+    const requestedProducts = normalizeSignupProductSelection(currentApplication.requestedProducts);
     const organization = await this.createOrganization({
       organizationCode: currentApplication.organizationCode,
       displayName: currentApplication.organizationDisplayName,
       status: "trialing",
-      billing: {
-        status: "trialing",
-        provider: "manual"
-      },
+      billing: buildOrganizationBillingState(now),
       access: {
         status: "active",
         enabledProducts: requestedProducts
@@ -201,13 +204,10 @@ export class FirestorePlatformStore {
     });
     const productEntitlements = [];
     for (const productId of requestedProducts) {
-      productEntitlements.push(await this.upsertProductEntitlement(organization.orgId, {
-        productId,
-        status: "trialing",
-        plan: "trial",
-        startsAt: now,
-        endsAt: daysFromNow(this.now(), 14)
-      }));
+      productEntitlements.push(await this.upsertProductEntitlement(
+        organization.orgId,
+        buildPendingSetupEntitlement(productId, this.now())
+      ));
     }
 
     const signupApplication = compactObject({
@@ -286,6 +286,9 @@ export class FirestorePlatformStore {
       await this.doc(signupApplicationPath(signupApplication.applicationId)).set(signupApplication);
     }
     await this.doc(tokenPath).set(consumedSetupToken);
+    for (const productId of normalizeSignupProductSelection(signupApplication?.requestedProducts || [])) {
+      await this.upsertProductEntitlement(tokenRecord.orgId, buildTrialEntitlement(productId, this.now()));
+    }
     await this.createAuditEvent(tokenRecord.orgId, {
       eventType: "signup.admin_password_set",
       actorMemberId: adminMember.memberId,

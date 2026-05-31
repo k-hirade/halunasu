@@ -6,6 +6,11 @@ import {
 } from "../../../packages/platform-contracts/src/index.js";
 import { createOtpAuthUrl, generateMfaSecret, verifyTotpCode } from "./auth/mfa.js";
 import { verifyPassword } from "./auth/password.js";
+import {
+  buildCheckoutLineItemsForEntitlement,
+  getBillingCatalog,
+  getBillingProduct
+} from "./billing/catalog.js";
 import { createStripeBillingClientFromEnv } from "./billing/stripe-client.js";
 import { processStripeWebhookEvent, verifyStripeWebhookSignature } from "./billing/stripe-webhook.js";
 import {
@@ -175,12 +180,6 @@ async function routePlatformApiRequest(input = {}) {
 
   if (method === "POST" && matches(parts, ["v1", "signup", "setup-admin-password"])) {
     const result = await store.setupAdminPassword(input.body || {});
-    const billingCheckout = input.body?.startCheckout
-      ? await tryCreateSignupCheckout({ input, store, stripeClient, setupResult: result })
-      : null;
-    if (billingCheckout) {
-      return ok({ ...result, billingCheckout });
-    }
     return ok(result);
   }
 
@@ -249,8 +248,29 @@ async function routePlatformApiRequest(input = {}) {
       billing: organization.billing || null,
       access: organization.access || null,
       stripe: stripeClient.configurationView?.() || { configured: false },
+      billingCatalog: publicBillingCatalog(input.env),
       productEntitlements: await safeListProductEntitlements(store, context.session.orgId)
     });
+  }
+
+  if (
+    method === "POST"
+    && parts.length === 5
+    && matches(parts.slice(0, 3), ["v1", "billing", "products"])
+    && parts[4] === "checkout-session"
+  ) {
+    const context = await requireSession(input, store);
+    requireCsrf(input, context.session);
+    requireBillingManagementMember(context.member);
+    const checkout = await createBillingCheckout({
+      input,
+      store,
+      stripeClient,
+      context,
+      productId: parts[3],
+      source: "core_billing"
+    });
+    return ok({ billingCheckout: checkout });
   }
 
   if (method === "POST" && matches(parts, ["v1", "billing", "checkout-session"])) {
@@ -262,6 +282,7 @@ async function routePlatformApiRequest(input = {}) {
       store,
       stripeClient,
       context,
+      productId: requestedCheckoutProductId(input),
       source: "core_billing"
     });
     return ok({ billingCheckout: checkout });
@@ -954,47 +975,7 @@ async function createMfaQrCodeDataUrl(otpauthUrl) {
   });
 }
 
-async function tryCreateSignupCheckout({ input, store, stripeClient, setupResult }) {
-  if (!stripeClient?.isConfigured?.()) {
-    return {
-      status: "not_configured",
-      message: "Stripe checkout is not configured"
-    };
-  }
-
-  try {
-    const context = {
-      session: {
-        orgId: setupResult.organization.orgId,
-        organizationCode: setupResult.organization.organizationCode,
-        loginId: setupResult.adminMember.loginId,
-        memberId: setupResult.adminMember.memberId
-      },
-      identity: {
-        loginId: setupResult.adminMember.loginId
-      },
-      member: setupResult.adminMember
-    };
-    const checkout = await createBillingCheckout({
-      input,
-      store,
-      stripeClient,
-      context,
-      source: "lp_signup"
-    });
-    return {
-      status: "created",
-      ...checkout
-    };
-  } catch (error) {
-    return {
-      status: "failed",
-      message: error.message
-    };
-  }
-}
-
-async function createBillingCheckout({ input, store, stripeClient, context, source }) {
+async function createBillingCheckout({ input, store, stripeClient, context, productId = "charting", source }) {
   if (!stripeClient?.isConfigured?.()) {
     const error = new Error("Stripe checkout is not configured");
     error.name = "StripeConfigurationError";
@@ -1007,6 +988,21 @@ async function createBillingCheckout({ input, store, stripeClient, context, sour
     const error = new Error("organization not found");
     error.name = "NotFoundError";
     error.statusCode = 404;
+    throw error;
+  }
+  const product = getBillingProduct(productId, input.env);
+  if (!product || product.status !== "sellable") {
+    const error = new Error("Product is not available for billing");
+    error.name = "ValidationError";
+    error.statusCode = 400;
+    error.field = "productId";
+    throw error;
+  }
+  const entitlement = await store.getProductEntitlement(context.session.orgId, productId);
+  if (!entitlement) {
+    const error = new Error("Product entitlement is not linked to this organization");
+    error.name = "ConflictError";
+    error.statusCode = 409;
     throw error;
   }
 
@@ -1023,27 +1019,35 @@ async function createBillingCheckout({ input, store, stripeClient, context, sour
     });
   const checkout = await stripeClient.createSubscriptionCheckoutSession({
     customerId: customer.id,
-    quantity: seatQuantity(organization, input.body),
-    successUrl: billingReturnUrl(input, "success"),
-    cancelUrl: billingReturnUrl(input, "cancel"),
+    lineItems: buildCheckoutLineItemsForEntitlement(product, entitlement),
+    successUrl: billingReturnUrl(input, "success", productId),
+    cancelUrl: billingReturnUrl(input, "cancel", productId),
     clientReferenceId: organization.orgId,
     metadata: {
       orgId: organization.orgId,
       organizationCode: organization.organizationCode,
+      productIds: productId,
       source
     }
   });
   const now = new Date().toISOString();
+  const flatLineItem = checkout.lineItems?.find((item) => item.kind === "flat") || checkout.lineItems?.[0] || null;
   await store.updateOrganization(organization.orgId, {
     billing: {
       ...(organization.billing || {}),
       provider: "stripe",
-      status: organization.billing?.status || "pending_checkout",
+      billingModel: "app_addon",
+      status: "checkout_pending",
       stripeCustomerId: customer.id,
       stripeCheckoutSessionId: checkout.session.id,
-      stripePriceId: checkout.price.id,
+      stripePriceId: flatLineItem?.price?.id || checkout.price?.id || null,
       updatedAt: now
     }
+  });
+  const productEntitlement = await store.updateProductEntitlement(organization.orgId, productId, {
+    status: "checkout_pending",
+    stripePriceLookupKey: flatLineItem?.priceLookupKey || entitlement.stripePriceLookupKey,
+    stripePriceId: flatLineItem?.price?.id || checkout.price?.id || null
   });
   await store.createAuditEvent(organization.orgId, {
     eventType: "billing.checkout_session_created",
@@ -1053,21 +1057,31 @@ async function createBillingCheckout({ input, store, stripeClient, context, sour
     targetId: organization.orgId,
     safePayload: {
       source,
+      productId,
       checkoutSessionId: checkout.session.id,
-      stripePriceId: checkout.price.id
+      stripePriceId: flatLineItem?.price?.id || checkout.price?.id || null
     }
   });
 
   return {
     checkoutSessionId: checkout.session.id,
     checkoutUrl: checkout.session.url,
+    productId,
+    productEntitlement,
+    lineItems: (checkout.lineItems || []).map((item) => ({
+      kind: item.kind || "flat",
+      productId: item.productId || productId,
+      priceId: item.price?.id || null,
+      priceLookupKey: item.priceLookupKey || null,
+      quantity: item.quantity
+    })),
     expiresAt: checkout.session.expires_at
       ? new Date(Number(checkout.session.expires_at) * 1000).toISOString()
       : null
   };
 }
 
-function billingReturnUrl(input, status) {
+function billingReturnUrl(input, status, productId = null) {
   const baseUrl = String(
     input.billingReturnBaseUrl
     || process.env.PLATFORM_PUBLIC_APP_BASE_URL
@@ -1075,7 +1089,12 @@ function billingReturnUrl(input, status) {
     || defaultAppBaseUrl(input.env)
   ).replace(/\/$/u, "");
 
-  return `${baseUrl}/billing?checkout=${encodeURIComponent(status)}`;
+  const url = new URL(`${baseUrl}/billing`);
+  url.searchParams.set("checkout", status);
+  if (productId) {
+    url.searchParams.set("product", productId);
+  }
+  return url.toString();
 }
 
 async function maybeSendPasswordSetupMail({ signupMailer, input, result, passwordSetupUrl }) {
@@ -1134,18 +1153,43 @@ function defaultAppBaseUrl(env) {
     : "https://charting.halunasu.com";
 }
 
-function seatQuantity(organization, body = {}) {
-  const raw = body?.seatQuantity || organization.billing?.seatQuantity || 1;
-  const parsed = Number.parseInt(String(raw), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-}
-
 async function safeListProductEntitlements(store, orgId) {
   try {
     return await store.listProductEntitlements(orgId);
   } catch {
     return [];
   }
+}
+
+function requestedCheckoutProductId(input = {}) {
+  const requested = input.body?.productId;
+  return typeof requested === "string" && requested.trim() ? requested.trim() : "charting";
+}
+
+function publicBillingCatalog(env) {
+  return Object.fromEntries(
+    Object.entries(getBillingCatalog({ ...process.env, HALUNASU_ENV: env })).map(([productId, product]) => [
+      productId,
+      {
+        productId,
+        displayName: product.displayName,
+        status: product.status,
+        signupSelectable: Boolean(product.signupSelectable),
+        pricingModel: product.pricingModel || null,
+        monthlyAmountJpy: product.monthlyAmountJpy || null,
+        currency: product.currency || "jpy",
+        seatBilling: product.seatBilling
+          ? {
+            enabled: Boolean(product.seatBilling.enabled),
+            billableProductRoles: product.seatBilling.billableProductRoles || [],
+            includedBillableSeats: product.seatBilling.includedBillableSeats || 1,
+            extraSeatAmountJpy: product.seatBilling.extraSeatAmountJpy || null,
+            prorationBehavior: product.seatBilling.prorationBehavior || "none"
+          }
+          : null
+      }
+    ])
+  );
 }
 
 async function handleStripeWebhook(input, store) {

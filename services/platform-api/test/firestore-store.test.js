@@ -208,12 +208,14 @@ test("provisions organizations from verified signup applications", async () => {
   assert.equal(provisioned.organization.organizationCode, "signup-clinic");
   assert.equal(provisioned.adminMember.loginId, "admin@example.com");
   assert.deepEqual(provisioned.adminMember.productRoles, {
-    charting: ["admin"],
-    fee: ["admin"]
+    charting: ["admin"]
   });
-  assert.equal(provisioned.productEntitlements.length, 2);
+  assert.equal(provisioned.productEntitlements.length, 1);
+  assert.equal(provisioned.productEntitlements[0].productId, "charting");
   assert.equal(setup.login.organizationCode, "signup-clinic");
   assert.equal(setup.login.loginId, "admin@example.com");
+  assert.equal((await store.getProductEntitlement(provisioned.organization.orgId, "charting")).status, "trialing");
+  assert.equal(await store.getProductEntitlement(provisioned.organization.orgId, "fee"), null);
   assert.equal(verifyPassword("correct horse battery staple", identity.passwordHash), true);
   assert.equal((await store.listAuditEvents(provisioned.organization.orgId)).length, 3);
   await assert.rejects(

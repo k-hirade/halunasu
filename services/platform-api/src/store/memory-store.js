@@ -23,6 +23,12 @@ import {
 } from "../../../../packages/platform-contracts/src/index.js";
 import { loginIdentityKey } from "../../../../packages/firestore-schema/src/index.js";
 import { hashPassword } from "../auth/password.js";
+import {
+  buildOrganizationBillingState,
+  buildPendingSetupEntitlement,
+  buildTrialEntitlement,
+  normalizeSignupProductSelection
+} from "../billing/catalog.js";
 
 export class MemoryPlatformStore {
   constructor(options = {}) {
@@ -155,15 +161,12 @@ export class MemoryPlatformStore {
     }
 
     const now = this.timestamp();
-    const requestedProducts = currentApplication.requestedProducts;
+    const requestedProducts = normalizeSignupProductSelection(currentApplication.requestedProducts);
     const organization = this.createOrganization({
       organizationCode: currentApplication.organizationCode,
       displayName: currentApplication.organizationDisplayName,
       status: "trialing",
-      billing: {
-        status: "trialing",
-        provider: "manual"
-      },
+      billing: buildOrganizationBillingState(now),
       access: {
         status: "active",
         enabledProducts: requestedProducts
@@ -177,13 +180,10 @@ export class MemoryPlatformStore {
       productRoles: productAdminRoles(requestedProducts),
       password: `${this.tokenFactory("initial_password")}_temporary`
     });
-    const productEntitlements = requestedProducts.map((productId) => this.upsertProductEntitlement(organization.orgId, {
-      productId,
-      status: "trialing",
-      plan: "trial",
-      startsAt: now,
-      endsAt: daysFromNow(this.now(), 14)
-    }));
+    const productEntitlements = requestedProducts.map((productId) => this.upsertProductEntitlement(
+      organization.orgId,
+      buildPendingSetupEntitlement(productId, this.now())
+    ));
     const signupApplication = compactObject({
       ...currentApplication,
       status: "provisioned",
@@ -260,6 +260,9 @@ export class MemoryPlatformStore {
       this.signupApplications.set(signupApplication.applicationId, signupApplication);
     }
     this.passwordSetupTokens.set(tokenKey, consumedSetupToken);
+    for (const productId of normalizeSignupProductSelection(signupApplication?.requestedProducts || [])) {
+      this.upsertProductEntitlement(tokenRecord.orgId, buildTrialEntitlement(productId, this.now()));
+    }
     this.createAuditEvent(tokenRecord.orgId, {
       eventType: "signup.admin_password_set",
       actorMemberId: adminMember.memberId,

@@ -501,7 +501,7 @@ test("organization admin can reset member MFA enrollment", async () => {
   assert.equal(identity.tokenVersion, 3);
 });
 
-test("creates Stripe Checkout from LP signup password setup when configured", async () => {
+test("starts app trial from LP signup password setup without Stripe checkout", async () => {
   const store = createTestStore();
   const stripeClient = createMockStripeClient();
   const created = await request(store, "POST", "/v1/signup/applications", {
@@ -516,17 +516,19 @@ test("creates Stripe Checkout from LP signup password setup when configured", as
   }, {}, { stripeClient });
   const setup = await request(store, "POST", "/v1/signup/setup-admin-password", {
     token: provisioned.body.passwordSetup.token,
-    password: "correct horse battery staple",
-    startCheckout: true
+    password: "correct horse battery staple"
   }, {}, { stripeClient, billingReturnBaseUrl: "https://charting.example.test" });
   const organization = store.getOrganization(setup.body.organization.orgId);
+  const entitlement = store.getProductEntitlement(organization.orgId, "charting");
 
   assert.equal(setup.statusCode, 200);
-  assert.equal(setup.body.billingCheckout.status, "created");
-  assert.equal(setup.body.billingCheckout.checkoutUrl, "https://checkout.stripe.test/session/cs_test_001");
+  assert.equal(setup.body.billingCheckout, undefined);
   assert.equal(organization.billing.provider, "stripe");
-  assert.equal(organization.billing.stripeCustomerId, "cus_test_001");
-  assert.equal(organization.billing.stripeCheckoutSessionId, "cs_test_001");
+  assert.equal(organization.billing.stripeCustomerId, null);
+  assert.equal(organization.billing.stripeSubscriptionId, null);
+  assert.equal(entitlement.status, "trialing");
+  assert.equal(entitlement.monthlyAmountJpy, 30000);
+  assert.equal(entitlement.trialEndsAt, "2026-06-10T00:00:00.000Z");
 });
 
 test("creates authenticated billing Checkout and exposes billing status", async () => {
@@ -537,15 +539,36 @@ test("creates authenticated billing Checkout and exposes billing status", async 
     displayName: "Billing Clinic",
     globalRoles: ["org_admin"]
   });
-  const checkout = await request(store, "POST", "/v1/billing/checkout-session", {
-    seatQuantity: 2
-  }, headers, { stripeClient, billingReturnBaseUrl: "https://charting.example.test" });
+  store.upsertProductEntitlement(organization.orgId, {
+    productId: "charting",
+    status: "trialing",
+    plan: "trial",
+    stripePriceLookupKey: "halunasu_charting_flat_monthly_jpy_v1"
+  });
+  const checkout = await request(
+    store,
+    "POST",
+    "/v1/billing/products/charting/checkout-session",
+    {},
+    headers,
+    { stripeClient, billingReturnBaseUrl: "https://charting.example.test" }
+  );
   const status = await request(store, "GET", "/v1/billing/status", undefined, headers, { stripeClient });
 
   assert.equal(checkout.statusCode, 200);
   assert.equal(checkout.body.billingCheckout.checkoutSessionId, "cs_test_001");
+  assert.equal(checkout.body.billingCheckout.productId, "charting");
+  assert.deepEqual(checkout.body.billingCheckout.lineItems, [{
+    kind: "flat",
+    productId: "charting",
+    priceId: "price_test_001",
+    priceLookupKey: "halunasu_charting_flat_monthly_jpy_v1",
+    quantity: 1
+  }]);
   assert.equal(status.statusCode, 200);
   assert.equal(status.body.billing.stripeCheckoutSessionId, "cs_test_001");
+  assert.equal(status.body.billingCatalog.charting.monthlyAmountJpy, 30000);
+  assert.equal(status.body.productEntitlements[0].status, "checkout_pending");
   assert.equal(status.body.stripe.configured, true);
   assert.equal(store.getOrganization(organization.orgId).billing.stripePriceId, "price_test_001");
 });
@@ -562,19 +585,30 @@ test("processes signed Stripe webhook and updates Core billing state", async () 
     status: "trialing"
   });
   const event = {
-    id: "evt_checkout_completed_001",
-    type: "checkout.session.completed",
+    id: "evt_subscription_updated_001",
+    type: "customer.subscription.updated",
     livemode: false,
     api_version: "2026-03-25.dahlia",
     data: {
       object: {
-        id: "cs_test_webhook_001",
+        id: "sub_test_webhook_001",
+        status: "active",
         customer: "cus_test_webhook_001",
-        subscription: "sub_test_webhook_001",
-        client_reference_id: organization.orgId,
+        current_period_end: 1780000000,
         metadata: {
           orgId: organization.orgId,
-          organizationCode: organization.organizationCode
+          organizationCode: organization.organizationCode,
+          productIds: "charting"
+        },
+        items: {
+          data: [{
+            id: "si_test_charting_001",
+            quantity: 1,
+            price: {
+              id: "price_test_001",
+              lookup_key: "halunasu_charting_flat_monthly_jpy_v1"
+            }
+          }]
         }
       }
     }
@@ -600,11 +634,15 @@ test("processes signed Stripe webhook and updates Core billing state", async () 
   assert.equal(webhook.statusCode, 200);
   assert.equal(webhook.body.received, true);
   assert.equal(webhook.body.receipt.status, "processed");
+  assert.deepEqual(webhook.body.outcome.productIds, ["charting"]);
   assert.equal(updated.billing.status, "active");
   assert.equal(updated.billing.stripeCustomerId, "cus_test_webhook_001");
   assert.equal(updated.billing.stripeSubscriptionId, "sub_test_webhook_001");
   assert.equal(updated.access.status, "active");
   assert.equal(entitlement.status, "enabled");
+  assert.equal(entitlement.stripePriceId, "price_test_001");
+  assert.equal(entitlement.stripeSubscriptionItemId, "si_test_charting_001");
+  assert.equal(entitlement.currentPeriodEnd, "2026-05-28T20:26:40.000Z");
   assert.equal(receipt.status, "processed");
 });
 
@@ -1047,8 +1085,14 @@ function createMockStripeClient() {
       return { id: "cus_test_001" };
     },
     async createSubscriptionCheckoutSession(input) {
+      const lineItems = (input.lineItems || []).map((item, index) => ({
+        ...item,
+        price: { id: index === 0 ? "price_test_001" : `price_test_${String(index + 1).padStart(3, "0")}` },
+        quantity: item.quantity || 1
+      }));
       return {
-        price: { id: "price_test_001" },
+        price: lineItems[0]?.price || { id: "price_test_001" },
+        lineItems,
         session: {
           id: "cs_test_001",
           url: "https://checkout.stripe.test/session/cs_test_001",

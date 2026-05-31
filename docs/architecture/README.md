@@ -24,6 +24,8 @@ This directory contains architecture decisions and system diagrams for the Halun
 - [018 P12 Static Hosting And Domain Plan](018-p12-static-hosting-and-domain-plan.md)
 - [019 P13 Netlify Sites](019-p13-netlify-sites.md)
 - [020 P14 Halunasu Domain Cutover](020-p14-halunasu-domain-cutover.md)
+- [021 Old Asset Cleanup](021-old-asset-cleanup.md)
+- [022 App Billing Trial And Pricing Plan](022-app-billing-trial-and-pricing-plan.md)
 
 ## Reading Order
 
@@ -47,3 +49,5 @@ This directory contains architecture decisions and system diagrams for the Halun
 18. Use the P12 static hosting and domain plan before mapping custom domains or onboarding browser users.
 19. Use the P13 Netlify sites note to deploy monorepo static apps without touching existing sites.
 20. Use the P14 domain cutover note to finish Cloudflare DNS, Netlify domain attachment, and API certificate activation.
+21. Use the old asset cleanup note before deleting local or remote legacy resources.
+22. Use the app billing trial and pricing plan before changing signup, Stripe Prices, reminders, or product entitlement billing.

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { getBillingCatalog } from "./catalog.js";
 
 const BILLING_ACTIVE_STATUSES = new Set(["active", "trialing", "pending_checkout"]);
 const BILLING_RESTRICTED_STATUSES = new Set(["past_due", "grace_period", "unpaid"]);
@@ -246,7 +247,9 @@ async function updateOrganizationFromStripe(store, organization, {
     billing: updatedBilling,
     access: updatedAccess
   }));
-  await syncProductEntitlementsForBilling(store, updatedOrganization, billingStatus, now);
+  const syncedProductIds = await syncProductEntitlementsForBilling(store, updatedOrganization, billingStatus, now, {
+    stripeObject: event.data?.object || {}
+  });
   await store.createAuditEvent(updatedOrganization.orgId, {
     eventType: auditEventType,
     targetType: "organization",
@@ -257,37 +260,73 @@ async function updateOrganizationFromStripe(store, organization, {
       billingStatus,
       stripeCustomerId: updatedBilling.stripeCustomerId || null,
       stripeSubscriptionId: updatedBilling.stripeSubscriptionId || null,
-      stripePriceId: updatedBilling.stripePriceId || null
+      stripePriceId: updatedBilling.stripePriceId || null,
+      productIds: syncedProductIds
     }
   });
 
   return {
     handled: true,
     orgId: updatedOrganization.orgId,
-    billingStatus
+    billingStatus,
+    productIds: syncedProductIds
   };
 }
 
-async function syncProductEntitlementsForBilling(store, organization, billingStatus, now) {
+async function syncProductEntitlementsForBilling(store, organization, billingStatus, now, options = {}) {
   const existing = await safeListProductEntitlements(store, organization.orgId);
-  const productIds = new Set([
-    ...existing.map((entitlement) => entitlement.productId),
-    ...arrayOrEmpty(organization.access?.enabledProducts)
-  ]);
+  const stripeItems = extractStripeItems(options.stripeObject);
+  const productIds = resolveProductIdsForStripeSync({
+    stripeObject: options.stripeObject,
+    organization,
+    existing,
+    stripeItems
+  });
   const entitlementStatus = productEntitlementStatusForBillingStatus(billingStatus);
   if (!entitlementStatus || productIds.size === 0) {
-    return;
+    return [];
   }
 
   for (const productId of productIds) {
-    await store.upsertProductEntitlement(organization.orgId, compactObject({
+    const current = existing.find((entitlement) => entitlement.productId === productId) || null;
+    const product = getBillingCatalog()[productId] || {};
+    const productItems = stripeItems.filter((item) => productIdForStripeItem(item, existing) === productId);
+    const flatItem = productItems.find((item) => (
+      item.priceId && item.priceId === current?.stripePriceId
+    ) || (
+      item.priceLookupKey && item.priceLookupKey === (current?.stripePriceLookupKey || product.stripeFlatPriceLookupKey)
+    )) || productItems[0] || null;
+    const extraSeatItem = productItems.find((item) => item !== flatItem) || null;
+    const seatBilling = current?.seatBilling && extraSeatItem
+      ? compactObject({
+        ...current.seatBilling,
+        stripeExtraSeatSubscriptionItemId: extraSeatItem.subscriptionItemId || current.seatBilling.stripeExtraSeatSubscriptionItemId || null,
+        extraSeatQuantity: extraSeatItem.quantity ?? current.seatBilling.extraSeatQuantity
+      })
+      : undefined;
+    const patch = compactObject({
       productId,
       status: entitlementStatus,
-      plan: organization.billing?.stripePriceId ? "stripe" : "subscription",
-      startsAt: now.toISOString(),
-      features: existing.find((entitlement) => entitlement.productId === productId)?.features || {}
-    }));
+      plan: organization.billing?.stripeSubscriptionId ? "stripe" : current?.plan || "subscription",
+      startsAt: current?.startsAt || now.toISOString(),
+      currentPeriodEnd: organization.billing?.currentPeriodEnd || flatItem?.periodEnd || current?.currentPeriodEnd || null,
+      cancelAtPeriodEnd: organization.billing?.cancelAtPeriodEnd,
+      stripePriceId: flatItem?.priceId || current?.stripePriceId || organization.billing?.stripePriceId || null,
+      stripeSubscriptionItemId: flatItem?.subscriptionItemId || current?.stripeSubscriptionItemId || null,
+      seatBilling
+    });
+
+    if (current) {
+      await store.updateProductEntitlement(organization.orgId, productId, patch);
+    } else {
+      await store.upsertProductEntitlement(organization.orgId, compactObject({
+        ...patch,
+        features: {}
+      }));
+    }
   }
+
+  return [...productIds];
 }
 
 async function resolveOrganizationForStripeObject(store, object = {}) {
@@ -375,6 +414,15 @@ function productEntitlementStatusForBillingStatus(billingStatus) {
   if (billingStatus === "trialing") {
     return "trialing";
   }
+  if (billingStatus === "pending_checkout") {
+    return "checkout_pending";
+  }
+  if (billingStatus === "past_due") {
+    return "past_due";
+  }
+  if (billingStatus === "unpaid") {
+    return "payment_required";
+  }
   if (billingStatus === "canceled" || billingStatus === "suspended") {
     return "disabled";
   }
@@ -411,6 +459,113 @@ function stripeObjectOrgId(object = {}) {
     object.client_reference_id
   ];
   return candidates.find((value) => typeof value === "string" && value.startsWith("org_")) || null;
+}
+
+function resolveProductIdsForStripeSync({ stripeObject = {}, organization = {}, existing = [], stripeItems = [] }) {
+  const resolved = new Set(metadataProductIds(stripeObject));
+  for (const item of stripeItems) {
+    const productId = productIdForStripeItem(item, existing);
+    if (productId) {
+      resolved.add(productId);
+    }
+  }
+
+  if (resolved.size === 0 && stripeObjectSubscriptionId(stripeObject) === organization.billing?.stripeSubscriptionId) {
+    for (const entitlement of existing) {
+      if (
+        entitlement.stripeSubscriptionItemId
+        || entitlement.stripePriceId
+        || entitlement.status === "checkout_pending"
+      ) {
+        resolved.add(entitlement.productId);
+      }
+    }
+  }
+
+  const catalog = getBillingCatalog();
+  return new Set([...resolved].filter((productId) => catalog[productId]));
+}
+
+function productIdForStripeItem(item, existing = []) {
+  if (!item) {
+    return null;
+  }
+
+  const existingMatch = existing.find((entitlement) => (
+    item.subscriptionItemId && item.subscriptionItemId === entitlement.stripeSubscriptionItemId
+  ) || (
+    item.priceId && item.priceId === entitlement.stripePriceId
+  ) || (
+    item.priceLookupKey && item.priceLookupKey === entitlement.stripePriceLookupKey
+  ) || (
+    item.subscriptionItemId && item.subscriptionItemId === entitlement.seatBilling?.stripeExtraSeatSubscriptionItemId
+  ) || (
+    item.priceLookupKey && item.priceLookupKey === entitlement.seatBilling?.stripeExtraSeatPriceLookupKey
+  ));
+  if (existingMatch) {
+    return existingMatch.productId;
+  }
+
+  const catalog = getBillingCatalog();
+  return Object.values(catalog).find((product) => (
+    item.priceLookupKey && item.priceLookupKey === product.stripeFlatPriceLookupKey
+  ) || (
+    item.priceLookupKey && item.priceLookupKey === product.seatBilling?.stripeExtraSeatPriceLookupKey
+  ))?.productId || null;
+}
+
+function metadataProductIds(object = {}) {
+  const values = [
+    object.metadata?.productIds,
+    object.metadata?.productId,
+    object.subscription_details?.metadata?.productIds,
+    object.subscription_details?.metadata?.productId,
+    object.parent?.subscription_details?.metadata?.productIds,
+    object.parent?.subscription_details?.metadata?.productId
+  ];
+  return values.flatMap(parseProductIds);
+}
+
+function parseProductIds(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap(parseProductIds);
+  }
+  if (typeof value !== "string") {
+    return [];
+  }
+  return value
+    .split(/[,\s]+/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function extractStripeItems(object = {}) {
+  const subscriptionItems = arrayOrEmpty(object.items?.data).map((item) => ({
+    subscriptionItemId: stringOrNull(item.id),
+    priceId: stringOrNull(item.price?.id),
+    priceLookupKey: stringOrNull(item.price?.lookup_key),
+    quantity: item.quantity,
+    periodEnd: unixToIso(item.current_period_end || item.period?.end)
+  }));
+  const invoiceItems = arrayOrEmpty(object.lines?.data).map((line) => ({
+    subscriptionItemId: stringOrNull(line.subscription_item)
+      || stringOrNull(line.parent?.subscription_item_details?.subscription_item),
+    priceId: stringOrNull(line.price?.id) || stringOrNull(line.pricing?.price_details?.price),
+    priceLookupKey: stringOrNull(line.price?.lookup_key),
+    quantity: line.quantity,
+    periodEnd: unixToIso(line.period?.end)
+  }));
+  const checkoutLineItems = arrayOrEmpty(object.line_items?.data).map((line) => ({
+    subscriptionItemId: stringOrNull(line.subscription_item),
+    priceId: stringOrNull(line.price?.id),
+    priceLookupKey: stringOrNull(line.price?.lookup_key),
+    quantity: line.quantity,
+    periodEnd: unixToIso(line.period?.end)
+  }));
+
+  return [...subscriptionItems, ...invoiceItems, ...checkoutLineItems].filter((item) => (
+    item.subscriptionItemId || item.priceId || item.priceLookupKey
+  ));
 }
 
 function stripeObjectSubscriptionId(object = {}) {
