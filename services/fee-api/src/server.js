@@ -10,6 +10,10 @@ import {
   validateUpdateFeeSessionInput
 } from "../../../packages/fee-contracts/src/index.js";
 import {
+  buildReceiptDraft,
+  buildReviewItems
+} from "../../../packages/fee-core/src/index.js";
+import {
   departmentSnapshot,
   facilitySnapshot,
   patientSnapshot
@@ -203,6 +207,10 @@ async function routeFeeApiRequest(input = {}) {
     return ok({ feeSession: session });
   }
 
+  if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "detail") {
+    return ok(await buildFeeSessionDetail(feeStore, context.session.orgId, parts[3], input.now || new Date()));
+  }
+
   if (method === "PATCH" && isFeeSessionDocument(parts)) {
     requirePlatformCsrf(input.headers || {}, context.session);
     const current = await feeStore.getSession(context.session.orgId, parts[3]);
@@ -284,7 +292,11 @@ async function routeFeeApiRequest(input = {}) {
       }
     });
 
-    return created(result);
+    return created({
+      ...result,
+      receiptDraft: buildReceiptDraft(result.feeSession, { now: input.now || new Date() }),
+      reviewItems: buildReviewItems(result.feeSession)
+    });
   }
 
   return notFound("Route not found");
@@ -297,6 +309,22 @@ async function requireFeeContext(input, platformStore) {
     productLabel: "Fee",
     allowedProductRoles: FEE_PRODUCT_ROLES
   });
+}
+
+async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now) {
+  const feeSession = await feeStore.getSession(orgId, feeSessionId);
+  if (!feeSession) {
+    const error = new Error("fee session not found");
+    error.name = "NotFoundError";
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return {
+    feeSession,
+    receiptDraft: buildReceiptDraft(feeSession, { now }),
+    reviewItems: buildReviewItems(feeSession)
+  };
 }
 
 async function resolveFeePatient(context, platformStore, input) {

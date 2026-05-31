@@ -31,7 +31,8 @@ assert(html.includes("window.history.pushState"), "fee web must update the URL w
 assert(html.includes('window.addEventListener("popstate"'), "fee web must handle browser back/forward for fee sessions");
 assert(html.includes("syncSelectedFeeSessionFromRoute"), "fee web must restore a fee session from /sessions/{feeSessionId} on reload");
 assert(html.includes("/calculate"), "fee web must run the fee calculation endpoint");
-assert(html.includes("receipt-draft"), "fee web must show Core receipt drafts");
+assert(html.includes("/detail"), "fee web must load fee session detail in one request");
+assert(html.includes("receiptDraft"), "fee web must show Core receipt drafts");
 assert(html.includes("review-items"), "fee web must show and decide review items");
 assert(html.includes("算定候補・レビュー支援"), "fee web must clearly label candidate/review-support mode");
 assert(html.includes("確定請求ではありません"), "fee web must not present output as finalized claims");

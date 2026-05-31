@@ -47,6 +47,7 @@ test("creates Platform patients and product-owned referral drafts", async () => 
     headers
   );
   const listed = await request(stores, "GET", "/v1/referral/referrals", undefined, headers);
+  const bootstrap = await request(stores, "GET", "/v1/referral/bootstrap", undefined, headers);
   const auditEvents = stores.platformStore.listAuditEvents("org_001");
 
   assert.equal(patient.statusCode, 201);
@@ -63,6 +64,10 @@ test("creates Platform patients and product-owned referral drafts", async () => 
   assert.equal(pdf.body.documentArtifact.provider, "halunasu_html");
   assert.equal(pdf.body.referral.status, "document_ready");
   assert.equal(listed.body.referrals.length, 1);
+  assert.equal(bootstrap.body.patients.length, 1);
+  assert.equal(bootstrap.body.facilities.length, 1);
+  assert.equal(bootstrap.body.departments.length, 1);
+  assert.equal(bootstrap.body.referrals.length, 1);
   assert.ok(auditEvents.some((event) => event.eventType === "referral.draft_created"));
   assert.ok(auditEvents.some((event) => event.eventType === "referral.document_created"));
 });

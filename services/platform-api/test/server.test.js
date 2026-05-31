@@ -142,6 +142,12 @@ test("creates shared master data resources", async () => {
   assert.equal(auditEvent.body.auditEvent.safePayload.displayName, undefined);
   assert.equal((await request(store, "GET", `/v1/organizations/${orgId}/facilities`, undefined, headers)).body.facilities.length, 1);
   assert.equal((await request(store, "GET", `/v1/organizations/${orgId}/departments`, undefined, headers)).body.departments.length, 1);
+  const departmentBootstrap = await request(store, "GET", `/v1/organizations/${orgId}/admin-bootstrap?section=departments`, undefined, headers);
+  const entitlementBootstrap = await request(store, "GET", `/v1/organizations/${orgId}/admin-bootstrap?section=entitlements`, undefined, headers);
+  assert.equal(departmentBootstrap.body.organizations.length, 1);
+  assert.equal(departmentBootstrap.body.facilities.length, 1);
+  assert.equal(departmentBootstrap.body.departments.length, 1);
+  assert.equal(entitlementBootstrap.body.productEntitlements.length, 1);
   assert.equal(
     (await request(store, "GET", `/v1/organizations/${orgId}/product-entitlements/fee`, undefined, headers))
       .body.productEntitlement.status,

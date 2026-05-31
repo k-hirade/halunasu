@@ -371,23 +371,36 @@ export function adminRoutes() {
 }
 
 export function encounterRoutes(fixture = createLongEncounterFixture()) {
+  const promptOptions = {
+    options: soapFormats.map((format) => ({
+      profileId: format.profileId,
+      formatId: format.formatId,
+      displayName: format.displayName,
+      scope: format.scope,
+      status: format.status,
+      approved: format.approved
+    })),
+    selectedPromptProfileId: fixture.promptProfile.profileId,
+    promptProfile: fixture.promptProfile
+  };
+  const core = fixture.core || { patients: [], facilities: [], departments: [] };
+
   return [
+    {
+      method: "GET",
+      path: "/api/v1/sessions/session-e2e/bootstrap",
+      handler: () => ({
+        sessionState: fixture,
+        core,
+        promptOptions
+      })
+    },
+    { method: "GET", path: "/api/v1/core/bootstrap", handler: () => core },
     { method: "GET", path: "/api/v1/sessions/session-e2e", handler: () => fixture },
     {
       method: "GET",
       path: "/api/v1/sessions/session-e2e/prompt-options",
-      handler: () => ({
-        options: soapFormats.map((format) => ({
-          profileId: format.profileId,
-          formatId: format.formatId,
-          displayName: format.displayName,
-          scope: format.scope,
-          status: format.status,
-          approved: format.approved
-        })),
-        selectedPromptProfileId: fixture.promptProfile.profileId,
-        promptProfile: fixture.promptProfile
-      })
+      handler: () => promptOptions
     },
     { method: "POST", path: "/api/v1/sessions/session-e2e/review-note", handler: () => fixture },
     { method: "POST", path: "/api/v1/sessions/session-e2e/approve-note", handler: () => fixture },

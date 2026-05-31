@@ -66,6 +66,28 @@ test("ready encounter patient information controls do not force horizontal scrol
   fixture.turns = [];
   fixture.session.patientDisplayName = "";
   fixture.session.visitReason = "";
+  fixture.core = {
+    patients: [
+      {
+        patientId: "pat_001",
+        displayName: "山田 花子",
+        patientCode: "P-001"
+      }
+    ],
+    facilities: [
+      {
+        facilityId: "fac_001",
+        displayName: "prod-test"
+      }
+    ],
+    departments: [
+      {
+        departmentId: "dep_001",
+        facilityId: "fac_001",
+        displayName: "内科"
+      }
+    ]
+  };
 
   await withPage(async (page) => {
     await installGatewayMocks(page, [
@@ -127,7 +149,7 @@ test("ready encounter patient information controls do not force horizontal scrol
     await page.getByRole("heading", { name: "診療記録" }).waitFor({ state: "visible" });
     assert.equal(await page.locator(".session-settings-meta").count(), 0);
     assert.equal(await page.locator(".patient-info-card").getByText("未入力").count(), 0);
-    await page.getByRole("button", { name: /患者情報/ }).click();
+    await page.getByRole("button", { name: /患者・診療情報/ }).click();
     assert.equal(await page.locator(".patient-info-card").getByText("未入力").count(), 0);
     assert.equal(await page.locator(".patient-info-card .field-label", { hasText: "施設" }).count(), 0);
     assert.equal(await page.locator(".patient-info-card").getByText("この病院では施設は固定です").count(), 0);
@@ -210,7 +232,7 @@ test("stopped encounter can discard recording and return to recording-ready stat
     await page.getByRole("button", { name: "破棄して録り直す", exact: true }).click();
 
     await page.waitForFunction(() => !document.querySelector("[aria-labelledby='confirm-discard-title']"));
-    await page.getByRole("button", { name: "この端末で録音", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "このパソコンで録音", exact: true }).waitFor({ state: "visible" });
 
     assert.equal(discardCalls, 1);
     assert.ok(calls.some((call) => call.method === "POST" && call.path === "/api/v1/sessions/session-e2e/recording/discard"));

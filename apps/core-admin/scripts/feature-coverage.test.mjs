@@ -85,22 +85,22 @@ test("tables hide internal IDs as primary columns and keep copy affordances", ()
   ]) {
     assert.doesNotMatch(html, new RegExp(escapeRegExp(removedColumn)));
   }
-  assert.match(html, /aria-label="職員IDをコピー"/);
+  assert.match(html, /aria-label="管理用IDをコピー"/);
   assert.match(html, /aria-label="患者IDをコピー"/);
   assert.match(html, /aria-label="イベントIDをコピー"/);
 });
 
 test("operator-facing labels and audit events are localized", () => {
   for (const label of [
-    "プロダクト契約",
-    "開示請求",
+    "アプリ利用設定",
+    "個人情報の依頼",
     "ログイン成功",
     "ログイン失敗",
     "ログアウト",
     "職員作成",
     "施設更新",
     "患者更新",
-    "プロダクト契約保存"
+    "アプリ利用設定保存"
   ]) {
     assert.match(html, new RegExp(escapeRegExp(label)));
   }

@@ -19,7 +19,7 @@ test("audio test settings validates microphone input without audio API calls", {
     await page.getByRole("button", { name: "テスト停止" }).waitFor({ state: "visible" });
 
     await page.getByRole("button", { name: "既定に保存" }).click();
-    await page.getByText("このPCの既定マイクとして保存しました。").waitFor({ state: "visible" });
+    await page.getByText("このパソコンの既定マイクとして保存しました。").waitFor({ state: "visible" });
     await page.getByText("医療機関").waitFor({ state: "detached" });
     await page.getByText("入力がありません").waitFor({ state: "detached" });
     await page.getByText("入力は適正です").waitFor({ state: "detached" });

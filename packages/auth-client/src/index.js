@@ -6,6 +6,12 @@ export const CSRF_COOKIE_NAME = "halunasu_csrf";
 const LOCAL_SESSION_SECRET = "local-only-halunasu-platform-session-secret";
 const ACTIVE_ENTITLEMENT_STATUSES = Object.freeze(["enabled", "trialing"]);
 const DEFAULT_GLOBAL_PRODUCT_ROLES = Object.freeze(["org_admin", "platform_admin"]);
+const PRODUCT_CONTEXT_CACHE_TTL_MS = Math.max(
+  0,
+  Number.parseInt(process.env.PRODUCT_CONTEXT_CACHE_TTL_MS || "3000", 10) || 0
+);
+const PRODUCT_CONTEXT_CACHE_MAX_ENTRIES = 1000;
+const productContextCache = new Map();
 
 export function verifyPlatformSessionFromHeaders(headers = {}, options = {}) {
   const token = platformSessionTokenFromHeaders(headers, options);
@@ -105,6 +111,12 @@ export async function requireProductContext(input = {}, options = {}) {
     sessionSecret: input.sessionSecret,
     sessionCookieName: input.sessionCookieName
   });
+  const cacheKey = productContextCacheKey(session, productId);
+  const cached = getCachedProductContext(input, cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const identity = await platformStore.getLoginIdentity(session.organizationCode, session.loginId);
   if (!identity || identity.status !== "active" || Number(identity.tokenVersion || 0) !== Number(session.tokenVersion || 0)) {
     throw unauthorizedError("Invalid session");
@@ -122,13 +134,15 @@ export async function requireProductContext(input = {}, options = {}) {
     throw forbiddenError(`${productLabel} product access is required`);
   }
 
-  return {
+  const context = {
     session,
     identity,
     member,
     entitlement,
     productId
   };
+  setCachedProductContext(input, cacheKey, context);
+  return context;
 }
 
 export function entitlementAllowsProductUse(entitlement = {}, nowInput = new Date()) {
@@ -206,6 +220,51 @@ function sessionSecret(options = {}) {
 
 function requiresConfiguredSecret(env) {
   return !["", "local", "test", "development"].includes(String(env || "local").toLowerCase());
+}
+
+function productContextCacheKey(session = {}, productId = "") {
+  return [
+    productId,
+    session.orgId,
+    session.memberId,
+    session.organizationCode,
+    session.loginId,
+    Number(session.tokenVersion || 0),
+    session.expiresAt
+  ].join(":");
+}
+
+function productContextCacheEnabled(input = {}) {
+  const env = String(input.env || process.env.HALUNASU_ENV || process.env.NODE_ENV || "").toLowerCase();
+  return PRODUCT_CONTEXT_CACHE_TTL_MS > 0 && !["", "local", "test", "development"].includes(env);
+}
+
+function getCachedProductContext(input, cacheKey) {
+  if (!productContextCacheEnabled(input) || !cacheKey) {
+    return null;
+  }
+  const cached = productContextCache.get(cacheKey);
+  if (!cached) {
+    return null;
+  }
+  if (cached.expiresAt <= Date.now()) {
+    productContextCache.delete(cacheKey);
+    return null;
+  }
+  return cached.context;
+}
+
+function setCachedProductContext(input, cacheKey, context) {
+  if (!productContextCacheEnabled(input) || !cacheKey) {
+    return;
+  }
+  if (productContextCache.size >= PRODUCT_CONTEXT_CACHE_MAX_ENTRIES) {
+    productContextCache.delete(productContextCache.keys().next().value);
+  }
+  productContextCache.set(cacheKey, {
+    context,
+    expiresAt: Date.now() + PRODUCT_CONTEXT_CACHE_TTL_MS
+  });
 }
 
 function sign(payload, secret) {

@@ -34,6 +34,13 @@ import {
 } from "./auth/session.js";
 import { createPlatformStoreFromEnv } from "./store/create-store.js";
 
+const SESSION_CONTEXT_CACHE_TTL_MS = Math.max(
+  0,
+  Number.parseInt(process.env.PLATFORM_SESSION_CONTEXT_CACHE_TTL_MS || "3000", 10) || 0
+);
+const SESSION_CONTEXT_CACHE_MAX_ENTRIES = 1000;
+const sessionContextCache = new Map();
+
 export function createPlatformApiServer(options = {}) {
   const startedAt = new Date();
   const env = options.env || process.env.HALUNASU_ENV || process.env.NODE_ENV || "local";
@@ -209,6 +216,7 @@ async function routePlatformApiRequest(input = {}) {
     const context = await requireSession(input, store);
     requireCsrf(input, context.session);
     await store.revokeMemberSessions(context.identity);
+    clearSessionContextCache();
     await store.createAuditEvent(context.session.orgId, {
       eventType: "auth.logout",
       actorMemberId: context.session.memberId,
@@ -332,6 +340,7 @@ async function routePlatformApiRequest(input = {}) {
     }
 
     const updatedIdentity = await store.completeMfaEnrollment(context.identity);
+    clearSessionContextCache();
     await store.createAuditEvent(context.session.orgId, {
       eventType: "auth.mfa_verified",
       actorMemberId: context.session.memberId,
@@ -359,6 +368,10 @@ async function routePlatformApiRequest(input = {}) {
   if (method === "GET" && matches(parts, ["v1", "organizations"])) {
     await requirePlatformAdmin(input, store);
     return ok({ organizations: await store.listOrganizations() });
+  }
+
+  if (method === "GET" && parts.length === 4 && matches(parts.slice(0, 2), ["v1", "organizations"]) && parts[3] === "admin-bootstrap") {
+    return ok(await buildCoreAdminBootstrap(input, store, parts[2], url.searchParams.get("section")));
   }
 
   if (method === "POST" && matches(parts, ["v1", "organizations"])) {
@@ -430,6 +443,7 @@ async function routePlatformApiRequest(input = {}) {
     const context = await requireOrgAdmin(input, store, parts[2]);
     requireCsrf(input, context.session);
     const identity = await store.resetMemberMfa(parts[2], parts[4]);
+    clearSessionContextCache();
     await writeAuditEvent(input, store, parts[2], {
       eventType: "member.mfa_reset",
       targetType: "member",
@@ -451,6 +465,7 @@ async function routePlatformApiRequest(input = {}) {
     const context = await requireOrgAdmin(input, store, parts[2]);
     requireCsrf(input, context.session);
     const member = await store.updateMember(parts[2], parts[4], input.body || {});
+    clearSessionContextCache();
     await writeAuditEvent(input, store, parts[2], {
       eventType: "member.updated",
       targetType: "member",
@@ -804,6 +819,12 @@ async function consumeSignupRateLimit(input, store) {
 async function requireSession(input, store) {
   const token = sessionTokenFromHeaders(input.headers || {}, cookieOptions(input));
   const session = verifySignedSession(token, sessionOptions(input));
+  const cacheKey = sessionContextCacheKey(session);
+  const cached = getCachedSessionContext(input, cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const identity = await store.getLoginIdentity(session.organizationCode, session.loginId);
 
   if (!identity || identity.status !== "active") {
@@ -819,7 +840,9 @@ async function requireSession(input, store) {
     throw unauthorizedError("Invalid session");
   }
 
-  return { session, identity, member };
+  const context = { session, identity, member };
+  setCachedSessionContext(input, cacheKey, context);
+  return context;
 }
 
 async function optionalSession(input, store) {
@@ -837,6 +860,144 @@ async function requirePlatformAdmin(input, store) {
   }
 
   return context;
+}
+
+async function buildCoreAdminBootstrap(input, store, orgId, requestedSection) {
+  const context = await requireOrgRead(input, store, orgId);
+  const section = normalizeCoreAdminBootstrapSection(requestedSection);
+  const response = {
+    section,
+    session: sessionView(context),
+    organizations: await listCoreAdminOrganizations(store, context)
+  };
+  const canManageOrganization = canManageOrganizationContext(context);
+  const canManageContracts = canManageBillingContext(context);
+
+  if (section === "organizations") {
+    return response;
+  }
+
+  if (section === "members") {
+    response.members = canManageOrganization ? await store.listMembers(orgId) : [];
+    return response;
+  }
+
+  if (section === "facilities") {
+    response.facilities = await store.listFacilities(orgId);
+    return response;
+  }
+
+  if (section === "departments") {
+    const [facilities, departments] = await Promise.all([
+      store.listFacilities(orgId),
+      store.listDepartments(orgId)
+    ]);
+    response.facilities = facilities;
+    response.departments = departments;
+    return response;
+  }
+
+  if (section === "patients") {
+    response.patients = await store.listPatients(orgId);
+    return response;
+  }
+
+  if (section === "entitlements") {
+    response.productEntitlements = canManageContracts ? await store.listProductEntitlements(orgId) : [];
+    return response;
+  }
+
+  if (section === "data-requests") {
+    if (canManageOrganization) {
+      const [patients, dataRequests] = await Promise.all([
+        store.listPatients(orgId),
+        store.listDataRequests(orgId)
+      ]);
+      response.patients = patients;
+      response.dataRequests = dataRequests;
+    } else {
+      response.patients = [];
+      response.dataRequests = [];
+    }
+    return response;
+  }
+
+  if (section === "audit") {
+    response.auditEvents = canManageOrganization ? await store.listAuditEvents(orgId) : [];
+    return response;
+  }
+
+  const tasks = {
+    facilities: store.listFacilities(orgId),
+    departments: store.listDepartments(orgId),
+    patients: store.listPatients(orgId)
+  };
+  if (canManageOrganization) {
+    tasks.members = store.listMembers(orgId);
+    tasks.dataRequests = store.listDataRequests(orgId);
+    tasks.auditEvents = store.listAuditEvents(orgId);
+  }
+  if (canManageContracts) {
+    tasks.productEntitlements = store.listProductEntitlements(orgId);
+  }
+
+  const entries = await Promise.all(Object.entries(tasks).map(async ([key, promise]) => [key, await promise]));
+  const allResponse = {
+    ...response,
+    ...Object.fromEntries(entries)
+  };
+  if (!canManageOrganization) {
+    allResponse.members = [];
+    allResponse.dataRequests = [];
+    allResponse.auditEvents = [];
+  }
+  if (!canManageContracts) {
+    allResponse.productEntitlements = [];
+  }
+  return allResponse;
+}
+
+async function listCoreAdminOrganizations(store, context) {
+  if (hasGlobalRole(context.member, "platform_admin")) {
+    return store.listOrganizations();
+  }
+
+  return [{
+    orgId: context.session.orgId,
+    organizationCode: context.session.organizationCode,
+    displayName: context.session.organizationCode,
+    status: "active"
+  }];
+}
+
+function normalizeCoreAdminBootstrapSection(value) {
+  const section = String(value || "organizations").trim().toLowerCase();
+  return new Set([
+    "organizations",
+    "members",
+    "facilities",
+    "departments",
+    "patients",
+    "entitlements",
+    "data-requests",
+    "audit",
+    "all"
+  ]).has(section) ? section : "organizations";
+}
+
+function canManageOrganizationContext(context) {
+  return (
+    hasGlobalRole(context.member, "platform_admin") ||
+    hasGlobalRole(context.member, "org_owner") ||
+    hasGlobalRole(context.member, "org_admin")
+  );
+}
+
+function canManageBillingContext(context) {
+  return (
+    canManageOrganizationContext(context) ||
+    hasGlobalRole(context.member, "billing_admin")
+  );
 }
 
 async function requireOrgRead(input, store, orgId) {
@@ -1364,6 +1525,54 @@ function cookieOptions(input) {
 
 function secureCookiesDefault(env) {
   return !["local", "test", "development"].includes(String(env || "local").toLowerCase());
+}
+
+function sessionContextCacheKey(session = {}) {
+  return [
+    session.orgId,
+    session.memberId,
+    session.organizationCode,
+    session.loginId,
+    Number(session.tokenVersion || 0),
+    session.expiresAt
+  ].join(":");
+}
+
+function sessionContextCacheEnabled(input = {}) {
+  const env = String(input.env || process.env.HALUNASU_ENV || process.env.NODE_ENV || "").toLowerCase();
+  return SESSION_CONTEXT_CACHE_TTL_MS > 0 && !["", "local", "test", "development"].includes(env);
+}
+
+function getCachedSessionContext(input, cacheKey) {
+  if (!sessionContextCacheEnabled(input) || !cacheKey) {
+    return null;
+  }
+  const cached = sessionContextCache.get(cacheKey);
+  if (!cached) {
+    return null;
+  }
+  if (cached.expiresAt <= Date.now()) {
+    sessionContextCache.delete(cacheKey);
+    return null;
+  }
+  return cached.context;
+}
+
+function setCachedSessionContext(input, cacheKey, context) {
+  if (!sessionContextCacheEnabled(input) || !cacheKey) {
+    return;
+  }
+  if (sessionContextCache.size >= SESSION_CONTEXT_CACHE_MAX_ENTRIES) {
+    sessionContextCache.delete(sessionContextCache.keys().next().value);
+  }
+  sessionContextCache.set(cacheKey, {
+    context,
+    expiresAt: Date.now() + SESSION_CONTEXT_CACHE_TTL_MS
+  });
+}
+
+function clearSessionContextCache() {
+  sessionContextCache.clear();
 }
 
 function requiredBodyString(body = {}, field) {

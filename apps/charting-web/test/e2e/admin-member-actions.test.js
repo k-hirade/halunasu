@@ -40,7 +40,7 @@ test("member permissions screen exposes safe action modals", { timeout: 60_000 }
     await page.getByRole("heading", { name: "五志 太郎の操作" }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: /パスワード再設定/ }).click();
     await page.getByRole("heading", { name: "パスワード再設定" }).waitFor({ state: "visible" });
-    await page.getByRole("button", { name: "セキュアに生成" }).click();
+    await page.getByRole("button", { name: "安全なパスワードを作る" }).click();
     const generated = await page.getByLabel("新しいパスワード").inputValue();
     assert.ok(generated.length >= 18);
     await page.getByRole("button", { name: "コピー" }).click();

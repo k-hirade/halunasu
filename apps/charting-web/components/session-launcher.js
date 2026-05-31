@@ -276,7 +276,7 @@ export function SessionLauncher() {
           }
 
           const body = await response.json().catch(() => ({ error: "" }));
-          throw new Error(body.error || "診療画面の準備に失敗しました。しばらくしてからもう一度お試しください。");
+          throw new Error(body.error || "新しい診療記録を開けませんでした。通信状態を確認し、もう一度お試しください。");
         }
 
         const data = await response.json();
@@ -313,8 +313,8 @@ export function SessionLauncher() {
           return;
         }
 
-        const body = await response.json().catch(() => ({ error: "診療履歴を削除できませんでした。" }));
-        throw new Error(body.error || "診療履歴を削除できませんでした。");
+        const body = await response.json().catch(() => ({ error: "診療を一覧から外せませんでした。もう一度お試しください。" }));
+        throw new Error(body.error || "診療を一覧から外せませんでした。もう一度お試しください。");
       }
 
       setDeleteTargetSession(null);
@@ -345,12 +345,12 @@ export function SessionLauncher() {
   const processingCopy =
     createPhase === "redirecting"
       ? {
-          title: "接続画面へ移動しています",
-          body: "診療画面の準備ができました。スマホ接続画面を開いています。"
+          title: "診療記録を開いています",
+          body: "診療記録を開いています。録音方法は次の画面で選べます。"
         }
       : {
-          title: "診療セッションを準備しています",
-          body: "診療画面とスマホ接続の準備をしています。画面を閉じずにそのままお待ちください。"
+          title: "新しい診療記録を準備しています",
+          body: "診療記録を準備しています。画面を閉じずにお待ちください。"
         };
 
   if (!isHydrated) {
@@ -381,7 +381,7 @@ export function SessionLauncher() {
   return (
     <main className="dashboard">
       <div className="dashboard-header">
-        <h1>診療セッション</h1>
+        <h1>診療一覧</h1>
       </div>
 
       {accessRestrictionMessage ? (
@@ -396,7 +396,7 @@ export function SessionLauncher() {
           </div>
           {canManageBilling ? (
             <button className="btn btn--ghost" type="button" onClick={() => router.push("/admin?section=account")}>
-              アカウントで決済
+              支払い設定を確認
             </button>
           ) : null}
         </div>
@@ -405,9 +405,9 @@ export function SessionLauncher() {
       {canCreateSession ? (
         <section className="card quick-start-panel">
           <div className="quick-start-copy">
-            <span className="label">クイックスタート</span>
-            <h2>すぐに診療を始められます</h2>
-            <p>患者情報は診療画面で入力します。ここではそのまま診療を開始してください。</p>
+            <span className="label">新しい診療</span>
+            <h2>新しい診療記録を作成します</h2>
+            <p>次の画面で患者名や症状を入力できます。新しい診療記録を開いてください。</p>
           </div>
           <div className="quick-start-actions">
             <button
@@ -416,7 +416,7 @@ export function SessionLauncher() {
               onClick={createSession}
               type="button"
             >
-              <span>診療を開始</span>
+              <span>診療記録を作成</span>
               {isPending ? <span className="btn-spinner" aria-hidden="true" /> : null}
             </button>
           </div>
@@ -428,8 +428,8 @@ export function SessionLauncher() {
       <section className="session-history">
         <div className="session-history-head">
           <div>
-            <span className="label">セッション履歴</span>
-            <h2>診療履歴</h2>
+            <span className="label">履歴</span>
+            <h2>過去の診療</h2>
           </div>
           <span className="session-history-count">
             {isFilteredSessionHistory ? `検索結果 ${sessionTotalCount} 件` : `${sessionTotalCount} 件`}
@@ -443,7 +443,7 @@ export function SessionLauncher() {
               ref={sessionSearchInputRef}
               value={sessionSearchDraft}
               onChange={(event) => setSessionSearchDraft(event.target.value)}
-              placeholder="患者名・症状・セッションID"
+              placeholder="患者名・症状で検索"
               type="search"
             />
           </label>
@@ -492,8 +492,8 @@ export function SessionLauncher() {
                       <div className="card session-card" key={session.sessionId}>
                         <a className="session-card-link" href={`/sessions/${session.sessionId}`}>
                           <div className="session-card-info">
-                            <strong>{session.patientDisplayName || session.title || "患者名未入力"}</strong>
-                            <span>{session.visitReason || "症状・相談内容の入力なし"}</span>
+                            <strong>{session.patientDisplayName || session.title || "患者名なし"}</strong>
+                            <span>{session.visitReason || "症状メモなし"}</span>
                             <span>
                               作成 {formatTokyoDate(session.createdAt, { hour: "2-digit", minute: "2-digit" })}
                               {session.approvedAt
@@ -507,11 +507,11 @@ export function SessionLauncher() {
                         </a>
                         <button
                           className="btn btn--ghost session-delete-button"
-                          aria-label={`${session.patientDisplayName || session.title || "この診療履歴"}を削除`}
+                          aria-label={`${session.patientDisplayName || session.title || "この診療"}を一覧から外す`}
                           onClick={() => setDeleteTargetSession(session)}
                           type="button"
                         >
-                          削除
+                          一覧から外す
                         </button>
                       </div>
                     ))}
@@ -564,7 +564,7 @@ export function SessionLauncher() {
               {isFilteredSessionHistory
                 ? "条件に一致する診療履歴はありません。検索条件を変更してください。"
                 : canCreateSession
-                  ? "まだ診療履歴はありません。上のボタンからすぐに診療を始められます。"
+                  ? "まだ診療履歴はありません。上のボタンから新しい診療記録を作成できます。"
                   : "表示できる診療履歴はありません。"}
             </div>
           </div>
@@ -588,8 +588,8 @@ export function SessionLauncher() {
         <div className="confirm-overlay" onClick={(event) => { if (event.target === event.currentTarget) setDeleteTargetSession(null); }}>
           <div className="confirm-card" role="dialog" aria-labelledby="session-delete-title">
             <button className="confirm-close-button" type="button" onClick={() => setDeleteTargetSession(null)} aria-label="閉じる"><Icon name="x" size={16} /></button>
-            <h3 id="session-delete-title">この診療履歴を削除しますか？</h3>
-            <p>ホーム画面の一覧から非表示にします。診療データ自体は削除されません。</p>
+            <h3 id="session-delete-title">この診療を一覧から非表示にしますか？</h3>
+            <p>ホーム画面の一覧から非表示にします。診療記録そのものは残ります。</p>
             <div className="confirm-actions">
               <button className="btn btn--ghost" disabled={isDeletingSession} onClick={() => setDeleteTargetSession(null)} type="button">
                 キャンセル
@@ -600,7 +600,7 @@ export function SessionLauncher() {
                 onClick={() => hideSessionFromHome(deleteTargetSession.sessionId)}
                 type="button"
               >
-                削除
+                一覧から外す
                 {isDeletingSession ? <span className="btn-spinner" aria-hidden="true" /> : null}
               </button>
             </div>

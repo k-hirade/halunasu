@@ -15,7 +15,7 @@ test("global menu centralizes clinical and settings navigation", { timeout: 60_0
 
     await page.getByRole("heading", { name: "書き起こし" }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: "メニューを開く" }).click();
-    await page.getByRole("link", { name: /診療セッション/ }).waitFor({ state: "visible" });
+    await page.getByRole("link", { name: /診療一覧/ }).waitFor({ state: "visible" });
     const promptsLink = page.getByRole("link", { name: /^プロンプト設定/ });
     const membersLink = page.getByRole("link", { name: /^権限管理/ });
     const audioTestLink = page.getByRole("link", { name: /^音声テスト/ });

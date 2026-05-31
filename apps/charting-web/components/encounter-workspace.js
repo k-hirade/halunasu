@@ -233,7 +233,7 @@ function PatientSearchSelect({ id, patients, value, disabled, onChange }) {
             </button>
           ))}
           {patients.length === 0 ? (
-            <div className="patient-search-empty">Core患者はまだ登録されていません。</div>
+            <div className="patient-search-empty">登録済み患者はまだ登録されていません。</div>
           ) : visiblePatients.length === 0 ? (
             <div className="patient-search-empty">該当する患者が見つかりません。</div>
           ) : null}
@@ -255,9 +255,9 @@ function getTranscriptStateCard({ status, mobileConnectionState, audioSourceType
   if (status === "degraded_recording") {
     return {
       tone: "warning",
-      title: "録音が途中で中断されました",
+      title: "録音が止まりました",
       body: audioSourceType === "local_browser"
-        ? "この端末の録音接続が切れた可能性があります。必要なら録音を破棄して録り直してください。"
+        ? "このパソコンの録音接続が切れた可能性があります。再開できない場合は、録音を破棄して録り直してください。"
         : "スマホ接続が切れた可能性があります。スマホの画面を開いたまま再接続し、マイク準備完了を確認してから録音を再開してください。"
     };
   }
@@ -266,7 +266,7 @@ function getTranscriptStateCard({ status, mobileConnectionState, audioSourceType
     return {
       tone: "neutral",
       title: "録音が終了しました",
-      body: "患者情報を確認したうえで、SOAP下書きを作成できます。"
+      body: "患者名や症状を確認してから、SOAP下書きを作成できます。"
     };
   }
 
@@ -287,26 +287,26 @@ function getTranscriptStateCard({ status, mobileConnectionState, audioSourceType
   if (audioSourceType === "local_browser" && localRecorderState === "ready") {
     return {
       tone: "success",
-      title: "この端末のマイク準備完了",
-      body: "この端末のマイクで録音を開始できます。"
+      title: "このパソコンのマイク準備完了",
+      body: "このパソコンのマイクで録音を開始できます。"
     };
   }
 
   if (["ready", "paired"].includes(status) && selectedRecordingMode === "local") {
     return {
       tone: "neutral",
-      title: "PC録音を選択中",
-      body: "下部の「この端末で録音」を押すと、このPCのマイクで録音を開始します。"
+      title: "このパソコンで録音を選択中",
+      body: "下部の「このパソコンで録音」を押すと録音を開始します。"
     };
   }
 
   if (["ready", "paired"].includes(status) && selectedRecordingMode === "mobile") {
     return {
       tone: mobileConnectionState === "disconnected" ? "neutral" : "success",
-      title: mobileConnectionState === "disconnected" ? "iPhone接続待ち" : "iPhone録音を選択中",
+      title: mobileConnectionState === "disconnected" ? "スマホ接続待ち" : "スマホ録音を選択中",
       body: mobileConnectionState === "disconnected"
-        ? "QRをiPhoneで読み取り、録音用スマホとして接続してください。"
-        : "iPhoneのマイク準備ができたら、iPhoneまたはこの画面から録音を開始できます。"
+        ? "QRをスマホで読み取り、録音用スマホとして接続してください。"
+        : "スマホのマイク準備ができたら、スマホまたはこの画面から録音を開始できます。"
     };
   }
 
@@ -314,7 +314,7 @@ function getTranscriptStateCard({ status, mobileConnectionState, audioSourceType
     return {
       tone: "neutral",
       title: "録音方法を選んでください",
-      body: "この端末のマイクで録音するか、スマホを録音用に接続して録音できます。"
+      body: "スマホで録音するか、このパソコンで録音できます。"
     };
   }
 
@@ -802,37 +802,69 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
       throw new Error("セッション情報を取得できませんでした。");
     }
     const data = await response.json();
+    applySessionStateData(data);
+    return data;
+  }
+
+  async function loadCoreMasterData() {
+    const response = await fetchWithOperatorAuth(`${getGatewayBaseUrl()}/api/v1/core/bootstrap`, {
+      cache: "no-store"
+    }, accessToken);
+
+    if (response.status === 401) {
+      clearAccess();
+      return;
+    }
+    if (!response.ok) {
+      throw new Error("登録済み患者・施設情報を取得できませんでした。");
+    }
+
+    applyCoreMasterData(await response.json());
+  }
+
+  async function loadSessionBootstrap() {
+    const response = await fetchWithOperatorAuth(`${getGatewayBaseUrl()}/api/v1/sessions/${sessionId}/bootstrap`, {
+      cache: "no-store"
+    }, accessToken);
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        clearAccess();
+      }
+      throw new Error("セッション情報を取得できませんでした。");
+    }
+
+    const payload = await response.json();
+    applySessionStateData(payload.sessionState);
+    applyCoreMasterData(payload.core);
+    applyPromptOptionsData(payload.promptOptions);
+    return payload.sessionState;
+  }
+
+  function applySessionStateData(data = {}) {
     setSessionState(data);
     setPartial(data.session?.status === "recording" ? data.session.latestPartialPreview || "" : "");
     if (!highlights.length && data.turns?.length) {
       setHighlights(buildFallbackHighlights(data.turns));
     }
-    return data;
   }
 
-  async function loadCoreMasterData() {
-    const [patientsResponse, facilitiesResponse, departmentsResponse] = await Promise.all([
-      fetchWithOperatorAuth(`${getGatewayBaseUrl()}/api/v1/core/patients`, { cache: "no-store" }, accessToken),
-      fetchWithOperatorAuth(`${getGatewayBaseUrl()}/api/v1/core/facilities`, { cache: "no-store" }, accessToken),
-      fetchWithOperatorAuth(`${getGatewayBaseUrl()}/api/v1/core/departments`, { cache: "no-store" }, accessToken)
-    ]);
+  function applyCoreMasterData(data = {}) {
+    setCorePatients(data.patients || []);
+    setCoreFacilities(data.facilities || []);
+    setCoreDepartments(data.departments || []);
+  }
 
-    if ([patientsResponse, facilitiesResponse, departmentsResponse].some((response) => response.status === 401)) {
-      clearAccess();
-      return;
+  function applyPromptOptionsData(payload = {}) {
+    setPromptOptions(payload.options || []);
+    if (payload.promptProfile) {
+      setSessionState((current) => current
+        ? {
+            ...current,
+            promptProfile: payload.promptProfile
+          }
+        : current);
     }
-    if (!patientsResponse.ok || !facilitiesResponse.ok || !departmentsResponse.ok) {
-      throw new Error("Core患者・施設情報を取得できませんでした。");
-    }
-
-    const [patients, facilities, departments] = await Promise.all([
-      patientsResponse.json(),
-      facilitiesResponse.json(),
-      departmentsResponse.json()
-    ]);
-    setCorePatients(patients.patients || []);
-    setCoreFacilities(facilities.facilities || []);
-    setCoreDepartments(departments.departments || []);
   }
 
   useEffect(() => {
@@ -905,8 +937,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
       return;
     }
 
-    loadSession().catch((e) => setError(e.message));
-    loadCoreMasterData().catch((e) => addToast(e.message, "error"));
+    loadSessionBootstrap().catch((e) => setError(e.message));
   }, [sessionId, accessToken]);
 
   useEffect(() => {
@@ -1095,14 +1126,6 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
 
     previousStatusRef.current = status;
   }, [status, soap]);
-
-  useEffect(() => {
-    if (!accessToken) {
-      return;
-    }
-
-    void loadPromptOptions();
-  }, [accessToken, sessionId]);
 
   useEffect(() => {
     if (postStopModalMode === "choice" && !promptOptions.length && !promptOptionsLoading) {
@@ -1553,17 +1576,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
       }
 
       const payload = await response.json();
-      setPromptOptions(payload.options || []);
-      if (payload.promptProfile) {
-        setSessionState((current) =>
-          current
-            ? {
-                ...current,
-                promptProfile: payload.promptProfile
-              }
-            : current
-        );
-      }
+      applyPromptOptionsData(payload);
     } catch (nextError) {
       setPromptOptionsError(nextError.message);
     } finally {
@@ -1708,7 +1721,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
     setRecordingSetupMode("local");
     dismissRecordingChoice();
     setPairingOverlayManuallyOpen(false);
-    setLocalRecorderMessage("下部の「この端末で録音」を押すと録音が始まります。");
+    setLocalRecorderMessage("下部の「このパソコンで録音」を押すと録音が始まります。");
     runAction(() => selectRecordingSource("local_browser"));
   }
 
@@ -2356,19 +2369,19 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
       : coreDepartments;
     const shouldShowFacilitySelect = coreFacilities.length > 1;
     const facilityOptions = [
-      { value: OPTIONAL_SELECT_NONE_VALUE, label: "施設を選択しない", description: "施設を未指定にします。" },
+      { value: OPTIONAL_SELECT_NONE_VALUE, label: "施設を指定しない", description: "施設を指定しません。" },
       ...coreFacilities.map((facility) => ({
         value: facility.facilityId,
         label: facility.displayName,
-        description: facility.medicalInstitutionCode ? `医療機関コード ${facility.medicalInstitutionCode}` : "Core施設"
+        description: facility.medicalInstitutionCode ? `医療機関コード ${facility.medicalInstitutionCode}` : "登録済み施設"
       }))
     ];
     const departmentOptions = [
-      { value: OPTIONAL_SELECT_NONE_VALUE, label: "診療科を選択しない", description: "診療科を未指定にします。" },
+      { value: OPTIONAL_SELECT_NONE_VALUE, label: "診療科を指定しない", description: "診療科を指定しません。" },
       ...selectableDepartments.map((department) => ({
         value: department.departmentId,
         label: department.displayName,
-        description: department.facilityId ? "選択中の施設に紐づく診療科" : "共通診療科"
+        description: department.facilityId ? "選択中の施設に紐づく診療科" : "全施設共通の診療科"
       }))
     ];
 
@@ -2385,8 +2398,8 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
         >
           <span className="patient-info-card-head">
             <span className="patient-info-card-title">
-              <span className="label">診療メモ</span>
-              <strong>患者情報</strong>
+              <span className="label">診療情報</span>
+              <strong>患者・診療情報</strong>
             </span>
             <span className="patient-info-card-meta">
               {patientInfoStatusText ? (
@@ -2404,12 +2417,12 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
           <div className="patient-info-card-body">
             <p className="patient-info-copy">
               {soap
-                ? "患者情報はこの画面で更新できます。保存してもSOAPは自動で再作成されません。"
-                : "患者情報はこの画面で入力します。保存すると、診療記録の下書きに反映されます。"}
+                ? "患者名や症状を変更できます。記録に反映する場合は、保存後に「SOAPを更新」を押してください。"
+                : "患者名や症状を入力して保存すると、SOAP下書きに使われます。"}
             </p>
             <div className="patient-info-grid">
               <div className="field">
-                <label htmlFor="workspaceCorePatientId">Core患者</label>
+                <label htmlFor="workspaceCorePatientId">登録済み患者</label>
                 <PatientSearchSelect
                   id="workspaceCorePatientId"
                   patients={corePatients}
@@ -2583,8 +2596,8 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
     return (
       <OperatorLoginPanel
         onAuthenticated={setAccessToken}
-        title="診療セッションにログイン"
-        description="診療画面の閲覧、録音操作、記録確認にはログイン用パスワードが必要です。"
+        title="診療記録にログイン"
+        description="録音や診療記録の確認にはログインが必要です。"
       />
     );
   }
@@ -2631,7 +2644,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
 
             {transcriptMode === "live" && !hasFinalTranscript && turns.length === 0 && !partial && !aiTranscript && !transcriptStateCard ? (
               <div className="transcript-empty">
-                スマホが接続され、録音が始まると<br />ここに会話が流れます。
+                録音を始めると、会話の文字起こしが<br />ここに表示されます。
               </div>
             ) : null}
             <div ref={transcriptEndRef} />
@@ -2642,7 +2655,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
         <div className="soap-panel">
           <div className="panel-head">
             <div className="panel-title">
-              <span className="label">出力</span>
+              <span className="label">作成結果</span>
               <h2>診療記録</h2>
             </div>
             <div className="soap-panel-toolbar">
@@ -2686,7 +2699,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                   <div className="spinner spinner--small" />
                   <div>
                     <strong>SOAP下書きを作成しています</strong>
-                    <span>{isStreamingSoapPreview ? "作成途中の診療記録を表示しています。" : "しばらくお待ちください。"}</span>
+                    <span>{isStreamingSoapPreview ? "作成途中の診療記録を表示しています。" : "会話内容を整理しています。少しお待ちください。"}</span>
                   </div>
                 </div>
                 <textarea
@@ -2736,7 +2749,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 <div className="soap-panel-footer-sub">
                   {reviewDirty
                     ? "未保存の変更があります。保存してから確定できます。"
-                    : "内容に問題がなければ確定してください。"}
+                    : "内容を確認し、問題なければ「確定する」を押してください。"}
                 </div>
               </div>
               <button
@@ -2779,7 +2792,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
             <div className="recording-bar" role="status" aria-label="録音中" aria-live="off">
               <span className="recording-bar-label">
                 <span className="recording-dot" />
-                {isLocalAudioSource ? "この端末で録音中" : "録音スマホで録音中"}
+                {isLocalAudioSource ? "このパソコンで録音中" : "録音用スマホで録音中"}
               </span>
               <span className="recording-bar-timer">{formatElapsed(recordingElapsed)}</span>
               {showRecordingExpiryWarning ? (
@@ -2802,15 +2815,15 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
               {localRecorderState === "ready" && audioSourceType === "local_browser"
                 ? "この端末のマイク準備完了"
                 : isLocalRecordingMode
-                  ? "PC録音を選択中"
+                  ? "このパソコンで録音を選択中"
                 : sessionState?.session?.mobileConnectionState === "mic_ready"
-                  ? "録音スマホ準備完了"
+                  ? "録音用スマホ準備完了"
                 : status === "degraded_recording"
                   ? "接続不安定"
                 : sessionState?.session?.mobileConnectionState === "connected"
                   ? "スマホ接続中"
                 : isMobileRecordingMode
-                  ? "iPhone接続待ち"
+                  ? "スマホ接続待ち"
                   : "スマホ未接続"}
             </div>
           )}
@@ -2844,9 +2857,9 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 disabled={isBusy}
                 onClick={() => runAction(refreshPairing)}
                 type="button"
-                data-tooltip="接続リンクを再発行"
+                data-tooltip="接続リンクを作り直す"
               >
-                <Icon name="refreshCw" size={12} /> リンク再発行
+                <Icon name="refreshCw" size={12} /> 接続リンクを作り直す
               </button>
             </>
           )}
@@ -2866,7 +2879,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                   disabled={isBusy}
                   onClick={openRecordingChoice}
                   type="button"
-                  title={`現在: ${isLocalRecordingMode ? "このPCで録音" : "iPhoneで録音"}`}
+                  title={`現在: ${isLocalRecordingMode ? "このパソコンで録音" : "スマホで録音"}`}
                 >
                   録音方法変更
                 </button>
@@ -2878,7 +2891,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                   onClick={() => runAction(startLocalRecordingFromWorkspace)}
                   type="button"
                 >
-                  <Icon name="mic" size={16} /> この端末で録音
+                  <Icon name="mic" size={16} /> このパソコンで録音
                   {isBusy || localRecorderState === "preparing" ? <span className="btn-spinner" aria-hidden="true" /> : null}
                 </button>
               ) : null}
@@ -2898,9 +2911,9 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                     chooseMobileRecordingSetup();
                   }}
                   type="button"
-                  title={!canOpenMobileRecordingSetup ? "この端末で録音する設定になっています" : ""}
+                  title={!canOpenMobileRecordingSetup ? "このパソコンで録音する設定になっています" : ""}
                 >
-                  <Icon name="mic" size={16} /> {canStartMobileRecording ? "iPhoneで録音開始" : "iPhoneを接続"}
+                  <Icon name="mic" size={16} /> {canStartMobileRecording ? "スマホで録音開始" : "スマホを接続"}
                 </button>
               ) : null}
             </>
@@ -3013,15 +3026,15 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
           <div className="confirm-card recording-choice-card" role="dialog" aria-labelledby="recording-choice-title" aria-describedby="recording-choice-description">
             <button className="confirm-close-button" type="button" onClick={dismissRecordingChoice} aria-label="閉じる"><Icon name="x" size={16} /></button>
             <h3 id="recording-choice-title">{selectedRecordingMode ? "録音方法を変更" : "録音方法を選択してください"}</h3>
-            <p id="recording-choice-description">この診療セッションで使う録音方法を選びます。録音は次の操作で開始されます。</p>
+            <p id="recording-choice-description">この診療で使う録音方法を選びます。選んだあとに録音を開始できます。</p>
             <div className="recording-choice-grid">
               <button className="recording-choice-option" disabled={isBusy} onClick={chooseMobileRecordingSetup} type="button">
-                <span className="recording-choice-option-title">iPhoneで録音</span>
-                <span className="recording-choice-option-body">QRを表示してiPhoneを接続します。接続後、iPhone側で録音を開始できます。</span>
+                <span className="recording-choice-option-title">スマホで録音</span>
+                <span className="recording-choice-option-body">QRを表示してスマホを接続します。接続後、スマホ側で録音を開始できます。</span>
               </button>
               <button className="recording-choice-option" disabled={isBusy} onClick={chooseLocalRecordingSetup} type="button">
-                <span className="recording-choice-option-title">このPCで録音</span>
-                <span className="recording-choice-option-body">この画面の「この端末で録音」を押すと、PCマイクで録音を開始します。</span>
+                <span className="recording-choice-option-title">このパソコンで録音</span>
+                <span className="recording-choice-option-body">この画面の「このパソコンで録音」を押すと、このパソコンのマイクで録音を開始します。</span>
               </button>
             </div>
           </div>
@@ -3040,8 +3053,8 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
             >
               <Icon name="x" size={16} />
             </button>
-            <h2 id="pairing-title">録音スマホを接続してください</h2>
-            <p>iPhoneのカメラでこのQRを読み取り、録音ページを開いてください。リンクをコピーして送ることもできます。</p>
+            <h2 id="pairing-title">録音に使うスマホを接続してください</h2>
+            <p>スマホのカメラでこのQRコードを読み取り、録音ページを開いてください。リンクをコピーして送ることもできます。</p>
             <div className="pairing-qr-card">
               {pairingQrUrl ? (
                 <img alt="モバイル接続用QRコード" className="pairing-qr-image" src={pairingQrUrl} />
@@ -3070,7 +3083,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 onClick={() => runAction(refreshPairing)}
                 type="button"
               >
-                <Icon name="refreshCw" size={14} /> 再発行
+                <Icon name="refreshCw" size={14} /> 接続リンクを作り直す
               </button>
             </div>
             <button
@@ -3090,7 +3103,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
               {isBusy ? <span className="btn-spinner" aria-hidden="true" /> : null}
             </button>
             <p className="pairing-hint">
-              録音スマホでマイク許可済みの場合、接続後に自動で録音準備完了になります。
+              スマホでマイクを許可すると、録音を始められる状態になります。
             </p>
           </div>
         </div>
@@ -3245,7 +3258,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
               </div>
             ) : (
               <div className="prompt-regenerate-note">
-                未保存の手入力編集は引き継がれません。必要な修正は保存または完了してから再作成してください。
+                手入力で直した内容は引き継がれません。必要な内容は保存してから作り直してください。
               </div>
             )}
             <div className="confirm-actions">

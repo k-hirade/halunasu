@@ -71,6 +71,13 @@ test("creates Platform patients and product-owned fee sessions", async () => {
     undefined,
     headers
   );
+  const detail = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/detail`,
+    undefined,
+    headers
+  );
   const decision = await request(
     stores,
     "PATCH",
@@ -96,8 +103,12 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.equal(calculation.body.calculationResult.lineItems[0].supportLevel, "candidate");
   assert.equal(calculation.body.calculationResult.lineItems[0].reviewRequired, true);
   assert.equal(calculation.body.feeSession.status, "needs_review");
+  assert.equal(calculation.body.receiptDraft.totalPoints, 137);
+  assert.ok(calculation.body.reviewItems.length >= 1);
   assert.equal(receiptDraft.body.receiptDraft.totalPoints, 137);
   assert.ok(reviewItems.body.reviewItems.length >= 1);
+  assert.equal(detail.body.receiptDraft.totalPoints, 137);
+  assert.ok(detail.body.reviewItems.length >= 1);
   assert.equal(decision.body.feeSession.reviewDecisions[reviewItems.body.reviewItems[0].reviewItemId].status, "approved");
   assert.equal(listed.body.feeSessions.length, 1);
   assert.equal(listed.body.page, 1);

@@ -694,23 +694,23 @@
         </div>
 
         <div class="operator-gate-pitch">
-          <h2 id="login-gate-title">共通基盤を、<br />ひとつの管理画面で。</h2>
+          <h2 id="login-gate-title">病院の情報を、<br />ひとつの画面で管理します。</h2>
           <p id="login-gate-copy">
-            病院、職員、施設、診療科、患者、権限をハルナス共通基盤で一元管理します。
-            各アプリは共通のログインとマスターデータを安全に利用できます。
+            職員、施設、診療科、患者情報をまとめて管理します。
+            カルテ作成などの各アプリから同じ情報を使えます。
           </p>
           <div class="operator-gate-features">
             <div class="operator-gate-feature">
               <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
-              <span>組織、職員、施設、診療科を同じ画面で管理</span>
+              <span>病院、職員、施設、診療科を同じ画面で管理</span>
             </div>
             <div class="operator-gate-feature">
               <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
-              <span>患者インデックスとプロダクト契約を共通基盤に集約</span>
+              <span>患者名簿とアプリ利用設定をまとめて管理</span>
             </div>
             <div class="operator-gate-feature">
               <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
-              <span>監査ログとデータ請求を管理者が確認</span>
+              <span>操作履歴と個人情報の依頼を管理者が確認</span>
             </div>
           </div>
         </div>
@@ -782,8 +782,8 @@
       </div>
       <div class="topbar-main">
         <div class="field org-switcher">
-          <label for="org-select">対象組織</label>
-          <select id="org-select" aria-label="対象組織"></select>
+          <label for="org-select">病院</label>
+          <select id="org-select" aria-label="病院"></select>
         </div>
         <div class="topbar-actions">
           <button class="secondary icon-only" id="refresh-button" type="button" data-icon="refreshCw" aria-label="再読み込み"></button>
@@ -803,8 +803,8 @@
       <aside class="sidebar" aria-label="施設管理ナビゲーション">
         <nav class="side-nav">
           <div class="nav-group">
-            <div class="nav-group-label">マスター</div>
-            <button class="tab active" data-view="organizations" role="tab" aria-selected="true" type="button" data-icon="settings">組織</button>
+            <div class="nav-group-label">病院データ</div>
+            <button class="tab active" data-view="organizations" role="tab" aria-selected="true" type="button" data-icon="settings">病院</button>
             <button class="tab" data-view="members" role="tab" aria-selected="false" type="button" data-icon="settings">職員</button>
             <button class="tab" data-view="facilities" role="tab" aria-selected="false" type="button" data-icon="fileText">施設</button>
             <button class="tab" data-view="departments" role="tab" aria-selected="false" type="button" data-icon="layoutSplit">診療科</button>
@@ -812,9 +812,9 @@
           </div>
           <div class="nav-group">
             <div class="nav-group-label">運用</div>
-            <button class="tab" data-view="entitlements" role="tab" aria-selected="false" type="button" data-icon="checkCircle">プロダクト契約</button>
-            <button class="tab" data-view="data-requests" role="tab" aria-selected="false" type="button" data-icon="fileText">開示請求</button>
-            <button class="tab" data-view="audit" role="tab" aria-selected="false" type="button" data-icon="alertCircle">監査</button>
+            <button class="tab" data-view="entitlements" role="tab" aria-selected="false" type="button" data-icon="checkCircle">アプリ利用設定</button>
+            <button class="tab" data-view="data-requests" role="tab" aria-selected="false" type="button" data-icon="fileText">個人情報の依頼</button>
+            <button class="tab" data-view="audit" role="tab" aria-selected="false" type="button" data-icon="alertCircle">操作履歴</button>
           </div>
         </nav>
       </aside>
@@ -823,15 +823,15 @@
         <div id="message" class="message"></div>
         <div class="workspace-head">
           <div class="workspace-title">
-            <h1>共通マスター</h1>
-            <p>カルテ作成、診療報酬算定、紹介状作成で共通利用する病院データを管理します。</p>
+              <h1>病院共通データ</h1>
+              <p>各アプリで使う病院の基本情報を管理します。</p>
           </div>
         </div>
 
         <section class="view active" id="view-organizations" role="tabpanel">
           <div class="view-head">
             <div class="view-title">
-              <h1>組織一覧</h1>
+              <h1>病院一覧</h1>
               <p>病院コードと表示名を管理します。</p>
             </div>
             <div class="view-actions">
@@ -847,7 +847,7 @@
           <div class="view-head">
             <div class="view-title">
               <h1>職員一覧</h1>
-              <p>ログイン、共通権限、アプリ別ロールを管理します。</p>
+              <p>ログイン情報、全体権限、アプリごとの権限を管理します。</p>
             </div>
             <div class="view-actions">
               <button class="accent" data-create="member" type="button" data-icon="check">新規</button>
@@ -877,7 +877,7 @@
           <div class="view-head">
             <div class="view-title">
               <h1>診療科一覧</h1>
-              <p>施設に紐づく診療科を管理します。</p>
+              <p>施設ごとの診療科を管理します。</p>
             </div>
             <div class="view-actions">
               <button class="accent" data-create="department" type="button" data-icon="check">新規</button>
@@ -892,7 +892,7 @@
           <div class="view-head">
             <div class="view-title">
               <h1>患者一覧</h1>
-              <p>各アプリから参照する患者インデックスを管理します。</p>
+              <p>各アプリから参照する患者名簿を管理します。</p>
             </div>
             <div class="view-actions">
               <input class="table-search" id="patient-filter" type="search" placeholder="患者名・患者番号で検索" autocomplete="off" />
@@ -907,8 +907,8 @@
         <section class="view" id="view-entitlements" role="tabpanel">
           <div class="view-head">
             <div class="view-title">
-              <h1>プロダクト契約</h1>
-              <p>病院ごとのアプリ利用状態を管理します。</p>
+              <h1>アプリ利用設定</h1>
+              <p>病院ごとに使えるアプリと利用状態を管理します。</p>
             </div>
             <div class="view-actions">
               <button class="accent" data-create="entitlement" type="button" data-icon="check">新規</button>
@@ -922,8 +922,8 @@
         <section class="view" id="view-data-requests" role="tabpanel">
           <div class="view-head">
             <div class="view-title">
-              <h1>開示請求</h1>
-              <p>個人情報の閲覧、出力、訂正、削除に関する依頼を管理します。</p>
+              <h1>個人情報の依頼</h1>
+              <p>患者情報の確認、出力、訂正、削除の依頼を管理します。</p>
             </div>
             <div class="view-actions">
               <button class="accent" data-create="dataRequest" type="button" data-icon="check">新規</button>
@@ -937,8 +937,8 @@
         <section class="view" id="view-audit" role="tabpanel">
           <div class="view-head">
             <div class="view-title">
-              <h1>監査イベント</h1>
-              <p>ログインやマスター更新などの操作履歴を確認します。</p>
+              <h1>操作履歴</h1>
+              <p>ログインやデータ変更の履歴を確認します。</p>
             </div>
             <div class="view-actions">
               <input class="table-search" id="audit-filter" type="search" placeholder="種別・操作者で検索" autocomplete="off" />
@@ -967,7 +967,7 @@
       <button class="modal-close-button" id="edit-modal-close" type="button" aria-label="閉じる">×</button>
       <div class="admin-modal-head">
         <h2 id="edit-modal-title">編集</h2>
-        <p id="edit-modal-description">Coreの共通マスターを更新します。</p>
+        <p id="edit-modal-description">病院共通データを更新します。</p>
       </div>
       <form class="admin-modal-form" id="edit-modal-form"></form>
       <div class="admin-modal-footer">
@@ -1182,20 +1182,60 @@
         return;
       }
       renderSession();
-      setTablesLoading();
-      await loadOrganizations();
+      setViewLoading(state.activeView);
       applyAccessGuards();
-      await Promise.allSettled([
-        loadMembers(),
-        loadFacilities(),
-        loadPatients(),
-        loadEntitlements()
-      ]);
-      await Promise.allSettled([
-        loadDepartments(),
-        loadDataRequests(),
-        loadAuditEvents()
-      ]);
+      await loadAdminBootstrap(state.activeView);
+    }
+
+    async function loadAdminBootstrap(view = state.activeView) {
+      if (!state.orgId) return loadOrganizations();
+      const section = coreAdminSectionForView(view);
+      const response = await api(`/v1/organizations/${encodeURIComponent(state.orgId)}/admin-bootstrap?section=${encodeURIComponent(section)}`);
+      applyAdminBootstrap(response);
+    }
+
+    function applyAdminBootstrap(response = {}) {
+      if (response.session) {
+        state.session = response.session;
+      }
+      if (Array.isArray(response.organizations)) {
+        state.organizations = response.organizations;
+        if (!state.orgId && state.organizations[0]) state.orgId = state.organizations[0].orgId;
+        renderOrganizations();
+      }
+      applyAccessGuards();
+      if (Array.isArray(response.members)) renderMembersTable(response.members);
+      if (Array.isArray(response.facilities)) {
+        state.facilities = response.facilities;
+        renderFacilitiesTable();
+      }
+      if (Array.isArray(response.departments)) {
+        state.departments = response.departments;
+        renderDepartmentsTable();
+      }
+      if (Array.isArray(response.patients)) {
+        state.patients = response.patients;
+        renderPatientsTable();
+      }
+      if (Array.isArray(response.productEntitlements)) renderEntitlementsTable(response.productEntitlements);
+      if (Array.isArray(response.dataRequests)) renderDataRequestsTable(response.dataRequests);
+      if (Array.isArray(response.auditEvents)) {
+        state.auditEvents = response.auditEvents;
+        renderAuditTable(state.auditEvents);
+      }
+    }
+
+    function coreAdminSectionForView(view) {
+      return ({
+        organizations: "organizations",
+        members: "members",
+        facilities: "facilities",
+        departments: "departments",
+        patients: "patients",
+        entitlements: "entitlements",
+        "data-requests": "data-requests",
+        audit: "audit"
+      })[view] || "organizations";
     }
 
     async function loadOrganizations() {
@@ -1219,22 +1259,26 @@
     async function loadMembers() {
       if (!state.orgId) return;
       if (!canManageOrg()) {
-        renderTable("members-table", [], [], { empty: "職員管理には病院管理者権限が必要です。" });
+        renderTable("members-table", [], [], { empty: "職員を確認・変更する権限がありません。病院管理者に依頼してください。" });
         return;
       }
       const members = (await api(`/v1/organizations/${state.orgId}/members`)).members || [];
+      renderMembersTable(members);
+    }
+
+    function renderMembersTable(members) {
       renderTable("members-table", members, [
-        ["ログインID", "loginId"],
+        ["個人ID", "loginId"],
         ["表示名", "displayName"],
-        ["共通権限", (item) => labelsForList(item.globalRoles || [], roleLabel)],
-        ["プロダクト権限", (item) => productRolesLabel(item.productRoles)],
+        ["全体権限", (item) => labelsForList(item.globalRoles || [], roleLabel)],
+        ["アプリごとの権限", (item) => productRolesLabel(item.productRoles)],
         ["2段階認証", (item) => item.mfaEnrolled ? "enrolled" : item.mfaRequired ? "required" : ""],
         ["状態", "status"]
       ], {
         empty: "職員はまだ登録されていません。",
         action: (item) => `
           <div class="row-actions">
-            <button class="secondary icon-only" data-copy-id="${escapeHtml(item.memberId)}" type="button" aria-label="職員IDをコピー">${icon("copy")}</button>
+            <button class="secondary icon-only" data-copy-id="${escapeHtml(item.memberId)}" type="button" aria-label="管理用IDをコピー">${icon("copy")}</button>
             <button class="secondary" data-mfa-reset="${escapeHtml(item.memberId)}" type="button">${icon("refreshCw")}2段階認証リセット</button>
           </div>
         `
@@ -1263,6 +1307,10 @@
     async function loadFacilities() {
       if (!state.orgId) return;
       state.facilities = (await api(`/v1/organizations/${state.orgId}/facilities`)).facilities || [];
+      renderFacilitiesTable();
+    }
+
+    function renderFacilitiesTable() {
       renderTable("facilities-table", state.facilities, [
         ["施設名", "displayName"],
         ["医療機関コード", "medicalInstitutionCode"],
@@ -1281,6 +1329,10 @@
     async function loadDepartments() {
       if (!state.orgId) return;
       state.departments = (await api(`/v1/organizations/${state.orgId}/departments`)).departments || [];
+      renderDepartmentsTable();
+    }
+
+    function renderDepartmentsTable() {
       renderTable("departments-table", state.departments, [
         ["診療科名", "displayName"],
         ["施設", (item) => facilityName(item.facilityId)],
@@ -1305,31 +1357,39 @@
     async function loadEntitlements() {
       if (!state.orgId) return;
       if (!canManageBilling()) {
-        renderTable("entitlements-table", [], [], { empty: "プロダクト契約の確認には契約管理権限が必要です。" });
+        renderTable("entitlements-table", [], [], { empty: "アプリ利用設定を見る権限がありません。契約管理者に依頼してください。" });
         return;
       }
-      renderTable("entitlements-table", (await api(`/v1/organizations/${state.orgId}/product-entitlements`)).productEntitlements || [], [
-        ["プロダクト", (item) => productLabel(item.productId)],
+      renderEntitlementsTable((await api(`/v1/organizations/${state.orgId}/product-entitlements`)).productEntitlements || []);
+    }
+
+    function renderEntitlementsTable(productEntitlements) {
+      renderTable("entitlements-table", productEntitlements, [
+        ["アプリ", (item) => productLabel(item.productId)],
         ["状態", "status"],
-        ["プラン", "plan"],
+        ["料金プラン", "plan"],
         ["開始日", (item) => formatDateTime(item.startsAt)],
         ["終了日", (item) => formatDateTime(item.endsAt)]
-      ], { empty: "プロダクト契約はまだ登録されていません。" });
+      ], { empty: "アプリ利用設定はまだ登録されていません。" });
     }
 
     async function loadDataRequests() {
       if (!state.orgId) return;
       if (!canManageOrg()) {
-        renderTable("data-requests-table", [], [], { empty: "開示請求の管理には病院管理者権限が必要です。" });
+        renderTable("data-requests-table", [], [], { empty: "個人情報の依頼を管理する権限がありません。病院管理者に依頼してください。" });
         return;
       }
-      renderTable("data-requests-table", (await api(`/v1/organizations/${state.orgId}/data-requests`)).dataRequests || [], [
-        ["請求種別", "requestType"],
+      renderDataRequestsTable((await api(`/v1/organizations/${state.orgId}/data-requests`)).dataRequests || []);
+    }
+
+    function renderDataRequestsTable(dataRequests) {
+      renderTable("data-requests-table", dataRequests, [
+        ["依頼内容", "requestType"],
         ["対象患者", (item) => patientName(item.subjectPatientId)],
-        ["対象プロダクト", (item) => labelsForList(item.productIds || [], productLabel)],
+        ["対象アプリ", (item) => labelsForList(item.productIds || [], productLabel)],
         ["状態", "status"]
       ], {
-        empty: "開示請求はまだ登録されていません。",
+        empty: "個人情報の依頼はまだ登録されていません。",
         action: (item) => `<div class="row-actions"><button class="secondary icon-only" data-copy-id="${escapeHtml(item.requestId)}" type="button" aria-label="請求IDをコピー">${icon("copy")}</button><button class="secondary" data-complete-request="${escapeHtml(item.requestId)}" type="button">${icon("check")}完了</button></div>`
       });
       bindCopyButtons();
@@ -1437,7 +1497,7 @@
             completedAt: new Date().toISOString()
           }
         });
-        showMessage("更新しました", "success");
+        showMessage("依頼を更新しました", "success");
         await loadDataRequests();
       } catch (error) {
         showMessage(error.message, "error");
@@ -1446,7 +1506,7 @@
 
     function openCreateModal(type) {
       if (!state.orgId && type !== "organization") {
-        showMessage("対象組織を選択してください。", "error");
+        showMessage("先に病院を選択してください。", "error");
         return;
       }
 
@@ -1465,7 +1525,7 @@
     function openEditModal(type, id) {
       const item = findEditableItem(type, id);
       if (!item) {
-        showMessage("編集対象が見つかりません。再読み込みしてください。", "error");
+        showMessage("編集するデータが見つかりませんでした。画面を再読み込みしてからもう一度お試しください。", "error");
         return;
       }
 
@@ -1499,12 +1559,12 @@
       const action = mode === "create" ? "追加" : "編集";
       return ({
         organization: {
-          title: `組織を${action}`,
+          title: `病院を${action}`,
           description: "病院コードと表示名を登録します。"
         },
         member: {
           title: `職員を${action}`,
-          description: "ログイン情報、共通権限、アプリ別ロールを登録します。"
+          description: "ログイン情報、全体権限、アプリごとの権限を登録します。"
         },
         facility: {
           title: `施設を${action}`,
@@ -1516,26 +1576,26 @@
         },
         patient: {
           title: `患者を${action}`,
-          description: "各アプリで参照するCore患者インデックスを登録します。"
+          description: "各アプリで参照する患者名簿を登録します。"
         },
         entitlement: {
-          title: `プロダクト契約を${action}`,
+          title: `アプリ利用設定を${action}`,
           description: "病院ごとのアプリ利用状態を登録します。"
         },
         dataRequest: {
-          title: `開示請求を${action}`,
+          title: `個人情報の依頼を${action}`,
           description: "個人情報の閲覧、出力、訂正、削除に関する依頼を登録します。"
         }
       })[type] || {
         title: mode === "create" ? "新規作成" : "編集",
-        description: "共通マスターを更新します。"
+        description: "病院共通データを更新します。"
       };
     }
 
     function renderCreateForm(type) {
       if (type === "organization") {
         return `
-          ${textField("組織コード", "organizationCode", "", { required: true })}
+          ${textField("病院コード", "organizationCode", "", { required: true })}
           ${textField("表示名", "displayName", "", { required: true })}
         `;
       }
@@ -1550,11 +1610,11 @@
             ${textField("メール", "email", "", { type: "email" })}
             ${textField("初期パスワード", "password", "", { type: "password" })}
           </div>
-          ${textField("共通権限ロール", "globalRoles", "", { placeholder: "org_admin,billing_admin,platform_admin" })}
+          ${textField("全体権限", "globalRoles", "", { placeholder: "org_admin,billing_admin,platform_admin" })}
           <div class="grid-3">
-            ${textField("カルテ作成ロール", "chartingRoles", "", { placeholder: "admin,doctor" })}
-            ${textField("診療報酬算定ロール", "feeRoles", "", { placeholder: "admin,medical_clerk" })}
-            ${textField("紹介状作成ロール", "referralRoles", "", { placeholder: "admin,doctor" })}
+            ${textField("カルテ作成の権限", "chartingRoles", "", { placeholder: "admin,doctor" })}
+            ${textField("診療報酬算定の権限", "feeRoles", "", { placeholder: "admin,medical_clerk" })}
+            ${textField("紹介状作成の権限", "referralRoles", "", { placeholder: "admin,doctor" })}
           </div>
         `;
       }
@@ -1572,7 +1632,7 @@
 
       if (type === "department") {
         const facilityOptions = [
-          ["", "施設に紐づけない"],
+          ["", "施設を指定しない"],
           ...state.facilities.map((facility) => [facility.facilityId, facility.displayName || facility.facilityId])
         ];
         return `
@@ -1618,7 +1678,7 @@
       if (type === "entitlement") {
         return `
           <div class="grid-2">
-            ${selectField("対象プロダクト", "productId", "charting", [
+            ${selectField("対象アプリ", "productId", "charting", [
               ["charting", "カルテ作成"],
               ["fee", "診療報酬算定"],
               ["referral", "紹介状作成"]
@@ -1629,7 +1689,7 @@
               ["disabled", "停止中"]
             ])}
           </div>
-          ${textField("プラン", "plan", "")}
+          ${textField("料金プラン", "plan", "")}
         `;
       }
 
@@ -1640,7 +1700,7 @@
         ];
         return `
           <div class="grid-2">
-            ${selectField("請求種別", "requestType", "access", [
+            ${selectField("依頼内容", "requestType", "access", [
               ["access", "閲覧"],
               ["export", "エクスポート"],
               ["deletion", "削除"],
@@ -1648,7 +1708,7 @@
             ])}
             ${selectField("対象患者", "subjectPatientId", "", patientOptions)}
           </div>
-          ${textField("対象プロダクト", "productIds", "charting", { placeholder: "charting,fee,referral" })}
+          ${textField("対象アプリ", "productIds", "charting", { placeholder: "charting,fee,referral" })}
         `;
       }
 
@@ -1664,7 +1724,7 @@
 
     function renderFacilityEditForm(facility) {
       return `
-        ${readonlyField("施設ID", facility.facilityId)}
+        ${readonlyField("管理用ID", facility.facilityId)}
         ${textField("表示名", "displayName", facility.displayName, { required: true })}
         <div class="grid-2">
           ${textField("医療機関コード", "medicalInstitutionCode", facility.medicalInstitutionCode)}
@@ -1682,11 +1742,11 @@
 
     function renderDepartmentEditForm(department) {
       const facilityOptions = [
-        ["", "施設に紐づけない"],
+        ["", "施設を指定しない"],
         ...state.facilities.map((facility) => [facility.facilityId, facility.displayName || facility.facilityId])
       ];
       return `
-        ${readonlyField("診療科ID", department.departmentId)}
+        ${readonlyField("管理用ID", department.departmentId)}
         ${textField("表示名", "displayName", department.displayName, { required: true })}
         <div class="grid-2">
           ${selectField("施設", "facilityId", department.facilityId || "", facilityOptions)}
@@ -1704,7 +1764,7 @@
 
     function renderPatientEditForm(patient) {
       return `
-        ${readonlyField("患者ID", patient.patientId)}
+        ${readonlyField("管理用ID", patient.patientId)}
         <div class="grid-2">
           ${textField("表示名", "displayName", patient.displayName, { required: true })}
           ${textField("かな", "displayNameKana", patient.displayNameKana)}
@@ -1782,7 +1842,7 @@
             body: config.body
           });
           closeEditModal();
-          showMessage("作成しました", "success");
+          showMessage(`${editableTypeLabel(type)}を追加しました`, "success");
           await config.reload();
         } catch (error) {
           showMessage(error.message, "error");
@@ -1803,7 +1863,7 @@
           body: config.body
         });
         closeEditModal();
-        showMessage("更新しました", "success");
+        showMessage(`${editableTypeLabel(type)}を更新しました`, "success");
         await reloadEditedCollection(type);
       } catch (error) {
         showMessage(error.message, "error");
@@ -1968,11 +2028,34 @@
       try {
         await api(path, { method: "POST", csrf: true, body });
         form.reset();
-        showMessage("保存しました", "success");
+        showMessage(mutationSuccessLabel(path), "success");
         await reload();
       } catch (error) {
         showMessage(error.message, "error");
       }
+    }
+
+    function editableTypeLabel(type) {
+      return ({
+        organization: "病院",
+        member: "職員",
+        facility: "施設",
+        department: "診療科",
+        patient: "患者情報",
+        entitlement: "アプリ利用設定",
+        dataRequest: "個人情報の依頼"
+      })[type] || "データ";
+    }
+
+    function mutationSuccessLabel(path) {
+      if (path === "/v1/organizations") return "病院を保存しました";
+      if (path.includes("/members")) return "職員情報を保存しました";
+      if (path.includes("/facilities")) return "施設情報を保存しました";
+      if (path.includes("/departments")) return "診療科情報を保存しました";
+      if (path.includes("/patients")) return "患者情報を保存しました";
+      if (path.includes("/product-entitlements")) return "アプリ利用設定を保存しました";
+      if (path.includes("/data-requests")) return "個人情報の依頼を保存しました";
+      return "変更を保存しました";
     }
 
     async function completeLogin(credentials) {
@@ -2023,7 +2106,7 @@
       }
       els.sessionChip.textContent = `${state.session.organizationCode} / ${state.session.loginId}`;
       els.sessionMenuTitle.textContent = `${state.session.organizationCode} / ${state.session.loginId}`;
-      els.sessionMenuMeta.textContent = `共通権限: ${labelsForList(state.session.globalRoles || [], roleLabel) || "なし"}`;
+      els.sessionMenuMeta.textContent = `権限: ${labelsForList(state.session.globalRoles || [], roleLabel) || "なし"}`;
       hide(els.loginGate);
       show(els.appShell);
     }
@@ -2034,12 +2117,12 @@
         .join("");
       els.orgSelect.value = state.orgId;
       renderTable("organizations-table", state.organizations, [
-        ["組織コード", "organizationCode"],
+        ["病院コード", "organizationCode"],
         ["表示名", "displayName"],
         ["状態", "status"]
       ], {
-        empty: "組織はまだ登録されていません。",
-        action: (item) => `<div class="row-actions"><button class="secondary icon-only" data-copy-id="${escapeHtml(item.orgId)}" type="button" aria-label="組織IDをコピー">${icon("copy")}</button></div>`
+        empty: "病院はまだ登録されていません。",
+        action: (item) => `<div class="row-actions"><button class="secondary icon-only" data-copy-id="${escapeHtml(item.orgId)}" type="button" aria-label="管理用IDをコピー">${icon("copy")}</button></div>`
       });
       bindCopyButtons();
     }
@@ -2089,8 +2172,8 @@
     function showCredentialLoginStep() {
       show(els.loginForm);
       hide(els.loginMfaForm);
-      els.loginGateTitle.innerHTML = "共通基盤を、<br />ひとつの管理画面で。";
-      els.loginGateCopy.textContent = "病院、職員、施設、診療科、患者、権限をハルナス共通基盤で一元管理します。各アプリは共通のログインとマスターデータを安全に利用できます。";
+      els.loginGateTitle.innerHTML = "病院の情報を、<br />ひとつの画面で管理します。";
+      els.loginGateCopy.textContent = "職員、施設、診療科、患者情報をまとめて管理します。カルテ作成などの各アプリから同じ情報を使えます。";
       els.loginMfaCode.value = "";
       showLoginMessage("");
       showLoginMfaMessage("");
@@ -2160,7 +2243,7 @@
         ["操作者", "actorLoginId"],
         ["対象", (item) => [targetTypeLabel(item.targetType), item.targetId].filter(Boolean).join(" / ")]
       ], {
-        empty: keyword ? "条件に一致する監査イベントはありません。" : "監査イベントはまだありません。",
+        empty: keyword ? "条件に一致する操作履歴はありません。" : "操作履歴はまだありません。",
         action: (item) => `<div class="row-actions"><button class="secondary icon-only" data-copy-id="${escapeHtml(item.eventId)}" type="button" aria-label="イベントIDをコピー">${icon("copy")}</button></div>`
       });
       bindCopyButtons();
@@ -2182,6 +2265,21 @@
       }
     }
 
+    function setViewLoading(view) {
+      const tableId = ({
+        organizations: "organizations-table",
+        members: "members-table",
+        facilities: "facilities-table",
+        departments: "departments-table",
+        patients: "patients-table",
+        entitlements: "entitlements-table",
+        "data-requests": "data-requests-table",
+        audit: "audit-table"
+      })[view];
+      const target = tableId ? document.querySelector(`#${tableId}`) : null;
+      if (target) target.innerHTML = '<div class="loading-state">読み込み中</div>';
+    }
+
     function applyAccessGuards() {
       const canManagePlatform = hasGlobalRole("platform_admin");
       const canManageOrganization = canManageOrg();
@@ -2197,7 +2295,7 @@
       }
       setCreateVisibility("entitlement", canManageContracts);
       if (document.querySelector(`[data-view="${state.activeView}"]`)?.classList.contains("hidden")) {
-        selectView(visibleTabs()[0]?.dataset.view || "facilities");
+        selectView(visibleTabs()[0]?.dataset.view || "facilities", { load: false });
       }
     }
 
@@ -2210,7 +2308,7 @@
       document.querySelector(`#view-${view}`)?.classList.toggle("hidden", !visible);
     }
 
-    function selectView(view) {
+    function selectView(view, options = {}) {
       state.activeView = view;
       document.querySelectorAll("button.tab").forEach((tab) => {
         const selected = tab.dataset.view === view;
@@ -2220,6 +2318,10 @@
       document.querySelectorAll(".view").forEach((panel) => {
         panel.classList.toggle("active", panel.id === `view-${view}`);
       });
+      if (options.load !== false && state.session) {
+        setViewLoading(view);
+        refreshCurrentView().catch((error) => showMessage(error.message, "error"));
+      }
     }
 
     function visibleTabs() {
@@ -2251,15 +2353,7 @@
     }
 
     async function refreshCurrentView() {
-      if (state.activeView === "organizations") return loadOrganizations();
-      if (state.activeView === "members") return loadMembers();
-      if (state.activeView === "facilities") return loadFacilities();
-      if (state.activeView === "departments") return loadDepartments();
-      if (state.activeView === "patients") return loadPatients();
-      if (state.activeView === "entitlements") return loadEntitlements();
-      if (state.activeView === "data-requests") return loadDataRequests();
-      if (state.activeView === "audit") return loadAuditEvents();
-      return refreshAll();
+      return loadAdminBootstrap(state.activeView);
     }
 
     function bindCopyButtons() {
@@ -2357,18 +2451,18 @@
         "member.created": "職員作成",
         "member.updated": "職員更新",
         "member.mfa_reset": "2段階認証リセット",
-        "organization.created": "組織作成",
-        "organization.updated": "組織更新",
+        "organization.created": "病院作成",
+        "organization.updated": "病院更新",
         "facility.created": "施設作成",
         "facility.updated": "施設更新",
         "department.created": "診療科作成",
         "department.updated": "診療科更新",
         "patient.created": "患者作成",
         "patient.updated": "患者更新",
-        "product_entitlement.upserted": "プロダクト契約保存",
-        "product_entitlement.updated": "プロダクト契約更新",
-        "data_request.created": "開示請求作成",
-        "data_request.updated": "開示請求更新",
+        "product_entitlement.upserted": "アプリ利用設定保存",
+        "product_entitlement.updated": "アプリ利用設定更新",
+        "data_request.created": "個人情報の依頼作成",
+        "data_request.updated": "個人情報の依頼更新",
         "signup.application_submitted": "申込受付",
         "signup.email_verified": "メール確認完了",
         "signup.approved": "申込承認",
@@ -2384,8 +2478,8 @@
         return "2段階認証コードが正しくありません。";
       }
       if (text === "Invalid credentials") return "病院コード、個人ID、またはパスワードが正しくありません。";
-      if (text === "Session revoked") return "ログインセッションが無効になりました。もう一度ログインしてください。";
-      if (text === "Invalid session") return "ログインセッションを確認できません。もう一度ログインしてください。";
+      if (text === "Session revoked") return "ログイン状態が無効になりました。もう一度ログインしてください。";
+      if (text === "Invalid session") return "ログイン状態を確認できません。もう一度ログインしてください。";
       return text;
     }
 
@@ -2399,13 +2493,13 @@
 
     function targetTypeLabel(value) {
       return ({
-        organization: "組織",
+        organization: "病院",
         member: "職員",
         facility: "施設",
         department: "診療科",
         patient: "患者",
-        data_request: "開示請求",
-        product_entitlement: "プロダクト契約"
+        data_request: "個人情報の依頼",
+        product_entitlement: "アプリ利用設定"
       })[value] || value || "";
     }
 

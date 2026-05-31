@@ -173,7 +173,7 @@ export function AudioTestPanel({
       options.push({
         value: savedPreference.deviceId,
         label: savedPreference.label || "保存済みのマイク",
-        description: "前回このPCで保存した入力です。"
+        description: "前回このパソコンで保存した入力です。"
       });
     }
 
@@ -277,7 +277,7 @@ export function AudioTestPanel({
 
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-          throw new Error(payload.error || "iPhone マイクテストの状態を取得できませんでした。");
+          throw new Error(payload.error || "スマホのマイクテスト状態を取得できませんでした。");
         }
 
         if (!cancelled) {
@@ -286,7 +286,7 @@ export function AudioTestPanel({
         }
       } catch (nextError) {
         if (!cancelled) {
-          setMobileTestError(nextError.message || "iPhone マイクテストの状態を取得できませんでした。");
+          setMobileTestError(nextError.message || "スマホのマイクテスト状態を取得できませんでした。");
         }
       }
     };
@@ -444,7 +444,7 @@ export function AudioTestPanel({
 
     const stored = readAudioInputPreference(scope);
     setSavedPreference(stored);
-    setNotice("このPCの既定マイクとして保存しました。");
+    setNotice("このパソコンの既定マイクとして保存しました。");
   }
 
   function handleDeviceChange(nextDeviceId) {
@@ -477,14 +477,14 @@ export function AudioTestPanel({
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload.error || "iPhone マイクテストの QR を発行できませんでした。");
+        throw new Error(payload.error || "スマホのマイクテスト用QRを発行できませんでした。");
       }
 
       setMobileTest(payload.audioTest || null);
       setMobileTestJoinUrl(payload.joinUrl || "");
-      setMobileTestNotice("QR を発行しました。iPhone で読み取ってください。");
+      setMobileTestNotice("QRを発行しました。スマホで読み取ってください。");
     } catch (nextError) {
-      setMobileTestError(nextError.message || "iPhone マイクテストの QR を発行できませんでした。");
+      setMobileTestError(nextError.message || "スマホのマイクテスト用QRを発行できませんでした。");
       setIsQrModalOpen(false);
     } finally {
       setIsCreatingMobileTest(false);
@@ -513,16 +513,16 @@ export function AudioTestPanel({
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload.error || "iPhone マイクテストを終了できませんでした。");
+        throw new Error(payload.error || "スマホのマイクテストを終了できませんでした。");
       }
 
       setMobileTest(payload.audioTest || null);
       setMobileTestJoinUrl("");
       setMobileTestQrUrl("");
       setIsQrModalOpen(false);
-      setMobileTestNotice("iPhone マイクテストを終了しました。");
+      setMobileTestNotice("スマホのマイクテストを終了しました。");
     } catch (nextError) {
-      setMobileTestError(nextError.message || "iPhone マイクテストを終了できませんでした。");
+      setMobileTestError(nextError.message || "スマホのマイクテストを終了できませんでした。");
     } finally {
       setIsCompletingMobileTest(false);
     }
@@ -536,7 +536,7 @@ export function AudioTestPanel({
     try {
       if (navigator?.clipboard?.writeText) {
         await navigator.clipboard.writeText(mobileTestJoinUrl);
-        setMobileTestNotice("iPhone 用リンクをコピーしました。");
+        setMobileTestNotice("スマホ用リンクをコピーしました。");
         setMobileTestError("");
         return;
       }
@@ -546,7 +546,7 @@ export function AudioTestPanel({
 
     if (typeof window !== "undefined") {
       window.prompt("このリンクをコピーしてください。", mobileTestJoinUrl);
-      setMobileTestNotice("iPhone 用リンクを表示しました。");
+      setMobileTestNotice("スマホ用リンクを表示しました。");
       setMobileTestError("");
     }
   }
@@ -603,7 +603,7 @@ export function AudioTestPanel({
           <section className="audio-test-panel audio-test-main-panel">
             <h2>マイク入力テスト</h2>
             <div className="audio-test-field">
-              <span>このPC</span>
+              <span>このパソコン</span>
               <AdminSelect
                 value={selectedDeviceId}
                 onValueChange={handleDeviceChange}
@@ -657,7 +657,7 @@ export function AudioTestPanel({
 
           <section className="audio-test-panel audio-test-mobile-panel">
             <div className="audio-test-field">
-              <span>iPhone</span>
+              <span>スマホ</span>
               <p className="audio-test-note">QR を読み取ると、その場でマイク許可を求めて入力レベルを返します。</p>
             </div>
 
@@ -676,7 +676,7 @@ export function AudioTestPanel({
                   ) : null}
                   <button className={`btn btn--ghost ${isCompletingMobileTest ? "btn--loading" : ""}`} type="button" onClick={completeMobileAudioTest} disabled={isCompletingMobileTest}>
                     {isCompletingMobileTest ? <span className="btn-spinner" aria-hidden="true" /> : null}
-                    <span>{isCompletingMobileTest ? "終了中..." : "iPhoneテスト終了"}</span>
+                    <span>{isCompletingMobileTest ? "終了中..." : "スマホテスト終了"}</span>
                   </button>
                 </>
               )}
@@ -698,7 +698,7 @@ export function AudioTestPanel({
             </div>
 
             <div className="audio-test-level">
-              <div className="audio-meter" aria-label={`iPhone入力レベル ${mobileLevel}%`}>
+              <div className="audio-meter" aria-label={`スマホ入力レベル ${mobileLevel}%`}>
                 <span style={{ width: `${mobileLevel}%` }} />
               </div>
               <div className="audio-test-meter-labels">
@@ -720,7 +720,7 @@ export function AudioTestPanel({
           <div className="admin-modal-overlay" onClick={(event) => { if (event.target === event.currentTarget) setIsQrModalOpen(false); }}>
             <div className="admin-modal-card audio-test-qr-modal" role="dialog" aria-modal="true" aria-labelledby="audio-test-qr-title">
               <div className="admin-modal-head">
-                <h2 id="audio-test-qr-title">iPhone で読み取り</h2>
+                <h2 id="audio-test-qr-title">スマホで読み取り</h2>
                 <button className="btn btn--ghost audio-test-qr-close" type="button" onClick={() => setIsQrModalOpen(false)} aria-label="閉じる">
                   <Icon name="x" size={18} />
                 </button>
@@ -733,7 +733,7 @@ export function AudioTestPanel({
                   </div>
                 ) : (
                   <>
-                    <img className="audio-test-qr-image" src={mobileTestQrUrl} alt="iPhone マイクテスト用の QR コード" />
+                    <img className="audio-test-qr-image" src={mobileTestQrUrl} alt="スマホのマイクテスト用QRコード" />
                     <button className="btn btn--ghost" type="button" onClick={copyMobileAudioTestLink}>
                       リンクをコピー
                     </button>

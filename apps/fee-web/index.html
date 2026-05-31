@@ -1343,14 +1343,14 @@
         if (!state.selectedFeeSessionId) {
           throw new Error("算定セッションを選択してください");
         }
-        await saveFeeSessionDetails({ silent: true });
+        await saveFeeSessionDetails({ silent: true, skipSessionReload: true });
         const response = await api(feeApiBaseUrl, `/v1/fee/sessions/${state.selectedFeeSessionId}/calculate`, {
           method: "POST",
           csrf: true,
           body: {}
         });
         await loadSessions({ page: state.feeSessionPage });
-        await loadFeeSessionDetails(state.selectedFeeSessionId);
+        applyFeeSessionDetailResponse(response);
         renderResult(response);
         showMessage("算定が完了しました", "success");
       });
@@ -1409,20 +1409,8 @@
     async function loadFeeSessionDetails(feeSessionId) {
       if (!feeSessionId) return;
       showDetailRoute();
-      const [sessionResponse, receipt, reviews] = await Promise.all([
-        api(feeApiBaseUrl, `/v1/fee/sessions/${feeSessionId}`),
-        api(feeApiBaseUrl, `/v1/fee/sessions/${feeSessionId}/receipt-draft`),
-        api(feeApiBaseUrl, `/v1/fee/sessions/${feeSessionId}/review-items`)
-      ]);
-      state.selectedFeeSessionId = feeSessionId;
-      state.selectedFeeSession = sessionResponse.feeSession;
-      state.receiptDraft = receipt.receiptDraft;
-      state.reviewItems = reviews.reviewItems || [];
-      populateFeeSessionForm(sessionResponse.feeSession);
-      renderResult(sessionResponse.feeSession);
-      renderSessions();
-      renderReceiptDraft();
-      renderReviewItems();
+      const response = await api(feeApiBaseUrl, `/v1/fee/sessions/${feeSessionId}/detail`);
+      applyFeeSessionDetailResponse(response);
     }
 
     async function saveFeeSessionDetails(options = {}) {
@@ -1448,12 +1436,30 @@
         }
       });
       state.selectedFeeSession = response.feeSession;
-      await loadSessions({ page: state.feeSessionPage });
-      await loadFeeSessionDetails(state.selectedFeeSessionId);
+      populateFeeSessionForm(response.feeSession);
+      renderResult(response.feeSession);
+      renderSessions();
+      if (!options.skipSessionReload) {
+        await loadSessions({ page: state.feeSessionPage });
+      }
       if (!options.silent) {
         showMessage("入力を保存しました", "success");
       }
       return response;
+    }
+
+    function applyFeeSessionDetailResponse(response) {
+      state.selectedFeeSessionId = response.feeSession?.feeSessionId || state.selectedFeeSessionId;
+      state.selectedFeeSession = response.feeSession || null;
+      state.receiptDraft = response.receiptDraft || null;
+      state.reviewItems = response.reviewItems || [];
+      if (response.feeSession) {
+        populateFeeSessionForm(response.feeSession);
+        renderResult(response.feeSession);
+      }
+      renderSessions();
+      renderReceiptDraft();
+      renderReviewItems();
     }
 
     async function navigateToFeeSession(feeSessionId) {

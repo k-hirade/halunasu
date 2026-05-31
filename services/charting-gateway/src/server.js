@@ -2096,6 +2096,9 @@ async function buildAdminBootstrapPayload(req) {
         }) || [])
       : []
   ]);
+  const selectedFormat = section === "formats"
+    ? await resolveAdminBootstrapSelectedFormat(req, selectedOrgId, formatsRaw)
+    : null;
 
   return {
     session: serializeOperatorPayload(req.operator, null),
@@ -2105,8 +2108,62 @@ async function buildAdminBootstrapPayload(req) {
     section,
     roles: roles.map(serializeRoleDefinitionForClient),
     formats: formatsRaw.map(serializeSoapFormatSummaryForClient),
+    selectedFormat,
     members: members.map(serializeMemberForClient),
     events
+  };
+}
+
+async function resolveAdminBootstrapSelectedFormat(req, orgId, formatsRaw = []) {
+  if (!canReadSoapFormats(req.operator) || !formatsRaw.length) {
+    return null;
+  }
+
+  const requestedFormatId = String(req.query.selectedFormatId || "").trim();
+  const selectedSummary = formatsRaw.find((format) => {
+    const formatId = format.formatId || format.profileId;
+    return requestedFormatId && formatId === requestedFormatId;
+  }) || formatsRaw[0];
+  const selectedFormatId = selectedSummary?.formatId || selectedSummary?.profileId;
+
+  if (!selectedFormatId) {
+    return null;
+  }
+
+  const format = selectedFormatId === DEFAULT_SOAP_FORMAT_PROFILE.profileId
+    ? DEFAULT_SOAP_FORMAT_PROFILE
+    : await store.getSoapFormatProfile?.({
+        orgId,
+        profileId: selectedFormatId
+      });
+
+  if (!format || (selectedFormatId !== DEFAULT_SOAP_FORMAT_PROFILE.profileId && !canEditSoapFormat(req.operator, format))) {
+    return null;
+  }
+
+  return serializeSoapFormatForClient(format);
+}
+
+async function buildCoreBootstrapPayload(operatorPayload) {
+  if (!platformStore) {
+    return {
+      patients: [],
+      facilities: [],
+      departments: []
+    };
+  }
+
+  const orgId = getOrgIdForOperator(operatorPayload);
+  const [patients, facilities, departments] = await Promise.all([
+    platformStore.listPatients(orgId),
+    platformStore.listFacilities(orgId),
+    platformStore.listDepartments(orgId)
+  ]);
+
+  return {
+    patients,
+    facilities,
+    departments
   };
 }
 
@@ -6239,6 +6296,14 @@ app.get("/api/v1/core/departments", requireOperatorAuth, requireOperatorReadAcce
   }
 });
 
+app.get("/api/v1/core/bootstrap", requireOperatorAuth, requireOperatorReadAccess, rateLimit("core-bootstrap", { limit: 240, windowMs: 10 * 60_000 }), async (req, res) => {
+  try {
+    res.json(await buildCoreBootstrapPayload(req.operator));
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+});
+
 app.post("/api/v1/sessions", requireOperatorAuth, requireOperatorClinicalAccess, rateLimit("create-session", { limit: 30, windowMs: 10 * 60_000 }), async (req, res) => {
   try {
     if (!operatorCanCreateSession(req.operator)) {
@@ -6421,6 +6486,51 @@ app.post("/api/v1/mobile/recorders/register", requireOperatorAuth, requireOperat
       label: recorder.label,
       status: recorder.status || "active",
       assignment: existingAssignment
+    });
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+});
+
+app.get("/api/v1/sessions/:sessionId/bootstrap", requireOperatorAuth, requireOperatorReadAccess, rateLimit("session-bootstrap", { limit: 120, windowMs: 10 * 60_000 }), async (req, res) => {
+  try {
+    let state = await store.getSessionState(req.params.sessionId);
+
+    if (!state) {
+      res.status(404).json({ error: "診療画面が見つかりません。" });
+      return;
+    }
+
+    if (!operatorCanReadSession(req.operator, state.session)) {
+      res.status(403).json({ error: forbiddenSessionActionMessage("read") });
+      return;
+    }
+
+    state = await recoverStaleFinalizingSession(req.params.sessionId, state, {
+      reason: "session_bootstrap"
+    });
+
+    const [promptProfile, options, core] = await Promise.all([
+      store.resolvePromptProfile?.({
+        orgId: state.session.orgId || state.session.clinicId,
+        memberId: state.session.doctorMemberId || state.session.assignedDoctorUserId || state.session.createdByMemberId || state.session.createdByUserId,
+        promptProfileId: state.session.promptProfileId
+      }),
+      listSelectablePromptOptions(req.operator),
+      buildCoreBootstrapPayload(req.operator)
+    ]);
+
+    res.json({
+      sessionState: {
+        ...state,
+        promptProfile: serializePromptProfileForSession(promptProfile)
+      },
+      core,
+      promptOptions: {
+        selectedPromptProfileId: promptProfile?.profileId || state.session.promptProfileId || DEFAULT_SOAP_FORMAT_PROFILE.profileId,
+        promptProfile: serializePromptProfileForSession(promptProfile),
+        options
+      }
     });
   } catch (error) {
     sendError(res, error, 400);

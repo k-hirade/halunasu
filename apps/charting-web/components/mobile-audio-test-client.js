@@ -86,14 +86,14 @@ function getPermissionCopy(permissionState) {
   if (permissionState === "granted") {
     return {
       label: "マイクは許可済みです",
-      text: "このまま iPhone で声を出すと、PC 側の音声テスト画面に入力レベルを返します。"
+      text: "このままスマホで声を出すと、パソコン側の音声テスト画面に入力レベルを返します。"
     };
   }
 
   if (permissionState === "prompt") {
     return {
       label: "マイク許可を待っています",
-      text: "iPhone の確認ダイアログでマイクを許可してください。"
+      text: "スマホの確認ダイアログでマイクを許可してください。"
     };
   }
 
@@ -113,7 +113,7 @@ function getPermissionCopy(permissionState) {
 
   return {
     label: "接続準備中です",
-    text: "PC 側が発行した QR で開くと、このページで iPhone マイクの確認を行います。"
+    text: "パソコン側が発行したQRで開くと、このページでスマホマイクの確認を行います。"
   };
 }
 
@@ -136,19 +136,19 @@ function buildDeviceLabel() {
 function buildPhaseCopy(phase) {
   switch (phase) {
     case "claiming":
-      return "PC と接続しています。";
+      return "パソコンと接続しています。";
     case "prompting":
-      return "iPhone のマイク許可を待っています。";
+      return "スマホのマイク許可を待っています。";
     case "ready":
-      return "PC 側へ入力レベルを送信中です。";
+      return "パソコン側へ入力レベルを送信中です。";
     case "blocked":
-      return "マイクが拒否されているため、PC 側へ入力を返せません。";
+      return "マイクが拒否されているため、パソコン側へ入力を返せません。";
     case "expired":
-      return "この QR は期限切れです。PC 側で新しい QR を発行してください。";
+      return "このQRは期限切れです。パソコン側で新しいQRを発行してください。";
     case "completed":
-      return "iPhone マイクテストを終了しました。";
+      return "スマホのマイクテストを終了しました。";
     case "error":
-      return "iPhone マイクテストを開始できませんでした。";
+      return "スマホのマイクテストを開始できませんでした。";
     default:
       return "接続情報を確認しています。";
   }
@@ -216,7 +216,7 @@ export function MobileAudioTestClient({
     if (!testId || !token) {
       setPhase("error");
       setPermissionState("unknown");
-      setError("接続情報が見つかりません。PC 側で QR を再発行してください。");
+      setError("接続情報が見つかりません。パソコン側でQRを再発行してください。");
       return undefined;
     }
 
@@ -253,7 +253,7 @@ export function MobileAudioTestClient({
       if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
         setPhase("error");
         setPermissionState("unsupported");
-        setError("このブラウザでは iPhone マイクテストを利用できません。Safari または Chrome で開き直してください。");
+        setError("このブラウザではスマホのマイクテストを利用できません。Safari または Chrome で開き直してください。");
         return;
       }
 
@@ -274,7 +274,7 @@ export function MobileAudioTestClient({
         } else {
           setPhase("error");
         }
-        setError(nextError.message || "PC との接続に失敗しました。");
+        setError(nextError.message || "パソコンとの接続に失敗しました。");
         return;
       }
 
@@ -328,7 +328,7 @@ export function MobileAudioTestClient({
           for (const track of stream.getTracks()) {
             track.stop();
           }
-          throw new Error("このブラウザでは iPhone マイクテストを開始できません。");
+          throw new Error("このブラウザではスマホのマイクテストを開始できません。");
         }
 
         const audioContext = new AudioContextClass();
@@ -394,8 +394,8 @@ export function MobileAudioTestClient({
         setPermissionState(denied ? "denied" : nextPermissionState);
         setPhase(denied ? "blocked" : "error");
         setError(denied
-          ? "iPhone のマイクが許可されていません。サイト設定からマイクを許可してください。"
-          : nextError?.message || "iPhone マイクテストを開始できませんでした。");
+          ? "スマホのマイクが許可されていません。サイト設定からマイクを許可してください。"
+          : nextError?.message || "スマホのマイクテストを開始できませんでした。");
 
         await syncState({
           permissionState: denied ? "denied" : (nextPermissionState || "unknown"),
@@ -462,7 +462,7 @@ export function MobileAudioTestClient({
       setPhase("completed");
       setLevel(0);
     } catch (nextError) {
-      setError(nextError.message || "iPhone マイクテストを終了できませんでした。");
+      setError(nextError.message || "スマホのマイクテストを終了できませんでした。");
     } finally {
       setIsCompleting(false);
       if (intervalRef.current) {
@@ -487,7 +487,7 @@ export function MobileAudioTestClient({
     <main className="mobile-page">
       <section className="mobile-shell card mobile-audio-test-shell">
         <div className="mobile-audio-test-hero">
-          <h1>iPhone マイクテスト</h1>
+          <h1>スマホのマイクテスト</h1>
           <p className="mobile-status-text">{buildPhaseCopy(phase)}</p>
           {isProcessingPhase ? (
             <div className="mobile-audio-test-loading">
@@ -510,7 +510,7 @@ export function MobileAudioTestClient({
         </div>
 
         <div className="audio-test-level audio-test-mobile-level">
-          <div className="audio-meter" aria-label={`iPhone マイク入力レベル ${Math.round(level)}%`}>
+          <div className="audio-meter" aria-label={`スマホのマイク入力レベル ${Math.round(level)}%`}>
             <span style={{ width: levelWidth }} />
           </div>
           <div className="audio-test-meter-labels">
@@ -539,7 +539,7 @@ export function MobileAudioTestClient({
         {error ? (
           <p className="mobile-notice mobile-notice--warning">{error}</p>
         ) : (
-          <p className="mobile-notice">音声そのものは保存しません。PC 側へ返すのは許可状態と入力レベルだけです。</p>
+          <p className="mobile-notice">音声そのものは保存しません。パソコン側へ返すのは許可状態と入力レベルだけです。</p>
         )}
       </section>
     </main>

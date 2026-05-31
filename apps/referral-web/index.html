@@ -670,12 +670,15 @@
     });
 
     async function loadWorkspace() {
-      await Promise.all([
-        loadPatients(),
-        loadFacilities(),
-        loadDepartments(),
-        loadReferrals()
-      ]);
+      const response = await api(referralApiBaseUrl, "/v1/referral/bootstrap");
+      state.patients = response.patients || [];
+      state.facilities = response.facilities || [];
+      state.departments = response.departments || [];
+      state.referrals = response.referrals || [];
+      renderPatients();
+      renderFacilities();
+      renderDepartments();
+      renderReferrals();
     }
 
     async function loadPatients() {

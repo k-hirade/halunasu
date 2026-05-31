@@ -102,6 +102,21 @@ async function routeReferralApiRequest(input = {}) {
     return ok({ context: contextView(context) });
   }
 
+  if (method === "GET" && matches(parts, ["v1", "referral", "bootstrap"])) {
+    const [patients, facilities, departments, referrals] = await Promise.all([
+      platformStore.listPatients(context.session.orgId),
+      platformStore.listFacilities(context.session.orgId),
+      platformStore.listDepartments(context.session.orgId),
+      referralStore.listReferrals(context.session.orgId)
+    ]);
+    return ok({
+      patients,
+      facilities,
+      departments,
+      referrals
+    });
+  }
+
   if (method === "GET" && matches(parts, ["v1", "referral", "patients"])) {
     return ok({ patients: await platformStore.listPatients(context.session.orgId) });
   }

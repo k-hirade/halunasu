@@ -20,7 +20,7 @@ const SETTINGS_MENU_SECTIONS = [
     id: "members",
     group: "管理",
     label: "権限管理",
-    description: "メンバーアカウント、ロール、パスワード、プロンプト割当を設定します。",
+    description: "職員アカウント、権限、パスワード、プロンプト割当を設定します。",
     href: "/admin?section=members",
     canShow: (session) => canManageMembers(session)
   },
@@ -36,7 +36,7 @@ const SETTINGS_MENU_SECTIONS = [
     id: "audio-test",
     group: "設定",
     label: "音声テスト",
-    description: "このPCのマイク入力、音量、聞こえ方を確認します。",
+    description: "このパソコンのマイク入力、音量、聞こえ方を確認します。",
     href: "/admin?section=audio-test"
   },
   {
@@ -51,7 +51,7 @@ const SETTINGS_MENU_SECTIONS = [
     id: "account",
     group: "管理",
     label: "アカウント",
-    description: "ログイン中のメンバー情報とセッションを管理します。",
+    description: "ログイン中の職員情報とログイン状態を管理します。",
     href: "/admin?section=account"
   }
 ];
@@ -273,7 +273,7 @@ export function SiteNav() {
                   href="/"
                   onClick={closeAdminNav}
                 >
-                  <strong>診療セッション</strong>
+                  <strong>診療一覧</strong>
                   <small>診療記録の作成と確認を行います。</small>
                 </a>
               </div>

@@ -209,7 +209,7 @@ test("admin bootstrap aggregates settings data for the selected organization", a
 });
 
 test("admin bootstrap formats section skips unrelated data and returns prompt summaries", async () => {
-  const bootstrap = await request("GET", `/api/v1/admin/bootstrap?orgId=${org.orgId}&section=formats`);
+  const bootstrap = await request("GET", `/api/v1/admin/bootstrap?orgId=${org.orgId}&section=formats&selectedFormatId=${customPrompt.profileId}`);
 
   assert.equal(bootstrap.status, 200, JSON.stringify(bootstrap.body));
   assert.equal(bootstrap.body.section, "formats");
@@ -220,6 +220,9 @@ test("admin bootstrap formats section skips unrelated data and returns prompt su
   assert.ok(promptSummary);
   assert.equal(Object.hasOwn(promptSummary, "outputTemplate"), false);
   assert.equal(Object.hasOwn(promptSummary, "customization"), false);
+  assert.equal(bootstrap.body.selectedFormat.formatId, customPrompt.profileId);
+  assert.equal(Object.hasOwn(bootstrap.body.selectedFormat, "outputTemplate"), true);
+  assert.equal(Object.hasOwn(bootstrap.body.selectedFormat, "customization"), true);
 
   const detail = await request("GET", `/api/v1/admin/soap-formats/${customPrompt.profileId}?orgId=${org.orgId}`);
   assert.equal(detail.status, 200, JSON.stringify(detail.body));

@@ -233,13 +233,13 @@ const SAMPLE_TRANSCRIPT = `今日はどうされましたか。
 const MEMBER_RECORDING_SOURCE_OPTIONS = [
   {
     value: "linked_mobile",
-    label: "iPhone",
+    label: "スマホ",
     description: "スマホを録音端末として使います。"
   },
   {
     value: "local_browser",
-    label: "PC",
-    description: "このPCのマイクで録音します。"
+    label: "このパソコン",
+    description: "このパソコンのマイクで録音します。"
   }
 ];
 
@@ -250,14 +250,14 @@ const SETTINGS_HOME_PAGE = {
   id: SETTINGS_HOME_TAB,
   group: "トップ",
   label: "設定",
-  description: "管理する項目を選択してください。"
+  description: "変更したい項目を選んでください。"
 };
 
 const FORMATS_INFER_PAGE = {
   id: FORMATS_INFER_TAB,
   group: "設定",
   label: "普段のカルテから作成",
-  description: "完成済みカルテから共通の出力フォーマット案を作成します。"
+  description: "過去のカルテ例から、プロンプト案を作成します。"
 };
 
 const ADMIN_SECTIONS = [
@@ -265,7 +265,7 @@ const ADMIN_SECTIONS = [
     id: "members",
     group: "管理",
     label: "権限管理",
-    description: "メンバーアカウント、ロール、パスワード、プロンプト割当を設定します。"
+    description: "職員アカウント、権限、パスワード、プロンプト割当を設定します。"
   },
   {
     id: "formats",
@@ -277,7 +277,7 @@ const ADMIN_SECTIONS = [
     id: "audio-test",
     group: "設定",
     label: "音声テスト",
-    description: "このPCのマイク入力、音量、聞こえ方を確認します。"
+    description: "このパソコンのマイク入力、音量、聞こえ方を確認します。"
   },
   {
     id: "audit",
@@ -289,7 +289,7 @@ const ADMIN_SECTIONS = [
     id: "account",
     group: "管理",
     label: "アカウント",
-    description: "ログイン中のメンバー情報とセッションを管理します。"
+    description: "ログイン中の職員情報とログイン状態を管理します。"
   }
 ];
 
@@ -521,7 +521,7 @@ function normalizeRecordingSource(source) {
 }
 
 function recordingSourceLabel(source) {
-  return normalizeRecordingSource(source) === "local_browser" ? "このPCで録音" : "iPhoneで録音";
+  return normalizeRecordingSource(source) === "local_browser" ? "このパソコンで録音" : "スマホで録音";
 }
 
 function humanizeAuditType(type = "") {
@@ -536,16 +536,16 @@ function eventLabel(type) {
   return {
     "organization.created": "病院を追加",
     "organization.recording_policy_updated": "録音自動停止設定変更",
-    "member.created": "メンバー作成",
+    "member.created": "職員作成",
     "member.password_reset": "パスワード再設定",
     "member.roles_updated": "権限変更",
-    "member.mfa_reset": "MFAリセット",
-    "member.mfa_enabled": "MFA登録",
-    "member.status_updated": "メンバー利用状態変更",
-    "member.sessions_revoked": "ログインセッション失効",
-    "member.preferences_updated": "メンバー設定変更",
+    "member.mfa_reset": "2段階認証リセット",
+    "member.mfa_enabled": "2段階認証登録",
+    "member.status_updated": "職員利用状態変更",
+    "member.sessions_revoked": "強制ログアウト",
+    "member.preferences_updated": "職員設定変更",
     "auth.login_failed": "ログイン失敗",
-    "auth.mfa_failed": "二段階認証コードの確認に失敗",
+    "auth.mfa_failed": "2段階認証コードの確認に失敗",
     "billing.provisioning.completed": "病院アカウント作成完了",
     "billing.password_setup.completed": "初回パスワード設定完了",
     "billing.checkout.created": "決済画面を作成",
@@ -573,10 +573,10 @@ function eventLabel(type) {
     "soap_format.published": "プロンプト公開",
     "soap_format.archived": "プロンプト公開停止",
     "session.prompt_profile_updated": "セッションのプロンプト変更",
-    "encounter.created": "診療セッション作成",
+    "encounter.created": "診療記録作成",
     "encounter.hidden_from_home": "診療履歴を一覧から削除",
-    "pairing.created": "iPhone接続用QRを発行",
-    "pairing.claimed": "iPhone接続完了",
+    "pairing.created": "スマホ接続用QRを発行",
+    "pairing.claimed": "スマホ接続完了",
     "recording.started": "録音開始",
     "recording.stopped": "録音停止",
     "recording.discarded": "録音を破棄",
@@ -629,7 +629,7 @@ function applyTargetLabel(target, members, organization) {
   }
 
   const member = members.find((item) => item.memberId === target.memberId);
-  return member ? `${member.displayName}（${member.loginId}）` : "選択したメンバー";
+  return member ? `${member.displayName}（${member.loginId}）` : "選択した職員";
 }
 
 function eventTone(type = "") {
@@ -1347,7 +1347,10 @@ export function AdminConsole() {
 
     try {
       const section = bootstrapSectionForTab(tabId);
-      const response = await fetchWithOperatorAuth(adminApiUrl("/api/v1/admin/bootstrap", targetOrgId, { section }), {
+      const response = await fetchWithOperatorAuth(adminApiUrl("/api/v1/admin/bootstrap", targetOrgId, {
+        section,
+        selectedFormatId: tabId === "formats" ? selectedFormatId : ""
+      }), {
         cache: "no-store",
       }, accessToken);
       const payload = await readJson(response, "設定情報を取得できませんでした。");
@@ -1370,7 +1373,7 @@ export function AdminConsole() {
 
       const visibleOrganizations = payload.organizations || [];
       const nextOrgId = payload.selectedOrgId || targetOrgId || normalizedSession?.orgId || visibleOrganizations[0]?.orgId || "";
-      const nextFormats = payload.formats || [];
+      const nextFormats = mergeFormatDetailIntoList(payload.formats || [], payload.selectedFormat);
 
       setOrganizations(visibleOrganizations);
       setSelectedOrgId(nextOrgId);
@@ -1380,7 +1383,7 @@ export function AdminConsole() {
       setAuditEvents(payload.events || []);
 
       if (tabId === "formats" && nextFormats.length) {
-        const selected = nextFormats.find((format) => format.formatId === selectedFormatId) || nextFormats[0];
+        const selected = payload.selectedFormat || nextFormats.find((format) => format.formatId === selectedFormatId) || nextFormats[0];
         await selectFormatForEditor(selected, { updateTab: false, orgId: nextOrgId });
       } else {
         setSelectedFormatId("");
@@ -1394,6 +1397,21 @@ export function AdminConsole() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  function mergeFormatDetailIntoList(formatList, detail) {
+    if (!detail?.formatId) {
+      return formatList;
+    }
+
+    const found = formatList.some((format) => format.formatId === detail.formatId);
+    if (!found) {
+      return [detail, ...formatList];
+    }
+
+    return formatList.map((format) => (
+      format.formatId === detail.formatId ? { ...format, ...detail } : format
+    ));
   }
 
   useEffect(() => {
@@ -1633,7 +1651,7 @@ export function AdminConsole() {
         additionalInstructionsText: (normalized.customization.additionalInstructions || []).join("\n")
       }
     });
-    setNotice("カルテ例からフォーマット案を作成しました。必要に応じて調整してから保存してください。");
+    setNotice("カルテ例からプロンプト案を作成しました。必要に応じて調整してから保存してください。");
     closeInferFormatPage();
   }
 
@@ -1705,7 +1723,7 @@ export function AdminConsole() {
           samples: normalizedSamples
         })
       }, accessToken);
-      const payload = await readJson(response, "カルテ例からフォーマット案を作成できませんでした。");
+      const payload = await readJson(response, "カルテ例からプロンプト案を作成できませんでした。");
       setInferResult(payload);
       setInferState("ready");
     } catch (nextError) {
@@ -1777,7 +1795,7 @@ export function AdminConsole() {
 
   function memberStatusDisabledReason(member, status) {
     if (!isCurrentOrganization || !canManageCurrentMembers) {
-      return "この病院のメンバー状態を変更する権限がありません。";
+      return "この病院の職員状態を変更する権限がありません。";
     }
 
     if (isSaving) {
@@ -1942,7 +1960,7 @@ export function AdminConsole() {
             defaultRecordingSource: nextSource
           })
         }, accessToken);
-        const payload = await readJson(response, "既定の録音方法を保存できませんでした。");
+        const payload = await readJson(response, "ふだん使う録音方法を保存できませんでした。");
         setMembers((current) => {
           const exists = current.some((item) => item.memberId === payload.member.memberId);
           if (!exists) {
@@ -1961,7 +1979,7 @@ export function AdminConsole() {
               }
             : current);
         }
-        setNotice("既定の録音方法を保存しました。");
+        setNotice("ふだん使う録音方法を保存しました。");
       } catch (nextError) {
         setError(nextError.message);
       } finally {
@@ -2077,7 +2095,7 @@ export function AdminConsole() {
             status
           })
         }, accessToken);
-        const payload = await readJson(response, "メンバー状態を変更できませんでした。");
+        const payload = await readJson(response, "職員状態を変更できませんでした。");
         setMembers((current) => current.map((item) => (item.memberId === payload.member.memberId ? payload.member : item)));
         setNotice(status === "active" ? `${payload.member.displayName}を再開しました。` : `${payload.member.displayName}を停止しました。`);
         if (options.closeModal) {
@@ -2109,8 +2127,8 @@ export function AdminConsole() {
             orgId: selectedOrgId || currentOrgId
           })
         }, accessToken);
-        await readJson(response, "ログインセッションを失効できませんでした。");
-        setNotice(`${member.displayName}のログインセッションを失効しました。`);
+        await readJson(response, "強制ログアウトできませんでした。");
+        setNotice(`${member.displayName}を強制ログアウトしました。`);
         if (member.memberId === session?.member?.memberId) {
           clearAccess();
         }
@@ -2141,9 +2159,9 @@ export function AdminConsole() {
             orgId: selectedOrgId || currentOrgId
           })
         }, accessToken);
-        const payload = await readJson(response, "MFAをリセットできませんでした。");
+        const payload = await readJson(response, "2段階認証をリセットできませんでした。");
         setMembers((current) => current.map((item) => (item.memberId === payload.member.memberId ? payload.member : item)));
-        setNotice(`${payload.member.displayName}のMFA登録をリセットしました。`);
+        setNotice(`${payload.member.displayName}の2段階認証をリセットしました。`);
         if (member.memberId === session?.member?.memberId) {
           clearAccess();
         }
@@ -2280,7 +2298,7 @@ export function AdminConsole() {
       : { targetType: "member", memberId: session?.member?.memberId || "" };
 
     if (normalizedApplyForm.targetType === "member" && !normalizedApplyForm.memberId) {
-      setError("適用先のメンバーを選択してください。");
+      setError("適用先の職員を選択してください。");
       return;
     }
 
@@ -2336,7 +2354,7 @@ export function AdminConsole() {
           body: JSON.stringify({})
         }, accessToken);
         const payload = await readJson(response, "プロンプトを公開停止できませんでした。");
-        setNotice("プロンプトを公開停止しました。割当中のメンバーは病院標準に戻しました。");
+        setNotice("プロンプトを公開停止しました。割当中の職員は病院標準に戻しました。");
         setFormats((current) => current.map((format) => (format.formatId === payload.format.formatId ? payload.format : format)));
         setMembers((current) =>
           current.map((member) =>
@@ -2374,7 +2392,7 @@ export function AdminConsole() {
             formatId
           })
         }, accessToken);
-        const payload = await readJson(response, "メンバーへのプロンプト割当を更新できませんでした。");
+        const payload = await readJson(response, "職員へのプロンプト割当を更新できませんでした。");
         setMembers((current) => current.map((member) => (member.memberId === payload.member.memberId ? payload.member : member)));
         setNotice("プロンプト割当を保存しました。");
       } catch (nextError) {
@@ -2436,8 +2454,8 @@ export function AdminConsole() {
         <section className="admin-denied-card">
           <span className="label">権限が必要です</span>
           <h1>設定を開けません</h1>
-          <p>この画面はログイン済みメンバーだけが利用できます。</p>
-          <a className="btn btn--primary" href="/">診療セッションへ戻る</a>
+          <p>この画面はログイン済みの職員だけが利用できます。</p>
+          <a className="btn btn--primary" href="/">診療一覧へ戻る</a>
         </section>
       </main>
     );
@@ -2476,7 +2494,7 @@ export function AdminConsole() {
                   ) : null}
                   {showMembersPageActions && canManageCurrentMembers ? (
                     <button className="btn btn--primary" type="button" onClick={() => { setMemberForm(EMPTY_MEMBER_FORM); setModalMode("member"); }}>
-                      メンバーを追加
+                      職員を追加
                     </button>
                   ) : null}
                   {showFormatsPageAction ? (
@@ -2587,7 +2605,7 @@ export function AdminConsole() {
                           <strong>{member.displayName}</strong>
                           <small>
                             {member.status === "active" ? "利用中" : "停止中"}
-                            {member.mfaRequired ? ` / MFA ${member.mfaEnrolledAt ? "登録済み" : "未登録"}` : ""}
+                            {member.mfaRequired ? ` / 2段階認証 ${member.mfaEnrolledAt ? "登録済み" : "未登録"}` : ""}
                           </small>
                         </div>
                         <span className="mono-value" data-label="個人ID">{member.loginId}</span>
@@ -2611,7 +2629,7 @@ export function AdminConsole() {
                             options={MEMBER_RECORDING_SOURCE_OPTIONS}
                             disabled={!isCurrentOrganization || !canManageCurrentMembers}
                             isSaving={savingMemberPreferenceIds.has(member.memberId)}
-                            ariaLabel={`${member.displayName}の既定の録音方法`}
+                            ariaLabel={`${member.displayName}のふだん使う録音方法`}
                           />
                         </div>
                         <div className="member-prompt-assignment" data-label="プロンプト" title={assignedFormatName(member, formats)}>
@@ -2635,7 +2653,7 @@ export function AdminConsole() {
                       </div>
                     );
                   })}
-                  {!filteredMembers.length ? <p className="empty-note">条件に一致するメンバーはありません。</p> : null}
+                  {!filteredMembers.length ? <p className="empty-note">条件に一致する職員はありません。</p> : null}
                 </div>
               </section>
             </div>
@@ -2718,9 +2736,9 @@ export function AdminConsole() {
                               rows={24}
                               value={editor.outputTemplate || ""}
                               onChange={(event) => updateEditor(["outputTemplate"], event.target.value)}
-                              placeholder="【テンプレート】と【出力例】を同じ欄にまとめて入力してください。"
+                              placeholder="診療記録に含めたい見出し、出力例、文体を入力してください。"
                             />
-                            <small>「【テンプレート】」「【出力例】」「【スタイル】」の順で記入します。出力例は文体と粒度の参考として使われ、会話にない事実は出力されません。</small>
+                            <small>診療記録に含めたい見出し、出力例、文体を入力してください。出力例は文体と粒度の参考として使われ、会話にない事実は出力されません。</small>
                           </label>
                         </div>
                       </>
@@ -2731,7 +2749,7 @@ export function AdminConsole() {
                     <section className="card template-preview-section">
                       <div className="template-preview-head">
                         <div>
-                          <h2>出力プレビュー</h2>
+                          <h2>作成例の確認</h2>
                           <p>編集中のプロンプトをそのまま使い、会話例から生成される診療記録を確認できます。</p>
                         </div>
                         <button
@@ -2836,10 +2854,10 @@ export function AdminConsole() {
                     </label>
 
                     <div className="prompt-infer-samples-head">
-                      <div className="prompt-infer-samples-copy">
-                        <strong>カルテ例</strong>
-                        <small>3件以上あると、普段のカルテの共通構造を推定しやすくなります。</small>
-                      </div>
+	                  <div className="prompt-infer-samples-copy">
+	                    <strong>カルテ例</strong>
+	                    <small>3件以上あると、よく使う見出しや書き方を見つけやすくなります。</small>
+	                  </div>
                       <button className="btn btn--ghost" type="button" onClick={addInferenceSample}>サンプルを追加</button>
                     </div>
 
@@ -2857,7 +2875,7 @@ export function AdminConsole() {
                             rows={14}
                             value={sample.value}
                             onChange={(event) => updateInferenceSample(sample.id, event.target.value)}
-                            placeholder="完成済みカルテを貼り付けてください。患者固有情報は匿名化してください。"
+                            placeholder="完成済みカルテを貼り付けてください。患者名や住所など、個人が分かる情報は消してください。"
                           />
                         </div>
                       ))}
@@ -2871,7 +2889,7 @@ export function AdminConsole() {
                         disabled={isInferringFormat}
                       >
                         {isInferringFormat ? <span className="btn-spinner" aria-hidden="true" /> : null}
-                        <span>{isInferringFormat ? "フォーマット案を作成中..." : "フォーマット案を作成"}</span>
+                        <span>{isInferringFormat ? "プロンプト案を作成中..." : "プロンプト案を作成"}</span>
                       </button>
                     </div>
 
@@ -2881,14 +2899,14 @@ export function AdminConsole() {
                   <div className="prompt-infer-page-side">
                     <div className="prompt-infer-output-shell">
                       <div className="prompt-infer-output-head">
-                        <span>推定された出力テンプレート</span>
+                        <span>推定されたプロンプト案</span>
                       </div>
                       {isInferringFormat ? (
                         <div className="prompt-infer-result">
                           <div className="transcript-processing-card">
                             <div className="transcript-processing-title">
                               <span className="badge badge--finalizing">処理中</span>
-                              <strong>フォーマット案を作成しています</strong>
+                              <strong>プロンプト案を作成しています</strong>
                             </div>
                             <div className="transcript-processing-steps">
                               <div className="transcript-processing-step transcript-processing-step--done">
@@ -2897,11 +2915,11 @@ export function AdminConsole() {
                               </div>
                               <div className="transcript-processing-step transcript-processing-step--active">
                                 <span className="transcript-processing-step-icon"><span className="transcript-mode-badge__spinner" aria-hidden="true" /></span>
-                                <span>共通構造を抽出中</span>
+                                <span>よく使う見出しを確認中</span>
                               </div>
                               <div className="transcript-processing-step">
                                 <span className="transcript-processing-step-icon"><Icon name="fileText" size={12} /></span>
-                                <span>テンプレート案を整形中</span>
+                                <span>プロンプト案を整えています</span>
                               </div>
                             </div>
                           </div>
@@ -2935,7 +2953,7 @@ export function AdminConsole() {
                         </div>
                       ) : (
                         <div className="prompt-infer-output-empty">
-                          カルテ例を入力して「フォーマット案を作成」を押すと、ここに出力テンプレート案を表示します。
+                          カルテ例を入力して「プロンプト案を作成」を押すと、ここにプロンプト案を表示します。
                         </div>
                       )}
                     </div>
@@ -2986,7 +3004,7 @@ export function AdminConsole() {
                   <h3>{selectedOrganization?.displayName || session?.organization?.displayName || "未選択"}</h3>
                   <dl>
                     <div><dt>病院コード</dt><dd>{selectedOrganization?.organizationCode || session?.organization?.organizationCode || "-"}</dd></div>
-                    <div><dt>メンバー</dt><dd>{session?.member?.displayName || "メンバー"}</dd></div>
+                    <div><dt>職員</dt><dd>{session?.member?.displayName || "職員"}</dd></div>
                   </dl>
                 </div>
                 <div className="card admin-stat-card">
@@ -3040,18 +3058,18 @@ export function AdminConsole() {
               <section className="card admin-table-card admin-settings-group-card">
                 <div className="admin-settings-row">
                   <div className="editor-state">
-                    <span>既定の録音方法</span>
-                    <small>新しい診療セッションを作成した時の初期値です。</small>
+                    <span>ふだん使う録音方法</span>
+                    <small>新しい診療記録を作成した時に、最初に選ばれる録音方法です。</small>
                   </div>
                   <select
                     className="account-preference-select"
                     value={currentMemberDefaultRecordingSource}
                     onChange={(event) => updateMemberDefaultRecordingSource(currentMember, event.target.value)}
                     disabled={!currentMember || savingMemberPreferenceIds.has(currentMember?.memberId)}
-                    aria-label="自分の既定の録音方法"
+                    aria-label="自分のふだん使う録音方法"
                   >
-                    <option value="linked_mobile">iPhoneで録音</option>
-                    <option value="local_browser">このPCで録音</option>
+                    <option value="linked_mobile">スマホで録音</option>
+                    <option value="local_browser">このパソコンで録音</option>
                   </select>
                 </div>
                 <div className="admin-settings-row">
@@ -3087,7 +3105,7 @@ export function AdminConsole() {
                 </div>
                 <div className="admin-settings-row">
                   <div className="editor-state">
-                    <span>ログインセッション</span>
+                    <span>ログイン状態</span>
                     <small>共有端末では利用後にログアウトしてください。</small>
                   </div>
                   <button
@@ -3110,7 +3128,7 @@ export function AdminConsole() {
       {modalMode === "organization" ? (
         <AdminModal
           title="病院を追加"
-          description="病院コードと初期管理者を作成します。初期パスワードはSecret Managerではなくログイン情報としてハッシュ保存されます。"
+          description="病院コードと初期管理者のログイン情報を作成します。"
           onClose={() => setModalMode(null)}
           footer={(
             <>
@@ -3131,13 +3149,13 @@ export function AdminConsole() {
 
       {modalMode === "member" ? (
         <AdminModal
-          title="メンバーを追加"
-          description={`${selectedOrganization?.displayName || "選択中の病院"}にログインできるメンバーアカウントを作成します。`}
+          title="職員を追加"
+          description={`${selectedOrganization?.displayName || "選択中の病院"}にログインできる職員アカウントを作成します。`}
           onClose={() => setModalMode(null)}
           footer={(
             <>
               <button className="btn btn--ghost" type="button" onClick={() => setModalMode(null)}>キャンセル</button>
-              <button className="btn btn--primary" type="submit" form="member-form" disabled={isSaving}>メンバーを追加</button>
+              <button className="btn btn--primary" type="submit" form="member-form" disabled={isSaving}>職員を追加</button>
             </>
           )}
         >
@@ -3146,10 +3164,10 @@ export function AdminConsole() {
             <label><span>個人ID</span><input required value={memberForm.loginId} onChange={(event) => setMemberForm((current) => ({ ...current, loginId: event.target.value.toLowerCase() }))} placeholder="例: dr-sato" /></label>
             <label><span>初期パスワード</span><input required type="password" minLength={12} value={memberForm.password} onChange={(event) => setMemberForm((current) => ({ ...current, password: event.target.value }))} /></label>
             <label>
-              <span>既定の録音方法</span>
+              <span>ふだん使う録音方法</span>
               <select value={memberForm.defaultRecordingSource} onChange={(event) => setMemberForm((current) => ({ ...current, defaultRecordingSource: event.target.value }))}>
-                <option value="linked_mobile">iPhoneで録音</option>
-                <option value="local_browser">このPCで録音</option>
+                <option value="linked_mobile">スマホで録音</option>
+                <option value="local_browser">このパソコンで録音</option>
               </select>
             </label>
             <fieldset className="role-checkboxes">
@@ -3196,9 +3214,9 @@ export function AdminConsole() {
                     <span className="prompt-target-choice-marker" aria-hidden="true">
                       {applyForm.targetType === "organization" ? <Icon name="check" size={13} /> : null}
                     </span>
-                    <span className="prompt-target-choice-copy">
-                      <strong>病院標準</strong>
-                      <small>病院全体のデフォルトプロンプトとして設定します。</small>
+	                    <span className="prompt-target-choice-copy">
+	                      <strong>病院標準</strong>
+	                      <small>病院全体で最初に使うプロンプトとして設定します。</small>
                     </span>
                   </label>
                 </div>
@@ -3214,18 +3232,18 @@ export function AdminConsole() {
                   <span className="prompt-target-choice-marker" aria-hidden="true">
                     {applyForm.targetType === "member" ? <Icon name="check" size={13} /> : null}
                   </span>
-                  <span className="prompt-target-choice-copy">
-                    <strong>{canManageCurrentMembers ? "メンバー指定" : "自分に適用"}</strong>
-                    <small>
-                      {canManageCurrentMembers
-                        ? "指定したメンバーの個人プロンプトとして設定します。"
-                        : "自分の診療記録作成で使うプロンプトにします。"}
+	                  <span className="prompt-target-choice-copy">
+	                    <strong>{canManageCurrentMembers ? "職員を指定" : "自分に適用"}</strong>
+	                    <small>
+	                      {canManageCurrentMembers
+	                        ? "指定した職員のプロンプトとして設定します。"
+	                        : "自分の診療記録作成で使うプロンプトにします。"}
                     </small>
                   </span>
                 </label>
                 {applyForm.targetType === "member" && canManageCurrentMembers ? (
                   <label className="prompt-target-choice-field">
-                    <span>適用するメンバー</span>
+	                    <span>適用する職員</span>
                     <select value={applyForm.memberId} onChange={(event) => setApplyForm({ targetType: "member", memberId: event.target.value })}>
                       <option value="">選択してください</option>
                       {members.map((member) => (
@@ -3293,7 +3311,7 @@ export function AdminConsole() {
           )}
         >
           <div className="admin-modal-form">
-            <p className="empty-note">このプロンプトを割当中のメンバーは病院標準に戻ります。過去の診療記録や作成済みのSOAPは削除されません。</p>
+            <p className="empty-note">このプロンプトを割当中の職員は病院標準に戻ります。過去の診療記録や作成済みのSOAPは削除されません。</p>
           </div>
         </AdminModal>
       ) : null}
@@ -3311,11 +3329,11 @@ export function AdminConsole() {
               <span>新しいログインパスワードを生成・コピーします。</span>
             </button>
             <button className="member-action-choice" type="button" onClick={() => requestSecurityAction("revoke-sessions", memberActionTarget)} disabled={!isCurrentOrganization || !canManageCurrentMembers || isSaving}>
-              <strong>ログインセッションを失効</strong>
+              <strong>強制ログアウト</strong>
               <span>現在ログイン中の状態を強制終了します。アカウント自体は停止されません。</span>
             </button>
             <button className="member-action-choice" type="button" onClick={() => requestSecurityAction("mfa-reset", memberActionTarget)} disabled={!isCurrentOrganization || !canManageCurrentMembers || isSaving || !memberActionTarget.mfaEnrolledAt}>
-              <strong>MFA登録をリセット</strong>
+              <strong>2段階認証をリセット</strong>
               <span>次回ログイン時に認証アプリの再登録が必要になります。</span>
             </button>
             <button
@@ -3326,7 +3344,7 @@ export function AdminConsole() {
               title={memberStatusDisabledReason(memberActionTarget, memberActionTarget.status === "active" ? "disabled" : "active")}
             >
               <strong>{memberActionTarget.status === "active" ? "アカウントを停止" : "アカウントを再開"}</strong>
-              <span>{memberActionTarget.status === "active" ? "このメンバーはログインできなくなります。" : "このメンバーは再びログインできます。"}</span>
+              <span>{memberActionTarget.status === "active" ? "この職員はログインできなくなります。" : "この職員は再びログインできます。"}</span>
             </button>
           </div>
         </AdminModal>
@@ -3388,8 +3406,8 @@ export function AdminConsole() {
           <div className="admin-modal-form">
             <p className="empty-note">
               {statusTarget.status === "active"
-                ? "再開すると、このメンバーは再びログインできます。"
-                : "停止すると、このメンバーはログインできなくなります。既にログイン中のセッションを直ちに切る場合は、ログインセッションの失効も実行してください。"}
+                ? "再開すると、この職員は再びログインできます。"
+                : "停止すると、この職員はログインできなくなります。既にログイン中の場合は、強制ログアウトも実行してください。"}
             </p>
           </div>
         </AdminModal>
@@ -3397,7 +3415,7 @@ export function AdminConsole() {
 
       {modalMode === "member-security-action" && securityActionTarget ? (
         <AdminModal
-          title={securityActionTarget.kind === "mfa-reset" ? "MFA登録をリセット" : "ログインセッションを失効"}
+          title={securityActionTarget.kind === "mfa-reset" ? "2段階認証をリセット" : "強制ログアウト"}
           description={`${securityActionTarget.member.displayName}に対するセキュリティ操作を実行します。`}
           onClose={() => { setModalMode(null); setSecurityActionTarget(null); }}
           footer={(
@@ -3425,8 +3443,8 @@ export function AdminConsole() {
               {securityActionTarget.kind === "mfa-reset"
                 ? "次回ログイン時に認証アプリの再登録が必要になります。本人確認が済んでいる場合だけ実行してください。"
                 : securityActionTarget.member.memberId === session?.member?.memberId
-                  ? "自分自身のログインセッションも失効します。実行後は再ログインが必要です。"
-                  : "このメンバーのログインセッションを強制終了します。アカウント自体は停止されません。"}
+                  ? "自分自身も強制ログアウトされます。実行後は再ログインが必要です。"
+                  : "この職員を強制ログアウトします。アカウント自体は停止されません。"}
             </p>
           </div>
         </AdminModal>
@@ -3460,7 +3478,7 @@ export function AdminConsole() {
               />
             </label>
             <div className="password-helper-actions">
-              <button className="btn btn--ghost" type="button" onClick={fillGeneratedPassword}>セキュアに生成</button>
+              <button className="btn btn--ghost" type="button" onClick={fillGeneratedPassword}>安全なパスワードを作る</button>
               <button className="btn btn--ghost" type="button" onClick={() => setPasswordVisible((current) => !current)} disabled={!passwordForm.password}>
                 {passwordVisible ? "非表示" : "表示"}
               </button>
