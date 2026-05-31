@@ -144,6 +144,80 @@ test("ready encounter patient information controls do not force horizontal scrol
   }, { viewport: { width: 390, height: 844 } });
 });
 
+test("stopped encounter can discard recording and return to recording-ready state", { timeout: 30_000 }, async () => {
+  const stoppedFixture = createLongEncounterFixture({ status: "stopped" });
+  stoppedFixture.latestSoap = null;
+  stoppedFixture.turns = [
+    {
+      turnId: "turn-discard",
+      turnIndex: 1,
+      speaker: "doctor",
+      text: "破棄される録音の書き起こしです。",
+      startMs: 0,
+      endMs: 3000,
+      confidence: 0.9
+    }
+  ];
+  stoppedFixture.session.audioSourceType = "local_browser";
+  stoppedFixture.session.audioConnectionState = "disconnected";
+
+  const readyFixture = createLongEncounterFixture({ status: "ready" });
+  readyFixture.latestSoap = null;
+  readyFixture.turns = [];
+  readyFixture.session.audioSourceType = null;
+  readyFixture.session.audioConnectionState = "disconnected";
+  readyFixture.session.latestFinalTurnIndex = 0;
+
+  let discarded = false;
+  let discardCalls = 0;
+
+  await withPage(async (page) => {
+    const calls = await installGatewayMocks(page, [
+      {
+        method: "GET",
+        path: "/api/v1/sessions/session-e2e",
+        handler: () => (discarded ? readyFixture : stoppedFixture)
+      },
+      {
+        method: "POST",
+        path: "/api/v1/sessions/session-e2e/recording/discard",
+        handler: () => {
+          discarded = true;
+          discardCalls += 1;
+          return { session: readyFixture.session };
+        }
+      },
+      {
+        method: "POST",
+        path: "/api/v1/sessions/session-e2e/pairings",
+        handler: () => ({
+          pairingId: "pair-e2e",
+          pairingToken: "token-e2e",
+          pairingCode: "123456",
+          pairingUrl: "https://charting.halunasu.com/mobile/join?pairingId=pair-e2e&token=token-e2e",
+          expiresAt: "2026-04-19T09:00:00.000Z"
+        })
+      },
+      ...encounterRoutes(stoppedFixture)
+    ]);
+
+    await page.goto(appUrl("/sessions/session-e2e"), { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "診療記録" }).waitFor({ state: "visible" });
+    assert.equal(await page.getByText("破棄される録音の書き起こしです。").count(), 1);
+
+    await page.getByRole("button", { name: /録音を破棄して録り直す|録り直す/ }).last().click();
+    await page.getByRole("dialog", { name: /この録音を破棄して録り直しますか/ }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "破棄して録り直す", exact: true }).click();
+
+    await page.waitForFunction(() => !document.querySelector("[aria-labelledby='confirm-discard-title']"));
+    await page.getByRole("button", { name: "この端末で録音", exact: true }).waitFor({ state: "visible" });
+
+    assert.equal(discardCalls, 1);
+    assert.ok(calls.some((call) => call.method === "POST" && call.path === "/api/v1/sessions/session-e2e/recording/discard"));
+    assert.equal(await page.getByText("破棄される録音の書き起こしです。").count(), 0);
+  });
+});
+
 test("finalizing encounter refreshes SOAP output without a WebSocket completion event", { timeout: 30_000 }, async () => {
   const finalizingFixture = createLongEncounterFixture({ status: "finalizing" });
   finalizingFixture.latestSoap = null;

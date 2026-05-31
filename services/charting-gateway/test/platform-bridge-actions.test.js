@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
+import WebSocket from "ws";
 import { DEFAULT_SOAP_FORMAT_PROFILE } from "@medical/core";
 
 process.env.NODE_ENV = "test";
@@ -194,6 +195,32 @@ test("platform bridge prompt assignments update Core organization and members wi
   );
 });
 
+test("session creation applies Core Platform recording and prompt defaults", async () => {
+  const preference = await request("PATCH", `/api/v1/admin/members/${doctor.memberId}/preferences`, {
+    defaultRecordingSource: "local_browser"
+  });
+  assert.equal(preference.status, 200, JSON.stringify(preference.body));
+
+  const assignment = await request("POST", "/api/v1/admin/soap-format-assignments", {
+    targetType: "member",
+    memberId: doctor.memberId,
+    formatId: customPrompt.profileId
+  });
+  assert.equal(assignment.status, 200, JSON.stringify(assignment.body));
+
+  const created = await request("POST", "/api/v1/sessions", {
+    doctorMemberId: doctor.memberId,
+    patientDisplayName: "既定値患者",
+    visitReason: "既定値反映の確認"
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  const state = await __testHooks.store.getSessionState(created.body.sessionId);
+  assert.equal(state.session.audioSourceType, "local_browser");
+  assert.equal(state.session.promptProfileId, customPrompt.profileId);
+  assert.equal(state.session.promptProfileSelectionSource, "default");
+});
+
 test("session prompt selection and regeneration work through charting APIs", async () => {
   const created = await request("POST", "/api/v1/sessions", {
     doctorMemberId: doctor.memberId,
@@ -245,6 +272,136 @@ test("session prompt selection and regeneration work through charting APIs", asy
   assert.equal(regenerated.body.session.promptProfileId, customPrompt.profileId);
 });
 
+test("claimed mobile recorder can start and append recording without a PC start action", async () => {
+  const deviceId = "phone-qr-only";
+  const created = await request("POST", "/api/v1/sessions", {
+    doctorMemberId: admin.memberId,
+    patientDisplayName: "スマホ開始患者",
+    visitReason: "スマホ単独開始の確認"
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  const claimed = await claimPairing(created.body.pairingId, created.body.pairingToken, deviceId);
+  assert.equal(claimed.status, 200, JSON.stringify(claimed.body));
+
+  const started = await mobileRequest("POST", `/api/v1/mobile/sessions/${created.body.sessionId}/recording/start`, claimed.body.streamToken, {
+    deviceId
+  });
+  assert.equal(started.status, 200, JSON.stringify(started.body));
+  assert.equal(started.body.status, "recording");
+  assert.equal(started.body.audioSourceType, "linked_mobile");
+
+  const stopped = await mobileRequest("POST", `/api/v1/mobile/sessions/${created.body.sessionId}/recording/stop`, claimed.body.streamToken, {
+    deviceId
+  });
+  assert.equal(stopped.status, 200, JSON.stringify(stopped.body));
+  assert.equal(stopped.body.status, "stopped");
+
+  const restarted = await mobileRequest("POST", `/api/v1/mobile/sessions/${created.body.sessionId}/recording/start`, claimed.body.streamToken, {
+    deviceId
+  });
+  assert.equal(restarted.status, 200, JSON.stringify(restarted.body));
+  assert.equal(restarted.body.status, "recording");
+
+  const finalStop = await mobileRequest("POST", `/api/v1/mobile/sessions/${created.body.sessionId}/recording/stop`, claimed.body.streamToken, {
+    deviceId
+  });
+  assert.equal(finalStop.status, 200, JSON.stringify(finalStop.body));
+});
+
+test("stopping mobile recording keeps an open prepared phone ready for PC-side additional recording", async () => {
+  const deviceId = "phone-pc-add";
+  const created = await request("POST", "/api/v1/sessions", {
+    doctorMemberId: admin.memberId,
+    patientDisplayName: "追加録音患者",
+    visitReason: "PC追加録音の確認"
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  const claimed = await claimPairing(created.body.pairingId, created.body.pairingToken, deviceId);
+  assert.equal(claimed.status, 200, JSON.stringify(claimed.body));
+
+  const ws = await connectMobileSocket({
+    sessionId: created.body.sessionId,
+    pairingId: created.body.pairingId,
+    streamToken: claimed.body.streamToken,
+    deviceId
+  });
+
+  try {
+    await waitFor(async () => {
+      const state = await __testHooks.store.getSessionState(created.body.sessionId);
+      return state.session.mobileConnectionState === "mic_ready" ? state : null;
+    });
+
+    const started = await request("POST", `/api/v1/sessions/${created.body.sessionId}/recording/start`, {
+      deviceId,
+      source: "linked_mobile"
+    });
+    assert.equal(started.status, 200, JSON.stringify(started.body));
+    assert.equal(started.body.status, "recording");
+
+    const stopped = await request("POST", `/api/v1/sessions/${created.body.sessionId}/recording/stop`, {});
+    assert.equal(stopped.status, 200, JSON.stringify(stopped.body));
+    assert.equal(stopped.body.status, "stopped");
+    assert.equal(stopped.body.mobileConnectionState, "mic_ready");
+
+    const restarted = await request("POST", `/api/v1/sessions/${created.body.sessionId}/recording/start`, {
+      deviceId,
+      source: "linked_mobile"
+    });
+    assert.equal(restarted.status, 200, JSON.stringify(restarted.body));
+    assert.equal(restarted.body.status, "recording");
+
+    const finalStop = await request("POST", `/api/v1/sessions/${created.body.sessionId}/recording/stop`, {});
+    assert.equal(finalStop.status, 200, JSON.stringify(finalStop.body));
+  } finally {
+    ws.close();
+  }
+});
+
+test("recording discard route resets stopped session and transcript turns", async () => {
+  const created = await request("POST", "/api/v1/sessions", {
+    doctorMemberId: admin.memberId,
+    patientDisplayName: "録り直し患者",
+    visitReason: "録音破棄APIの確認"
+  });
+  assert.equal(created.status, 201);
+  const sessionId = created.body.sessionId;
+
+  const selectedSource = await request("POST", `/api/v1/sessions/${sessionId}/recording/source`, {
+    source: "local_browser"
+  });
+  assert.equal(selectedSource.status, 200);
+
+  const started = await request("POST", `/api/v1/sessions/${sessionId}/recording/start`, {
+    deviceId: "pc-discard-test",
+    deviceLabel: "テストPC",
+    source: "local_browser"
+  });
+  assert.equal(started.status, 200);
+  assert.equal(started.body.status, "recording");
+
+  await __testHooks.store.appendTurn(sessionId, {
+    speaker: "doctor",
+    text: "誤って録音した内容です。"
+  });
+
+  const stopped = await request("POST", `/api/v1/sessions/${sessionId}/recording/stop`, {});
+  assert.equal(stopped.status, 200);
+  assert.equal(stopped.body.status, "stopped");
+
+  const discarded = await request("POST", `/api/v1/sessions/${sessionId}/recording/discard`, {});
+  assert.equal(discarded.status, 200);
+  assert.equal(discarded.body.session.status, "ready");
+  assert.equal(discarded.body.session.latestFinalTurnIndex, 0);
+  assert.equal(discarded.body.session.audioSourceType, null);
+
+  const state = await __testHooks.store.getSessionState(sessionId);
+  assert.equal(state.session.status, "ready");
+  assert.deepEqual(state.turns, []);
+});
+
 async function request(method, path, body = undefined) {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
@@ -262,4 +419,108 @@ async function request(method, path, body = undefined) {
     status: response.status,
     body: parsed
   };
+}
+
+async function mobileRequest(method, path, streamToken, body = undefined) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${streamToken}`,
+      "Content-Type": "application/json"
+    },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    parsed = { raw: text };
+  }
+  return {
+    status: response.status,
+    body: parsed
+  };
+}
+
+async function claimPairing(pairingId, token, deviceId) {
+  const response = await fetch(`${baseUrl}/api/v1/pairings/${pairingId}/claim`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      token,
+      deviceId,
+      deviceInfo: {
+        platform: "node-test",
+        browser: "ws"
+      }
+    })
+  });
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    parsed = { raw: text };
+  }
+  return {
+    status: response.status,
+    body: parsed
+  };
+}
+
+async function connectMobileSocket({ sessionId, pairingId, streamToken, deviceId }) {
+  const ws = new WebSocket(`${baseUrl.replace(/^http/, "ws")}/ws`);
+
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("mobile websocket auth timed out"));
+    }, 1000);
+
+    const finish = (callback) => {
+      clearTimeout(timeout);
+      callback();
+    };
+
+    ws.on("open", () => {
+      ws.send(JSON.stringify({
+        type: "auth.hello",
+        role: "mobile",
+        sessionId,
+        token: streamToken,
+        deviceId,
+        pairingId
+      }));
+    });
+
+    ws.on("message", (raw) => {
+      const message = JSON.parse(raw.toString("utf8"));
+      if (message.type === "auth.ok") {
+        ws.send(JSON.stringify({ type: "mic.ready" }));
+        finish(resolve);
+      }
+      if (message.type === "error") {
+        finish(() => reject(new Error(message.message || message.code || "mobile websocket error")));
+      }
+    });
+
+    ws.on("error", (error) => finish(() => reject(error)));
+    ws.on("close", () => finish(() => reject(new Error("mobile websocket closed before auth"))));
+  });
+
+  return ws;
+}
+
+async function waitFor(callback, timeoutMs = 1000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const result = await callback();
+    if (result) {
+      return result;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("condition was not met in time");
 }

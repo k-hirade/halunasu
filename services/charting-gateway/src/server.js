@@ -239,6 +239,16 @@ function safeErrorLogFields(error, extra = {}) {
     statusCode: error?.statusCode || null
   };
 
+  if (error?.provider) {
+    fields.provider = error.provider;
+    fields.providerStatusCode = error.providerStatusCode ?? null;
+    fields.providerErrorType = error.providerErrorType ?? null;
+    fields.providerErrorCode = error.providerErrorCode ?? null;
+    fields.providerErrorParam = error.providerErrorParam ?? null;
+    fields.providerModel = error.providerModel ?? null;
+    fields.providerMessageSafe = error.safeProviderMessage || error.providerMessageSafe || null;
+  }
+
   if (!config.isProduction && error?.message) {
     fields.message = error.message;
   }
@@ -1280,6 +1290,20 @@ function forbiddenSessionActionMessage(action) {
   }[action] || "この操作を行う権限がありません。";
 }
 
+function warnSessionActionForbidden(action, operatorPayload, session, extra = {}) {
+  console.warn(`${action} forbidden`, {
+    ...extra,
+    action,
+    sessionId: session?.sessionId || null,
+    sessionStatus: session?.status || null,
+    actorId: getMemberIdForOperator(operatorPayload),
+    operatorOrgId: getOrgIdForOperator(operatorPayload),
+    sessionOrgId: session?.orgId || session?.clinicId || null,
+    isAssigned: operatorIsAssignedToSession(operatorPayload, session),
+    hasRequiredPermission: hasAnyOperatorPermission(operatorPayload, SESSION_ACTION_PERMISSIONS[action] || [])
+  });
+}
+
 async function listActiveTrustedRecorders({ clinicId }) {
   const now = Date.now();
   const source = typeof store.listTrustedRecorders === "function"
@@ -1607,6 +1631,7 @@ async function hydratePlatformOperatorPayload(payload) {
     displayName: normalizedMember.displayName,
     roles: normalizedMember.roles,
     defaultRecordingSource: normalizeRecordingSource(normalizedMember.defaultRecordingSource),
+    defaultPromptProfileId: normalizedMember.defaultPromptProfileId || null,
     tokenVersion: Number(identity.tokenVersion || 0),
     mfaRequired,
     mfaEnrolledAt: platformMfaEnrolledAt(identity)
@@ -1721,6 +1746,47 @@ function normalizePlatformMemberForGateway(member) {
     mfaRequired: Boolean(member.mfaRequired) || operatorRequiresMfa({ roles: mapPlatformRolesToGatewayRoles(member) }),
     mfaEnrolledAt: member.mfaEnrolledAt || (member.mfaEnrolled ? member.updatedAt || member.createdAt || new Date(0).toISOString() : null)
   };
+}
+
+async function safePlatformRead(callback) {
+  try {
+    return await callback();
+  } catch {
+    return null;
+  }
+}
+
+async function resolvePlatformSessionDefaults(orgId, memberId) {
+  if (!platformAuthBridgeEnabled || !platformStore) {
+    return {
+      organization: null,
+      member: null
+    };
+  }
+
+  const [organization, member] = await Promise.all([
+    safePlatformRead(() => platformStore.getOrganization(orgId)),
+    memberId ? safePlatformRead(() => platformStore.getMember(orgId, memberId)) : null
+  ]);
+
+  return {
+    organization,
+    member
+  };
+}
+
+async function resolveSessionOrganizationForClinicalUse(session = {}) {
+  const orgId = session.orgId || session.clinicId;
+  if (!orgId) {
+    return null;
+  }
+
+  if (platformAuthBridgeEnabled && platformStore) {
+    const organization = await safePlatformRead(() => platformStore.getOrganization(orgId));
+    return organization ? normalizePlatformOrganizationForGateway(organization) : null;
+  }
+
+  return store.getOrganization ? store.getOrganization(orgId) : null;
 }
 
 function mapPlatformRolesToGatewayRoles(member) {
@@ -2113,6 +2179,7 @@ function buildOperatorSessionToken(authenticated, { amr = ["pwd"] } = {}) {
       displayName: authenticated.member.displayName,
       roles: authenticated.member.roles,
       defaultRecordingSource: normalizeRecordingSource(authenticated.member.defaultRecordingSource),
+      defaultPromptProfileId: authenticated.member.defaultPromptProfileId || null,
       tokenVersion: Number(authenticated.identity.tokenVersion || 0),
       amr,
       mfaAt: amr.includes("otp") ? Date.now() : null,
@@ -2145,6 +2212,7 @@ function buildOperatorSessionTokenFromPayload(payload, memberOverride = null) {
       displayName: member.displayName || payload.displayName || "",
       roles,
       defaultRecordingSource: normalizeRecordingSource(member.defaultRecordingSource || payload.defaultRecordingSource),
+      defaultPromptProfileId: member.defaultPromptProfileId || payload.defaultPromptProfileId || null,
       tokenVersion: Number(payload.tokenVersion || 0),
       amr,
       mfaAt: amr.includes("otp") ? payload.mfaAt || Date.now() : null,
@@ -2234,7 +2302,8 @@ function serializeOperatorLoginSuccess(authenticated, issued) {
       memberId,
       displayName: authenticated.member.displayName,
       roles,
-      defaultRecordingSource: normalizeRecordingSource(authenticated.member.defaultRecordingSource)
+      defaultRecordingSource: normalizeRecordingSource(authenticated.member.defaultRecordingSource),
+      defaultPromptProfileId: authenticated.member.defaultPromptProfileId || null
     },
     expiresAt: new Date(expiresAt).toISOString()
   };
@@ -2307,6 +2376,7 @@ function serializeOperatorPayload(payload, memberOverride = null) {
       displayName: member.displayName || payload.displayName || "",
       roles: Array.isArray(member.roles) ? member.roles : getRolesForOperator(payload),
       defaultRecordingSource: normalizeRecordingSource(member.defaultRecordingSource || payload.defaultRecordingSource),
+      defaultPromptProfileId: member.defaultPromptProfileId || payload.defaultPromptProfileId || null,
       mfaRequired: Boolean(payload.mfaRequired),
       mfaEnrolledAt: payload.mfaEnrolledAt || member.mfaEnrolledAt || null
     },
@@ -2396,6 +2466,11 @@ function sendJson(ws, payload) {
   if (ws.readyState === 1) {
     ws.send(JSON.stringify(payload));
   }
+}
+
+function hasOpenMobileSocket(sessionId) {
+  const bucket = getSocketBucket(sessionId);
+  return Array.from(bucket.mobile || []).some((ws) => ws?.readyState === 1);
 }
 
 function trackAudioBytes(ws, byteLength) {
@@ -3507,11 +3582,21 @@ async function stopRecordingSession(sessionId, {
 
   clearRecordingAutoStopTimer(sessionId);
 
-  const session = await store.stopRecording(sessionId, {
+  let session = await store.stopRecording(sessionId, {
     actorType,
     actorId,
     stopReason
   });
+
+  if (stateBeforeStop.session.audioSourceType === "linked_mobile" && hasOpenMobileSocket(sessionId)) {
+    session = await store.updateSession(sessionId, {
+      mobileConnectionState: "mic_ready",
+      audioConnectionState: "mic_ready",
+      audioDeviceId: stateBeforeStop.session.audioDeviceId || session.audioDeviceId || null,
+      audioDeviceLabel: stateBeforeStop.session.audioDeviceLabel || session.audioDeviceLabel || "録音用スマホ",
+      updatedAt: nowIso()
+    });
+  }
 
   if (stopReason === "auto_timeout") {
     await appendAuditEventSafe(sessionId, {
@@ -5925,7 +6010,10 @@ app.post("/api/v1/sessions", requireOperatorAuth, requireOperatorClinicalAccess,
     const orgId = getOrgIdForOperator(req.operator);
     const memberId = getMemberIdForOperator(req.operator);
     const doctorMemberId = input.doctorMemberId || memberId;
-    const doctorMember = await store.getMember?.({ orgId, memberId: doctorMemberId });
+    const [doctorMember, platformDefaults] = await Promise.all([
+      store.getMember?.({ orgId, memberId: doctorMemberId }) || null,
+      resolvePlatformSessionDefaults(orgId, doctorMemberId)
+    ]);
     const coreMetadata = await resolveCoreSessionMetadata(orgId, input);
     if (input.promptProfileId) {
       const selectedPrompt = await findSelectablePromptOption(req.operator, input.promptProfileId);
@@ -5934,10 +6022,20 @@ app.post("/api/v1/sessions", requireOperatorAuth, requireOperatorClinicalAccess,
         return;
       }
     }
+    const defaultPromptProfileId =
+      input.promptProfileId ||
+      platformDefaults.member?.defaultPromptProfileId ||
+      platformDefaults.organization?.defaultPromptProfileId ||
+      (doctorMemberId === memberId ? req.operator?.defaultPromptProfileId : null) ||
+      null;
+    const defaultRecordingSource =
+      platformDefaults.member?.defaultRecordingSource ||
+      doctorMember?.defaultRecordingSource ||
+      (doctorMemberId === memberId ? req.operator?.defaultRecordingSource : null);
     const resolvedPromptProfile = await store.resolvePromptProfile?.({
       orgId,
       memberId: doctorMemberId,
-      promptProfileId: input.promptProfileId
+      promptProfileId: defaultPromptProfileId
     });
     const created = await store.createSession({
       ...input,
@@ -5948,7 +6046,7 @@ app.post("/api/v1/sessions", requireOperatorAuth, requireOperatorClinicalAccess,
       createdByUserId: memberId,
       doctorMemberId,
       assignedDoctorUserId: doctorMemberId,
-      audioSourceType: normalizeRecordingSource(doctorMember?.defaultRecordingSource),
+      audioSourceType: normalizeRecordingSource(defaultRecordingSource),
       promptProfileId: input.promptProfileId || resolvedPromptProfile?.profileId || null,
       promptProfileSelectedAt: input.promptProfileId ? nowIso() : null,
       promptProfileSelectedByMemberId: input.promptProfileId ? memberId : null,
@@ -6494,7 +6592,7 @@ app.post("/api/v1/mobile/sessions/:sessionId/recording/start", requireMobileStre
       return;
     }
 
-    const organization = await store.getOrganization?.(state.session.orgId || state.session.clinicId);
+    const organization = await resolveSessionOrganizationForClinicalUse(state.session);
 
     if (!organizationCanUseClinicalFeatures(organization)) {
       res.status(403).json({
@@ -6628,12 +6726,23 @@ app.post("/api/v1/sessions/:sessionId/regenerate-soap", requireOperatorAuth, req
     }
 
     if (!operatorCanPerformSessionAction(req.operator, state.session, "generateSoap")) {
+      warnSessionActionForbidden("generateSoap", req.operator, state.session, {
+        reason: "regenerate_session_action_forbidden"
+      });
       res.status(403).json({ error: forbiddenSessionActionMessage("generateSoap") });
       return;
     }
 
     const selectedPrompt = await findSelectablePromptOption(req.operator, input.promptProfileId);
     if (!selectedPrompt) {
+      console.warn("generateSoap forbidden", {
+        reason: "regenerate_prompt_not_selectable",
+        sessionId: state.session.sessionId || req.params.sessionId,
+        sessionStatus: state.session.status || null,
+        actorId: getMemberIdForOperator(req.operator),
+        operatorOrgId: getOrgIdForOperator(req.operator),
+        promptProfileId: input.promptProfileId
+      });
       res.status(403).json({ error: "この診療で利用できる公開済みプロンプトではありません。" });
       return;
     }

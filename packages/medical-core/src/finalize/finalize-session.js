@@ -21,6 +21,35 @@ function defaultAllowMockSoapFallback() {
   return process.env.NODE_ENV !== "production" && process.env.APP_ENV !== "production";
 }
 
+function providerErrorSafePayload(error) {
+  if (!error?.provider) {
+    return {};
+  }
+
+  return {
+    provider: error.provider,
+    providerStatusCode: error.providerStatusCode ?? null,
+    providerErrorType: error.providerErrorType ?? null,
+    providerErrorCode: error.providerErrorCode ?? null,
+    providerErrorParam: error.providerErrorParam ?? null,
+    providerModel: error.providerModel ?? null,
+    providerMessageSafe: error.safeProviderMessage || null
+  };
+}
+
+function copyProviderErrorFields(target, source) {
+  Object.assign(target, providerErrorSafePayload(source));
+  if (source?.provider) {
+    target.provider = source.provider;
+    target.providerStatusCode = source.providerStatusCode ?? null;
+    target.providerErrorType = source.providerErrorType ?? null;
+    target.providerErrorCode = source.providerErrorCode ?? null;
+    target.providerErrorParam = source.providerErrorParam ?? null;
+    target.providerModel = source.providerModel ?? null;
+    target.safeProviderMessage = source.safeProviderMessage || null;
+  }
+}
+
 function hashText(value) {
   return createHash("sha256").update(String(value || "")).digest("hex");
 }
@@ -332,6 +361,7 @@ export async function finalizeSession({
   let soapGenerationDurationMs = null;
   let soapSaveDurationMs = null;
   let sessionUpdateDurationMs = null;
+  let soapProviderError = null;
   const reusablePreparedTranscript =
     normalizePreparedTranscript(preparedTranscript) || buildPreparedFinalTranscriptFromSession(state.session);
   const transcriptPreparation = reusablePreparedTranscript || await prepareFinalTranscript({
@@ -381,6 +411,7 @@ export async function finalizeSession({
       soapGeneratedWithOpenAi = true;
       soapGenerationDurationMs = Date.now() - soapGenerationStartedAt;
     } catch (error) {
+      soapProviderError = error;
       soapGenerationDurationMs = Date.now() - soapGenerationStartedAt;
       await store.appendAuditEvent(sessionId, {
         type: "soap.generation.failed",
@@ -389,7 +420,8 @@ export async function finalizeSession({
         safePayload: {
           model,
           reason: "provider_error",
-          durationMs: soapGenerationDurationMs
+          durationMs: soapGenerationDurationMs,
+          ...providerErrorSafePayload(error)
         }
       });
     }
@@ -399,6 +431,7 @@ export async function finalizeSession({
     if (!allowMockSoapFallback) {
       const error = new Error("SOAP下書き作成に失敗しました。時間を置いてもう一度お試しください。");
       error.statusCode = 502;
+      copyProviderErrorFields(error, soapProviderError);
       throw error;
     }
 

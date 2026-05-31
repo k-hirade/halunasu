@@ -2,6 +2,29 @@ function extractErrorMessage(payload) {
   return payload?.error?.message || payload?.message || payload?.raw || "unknown error";
 }
 
+function buildSafeProviderMessage({ status, payload, model }) {
+  const parts = [`openai_response_failed status=${status}`];
+  const providerError = payload?.error || {};
+
+  if (providerError.type) {
+    parts.push(`type=${providerError.type}`);
+  }
+
+  if (providerError.code) {
+    parts.push(`code=${providerError.code}`);
+  }
+
+  if (providerError.param) {
+    parts.push(`param=${providerError.param}`);
+  }
+
+  if (model) {
+    parts.push(`model=${model}`);
+  }
+
+  return parts.join(" ");
+}
+
 function extractOutputText(payload) {
   if (typeof payload?.output_text === "string" && payload.output_text.trim()) {
     return payload.output_text.trim();
@@ -297,9 +320,18 @@ export async function createStructuredOpenAiResponse({
 
   if (!response.ok) {
     const payload = await parseJsonResponse(response);
-    throw new Error(
+    const providerError = payload?.error || {};
+    const error = new Error(
       `OpenAI structured response failed (${response.status}): ${extractErrorMessage(payload)}`
     );
+    error.provider = "openai";
+    error.providerStatusCode = response.status;
+    error.providerErrorType = providerError.type || null;
+    error.providerErrorCode = providerError.code || null;
+    error.providerErrorParam = providerError.param || null;
+    error.providerModel = model;
+    error.safeProviderMessage = buildSafeProviderMessage({ status: response.status, payload, model });
+    throw error;
   }
 
   const streamed = shouldStream

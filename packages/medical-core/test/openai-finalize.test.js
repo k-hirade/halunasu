@@ -556,6 +556,39 @@ test("SOAP generation wraps user input, applies prompt profile, and returns prov
   );
 });
 
+test("SOAP generation errors expose safe provider metadata", async () => {
+  await withFetch(
+    async () => textResponse(JSON.stringify({
+      error: {
+        message: "The requested model is not available",
+        type: "invalid_request_error",
+        code: "model_not_found",
+        param: "model"
+      }
+    }), { ok: false, status: 400 }),
+    async () => {
+      await assert.rejects(
+        () => generateSoapDraftWithOpenAi({
+          apiKey: "key",
+          transcript: "咳と発熱があります",
+          model: "gpt-invalid-for-test"
+        }),
+        (error) => {
+          assert.equal(error.provider, "openai");
+          assert.equal(error.providerStatusCode, 400);
+          assert.equal(error.providerErrorType, "invalid_request_error");
+          assert.equal(error.providerErrorCode, "model_not_found");
+          assert.equal(error.providerErrorParam, "model");
+          assert.equal(error.providerModel, "gpt-invalid-for-test");
+          assert.match(error.safeProviderMessage, /code=model_not_found/);
+          assert.doesNotMatch(error.safeProviderMessage, /咳と発熱/);
+          return true;
+        }
+      );
+    }
+  );
+});
+
 test("SOAP generation also works with minimal context and no custom prompt profile", async () => {
   await withFetch(
     async (url, options) => {
@@ -1081,7 +1114,7 @@ test("finalizeSession discards suspiciously short final repass and keeps live tr
   assert.equal(state.latestSoap.structuredJson.finalTranscriptSource, "live_stt_fallback_short_final");
 });
 
-test("finalizeSession records provider failures without exposing provider details", async () => {
+test("finalizeSession records safe provider failure metadata", async () => {
   const { store, sessionId } = await createSessionWithTurn();
   let callCount = 0;
 
@@ -1107,7 +1140,13 @@ test("finalizeSession records provider failures without exposing provider detail
           },
           allowMockSoapFallback: false
         }),
-        (error) => error.statusCode === 502
+        (error) => {
+          assert.equal(error.statusCode, 502);
+          assert.equal(error.provider, "openai");
+          assert.equal(error.providerStatusCode, 500);
+          assert.equal(error.providerModel, "gpt-5.4-nano");
+          return true;
+        }
       );
     }
   );
@@ -1123,5 +1162,8 @@ test("finalizeSession records provider failures without exposing provider detail
   assert.equal(failedPayloads[0].rawAudioByteLength, 4);
   assert.equal(failedPayloads[1].reason, "provider_error");
   assert.equal(failedPayloads[1].model, "gpt-5.4-nano");
+  assert.equal(failedPayloads[1].provider, "openai");
+  assert.equal(failedPayloads[1].providerStatusCode, 500);
+  assert.equal(failedPayloads[1].providerModel, "gpt-5.4-nano");
   assert.ok(failedPayloads.every((payload) => Number.isInteger(payload.durationMs) && payload.durationMs >= 0));
 });

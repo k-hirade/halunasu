@@ -221,12 +221,6 @@ const STOP_ICON = (
   </svg>
 );
 
-const CHECK_ICON = (
-  <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
-
 function readPairingFromLocation() {
   if (typeof window === "undefined") {
     return {
@@ -865,11 +859,14 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
       throw new Error("録音開始に必要な接続情報がありません。パソコンから接続し直してください。");
     }
 
-    notifyMicReady();
-    audioContextRef.current?.resume?.().catch(() => {});
     setIsActionPending(true);
 
     try {
+      if (!streamRef.current) {
+        await enableMicrophone();
+      }
+      notifyMicReady();
+      audioContextRef.current?.resume?.().catch(() => {});
       const currentDeviceId = requireDeviceId();
       const response = await fetch(`${getGatewayBaseUrl()}/api/v1/mobile/sessions/${sessionInfo.sessionId}/recording/start`, {
         method: "POST",
@@ -990,6 +987,8 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
 
   const isRecording = phase === "recording";
   const hasPreparedMic = Boolean(streamRef.current);
+  const canStartFromConnected = phase === "connected" && Boolean(sessionInfo?.streamToken);
+  const canStartFromStopped = phase === "stopped" && Boolean(sessionInfo?.streamToken);
   const canAutoPrepareMic = micPermissionState === "granted" || (knownMicAccess && micPermissionState !== "denied");
   const displayMicPermissionState = canAutoPrepareMic ? "granted" : micPermissionState;
   const micPermissionCopy = getMicPermissionCopy(displayMicPermissionState);
@@ -1187,14 +1186,35 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
                   : "初回だけマイクを許可してください。"}
             </p>
             {shouldShowMicSetup ? renderMicPermissionStatus() : renderMicPermissionStatus({ compact: true })}
-            {shouldShowMicSetup ? renderMicSetupButton({ label: "タップしてマイクを許可してください。" }) : null}
+            {canStartFromConnected ? (
+              <div className="record-button-area">
+                <button
+                  className="record-button record-button--ready"
+                  disabled={isActionPending || (autoMicState === "checking" && !hasPreparedMic)}
+                  onClick={() => startRecordingFromMobile().catch((e) => setError(e.message))}
+                  type="button"
+                  aria-label="録音開始"
+                >
+                  {isActionPending || (autoMicState === "checking" && !hasPreparedMic)
+                    ? <span className="record-button-spinner" aria-hidden="true" />
+                    : PLAY_ICON}
+                </button>
+                <span className="record-label">
+                  {isActionPending || (autoMicState === "checking" && !hasPreparedMic)
+                    ? "録音を準備しています..."
+                    : hasPreparedMic
+                      ? "タップで録音開始"
+                      : "タップでマイクを許可して録音開始"}
+                </span>
+              </div>
+            ) : null}
           </>
         )}
 
         {/* Phase: Mic ready or recording or stopped */}
         {["mic_ready", "recording", "remote_standby", "remote_recording", "stopped"].includes(phase) && sessionInfo && (
           <>
-            <h1>{isRecording ? "録音中" : phase === "remote_recording" ? "PC側で録音中" : phase === "remote_standby" ? "PC録音が選択されています" : phase === "stopped" ? "録音終了" : "録音開始待ち"}</h1>
+            <h1>{isRecording ? "録音中" : phase === "remote_recording" ? "PC側で録音中" : phase === "remote_standby" ? "PC録音が選択されています" : phase === "stopped" ? "追加録音待ち" : "録音開始待ち"}</h1>
 
             {isRecording && (
               <span className="record-timer">{formatElapsed(recordingElapsed)}</span>
@@ -1202,10 +1222,10 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
 
             <div className="record-button-area">
               <button
-                className={`record-button ${isRecording ? "record-button--active" : phase === "mic_ready" ? "record-button--ready" : ""}`}
-                disabled={isActionPending || (!isRecording && phase !== "mic_ready")}
+                className={`record-button ${isRecording ? "record-button--active" : phase === "mic_ready" || phase === "stopped" ? "record-button--ready" : ""}`}
+                disabled={isActionPending || (!isRecording && phase !== "mic_ready" && phase !== "stopped")}
                 onClick={() => {
-                  if (phase === "mic_ready") {
+                  if (phase === "mic_ready" || phase === "stopped") {
                     startRecordingFromMobile().catch((e) => setError(e.message));
                     return;
                   }
@@ -1215,9 +1235,9 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
                   }
                 }}
                 type="button"
-                aria-label={isActionPending ? "処理中" : isRecording ? "録音停止" : phase === "stopped" ? "録音終了" : phase === "mic_ready" ? "録音開始" : "待機中"}
+                aria-label={isActionPending ? "処理中" : isRecording ? "録音停止" : phase === "stopped" ? "録音を追加" : phase === "mic_ready" ? "録音開始" : "待機中"}
               >
-              {isActionPending ? <span className="record-button-spinner" aria-hidden="true" /> : isRecording ? STOP_ICON : phase === "stopped" ? CHECK_ICON : phase === "mic_ready" ? PLAY_ICON : MIC_ICON}
+              {isActionPending ? <span className="record-button-spinner" aria-hidden="true" /> : isRecording ? STOP_ICON : phase === "stopped" ? PLAY_ICON : phase === "mic_ready" ? PLAY_ICON : MIC_ICON}
               </button>
 
               {isRecording && !isActionPending && <span className="record-label">タップで録音を停止します。パソコン画面にもすぐ反映されます。</span>}
@@ -1225,7 +1245,7 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
               {phase === "remote_standby" && <span className="record-label">このスマホでは録音を開始しません。PC画面で録音を開始してください。</span>}
               {phase === "remote_recording" && <span className="record-label">このスマホは待機中です。PCのマイクで録音しています。</span>}
               {phase === "mic_ready" && <span className="record-label">タップで録音開始</span>}
-              {phase === "stopped" && <span className="record-label">録音が終わりました。パソコン画面で患者情報を確認し、SOAP下書きを作成してください。</span>}
+              {phase === "stopped" && <span className="record-label">{canStartFromStopped ? "タップで録音を追加" : "録音が終わりました。パソコン画面で患者情報を確認してください。"}</span>}
             </div>
 
             <div className="level-meter" role="meter" aria-label="マイク入力レベル" aria-valuenow={level} aria-valuemin={0} aria-valuemax={100}>
