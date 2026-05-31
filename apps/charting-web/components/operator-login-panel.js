@@ -5,6 +5,7 @@ import { startTransition, useEffect, useState } from "react";
 import { BRAND_NAME } from "../lib/brand";
 import { loginPlatformBillingSession } from "../lib/billing-api";
 import { confirmOperatorMfaEnrollment, loginOperator, verifyOperatorMfa } from "../lib/operator-access";
+import { toUserFacingErrorMessage } from "../lib/user-facing-error";
 
 export function OperatorLoginPanel({
   onAuthenticated,
@@ -67,7 +68,7 @@ export function OperatorLoginPanel({
         await syncPlatformBillingSession({ organizationCode, loginId, password });
         onAuthenticated(result.accessToken);
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError, "ログインに失敗しました。"));
       } finally {
         setIsPending(false);
       }
@@ -93,7 +94,7 @@ export function OperatorLoginPanel({
         await syncPlatformBillingSession({ organizationCode, loginId, password, mfaCode });
         onAuthenticated(result.accessToken);
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError, "確認に失敗しました。"));
       } finally {
         setIsPending(false);
       }

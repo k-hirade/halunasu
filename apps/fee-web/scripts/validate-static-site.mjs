@@ -42,6 +42,10 @@ assert(html.includes("coverageLabel"), "fee web must render coverage metadata");
 assert(html.includes("patientId"), "fee web must expose patientId selection");
 assert(html.includes("facilityId"), "fee web must expose facilityId");
 assert(html.includes("departmentId"), "fee web must expose departmentId");
+assert(html.includes("toUserFacingErrorMessage"), "fee web must convert technical errors before UI display");
+assert(!html.includes("showMessage(error.message"), "fee web must not display raw error.message in toast");
+assert(!html.includes("showLoginMessage(error.message"), "fee web must not display raw login errors");
+assert(!html.includes("showMfaMessage(error.message"), "fee web must not display raw MFA errors");
 assert(!html.includes("OPERATOR_ACCOUNTS_JSON"), "fee web must not reference old operator auth");
 assert(!html.includes("tenant_id"), "fee web must not expose old tenant_id boundary");
 

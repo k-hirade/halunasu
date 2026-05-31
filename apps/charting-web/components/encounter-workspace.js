@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import { getGatewayBaseUrl, getGatewayWsUrl } from "../lib/runtime-config";
 import { fetchWithOperatorAuth, getCurrentOperatorSession, useOperatorAccess } from "../lib/operator-access";
 import { loadStoredPairing, storePairing } from "../lib/pairing-session";
+import { toUserFacingErrorMessage } from "../lib/user-facing-error";
 import { createBrowserAudioSource, getOrCreateStoredDeviceId, TARGET_SAMPLE_RATE } from "../lib/browser-audio-source";
 import { buildAudioInputConstraints, readAudioInputPreference } from "../lib/audio-input-preferences";
 import { AdminSelect } from "./admin-select";
@@ -937,7 +938,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
       return;
     }
 
-    loadSessionBootstrap().catch((e) => setError(e.message));
+    loadSessionBootstrap().catch((e) => setError(toUserFacingErrorMessage(e, "診療画面の準備に失敗しました。しばらくしてからもう一度お試しください。")));
   }, [sessionId, accessToken]);
 
   useEffect(() => {
@@ -1088,7 +1089,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
       })
       .catch((nextError) => {
         if (!/待機中のスマホ/.test(nextError.message) && !/複数/.test(nextError.message)) {
-          setError(nextError.message);
+          setError(toUserFacingErrorMessage(nextError, "診療画面の準備に失敗しました。しばらくしてからもう一度お試しください。"));
         }
       });
   }, [accessToken, sessionState, sessionId, turns.length, recordingChoiceDismissed, pairingOverlayManuallyOpen]);
@@ -1298,7 +1299,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
           if (data.code === "UNAUTHORIZED") {
             clearAccess();
           }
-          setError(data.message);
+          setError(toUserFacingErrorMessage(data.message, "録音接続で問題が発生しました。もう一度お試しください。"));
           if (data.code === "SOAP_REGENERATION_FAILED") {
             loadSession().catch(() => {});
           }
@@ -1553,7 +1554,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
         clearAccess();
       }
       const err = await response.json().catch(() => ({ error: "処理に失敗しました。もう一度お試しください。" }));
-      throw new Error(err.error || "処理に失敗しました。もう一度お試しください。");
+      throw new Error(toUserFacingErrorMessage(err.error || "", "処理に失敗しました。もう一度お試しください。"));
     }
     return response.json();
   }
@@ -1572,13 +1573,13 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
           clearAccess();
         }
         const body = await response.json().catch(() => ({ error: "プロンプト一覧を取得できませんでした。" }));
-        throw new Error(body.error || "プロンプト一覧を取得できませんでした。");
+        throw new Error(toUserFacingErrorMessage(body.error || "", "プロンプト一覧を取得できませんでした。"));
       }
 
       const payload = await response.json();
       applyPromptOptionsData(payload);
     } catch (nextError) {
-      setPromptOptionsError(nextError.message);
+      setPromptOptionsError(toUserFacingErrorMessage(nextError, "プロンプト一覧を取得できませんでした。"));
     } finally {
       setPromptOptionsLoading(false);
     }
@@ -1617,7 +1618,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
       );
       addToast("この診療で使うプロンプトを変更しました", "success");
     } catch (nextError) {
-      setPromptOptionsError(nextError.message);
+      setPromptOptionsError(toUserFacingErrorMessage(nextError, "プロンプトを変更できませんでした。"));
     } finally {
       setPromptSelectionSaving(false);
     }
@@ -1658,7 +1659,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
         "success"
       );
     } catch (nextError) {
-      setPromptOptionsError(nextError.message);
+      setPromptOptionsError(toUserFacingErrorMessage(nextError, "SOAP下書きを再作成できませんでした。"));
     } finally {
       setPromptSelectionSaving(false);
     }
@@ -1756,8 +1757,8 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
         },
         onError: (nextError) => {
           setLocalRecorderState("failed");
-          setLocalRecorderMessage(nextError.message);
-          setError(nextError.message);
+          setLocalRecorderMessage(toUserFacingErrorMessage(nextError, "このパソコンで録音を開始できませんでした。"));
+          setError(toUserFacingErrorMessage(nextError, "録音を開始できませんでした。もう一度お試しください。"));
         },
         gateAudio: false,
         audioConstraints: buildAudioInputConstraints(audioInputPreference?.deviceId)
@@ -2158,7 +2159,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
     setError("");
     startTransition(async () => {
       try { await callback(); }
-      catch (e) { setError(e.message); }
+      catch (e) { setError(toUserFacingErrorMessage(e, "録音を再開できませんでした。もう一度お試しください。")); }
       finally { setIsBusy(false); }
     });
   }

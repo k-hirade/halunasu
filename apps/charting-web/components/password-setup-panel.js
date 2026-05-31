@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { getPasswordSetupState, submitPasswordSetup } from "../lib/billing-api";
+import { toUserFacingErrorMessage } from "../lib/user-facing-error";
 
 function formatDateTime(value) {
   if (!value) {
@@ -40,7 +41,7 @@ export function PasswordSetupPanel({ tokenId }) {
       })
       .catch((loadError) => {
         if (!cancelled) {
-          setError(loadError.message || "初回設定リンクの確認に失敗しました。");
+          setError(toUserFacingErrorMessage(loadError, "初回設定リンクの確認に失敗しました。"));
         }
       });
 
@@ -74,7 +75,7 @@ export function PasswordSetupPanel({ tokenId }) {
       setPassword("");
       setConfirmPassword("");
     } catch (submitError) {
-      setError(submitError.message || "パスワード設定に失敗しました。");
+      setError(toUserFacingErrorMessage(submitError, "パスワード設定に失敗しました。"));
     } finally {
       setIsSubmitting(false);
     }

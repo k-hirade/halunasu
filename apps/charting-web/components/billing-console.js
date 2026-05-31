@@ -9,6 +9,7 @@ import {
   getCurrentOperatorSession,
   useOperatorAccess
 } from "../lib/operator-access";
+import { toUserFacingErrorMessage } from "../lib/user-facing-error";
 import { OperatorLoginPanel } from "./operator-login-panel";
 
 function formatDateTime(value) {
@@ -103,7 +104,7 @@ export function BillingConsole() {
         setBillingStatus(billingPayload);
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError.message || "契約情報の取得に失敗しました。");
+          setError(toUserFacingErrorMessage(loadError, "契約情報の取得に失敗しました。"));
         }
       } finally {
         if (!cancelled) {
@@ -131,7 +132,7 @@ export function BillingConsole() {
       const payload = await createBillingPortalSession(accessToken);
       window.location.assign(payload.url);
     } catch (portalError) {
-      setError(portalError.message || "Customer Portal を開けませんでした。");
+      setError(toUserFacingErrorMessage(portalError, "決済管理画面を開けませんでした。"));
       setIsLaunchingPortal(false);
     }
   }

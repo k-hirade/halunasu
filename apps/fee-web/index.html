@@ -1275,13 +1275,13 @@
       window.clearTimeout(feeSessionSearchTimer);
       feeSessionSearchTimer = window.setTimeout(() => {
         state.feeSessionSearch = state.feeSessionSearchDraft.trim();
-        loadSessions({ page: 1 }).catch((error) => showMessage(error.message || "算定履歴の検索に失敗しました", "error"));
+        loadSessions({ page: 1 }).catch((error) => showMessage(toUserFacingErrorMessage(error, "算定履歴の検索に失敗しました。"), "error"));
       }, 220);
     });
 
     els.feeSessionStatus.addEventListener("change", () => {
       state.feeSessionStatusFilter = els.feeSessionStatus.value;
-      loadSessions({ page: 1 }).catch((error) => showMessage(error.message || "算定履歴の絞り込みに失敗しました", "error"));
+      loadSessions({ page: 1 }).catch((error) => showMessage(toUserFacingErrorMessage(error, "算定履歴の絞り込みに失敗しました。"), "error"));
     });
 
     els.startFeeSessionButton.addEventListener("click", async () => {
@@ -1301,7 +1301,7 @@
       window.history.pushState({}, "", "/");
       clearSelectedFeeSession();
       showHomeRoute();
-      await loadSessions({ page: state.feeSessionPage }).catch((error) => showMessage(error.message || "算定履歴の再読み込みに失敗しました", "error"));
+      await loadSessions({ page: state.feeSessionPage }).catch((error) => showMessage(toUserFacingErrorMessage(error, "算定履歴の再読み込みに失敗しました。"), "error"));
     });
 
     els.patientForm.addEventListener("submit", async (event) => {
@@ -2053,6 +2053,29 @@
       }).join("\n");
     }
 
+    function toUserFacingErrorMessage(error, fallbackMessage = "処理に失敗しました。時間を置いてもう一度お試しください。") {
+      const rawMessage = typeof error === "string" ? error : error?.message;
+      const code = typeof error === "object" && error ? String(error.code || error.error || "") : "";
+      const status = typeof error === "object" && error ? Number(error.status || error.statusCode || 0) : 0;
+      const text = String(rawMessage || "").trim();
+      const lower = text.toLowerCase();
+      const normalizedCode = code.toLowerCase();
+
+      if (normalizedCode === "mfa_required" || lower.includes("mfa code is required")) return "2段階認証コードを入力してください。";
+      if (lower.includes("invalid mfa")) return "2段階認証コードが正しくありません。";
+      if (lower.includes("invalid credentials")) return "病院コード、個人ID、またはパスワードが正しくありません。";
+      if (lower.includes("csrf")) return "画面を再読み込みして、もう一度お試しください。";
+      if (lower.includes("invalid session") || lower.includes("session expired") || lower.includes("session revoked") || lower === "unauthorized") return "ログイン状態を確認できません。もう一度ログインしてください。";
+      if (lower.includes("role is required") || lower.includes("access is required") || lower.includes("product access is required") || lower === "forbidden" || status === 403) return "この操作を行う権限がありません。";
+      if (lower.includes("failed to fetch") || lower.includes("networkerror") || lower === "load failed") return "通信に失敗しました。接続を確認して、もう一度お試しください。";
+      if (lower.includes("not found") || status === 404) return "対象のデータが見つかりませんでした。画面を再読み込みしてからもう一度お試しください。";
+      if (lower.includes("rate limit") || status === 429) return "短時間に操作が続いています。少し待ってからもう一度お試しください。";
+      if (lower.includes("internal server error") || /^http 5\d\d$/iu.test(text) || status >= 500) return "処理中に問題が発生しました。時間を置いてもう一度お試しください。";
+      if (/^http \d{3}$/iu.test(text)) return fallbackMessage;
+      if (!text) return fallbackMessage;
+      return /[ぁ-んァ-ヶ一-龠]/u.test(text) ? text : fallbackMessage;
+    }
+
     async function api(baseUrl, path, options = {}) {
       const headers = { "content-type": "application/json" };
       if (options.csrf && state.csrfToken) {
@@ -2066,7 +2089,11 @@
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const error = new Error(data.message || data.error || `HTTP ${response.status}`);
+        const error = new Error(toUserFacingErrorMessage({
+          message: data.message || data.error || `HTTP ${response.status}`,
+          code: data.error || "",
+          status: response.status
+        }, "処理に失敗しました。"));
         error.code = data.error || "";
         error.status = response.status;
         throw error;
@@ -2080,7 +2107,7 @@
         hideMessage();
         await task();
       } catch (error) {
-        showMessage(error.message || "処理に失敗しました", "error");
+        showMessage(toUserFacingErrorMessage(error, "処理に失敗しました。"), "error");
       } finally {
         setBusy(false);
       }
@@ -2098,11 +2125,11 @@
         }
 
         if (state.session && !els.appShell.classList.contains("hidden")) {
-          showMessage(error.message || "初期データの読み込みに失敗しました", "error");
+          showMessage(toUserFacingErrorMessage(error, "初期データの読み込みに失敗しました。"), "error");
         } else {
           state.csrfToken = "";
           state.session = null;
-          showLoginMessage(error.message || "ログインに失敗しました");
+          showLoginMessage(toUserFacingErrorMessage(error, "ログインに失敗しました。"));
         }
       } finally {
         els.loginButton.disabled = false;
@@ -2115,7 +2142,7 @@
       try {
         await task();
       } catch (error) {
-        showMfaMessage(error.message || "本人確認に失敗しました。");
+        showMfaMessage(toUserFacingErrorMessage(error, "本人確認に失敗しました。"));
       } finally {
         updateMfaButtonState();
       }
@@ -2158,7 +2185,7 @@
       } catch (error) {
         if (error.status && error.status !== 401) {
           if (state.session && !els.appShell.classList.contains("hidden")) {
-            showMessage(error.message || "セッションの復元に失敗しました。", "error");
+            showMessage(toUserFacingErrorMessage(error, "セッションの復元に失敗しました。"), "error");
           } else {
             showLoginMessage("セッションの復元に失敗しました。再ログインしてください。");
           }

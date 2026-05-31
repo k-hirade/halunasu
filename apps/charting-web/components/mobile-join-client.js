@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getGatewayBaseUrl } from "../lib/runtime-config";
 import { fetchWithOperatorAuth, useOperatorAccess } from "../lib/operator-access";
+import { toUserFacingErrorMessage } from "../lib/user-facing-error";
 import { OperatorLoginPanel } from "./operator-login-panel";
 
 const TARGET_SAMPLE_RATE = 24_000;
@@ -489,7 +490,7 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({ error: "接続に失敗しました。パソコンから接続し直してください。" }));
-        throw new Error(payload.error || "接続に失敗しました。パソコンから接続し直してください。");
+        throw new Error(toUserFacingErrorMessage(payload.error || "", "接続に失敗しました。パソコンから接続し直してください。"));
       }
       const data = await response.json();
       setPairingId(currentPairingId);
@@ -608,7 +609,7 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
         notifyMicReady();
       }
       if (message.type === "ping") ws.send(JSON.stringify({ type: "pong" }));
-      if (message.type === "error") setError(message.message);
+      if (message.type === "error") setError(toUserFacingErrorMessage(message.message, "録音中に問題が発生しました。もう一度お試しください。"));
     });
   }
 
@@ -770,8 +771,8 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
             scannerActiveRef.current = false;
             setScannerMessage("接続情報を読み取りました。診療画面へ接続しています。");
             connectFromPairingText(rawValue).catch((nextError) => {
-              setError(nextError.message);
-              setScannerMessage(nextError.message);
+              setError(toUserFacingErrorMessage(nextError, "QR読み取り画面を準備できませんでした。もう一度お試しください。"));
+              setScannerMessage(toUserFacingErrorMessage(nextError, "QR読み取り画面を準備できませんでした。"));
               cleanupScanner();
             });
             return;
@@ -786,7 +787,7 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
       requestAnimationFrame(scan);
     } catch (nextError) {
       cleanupScanner();
-      setScannerMessage(nextError.message || "QR読み取りを開始できませんでした。");
+      setScannerMessage(toUserFacingErrorMessage(nextError, "QR読み取りを開始できませんでした。"));
     }
   }
 
@@ -812,7 +813,7 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
         clearAccess();
       }
       const payload = await response.json().catch(() => ({ error: "待機端末の登録に失敗しました。" }));
-      throw new Error(payload.error || "待機端末の登録に失敗しました。");
+      throw new Error(toUserFacingErrorMessage(payload.error || "", "待機端末の登録に失敗しました。"));
     }
 
     const data = await response.json();
@@ -881,7 +882,7 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({ error: "録音を開始できませんでした。" }));
-        throw new Error(payload.error || "録音を開始できませんでした。");
+        throw new Error(toUserFacingErrorMessage(payload.error || "", "録音を開始できませんでした。"));
       }
 
       setPhase("recording");
@@ -915,7 +916,7 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({ error: "録音を停止できませんでした。" }));
-        throw new Error(payload.error || "録音を停止できませんでした。");
+        throw new Error(toUserFacingErrorMessage(payload.error || "", "録音を停止できませんでした。"));
       }
 
       setPhase("stopped");
@@ -943,7 +944,7 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
 
   useEffect(() => {
     if (pairingId && token && !sessionInfo && deviceId) {
-      claimPairing({ pairingId, token }).catch((e) => setError(e.message));
+      claimPairing({ pairingId, token }).catch((e) => setError(toUserFacingErrorMessage(e, "接続に失敗しました。パソコンから接続し直してください。")));
     }
   }, [pairingId, token, sessionInfo, deviceId]);
 
@@ -953,7 +954,7 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
       return undefined;
     }
 
-    registerTrustedRecorder().catch((e) => setError(e.message));
+    registerTrustedRecorder().catch((e) => setError(toUserFacingErrorMessage(e, "待機端末の登録に失敗しました。")));
     assignmentPollRef.current = setInterval(() => {
       pollTrustedRecorderAssignment().catch(() => {});
     }, 2500);
@@ -995,7 +996,7 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
   const shouldShowMicSetup = !hasPreparedMic && (!canAutoPrepareMic || autoMicState === "action_required" || autoMicState === "failed");
 
   function activateMicrophone() {
-    enableMicrophone().catch((e) => setError(e.message));
+    enableMicrophone().catch((e) => setError(toUserFacingErrorMessage(e, "マイクを開始できませんでした。ブラウザのマイク許可を確認してください。")));
   }
 
   function renderMicPermissionStatus({ compact = false } = {}) {
@@ -1116,7 +1117,7 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
                   <button
                     className="btn btn--ghost"
                     disabled={!pairingInput.trim()}
-                    onClick={() => connectFromManualInput().catch((e) => setError(e.message))}
+                    onClick={() => connectFromManualInput().catch((e) => setError(toUserFacingErrorMessage(e, "接続に失敗しました。パソコンから接続し直してください。")))}
                     type="button"
                   >
                     接続
@@ -1147,7 +1148,7 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
               </div>
               <button
                 className="btn btn--primary btn--lg"
-                onClick={() => claimPairing({ pairingId, token }).catch((e) => setError(e.message))}
+                onClick={() => claimPairing({ pairingId, token }).catch((e) => setError(toUserFacingErrorMessage(e, "接続に失敗しました。パソコンから接続し直してください。")))}
                 type="button"
               >
                 接続する
@@ -1191,7 +1192,7 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
                 <button
                   className="record-button record-button--ready"
                   disabled={isActionPending || (autoMicState === "checking" && !hasPreparedMic)}
-                  onClick={() => startRecordingFromMobile().catch((e) => setError(e.message))}
+                  onClick={() => startRecordingFromMobile().catch((e) => setError(toUserFacingErrorMessage(e, "録音を開始できませんでした。")))}
                   type="button"
                   aria-label="録音開始"
                 >
@@ -1226,12 +1227,12 @@ export function MobileJoinClient({ initialPairingId, initialToken }) {
                 disabled={isActionPending || (!isRecording && phase !== "mic_ready" && phase !== "stopped")}
                 onClick={() => {
                   if (phase === "mic_ready" || phase === "stopped") {
-                    startRecordingFromMobile().catch((e) => setError(e.message));
+                    startRecordingFromMobile().catch((e) => setError(toUserFacingErrorMessage(e, "録音を開始できませんでした。")));
                     return;
                   }
 
                   if (phase === "recording") {
-                    stopRecordingFromMobile().catch((e) => setError(e.message));
+                    stopRecordingFromMobile().catch((e) => setError(toUserFacingErrorMessage(e, "録音を停止できませんでした。")));
                   }
                 }}
                 type="button"

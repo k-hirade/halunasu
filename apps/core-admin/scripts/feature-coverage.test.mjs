@@ -109,6 +109,16 @@ test("operator-facing labels and audit events are localized", () => {
   assert.doesNotMatch(html, />Data Request</);
 });
 
+test("technical errors are converted before display", () => {
+  assert.match(html, /function toUserFacingErrorMessage/);
+  assert.match(html, /failed to fetch/);
+  assert.match(html, /この操作を行う権限がありません。/);
+  assert.match(html, /処理中に問題が発生しました。時間を置いてもう一度お試しください。/);
+  assert.doesNotMatch(html, /showMessage\(error\.message/);
+  assert.doesNotMatch(html, /showLoginMessage\(error\.message/);
+  assert.doesNotMatch(html, /showLoginMfaMessage\(error\.message/);
+});
+
 test("role guards are present for admin-only and billing-only features", () => {
   for (const token of [
     "canManageOrg",

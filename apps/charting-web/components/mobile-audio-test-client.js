@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getGatewayBaseUrl } from "../lib/runtime-config";
+import { toUserFacingErrorMessage } from "../lib/user-facing-error";
 
 const AUDIO_TEST_DEVICE_ID_STORAGE_KEY = "soaplane.mobileAudioTest.deviceId";
 const AUDIO_TEST_UPDATE_INTERVAL_MS = 1000;
@@ -244,7 +245,7 @@ export function MobileAudioTestClient({
             animationFrameRef.current = 0;
           }
           setPhase("expired");
-          setError(nextError.message);
+          setError(toUserFacingErrorMessage(nextError, "このマイクテストは期限切れです。パソコン側でQRを再発行してください。"));
         }
       }
     }
@@ -274,7 +275,7 @@ export function MobileAudioTestClient({
         } else {
           setPhase("error");
         }
-        setError(nextError.message || "パソコンとの接続に失敗しました。");
+        setError(toUserFacingErrorMessage(nextError, "パソコンとの接続に失敗しました。"));
         return;
       }
 
@@ -462,7 +463,7 @@ export function MobileAudioTestClient({
       setPhase("completed");
       setLevel(0);
     } catch (nextError) {
-      setError(nextError.message || "スマホのマイクテストを終了できませんでした。");
+      setError(toUserFacingErrorMessage(nextError, "スマホのマイクテストを終了できませんでした。"));
     } finally {
       setIsCompleting(false);
       if (intervalRef.current) {

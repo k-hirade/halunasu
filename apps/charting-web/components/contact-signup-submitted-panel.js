@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { getContactSignupStatus, resendContactSignupMail } from "../lib/billing-api";
+import { toUserFacingErrorMessage } from "../lib/user-facing-error";
 
 export function ContactSignupSubmittedPanel() {
   const searchParams = useSearchParams();
@@ -47,7 +48,7 @@ export function ContactSignupSubmittedPanel() {
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError.message || "申込状態の取得に失敗しました。");
+          setError(toUserFacingErrorMessage(loadError, "申込状態の取得に失敗しました。"));
         }
       }
     };
@@ -77,7 +78,7 @@ export function ContactSignupSubmittedPanel() {
         ? "確認メールを再送しました。"
         : "初回設定メールを再送しました。");
     } catch (resendError) {
-      setError(resendError.message || "メールの再送に失敗しました。");
+      setError(toUserFacingErrorMessage(resendError, "メールの再送に失敗しました。"));
     } finally {
       setIsResending(false);
     }

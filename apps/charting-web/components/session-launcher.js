@@ -6,6 +6,7 @@ import { getGatewayBaseUrl } from "../lib/runtime-config";
 import { buildBillingBannerCopy } from "../lib/billing-display";
 import { canCreateClinicalSession, canManageOrganization, canManagePlatform, fetchWithOperatorAuth, getCurrentOperatorSession, getOperatorAccessRestrictionMessage, useOperatorAccess } from "../lib/operator-access";
 import { storePairing } from "../lib/pairing-session";
+import { toUserFacingErrorMessage } from "../lib/user-facing-error";
 import { Icon } from "./icon";
 import { OperatorLoginPanel } from "./operator-login-panel";
 
@@ -210,7 +211,7 @@ export function SessionLauncher() {
         setSessionPage(nextPage);
       }
     } catch (nextError) {
-      setSessionListError(nextError.message);
+      setSessionListError(toUserFacingErrorMessage(nextError, "診療履歴を取得できませんでした。"));
     } finally {
       setIsLoadingSessions(false);
     }
@@ -276,7 +277,7 @@ export function SessionLauncher() {
           }
 
           const body = await response.json().catch(() => ({ error: "" }));
-          throw new Error(body.error || "新しい診療記録を開けませんでした。通信状態を確認し、もう一度お試しください。");
+          throw new Error(toUserFacingErrorMessage(body.error || "", "新しい診療記録を開けませんでした。通信状態を確認し、もう一度お試しください。"));
         }
 
         const data = await response.json();
@@ -288,7 +289,7 @@ export function SessionLauncher() {
         didNavigate = true;
         router.push(`/sessions/${data.sessionId}`);
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError, "新しい診療記録を開けませんでした。通信状態を確認し、もう一度お試しください。"));
         setCreatePhase("idle");
       } finally {
         if (!didNavigate) {
@@ -314,7 +315,7 @@ export function SessionLauncher() {
         }
 
         const body = await response.json().catch(() => ({ error: "診療を一覧から外せませんでした。もう一度お試しください。" }));
-        throw new Error(body.error || "診療を一覧から外せませんでした。もう一度お試しください。");
+        throw new Error(toUserFacingErrorMessage(body.error || "", "診療を一覧から外せませんでした。もう一度お試しください。"));
       }
 
       setDeleteTargetSession(null);
@@ -324,7 +325,7 @@ export function SessionLauncher() {
         setSessionReloadToken((current) => current + 1);
       }
     } catch (nextError) {
-      setSessionListError(nextError.message);
+      setSessionListError(toUserFacingErrorMessage(nextError, "診療を一覧から外せませんでした。もう一度お試しください。"));
     } finally {
       setIsDeletingSession(false);
     }

@@ -38,6 +38,10 @@ assert(signup.includes("source: \"lp_contact_form\""), "signup form must preserv
 assert(signup.includes("利用したいアプリ"), "signup form must expose single app selection");
 assert(signup.includes("requestedProducts: [nextForm.requestedProduct]"), "signup form must request only the selected app");
 assert(signup.includes("SIGNUP_SELECTABLE_PRODUCTS = new Set([\"charting\"])"), "signup form must keep only charting selectable at launch");
+assert(signup.includes("toUserFacingErrorMessage"), "signup form must convert technical errors before UI display");
+assert(!signup.includes("setError(signupError, error.message"), "signup form must not display raw signup errors");
+assert(!signup.includes("setError(passwordError, error.message"), "signup form must not display raw password errors");
+assert(!signup.includes("setError(submittedError, error.message"), "signup form must not display raw verification errors");
 assert(!signup.includes("現在の Platform API ではメール送信サービスを追加せず"), "signup form must not expose the temporary no-mail migration note");
 assert(!signup.includes("メール確認を完了"), "signup form must not keep the temporary inline verification button");
 

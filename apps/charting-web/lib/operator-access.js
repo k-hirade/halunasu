@@ -15,6 +15,7 @@ import {
   roleLabel
 } from "@medical/contracts";
 import { getGatewayAuthBaseUrl } from "./runtime-config";
+import { toUserFacingErrorMessage } from "./user-facing-error";
 
 const STORAGE_KEY = "medical.operatorAccessToken.v2";
 export const COOKIE_OPERATOR_ACCESS_TOKEN = "__cookie_operator_session__";
@@ -353,7 +354,7 @@ export async function loginOperator({ organizationCode, loginId, password }) {
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ error: "ログインに失敗しました。" }));
-    throw new Error(payload.error || "ログインに失敗しました。");
+    throw new Error(toUserFacingErrorMessage(payload.error || "ログインに失敗しました。", "ログインに失敗しました。"));
   }
 
   const result = await response.json();
@@ -374,7 +375,7 @@ async function completeOperatorMfa(path, { challengeId, code }) {
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ error: "確認に失敗しました。" }));
-    throw new Error(payload.error || "確認に失敗しました。");
+    throw new Error(toUserFacingErrorMessage(payload.error || "確認に失敗しました。", "確認に失敗しました。"));
   }
 
   const result = await response.json();

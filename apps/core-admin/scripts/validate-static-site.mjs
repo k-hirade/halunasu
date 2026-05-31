@@ -50,6 +50,10 @@ assert(html.includes("platform_admin"), "core admin must surface platform admin 
 assert(html.includes("org_admin"), "core admin must surface org admin role");
 assert(html.includes("billing_admin"), "core admin must surface billing admin role");
 assert(html.includes("x-csrf-token"), "core admin must send CSRF headers");
+assert(html.includes("toUserFacingErrorMessage"), "core admin must convert technical errors before UI display");
+assert(!html.includes("showMessage(error.message"), "core admin must not display raw error.message in toast");
+assert(!html.includes("showLoginMessage(error.message"), "core admin must not display raw login errors");
+assert(!html.includes("showLoginMfaMessage(error.message"), "core admin must not display raw MFA errors");
 const forbiddenClientSdkTokens = [
   ["firebase", "app"].join("/"),
   ["firebase", "firestore"].join("/")

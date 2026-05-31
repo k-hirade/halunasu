@@ -8,6 +8,7 @@ import {
   resendContactSignupMail,
   verifyContactSignup
 } from "../lib/billing-api";
+import { toUserFacingErrorMessage } from "../lib/user-facing-error";
 
 export function ContactSignupVerifyPanel() {
   const searchParams = useSearchParams();
@@ -36,7 +37,7 @@ export function ContactSignupVerifyPanel() {
       })
       .catch((loadError) => {
         if (!cancelled) {
-          setError(loadError.message || "確認処理に失敗しました。");
+          setError(toUserFacingErrorMessage(loadError, "確認処理に失敗しました。"));
         }
       });
 
@@ -70,7 +71,7 @@ export function ContactSignupVerifyPanel() {
         canProceed: true
       } : current);
     } catch (submitError) {
-      setError(submitError.message || "確認処理に失敗しました。");
+      setError(toUserFacingErrorMessage(submitError, "確認処理に失敗しました。"));
     } finally {
       setIsSubmitting(false);
     }
@@ -92,7 +93,7 @@ export function ContactSignupVerifyPanel() {
         ? "確認メールを再送しました。"
         : "初回設定メールを再送しました。");
     } catch (resendError) {
-      setError(resendError.message || "メールの再送に失敗しました。");
+      setError(toUserFacingErrorMessage(resendError, "メールの再送に失敗しました。"));
     } finally {
       setIsResending(false);
     }

@@ -20,6 +20,7 @@ import {
   createBillingPortalSession
 } from "../lib/billing-api";
 import { getGatewayBaseUrl } from "../lib/runtime-config";
+import { toUserFacingErrorMessage } from "../lib/user-facing-error";
 import {
   canManageOrganization,
   canManageMembers,
@@ -826,7 +827,7 @@ async function readJson(response, fallbackMessage) {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(payload.error || fallbackMessage);
+    throw new Error(toUserFacingErrorMessage(payload.error || fallbackMessage, fallbackMessage));
   }
 
   return payload;
@@ -1173,7 +1174,7 @@ export function AdminConsole() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({ error: "出力例を作成できませんでした。" }));
-        throw new Error(payload.error || "出力例を作成できませんでした。");
+        throw new Error(toUserFacingErrorMessage(payload.error || "", "出力例を作成できませんでした。"));
       }
 
       if (!response.body) {
@@ -1232,7 +1233,7 @@ export function AdminConsole() {
           }
 
           if (item.event === "preview.error") {
-            throw new Error(item.payload.error || "出力例を作成できませんでした。");
+            throw new Error(toUserFacingErrorMessage(item.payload.error || "", "出力例を作成できませんでした。"));
           }
         }
       }
@@ -1246,7 +1247,7 @@ export function AdminConsole() {
       }
 
       setPreviewState("error");
-      setPreviewError(nextError.message);
+      setPreviewError(toUserFacingErrorMessage(nextError, "出力例を作成できませんでした。"));
     } finally {
       if (previewAbortControllerRef.current === controller) {
         previewAbortControllerRef.current = null;
@@ -1393,7 +1394,7 @@ export function AdminConsole() {
         setIsEditorDirty(false);
       }
     } catch (nextError) {
-      setError(nextError.message);
+      setError(toUserFacingErrorMessage(nextError));
     } finally {
       setIsLoading(false);
     }
@@ -1543,7 +1544,7 @@ export function AdminConsole() {
 
       throw new Error("決済または請求管理の導線を表示できません。");
     } catch (nextError) {
-      setError(nextError.message || "決済画面を開けませんでした。");
+      setError(toUserFacingErrorMessage(nextError, "決済画面を開けませんでした。"));
       setIsLaunchingBillingAction(false);
     }
   }
@@ -1555,7 +1556,7 @@ export function AdminConsole() {
 
   function selectFormat(format) {
     void selectFormatForEditor(format).catch((nextError) => {
-      setError(nextError.message);
+      setError(toUserFacingErrorMessage(nextError));
     });
   }
 
@@ -1694,7 +1695,7 @@ export function AdminConsole() {
         setPendingApplyTarget(null);
         setModalMode("prompt-apply");
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setIsSaving(false);
       }
@@ -1728,7 +1729,7 @@ export function AdminConsole() {
       setInferState("ready");
     } catch (nextError) {
       setInferState("error");
-      setInferError(nextError.message);
+      setInferError(toUserFacingErrorMessage(nextError, "カルテ例からプロンプト案を作成できませんでした。"));
     }
   }
 
@@ -1854,7 +1855,7 @@ export function AdminConsole() {
         setOrganizationForm(EMPTY_ORGANIZATION_FORM);
         await loadAdminData(payload.organization.orgId);
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setIsSaving(false);
       }
@@ -1882,7 +1883,7 @@ export function AdminConsole() {
         setModalMode(null);
         setMemberForm(EMPTY_MEMBER_FORM);
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setIsSaving(false);
       }
@@ -1934,7 +1935,7 @@ export function AdminConsole() {
         setRoleTarget(null);
         setRoleForm({ roles: ["doctor"] });
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setIsSaving(false);
       }
@@ -1981,7 +1982,7 @@ export function AdminConsole() {
         }
         setNotice("ふだん使う録音方法を保存しました。");
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setSavingMemberPreferenceIds((current) => {
           const next = new Set(current);
@@ -2020,7 +2021,7 @@ export function AdminConsole() {
         )));
         setNotice("録音の自動停止設定を保存しました。");
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setIsSavingRecordingPolicy(false);
       }
@@ -2052,7 +2053,7 @@ export function AdminConsole() {
         setNotice(`${payload.member.displayName}のパスワードを再設定しました。`);
         setPasswordResetResult("新しいパスワードを本人に安全な経路で伝達してください。この画面を閉じると再表示できません。");
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setIsSaving(false);
       }
@@ -2103,7 +2104,7 @@ export function AdminConsole() {
           setStatusTarget(null);
         }
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setIsSaving(false);
       }
@@ -2135,7 +2136,7 @@ export function AdminConsole() {
         setModalMode(null);
         setSecurityActionTarget(null);
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setIsSaving(false);
       }
@@ -2168,7 +2169,7 @@ export function AdminConsole() {
         setModalMode(null);
         setSecurityActionTarget(null);
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setIsSaving(false);
       }
@@ -2230,7 +2231,7 @@ export function AdminConsole() {
         setPendingApplyTarget(null);
         setModalMode("prompt-apply");
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setIsSaving(false);
       }
@@ -2285,7 +2286,7 @@ export function AdminConsole() {
         setModalMode(null);
         setPendingApplyTarget(null);
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setIsSaving(false);
       }
@@ -2325,7 +2326,7 @@ export function AdminConsole() {
         setPendingApplyTarget(normalizedApplyForm);
         setModalMode("prompt-publish-choice");
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setIsSaving(false);
       }
@@ -2366,7 +2367,7 @@ export function AdminConsole() {
         setModalMode(null);
         selectFormat(payload.format);
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setIsSaving(false);
       }
@@ -2396,7 +2397,7 @@ export function AdminConsole() {
         setMembers((current) => current.map((member) => (member.memberId === payload.member.memberId ? payload.member : member)));
         setNotice("プロンプト割当を保存しました。");
       } catch (nextError) {
-        setError(nextError.message);
+        setError(toUserFacingErrorMessage(nextError));
       } finally {
         setSavingPromptAssignmentIds((current) => {
           const next = new Set(current);

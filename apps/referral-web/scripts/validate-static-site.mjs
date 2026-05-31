@@ -22,6 +22,9 @@ assert(html.includes(".print()"), "referral web must expose browser print for ge
 assert(html.includes("patientId"), "referral web must expose patientId selection");
 assert(html.includes("facilityId"), "referral web must expose facilityId");
 assert(html.includes("departmentId"), "referral web must expose departmentId");
+assert(html.includes("toUserFacingErrorMessage"), "referral web must convert technical errors before UI display");
+assert(!html.includes("showMessage(error.message"), "referral web must not display raw error.message in toast");
+assert(!html.includes("showLoginMessage(error.message"), "referral web must not display raw login errors");
 assert(!html.includes("/v1/charting/"), "referral web must not read charting product routes directly");
 assert(!html.includes("/v1/fee/"), "referral web must not read fee product routes directly");
 

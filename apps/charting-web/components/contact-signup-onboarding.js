@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { createContactSignup } from "../lib/billing-api";
+import { toUserFacingErrorMessage } from "../lib/user-facing-error";
 
 const CONTACT_SIGNUP_DRAFT_STORAGE_KEY = "medical.contactSignupDraft.v1";
 const EMPTY_FORM = {
@@ -178,7 +179,7 @@ export function ContactSignupOnboarding() {
 
       router.push(`/contact-signup/submitted?${query.toString()}`);
     } catch (submitError) {
-      setError(submitError.message || "お問い合わせの送信に失敗しました。");
+      setError(toUserFacingErrorMessage(submitError, "お問い合わせの送信に失敗しました。"));
       setIsSubmitting(false);
     }
   }

@@ -10,6 +10,7 @@ import {
 } from "../lib/audio-input-preferences";
 import { getGatewayBaseUrl } from "../lib/runtime-config";
 import { fetchWithOperatorAuth } from "../lib/operator-access";
+import { toUserFacingErrorMessage } from "../lib/user-facing-error";
 import { AdminSelect } from "./admin-select";
 import { Icon } from "./icon";
 
@@ -286,7 +287,7 @@ export function AudioTestPanel({
         }
       } catch (nextError) {
         if (!cancelled) {
-          setMobileTestError(nextError.message || "スマホのマイクテスト状態を取得できませんでした。");
+          setMobileTestError(toUserFacingErrorMessage(nextError, "スマホのマイクテスト状態を取得できませんでした。"));
         }
       }
     };
@@ -484,7 +485,7 @@ export function AudioTestPanel({
       setMobileTestJoinUrl(payload.joinUrl || "");
       setMobileTestNotice("QRを発行しました。スマホで読み取ってください。");
     } catch (nextError) {
-      setMobileTestError(nextError.message || "スマホのマイクテスト用QRを発行できませんでした。");
+      setMobileTestError(toUserFacingErrorMessage(nextError, "スマホのマイクテスト用QRを発行できませんでした。"));
       setIsQrModalOpen(false);
     } finally {
       setIsCreatingMobileTest(false);
@@ -522,7 +523,7 @@ export function AudioTestPanel({
       setIsQrModalOpen(false);
       setMobileTestNotice("スマホのマイクテストを終了しました。");
     } catch (nextError) {
-      setMobileTestError(nextError.message || "スマホのマイクテストを終了できませんでした。");
+      setMobileTestError(toUserFacingErrorMessage(nextError, "スマホのマイクテストを終了できませんでした。"));
     } finally {
       setIsCompletingMobileTest(false);
     }

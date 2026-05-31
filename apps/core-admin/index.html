@@ -1065,7 +1065,7 @@
           };
           showLoginMfaStep();
         } else {
-          showLoginMessage(error.message);
+          showLoginMessage(toUserFacingErrorMessage(error, "ログインに失敗しました。"));
         }
       } finally {
         els.loginButton.disabled = false;
@@ -1086,7 +1086,7 @@
           mfaCode: els.loginMfaCode.value
         });
       } catch (error) {
-        showLoginMfaMessage(error.message);
+        showLoginMfaMessage(toUserFacingErrorMessage(error, "本人確認に失敗しました。"));
       } finally {
         updateLoginMfaButton();
       }
@@ -1298,7 +1298,7 @@
             showMessage("2段階認証登録をリセットしました", "success");
             await loadMembers();
           } catch (error) {
-            showMessage(error.message, "error");
+            showMessage(toUserFacingErrorMessage(error, "2段階認証登録をリセットできませんでした。"), "error");
           }
         });
       });
@@ -1500,7 +1500,7 @@
         showMessage("依頼を更新しました", "success");
         await loadDataRequests();
       } catch (error) {
-        showMessage(error.message, "error");
+        showMessage(toUserFacingErrorMessage(error, "依頼を更新できませんでした。"), "error");
       }
     }
 
@@ -1845,7 +1845,7 @@
           showMessage(`${editableTypeLabel(type)}を追加しました`, "success");
           await config.reload();
         } catch (error) {
-          showMessage(error.message, "error");
+          showMessage(toUserFacingErrorMessage(error, `${editableTypeLabel(type)}を追加できませんでした。`), "error");
         } finally {
           els.editModalSubmit.disabled = false;
         }
@@ -1866,7 +1866,7 @@
         showMessage(`${editableTypeLabel(type)}を更新しました`, "success");
         await reloadEditedCollection(type);
       } catch (error) {
-        showMessage(error.message, "error");
+        showMessage(toUserFacingErrorMessage(error, `${editableTypeLabel(type)}を更新できませんでした。`), "error");
       } finally {
         els.editModalSubmit.disabled = false;
       }
@@ -2031,7 +2031,7 @@
         showMessage(mutationSuccessLabel(path), "success");
         await reload();
       } catch (error) {
-        showMessage(error.message, "error");
+        showMessage(toUserFacingErrorMessage(error, "保存できませんでした。"), "error");
       }
     }
 
@@ -2085,7 +2085,11 @@
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const error = new Error(localizedApiError(payload.message || payload.error || `HTTP ${response.status}`, payload.error || payload.code || ""));
+        const error = new Error(toUserFacingErrorMessage({
+          message: payload.message || payload.error || `HTTP ${response.status}`,
+          code: payload.error || payload.code || "",
+          status: response.status
+        }, "処理に失敗しました。"));
         error.code = payload.error || payload.code || "";
         error.status = response.status;
         error.field = payload.field;
@@ -2320,7 +2324,7 @@
       });
       if (options.load !== false && state.session) {
         setViewLoading(view);
-        refreshCurrentView().catch((error) => showMessage(error.message, "error"));
+        refreshCurrentView().catch((error) => showMessage(toUserFacingErrorMessage(error, "表示内容を更新できませんでした。"), "error"));
       }
     }
 
@@ -2470,9 +2474,17 @@
       })[value] || value;
     }
 
-    function localizedApiError(message, code = "") {
+    function toUserFacingErrorMessage(error, fallbackMessage = "処理に失敗しました。時間を置いてもう一度お試しください。") {
+      const rawMessage = typeof error === "string" ? error : error?.message;
+      const code = typeof error === "object" && error ? String(error.code || error.error || "") : "";
+      const status = typeof error === "object" && error ? Number(error.status || error.statusCode || 0) : 0;
+      return localizedApiError(rawMessage, code, status, fallbackMessage);
+    }
+
+    function localizedApiError(message, code = "", status = 0, fallbackMessage = "処理に失敗しました。時間を置いてもう一度お試しください。") {
       if (code === "mfa_required") return "2段階認証コードを入力してください。";
       const text = String(message || "");
+      const lower = text.toLowerCase();
       const authAppCode = ["M", "F", "A"].join("");
       if (text.includes("Invalid") && text.includes(authAppCode)) {
         return "2段階認証コードが正しくありません。";
@@ -2480,7 +2492,26 @@
       if (text === "Invalid credentials") return "病院コード、個人ID、またはパスワードが正しくありません。";
       if (text === "Session revoked") return "ログイン状態が無効になりました。もう一度ログインしてください。";
       if (text === "Invalid session") return "ログイン状態を確認できません。もう一度ログインしてください。";
-      return text;
+      if (text === "Session expired") return "ログイン状態を確認できません。もう一度ログインしてください。";
+      if (lower.includes("csrf")) return "画面を再読み込みして、もう一度お試しください。";
+      if (lower.includes("role is required") || lower.includes("access is required") || lower.includes("product access is required") || lower === "forbidden" || status === 403) {
+        return "この操作を行う権限がありません。";
+      }
+      if (lower.includes("failed to fetch") || lower.includes("networkerror") || lower === "load failed") {
+        return "通信に失敗しました。接続を確認して、もう一度お試しください。";
+      }
+      if (lower.includes("not found") || status === 404) {
+        return "対象のデータが見つかりませんでした。画面を再読み込みしてからもう一度お試しください。";
+      }
+      if (lower.includes("rate limit") || status === 429) {
+        return "短時間に操作が続いています。少し待ってからもう一度お試しください。";
+      }
+      if (lower.includes("internal server error") || /^http 5\d\d$/iu.test(text) || status >= 500) {
+        return "処理中に問題が発生しました。時間を置いてもう一度お試しください。";
+      }
+      if (/^http \d{3}$/iu.test(text)) return fallbackMessage;
+      if (!text) return fallbackMessage;
+      return /[ぁ-んァ-ヶ一-龠]/u.test(text) ? text : fallbackMessage;
     }
 
     function productLabel(value) {
