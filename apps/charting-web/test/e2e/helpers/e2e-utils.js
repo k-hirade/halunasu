@@ -73,6 +73,8 @@ export const soapFormats = [
   })
 ];
 
+const soapFormatSummaries = soapFormats.map(({ outputTemplate: _outputTemplate, customization: _customization, sections: _sections, ...format }) => format);
+
 function createPromptFormat(formatId, displayName, ownerMemberId, overrides = {}) {
   return {
     formatId,
@@ -270,11 +272,33 @@ export async function installGatewayMocks(page, routes = []) {
 
 export function adminRoutes() {
   return [
+    {
+      method: "GET",
+      path: "/api/v1/admin/bootstrap",
+      handler: ({ url }) => ({
+        session: operatorSession.session,
+        organizations,
+        selectedOrgId: url.searchParams.get("orgId") || operatorSession.session.orgId,
+        canManagePlatform: false,
+        roles: roleDefinitions,
+        section: url.searchParams.get("section") || "all",
+        formats: soapFormatSummaries,
+        members,
+        events: []
+      })
+    },
     { method: "GET", path: "/api/v1/admin/organizations", handler: () => ({ organizations }) },
     { method: "GET", path: "/api/v1/admin/role-definitions", handler: () => ({ roles: roleDefinitions }) },
     { method: "GET", path: "/api/v1/admin/members", handler: () => ({ members }) },
     { method: "GET", path: "/api/v1/admin/trusted-recorders", handler: () => ({ recorders: [] }) },
-    { method: "GET", path: "/api/v1/admin/soap-formats", handler: () => ({ formats: soapFormats }) },
+    { method: "GET", path: "/api/v1/admin/soap-formats", handler: ({ url }) => ({ formats: url.searchParams.get("summary") ? soapFormatSummaries : soapFormats }) },
+    {
+      method: "GET",
+      path: /^\/api\/v1\/admin\/soap-formats\/[^/]+$/,
+      handler: ({ path }) => ({
+        format: soapFormats.find((format) => format.formatId === path.split("/").at(-1)) || soapFormats[0]
+      })
+    },
     { method: "GET", path: "/api/v1/admin/audit-events", handler: () => ({ events: [] }) },
     {
       method: "PATCH",

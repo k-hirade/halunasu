@@ -355,7 +355,7 @@ export class FirestorePlatformStore {
     const organization = await this.requireOrganization(orgId);
     const snapshot = await this.orgCollection(orgId, collections.members).orderBy("createdAt", "asc").get();
     const members = docsFromSnapshot(snapshot);
-    return Promise.all(members.map((member) => this.withMemberMfaState(organization, member)));
+    return this.withMembersMfaState(organization, members);
   }
 
   async getMember(orgId, memberId) {
@@ -365,6 +365,23 @@ export class FirestorePlatformStore {
 
   async withMemberMfaState(organization, member) {
     const identity = await this.getLoginIdentity(organization.organizationCode, member.loginId);
+    return this.applyMemberMfaState(member, identity);
+  }
+
+  async withMembersMfaState(organization, members) {
+    if (!members.length) {
+      return [];
+    }
+
+    const identityRefs = members.map((member) => this.doc(loginIdentityPath(organization.organizationCode, member.loginId)));
+    const identitySnapshots = typeof this.db.getAll === "function"
+      ? await this.db.getAll(...identityRefs)
+      : await Promise.all(identityRefs.map((ref) => ref.get()));
+
+    return members.map((member, index) => this.applyMemberMfaState(member, docDataOrNull(identitySnapshots[index])));
+  }
+
+  applyMemberMfaState(member, identity) {
     return compactObject({
       ...member,
       mfaRequired: identity?.mfaRequired,

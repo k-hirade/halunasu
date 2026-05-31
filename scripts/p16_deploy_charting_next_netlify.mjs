@@ -47,7 +47,9 @@ for (const env of envs) {
 
   console.log(`== ${env}/charting-web -> ${site.siteName} ==`);
   console.log(`Target domain: ${site.targetDomain}`);
-  console.log(`Gateway proxy: ${gatewayUrl}`);
+  console.log(`Gateway API base: ${gatewayUrl}`);
+  console.log("Gateway auth base: same-origin /api/v1 proxy");
+  console.log(`Gateway proxy fallback: ${gatewayUrl}`);
   console.log(`Gateway WS: ${gatewayWsUrl}`);
   console.log(`Billing proxy: ${billingUrl || "(not configured)"}`);
   console.log(`LP signup base: ${lpBaseUrl}`);
@@ -60,6 +62,10 @@ for (const env of envs) {
   }
 
   setNetlifyEnv(site.siteId, "GATEWAY_PROXY_TARGET", gatewayUrl);
+  setNetlifyEnv(site.siteId, "GATEWAY_BASE_URL", gatewayUrl);
+  setNetlifyEnv(site.siteId, "NEXT_PUBLIC_GATEWAY_BASE_URL", gatewayUrl);
+  setNetlifyEnv(site.siteId, "GATEWAY_AUTH_BASE_URL", "");
+  setNetlifyEnv(site.siteId, "NEXT_PUBLIC_GATEWAY_AUTH_BASE_URL", "");
   setNetlifyEnv(site.siteId, "GATEWAY_WS_URL", gatewayWsUrl);
   setNetlifyEnv(site.siteId, "NEXT_PUBLIC_GATEWAY_WS_URL", gatewayWsUrl);
   setNetlifyEnv(site.siteId, "BILLING_BASE_URL", "/billing");
@@ -73,8 +79,10 @@ for (const env of envs) {
     ...process.env,
     NETLIFY_SITE_ID: site.siteId,
     HALUNASU_ENV: env,
-    GATEWAY_BASE_URL: "",
-    NEXT_PUBLIC_GATEWAY_BASE_URL: "",
+    GATEWAY_BASE_URL: gatewayUrl,
+    NEXT_PUBLIC_GATEWAY_BASE_URL: gatewayUrl,
+    GATEWAY_AUTH_BASE_URL: "",
+    NEXT_PUBLIC_GATEWAY_AUTH_BASE_URL: "",
     GATEWAY_PROXY_TARGET: gatewayUrl,
     GATEWAY_WS_URL: gatewayWsUrl,
     NEXT_PUBLIC_GATEWAY_WS_URL: gatewayWsUrl,

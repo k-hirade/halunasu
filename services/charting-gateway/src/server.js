@@ -110,6 +110,15 @@ function parseBoolean(value, defaultValue = false) {
   return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
 }
 
+function parseNonNegativeInteger(value, defaultValue) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return defaultValue;
+  }
+
+  return Math.floor(parsed);
+}
+
 function isLocalOrigin(origin) {
   return origin === "http://localhost:3000" || origin === "http://127.0.0.1:3000";
 }
@@ -184,7 +193,9 @@ const config = {
   liveStt: createLiveSttConfigFromEnv(process.env),
   allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS, process.env.APP_BASE_URL || defaultAppBaseUrl, {
     includeLocalhost: !isProduction
-  })
+  }),
+  operatorContextCacheTtlMs: parseNonNegativeInteger(process.env.OPERATOR_CONTEXT_CACHE_TTL_MS, 3000),
+  operatorContextCacheMaxEntries: parseNonNegativeInteger(process.env.OPERATOR_CONTEXT_CACHE_MAX_ENTRIES, 1000)
 };
 const platformAuthBridgeEnabled = parseBoolean(
   process.env.CHARTING_GATEWAY_PLATFORM_AUTH_BRIDGE,
@@ -353,6 +364,7 @@ const pendingFinalTranscriptJobs = new Map();
 const finalTranscriptSegmenters = new Map();
 const recordingAutoStopTimers = new Map();
 const soapGenerationPreviewPublishers = new Map();
+const operatorContextCache = new Map();
 
 const TRUSTED_RECORDER_STALE_MS = 45_000;
 const TRUSTED_RECORDER_ASSIGNMENT_TTL_MS = 3 * 60_000;
@@ -1584,9 +1596,125 @@ async function authenticatePlatformOperator({ organizationCode, loginId, passwor
   };
 }
 
+function operatorContextCacheIsEnabled() {
+  return platformAuthBridgeEnabled && config.operatorContextCacheTtlMs > 0 && config.operatorContextCacheMaxEntries > 0;
+}
+
+function operatorContextCacheKey(payload = {}) {
+  return [
+    payload.organizationCode || "",
+    payload.loginId || "",
+    payload.memberId || payload.sub || "",
+    Number(payload.tokenVersion ?? -1),
+    payload.exp || "",
+    Array.isArray(payload.amr) ? payload.amr.join(",") : "",
+    payload.mfaAt || ""
+  ].join("\x1f");
+}
+
+function cloneHydratedOperatorPayload(payload = {}) {
+  return {
+    ...payload,
+    roles: Array.isArray(payload.roles) ? [...payload.roles] : [],
+    organizationBilling: payload.organizationBilling ? { ...payload.organizationBilling } : payload.organizationBilling,
+    organizationAccess: payload.organizationAccess ? { ...payload.organizationAccess } : payload.organizationAccess
+  };
+}
+
+function pruneOperatorContextCache(now = Date.now()) {
+  for (const [key, entry] of operatorContextCache.entries()) {
+    if (!entry || entry.expiresAt <= now) {
+      operatorContextCache.delete(key);
+    }
+  }
+
+  while (operatorContextCache.size >= config.operatorContextCacheMaxEntries) {
+    const oldestKey = operatorContextCache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    operatorContextCache.delete(oldestKey);
+  }
+}
+
+function getCachedOperatorContext(payload) {
+  if (!operatorContextCacheIsEnabled()) {
+    return null;
+  }
+
+  const key = operatorContextCacheKey(payload);
+  const entry = operatorContextCache.get(key);
+  const now = Date.now();
+
+  if (!entry || entry.expiresAt <= now) {
+    operatorContextCache.delete(key);
+    return null;
+  }
+
+  operatorContextCache.delete(key);
+  operatorContextCache.set(key, entry);
+  return cloneHydratedOperatorPayload(entry.payload);
+}
+
+function setCachedOperatorContext(sourcePayload, hydratedPayload) {
+  if (!operatorContextCacheIsEnabled() || !hydratedPayload) {
+    return;
+  }
+
+  const now = Date.now();
+  const tokenExpiresAt = Number(sourcePayload?.exp || 0);
+  const cacheExpiresAt = now + config.operatorContextCacheTtlMs;
+  const expiresAt = Number.isFinite(tokenExpiresAt) && tokenExpiresAt > 0
+    ? Math.min(cacheExpiresAt, tokenExpiresAt)
+    : cacheExpiresAt;
+
+  if (expiresAt <= now) {
+    return;
+  }
+
+  pruneOperatorContextCache(now);
+  operatorContextCache.set(operatorContextCacheKey(sourcePayload), {
+    expiresAt,
+    payload: cloneHydratedOperatorPayload(hydratedPayload)
+  });
+}
+
+function clearOperatorContextCache() {
+  operatorContextCache.clear();
+}
+
+function clearOperatorContextCacheForMember(orgId, memberId) {
+  if (!orgId || !memberId) {
+    return;
+  }
+
+  for (const [key, entry] of operatorContextCache.entries()) {
+    if (entry?.payload?.orgId === orgId && entry?.payload?.memberId === memberId) {
+      operatorContextCache.delete(key);
+    }
+  }
+}
+
+function clearOperatorContextCacheForOrganization(orgId) {
+  if (!orgId) {
+    return;
+  }
+
+  for (const [key, entry] of operatorContextCache.entries()) {
+    if (entry?.payload?.orgId === orgId) {
+      operatorContextCache.delete(key);
+    }
+  }
+}
+
 async function hydratePlatformOperatorPayload(payload) {
   if (!payload?.organizationCode || !payload?.loginId) {
     return null;
+  }
+
+  const cached = getCachedOperatorContext(payload);
+  if (cached) {
+    return cached;
   }
 
   const identity = await platformStore.getLoginIdentity(payload.organizationCode, payload.loginId);
@@ -1617,7 +1745,7 @@ async function hydratePlatformOperatorPayload(payload) {
 
   const mfaRequired = Boolean(identity.mfaRequired) || operatorRequiresMfa(normalizedMember);
 
-  return {
+  const hydrated = {
     ...payload,
     orgId: normalizedOrganization.orgId,
     clinicId: normalizedOrganization.clinicId,
@@ -1636,6 +1764,8 @@ async function hydratePlatformOperatorPayload(payload) {
     mfaRequired,
     mfaEnrolledAt: platformMfaEnrolledAt(identity)
   };
+  setCachedOperatorContext(payload, hydrated);
+  return hydrated;
 }
 
 function platformMfaEnrolledAt(identity = {}) {
@@ -1907,6 +2037,79 @@ async function listAdminMembers(orgId) {
   return members.map(normalizePlatformMemberForGateway);
 }
 
+function normalizeAdminBootstrapSection(value) {
+  const section = String(value || "all").trim();
+  if (["home", "members", "formats", "audio-test", "audit", "account", "all"].includes(section)) {
+    return section;
+  }
+
+  if (section === "prompts" || section === "formats-infer" || section === "prompts-infer") {
+    return "formats";
+  }
+
+  return "all";
+}
+
+async function listAdminSoapFormats(req, { summary = false } = {}) {
+  const orgId = getAdminTargetOrgId(req);
+  const listFormats = summary && typeof store.listSoapFormatProfileSummaries === "function"
+    ? store.listSoapFormatProfileSummaries.bind(store)
+    : store.listSoapFormatProfiles?.bind(store);
+  const storedFormats = ((await listFormats?.({
+    orgId,
+    memberId: getMemberIdForOperator(req.operator),
+    roles: getRolesForOperator(req.operator)
+  })) || []).filter((format) => canManageOrganizationSoapFormats(req.operator) || isOwnSoapFormat(req.operator, format));
+
+  return includeSystemDefaultSoapFormat(storedFormats);
+}
+
+async function buildAdminBootstrapPayload(req) {
+  if (!canOpenSettingsConsole(req.operator)) {
+    throw createPublicError("設定を開く権限がありません。", 403);
+  }
+
+  const section = normalizeAdminBootstrapSection(req.query.section);
+  const currentOrgId = getOrgIdForOperator(req.operator);
+  const organizations = await listAdminOrganizations();
+  const canManagePlatform = canManagePlatformSettings(req.operator);
+  const visibleOrganizations = canManagePlatform
+    ? organizations
+    : organizations.filter((organization) => (organization.orgId || organization.clinicId) === currentOrgId);
+  const requestedOrgId = String(req.query.orgId || "").trim();
+  const selectedOrgId = requestedOrgId
+    ? getAdminTargetOrgId(req)
+    : currentOrgId || visibleOrganizations[0]?.orgId || visibleOrganizations[0]?.clinicId || "";
+  const shouldLoadRoles = canOpenAdminConsole(req.operator) && ["all", "members"].includes(section);
+  const shouldLoadMembers = (canManageMembers(req.operator) || canManagePlatform) && ["all", "members", "formats", "audit"].includes(section);
+  const shouldLoadFormats = canReadSoapFormats(req.operator) && ["all", "members", "formats"].includes(section);
+  const shouldLoadAuditEvents = canOpenAdminConsole(req.operator) && ["all", "audit"].includes(section);
+
+  const [roles, formatsRaw, members, events] = await Promise.all([
+    shouldLoadRoles ? (store.listRoleDefinitions?.() || []) : [],
+    shouldLoadFormats ? listAdminSoapFormats(req, { summary: true }) : [],
+    shouldLoadMembers && selectedOrgId ? listAdminMembers(selectedOrgId) : [],
+    shouldLoadAuditEvents
+      ? (store.listOrganizationAuditEvents?.({
+          orgId: currentOrgId,
+          limit: 120
+        }) || [])
+      : []
+  ]);
+
+  return {
+    session: serializeOperatorPayload(req.operator, null),
+    organizations: visibleOrganizations.map(serializeOrganizationForClient),
+    selectedOrgId,
+    canManagePlatform,
+    section,
+    roles: roles.map(serializeRoleDefinitionForClient),
+    formats: formatsRaw.map(serializeSoapFormatSummaryForClient),
+    members: members.map(serializeMemberForClient),
+    events
+  };
+}
+
 async function updateAdminOrganizationRecordingPolicy({ orgId, recordingMaxDurationMinutes, actorId }) {
   if (!platformAuthBridgeEnabled) {
     return store.updateOrganizationRecordingPolicy?.({
@@ -1916,9 +2119,11 @@ async function updateAdminOrganizationRecordingPolicy({ orgId, recordingMaxDurat
     });
   }
 
-  return platformStore.updateOrganization(orgId, {
+  const organization = await platformStore.updateOrganization(orgId, {
     recordingMaxDurationMinutes
   });
+  clearOperatorContextCacheForOrganization(orgId);
+  return organization;
 }
 
 async function createAdminOrganizationWithMember({ input, actorId }) {
@@ -1996,6 +2201,7 @@ async function updateAdminMemberPreferences({ orgId, memberId, defaultRecordingS
   await platformStore.updateMember(orgId, memberId, {
     defaultRecordingSource
   });
+  clearOperatorContextCacheForMember(orgId, memberId);
   return getPlatformMemberWithGatewayView(orgId, memberId);
 }
 
@@ -2035,6 +2241,7 @@ async function assignAdminSoapFormatToOrganization({ orgId, profileId, actorId }
   const organization = await platformStore.updateOrganization(orgId, {
     defaultPromptProfileId
   });
+  clearOperatorContextCacheForOrganization(orgId);
   await appendOrganizationAuditEventSafe(orgId, {
     type: "soap_format.assigned",
     actorId,
@@ -2069,6 +2276,7 @@ async function assignAdminSoapFormatToMember({ orgId, memberId, profileId, actor
   await platformStore.updateMember(orgId, memberId, {
     defaultPromptProfileId
   });
+  clearOperatorContextCacheForMember(orgId, memberId);
   await appendOrganizationAuditEventSafe(orgId, {
     type: "soap_format.assigned",
     actorId,
@@ -2092,6 +2300,7 @@ async function resetAdminMemberPassword({ orgId, memberId, password, actorId }) 
   }
 
   await platformStore.updateMember(orgId, memberId, { password });
+  clearOperatorContextCacheForMember(orgId, memberId);
   return getPlatformMemberWithGatewayView(orgId, memberId);
 }
 
@@ -2110,6 +2319,7 @@ async function updateAdminMemberRoles({ orgId, memberId, roles, actorId }) {
     return null;
   }
   await platformStore.updateMember(orgId, memberId, mapGatewayRolesToPlatformPatch(roles, currentMember));
+  clearOperatorContextCacheForMember(orgId, memberId);
   return getPlatformMemberWithGatewayView(orgId, memberId);
 }
 
@@ -2124,6 +2334,7 @@ async function updateAdminMemberStatus({ orgId, memberId, status, actorId }) {
   }
 
   await platformStore.updateMember(orgId, memberId, { status });
+  clearOperatorContextCacheForMember(orgId, memberId);
   return getPlatformMemberWithGatewayView(orgId, memberId);
 }
 
@@ -2148,6 +2359,7 @@ async function revokeAdminMemberSessions({ orgId, memberId, actorId }) {
     return null;
   }
   const updated = await platformStore.revokeMemberSessions(identity);
+  clearOperatorContextCacheForMember(orgId, memberId);
   return {
     memberId,
     tokenVersion: Number(updated.tokenVersion || 0)
@@ -2164,6 +2376,7 @@ async function resetAdminMemberMfa({ orgId, memberId, actorId }) {
   }
 
   await platformStore.resetMemberMfa(orgId, memberId);
+  clearOperatorContextCacheForMember(orgId, memberId);
   return getPlatformMemberWithGatewayView(orgId, memberId);
 }
 
@@ -2911,6 +3124,30 @@ function serializeSoapFormatForClient(format) {
     outputTemplate: format.outputTemplate || "",
     customization: format.customization || {},
     sections: format.sections || [],
+    latestVersion: format.latestVersion || null,
+    createdAt: format.createdAt || null,
+    updatedAt: format.updatedAt || null
+  };
+}
+
+function serializeSoapFormatSummaryForClient(format) {
+  if (!format) {
+    return null;
+  }
+
+  return {
+    profileId: format.profileId || format.formatId,
+    formatId: format.formatId || format.profileId,
+    displayName: format.displayName || "SOAPフォーマット",
+    scope: format.scope || "organization",
+    ownerMemberId: format.ownerMemberId || null,
+    facilityId: format.facilityId || null,
+    departmentId: format.departmentId || null,
+    status: format.status || "draft",
+    approved: format.approved === true,
+    currentVersionId: format.currentVersionId || null,
+    currentDraftVersionId: format.currentDraftVersionId || null,
+    templateKey: format.templateKey || "outpatient_soap_note",
     latestVersion: format.latestVersion || null,
     createdAt: format.createdAt || null,
     updatedAt: format.updatedAt || null
@@ -4825,6 +5062,14 @@ app.get("/api/v1/operator/csrf", requireOperatorAuth, (_req, res) => {
   res.json({ csrfToken });
 });
 
+app.get("/api/v1/admin/bootstrap", requireOperatorAuth, requireOperatorReadAccess, rateLimit("admin-bootstrap", { limit: 120, windowMs: 10 * 60_000 }), async (req, res) => {
+  try {
+    res.json(await buildAdminBootstrapPayload(req));
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+});
+
 app.post("/internal/recording/auto-stop", async (req, res) => {
   try {
     const providedSecret = normalizeHeaderSecret(req.get("x-finalize-internal-secret"));
@@ -5394,16 +5639,11 @@ app.get("/api/v1/admin/soap-formats", requireOperatorAuth, requireOperatorReadAc
       return;
     }
 
-    const orgId = getAdminTargetOrgId(req);
-    const storedFormats = ((await store.listSoapFormatProfiles?.({
-      orgId,
-      memberId: getMemberIdForOperator(req.operator),
-      roles: getRolesForOperator(req.operator)
-    })) || []).filter((format) => canManageOrganizationSoapFormats(req.operator) || isOwnSoapFormat(req.operator, format));
-    const formats = includeSystemDefaultSoapFormat(storedFormats);
+    const summary = ["1", "true", "yes"].includes(String(req.query.summary || "").toLowerCase());
+    const formats = await listAdminSoapFormats(req, { summary });
 
     res.json({
-      formats: formats.map(serializeSoapFormatForClient)
+      formats: formats.map(summary ? serializeSoapFormatSummaryForClient : serializeSoapFormatForClient)
     });
   } catch (error) {
     sendError(res, error, 400);
@@ -7538,5 +7778,7 @@ export {
 export const __testHooks = {
   store,
   platformStore,
-  buildOperatorSessionTokenFromPayload
+  buildOperatorSessionTokenFromPayload,
+  clearOperatorContextCache,
+  getOperatorContextCacheSize: () => operatorContextCache.size
 };

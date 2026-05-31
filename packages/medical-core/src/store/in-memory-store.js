@@ -2374,6 +2374,15 @@ export class InMemoryStore {
       .sort((left, right) => Date.parse(right.updatedAt || 0) - Date.parse(left.updatedAt || 0));
   }
 
+  async listSoapFormatProfileSummaries({ orgId, memberId = null, roles = [] } = {}) {
+    const canSeeAll = canManageOrganizationRoles(roles);
+    return Array.from(this.promptProfiles.values())
+      .filter((profile) => !orgId || profile.orgId === orgId)
+      .filter((profile) => canSeeAll || !profile.ownerMemberId || profile.ownerMemberId === memberId || profile.scope !== "member")
+      .map(({ versions: _versions, ...profile }) => serializeSoapFormatProfile(profile))
+      .sort((left, right) => Date.parse(right.updatedAt || 0) - Date.parse(left.updatedAt || 0));
+  }
+
   async getSoapFormatProfile({ orgId, profileId }) {
     const profile = this.promptProfiles.get(`${orgId}:${profileId}`);
     return profile ? serializeSoapFormatProfile(profile) : null;

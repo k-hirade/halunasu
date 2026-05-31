@@ -195,6 +195,71 @@ test("platform bridge prompt assignments update Core organization and members wi
   );
 });
 
+test("admin bootstrap aggregates settings data for the selected organization", async () => {
+  const bootstrap = await request("GET", `/api/v1/admin/bootstrap?orgId=${org.orgId}`);
+
+  assert.equal(bootstrap.status, 200, JSON.stringify(bootstrap.body));
+  assert.equal(bootstrap.body.session.member.memberId, admin.memberId);
+  assert.equal(bootstrap.body.selectedOrgId, org.orgId);
+  assert.equal(bootstrap.body.organizations.some((item) => item.orgId === org.orgId), true);
+  assert.equal(bootstrap.body.members.some((item) => item.memberId === doctor.memberId), true);
+  assert.equal(bootstrap.body.formats.some((item) => item.formatId === customPrompt.profileId), true);
+  assert.equal(bootstrap.body.roles.some((item) => item.roleId === "org_admin"), true);
+  assert.equal(Array.isArray(bootstrap.body.events), true);
+});
+
+test("admin bootstrap formats section skips unrelated data and returns prompt summaries", async () => {
+  const bootstrap = await request("GET", `/api/v1/admin/bootstrap?orgId=${org.orgId}&section=formats`);
+
+  assert.equal(bootstrap.status, 200, JSON.stringify(bootstrap.body));
+  assert.equal(bootstrap.body.section, "formats");
+  assert.equal(bootstrap.body.roles.length, 0);
+  assert.equal(bootstrap.body.events.length, 0);
+  assert.equal(bootstrap.body.members.some((item) => item.memberId === doctor.memberId), true);
+  const promptSummary = bootstrap.body.formats.find((item) => item.formatId === customPrompt.profileId);
+  assert.ok(promptSummary);
+  assert.equal(Object.hasOwn(promptSummary, "outputTemplate"), false);
+  assert.equal(Object.hasOwn(promptSummary, "customization"), false);
+
+  const detail = await request("GET", `/api/v1/admin/soap-formats/${customPrompt.profileId}?orgId=${org.orgId}`);
+  assert.equal(detail.status, 200, JSON.stringify(detail.body));
+  assert.equal(typeof detail.body.format.outputTemplate, "string");
+});
+
+test("operator context hydration reuses the short process cache", async () => {
+  __testHooks.clearOperatorContextCache();
+  const countedMethods = ["getLoginIdentity", "getOrganization", "getMember", "getProductEntitlement"];
+  const originals = new Map();
+  const counts = Object.fromEntries(countedMethods.map((method) => [method, 0]));
+
+  for (const method of countedMethods) {
+    originals.set(method, __testHooks.platformStore[method]);
+    __testHooks.platformStore[method] = (...args) => {
+      counts[method] += 1;
+      return originals.get(method).apply(__testHooks.platformStore, args);
+    };
+  }
+
+  try {
+    const first = await request("GET", "/api/v1/operator/me");
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    for (const method of countedMethods) {
+      assert.ok(counts[method] > 0, `${method} should be read on the initial request`);
+    }
+
+    const countsAfterFirstRequest = { ...counts };
+    const second = await request("GET", "/api/v1/operator/me");
+    assert.equal(second.status, 200, JSON.stringify(second.body));
+    assert.deepEqual(counts, countsAfterFirstRequest);
+    assert.equal(__testHooks.getOperatorContextCacheSize(), 1);
+  } finally {
+    for (const [method, original] of originals.entries()) {
+      __testHooks.platformStore[method] = original;
+    }
+    __testHooks.clearOperatorContextCache();
+  }
+});
+
 test("session creation applies Core Platform recording and prompt defaults", async () => {
   const preference = await request("PATCH", `/api/v1/admin/members/${doctor.memberId}/preferences`, {
     defaultRecordingSource: "local_browser"

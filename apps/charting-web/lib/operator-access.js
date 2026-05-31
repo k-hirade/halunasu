@@ -14,7 +14,7 @@ import {
   memberRolesHavePermission,
   roleLabel
 } from "@medical/contracts";
-import { getGatewayBaseUrl } from "./runtime-config";
+import { getGatewayAuthBaseUrl } from "./runtime-config";
 
 const STORAGE_KEY = "medical.operatorAccessToken.v2";
 export const COOKIE_OPERATOR_ACCESS_TOKEN = "__cookie_operator_session__";
@@ -215,7 +215,7 @@ export async function refreshOperatorCsrfToken() {
     return operatorCsrfRefreshPromise;
   }
 
-  operatorCsrfRefreshPromise = fetch(`${getGatewayBaseUrl()}/api/v1/operator/csrf`, {
+  operatorCsrfRefreshPromise = fetch(`${getGatewayAuthBaseUrl()}/api/v1/operator/csrf`, {
     cache: "no-store",
     credentials: "include"
   })
@@ -338,7 +338,7 @@ export async function fetchWithOperatorAuth(url, options = {}, accessToken = nul
 
 export async function loginOperator({ organizationCode, loginId, password }) {
   clearOperatorSessionCache();
-  const response = await fetch(`${getGatewayBaseUrl()}/api/v1/operator/login`, {
+  const response = await fetch(`${getGatewayAuthBaseUrl()}/api/v1/operator/login`, {
     method: "POST",
     credentials: "include",
     headers: {
@@ -363,7 +363,7 @@ export async function loginOperator({ organizationCode, loginId, password }) {
 
 async function completeOperatorMfa(path, { challengeId, code }) {
   clearOperatorSessionCache();
-  const response = await fetch(`${getGatewayBaseUrl()}${path}`, {
+  const response = await fetch(`${getGatewayAuthBaseUrl()}${path}`, {
     method: "POST",
     credentials: "include",
     headers: {
@@ -403,7 +403,7 @@ export async function getCurrentOperatorSession(accessToken = null) {
     return existingRequest;
   }
 
-  const request = fetch(`${getGatewayBaseUrl()}/api/v1/operator/me`, {
+  const request = fetch(`${getGatewayAuthBaseUrl()}/api/v1/operator/me`, {
     cache: "no-store",
     credentials: "include",
     headers: buildOperatorAuthHeaders(accessToken)
@@ -441,7 +441,7 @@ export async function getCurrentOperatorSession(accessToken = null) {
 
 export async function logoutOperator() {
   clearOperatorSessionCache();
-  await fetch(`${getGatewayBaseUrl()}/api/v1/operator/logout`, {
+  await fetch(`${getGatewayAuthBaseUrl()}/api/v1/operator/logout`, {
     method: "POST",
     credentials: "include",
     headers: buildOperatorAuthHeaders(COOKIE_OPERATOR_ACCESS_TOKEN)

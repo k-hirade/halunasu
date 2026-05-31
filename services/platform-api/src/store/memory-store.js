@@ -332,12 +332,20 @@ export class MemoryPlatformStore {
   }
 
   withMemberMfaState(organization, member) {
-    const identity = this.getLoginIdentity(organization.organizationCode, member.loginId);
+    const identity = this.loginIdentityForMember(organization, member);
     return compactObject({
       ...member,
       mfaRequired: identity?.mfaRequired,
       mfaEnrolled: identity?.mfaEnrolled
     });
+  }
+
+  loginIdentityForMember(organization, member) {
+    const identityKey = loginIdentityKey(
+      organization.organizationCode,
+      member.loginId
+    );
+    return this.loginIdentities.get(identityKey) || null;
   }
 
   updateMember(orgId, memberId, input) {

@@ -31,7 +31,6 @@ import {
   fetchWithOperatorAuth,
   formatMemberRole,
   getAssignableRoleDefinitions,
-  getCurrentOperatorSession,
   useOperatorAccess
 } from "../lib/operator-access";
 import { AdminSelect } from "./admin-select";
@@ -384,6 +383,18 @@ function readAdminTabFromUrl() {
 
   const params = new URLSearchParams(window.location.search);
   return tabFromSectionQuery(params.get("section"));
+}
+
+function bootstrapSectionForTab(tabId) {
+  if (tabId === "formats" || tabId === FORMATS_INFER_TAB) {
+    return "formats";
+  }
+
+  if (["members", "audio-test", "audit", "account"].includes(tabId)) {
+    return tabId;
+  }
+
+  return "home";
 }
 
 function readBillingFlowHintFromUrl() {
@@ -790,6 +801,10 @@ function normalizeFormatForEditor(format) {
   };
 }
 
+function formatHasEditorDetail(format) {
+  return Boolean(format && Object.prototype.hasOwnProperty.call(format, "outputTemplate"));
+}
+
 function buildPayload(editor) {
   return {
     ...editor,
@@ -906,6 +921,7 @@ export function AdminConsole() {
   const [previewState, setPreviewState] = useState("idle");
   const [previewError, setPreviewError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isFormatDetailLoading, setIsFormatDetailLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -1066,12 +1082,24 @@ export function AdminConsole() {
   const isInferringFormat = inferState === "loading";
   const canOpenFormatInference = canManagePromptSettings;
 
-  function adminOrgQuery(orgId = selectedOrgId || currentOrgId) {
-    return orgId ? `?orgId=${encodeURIComponent(orgId)}` : "";
+  function adminOrgQuery(orgId = selectedOrgId || currentOrgId, params = {}) {
+    const query = new URLSearchParams();
+    if (orgId) {
+      query.set("orgId", orgId);
+    }
+
+    for (const [key, value] of Object.entries(params || {})) {
+      if (value !== undefined && value !== null && value !== "") {
+        query.set(key, value);
+      }
+    }
+
+    const serialized = query.toString();
+    return serialized ? `?${serialized}` : "";
   }
 
-  function adminApiUrl(path, orgId = selectedOrgId || currentOrgId) {
-    return `${getGatewayBaseUrl()}${path}${adminOrgQuery(orgId)}`;
+  function adminApiUrl(path, orgId = selectedOrgId || currentOrgId, params = {}) {
+    return `${getGatewayBaseUrl()}${path}${adminOrgQuery(orgId, params)}`;
   }
 
   function cancelPreviewRequest() {
@@ -1233,7 +1261,10 @@ export function AdminConsole() {
 
     setActiveTab(nextTab);
     syncAdminSectionUrl(nextTab, { replace: Boolean(options.replace) });
-  }, []);
+    if (options.load !== false && accessToken && nextTab !== activeTab) {
+      void loadAdminData(selectedOrgId, nextTab);
+    }
+  }, [accessToken, activeTab, selectedOrgId]);
 
   function defaultApplyTarget(format = selectedFormat) {
     const ownerMemberId = canManageCurrentMembers
@@ -1246,13 +1277,81 @@ export function AdminConsole() {
     };
   }
 
-  async function loadAdminData(targetOrgId = selectedOrgId) {
+  function setEditorFromFormat(format) {
+    const normalized = normalizeFormatForEditor(format);
+    setEditor({
+      ...normalized,
+      customization: {
+        ...normalized.customization,
+        additionalInstructionsText: (normalized.customization.additionalInstructions || []).join("\n")
+      }
+    });
+  }
+
+  async function fetchFormatDetail(formatId, orgId = selectedOrgId) {
+    const response = await fetchWithOperatorAuth(adminApiUrl(`/api/v1/admin/soap-formats/${encodeURIComponent(formatId)}`, orgId), {
+      cache: "no-store"
+    }, accessToken);
+    const payload = await readJson(response, "プロンプト詳細を取得できませんでした。");
+    const detail = payload.format;
+    if (detail) {
+      setFormats((current) => current.map((format) => (
+        format.formatId === detail.formatId || format.profileId === detail.profileId ? { ...format, ...detail } : format
+      )));
+    }
+    return detail;
+  }
+
+  async function selectFormatForEditor(format, options = {}) {
+    if (!format) {
+      setSelectedFormatId("");
+      setEditor(null);
+      setIsNew(false);
+      setInitialNewFormatName("");
+      setIsEditorDirty(false);
+      return;
+    }
+
+    const formatId = format.formatId || format.profileId;
+    if (options.updateTab !== false) {
+      selectAdminTab("formats", { load: false });
+    }
+    setSelectedFormatId(formatId);
+    setIsNew(false);
+    setInitialNewFormatName("");
+    setPreview(null);
+    setPreviewState("idle");
+    setPreviewError("");
+    setIsEditorDirty(false);
+
+    if (formatHasEditorDetail(format)) {
+      setEditorFromFormat(format);
+      return;
+    }
+
+    setEditor(null);
+    setIsFormatDetailLoading(true);
+    try {
+      const detail = await fetchFormatDetail(formatId, options.orgId || selectedOrgId);
+      if (detail) {
+        setEditorFromFormat(detail);
+      }
+    } finally {
+      setIsFormatDetailLoading(false);
+    }
+  }
+
+  async function loadAdminData(targetOrgId = selectedOrgId, tabId = activeTab) {
     setIsLoading(true);
     setError("");
 
     try {
-      const currentSession = await getCurrentOperatorSession(accessToken);
-      const normalizedSession = currentSession?.session || null;
+      const section = bootstrapSectionForTab(tabId);
+      const response = await fetchWithOperatorAuth(adminApiUrl("/api/v1/admin/bootstrap", targetOrgId, { section }), {
+        cache: "no-store",
+      }, accessToken);
+      const payload = await readJson(response, "設定情報を取得できませんでした。");
+      const normalizedSession = payload.session || null;
       setSession(normalizedSession);
 
       if (!canOpenSettingsConsole(normalizedSession)) {
@@ -1269,61 +1368,20 @@ export function AdminConsole() {
         return;
       }
 
-      const organizationsResponse = await fetchWithOperatorAuth(`${getGatewayBaseUrl()}/api/v1/admin/organizations`, {
-        cache: "no-store",
-      }, accessToken);
-      const organizationsPayload = await readJson(organizationsResponse, "病院情報を取得できませんでした。");
-      const visibleOrganizations = organizationsPayload.organizations || [];
-      const nextOrgId = targetOrgId || normalizedSession?.orgId || visibleOrganizations[0]?.orgId || "";
-      const membersUrl = nextOrgId
-        ? `${getGatewayBaseUrl()}/api/v1/admin/members?orgId=${encodeURIComponent(nextOrgId)}`
-        : `${getGatewayBaseUrl()}/api/v1/admin/members`;
-      const shouldLoadMembers = canManageMembers(normalizedSession);
-      const shouldLoadFormats = canManageOrganizationSoapFormats(normalizedSession) || canManageOwnSoapFormats(normalizedSession);
-      const [roleDefinitionsResponse, formatsResponse, membersResponse, auditResponse] = await Promise.all([
-        fetchWithOperatorAuth(`${getGatewayBaseUrl()}/api/v1/admin/role-definitions`, {
-          cache: "no-store",
-        }, accessToken),
-        shouldLoadFormats
-          ? fetchWithOperatorAuth(adminApiUrl("/api/v1/admin/soap-formats", nextOrgId), {
-              cache: "no-store",
-            }, accessToken)
-          : Promise.resolve(null),
-        shouldLoadMembers
-          ? fetchWithOperatorAuth(membersUrl, {
-              cache: "no-store",
-            }, accessToken)
-          : Promise.resolve(null),
-        fetchWithOperatorAuth(`${getGatewayBaseUrl()}/api/v1/admin/audit-events`, {
-          cache: "no-store",
-        }, accessToken)
-      ]);
-      const roleDefinitionsPayload = roleDefinitionsResponse.ok ? await roleDefinitionsResponse.json() : { roles: [] };
-      const formatsPayload = formatsResponse ? await readJson(formatsResponse, "プロンプトを取得できませんでした。") : { formats: [] };
-      const membersPayload = membersResponse ? await readJson(membersResponse, "メンバー一覧を取得できませんでした。") : { members: [] };
-      const auditPayload = auditResponse.ok ? await auditResponse.json() : { events: [] };
-      const nextFormats = formatsPayload.formats || [];
+      const visibleOrganizations = payload.organizations || [];
+      const nextOrgId = payload.selectedOrgId || targetOrgId || normalizedSession?.orgId || visibleOrganizations[0]?.orgId || "";
+      const nextFormats = payload.formats || [];
 
       setOrganizations(visibleOrganizations);
       setSelectedOrgId(nextOrgId);
-      setRoleDefinitions(roleDefinitionsPayload.roles || []);
+      setRoleDefinitions(payload.roles || []);
       setFormats(nextFormats);
-      setMembers(membersPayload.members || []);
-      setAuditEvents(auditPayload.events || []);
+      setMembers(payload.members || []);
+      setAuditEvents(payload.events || []);
 
-      if (nextFormats.length) {
+      if (tabId === "formats" && nextFormats.length) {
         const selected = nextFormats.find((format) => format.formatId === selectedFormatId) || nextFormats[0];
-        setSelectedFormatId(selected.formatId);
-        setEditor({
-          ...normalizeFormatForEditor(selected),
-          customization: {
-            ...normalizeFormatForEditor(selected).customization,
-            additionalInstructionsText: (selected.customization?.additionalInstructions || []).join("\n")
-          }
-        });
-        setIsNew(false);
-        setInitialNewFormatName("");
-        setIsEditorDirty(false);
+        await selectFormatForEditor(selected, { updateTab: false, orgId: nextOrgId });
       } else {
         setSelectedFormatId("");
         setEditor(null);
@@ -1343,19 +1401,23 @@ export function AdminConsole() {
       return;
     }
 
-    loadAdminData();
+    const initialTab = readAdminTabFromUrl();
+    setActiveTab(initialTab);
+    loadAdminData(selectedOrgId, initialTab);
   }, [accessToken]);
 
   useEffect(() => {
-    setActiveTab(readAdminTabFromUrl());
-
     function handlePopState() {
-      setActiveTab(readAdminTabFromUrl());
+      const nextTab = readAdminTabFromUrl();
+      setActiveTab(nextTab);
+      if (accessToken) {
+        loadAdminData(selectedOrgId, nextTab);
+      }
     }
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [accessToken, selectedOrgId]);
 
   useEffect(() => {
     const billingHint = readBillingFlowHintFromUrl();
@@ -1474,21 +1536,8 @@ export function AdminConsole() {
   }
 
   function selectFormat(format) {
-    selectAdminTab("formats");
-    setSelectedFormatId(format.formatId);
-    setIsNew(false);
-    setInitialNewFormatName("");
-    setPreview(null);
-    setPreviewState("idle");
-    setPreviewError("");
-    setIsEditorDirty(false);
-    const normalized = normalizeFormatForEditor(format);
-    setEditor({
-      ...normalized,
-      customization: {
-        ...normalized.customization,
-        additionalInstructionsText: (normalized.customization.additionalInstructions || []).join("\n")
-      }
+    void selectFormatForEditor(format).catch((nextError) => {
+      setError(nextError.message);
     });
   }
 
@@ -1499,7 +1548,7 @@ export function AdminConsole() {
       ...createNewFormat(memberId),
       displayName: nextDisplayName
     };
-    selectAdminTab("formats");
+    selectAdminTab("formats", { load: false });
     setSelectedFormatId("");
     setIsNew(true);
     setInitialNewFormatName(nextDisplayName);
@@ -1522,7 +1571,7 @@ export function AdminConsole() {
     setInferState("idle");
     setInferError("");
     setInferResult(null);
-    selectAdminTab(FORMATS_INFER_TAB);
+    selectAdminTab(FORMATS_INFER_TAB, { load: false });
   }
 
   function updateInferenceSample(sampleId, value) {
@@ -1554,7 +1603,7 @@ export function AdminConsole() {
     setInferState("idle");
     setInferError("");
     setInferResult(null);
-    selectAdminTab("formats");
+    selectAdminTab("formats", { load: false });
   }
 
   function applyInferredFormatToEditor() {
@@ -1569,7 +1618,7 @@ export function AdminConsole() {
     };
     const normalized = normalizeFormatForEditor(nextFormat);
 
-    selectAdminTab("formats");
+    selectAdminTab("formats", { load: false });
     setSelectedFormatId("");
     setIsNew(true);
     setInitialNewFormatName(nextDisplayName);
@@ -2630,7 +2679,12 @@ export function AdminConsole() {
 
                 <div className="template-editor-column">
                   <section className="card template-editor-pane">
-                    {!editor ? (
+                    {isFormatDetailLoading ? (
+                      <div className="empty-state">
+                        <div className="skeleton skeleton-heading" style={{ width: 220 }} />
+                        <div className="skeleton skeleton-block" />
+                      </div>
+                    ) : !editor ? (
                       <div className="empty-state">
                         <h2>プロンプトを選択してください</h2>
                         <p>プロンプトを作成すると、医師ごとに診療記録の完成形を変えられます。</p>
@@ -3144,7 +3198,7 @@ export function AdminConsole() {
                     </span>
                     <span className="prompt-target-choice-copy">
                       <strong>病院標準</strong>
-                      <small>この病院の全メンバーで使う標準プロンプトにします。</small>
+                      <small>病院全体のデフォルトプロンプトとして設定します。</small>
                     </span>
                   </label>
                 </div>
@@ -3164,7 +3218,7 @@ export function AdminConsole() {
                     <strong>{canManageCurrentMembers ? "メンバー指定" : "自分に適用"}</strong>
                     <small>
                       {canManageCurrentMembers
-                        ? "選択したメンバーだけにこのプロンプトを適用します。"
+                        ? "指定したメンバーの個人プロンプトとして設定します。"
                         : "自分の診療記録作成で使うプロンプトにします。"}
                     </small>
                   </span>

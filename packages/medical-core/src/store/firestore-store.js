@@ -2935,6 +2935,25 @@ export class FirestoreStore {
       .sort((left, right) => Date.parse(right.updatedAt || 0) - Date.parse(left.updatedAt || 0));
   }
 
+  async listSoapFormatProfileSummaries({ orgId, memberId = null, roles = [] } = {}) {
+    if (!orgId) {
+      return [];
+    }
+
+    const canSeeAll = canManageOrganizationRoles(roles);
+    const snap = await this.#organizationRef(orgId).collection("prompt_profiles").get();
+
+    return snap.docs
+      .map((doc) => ({
+        ...doc.data(),
+        profileId: doc.data().profileId || doc.id,
+        orgId
+      }))
+      .filter((profile) => canSeeAll || !profile.ownerMemberId || profile.ownerMemberId === memberId || profile.scope !== "member")
+      .map((profile) => serializeSoapFormatProfile(profile))
+      .sort((left, right) => Date.parse(right.updatedAt || 0) - Date.parse(left.updatedAt || 0));
+  }
+
   async getSoapFormatProfile({ orgId, profileId }) {
     if (!orgId || !profileId) {
       return null;

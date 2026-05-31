@@ -1335,6 +1335,8 @@ test("in-memory SOAP format management supports draft, preview-safe publish, ass
   assert.equal(created.latestVersion.validationStatus, "passed");
   assert.equal((await store.getSoapFormatProfile({ orgId: "org_a", profileId: created.formatId })).displayName, "田中医師 SOAP");
   assert.equal((await store.listSoapFormatProfiles({ orgId: "org_a", memberId, roles: ["org_admin"] })).some((format) => format.formatId === created.formatId), true);
+  const summaries = await store.listSoapFormatProfileSummaries({ orgId: "org_a", memberId, roles: ["org_admin"] });
+  assert.equal(summaries.some((format) => format.formatId === created.formatId), true);
   assert.equal((await store.listMembers({ orgId: "org_a" })).some((member) => member.memberId === "doctor-2"), true);
   assert.equal(normalizeSoapFormatDisplayNameKey(" 田中医師　SOAP "), normalizeSoapFormatDisplayNameKey("田中医師 SOAP"));
   await assert.rejects(

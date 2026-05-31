@@ -19,6 +19,10 @@ export default function RootLayout({ children }) {
       process.env.GATEWAY_BASE_URL ??
       process.env.NEXT_PUBLIC_GATEWAY_BASE_URL ??
       "http://localhost:8081",
+    gatewayAuthBaseUrl:
+      process.env.GATEWAY_AUTH_BASE_URL ??
+      process.env.NEXT_PUBLIC_GATEWAY_AUTH_BASE_URL ??
+      null,
     gatewayWsUrl:
       process.env.GATEWAY_WS_URL ??
       process.env.NEXT_PUBLIC_GATEWAY_WS_URL ??
