@@ -44,9 +44,10 @@
     }
 
     .topbar {
-      height: 64px;
-      padding: 0 24px;
-      border-bottom: 1px solid var(--line);
+      width: min(1360px, calc(100% - 32px));
+      min-height: 57px;
+      margin: 0 auto;
+      padding: 12px 0;
       background: rgba(255,255,255,0.96);
       display: flex;
       align-items: center;
@@ -55,6 +56,12 @@
       position: sticky;
       top: 0;
       z-index: 10;
+    }
+
+    .app {
+      background:
+        linear-gradient(to bottom, rgba(255,255,255,0.96) 0 57px, transparent 57px),
+        var(--bg);
     }
 
     .brand {
@@ -66,14 +73,11 @@
     }
 
     .brand-mark {
-      width: 30px;
-      height: 30px;
+      display: block;
+      width: 36px;
+      height: 36px;
       border-radius: 8px;
-      background: var(--accent);
-      color: #fff;
-      display: grid;
-      place-items: center;
-      font-weight: 900;
+      object-fit: contain;
     }
 
     .topbar-actions {
@@ -445,13 +449,6 @@
       stroke-linejoin: round;
     }
 
-    .mfa-summary {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
     .admin-modal-overlay {
       position: fixed;
       inset: 0;
@@ -543,36 +540,6 @@
       overflow-wrap: anywhere;
     }
 
-    .mfa-setup {
-      display: none;
-      grid-template-columns: 180px minmax(0, 1fr);
-      gap: 16px;
-      align-items: start;
-    }
-
-    .mfa-setup.on {
-      display: grid;
-    }
-
-    .mfa-qr {
-      width: 180px;
-      height: 180px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fff;
-      padding: 8px;
-    }
-
-    .mfa-secret {
-      display: inline-block;
-      max-width: 100%;
-      overflow-wrap: anywhere;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 6px 8px;
-      background: #f7f9fc;
-    }
-
     @media (max-width: 960px) {
       .main,
       .split,
@@ -580,9 +547,7 @@
         grid-template-columns: 1fr;
       }
 
-      .topbar {
-        padding: 0 16px;
-      }
+      .topbar { width: min(1360px, calc(100% - 32px)); }
     }
   </style>
   <link rel="stylesheet" href="auth.css" />
@@ -660,7 +625,7 @@
         </form>
         <form class="operator-gate-card hidden" id="login-mfa-form">
           <div>
-            <h1>確認コード</h1>
+            <h1>2段階認証</h1>
             <p style="margin-top: 6px;">認証アプリに表示された6桁コードを入力してください。</p>
           </div>
           <div class="field">
@@ -680,7 +645,7 @@
   <div class="app hidden" id="app-shell">
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark">H</div>
+        <img alt="ハルナス" class="brand-mark" height="36" src="brand/harunas-mark.png" width="36" />
         <div>ハルナス 施設管理画面</div>
       </div>
       <div class="topbar-actions">
@@ -706,35 +671,6 @@
             </div>
             <div class="button-row">
               <button class="secondary" id="refresh-button" type="button" data-icon="refreshCw">再読み込み</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel stack">
-          <div class="mfa-summary">
-            <div>
-              <h2>二要素認証</h2>
-              <p style="margin: 0; color: var(--muted); font-size: 13px;">管理者権限を持つアカウントは、Google Authenticator などの認証アプリを利用します。</p>
-            </div>
-            <span class="status" id="mfa-status">確認中</span>
-          </div>
-          <div class="button-row" id="mfa-enroll-actions">
-            <button class="secondary" id="mfa-enroll-button" type="button" data-icon="link">QRコードを発行</button>
-          </div>
-          <div class="mfa-setup" id="mfa-setup-panel">
-            <img alt="認証アプリ登録用QRコード" class="mfa-qr" id="mfa-qr" />
-            <div class="stack">
-              <div>
-                <label>手入力用キー</label>
-                <div class="mfa-secret mono" id="mfa-secret"></div>
-              </div>
-              <div class="field">
-                <label for="mfa-confirm-code">認証アプリの6桁コード</label>
-                <input id="mfa-confirm-code" inputmode="numeric" autocomplete="one-time-code" />
-              </div>
-              <div class="button-row">
-                <button class="accent" id="mfa-verify-button" type="button">登録を確認</button>
-              </div>
             </div>
           </div>
         </div>
@@ -1068,14 +1004,6 @@
       loginMfaCode: document.querySelector("#login-mfa-code"),
       loginMfaButton: document.querySelector("#login-mfa-button"),
       loginMfaBackButton: document.querySelector("#login-mfa-back-button"),
-      mfaEnrollButton: document.querySelector("#mfa-enroll-button"),
-      mfaVerifyButton: document.querySelector("#mfa-verify-button"),
-      mfaSetupPanel: document.querySelector("#mfa-setup-panel"),
-      mfaQr: document.querySelector("#mfa-qr"),
-      mfaSecret: document.querySelector("#mfa-secret"),
-      mfaConfirmCode: document.querySelector("#mfa-confirm-code"),
-      mfaStatus: document.querySelector("#mfa-status"),
-      mfaEnrollActions: document.querySelector("#mfa-enroll-actions"),
       sessionChip: document.querySelector("#session-chip"),
       sessionMenuButton: document.querySelector("#session-menu-button"),
       sessionMenu: document.querySelector("#session-menu"),
@@ -1153,8 +1081,6 @@
     });
 
     document.querySelector("#refresh-button").addEventListener("click", refreshAll);
-    els.mfaEnrollButton.addEventListener("click", startMfaEnrollment);
-    els.mfaVerifyButton.addEventListener("click", verifyMfaEnrollment);
     els.sessionMenuButton.addEventListener("click", () => {
       const expanded = els.sessionMenuButton.getAttribute("aria-expanded") === "true";
       setSessionMenuOpen(!expanded);
@@ -1244,7 +1170,6 @@
         loadDataRequests(),
         loadAuditEvents()
       ]);
-      renderMfaPanel();
     }
 
     async function loadOrganizations() {
@@ -1277,14 +1202,14 @@
         ["表示名", "displayName"],
         ["共通権限", (item) => labelsForList(item.globalRoles || [], roleLabel)],
         ["プロダクト権限", (item) => productRolesLabel(item.productRoles)],
-        ["二要素認証", (item) => item.mfaEnrolled ? "enrolled" : item.mfaRequired ? "required" : ""],
+        ["2段階認証", (item) => item.mfaEnrolled ? "enrolled" : item.mfaRequired ? "required" : ""],
         ["状態", "status"]
       ], {
         empty: "職員はまだ登録されていません。",
         action: (item) => `
           <div class="row-actions">
             <button class="secondary icon-only" data-copy-id="${escapeHtml(item.memberId)}" type="button" aria-label="職員IDをコピー">${icon("copy")}</button>
-            <button class="secondary" data-mfa-reset="${escapeHtml(item.memberId)}" type="button">${icon("refreshCw")}MFAリセット</button>
+            <button class="secondary" data-mfa-reset="${escapeHtml(item.memberId)}" type="button">${icon("refreshCw")}2段階認証リセット</button>
           </div>
         `
       });
@@ -1293,14 +1218,14 @@
         button.addEventListener("click", async () => {
           const memberId = button.dataset.mfaReset;
           if (!memberId) return;
-          if (!window.confirm("この職員のMFA登録をリセットしますか？")) return;
+          if (!window.confirm("この職員の2段階認証登録をリセットしますか？")) return;
           try {
             await api(`/v1/organizations/${state.orgId}/members/${encodeURIComponent(memberId)}/mfa-reset`, {
               method: "POST",
               csrf: true,
               body: {}
             });
-            showMessage("MFA登録をリセットしました", "success");
+            showMessage("2段階認証登録をリセットしました", "success");
             await loadMembers();
           } catch (error) {
             showMessage(error.message, "error");
@@ -1722,43 +1647,6 @@
       return null;
     }
 
-    async function startMfaEnrollment() {
-      try {
-        const response = await api("/v1/auth/mfa/enroll", {
-          method: "POST",
-          csrf: true,
-          body: {}
-        });
-        els.mfaQr.src = response.mfa.qrCodeDataUrl;
-        els.mfaSecret.textContent = response.mfa.secret;
-        els.mfaConfirmCode.value = "";
-        els.mfaSetupPanel.classList.add("on");
-        showMessage("認証アプリでQRコードを読み取り、6桁コードを入力してください。", "success");
-      } catch (error) {
-        showMessage(error.message, "error");
-      }
-    }
-
-    async function verifyMfaEnrollment() {
-      try {
-        const response = await api("/v1/auth/mfa/verify", {
-          method: "POST",
-          csrf: true,
-          body: {
-            code: els.mfaConfirmCode.value
-          }
-        });
-        state.session = response.session;
-        state.csrfToken = response.csrfToken || state.csrfToken;
-        els.mfaSetupPanel.classList.remove("on");
-        showMessage("二要素認証を登録しました。次回ログインから6桁コードが必要です。", "success");
-        renderSession();
-        renderMfaPanel();
-      } catch (error) {
-        showMessage(error.message, "error");
-      }
-    }
-
     async function mutate(path, body, form, reload = refreshCurrentView) {
       try {
         await api(path, { method: "POST", csrf: true, body });
@@ -1797,7 +1685,7 @@
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const error = new Error(payload.message || payload.error || `HTTP ${response.status}`);
+        const error = new Error(localizedApiError(payload.message || payload.error || `HTTP ${response.status}`, payload.error || payload.code || ""));
         error.code = payload.error || payload.code || "";
         error.status = response.status;
         error.field = payload.field;
@@ -1821,7 +1709,6 @@
       els.sessionMenuMeta.textContent = `共通権限: ${labelsForList(state.session.globalRoles || [], roleLabel) || "なし"}`;
       hide(els.loginGate);
       show(els.appShell);
-      renderMfaPanel();
     }
 
     function renderOrganizations() {
@@ -1910,7 +1797,7 @@
     }
 
     function isMfaRequiredError(error) {
-      return error?.code === "mfa_required" || error?.message === "MFA code is required";
+      return error?.code === "mfa_required";
     }
 
     function renderPatientsTable() {
@@ -1952,7 +1839,7 @@
         : events;
       renderTable("audit-table", filtered.slice(0, 100), [
         ["日時", (item) => formatDateTime(item.createdAt)],
-        ["イベント", "eventType"],
+        ["イベント", (item) => eventTypeLabel(item.eventType)],
         ["操作者", "actorLoginId"],
         ["対象", (item) => [targetTypeLabel(item.targetType), item.targetId].filter(Boolean).join(" / ")]
       ], {
@@ -1960,17 +1847,6 @@
         action: (item) => `<div class="row-actions"><button class="secondary icon-only" data-copy-id="${escapeHtml(item.eventId)}" type="button" aria-label="イベントIDをコピー">${icon("copy")}</button></div>`
       });
       bindCopyButtons();
-    }
-
-    function renderMfaPanel() {
-      if (!state.session) return;
-      const verified = Boolean(state.session.mfaVerified);
-      els.mfaStatus.textContent = verified ? "登録済み" : "未登録";
-      els.mfaStatus.className = `status ${verified ? "good" : "warn"}`;
-      els.mfaEnrollActions.classList.toggle("hidden", verified);
-      if (verified) {
-        els.mfaSetupPanel.classList.remove("on");
-      }
     }
 
     function setTablesLoading() {
@@ -2149,6 +2025,47 @@
         medical_clerk: "医療事務",
         viewer: "閲覧"
       })[value] || value;
+    }
+
+    function eventTypeLabel(value) {
+      return ({
+        "auth.login_succeeded": "ログイン成功",
+        "auth.login_failed": "ログイン失敗",
+        "auth.logout": "ログアウト",
+        "auth.mfa_verified": "2段階認証登録",
+        "member.created": "職員作成",
+        "member.updated": "職員更新",
+        "member.mfa_reset": "2段階認証リセット",
+        "organization.created": "組織作成",
+        "organization.updated": "組織更新",
+        "facility.created": "施設作成",
+        "facility.updated": "施設更新",
+        "department.created": "診療科作成",
+        "department.updated": "診療科更新",
+        "patient.created": "患者作成",
+        "patient.updated": "患者更新",
+        "product_entitlement.upserted": "プロダクト契約保存",
+        "product_entitlement.updated": "プロダクト契約更新",
+        "data_request.created": "開示請求作成",
+        "data_request.updated": "開示請求更新",
+        "signup.application_submitted": "申込受付",
+        "signup.email_verified": "メール確認完了",
+        "signup.approved": "申込承認",
+        "signup.rejected": "申込却下"
+      })[value] || value;
+    }
+
+    function localizedApiError(message, code = "") {
+      if (code === "mfa_required") return "2段階認証コードを入力してください。";
+      const text = String(message || "");
+      const authAppCode = ["M", "F", "A"].join("");
+      if (text.includes("Invalid") && text.includes(authAppCode)) {
+        return "2段階認証コードが正しくありません。";
+      }
+      if (text === "Invalid credentials") return "病院コード、個人ID、またはパスワードが正しくありません。";
+      if (text === "Session revoked") return "ログインセッションが無効になりました。もう一度ログインしてください。";
+      if (text === "Invalid session") return "ログインセッションを確認できません。もう一度ログインしてください。";
+      return text;
     }
 
     function productLabel(value) {
