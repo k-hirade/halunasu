@@ -447,8 +447,8 @@
         </div>
 
         <div class="operator-gate-pitch">
-          <h2>共通基盤を、<br />ひとつの管理画面で。</h2>
-          <p>
+          <h2 id="login-gate-title">共通基盤を、<br />ひとつの管理画面で。</h2>
+          <p id="login-gate-copy">
             病院、職員、施設、診療科、患者、権限を Halunasu Core で一元管理します。
             各アプリは共通のログインとマスターデータを安全に利用できます。
           </p>
@@ -503,13 +503,24 @@
               </button>
             </div>
           </div>
-          <div class="field">
-            <label for="mfa-code">認証アプリの6桁コード</label>
-            <input id="mfa-code" name="mfaCode" inputmode="numeric" autocomplete="one-time-code" placeholder="登録済みの場合のみ入力" />
-          </div>
           <div id="login-message" class="inline-error" role="status" aria-live="polite"></div>
           <div class="operator-gate-actions">
             <button class="btn btn--primary btn--lg" type="submit" id="login-button">ログイン</button>
+          </div>
+        </form>
+        <form class="operator-gate-card hidden" id="login-mfa-form">
+          <div>
+            <h1>確認コード</h1>
+            <p style="margin-top: 6px;">認証アプリに表示された6桁コードを入力してください。</p>
+          </div>
+          <div class="field">
+            <label for="login-mfa-code">6桁コード</label>
+            <input id="login-mfa-code" name="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="123456" required />
+          </div>
+          <div id="login-mfa-message" class="inline-error" role="status" aria-live="polite"></div>
+          <div class="operator-gate-actions">
+            <button class="btn btn--primary btn--lg" type="submit" id="login-mfa-button" disabled>確認</button>
+            <button class="btn btn--ghost btn--lg" type="button" id="login-mfa-back-button">戻る</button>
           </div>
         </form>
       </section>
@@ -849,14 +860,23 @@
       facilities: [],
       departments: [],
       patients: [],
+      pendingLogin: null,
       edit: null
     };
 
     const els = {
       loginGate: document.querySelector("#login-gate"),
       appShell: document.querySelector("#app-shell"),
+      loginGateTitle: document.querySelector("#login-gate-title"),
+      loginGateCopy: document.querySelector("#login-gate-copy"),
+      loginForm: document.querySelector("#login-form"),
       loginMessage: document.querySelector("#login-message"),
       loginButton: document.querySelector("#login-button"),
+      loginMfaForm: document.querySelector("#login-mfa-form"),
+      loginMfaMessage: document.querySelector("#login-mfa-message"),
+      loginMfaCode: document.querySelector("#login-mfa-code"),
+      loginMfaButton: document.querySelector("#login-mfa-button"),
+      loginMfaBackButton: document.querySelector("#login-mfa-back-button"),
       mfaEnrollButton: document.querySelector("#mfa-enroll-button"),
       mfaVerifyButton: document.querySelector("#mfa-verify-button"),
       mfaSetupPanel: document.querySelector("#mfa-setup-panel"),
@@ -873,37 +893,63 @@
       editModalSubmit: document.querySelector("#edit-modal-submit")
     };
 
-    document.querySelector("#login-form").addEventListener("submit", async (event) => {
+    els.loginForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const data = new FormData(event.currentTarget);
       els.loginButton.disabled = true;
       showLoginMessage("");
       try {
-        const response = await api("/v1/auth/login", {
-          method: "POST",
-          body: {
+        const credentials = {
+          organizationCode: data.get("organizationCode"),
+          loginId: data.get("loginId"),
+          password: data.get("password")
+        };
+        await completeLogin(credentials);
+      } catch (error) {
+        if (isMfaRequiredError(error)) {
+          state.pendingLogin = {
             organizationCode: data.get("organizationCode"),
             loginId: data.get("loginId"),
-            password: data.get("password"),
-            mfaCode: emptyToNull(data.get("mfaCode"))
-          }
-        });
-        state.session = response.session;
-        state.csrfToken = response.csrfToken || "";
-        state.orgId = response.session.orgId;
-        hide(els.loginGate);
-        show(els.appShell);
-        showMessage("ログインしました", "success");
-        await refreshAll();
-      } catch (error) {
-        if (state.session) {
-          showMessage(error.message, "error");
+            password: data.get("password")
+          };
+          showLoginMfaStep();
         } else {
           showLoginMessage(error.message);
         }
       } finally {
         els.loginButton.disabled = false;
       }
+    });
+
+    els.loginMfaForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!state.pendingLogin) {
+        showCredentialLoginStep();
+        return;
+      }
+      els.loginMfaButton.disabled = true;
+      showLoginMfaMessage("");
+      try {
+        await completeLogin({
+          ...state.pendingLogin,
+          mfaCode: els.loginMfaCode.value
+        });
+      } catch (error) {
+        showLoginMfaMessage(error.message);
+      } finally {
+        updateLoginMfaButton();
+      }
+    });
+
+    els.loginMfaCode.addEventListener("input", () => {
+      els.loginMfaCode.value = els.loginMfaCode.value.replace(/\D/g, "").slice(0, 6);
+      updateLoginMfaButton();
+    });
+
+    els.loginMfaBackButton.addEventListener("click", () => {
+      state.pendingLogin = null;
+      document.querySelector("#password").value = "";
+      showCredentialLoginStep();
     });
 
     document.querySelector("#session-button").addEventListener("click", loadSession);
@@ -1476,6 +1522,22 @@
       }
     }
 
+    async function completeLogin(credentials) {
+      const response = await api("/v1/auth/login", {
+        method: "POST",
+        body: credentials
+      });
+      state.session = response.session;
+      state.csrfToken = response.csrfToken || "";
+      state.orgId = response.session.orgId;
+      state.pendingLogin = null;
+      showCredentialLoginStep();
+      hide(els.loginGate);
+      show(els.appShell);
+      showMessage("ログインしました", "success");
+      await refreshAll();
+    }
+
     async function api(path, options = {}) {
       const headers = { "content-type": "application/json" };
       if (options.csrf && state.csrfToken) headers["x-csrf-token"] = state.csrfToken;
@@ -1487,7 +1549,11 @@
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload.message || payload.error || `HTTP ${response.status}`);
+        const error = new Error(payload.message || payload.error || `HTTP ${response.status}`);
+        error.code = payload.error || payload.code || "";
+        error.status = response.status;
+        error.field = payload.field;
+        throw error;
       }
       return payload;
     }
@@ -1495,6 +1561,7 @@
     function renderSession() {
       if (!state.session) {
         els.sessionChip.textContent = "未ログイン";
+        showCredentialLoginStep();
         show(els.loginGate);
         hide(els.appShell);
         return;
@@ -1554,6 +1621,37 @@
       return `<span class="${className}">${escapeHtml(text)}</span>`;
     }
 
+    function showCredentialLoginStep() {
+      show(els.loginForm);
+      hide(els.loginMfaForm);
+      els.loginGateTitle.innerHTML = "共通基盤を、<br />ひとつの管理画面で。";
+      els.loginGateCopy.textContent = "病院、職員、施設、診療科、患者、権限を Halunasu Core で一元管理します。各アプリは共通のログインとマスターデータを安全に利用できます。";
+      els.loginMfaCode.value = "";
+      showLoginMessage("");
+      showLoginMfaMessage("");
+      updateLoginMfaButton();
+    }
+
+    function showLoginMfaStep() {
+      hide(els.loginForm);
+      show(els.loginMfaForm);
+      els.loginGateTitle.textContent = "本人確認";
+      els.loginGateCopy.textContent = "認証アプリの6桁コードを入力してください。";
+      els.loginMfaCode.value = "";
+      showLoginMessage("");
+      showLoginMfaMessage("");
+      updateLoginMfaButton();
+      window.setTimeout(() => els.loginMfaCode.focus(), 0);
+    }
+
+    function updateLoginMfaButton() {
+      els.loginMfaButton.disabled = els.loginMfaCode.value.length !== 6;
+    }
+
+    function isMfaRequiredError(error) {
+      return error?.code === "mfa_required" || error?.message === "MFA code is required";
+    }
+
     function showMessage(message, kind = "") {
       els.message.textContent = message || "";
       els.message.className = `message ${kind}`;
@@ -1561,6 +1659,10 @@
 
     function showLoginMessage(message) {
       els.loginMessage.textContent = message || "";
+    }
+
+    function showLoginMfaMessage(message) {
+      els.loginMfaMessage.textContent = message || "";
     }
 
     function show(element) {

@@ -12,6 +12,8 @@ const html = readFileSync(join(root, "index.html"), "utf8");
 
 assert(html.includes("halunasu-platform-api-base-url"), "core admin must configure Platform API base URL");
 assert(html.includes("/v1/auth/login"), "core admin must log in through Platform");
+assert(html.includes("login-mfa-form"), "core admin must use a separate MFA login step");
+assert(html.includes("mfa_required"), "core admin must branch to the MFA login step when Platform requires MFA");
 assert(html.includes("/v1/auth/session"), "core admin must read Platform session");
 assert(html.includes("/v1/auth/mfa/enroll"), "core admin must start MFA enrollment");
 assert(html.includes("/v1/auth/mfa/verify"), "core admin must verify MFA enrollment");

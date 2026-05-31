@@ -3019,15 +3019,15 @@ export function AdminConsole() {
                 </div>
                 <div className="admin-settings-row">
                   <div className="editor-state editor-state--block">
-                    <span>共通マスター管理</span>
-                    <small>患者、施設、診療科は Core Admin で追加・編集します。</small>
+                    <span>施設管理画面</span>
+                    <small>患者、施設、診療科は施設管理画面で追加・編集します。</small>
                   </div>
                   <button
                     className="btn btn--ghost"
                     onClick={() => window.open(resolveCoreAdminUrl(), "_blank", "noopener,noreferrer")}
                     type="button"
                   >
-                    Core Adminを開く
+                    施設管理画面を開く
                     <Icon name="chevronRight" size={15} />
                   </button>
                 </div>
