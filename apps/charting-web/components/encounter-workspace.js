@@ -2354,7 +2354,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
     const selectableDepartments = patientInfoDraft.facilityId
       ? coreDepartments.filter((department) => !department.facilityId || department.facilityId === patientInfoDraft.facilityId)
       : coreDepartments;
-    const onlyFacility = coreFacilities.length === 1 ? coreFacilities[0] : null;
+    const shouldShowFacilitySelect = coreFacilities.length > 1;
     const facilityOptions = [
       { value: OPTIONAL_SELECT_NONE_VALUE, label: "施設を選択しない", description: "施設を未指定にします。" },
       ...coreFacilities.map((facility) => ({
@@ -2426,14 +2426,9 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                   disabled={patientInfoLocked}
                 />
               </div>
-              <div className="field">
-                <span className="field-label">施設</span>
-                {onlyFacility ? (
-                  <div className="patient-info-static-select" title={onlyFacility.displayName}>
-                    <span>{onlyFacility.displayName}</span>
-                    <small>{onlyFacility.medicalInstitutionCode ? `医療機関コード ${onlyFacility.medicalInstitutionCode}` : "この病院では施設は固定です"}</small>
-                  </div>
-                ) : (
+              {shouldShowFacilitySelect ? (
+                <div className="field">
+                  <span className="field-label">施設</span>
                   <AdminSelect
                     ariaLabel="施設"
                     disabled={patientInfoLocked}
@@ -2455,8 +2450,8 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                     options={facilityOptions}
                     value={optionalSelectValue(patientInfoDraft.facilityId)}
                   />
-                )}
-              </div>
+                </div>
+              ) : null}
               <div className="field">
                 <span className="field-label">診療科</span>
                 <AdminSelect

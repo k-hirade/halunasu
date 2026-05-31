@@ -71,6 +71,44 @@ test("ready encounter patient information controls do not force horizontal scrol
     await installGatewayMocks(page, [
       ...encounterRoutes(fixture),
       {
+        method: "GET",
+        path: "/api/v1/core/patients",
+        handler: () => ({
+          patients: [
+            {
+              patientId: "pat_001",
+              displayName: "山田 花子",
+              patientCode: "P-001"
+            }
+          ]
+        })
+      },
+      {
+        method: "GET",
+        path: "/api/v1/core/facilities",
+        handler: () => ({
+          facilities: [
+            {
+              facilityId: "fac_001",
+              displayName: "prod-test"
+            }
+          ]
+        })
+      },
+      {
+        method: "GET",
+        path: "/api/v1/core/departments",
+        handler: () => ({
+          departments: [
+            {
+              departmentId: "dep_001",
+              facilityId: "fac_001",
+              displayName: "内科"
+            }
+          ]
+        })
+      },
+      {
         method: "POST",
         path: "/api/v1/sessions/session-e2e/metadata",
         handler: async ({ request }) => {
@@ -91,6 +129,9 @@ test("ready encounter patient information controls do not force horizontal scrol
     assert.equal(await page.locator(".patient-info-card").getByText("未入力").count(), 0);
     await page.getByRole("button", { name: /患者情報/ }).click();
     assert.equal(await page.locator(".patient-info-card").getByText("未入力").count(), 0);
+    assert.equal(await page.locator(".patient-info-card .field-label", { hasText: "施設" }).count(), 0);
+    assert.equal(await page.locator(".patient-info-card").getByText("この病院では施設は固定です").count(), 0);
+    assert.equal(await page.locator(".patient-info-card").getByText("prod-test").count(), 0);
     await page.getByLabel("患者名").fill("横幅が狭い端末でも折り返す確認用の長い患者名");
     await page.getByLabel("症状・相談内容").fill("長い主訴を入力しても、保存ボタンや録音操作が横スクロール前提にならないことを確認する。");
 
