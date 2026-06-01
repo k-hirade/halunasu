@@ -33,10 +33,17 @@ test("builds Platform-scoped fee sessions", () => {
     orders: [
       {
         orderId: "ord_1",
-        orderType: "lab",
-        localName: "血液検査"
+        orderType: "material",
+        localName: "テスト特定器材",
+        standardCode: "710000001"
       }
-    ]
+    ],
+    claimContext: {
+      material_inputs: [{ code: "710000001", quantity: 1 }]
+    },
+    calculationOptions: {
+      facility_standard_keys: ["検体検査管理加算1"]
+    }
   }, {
     feeSessionId: "fee_001",
     now: new Date("2026-05-28T00:00:00.000Z")
@@ -47,6 +54,9 @@ test("builds Platform-scoped fee sessions", () => {
   assert.equal(session.patientId, "pat_123");
   assert.equal(session.patientRef, "legacy-001");
   assert.equal(session.facilitySnapshot.medicalInstitutionCode, "1312345");
+  assert.equal(session.orders[0].orderType, "material");
+  assert.deepEqual(session.claimContext.material_inputs, [{ code: "710000001", quantity: 1 }]);
+  assert.deepEqual(session.calculationOptions.facility_standard_keys, ["検体検査管理加算1"]);
 });
 
 test("builds draft fee sessions and promotes them when calculation context is saved", () => {
@@ -63,7 +73,12 @@ test("builds draft fee sessions and promotes them when calculation context is sa
     facilityId: "fac_123",
     facilitySnapshot: { facilityId: "fac_123", displayName: "春ナスクリニック" },
     serviceDate: "2026-05-29",
-    orders: [{ orderId: "ord_1", orderType: "lab", localName: "血液検査" }]
+    orders: [{ orderId: "ord_1", orderType: "lab", localName: "血液検査" }],
+    calculationOptions: {
+      history: {
+        same_month_history_codes: ["160000410"]
+      }
+    }
   }, {
     now: new Date("2026-05-28T00:05:00.000Z")
   });
@@ -73,6 +88,7 @@ test("builds draft fee sessions and promotes them when calculation context is sa
   assert.equal(updated.status, "ready");
   assert.equal(updated.patientId, "pat_123");
   assert.equal(updated.claimMonth, "2026-05");
+  assert.deepEqual(updated.calculationOptions.history.same_month_history_codes, ["160000410"]);
 });
 
 test("normalizes external calculation results", () => {

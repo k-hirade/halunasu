@@ -31,6 +31,8 @@ export function buildFeeSession(input = {}, options = {}) {
     orders: Array.isArray(input.orders) ? input.orders : [],
     diagnoses: Array.isArray(input.diagnoses) ? input.diagnoses : [],
     insurance: input.insurance || null,
+    claimContext: isPlainObject(input.claimContext) ? input.claimContext : null,
+    calculationOptions: isPlainObject(input.calculationOptions) ? input.calculationOptions : null,
     sourceSystem: input.sourceSystem || null,
     calculationResult: input.calculationResult || null,
     calculationSummary: input.calculationSummary || null,
@@ -61,6 +63,8 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
       orders: hasOwn(patch, "orders") ? patch.orders : undefined,
       diagnoses: hasOwn(patch, "diagnoses") ? patch.diagnoses : undefined,
       insurance: hasOwn(patch, "insurance") ? patch.insurance || null : undefined,
+      claimContext: hasOwn(patch, "claimContext") ? patch.claimContext || null : undefined,
+      calculationOptions: hasOwn(patch, "calculationOptions") ? patch.calculationOptions || null : undefined,
       sourceSystem: patch.sourceSystem
     }),
     updatedAt: now
@@ -75,7 +79,9 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
     "clinicalText",
     "orders",
     "diagnoses",
-    "insurance"
+    "insurance",
+    "claimContext",
+    "calculationOptions"
   ].some((key) => hasOwn(patch, key));
 
   if (changedCalculationInput && (next.calculationResult || next.calculationSummary)) {
@@ -488,6 +494,7 @@ function receiptGroupLabel(orderType) {
     lab: "検査",
     drug: "投薬",
     injection: "注射",
+    material: "特定器材",
     treatment: "処置",
     imaging: "画像",
     procedure: "手技",

@@ -216,6 +216,13 @@
       line-height: 1.6;
     }
 
+    .mono-textarea {
+      min-height: 156px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
     input:focus,
     select:focus,
     textarea:focus {
@@ -818,7 +825,7 @@
         <form class="operator-gate-card" id="login-form">
           <div>
             <h1>ログイン</h1>
-            <p style="margin-top: 6px;">病院コード、個人ID、パスワードでログインしてください。</p>
+            <p style="margin-top: 6px;">病院コード、個人ID、ログイン用パスワードでログインしてください。</p>
           </div>
           <div class="field">
             <label for="organizationCode">病院コード</label>
@@ -831,8 +838,8 @@
           <div class="field">
             <label for="password">ログイン用パスワード</label>
             <div class="field-password">
-              <input id="password" name="password" type="password" autocomplete="current-password" placeholder="パスワードを入力" required />
-              <button aria-label="パスワードを表示" class="password-toggle" data-password-toggle data-target="password" type="button">
+              <input id="password" name="password" type="password" autocomplete="current-password" placeholder="ログイン用パスワードを入力" required />
+              <button aria-label="ログイン用パスワードを表示" class="password-toggle" data-password-toggle data-target="password" type="button">
                 <svg class="icon-eye" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                   <circle cx="12" cy="12" r="3" />
@@ -1061,7 +1068,17 @@
                 </div>
                 <div class="field">
                   <label for="ordersText">オーダー</label>
-                  <textarea id="ordersText" name="ordersText" placeholder="procedure|血液検査|160000410|1&#10;drug|内服薬|620000001|2"></textarea>
+                  <textarea id="ordersText" name="ordersText" placeholder="procedure|血液検査|160000410|1&#10;drug|内服薬|620000001|2&#10;material|特定器材|710000001|1"></textarea>
+                </div>
+                <div class="grid-2">
+                  <div class="field">
+                    <label for="claimContextText">claimContext JSON</label>
+                    <textarea id="claimContextText" name="claimContextText" class="mono-textarea" spellcheck="false"></textarea>
+                  </div>
+                  <div class="field">
+                    <label for="calculationOptionsText">calculationOptions JSON</label>
+                    <textarea id="calculationOptionsText" name="calculationOptionsText" class="mono-textarea" spellcheck="false"></textarea>
+                  </div>
                 </div>
                 <div class="button-row">
                   <button class="btn btn--ghost" type="submit" data-icon="check">入力を保存</button>
@@ -1175,6 +1192,8 @@
       settingSelect: document.querySelector("#setting"),
       clinicalText: document.querySelector("#clinicalText"),
       ordersText: document.querySelector("#ordersText"),
+      claimContextText: document.querySelector("#claimContextText"),
+      calculationOptionsText: document.querySelector("#calculationOptionsText"),
       sessionList: document.querySelector("#session-list"),
       sessionHistoryCount: document.querySelector("#session-history-count"),
       feeSessionSearch: document.querySelector("#fee-session-search"),
@@ -1432,7 +1451,9 @@
           claimMonth: emptyToNull(form.get("claimMonth")),
           setting: form.get("setting"),
           clinicalText: form.get("clinicalText"),
-          orders: parseOrders(form.get("ordersText"))
+          orders: parseOrders(form.get("ordersText")),
+          claimContext: parseJsonObjectField(form.get("claimContextText"), "claimContext JSON"),
+          calculationOptions: parseJsonObjectField(form.get("calculationOptionsText"), "calculationOptions JSON")
         }
       });
       state.selectedFeeSession = response.feeSession;
@@ -1511,6 +1532,8 @@
       els.settingSelect.value = session.setting || "outpatient";
       els.clinicalText.value = session.clinicalText || "";
       els.ordersText.value = serializeOrders(session.orders || []);
+      els.claimContextText.value = formatJsonObject(session.claimContext);
+      els.calculationOptionsText.value = formatJsonObject(session.calculationOptions);
     }
 
     function feeSessionIdFromRoute() {
@@ -2014,7 +2037,7 @@
     }
 
     function parseOrders(value) {
-      const allowedTypes = new Set(["lab", "drug", "injection", "treatment", "imaging", "procedure", "other", "unknown"]);
+      const allowedTypes = new Set(["lab", "drug", "injection", "material", "treatment", "imaging", "procedure", "other", "unknown"]);
       return String(value || "")
         .split(/\n+/)
         .map((line) => line.trim())
@@ -2053,6 +2076,30 @@
       }).join("\n");
     }
 
+    function parseJsonObjectField(value, label) {
+      const text = String(value || "").trim();
+      if (!text) {
+        return null;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new Error(`${label}がJSONとして正しくありません。`);
+      }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error(`${label}はJSON objectで入力してください。`);
+      }
+      return parsed;
+    }
+
+    function formatJsonObject(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return "";
+      }
+      return JSON.stringify(value, null, 2);
+    }
+
     function toUserFacingErrorMessage(error, fallbackMessage = "処理に失敗しました。時間を置いてもう一度お試しください。") {
       const rawMessage = typeof error === "string" ? error : error?.message;
       const code = typeof error === "object" && error ? String(error.code || error.error || "") : "";
@@ -2063,7 +2110,7 @@
 
       if (normalizedCode === "mfa_required" || lower.includes("mfa code is required")) return "2段階認証コードを入力してください。";
       if (lower.includes("invalid mfa")) return "2段階認証コードが正しくありません。";
-      if (lower.includes("invalid credentials")) return "病院コード、個人ID、またはパスワードが正しくありません。";
+      if (lower.includes("invalid credentials")) return "病院コード、個人ID、またはログイン用パスワードが正しくありません。";
       if (lower.includes("csrf")) return "画面を再読み込みして、もう一度お試しください。";
       if (lower.includes("invalid session") || lower.includes("session expired") || lower.includes("session revoked") || lower === "unauthorized") return "ログイン状態を確認できません。もう一度ログインしてください。";
       if (lower.includes("role is required") || lower.includes("access is required") || lower.includes("product access is required") || lower === "forbidden" || status === 403) return "この操作を行う権限がありません。";
@@ -2357,7 +2404,7 @@
           const visible = target.type === "password";
           target.type = visible ? "text" : "password";
           button.classList.toggle("is-visible", visible);
-          button.setAttribute("aria-label", visible ? "パスワードを隠す" : "パスワードを表示");
+          button.setAttribute("aria-label", visible ? "ログイン用パスワードを隠す" : "ログイン用パスワードを表示");
         });
       });
     }

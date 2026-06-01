@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from medical_fee_calculation.api import calculate_fee_session
+from medical_fee_calculation.api import build_claim_payload, calculate_fee_session
 from medical_fee_calculation.db import connect, initialize_schema
 
 
@@ -77,6 +77,56 @@ class FeeApiBridgeTest(unittest.TestCase):
         self.assertEqual(calculation["provider"], "medical_fee_calculation")
         self.assertEqual(calculation["totalPoints"], 88)
         self.assertEqual(calculation["lineItems"][0]["code"], "160000410")
+
+    def test_build_claim_payload_uses_session_detail_input(self) -> None:
+        payload = build_claim_payload(
+            {
+                "feeSessionId": "fee_advanced",
+                "patientId": "pat_001",
+                "serviceDate": "2026-05-28",
+                "setting": "outpatient",
+                "claimContext": {
+                    "record_id": "legacy-claim-1",
+                    "material_inputs": [{"code": "710000001", "quantity": 1}],
+                },
+                "calculationOptions": {
+                    "comment_inputs": [{"code": "840000001", "text": "コメント"}],
+                },
+            },
+            {},
+        )
+
+        self.assertEqual(payload["record_id"], "legacy-claim-1")
+        self.assertEqual(payload["material_inputs"][0]["code"], "710000001")
+
+        payload = build_claim_payload(
+            {
+                "feeSessionId": "fee_options",
+                "patientId": "pat_001",
+                "serviceDate": "2026-05-28",
+                "setting": "outpatient",
+                "orders": [
+                    {
+                        "orderType": "material",
+                        "standardCode": "710000001",
+                        "quantity": 2,
+                    }
+                ],
+                "calculationOptions": {
+                    "facility_standard_keys": ["検体検査管理加算1"],
+                },
+            },
+            {
+                "calculationOptions": {
+                    "comment_inputs": [{"code": "840000001", "text": "コメント"}],
+                }
+            },
+        )
+
+        self.assertEqual(payload["material_inputs"][0]["code"], "710000001")
+        self.assertEqual(payload["material_inputs"][0]["quantity"], "2")
+        self.assertEqual(payload["facility_standard_keys"], ["検体検査管理加算1"])
+        self.assertEqual(payload["comment_inputs"][0]["code"], "840000001")
 
 
 if __name__ == "__main__":

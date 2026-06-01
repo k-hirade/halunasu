@@ -94,14 +94,20 @@
       "apps/lp/manual/index.html",
       "apps/lp/manual/harunas-user-manual-v1.pdf"
     ],
-    "requiredApiMarkers": [
+    "forbiddenProductionMarkers": [
       {
         "file": "apps/lp/signup.html",
         "text": "startCheckout: true"
       },
       {
-        "file": "services/platform-api/src/server.js",
-        "text": "checkout-session"
+        "file": "apps/lp/signup.html",
+        "text": "billingCheckout.checkoutUrl"
+      }
+    ],
+    "requiredApiMarkers": [
+      {
+        "file": "apps/lp/signup.html",
+        "text": "/v1/signup/applications"
       },
       {
         "file": "services/platform-api/src/server.js",
@@ -117,7 +123,11 @@
       },
       {
         "file": "apps/core-admin/index.html",
-        "text": "mfa-setup-panel"
+        "text": "login-mfa-form"
+      },
+      {
+        "file": "apps/core-admin/index.html",
+        "text": "mfa_required"
       }
     ]
   },

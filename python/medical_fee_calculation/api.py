@@ -53,7 +53,9 @@ def calculate_fee_session(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_claim_payload(session: dict[str, Any], calculation_input: dict[str, Any]) -> dict[str, Any]:
-    explicit = calculation_input.get("claimContext") or calculation_input.get("claim_context")
+    explicit = _optional_object(calculation_input, "claimContext", "claim_context")
+    if explicit is None:
+        explicit = _optional_object(session, "claimContext", "claim_context")
     if explicit is not None:
         if not isinstance(explicit, dict):
             raise ValueError("claimContext must be an object")
@@ -62,9 +64,13 @@ def build_claim_payload(session: dict[str, Any], calculation_input: dict[str, An
     orders = calculation_input.get("orders")
     if not isinstance(orders, list):
         orders = session.get("orders") if isinstance(session.get("orders"), list) else []
-    options = calculation_input.get("calculationOptions") or calculation_input.get("calculation_options") or {}
-    if not isinstance(options, dict):
-        options = {}
+    session_options = _optional_object(session, "calculationOptions", "calculation_options") or {}
+    input_options = _optional_object(calculation_input, "calculationOptions", "calculation_options") or {}
+    options = {}
+    if isinstance(session_options, dict):
+        options.update(session_options)
+    if isinstance(input_options, dict):
+        options.update(input_options)
 
     facility = session.get("facilitySnapshot") if isinstance(session.get("facilitySnapshot"), dict) else {}
     patient = session.get("patientSnapshot") if isinstance(session.get("patientSnapshot"), dict) else {}
@@ -132,6 +138,14 @@ def build_claim_payload(session: dict[str, Any], calculation_input: dict[str, An
     _drop_none(claim_payload["patient"])
     _drop_none(claim_payload["encounter"])
     return claim_payload
+
+
+def _optional_object(source: dict[str, Any], camel_key: str, snake_key: str) -> Any:
+    if camel_key in source:
+        return source[camel_key]
+    if snake_key in source:
+        return source[snake_key]
+    return None
 
 
 def _fee_line_items(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:

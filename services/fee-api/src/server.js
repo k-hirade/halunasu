@@ -275,7 +275,7 @@ async function routeFeeApiRequest(input = {}) {
     }
     assertFeeSessionReadyForCalculation(current);
     const calculationInput = validateCreateFeeCalculationInput(input.body || {});
-    const calculationResult = await feeCalculator.calculate(current, calculationInput);
+    const calculationResult = await feeCalculator.calculate(current, buildCalculationInputForSession(current, calculationInput));
     const result = await feeStore.saveCalculation(context.session.orgId, parts[3], calculationResult);
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.calculated",
@@ -409,6 +409,26 @@ function assertFeeSessionReadyForCalculation(session = {}) {
     error.field = "feeSession";
     throw error;
   }
+}
+
+function buildCalculationInputForSession(session = {}, input = {}) {
+  const calculationInput = { ...input };
+  if (!hasOwn(calculationInput, "claimContext") && isPlainObject(session.claimContext)) {
+    calculationInput.claimContext = session.claimContext;
+  }
+  if (!hasOwn(calculationInput, "calculationOptions") && isPlainObject(session.calculationOptions)) {
+    calculationInput.calculationOptions = session.calculationOptions;
+  } else if (
+    isPlainObject(session.calculationOptions)
+    && isPlainObject(calculationInput.calculationOptions)
+  ) {
+    calculationInput.calculationOptions = {
+      ...session.calculationOptions,
+      ...calculationInput.calculationOptions
+    };
+  }
+
+  return calculationInput;
 }
 
 function contextView(context) {
@@ -616,6 +636,10 @@ function matches(parts, expected) {
 
 function hasOwn(value, key) {
   return Object.prototype.hasOwnProperty.call(value || {}, key);
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function toErrorCode(name) {

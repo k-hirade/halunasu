@@ -6,6 +6,8 @@
 
 2026-05-30のpost-deploy検証では、STG/PRODでCore患者/施設/診療科を選択してfee sessionを作成し、`standardCode=160000410` を `medical_fee_calculation` providerで実算定した。結果はSTG/PRODとも `totalPoints=41`、`lineItems=2`。
 
+2026-06-01追記: 「完全移行」の判定は [Fee Complete Migration Plan](./2026-06-01-fee-complete-migration-plan.md) を正とする。`claimContext` / `calculationOptions` / `material` order type を `feeSession` に保存し、旧 claim payload 相当の詳細入力を `fee-web` / `fee-api` から Python engine へ渡せるようにした。Order CSV、claim batch、gold評価、マスター更新は現行 Python CLI と legacy tests を正式な到達経路として維持する。
+
 ## 旧実装
 
 旧 `medical-fee-calculation` はWebアプリではなく、診療報酬算定エンジンとマスタ/契約/テスト資産だった。
@@ -92,7 +94,7 @@ PYTHONPATH=python python3 -m unittest python/tests/test_fee_api_bridge.py
 | Python engine | ほぼ移植済み | 旧テストを継続実行対象にする |
 | configs/contracts/docs | 移植開始 | 正式な配置場所を `config/fee-calculation` / `docs/fee-calculation` に整理 |
 | `fee-api` | calculate endpoint / master readiness / 公式master gzip展開をSTG/PRODへ反映済み | master更新時はgzip再生成後にFee APIを再deploy |
-| `fee-web` | calculate UIへ変更済み | 旧契約に沿ったオーダーCSV/診療情報入力は追加実装が必要 |
+| `fee-web` | calculate UIへ変更済み。`claimContext` / `calculationOptions` / `material` 入力を保持できる | CSV/マスター/バッチのWeb UI化は別判断 |
 | master data | 運用開始 | Git管理せず、`python/data/master/standard-master.sqlite.gz` をFee API build contextだけへ含める |
 | STG/PROD | 実算定まで確認済み | 代表ケースを増やす場合はpost-deploy scriptへ追加 |
 

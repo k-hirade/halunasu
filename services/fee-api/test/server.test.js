@@ -195,6 +195,67 @@ test("creates draft fee sessions and updates them before calculation", async () 
   assert.equal(calculation.body.feeSession.status, "needs_review");
 });
 
+test("persists detailed calculation input and passes it to calculator", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 55,
+      lineItems: [{
+        lineId: "line_1",
+        code: feeSession.orders[0]?.standardCode,
+        name: feeSession.orders[0]?.localName,
+        orderType: "material",
+        points: 55,
+        quantity: 1,
+        totalPoints: 55,
+        status: "candidate",
+        source: "specific_material_master"
+      }],
+      warnings: []
+    };
+  };
+
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "材料 太郎" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    orders: [{
+      orderType: "material",
+      localName: "テスト特定器材",
+      standardCode: "710000001",
+      quantity: 1
+    }],
+    claimContext: {
+      record_id: "legacy-claim-1",
+      material_inputs: [{ code: "710000001", quantity: 1 }]
+    },
+    calculationOptions: {
+      facility_standard_keys: ["検体検査管理加算1"],
+      comment_inputs: [{ code: "840000001", text: "コメント" }]
+    }
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+
+  assert.equal(session.statusCode, 201);
+  assert.equal(session.body.feeSession.orders[0].orderType, "material");
+  assert.deepEqual(session.body.feeSession.claimContext.material_inputs, [{ code: "710000001", quantity: 1 }]);
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.claimContext.material_inputs, [{ code: "710000001", quantity: 1 }]);
+  assert.deepEqual(receivedInput.calculationOptions.comment_inputs, [{ code: "840000001", text: "コメント" }]);
+});
+
 test("rejects fee access without product entitlement", async () => {
   const stores = createStores({ entitlement: false });
   const headers = await signedHeaders(stores.platformStore);

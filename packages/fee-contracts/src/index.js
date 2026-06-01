@@ -11,6 +11,7 @@ export const feeOrderTypes = Object.freeze([
   "lab",
   "drug",
   "injection",
+  "material",
   "treatment",
   "imaging",
   "procedure",
@@ -51,6 +52,12 @@ export function validateCreateFeeSessionInput(input = {}) {
     orders: normalizeFeeOrders(input.orders ?? input.order_texts),
     diagnoses: normalizeDiagnoses(input.diagnoses),
     insurance: isPlainObject(input.insurance) ? input.insurance : undefined,
+    claimContext: hasOwn(input, "claimContext") || hasOwn(input, "claim_context")
+      ? nullablePlainObject(input.claimContext ?? input.claim_context, "claimContext")
+      : undefined,
+    calculationOptions: hasOwn(input, "calculationOptions") || hasOwn(input, "calculation_options")
+      ? nullablePlainObject(input.calculationOptions ?? input.calculation_options, "calculationOptions")
+      : undefined,
     sourceSystem: optionalString(input.sourceSystem ?? input.source_system)
   });
 }
@@ -89,6 +96,12 @@ export function validateUpdateFeeSessionInput(input = {}) {
     insurance: hasOwn(input, "insurance")
       ? nullablePlainObject(input.insurance, "insurance")
       : undefined,
+    claimContext: hasOwn(input, "claimContext") || hasOwn(input, "claim_context")
+      ? nullablePlainObject(input.claimContext ?? input.claim_context, "claimContext")
+      : undefined,
+    calculationOptions: hasOwn(input, "calculationOptions") || hasOwn(input, "calculation_options")
+      ? nullablePlainObject(input.calculationOptions ?? input.calculation_options, "calculationOptions")
+      : undefined,
     sourceSystem: optionalString(input.sourceSystem ?? input.source_system)
   };
 
@@ -104,10 +117,10 @@ export function validateCreateFeeCalculationInput(input = {}) {
       ? normalizeFeeOrders(input.orders ?? input.order_texts)
       : undefined,
     claimContext: hasOwn(input, "claimContext") || hasOwn(input, "claim_context")
-      ? optionalPlainObject(input.claimContext ?? input.claim_context, "claimContext")
+      ? nullablePlainObject(input.claimContext ?? input.claim_context, "claimContext")
       : undefined,
     calculationOptions: hasOwn(input, "calculationOptions") || hasOwn(input, "calculation_options")
-      ? optionalPlainObject(input.calculationOptions ?? input.calculation_options, "calculationOptions")
+      ? nullablePlainObject(input.calculationOptions ?? input.calculation_options, "calculationOptions")
       : undefined
   });
 }

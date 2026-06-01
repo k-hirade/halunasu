@@ -20,11 +20,18 @@ test("normalizes fee session input to Platform identifiers", () => {
     order_texts: [
       {
         order_id: "ord_1",
-        order_type: "drug",
-        local_name: "カルボシステイン錠",
+        order_type: "material",
+        local_name: "テスト特定器材",
+        standard_code: "710000001",
         quantity: "3"
       }
-    ]
+    ],
+    claim_context: {
+      material_inputs: [{ code: "710000001", quantity: 3 }]
+    },
+    calculation_options: {
+      facility_standard_keys: ["検体検査管理加算1"]
+    }
   });
 
   assert.equal(normalized.patientId, "pat_123");
@@ -32,8 +39,10 @@ test("normalizes fee session input to Platform identifiers", () => {
   assert.equal(normalized.facilityId, "fac_123");
   assert.equal(normalized.departmentId, "dep_123");
   assert.equal(normalized.claimMonth, "2026-05");
-  assert.equal(normalized.orders[0].orderType, "drug");
+  assert.equal(normalized.orders[0].orderType, "material");
   assert.equal(normalized.orders[0].quantity, 3);
+  assert.deepEqual(normalized.claimContext.material_inputs, [{ code: "710000001", quantity: 3 }]);
+  assert.deepEqual(normalized.calculationOptions.facility_standard_keys, ["検体検査管理加算1"]);
 });
 
 test("allows draft fee session input before patient and facility are selected", () => {
@@ -50,7 +59,13 @@ test("normalizes fee session update input", () => {
     department_id: null,
     service_date: "2026-05-29",
     clinical_text: "",
-    orders: []
+    orders: [],
+    claimContext: null,
+    calculationOptions: {
+      history: {
+        same_month_history_codes: ["160000410"]
+      }
+    }
   });
 
   assert.equal(normalized.patientId, "pat_123");
@@ -59,6 +74,8 @@ test("normalizes fee session update input", () => {
   assert.equal(normalized.claimMonth, "2026-05");
   assert.equal(normalized.clinicalText, "");
   assert.deepEqual(normalized.orders, []);
+  assert.equal(normalized.claimContext, null);
+  assert.deepEqual(normalized.calculationOptions.history.same_month_history_codes, ["160000410"]);
 });
 
 test("validates shared patient shape for fee patient creation", () => {
@@ -83,9 +100,13 @@ test("normalizes calculation override input", () => {
     ],
     claimContext: {
       procedure_codes: ["160000410"]
+    },
+    calculationOptions: {
+      comment_inputs: [{ code: "840000001", text: "コメント" }]
     }
   });
 
   assert.equal(input.orders[0].orderType, "lab");
   assert.deepEqual(input.claimContext.procedure_codes, ["160000410"]);
+  assert.deepEqual(input.calculationOptions.comment_inputs[0], { code: "840000001", text: "コメント" });
 });
