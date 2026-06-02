@@ -26,11 +26,12 @@ test("always-visible authenticator setup block is removed", () => {
   assert.doesNotMatch(html, /id="mfa-setup-panel"/);
 });
 
-test("app shell uses sidebar navigation, topbar organization switcher, and account menu", () => {
+test("app shell uses sidebar navigation and account menu without the topbar organization switcher", () => {
   assert.match(html, /class="sidebar"/);
   assert.match(html, /class="side-nav"/);
   assert.match(html, /class="topbar-main"/);
-  assert.match(html, /class="field org-switcher"/);
+  assert.doesNotMatch(html, /class="field org-switcher"/);
+  assert.doesNotMatch(html, /id="org-select"/);
   assert.match(html, /\.topbar\s*\{[\s\S]*grid-template-columns: 220px minmax\(0, 1fr\);/);
   assert.match(html, /\.main\s*\{[\s\S]*grid-template-columns: 220px minmax\(0, 1fr\);/);
   assert.doesNotMatch(html, /main--single/);

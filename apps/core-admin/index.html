@@ -80,19 +80,10 @@
     .topbar-main {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-end;
       gap: 18px;
       min-width: 0;
       padding-left: 24px;
-    }
-
-    .org-switcher {
-      width: min(380px, 44vw);
-      min-width: 220px;
-    }
-
-    .org-switcher label {
-      display: none;
     }
 
     .topbar-actions {
@@ -366,27 +357,24 @@
     .workspace {
       display: grid;
       align-content: start;
-      gap: 16px;
+      gap: 18px;
       min-width: 0;
       padding: 24px;
     }
 
-    .workspace-head,
     .view-head {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       justify-content: space-between;
       gap: 16px;
     }
 
-    .workspace-title,
     .view-title {
       display: grid;
       gap: 4px;
       min-width: 0;
     }
 
-    .workspace-title h1,
     .view-title h1 {
       margin: 0;
       color: var(--ink);
@@ -394,7 +382,6 @@
       line-height: 1.35;
     }
 
-    .workspace-title p,
     .view-title p {
       margin: 0;
       color: var(--muted);
@@ -657,7 +644,6 @@
       .topbar,
       .main,
       .topbar-main,
-      .workspace-head,
       .view-head {
         grid-template-columns: 1fr;
       }
@@ -673,11 +659,6 @@
         padding-left: 0;
         display: grid;
         gap: 10px;
-      }
-
-      .org-switcher {
-        width: 100%;
-        min-width: 0;
       }
 
       .main {
@@ -817,10 +798,6 @@
         <div>施設管理画面</div>
       </div>
       <div class="topbar-main">
-        <div class="field org-switcher">
-          <label for="org-select">病院</label>
-          <select id="org-select" aria-label="病院"></select>
-        </div>
         <div class="topbar-actions">
           <button class="secondary icon-only" id="refresh-button" type="button" data-icon="refreshCw" aria-label="再読み込み"></button>
           <button class="session-chip-button" id="session-menu-button" type="button" aria-expanded="false" aria-controls="session-menu" data-icon="settings">
@@ -857,12 +834,6 @@
 
       <section class="workspace">
         <div id="message" class="message"></div>
-        <div class="workspace-head">
-          <div class="workspace-title">
-              <h1>病院共通データ</h1>
-              <p>各アプリで使う病院の基本情報を管理します。</p>
-          </div>
-        </div>
 
         <section class="view active" id="view-organizations" role="tabpanel">
           <div class="view-head">
@@ -1068,7 +1039,6 @@
       sessionMenuMeta: document.querySelector("#session-menu-meta"),
       logoutButton: document.querySelector("#logout-button"),
       message: document.querySelector("#message"),
-      orgSelect: document.querySelector("#org-select"),
       patientFilter: document.querySelector("#patient-filter"),
       auditFilter: document.querySelector("#audit-filter"),
       editModal: document.querySelector("#edit-modal"),
@@ -1147,10 +1117,6 @@
       if (!els.sessionMenu.contains(event.target) && !els.sessionMenuButton.contains(event.target)) {
         setSessionMenuOpen(false);
       }
-    });
-    els.orgSelect.addEventListener("change", async () => {
-      state.orgId = els.orgSelect.value;
-      await refreshAll();
     });
     els.patientFilter.addEventListener("input", () => {
       state.filters.patients = els.patientFilter.value;
@@ -2111,10 +2077,6 @@
     }
 
     function renderOrganizations() {
-      els.orgSelect.innerHTML = state.organizations
-        .map((organization) => `<option value="${escapeHtml(organization.orgId)}">${escapeHtml(organization.organizationCode || organization.orgId)}</option>`)
-        .join("");
-      els.orgSelect.value = state.orgId;
       renderTable("organizations-table", state.organizations, [
         ["病院コード", "organizationCode"],
         ["表示名", "displayName"],
