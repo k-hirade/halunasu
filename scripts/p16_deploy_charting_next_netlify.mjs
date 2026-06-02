@@ -206,8 +206,9 @@ function runCommand(command, options = {}) {
 }
 
 function resolveGatewayUrl(env, targets) {
-  if (targets.chartingGateway) {
-    return targets.chartingGateway.replace(/\/$/u, "");
+  const configuredGatewayUrl = targets.chartingGateway || targets.charting;
+  if (configuredGatewayUrl) {
+    return configuredGatewayUrl.replace(/\/$/u, "");
   }
 
   if (!apply) {
