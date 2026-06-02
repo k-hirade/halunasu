@@ -175,6 +175,10 @@
       gap: 6px;
     }
 
+    .field.is-hidden {
+      display: none;
+    }
+
     label {
       color: #26364f;
       font-size: 13px;
@@ -224,6 +228,24 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
       font-size: 12px;
       line-height: 1.55;
+    }
+
+    .advanced-fee-inputs {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md, 12px);
+      background: #fbfdff;
+      padding: 12px 14px;
+    }
+
+    .advanced-fee-inputs summary {
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .advanced-fee-inputs-grid {
+      margin-top: 12px;
     }
 
     input:focus,
@@ -302,16 +324,102 @@
 
     .fee-session-detail-grid {
       display: grid;
-      grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.3fr);
+      grid-template-columns: minmax(260px, 0.75fr) minmax(360px, 1fr) minmax(0, 1.25fr);
       gap: 18px;
       align-items: start;
     }
 
+    .fee-session-detail-side {
+      display: contents;
+    }
+
     .fee-session-detail-side,
     .fee-session-detail-main {
-      display: grid;
       gap: 18px;
       min-width: 0;
+    }
+
+    .fee-session-detail-grid > *,
+    .fee-session-detail-grid .field,
+    .fee-session-detail-grid .grid-2 > *,
+    .fee-session-detail-grid input,
+    .fee-session-detail-grid select,
+    .fee-session-detail-grid textarea {
+      min-width: 0;
+    }
+
+    .fee-session-detail-grid .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .fee-session-detail-main {
+      display: grid;
+    }
+
+    .patient-inline-create {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md, 12px);
+      background: #fbfdff;
+      padding: 12px 14px;
+    }
+
+    .patient-inline-create summary {
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .patient-inline-create form {
+      margin-top: 14px;
+    }
+
+    .order-editor-field {
+      gap: 10px;
+    }
+
+    .order-editor {
+      display: grid;
+      gap: 10px;
+    }
+
+    .order-editor-empty {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      color: var(--muted);
+      background: #fbfdff;
+      padding: 14px;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .order-editor-row {
+      display: grid;
+      grid-template-columns: 150px minmax(180px, 1fr) minmax(120px, 0.7fr) 92px 42px;
+      gap: 8px;
+      align-items: end;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+    }
+
+    .order-editor-row label {
+      display: grid;
+      gap: 5px;
+    }
+
+    .order-editor-row label span {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .order-editor-row input,
+    .order-editor-row select {
+      min-height: 38px;
+      padding: 8px 10px;
+      font-size: 13px;
     }
 
     button {
@@ -776,6 +884,12 @@
       .fee-session-detail-grid {
         grid-template-columns: 1fr;
       }
+      .order-editor-row {
+        grid-template-columns: 1fr;
+      }
+      .order-editor-row .btn--icon {
+        width: 100%;
+      }
       .grid-2,
       .grid-3 { grid-template-columns: 1fr; }
       .session-history-toolbar { grid-template-columns: 1fr; }
@@ -787,6 +901,7 @@
     }
   </style>
   <link rel="stylesheet" href="auth.css" />
+  <link rel="stylesheet" href="web-ui/halunasu-ui.css" />
 </head>
 <body>
   <div class="operator-gate" id="login-gate">
@@ -910,47 +1025,54 @@
   </div>
 
   <div class="app hidden" id="app-shell">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark">H</div>
-        <div>ハルナス 診療報酬算定</div>
-      </div>
-      <div class="topbar-meta">
-        <span class="badge partial">算定候補・レビュー支援</span>
-        <div id="session-chip" class="session-chip">未ログイン</div>
+    <header class="site-nav-wrap">
+      <div class="site-nav">
+        <div class="site-nav-left">
+          <a class="site-brand" href="/" aria-label="ハルナス 診療報酬算定">
+            <img alt="ハルナス" class="site-brand-mark" height="36" src="brand/harunas-mark.png" width="36" />
+            <span class="site-brand-wordmark">ハルナス</span>
+          </a>
+          <span class="site-nav-product">診療報酬算定</span>
+          <span class="badge partial">算定候補・レビュー支援</span>
+        </div>
+        <div class="site-nav-right">
+          <a class="site-nav-link" id="facility-admin-link" href="https://admin.halunasu.com/">施設管理画面</a>
+          <div id="session-chip" class="session-chip">未ログイン</div>
+          <button class="site-auth-button" id="logout-button" type="button">ログアウト</button>
+        </div>
       </div>
     </header>
 
     <main class="dashboard">
       <div class="dashboard-header">
-        <h1>診療報酬算定セッション</h1>
+        <h1>算定一覧</h1>
       </div>
 
       <div id="message" class="message"></div>
 
       <section class="card quick-start-panel home-only">
         <div class="quick-start-copy">
-          <span class="label">クイックスタート</span>
-          <h2>すぐに算定を始められます</h2>
-          <p>患者、施設、オーダーは算定画面で入力します。ここではそのまま算定セッションを開始してください。</p>
+          <span class="label">新しい算定</span>
+          <h2>算定記録を作成します</h2>
+          <p>次の画面で患者、診療日、オーダーを入力できます。新しい算定記録を開いてください。</p>
         </div>
         <div class="quick-start-actions">
-          <button class="btn btn--primary btn--lg" id="start-fee-session-button" type="button" data-icon="fileText">算定を開始</button>
+          <button class="btn btn--primary btn--lg" id="start-fee-session-button" type="button" data-icon="fileText">算定記録を作成</button>
         </div>
       </section>
 
       <section class="session-history home-only">
           <div class="session-history-head">
             <div>
-              <span class="label">セッション履歴</span>
-              <h2>算定履歴</h2>
+              <span class="label">履歴</span>
+              <h2>過去の算定</h2>
             </div>
             <span id="session-history-count" class="session-history-count">0件</span>
           </div>
           <div class="session-history-toolbar" role="search">
             <label class="session-history-search" for="fee-session-search">
               <span>検索</span>
-              <input id="fee-session-search" type="search" placeholder="患者名、患者ID、算定IDで検索" autocomplete="off" />
+              <input id="fee-session-search" type="search" placeholder="患者名・患者IDで検索" autocomplete="off" />
             </label>
             <label class="session-history-filter" for="fee-session-status">
               <span>状態</span>
@@ -969,9 +1091,9 @@
       <section class="fee-session-detail detail-only hidden" id="fee-session-detail">
         <div class="fee-session-detail-head">
           <div>
-            <span class="label">算定セッション</span>
+            <span class="label">算定記録</span>
             <h2 id="fee-session-detail-title">算定画面</h2>
-            <p class="panel-copy" id="fee-session-detail-meta">患者情報とオーダーを入力して、算定候補を作成します。</p>
+            <p class="panel-copy" id="fee-session-detail-meta">患者、診療日、オーダーを入力して、算定候補を作成します。</p>
           </div>
           <button class="btn btn--ghost" id="back-to-fee-sessions-button" type="button" data-icon="arrowLeft">一覧へ戻る</button>
         </div>
@@ -990,35 +1112,38 @@
               <div class="panel-head">
                 <div>
                   <h2>患者</h2>
-                  <p class="panel-copy">共通プラットフォームの患者を選択または新規作成します。</p>
+                  <p class="panel-copy">登録済み患者を検索して選択します。必要な場合は施設管理画面で患者を追加できます。</p>
                 </div>
               </div>
-              <form id="patient-form" class="stack">
-                <div class="field">
-                  <label for="patient-name">氏名</label>
-                  <input id="patient-name" name="displayName" required />
-                </div>
-                <div class="grid-2">
+              <details class="patient-inline-create">
+                <summary>患者を追加する</summary>
+                <form id="patient-form" class="stack">
                   <div class="field">
-                    <label for="patient-birth">生年月日</label>
-                    <input id="patient-birth" name="birthDate" type="date" />
+                    <label for="patient-name">氏名</label>
+                    <input id="patient-name" name="displayName" required />
+                  </div>
+                  <div class="grid-2">
+                    <div class="field">
+                      <label for="patient-birth">生年月日</label>
+                      <input id="patient-birth" name="birthDate" type="date" />
+                    </div>
+                    <div class="field">
+                      <label for="patient-sex">性別</label>
+                      <select id="patient-sex" name="sex">
+                        <option value="unknown">不明</option>
+                        <option value="male">男性</option>
+                        <option value="female">女性</option>
+                        <option value="other">その他</option>
+                      </select>
+                    </div>
                   </div>
                   <div class="field">
-                    <label for="patient-sex">性別</label>
-                    <select id="patient-sex" name="sex">
-                      <option value="unknown">不明</option>
-                      <option value="male">男性</option>
-                      <option value="female">女性</option>
-                      <option value="other">その他</option>
-                    </select>
+                    <label for="patient-ref">患者番号</label>
+                    <input id="patient-ref" name="patientRef" placeholder="例: legacy-001" />
                   </div>
-                </div>
-                <div class="field">
-                  <label for="patient-ref">患者ID alias</label>
-                  <input id="patient-ref" name="patientRef" placeholder="例: legacy-001" />
-                </div>
-                <button class="btn btn--ghost" type="submit" data-icon="check">患者作成</button>
-              </form>
+                  <button class="btn btn--ghost" type="submit" data-icon="check">患者を追加</button>
+                </form>
+              </details>
             </section>
 
             <section class="card">
@@ -1032,14 +1157,14 @@
               <form id="fee-session-form" class="stack">
                 <div class="field">
                   <label for="patient-search">患者検索</label>
-                  <input id="patient-search" name="patientSearch" placeholder="氏名、患者ID、aliasで検索" />
+                  <input id="patient-search" name="patientSearch" placeholder="氏名・患者番号で検索" />
                 </div>
                 <div class="grid-2">
                   <div class="field">
                     <label for="patientId">患者</label>
                     <select id="patientId" name="patientId"></select>
                   </div>
-                  <div class="field">
+                  <div class="field" id="facility-field">
                     <label for="facilityId">施設</label>
                     <select id="facilityId" name="facilityId"></select>
                   </div>
@@ -1069,24 +1194,30 @@
                   <label for="clinicalText">診療テキスト</label>
                   <textarea id="clinicalText" name="clinicalText"></textarea>
                 </div>
-                <div class="field">
+                <div class="field order-editor-field">
                   <label for="ordersText">オーダー</label>
-                  <textarea id="ordersText" name="ordersText" placeholder="procedure|血液検査|160000410|1&#10;drug|内服薬|620000001|2&#10;material|特定器材|710000001|1"></textarea>
+                  <p class="field-note">種別、名称、標準コード、数量を行ごとに入力してください。</p>
+                  <div id="order-editor" class="order-editor"></div>
+                  <button class="btn btn--ghost btn--sm" id="add-order-row-button" type="button" data-icon="plus">オーダー行を追加</button>
+                  <textarea id="ordersText" name="ordersText" class="hidden" aria-hidden="true" tabindex="-1" placeholder="procedure|血液検査|160000410|1&#10;drug|内服薬|620000001|2&#10;material|特定器材|710000001|1"></textarea>
                 </div>
-                <div class="grid-2">
+                <details class="advanced-fee-inputs">
+                  <summary>詳細条件・算定オプション</summary>
+                  <div class="grid-2 advanced-fee-inputs-grid">
                   <div class="field">
-                    <label for="claimContextText">claimContext JSON</label>
+                    <label for="claimContextText">詳細条件 JSON</label>
                     <textarea id="claimContextText" name="claimContextText" class="mono-textarea" spellcheck="false"></textarea>
                   </div>
                   <div class="field">
-                    <label for="calculationOptionsText">calculationOptions JSON</label>
+                    <label for="calculationOptionsText">算定オプション JSON</label>
                     <textarea id="calculationOptionsText" name="calculationOptionsText" class="mono-textarea" spellcheck="false"></textarea>
                   </div>
-                </div>
+                  </div>
+                </details>
                 <div class="button-row">
                   <button class="btn btn--ghost" type="submit" data-icon="check">入力を保存</button>
-                  <button class="btn btn--primary" id="calculate-button" type="button" data-icon="checkCircle">算定実行</button>
-                  <button class="btn btn--ghost" id="refresh-button" type="button" data-icon="refreshCw">再読み込み</button>
+                  <button class="btn btn--primary" id="calculate-button" type="button" data-icon="checkCircle">算定候補を作成</button>
+                  <button class="btn btn--ghost" id="refresh-button" type="button" data-icon="refreshCw">最新の状態に更新</button>
                 </div>
               </form>
             </section>
@@ -1097,10 +1228,10 @@
               <div class="panel-head">
                 <div>
                   <h2>算定候補</h2>
-                  <p class="panel-copy">coverage と support level を確認してからレビューしてください。</p>
+                  <p class="panel-copy">対応範囲と確認が必要な理由を確認してください。</p>
                 </div>
               </div>
-              <div id="result" class="result result-empty">算定セッションを作成または選択してください。</div>
+              <div id="result" class="result result-empty">算定記録を作成または選択してください。</div>
             </section>
 
             <section class="card">
@@ -1116,6 +1247,7 @@
         </div>
       </section>
     </main>
+    <div class="admin-toast-container" id="toast-container" aria-live="polite"></div>
   </div>
 
   <script>
@@ -1125,8 +1257,21 @@
       checkCircle: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
       chevronRight: '<polyline points="9 18 15 12 9 6"/>',
       fileText: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/>',
-      refreshCw: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>'
+      plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+      refreshCw: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+      trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>'
     };
+
+    const ORDER_TYPE_OPTIONS = [
+      ["procedure", "処置・手技"],
+      ["lab", "検査"],
+      ["drug", "薬剤"],
+      ["injection", "注射"],
+      ["material", "特定器材"],
+      ["imaging", "画像"],
+      ["treatment", "医学管理等"],
+      ["other", "その他"]
+    ];
 
     const platformApiBaseUrl = metaContent("halunasu-platform-api-base-url");
     const feeApiBaseUrl = metaContent("halunasu-fee-api-base-url");
@@ -1155,6 +1300,7 @@
       selectedFeeSessionId: "",
       selectedFeeSession: null,
       patientFilter: "",
+      orderRows: [],
       receiptDraft: null,
       reviewItems: []
     };
@@ -1177,6 +1323,8 @@
       mfaButton: document.querySelector("#mfa-button"),
       mfaBackButton: document.querySelector("#mfa-back-button"),
       sessionChip: document.querySelector("#session-chip"),
+      logoutButton: document.querySelector("#logout-button"),
+      facilityAdminLink: document.querySelector("#facility-admin-link"),
       loginForm: document.querySelector("#login-form"),
       patientForm: document.querySelector("#patient-form"),
       feeSessionForm: document.querySelector("#fee-session-form"),
@@ -1189,11 +1337,14 @@
       startFeeSessionButton: document.querySelector("#start-fee-session-button"),
       backToFeeSessionsButton: document.querySelector("#back-to-fee-sessions-button"),
       patientSearch: document.querySelector("#patient-search"),
+      facilityField: document.querySelector("#facility-field"),
       patientSelect: document.querySelector("#patientId"),
       facilitySelect: document.querySelector("#facilityId"),
       departmentSelect: document.querySelector("#departmentId"),
       settingSelect: document.querySelector("#setting"),
       clinicalText: document.querySelector("#clinicalText"),
+      orderEditor: document.querySelector("#order-editor"),
+      addOrderRowButton: document.querySelector("#add-order-row-button"),
       ordersText: document.querySelector("#ordersText"),
       claimContextText: document.querySelector("#claimContextText"),
       calculationOptionsText: document.querySelector("#calculationOptionsText"),
@@ -1207,10 +1358,12 @@
       calculateButton: document.querySelector("#calculate-button"),
       refreshButton: document.querySelector("#refresh-button"),
       serviceDate: document.querySelector("#serviceDate"),
-      claimMonth: document.querySelector("#claimMonth")
+      claimMonth: document.querySelector("#claimMonth"),
+      toastContainer: document.querySelector("#toast-container")
     };
     let feeSessionSearchTimer = 0;
 
+    els.facilityAdminLink.href = facilityAdminUrl();
     els.serviceDate.value = new Date().toISOString().slice(0, 10);
     els.claimMonth.value = new Date().toISOString().slice(0, 7);
 
@@ -1282,6 +1435,10 @@
       show(els.loginGate);
     });
 
+    els.logoutButton.addEventListener("click", async () => {
+      await logout();
+    });
+
     hydrateStaticIcons();
     setupPasswordToggle();
     setupMfaCodeInput();
@@ -1290,6 +1447,12 @@
     els.patientSearch.addEventListener("input", () => {
       state.patientFilter = els.patientSearch.value;
       renderPatients();
+    });
+
+    els.addOrderRowButton.addEventListener("click", () => {
+      state.orderRows = [...state.orderRows, createEmptyOrderRow()];
+      renderOrderEditor();
+      syncOrderRowsToTextarea();
     });
 
     els.feeSessionSearch.addEventListener("input", () => {
@@ -1323,7 +1486,7 @@
       window.history.pushState({}, "", "/");
       clearSelectedFeeSession();
       showHomeRoute();
-      await loadSessions({ page: state.feeSessionPage }).catch((error) => showMessage(toUserFacingErrorMessage(error, "算定履歴の再読み込みに失敗しました。"), "error"));
+      await loadSessions({ page: state.feeSessionPage }).catch((error) => showMessage(toUserFacingErrorMessage(error, "算定履歴の更新に失敗しました。"), "error"));
     });
 
     els.patientForm.addEventListener("submit", async (event) => {
@@ -1363,7 +1526,7 @@
       await run(async () => {
         requireLogin();
         if (!state.selectedFeeSessionId) {
-          throw new Error("算定セッションを選択してください");
+          throw new Error("算定記録を選択してください");
         }
         await saveFeeSessionDetails({ silent: true, skipSessionReload: true });
         const response = await api(feeApiBaseUrl, `/v1/fee/sessions/${state.selectedFeeSessionId}/calculate`, {
@@ -1382,7 +1545,7 @@
       await run(async () => {
         requireLogin();
         await loadWorkspace();
-        showMessage("再読み込みしました", "success");
+        showMessage("最新の状態に更新しました", "success");
       });
     });
 
@@ -1438,25 +1601,27 @@
     async function saveFeeSessionDetails(options = {}) {
       requireLogin();
       if (!state.selectedFeeSessionId) {
-        throw new Error("算定セッションを選択してください");
+        throw new Error("算定記録を選択してください");
       }
+      syncOrderRowsToTextarea();
       const form = new FormData(els.feeSessionForm);
       const patient = state.patients.find((item) => item.patientId === form.get("patientId"));
+      const facilityId = emptyToNull(form.get("facilityId")) || defaultFacilityId();
       const response = await api(feeApiBaseUrl, `/v1/fee/sessions/${state.selectedFeeSessionId}`, {
         method: "PATCH",
         csrf: true,
         body: {
           patientId: emptyToNull(form.get("patientId")),
           patientRef: patient?.externalPatientIds?.[0] || emptyToNull(form.get("patientId")),
-          facilityId: emptyToNull(form.get("facilityId")),
+          facilityId,
           departmentId: emptyToNull(form.get("departmentId")),
           serviceDate: form.get("serviceDate"),
           claimMonth: emptyToNull(form.get("claimMonth")),
           setting: form.get("setting"),
           clinicalText: form.get("clinicalText"),
           orders: parseOrders(form.get("ordersText")),
-          claimContext: parseJsonObjectField(form.get("claimContextText"), "claimContext JSON"),
-          calculationOptions: parseJsonObjectField(form.get("calculationOptionsText"), "calculationOptions JSON")
+          claimContext: parseJsonObjectField(form.get("claimContextText"), "詳細条件 JSON"),
+          calculationOptions: parseJsonObjectField(form.get("calculationOptionsText"), "算定オプション JSON")
         }
       });
       state.selectedFeeSession = response.feeSession;
@@ -1507,7 +1672,7 @@
       state.receiptDraft = null;
       state.reviewItems = [];
       els.result.classList.add("result-empty");
-      els.result.textContent = "算定セッションを作成または選択してください。";
+      els.result.textContent = "算定記録を作成または選択してください。";
       renderSessions();
       renderReceiptDraft();
       renderReviewItems();
@@ -1526,15 +1691,17 @@
     function populateFeeSessionForm(session = {}) {
       const patientName = session.patientSnapshot?.displayName || session.patientRef || session.patientId || "患者未選択";
       els.feeSessionDetailTitle.textContent = patientName;
-      els.feeSessionDetailMeta.textContent = `作成 ${formatTokyoDateTime(session.createdAt)} ・ ${session.serviceDate || "診療日未設定"} ・ ${session.feeSessionId}`;
+      els.feeSessionDetailMeta.textContent = `作成 ${formatTokyoDateTime(session.createdAt)} ・ ${session.serviceDate || "診療日未設定"}`;
       els.patientSelect.value = session.patientId || "";
-      els.facilitySelect.value = session.facilityId || "";
+      els.facilitySelect.value = session.facilityId || defaultFacilityId() || "";
       els.departmentSelect.value = session.departmentId || "";
       els.serviceDate.value = session.serviceDate || new Date().toISOString().slice(0, 10);
       els.claimMonth.value = session.claimMonth || String(els.serviceDate.value || "").slice(0, 7);
       els.settingSelect.value = session.setting || "outpatient";
       els.clinicalText.value = session.clinicalText || "";
       els.ordersText.value = serializeOrders(session.orders || []);
+      state.orderRows = orderRowsFromText(els.ordersText.value);
+      renderOrderEditor();
       els.claimContextText.value = formatJsonObject(session.claimContext);
       els.calculationOptionsText.value = formatJsonObject(session.calculationOptions);
     }
@@ -1583,7 +1750,10 @@
       renderOptions(els.patientSelect, patients, {
         empty: "患者を選択",
         value: "patientId",
-        label: (patient) => `${patient.displayName} (${patient.patientId})`
+        label: (patient) => {
+          const patientCode = patient.patientCode || patient.externalPatientIds?.[0] || patient.patientId;
+          return `${patient.displayName} (${patientCode})`;
+        }
       });
     }
 
@@ -1593,14 +1763,122 @@
         value: "facilityId",
         label: (facility) => `${facility.displayName} (${facility.medicalInstitutionCode || "code未設定"})`
       });
+      if (state.facilities.length <= 1) {
+        els.facilitySelect.value = els.facilitySelect.value || defaultFacilityId() || "";
+        els.facilityField.classList.add("is-hidden");
+        return;
+      }
+      els.facilityField.classList.remove("is-hidden");
     }
 
     function renderDepartments() {
       renderOptions(els.departmentSelect, state.departments, {
         empty: "未指定",
         value: "departmentId",
-        label: (department) => `${department.displayName} (${department.departmentId})`
+        label: (department) => department.displayName || "名称未設定"
       });
+    }
+
+    function defaultFacilityId() {
+      return state.facilities.length === 1 ? state.facilities[0].facilityId : "";
+    }
+
+    function createEmptyOrderRow() {
+      return {
+        orderType: "procedure",
+        localName: "",
+        standardCode: "",
+        quantity: "1"
+      };
+    }
+
+    function orderRowsFromText(value) {
+      const rows = String(value || "")
+        .split(/\n+/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const parts = line.split("|").map((part) => part.trim());
+          const allowedTypes = new Set(ORDER_TYPE_OPTIONS.map(([type]) => type));
+          const hasKnownType = allowedTypes.has(parts[0]);
+          return {
+            orderType: hasKnownType ? parts[0] : "procedure",
+            localName: hasKnownType ? parts[1] || "" : line,
+            standardCode: hasKnownType ? parts[2] || "" : "",
+            quantity: hasKnownType ? parts[3] || "1" : "1"
+          };
+        });
+      return rows.length ? rows : [createEmptyOrderRow()];
+    }
+
+    function renderOrderEditor() {
+      if (!state.orderRows.length) {
+        els.orderEditor.innerHTML = '<div class="order-editor-empty">オーダー行がありません。「オーダー行を追加」から入力してください。</div>';
+        return;
+      }
+
+      els.orderEditor.innerHTML = state.orderRows.map((row, index) => `
+        <div class="order-editor-row" data-order-index="${index}">
+          <label>
+            <span>種別</span>
+            <select data-order-field="orderType">
+              ${ORDER_TYPE_OPTIONS.map(([value, label]) => `<option value="${escapeHtml(value)}" ${row.orderType === value ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>名称</span>
+            <input data-order-field="localName" value="${escapeHtml(row.localName)}" placeholder="例: 血液検査" />
+          </label>
+          <label>
+            <span>標準コード</span>
+            <input data-order-field="standardCode" value="${escapeHtml(row.standardCode)}" placeholder="任意" />
+          </label>
+          <label>
+            <span>数量</span>
+            <input data-order-field="quantity" inputmode="decimal" value="${escapeHtml(row.quantity)}" />
+          </label>
+          <button class="btn btn--ghost btn--icon" data-order-remove="${index}" type="button" aria-label="オーダー行を削除">${icon("trash")}</button>
+        </div>
+      `).join("");
+
+      els.orderEditor.querySelectorAll("[data-order-field]").forEach((input) => {
+        const row = input.closest("[data-order-index]");
+        input.addEventListener(input.tagName === "SELECT" ? "change" : "input", () => {
+          const index = Number(row.dataset.orderIndex);
+          const field = input.dataset.orderField;
+          state.orderRows[index] = {
+            ...state.orderRows[index],
+            [field]: input.value
+          };
+          syncOrderRowsToTextarea();
+        });
+      });
+      els.orderEditor.querySelectorAll("[data-order-remove]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const index = Number(button.dataset.orderRemove);
+          state.orderRows = state.orderRows.filter((_, rowIndex) => rowIndex !== index);
+          renderOrderEditor();
+          syncOrderRowsToTextarea();
+        });
+      });
+    }
+
+    function syncOrderRowsToTextarea() {
+      els.ordersText.value = state.orderRows
+        .map((row) => ({
+          orderType: row.orderType || "procedure",
+          localName: String(row.localName || "").trim(),
+          standardCode: String(row.standardCode || "").trim(),
+          quantity: String(row.quantity || "1").trim() || "1"
+        }))
+        .filter((row) => row.localName || row.standardCode)
+        .map((row) => [
+          row.orderType,
+          row.localName,
+          row.standardCode,
+          row.quantity
+        ].join("|"))
+        .join("\n");
     }
 
     function renderSessions() {
@@ -1698,7 +1976,7 @@
             <div class="session-card-info">
               <strong>${escapeHtml(session.patientSnapshot?.displayName || session.patientRef || session.patientId || "患者名未入力")}</strong>
               <span>${escapeHtml(session.serviceDate || "診療日未設定")} ・ ${escapeHtml(session.facilitySnapshot?.displayName || "施設未設定")} ・ ${escapeHtml(session.departmentSnapshot?.displayName || "診療科未指定")}</span>
-              <span>作成 ${escapeHtml(createdText)} ・ ${escapeHtml(totalPoints)} ・ ${escapeHtml(reviewText)} ・ ${escapeHtml(session.feeSessionId)}</span>
+              <span>作成 ${escapeHtml(createdText)} ・ ${escapeHtml(totalPoints)} ・ ${escapeHtml(reviewText)}</span>
             </div>
             <span class="${badgeClass(session.status)}">${escapeHtml(statusLabel(session.status))}</span>
           </a>
@@ -1801,7 +2079,7 @@
     function renderReviewItems() {
       els.reviewList.innerHTML = "";
       if (!state.reviewItems.length) {
-        els.reviewList.textContent = state.selectedFeeSessionId ? "レビュー項目はありません" : "算定セッションを選択してください";
+        els.reviewList.textContent = state.selectedFeeSessionId ? "確認が必要な項目はありません" : "算定記録を選択してください";
         return;
       }
 
@@ -1816,9 +2094,9 @@
           <p>${escapeHtml(item.reason || "")}</p>
           ${item.lineItem ? `<p>${escapeHtml(coverageLabel(item.lineItem.coverage))}</p>` : ""}
           <div class="button-row">
-            <button class="secondary" data-review-action="approved" type="button">承認</button>
-            <button class="secondary" data-review-action="rejected" type="button">却下</button>
-            <button class="secondary" data-review-action="edited" type="button">修正済み</button>
+            <button class="btn btn--ghost btn--sm" data-review-action="approved" type="button">承認</button>
+            <button class="btn btn--ghost btn--sm" data-review-action="rejected" type="button">却下</button>
+            <button class="btn btn--ghost btn--sm" data-review-action="edited" type="button">修正済み</button>
           </div>
         `;
         wrapper.querySelectorAll("[data-review-action]").forEach((button) => {
@@ -1833,7 +2111,7 @@
     function renderReceiptDraft() {
       els.receiptList.innerHTML = "";
       if (!state.receiptDraft) {
-        els.receiptList.textContent = state.selectedFeeSessionId ? "レセプト案はまだありません" : "算定セッションを選択してください";
+        els.receiptList.textContent = state.selectedFeeSessionId ? "算定候補を作成すると、レセプト案が表示されます" : "算定記録を選択してください";
         return;
       }
 
@@ -1844,7 +2122,7 @@
           <span>${escapeHtml(state.receiptDraft.claimMonth)} / ${escapeHtml(statusLabel(state.receiptDraft.status))}</span>
           <span>${Number(state.receiptDraft.totalPoints || 0).toLocaleString()} 点</span>
         </header>
-        <p>${escapeHtml(state.receiptDraft.receiptDraftId)}</p>
+        <p>請求月ごとのレセプト案です。内容を確認してから確定してください。</p>
       `;
       els.receiptList.appendChild(summary);
 
@@ -1903,10 +2181,10 @@
         els.result.innerHTML = `
           <div class="result-summary">
             <div class="notice-card">
-              <strong>算定セッションを準備しました</strong>
+              <strong>算定記録を準備しました</strong>
               <p>${escapeHtml(feeSession.patientSnapshot?.displayName || feeSession.patientId || "患者未選択")} / ${escapeHtml(feeSession.serviceDate || "")} / ${escapeHtml(statusLabel(feeSession.status || "ready"))}</p>
             </div>
-            <p class="field-note">オーダーと診療テキストを確認し、「算定実行」で候補を作成してください。</p>
+            <p class="field-note">オーダーと診療テキストを確認し、「算定候補を作成」で候補を作成してください。</p>
           </div>
         `;
         return;
@@ -2243,6 +2521,38 @@
       }
     }
 
+    async function logout() {
+      if (state.session || state.csrfToken) {
+        await api(platformApiBaseUrl, "/v1/auth/logout", {
+          method: "POST",
+          csrf: true,
+          body: {}
+        }).catch(() => null);
+      }
+      state.csrfToken = "";
+      state.session = null;
+      state.pendingLoginCredentials = null;
+      state.patients = [];
+      state.facilities = [];
+      state.departments = [];
+      state.feeSessions = [];
+      resetMfaFlow();
+      clearSelectedFeeSession();
+      renderSession();
+      window.history.pushState({}, "", "/");
+      hide(els.appShell);
+      hide(els.mfaGate);
+      show(els.loginGate);
+      showLoginMessage("");
+      hideMessage();
+    }
+
+    function facilityAdminUrl() {
+      return window.location.hostname.includes(".stg.")
+        ? "https://admin.stg.halunasu.com/"
+        : "https://admin.halunasu.com/";
+    }
+
     async function beginMfaEnrollment() {
       const response = await api(platformApiBaseUrl, "/v1/auth/mfa/enroll", {
         method: "POST",
@@ -2306,9 +2616,25 @@
       return "";
     }
 
-    function showMessage(text, type) {
-      els.message.textContent = text;
-      els.message.className = `message on ${type}`;
+    function showMessage(text, type = "success") {
+      const message = String(text || "").trim();
+      if (!message) {
+        return;
+      }
+      els.message.textContent = "";
+      els.message.className = "message";
+      if (!els.toastContainer) {
+        els.message.textContent = message;
+        els.message.className = `message on ${type}`;
+        return;
+      }
+      const toast = document.createElement("div");
+      toast.className = `admin-toast admin-toast--${type === "error" ? "error" : "success"}`;
+      toast.textContent = message;
+      els.toastContainer.appendChild(toast);
+      window.setTimeout(() => {
+        toast.remove();
+      }, type === "error" ? 7000 : 3500);
     }
 
     function showLoginMessage(text) {

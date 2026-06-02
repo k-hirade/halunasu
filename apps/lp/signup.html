@@ -12,6 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="web-ui/halunasu-ui.css" />
   <style>
     :root {
       --ink: #152033;
@@ -537,20 +538,20 @@
 
     <section class="signup-panel signup-panel--single step-panel" id="password-panel" aria-live="polite">
       <div class="signup-heading">
-        <h1>初回パスワード設定</h1>
+        <h1>ログイン用パスワード設定</h1>
         <p class="signup-lead">
-          管理者アカウントの初期パスワードを設定してください。設定後、14日間の無料利用を開始できます。
+          管理者アカウントのログイン用パスワードを設定してください。設定後、14日間の無料利用を開始できます。
         </p>
       </div>
       <dl class="signup-status-meta" id="provisioned-meta"></dl>
       <form class="signup-form" id="password-form">
         <label>
-          <span>管理者初期パスワード</span>
+          <span>ログイン用パスワード</span>
           <input id="password" name="password" type="password" autocomplete="new-password" minlength="12" required />
         </label>
         <p class="signup-error" id="password-error" hidden></p>
         <button class="signup-submit" id="password-button" type="submit">
-          <span>パスワードを設定する</span>
+          <span>ログイン用パスワードを設定する</span>
         </button>
       </form>
     </section>
@@ -662,7 +663,7 @@
         return;
       }
       if (password.length < 12) {
-        setError(passwordError, "パスワードは12文字以上で入力してください。");
+        setError(passwordError, "ログイン用パスワードは12文字以上で入力してください。");
         return;
       }
 
@@ -677,7 +678,7 @@
         renderLoginInfo(login);
         showStep(completePanel);
       } catch (error) {
-        setError(passwordError, toUserFacingErrorMessage(error, "パスワード設定に失敗しました。"));
+        setError(passwordError, toUserFacingErrorMessage(error, "ログイン用パスワード設定に失敗しました。"));
       } finally {
         setBusy(passwordButton, false);
       }
@@ -831,7 +832,7 @@
 
       if (normalizedCode === "mfa_required" || lower.includes("mfa code is required")) return "2段階認証コードを入力してください。";
       if (lower.includes("invalid mfa")) return "2段階認証コードが正しくありません。";
-      if (lower.includes("invalid credentials")) return "病院コード、個人ID、またはパスワードが正しくありません。";
+      if (lower.includes("invalid credentials")) return "病院コード、個人ID、またはログイン用パスワードが正しくありません。";
       if (lower.includes("csrf")) return "画面を再読み込みして、もう一度お試しください。";
       if (lower.includes("invalid session") || lower.includes("session expired") || lower.includes("session revoked") || lower === "unauthorized") return "ログイン状態を確認できません。もう一度ログインしてください。";
       if (lower.includes("role is required") || lower.includes("access is required") || lower.includes("product access is required") || lower === "forbidden" || status === 403) return "この操作を行う権限がありません。";
@@ -872,15 +873,15 @@
         return;
       }
       provisionedMeta.innerHTML = [
-        `<div><dt>医療機関コード</dt><dd>${escapeHtml(login.organizationCode || "-")}</dd></div>`,
-        `<div><dt>ログインID</dt><dd>${escapeHtml(login.loginId || "-")}</dd></div>`
+        `<div><dt>病院コード</dt><dd>${escapeHtml(login.organizationCode || "-")}</dd></div>`,
+        `<div><dt>個人ID</dt><dd>${escapeHtml(login.loginId || "-")}</dd></div>`
       ].join("");
     }
 
     function renderLoginInfo(login) {
       loginInfo.innerHTML = [
-        `<div><dt>医療機関コード</dt><dd>${escapeHtml(login.organizationCode || "-")}</dd></div>`,
-        `<div><dt>ログインID</dt><dd>${escapeHtml(login.loginId || "-")}</dd></div>`
+        `<div><dt>病院コード</dt><dd>${escapeHtml(login.organizationCode || "-")}</dd></div>`,
+        `<div><dt>個人ID</dt><dd>${escapeHtml(login.loginId || "-")}</dd></div>`
       ].join("");
     }
 

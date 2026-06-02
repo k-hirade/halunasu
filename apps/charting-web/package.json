@@ -10,6 +10,7 @@
     "test": "node test/e2e/run-e2e.js"
   },
   "dependencies": {
+    "@halunasu/web-ui": "file:../../packages/web-ui",
     "@medical/contracts": "file:../../packages/medical-contracts",
     "@radix-ui/react-select": "^2.2.6",
     "next": "15.5.15",

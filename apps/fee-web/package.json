@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/validate-static-site.mjs",
-    "test": "node scripts/validate-static-site.mjs"
+    "test": "npm run test:static && npm run test:ui",
+    "test:static": "node scripts/validate-static-site.mjs",
+    "test:ui": "node scripts/ui-smoke.mjs"
   }
 }

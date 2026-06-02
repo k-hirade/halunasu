@@ -1,3 +1,4 @@
+import "@halunasu/web-ui/styles/halunasu-ui.css";
 import "./globals.css";
 import Script from "next/script";
 import { AdminNavProvider } from "../components/admin-nav-context";

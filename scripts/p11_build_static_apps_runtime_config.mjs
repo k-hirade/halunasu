@@ -6,6 +6,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const configPath = join(root, "config", "runtime-endpoints.json");
 const proxyTargetsPath = join(root, "config", "runtime-proxy-targets.json");
 const defaultOutDir = join(root, "dist", "runtime-apps");
+const webUiStylesSource = join(root, "packages", "web-ui", "styles");
 
 const apps = [
   {
@@ -83,6 +84,9 @@ for (const env of envs) {
     await cp(source, destination, {
       recursive: true,
       filter: shouldCopyStaticAsset
+    });
+    await cp(webUiStylesSource, join(destination, "web-ui"), {
+      recursive: true
     });
 
     for (const htmlFile of app.htmlFiles) {

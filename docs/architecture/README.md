@@ -26,6 +26,7 @@ This directory contains architecture decisions and system diagrams for the Halun
 - [020 P14 Halunasu Domain Cutover](020-p14-halunasu-domain-cutover.md)
 - [021 Old Asset Cleanup](021-old-asset-cleanup.md)
 - [022 App Billing Trial And Pricing Plan](022-app-billing-trial-and-pricing-plan.md)
+- [027 Fee Charting UI Parity Audit](027-fee-charting-ui-parity-audit.md)
 
 ## Reading Order
 
@@ -51,3 +52,4 @@ This directory contains architecture decisions and system diagrams for the Halun
 20. Use the P14 domain cutover note to finish Cloudflare DNS, Netlify domain attachment, and API certificate activation.
 21. Use the old asset cleanup note before deleting local or remote legacy resources.
 22. Use the app billing trial and pricing plan before changing signup, Stripe Prices, reminders, or product entitlement billing.
+23. Use the fee/charting UI parity audit before changing the fee calculation browser app.

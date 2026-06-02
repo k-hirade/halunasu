@@ -8,6 +8,7 @@
   <link rel="icon" type="image/png" href="brand/harunas-mark.png" />
   <link rel="shortcut icon" type="image/png" href="brand/harunas-mark.png" />
   <link rel="apple-touch-icon" href="brand/harunas-mark.png" />
+  <link rel="stylesheet" href="web-ui/halunasu-ui.css" />
   <style>
     :root {
       --ink: #172033;
@@ -727,7 +728,7 @@
         <form class="operator-gate-card" id="login-form">
           <div>
             <h1>ログイン</h1>
-            <p style="margin-top: 6px;">病院コード、個人ID、パスワードでログインしてください。</p>
+            <p style="margin-top: 6px;">病院コード、個人ID、ログイン用パスワードでログインしてください。</p>
           </div>
           <div class="field">
             <label for="organization-code">病院コード</label>
@@ -740,8 +741,8 @@
           <div class="field">
             <label for="password">ログイン用パスワード</label>
             <div class="field-password">
-              <input id="password" name="password" type="password" autocomplete="current-password" placeholder="パスワードを入力" required />
-              <button aria-label="パスワードを表示" class="password-toggle" data-password-toggle data-target="password" type="button">
+              <input id="password" name="password" type="password" autocomplete="current-password" placeholder="ログイン用パスワードを入力" required />
+              <button aria-label="ログイン用パスワードを表示" class="password-toggle" data-password-toggle data-target="password" type="button">
                 <svg class="icon-eye" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                   <circle cx="12" cy="12" r="3" />
@@ -1606,12 +1607,12 @@
       if (type === "member") {
         return `
           <div class="grid-2">
-            ${textField("ログインID", "loginId", "", { required: true })}
+            ${textField("個人ID", "loginId", "", { required: true })}
             ${textField("表示名", "displayName", "", { required: true })}
           </div>
           <div class="grid-2">
-            ${textField("メール", "email", "", { type: "email" })}
-            ${textField("初期パスワード", "password", "", { type: "password" })}
+            ${textField("メールアドレス", "email", "", { type: "email" })}
+            ${textField("初期ログイン用パスワード", "password", "", { type: "password" })}
           </div>
           ${textField("全体権限", "globalRoles", "", { placeholder: "org_admin,billing_admin,platform_admin" })}
           <div class="grid-3">
@@ -2492,7 +2493,7 @@
       if (text.includes("Invalid") && text.includes(authAppCode)) {
         return "2段階認証コードが正しくありません。";
       }
-      if (text === "Invalid credentials") return "病院コード、個人ID、またはパスワードが正しくありません。";
+      if (text === "Invalid credentials") return "病院コード、個人ID、またはログイン用パスワードが正しくありません。";
       if (text === "Session revoked") return "ログイン状態が無効になりました。もう一度ログインしてください。";
       if (text === "Invalid session") return "ログイン状態を確認できません。もう一度ログインしてください。";
       if (text === "Session expired") return "ログイン状態を確認できません。もう一度ログインしてください。";
@@ -2599,7 +2600,7 @@
           const visible = target.type === "password";
           target.type = visible ? "text" : "password";
           button.classList.toggle("is-visible", visible);
-          button.setAttribute("aria-label", visible ? "パスワードを隠す" : "パスワードを表示");
+          button.setAttribute("aria-label", visible ? "ログイン用パスワードを隠す" : "ログイン用パスワードを表示");
         });
       });
     }
