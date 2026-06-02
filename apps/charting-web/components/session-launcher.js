@@ -493,7 +493,7 @@ export function SessionLauncher() {
                   <div className="session-history-date">{group.label}</div>
                   <div className="session-list">
                     {group.sessions.map((session) => (
-                      <div className="card session-card" key={session.sessionId}>
+                      <div className="card session-card session-card--with-actions" key={session.sessionId}>
                         <a className="session-card-link" href={`/sessions/${session.sessionId}`}>
                           <div className="session-card-info">
                             <strong>{session.patientDisplayName || session.title || "患者名なし"}</strong>
@@ -509,14 +509,16 @@ export function SessionLauncher() {
                           </div>
                           <span className={`badge badge--${session.status}`}>{SESSION_STATUS_LABELS[session.status] || session.status}</span>
                         </a>
-                        <button
-                          className="btn btn--ghost session-delete-button"
-                          aria-label={`${session.patientDisplayName || session.title || "この診療"}を削除`}
-                          onClick={() => setDeleteTargetSession(session)}
-                          type="button"
-                        >
-                          削除
-                        </button>
+                        <div className="session-card-actions">
+                          <button
+                            className="btn btn--ghost session-delete-button"
+                            aria-label={`${session.patientDisplayName || session.title || "この診療"}を削除`}
+                            onClick={() => setDeleteTargetSession(session)}
+                            type="button"
+                          >
+                            削除
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

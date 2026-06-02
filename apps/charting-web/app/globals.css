@@ -714,6 +714,10 @@ body .admin-nav-drawer {
   background: var(--accent-soft);
 }
 
+.session-card--with-actions {
+  padding-right: 0;
+}
+
 .session-card-link {
   flex: 1 1 auto;
   min-width: 0;
@@ -729,6 +733,13 @@ body .admin-nav-drawer {
   outline: 3px solid var(--accent-soft);
   outline-offset: 4px;
   border-radius: var(--radius-sm);
+}
+
+.session-card-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding-right: 16px;
 }
 
 .session-delete-button {
@@ -6090,6 +6101,15 @@ textarea.transcript-text-surface:focus {
   .session-card-link {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .session-card--with-actions {
+    padding-right: 18px;
+  }
+
+  .session-card-actions {
+    width: 100%;
+    padding-right: 0;
   }
 
   .session-delete-button {

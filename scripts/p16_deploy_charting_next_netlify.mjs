@@ -184,7 +184,8 @@ function setNetlifyEnv(siteId, key, value) {
     "--filter",
     "@halunasu/charting-web",
     "--context",
-    "production"
+    "production",
+    "--force"
   ], {
     cwd: root,
     env: {

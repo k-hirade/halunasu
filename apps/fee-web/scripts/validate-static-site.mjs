@@ -43,13 +43,12 @@ assert(html.includes("/detail"), "fee web must load fee session detail in one re
 assert(html.includes("receiptDraft"), "fee web must show Core receipt drafts");
 assert(html.includes("review-items"), "fee web must show and decide review items");
 assert(html.includes("算定候補・レビュー支援"), "fee web must clearly label candidate/review-support mode");
+assert(!html.includes('<span class="badge partial">算定候補・レビュー支援</span>'), "fee web must not show candidate/review-support copy in the top navigation");
 assert(html.includes("確定請求ではありません"), "fee web must not present output as finalized claims");
 assert(html.includes("supportLevel"), "fee web must render support level metadata");
 assert(html.includes("reviewRequired"), "fee web must render reviewRequired metadata");
 assert(html.includes("coverageLabel"), "fee web must render coverage metadata");
-assert(html.includes('id="logout-button"'), "fee web must expose logout from the top navigation");
-assert(html.includes("/v1/auth/logout"), "fee web must clear the Platform session on logout");
-assert(html.includes('id="facility-admin-link"'), "fee web must link to the facility management app from the top navigation");
+assert(html.includes("/v1/auth/logout"), "fee web must keep the Platform logout endpoint available for session clearing");
 assert(html.includes('id="toast-container"'), "fee web must use toast feedback like charting/admin");
 assert(html.includes("patientId"), "fee web must expose patientId selection");
 assert(html.includes('id="diagnosesText"'), "fee web must expose diagnosis input for review warnings");

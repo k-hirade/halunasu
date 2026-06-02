@@ -324,7 +324,7 @@
 
     .fee-session-detail-grid {
       display: grid;
-      grid-template-columns: minmax(260px, 0.75fr) minmax(360px, 1fr) minmax(0, 1.25fr);
+      grid-template-columns: minmax(360px, 1fr) minmax(0, 1.35fr);
       gap: 18px;
       align-items: start;
     }
@@ -591,6 +591,10 @@
       font-size: 12px;
       font-weight: 700;
       margin: -4px 0 14px;
+    }
+
+    .master-status:empty {
+      display: none;
     }
 
     .metric-row {
@@ -986,6 +990,10 @@
   </style>
   <link rel="stylesheet" href="auth.css" />
   <link rel="stylesheet" href="web-ui/halunasu-ui.css" />
+  <style>
+    /* トップバーの内側幅をコンテンツ幅(1480px)に合わせ、左余白のズレを解消する */
+    body { --site-nav-shell-max: var(--dashboard-shell-max, 1480px); }
+  </style>
 </head>
 <body>
   <div class="auth-loading" id="auth-loading" aria-hidden="true">
@@ -1130,18 +1138,12 @@
             <span class="site-brand-wordmark">ハルナス</span>
           </a>
           <span class="site-nav-product">診療報酬算定</span>
-          <span class="badge partial">算定候補・レビュー支援</span>
-        </div>
-        <div class="site-nav-right">
-          <a class="site-nav-link" id="facility-admin-link" href="https://admin.halunasu.com/">施設管理画面</a>
-          <div id="session-chip" class="session-chip">未ログイン</div>
-          <button class="site-auth-button" id="logout-button" type="button">ログアウト</button>
         </div>
       </div>
     </header>
 
     <main class="dashboard">
-      <div class="dashboard-header">
+      <div class="dashboard-header home-only">
         <h1>算定一覧</h1>
       </div>
 
@@ -1208,12 +1210,15 @@
             <section class="card">
               <div class="panel-head">
                 <div>
-                  <h2>患者</h2>
-                  <p class="panel-copy">登録済み患者を検索して選択します。必要な場合は施設管理画面で患者を追加できます。</p>
+                  <h2>算定条件</h2>
+                  <p class="panel-copy">患者を選択し、施設、診療日、オーダーを保存してから算定します。登録済み患者がいない場合はここで追加できます。</p>
                 </div>
+                <span class="badge review">要レビュー前提</span>
               </div>
+              <div id="fee-scope-notice" class="notice-card scope-notice"></div>
+              <div id="master-status" class="master-status"></div>
               <details class="patient-inline-create">
-                <summary>患者を追加する</summary>
+                <summary>登録されていない患者を追加する</summary>
                 <form id="patient-form" class="stack">
                   <div class="field">
                     <label for="patient-name">氏名</label>
@@ -1241,18 +1246,6 @@
                   <button class="btn btn--ghost" type="submit" data-icon="check">患者を追加</button>
                 </form>
               </details>
-            </section>
-
-            <section class="card">
-              <div class="panel-head">
-                <div>
-                  <h2>算定条件</h2>
-                  <p class="panel-copy">患者、施設、診療日、オーダーを保存してから算定します。</p>
-                </div>
-                <span class="badge review">要レビュー前提</span>
-              </div>
-              <div id="fee-scope-notice" class="notice-card scope-notice"></div>
-              <div id="master-status" class="master-status"></div>
               <form id="fee-session-form" class="stack">
                 <div class="field">
                   <label for="patient-search">患者検索</label>
@@ -1275,7 +1268,7 @@
                     <label for="setting">区分</label>
                     <select id="setting" name="setting">
                       <option value="outpatient">外来</option>
-                      <option value="inpatient">入院</option>
+                      <option value="inpatient">入院（限定対応）</option>
                     </select>
                   </div>
                 </div>
@@ -1442,9 +1435,6 @@
       mfaMessage: document.querySelector("#mfa-message"),
       mfaButton: document.querySelector("#mfa-button"),
       mfaBackButton: document.querySelector("#mfa-back-button"),
-      sessionChip: document.querySelector("#session-chip"),
-      logoutButton: document.querySelector("#logout-button"),
-      facilityAdminLink: document.querySelector("#facility-admin-link"),
       loginForm: document.querySelector("#login-form"),
       patientForm: document.querySelector("#patient-form"),
       feeSessionForm: document.querySelector("#fee-session-form"),
@@ -1491,7 +1481,6 @@
     let feeSessionSearchTimer = 0;
     let masterSearchTimer = 0;
 
-    els.facilityAdminLink.href = facilityAdminUrl();
     els.serviceDate.value = new Date().toISOString().slice(0, 10);
     els.claimMonth.value = new Date().toISOString().slice(0, 7);
 
@@ -1561,10 +1550,6 @@
       els.loginForm.elements.password.value = "";
       hide(els.mfaGate);
       show(els.loginGate);
-    });
-
-    els.logoutButton.addEventListener("click", async () => {
-      await logout();
     });
 
     hydrateStaticIcons();
@@ -1878,11 +1863,7 @@
     }
 
     function renderSession() {
-      if (!state.session) {
-        els.sessionChip.textContent = "未ログイン";
-        return;
-      }
-      els.sessionChip.textContent = `${state.session.organizationCode} / ${state.session.loginId}`;
+      // 病院 / ログインID などのセッション情報はトップバーに表示しない
     }
 
     function renderPatients() {
@@ -1939,10 +1920,9 @@
         els.masterSearchResults.textContent = "API反映後にマスター検索を利用できます。";
         return;
       }
-      const configured = status.masterDbConfigured ? "マスター設定済み" : "マスター未設定";
-      const runtime = status.masterDbPathExists ? "DB展開済み" : (status.masterDbGzipPathExists ? "初回検索/算定時にDB展開" : "DB未配置");
-      const worker = status.workerMode ? `Python ${status.workerMode}` : "Python";
-      els.masterStatus.textContent = `${configured} / ${runtime} / ${worker}`;
+      // 内部のマスターDB配置状態やPythonワーカーのモードはユーザー向け情報ではないため表示しない。
+      // 検索が利用可能なときは状態表示を出さず、画面をすっきりさせる。
+      els.masterStatus.textContent = "";
     }
 
     function renderScopeNotice() {

@@ -230,7 +230,7 @@ export function SiteNav() {
                 </svg>
               </button>
             ) : null}
-            <a href="/" className="site-brand">
+            <a href="/" className="site-brand" aria-label={`${BRAND_NAME} カルテ作成`}>
               <img
                 alt={BRAND_NAME}
                 className="site-brand-mark"
@@ -240,6 +240,7 @@ export function SiteNav() {
               />
               <span className="site-brand-wordmark">{BRAND_NAME}</span>
             </a>
+            <span className="site-nav-product">カルテ作成</span>
           </div>
           <div className="site-nav-right">
             {hasAccess || !hasCheckedAccess ? (
