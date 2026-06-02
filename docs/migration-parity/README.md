@@ -34,6 +34,7 @@
 - [Charting / SOAP](./charting.md)
 - [Fee Calculation](./fee-calculation.md)
 - [Fee Complete Migration Plan](./2026-06-01-fee-complete-migration-plan.md)
+- [Fee Current State and Improvement Report](./2026-06-02-fee-current-state-and-improvement-report.md)
 - [LP](./lp.md)
 - [Core Platform / Admin](./core-platform-admin.md)
 - [Referral](./referral.md)

@@ -214,10 +214,13 @@ Verification:
 - LP/Fee Netlify proxy to Platform API returns expected unauthenticated `401` JSON for `/api/platform/v1/auth/session`.
 - Platform API `/readyz` returns `200` for STG/PROD direct Cloud Run URLs.
 - Core/Charting/Fee PROD composite indexes checked were `READY`.
+- 2026-06-01: Cloud Scheduler daily trial maintenance was provisioned for STG and PROD:
+  - STG: `medical-core-stg/asia-northeast1/billing-trial-maintenance-daily-stg`, `10 9 * * *`, Asia/Tokyo.
+  - PROD: `medical-core-497610/asia-northeast1/billing-trial-maintenance-daily-prod`, `20 9 * * *`, Asia/Tokyo.
+- 2026-06-01 dry-run result: STG checked 8 organizations / 18 entitlements; PROD checked 3 organizations / 6 entitlements; no reminders or expirations were due.
 
 Still intentionally not complete in this pass:
 
-- Daily automatic scheduling is not provisioned. The maintenance endpoint and CLI are ready, but Cloud Scheduler was not added to avoid additional GCP resources until approved.
 - App-level cancel/uncancel APIs are still P1. Expiry finalization is implemented for existing `cancel_scheduled` state.
 - Fee result storage split and list pagination are still P1.
 - Referral production PDF/storage work is still P2.
