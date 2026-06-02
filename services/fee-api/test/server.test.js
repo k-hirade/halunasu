@@ -25,6 +25,20 @@ test("readyz reports fee master readiness", async () => {
   assert.equal(response.body.feeCalculator.masterDbPathExists, true);
 });
 
+test("searches fee master through authenticated fee route", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const response = await request(stores, "GET", "/v1/fee/master/search?type=drug&q=カルボ&limit=5", undefined, headers);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.query, "カルボ");
+  assert.equal(response.body.type, "drug");
+  assert.equal(response.body.items.length, 1);
+  assert.equal(response.body.items[0].kind, "drug");
+  assert.equal(response.body.items[0].code, "620000001");
+  assert.equal(response.body.masterStatus.provider, "test_fee_engine");
+});
+
 test("creates Platform patients and product-owned fee sessions", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -99,6 +113,7 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.equal(calculation.statusCode, 201);
   assert.equal(calculation.body.calculationResult.provider, "test_fee_engine");
   assert.equal(calculation.body.calculationResult.totalPoints, 137);
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("病名")));
   assert.equal(calculation.body.calculationResult.coverage.scope, "candidate_review_support");
   assert.equal(calculation.body.calculationResult.lineItems[0].supportLevel, "candidate");
   assert.equal(calculation.body.calculationResult.lineItems[0].reviewRequired, true);
@@ -293,6 +308,19 @@ function createStores(options = {}) {
         provider: "test_fee_engine",
         masterDbConfigured: true,
         masterDbPathExists: true
+      };
+    },
+    async searchMaster(input) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "drug",
+          code: "620000001",
+          name: "カルボシステイン錠",
+          unitName: "錠",
+          sourceVersion: "test-master"
+        }]
       };
     },
     async calculate(feeSession) {

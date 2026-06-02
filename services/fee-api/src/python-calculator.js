@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createGunzip } from "node:zlib";
 
 const MODULE_NAME = "medical_fee_calculation.api";
+const MASTER_SEARCH_MODULE_NAME = "medical_fee_calculation.master_search";
 const WORKER_MODULE_NAME = "medical_fee_calculation.worker";
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -67,6 +68,22 @@ export class PythonFeeCalculator {
     });
 
     return output.calculationResult || output.calculation_result || output;
+  }
+
+  async searchMaster(input = {}) {
+    await this.ensureMasterDbReady();
+    return runPythonJson({
+      moduleName: MASTER_SEARCH_MODULE_NAME,
+      pythonBin: this.pythonBin,
+      pythonPath: this.pythonPath,
+      timeoutMs: Math.min(this.timeoutMs, 10000),
+      payload: {
+        db_path: this.masterDbPath,
+        type: input.type,
+        query: input.query || input.q,
+        limit: input.limit
+      }
+    });
   }
 
   readiness() {
@@ -260,7 +277,7 @@ function feeCalculationTimeoutError() {
 
 function runPythonJson(options) {
   return new Promise((resolve, reject) => {
-    const child = spawn(options.pythonBin, ["-m", MODULE_NAME], {
+    const child = spawn(options.pythonBin, ["-m", options.moduleName || MODULE_NAME], {
       cwd: ROOT_DIR,
       env: {
         ...process.env,

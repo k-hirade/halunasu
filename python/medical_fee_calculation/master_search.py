@@ -1,0 +1,315 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+import sys
+from pathlib import Path
+from typing import Any
+
+
+MASTER_TYPES = frozenset({"procedure", "drug", "material", "comment", "all"})
+
+
+def search_master(payload: dict[str, Any]) -> dict[str, Any]:
+    db_path = str(payload.get("db_path") or "").strip()
+    if not db_path:
+        raise ValueError("db_path is required")
+
+    query = str(payload.get("query") or payload.get("q") or "").strip()
+    if len(query) < 2:
+        return {"query": query, "type": payload.get("type") or "all", "items": []}
+
+    master_type = str(payload.get("type") or "all").strip().lower()
+    if master_type not in MASTER_TYPES:
+        raise ValueError("type must be one of procedure, drug, material, comment, all")
+
+    limit = _bounded_limit(payload.get("limit"))
+    per_type_limit = limit if master_type != "all" else max(3, min(8, limit))
+    db = sqlite3.connect(Path(db_path))
+    db.row_factory = sqlite3.Row
+    try:
+        items: list[dict[str, Any]] = []
+        if master_type in {"procedure", "all"}:
+            items.extend(_search_procedures(db, query, per_type_limit))
+        if master_type in {"drug", "all"}:
+            items.extend(_search_drugs(db, query, per_type_limit))
+        if master_type in {"material", "all"}:
+            items.extend(_search_materials(db, query, per_type_limit))
+        if master_type in {"comment", "all"}:
+            items.extend(_search_comments(db, query, per_type_limit))
+    finally:
+        db.close()
+
+    return {
+        "query": query,
+        "type": master_type,
+        "items": items[:limit],
+    }
+
+
+def _search_procedures(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+    rows = db.execute(
+        """
+        SELECT
+            p.code,
+            p.short_name AS name,
+            p.base_name,
+            p.points,
+            p.effective_from,
+            p.effective_to,
+            s.source_version,
+            s.published_at,
+            s.imported_at
+        FROM medical_procedures p
+        JOIN master_sources s ON s.id = p.source_id
+        WHERE p.source_id = (
+            SELECT id
+            FROM master_sources
+            WHERE source_type = 'medical_procedure_master'
+            ORDER BY imported_at DESC, id DESC
+            LIMIT 1
+          )
+          AND (
+            p.code LIKE ?
+            OR p.short_name LIKE ?
+            OR COALESCE(p.base_name, '') LIKE ?
+          )
+        ORDER BY
+            CASE
+              WHEN p.code = ? THEN 0
+              WHEN p.code LIKE ? THEN 1
+              ELSE 2
+            END,
+            p.code
+        LIMIT ?
+        """,
+        (*_like_params(query), query, f"{query}%", limit),
+    ).fetchall()
+    return [
+        _compact(
+            {
+                "kind": "procedure",
+                "code": row["code"],
+                "name": row["name"],
+                "baseName": row["base_name"],
+                "points": row["points"],
+                "effectiveFrom": row["effective_from"],
+                "effectiveTo": row["effective_to"],
+                "sourceVersion": row["source_version"],
+                "publishedAt": row["published_at"],
+                "importedAt": row["imported_at"],
+            }
+        )
+        for row in rows
+    ]
+
+
+def _search_drugs(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+    rows = db.execute(
+        """
+        SELECT
+            d.code,
+            d.name,
+            d.base_name,
+            d.kana,
+            d.unit_name,
+            d.unit_amount_yen,
+            d.changed_at,
+            d.discontinued_at,
+            s.source_version,
+            s.published_at,
+            s.imported_at
+        FROM drugs d
+        JOIN master_sources s ON s.id = d.source_id
+        WHERE d.source_id = (
+            SELECT id
+            FROM master_sources
+            WHERE source_type = 'drug_master'
+            ORDER BY imported_at DESC, id DESC
+            LIMIT 1
+          )
+          AND (
+            d.code LIKE ?
+            OR d.name LIKE ?
+            OR COALESCE(d.base_name, '') LIKE ?
+            OR COALESCE(d.kana, '') LIKE ?
+          )
+        ORDER BY
+            CASE
+              WHEN d.code = ? THEN 0
+              WHEN d.code LIKE ? THEN 1
+              ELSE 2
+            END,
+            d.code
+        LIMIT ?
+        """,
+        (*_like_params(query, count=4), query, f"{query}%", limit),
+    ).fetchall()
+    return [
+        _compact(
+            {
+                "kind": "drug",
+                "code": row["code"],
+                "name": row["name"],
+                "baseName": row["base_name"],
+                "kana": row["kana"],
+                "unitName": row["unit_name"],
+                "unitAmountYen": row["unit_amount_yen"],
+                "effectiveFrom": row["changed_at"],
+                "effectiveTo": row["discontinued_at"],
+                "sourceVersion": row["source_version"],
+                "publishedAt": row["published_at"],
+                "importedAt": row["imported_at"],
+            }
+        )
+        for row in rows
+    ]
+
+
+def _search_materials(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+    rows = db.execute(
+        """
+        SELECT
+            m.code,
+            m.name,
+            m.base_name,
+            m.kana,
+            m.unit_name,
+            m.unit_amount_yen,
+            m.changed_at,
+            m.discontinued_at,
+            s.source_version,
+            s.published_at,
+            s.imported_at
+        FROM specific_materials m
+        JOIN master_sources s ON s.id = m.source_id
+        WHERE m.source_id = (
+            SELECT id
+            FROM master_sources
+            WHERE source_type = 'specific_material_master'
+            ORDER BY imported_at DESC, id DESC
+            LIMIT 1
+          )
+          AND (
+            m.code LIKE ?
+            OR m.name LIKE ?
+            OR COALESCE(m.base_name, '') LIKE ?
+            OR COALESCE(m.kana, '') LIKE ?
+          )
+        ORDER BY
+            CASE
+              WHEN m.code = ? THEN 0
+              WHEN m.code LIKE ? THEN 1
+              ELSE 2
+            END,
+            m.code
+        LIMIT ?
+        """,
+        (*_like_params(query, count=4), query, f"{query}%", limit),
+    ).fetchall()
+    return [
+        _compact(
+            {
+                "kind": "material",
+                "code": row["code"],
+                "name": row["name"],
+                "baseName": row["base_name"],
+                "kana": row["kana"],
+                "unitName": row["unit_name"],
+                "unitAmountYen": row["unit_amount_yen"],
+                "effectiveFrom": row["changed_at"],
+                "effectiveTo": row["discontinued_at"],
+                "sourceVersion": row["source_version"],
+                "publishedAt": row["published_at"],
+                "importedAt": row["imported_at"],
+            }
+        )
+        for row in rows
+    ]
+
+
+def _search_comments(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+    rows = db.execute(
+        """
+        SELECT
+            c.code,
+            c.comment_text,
+            c.kana,
+            c.effective_from,
+            c.effective_to,
+            s.source_version,
+            s.published_at,
+            s.imported_at
+        FROM comments c
+        JOIN master_sources s ON s.id = c.source_id
+        WHERE c.source_id = (
+            SELECT id
+            FROM master_sources
+            WHERE source_type = 'comment_master'
+            ORDER BY imported_at DESC, id DESC
+            LIMIT 1
+          )
+          AND (
+            c.code LIKE ?
+            OR c.comment_text LIKE ?
+            OR COALESCE(c.kana, '') LIKE ?
+          )
+        ORDER BY
+            CASE
+              WHEN c.code = ? THEN 0
+              WHEN c.code LIKE ? THEN 1
+              ELSE 2
+            END,
+            c.code
+        LIMIT ?
+        """,
+        (*_like_params(query), query, f"{query}%", limit),
+    ).fetchall()
+    return [
+        _compact(
+            {
+                "kind": "comment",
+                "code": row["code"],
+                "name": row["comment_text"],
+                "kana": row["kana"],
+                "effectiveFrom": row["effective_from"],
+                "effectiveTo": row["effective_to"],
+                "sourceVersion": row["source_version"],
+                "publishedAt": row["published_at"],
+                "importedAt": row["imported_at"],
+            }
+        )
+        for row in rows
+    ]
+
+
+def _like_params(query: str, *, count: int = 3) -> tuple[str, ...]:
+    like = f"%{query}%"
+    return tuple(like for _ in range(count))
+
+
+def _bounded_limit(value: object) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = 10
+    return max(1, min(parsed, 25))
+
+
+def _compact(value: dict[str, Any]) -> dict[str, Any]:
+    return {key: item for key, item in value.items() if item not in (None, "")}
+
+
+def main() -> None:
+    try:
+        payload = json.load(sys.stdin)
+        result = search_master(payload)
+    except Exception as exc:  # noqa: BLE001 - command boundary returns structured failure.
+        print(json.dumps({"error": type(exc).__name__, "message": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        raise SystemExit(1) from exc
+
+    print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    main()

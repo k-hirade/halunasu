@@ -122,7 +122,19 @@ async function routeFeeApiRequest(input = {}) {
       patients,
       facilities,
       departments,
+      masterStatus: feeMasterStatus(feeCalculator),
       ...sessionList
+    });
+  }
+
+  if (method === "GET" && matches(parts, ["v1", "fee", "master", "search"])) {
+    if (typeof feeCalculator.searchMaster !== "function") {
+      return ok({ query: "", type: "all", items: [], masterStatus: feeMasterStatus(feeCalculator) });
+    }
+    const searchResult = await feeCalculator.searchMaster(masterSearchOptionsFromUrl(url));
+    return ok({
+      ...searchResult,
+      masterStatus: feeMasterStatus(feeCalculator)
     });
   }
 
@@ -276,7 +288,11 @@ async function routeFeeApiRequest(input = {}) {
     assertFeeSessionReadyForCalculation(current);
     const calculationInput = validateCreateFeeCalculationInput(input.body || {});
     const calculationResult = await feeCalculator.calculate(current, buildCalculationInputForSession(current, calculationInput));
-    const result = await feeStore.saveCalculation(context.session.orgId, parts[3], calculationResult);
+    const result = await feeStore.saveCalculation(
+      context.session.orgId,
+      parts[3],
+      addSessionReviewWarnings(current, calculationResult)
+    );
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.calculated",
       actorMemberId: context.session.memberId,
@@ -429,6 +445,54 @@ function buildCalculationInputForSession(session = {}, input = {}) {
   }
 
   return calculationInput;
+}
+
+function addSessionReviewWarnings(session = {}, calculationResult = {}) {
+  const warnings = uniqueStrings([
+    ...(Array.isArray(calculationResult.warnings) ? calculationResult.warnings : []),
+    ...sessionLevelReviewWarnings(session)
+  ]);
+  return {
+    ...calculationResult,
+    warnings
+  };
+}
+
+function sessionLevelReviewWarnings(session = {}) {
+  const warnings = [];
+  if (!hasDiagnosisInput(session)) {
+    warnings.push("病名が入力されていません。査定リスク確認のため、主病名または疑い病名を入力してください。");
+  }
+  if (session.setting === "inpatient") {
+    warnings.push("入院/DPCは限定対応です。入院基本料候補とDPCレビューに留まり、確定算定として扱わないでください。");
+  }
+  return warnings;
+}
+
+function hasDiagnosisInput(session = {}) {
+  if (Array.isArray(session.diagnoses) && session.diagnoses.some((diagnosis) => {
+    if (!diagnosis || typeof diagnosis !== "object") return false;
+    return Boolean(String(diagnosis.name || diagnosis.icd10Code || diagnosis.icd10_code || "").trim());
+  })) {
+    return true;
+  }
+  const claimContext = isPlainObject(session.claimContext) ? session.claimContext : {};
+  return [
+    claimContext.main_diagnosis,
+    claimContext.resource_diagnosis,
+    claimContext.diagnosis,
+    claimContext.diagnosis_name
+  ].some((value) => String(value || "").trim());
+}
+
+function uniqueStrings(values = []) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function feeMasterStatus(feeCalculator) {
+  return typeof feeCalculator.readiness === "function"
+    ? feeCalculator.readiness()
+    : { provider: "custom", masterDbConfigured: null, masterDbPathExists: null };
 }
 
 function contextView(context) {
@@ -598,6 +662,16 @@ function feeSessionListOptionsFromUrl(url) {
     pageSize: parsePositiveInteger(url.searchParams.get("pageSize"), 20, 50),
     search: String(url.searchParams.get("q") || url.searchParams.get("search") || "").trim(),
     statuses: feeStatusesFromQuery(url.searchParams)
+  };
+}
+
+function masterSearchOptionsFromUrl(url) {
+  const type = String(url.searchParams.get("type") || "all").trim().toLowerCase();
+  const allowedTypes = new Set(["procedure", "drug", "material", "comment", "all"]);
+  return {
+    type: allowedTypes.has(type) ? type : "all",
+    query: String(url.searchParams.get("q") || "").trim(),
+    limit: Math.max(1, Math.min(Number.parseInt(url.searchParams.get("limit") || "10", 10) || 10, 25))
   };
 }
 

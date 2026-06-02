@@ -383,6 +383,56 @@
       gap: 10px;
     }
 
+    .master-search-panel {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .master-search-controls {
+      display: grid;
+      grid-template-columns: 150px minmax(180px, 1fr);
+      gap: 8px;
+    }
+
+    .master-search-controls input,
+    .master-search-controls select {
+      min-height: 38px;
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+
+    .master-search-results {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .master-search-result {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 9px 10px;
+    }
+
+    .master-search-result strong,
+    .master-search-result small {
+      display: block;
+    }
+
+    .master-search-result small {
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
     .order-editor-empty {
       border: 1px dashed var(--line);
       border-radius: 8px;
@@ -530,6 +580,17 @@
       color: #34574d;
       font-size: 12px;
       line-height: 1.6;
+    }
+
+    .scope-notice {
+      margin-bottom: 14px;
+    }
+
+    .master-status {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      margin: -4px 0 14px;
     }
 
     .metric-row {
@@ -890,6 +951,10 @@
       .order-editor-row .btn--icon {
         width: 100%;
       }
+      .master-search-controls,
+      .master-search-result {
+        grid-template-columns: 1fr;
+      }
       .grid-2,
       .grid-3 { grid-template-columns: 1fr; }
       .session-history-toolbar { grid-template-columns: 1fr; }
@@ -1154,6 +1219,8 @@
                 </div>
                 <span class="badge review">要レビュー前提</span>
               </div>
+              <div id="fee-scope-notice" class="notice-card scope-notice"></div>
+              <div id="master-status" class="master-status"></div>
               <form id="fee-session-form" class="stack">
                 <div class="field">
                   <label for="patient-search">患者検索</label>
@@ -1194,9 +1261,27 @@
                   <label for="clinicalText">診療テキスト</label>
                   <textarea id="clinicalText" name="clinicalText"></textarea>
                 </div>
+                <div class="field">
+                  <label for="diagnosesText">病名</label>
+                  <textarea id="diagnosesText" name="diagnosesText" placeholder="例: 高血圧症&#10;糖尿病疑い"></textarea>
+                  <p class="field-note">未入力でも算定候補は作成できますが、病名不足としてレビューに出します。</p>
+                </div>
                 <div class="field order-editor-field">
                   <label for="ordersText">オーダー</label>
-                  <p class="field-note">種別、名称、標準コード、数量を行ごとに入力してください。</p>
+                  <p class="field-note">マスター検索から追加するか、種別、名称、標準コード、数量を行ごとに入力してください。</p>
+                  <div class="master-search-panel">
+                    <div class="master-search-controls">
+                      <select id="master-search-type" aria-label="検索対象">
+                        <option value="procedure">診療行為</option>
+                        <option value="drug">薬剤</option>
+                        <option value="material">特定器材</option>
+                        <option value="comment">コメント</option>
+                        <option value="all">すべて</option>
+                      </select>
+                      <input id="master-search-input" type="search" placeholder="名称またはコードで検索" autocomplete="off" />
+                    </div>
+                    <div id="master-search-results" class="master-search-results">2文字以上入力するとマスターを検索できます。</div>
+                  </div>
                   <div id="order-editor" class="order-editor"></div>
                   <button class="btn btn--ghost btn--sm" id="add-order-row-button" type="button" data-icon="plus">オーダー行を追加</button>
                   <textarea id="ordersText" name="ordersText" class="hidden" aria-hidden="true" tabindex="-1" placeholder="procedure|血液検査|160000410|1&#10;drug|内服薬|620000001|2&#10;material|特定器材|710000001|1"></textarea>
@@ -1301,6 +1386,8 @@
       selectedFeeSession: null,
       patientFilter: "",
       orderRows: [],
+      masterStatus: null,
+      masterSearchItems: [],
       receiptDraft: null,
       reviewItems: []
     };
@@ -1343,6 +1430,12 @@
       departmentSelect: document.querySelector("#departmentId"),
       settingSelect: document.querySelector("#setting"),
       clinicalText: document.querySelector("#clinicalText"),
+      diagnosesText: document.querySelector("#diagnosesText"),
+      scopeNotice: document.querySelector("#fee-scope-notice"),
+      masterStatus: document.querySelector("#master-status"),
+      masterSearchType: document.querySelector("#master-search-type"),
+      masterSearchInput: document.querySelector("#master-search-input"),
+      masterSearchResults: document.querySelector("#master-search-results"),
       orderEditor: document.querySelector("#order-editor"),
       addOrderRowButton: document.querySelector("#add-order-row-button"),
       ordersText: document.querySelector("#ordersText"),
@@ -1362,6 +1455,7 @@
       toastContainer: document.querySelector("#toast-container")
     };
     let feeSessionSearchTimer = 0;
+    let masterSearchTimer = 0;
 
     els.facilityAdminLink.href = facilityAdminUrl();
     els.serviceDate.value = new Date().toISOString().slice(0, 10);
@@ -1447,6 +1541,18 @@
     els.patientSearch.addEventListener("input", () => {
       state.patientFilter = els.patientSearch.value;
       renderPatients();
+    });
+
+    els.settingSelect.addEventListener("change", () => {
+      renderScopeNotice();
+    });
+
+    els.masterSearchInput.addEventListener("input", () => {
+      scheduleMasterSearch();
+    });
+
+    els.masterSearchType.addEventListener("change", () => {
+      scheduleMasterSearch({ immediate: true });
     });
 
     els.addOrderRowButton.addEventListener("click", () => {
@@ -1556,10 +1662,13 @@
       state.patients = response.patients || [];
       state.facilities = response.facilities || [];
       state.departments = response.departments || [];
+      state.masterStatus = response.masterStatus || null;
       applySessionListResponse(response);
       renderPatients();
       renderFacilities();
       renderDepartments();
+      renderMasterStatus();
+      renderScopeNotice();
       renderSessions();
       return syncSelectedFeeSessionFromRoute();
     }
@@ -1619,6 +1728,7 @@
           claimMonth: emptyToNull(form.get("claimMonth")),
           setting: form.get("setting"),
           clinicalText: form.get("clinicalText"),
+          diagnoses: parseDiagnoses(form.get("diagnosesText")),
           orders: parseOrders(form.get("ordersText")),
           claimContext: parseJsonObjectField(form.get("claimContextText"), "詳細条件 JSON"),
           calculationOptions: parseJsonObjectField(form.get("calculationOptionsText"), "算定オプション JSON")
@@ -1699,9 +1809,11 @@
       els.claimMonth.value = session.claimMonth || String(els.serviceDate.value || "").slice(0, 7);
       els.settingSelect.value = session.setting || "outpatient";
       els.clinicalText.value = session.clinicalText || "";
+      els.diagnosesText.value = formatDiagnoses(session.diagnoses);
       els.ordersText.value = serializeOrders(session.orders || []);
       state.orderRows = orderRowsFromText(els.ordersText.value);
       renderOrderEditor();
+      renderScopeNotice();
       els.claimContextText.value = formatJsonObject(session.claimContext);
       els.calculationOptionsText.value = formatJsonObject(session.calculationOptions);
     }
@@ -1781,6 +1893,146 @@
 
     function defaultFacilityId() {
       return state.facilities.length === 1 ? state.facilities[0].facilityId : "";
+    }
+
+    function renderMasterStatus() {
+      const status = state.masterStatus || {};
+      const configured = status.masterDbConfigured ? "マスター設定済み" : "マスター未設定";
+      const runtime = status.masterDbPathExists ? "DB展開済み" : (status.masterDbGzipPathExists ? "初回検索/算定時にDB展開" : "DB未配置");
+      const worker = status.workerMode ? `Python ${status.workerMode}` : "Python";
+      els.masterStatus.textContent = `${configured} / ${runtime} / ${worker}`;
+    }
+
+    function renderScopeNotice() {
+      const setting = els.settingSelect.value || "outpatient";
+      const inpatientText = setting === "inpatient"
+        ? "入院/DPCは限定対応です。入院基本料候補とDPCレビューに留まり、確定算定ではありません。"
+        : "外来検体検査を中心に候補を作成します。未対応章はマスター参照のみ、または要レビューとして扱います。";
+      els.scopeNotice.innerHTML = `
+        <strong>対応範囲</strong>
+        <p>${escapeHtml(inpatientText)} 手術、麻酔、在宅、リハビリ、精神科専門療法、病理診断などは確定算定として扱わないでください。</p>
+      `;
+    }
+
+    function scheduleMasterSearch(options = {}) {
+      window.clearTimeout(masterSearchTimer);
+      const query = els.masterSearchInput.value.trim();
+      if (query.length < 2) {
+        state.masterSearchItems = [];
+        els.masterSearchResults.textContent = "2文字以上入力するとマスターを検索できます。";
+        return;
+      }
+      const delay = options.immediate ? 0 : 250;
+      masterSearchTimer = window.setTimeout(() => {
+        runMasterSearch().catch((error) => {
+          els.masterSearchResults.textContent = toUserFacingErrorMessage(error, "マスター検索に失敗しました。");
+        });
+      }, delay);
+    }
+
+    async function runMasterSearch() {
+      const query = els.masterSearchInput.value.trim();
+      if (query.length < 2) return;
+      els.masterSearchResults.textContent = "検索しています...";
+      const params = new URLSearchParams({
+        type: els.masterSearchType.value || "all",
+        q: query,
+        limit: "10"
+      });
+      const response = await api(feeApiBaseUrl, `/v1/fee/master/search?${params.toString()}`);
+      state.masterSearchItems = response.items || [];
+      state.masterStatus = response.masterStatus || state.masterStatus;
+      renderMasterStatus();
+      renderMasterSearchResults();
+    }
+
+    function renderMasterSearchResults() {
+      if (!state.masterSearchItems.length) {
+        els.masterSearchResults.textContent = "該当するマスターはありません。";
+        return;
+      }
+      els.masterSearchResults.innerHTML = state.masterSearchItems.map((item, index) => `
+        <article class="master-search-result">
+          <div>
+            <strong>${escapeHtml(item.name || item.code || "名称未設定")}</strong>
+            <small>${escapeHtml(masterKindLabel(item.kind))} / ${escapeHtml(item.code || "")}${item.points !== undefined ? ` / ${Number(item.points).toLocaleString()}点` : ""}${item.unitAmountYen !== undefined ? ` / ${Number(item.unitAmountYen).toLocaleString()}円` : ""}</small>
+            <small>${escapeHtml(masterSourceLabel(item))}</small>
+          </div>
+          <button class="btn btn--ghost btn--sm" type="button" data-master-add="${index}">${item.kind === "comment" ? "コメントに追加" : "オーダーに追加"}</button>
+        </article>
+      `).join("");
+      els.masterSearchResults.querySelectorAll("[data-master-add]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const item = state.masterSearchItems[Number(button.dataset.masterAdd)];
+          addMasterSearchItem(item);
+        });
+      });
+    }
+
+    function addMasterSearchItem(item = {}) {
+      if (item.kind === "comment") {
+        addCommentInputToOptions(item);
+        return;
+      }
+      state.orderRows = [
+        ...state.orderRows.filter((row) => row.localName || row.standardCode),
+        {
+          orderType: orderTypeFromMasterKind(item.kind),
+          localName: item.name || "",
+          standardCode: item.code || "",
+          quantity: "1"
+        }
+      ];
+      renderOrderEditor();
+      syncOrderRowsToTextarea();
+      showMessage("マスターからオーダーを追加しました", "success");
+    }
+
+    function addCommentInputToOptions(item = {}) {
+      let options;
+      try {
+        options = parseJsonObjectField(els.calculationOptionsText.value, "算定オプション JSON") || {};
+      } catch (error) {
+        showMessage(toUserFacingErrorMessage(error, "算定オプション JSONを確認してください。"), "error");
+        return;
+      }
+      const commentInputs = Array.isArray(options.comment_inputs) ? options.comment_inputs : [];
+      if (!commentInputs.some((comment) => String(comment.code || "") === String(item.code || ""))) {
+        options.comment_inputs = [
+          ...commentInputs,
+          {
+            code: item.code,
+            text: item.name || ""
+          }
+        ];
+      }
+      els.calculationOptionsText.value = formatJsonObject(options);
+      showMessage("コメントを算定オプションに追加しました", "success");
+    }
+
+    function orderTypeFromMasterKind(kind) {
+      return {
+        procedure: "procedure",
+        drug: "drug",
+        material: "material"
+      }[kind] || "procedure";
+    }
+
+    function masterKindLabel(kind) {
+      return {
+        procedure: "診療行為",
+        drug: "薬剤",
+        material: "特定器材",
+        comment: "コメント"
+      }[kind] || "マスター";
+    }
+
+    function masterSourceLabel(item = {}) {
+      return [
+        item.sourceVersion ? `版 ${item.sourceVersion}` : "",
+        item.publishedAt ? `公開 ${item.publishedAt}` : "",
+        item.effectiveFrom ? `有効 ${item.effectiveFrom}${item.effectiveTo ? `-${item.effectiveTo}` : ""}` : ""
+      ].filter(Boolean).join(" / ") || "マスター情報";
     }
 
     function createEmptyOrderRow() {
@@ -2212,7 +2464,20 @@
             <strong>${escapeHtml(scopeLabel(coverage.scope))}</strong>
             <p>${escapeHtml(coverage.description || "算定候補・レビュー支援として表示しています。確定請求前に内容を確認してください。")}</p>
           </div>
+          ${renderCalculationWarnings(calculation.warnings)}
           ${renderLineTable(lineItems)}
+        </div>
+      `;
+    }
+
+    function renderCalculationWarnings(warnings) {
+      if (!Array.isArray(warnings) || !warnings.length) {
+        return "";
+      }
+      return `
+        <div class="notice-card">
+          <strong>確認が必要な理由</strong>
+          <p>${warnings.map((warning) => escapeHtml(warning)).join("<br>")}</p>
         </div>
       `;
     }
@@ -2241,12 +2506,15 @@
                 <td>
                   <div class="line-name">
                     <strong>${escapeHtml(line.name || "未分類")}</strong>
-                    <small>${escapeHtml(line.code || "")} / ${escapeHtml(line.orderType || "unknown")}</small>
+                    <small>${escapeHtml(line.code || "")} / ${escapeHtml(line.orderType || "unknown")} / ${escapeHtml(line.source || "source未設定")}</small>
                   </div>
                 </td>
                 <td><span class="${badgeClass(line.status)}">${escapeHtml(statusLabel(line.status))}</span></td>
                 <td>${escapeHtml(supportLevelLabel(line.supportLevel || line.support_level || line.coverage?.supportLevel || line.coverage?.support_level))}</td>
-                <td>${escapeHtml(line.reason || coverageLabel(line.coverage))}</td>
+                <td>
+                  ${escapeHtml(line.reason || coverageLabel(line.coverage))}
+                  <div class="field-note">${escapeHtml(coverageLabel(line.coverage))}</div>
+                </td>
                 <td>${Number(line.totalPoints || 0).toLocaleString()}</td>
               </tr>
             `).join("")}
@@ -2315,6 +2583,33 @@
 
     function normalizeSearch(value) {
       return String(value || "").trim().toLowerCase();
+    }
+
+    function parseDiagnoses(value) {
+      return String(value || "")
+        .split(/\n+/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line, index) => {
+          const parts = line.split("|").map((part) => part.trim());
+          return {
+            diagnosisId: `ui_diagnosis_${index + 1}`,
+            name: parts[0],
+            icd10Code: parts[1] || undefined,
+            outcome: "unknown",
+            isPrimary: index === 0
+          };
+        });
+    }
+
+    function formatDiagnoses(diagnoses) {
+      if (!Array.isArray(diagnoses) || !diagnoses.length) {
+        return "";
+      }
+      return diagnoses.map((diagnosis) => [
+        diagnosis.name || "",
+        diagnosis.icd10Code || diagnosis.icd10_code || ""
+      ].filter(Boolean).join("|")).join("\n");
     }
 
     function parseOrders(value) {

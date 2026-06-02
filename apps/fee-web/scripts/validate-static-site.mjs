@@ -23,6 +23,7 @@ assert(html.includes("/v1/fee/patients"), "fee web must create patients through 
 assert(html.includes("/v1/fee/facilities"), "fee web must load Platform facilities through fee-api");
 assert(html.includes("/v1/fee/departments"), "fee web must load Platform departments through fee-api");
 assert(html.includes("/v1/fee/sessions"), "fee web must create fee sessions through fee-api");
+assert(html.includes("/v1/fee/master/search"), "fee web must search the fee master through fee-api");
 assert(html.includes('id="start-fee-session-button"'), "fee web must expose a charting-like quick start action");
 assert(html.includes("新しい算定"), "fee web must keep the charting-like quick start block");
 assert(html.includes("算定記録を作成"), "fee web must provide a charting-like primary create action");
@@ -48,6 +49,7 @@ assert(html.includes("/v1/auth/logout"), "fee web must clear the Platform sessio
 assert(html.includes('id="facility-admin-link"'), "fee web must link to the facility management app from the top navigation");
 assert(html.includes('id="toast-container"'), "fee web must use toast feedback like charting/admin");
 assert(html.includes("patientId"), "fee web must expose patientId selection");
+assert(html.includes('id="diagnosesText"'), "fee web must expose diagnosis input for review warnings");
 assert(html.includes("facilityId"), "fee web must expose facilityId");
 assert(html.includes('id="facility-field"'), "fee web must be able to hide the facility field when there is only one facility");
 assert(html.includes("departmentId"), "fee web must expose departmentId");
@@ -55,6 +57,10 @@ assert(html.includes('id="claimContextText"'), "fee web must expose claimContext
 assert(html.includes('id="calculationOptionsText"'), "fee web must expose calculationOptions JSON for legacy rule input parity");
 assert(html.includes('class="patient-inline-create"'), "fee web must not keep patient creation as an always-expanded form");
 assert(html.includes('id="order-editor"'), "fee web must provide structured order row editing");
+assert(html.includes('id="master-search-input"'), "fee web must provide master search input");
+assert(html.includes('id="master-search-results"'), "fee web must render master search results");
+assert(html.includes('id="fee-scope-notice"'), "fee web must explain limited fee calculation scope");
+assert(html.includes('id="master-status"'), "fee web must display fee master readiness");
 assert(html.includes('id="add-order-row-button"'), "fee web must allow adding order rows");
 assert(html.includes("syncOrderRowsToTextarea"), "fee web must preserve legacy order text compatibility before saving");
 assert(html.includes("parseJsonObjectField"), "fee web must validate detailed JSON inputs before saving");
