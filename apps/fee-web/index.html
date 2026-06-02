@@ -927,6 +927,25 @@
 
     .hidden { display: none; }
 
+    .auth-loading {
+      min-height: 100vh;
+      background: var(--bg);
+      display: grid;
+      align-content: start;
+    }
+
+    .auth-loading-dashboard {
+      width: min(1480px, calc(100% - 32px));
+      margin: 24px auto 40px;
+      display: grid;
+      gap: 28px;
+    }
+
+    .auth-loading-list {
+      display: grid;
+      gap: 14px;
+    }
+
     @media (max-width: 920px) {
       .topbar { padding: 0 16px; }
       .main {
@@ -969,7 +988,20 @@
   <link rel="stylesheet" href="web-ui/halunasu-ui.css" />
 </head>
 <body>
-  <div class="operator-gate" id="login-gate">
+  <div class="auth-loading" id="auth-loading" aria-hidden="true">
+    <main class="auth-loading-dashboard">
+      <div class="dashboard-header">
+        <div class="skeleton skeleton-heading" style="width:180px"></div>
+        <div class="skeleton" style="width:160px;height:38px;border-radius:8px"></div>
+      </div>
+      <div class="auth-loading-list">
+        <div class="skeleton skeleton-block"></div>
+        <div class="skeleton skeleton-block"></div>
+      </div>
+    </main>
+  </div>
+
+  <div class="operator-gate hidden" id="login-gate">
     <div class="operator-gate-shell">
       <aside class="operator-gate-brand">
         <div class="operator-gate-brand-top">
@@ -1455,6 +1487,7 @@
       claimMonth: document.querySelector("#claimMonth"),
       toastContainer: document.querySelector("#toast-container")
     };
+    els.authLoading = document.querySelector("#auth-loading");
     let feeSessionSearchTimer = 0;
     let masterSearchTimer = 0;
 
@@ -2800,10 +2833,12 @@
       try {
         const response = await api(platformApiBaseUrl, "/v1/auth/session");
         if (!response.authenticated || !response.session) {
+          showLoggedOutShell();
           return;
         }
         const csrfToken = readPlatformCsrfCookie();
         if (!csrfToken) {
+          showLoggedOutShell();
           return;
         }
 
@@ -2811,22 +2846,39 @@
         state.session = response.session;
         resetMfaFlow();
         renderSession();
-        hide(els.loginGate);
-        hide(els.mfaGate);
-        show(els.appShell);
-        const openedRoute = await loadWorkspace();
-        if (!openedRoute) {
-          showMessage("ログインしました", "success");
-        }
+        showAuthenticatedShell();
+        await loadWorkspace();
       } catch (error) {
+        if (error.status && error.status !== 401 && state.session && !els.appShell.classList.contains("hidden")) {
+          showMessage(toUserFacingErrorMessage(error, "セッションの復元に失敗しました。"), "error");
+          return;
+        }
+        showLoggedOutShell();
         if (error.status && error.status !== 401) {
-          if (state.session && !els.appShell.classList.contains("hidden")) {
-            showMessage(toUserFacingErrorMessage(error, "セッションの復元に失敗しました。"), "error");
-          } else {
-            showLoginMessage("セッションの復元に失敗しました。再ログインしてください。");
-          }
+          showLoginMessage("セッションの復元に失敗しました。再ログインしてください。");
         }
       }
+    }
+
+    function showLoggedOutShell() {
+      hide(els.authLoading);
+      hide(els.appShell);
+      hide(els.mfaGate);
+      show(els.loginGate);
+    }
+
+    function showAuthenticatedShell() {
+      hide(els.authLoading);
+      hide(els.loginGate);
+      hide(els.mfaGate);
+      show(els.appShell);
+    }
+
+    function showMfaShell() {
+      hide(els.authLoading);
+      hide(els.loginGate);
+      hide(els.appShell);
+      show(els.mfaGate);
     }
 
     async function logout() {
@@ -2848,9 +2900,7 @@
       clearSelectedFeeSession();
       renderSession();
       window.history.pushState({}, "", "/");
-      hide(els.appShell);
-      hide(els.mfaGate);
-      show(els.loginGate);
+      showLoggedOutShell();
       showLoginMessage("");
       hideMessage();
     }
@@ -2875,9 +2925,7 @@
       state.session = response.session || null;
       resetMfaFlow();
       renderSession();
-      hide(els.loginGate);
-      hide(els.mfaGate);
-      show(els.appShell);
+      showAuthenticatedShell();
       const openedRoute = await loadWorkspace();
       if (!openedRoute) {
         showMessage("ログインしました", "success");
@@ -2983,9 +3031,7 @@
         hide(els.mfaSecretField);
       }
 
-      hide(els.loginGate);
-      hide(els.appShell);
-      show(els.mfaGate);
+      showMfaShell();
       updateMfaButtonState();
       window.requestAnimationFrame(() => els.mfaCode.focus());
     }

@@ -14,6 +14,8 @@ assert(html.includes("halunasu-platform-api-base-url"), "core admin must configu
 assert(html.includes('rel="icon" type="image/png" href="brand/harunas-mark.png"'), "core admin must use the Halunasu browser tab icon");
 assert(html.includes('rel="apple-touch-icon" href="brand/harunas-mark.png"'), "core admin must use the Halunasu touch icon");
 assert(html.includes("/v1/auth/login"), "core admin must log in through Platform");
+assert(html.includes('id="auth-loading"'), "core admin must render an auth hydration skeleton before showing login");
+assert(html.includes('class="operator-gate hidden" id="login-gate"'), "core admin must not flash the login gate before session hydration");
 assert(html.includes("login-mfa-form"), "core admin must use a separate MFA login step");
 assert(html.includes("mfa_required"), "core admin must branch to the MFA login step when Platform requires MFA");
 assert(html.includes("2段階認証"), "core admin must use patient-facing two-step auth wording");

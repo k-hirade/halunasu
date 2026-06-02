@@ -344,6 +344,25 @@
     .message.error { color: var(--danger); border-color: #ffd2cf; background: #fff1f0; }
     .message.success { color: var(--success); border-color: #abefc6; background: #ecfdf3; }
 
+    .auth-loading {
+      min-height: 100vh;
+      background: var(--bg);
+      display: grid;
+      align-content: start;
+    }
+
+    .auth-loading-dashboard {
+      width: min(1480px, calc(100% - 32px));
+      margin: 24px auto 40px;
+      display: grid;
+      gap: 28px;
+    }
+
+    .auth-loading-list {
+      display: grid;
+      gap: 14px;
+    }
+
     .workspace {
       display: grid;
       align-content: start;
@@ -689,7 +708,20 @@
   <link rel="stylesheet" href="auth.css" />
 </head>
 <body>
-  <div class="operator-gate" id="login-gate">
+  <div class="auth-loading" id="auth-loading" aria-hidden="true">
+    <main class="auth-loading-dashboard">
+      <div class="dashboard-header">
+        <div class="skeleton skeleton-heading" style="width:180px"></div>
+        <div class="skeleton" style="width:160px;height:38px;border-radius:8px"></div>
+      </div>
+      <div class="auth-loading-list">
+        <div class="skeleton skeleton-block"></div>
+        <div class="skeleton skeleton-block"></div>
+      </div>
+    </main>
+  </div>
+
+  <div class="operator-gate hidden" id="login-gate">
     <div class="operator-gate-shell">
       <aside class="operator-gate-brand">
         <div class="operator-gate-brand-top">
@@ -1016,6 +1048,7 @@
     };
 
     const els = {
+      authLoading: document.querySelector("#auth-loading"),
       loginGate: document.querySelector("#login-gate"),
       appShell: document.querySelector("#app-shell"),
       loginGateTitle: document.querySelector("#login-gate-title"),
@@ -2028,6 +2061,7 @@
       state.orgId = response.session.orgId;
       state.pendingLogin = null;
       showCredentialLoginStep();
+      hide(els.authLoading);
       hide(els.loginGate);
       show(els.appShell);
       showMessage("ログインしました", "success");
@@ -2059,6 +2093,7 @@
     }
 
     function renderSession() {
+      hide(els.authLoading);
       if (!state.session) {
         els.sessionChip.textContent = "未ログイン";
         els.sessionMenuTitle.textContent = "未ログイン";

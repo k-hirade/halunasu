@@ -11,6 +11,9 @@ for (const file of requiredFiles) {
 const html = readFileSync(join(root, "index.html"), "utf8");
 
 assert(html.includes("/v1/auth/login"), "fee web must log in through Platform");
+assert(html.includes('id="auth-loading"'), "fee web must render an auth hydration skeleton before showing login");
+assert(html.includes('class="operator-gate hidden" id="login-gate"'), "fee web must not flash the login gate before session hydration");
+assert(html.includes("showLoggedOutShell"), "fee web must show login only after session hydration fails");
 assert(html.includes('rel="icon" type="image/png" href="brand/harunas-mark.png"'), "fee web must use the Halunasu browser tab icon");
 assert(html.includes('rel="apple-touch-icon" href="brand/harunas-mark.png"'), "fee web must use the Halunasu touch icon");
 assert(html.includes('href="web-ui/halunasu-ui.css"'), "fee web must load the shared Halunasu UI stylesheet");

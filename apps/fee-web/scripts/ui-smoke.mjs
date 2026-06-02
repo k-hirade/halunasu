@@ -9,10 +9,23 @@ const indexUrl = pathToFileURL(join(root, "index.html")).href;
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await page.addInitScript(() => {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (resource, options) => {
+      const url = typeof resource === "string" ? resource : resource?.url || "";
+      if (url.includes("/v1/auth/session")) {
+        return new Promise(() => {});
+      }
+      return nativeFetch(resource, options);
+    };
+  });
   await page.goto(indexUrl);
 
+  assert.equal(await page.locator("#auth-loading").isVisible(), true);
+  assert.equal(await page.locator("#login-gate").isVisible(), false);
   assert.equal(await text(page, "#login-form h1"), "ログイン");
 
+  await page.locator("#auth-loading").evaluate((element) => element.classList.add("hidden"));
   await page.locator("#login-gate").evaluate((element) => element.classList.add("hidden"));
   await page.locator("#app-shell").evaluate((element) => element.classList.remove("hidden"));
 
