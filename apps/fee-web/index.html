@@ -1387,6 +1387,7 @@
       patientFilter: "",
       orderRows: [],
       masterStatus: null,
+      masterSearchAvailable: false,
       masterSearchItems: [],
       receiptDraft: null,
       reviewItems: []
@@ -1663,6 +1664,7 @@
       state.facilities = response.facilities || [];
       state.departments = response.departments || [];
       state.masterStatus = response.masterStatus || null;
+      state.masterSearchAvailable = Boolean(response.masterStatus);
       applySessionListResponse(response);
       renderPatients();
       renderFacilities();
@@ -1897,6 +1899,13 @@
 
     function renderMasterStatus() {
       const status = state.masterStatus || {};
+      els.masterSearchType.disabled = !state.masterSearchAvailable;
+      els.masterSearchInput.disabled = !state.masterSearchAvailable;
+      if (!state.masterSearchAvailable) {
+        els.masterStatus.textContent = "マスター検索APIの反映待ちです。通常の算定入力は利用できます。";
+        els.masterSearchResults.textContent = "API反映後にマスター検索を利用できます。";
+        return;
+      }
       const configured = status.masterDbConfigured ? "マスター設定済み" : "マスター未設定";
       const runtime = status.masterDbPathExists ? "DB展開済み" : (status.masterDbGzipPathExists ? "初回検索/算定時にDB展開" : "DB未配置");
       const worker = status.workerMode ? `Python ${status.workerMode}` : "Python";
@@ -1916,6 +1925,10 @@
 
     function scheduleMasterSearch(options = {}) {
       window.clearTimeout(masterSearchTimer);
+      if (!state.masterSearchAvailable) {
+        els.masterSearchResults.textContent = "API反映後にマスター検索を利用できます。";
+        return;
+      }
       const query = els.masterSearchInput.value.trim();
       if (query.length < 2) {
         state.masterSearchItems = [];
