@@ -41,9 +41,17 @@ export async function proxyApiRequest(request, segments, targetBaseUrl, prefix =
   const response = await fetch(targetUrl, init);
   const responseHeaders = new Headers();
   for (const [name, value] of response.headers.entries()) {
-    if (!hopByHopHeaders.has(name.toLowerCase())) {
-      responseHeaders.set(name, value);
+    const lowerName = name.toLowerCase();
+    if (hopByHopHeaders.has(lowerName)) {
+      continue;
     }
+    if (lowerName === "set-cookie") {
+      for (const cookie of splitSetCookieHeader(value)) {
+        responseHeaders.append(name, cookie);
+      }
+      continue;
+    }
+    responseHeaders.set(name, value);
   }
 
   return new Response(response.body, {
@@ -51,4 +59,37 @@ export async function proxyApiRequest(request, segments, targetBaseUrl, prefix =
     statusText: response.statusText,
     headers: responseHeaders
   });
+}
+
+function splitSetCookieHeader(value) {
+  if (typeof value !== "string" || !value) {
+    return [];
+  }
+
+  const cookies = [];
+  let start = 0;
+  let inExpires = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (char === ",") {
+      if (!inExpires) {
+        cookies.push(value.slice(start, index).trim());
+        start = index + 1;
+      }
+      continue;
+    }
+
+    const lowerTail = value.slice(index).toLowerCase();
+    if (lowerTail.startsWith("expires=")) {
+      inExpires = true;
+      index += "expires=".length - 1;
+      continue;
+    }
+    if (inExpires && char === ";") {
+      inExpires = false;
+    }
+  }
+
+  cookies.push(value.slice(start).trim());
+  return cookies.filter(Boolean);
 }

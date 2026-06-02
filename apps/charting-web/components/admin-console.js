@@ -10,6 +10,7 @@ import {
   formatAccessStatus,
   formatBillingDateTime,
   formatBillingStatus,
+  getBillingDisplayState,
   getBillingActionLabel,
   getTrialDaysRemaining,
   shouldOpenBillingPortal,
@@ -266,7 +267,7 @@ const ADMIN_SECTIONS = [
     id: "members",
     group: "管理",
     label: "権限管理",
-    description: "職員アカウント、権限、パスワード、プロンプト割当を設定します。"
+    description: "職員アカウント、権限、ログイン用パスワード、プロンプト割当を設定します。"
   },
   {
     id: "formats",
@@ -538,7 +539,7 @@ function eventLabel(type) {
     "organization.created": "病院を追加",
     "organization.recording_policy_updated": "録音自動停止設定変更",
     "member.created": "職員作成",
-    "member.password_reset": "パスワード再設定",
+    "member.password_reset": "ログイン用パスワード再設定",
     "member.roles_updated": "権限変更",
     "member.mfa_reset": "2段階認証リセット",
     "member.mfa_enabled": "2段階認証登録",
@@ -548,7 +549,7 @@ function eventLabel(type) {
     "auth.login_failed": "ログイン失敗",
     "auth.mfa_failed": "2段階認証コードの確認に失敗",
     "billing.provisioning.completed": "病院アカウント作成完了",
-    "billing.password_setup.completed": "初回パスワード設定完了",
+    "billing.password_setup.completed": "ログイン用パスワード初回設定完了",
     "billing.checkout.created": "決済画面を作成",
     "billing.checkout.completed": "決済完了",
     "billing.subscription.updated": "契約状態更新",
@@ -658,6 +659,7 @@ function billingBadgeClass(status) {
     case "past_due":
     case "grace_period":
     case "unpaid":
+    case "payment_required":
       return "badge--billing_warning";
     case "canceled":
       return "badge--billing_muted";
@@ -962,11 +964,22 @@ export function AdminConsole() {
   const accountOrganization = selectedOrganization || session?.organization || null;
   const accountBilling = accountOrganization?.billing || session?.organization?.billing || null;
   const accountAccess = accountOrganization?.access || session?.organization?.access || null;
+  const accountProductEntitlements = accountOrganization?.productEntitlements || session?.organization?.productEntitlements || null;
+  const accountBillingDisplayState = getBillingDisplayState({
+    billing: accountBilling,
+    productEntitlements: accountProductEntitlements,
+    productId: "charting"
+  });
+  const accountDisplayAccess = ["payment_required", "pending_checkout", "past_due", "grace_period", "unpaid"].includes(accountBillingDisplayState.status)
+    ? { ...(accountAccess || {}), status: "billing_action_required" }
+    : accountAccess;
   const accountBillingBanner = buildBillingBannerCopy({
     billing: accountBilling,
-    access: accountAccess
+    access: accountDisplayAccess,
+    productEntitlements: accountProductEntitlements,
+    productId: "charting"
   });
-  const trialDaysRemaining = getTrialDaysRemaining(accountBilling?.trialEndsAt);
+  const trialDaysRemaining = getTrialDaysRemaining(accountBillingDisplayState.trialEndsAt);
   const selectedFormat = formats.find((format) => format.formatId === selectedFormatId) || null;
   const duplicatePromptName = editor ? findDuplicatePromptName(formats, editor.displayName, selectedFormatId) : null;
   const isPromptNameBlank = editor ? !normalizePromptDisplayNameKey(editor.displayName) : false;
@@ -2048,10 +2061,10 @@ export function AdminConsole() {
             password: passwordForm.password
           })
         }, accessToken);
-        const payload = await readJson(response, "パスワードを再設定できませんでした。");
+        const payload = await readJson(response, "ログイン用パスワードを再設定できませんでした。");
         setMembers((current) => current.map((member) => (member.memberId === payload.member.memberId ? payload.member : member)));
-        setNotice(`${payload.member.displayName}のパスワードを再設定しました。`);
-        setPasswordResetResult("新しいパスワードを本人に安全な経路で伝達してください。この画面を閉じると再表示できません。");
+        setNotice(`${payload.member.displayName}のログイン用パスワードを再設定しました。`);
+        setPasswordResetResult("新しいログイン用パスワードを本人に安全な経路で伝達してください。この画面を閉じると再表示できません。");
       } catch (nextError) {
         setError(toUserFacingErrorMessage(nextError));
       } finally {
@@ -2072,7 +2085,7 @@ export function AdminConsole() {
     }
 
     navigator.clipboard?.writeText(passwordForm.password).then(() => {
-      setNotice("パスワードをコピーしました。");
+      setNotice("ログイン用パスワードをコピーしました。");
     }).catch(() => {
       setError("クリップボードにコピーできませんでした。");
     });
@@ -3024,7 +3037,7 @@ export function AdminConsole() {
                       <small>{accountBillingBanner ? `${accountBillingBanner.title} ${accountBillingBanner.body}` : "現在の契約状態と継続利用の設定です。"}</small>
                     </div>
                     <div className="admin-settings-row-actions">
-                      <span className={`badge ${billingBadgeClass(accountBilling.status)}`}>{formatBillingStatus(accountBilling.status)}</span>
+                      <span className={`badge ${billingBadgeClass(accountBillingDisplayState.status || accountBilling.status)}`}>{formatBillingStatus(accountBillingDisplayState.status || accountBilling.status)}</span>
                       {canManageBilling && (canLaunchCheckout || canLaunchPortal) ? (
                         <button
                           className={`btn btn--primary ${isLaunchingBillingAction ? "btn--loading" : ""}`}
@@ -3050,8 +3063,8 @@ export function AdminConsole() {
                       </small>
                     </div>
                     <div className="admin-settings-row-meta">
-                      <span className={`badge ${accessBadgeClass(accountAccess?.status)}`}>{formatAccessStatus(accountAccess?.status)}</span>
-                      <strong>{formatBillingDateTime(accountBilling.trialEndsAt)}</strong>
+                      <span className={`badge ${accessBadgeClass(accountDisplayAccess?.status)}`}>{formatAccessStatus(accountDisplayAccess?.status)}</span>
+                      <strong>{formatBillingDateTime(accountBillingDisplayState.trialEndsAt)}</strong>
                     </div>
                   </div>
                 </section>
@@ -3111,8 +3124,8 @@ export function AdminConsole() {
                   </div>
                   <button
                     className="btn btn--danger"
-                    onClick={() => {
-                      clearAccess();
+                    onClick={async () => {
+                      await clearAccess();
                       window.location.assign("/");
                     }}
                     type="button"
@@ -3142,8 +3155,8 @@ export function AdminConsole() {
             <label><span>病院名</span><input required value={organizationForm.displayName} onChange={(event) => setOrganizationForm((current) => ({ ...current, displayName: event.target.value }))} /></label>
             <label><span>病院コード</span><input required value={organizationForm.organizationCode} onChange={(event) => setOrganizationForm((current) => ({ ...current, organizationCode: event.target.value.toLowerCase() }))} placeholder="例: tokyo-clinic" /></label>
             <label><span>初期管理者名</span><input required value={organizationForm.adminDisplayName} onChange={(event) => setOrganizationForm((current) => ({ ...current, adminDisplayName: event.target.value }))} /></label>
-            <label><span>初期管理者ID</span><input required value={organizationForm.adminLoginId} onChange={(event) => setOrganizationForm((current) => ({ ...current, adminLoginId: event.target.value.toLowerCase() }))} /></label>
-            <label><span>初期パスワード</span><input required type="password" minLength={12} value={organizationForm.adminPassword} onChange={(event) => setOrganizationForm((current) => ({ ...current, adminPassword: event.target.value }))} /></label>
+            <label><span>初期管理者の個人ID</span><input required value={organizationForm.adminLoginId} onChange={(event) => setOrganizationForm((current) => ({ ...current, adminLoginId: event.target.value.toLowerCase() }))} /></label>
+            <label><span>初期ログイン用パスワード</span><input required type="password" minLength={12} value={organizationForm.adminPassword} onChange={(event) => setOrganizationForm((current) => ({ ...current, adminPassword: event.target.value }))} /></label>
           </form>
         </AdminModal>
       ) : null}
@@ -3163,7 +3176,7 @@ export function AdminConsole() {
           <form id="member-form" className="admin-modal-form" onSubmit={createMember}>
             <label><span>氏名</span><input required value={memberForm.displayName} onChange={(event) => setMemberForm((current) => ({ ...current, displayName: event.target.value }))} /></label>
             <label><span>個人ID</span><input required value={memberForm.loginId} onChange={(event) => setMemberForm((current) => ({ ...current, loginId: event.target.value.toLowerCase() }))} placeholder="例: dr-sato" /></label>
-            <label><span>初期パスワード</span><input required type="password" minLength={12} value={memberForm.password} onChange={(event) => setMemberForm((current) => ({ ...current, password: event.target.value }))} /></label>
+            <label><span>初期ログイン用パスワード</span><input required type="password" minLength={12} value={memberForm.password} onChange={(event) => setMemberForm((current) => ({ ...current, password: event.target.value }))} /></label>
             <label>
               <span>ふだん使う録音方法</span>
               <select value={memberForm.defaultRecordingSource} onChange={(event) => setMemberForm((current) => ({ ...current, defaultRecordingSource: event.target.value }))}>
@@ -3326,8 +3339,8 @@ export function AdminConsole() {
         >
           <div className="member-action-list">
             <button className="member-action-choice" type="button" onClick={() => openPasswordReset(memberActionTarget)} disabled={!isCurrentOrganization || !canManageCurrentMembers}>
-              <strong>パスワード再設定</strong>
-              <span>新しいログインパスワードを生成・コピーします。</span>
+              <strong>ログイン用パスワード再設定</strong>
+              <span>新しいログイン用パスワードを生成・コピーします。</span>
             </button>
             <button className="member-action-choice" type="button" onClick={() => requestSecurityAction("revoke-sessions", memberActionTarget)} disabled={!isCurrentOrganization || !canManageCurrentMembers || isSaving}>
               <strong>強制ログアウト</strong>
@@ -3453,8 +3466,8 @@ export function AdminConsole() {
 
       {modalMode === "password" && passwordTarget ? (
         <AdminModal
-          title="パスワード再設定"
-          description={`${passwordTarget.displayName}のログインパスワードを新しい値に変更します。現在のパスワードは確認できません。`}
+          title="ログイン用パスワード再設定"
+          description={`${passwordTarget.displayName}のログイン用パスワードを新しい値に変更します。現在のログイン用パスワードは確認できません。`}
           onClose={() => { setModalMode(null); setPasswordTarget(null); setPasswordForm({ password: "" }); setPasswordVisible(false); setPasswordResetResult(""); }}
           footer={(
             <>
@@ -3469,7 +3482,7 @@ export function AdminConsole() {
         >
           <form id="password-form" className="admin-modal-form" onSubmit={resetPassword}>
             <label>
-              <span>新しいパスワード</span>
+              <span>新しいログイン用パスワード</span>
               <input
                 required
                 type={passwordVisible ? "text" : "password"}
@@ -3479,7 +3492,7 @@ export function AdminConsole() {
               />
             </label>
             <div className="password-helper-actions">
-              <button className="btn btn--ghost" type="button" onClick={fillGeneratedPassword}>安全なパスワードを作る</button>
+              <button className="btn btn--ghost" type="button" onClick={fillGeneratedPassword}>安全なログイン用パスワードを作る</button>
               <button className="btn btn--ghost" type="button" onClick={() => setPasswordVisible((current) => !current)} disabled={!passwordForm.password}>
                 {passwordVisible ? "非表示" : "表示"}
               </button>
@@ -3488,7 +3501,7 @@ export function AdminConsole() {
             {passwordResetResult ? (
               <p className="admin-warning-note">{passwordResetResult}</p>
             ) : (
-              <p className="empty-note">ランダム生成したパスワードを使い、本人へ安全な経路で伝達してください。</p>
+              <p className="empty-note">ランダム生成したログイン用パスワードを使い、本人へ安全な経路で伝達してください。</p>
             )}
           </form>
         </AdminModal>

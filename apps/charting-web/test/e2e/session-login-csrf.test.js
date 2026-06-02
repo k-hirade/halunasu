@@ -78,8 +78,8 @@ test("session quick start uses a refreshed CSRF cookie after login", { timeout: 
     await page.goto(appUrl("/sessions"), { waitUntil: "domcontentloaded" });
     await page.getByLabel("病院コード").fill("prod-test");
     await page.getByLabel("個人ID").fill("keishi");
-    await page.getByLabel("ログイン用パスワード").fill("secret");
-    await page.getByRole("button", { name: "ログイン" }).click();
+    await page.getByRole("textbox", { name: "ログイン用パスワード" }).fill("secret");
+    await page.getByRole("button", { name: "ログイン", exact: true }).click();
     await page.getByRole("button", { name: "診療記録を作成" }).waitFor({ state: "visible" });
 
     assert.ok(csrfRefreshCount >= 1);

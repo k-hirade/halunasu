@@ -341,7 +341,10 @@ export function SessionLauncher() {
   const accessRestrictionMessage = getOperatorAccessRestrictionMessage(operatorSession);
   const billingBanner = buildBillingBannerCopy({
     billing: operatorSession?.organization?.billing || null,
-    access: operatorSession?.organization?.access || null
+    access: operatorSession?.organization?.access || null,
+    productEntitlements: operatorSession?.organization?.productEntitlements || null,
+    productId: "charting",
+    onlyShowTrialInReminderWindow: true
   });
   const processingCopy =
     createPhase === "redirecting"

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { createBillingPortalSession, getCurrentBillingStatus } from "../lib/billing-api";
+import { getBillingDisplayState } from "../lib/billing-display";
 import {
   canManageOrganization,
   canManagePlatform,
@@ -44,6 +45,8 @@ function formatBillingStatus(status) {
       return "解約済み";
     case "pending_checkout":
       return "Checkout待ち";
+    case "payment_required":
+      return "支払い対応待ち";
     case "suspended":
       return "利用停止";
     default:
@@ -123,6 +126,14 @@ export function BillingConsole() {
   const canManageBilling = useMemo(() => (
     canManageOrganization(operatorSession) || canManagePlatform(operatorSession)
   ), [operatorSession]);
+  const billingDisplayState = getBillingDisplayState({
+    billing: billingStatus?.billing || null,
+    productEntitlements: billingStatus?.productEntitlements || null,
+    productId: "charting"
+  });
+  const accessStatus = ["payment_required", "pending_checkout", "past_due", "grace_period", "unpaid"].includes(billingDisplayState.status)
+    ? "billing_action_required"
+    : billingStatus?.access?.status;
 
   async function handleOpenPortal() {
     setIsLaunchingPortal(true);
@@ -207,15 +218,15 @@ export function BillingConsole() {
           <dl className="signup-status-grid billing-status-grid">
             <div>
               <dt>課金状態</dt>
-              <dd>{formatBillingStatus(billingStatus?.billing?.status)}</dd>
+              <dd>{formatBillingStatus(billingDisplayState.status || billingStatus?.billing?.status)}</dd>
             </div>
             <div>
               <dt>利用状態</dt>
-              <dd>{formatAccessStatus(billingStatus?.access?.status)}</dd>
+              <dd>{formatAccessStatus(accessStatus)}</dd>
             </div>
             <div>
               <dt>無料期間終了</dt>
-              <dd>{formatDateTime(billingStatus?.billing?.trialEndsAt)}</dd>
+              <dd>{formatDateTime(billingDisplayState.trialEndsAt)}</dd>
             </div>
             <div>
               <dt>契約期間終了</dt>

@@ -55,7 +55,7 @@ export function getOperatorAccessRestrictionMessage(operatorSession) {
 
   switch (status) {
     case "pending_setup":
-      return "初回パスワード設定が完了するまで利用できません。";
+      return "ログイン用パスワード設定が完了するまで利用できません。";
     case "billing_action_required":
       return "継続利用のための決済またはお支払い情報の更新が必要なため、新規セッション作成と録音は停止しています。";
     case "suspended":
@@ -490,8 +490,8 @@ export function useOperatorAccess() {
     notifyOperatorAccessChanged();
   }, []);
 
-  const clearAccess = useCallback(() => {
-    void logoutOperator();
+  const clearAccess = useCallback(async () => {
+    await logoutOperator();
     clearOperatorAccessToken();
     setAccessTokenState(null);
     notifyOperatorAccessChanged();

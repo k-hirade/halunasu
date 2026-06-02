@@ -1571,7 +1571,7 @@ async function authenticatePlatformOperator({ organizationCode, loginId, passwor
     return null;
   }
 
-  if (!platformEntitlementAllowsChartingUse(entitlement)) {
+  if (!platformEntitlementAllowsChartingLogin(entitlement)) {
     return null;
   }
 
@@ -1580,7 +1580,11 @@ async function authenticatePlatformOperator({ organizationCode, loginId, passwor
   const mfaRequired = Boolean(refreshedIdentity.mfaRequired) || operatorRequiresMfa(normalizedMember);
 
   return {
-    organization: normalizePlatformOrganizationForGateway(organization),
+    organization: normalizePlatformOrganizationForGateway(organization, {
+      productEntitlements: {
+        [CHARTING_PRODUCT_ID]: entitlement
+      }
+    }),
     member: normalizedMember,
     identity: {
       organizationCode: refreshedIdentity.organizationCode || organization.organizationCode || organizationCode,
@@ -1617,7 +1621,8 @@ function cloneHydratedOperatorPayload(payload = {}) {
     ...payload,
     roles: Array.isArray(payload.roles) ? [...payload.roles] : [],
     organizationBilling: payload.organizationBilling ? { ...payload.organizationBilling } : payload.organizationBilling,
-    organizationAccess: payload.organizationAccess ? { ...payload.organizationAccess } : payload.organizationAccess
+    organizationAccess: payload.organizationAccess ? { ...payload.organizationAccess } : payload.organizationAccess,
+    organizationProductEntitlements: cloneProductEntitlements(payload.organizationProductEntitlements)
   };
 }
 
@@ -1736,11 +1741,15 @@ async function hydratePlatformOperatorPayload(payload) {
     return null;
   }
 
-  if (!platformEntitlementAllowsChartingUse(entitlement)) {
+  if (!platformEntitlementAllowsChartingLogin(entitlement)) {
     return null;
   }
 
-  const normalizedOrganization = normalizePlatformOrganizationForGateway(organization);
+  const normalizedOrganization = normalizePlatformOrganizationForGateway(organization, {
+    productEntitlements: {
+      [CHARTING_PRODUCT_ID]: entitlement
+    }
+  });
   const normalizedMember = normalizePlatformMemberForGateway(member);
 
   const mfaRequired = Boolean(identity.mfaRequired) || operatorRequiresMfa(normalizedMember);
@@ -1754,6 +1763,7 @@ async function hydratePlatformOperatorPayload(payload) {
     organizationStatus: normalizedOrganization.status,
     organizationBilling: normalizedOrganization.billing || null,
     organizationAccess: getOrganizationAccessState(normalizedOrganization),
+    organizationProductEntitlements: normalizedOrganization.productEntitlements || null,
     memberId: normalizedMember.memberId,
     sub: normalizedMember.memberId,
     displayName: normalizedMember.displayName,
@@ -1776,9 +1786,9 @@ function platformMfaEnrolledAt(identity = {}) {
   return identity.mfaEnrolledAt || identity.updatedAt || identity.createdAt || new Date(0).toISOString();
 }
 
-function platformEntitlementAllowsChartingUse(entitlement = {}, now = new Date()) {
+function platformEntitlementAllowsChartingLogin(entitlement = {}, now = new Date()) {
   const status = entitlement?.status || "";
-  if (status === "enabled" || status === "trialing") {
+  if (["enabled", "trialing", "payment_required", "pending_checkout", "past_due", "grace_period", "unpaid"].includes(status)) {
     return true;
   }
   if (status !== "cancel_scheduled") {
@@ -1791,6 +1801,78 @@ function platformEntitlementAllowsChartingUse(entitlement = {}, now = new Date()
 
 function platformOrganizationAllowsLogin(organization = null) {
   return Boolean(organization && ["active", "trialing"].includes(organization.status || "active"));
+}
+
+function serializeProductEntitlementForClient(entitlement = null) {
+  if (!entitlement || typeof entitlement !== "object") {
+    return null;
+  }
+
+  return {
+    productId: entitlement.productId || null,
+    status: entitlement.status || null,
+    plan: entitlement.plan || null,
+    pricingModel: entitlement.pricingModel || null,
+    monthlyAmountJpy: entitlement.monthlyAmountJpy ?? null,
+    currency: entitlement.currency || null,
+    trialStartsAt: entitlement.trialStartsAt || null,
+    trialEndsAt: entitlement.trialEndsAt || entitlement.endsAt || null,
+    reminderStartsAt: entitlement.reminderStartsAt || null,
+    currentPeriodStart: entitlement.currentPeriodStart || null,
+    currentPeriodEnd: entitlement.currentPeriodEnd || null,
+    endsAt: entitlement.endsAt || null,
+    cancelAtPeriodEnd: Boolean(entitlement.cancelAtPeriodEnd)
+  };
+}
+
+function normalizeProductEntitlementsForClient(productEntitlements = null) {
+  if (!productEntitlements) {
+    return null;
+  }
+
+  const entries = Array.isArray(productEntitlements)
+    ? productEntitlements.map((entitlement) => [entitlement?.productId, entitlement])
+    : Object.entries(productEntitlements);
+  const normalized = {};
+
+  for (const [productId, entitlement] of entries) {
+    if (!productId || !entitlement) {
+      continue;
+    }
+
+    normalized[productId] = serializeProductEntitlementForClient({
+      ...entitlement,
+      productId: entitlement.productId || productId
+    });
+  }
+
+  return Object.keys(normalized).length ? normalized : null;
+}
+
+function cloneProductEntitlements(productEntitlements = null) {
+  return normalizeProductEntitlementsForClient(productEntitlements);
+}
+
+function buildChartingAccessStateForGateway(organizationAccess = {}, chartingEntitlement = null) {
+  const access = {
+    ...organizationAccess,
+    status: organizationAccess.status || "active"
+  };
+
+  if (access.status !== "active") {
+    return access;
+  }
+
+  if (["payment_required", "pending_checkout", "past_due", "grace_period", "unpaid"].includes(chartingEntitlement?.status || "")) {
+    return {
+      ...access,
+      status: "billing_action_required",
+      reason: chartingEntitlement.status,
+      restrictedAt: chartingEntitlement.endedAt || chartingEntitlement.updatedAt || access.restrictedAt || null
+    };
+  }
+
+  return access;
 }
 
 async function getMfaAuthContext(challenge) {
@@ -1840,8 +1922,9 @@ function verifyIdentityTotpCode(identity = {}, code) {
   return verifyTotpCode(code, decryptField(identity.mfaSecretEncrypted));
 }
 
-function normalizePlatformOrganizationForGateway(organization) {
-  const access = organization.access || {};
+function normalizePlatformOrganizationForGateway(organization, { productEntitlements = null } = {}) {
+  const entitlements = normalizeProductEntitlementsForClient(productEntitlements || organization.productEntitlements);
+  const access = buildChartingAccessStateForGateway(organization.access || {}, entitlements?.[CHARTING_PRODUCT_ID] || null);
   return {
     orgId: organization.orgId,
     clinicId: organization.orgId,
@@ -1849,12 +1932,10 @@ function normalizePlatformOrganizationForGateway(organization) {
     displayName: organization.displayName || organization.organizationCode || "医療機関",
     status: organization.status || "active",
     billing: organization.billing || null,
+    productEntitlements: entitlements,
     defaultPromptProfileId: organization.defaultPromptProfileId || DEFAULT_SOAP_FORMAT_PROFILE.profileId,
     recordingMaxDurationMinutes: normalizeRecordingMaxDurationMinutes(organization.recordingMaxDurationMinutes),
-    access: {
-      ...access,
-      status: access.status || "active"
-    },
+    access,
     createdAt: organization.createdAt || null,
     updatedAt: organization.updatedAt || null
   };
@@ -2639,6 +2720,7 @@ function serializeOperatorPayload(payload, memberOverride = null) {
       displayName: payload.organizationDisplayName || payload.organizationCode || "医療機関",
       status: payload.organizationStatus || "active",
       billing: payload.organizationBilling || null,
+      productEntitlements: payload.organizationProductEntitlements || null,
       access: payload.organizationAccess || null
     }),
     member: {
@@ -3492,6 +3574,7 @@ function serializeOrganizationForClient(organization) {
     defaultPromptProfileId: organization.defaultPromptProfileId || null,
     recordingMaxDurationMinutes: normalizeRecordingMaxDurationMinutes(organization.recordingMaxDurationMinutes),
     billing: organization.billing || null,
+    productEntitlements: normalizeProductEntitlementsForClient(organization.productEntitlements),
     access: organization.access || access || null,
     createdAt: organization.createdAt || null,
     updatedAt: organization.updatedAt || null
@@ -4882,7 +4965,7 @@ app.post("/api/v1/operator/login", rateLimit("operator-login", { limit: 10, wind
 
     if (!authenticated) {
       res.status(401).json({
-        error: "病院コード、個人ID、またはパスワードが違います。"
+        error: "病院コード、個人ID、またはログイン用パスワードが違います。"
       });
       return;
     }
