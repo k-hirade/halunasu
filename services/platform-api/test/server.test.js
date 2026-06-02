@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { Readable } from "node:stream";
 import { test } from "node:test";
 import { createTotpCode } from "../src/auth/mfa.js";
-import { handlePlatformApiRequest, resolvePlatformApiResponse } from "../src/server.js";
+import { handlePlatformApiRequest, readRequestBody, resolvePlatformApiResponse } from "../src/server.js";
 import { MemoryPlatformStore } from "../src/store/memory-store.js";
 
 test("GET /healthz returns ok", async () => {
@@ -122,26 +123,20 @@ test("creates shared master data resources", async () => {
     facilityId: facility.body.facility.facilityId,
     displayName: "Internal Medicine"
   }, headers);
-  const entitlement = await request(store, "POST", `/v1/organizations/${orgId}/product-entitlements`, {
+  store.upsertProductEntitlement(orgId, {
     productId: "fee",
     status: "enabled",
     features: { receiptDraft: true }
-  }, headers);
-  const auditEvent = await request(store, "POST", `/v1/organizations/${orgId}/audit-events`, {
-    eventType: "facility.created",
-    targetType: "facility",
-    targetId: facility.body.facility.facilityId,
-    safePayload: { displayName: "Main Clinic" }
-  }, headers);
+  });
 
   assert.equal(facility.statusCode, 201);
   assert.match(facility.body.facility.facilityId, /^fac_/);
   assert.match(department.body.department.departmentId, /^dep_/);
-  assert.equal(entitlement.body.productEntitlement.productId, "fee");
-  assert.match(auditEvent.body.auditEvent.eventId, /^aud_/);
-  assert.equal(auditEvent.body.auditEvent.safePayload.displayName, undefined);
   assert.equal((await request(store, "GET", `/v1/organizations/${orgId}/facilities`, undefined, headers)).body.facilities.length, 1);
   assert.equal((await request(store, "GET", `/v1/organizations/${orgId}/departments`, undefined, headers)).body.departments.length, 1);
+  const auditEvents = (await request(store, "GET", `/v1/organizations/${orgId}/audit-events`, undefined, headers)).body.auditEvents;
+  assert.ok(auditEvents.some((event) => event.eventType === "facility.created"));
+  assert.ok(auditEvents.some((event) => event.eventType === "department.created"));
   const departmentBootstrap = await request(store, "GET", `/v1/organizations/${orgId}/admin-bootstrap?section=departments`, undefined, headers);
   const entitlementBootstrap = await request(store, "GET", `/v1/organizations/${orgId}/admin-bootstrap?section=entitlements`, undefined, headers);
   assert.equal(departmentBootstrap.body.organizations.length, 1);
@@ -177,10 +172,10 @@ test("patches platform resources and records audit events", async () => {
   const patient = await request(store, "POST", `/v1/organizations/${orgId}/patients`, {
     displayName: "Yamada Taro"
   }, headers);
-  await request(store, "POST", `/v1/organizations/${orgId}/product-entitlements`, {
+  store.upsertProductEntitlement(orgId, {
     productId: "charting",
     status: "trialing"
-  }, headers);
+  });
 
   const patchedOrg = await request(store, "PATCH", `/v1/organizations/${orgId}`, {
     displayName: "Clinic Patch Updated",
@@ -214,13 +209,6 @@ test("patches platform resources and records audit events", async () => {
     { displayNameKana: "YAMADA TARO" },
     headers
   );
-  const patchedEntitlement = await request(
-    store,
-    "PATCH",
-    `/v1/organizations/${orgId}/product-entitlements/charting`,
-    { status: "enabled", features: { soap: true } },
-    headers
-  );
   const auditEvents = await request(store, "GET", `/v1/organizations/${orgId}/audit-events`, undefined, headers);
 
   assert.equal(patchedOrg.body.organization.displayName, "Clinic Patch Updated");
@@ -228,7 +216,6 @@ test("patches platform resources and records audit events", async () => {
   assert.equal(patchedFacility.body.facility.medicalInstitutionCode, "7654321");
   assert.equal(patchedDepartment.body.department.facilityId, facility.body.facility.facilityId);
   assert.equal(patchedPatient.body.patient.displayNameKana, "YAMADA TARO");
-  assert.equal(patchedEntitlement.body.productEntitlement.status, "enabled");
   assert.ok(auditEvents.body.auditEvents.some((event) => event.eventType === "member.updated"));
   assert.ok(auditEvents.body.auditEvents.some((event) => event.eventType === "patient.updated"));
 });
@@ -378,6 +365,17 @@ test("allows CORS preflight for authenticated app routes from planned app origin
   assert.equal(response.headers["access-control-allow-headers"], "content-type, x-csrf-token");
 });
 
+test("does not trust Netlify deploy previews for credentialed CORS by default", async () => {
+  const store = createTestStore();
+  const response = await request(store, "OPTIONS", "/v1/auth/login", undefined, {
+    origin: "https://feature-branch--halunasu.netlify.app"
+  });
+
+  assert.equal(response.statusCode, 204);
+  assert.equal(response.headers["access-control-allow-origin"], undefined);
+  assert.equal(response.headers["access-control-allow-credentials"], undefined);
+});
+
 test("verifies signup email, provisions admin, and sets initial password", async () => {
   const store = createTestStore();
   const created = await request(store, "POST", "/v1/signup/applications", {
@@ -511,6 +509,8 @@ test("organization admin can reset member MFA enrollment", async () => {
   assert.equal(identity.mfaEnrolled, false);
   assert.equal(identity.mfaSecret, undefined);
   assert.equal(identity.mfaPendingSecret, undefined);
+  assert.equal(identity.mfaSecretEncrypted, undefined);
+  assert.equal(identity.mfaPendingSecretEncrypted, undefined);
   assert.equal(identity.tokenVersion, 3);
 });
 
@@ -925,6 +925,66 @@ test("requires MFA code after enrollment", async () => {
   assert.equal(withMfa.statusCode, 200);
 });
 
+test("stores Platform MFA secrets encrypted while preserving login verification", async () => {
+  const previousFieldKey = process.env.APP_FIELD_ENCRYPTION_KEY;
+  process.env.APP_FIELD_ENCRYPTION_KEY = "unit-test-platform-field-encryption-key";
+  const store = createTestStore();
+  const organization = store.createOrganization({
+    organizationCode: "Encrypted MFA Clinic",
+    displayName: "Encrypted MFA Clinic"
+  });
+
+  try {
+    store.createMember(organization.orgId, {
+      loginId: "admin",
+      displayName: "Admin",
+      globalRoles: ["org_admin"],
+      password: "correct horse battery staple"
+    });
+    const login = await request(store, "POST", "/v1/auth/login", {
+      organizationCode: "encrypted-mfa-clinic",
+      loginId: "admin",
+      password: "correct horse battery staple"
+    });
+    const loginCookie = cookieHeaderFromSetCookie(login.headers["set-cookie"]);
+    const enroll = await request(store, "POST", "/v1/auth/mfa/enroll", {}, {
+      cookie: loginCookie,
+      "x-csrf-token": login.body.csrfToken
+    });
+    const pendingIdentity = store.getLoginIdentity("encrypted-mfa-clinic", "admin");
+    const code = createTotpCode(enroll.body.mfa.secret, {
+      now: new Date("2026-05-27T00:00:00.000Z")
+    });
+    const verify = await request(store, "POST", "/v1/auth/mfa/verify", { code }, {
+      cookie: loginCookie,
+      "x-csrf-token": login.body.csrfToken
+    });
+    const enrolledIdentity = store.getLoginIdentity("encrypted-mfa-clinic", "admin");
+    const mfaLogin = await request(store, "POST", "/v1/auth/login", {
+      organizationCode: "encrypted-mfa-clinic",
+      loginId: "admin",
+      password: "correct horse battery staple",
+      mfaCode: code
+    });
+
+    assert.equal(enroll.statusCode, 201);
+    assert.equal(pendingIdentity.mfaPendingSecret, undefined);
+    assert.match(pendingIdentity.mfaPendingSecretEncrypted, /^v1:/);
+    assert.equal(verify.statusCode, 200);
+    assert.equal(enrolledIdentity.mfaSecret, undefined);
+    assert.equal(enrolledIdentity.mfaPendingSecret, undefined);
+    assert.match(enrolledIdentity.mfaSecretEncrypted, /^v1:/);
+    assert.equal(enrolledIdentity.mfaPendingSecretEncrypted, undefined);
+    assert.equal(mfaLogin.statusCode, 200);
+  } finally {
+    if (previousFieldKey === undefined) {
+      delete process.env.APP_FIELD_ENCRYPTION_KEY;
+    } else {
+      process.env.APP_FIELD_ENCRYPTION_KEY = previousFieldKey;
+    }
+  }
+});
+
 test("rate limits login attempts", async () => {
   const store = createTestStore();
   const organization = store.createOrganization({
@@ -1011,6 +1071,77 @@ test("requires Platform session and org admin role for Core resources", async ()
   assert.equal(missingCsrf.statusCode, 403);
 });
 
+test("prevents organization admins from escalating roles or removing the last admin", async () => {
+  const store = createTestStore();
+  const { organization, member, headers } = await createAuthenticatedMember(store, {
+    organizationCode: "Role Guard Clinic",
+    displayName: "Role Guard Clinic",
+    globalRoles: ["org_admin"]
+  });
+  const orgId = organization.orgId;
+
+  const platformAdminCreate = await request(store, "POST", `/v1/organizations/${orgId}/members`, {
+    loginId: "platform-admin",
+    displayName: "Platform Admin",
+    globalRoles: ["platform_admin"],
+    password: "correct horse battery staple"
+  }, headers);
+  const selfEscalation = await request(store, "PATCH", `/v1/organizations/${orgId}/members/${member.memberId}`, {
+    globalRoles: ["org_admin", "platform_admin"]
+  }, headers);
+  const lastAdminDisable = await request(store, "PATCH", `/v1/organizations/${orgId}/members/${member.memberId}`, {
+    status: "disabled"
+  }, headers);
+  const doctorCreate = await request(store, "POST", `/v1/organizations/${orgId}/members`, {
+    loginId: "doctor",
+    displayName: "Doctor",
+    globalRoles: ["doctor"],
+    productRoles: { charting: ["doctor"] },
+    password: "correct horse battery staple"
+  }, headers);
+
+  assert.equal(platformAdminCreate.statusCode, 403);
+  assert.equal(selfEscalation.statusCode, 403);
+  assert.equal(lastAdminDisable.statusCode, 403);
+  assert.equal(doctorCreate.statusCode, 201);
+  assert.deepEqual(store.getMember(orgId, member.memberId).globalRoles, ["org_admin"]);
+});
+
+test("keeps product entitlement writes system-managed and rejects audit event forgery", async () => {
+  const store = createTestStore();
+  const { organization, headers } = await createAuthenticatedMember(store, {
+    organizationCode: "System Managed Clinic",
+    displayName: "System Managed Clinic",
+    globalRoles: ["org_admin", "billing_admin"]
+  });
+  const orgId = organization.orgId;
+  store.upsertProductEntitlement(orgId, {
+    productId: "charting",
+    status: "trialing"
+  });
+
+  const createEntitlement = await request(store, "POST", `/v1/organizations/${orgId}/product-entitlements`, {
+    productId: "fee",
+    status: "enabled"
+  }, headers);
+  const patchEntitlement = await request(store, "PATCH", `/v1/organizations/${orgId}/product-entitlements/charting`, {
+    status: "enabled",
+    stripeSubscriptionItemId: "si_manual_bypass"
+  }, headers);
+  const forgedAuditEvent = await request(store, "POST", `/v1/organizations/${orgId}/audit-events`, {
+    eventType: "auth.login_succeeded",
+    targetType: "member",
+    targetId: "mem_fake"
+  }, headers);
+
+  assert.equal(createEntitlement.statusCode, 403);
+  assert.equal(patchEntitlement.statusCode, 403);
+  assert.equal(forgedAuditEvent.statusCode, 403);
+  assert.equal(store.getProductEntitlement(orgId, "charting").status, "trialing");
+  assert.equal(store.getProductEntitlement(orgId, "fee"), null);
+  assert.equal(store.listAuditEvents(orgId).some((event) => event.targetId === "mem_fake"), false);
+});
+
 test("creates and updates data requests through Core API", async () => {
   const store = createTestStore();
   const { organization, headers } = await createAuthenticatedMember(store, {
@@ -1082,6 +1213,21 @@ test("requires configured session secret outside local and test environments", a
       process.env.APP_SESSION_SIGNING_SECRET = previousSecret;
     }
   }
+});
+
+test("rejects oversized JSON request bodies before parsing", async () => {
+  const req = Readable.from([Buffer.from(JSON.stringify({ payload: "too large" }))]);
+  req.method = "POST";
+
+  await assert.rejects(
+    () => readRequestBody(req, { maxBytes: 8 }),
+    (error) => {
+      assert.equal(error.name, "PayloadTooLargeError");
+      assert.equal(error.statusCode, 413);
+      assert.equal(error.code, "payload_too_large");
+      return true;
+    }
+  );
 });
 
 test("returns validation and conflict errors as responses", async () => {

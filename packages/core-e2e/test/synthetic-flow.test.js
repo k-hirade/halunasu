@@ -23,14 +23,14 @@ test("runs signup to Core and product synthetic flow", async () => {
   });
   const orgId = account.session.orgId;
 
-  await env.platform("POST", `/v1/organizations/${orgId}/product-entitlements`, {
+  env.platformStore.upsertProductEntitlement(orgId, {
     productId: "fee",
     status: "enabled"
-  }, account.headers);
-  await env.platform("POST", `/v1/organizations/${orgId}/product-entitlements`, {
+  });
+  env.platformStore.upsertProductEntitlement(orgId, {
     productId: "referral",
     status: "enabled"
-  }, account.headers);
+  });
 
   const facility = await env.platform("POST", `/v1/organizations/${orgId}/facilities`, {
     displayName: "Main Clinic",

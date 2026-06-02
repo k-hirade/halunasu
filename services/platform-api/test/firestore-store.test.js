@@ -123,8 +123,11 @@ test("updates login identity auth state", async () => {
   const revoked = await store.revokeMemberSessions(verified);
 
   assert.equal(failed.failedLoginCount, 1);
-  assert.equal(enrolled.mfaPendingSecret, "MZXW6YTBOI======");
+  assert.equal(enrolled.mfaPendingSecret, undefined);
+  assert.match(enrolled.mfaPendingSecretEncrypted, /^(plain:|v1:)/);
   assert.equal(verified.mfaEnrolled, true);
+  assert.equal(verified.mfaSecret, undefined);
+  assert.match(verified.mfaSecretEncrypted, /^(plain:|v1:)/);
   assert.equal(verified.tokenVersion, 2);
   assert.equal(revoked.tokenVersion, 3);
 });

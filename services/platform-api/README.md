@@ -58,12 +58,9 @@ GET /v1/organizations/{orgId}/patients/{patientId}
 PATCH /v1/organizations/{orgId}/patients/{patientId}
 
 GET /v1/organizations/{orgId}/product-entitlements
-POST /v1/organizations/{orgId}/product-entitlements
 GET /v1/organizations/{orgId}/product-entitlements/{productId}
-PATCH /v1/organizations/{orgId}/product-entitlements/{productId}
 
 GET /v1/organizations/{orgId}/audit-events
-POST /v1/organizations/{orgId}/audit-events
 GET /v1/organizations/{orgId}/audit-events/{eventId}
 
 GET /v1/organizations/{orgId}/data-requests
@@ -71,6 +68,12 @@ POST /v1/organizations/{orgId}/data-requests
 GET /v1/organizations/{orgId}/data-requests/{requestId}
 PATCH /v1/organizations/{orgId}/data-requests/{requestId}
 ```
+
+Product entitlement mutations are system-managed. Billing checkout, Stripe webhooks, and trusted
+maintenance jobs update entitlement status; Core Admin only reads these records.
+
+Audit events are server-generated evidence. Core Admin can list and inspect them, but cannot create
+arbitrary audit events.
 
 Member creation accepts an optional `password` field. When supplied, Platform creates a top-level
 `login_identities/{organizationCode:loginId}` record with a scrypt password hash.

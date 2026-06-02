@@ -322,6 +322,8 @@ for env in stg prod; do
 
   ensure_secret "${core_project}" "PLATFORM_MAINTENANCE_SECRET"
   add_secret_version "${core_project}" "PLATFORM_MAINTENANCE_SECRET" "${maintenance_secret}"
+  ensure_secret "${core_project}" "APP_FIELD_ENCRYPTION_KEY"
+  add_secret_version "${core_project}" "APP_FIELD_ENCRYPTION_KEY" "$(secret_value_or_generate "${core_project}" "APP_FIELD_ENCRYPTION_KEY")"
 
   if project_is_active "${charting_project}"; then
     ensure_secret "${charting_project}" "CHARTING_FINALIZE_INTERNAL_SECRET"

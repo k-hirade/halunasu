@@ -32,6 +32,7 @@ import {
   unauthorizedError,
   verifySignedSession
 } from "./auth/session.js";
+import { resolveIdentityMfaSecret } from "./auth/field-secret.js";
 import { createPlatformStoreFromEnv } from "./store/create-store.js";
 
 const SESSION_CONTEXT_CACHE_TTL_MS = Math.max(
@@ -39,6 +40,7 @@ const SESSION_CONTEXT_CACHE_TTL_MS = Math.max(
   Number.parseInt(process.env.PLATFORM_SESSION_CONTEXT_CACHE_TTL_MS || "3000", 10) || 0
 );
 const SESSION_CONTEXT_CACHE_MAX_ENTRIES = 1000;
+const DEFAULT_REQUEST_BODY_LIMIT_BYTES = 1024 * 1024;
 const sessionContextCache = new Map();
 
 export function createPlatformApiServer(options = {}) {
@@ -52,7 +54,9 @@ export function createPlatformApiServer(options = {}) {
 
   return http.createServer(async (req, res) => {
     try {
-      const { body, rawBody } = await readRequestBody(req);
+      const { body, rawBody } = await readRequestBody(req, {
+        maxBytes: requestBodyLimitBytes()
+      });
       const response = await handlePlatformApiRequest({
         method: req.method,
         path: req.url,
@@ -334,7 +338,7 @@ async function routePlatformApiRequest(input = {}) {
     requireCsrf(input, context.session);
 
     const code = requiredBodyString(input.body, "code");
-    const secret = context.identity.mfaPendingSecret || context.identity.mfaSecret;
+    const secret = resolveIdentityMfaSecret(context.identity, { pending: true });
     if (!secret || !verifyTotpCode(secret, code, { now: input.now })) {
       throw unauthorizedError("Invalid MFA code");
     }
@@ -417,6 +421,7 @@ async function routePlatformApiRequest(input = {}) {
   if (method === "POST" && isOrgChildCollection(parts, "members")) {
     const context = await requireOrgAdmin(input, store, parts[2]);
     requireCsrf(input, context.session);
+    assertMemberCreateAllowed(context, input.body || {});
     const member = await store.createMember(parts[2], input.body || {});
     await writeAuditEvent(input, store, parts[2], {
       eventType: "member.created",
@@ -464,6 +469,11 @@ async function routePlatformApiRequest(input = {}) {
   if (method === "PATCH" && isOrgChildDocument(parts, "members")) {
     const context = await requireOrgAdmin(input, store, parts[2]);
     requireCsrf(input, context.session);
+    const currentMember = await store.getMember(parts[2], parts[4]);
+    if (!currentMember) {
+      return notFound("member not found");
+    }
+    await assertMemberPatchAllowed(input, store, parts[2], context, currentMember, input.body || {});
     const member = await store.updateMember(parts[2], parts[4], input.body || {});
     clearSessionContextCache();
     await writeAuditEvent(input, store, parts[2], {
@@ -615,14 +625,7 @@ async function routePlatformApiRequest(input = {}) {
   if (method === "POST" && isOrgChildCollection(parts, "product-entitlements")) {
     const context = await requireBillingAdmin(input, store, parts[2]);
     requireCsrf(input, context.session);
-    const productEntitlement = await store.upsertProductEntitlement(parts[2], input.body || {});
-    await writeAuditEvent(input, store, parts[2], {
-      eventType: "product_entitlement.upserted",
-      targetType: "product_entitlement",
-      targetId: productEntitlement.productId,
-      safePayload: { productId: productEntitlement.productId }
-    });
-    return created({ productEntitlement });
+    throw forbiddenError("Product entitlement changes are managed by billing system workflows");
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "product-entitlements")) {
@@ -637,17 +640,7 @@ async function routePlatformApiRequest(input = {}) {
   if (method === "PATCH" && isOrgChildDocument(parts, "product-entitlements")) {
     const context = await requireBillingAdmin(input, store, parts[2]);
     requireCsrf(input, context.session);
-    const productEntitlement = await store.updateProductEntitlement(parts[2], parts[4], input.body || {});
-    await writeAuditEvent(input, store, parts[2], {
-      eventType: "product_entitlement.updated",
-      targetType: "product_entitlement",
-      targetId: productEntitlement.productId,
-      safePayload: {
-        productId: productEntitlement.productId,
-        changedFields: safeChangedFields(input.body)
-      }
-    });
-    return ok({ productEntitlement });
+    throw forbiddenError("Product entitlement changes are managed by billing system workflows");
   }
 
   if (method === "GET" && isOrgChildCollection(parts, "audit-events")) {
@@ -658,7 +651,7 @@ async function routePlatformApiRequest(input = {}) {
   if (method === "POST" && isOrgChildCollection(parts, "audit-events")) {
     const context = await requireOrgAdmin(input, store, parts[2]);
     requireCsrf(input, context.session);
-    return created({ auditEvent: await store.createAuditEvent(parts[2], input.body || {}) });
+    throw forbiddenError("Audit events are server-generated and cannot be created from Core Admin");
   }
 
   if (method === "GET" && isOrgChildDocument(parts, "audit-events")) {
@@ -760,7 +753,8 @@ async function login(input, store) {
       throw error;
     }
 
-    if (!verifyTotpCode(identity.mfaSecret, credentials.mfaCode, { now: input.now })) {
+    const mfaSecret = resolveIdentityMfaSecret(identity);
+    if (!mfaSecret || !verifyTotpCode(mfaSecret, credentials.mfaCode, { now: input.now })) {
       await store.recordLoginFailure(identity);
       throw unauthorizedError("Invalid MFA code");
     }
@@ -1037,6 +1031,78 @@ async function requireBillingAdmin(input, store, orgId) {
   }
 
   throw forbiddenError("Billing admin role is required");
+}
+
+function assertMemberCreateAllowed(context, input = {}) {
+  if (hasGlobalRole(context.member, "platform_admin")) {
+    return;
+  }
+  if (roleSet(input.globalRoles).has("platform_admin")) {
+    throw forbiddenError("Only platform admins can assign platform admin role");
+  }
+}
+
+async function assertMemberPatchAllowed(input, store, orgId, context, currentMember, patch = {}) {
+  if (hasGlobalRole(context.member, "platform_admin")) {
+    await assertLastOrgAdminPreserved(store, orgId, currentMember, patch);
+    return;
+  }
+
+  const currentRoles = roleSet(currentMember.globalRoles);
+  const nextRoles = hasOwn(patch, "globalRoles") ? roleSet(patch.globalRoles) : currentRoles;
+
+  if (currentRoles.has("platform_admin") || nextRoles.has("platform_admin")) {
+    throw forbiddenError("Only platform admins can manage platform admin members");
+  }
+
+  if (currentMember.memberId === context.session.memberId && hasOwn(patch, "globalRoles")) {
+    for (const role of nextRoles) {
+      if (!currentRoles.has(role)) {
+        throw forbiddenError("Members cannot grant new roles to themselves");
+      }
+    }
+  }
+
+  await assertLastOrgAdminPreserved(store, orgId, currentMember, patch);
+}
+
+async function assertLastOrgAdminPreserved(store, orgId, currentMember, patch = {}) {
+  const currentRoles = roleSet(currentMember.globalRoles);
+  const nextRoles = hasOwn(patch, "globalRoles") ? roleSet(patch.globalRoles) : currentRoles;
+  const nextStatus = hasOwn(patch, "status") ? String(patch.status || "") : currentMember.status;
+
+  if (!isActiveOrgAdmin(currentMember.status, currentRoles) || isActiveOrgAdmin(nextStatus, nextRoles)) {
+    return;
+  }
+
+  const members = await store.listMembers(orgId);
+  const hasAnotherAdmin = members.some((member) => {
+    if (member.memberId === currentMember.memberId) {
+      return false;
+    }
+    return isActiveOrgAdmin(member.status, roleSet(member.globalRoles));
+  });
+
+  if (!hasAnotherAdmin) {
+    throw forbiddenError("At least one active organization admin must remain");
+  }
+}
+
+function isActiveOrgAdmin(status, roles) {
+  return status !== "disabled"
+    && (roles.has("platform_admin") || roles.has("org_owner") || roles.has("org_admin"));
+}
+
+function roleSet(roles) {
+  return new Set(
+    (Array.isArray(roles) ? roles : [])
+      .map((role) => String(role || "").trim())
+      .filter(Boolean)
+  );
+}
+
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(value || {}, key);
 }
 
 async function writeAuditEvent(input, store, orgId, event) {
@@ -1645,14 +1711,25 @@ function sendJson(res, statusCode, body, headers = {}) {
   res.end(payload);
 }
 
-async function readRequestBody(req) {
+export async function readRequestBody(req, options = {}) {
   if (req.method === "GET" || req.method === "HEAD") {
     return { body: undefined, rawBody: "" };
   }
 
   const chunks = [];
+  let totalBytes = 0;
+  const maxBytes = requestBodyLimitBytes(options);
   for await (const chunk of req) {
-    chunks.push(chunk);
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.length;
+    if (totalBytes > maxBytes) {
+      const error = new Error(`Request body must be ${maxBytes} bytes or smaller`);
+      error.name = "PayloadTooLargeError";
+      error.statusCode = 413;
+      error.code = "payload_too_large";
+      throw error;
+    }
+    chunks.push(buffer);
   }
 
   const rawBody = Buffer.concat(chunks).toString("utf8").trim();
@@ -1668,6 +1745,12 @@ async function readRequestBody(req) {
     error.statusCode = 400;
     throw error;
   }
+}
+
+function requestBodyLimitBytes(options = {}) {
+  const configured = options.maxBytes ?? process.env.PLATFORM_MAX_REQUEST_BODY_BYTES;
+  const parsed = Number.parseInt(String(configured || ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_REQUEST_BODY_LIMIT_BYTES;
 }
 
 function ok(body, headers = {}) {
@@ -1751,7 +1834,6 @@ function corsHeaders(input) {
 function isAllowedWebOrigin(origin) {
   return defaultAllowedWebOrigins().includes(origin)
     || configuredAllowedWebOrigins().includes(origin)
-    || /^https:\/\/[a-z0-9-]+--halunasu\.netlify\.app$/.test(origin)
     || /^http:\/\/localhost(:\d+)?$/.test(origin)
     || /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin);
 }

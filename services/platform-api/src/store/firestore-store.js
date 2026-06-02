@@ -41,6 +41,7 @@ import {
   stripeEventReceiptPath
 } from "../../../../packages/firestore-schema/src/index.js";
 import { conflictError, notFoundError, rateLimitError } from "./memory-store.js";
+import { encryptSensitiveField } from "../auth/field-secret.js";
 import { hashPassword } from "../auth/password.js";
 import {
   buildOrganizationBillingState,
@@ -463,7 +464,8 @@ export class FirestorePlatformStore {
     const current = await this.requireLoginIdentity(identity);
     const updated = compactObject({
       ...current,
-      mfaPendingSecret: secret,
+      mfaPendingSecret: undefined,
+      mfaPendingSecretEncrypted: encryptSensitiveField(secret),
       updatedAt: this.timestamp()
     });
 
@@ -475,8 +477,14 @@ export class FirestorePlatformStore {
     const current = await this.requireLoginIdentity(identity);
     const updated = compactObject({
       ...current,
-      mfaSecret: current.mfaPendingSecret || current.mfaSecret,
+      mfaSecret: undefined,
       mfaPendingSecret: undefined,
+      mfaSecretEncrypted: current.mfaPendingSecretEncrypted
+        || current.mfaSecretEncrypted
+        || (current.mfaPendingSecret || current.mfaSecret
+          ? encryptSensitiveField(current.mfaPendingSecret || current.mfaSecret)
+          : undefined),
+      mfaPendingSecretEncrypted: undefined,
       mfaEnrolled: true,
       mfaRequired: true,
       tokenVersion: Number(current.tokenVersion || 0) + 1,
@@ -514,6 +522,8 @@ export class FirestorePlatformStore {
       ...identity,
       mfaSecret: undefined,
       mfaPendingSecret: undefined,
+      mfaSecretEncrypted: undefined,
+      mfaPendingSecretEncrypted: undefined,
       mfaEnrolled: false,
       mfaRequired: hasPrivilegedRole(member),
       tokenVersion: Number(identity.tokenVersion || 0) + 1,

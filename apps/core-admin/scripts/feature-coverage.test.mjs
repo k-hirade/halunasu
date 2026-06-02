@@ -51,6 +51,10 @@ test("master data screens cover modal create, edit, copy, search, and reload flo
     assert.match(html, new RegExp(escapeRegExp(endpoint)));
   }
 
+  assert.doesNotMatch(html, /data-create="entitlement"/);
+  assert.doesNotMatch(html, /submitEntitlement/);
+  assert.doesNotMatch(html, /product-entitlements`,\s*\{/);
+
   for (const token of [
     "data-create=\"member\"",
     "data-create=\"facility\"",

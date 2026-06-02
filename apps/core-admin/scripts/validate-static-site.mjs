@@ -45,7 +45,10 @@ assert(html.includes("data-edit-facility"), "core admin must expose facility edi
 assert(html.includes("data-edit-department"), "core admin must expose department edit actions");
 assert(html.includes("data-edit-patient"), "core admin must expose patient edit actions");
 assert(html.includes('method: "PATCH"'), "core admin must update shared master records through PATCH");
-assert(html.includes("/product-entitlements"), "core admin must manage product entitlements");
+assert(html.includes("/product-entitlements"), "core admin must review product entitlements");
+assert(!html.includes('data-create="entitlement"'), "core admin must not mutate product entitlements from the browser");
+assert(!html.includes("param(\"platformApi\")"), "core admin must not accept production API endpoint overrides from query params");
+assert(html.includes("localOnlyParam(\"platformApi\")"), "core admin may keep local-only API endpoint overrides for development");
 assert(html.includes("/data-requests"), "core admin must manage data requests");
 assert(html.includes("/audit-events"), "core admin must review audit events");
 assert(html.includes("platform_admin"), "core admin must surface platform admin role");

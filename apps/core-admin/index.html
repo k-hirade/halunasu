@@ -912,10 +912,7 @@
           <div class="view-head">
             <div class="view-title">
               <h1>アプリ利用設定</h1>
-              <p>病院ごとに使えるアプリと利用状態を管理します。</p>
-            </div>
-            <div class="view-actions">
-              <button class="accent" data-create="entitlement" type="button" data-icon="check">新規</button>
+              <p>利用状態を確認します。契約状態の変更は決済処理またはシステム処理で反映されます。</p>
             </div>
           </div>
           <div class="table-panel">
@@ -998,7 +995,7 @@
       layoutSplit: '<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/>'
     };
 
-    const apiBaseUrl = metaContent("halunasu-platform-api-base-url") || param("platformApi") || "";
+    const apiBaseUrl = metaContent("halunasu-platform-api-base-url") || localOnlyParam("platformApi") || "";
     const state = {
       session: null,
       csrfToken: "",
@@ -1156,7 +1153,6 @@
     document.querySelector("#facility-form").addEventListener("submit", submitFacility);
     document.querySelector("#department-form").addEventListener("submit", submitDepartment);
     document.querySelector("#patient-form").addEventListener("submit", submitPatient);
-    document.querySelector("#entitlement-form").addEventListener("submit", submitEntitlement);
     document.querySelector("#data-request-form").addEventListener("submit", submitDataRequest);
     els.editModalForm.addEventListener("submit", submitEditModal);
     document.querySelector("#edit-modal-close").addEventListener("click", closeEditModal);
@@ -1471,16 +1467,6 @@
       }, event.currentTarget, loadPatients);
     }
 
-    async function submitEntitlement(event) {
-      event.preventDefault();
-      const data = new FormData(event.currentTarget);
-      await mutate(`/v1/organizations/${state.orgId}/product-entitlements`, {
-        productId: data.get("productId"),
-        status: data.get("status"),
-        plan: emptyToNull(data.get("plan"))
-      }, event.currentTarget, loadEntitlements);
-    }
-
     async function submitDataRequest(event) {
       event.preventDefault();
       const data = new FormData(event.currentTarget);
@@ -1676,24 +1662,6 @@
             <label for="edit-notes">メモ</label>
             <textarea id="edit-notes" name="notes" rows="4"></textarea>
           </div>
-        `;
-      }
-
-      if (type === "entitlement") {
-        return `
-          <div class="grid-2">
-            ${selectField("対象アプリ", "productId", "charting", [
-              ["charting", "カルテ作成"],
-              ["fee", "診療報酬算定"],
-              ["referral", "紹介状作成"]
-            ])}
-            ${selectField("契約状態", "status", "trialing", [
-              ["trialing", "無料期間"],
-              ["enabled", "利用中"],
-              ["disabled", "停止中"]
-            ])}
-          </div>
-          ${textField("料金プラン", "plan", "")}
         `;
       }
 
@@ -1953,18 +1921,6 @@
             notes: emptyToNull(data.get("notes"))
           },
           reload: loadPatients
-        };
-      }
-
-      if (type === "entitlement") {
-        return {
-          path: `/v1/organizations/${state.orgId}/product-entitlements`,
-          body: {
-            productId: data.get("productId"),
-            status: data.get("status"),
-            plan: emptyToNull(data.get("plan"))
-          },
-          reload: loadEntitlements
         };
       }
 
@@ -2301,7 +2257,7 @@
       for (const type of ["member", "facility", "department", "patient", "dataRequest"]) {
         setCreateVisibility(type, canManageOrganization);
       }
-      setCreateVisibility("entitlement", canManageContracts);
+      setCreateVisibility("entitlement", false);
       if (document.querySelector(`[data-view="${state.activeView}"]`)?.classList.contains("hidden")) {
         selectView(visibleTabs()[0]?.dataset.view || "facilities", { load: false });
       }
@@ -2635,6 +2591,12 @@
 
     function param(name) {
       return new URLSearchParams(window.location.search).get(name) || "";
+    }
+
+    function localOnlyParam(name) {
+      const hostname = window.location.hostname;
+      const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "";
+      return isLocalHost ? param(name) : "";
     }
 
     function escapeHtml(value) {
