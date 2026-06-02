@@ -11,6 +11,8 @@ for (const file of requiredFiles) {
 const html = readFileSync(join(root, "index.html"), "utf8");
 
 assert(html.includes("halunasu-platform-api-base-url"), "core admin must configure Platform API base URL");
+assert(html.includes('rel="icon" type="image/png" href="brand/harunas-mark.png"'), "core admin must use the Halunasu browser tab icon");
+assert(html.includes('rel="apple-touch-icon" href="brand/harunas-mark.png"'), "core admin must use the Halunasu touch icon");
 assert(html.includes("/v1/auth/login"), "core admin must log in through Platform");
 assert(html.includes("login-mfa-form"), "core admin must use a separate MFA login step");
 assert(html.includes("mfa_required"), "core admin must branch to the MFA login step when Platform requires MFA");

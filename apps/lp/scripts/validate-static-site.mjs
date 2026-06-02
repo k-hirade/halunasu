@@ -26,6 +26,8 @@ const netlify = read("netlify.toml");
 assert(!index.includes("app.halunasu.com/contact-signup"), "old contact-signup URL remains");
 assert((index.match(/href="signup\.html"/g) || []).length >= 5, "LP CTAs must point to signup.html");
 assert(signup.includes("/v1/signup/applications"), "signup form must post to Platform signup API");
+assert(signup.includes('rel="icon" type="image/png" href="assets/brand/harunas-mark.png"'), "signup form must use the Halunasu browser tab icon");
+assert(signup.includes('rel="apple-touch-icon" href="assets/brand/harunas-mark.png"'), "signup form must use the Halunasu touch icon");
 assert(signup.includes("/v1/signup/verify-email"), "signup form must support email verification");
 assert(signup.includes("/v1/signup/setup-admin-password"), "signup form must support admin password setup");
 assert(!signup.includes("startCheckout: true"), "signup form must not start Stripe checkout during the 14-day trial");
