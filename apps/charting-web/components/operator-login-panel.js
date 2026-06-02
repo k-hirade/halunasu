@@ -10,7 +10,7 @@ import { toUserFacingErrorMessage } from "../lib/user-facing-error";
 export function OperatorLoginPanel({
   onAuthenticated,
   title = "ログイン",
-  description = "病院コード、個人ID、パスワードでログインしてください。"
+  description = "病院コード、個人ID、ログイン用パスワードでログインしてください。"
 }) {
   const [organizationCode, setOrganizationCode] = useState("");
   const [loginId, setLoginId] = useState("");
@@ -275,7 +275,7 @@ export function OperatorLoginPanel({
                 <input
                   id="operatorPassword"
                   onChange={(event) => setPassword(event.target.value)}
-                  placeholder="パスワードを入力"
+                  placeholder="ログイン用パスワードを入力"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   autoComplete="current-password"
@@ -284,7 +284,7 @@ export function OperatorLoginPanel({
                   type="button"
                   className="password-toggle"
                   onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? "パスワードを隠す" : "パスワードを表示"}
+                  aria-label={showPassword ? "ログイン用パスワードを隠す" : "ログイン用パスワードを表示"}
                 >
                   {showPassword ? (
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

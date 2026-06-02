@@ -48,10 +48,10 @@ function buildPasswordSetupMail({ signup, loginUrl, passwordSetupUrl, manualUrl,
     `ハルナスの利用準備が完了しました。`,
     `以下の情報で初回設定を進めてください。`,
     ``,
-    `医療機関コード: ${signup.organizationCode}`,
-    `ログインID: ${signup.adminLoginId}`,
+    `病院コード: ${signup.organizationCode}`,
+    `個人ID: ${signup.adminLoginId}`,
     `ログインURL: ${loginUrl}`,
-    `初回パスワード設定: ${passwordSetupUrl}`,
+    `ログイン用パスワード設定: ${passwordSetupUrl}`,
     ``
   ];
 
@@ -66,11 +66,11 @@ function buildPasswordSetupMail({ signup, loginUrl, passwordSetupUrl, manualUrl,
     `<p>${escapeHtml(signup.adminName || signup.adminDisplayName || "ご担当者")} 様</p>`,
     `<p>ハルナスの利用準備が完了しました。<br />以下の情報で初回設定を進めてください。</p>`,
     `<ul>`,
-    `<li>医療機関コード: ${escapeHtml(signup.organizationCode || "")}</li>`,
-    `<li>ログインID: ${escapeHtml(signup.adminLoginId || "")}</li>`,
+    `<li>病院コード: ${escapeHtml(signup.organizationCode || "")}</li>`,
+    `<li>個人ID: ${escapeHtml(signup.adminLoginId || "")}</li>`,
     `</ul>`,
     `<p>ログインURL: <a href="${escapeHtmlAttr(loginUrl)}">${escapeHtml(loginUrl)}</a></p>`,
-    `<p>初回パスワード設定: <a href="${escapeHtmlAttr(passwordSetupUrl)}">${escapeHtml(passwordSetupUrl)}</a></p>`
+    `<p>ログイン用パスワード設定: <a href="${escapeHtmlAttr(passwordSetupUrl)}">${escapeHtml(passwordSetupUrl)}</a></p>`
   ];
 
   if (manualUrl) {

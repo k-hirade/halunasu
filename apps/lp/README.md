@@ -5,7 +5,7 @@
 ## 構成
 
 - `index.html`: LP 本体
-- `signup.html`: Platform API へ申込、メール確認、管理者初期パスワード設定を送る登録ページ
+- `signup.html`: Platform API へ申込、メール確認、管理者ログイン用パスワード設定を送る登録ページ
 - `assets/`: LP で使用する画像
 - `privacy.html` / `terms.html` / `security.html` / `tokushoho.html`: 法務・セキュリティ関連ページ
 - `netlify.toml`: Netlify 配信用設定

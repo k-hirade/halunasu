@@ -25,9 +25,9 @@ function buildProvisionedMessage({ signup, organization, config }) {
   return [
     `[${envLabel}] 新しい病院アカウントを作成しました`,
     `・医療機関名: ${signup.organizationName || organization?.displayName || "-"}`,
-    `・医療機関コード: ${organization?.organizationCode || signup.organizationCode || "-"}`,
-    `・管理者ログインID: ${signup.adminLoginId || "admin"}`,
-    `・管理者メール: ${maskEmailAddress(signup.adminEmail) || "-"}`,
+    `・病院コード: ${organization?.organizationCode || signup.organizationCode || "-"}`,
+    `・個人ID: ${signup.adminLoginId || "admin"}`,
+    `・メールアドレス: ${maskEmailAddress(signup.adminEmail) || "-"}`,
     `・想定利用人数: ${seatQuantity}`,
     `・trial終了日: ${trialEndsAt}`,
     `・signupId: ${signup.signupId}`

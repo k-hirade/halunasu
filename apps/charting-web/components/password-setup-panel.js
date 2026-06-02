@@ -54,12 +54,12 @@ export function PasswordSetupPanel({ tokenId }) {
     event.preventDefault();
 
     if (password.length < 12) {
-      setError("パスワードは12文字以上で入力してください。");
+      setError("ログイン用パスワードは12文字以上で入力してください。");
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("確認用パスワードが一致しません。");
+      setError("ログイン用パスワード（確認）が一致しません。");
       return;
     }
 
@@ -75,7 +75,7 @@ export function PasswordSetupPanel({ tokenId }) {
       setPassword("");
       setConfirmPassword("");
     } catch (submitError) {
-      setError(toUserFacingErrorMessage(submitError, "パスワード設定に失敗しました。"));
+      setError(toUserFacingErrorMessage(submitError, "ログイン用パスワード設定に失敗しました。"));
     } finally {
       setIsSubmitting(false);
     }
@@ -87,12 +87,12 @@ export function PasswordSetupPanel({ tokenId }) {
   const isUsed = tokenStatus === "used";
   const isExpired = tokenStatus === "expired";
 
-  let heading = "初回パスワード設定";
-  let lead = "病院作成は完了しています。管理者アカウントの初回パスワードを設定してください。";
+  let heading = "ログイン用パスワード設定";
+  let lead = "病院作成は完了しています。管理者アカウントのログイン用パスワードを設定してください。";
 
   if (didComplete) {
     heading = "初回設定が完了しました";
-    lead = "ログイン画面へ進み、申込時に入力した病院コードと管理者ログインIDで利用を開始してください。";
+    lead = "ログイン画面へ進み、病院コードと個人IDで利用を開始してください。";
   } else if (isUsed) {
     heading = "このリンクは使用済みです";
     lead = "すでに初回設定は完了しています。ログイン画面からサインインしてください。";
@@ -115,7 +115,7 @@ export function PasswordSetupPanel({ tokenId }) {
             <dd>{token?.organizationDisplayName || "-"}</dd>
           </div>
           <div>
-            <dt>管理者メール</dt>
+            <dt>メールアドレス</dt>
             <dd>{token?.email || "-"}</dd>
           </div>
           <div>
@@ -127,7 +127,7 @@ export function PasswordSetupPanel({ tokenId }) {
         {canSubmit ? (
           <form className="signup-form signup-status-primary-card password-setup-form" onSubmit={handleSubmit}>
             <label>
-              <span>新しいパスワード</span>
+              <span>ログイン用パスワード</span>
               <input
                 required
                 type="password"
@@ -139,7 +139,7 @@ export function PasswordSetupPanel({ tokenId }) {
               />
             </label>
             <label>
-              <span>確認用パスワード</span>
+              <span>ログイン用パスワード（確認）</span>
               <input
                 required
                 type="password"
@@ -151,10 +151,10 @@ export function PasswordSetupPanel({ tokenId }) {
               />
             </label>
 
-            <p className="password-setup-note">英字・数字・記号を組み合わせた12文字以上を推奨します。</p>
+            <p className="password-setup-note">ログイン用パスワードは、英字・数字・記号を組み合わせた12文字以上を推奨します。</p>
 
             <button className="signup-submit" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "設定中..." : "パスワードを設定する"}
+              {isSubmitting ? "設定中..." : "ログイン用パスワードを設定する"}
             </button>
           </form>
         ) : null}

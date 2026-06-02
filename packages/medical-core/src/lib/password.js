@@ -60,7 +60,7 @@ export function assertPasswordPolicy(password) {
     const error = new Error("Password does not meet policy.");
     error.code = "PASSWORD_POLICY_VIOLATION";
     error.statusCode = 400;
-    error.publicMessage = "パスワードは12文字以上で、英字・数字・記号をそれぞれ1文字以上含めてください。";
+    error.publicMessage = "ログイン用パスワードは12文字以上で、英字・数字・記号をそれぞれ1文字以上含めてください。";
     error.details = result.errors;
     throw error;
   }

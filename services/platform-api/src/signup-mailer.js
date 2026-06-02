@@ -211,10 +211,10 @@ function buildPasswordSetupMail({ signupApplication, organization, adminMember, 
     "ハルナスの利用準備が完了しました。",
     "以下の情報で初回設定を進めてください。",
     "",
-    `医療機関コード: ${organizationCode}`,
-    `ログインID: ${loginId}`,
+    `病院コード: ${organizationCode}`,
+    `個人ID: ${loginId}`,
     `ログインURL: ${loginUrl}`,
-    `初回パスワード設定: ${passwordSetupUrl}`,
+    `ログイン用パスワード設定: ${passwordSetupUrl}`,
     "",
     "初回設定後は、ログインURLからご利用ください。"
   ].join("\n");
@@ -222,11 +222,11 @@ function buildPasswordSetupMail({ signupApplication, organization, adminMember, 
     `<p>${escapeHtml(recipientName)} 様</p>`,
     "<p>ハルナスの利用準備が完了しました。<br />以下の情報で初回設定を進めてください。</p>",
     "<ul>",
-    `<li>医療機関コード: ${escapeHtml(organizationCode)}</li>`,
-    `<li>ログインID: ${escapeHtml(loginId)}</li>`,
+    `<li>病院コード: ${escapeHtml(organizationCode)}</li>`,
+    `<li>個人ID: ${escapeHtml(loginId)}</li>`,
     "</ul>",
     `<p>ログインURL: <a href="${escapeHtmlAttr(loginUrl)}">${escapeHtml(loginUrl)}</a></p>`,
-    `<p>初回パスワード設定: <a href="${escapeHtmlAttr(passwordSetupUrl)}">${escapeHtml(passwordSetupUrl)}</a></p>`,
+    `<p>ログイン用パスワード設定: <a href="${escapeHtmlAttr(passwordSetupUrl)}">${escapeHtml(passwordSetupUrl)}</a></p>`,
     "<p>初回設定後は、ログインURLからご利用ください。</p>"
   ].join("");
 
@@ -253,7 +253,7 @@ function buildTrialReminderMail({ organization, entitlement, recipient, billingU
     `ハルナス ${productLabel} の無料利用期間は${remainingLabel}で終了します。`,
     "継続して利用する場合は、以下の画面からお支払い手続きを完了してください。",
     "",
-    `医療機関コード: ${organizationCode}`,
+    `病院コード: ${organizationCode}`,
     `契約・支払い画面: ${billingUrl}`,
     "",
     "すでにお支払い済みの場合、このご案内は停止されます。"
@@ -263,7 +263,7 @@ function buildTrialReminderMail({ organization, entitlement, recipient, billingU
     `<p>ハルナス ${escapeHtml(productLabel)} の無料利用期間は${escapeHtml(remainingLabel)}で終了します。</p>`,
     "<p>継続して利用する場合は、以下の画面からお支払い手続きを完了してください。</p>",
     "<ul>",
-    `<li>医療機関コード: ${escapeHtml(organizationCode)}</li>`,
+    `<li>病院コード: ${escapeHtml(organizationCode)}</li>`,
     "</ul>",
     `<p>契約・支払い画面: <a href="${escapeHtmlAttr(billingUrl)}">${escapeHtml(billingUrl)}</a></p>`,
     "<p>すでにお支払い済みの場合、このご案内は停止されます。</p>"

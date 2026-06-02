@@ -6,7 +6,7 @@ import { toUserFacingErrorMessage } from "../../lib/user-facing-error.js";
 test("technical error messages are converted before reaching UI", () => {
   const cases = [
     [new TypeError("Failed to fetch"), "通信に失敗しました。接続を確認して、もう一度お試しください。"],
-    [new Error("Invalid credentials"), "病院コード、個人ID、またはパスワードが正しくありません。"],
+    [new Error("Invalid credentials"), "病院コード、個人ID、またはログイン用パスワードが正しくありません。"],
     [Object.assign(new Error("MFA code is required"), { code: "mfa_required" }), "2段階認証コードを入力してください。"],
     [new Error("Invalid MFA code"), "2段階認証コードが正しくありません。"],
     [new Error("CSRF token mismatch"), "画面を再読み込みして、もう一度お試しください。"],

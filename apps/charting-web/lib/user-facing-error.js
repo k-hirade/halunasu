@@ -17,7 +17,7 @@ export function toUserFacingErrorMessage(error, fallbackMessage = DEFAULT_ERROR_
     return "2段階認証コードが正しくありません。";
   }
   if (lower.includes("invalid credentials")) {
-    return "病院コード、個人ID、またはパスワードが正しくありません。";
+    return "病院コード、個人ID、またはログイン用パスワードが正しくありません。";
   }
   if (lower.includes("csrf")) {
     return "画面を再読み込みして、もう一度お試しください。";

@@ -113,7 +113,7 @@ export function ContactSignupVerifyPanel() {
         ? "この確認リンクの有効期限が切れています"
         : "メール確認を反映しています";
   const lead = payload?.passwordSetupUrl
-    ? "初回パスワード設定を完了すると利用を開始できます。"
+    ? "ログイン用パスワード設定を完了すると利用を開始できます。"
     : canProceed
       ? "メール確認後に病院アカウントを作成します。準備ができたら次の設定へ進めます。"
       : tokenStatus === "expired"
@@ -132,9 +132,9 @@ export function ContactSignupVerifyPanel() {
         {payload?.passwordSetupUrl ? (
           <div className="signup-status-primary-card">
             <p className="signup-status-primary-title">初回設定を完了すると利用を開始できます</p>
-            <p className="signup-status-primary-copy">管理者のパスワード設定が終わると、そのままログインして利用を開始できます。</p>
+            <p className="signup-status-primary-copy">管理者のログイン用パスワード設定が終わると、そのままログインして利用を開始できます。</p>
             <div className="signup-status-actions contact-signup-actions">
-              <a className="signup-submit signup-submit-link" href={payload.passwordSetupUrl}>初回パスワード設定へ進む</a>
+              <a className="signup-submit signup-submit-link" href={payload.passwordSetupUrl}>ログイン用パスワード設定へ進む</a>
             </div>
           </div>
         ) : null}
@@ -181,7 +181,7 @@ export function ContactSignupVerifyPanel() {
               <dd>{payload?.signup?.organizationCode || (isLoading ? <span className="skeleton skeleton-text signup-inline-skeleton" /> : "-")}</dd>
             </div>
             <div>
-              <dt>ログインID</dt>
+              <dt>個人ID</dt>
               <dd>{payload?.signup?.adminLoginId || (isLoading ? <span className="skeleton skeleton-text signup-inline-skeleton" /> : "-")}</dd>
             </div>
             <div>

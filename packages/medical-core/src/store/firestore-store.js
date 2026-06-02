@@ -1116,7 +1116,7 @@ export class FirestoreStore {
     }
 
     if (identitySnap.exists) {
-      throw new Error("このログインIDはすでに使われています。");
+      throw new Error("この個人IDはすでに使われています。");
     }
 
     const createdAt = nowIso();
@@ -1243,7 +1243,7 @@ export class FirestoreStore {
     }
 
     if (identitySnap.exists) {
-      throw new Error("このログインIDはすでに使われています。");
+      throw new Error("この個人IDはすでに使われています。");
     }
 
     const createdAt = nowIso();

@@ -96,7 +96,7 @@ export function organizationAccessDeniedMessage(source = null, {
 
   switch (status) {
     case "pending_setup":
-      return "初回パスワード設定が完了するまで利用できません。";
+      return "ログイン用パスワード設定が完了するまで利用できません。";
     case "billing_action_required":
       return mode === "clinical"
         ? "お支払い情報の更新が必要なため、この操作は現在停止しています。"

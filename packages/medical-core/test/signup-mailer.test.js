@@ -91,7 +91,7 @@ test("signup mailer sends through resend when configured", async () => {
     assert.deepEqual(body.to, ["contact@example.com"]);
     assert.equal(body.reply_to, "support@example.com");
     assert.equal(body.subject, "【ハルナス】初回ログイン設定のご案内");
-    assert.match(body.text, /医療機関コード: clinic-123456/);
+    assert.match(body.text, /病院コード: clinic-123456/);
     assert.match(body.text, /利用マニュアル: https:\/\/halunasu.com\/manual/);
     assert.match(body.html, /setup-password\/token_123/);
     assert.match(body.html, /https:\/\/halunasu.com\/manual/);
