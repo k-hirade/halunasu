@@ -46,6 +46,10 @@
   --dialog-caption-size: 0.8125rem;
   --site-nav-h: 49px;
   --site-nav-shell-max: 1120px;
+  --z-site-nav: 20;
+  --z-admin-nav-open: 170;
+  --z-admin-nav-backdrop: 171;
+  --z-admin-nav-drawer: 172;
   --workspace-shell-pad-x: 20px;
   --dashboard-shell-max: 1480px;
   --admin-shell-max: 1480px;
@@ -86,10 +90,14 @@ button { cursor: pointer; }
 .site-nav-wrap {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: var(--z-site-nav);
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
+}
+
+body:has(.site-menu-button[aria-expanded="true"]) .site-nav-wrap {
+  z-index: var(--z-admin-nav-open);
 }
 
 .site-nav {
@@ -203,7 +211,7 @@ body:has(.workspace) .admin-nav-drawer {
   right: 0;
   bottom: 0;
   left: 0;
-  z-index: 90;
+  z-index: var(--z-admin-nav-backdrop);
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -218,7 +226,7 @@ body:has(.workspace) .admin-nav-drawer {
   top: calc(var(--site-nav-h) + 12px);
   bottom: 16px;
   left: max(16px, calc((100vw - var(--site-nav-shell-max)) / 2 + var(--admin-page-pad-x)));
-  z-index: 100;
+  z-index: var(--z-admin-nav-drawer);
   width: min(320px, calc(100vw - 32px));
   padding: 18px 14px;
   border: 1px solid var(--border);
@@ -296,6 +304,42 @@ body:has(.workspace) .admin-nav-drawer {
     padding-top: 0;
   }
 
+}
+
+body .admin-nav-backdrop {
+  inset: var(--site-nav-h) 0 0 0;
+  z-index: var(--z-admin-nav-backdrop);
+}
+
+body .admin-nav-drawer {
+  top: calc(var(--site-nav-h) + 12px);
+  bottom: 16px;
+  left: max(16px, calc((100vw - var(--site-nav-shell-max)) / 2 + var(--admin-page-pad-x)));
+  z-index: var(--z-admin-nav-drawer);
+  width: min(320px, calc(100vw - 32px));
+  max-height: none;
+  padding: 18px 14px;
+  border-radius: var(--radius-lg);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 18px;
+  overflow: hidden;
+}
+
+@media (max-width: 760px), (hover: none) {
+  body .admin-nav-drawer {
+    top: var(--site-nav-h);
+    bottom: 0;
+    left: 0;
+    width: min(360px, 92vw);
+    max-height: none;
+    border-radius: 0;
+    border-top: 0;
+    border-bottom: 0;
+    border-left: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
 }
 
 .site-auth-button:hover {

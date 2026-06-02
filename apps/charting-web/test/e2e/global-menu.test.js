@@ -45,3 +45,30 @@ test("global settings drawer scrolls independently", { timeout: 60_000 }, async 
     await page.getByRole("button", { name: /施設管理画面を開く/ }).waitFor({ state: "visible" });
   }, { viewport: { width: 1280, height: 420 } });
 });
+
+test("global settings drawer stays above admin sticky filters", { timeout: 60_000 }, async () => {
+  await withPage(async (page) => {
+    await installGatewayMocks(page, adminRoutes());
+    await page.goto(appUrl("/admin?section=members"), { waitUntil: "domcontentloaded" });
+
+    await page.getByRole("heading", { name: "権限管理" }).waitFor({ state: "visible" });
+    await page.evaluate(() => window.scrollTo(0, 180));
+    await page.locator(".admin-filter-bar").waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "メニューを開く" }).click();
+    await page.locator(".admin-nav-drawer").waitFor({ state: "visible" });
+
+    const layers = await page.evaluate(() => {
+      const zIndex = (selector) => Number.parseInt(getComputedStyle(document.querySelector(selector)).zIndex, 10);
+      return {
+        filter: zIndex(".admin-filter-bar"),
+        nav: zIndex(".site-nav-wrap"),
+        backdrop: zIndex(".admin-nav-backdrop"),
+        drawer: zIndex(".admin-nav-drawer")
+      };
+    });
+
+    assert.ok(layers.nav > layers.filter, `expected open nav z-index ${layers.nav} > filter ${layers.filter}`);
+    assert.ok(layers.backdrop > layers.filter, `expected backdrop z-index ${layers.backdrop} > filter ${layers.filter}`);
+    assert.ok(layers.drawer > layers.filter, `expected drawer z-index ${layers.drawer} > filter ${layers.filter}`);
+  });
+});
