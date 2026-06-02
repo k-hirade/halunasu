@@ -511,11 +511,11 @@ export function SessionLauncher() {
                         </a>
                         <button
                           className="btn btn--ghost session-delete-button"
-                          aria-label={`${session.patientDisplayName || session.title || "この診療"}を一覧から外す`}
+                          aria-label={`${session.patientDisplayName || session.title || "この診療"}を削除`}
                           onClick={() => setDeleteTargetSession(session)}
                           type="button"
                         >
-                          一覧から外す
+                          削除
                         </button>
                       </div>
                     ))}
@@ -604,7 +604,7 @@ export function SessionLauncher() {
                 onClick={() => hideSessionFromHome(deleteTargetSession.sessionId)}
                 type="button"
               >
-                一覧から外す
+                削除
                 {isDeletingSession ? <span className="btn-spinner" aria-hidden="true" /> : null}
               </button>
             </div>
