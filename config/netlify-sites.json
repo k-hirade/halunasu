@@ -12,6 +12,8 @@
       "siteId": "efc4e7ba-6eef-41a3-a812-d546e6f164b2",
       "netlifyUrl": "https://halunasu-admin-stg.netlify.app",
       "targetDomain": "https://admin.stg.halunasu.com",
+      "deploymentMode": "next",
+      "baseDir": "apps/core-admin",
       "publishDir": "dist/runtime-apps/stg/core-admin"
     },
     "charting-web": {
@@ -31,6 +33,8 @@
       "siteId": "84766d79-e6d0-4f80-b65a-9eea220d94f1",
       "netlifyUrl": "https://halunasu-fee-stg.netlify.app",
       "targetDomain": "https://fee.stg.halunasu.com",
+      "deploymentMode": "next",
+      "baseDir": "apps/fee-web",
       "aliasDomains": [
         "https://mfc-stg.halunasu.com"
       ],
@@ -60,6 +64,8 @@
       "siteId": "da285b6c-afcb-4b75-934f-895eca782b04",
       "netlifyUrl": "https://halunasu-admin-prod.netlify.app",
       "targetDomain": "https://admin.halunasu.com",
+      "deploymentMode": "next",
+      "baseDir": "apps/core-admin",
       "publishDir": "dist/runtime-apps/prod/core-admin"
     },
     "charting-web": {
@@ -79,6 +85,8 @@
       "siteId": "5905c249-c575-4f88-9729-5115bafe9f39",
       "netlifyUrl": "https://halunasu-fee-prod.netlify.app",
       "targetDomain": "https://fee.halunasu.com",
+      "deploymentMode": "next",
+      "baseDir": "apps/fee-web",
       "publishDir": "dist/runtime-apps/prod/fee-web"
     },
     "referral-web": {

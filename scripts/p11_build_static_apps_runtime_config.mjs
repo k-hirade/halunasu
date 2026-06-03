@@ -130,9 +130,13 @@ function shouldCopyStaticAsset(sourcePath) {
   const normalized = sourcePath.replaceAll("\\", "/");
   const basename = normalized.split("/").at(-1);
   return !normalized.includes("/node_modules/")
+    && !normalized.includes("/app/")
+    && !normalized.includes("/components/")
+    && !normalized.includes("/lib/")
     && !normalized.includes("/scripts/")
     && basename !== "README.md"
-    && basename !== "package.json";
+    && basename !== "package.json"
+    && basename !== "next.config.mjs";
 }
 
 async function writeNetlifyDeployFiles(destination, targets) {

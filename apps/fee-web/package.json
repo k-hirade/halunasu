@@ -4,9 +4,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/validate-static-site.mjs",
-    "test": "npm run test:static && npm run test:ui",
+    "dev": "next dev",
+    "build": "next build",
+    "build:static": "node scripts/validate-static-site.mjs",
+    "start": "next start",
+    "test": "npm run test:static && npm run test:ui && npm run build",
     "test:static": "node scripts/validate-static-site.mjs",
     "test:ui": "node scripts/ui-smoke.mjs"
+  },
+  "dependencies": {
+    "@halunasu/web-ui": "file:../../packages/web-ui",
+    "next": "15.5.15",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@netlify/plugin-nextjs": "^5.15.9"
   }
 }

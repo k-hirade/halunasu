@@ -16,6 +16,7 @@
     "build:runtime-apps": "node scripts/p11_build_static_apps_runtime_config.mjs",
     "deploy:netlify-static": "node scripts/p13_deploy_netlify_static_apps.mjs",
     "deploy:netlify-charting-next": "node scripts/p16_deploy_charting_next_netlify.mjs",
+    "deploy:netlify-admin-fee-next": "node scripts/p18_deploy_admin_fee_next_netlify.mjs",
     "deploy:firestore:plan": "scripts/p17_deploy_firestore_security_and_indexes.sh",
     "deploy:firestore:apply": "scripts/p17_deploy_firestore_security_and_indexes.sh --apply",
     "seed:core-account": "node scripts/p15_seed_core_account.mjs",
