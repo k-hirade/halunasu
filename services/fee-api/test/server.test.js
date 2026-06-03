@@ -218,6 +218,185 @@ test("resolves name-only orders against master before calculation", async () => 
   assert.equal(detail.body.feeSession.orders[0].standardCode, "140000610");
 });
 
+test("reconnects clinical text to legacy outpatient calculation input", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterItems = {
+    "ロキソプロフェン": { kind: "drug", code: "620001001", name: "ロキソプロフェン錠60mg" },
+    "レバミピド": { kind: "drug", code: "620001002", name: "レバミピド錠100mg" },
+    "ロコアテープ": { kind: "drug", code: "620001003", name: "ロコアテープ" },
+    "コルセット": { kind: "material", code: "710001001", name: "腰椎コルセット" }
+  };
+  stores.feeCalculator.searchMaster = async (input) => ({
+    query: input.query,
+    type: input.type,
+    items: masterItems[input.query] ? [masterItems[input.query]] : []
+  });
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 420,
+      lineItems: [{
+        lineId: "line_initial",
+        code: "111000110",
+        name: "初診料",
+        orderType: "outpatient_basic",
+        points: 288,
+        quantity: 1,
+        totalPoints: 288,
+        status: "candidate",
+        source: "outpatient_basic_fee"
+      }],
+      warnings: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Demo Patient",
+    externalPatientIds: ["demo-001"]
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-03",
+    clinicalText: [
+      "症例設定：整形外科外来、腰痛初診／45歳男性",
+      "O（Objective：客観的情報）",
+      "腰椎X線（正面・側面）：L4/5椎間板スペース軽度狭小化、骨棘形成あり",
+      "A（Assessment：評価）",
+      "腰椎椎間板ヘルニア疑い（L4/5）",
+      "P（Plan：計画）",
+      "MRI腰椎オーダー（次回持参または当院撮影）",
+      "ロキソプロフェン60mg 毎食後3錠／14日分処方（胃薬併用：レバミピド）",
+      "湿布処方：ロコアテープ2枚／日",
+      "腰椎コルセット装着指導"
+    ].join("\n"),
+    diagnoses: [{ name: "腰椎椎間板ヘルニア疑い" }],
+    orders: [
+      { orderType: "imaging", localName: "画像診断", quantity: 1 },
+      { orderType: "treatment", localName: "医学管理等", quantity: 1 }
+    ]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+  const detail = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/detail`,
+    undefined,
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(calculation.body.calculationResult.totalPoints, 420);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "initial");
+  assert.deepEqual(
+    receivedInput.calculationOptions.imaging_orders.map((order) => order.kind).sort(),
+    ["mri", "simple_radiography"]
+  );
+  assert.deepEqual(
+    receivedInput.calculationOptions.medication_orders.map((order) => order.drug_code).sort(),
+    ["620001001", "620001002", "620001003"]
+  );
+  assert.deepEqual(receivedInput.calculationOptions.material_inputs, [{ code: "710001001", quantity: "1" }]);
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI検査")));
+  assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("オーダー「画像診断」")), false);
+  assert.equal(detail.body.feeSession.calculationOptions.outpatient_basic.fee_kind, "initial");
+  assert.equal(detail.body.feeSession.calculationOptions.imaging_orders.length, 2);
+});
+
+test("adds review warning when calculation produces no candidate lines", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.searchMaster = async (input) => ({
+    query: input.query,
+    type: input.type,
+    items: []
+  });
+  stores.feeCalculator.calculate = async () => ({
+    provider: "test_fee_engine",
+    source: "test",
+    status: "completed",
+    totalPoints: 0,
+    lineItems: [],
+    warnings: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Zero Candidate"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-03",
+    clinicalText: "初診。診療内容は記載されているが具体的な標準コードがない。",
+    diagnoses: [{ name: "腰痛症" }],
+    orders: [{ orderType: "other", localName: "カルテ記載内容から算定候補を確認", quantity: 1 }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(calculation.body.feeSession.status, "needs_review");
+  assert.ok(calculation.body.calculationResult.warnings.length >= 1);
+  assert.ok(calculation.body.reviewItems.length >= 1);
+});
+
+test("keeps explicit legacy calculation options over inferred values", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 73,
+      lineItems: [],
+      warnings: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Explicit Options"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-03",
+    clinicalText: "初診として来院。実際には継続診療の再診扱い。",
+    diagnoses: [{ name: "腰痛症" }],
+    calculationOptions: {
+      outpatient_basic: { fee_kind: "revisit" }
+    }
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+});
+
 test("can create inline Platform patient when creating fee session", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);

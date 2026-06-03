@@ -24,6 +24,28 @@ import { createFeeStoreFromEnv } from "./store/create-store.js";
 
 const PRODUCT_ID = "fee";
 const FEE_PRODUCT_ROLES = ["admin", "doctor", "nurse", "medical_clerk", "viewer"];
+const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
+  "処置・手技",
+  "薬剤処方",
+  "特定器材・材料",
+  "画像診断",
+  "医学管理等",
+  "検体検査",
+  "注射",
+  "カルテ記載内容から算定候補を確認"
+]);
+const CLINICAL_DRUG_TERMS = [
+  { query: "ロキソプロフェン", patterns: [/ロキソプロフェン/u, /ロキソニン/u] },
+  { query: "レバミピド", patterns: [/レバミピド/u, /ムコスタ/u] },
+  { query: "ロコアテープ", patterns: [/ロコア/u, /ロコアテープ/u] },
+  { query: "ゲーベンクリーム", patterns: [/ゲーベン/u, /ゲーベンクリーム/u] },
+  { query: "アムロジピン", patterns: [/アムロジピン/u] },
+  { query: "カルボシステイン", patterns: [/カルボシステイン/u] }
+];
+const CLINICAL_MATERIAL_TERMS = [
+  { query: "コルセット", patterns: [/コルセット/u] },
+  { query: "非固着性シリコンガーゼ", patterns: [/ノンスティックガーゼ/u, /非固着性.*ガーゼ/u] }
+];
 
 export function createFeeApiServer(options = {}) {
   const startedAt = new Date();
@@ -287,15 +309,18 @@ async function routeFeeApiRequest(input = {}) {
     }
     assertFeeSessionReadyForCalculation(current);
     const calculationInput = validateCreateFeeCalculationInput(input.body || {});
-    const enriched = await enrichSessionOrdersForCalculation(current, feeCalculator);
-    const calculationSession = enriched.changed
-      ? (await feeStore.updateSession(context.session.orgId, parts[3], { orders: enriched.orders })).feeSession
+    const prepared = await prepareSessionForCalculation(current, calculationInput, feeCalculator);
+    const calculationSession = prepared.patch
+      ? (await feeStore.updateSession(context.session.orgId, parts[3], prepared.patch)).feeSession
       : current;
-    const calculationResult = await feeCalculator.calculate(calculationSession, buildCalculationInputForSession(calculationSession, calculationInput));
+    const calculationResult = await feeCalculator.calculate(
+      calculationSession,
+      buildCalculationInputForSession(calculationSession, calculationInput, prepared)
+    );
     const result = await feeStore.saveCalculation(
       context.session.orgId,
       parts[3],
-      addSessionReviewWarnings(calculationSession, calculationResult)
+      addSessionReviewWarnings(calculationSession, calculationResult, prepared.reviewWarnings)
     );
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.calculated",
@@ -431,24 +456,111 @@ function assertFeeSessionReadyForCalculation(session = {}) {
   }
 }
 
-function buildCalculationInputForSession(session = {}, input = {}) {
+async function prepareSessionForCalculation(session = {}, calculationInput = {}, feeCalculator) {
+  const enriched = await enrichSessionOrdersForCalculation(session, feeCalculator);
+  const baseSession = enriched.changed ? { ...session, orders: enriched.orders } : session;
+  const legacy = await inferLegacyCalculationOptionsFromClinicalInput(baseSession, calculationInput, feeCalculator);
+  const patch = {};
+
+  if (enriched.changed) {
+    patch.orders = enriched.orders;
+  }
+  if (
+    legacy.calculationOptions
+    && !hasEquivalentJson(session.calculationOptions || null, legacy.calculationOptions)
+  ) {
+    patch.calculationOptions = legacy.calculationOptions;
+  }
+
+  return {
+    patch: Object.keys(patch).length ? patch : null,
+    calculationOptions: legacy.calculationOptions,
+    reviewWarnings: uniqueStrings([
+      ...(Array.isArray(legacy.reviewWarnings) ? legacy.reviewWarnings : []),
+      ...unresolvedOrderWarnings(enriched.orders || baseSession.orders || [], legacy.calculationOptions || {})
+    ])
+  };
+}
+
+function buildCalculationInputForSession(session = {}, input = {}, prepared = {}) {
   const calculationInput = { ...input };
   if (!hasOwn(calculationInput, "claimContext") && isPlainObject(session.claimContext)) {
     calculationInput.claimContext = session.claimContext;
   }
-  if (!hasOwn(calculationInput, "calculationOptions") && isPlainObject(session.calculationOptions)) {
-    calculationInput.calculationOptions = session.calculationOptions;
+  const preparedOptions = isPlainObject(prepared.calculationOptions) ? prepared.calculationOptions : null;
+  const sessionOptions = preparedOptions || (isPlainObject(session.calculationOptions) ? session.calculationOptions : null);
+  if (!hasOwn(calculationInput, "calculationOptions") && isPlainObject(sessionOptions)) {
+    calculationInput.calculationOptions = sessionOptions;
   } else if (
-    isPlainObject(session.calculationOptions)
+    isPlainObject(sessionOptions)
     && isPlainObject(calculationInput.calculationOptions)
   ) {
     calculationInput.calculationOptions = {
-      ...session.calculationOptions,
+      ...sessionOptions,
       ...calculationInput.calculationOptions
     };
   }
 
   return calculationInput;
+}
+
+async function inferLegacyCalculationOptionsFromClinicalInput(session = {}, calculationInput = {}, feeCalculator) {
+  const existingOptions = isPlainObject(session.calculationOptions) ? session.calculationOptions : {};
+  if (isPlainObject(session.claimContext) || isPlainObject(calculationInput.claimContext)) {
+    return { calculationOptions: existingOptions, reviewWarnings: [] };
+  }
+
+  const text = normalizeClinicalText([
+    session.clinicalText,
+    ...(Array.isArray(session.orders) ? session.orders.map(orderMasterQuery) : [])
+  ].filter(Boolean).join("\n"));
+  const inferred = {};
+  const reviewWarnings = [];
+
+  if (text) {
+    const outpatientBasic = inferOutpatientBasicOptions(text);
+    if (outpatientBasic) {
+      inferred.outpatient_basic = outpatientBasic;
+    }
+
+    const imaging = inferImagingOrders(text);
+    if (imaging.orders.length) {
+      inferred.imaging_orders = imaging.orders;
+      reviewWarnings.push(...imaging.reviewWarnings);
+    }
+
+    const treatment = inferTreatmentOrders(text);
+    if (treatment.orders.length && !hasSpecificProcedureCode(session.orders)) {
+      inferred.treatment_orders = treatment.orders;
+      reviewWarnings.push(...treatment.reviewWarnings);
+    }
+
+    const drugInference = await inferMedicationOrders(text, feeCalculator);
+    if (drugInference.orders.length) {
+      inferred.medication_orders = drugInference.orders;
+      inferred.medication = {
+        delivery_kind: inferMedicationDeliveryKind(text),
+        prescription_category: "other"
+      };
+      reviewWarnings.push(...drugInference.reviewWarnings);
+    } else {
+      reviewWarnings.push(...drugInference.reviewWarnings);
+    }
+
+    const materialInference = await inferMaterialInputs(text, feeCalculator);
+    if (materialInference.inputs.length) {
+      inferred.material_inputs = materialInference.inputs;
+      reviewWarnings.push(...materialInference.reviewWarnings);
+    } else {
+      reviewWarnings.push(...materialInference.reviewWarnings);
+    }
+  }
+
+  const merged = mergeCalculationOptions(existingOptions, inferred);
+  return {
+    calculationOptions: Object.keys(merged).length ? merged : null,
+    reviewWarnings
+  };
 }
 
 async function enrichSessionOrdersForCalculation(session = {}, feeCalculator) {
@@ -499,6 +611,270 @@ async function enrichOrderForCalculation(order = {}, feeCalculator) {
   }
 }
 
+function inferOutpatientBasicOptions(text) {
+  if (/(初診|初回受診|初めて|初来院)/u.test(text)) {
+    return { fee_kind: "initial" };
+  }
+  if (/(再診|再来|フォロー|経過観察|再評価)/u.test(text)) {
+    return { fee_kind: "revisit" };
+  }
+  return null;
+}
+
+function inferImagingOrders(text) {
+  const orders = [];
+  const reviewWarnings = [];
+  if (/(?:^|[^A-Za-z])MRI(?:$|[^A-Za-z])|ＭＲＩ/u.test(text)) {
+    orders.push({
+      kind: "mri",
+      mri_equipment_kind: "other",
+      contrast: /造影/u.test(text),
+      electronic_image_management: true
+    });
+    reviewWarnings.push("MRI検査は機器区分がカルテ本文から確定できないため、旧入力契約の既定値（その他）で候補化しています。請求前に機器区分を確認してください。");
+  }
+  if (/(?:^|[^A-Za-z])CT(?:$|[^A-Za-z])|ＣＴ/u.test(text)) {
+    orders.push({
+      kind: "ct",
+      ct_equipment_kind: "other",
+      contrast: /造影/u.test(text),
+      electronic_image_management: true
+    });
+    reviewWarnings.push("CT検査は機器区分がカルテ本文から確定できないため、旧入力契約の既定値（その他）で候補化しています。請求前に機器区分を確認してください。");
+  }
+  if (/(X線|Ｘ線|レントゲン|単純撮影)/u.test(text)) {
+    orders.push({
+      kind: "simple_radiography",
+      acquisition_kind: "digital",
+      radiography_diagnostic_kind: "simple_i",
+      electronic_image_management: true
+    });
+    reviewWarnings.push("単純X線は撮影方式・写真診断区分がカルテ本文から完全には確定できないため、デジタル/写真診断イとして候補化しています。請求前に確認してください。");
+  }
+  return {
+    orders: dedupeObjects(orders),
+    reviewWarnings
+  };
+}
+
+function inferTreatmentOrders(text) {
+  const orders = [];
+  const reviewWarnings = [];
+  if (/(熱傷|やけど)/u.test(text)) {
+    orders.push({
+      kind: "burn",
+      area_size: inferTreatmentAreaSize(text)
+    });
+  } else if (/(創傷|創部|裂創|擦過傷|洗浄|ガーゼ)/u.test(text)) {
+    orders.push({
+      kind: "wound",
+      area_size: inferTreatmentAreaSize(text)
+    });
+  }
+  for (const order of orders) {
+    if (!order.area_size) {
+      reviewWarnings.push("処置面積がカルテ本文から確定できないため、処置料は要確認です。面積区分を確認してください。");
+    }
+  }
+  return {
+    orders: dedupeObjects(orders),
+    reviewWarnings
+  };
+}
+
+function inferTreatmentAreaSize(text) {
+  const match = text.match(/(\d+(?:\.\d+)?)\s*[×xX]\s*(\d+(?:\.\d+)?)\s*cm/iu);
+  if (match) {
+    const area = Number(match[1]) * Number(match[2]);
+    if (Number.isFinite(area)) {
+      if (area < 100) return "lt_100_cm2";
+      if (area < 500) return "ge_100_lt_500_cm2";
+      if (area < 3000) return "ge_500_lt_3000_cm2";
+      if (area < 6000) return "ge_3000_lt_6000_cm2";
+      return "ge_6000_cm2";
+    }
+  }
+  if (/(100\s*cm2\s*未満|100\s*cm²\s*未満|１００ｃｍ２未満)/u.test(text)) {
+    return "lt_100_cm2";
+  }
+  return null;
+}
+
+async function inferMedicationOrders(text, feeCalculator) {
+  const orders = [];
+  const reviewWarnings = [];
+  if (typeof feeCalculator?.searchMaster !== "function") {
+    if (CLINICAL_DRUG_TERMS.some((term) => term.patterns.some((pattern) => pattern.test(text)))) {
+      reviewWarnings.push("薬剤名を検出しましたが、マスター検索が利用できないため薬剤コードへ変換できませんでした。");
+    }
+    return { orders, reviewWarnings };
+  }
+
+  for (const term of CLINICAL_DRUG_TERMS) {
+    if (!term.patterns.some((pattern) => pattern.test(text))) {
+      continue;
+    }
+    const item = await searchFirstMasterItem(feeCalculator, "drug", term.query, "drug");
+    if (!item?.code) {
+      reviewWarnings.push(`薬剤「${term.query}」をマスターコードへ解決できませんでした。`);
+      continue;
+    }
+    orders.push({
+      drug_code: String(item.code),
+      ...inferMedicationQuantity(text, term.query),
+      dispensing_kind: "internal_or_prn"
+    });
+  }
+  return {
+    orders: dedupeObjects(orders, (item) => item.drug_code),
+    reviewWarnings
+  };
+}
+
+function inferMedicationQuantity(text, query) {
+  const escaped = escapeRegExp(query);
+  const nearby = text.match(new RegExp(`.{0,20}${escaped}.{0,60}`, "u"))?.[0] || text;
+  const days = nearby.match(/(\d+)\s*日分/u)?.[1];
+  const perDay = nearby.match(/(?:毎食後|1日|１日)\s*(\d+)\s*(?:錠|枚|包|回)?/u)?.[1]
+    || nearby.match(/(\d+)\s*(?:錠|枚|包)\s*\/\s*日/u)?.[1];
+  return {
+    ...(perDay ? { quantity_per_day: perDay } : {}),
+    ...(days ? { days } : {})
+  };
+}
+
+function inferMedicationDeliveryKind(text) {
+  if (/(院外|処方箋|院外処方)/u.test(text)) {
+    return "outside_prescription";
+  }
+  return "in_house";
+}
+
+async function inferMaterialInputs(text, feeCalculator) {
+  const inputs = [];
+  const reviewWarnings = [];
+  if (typeof feeCalculator?.searchMaster !== "function") {
+    return { inputs, reviewWarnings };
+  }
+  for (const term of CLINICAL_MATERIAL_TERMS) {
+    if (!term.patterns.some((pattern) => pattern.test(text))) {
+      continue;
+    }
+    const item = await searchFirstMasterItem(feeCalculator, "material", term.query, "material");
+    if (!item?.code) {
+      reviewWarnings.push(`特定器材・材料「${term.query}」をマスターコードへ解決できませんでした。`);
+      continue;
+    }
+    inputs.push({ code: String(item.code), quantity: "1" });
+  }
+  return {
+    inputs: dedupeObjects(inputs, (item) => item.code),
+    reviewWarnings
+  };
+}
+
+async function searchFirstMasterItem(feeCalculator, type, query, expectedKind) {
+  try {
+    const result = await feeCalculator.searchMaster({ type, query, limit: 5 });
+    const items = Array.isArray(result?.items) ? result.items : [];
+    return items.find((item) => item?.kind === expectedKind && item.code)
+      || items.find((item) => item?.code)
+      || null;
+  } catch {
+    return null;
+  }
+}
+
+function unresolvedOrderWarnings(orders = [], calculationOptions = {}) {
+  return orders
+    .filter((order) => order && typeof order === "object" && !orderHasCode(order))
+    .filter((order) => {
+      const name = orderMasterQuery(order);
+      return name
+        && !isPlaceholderResolvedByLegacyInput(name, calculationOptions)
+        && (AUTO_PLACEHOLDER_ORDER_NAMES.has(name) || order.orderType === "unknown" || order.orderType === "other");
+    })
+    .map((order) => `オーダー「${orderMasterQuery(order)}」を標準コードまたは旧入力契約の構造化条件へ解決できませんでした。算定候補に反映するにはマスター検索で具体的な項目を選択してください。`);
+}
+
+function isPlaceholderResolvedByLegacyInput(name, calculationOptions = {}) {
+  if (!isPlainObject(calculationOptions)) {
+    return false;
+  }
+  if (name === "画像診断") {
+    return Array.isArray(calculationOptions.imaging_orders) && calculationOptions.imaging_orders.length > 0;
+  }
+  if (name === "処置・手技") {
+    return Array.isArray(calculationOptions.treatment_orders) && calculationOptions.treatment_orders.length > 0;
+  }
+  if (name === "薬剤処方") {
+    return Array.isArray(calculationOptions.medication_orders) && calculationOptions.medication_orders.length > 0;
+  }
+  if (name === "特定器材・材料") {
+    return Array.isArray(calculationOptions.material_inputs) && calculationOptions.material_inputs.length > 0;
+  }
+  return false;
+}
+
+function mergeCalculationOptions(existing = {}, inferred = {}) {
+  const result = isPlainObject(existing) ? { ...existing } : {};
+  for (const [key, value] of Object.entries(inferred || {})) {
+    if (Array.isArray(value)) {
+      result[key] = uniqueObjects([...(Array.isArray(result[key]) ? result[key] : []), ...value]);
+      continue;
+    }
+    if (isPlainObject(value)) {
+      result[key] = { ...value, ...(isPlainObject(result[key]) ? result[key] : {}) };
+      continue;
+    }
+    if (!hasOwn(result, key)) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function hasSpecificProcedureCode(orders = []) {
+  return Array.isArray(orders) && orders.some((order) => {
+    if (!order || typeof order !== "object") return false;
+    const type = String(order.orderType || order.order_type || "").trim();
+    return ["procedure", "treatment"].includes(type) && orderHasCode(order);
+  });
+}
+
+function normalizeClinicalText(value) {
+  return String(value || "")
+    .replace(/\r\n?/gu, "\n")
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/gu, (char) => String.fromCharCode(char.charCodeAt(0) - 0xFEE0))
+    .trim();
+}
+
+function dedupeObjects(values = [], keyFn = (item) => JSON.stringify(item)) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const key = keyFn(value);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
+}
+
+function uniqueObjects(values = []) {
+  return dedupeObjects(values);
+}
+
+function hasEquivalentJson(a, b) {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function orderHasCode(order = {}) {
   return ["standardCode", "standard_code", "localCode", "local_code", "code"].some((key) => {
     const value = order[key];
@@ -541,15 +917,31 @@ function normalizeMasterMatchText(value) {
   return String(value || "").trim().replace(/\s+/gu, "").toLowerCase();
 }
 
-function addSessionReviewWarnings(session = {}, calculationResult = {}) {
+function addSessionReviewWarnings(session = {}, calculationResult = {}, extraWarnings = []) {
   const warnings = uniqueStrings([
     ...(Array.isArray(calculationResult.warnings) ? calculationResult.warnings : []),
+    ...(Array.isArray(extraWarnings) ? extraWarnings : []),
     ...sessionLevelReviewWarnings(session)
   ]);
+  if (
+    warnings.length === 0
+    && Number(calculationResult.totalPoints || 0) === 0
+    && (!Array.isArray(calculationResult.lineItems) || calculationResult.lineItems.length === 0)
+    && hasAnyCalculationInput(session)
+  ) {
+    warnings.push("算定可能な明細を作成できませんでした。カルテ本文の記載は検出されていますが、標準コードまたは旧入力契約の構造化条件へ変換できていません。");
+  }
   return {
     ...calculationResult,
     warnings
   };
+}
+
+function hasAnyCalculationInput(session = {}) {
+  return Boolean(String(session.clinicalText || "").trim())
+    || (Array.isArray(session.orders) && session.orders.length > 0)
+    || isPlainObject(session.claimContext)
+    || isPlainObject(session.calculationOptions);
 }
 
 function sessionLevelReviewWarnings(session = {}) {
