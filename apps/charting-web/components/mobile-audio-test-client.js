@@ -530,8 +530,7 @@ export function MobileAudioTestClient({
 
         {!["completed", "expired"].includes(phase) ? (
           <div className="audio-test-actions audio-test-mobile-actions">
-            <button className={`btn btn--ghost ${isCompleting ? "btn--loading" : ""}`} type="button" onClick={completeAudioTest} disabled={isCompleting}>
-              {isCompleting ? <span className="btn-spinner" aria-hidden="true" /> : null}
+            <button className="btn btn--ghost" type="button" onClick={completeAudioTest} disabled={isCompleting}>
               <span>{isCompleting ? "終了中..." : "テストを終了"}</span>
             </button>
           </div>

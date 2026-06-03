@@ -190,12 +190,11 @@ export function BillingConsole() {
           </div>
           {canManageBilling ? (
             <button
-              className={`btn btn--primary ${isLaunchingPortal ? "btn--loading" : ""}`}
+              className="btn btn--primary"
               type="button"
               disabled={isLaunchingPortal || isLoading}
               onClick={handleOpenPortal}
             >
-              {isLaunchingPortal ? <span className="btn-spinner" aria-hidden="true" /> : null}
               <span>{isLaunchingPortal ? "起動中..." : "Customer Portal を開く"}</span>
             </button>
           ) : null}

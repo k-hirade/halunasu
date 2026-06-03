@@ -2525,13 +2525,12 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 元に戻す
               </button>
               <button
-                className={`btn btn--primary ${patientInfoSaveState === "saving" ? "btn--loading" : ""}`}
+                className="btn btn--primary"
                 disabled={patientInfoLocked || !patientInfoDirty || patientInfoSaveState === "saving"}
                 onClick={() => runAction(savePatientInfo)}
                 type="button"
               >
                 保存
-                {patientInfoSaveState === "saving" ? <span className="btn-spinner" aria-hidden="true" /> : null}
               </button>
             </div>
           </div>
@@ -2754,14 +2753,13 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 </div>
               </div>
               <button
-                className={`btn btn--success btn--lg ${isBusy ? "btn--loading" : ""}`}
+                className="btn btn--success btn--lg"
                 disabled={isBusy || reviewSaveState === "saving" || reviewDirty}
                 onClick={() => setConfirmApproval(true)}
                 type="button"
                 title={reviewDirty ? "未保存の変更を保存してから確定してください" : ""}
               >
                 <Icon name="checkCircle" size={18} /> 確定する
-                {isBusy ? <span className="btn-spinner" aria-hidden="true" /> : null}
               </button>
             </div>
           )}
@@ -2887,13 +2885,12 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
               ) : null}
               {!isMobileRecordingMode ? (
                 <button
-                  className={`btn btn--primary btn--lg ${isBusy || localRecorderState === "preparing" ? "btn--loading" : ""}`}
+                  className="btn btn--primary btn--lg"
                   disabled={isBusy || localRecorderState === "preparing" || !canStartLocalRecording}
                   onClick={() => runAction(startLocalRecordingFromWorkspace)}
                   type="button"
                 >
                   <Icon name="mic" size={16} /> このパソコンで録音
-                  {isBusy || localRecorderState === "preparing" ? <span className="btn-spinner" aria-hidden="true" /> : null}
                 </button>
               ) : null}
               {!isLocalRecordingMode ? (
@@ -2934,13 +2931,12 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
 
           {status === "recording" && (
             <button
-              className={`btn btn--danger btn--lg ${isBusy ? "btn--loading" : ""}`}
+              className="btn btn--danger btn--lg"
               disabled={isBusy}
               onClick={() => setConfirmStopRecording(true)}
               type="button"
             >
               <Icon name="square" size={14} /> 録音停止
-              {isBusy ? <span className="btn-spinner" aria-hidden="true" /> : null}
             </button>
           )}
 
@@ -2971,13 +2967,12 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 <Icon name="undo" size={14} /> 録音を破棄して録り直す
               </button>
               <button
-                className={`btn btn--primary btn--lg ${isBusy ? "btn--loading" : ""}`}
+                className="btn btn--primary btn--lg"
                 disabled={isBusy}
                 onClick={() => runAction(generateSoapFromStopped)}
                 type="button"
               >
                 SOAP下書きを作成
-                {isBusy ? <span className="btn-spinner" aria-hidden="true" /> : null}
               </button>
             </>
           )}
@@ -3009,13 +3004,12 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 <Icon name="undo" size={14} /> 録り直す
               </button>
               <button
-                className={`btn btn--primary btn--lg ${isBusy ? "btn--loading" : ""}`}
+                className="btn btn--primary btn--lg"
                 disabled={isBusy}
                 onClick={() => runAction(updateSoapFromStopped)}
                 type="button"
               >
                 SOAPを更新
-                {isBusy ? <span className="btn-spinner" aria-hidden="true" /> : null}
               </button>
             </>
           )}
@@ -3088,7 +3082,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
               </button>
             </div>
             <button
-              className={`btn btn--primary btn--lg ${isBusy ? "btn--loading" : ""}`}
+              className="btn btn--primary btn--lg"
               disabled={isBusy || !canStartMobileRecording}
               onClick={() => runAction(() => postAction(`/api/v1/sessions/${sessionId}/recording/start`, {
                 deviceId: sessionState?.session?.audioDeviceId || "mobile-browser",
@@ -3101,7 +3095,6 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 : sessionState?.session?.mobileConnectionState === "connected"
                   ? "スマホでマイクを有効にしてください"
                   : "スマホの接続を待っています..."}
-              {isBusy ? <span className="btn-spinner" aria-hidden="true" /> : null}
             </button>
             <p className="pairing-hint">
               スマホでマイクを許可すると、録音を始められる状態になります。
@@ -3121,7 +3114,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 キャンセル
               </button>
               <button
-                className={`btn btn--danger ${isBusy ? "btn--loading" : ""}`}
+                className="btn btn--danger"
                 disabled={isBusy}
                 onClick={() => {
                   setConfirmStopRecording(false);
@@ -3130,7 +3123,6 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 type="button"
               >
                 <Icon name="square" size={14} /> 録音を停止
-                {isBusy ? <span className="btn-spinner" aria-hidden="true" /> : null}
               </button>
             </div>
           </div>
@@ -3148,13 +3140,12 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 キャンセル
               </button>
               <button
-                className={`btn btn--danger ${isBusy ? "btn--loading" : ""}`}
+                className="btn btn--danger"
                 disabled={isBusy}
                 onClick={() => runAction(discardRecordingAttempt)}
                 type="button"
               >
                 <Icon name="undo" size={14} /> 破棄して録り直す
-                {isBusy ? <span className="btn-spinner" aria-hidden="true" /> : null}
               </button>
             </div>
           </div>
@@ -3201,13 +3192,12 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
             ) : null}
             <div className="post-stop-actions">
               <button
-                className={`btn btn--primary btn--lg ${isBusy ? "btn--loading" : ""}`}
+                className="btn btn--primary btn--lg"
                 disabled={isBusy}
                 onClick={() => runAction(hasSoapDraft ? updateSoapFromStopped : generateSoapFromStopped)}
                 type="button"
               >
                 {hasSoapDraft ? "SOAPを更新" : "SOAP下書きを作成"}
-                {isBusy ? <span className="btn-spinner" aria-hidden="true" /> : null}
               </button>
               <div className="post-stop-secondary-actions">
                 <button className="btn btn--ghost" onClick={openPatientInfoSection} type="button">
@@ -3267,13 +3257,12 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 キャンセル
               </button>
               <button
-                className={`btn btn--primary ${promptSelectionSaving ? "btn--loading" : ""}`}
+                className="btn btn--primary"
                 disabled={promptSelectionSaving || !pendingPromptChangeId || !canRegenerateSoap}
                 onClick={() => regenerateSoapWithPrompt(pendingPromptChangeId)}
                 type="button"
               >
                 変更して再作成
-                {promptSelectionSaving ? <span className="btn-spinner" aria-hidden="true" /> : null}
               </button>
             </div>
           </div>
@@ -3310,7 +3299,7 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 キャンセル
               </button>
               <button
-                className={`btn btn--success ${isBusy ? "btn--loading" : ""}`}
+                className="btn btn--success"
                 disabled={isBusy}
                 onClick={() => {
                   runAction(approveReviewNote);
@@ -3318,7 +3307,6 @@ export function EncounterWorkspace({ sessionId, initialPairingId, initialPairing
                 type="button"
               >
                 <Icon name="checkCircle" size={16} /> 確定する
-                {isBusy ? <span className="btn-spinner" aria-hidden="true" /> : null}
               </button>
             </div>
           </div>

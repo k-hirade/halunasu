@@ -664,8 +664,7 @@ export function AudioTestPanel({
 
             <div className="audio-test-actions">
               {!hasActiveMobileTest ? (
-                <button className={`btn btn--primary ${isCreatingMobileTest ? "btn--loading" : ""}`} type="button" onClick={createMobileAudioTest} disabled={isCreatingMobileTest}>
-                  {isCreatingMobileTest ? <span className="btn-spinner" aria-hidden="true" /> : null}
+                <button className="btn btn--primary" type="button" onClick={createMobileAudioTest} disabled={isCreatingMobileTest}>
                   <span>{isCreatingMobileTest ? "発行中..." : "QRを発行"}</span>
                 </button>
               ) : (
@@ -675,8 +674,7 @@ export function AudioTestPanel({
                       QRを表示
                     </button>
                   ) : null}
-                  <button className={`btn btn--ghost ${isCompletingMobileTest ? "btn--loading" : ""}`} type="button" onClick={completeMobileAudioTest} disabled={isCompletingMobileTest}>
-                    {isCompletingMobileTest ? <span className="btn-spinner" aria-hidden="true" /> : null}
+                  <button className="btn btn--ghost" type="button" onClick={completeMobileAudioTest} disabled={isCompletingMobileTest}>
                     <span>{isCompletingMobileTest ? "終了中..." : "スマホテスト終了"}</span>
                   </button>
                 </>

@@ -415,13 +415,12 @@ export function SessionLauncher() {
           </div>
           <div className="quick-start-actions">
             <button
-              className={`btn btn--primary btn--lg ${isPending ? "btn--loading" : ""}`}
+              className="btn btn--primary btn--lg"
               disabled={isPending}
               onClick={createSession}
               type="button"
             >
               <span>診療記録を作成</span>
-              {isPending ? <span className="btn-spinner" aria-hidden="true" /> : null}
             </button>
           </div>
 
@@ -601,13 +600,12 @@ export function SessionLauncher() {
                 キャンセル
               </button>
               <button
-                className={`btn btn--danger ${isDeletingSession ? "btn--loading" : ""}`}
+                className="btn btn--danger"
                 disabled={isDeletingSession}
                 onClick={() => hideSessionFromHome(deleteTargetSession.sessionId)}
                 type="button"
               >
                 削除
-                {isDeletingSession ? <span className="btn-spinner" aria-hidden="true" /> : null}
               </button>
             </div>
           </div>

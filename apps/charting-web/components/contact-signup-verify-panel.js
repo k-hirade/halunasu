@@ -144,8 +144,7 @@ export function ContactSignupVerifyPanel() {
             <p className="signup-status-primary-title">メール確認を完了して利用開始へ進みます</p>
             <p className="signup-status-primary-copy">この操作のあと、病院アカウントの作成と管理者設定の準備を進めます。</p>
             <div className="signup-status-actions contact-signup-actions">
-              <button className={`signup-submit ${isSubmitting ? "btn--loading" : ""}`} type="button" onClick={handleVerify} disabled={isSubmitting}>
-                {isSubmitting ? <span className="btn-spinner" aria-hidden="true" /> : null}
+              <button className="signup-submit" type="button" onClick={handleVerify} disabled={isSubmitting}>
                 <span>{isSubmitting ? "利用開始情報を準備中..." : primaryLabel}</span>
               </button>
             </div>
@@ -157,8 +156,7 @@ export function ContactSignupVerifyPanel() {
             <p className="signup-status-primary-title">確認リンクの有効期限が切れています</p>
             <p className="signup-status-primary-copy">確認メールを再送して、新しいリンクからもう一度お進みください。</p>
             <div className="signup-status-actions contact-signup-actions">
-              <button className={`signup-submit ${isResending ? "btn--loading" : ""}`} type="button" onClick={handleResend} disabled={isResending}>
-                {isResending ? <span className="btn-spinner" aria-hidden="true" /> : null}
+              <button className="signup-submit" type="button" onClick={handleResend} disabled={isResending}>
                 <span>{isResending ? "メールを再送中..." : "確認メールを再送"}</span>
               </button>
             </div>

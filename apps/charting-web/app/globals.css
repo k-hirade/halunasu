@@ -569,32 +569,6 @@ body .admin-nav-drawer {
   transform: none;
 }
 
-.btn--loading {
-  position: relative;
-  pointer-events: none;
-}
-
-.btn--loading > *:not(.btn-spinner) {
-  opacity: 0;
-}
-
-.btn-spinner {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-}
-
-.btn-spinner::after {
-  content: "";
-  width: 16px;
-  height: 16px;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-
 .card {
   background: var(--card);
   border: 1px solid var(--border);

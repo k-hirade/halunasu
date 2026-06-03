@@ -99,7 +99,6 @@ export function ContactSignupSubmittedPanel() {
         <div className="signup-status-primary-card signup-status-primary-card--waiting">
           {isLoading || isProcessingAfterVerification ? (
             <div className="signup-status-loading-head">
-              <span className="btn-spinner" aria-hidden="true" />
               <span>{isProcessingAfterVerification ? "病院アカウントを準備しています" : "確認メールを準備しています"}</span>
             </div>
           ) : (
@@ -112,8 +111,7 @@ export function ContactSignupSubmittedPanel() {
             <div className="signup-status-actions contact-signup-actions">
               {previewUrl ? <a className="signup-submit signup-submit-link" href={previewUrl}>確認リンクを開く</a> : null}
               {currentStatus === "submitted" ? (
-                <button className={`btn btn--secondary ${isResending ? "btn--loading" : ""}`} type="button" onClick={handleResend} disabled={isResending}>
-                  {isResending ? <span className="btn-spinner" aria-hidden="true" /> : null}
+                <button className="btn btn--secondary" type="button" onClick={handleResend} disabled={isResending}>
                   <span>{isResending ? "メールを再送中..." : "確認メールを再送"}</span>
                 </button>
               ) : null}

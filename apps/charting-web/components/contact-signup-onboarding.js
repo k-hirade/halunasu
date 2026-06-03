@@ -308,8 +308,7 @@ export function ContactSignupOnboarding() {
             {fieldErrors.consentAccepted ? <small className="field-error">{fieldErrors.consentAccepted}</small> : null}
           </label>
 
-          <button className={`signup-submit ${isSubmitting ? "btn--loading" : ""}`} type="submit" disabled={isSubmitting}>
-            {isSubmitting ? <span className="btn-spinner" aria-hidden="true" /> : null}
+          <button className="signup-submit" type="submit" disabled={isSubmitting}>
             <span>{isSubmitting ? "確認メールを準備中..." : "無料トライアルを申し込む"}</span>
           </button>
         </form>

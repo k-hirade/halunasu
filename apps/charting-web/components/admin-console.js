@@ -2767,12 +2767,11 @@ export function AdminConsole() {
                           <p>編集中のプロンプトをそのまま使い、会話例から生成される診療記録を確認できます。</p>
                         </div>
                         <button
-                          className={`btn btn--ghost ${isPreviewRunning ? "btn--loading" : ""}`}
+                          className="btn btn--ghost"
                           type="button"
                           onClick={() => void runPreview({ force: true })}
                           disabled={isPreviewRunning || !editor}
                         >
-                          {isPreviewRunning ? <span className="btn-spinner" aria-hidden="true" /> : null}
                           <span>{isPreviewRunning ? "生成中..." : "出力例を作成"}</span>
                         </button>
                       </div>
@@ -2897,12 +2896,11 @@ export function AdminConsole() {
 
                     <div className="prompt-infer-run">
                       <button
-                        className={`btn btn--primary ${isInferringFormat ? "btn--loading" : ""}`}
+                        className="btn btn--primary"
                         type="button"
                         onClick={runSoapFormatInference}
                         disabled={isInferringFormat}
                       >
-                        {isInferringFormat ? <span className="btn-spinner" aria-hidden="true" /> : null}
                         <span>{isInferringFormat ? "プロンプト案を作成中..." : "プロンプト案を作成"}</span>
                       </button>
                     </div>
@@ -2955,12 +2953,11 @@ export function AdminConsole() {
                           />
                           <div className="prompt-infer-run">
                             <button
-                              className={`btn btn--primary ${isSaving ? "btn--loading" : ""}`}
+                              className="btn btn--primary"
                               type="button"
                               onClick={saveInferredFormatDraft}
                               disabled={!inferResult?.format || isSaving}
                             >
-                              {isSaving ? <span className="btn-spinner" aria-hidden="true" /> : null}
                               <span>下書きを保存</span>
                             </button>
                           </div>
@@ -3040,12 +3037,11 @@ export function AdminConsole() {
                       <span className={`badge ${billingBadgeClass(accountBillingDisplayState.status || accountBilling.status)}`}>{formatBillingStatus(accountBillingDisplayState.status || accountBilling.status)}</span>
                       {canManageBilling && (canLaunchCheckout || canLaunchPortal) ? (
                         <button
-                          className={`btn btn--primary ${isLaunchingBillingAction ? "btn--loading" : ""}`}
+                          className="btn btn--primary"
                           type="button"
                           onClick={launchBillingAction}
                           disabled={isLaunchingBillingAction}
                         >
-                          {isLaunchingBillingAction ? <span className="btn-spinner" aria-hidden="true" /> : null}
                           <span>{getBillingActionLabel({ billing: accountBilling, access: accountAccess })}</span>
                         </button>
                       ) : null}

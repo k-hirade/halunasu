@@ -170,12 +170,11 @@ export function OperatorLoginPanel({
               </div>
               <div className="operator-gate-actions">
                 <button
-                  className={`btn btn--primary btn--lg ${isPending ? "btn--loading" : ""}`}
+                  className="btn btn--primary btn--lg"
                   disabled={isPending || mfaCode.length !== 6}
                   type="submit"
                 >
                   <span>確認</span>
-                  {isPending ? <span className="btn-spinner" aria-hidden="true" /> : null}
                 </button>
                 <button
                   className="btn btn--ghost btn--lg"
@@ -302,12 +301,11 @@ export function OperatorLoginPanel({
             </div>
             <div className="operator-gate-actions">
               <button
-                className={`btn btn--primary btn--lg ${isPending ? "btn--loading" : ""}`}
+                className="btn btn--primary btn--lg"
                 disabled={isPending || !organizationCode.trim() || !loginId.trim() || !password}
                 type="submit"
               >
                 <span>ログイン</span>
-                {isPending ? <span className="btn-spinner" aria-hidden="true" /> : null}
               </button>
             </div>
             {error ? <div className="inline-error">{error}</div> : null}
