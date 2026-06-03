@@ -104,11 +104,7 @@ function FeeSessionListView() {
       <header className="fee-page-head">
         <div>
           <h1>算定一覧</h1>
-          <p>過去の算定記録を確認し、新しい算定を開始します。</p>
         </div>
-        <button className="btn btn--primary btn--lg" disabled={creating} onClick={createSession} type="button">
-          新しい算定
-        </button>
       </header>
 
       <section className="fee-card fee-quick-start">
