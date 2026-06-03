@@ -8,9 +8,10 @@
     "build": "next build",
     "build:static": "node scripts/validate-static-site.mjs",
     "start": "next start",
-    "test": "npm run test:static && npm run test:ui && npm run build",
+    "test": "npm run test:static && npm run test:ui && npm run test:next-ui && npm run build",
     "test:static": "node scripts/validate-static-site.mjs",
-    "test:ui": "node scripts/ui-smoke.mjs"
+    "test:ui": "node scripts/ui-smoke.mjs",
+    "test:next-ui": "node scripts/next-ui-smoke.mjs"
   },
   "dependencies": {
     "@halunasu/web-ui": "file:../../packages/web-ui",
