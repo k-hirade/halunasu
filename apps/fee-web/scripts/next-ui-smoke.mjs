@@ -65,17 +65,27 @@ try {
     assert.equal(hasHorizontalOverflow, false);
 
     await page.goto(`${baseUrl}/sessions/fee_test_1`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "カルテから算定候補を作成" }).waitFor();
+    await page.getByRole("heading", { name: "算定条件", level: 2 }).waitFor();
     await page.getByText("カルテの内容").waitFor();
 
     const detailColumns = await page.locator(".fee-detail-grid").evaluate((element) => getComputedStyle(element).gridTemplateColumns);
-    assert.equal(detailColumns.trim().split(/\s+/).length, 1, "fee detail view must use a single column to avoid overlapping panels");
+    assert.ok(detailColumns.trim().split(/\s+/).length >= 2, "desktop fee detail view must use two robust columns");
 
     const manualOrderEditorVisible = await page.getByRole("button", { name: "オーダー行を追加" }).isVisible();
-    assert.equal(manualOrderEditorVisible, false, "manual order editor must stay hidden until advanced details are opened");
+    assert.equal(manualOrderEditorVisible, true, "manual order editor must remain available as an editable candidate table");
+    assert.equal(await page.getByText("詳細条件 JSON").count(), 0, "claimContext JSON editor must be removed from the UI");
+    assert.equal(await page.getByText("算定オプション JSON").count(), 0, "calculationOptions JSON editor must be removed from the UI");
+    assert.equal(await page.locator(".fee-action-bar").isVisible(), true, "detail actions must be available in the action bar");
 
     const hasDetailHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     assert.equal(hasDetailHorizontalOverflow, false);
+
+    await page.setViewportSize({ width: 390, height: 900 });
+    const mobileColumns = await page.locator(".fee-detail-grid").evaluate((element) => getComputedStyle(element).gridTemplateColumns);
+    assert.equal(mobileColumns.trim().split(/\s+/).length, 1, "mobile fee detail view must stack into one column");
+    const hasMobileHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+    assert.equal(hasMobileHorizontalOverflow, false);
+    await page.setViewportSize({ width: 1440, height: 1000 });
 
     await page.getByRole("button", { name: "カルテから算定候補を作成" }).click();
     const patchBody = await apiMocks.patchPromise;

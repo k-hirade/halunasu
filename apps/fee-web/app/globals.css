@@ -298,6 +298,10 @@ button:disabled,
   gap: 28px;
 }
 
+.fee-shell--detail {
+  padding-bottom: 96px;
+}
+
 .fee-page-head {
   display: flex;
   align-items: flex-start;
@@ -316,6 +320,13 @@ button:disabled,
   margin: 6px 0 0;
   color: var(--muted);
   line-height: 1.7;
+}
+
+.fee-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .fee-card {
@@ -484,8 +495,8 @@ button:disabled,
 
 .fee-detail-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+  gap: 22px;
   align-items: start;
 }
 
@@ -502,6 +513,15 @@ button:disabled,
 .fee-settings-grid {
   display: grid;
   gap: 14px;
+}
+
+.fee-detail-main {
+  align-self: start;
+}
+
+.fee-detail-input-card {
+  display: grid;
+  gap: 18px;
 }
 
 .fee-detail-form label,
@@ -526,6 +546,10 @@ button:disabled,
   min-height: 260px;
 }
 
+.fee-detail-form .diagnosis-textarea {
+  min-height: 86px;
+}
+
 .fee-detail-form small,
 .field-note {
   color: var(--muted);
@@ -538,6 +562,32 @@ button:disabled,
 .fee-form-grid--two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 0;
+}
+
+.fee-form-grid--conditions {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 0;
+}
+
+.fee-subsection {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 16px;
+}
+
+.fee-subsection-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.fee-subsection-head h3 {
+  margin: 0;
+  font-size: 1rem;
 }
 
 .notice-card,
@@ -577,6 +627,109 @@ button:disabled,
   margin-top: 14px;
 }
 
+.patient-picker-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.patient-picker-field {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.patient-chip {
+  justify-content: space-between;
+  min-height: 56px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  padding: 10px 12px;
+  display: flex;
+  gap: 12px;
+  text-align: left;
+}
+
+.patient-chip:hover,
+.patient-chip.is-selected {
+  border-color: #96d5ca;
+  background: #f4fbf9;
+}
+
+.patient-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 900;
+}
+
+.patient-chip small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.patient-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(520px, 100%);
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 45px rgba(24, 39, 75, 0.16);
+  padding: 14px;
+}
+
+.patient-popover label,
+.clinical-text-field {
+  display: grid;
+  gap: 6px;
+  color: #26364f;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.patient-result-list {
+  display: grid;
+  gap: 6px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.patient-result {
+  width: 100%;
+  min-height: 48px;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.patient-result:hover {
+  border-color: #cfe0ef;
+  background: #f7fafc;
+}
+
+.patient-result small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .order-editor-field {
   display: grid;
   gap: 10px;
@@ -595,6 +748,10 @@ button:disabled,
   border-radius: 8px;
   background: #fbfdff;
   padding: 12px;
+}
+
+.master-search-panel--command {
+  background: #fff;
 }
 
 .master-search-controls {
@@ -619,6 +776,11 @@ button:disabled,
   border-radius: 8px;
   background: #fff;
   padding: 10px;
+}
+
+.master-search-result.is-selected {
+  border-color: #96d5ca;
+  background: #f4fbf9;
 }
 
 .master-search-result div {
@@ -669,6 +831,41 @@ button:disabled,
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+}
+
+.fee-action-bar {
+  position: sticky;
+  z-index: 10;
+  bottom: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 40px rgba(24, 39, 75, 0.14);
+  padding: 12px 14px;
+  backdrop-filter: blur(10px);
+}
+
+.fee-action-bar strong,
+.fee-action-bar small {
+  display: block;
+}
+
+.fee-action-bar small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.fee-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .advanced-fee-inputs {
@@ -917,7 +1114,7 @@ button:disabled,
   align-items: center;
 }
 
-@media (max-width: 920px) {
+@media (max-width: 1023px) {
   .fee-shell,
   .fee-admin-shell {
     width: min(100% - 24px, 1480px);
@@ -945,11 +1142,44 @@ button:disabled,
   .fee-toolbar,
   .fee-form-grid,
   .fee-detail-grid,
+  .fee-form-grid--conditions,
   .fee-form-grid--two,
   .metric-row,
   .master-search-controls,
   .order-editor-row {
     grid-template-columns: 1fr;
+  }
+
+  .patient-picker-row,
+  .fee-action-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-popover {
+    position: fixed;
+    top: auto;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+    max-height: min(70dvh, 620px);
+    overflow: auto;
+  }
+
+  .fee-action-bar {
+    right: 0;
+    bottom: 0;
+    left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .fee-action-buttons {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) auto;
+    justify-content: stretch;
   }
 
   .account-definition-list div {

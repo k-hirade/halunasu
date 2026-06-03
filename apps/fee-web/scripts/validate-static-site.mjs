@@ -55,8 +55,6 @@ assert(html.includes('id="diagnosesText"'), "fee web must expose diagnosis input
 assert(html.includes("facilityId"), "fee web must expose facilityId");
 assert(html.includes('id="facility-field"'), "fee web must be able to hide the facility field when there is only one facility");
 assert(html.includes("departmentId"), "fee web must expose departmentId");
-assert(html.includes('id="claimContextText"'), "fee web must expose claimContext JSON for legacy claim payload parity");
-assert(html.includes('id="calculationOptionsText"'), "fee web must expose calculationOptions JSON for legacy rule input parity");
 assert(html.includes('class="patient-inline-create"'), "fee web must not keep patient creation as an always-expanded form");
 assert(html.includes('id="order-editor"'), "fee web must provide structured order row editing");
 assert(html.includes('id="master-search-input"'), "fee web must provide master search input");
@@ -65,7 +63,6 @@ assert(html.includes('id="fee-scope-notice"'), "fee web must explain limited fee
 assert(html.includes('id="master-status"'), "fee web must display fee master readiness");
 assert(html.includes('id="add-order-row-button"'), "fee web must allow adding order rows");
 assert(html.includes("syncOrderRowsToTextarea"), "fee web must preserve legacy order text compatibility before saving");
-assert(html.includes("parseJsonObjectField"), "fee web must validate detailed JSON inputs before saving");
 assert(html.includes("material|特定器材"), "fee web must allow material order input");
 assert(html.includes("toUserFacingErrorMessage"), "fee web must convert technical errors before UI display");
 assert(!html.includes("クイックスタート"), "fee web must not use charting-only quick-start wording");
