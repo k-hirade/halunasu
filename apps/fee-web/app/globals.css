@@ -290,6 +290,14 @@ button:disabled,
   gap: 14px;
 }
 
+/* トップバーの幅(共有CSSの .site-nav が使う変数)を本文と同じ1480pxに合わせる。
+   :root だと共有 halunasu-ui.css の :root(1120px) に読み込み順で負けるため、
+   より近い body に指定して確実に勝たせる（トップバーが本文より内側に寄る不具合の修正）。 */
+body {
+  --site-nav-shell-max: 1480px;
+}
+
+/* 通常画面は中央寄せ1480px（従来どおり）。 */
 .fee-shell,
 .fee-admin-shell {
   width: min(1480px, calc(100% - 32px));
@@ -298,19 +306,27 @@ button:disabled,
   gap: 28px;
 }
 
+/* 算定セッション詳細だけ全幅(左右20px)。カルテ作成(SOAP)のワークスペースと同じ挙動。 */
 .fee-shell--detail {
   width: 100%;
+  max-width: none;
   margin: 16px 0 0;
   padding-inline: 20px;
   padding-bottom: 96px;
 }
 
-/* 詳細画面ではトップバーも本文と同じ全幅(左右20px)に揃える（カルテ作成と同様）。
-   セッション一覧など他画面は従来どおり中央寄せ1480pxのまま。 */
-body:has(.fee-shell--detail) .site-nav {
+/* 詳細画面のときだけトップバーも全幅(左右20px)に揃える。
+   共有 halunasu-ui.css の .site-nav より詳細度を高くして確実に上書きする。 */
+body:has(.fee-shell--detail) .site-nav-wrap .site-nav {
   width: 100%;
   max-width: none;
+  margin: 0;
   padding-inline: 20px;
+}
+
+/* 詳細画面では全幅ナビのハンバーガーにメニュー(ドロワー)も左揃え。 */
+body:has(.fee-shell--detail) .admin-nav-drawer {
+  left: 20px;
 }
 
 .fee-page-head {
