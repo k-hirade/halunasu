@@ -207,11 +207,6 @@ export function CoreAdminConsole() {
     router.push(`/admin?section=${encodeURIComponent(tabId)}`);
   }
 
-  async function refreshCurrentView() {
-    setMessage(null);
-    await loadSection(activeTab);
-  }
-
   async function createItem(type, formData) {
     const config = createPayload(type, formData, {
       facilities: bootstrap.facilities || [],
@@ -304,10 +299,7 @@ export function CoreAdminConsole() {
 
   return (
     <div className="app">
-      <Topbar
-        auth={auth}
-        onRefresh={refreshCurrentView}
-      />
+      <Topbar />
       <main className="main">
         <Sidebar
           activeTab={activeTab}
@@ -360,41 +352,13 @@ export function CoreAdminConsole() {
   );
 }
 
-function Topbar({ auth, onRefresh }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const sessionLabel = `${auth.session?.organizationCode || "-"} / ${auth.session?.loginId || "-"}`;
-  const roleText = labelsForList((auth.session?.globalRoles || []).map(roleLabel)) || "なし";
-
+function Topbar() {
   return (
     <header className="topbar">
       <div className="brand">
         <img alt="ハルナス" className="brand-mark" height="36" src="/brand/harunas-mark.png" width="36" />
-        <div>施設管理画面</div>
-      </div>
-      <div className="topbar-main">
-        <div className="topbar-actions">
-          <button className="secondary icon-only" onClick={onRefresh} type="button" aria-label="再読み込み">
-            <Icon name="refreshCw" />
-          </button>
-          <button
-            className="session-chip-button"
-            onClick={() => setMenuOpen((current) => !current)}
-            type="button"
-            aria-expanded={menuOpen}
-            aria-controls="session-menu"
-          >
-            <Icon name="settings" />
-            <span className="session-chip">{sessionLabel}</span>
-          </button>
-          <div className="session-menu" id="session-menu" hidden={!menuOpen}>
-            <p className="session-menu-title">{sessionLabel}</p>
-            <p className="session-menu-meta">権限: {roleText}</p>
-            <button className="danger" onClick={auth.logout} type="button">
-              <Icon name="logOut" />
-              ログアウト
-            </button>
-          </div>
-        </div>
+        <span className="brand-wordmark">ハルナス</span>
+        <span className="brand-product">施設管理画面</span>
       </div>
     </header>
   );

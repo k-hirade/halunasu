@@ -42,9 +42,7 @@ textarea {
   padding: 0 24px;
   background: rgba(255, 255, 255, 0.98);
   border-bottom: 1px solid var(--line);
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 0;
+  display: flex;
   align-items: center;
   position: sticky;
   top: 0;
@@ -56,7 +54,7 @@ textarea {
   align-items: center;
   gap: 10px;
   min-width: 0;
-  font-weight: 900;
+  color: var(--ink);
 }
 
 .brand-mark {
@@ -65,75 +63,29 @@ textarea {
   height: 36px;
   border-radius: 8px;
   object-fit: contain;
+  flex-shrink: 0;
 }
 
-.topbar-main {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 18px;
-  min-width: 0;
-  padding-left: 24px;
-}
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  position: relative;
-}
-
-.session-chip-button {
-  max-width: min(360px, 46vw);
-  min-height: 38px;
-  padding: 8px 10px;
+.brand-wordmark {
   color: var(--ink);
-  background: #eef4f8;
-  border: 1px solid var(--line);
-  font-size: 13px;
-}
-
-.session-chip {
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
   min-width: 0;
-  color: var(--ink);
-  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: left;
 }
 
-.session-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: 30;
-  width: min(320px, calc(100vw - 32px));
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.14);
-  padding: 12px;
-  display: grid;
-  gap: 10px;
-}
-
-.session-menu[hidden] {
-  display: none;
-}
-
-.session-menu-title {
-  margin: 0;
-  font-weight: 900;
-}
-
-.session-menu-meta {
-  margin: 0;
+.brand-product {
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .main {
@@ -643,9 +595,7 @@ td {
 }
 
 @media (max-width: 960px) {
-  .topbar,
-  .main,
-  .topbar-main {
+  .main {
     grid-template-columns: 1fr;
   }
 
@@ -656,18 +606,7 @@ td {
   .topbar {
     position: static;
     padding: 12px 16px;
-    display: grid;
-    gap: 12px;
-  }
-
-  .topbar-main {
-    padding-left: 0;
-    display: grid;
-    gap: 10px;
-  }
-
-  .topbar-actions {
-    justify-content: flex-end;
+    min-height: 60px;
   }
 
   .main {
