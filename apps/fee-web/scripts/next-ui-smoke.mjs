@@ -63,6 +63,19 @@ try {
 
     const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     assert.equal(hasHorizontalOverflow, false);
+
+    await page.goto(`${baseUrl}/sessions/fee_test_1`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "カルテから算定候補を作成" }).waitFor();
+    await page.getByText("カルテの内容").waitFor();
+
+    const detailColumns = await page.locator(".fee-detail-grid").evaluate((element) => getComputedStyle(element).gridTemplateColumns);
+    assert.equal(detailColumns.trim().split(/\s+/).length, 1, "fee detail view must use a single column to avoid overlapping panels");
+
+    const manualOrderEditorVisible = await page.getByRole("button", { name: "オーダー行を追加" }).isVisible();
+    assert.equal(manualOrderEditorVisible, false, "manual order editor must stay hidden until advanced details are opened");
+
+    const hasDetailHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+    assert.equal(hasDetailHorizontalOverflow, false);
     await browser.close();
   } catch (error) {
     await browser.close().catch(() => null);
@@ -122,24 +135,70 @@ async function installApiMocks(page) {
       }
     })
   }));
-  await page.route("**/api/fee/v1/fee/sessions**", (route) => route.fulfill({
+  await page.route("**/api/fee/v1/fee/bootstrap**", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
-      feeSessions: [{
-        feeSessionId: "fee_test_1",
-        status: "active",
-        serviceDate: "2026-06-03",
-        patientSnapshot: { displayName: "患者名未入力" },
-        facilitySnapshot: { displayName: "施設未設定" },
-        departmentSnapshot: { displayName: "診療科未指定" },
-        createdAt: "2026-06-03T09:06:00.000Z",
-        calculationResult: null,
-        reviewItems: []
+      patients: [{
+        patientId: "patient_1",
+        displayName: "患者名未入力",
+        primaryPatientNumber: "1234",
+        externalPatientIds: ["1234"]
       }],
-      page: 1,
-      pageSize: 20,
-      totalCount: 1,
-      totalPages: 1
+      facilities: [{
+        facilityId: "facility_1",
+        displayName: "prod-test",
+        medicalInstitutionCode: ""
+      }],
+      departments: [{
+        departmentId: "department_1",
+        displayName: "General"
+      }],
+      masterStatus: { available: true }
     })
   }));
+  await page.route("**/api/fee/v1/fee/sessions**", (route) => {
+    if (route.request().url().includes("/fee_test_1/detail")) {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          feeSession: {
+            feeSessionId: "fee_test_1",
+            status: "active",
+            patientId: "patient_1",
+            patientSnapshot: { displayName: "患者名未入力" },
+            facilityId: "facility_1",
+            serviceDate: "2026-06-03",
+            claimMonth: "2026-06",
+            setting: "outpatient",
+            clinicalText: "A（Assessment：評価）\n熱傷創、上皮化進行中\n感染兆候なし",
+            diagnoses: [],
+            orders: [],
+            calculationResult: null
+          },
+          reviewItems: [],
+          receiptDraft: null
+        })
+      });
+    }
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        feeSessions: [{
+          feeSessionId: "fee_test_1",
+          status: "active",
+          serviceDate: "2026-06-03",
+          patientSnapshot: { displayName: "患者名未入力" },
+          facilitySnapshot: { displayName: "施設未設定" },
+          departmentSnapshot: { displayName: "診療科未指定" },
+          createdAt: "2026-06-03T09:06:00.000Z",
+          calculationResult: null,
+          reviewItems: []
+        }],
+        page: 1,
+        pageSize: 20,
+        totalCount: 1,
+        totalPages: 1
+      })
+    });
+  });
 }

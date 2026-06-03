@@ -322,6 +322,7 @@ button:disabled,
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
+  min-width: 0;
   padding: 22px;
 }
 
@@ -483,9 +484,13 @@ button:disabled,
 
 .fee-detail-grid {
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) minmax(0, 1.35fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   align-items: start;
+}
+
+.fee-detail-grid > * {
+  min-width: 0;
 }
 
 .fee-detail-main,
@@ -513,7 +518,12 @@ button:disabled,
 .fee-detail-form textarea,
 .patient-create-form textarea {
   min-height: 100px;
+  max-width: 100%;
   resize: vertical;
+}
+
+.fee-detail-form .clinical-textarea {
+  min-height: 260px;
 }
 
 .fee-detail-form small,
@@ -638,6 +648,10 @@ button:disabled,
   padding: 12px;
 }
 
+.order-editor-row > * {
+  min-width: 0;
+}
+
 .btn--sm {
   min-height: 36px;
   padding: 8px 10px;
@@ -660,6 +674,7 @@ button:disabled,
 .advanced-fee-inputs {
   border: 1px solid var(--line);
   border-radius: 8px;
+  min-width: 0;
   padding: 12px;
   background: #fbfdff;
 }
@@ -671,6 +686,16 @@ button:disabled,
 
 .advanced-fee-inputs-grid {
   margin-top: 12px;
+}
+
+.advanced-fee-inputs-body {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.advanced-fee-inputs--nested {
+  background: #fff;
 }
 
 .mono-textarea {

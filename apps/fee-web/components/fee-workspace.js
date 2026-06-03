@@ -22,6 +22,23 @@ const MASTER_TYPES = [
   ["comment", "コメント"],
   ["all", "すべて"]
 ];
+const CLINICAL_ORDER_RULES = [
+  { orderType: "lab", localName: "検体検査", patterns: [/検査/u, /採血/u, /血液/u, /尿検査/u, /CRP/iu, /HbA1c/iu] },
+  { orderType: "procedure", localName: "処置・手技", patterns: [/処置/u, /創傷/u, /創部/u, /熱傷/u, /洗浄/u, /消毒/u, /縫合/u, /抜糸/u] },
+  { orderType: "drug", localName: "薬剤処方", patterns: [/処方/u, /内服/u, /外用/u, /軟膏/u, /クリーム/u, /ゲーベン/u, /薬/u] },
+  { orderType: "material", localName: "特定器材・材料", patterns: [/ガーゼ/u, /包帯/u, /テープ/u, /材料/u, /カテーテル/u] },
+  { orderType: "injection", localName: "注射", patterns: [/注射/u, /点滴/u, /静注/u, /皮下注/u] },
+  { orderType: "imaging", localName: "画像診断", patterns: [/画像/u, /レントゲン/u, /X線/iu, /CT/iu, /MRI/iu] },
+  { orderType: "treatment", localName: "医学管理等", patterns: [/指導/u, /管理/u, /療養/u, /説明/u] }
+];
+const CLINICAL_DIAGNOSIS_RULES = [
+  { name: "熱傷", patterns: [/熱傷/u, /やけど/u] },
+  { name: "創傷", patterns: [/創傷/u, /創部/u, /裂創/u, /擦過傷/u] },
+  { name: "急性上気道炎疑い", patterns: [/風邪/u, /上気道/u, /咽頭/u, /咳/u, /鼻汁/u, /発熱/u] },
+  { name: "高血圧症", patterns: [/高血圧/u] },
+  { name: "糖尿病", patterns: [/糖尿病/u, /HbA1c/iu] },
+  { name: "脂質異常症", patterns: [/脂質異常/u, /高脂血/u] }
+];
 
 export function FeeWorkspace({ mode = "list", sessionId = "" }) {
   if (mode === "new") {
@@ -111,7 +128,7 @@ function FeeSessionListView() {
         <div>
           <span className="label">新しい算定</span>
           <h2>算定記録を作成します</h2>
-          <p>患者、診療日、オーダーを入力して算定候補を作成します。</p>
+          <p>患者とカルテ本文を入力して算定候補を作成します。</p>
         </div>
         <button className="btn btn--primary" disabled={creating} onClick={createSession} type="button">
           算定を開始
@@ -480,29 +497,15 @@ function FeeSessionDetailView({ sessionId }) {
 
       {message ? <div className={`fee-message fee-message--${message.type}`} role="status">{message.text}</div> : null}
 
-      <div className="notice-card">
-        <strong>本画面は確定請求ではありません</strong>
-        <p>公式マスターと入力情報から算定候補を作成し、レビューが必要な理由を表示します。請求確定前に算定根拠、施設基準、コメント、月内履歴を確認してください。</p>
-      </div>
-
       <div className="fee-detail-grid">
         <section className="fee-card">
           <div className="fee-section-head">
             <div>
-              <h2>算定条件</h2>
-              <p>患者、施設、診療日、オーダーを保存してから算定します。</p>
+              <h2>カルテから算定候補を作成</h2>
+              <p>患者を選び、カルテ本文を貼り付けるだけで算定候補を作成します。</p>
             </div>
             <span className="badge review">要レビュー前提</span>
           </div>
-
-          <ScopeNotice setting={form.setting} />
-          <MasterStatus available={masterSearchAvailable} />
-          <PatientCreateForm
-            disabled={busy}
-            patient={newPatient}
-            setPatient={setNewPatient}
-            onSubmit={createPatient}
-          />
 
           <form className="fee-detail-form" onSubmit={handleSave}>
             <label>
@@ -513,125 +516,145 @@ function FeeSessionDetailView({ sessionId }) {
                 onChange={(event) => setPatientFilter(event.target.value)}
               />
             </label>
-            <div className="fee-form-grid fee-form-grid--two">
-              <label>
-                <span>患者</span>
-                <select value={form.patientId} onChange={(event) => updateForm("patientId", event.target.value)}>
-                  <option value="">患者を選択</option>
-                  {filteredPatients.map((patient) => (
-                    <option key={patient.patientId} value={patient.patientId}>
-                      {patient.displayName} ({patient.patientCode || patient.primaryPatientNumber || patient.externalPatientIds?.[0] || patient.patientId})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {facilities.length > 1 ? (
-                <label>
-                  <span>施設</span>
-                  <select value={form.facilityId || defaultFacilityId} onChange={(event) => updateForm("facilityId", event.target.value)}>
-                    <option value="">施設を選択</option>
-                    {facilities.map((facility) => (
-                      <option key={facility.facilityId} value={facility.facilityId}>
-                        {facility.displayName} ({facility.medicalInstitutionCode || "code未設定"})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              <label>
-                <span>診療科</span>
-                <select value={form.departmentId} onChange={(event) => updateForm("departmentId", event.target.value)}>
-                  <option value="">未指定</option>
-                  {departments.map((department) => (
-                    <option key={department.departmentId} value={department.departmentId}>
-                      {department.displayName || "名称未設定"}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>区分</span>
-                <select value={form.setting} onChange={(event) => updateForm("setting", event.target.value)}>
-                  <option value="outpatient">外来</option>
-                  <option value="inpatient">入院（限定対応）</option>
-                </select>
-              </label>
-              <label>
-                <span>診療日</span>
-                <input type="date" value={form.serviceDate} onChange={(event) => updateForm("serviceDate", event.target.value)} />
-              </label>
-              <label>
-                <span>請求月</span>
-                <input type="month" value={form.claimMonth} onChange={(event) => updateForm("claimMonth", event.target.value)} />
-              </label>
-            </div>
             <label>
-              <span>診療テキスト</span>
-              <textarea value={form.clinicalText} onChange={(event) => updateForm("clinicalText", event.target.value)} />
+              <span>患者</span>
+              <select value={form.patientId} onChange={(event) => updateForm("patientId", event.target.value)}>
+                <option value="">患者を選択</option>
+                {filteredPatients.map((patient) => (
+                  <option key={patient.patientId} value={patient.patientId}>
+                    {patient.displayName} ({patient.patientCode || patient.primaryPatientNumber || patient.externalPatientIds?.[0] || patient.patientId})
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
-              <span>病名</span>
+              <span>カルテの内容</span>
               <textarea
-                placeholder={"例: 高血圧症\n糖尿病疑い"}
-                value={form.diagnosesText}
-                onChange={(event) => updateForm("diagnosesText", event.target.value)}
+                className="clinical-textarea"
+                placeholder={"S/O/A/Pや診療メモをそのまま貼り付けてください。"}
+                value={form.clinicalText}
+                onChange={(event) => updateForm("clinicalText", event.target.value)}
               />
-              <small>未入力でも算定候補は作成できますが、病名不足としてレビューに出します。</small>
+              <small>本文から病名・オーダー候補を自動補完します。必要な場合だけ詳細を開いて修正してください。</small>
             </label>
 
-            <div className="order-editor-field">
-              <span className="field-label">オーダー</span>
-              <p className="field-note">マスター検索から追加するか、種別、名称、標準コード、数量を行ごとに入力してください。</p>
-              <div className="master-search-panel">
-                <div className="master-search-controls">
-                  <select value={masterType} onChange={(event) => setMasterType(event.target.value)} disabled={!masterSearchAvailable}>
-                    {MASTER_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                  <input
-                    type="search"
-                    placeholder={masterSearchAvailable ? "名称またはコードで検索" : "マスター検索APIの反映待ちです"}
-                    value={masterQuery}
-                    onChange={(event) => setMasterQuery(event.target.value)}
-                    disabled={!masterSearchAvailable}
-                  />
-                </div>
-                <MasterSearchResults
-                  available={masterSearchAvailable}
-                  items={masterItems}
-                  query={masterQuery}
-                  onAdd={addMasterSearchItem}
+            <details className="advanced-fee-inputs fee-detail-advanced">
+              <summary>詳細を確認・修正</summary>
+              <div className="advanced-fee-inputs-body">
+                <ScopeNotice setting={form.setting} />
+                <MasterStatus available={masterSearchAvailable} />
+                <PatientCreateForm
+                  disabled={busy}
+                  patient={newPatient}
+                  setPatient={setNewPatient}
+                  onSubmit={createPatient}
                 />
-              </div>
-              <OrderEditor rows={orderRows} onAdd={addOrderRow} onRemove={removeOrderRow} onUpdate={updateOrderRow} />
-            </div>
+                <div className="fee-form-grid fee-form-grid--two">
+                  {facilities.length > 1 ? (
+                    <label>
+                      <span>施設</span>
+                      <select value={form.facilityId || defaultFacilityId} onChange={(event) => updateForm("facilityId", event.target.value)}>
+                        <option value="">施設を選択</option>
+                        {facilities.map((facility) => (
+                          <option key={facility.facilityId} value={facility.facilityId}>
+                            {facility.displayName} ({facility.medicalInstitutionCode || "code未設定"})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                  <label>
+                    <span>診療科</span>
+                    <select value={form.departmentId} onChange={(event) => updateForm("departmentId", event.target.value)}>
+                      <option value="">未指定</option>
+                      {departments.map((department) => (
+                        <option key={department.departmentId} value={department.departmentId}>
+                          {department.displayName || "名称未設定"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>区分</span>
+                    <select value={form.setting} onChange={(event) => updateForm("setting", event.target.value)}>
+                      <option value="outpatient">外来</option>
+                      <option value="inpatient">入院（限定対応）</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>診療日</span>
+                    <input type="date" value={form.serviceDate} onChange={(event) => updateForm("serviceDate", event.target.value)} />
+                  </label>
+                  <label>
+                    <span>請求月</span>
+                    <input type="month" value={form.claimMonth} onChange={(event) => updateForm("claimMonth", event.target.value)} />
+                  </label>
+                </div>
+                <label>
+                  <span>病名</span>
+                  <textarea
+                    placeholder={"例: 高血圧症\n糖尿病疑い"}
+                    value={form.diagnosesText}
+                    onChange={(event) => updateForm("diagnosesText", event.target.value)}
+                  />
+                  <small>未入力の場合はカルテ本文から候補を補完し、不足時はレビューに出します。</small>
+                </label>
 
-            <details className="advanced-fee-inputs">
-              <summary>詳細条件・算定オプション</summary>
-              <div className="fee-form-grid fee-form-grid--two advanced-fee-inputs-grid">
-                <label>
-                  <span>詳細条件 JSON</span>
-                  <textarea
-                    className="mono-textarea"
-                    spellCheck={false}
-                    value={form.claimContextText}
-                    onChange={(event) => updateForm("claimContextText", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>算定オプション JSON</span>
-                  <textarea
-                    className="mono-textarea"
-                    spellCheck={false}
-                    value={form.calculationOptionsText}
-                    onChange={(event) => updateForm("calculationOptionsText", event.target.value)}
-                  />
-                </label>
+                <div className="order-editor-field">
+                  <span className="field-label">オーダー</span>
+                  <p className="field-note">通常はカルテ本文から候補を補完します。必要な場合のみ、マスター検索または手入力で修正してください。</p>
+                  <div className="master-search-panel">
+                    <div className="master-search-controls">
+                      <select value={masterType} onChange={(event) => setMasterType(event.target.value)} disabled={!masterSearchAvailable}>
+                        {MASTER_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </select>
+                      <input
+                        type="search"
+                        placeholder={masterSearchAvailable ? "名称またはコードで検索" : "マスター検索APIの反映待ちです"}
+                        value={masterQuery}
+                        onChange={(event) => setMasterQuery(event.target.value)}
+                        disabled={!masterSearchAvailable}
+                      />
+                    </div>
+                    <MasterSearchResults
+                      available={masterSearchAvailable}
+                      items={masterItems}
+                      query={masterQuery}
+                      onAdd={addMasterSearchItem}
+                    />
+                  </div>
+                  <OrderEditor rows={orderRows} onAdd={addOrderRow} onRemove={removeOrderRow} onUpdate={updateOrderRow} />
+                </div>
+
+                <details className="advanced-fee-inputs advanced-fee-inputs--nested">
+                  <summary>詳細条件・算定オプション</summary>
+                  <div className="fee-form-grid fee-form-grid--two advanced-fee-inputs-grid">
+                    <label>
+                      <span>詳細条件 JSON</span>
+                      <textarea
+                        className="mono-textarea"
+                        spellCheck={false}
+                        value={form.claimContextText}
+                        onChange={(event) => updateForm("claimContextText", event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>算定オプション JSON</span>
+                      <textarea
+                        className="mono-textarea"
+                        spellCheck={false}
+                        value={form.calculationOptionsText}
+                        onChange={(event) => updateForm("calculationOptionsText", event.target.value)}
+                      />
+                    </label>
+                  </div>
+                </details>
               </div>
             </details>
 
             <div className="button-row">
               <button className="btn btn--ghost" disabled={busy} type="submit">入力を保存</button>
-              <button className="btn btn--primary" disabled={busy} onClick={calculate} type="button">算定候補を作成</button>
+              <button className="btn btn--primary" disabled={busy} onClick={calculate} type="button">カルテから算定候補を作成</button>
               <button className="btn btn--ghost" disabled={busy} onClick={loadAll} type="button">最新の状態に更新</button>
             </div>
           </form>
@@ -711,7 +734,6 @@ function PatientCreateForm({ disabled, onSubmit, patient, setPatient }) {
     </details>
   );
 }
-
 function MasterStatus({ available }) {
   if (available) {
     return null;
@@ -800,7 +822,7 @@ function CalculationResult({ calculation, feeSession }) {
           <strong>算定記録を準備しました</strong>
           <p>{feeSession?.patientSnapshot?.displayName || feeSession?.patientId || "患者未選択"} / {feeSession?.serviceDate || "診療日未設定"} / {statusLabel(feeSession?.status || "ready")}</p>
         </div>
-        <p className="field-note">オーダーと診療テキストを確認し、「算定候補を作成」で候補を作成してください。</p>
+        <p className="field-note">患者とカルテ本文を確認し、「カルテから算定候補を作成」で候補を作成してください。</p>
       </div>
     );
   }
@@ -1056,6 +1078,7 @@ function applyDetailResponse(response, setters) {
 
 function buildFeeSessionPayload({ defaultFacilityId, form, orderRows, patients }) {
   const patient = patients.find((item) => item.patientId === form.patientId);
+  const chartInput = buildChartOnlyInput(form, orderRows);
   return {
     patientId: emptyToNull(form.patientId),
     patientRef: patient?.externalPatientIds?.[0] || emptyToNull(form.patientId),
@@ -1065,8 +1088,8 @@ function buildFeeSessionPayload({ defaultFacilityId, form, orderRows, patients }
     claimMonth: emptyToNull(form.claimMonth),
     setting: form.setting,
     clinicalText: form.clinicalText,
-    diagnoses: parseDiagnoses(form.diagnosesText),
-    orders: parseOrdersFromRows(orderRows),
+    diagnoses: parseDiagnoses(chartInput.diagnosesText),
+    orders: parseOrdersFromRows(chartInput.orderRows),
     claimContext: parseJsonObjectField(form.claimContextText, "詳細条件 JSON"),
     calculationOptions: parseJsonObjectField(form.calculationOptionsText, "算定オプション JSON")
   };
@@ -1124,6 +1147,77 @@ function sessionListQuery({ page, search, status }) {
     params.set("status", status);
   }
   return `?${params.toString()}`;
+}
+
+function buildChartOnlyInput(form, orderRows) {
+  const hasManualOrders = parseOrdersFromRows(orderRows).length > 0;
+  const derivedOrderRows = hasManualOrders ? [] : deriveOrderRowsFromClinicalText(form.clinicalText);
+  const diagnosesText = String(form.diagnosesText || "").trim() || deriveDiagnosesTextFromClinicalText(form.clinicalText);
+  return {
+    diagnosesText,
+    orderRows: hasManualOrders || !derivedOrderRows.length ? orderRows : derivedOrderRows
+  };
+}
+
+function deriveOrderRowsFromClinicalText(value) {
+  const text = normalizeClinicalText(value);
+  if (!text) {
+    return [];
+  }
+  const rows = [];
+  for (const rule of CLINICAL_ORDER_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(text))) {
+      rows.push({
+        orderType: rule.orderType,
+        localName: rule.localName,
+        standardCode: "",
+        quantity: "1"
+      });
+    }
+  }
+  if (!rows.length && text.length >= 20) {
+    rows.push({
+      orderType: "other",
+      localName: "カルテ記載内容から算定候補を確認",
+      standardCode: "",
+      quantity: "1"
+    });
+  }
+  return dedupeRows(rows);
+}
+
+function deriveDiagnosesTextFromClinicalText(value) {
+  const text = normalizeClinicalText(value);
+  if (!text) {
+    return "";
+  }
+  const explicitDiagnosis = text.match(/(?:病名|診断)[:：\s]+([^\n]+)/u)?.[1]?.trim();
+  if (explicitDiagnosis) {
+    return explicitDiagnosis;
+  }
+  const names = [];
+  for (const rule of CLINICAL_DIAGNOSIS_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(text))) {
+      names.push(rule.name);
+    }
+  }
+  return Array.from(new Set(names)).join("\n");
+}
+
+function normalizeClinicalText(value) {
+  return String(value || "").trim();
+}
+
+function dedupeRows(rows) {
+  const seen = new Set();
+  return rows.filter((row) => {
+    const key = `${row.orderType}:${row.localName}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function parseDiagnoses(value) {
