@@ -299,7 +299,18 @@ button:disabled,
 }
 
 .fee-shell--detail {
+  width: 100%;
+  margin: 16px 0 0;
+  padding-inline: 20px;
   padding-bottom: 96px;
+}
+
+/* 詳細画面ではトップバーも本文と同じ全幅(左右20px)に揃える（カルテ作成と同様）。
+   セッション一覧など他画面は従来どおり中央寄せ1480pxのまま。 */
+body:has(.fee-shell--detail) .site-nav {
+  width: 100%;
+  max-width: none;
+  padding-inline: 20px;
 }
 
 .fee-page-head {
