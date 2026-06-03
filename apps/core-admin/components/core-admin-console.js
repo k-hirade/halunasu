@@ -2,67 +2,165 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAdminNav } from "./admin-nav-context";
 import { usePlatformAuth } from "./platform-auth";
 
 const ADMIN_SECTIONS = [
   {
+    id: "organizations",
+    group: "病院データ",
+    label: "病院",
+    title: "病院一覧",
+    description: "病院コードと表示名を管理します。",
+    icon: "settings",
+    visible: (session) => hasGlobalRole(session, "platform_admin")
+  },
+  {
     id: "members",
     group: "病院データ",
     label: "職員",
-    description: "ログイン情報、全体権限、アプリごとの権限を管理します。"
+    title: "職員一覧",
+    description: "ログイン情報、全体権限、アプリごとの権限を管理します。",
+    icon: "settings",
+    visible: canManageOrg
   },
   {
     id: "facilities",
     group: "病院データ",
     label: "施設",
-    description: "医療機関コードや厚生局情報を管理します。"
+    title: "施設一覧",
+    description: "医療機関コードや厚生局情報を管理します。",
+    icon: "fileText",
+    visible: () => true
   },
   {
     id: "departments",
     group: "病院データ",
     label: "診療科",
-    description: "施設ごとの診療科を管理します。"
+    title: "診療科一覧",
+    description: "施設ごとの診療科を管理します。",
+    icon: "layoutSplit",
+    visible: () => true
   },
   {
     id: "patients",
     group: "病院データ",
     label: "患者",
-    description: "各アプリで使う患者情報を管理します。"
+    title: "患者一覧",
+    description: "各アプリから参照する患者名簿を管理します。",
+    icon: "fileText",
+    visible: () => true
   },
   {
     id: "entitlements",
     group: "運用",
     label: "アプリ利用設定",
-    description: "契約中アプリと利用状態を管理します。"
+    title: "アプリ利用設定",
+    description: "利用状態を確認します。契約状態の変更は決済処理またはシステム処理で反映されます。",
+    icon: "checkCircle",
+    visible: canManageBilling
   },
   {
     id: "data-requests",
     group: "運用",
     label: "個人情報の依頼",
-    description: "個人情報に関する依頼を管理します。"
+    title: "個人情報の依頼",
+    description: "患者情報の確認、出力、訂正、削除の依頼を管理します。",
+    icon: "fileText",
+    visible: canManageOrg
   },
   {
     id: "audit",
     group: "運用",
-    label: "操作ログ",
-    description: "ログインやデータ変更の履歴を確認します。"
-  },
-  {
-    id: "account",
-    group: "運用",
-    label: "アカウント",
-    description: "ログイン中の職員情報と権限を確認します。"
+    label: "操作履歴",
+    title: "操作履歴",
+    description: "ログインやデータ変更の履歴を確認します。",
+    icon: "alertCircle",
+    visible: canManageOrg
   }
 ];
+
+const ICONS = {
+  alertCircle: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="8" x2="12" y2="12" />
+      <line x1="12" y1="16" x2="12.01" y2="16" />
+    </>
+  ),
+  check: <polyline points="20 6 9 17 4 12" />,
+  checkCircle: (
+    <>
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <polyline points="22 4 12 14.01 9 11.01" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </>
+  ),
+  fileText: (
+    <>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="9" y1="13" x2="15" y2="13" />
+      <line x1="9" y1="17" x2="15" y2="17" />
+    </>
+  ),
+  layoutSplit: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <line x1="12" y1="4" x2="12" y2="20" />
+    </>
+  ),
+  logOut: (
+    <>
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </>
+  ),
+  refreshCw: (
+    <>
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </>
+  ),
+  settings: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.13.31.39.56.7.7.25.11.52.2.81.3H21a2 2 0 1 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z" />
+    </>
+  ),
+  x: (
+    <>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </>
+  )
+};
 
 export function CoreAdminConsole() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const auth = usePlatformAuth();
-  const activeTab = searchParams.get("section") || "home";
-  const { registerAdminNav, clearAdminNav } = useAdminNav();
-  const currentSection = ADMIN_SECTIONS.find((section) => section.id === activeTab) || null;
+  const requestedTab = searchParams.get("section") || "";
+  const visibleSections = useMemo(
+    () => ADMIN_SECTIONS.filter((section) => section.visible(auth.session)),
+    [auth.session]
+  );
+  const activeTab = visibleSections.some((section) => section.id === requestedTab)
+    ? requestedTab
+    : visibleSections[0]?.id || "facilities";
+  const currentSection = ADMIN_SECTIONS.find((section) => section.id === activeTab) || ADMIN_SECTIONS[0];
   const [bootstrap, setBootstrap] = useState({});
   const [loadingSection, setLoadingSection] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -71,16 +169,7 @@ export function CoreAdminConsole() {
   const [auditFilter, setAuditFilter] = useState("");
   const [modal, setModal] = useState(null);
 
-  const navSections = useMemo(() => ADMIN_SECTIONS.map((section) => ({
-    ...section,
-    href: `/admin?section=${encodeURIComponent(section.id)}`
-  })), []);
-
   const loadSection = useCallback(async (tab = activeTab) => {
-    if (tab === "home" || tab === "account") {
-      return;
-    }
-
     const orgId = auth.session?.orgId;
     if (!orgId) {
       return;
@@ -105,22 +194,23 @@ export function CoreAdminConsole() {
   }, [activeTab, auth]);
 
   useEffect(() => {
-    registerAdminNav({
-      activeTab,
-      currentPage: currentSection,
-      isAvailable: true,
-      sections: navSections,
-      selectTab: (tabId) => {
-        router.push(tabId === "home" ? "/admin" : `/admin?section=${encodeURIComponent(tabId)}`);
-      }
-    });
-
-    return () => clearAdminNav();
-  }, [activeTab, clearAdminNav, currentSection, navSections, registerAdminNav, router]);
+    if (requestedTab !== activeTab) {
+      router.replace(`/admin?section=${encodeURIComponent(activeTab)}`);
+    }
+  }, [activeTab, requestedTab, router]);
 
   useEffect(() => {
     loadSection(activeTab);
   }, [activeTab, loadSection]);
+
+  function selectTab(tabId) {
+    router.push(`/admin?section=${encodeURIComponent(tabId)}`);
+  }
+
+  async function refreshCurrentView() {
+    setMessage(null);
+    await loadSection(activeTab);
+  }
 
   async function createItem(type, formData) {
     const config = createPayload(type, formData, {
@@ -164,7 +254,7 @@ export function CoreAdminConsole() {
   }
 
   async function resetMfa(memberId) {
-    if (!auth.session?.orgId || !window.confirm("この職員の2段階認証をリセットしますか？")) {
+    if (!auth.session?.orgId || !window.confirm("この職員の2段階認証登録をリセットしますか？")) {
       return;
     }
     setMessage(null);
@@ -174,10 +264,10 @@ export function CoreAdminConsole() {
         csrf: true,
         body: {}
       });
-      setMessage({ type: "success", text: "2段階認証をリセットしました。" });
+      setMessage({ type: "success", text: "2段階認証登録をリセットしました。" });
       await loadSection("members");
     } catch (error) {
-      setMessage({ type: "error", text: toUserFacingErrorMessage(error, "2段階認証をリセットできませんでした。") });
+      setMessage({ type: "error", text: toUserFacingErrorMessage(error, "2段階認証登録をリセットできませんでした。") });
     }
   }
 
@@ -210,71 +300,53 @@ export function CoreAdminConsole() {
     setModal({ mode: "edit", type, item });
   }
 
-  if (activeTab === "home") {
-    return (
-      <main className="core-admin-shell">
-        <header className="core-page-head">
-          <div>
-            <h1>病院共通データ</h1>
-            <p>各アプリで使う病院の基本情報を管理します。</p>
-          </div>
-        </header>
-        <section className="settings-home">
-          {["病院データ", "運用"].map((group) => (
-            <div className="settings-home-group" key={group}>
-              <h2>{group}</h2>
-              <div className="settings-home-list">
-                {ADMIN_SECTIONS.filter((section) => section.group === group).map((section) => (
-                  <a className="settings-home-item" href={`/admin?section=${section.id}`} key={section.id}>
-                    <span className="settings-home-copy">
-                      <strong>{section.label}</strong>
-                      <small>{section.description}</small>
-                    </span>
-                    <span className="settings-home-open">開く</span>
-                  </a>
-                ))}
-              </div>
-            </div>
-          ))}
-        </section>
-      </main>
-    );
-  }
-
   const isLoading = loadingSection === activeTab;
 
   return (
-    <main className="core-admin-shell">
-      <header className="core-page-head">
-        <div>
-          <h1>{currentSection?.label || "病院共通データ"}</h1>
-          <p>{currentSection?.description || "病院共通データを管理します。"}</p>
-        </div>
-        <HeaderActions
+    <div className="app">
+      <Topbar
+        auth={auth}
+        onRefresh={refreshCurrentView}
+      />
+      <main className="main">
+        <Sidebar
           activeTab={activeTab}
-          auditFilter={auditFilter}
-          canManageBilling={canManageBilling(auth.session)}
-          canManageOrg={canManageOrg(auth.session)}
-          onAuditFilter={setAuditFilter}
-          onCreate={openCreateModal}
-          onRefresh={() => loadSection(activeTab)}
-          patientFilter={patientFilter}
-          onPatientFilter={setPatientFilter}
+          onSelect={selectTab}
+          sections={visibleSections}
         />
-      </header>
-      {message ? <div className={`core-message core-message--${message.type}`} role="status">{message.text}</div> : null}
-      <section className="core-card">
-        {errorMessage ? <div className="core-error-state" role="status">{errorMessage}</div> : null}
-        {isLoading ? <div className="core-loading-state">読み込み中</div> : renderSection(activeTab, {
-          auth,
-          auditFilter,
-          bootstrap,
-          completeDataRequest,
-          openEditModal,
-          patientFilter,
-          resetMfa
-        })}
-      </section>
+        <section className="workspace">
+          {message ? <div className={`message ${message.type}`} role="status">{message.text}</div> : <div className="message" />}
+          <section className="view active" role="tabpanel" aria-labelledby={`view-title-${activeTab}`}>
+            <ViewHeader
+              activeTab={activeTab}
+              auditFilter={auditFilter}
+              canManageOrg={canManageOrg(auth.session)}
+              canManagePlatform={hasGlobalRole(auth.session, "platform_admin")}
+              currentSection={currentSection}
+              onAuditFilter={setAuditFilter}
+              onCreate={openCreateModal}
+              onPatientFilter={setPatientFilter}
+              patientFilter={patientFilter}
+            />
+            <div className="table-panel">
+              {errorMessage ? <div className="empty-state error-state" role="status">{errorMessage}</div> : null}
+              {isLoading ? (
+                <div className="loading-state">読み込み中</div>
+              ) : (
+                renderSection(activeTab, {
+                  auth,
+                  auditFilter,
+                  bootstrap,
+                  completeDataRequest,
+                  openEditModal,
+                  patientFilter,
+                  resetMfa
+                })
+              )}
+            </div>
+          </section>
+        </section>
+      </main>
       {modal ? (
         <EditModal
           bootstrap={bootstrap}
@@ -284,51 +356,157 @@ export function CoreAdminConsole() {
           onUpdate={updateItem}
         />
       ) : null}
-    </main>
+    </div>
   );
 }
 
-function HeaderActions({
+function Topbar({ auth, onRefresh }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const sessionLabel = `${auth.session?.organizationCode || "-"} / ${auth.session?.loginId || "-"}`;
+  const roleText = labelsForList((auth.session?.globalRoles || []).map(roleLabel)) || "なし";
+
+  return (
+    <header className="topbar">
+      <div className="brand">
+        <img alt="ハルナス" className="brand-mark" height="36" src="/brand/harunas-mark.png" width="36" />
+        <div>施設管理画面</div>
+      </div>
+      <div className="topbar-main">
+        <div className="topbar-actions">
+          <button className="secondary icon-only" onClick={onRefresh} type="button" aria-label="再読み込み">
+            <Icon name="refreshCw" />
+          </button>
+          <button
+            className="session-chip-button"
+            onClick={() => setMenuOpen((current) => !current)}
+            type="button"
+            aria-expanded={menuOpen}
+            aria-controls="session-menu"
+          >
+            <Icon name="settings" />
+            <span className="session-chip">{sessionLabel}</span>
+          </button>
+          <div className="session-menu" id="session-menu" hidden={!menuOpen}>
+            <p className="session-menu-title">{sessionLabel}</p>
+            <p className="session-menu-meta">権限: {roleText}</p>
+            <button className="danger" onClick={auth.logout} type="button">
+              <Icon name="logOut" />
+              ログアウト
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function Sidebar({ activeTab, onSelect, sections }) {
+  const groups = ["病院データ", "運用"]
+    .map((group) => ({
+      group,
+      sections: sections.filter((section) => section.group === group)
+    }))
+    .filter((entry) => entry.sections.length);
+
+  return (
+    <aside className="sidebar" aria-label="施設管理ナビゲーション">
+      <nav className="side-nav">
+        {groups.map(({ group, sections: groupSections }) => (
+          <div className="nav-group" key={group}>
+            <div className="nav-group-label">{group}</div>
+            {groupSections.map((section) => (
+              <button
+                aria-selected={activeTab === section.id}
+                className={`tab ${activeTab === section.id ? "active" : ""}`}
+                key={section.id}
+                onClick={() => onSelect(section.id)}
+                role="tab"
+                type="button"
+              >
+                <Icon name={section.icon} />
+                {section.label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
+    </aside>
+  );
+}
+
+function ViewHeader({
   activeTab,
   auditFilter,
-  canManageBilling,
-  canManageOrg,
+  canManageOrg: canCreateOrgData,
+  canManagePlatform,
+  currentSection,
   onAuditFilter,
   onCreate,
   onPatientFilter,
-  onRefresh,
   patientFilter
 }) {
-  if (activeTab === "account") {
-    return null;
-  }
   return (
-    <div className="core-header-actions">
-      {activeTab === "patients" ? (
-        <input
-          className="table-search"
-          placeholder="患者名・患者番号で検索"
-          type="search"
-          value={patientFilter}
-          onChange={(event) => onPatientFilter(event.target.value)}
-        />
-      ) : null}
-      {activeTab === "audit" ? (
-        <input
-          className="table-search"
-          placeholder="種別・操作者で検索"
-          type="search"
-          value={auditFilter}
-          onChange={(event) => onAuditFilter(event.target.value)}
-        />
-      ) : null}
-      <button className="btn btn--ghost" onClick={onRefresh} type="button">更新</button>
-      {activeTab === "members" && canManageOrg ? <button className="btn btn--primary" onClick={() => onCreate("member")} type="button">新規</button> : null}
-      {activeTab === "facilities" && canManageOrg ? <button className="btn btn--primary" onClick={() => onCreate("facility")} type="button">新規</button> : null}
-      {activeTab === "departments" && canManageOrg ? <button className="btn btn--primary" onClick={() => onCreate("department")} type="button">新規</button> : null}
-      {activeTab === "patients" && canManageOrg ? <button className="btn btn--primary" onClick={() => onCreate("patient")} type="button">新規</button> : null}
-      {activeTab === "data-requests" && canManageOrg ? <button className="btn btn--primary" onClick={() => onCreate("dataRequest")} type="button">新規</button> : null}
-      {activeTab === "entitlements" && !canManageBilling ? <span className="core-action-note">閲覧のみ</span> : null}
+    <div className="view-head">
+      <div className="view-title">
+        <h1 id={`view-title-${activeTab}`}>{currentSection.title}</h1>
+        <p>{currentSection.description}</p>
+      </div>
+      <div className="view-actions">
+        {activeTab === "patients" ? (
+          <input
+            className="table-search"
+            placeholder="患者名・患者番号で検索"
+            type="search"
+            value={patientFilter}
+            onChange={(event) => onPatientFilter(event.target.value)}
+          />
+        ) : null}
+        {activeTab === "audit" ? (
+          <input
+            className="table-search"
+            placeholder="種別・操作者で検索"
+            type="search"
+            value={auditFilter}
+            onChange={(event) => onAuditFilter(event.target.value)}
+          />
+        ) : null}
+        {activeTab === "organizations" && canManagePlatform ? (
+          <button className="accent" onClick={() => onCreate("organization")} type="button">
+            <Icon name="check" />
+            新規
+          </button>
+        ) : null}
+        {activeTab === "members" && canCreateOrgData ? (
+          <button className="accent" onClick={() => onCreate("member")} type="button">
+            <Icon name="check" />
+            新規
+          </button>
+        ) : null}
+        {activeTab === "facilities" && canCreateOrgData ? (
+          <button className="accent" onClick={() => onCreate("facility")} type="button">
+            <Icon name="check" />
+            新規
+          </button>
+        ) : null}
+        {activeTab === "departments" && canCreateOrgData ? (
+          <button className="accent" onClick={() => onCreate("department")} type="button">
+            <Icon name="check" />
+            新規
+          </button>
+        ) : null}
+        {activeTab === "patients" && canCreateOrgData ? (
+          <button className="accent" onClick={() => onCreate("patient")} type="button">
+            <Icon name="check" />
+            新規
+          </button>
+        ) : null}
+        {activeTab === "data-requests" && canCreateOrgData ? (
+          <button className="accent" onClick={() => onCreate("dataRequest")} type="button">
+            <Icon name="check" />
+            新規
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -336,40 +514,30 @@ function HeaderActions({
 function renderSection(activeTab, context) {
   const { auth, auditFilter, bootstrap, completeDataRequest, openEditModal, patientFilter, resetMfa } = context;
 
-  if (activeTab === "account") {
-    return (
-      <div className="core-placeholder account-summary">
-        <h2>アカウント</h2>
-        <dl className="account-definition-list">
-          <div>
-            <dt>病院コード</dt>
-            <dd>{auth.session?.organizationCode || "-"}</dd>
-          </div>
-          <div>
-            <dt>個人ID</dt>
-            <dd>{auth.session?.loginId || "-"}</dd>
-          </div>
-          <div>
-            <dt>全体権限</dt>
-            <dd>{labelsForList(auth.session?.globalRoles) || "なし"}</dd>
-          </div>
-          <div>
-            <dt>2段階認証</dt>
-            <dd>{auth.session?.mfaVerified ? "確認済み" : "未確認"}</dd>
-          </div>
-        </dl>
-        <div className="account-actions">
-          <button className="btn btn--primary" onClick={auth.logout} type="button">ログアウト</button>
-        </div>
-      </div>
-    );
-  }
-
   if (["members", "data-requests", "audit"].includes(activeTab) && !canManageOrg(auth.session)) {
-    return <div className="core-empty-state">このページを表示する権限がありません。病院管理者に依頼してください。</div>;
+    return <div className="empty-state">このページを表示する権限がありません。病院管理者に依頼してください。</div>;
   }
   if (activeTab === "entitlements" && !canManageBilling(auth.session)) {
-    return <div className="core-empty-state">アプリ利用設定を見る権限がありません。契約管理者に依頼してください。</div>;
+    return <div className="empty-state">アプリ利用設定を見る権限がありません。契約管理者に依頼してください。</div>;
+  }
+
+  if (activeTab === "organizations") {
+    return (
+      <DataTable
+        empty="病院はまだ登録されていません。"
+        rows={bootstrap.organizations || []}
+        columns={[
+          ["病院コード", (item) => item.organizationCode],
+          ["表示名", (item) => item.displayName],
+          ["状態", (item) => <StatusBadge value={item.status} />],
+          ["", (item) => (
+            <div className="row-actions">
+              <CopyButton ariaLabel="管理用IDをコピー" value={item.orgId} />
+            </div>
+          )]
+        ]}
+      />
+    );
   }
 
   if (activeTab === "members") {
@@ -380,14 +548,17 @@ function renderSection(activeTab, context) {
         columns={[
           ["個人ID", (item) => item.loginId],
           ["表示名", (item) => item.displayName],
-          ["全体権限", (item) => labelsForList(item.globalRoles) || "なし"],
+          ["全体権限", (item) => labelsForList((item.globalRoles || []).map(roleLabel)) || "なし"],
           ["アプリごとの権限", (item) => productRolesLabel(item.productRoles)],
-          ["2段階認証", (item) => item.mfaEnrolled ? "登録済み" : item.mfaRequired ? "登録が必要" : "-"],
-          ["状態", (item) => statusLabel(item.status)],
-          ["操作", (item) => (
-            <div className="core-row-actions">
-              <CopyButton value={item.loginId} />
-              <button className="btn btn--ghost btn--sm" onClick={() => resetMfa(item.memberId || item.loginId)} type="button">2段階認証リセット</button>
+          ["2段階認証", (item) => <StatusBadge value={item.mfaEnrolled ? "enrolled" : item.mfaRequired ? "required" : ""} />],
+          ["状態", (item) => <StatusBadge value={item.status} />],
+          ["", (item) => (
+            <div className="row-actions">
+              <CopyButton ariaLabel="管理用IDをコピー" value={item.memberId || item.loginId} />
+              <button className="secondary" onClick={() => resetMfa(item.memberId || item.loginId)} type="button">
+                <Icon name="refreshCw" />
+                2段階認証リセット
+              </button>
             </div>
           )]
         ]}
@@ -404,11 +575,16 @@ function renderSection(activeTab, context) {
           ["施設名", (item) => item.displayName],
           ["医療機関コード", (item) => item.medicalInstitutionCode || "-"],
           ["厚生局", (item) => item.regionalBureau || "-"],
-          ["状態", (item) => statusLabel(item.status)],
-          ["操作", (item) => (
-            <div className="core-row-actions">
-              <CopyButton value={item.facilityId} />
-              {canManageOrg(auth.session) ? <button className="btn btn--ghost btn--sm" onClick={() => openEditModal("facility", item)} type="button">編集</button> : null}
+          ["状態", (item) => <StatusBadge value={item.status} />],
+          ["", (item) => (
+            <div className="row-actions">
+              <CopyButton ariaLabel="施設IDをコピー" value={item.facilityId} />
+              {canManageOrg(auth.session) ? (
+                <button className="secondary" onClick={() => openEditModal("facility", item)} type="button">
+                  <Icon name="edit" />
+                  編集
+                </button>
+              ) : null}
             </div>
           )]
         ]}
@@ -425,11 +601,16 @@ function renderSection(activeTab, context) {
           ["診療科名", (item) => item.displayName],
           ["施設", (item) => facilityName(item.facilityId, bootstrap.facilities)],
           ["コード", (item) => item.code || "-"],
-          ["状態", (item) => statusLabel(item.status)],
-          ["操作", (item) => (
-            <div className="core-row-actions">
-              <CopyButton value={item.departmentId} />
-              {canManageOrg(auth.session) ? <button className="btn btn--ghost btn--sm" onClick={() => openEditModal("department", item)} type="button">編集</button> : null}
+          ["状態", (item) => <StatusBadge value={item.status} />],
+          ["", (item) => (
+            <div className="row-actions">
+              <CopyButton ariaLabel="診療科IDをコピー" value={item.departmentId} />
+              {canManageOrg(auth.session) ? (
+                <button className="secondary" onClick={() => openEditModal("department", item)} type="button">
+                  <Icon name="edit" />
+                  編集
+                </button>
+              ) : null}
             </div>
           )]
         ]}
@@ -449,18 +630,23 @@ function renderSection(activeTab, context) {
       : (bootstrap.patients || []);
     return (
       <DataTable
-        empty="患者はまだ登録されていません。"
+        empty={keyword ? "条件に一致する患者はいません。" : "患者はまだ登録されていません。"}
         rows={rows.slice(0, 100)}
         columns={[
           ["患者番号", (item) => item.primaryPatientNumber || "-"],
           ["氏名", (item) => item.displayName],
           ["生年月日", (item) => item.birthDate || "-"],
           ["性別", (item) => sexLabel(item.sex)],
-          ["状態", (item) => statusLabel(item.status)],
-          ["操作", (item) => (
-            <div className="core-row-actions">
-              <CopyButton value={item.patientId} />
-              {canManageOrg(auth.session) ? <button className="btn btn--ghost btn--sm" onClick={() => openEditModal("patient", item)} type="button">編集</button> : null}
+          ["状態", (item) => <StatusBadge value={item.status} />],
+          ["", (item) => (
+            <div className="row-actions">
+              <CopyButton ariaLabel="患者IDをコピー" value={item.patientId} />
+              {canManageOrg(auth.session) ? (
+                <button className="secondary" onClick={() => openEditModal("patient", item)} type="button">
+                  <Icon name="edit" />
+                  編集
+                </button>
+              ) : null}
             </div>
           )]
         ]}
@@ -475,7 +661,7 @@ function renderSection(activeTab, context) {
         rows={bootstrap.productEntitlements || []}
         columns={[
           ["アプリ", (item) => productLabel(item.productId)],
-          ["状態", (item) => statusLabel(item.status)],
+          ["状態", (item) => <StatusBadge value={item.status} />],
           ["料金プラン", (item) => item.plan || "-"],
           ["開始日", (item) => formatDateTime(item.startsAt)],
           ["終了日", (item) => formatDateTime(item.endsAt)]
@@ -493,11 +679,16 @@ function renderSection(activeTab, context) {
           ["依頼内容", (item) => requestTypeLabel(item.requestType)],
           ["対象患者", (item) => patientName(item.subjectPatientId, bootstrap.patients)],
           ["対象アプリ", (item) => labelsForList((item.productIds || []).map(productLabel)) || "-"],
-          ["状態", (item) => statusLabel(item.status)],
-          ["操作", (item) => (
-            <div className="core-row-actions">
-              <CopyButton value={item.requestId} />
-              {item.status !== "completed" ? <button className="btn btn--ghost btn--sm" onClick={() => completeDataRequest(item.requestId)} type="button">完了にする</button> : null}
+          ["状態", (item) => <StatusBadge value={item.status} />],
+          ["", (item) => (
+            <div className="row-actions">
+              <CopyButton ariaLabel="依頼IDをコピー" value={item.requestId} />
+              {item.status !== "completed" ? (
+                <button className="secondary" onClick={() => completeDataRequest(item.requestId)} type="button">
+                  <Icon name="check" />
+                  完了
+                </button>
+              ) : null}
             </div>
           )]
         ]}
@@ -512,51 +703,85 @@ function renderSection(activeTab, context) {
         event.eventType,
         event.actorLoginId,
         event.targetType,
-        event.targetId
+        event.targetId,
+        event.createdAt
       ].join(" ")).includes(keyword))
       : (bootstrap.auditEvents || []);
     return (
       <DataTable
-        empty="操作ログはまだありません。"
+        empty={keyword ? "条件に一致する操作履歴はありません。" : "操作履歴はまだありません。"}
         rows={rows.slice(0, 100)}
         columns={[
           ["日時", (item) => formatDateTime(item.createdAt)],
           ["イベント", (item) => eventTypeLabel(item.eventType)],
           ["操作者", (item) => item.actorLoginId || "-"],
           ["対象", (item) => [targetTypeLabel(item.targetType), item.targetId].filter(Boolean).join(" / ") || "-"],
-          ["操作", (item) => <CopyButton value={JSON.stringify(item)} />]
+          ["", (item) => (
+            <div className="row-actions">
+              <CopyButton ariaLabel="イベントIDをコピー" value={item.eventId || JSON.stringify(item)} />
+            </div>
+          )]
         ]}
       />
     );
   }
 
-  return <div className="core-placeholder">移行中です。</div>;
+  return <div className="empty-state">表示できるデータがありません。</div>;
 }
 
 function DataTable({ columns, empty, rows }) {
   if (!rows.length) {
-    return <div className="core-empty-state">{empty}</div>;
+    return <div className="empty-state">{empty}</div>;
   }
 
   return (
-    <div className="core-table-wrap">
-      <table className="core-data-table">
+    <div className="table-wrap">
+      <table>
         <thead>
           <tr>
-            {columns.map(([label]) => <th key={label}>{label}</th>)}
+            {columns.map(([label], index) => <th key={label || `action-${index}`}>{label}</th>)}
           </tr>
         </thead>
         <tbody>
           {rows.map((row, rowIndex) => (
-            <tr key={row.memberId || row.facilityId || row.departmentId || row.patientId || row.entitlementId || row.requestId || row.eventId || rowIndex}>
-              {columns.map(([label, getter]) => (
-                <td key={label}>{getter(row) || "-"}</td>
+            <tr key={row.orgId || row.memberId || row.facilityId || row.departmentId || row.patientId || row.entitlementId || row.productId || row.requestId || row.eventId || rowIndex}>
+              {columns.map(([label, getter], columnIndex) => (
+                <td key={label || `action-${columnIndex}`}>{cellValue(getter(row))}</td>
               ))}
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+function cellValue(value) {
+  if (value === undefined || value === null || value === "") {
+    return <span>-</span>;
+  }
+  return value;
+}
+
+function StatusBadge({ value }) {
+  const raw = String(value || "");
+  if (!raw) {
+    return <span>-</span>;
+  }
+  return <span className={`status ${statusTone(raw)}`}>{uiLabel(raw)}</span>;
+}
+
+function CopyButton({ ariaLabel, value }) {
+  async function copy() {
+    if (!value) {
+      return;
+    }
+    await navigator.clipboard?.writeText(String(value)).catch(() => null);
+  }
+  return (
+    <button className="secondary icon-only" onClick={copy} type="button" aria-label={ariaLabel || "コピー"}>
+      <Icon name="copy" />
+    </button>
   );
 }
 
@@ -590,17 +815,19 @@ function EditModal({ bootstrap, modal, onClose, onCreate, onUpdate }) {
       }
     }}>
       <section className="admin-modal-card" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
-        <button className="modal-close-button" onClick={onClose} type="button" aria-label="閉じる">x</button>
+        <button className="modal-close-button" onClick={onClose} type="button" aria-label="閉じる">
+          <Icon name="x" />
+        </button>
         <div className="admin-modal-head">
           <h2 id="edit-modal-title">{meta.title}</h2>
           <p>{meta.description}</p>
         </div>
-        {errorMessage ? <div className="core-error-state" role="status">{errorMessage}</div> : null}
+        {errorMessage ? <div className="empty-state error-state" role="status">{errorMessage}</div> : null}
         <form className="admin-modal-form" onSubmit={handleSubmit}>
           <FormFields bootstrap={bootstrap} item={modal.item || {}} mode={modal.mode} type={modal.type} />
           <div className="admin-modal-footer">
-            <button className="btn btn--ghost" disabled={submitting} onClick={onClose} type="button">キャンセル</button>
-            <button className="btn btn--primary" disabled={submitting} type="submit">{modal.mode === "create" ? "作成" : "保存"}</button>
+            <button className="secondary" disabled={submitting} onClick={onClose} type="button">キャンセル</button>
+            <button className="accent" disabled={submitting} type="submit">{modal.mode === "create" ? "作成" : "保存"}</button>
           </div>
         </form>
       </section>
@@ -609,19 +836,28 @@ function EditModal({ bootstrap, modal, onClose, onCreate, onUpdate }) {
 }
 
 function FormFields({ bootstrap, item, mode, type }) {
+  if (type === "organization") {
+    return (
+      <>
+        <TextField label="病院コード" name="organizationCode" required value={item.organizationCode} />
+        <TextField label="表示名" name="displayName" required value={item.displayName} />
+      </>
+    );
+  }
+
   if (type === "member") {
     return (
       <>
-        <div className="core-form-grid core-form-grid--two">
+        <div className="grid-2">
           <TextField label="個人ID" name="loginId" required value={item.loginId} />
           <TextField label="表示名" name="displayName" required value={item.displayName} />
         </div>
-        <div className="core-form-grid core-form-grid--two">
+        <div className="grid-2">
           <TextField label="メールアドレス" name="email" type="email" value={item.email} />
           <TextField label="初期ログイン用パスワード" name="password" type="password" />
         </div>
         <TextField label="全体権限" name="globalRoles" placeholder="org_admin,billing_admin,platform_admin" value={csvValue(item.globalRoles)} />
-        <div className="core-form-grid core-form-grid--three">
+        <div className="grid-3">
           <TextField label="カルテ作成の権限" name="chartingRoles" placeholder="admin,doctor" value={csvValue(item.productRoles?.charting)} />
           <TextField label="診療報酬算定の権限" name="feeRoles" placeholder="admin,medical_clerk" value={csvValue(item.productRoles?.fee)} />
           <TextField label="紹介状作成の権限" name="referralRoles" placeholder="admin,doctor" value={csvValue(item.productRoles?.referral)} />
@@ -635,11 +871,11 @@ function FormFields({ bootstrap, item, mode, type }) {
       <>
         {mode === "edit" ? <ReadonlyField label="管理用ID" value={item.facilityId} /> : null}
         <TextField label="表示名" name="displayName" required value={item.displayName} />
-        <div className="core-form-grid core-form-grid--two">
+        <div className="grid-2">
           <TextField label="医療機関コード" name="medicalInstitutionCode" value={item.medicalInstitutionCode} />
           <TextField label="厚生局" name="regionalBureau" value={item.regionalBureau} />
         </div>
-        <div className="core-form-grid core-form-grid--two">
+        <div className="grid-2">
           <TextField label="都道府県" name="prefecture" value={item.prefecture} />
           {mode === "edit" ? (
             <SelectField label="状態" name="status" value={item.status || "active"} options={[
@@ -661,11 +897,11 @@ function FormFields({ bootstrap, item, mode, type }) {
       <>
         {mode === "edit" ? <ReadonlyField label="管理用ID" value={item.departmentId} /> : null}
         <TextField label="表示名" name="displayName" required value={item.displayName} />
-        <div className="core-form-grid core-form-grid--two">
+        <div className="grid-2">
           <SelectField label="施設" name="facilityId" value={item.facilityId || ""} options={facilityOptions} />
           <TextField label="コード" name="code" value={item.code} />
         </div>
-        <div className="core-form-grid core-form-grid--two">
+        <div className="grid-2">
           <TextField label="専門領域" name="specialty" value={item.specialty} />
           {mode === "edit" ? (
             <SelectField label="状態" name="status" value={item.status || "active"} options={[
@@ -682,15 +918,15 @@ function FormFields({ bootstrap, item, mode, type }) {
     return (
       <>
         {mode === "edit" ? <ReadonlyField label="管理用ID" value={item.patientId} /> : null}
-        <div className="core-form-grid core-form-grid--two">
+        <div className="grid-2">
           <TextField label="表示名" name="displayName" required value={item.displayName} />
           <TextField label="かな" name="displayNameKana" value={item.displayNameKana} />
         </div>
-        <div className="core-form-grid core-form-grid--two">
+        <div className="grid-2">
           <TextField label="患者番号" name="primaryPatientNumber" value={item.primaryPatientNumber} />
           <TextField label="生年月日" name="birthDate" type="date" value={item.birthDate} />
         </div>
-        <div className="core-form-grid core-form-grid--two">
+        <div className="grid-2">
           <SelectField label="性別" name="sex" value={item.sex || "unknown"} options={[
             ["unknown", "不明"],
             ["male", "男性"],
@@ -703,7 +939,7 @@ function FormFields({ bootstrap, item, mode, type }) {
             ["merged", "統合済み"]
           ]} />
         </div>
-        <label className="core-field">
+        <label className="field">
           <span>メモ</span>
           <textarea name="notes" rows={4} defaultValue={item.notes || ""} />
         </label>
@@ -718,7 +954,7 @@ function FormFields({ bootstrap, item, mode, type }) {
     ];
     return (
       <>
-        <div className="core-form-grid core-form-grid--two">
+        <div className="grid-2">
           <SelectField label="依頼内容" name="requestType" value="access" options={[
             ["access", "閲覧"],
             ["export", "エクスポート"],
@@ -737,7 +973,7 @@ function FormFields({ bootstrap, item, mode, type }) {
 
 function TextField({ label, name, placeholder = "", required = false, type = "text", value = "" }) {
   return (
-    <label className="core-field">
+    <label className="field">
       <span>{label}</span>
       <input name={name} placeholder={placeholder} required={required} type={type} defaultValue={value || ""} />
     </label>
@@ -746,7 +982,7 @@ function TextField({ label, name, placeholder = "", required = false, type = "te
 
 function SelectField({ label, name, options, value = "" }) {
   return (
-    <label className="core-field">
+    <label className="field">
       <span>{label}</span>
       <select name={name} defaultValue={value || ""}>
         {options.map(([optionValue, optionLabel]) => (
@@ -766,18 +1002,26 @@ function ReadonlyField({ label, value }) {
   );
 }
 
-function CopyButton({ value }) {
-  async function copy() {
-    if (!value) {
-      return;
-    }
-    await navigator.clipboard?.writeText(String(value)).catch(() => null);
-  }
-  return <button className="btn btn--ghost btn--icon" onClick={copy} type="button" aria-label="コピー">コピー</button>;
+function Icon({ name }) {
+  return (
+    <span className="icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24">{ICONS[name] || ICONS.fileText}</svg>
+    </span>
+  );
 }
 
 function createPayload(type, data, context) {
   const orgId = context.orgId;
+  if (type === "organization") {
+    return {
+      path: "/v1/organizations",
+      body: {
+        organizationCode: data.get("organizationCode"),
+        displayName: data.get("displayName")
+      }
+    };
+  }
+
   if (type === "member") {
     return {
       path: `/v1/organizations/${encodeURIComponent(orgId)}/members`,
@@ -896,6 +1140,7 @@ function editPayload(type, data) {
 
 function coreAdminSectionForTab(tab) {
   return ({
+    organizations: "organizations",
     members: "members",
     facilities: "facilities",
     departments: "departments",
@@ -909,6 +1154,10 @@ function coreAdminSectionForTab(tab) {
 function modalMeta(type, mode) {
   const action = mode === "create" ? "追加" : "編集";
   return ({
+    organization: {
+      title: `病院を${action}`,
+      description: "病院コードと表示名を登録します。"
+    },
     member: {
       title: `職員を${action}`,
       description: "ログイン情報、全体権限、アプリごとの権限を登録します。"
@@ -945,6 +1194,7 @@ function itemIdForType(type, item = {}) {
 
 function editableTypeLabel(type) {
   return ({
+    organization: "病院",
     member: "職員",
     facility: "施設",
     department: "診療科",
@@ -960,7 +1210,7 @@ function labelsForList(values) {
 function productRolesLabel(productRoles = {}) {
   const entries = Object.entries(productRoles || {})
     .filter(([, roles]) => Array.isArray(roles) && roles.length)
-    .map(([productId, roles]) => `${productLabel(productId)}: ${labelsForList(roles)}`);
+    .map(([productId, roles]) => `${productLabel(productId)}: ${labelsForList(roles.map(roleLabel))}`);
   return entries.length ? entries.join(" / ") : "なし";
 }
 
@@ -981,31 +1231,69 @@ function requestTypeLabel(value) {
   })[value] || value || "-";
 }
 
-function statusLabel(value) {
+function uiLabel(value) {
   return ({
     active: "有効",
     inactive: "停止中",
     enabled: "有効",
     disabled: "停止中",
     trialing: "トライアル中",
-    past_due: "支払い確認中",
-    unpaid: "未払い",
-    canceled: "キャンセル済み",
-    cancelled: "キャンセル済み",
     submitted: "受付済み",
     reviewing: "確認中",
     completed: "完了",
-    rejected: "却下"
-  })[value] || value || "-";
-}
-
-function sexLabel(value) {
-  return ({
+    rejected: "却下",
+    cancelled: "キャンセル",
+    canceled: "解約済み",
+    suspended: "停止中",
+    provisioned: "準備完了",
+    enrolled: "登録済み",
+    required: "登録が必要",
+    pending_checkout: "決済待ち",
+    past_due: "支払い確認中",
+    grace_period: "猶予期間",
+    unpaid: "未払い",
+    unknown: "不明",
     male: "男性",
     female: "女性",
     other: "その他",
-    unknown: "不明"
+    access: "閲覧",
+    export: "エクスポート",
+    deletion: "削除",
+    correction: "訂正"
   })[value] || value || "-";
+}
+
+function statusTone(value) {
+  const text = String(value || "");
+  if (["enabled", "active", "completed", "provisioned", "enrolled"].includes(text)) {
+    return "good";
+  }
+  if (["trialing", "submitted", "reviewing", "required", "pending_checkout", "past_due", "grace_period"].includes(text)) {
+    return "warn";
+  }
+  if (["disabled", "rejected", "cancelled", "canceled", "suspended", "inactive", "unpaid"].includes(text)) {
+    return "bad";
+  }
+  return "";
+}
+
+function roleLabel(value) {
+  return ({
+    org_admin: "病院管理者",
+    org_owner: "病院オーナー",
+    billing_admin: "契約管理",
+    platform_admin: "全体管理",
+    it_admin: "IT管理",
+    admin: "管理者",
+    doctor: "医師",
+    medical_clerk: "医療事務",
+    viewer: "閲覧",
+    editor: "編集"
+  })[value] || value;
+}
+
+function sexLabel(value) {
+  return uiLabel(value);
 }
 
 function facilityName(facilityId, facilities = []) {
@@ -1019,17 +1307,23 @@ function patientName(patientId, patients = []) {
 function eventTypeLabel(value) {
   return ({
     "auth.login_succeeded": "ログイン成功",
+    "auth.login_failed": "ログイン失敗",
     "auth.logout": "ログアウト",
     "auth.mfa_verified": "2段階認証登録",
+    "auth.mfa_enrollment_started": "2段階認証登録開始",
     "member.created": "職員作成",
     "member.updated": "職員更新",
     "member.mfa_reset": "2段階認証リセット",
+    "organization.created": "病院作成",
+    "organization.updated": "病院更新",
     "facility.created": "施設作成",
     "facility.updated": "施設更新",
     "department.created": "診療科作成",
     "department.updated": "診療科更新",
     "patient.created": "患者作成",
     "patient.updated": "患者更新",
+    "product_entitlement.upserted": "アプリ利用設定保存",
+    "product_entitlement.updated": "アプリ利用設定更新",
     "data_request.created": "個人情報の依頼作成",
     "data_request.updated": "個人情報の依頼更新"
   })[value] || value || "-";
@@ -1037,10 +1331,12 @@ function eventTypeLabel(value) {
 
 function targetTypeLabel(value) {
   return ({
+    organization: "病院",
     member: "職員",
     facility: "施設",
     department: "診療科",
     patient: "患者",
+    product_entitlement: "アプリ利用設定",
     data_request: "個人情報の依頼"
   })[value] || value || "";
 }
@@ -1087,11 +1383,20 @@ function hasGlobalRole(session, role) {
 }
 
 function canManageOrg(session) {
-  return hasGlobalRole(session, "org_admin") || hasGlobalRole(session, "platform_admin");
+  return (
+    hasGlobalRole(session, "platform_admin") ||
+    hasGlobalRole(session, "org_owner") ||
+    hasGlobalRole(session, "org_admin")
+  );
 }
 
 function canManageBilling(session) {
-  return hasGlobalRole(session, "billing_admin") || hasGlobalRole(session, "platform_admin");
+  return (
+    hasGlobalRole(session, "platform_admin") ||
+    hasGlobalRole(session, "org_owner") ||
+    hasGlobalRole(session, "org_admin") ||
+    hasGlobalRole(session, "billing_admin")
+  );
 }
 
 function toUserFacingErrorMessage(error, fallbackMessage) {

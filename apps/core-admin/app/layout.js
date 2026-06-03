@@ -1,9 +1,7 @@
 import "@halunasu/web-ui/styles/halunasu-ui.css";
 import "./globals.css";
 import Script from "next/script";
-import { AdminNavProvider } from "../components/admin-nav-context";
 import { AuthGate, PlatformAuthProvider } from "../components/platform-auth";
-import { SiteNav } from "../components/site-nav";
 import { BRAND_DESCRIPTION, BRAND_TITLE } from "../lib/brand";
 import { coreAdminRuntimeConfigFromEnv } from "../lib/runtime-config";
 
@@ -31,10 +29,7 @@ export default function RootLayout({ children }) {
         />
         <PlatformAuthProvider platformBaseUrl={runtimeConfig.platformBaseUrl}>
           <AuthGate>
-            <AdminNavProvider>
-              <SiteNav />
-              {children}
-            </AdminNavProvider>
+            {children}
           </AuthGate>
         </PlatformAuthProvider>
       </body>
