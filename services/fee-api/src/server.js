@@ -287,11 +287,15 @@ async function routeFeeApiRequest(input = {}) {
     }
     assertFeeSessionReadyForCalculation(current);
     const calculationInput = validateCreateFeeCalculationInput(input.body || {});
-    const calculationResult = await feeCalculator.calculate(current, buildCalculationInputForSession(current, calculationInput));
+    const enriched = await enrichSessionOrdersForCalculation(current, feeCalculator);
+    const calculationSession = enriched.changed
+      ? (await feeStore.updateSession(context.session.orgId, parts[3], { orders: enriched.orders })).feeSession
+      : current;
+    const calculationResult = await feeCalculator.calculate(calculationSession, buildCalculationInputForSession(calculationSession, calculationInput));
     const result = await feeStore.saveCalculation(
       context.session.orgId,
       parts[3],
-      addSessionReviewWarnings(current, calculationResult)
+      addSessionReviewWarnings(calculationSession, calculationResult)
     );
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.calculated",
@@ -445,6 +449,96 @@ function buildCalculationInputForSession(session = {}, input = {}) {
   }
 
   return calculationInput;
+}
+
+async function enrichSessionOrdersForCalculation(session = {}, feeCalculator) {
+  const orders = Array.isArray(session.orders) ? session.orders : [];
+  if (!orders.length || typeof feeCalculator?.searchMaster !== "function") {
+    return { changed: false, orders };
+  }
+
+  let changed = false;
+  const enrichedOrders = [];
+  for (const order of orders) {
+    const enriched = await enrichOrderForCalculation(order, feeCalculator);
+    if (enriched !== order) {
+      changed = true;
+    }
+    enrichedOrders.push(enriched);
+  }
+  return { changed, orders: enrichedOrders };
+}
+
+async function enrichOrderForCalculation(order = {}, feeCalculator) {
+  if (!order || typeof order !== "object" || orderHasCode(order)) {
+    return order;
+  }
+  const query = orderMasterQuery(order);
+  if (query.length < 2) {
+    return order;
+  }
+  const type = masterTypeForOrder(order);
+  try {
+    const result = await feeCalculator.searchMaster({
+      type,
+      query,
+      limit: 5
+    });
+    const item = selectMasterItemForOrder(result?.items, type, query);
+    if (!item?.code) {
+      return order;
+    }
+    return {
+      ...order,
+      localName: order.localName || item.name || query,
+      standardCode: String(item.code),
+      standardName: item.name || order.standardName || order.standard_name || ""
+    };
+  } catch {
+    return order;
+  }
+}
+
+function orderHasCode(order = {}) {
+  return ["standardCode", "standard_code", "localCode", "local_code", "code"].some((key) => {
+    const value = order[key];
+    return typeof value === "string" && value.trim();
+  });
+}
+
+function orderMasterQuery(order = {}) {
+  return String(order.standardName || order.standard_name || order.localName || order.local_name || order.content || "").trim();
+}
+
+function masterTypeForOrder(order = {}) {
+  const orderType = String(order.orderType || order.order_type || "").trim();
+  if (orderType === "drug" || orderType === "injection") {
+    return "drug";
+  }
+  if (orderType === "material") {
+    return "material";
+  }
+  return "procedure";
+}
+
+function selectMasterItemForOrder(items = [], type, query) {
+  if (!Array.isArray(items)) {
+    return null;
+  }
+  const expectedKind = type === "drug" ? "drug" : type === "material" ? "material" : "procedure";
+  const candidates = items.filter((item) => item && item.kind === expectedKind && item.code);
+  if (!candidates.length) {
+    return null;
+  }
+  const normalizedQuery = normalizeMasterMatchText(query);
+  return candidates.find((item) => normalizeMasterMatchText(item.name) === normalizedQuery)
+    || candidates.find((item) => normalizeMasterMatchText(item.baseName) === normalizedQuery)
+    || candidates.find((item) => normalizeMasterMatchText(item.name).includes(normalizedQuery))
+    || candidates[0];
+}
+
+function normalizeMasterMatchText(value) {
+  return String(value || "").trim().replace(/\s+/gu, "").toLowerCase();
 }
 
 function addSessionReviewWarnings(session = {}, calculationResult = {}) {

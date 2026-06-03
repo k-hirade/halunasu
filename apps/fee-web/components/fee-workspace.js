@@ -23,18 +23,46 @@ const MASTER_TYPES = [
   ["all", "すべて"]
 ];
 const CLINICAL_ORDER_RULES = [
+  {
+    orderType: "procedure",
+    localName: "創傷処置（１００ｃｍ２未満）",
+    standardCode: "140000610",
+    standardName: "創傷処置（１００ｃｍ２未満）",
+    patterns: [/創傷/u, /創部/u, /熱傷/u, /洗浄/u, /ガーゼ/u]
+  },
+  {
+    orderType: "drug",
+    localName: "ゲーベンクリーム１％",
+    standardCode: "620008991",
+    standardName: "ゲーベンクリーム１％",
+    patterns: [/ゲーベン/u]
+  },
+  {
+    orderType: "material",
+    localName: "非固着性シリコンガーゼ（平坦部位用）",
+    standardCode: "710010306",
+    standardName: "非固着性シリコンガーゼ（平坦部位用）",
+    patterns: [/ノンスティックガーゼ/u, /非固着性.*ガーゼ/u]
+  },
   { orderType: "lab", localName: "検体検査", patterns: [/検査/u, /採血/u, /血液/u, /尿検査/u, /CRP/iu, /HbA1c/iu] },
-  { orderType: "procedure", localName: "処置・手技", patterns: [/処置/u, /創傷/u, /創部/u, /熱傷/u, /洗浄/u, /消毒/u, /縫合/u, /抜糸/u] },
-  { orderType: "drug", localName: "薬剤処方", patterns: [/処方/u, /内服/u, /外用/u, /軟膏/u, /クリーム/u, /ゲーベン/u, /薬/u] },
-  { orderType: "material", localName: "特定器材・材料", patterns: [/ガーゼ/u, /包帯/u, /テープ/u, /材料/u, /カテーテル/u] },
   { orderType: "injection", localName: "注射", patterns: [/注射/u, /点滴/u, /静注/u, /皮下注/u] },
-  { orderType: "imaging", localName: "画像診断", patterns: [/画像/u, /レントゲン/u, /X線/iu, /CT/iu, /MRI/iu] },
+  { orderType: "imaging", localName: "画像診断", patterns: [/画像/u, /レントゲン/u, /X線/iu, /(?:^|[^A-Za-z])CT(?:$|[^A-Za-z])/iu, /(?:^|[^A-Za-z])MRI(?:$|[^A-Za-z])/iu] },
   { orderType: "treatment", localName: "医学管理等", patterns: [/指導/u, /管理/u, /療養/u, /説明/u] }
 ];
+const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
+  "処置・手技",
+  "薬剤処方",
+  "特定器材・材料",
+  "画像診断",
+  "医学管理等",
+  "検体検査",
+  "注射",
+  "カルテ記載内容から算定候補を確認"
+]);
 const CLINICAL_DIAGNOSIS_RULES = [
   { name: "熱傷", patterns: [/熱傷/u, /やけど/u] },
   { name: "創傷", patterns: [/創傷/u, /創部/u, /裂創/u, /擦過傷/u] },
-  { name: "急性上気道炎疑い", patterns: [/風邪/u, /上気道/u, /咽頭/u, /咳/u, /鼻汁/u, /発熱/u] },
+  { name: "急性上気道炎疑い", patterns: [/風邪/u, /上気道/u, /咽頭/u, /咳/u, /鼻汁/u] },
   { name: "高血圧症", patterns: [/高血圧/u] },
   { name: "糖尿病", patterns: [/糖尿病/u, /HbA1c/iu] },
   { name: "脂質異常症", patterns: [/脂質異常/u, /高脂血/u] }
@@ -1150,12 +1178,13 @@ function sessionListQuery({ page, search, status }) {
 }
 
 function buildChartOnlyInput(form, orderRows) {
-  const hasManualOrders = parseOrdersFromRows(orderRows).length > 0;
+  const manualOrderRows = orderRows.filter((row) => !isAutoPlaceholderOrderRow(row));
+  const hasManualOrders = parseOrdersFromRows(manualOrderRows).length > 0;
   const derivedOrderRows = hasManualOrders ? [] : deriveOrderRowsFromClinicalText(form.clinicalText);
   const diagnosesText = String(form.diagnosesText || "").trim() || deriveDiagnosesTextFromClinicalText(form.clinicalText);
   return {
     diagnosesText,
-    orderRows: hasManualOrders || !derivedOrderRows.length ? orderRows : derivedOrderRows
+    orderRows: hasManualOrders || !derivedOrderRows.length ? manualOrderRows : derivedOrderRows
   };
 }
 
@@ -1170,7 +1199,8 @@ function deriveOrderRowsFromClinicalText(value) {
       rows.push({
         orderType: rule.orderType,
         localName: rule.localName,
-        standardCode: "",
+        standardCode: rule.standardCode || "",
+        standardName: rule.standardName || "",
         quantity: "1"
       });
     }
@@ -1184,6 +1214,12 @@ function deriveOrderRowsFromClinicalText(value) {
     });
   }
   return dedupeRows(rows);
+}
+
+function isAutoPlaceholderOrderRow(row = {}) {
+  const name = String(row.localName || "").trim();
+  const code = String(row.standardCode || "").trim();
+  return !code && AUTO_PLACEHOLDER_ORDER_NAMES.has(name);
 }
 
 function deriveDiagnosesTextFromClinicalText(value) {
@@ -1253,6 +1289,7 @@ function parseOrdersFromRows(rows) {
       orderType: row.orderType || "procedure",
       localName: String(row.localName || "").trim(),
       standardCode: String(row.standardCode || "").trim(),
+      standardName: String(row.standardName || "").trim(),
       quantity: String(row.quantity || "1").trim() || "1"
     }))
     .filter((row) => row.localName || row.standardCode)
@@ -1261,6 +1298,7 @@ function parseOrdersFromRows(rows) {
       orderType: row.orderType,
       localName: row.localName || row.standardCode,
       standardCode: row.standardCode || undefined,
+      standardName: row.standardName || undefined,
       quantity: Number(row.quantity || 1)
     }));
 }
@@ -1273,6 +1311,7 @@ function orderRowsFromOrders(orders) {
     orderType: order.orderType || "procedure",
     localName: order.localName || order.standardName || order.content || "",
     standardCode: order.standardCode || order.localCode || "",
+    standardName: order.standardName || "",
     quantity: String(order.quantity || "1")
   }));
 }
@@ -1282,6 +1321,7 @@ function createEmptyOrderRow() {
     orderType: "procedure",
     localName: "",
     standardCode: "",
+    standardName: "",
     quantity: "1"
   };
 }

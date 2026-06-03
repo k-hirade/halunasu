@@ -117,6 +117,8 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.equal(calculation.body.calculationResult.coverage.scope, "candidate_review_support");
   assert.equal(calculation.body.calculationResult.lineItems[0].supportLevel, "candidate");
   assert.equal(calculation.body.calculationResult.lineItems[0].reviewRequired, true);
+  assert.equal(detail.body.feeSession.orders[0].standardCode, "620000001");
+  assert.equal(detail.body.feeSession.orders[0].standardName, "カルボシステイン錠");
   assert.equal(calculation.body.feeSession.status, "needs_review");
   assert.equal(calculation.body.receiptDraft.totalPoints, 137);
   assert.ok(calculation.body.reviewItems.length >= 1);
@@ -137,6 +139,83 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.ok(auditEvents.some((event) => event.eventType === "fee.session_created"));
   assert.ok(auditEvents.some((event) => event.eventType === "fee.calculated"));
   assert.ok(auditEvents.some((event) => event.eventType === "fee.review_item_decided"));
+});
+
+test("resolves name-only orders against master before calculation", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedSession = null;
+  stores.feeCalculator.searchMaster = async (input) => {
+    assert.equal(input.type, "procedure");
+    assert.equal(input.query, "創傷処置（１００ｃｍ２未満）");
+    return {
+      query: input.query,
+      type: input.type,
+      items: [{
+        kind: "procedure",
+        code: "140000610",
+        name: "創傷処置（１００ｃｍ２未満）",
+        points: 52
+      }]
+    };
+  };
+  stores.feeCalculator.calculate = async (feeSession) => {
+    receivedSession = feeSession;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 52,
+      lineItems: [{
+        lineId: "line_1",
+        code: feeSession.orders[0]?.standardCode,
+        name: feeSession.orders[0]?.standardName,
+        orderType: "procedure",
+        points: 52,
+        quantity: 1,
+        totalPoints: 52,
+        status: "candidate",
+        source: "medical_procedure_master"
+      }],
+      warnings: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "熱傷 太郎"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-03",
+    clinicalText: "右前腕部熱傷。創部4×6cm。ゲーベンクリーム塗布。",
+    diagnoses: [{ name: "熱傷" }],
+    orders: [{
+      orderType: "procedure",
+      localName: "創傷処置（１００ｃｍ２未満）",
+      quantity: 1
+    }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+  const detail = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/detail`,
+    undefined,
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedSession.orders[0].standardCode, "140000610");
+  assert.equal(receivedSession.orders[0].standardName, "創傷処置（１００ｃｍ２未満）");
+  assert.equal(calculation.body.calculationResult.totalPoints, 52);
+  assert.equal(detail.body.feeSession.orders[0].standardCode, "140000610");
 });
 
 test("can create inline Platform patient when creating fee session", async () => {

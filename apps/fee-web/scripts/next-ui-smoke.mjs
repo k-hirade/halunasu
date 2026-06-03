@@ -38,7 +38,7 @@ try {
       url: baseUrl
     }]);
     const page = await context.newPage();
-    await installApiMocks(page);
+    const apiMocks = await installApiMocks(page);
     await page.goto(`${baseUrl}/sessions`, { waitUntil: "domcontentloaded" });
 
     await page.getByRole("heading", { name: "算定一覧" }).waitFor();
@@ -76,6 +76,23 @@ try {
 
     const hasDetailHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     assert.equal(hasDetailHorizontalOverflow, false);
+
+    await page.getByRole("button", { name: "カルテから算定候補を作成" }).click();
+    const patchBody = await apiMocks.patchPromise;
+    assert.deepEqual(
+      patchBody.orders.map((order) => [order.orderType, order.localName, order.standardCode]),
+      [
+        ["procedure", "創傷処置（１００ｃｍ２未満）", "140000610"],
+        ["drug", "ゲーベンクリーム１％", "620008991"],
+        ["material", "非固着性シリコンガーゼ（平坦部位用）", "710010306"]
+      ],
+      "chart-only calculation must submit specific master-coded candidate orders"
+    );
+    assert.deepEqual(
+      patchBody.diagnoses.map((diagnosis) => diagnosis.name),
+      ["熱傷", "創傷"],
+      "negated fever must not create an acute URI diagnosis"
+    );
     await browser.close();
   } catch (error) {
     await browser.close().catch(() => null);
@@ -119,6 +136,10 @@ async function waitForHttp(url, timeoutMs) {
 }
 
 async function installApiMocks(page) {
+  let patchResolve;
+  const patchPromise = new Promise((resolve) => {
+    patchResolve = resolve;
+  });
   await page.route("**/api/platform/v1/auth/session", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
@@ -157,24 +178,49 @@ async function installApiMocks(page) {
     })
   }));
   await page.route("**/api/fee/v1/fee/sessions**", (route) => {
+    const request = route.request();
+    const requestUrl = request.url();
+    if (request.method() === "PATCH" && requestUrl.match(/\/fee_test_1$/u)) {
+      const body = JSON.parse(request.postData() || "{}");
+      patchResolve(body);
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          feeSession: buildMockDetailSession(body),
+          reviewItems: [],
+          receiptDraft: null
+        })
+      });
+    }
+    if (request.method() === "POST" && requestUrl.includes("/fee_test_1/calculate")) {
+      return route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          feeSession: buildMockDetailSession({
+            calculationResult: {
+              totalPoints: 64,
+              lineItems: []
+            }
+          }),
+          calculationResult: {
+            provider: "test",
+            status: "completed",
+            totalPoints: 64,
+            lineItems: [],
+            warnings: [],
+            coverage: { supportLevel: "partial" }
+          },
+          reviewItems: [],
+          receiptDraft: { claimMonth: "2026-06", status: "ready", totalPoints: 64, lineGroups: [] }
+        })
+      });
+    }
     if (route.request().url().includes("/fee_test_1/detail")) {
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
-          feeSession: {
-            feeSessionId: "fee_test_1",
-            status: "active",
-            patientId: "patient_1",
-            patientSnapshot: { displayName: "患者名未入力" },
-            facilityId: "facility_1",
-            serviceDate: "2026-06-03",
-            claimMonth: "2026-06",
-            setting: "outpatient",
-            clinicalText: "A（Assessment：評価）\n熱傷創、上皮化進行中\n感染兆候なし",
-            diagnoses: [],
-            orders: [],
-            calculationResult: null
-          },
+          feeSession: buildMockDetailSession(),
           reviewItems: [],
           receiptDraft: null
         })
@@ -201,4 +247,35 @@ async function installApiMocks(page) {
       })
     });
   });
+  return { patchPromise };
+}
+
+function buildMockDetailSession(overrides = {}) {
+  return {
+    feeSessionId: "fee_test_1",
+    status: "active",
+    patientId: "patient_1",
+    patientSnapshot: { displayName: "患者名未入力" },
+    facilityId: "facility_1",
+    serviceDate: "2026-06-03",
+    claimMonth: "2026-06",
+    setting: "outpatient",
+    clinicalText: [
+      "S（Subjective：主観的情報）",
+      "ガーゼが傷にくっつく感じがあって、交換のときが辛い",
+      "睡眠は取れている、発熱なし",
+      "O（Objective：客観的情報）",
+      "右前腕部熱傷（II度浅達性）、受傷後14日目",
+      "創部サイズ：約4×6cm",
+      "A（Assessment：評価）",
+      "熱傷創、上皮化進行中",
+      "感染兆候なし",
+      "P（Plan：計画）",
+      "ゲーベンクリーム塗布＋ノンスティックガーゼで保護"
+    ].join("\n"),
+    diagnoses: [],
+    orders: [],
+    calculationResult: null,
+    ...overrides
+  };
 }
