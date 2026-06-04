@@ -60,6 +60,8 @@ const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "カルテ記載内容から算定候補を確認"
 ]);
 const CLINICAL_DIAGNOSIS_RULES = [
+  { name: "腰椎椎間板ヘルニア疑い", patterns: [/腰椎椎間板ヘルニア/u, /椎間板ヘルニア/u] },
+  { name: "腰痛症", patterns: [/腰痛/u] },
   { name: "熱傷", patterns: [/熱傷/u, /やけど/u] },
   { name: "創傷", patterns: [/創傷/u, /創部/u, /裂創/u, /擦過傷/u] },
   { name: "急性上気道炎疑い", patterns: [/風邪/u, /上気道/u, /咽頭/u, /咳/u, /鼻汁/u] },
@@ -1309,9 +1311,14 @@ function deriveDiagnosesTextFromClinicalText(value) {
     return explicitDiagnosis;
   }
   const names = [];
-  for (const rule of CLINICAL_DIAGNOSIS_RULES) {
-    if (rule.patterns.some((pattern) => pattern.test(text))) {
-      names.push(rule.name);
+  for (const sentence of splitClinicalSentences(text)) {
+    if (isHistoricalDiagnosisContext(sentence)) {
+      continue;
+    }
+    for (const rule of CLINICAL_DIAGNOSIS_RULES) {
+      if (rule.patterns.some((pattern) => pattern.test(sentence))) {
+        names.push(rule.name);
+      }
     }
   }
   return Array.from(new Set(names)).join("\n");
@@ -1319,6 +1326,17 @@ function deriveDiagnosesTextFromClinicalText(value) {
 
 function normalizeClinicalText(value) {
   return String(value || "").trim();
+}
+
+function splitClinicalSentences(value) {
+  return normalizeClinicalText(value)
+    .split(/[\n。]+/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function isHistoricalDiagnosisContext(value) {
+  return /(既往|既往歴|内服中|持病|併存|合併症|服用中|常用)/u.test(value);
 }
 
 function dedupeRows(rows) {
@@ -1369,6 +1387,7 @@ function parseOrdersFromRows(rows) {
       standardName: String(row.standardName || "").trim(),
       quantity: String(row.quantity || "1").trim() || "1"
     }))
+    .filter((row) => !isAutoPlaceholderOrderRow(row))
     .filter((row) => row.localName || row.standardCode)
     .map((row, index) => ({
       orderId: `ui_order_${index + 1}`,

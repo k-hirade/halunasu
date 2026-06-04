@@ -301,17 +301,150 @@ test("reconnects clinical text to legacy outpatient calculation input", async ()
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "initial");
   assert.deepEqual(
     receivedInput.calculationOptions.imaging_orders.map((order) => order.kind).sort(),
-    ["mri", "simple_radiography"]
+    ["simple_radiography"]
   );
   assert.deepEqual(
     receivedInput.calculationOptions.medication_orders.map((order) => order.drug_code).sort(),
-    ["620001001", "620001002", "620001003"]
+    ["620001001", "620001002"]
   );
-  assert.deepEqual(receivedInput.calculationOptions.material_inputs, [{ code: "710001001", quantity: "1" }]);
-  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI検査")));
+  assert.equal(receivedInput.calculationOptions.medication_orders.some((order) => order.drug_code === "620001003"), false);
+  assert.equal(receivedInput.calculationOptions.material_inputs, undefined);
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI")));
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
   assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("オーダー「画像診断」")), false);
   assert.equal(detail.body.feeSession.calculationOptions.outpatient_basic.fee_kind, "initial");
-  assert.equal(detail.body.feeSession.calculationOptions.imaging_orders.length, 2);
+  assert.equal(detail.body.feeSession.calculationOptions.imaging_orders.length, 1);
+});
+
+test("does not promote placeholder categories to billing codes", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedSession = null;
+  stores.feeCalculator.searchMaster = async (input) => {
+    if (input.query === "画像診断") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "170012710",
+          name: "胆管・膵管造影（胃・十二指腸ファイバースコピー）（画像診断）",
+          points: 1140
+        }]
+      };
+    }
+    if (input.query === "医学管理等") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "113023770",
+          name: "施設基準不適合減算（医学管理等）（１００分の７０）",
+          points: 30
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession) => {
+    receivedSession = feeSession;
+    const codedOrders = (feeSession.orders || []).filter((order) => order.standardCode);
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: codedOrders.map((order, index) => ({
+        lineId: `line_${index + 1}`,
+        code: order.standardCode,
+        name: order.standardName,
+        orderType: order.orderType,
+        points: 0,
+        quantity: 1,
+        totalPoints: 0,
+        status: "candidate",
+        source: "test"
+      })),
+      warnings: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Placeholder Guard"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-03",
+    clinicalText: "腰椎X線を確認。保存済み候補に画像診断と医学管理等がある。",
+    diagnoses: [{ name: "腰痛症" }],
+    orders: [
+      { orderType: "imaging", localName: "画像診断", quantity: 1 },
+      { orderType: "treatment", localName: "医学管理等", quantity: 1 }
+    ]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedSession.orders.some((order) => order.standardCode === "170012710"), false);
+  assert.equal(receivedSession.orders.some((order) => order.standardCode === "113023770"), false);
+  assert.equal(calculation.body.calculationResult.lineItems.some((line) => line.code === "170012710"), false);
+  assert.equal(calculation.body.calculationResult.lineItems.some((line) => line.code === "113023770"), false);
+});
+
+test("sanitizes previously resolved placeholder codes before calculation", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedSession = null;
+  stores.feeCalculator.calculate = async (feeSession) => {
+    receivedSession = feeSession;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Sanitize Placeholder"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-03",
+    clinicalText: "腰椎X線を確認。",
+    diagnoses: [{ name: "腰痛症" }],
+    orders: [
+      {
+        orderType: "imaging",
+        localName: "画像診断",
+        standardCode: "170012710",
+        standardName: "胆管・膵管造影（胃・十二指腸ファイバースコピー）（画像診断）",
+        quantity: 1
+      }
+    ]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedSession.orders[0].standardCode, undefined);
+  assert.equal(receivedSession.orders[0].standardName, undefined);
 });
 
 test("adds review warning when calculation produces no candidate lines", async () => {
