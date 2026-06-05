@@ -59,6 +59,14 @@ const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "注射",
   "カルテ記載内容から算定候補を確認"
 ]);
+const CLINICAL_AUTO_CALCULATION_OPTION_KEYS = new Set([
+  "outpatient_basic",
+  "imaging_orders",
+  "treatment_orders",
+  "medication_orders",
+  "medication",
+  "material_inputs"
+]);
 const CLINICAL_DIAGNOSIS_RULES = [
   { name: "腰椎椎間板ヘルニア疑い", patterns: [/腰椎椎間板ヘルニア/u, /椎間板ヘルニア/u] },
   { name: "腰痛症", patterns: [/腰痛/u] },
@@ -1229,6 +1237,7 @@ function defaultPatientForm() {
 
 function formFromFeeSession(session = {}) {
   const fallback = defaultFeeForm();
+  const editableCalculationOptions = userEditableCalculationOptions(session);
   return {
     patientId: session.patientId || "",
     facilityId: session.facilityId || "",
@@ -1239,7 +1248,7 @@ function formFromFeeSession(session = {}) {
     clinicalText: session.clinicalText || "",
     diagnosesText: formatDiagnoses(session.diagnoses),
     claimContextText: formatJsonObject(session.claimContext),
-    calculationOptionsText: formatJsonObject(session.calculationOptions)
+    calculationOptionsText: formatJsonObject(editableCalculationOptions)
   };
 }
 
@@ -1444,6 +1453,25 @@ function formatJsonObject(value) {
     return "";
   }
   return JSON.stringify(value, null, 2);
+}
+
+function userEditableCalculationOptions(session = {}) {
+  if (!session.calculationOptions || typeof session.calculationOptions !== "object" || Array.isArray(session.calculationOptions)) {
+    return null;
+  }
+  const source = String(session.calculationOptionsSource || "").trim();
+  if (source === "clinical_auto") {
+    return null;
+  }
+  const autoKeys = Array.isArray(session.calculationOptionsAutoKeys)
+    ? session.calculationOptionsAutoKeys
+    : source
+      ? []
+      : [...CLINICAL_AUTO_CALCULATION_OPTION_KEYS];
+  const result = Object.fromEntries(
+    Object.entries(session.calculationOptions).filter(([key]) => !autoKeys.includes(key))
+  );
+  return Object.keys(result).length ? result : null;
 }
 
 function emptyToNull(value) {

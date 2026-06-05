@@ -23,14 +23,28 @@ const CLINICAL_MATERIAL_TERMS = [
   { query: "非固着性シリコンガーゼ", patterns: [/ノンスティックガーゼ/u, /非固着性.*ガーゼ/u] }
 ];
 
+const CLINICAL_AUTO_OPTION_KEYS = new Set([
+  "outpatient_basic",
+  "imaging_orders",
+  "treatment_orders",
+  "medication_orders",
+  "medication",
+  "material_inputs"
+]);
+
 export async function buildClinicalCalculationPreparation({
   session = {},
   calculationInput = {},
   feeCalculator
 } = {}) {
-  const existingOptions = isPlainObject(session.calculationOptions) ? session.calculationOptions : {};
+  const manualOptions = manualCalculationOptions(session, calculationInput);
   if (isPlainObject(session.claimContext) || isPlainObject(calculationInput.claimContext)) {
-    return { calculationOptions: existingOptions, reviewWarnings: [] };
+    return {
+      calculationOptions: Object.keys(manualOptions).length ? manualOptions : null,
+      calculationOptionsAutoKeys: [],
+      calculationOptionsSource: Object.keys(manualOptions).length ? "manual" : null,
+      reviewWarnings: []
+    };
   }
 
   const text = normalizeClinicalText(calculationInput.clinicalText || session.clinicalText || "");
@@ -72,9 +86,14 @@ export async function buildClinicalCalculationPreparation({
     reviewWarnings.push(...materialInference.reviewWarnings);
   }
 
-  const merged = mergeCalculationOptions(existingOptions, inferred);
+  const autoKeys = Object.keys(inferred).filter((key) => (
+    CLINICAL_AUTO_OPTION_KEYS.has(key) && !hasOwn(manualOptions, key)
+  ));
+  const merged = mergeCalculationOptions(manualOptions, inferred);
   return {
     calculationOptions: Object.keys(merged).length ? merged : null,
+    calculationOptionsAutoKeys: autoKeys,
+    calculationOptionsSource: calculationOptionsSource(manualOptions, autoKeys),
     reviewWarnings
   };
 }
@@ -91,11 +110,16 @@ export function normalizeClinicalText(value) {
 }
 
 function inferOutpatientBasicOptions(text) {
-  if (/(初診|初回受診|初めて|初来院)/u.test(text)) {
-    return { fee_kind: "initial" };
-  }
-  if (/(再診|再来|フォロー|経過観察|再評価)/u.test(text)) {
-    return { fee_kind: "revisit" };
+  for (const sentence of splitClinicalSentences(text)) {
+    if (isNegatedContext(sentence) || isFutureOrOrderOnlyContext(sentence)) {
+      continue;
+    }
+    if (/(初診|初回受診|初めて|初来院)/u.test(sentence)) {
+      return { fee_kind: "initial" };
+    }
+    if (/(再診|再来|フォロー|経過観察|再評価)/u.test(sentence)) {
+      return { fee_kind: "revisit" };
+    }
   }
   return null;
 }
@@ -337,7 +361,7 @@ function isPerformedImagingContext(sentence, kind) {
 }
 
 function isFutureOrOrderOnlyContext(sentence) {
-  return /(予定|次回|後日|紹介|持参|検討|依頼|オーダー|予約|後で|今後)/u.test(sentence);
+  return /(\d+\s*(?:日|週間|週|月)後|予定|次回|後日|紹介|持参|検討|依頼|オーダー|予約|後で|今後)/u.test(sentence);
 }
 
 function isNegatedContext(sentence) {
@@ -389,6 +413,64 @@ function mergeCalculationOptions(existing = {}, inferred = {}) {
     }
   }
   return result;
+}
+
+function manualCalculationOptions(session = {}, calculationInput = {}) {
+  if (isPlainObject(calculationInput.calculationOptions)) {
+    return calculationInput.calculationOptions;
+  }
+  if (!isPlainObject(session.calculationOptions)) {
+    return {};
+  }
+
+  const source = String(session.calculationOptionsSource || "").trim();
+  if (source === "manual") {
+    return session.calculationOptions;
+  }
+
+  const autoKeys = calculationOptionsAutoKeys(session);
+  if (autoKeys.length) {
+    return omitCalculationOptionKeys(session.calculationOptions, autoKeys);
+  }
+
+  if (source === "clinical_auto") {
+    return {};
+  }
+
+  if (normalizeClinicalText(session.clinicalText)) {
+    return omitCalculationOptionKeys(session.calculationOptions, [...CLINICAL_AUTO_OPTION_KEYS]);
+  }
+
+  return session.calculationOptions;
+}
+
+function calculationOptionsAutoKeys(session = {}) {
+  if (Array.isArray(session.calculationOptionsAutoKeys)) {
+    return session.calculationOptionsAutoKeys.map((key) => String(key || "").trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function omitCalculationOptionKeys(options = {}, keys = []) {
+  const omitted = new Set(keys);
+  return Object.fromEntries(
+    Object.entries(options).filter(([key]) => !omitted.has(key))
+  );
+}
+
+function calculationOptionsSource(manualOptions = {}, autoKeys = []) {
+  const hasManual = Object.keys(manualOptions).length > 0;
+  const hasAuto = autoKeys.length > 0;
+  if (hasManual && hasAuto) {
+    return "manual_with_clinical_auto";
+  }
+  if (hasManual) {
+    return "manual";
+  }
+  if (hasAuto) {
+    return "clinical_auto";
+  }
+  return null;
 }
 
 function hasSpecificProcedureCode(orders = []) {

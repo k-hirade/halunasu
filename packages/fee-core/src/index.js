@@ -33,6 +33,8 @@ export function buildFeeSession(input = {}, options = {}) {
     insurance: input.insurance || null,
     claimContext: isPlainObject(input.claimContext) ? input.claimContext : null,
     calculationOptions: isPlainObject(input.calculationOptions) ? input.calculationOptions : null,
+    calculationOptionsSource: input.calculationOptionsSource || null,
+    calculationOptionsAutoKeys: Array.isArray(input.calculationOptionsAutoKeys) ? input.calculationOptionsAutoKeys : [],
     sourceSystem: input.sourceSystem || null,
     calculationResult: input.calculationResult || null,
     calculationSummary: input.calculationSummary || null,
@@ -65,6 +67,10 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
       insurance: hasOwn(patch, "insurance") ? patch.insurance || null : undefined,
       claimContext: hasOwn(patch, "claimContext") ? patch.claimContext || null : undefined,
       calculationOptions: hasOwn(patch, "calculationOptions") ? patch.calculationOptions || null : undefined,
+      calculationOptionsSource: hasOwn(patch, "calculationOptionsSource") ? patch.calculationOptionsSource || null : undefined,
+      calculationOptionsAutoKeys: hasOwn(patch, "calculationOptionsAutoKeys")
+        ? Array.isArray(patch.calculationOptionsAutoKeys) ? patch.calculationOptionsAutoKeys : []
+        : undefined,
       sourceSystem: patch.sourceSystem
     }),
     updatedAt: now
@@ -81,7 +87,9 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
     "diagnoses",
     "insurance",
     "claimContext",
-    "calculationOptions"
+    "calculationOptions",
+    "calculationOptionsSource",
+    "calculationOptionsAutoKeys"
   ].some((key) => hasOwn(patch, key));
 
   if (changedCalculationInput && (next.calculationResult || next.calculationSummary)) {

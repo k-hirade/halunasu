@@ -188,6 +188,7 @@ async function routeFeeApiRequest(input = {}) {
     const department = await resolveDepartment(context, platformStore, normalized.departmentId);
     const session = await feeStore.createSession({
       ...normalized,
+      ...calculationOptionsProvenanceForClientInput(normalized),
       orgId: context.session.orgId,
       patientId: patient?.patientId,
       patientSnapshot: patient ? patientSnapshot(patient, input.now || new Date()) : null,
@@ -399,7 +400,10 @@ async function resolveDepartment(context, platformStore, departmentId) {
 }
 
 async function resolveFeeSessionPatch(context, platformStore, normalized, now) {
-  const patch = { ...normalized };
+  const patch = {
+    ...normalized,
+    ...calculationOptionsProvenanceForClientInput(normalized)
+  };
   if (normalized.patientId || normalized.patient) {
     const patient = await resolveFeePatient(context, platformStore, normalized);
     patch.patientId = patient.patientId;
@@ -422,6 +426,16 @@ async function resolveFeeSessionPatch(context, platformStore, normalized, now) {
 
   delete patch.patient;
   return patch;
+}
+
+function calculationOptionsProvenanceForClientInput(input = {}) {
+  if (!hasOwn(input, "calculationOptions")) {
+    return {};
+  }
+  return {
+    calculationOptionsSource: isPlainObject(input.calculationOptions) ? "manual" : null,
+    calculationOptionsAutoKeys: []
+  };
 }
 
 function assertFeeSessionReadyForCalculation(session = {}) {
@@ -451,11 +465,14 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
   if (enriched.changed) {
     patch.orders = enriched.orders;
   }
-  if (
-    legacy.calculationOptions
-    && !hasEquivalentJson(session.calculationOptions || null, legacy.calculationOptions)
-  ) {
-    patch.calculationOptions = legacy.calculationOptions;
+  if (!hasEquivalentJson(session.calculationOptions || null, legacy.calculationOptions || null)) {
+    patch.calculationOptions = legacy.calculationOptions || null;
+  }
+  if (!hasEquivalentJson(session.calculationOptionsAutoKeys || [], legacy.calculationOptionsAutoKeys || [])) {
+    patch.calculationOptionsAutoKeys = legacy.calculationOptionsAutoKeys || [];
+  }
+  if (String(session.calculationOptionsSource || "") !== String(legacy.calculationOptionsSource || "")) {
+    patch.calculationOptionsSource = legacy.calculationOptionsSource || null;
   }
 
   return {
