@@ -412,6 +412,8 @@ function FeeSessionDetailView({ sessionId }) {
     return () => window.clearTimeout(timer);
   }, [feeApi, masterQuery, masterSearchAvailable, masterStatus, masterType]);
 
+  const displayReviewItems = useMemo(() => buildDisplayReviewItems(reviewItems), [reviewItems]);
+
   function updateForm(field, value) {
     setForm((current) => ({
       ...current,
@@ -478,7 +480,19 @@ function FeeSessionDetailView({ sessionId }) {
 
   async function calculate() {
     await runBusy(setBusy, setMessage, async () => {
-      await saveDetails({ silent: true });
+      const saved = await saveDetails({ silent: true });
+      setFeeSession((current) => ({
+        ...(saved.feeSession || current || {}),
+        status: "calculating",
+        calculationResult: null,
+        calculationSummary: null,
+        calculationProgress: buildClientCalculationProgress({
+          phase: "extract",
+          percent: 10,
+          message: "カルテ本文から算定に必要な情報を抽出しています。"
+        })
+      }));
+      setMessage({ type: "success", text: "算定候補を作成しています。" });
       const response = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/calculate`, {
         method: "POST",
         csrf: true,
@@ -769,20 +783,20 @@ function FeeSessionDetailView({ sessionId }) {
             <div className="fee-section-head">
               <div>
                 <h2>算定候補</h2>
-                <p>対応範囲と確認が必要な理由を確認してください。</p>
+                <p>候補化された算定行と点数を確認します。確認事項はレビュー欄にまとめています。</p>
               </div>
             </div>
-            <CalculationResult feeSession={feeSession} calculation={calculation} />
+            <CalculationResult feeSession={feeSession} calculation={calculation} reviewItemCount={displayReviewItems.length} />
           </section>
 
           <section className="fee-card fee-review-card">
             <div className="fee-section-head">
               <div>
                 <h2>レビュー</h2>
-                <p>{reviewItems.length ? `要確認 ${reviewItems.length.toLocaleString()}件` : "確認が必要な項目はありません。"}</p>
+                <p>{displayReviewItems.length ? `要確認 ${displayReviewItems.length.toLocaleString()}件` : "確認が必要な項目はありません。"}</p>
               </div>
             </div>
-            <ReviewList disabled={busy} items={reviewItems} onDecision={decideReviewItem} selected={Boolean(sessionId)} />
+            <ReviewList disabled={busy} items={displayReviewItems} onDecision={decideReviewItem} selected={Boolean(sessionId)} />
           </section>
 
           <section className="fee-card fee-receipt-card">
@@ -982,7 +996,7 @@ function OrderEditor({ onAdd, onRemove, onUpdate, rows }) {
   );
 }
 
-function CalculationResult({ calculation, feeSession }) {
+function CalculationResult({ calculation, feeSession, reviewItemCount = 0 }) {
   if (feeSession?.status === "calculating") {
     return (
       <div className="result result-empty">
@@ -990,6 +1004,7 @@ function CalculationResult({ calculation, feeSession }) {
           <strong>算定候補を作成中です</strong>
           <p>{feeSession?.patientSnapshot?.displayName || feeSession?.patientId || "患者未選択"} / {feeSession?.serviceDate || "診療日未設定"} / 計算中</p>
         </div>
+        <CalculationProgress progress={feeSession?.calculationProgress} />
         <p className="field-note">完了すると算定候補、レビュー項目、レセプト案が自動で更新されます。</p>
       </div>
     );
@@ -1017,8 +1032,8 @@ function CalculationResult({ calculation, feeSession }) {
           <strong>{Number(calculation.totalPoints || 0).toLocaleString()}</strong>
         </div>
         <div className="metric">
-          <span>レビュー対象</span>
-          <strong>{Number(coverage.reviewLineCount || lineItems.filter((line) => line.reviewRequired).length).toLocaleString()}</strong>
+          <span>要確認</span>
+          <strong>{Number(reviewItemCount || 0).toLocaleString()}</strong>
         </div>
         <div className="metric">
           <span>対応範囲</span>
@@ -1027,22 +1042,63 @@ function CalculationResult({ calculation, feeSession }) {
       </div>
       <div className="notice-card">
         <strong>{scopeLabel(coverage.scope)}</strong>
-        <p>{coverage.description || "算定候補・レビュー支援として表示しています。確定請求前に内容を確認してください。"}</p>
+        <p>{humanizeCoverageDescription(coverage.description) || "算定候補・レビュー支援として表示しています。確定請求前に内容を確認してください。"}</p>
       </div>
-      <CalculationWarnings warnings={calculation.warnings} />
       <LineItemTable lineItems={lineItems} />
     </div>
   );
 }
 
-function CalculationWarnings({ warnings }) {
-  if (!Array.isArray(warnings) || !warnings.length) {
-    return null;
-  }
+function CalculationProgress({ progress }) {
+  const normalized = normalizeCalculationProgress(progress);
+  const diagnoses = Array.isArray(normalized.diagnoses) ? normalized.diagnoses : [];
+  const extractedOrders = Array.isArray(normalized.extractedOrders) ? normalized.extractedOrders : [];
+  const lineItems = Array.isArray(normalized.lineItems) ? normalized.lineItems : [];
+  const steps = [
+    ["extract", "抽出"],
+    ["calculate", "算定"],
+    ["aggregate", "集計"],
+    ["complete", "完了"]
+  ];
   return (
-    <div className="notice-card">
-      <strong>確認が必要な理由</strong>
-      <p>{warnings.join("\n")}</p>
+    <div className="calculation-progress" aria-live="polite">
+      <div className="calculation-progress-head">
+        <div>
+          <strong>{normalized.label}</strong>
+          <p>{normalized.message}</p>
+        </div>
+        <span>{Number(normalized.percent || 0).toLocaleString()}%</span>
+      </div>
+      <div className="calculation-progress-track" aria-hidden="true">
+        <span style={{ width: `${Math.max(6, Math.min(100, Number(normalized.percent || 0)))}%` }} />
+      </div>
+      <ol className="calculation-progress-steps">
+        {steps.map(([phase, label]) => (
+          <li className={progressStepClass(phase, normalized.phase)} key={phase}>{label}</li>
+        ))}
+      </ol>
+      {(diagnoses.length || extractedOrders.length || lineItems.length) ? (
+        <div className="calculation-progress-preview">
+          {diagnoses.length ? (
+            <div>
+              <span>病名</span>
+              <ul>{diagnoses.map((item) => <li key={item}>{item}</li>)}</ul>
+            </div>
+          ) : null}
+          {extractedOrders.length ? (
+            <div>
+              <span>抽出した候補</span>
+              <ul>{extractedOrders.map((item) => <li key={item}>{item}</li>)}</ul>
+            </div>
+          ) : null}
+          {lineItems.length ? (
+            <div>
+              <span>算定行</span>
+              <ul>{lineItems.map((item) => <li key={item}>{item}</li>)}</ul>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1064,8 +1120,7 @@ function LineItemTable({ lineItems }) {
             <tr>
               <th>算定候補</th>
               <th>状態</th>
-              <th>対応</th>
-              <th>理由</th>
+              <th>区分</th>
               <th>点数</th>
             </tr>
           </thead>
@@ -1075,15 +1130,11 @@ function LineItemTable({ lineItems }) {
                 <td>
                   <div className="line-name">
                     <strong>{line.name || "未分類"}</strong>
-                    <small>{line.code || ""} / {line.orderType || "unknown"} / {line.source || "source未設定"}</small>
+                    <small>{lineMetaLabel(line)}</small>
                   </div>
                 </td>
                 <td><span className={badgeClass(line.status)}>{statusLabel(line.status)}</span></td>
-                <td>{supportLevelLabel(line.supportLevel || line.support_level || line.coverage?.supportLevel || line.coverage?.support_level)}</td>
-                <td>
-                  {line.reason || coverageLabel(line.coverage)}
-                  <div className="field-note">{coverageLabel(line.coverage)}</div>
-                </td>
+                <td>{lineBusinessCategory(line)}</td>
                 <td>{Number(line.totalPoints || 0).toLocaleString()}</td>
               </tr>
             ))}
@@ -1103,11 +1154,11 @@ function ReviewList({ disabled, items, onDecision, selected }) {
       {items.map((item) => (
         <article className="review-item" key={item.reviewItemId}>
           <header>
-            <span>{item.title}</span>
+            <span>{item.displayTitle || reviewItemTitle(item)}</span>
             <span className={badgeClass(item.status)}>{statusLabel(item.status)}</span>
           </header>
-          <p>{item.reason || ""}</p>
-          {item.lineItem ? <p>{coverageLabel(item.lineItem.coverage)}</p> : null}
+          <p>{item.displayReason || humanizeReviewMessage(item.reason || item.lineItem?.reason || "")}</p>
+          {item.lineItem ? <p>{lineMetaLabel(item.lineItem)} / {coverageLabel(item.lineItem.coverage)}</p> : null}
           <div className="button-row">
             <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">承認</button>
             <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected")} type="button">却下</button>
@@ -1557,6 +1608,197 @@ function reviewLabel(session) {
   return count ? `レビュー ${count.toLocaleString()}件` : "レビューなし";
 }
 
+function buildClientCalculationProgress({
+  phase = "extract",
+  percent = 10,
+  message = ""
+} = {}) {
+  return {
+    phase,
+    label: calculationPhaseLabel(phase),
+    message,
+    percent,
+    updatedAt: new Date().toISOString(),
+    diagnoses: [],
+    extractedOrders: [],
+    lineItems: []
+  };
+}
+
+function normalizeCalculationProgress(progress) {
+  if (!progress || typeof progress !== "object") {
+    return buildClientCalculationProgress({
+      phase: "extract",
+      percent: 10,
+      message: "カルテ本文から算定に必要な情報を抽出しています。"
+    });
+  }
+  const phase = String(progress.phase || "extract");
+  return {
+    phase,
+    label: progress.label || calculationPhaseLabel(phase),
+    message: progress.message || "算定候補を作成しています。",
+    percent: Number(progress.percent || 0),
+    diagnoses: asStringList(progress.diagnoses),
+    extractedOrders: asStringList(progress.extractedOrders),
+    lineItems: asStringList(progress.lineItems),
+    totalPoints: progress.totalPoints,
+    updatedAt: progress.updatedAt || ""
+  };
+}
+
+function calculationPhaseLabel(phase) {
+  return {
+    extract: "抽出中",
+    calculate: "算定中",
+    aggregate: "集計中",
+    complete: "完了",
+    failed: "失敗"
+  }[phase] || "算定中";
+}
+
+function progressStepClass(step, current) {
+  const order = ["extract", "calculate", "aggregate", "complete"];
+  const stepIndex = order.indexOf(step);
+  const currentIndex = order.indexOf(current);
+  if (current === "failed") return stepIndex <= 0 ? "is-current" : "";
+  if (step === current) return "is-current";
+  if (stepIndex >= 0 && currentIndex >= 0 && stepIndex < currentIndex) return "is-done";
+  return "";
+}
+
+function asStringList(value) {
+  return Array.isArray(value)
+    ? value.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+}
+
+function buildDisplayReviewItems(items = []) {
+  const lineTexts = (Array.isArray(items) ? items : [])
+    .filter((item) => item?.sourceType === "line_item")
+    .map((item) => `${item.lineItem?.name || ""} ${item.title || ""}`)
+    .join(" ");
+  const seen = new Set();
+  const result = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    if (item?.sourceType === "warning" && shouldSuppressWarningForExistingLine(item, lineTexts)) {
+      continue;
+    }
+    const displayTitle = reviewItemTitle(item);
+    const displayReason = humanizeReviewMessage(item.reason || item.lineItem?.reason || "");
+    const key = semanticReviewKey(item, displayTitle, displayReason);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push({
+      ...item,
+      displayTitle,
+      displayReason
+    });
+  }
+  return result;
+}
+
+function shouldSuppressWarningForExistingLine(item = {}, lineTexts = "") {
+  const text = `${item.title || ""} ${item.reason || ""}`;
+  return /レバミピド/u.test(text) && /数量|日数|不足/u.test(text) && /レバミピド/u.test(lineTexts);
+}
+
+function semanticReviewKey(item = {}, title = "", reason = "") {
+  const text = `${title} ${reason} ${item.title || ""} ${item.reason || ""} ${item.lineItem?.name || ""}`.toLowerCase();
+  if (/施設基準|hospital_profile_missing|facility_standard/u.test(text)) return "warning:facility_standard";
+  if (/mri|ｍｒｉ/u.test(text) && /予定|依頼|オーダー|planned|ordered/u.test(text)) return "warning:mri_planned";
+  if (/単純x線|x線|レントゲン|simple_radiography/u.test(text) && /撮影方式|写真診断|機器|条件/u.test(text)) return "warning:simple_radiography_condition";
+  if (/レバミピド/u.test(text) && /数量|日数|不足/u.test(text)) return "warning:drug_quantity:rebamipide";
+  if (/ロコア/u.test(text) && /数量|日数|不足/u.test(text)) return "warning:drug_quantity:locoa";
+  if (/ロコア|湿布/u.test(text) && /マスター|解決でき/u.test(text)) return "warning:patch_master";
+  if (/コルセット/u.test(text)) return "warning:corset_instruction";
+  if (item.sourceType === "line_item") return `line:${item.lineItem?.code || item.lineItem?.name || item.reviewItemId}`;
+  return `${item.sourceType || "review"}:${title}:${reason}`;
+}
+
+function reviewItemTitle(item = {}) {
+  const text = `${item.title || ""} ${item.reason || ""} ${item.lineItem?.name || ""}`;
+  if (/施設基準|hospital_profile_missing|facility_standard/u.test(text)) return "施設基準の確認";
+  if (/mri|ｍｒｉ/u.test(text) && /予定|依頼|オーダー|planned|ordered/u.test(text)) return "MRIは予定扱い";
+  if (/単純X線|単純x線|X線|x線|レントゲン|simple_radiography/u.test(text) && /撮影方式|写真診断|機器|条件/u.test(text)) return "単純X線の撮影条件確認";
+  if (/レバミピド/u.test(text) && /数量|日数|不足/u.test(text)) return "レバミピドの数量/日数確認";
+  if (/ロコア/u.test(text) && /数量|日数|不足/u.test(text)) return "湿布の数量/日数確認";
+  if (/ロコア|湿布/u.test(text) && /マスター|解決でき/u.test(text)) return "湿布のマスター確認";
+  if (/コルセット/u.test(text)) return "コルセットは指導のみ";
+  if (/調剤料|処方料|Medication fee/i.test(text)) return "投薬料の確認";
+  if (/単純撮影|画像|Imaging fee/i.test(text)) return "画像診断料の確認";
+  if (/初診|再診|Outpatient basic/i.test(text)) return "初再診料の確認";
+  if (item.sourceType === "warning") return "確認事項";
+  return item.title || item.lineItem?.name || "算定候補の確認";
+}
+
+function humanizeReviewMessage(message = "") {
+  const raw = String(message || "").trim();
+  if (!raw) return "算定候補の内容を確認してください。";
+  const text = raw.replace(/^[a-z][a-z0-9_]*:\s*/iu, "").trim();
+  if (/hospital_profile_missing|施設基準がない|施設基準/u.test(raw)) {
+    return "施設基準が登録されていないため、施設基準が必要な加算は自動追加していません。";
+  }
+  if (/This result is a billing candidate/i.test(text)) {
+    return "この結果は算定候補です。確定請求前に内容を確認してください。";
+  }
+  if (/Input drug code; medical drug fee rounded/i.test(text)) {
+    return "入力された薬剤コードから薬剤料を候補化しました。薬価合計を点数に換算しています。";
+  }
+  if (/Medication fee candidate for in_house/i.test(text)) {
+    return "院内処方に関する投薬料候補です。処方内容と算定条件を確認してください。";
+  }
+  if (/Imaging fee candidate for simple_radiography/i.test(text)) {
+    return "単純X線に関する画像診断料候補です。撮影方式と写真診断区分を確認してください。";
+  }
+  if (/Outpatient basic fee candidate for initial/i.test(text)) {
+    return "初診料の候補です。受診履歴と初診の条件を確認してください。";
+  }
+  if (/Outpatient basic fee candidate for revisit/i.test(text)) {
+    return "再診料の候補です。受診履歴と再診の条件を確認してください。";
+  }
+  if (/Input medical procedure code matched master only/i.test(text)) {
+    return "標準マスターには一致しましたが、章ごとの算定条件は未確認です。";
+  }
+  return text
+    .replace(/\bmaster lookup\b/giu, "マスター照合")
+    .replace(/\bin_house\b/giu, "院内処方")
+    .replace(/\bsimple_radiography\b/giu, "単純X線")
+    .replace(/\bmedical_fee_calculation\b/giu, "算定エンジン")
+    .replace(/\bdrug_master\b|\bmedical_procedure_master\b|\bmaterial_master\b/giu, "")
+    .replace(/\s{2,}/gu, " ")
+    .trim();
+}
+
+function lineMetaLabel(line = {}) {
+  const code = String(line.code || "").trim();
+  const category = lineBusinessCategory(line);
+  return [code, category].filter(Boolean).join(" / ") || category || "分類未設定";
+}
+
+function lineBusinessCategory(line = {}) {
+  const text = `${line.orderType || ""} ${line.source || ""} ${line.coverage?.scope || ""}`.toLowerCase();
+  if (/outpatient_basic|basic/u.test(text)) return "基本料";
+  if (/medication_fee/u.test(text)) return "投薬";
+  if (/drug/u.test(text)) return "薬剤";
+  if (/imaging/u.test(text)) return "画像";
+  if (/lab/u.test(text)) return "検査";
+  if (/material/u.test(text)) return "特定器材";
+  if (/procedure|treatment|medical_procedure/u.test(text)) return "診療行為";
+  return "算定候補";
+}
+
+function humanizeCoverageDescription(value = "") {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/billing candidate and review-support draft/i.test(text)) {
+    return "対応範囲内で候補化できた算定行です。確定請求前にレビューしてください。";
+  }
+  return humanizeReviewMessage(text);
+}
+
 function statusLabel(value) {
   return ({
     active: "作成中",
@@ -1590,7 +1832,7 @@ function supportLevelLabel(level) {
 function scopeLabel(scope) {
   return ({
     candidate_review_support: "算定候補・レビュー支援",
-    master_lookup_only: "マスターlookupのみ",
+    master_lookup_only: "マスター照合のみ",
     deterministic_rule: "ルール対応",
     candidate_rule: "候補ルール",
     review_required: "要確認"

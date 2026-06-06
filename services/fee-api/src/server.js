@@ -316,7 +316,7 @@ async function routeFeeApiRequest(input = {}) {
     }
     assertFeeSessionReadyForCalculation(current);
     const calculationInput = validateCreateFeeCalculationInput(input.body || {});
-    if (shouldRunCalculationInline(input)) {
+    try {
       return created(await calculateFeeSessionNow({
         context,
         feeCalculator,
@@ -327,37 +327,16 @@ async function routeFeeApiRequest(input = {}) {
         current,
         calculationInput
       }));
-    }
-
-    const queued = await feeStore.updateSession(context.session.orgId, parts[3], { status: "calculating" });
-    setImmediate(() => {
-      calculateFeeSessionNow({
+    } catch (error) {
+      await markFeeCalculationFailed({
         context,
-        feeCalculator,
         feeStore,
-        platformStore,
-        input,
         feeSessionId: parts[3],
-        current,
-        calculationInput
-      }).catch(async (error) => {
-        console.error(JSON.stringify({
-          event: "fee.calculate.failed",
-          orgId: context.session.orgId,
-          feeSessionId: parts[3],
-          failedStage: error?.calculateStage || null,
-          failedStageDurationMs: error?.calculateStageDurationMs || null,
-          stageTimings: Array.isArray(error?.calculateStageTimings) ? error.calculateStageTimings : null,
-          error: safeLogError(error)
-        }));
-        await markCalculationFailed(feeStore, context.session.orgId, parts[3]).catch(() => null);
+        error,
+        now: input.now || new Date()
       });
-    });
-
-    return accepted({
-      ...buildFeeSessionDetailFromSession(queued.feeSession, input.now || new Date()),
-      calculation: { status: "queued" }
-    });
+      throw error;
+    }
   }
 
   return notFound("Route not found");
@@ -388,14 +367,6 @@ async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now) {
   };
 }
 
-function buildFeeSessionDetailFromSession(feeSession, now) {
-  return {
-    feeSession,
-    receiptDraft: buildReceiptDraft(feeSession, { now }),
-    reviewItems: buildReviewItems(feeSession)
-  };
-}
-
 async function calculateFeeSessionNow({
   context,
   feeCalculator,
@@ -408,14 +379,63 @@ async function calculateFeeSessionNow({
 }) {
   const overallStartedAt = Date.now();
   const stageTimings = [];
-  const latest = await timedCalculationStage({
-    stage: "loadSession",
-    orgId: context.session.orgId,
-    feeSessionId,
-    stageTimings,
-    fn: () => feeStore.getSession(context.session.orgId, feeSessionId)
+  const calculating = await feeStore.updateSession(context.session.orgId, feeSessionId, {
+    status: "calculating",
+    calculationProgress: feeCalculationProgress({
+      phase: "extract",
+      percent: 10,
+      message: "カルテ本文から算定に必要な情報を抽出しています。",
+      session: current,
+      now: input.now || new Date()
+    })
   });
-  const session = latest || current;
+  const { prepared, calculationSession } = await prepareFeeSessionForCalculation({
+    context,
+    feeCalculator,
+    feeStore,
+    input,
+    feeSessionId,
+    session: calculating.feeSession,
+    calculationInput,
+    stageTimings
+  });
+  const progressed = await feeStore.updateSession(context.session.orgId, feeSessionId, {
+    calculationProgress: feeCalculationProgress({
+      phase: "calculate",
+      percent: 55,
+      message: "抽出した内容をマスターと照合し、算定候補を作成しています。",
+      session: calculationSession,
+      prepared,
+      now: input.now || new Date()
+    })
+  });
+
+  return calculatePreparedFeeSessionNow({
+    context,
+    feeCalculator,
+    feeStore,
+    platformStore,
+    input,
+    feeSessionId,
+    calculationSession: progressed.feeSession,
+    calculationInput,
+    prepared,
+    initialStageTimings: stageTimings,
+    overallStartedAt
+  });
+}
+
+async function prepareFeeSessionForCalculation({
+  context,
+  feeCalculator,
+  feeStore,
+  input,
+  feeSessionId,
+  session,
+  calculationInput,
+  stageTimings,
+  status = null
+}) {
   const prepared = await timedCalculationStage({
     stage: "prepare",
     orgId: context.session.orgId,
@@ -424,23 +444,44 @@ async function calculateFeeSessionNow({
     fn: () => prepareSessionForCalculation(session, calculationInput, feeCalculator, input),
     detail: (result) => ({
       clinicalStructuring: result?.metrics?.clinicalStructuring || null,
+      ruleBasedClinicalInference: result?.metrics?.ruleBasedClinicalInference || null,
       prepareStageTimings: result?.metrics?.stageTimings || [],
       calculationOptionsKeys: Object.keys(result?.calculationOptions || {}),
       reviewWarningCount: Array.isArray(result?.reviewWarnings) ? result.reviewWarnings.length : 0
     })
   });
-  const calculationSession = prepared.patch
+  const preparedPatch = prepared.patch || null;
+  const patch = status ? { ...(preparedPatch || {}), status } : preparedPatch;
+  const calculationSession = patch
     ? (await timedCalculationStage({
       stage: "savePreparedSession",
       orgId: context.session.orgId,
       feeSessionId,
       stageTimings,
-      fn: () => feeStore.updateSession(context.session.orgId, feeSessionId, prepared.patch),
+      fn: () => feeStore.updateSession(context.session.orgId, feeSessionId, patch),
       detail: () => ({
-        patchKeys: Object.keys(prepared.patch || {})
+        patchKeys: Object.keys(patch || {})
       })
     })).feeSession
     : session;
+
+  return { prepared, calculationSession };
+}
+
+async function calculatePreparedFeeSessionNow({
+  context,
+  feeCalculator,
+  feeStore,
+  platformStore,
+  input,
+  feeSessionId,
+  calculationSession,
+  calculationInput,
+  prepared,
+  initialStageTimings = [],
+  overallStartedAt = Date.now()
+}) {
+  const stageTimings = [...initialStageTimings];
   const calculationInputForSession = buildCalculationInputForSession(calculationSession, calculationInput, prepared);
   const calculationResult = await timedCalculationStage({
     stage: "pythonCalculator",
@@ -459,6 +500,17 @@ async function calculateFeeSessionNow({
       warningCount: Array.isArray(result?.warnings) ? result.warnings.length : 0
     })
   });
+  await feeStore.updateSession(context.session.orgId, feeSessionId, {
+    calculationProgress: feeCalculationProgress({
+      phase: "aggregate",
+      percent: 85,
+      message: "算定結果を集計し、レビュー項目を準備しています。",
+      session: calculationSession,
+      prepared,
+      calculationResult,
+      now: input.now || new Date()
+    })
+  });
   const result = await timedCalculationStage({
     stage: "saveCalculation",
     orgId: context.session.orgId,
@@ -467,7 +519,18 @@ async function calculateFeeSessionNow({
     fn: () => feeStore.saveCalculation(
       context.session.orgId,
       feeSessionId,
-      addSessionReviewWarnings(calculationSession, calculationResult, prepared.reviewWarnings)
+      addSessionReviewWarnings(calculationSession, {
+        ...calculationResult,
+        calculationProgress: feeCalculationProgress({
+          phase: "complete",
+          percent: 100,
+          message: "算定候補の作成が完了しました。",
+          session: calculationSession,
+          prepared,
+          calculationResult,
+          now: input.now || new Date()
+        })
+      }, prepared.reviewWarnings)
     )
   });
   await timedCalculationStage({
@@ -499,7 +562,8 @@ async function calculateFeeSessionNow({
     totalDurationMs: Date.now() - overallStartedAt,
     calculatorDurationMs: stageDuration(stageTimings, "pythonCalculator"),
     stageTimings,
-    clinicalStructuring: prepared.metrics?.clinicalStructuring || null
+    clinicalStructuring: prepared.metrics?.clinicalStructuring || null,
+    ruleBasedClinicalInference: prepared.metrics?.ruleBasedClinicalInference || null
   }));
 
   return {
@@ -509,14 +573,128 @@ async function calculateFeeSessionNow({
   };
 }
 
-async function markCalculationFailed(feeStore, orgId, feeSessionId) {
-  await feeStore.updateSession(orgId, feeSessionId, { status: "failed" });
+async function markFeeCalculationFailed({
+  context,
+  feeStore,
+  feeSessionId,
+  error,
+  now
+}) {
+  try {
+    await feeStore.updateSession(context.session.orgId, feeSessionId, {
+      status: "failed",
+      calculationProgress: feeCalculationProgress({
+        phase: "failed",
+        percent: 100,
+        message: "算定候補の作成に失敗しました。入力内容を確認してもう一度お試しください。",
+        error,
+        now
+      })
+    });
+  } catch {
+    // Preserve the original calculation error.
+  }
 }
 
-function shouldRunCalculationInline(input = {}) {
-  return input.env === "test"
-    || input.body?.wait === true
-    || String(process.env.FEE_CALCULATION_INLINE || "").toLowerCase() === "true";
+function feeCalculationProgress({
+  phase = "extract",
+  percent = 0,
+  message = "",
+  session = {},
+  prepared = null,
+  calculationResult = null,
+  error = null,
+  now = new Date()
+} = {}) {
+  const normalizedPhase = String(phase || "extract");
+  return {
+    phase: normalizedPhase,
+    label: feeCalculationPhaseLabel(normalizedPhase),
+    message,
+    percent: Math.max(0, Math.min(100, Number(percent) || 0)),
+    updatedAt: timestampForProgress(now),
+    ...(prepared?.metrics ? { metrics: prepared.metrics } : {}),
+    ...(error ? { error: safeLogError(error) } : {}),
+    ...feeCalculationProgressPreview({ session, prepared, calculationResult })
+  };
+}
+
+function feeCalculationPhaseLabel(phase) {
+  return {
+    extract: "抽出",
+    calculate: "算定",
+    aggregate: "集計",
+    complete: "完了",
+    failed: "失敗"
+  }[phase] || "算定中";
+}
+
+function feeCalculationProgressPreview({ session = {}, prepared = null, calculationResult = null } = {}) {
+  const calculationOptions = prepared?.calculationOptions || session.calculationOptions || {};
+  const diagnoses = Array.isArray(session.diagnoses)
+    ? session.diagnoses.map((item) => String(item?.name || item || "").trim()).filter(Boolean).slice(0, 5)
+    : [];
+  const extractedOrders = extractedOrderLabels(calculationOptions).slice(0, 8);
+  const lineItems = Array.isArray(calculationResult?.lineItems)
+    ? calculationResult.lineItems.map((line) => line?.name || line?.code || "").filter(Boolean).slice(0, 8)
+    : [];
+
+  return {
+    diagnoses,
+    extractedOrders,
+    lineItems,
+    totalPoints: calculationResult ? Number(calculationResult.totalPoints || 0) : null,
+    lineItemCount: Array.isArray(calculationResult?.lineItems) ? calculationResult.lineItems.length : null,
+    warningCount: Array.isArray(calculationResult?.warnings) ? calculationResult.warnings.length : null
+  };
+}
+
+function extractedOrderLabels(options = {}) {
+  if (!isPlainObject(options)) {
+    return [];
+  }
+  const labels = [];
+  if (options.outpatient_basic?.fee_kind) {
+    labels.push(options.outpatient_basic.fee_kind === "initial" ? "初診料候補" : "再診料候補");
+  }
+  for (const order of Array.isArray(options.imaging_orders) ? options.imaging_orders : []) {
+    labels.push(imagingProgressLabel(order));
+  }
+  for (const order of Array.isArray(options.treatment_orders) ? options.treatment_orders : []) {
+    labels.push(treatmentProgressLabel(order));
+  }
+  const medicationCount = Array.isArray(options.medication_orders) ? options.medication_orders.length : 0;
+  if (medicationCount) {
+    labels.push(`薬剤候補 ${medicationCount}件`);
+  }
+  const materialCount = Array.isArray(options.material_inputs) ? options.material_inputs.length : 0;
+  if (materialCount) {
+    labels.push(`特定器材候補 ${materialCount}件`);
+  }
+  return labels.filter(Boolean);
+}
+
+function imagingProgressLabel(order = {}) {
+  const kind = String(order.kind || "").trim();
+  if (kind === "simple_radiography") return "単純X線候補";
+  if (kind === "ct") return "CT候補";
+  if (kind === "mri") return "MRI候補";
+  if (kind === "ultrasound") return "超音波候補";
+  return "画像診断候補";
+}
+
+function treatmentProgressLabel(order = {}) {
+  const kind = String(order.kind || "").trim();
+  if (kind === "burn") return "熱傷処置候補";
+  if (kind === "wound") return "創傷処置候補";
+  return "処置候補";
+}
+
+function timestampForProgress(value) {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return value ? String(value) : new Date().toISOString();
 }
 
 async function timedCalculationStage({
@@ -710,7 +888,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       || process.env.OPENAI_FEE_CLINICAL_REASONING_EFFORT
       || process.env.OPENAI_FACT_REASONING_EFFORT
       || process.env.OPENAI_SOAP_REASONING_EFFORT
-      || "low"
+      || "minimal"
     ),
     openAiTimeoutMs: Number(
       input.openAiFeeClinicalTimeoutMs
@@ -1050,10 +1228,6 @@ function ok(body, headers = {}) {
 
 function created(body, headers = {}) {
   return { statusCode: 201, body, headers };
-}
-
-function accepted(body, headers = {}) {
-  return { statusCode: 202, body, headers };
 }
 
 function noContent(headers = {}) {

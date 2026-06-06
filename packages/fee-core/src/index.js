@@ -35,6 +35,7 @@ export function buildFeeSession(input = {}, options = {}) {
     calculationOptions: isPlainObject(input.calculationOptions) ? input.calculationOptions : null,
     calculationOptionsSource: input.calculationOptionsSource || null,
     calculationOptionsAutoKeys: Array.isArray(input.calculationOptionsAutoKeys) ? input.calculationOptionsAutoKeys : [],
+    calculationProgress: isPlainObject(input.calculationProgress) ? input.calculationProgress : null,
     sourceSystem: input.sourceSystem || null,
     calculationResult: input.calculationResult || null,
     calculationSummary: input.calculationSummary || null,
@@ -72,6 +73,9 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
       calculationOptionsAutoKeys: hasOwn(patch, "calculationOptionsAutoKeys")
         ? Array.isArray(patch.calculationOptionsAutoKeys) ? patch.calculationOptionsAutoKeys : []
         : undefined,
+      calculationProgress: hasOwn(patch, "calculationProgress")
+        ? isPlainObject(patch.calculationProgress) ? patch.calculationProgress : null
+        : undefined,
       sourceSystem: patch.sourceSystem
     }),
     updatedAt: now
@@ -97,6 +101,7 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
     next.calculationResult = null;
     next.calculationSummary = null;
     next.latestCalculationId = null;
+    next.calculationProgress = null;
   }
 
   if (patch.status === "calculating") {
@@ -123,6 +128,17 @@ export function applyCalculationResult(current = {}, calculationResult = {}, opt
     calculationResult: normalizedResult,
     calculationSummary: buildCalculationSummary(normalizedResult),
     latestCalculationId: normalizedResult.calculationId,
+    calculationProgress: isPlainObject(calculationResult.calculationProgress)
+      ? calculationResult.calculationProgress
+      : {
+        phase: "complete",
+        label: "完了",
+        message: "算定候補の作成が完了しました。",
+        percent: 100,
+        updatedAt: now,
+        totalPoints: normalizedResult.totalPoints,
+        lineItemCount: normalizedResult.lineItems.length
+      },
     updatedAt: now
   };
 }

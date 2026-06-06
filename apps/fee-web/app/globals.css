@@ -954,6 +954,123 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   font-size: 1.35rem;
 }
 
+.calculation-progress {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+}
+
+.calculation-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.calculation-progress-head strong {
+  display: block;
+  font-size: 15px;
+}
+
+.calculation-progress-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.calculation-progress-head > span {
+  color: var(--accent-dark);
+  font-weight: 900;
+}
+
+.calculation-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8f3f1;
+}
+
+.calculation-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease;
+}
+
+.calculation-progress-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calculation-progress-steps li {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  padding: 7px 10px;
+  text-align: center;
+}
+
+.calculation-progress-steps li.is-done {
+  border-color: #bfe4dc;
+  background: #f2fbf8;
+  color: var(--accent-dark);
+}
+
+.calculation-progress-steps li.is-current {
+  border-color: var(--accent);
+  background: var(--soft-accent);
+  color: var(--accent-dark);
+}
+
+.calculation-progress-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.calculation-progress-preview div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 10px;
+}
+
+.calculation-progress-preview span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.calculation-progress-preview ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calculation-progress-preview li {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .line-table-wrap,
 .fee-table-wrap {
   width: 100%;
@@ -1298,6 +1415,7 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   .fee-form-grid--conditions,
   .fee-form-grid--two,
   .metric-row,
+  .calculation-progress-preview,
   .master-search-controls,
   .order-editor-row {
     grid-template-columns: 1fr;

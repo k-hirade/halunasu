@@ -40,7 +40,8 @@ export async function buildClinicalCalculationPreparation({
   feeCalculator,
   openAiApiKey = "",
   openAiModel = "gpt-5.4-nano",
-  openAiReasoningEffort = "low",
+  openAiReasoningEffort = "minimal",
+  openAiTimeoutMs = 0,
   clinicalFactsExtractor = null
 } = {}) {
   const manualOptions = manualCalculationOptions(session, calculationInput);
@@ -49,13 +50,32 @@ export async function buildClinicalCalculationPreparation({
       calculationOptions: Object.keys(manualOptions).length ? manualOptions : null,
       calculationOptionsAutoKeys: [],
       calculationOptionsSource: Object.keys(manualOptions).length ? "manual" : null,
-      reviewWarnings: []
+      reviewWarnings: [],
+      metrics: {
+        clinicalStructuring: {
+          source: "manual",
+          durationMs: 0
+        }
+      }
     };
   }
 
   const text = normalizeClinicalText(calculationInput.clinicalText || session.clinicalText || "");
   const inferred = {};
   const reviewWarnings = [];
+  const metrics = {
+    clinicalStructuring: {
+      source: text ? "not_run" : "no_clinical_text",
+      durationMs: 0,
+      model: openAiModel,
+      timeoutMs: Number(openAiTimeoutMs || 0)
+    },
+    ruleBasedClinicalInference: {
+      durationMs: 0,
+      masterLookupCount: 0,
+      masterLookupDurationMs: 0
+    }
+  };
 
   if (text) {
     const structured = await inferStructuredClinicalCalculationOptions({
@@ -65,59 +85,44 @@ export async function buildClinicalCalculationPreparation({
       openAiApiKey,
       openAiModel,
       openAiReasoningEffort,
+      openAiTimeoutMs,
       clinicalFactsExtractor
     });
+    metrics.clinicalStructuring = structured.metrics;
+    const ruleMetrics = createMasterSearchMetrics(feeCalculator);
+    const ruleStartedAt = Date.now();
+    const ruleBased = await inferRuleBasedClinicalCalculationOptions({
+      text,
+      session,
+      feeCalculator: ruleMetrics.calculator
+    });
+    metrics.ruleBasedClinicalInference = {
+      durationMs: Date.now() - ruleStartedAt,
+      ...ruleMetrics.snapshot()
+    };
 
     if (structured.used) {
-      Object.assign(inferred, structured.inferred);
-      reviewWarnings.push(...structured.reviewWarnings);
+      Object.assign(inferred, normalizeClinicalInferredOptions(
+        mergeCalculationOptions(structured.inferred, ruleBased.inferred)
+      ));
+      reviewWarnings.push(...structured.reviewWarnings, ...ruleBased.reviewWarnings);
     } else {
-      reviewWarnings.push(...structured.reviewWarnings);
-
-      const outpatientBasic = inferOutpatientBasicOptions(text);
-      if (outpatientBasic) {
-        inferred.outpatient_basic = outpatientBasic;
-      }
-
-      const imaging = inferImagingOrders(text);
-      if (imaging.orders.length) {
-        inferred.imaging_orders = imaging.orders;
-      }
-      reviewWarnings.push(...imaging.reviewWarnings);
-
-      const treatment = inferTreatmentOrders(text, session.orders);
-      if (treatment.orders.length) {
-        inferred.treatment_orders = treatment.orders;
-      }
-      reviewWarnings.push(...treatment.reviewWarnings);
-
-      const drugInference = await inferMedicationOrders(text, feeCalculator);
-      if (drugInference.orders.length) {
-        inferred.medication_orders = drugInference.orders;
-        inferred.medication = {
-          delivery_kind: inferMedicationDeliveryKind(text),
-          prescription_category: "other"
-        };
-      }
-      reviewWarnings.push(...drugInference.reviewWarnings);
-
-      const materialInference = await inferMaterialInputs(text, feeCalculator);
-      if (materialInference.inputs.length) {
-        inferred.material_inputs = materialInference.inputs;
-      }
-      reviewWarnings.push(...materialInference.reviewWarnings);
+      Object.assign(inferred, ruleBased.inferred);
+      reviewWarnings.push(...structured.reviewWarnings, ...ruleBased.reviewWarnings);
     }
   }
 
-  const autoKeys = Object.keys(inferred).filter((key) => (
+  const normalizedInferred = normalizeClinicalInferredOptions(inferred);
+  const autoKeys = Object.keys(normalizedInferred).filter((key) => (
     CLINICAL_AUTO_OPTION_KEYS.has(key) && !hasOwn(manualOptions, key)
   ));
-  const merged = mergeCalculationOptions(manualOptions, inferred);
+  const merged = normalizeClinicalInferredOptions(mergeCalculationOptions(manualOptions, normalizedInferred));
   return {
     calculationOptions: Object.keys(merged).length ? merged : null,
     calculationOptionsAutoKeys: autoKeys,
     calculationOptionsSource: calculationOptionsSource(manualOptions, autoKeys),
-    reviewWarnings
+    reviewWarnings: normalizeReviewWarnings(reviewWarnings),
+    metrics
   };
 }
 
@@ -138,42 +143,193 @@ async function inferStructuredClinicalCalculationOptions({
   feeCalculator,
   openAiApiKey = "",
   openAiModel = "gpt-5.4-nano",
-  openAiReasoningEffort = "low",
+  openAiReasoningEffort = "minimal",
+  openAiTimeoutMs = 0,
   clinicalFactsExtractor = null
 } = {}) {
   const extractor = typeof clinicalFactsExtractor === "function" ? clinicalFactsExtractor : null;
   if (!extractor && !String(openAiApiKey || "").trim()) {
-    return { used: false, inferred: {}, reviewWarnings: [] };
+    return {
+      used: false,
+      inferred: {},
+      reviewWarnings: [],
+      metrics: {
+        source: "rules_no_openai",
+        durationMs: 0,
+        model: openAiModel,
+        reasoningEffort: openAiReasoningEffort,
+        openAiProviderDurationMs: 0,
+        clinicalFactsConvertDurationMs: 0,
+        masterLookupCount: 0,
+        masterLookupDurationMs: 0,
+        timeoutMs: Number(openAiTimeoutMs || 0)
+      }
+    };
   }
 
+  const startedAt = Date.now();
+  const conversionSearch = createMasterSearchMetrics(feeCalculator);
+  let openAiProviderDurationMs = 0;
+  let firstOutputTextMs = null;
+  let firstSnapshotSeen = false;
   try {
+    const providerStartedAt = Date.now();
     const factsResult = extractor
       ? await extractor({
         clinicalText: text,
         session,
         sessionContext: buildFeeSessionContext(session),
         model: openAiModel,
-        reasoningEffort: openAiReasoningEffort
+        reasoningEffort: openAiReasoningEffort,
+        timeoutMs: openAiTimeoutMs
       })
       : await extractFeeClinicalFactsWithOpenAi({
         apiKey: openAiApiKey,
         clinicalText: text,
         sessionContext: buildFeeSessionContext(session),
         model: openAiModel,
-        reasoningEffort: openAiReasoningEffort
+        reasoningEffort: openAiReasoningEffort,
+        timeoutMs: openAiTimeoutMs,
+        stream: true,
+        onOutputTextSnapshot: () => {
+          if (!firstSnapshotSeen) {
+            firstSnapshotSeen = true;
+            firstOutputTextMs = Date.now() - providerStartedAt;
+          }
+        }
       });
+    openAiProviderDurationMs = Date.now() - providerStartedAt;
     const facts = factsResult?.parsed || factsResult || {};
-    const converted = await clinicalFactsToCalculationOptions(facts, { text, session, feeCalculator });
-    return { used: true, ...converted };
+    const conversionStartedAt = Date.now();
+    const converted = await clinicalFactsToCalculationOptions(facts, {
+      text,
+      session,
+      feeCalculator: conversionSearch.calculator
+    });
+    return {
+      used: true,
+      ...converted,
+      metrics: {
+        source: "openai",
+        durationMs: Date.now() - startedAt,
+        openAiProviderDurationMs,
+        firstOutputTextMs,
+        clinicalFactsConvertDurationMs: Date.now() - conversionStartedAt,
+        extractedDiagnosisCount: Array.isArray(facts?.diagnoses) ? facts.diagnoses.length : 0,
+        extractedBillingEventCount: Array.isArray(facts?.billing_events) ? facts.billing_events.length : 0,
+        extractedExcludedEventCount: Array.isArray(facts?.excluded_events) ? facts.excluded_events.length : 0,
+        ...conversionSearch.snapshot(),
+        model: openAiModel,
+        reasoningEffort: openAiReasoningEffort,
+        timeoutMs: Number(openAiTimeoutMs || 0),
+        responseId: factsResult?.responseId || null,
+        usage: factsResult?.usage || null
+      }
+    };
   } catch (error) {
     return {
       used: false,
       inferred: {},
       reviewWarnings: [
         "AI構造化に失敗したため、従来のルールベース抽出で算定候補を作成しました。"
-      ]
+      ],
+      metrics: {
+        source: "rules_fallback",
+        durationMs: Date.now() - startedAt,
+        openAiProviderDurationMs: openAiProviderDurationMs || Date.now() - startedAt,
+        firstOutputTextMs,
+        clinicalFactsConvertDurationMs: 0,
+        ...conversionSearch.snapshot(),
+        model: openAiModel,
+        reasoningEffort: openAiReasoningEffort,
+        timeoutMs: Number(openAiTimeoutMs || 0),
+        fallbackReason: safeClinicalStructuringError(error)
+      }
     };
   }
+}
+
+function safeClinicalStructuringError(error) {
+  return [
+    error?.name || "Error",
+    error?.safeProviderMessage || error?.providerErrorCode || error?.code || error?.message || ""
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(": ")
+    .slice(0, 240);
+}
+
+function createMasterSearchMetrics(feeCalculator) {
+  const metrics = {
+    masterLookupCount: 0,
+    masterLookupDurationMs: 0
+  };
+  if (typeof feeCalculator?.searchMaster !== "function") {
+    return {
+      calculator: feeCalculator,
+      snapshot: () => ({ ...metrics })
+    };
+  }
+
+  return {
+    calculator: {
+      ...feeCalculator,
+      async searchMaster(input) {
+        const startedAt = Date.now();
+        metrics.masterLookupCount += 1;
+        try {
+          return await feeCalculator.searchMaster(input);
+        } finally {
+          metrics.masterLookupDurationMs += Date.now() - startedAt;
+        }
+      }
+    },
+    snapshot: () => ({ ...metrics })
+  };
+}
+
+async function inferRuleBasedClinicalCalculationOptions({ text = "", session = {}, feeCalculator } = {}) {
+  const inferred = {};
+  const reviewWarnings = [];
+
+  const outpatientBasic = inferOutpatientBasicOptions(text);
+  if (outpatientBasic) {
+    inferred.outpatient_basic = outpatientBasic;
+  }
+
+  const imaging = inferImagingOrders(text);
+  if (imaging.orders.length) {
+    inferred.imaging_orders = imaging.orders;
+  }
+  reviewWarnings.push(...imaging.reviewWarnings);
+
+  const treatment = inferTreatmentOrders(text, session.orders);
+  if (treatment.orders.length) {
+    inferred.treatment_orders = treatment.orders;
+  }
+  reviewWarnings.push(...treatment.reviewWarnings);
+
+  const drugInference = await inferMedicationOrders(text, feeCalculator);
+  if (drugInference.orders.length) {
+    inferred.medication_orders = drugInference.orders;
+    inferred.medication = {
+      delivery_kind: inferMedicationDeliveryKind(text),
+      prescription_category: "other"
+    };
+  }
+  reviewWarnings.push(...drugInference.reviewWarnings);
+
+  const materialInference = await inferMaterialInputs(text, feeCalculator);
+  if (materialInference.inputs.length) {
+    inferred.material_inputs = materialInference.inputs;
+  }
+  reviewWarnings.push(...materialInference.reviewWarnings);
+
+  return {
+    inferred,
+    reviewWarnings
+  };
 }
 
 async function clinicalFactsToCalculationOptions(facts = {}, { text = "", session = {}, feeCalculator } = {}) {
@@ -184,30 +340,14 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const medicationOrders = [];
   const materialInputs = [];
 
-  const visitKind = String(facts?.visit_type?.kind || "").trim();
-  if (visitKind === "initial") {
-    inferred.outpatient_basic = { fee_kind: "initial" };
-  } else if (visitKind === "revisit") {
-    inferred.outpatient_basic = { fee_kind: "revisit" };
+  const outpatientBasic = outpatientBasicFromStructuredVisit(facts?.visit_type, text);
+  if (outpatientBasic) {
+    inferred.outpatient_basic = outpatientBasic;
   }
 
   for (const event of asArray(facts?.excluded_events)) {
     const warning = excludedClinicalEventWarning(event);
     if (warning) reviewWarnings.push(warning);
-  }
-
-  for (const missing of asArray(facts?.missing_information)) {
-    const reason = String(missing?.reason || "").trim();
-    const field = String(missing?.field || "").trim();
-    if (reason && /薬|数量|日数|検査|画像|材料|処置|施設|加算/u.test(`${field} ${reason}`)) {
-      reviewWarnings.push(reason);
-    }
-  }
-
-  for (const flag of asArray(facts?.review_flags)) {
-    if (String(flag || "").trim()) {
-      reviewWarnings.push(String(flag).trim());
-    }
   }
 
   for (const event of asArray(facts?.billing_events)) {
@@ -272,8 +412,27 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
 
   return {
     inferred,
-    reviewWarnings: uniqueStrings(reviewWarnings)
+    reviewWarnings: normalizeReviewWarnings(reviewWarnings)
   };
+}
+
+function outpatientBasicFromStructuredVisit(visitType = {}, text = "") {
+  const kind = String(visitType?.kind || "").trim();
+  const evidence = normalizeClinicalText(visitType?.evidence || "");
+  if (!["initial", "revisit"].includes(kind) || !evidence) {
+    return null;
+  }
+  if (isNegatedContext(evidence) || isFutureOrOrderOnlyContext(evidence)) {
+    return null;
+  }
+  if (kind === "initial" && /(初診|初回受診|初めて|初来院)/u.test(evidence)) {
+    return { fee_kind: "initial" };
+  }
+  if (kind === "revisit" && /(再診|再来|フォロー|経過観察)/u.test(evidence)) {
+    return { fee_kind: "revisit" };
+  }
+  const explicitRule = inferOutpatientBasicOptions(text);
+  return explicitRule?.fee_kind === kind ? explicitRule : null;
 }
 
 function inferOutpatientBasicOptions(text) {
@@ -819,6 +978,26 @@ function mergeCalculationOptions(existing = {}, inferred = {}) {
   return result;
 }
 
+function normalizeClinicalInferredOptions(options = {}) {
+  if (!isPlainObject(options)) {
+    return {};
+  }
+  const result = { ...options };
+  if (Array.isArray(result.imaging_orders)) {
+    result.imaging_orders = dedupeObjects(result.imaging_orders, (item) => item?.kind || JSON.stringify(item));
+  }
+  if (Array.isArray(result.treatment_orders)) {
+    result.treatment_orders = dedupeObjects(result.treatment_orders);
+  }
+  if (Array.isArray(result.medication_orders)) {
+    result.medication_orders = dedupeObjects(result.medication_orders, (item) => item?.drug_code || JSON.stringify(item));
+  }
+  if (Array.isArray(result.material_inputs)) {
+    result.material_inputs = dedupeObjects(result.material_inputs, (item) => item?.code || JSON.stringify(item));
+  }
+  return result;
+}
+
 function manualCalculationOptions(session = {}, calculationInput = {}) {
   if (isPlainObject(calculationInput.calculationOptions)) {
     return calculationInput.calculationOptions;
@@ -912,6 +1091,16 @@ function uniqueObjects(values = []) {
 
 function uniqueStrings(values = []) {
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function normalizeReviewWarnings(values = []) {
+  return uniqueStrings(values)
+    .filter((warning) => !isLowValueClinicalReviewWarning(warning))
+    .slice(0, 20);
+}
+
+function isLowValueClinicalReviewWarning(warning) {
+  return /^(診断精査目的|治療方針再評価|NSAIDs注意)/u.test(warning);
 }
 
 function asArray(value) {

@@ -172,6 +172,44 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.ok(auditEvents.some((event) => event.eventType === "fee.review_item_decided"));
 });
 
+test("calculates fee sessions inline outside test env", async () => {
+  const stores = createStores();
+  const headers = await signedBearerHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: {
+      displayName: "非同期 太郎",
+      sex: "unknown"
+    },
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "初診。血液検査を実施。"
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { env: "stg" }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(calculation.body.feeSession.status, "needs_review");
+  assert.equal(calculation.body.calculationResult.totalPoints, 137);
+
+  const detail = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/detail`,
+    undefined,
+    headers,
+    { env: "stg" }
+  );
+  assert.equal(detail.body.feeSession.status, "needs_review");
+  assert.equal(detail.body.feeSession.calculationSummary.totalPoints, 137);
+});
+
 test("resolves name-only orders against master before calculation", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -722,7 +760,7 @@ test("uses structured clinical facts for calculation input when available", asyn
   );
 
   assert.equal(calculation.statusCode, 201);
-  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+  assert.equal(receivedInput.calculationOptions.outpatient_basic, undefined);
   assert.deepEqual(receivedInput.calculationOptions.imaging_orders.map((order) => order.kind), ["simple_radiography"]);
   assert.deepEqual(
     receivedInput.calculationOptions.medication_orders.map((order) => order.drug_code).sort(),
@@ -732,6 +770,159 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
+});
+
+test("merges deterministic performed imaging when structured facts miss it", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 210,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "unknown", evidence: "", confidence: "low" },
+    diagnoses: [],
+    billing_events: [
+      {
+        type: "imaging",
+        name: "MRI腰椎",
+        status: "ordered",
+        evidence: "MRI腰椎オーダー（次回持参または当院撮影）",
+        modality: "mri",
+        body_site: "腰椎",
+        dose: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        unit: "",
+        frequency: "",
+        area_size_cm2: "",
+        review_reason: "予定・依頼"
+      }
+    ],
+    excluded_events: [
+      {
+        type: "imaging",
+        name: "MRI腰椎",
+        status: "ordered",
+        evidence: "MRI腰椎オーダー（次回持参または当院撮影）",
+        reason: "予定・依頼"
+      }
+    ],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Structured Miss Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-05",
+    clinicalText: [
+      "O（Objective：客観的情報）",
+      "腰椎X線（正面・側面）：L4/5椎間板スペース軽度狭小化、骨棘形成あり",
+      "P（Plan：計画）",
+      "MRI腰椎オーダー（次回持参または当院撮影）",
+      "2週間後に再診、MRI結果をもとに治療方針を再評価"
+    ].join("\n"),
+    diagnoses: [{ name: "腰椎椎間板ヘルニア疑い" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic, undefined);
+  assert.deepEqual(
+    receivedInput.calculationOptions.imaging_orders.map((order) => order.kind),
+    ["simple_radiography"]
+  );
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
+});
+
+test("records fee calculation progress and split clinical structuring metrics", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let extractorInput = null;
+  let progressDuringCalculation = null;
+  stores.feeCalculator.calculate = async (feeSession) => {
+    progressDuringCalculation = stores.feeStore.getSession(feeSession.orgId, feeSession.feeSessionId).calculationProgress;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 288,
+      lineItems: [{
+        lineId: "line_initial",
+        code: "111000110",
+        name: "初診料",
+        orderType: "outpatient_basic",
+        points: 288,
+        quantity: 1,
+        totalPoints: 288,
+        status: "candidate",
+        source: "outpatient_basic_fee"
+      }],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async (input) => {
+    extractorInput = input;
+    return {
+      visit_type: { kind: "initial", evidence: "初診", confidence: "high" },
+      diagnoses: [{ name: "腰痛症", status: "suspected", evidence: "腰痛" }],
+      billing_events: [],
+      excluded_events: [],
+      missing_information: [],
+      review_flags: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Progress Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-05",
+    clinicalText: "腰痛で初診。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(extractorInput.reasoningEffort, "minimal");
+  assert.equal(progressDuringCalculation.phase, "calculate");
+  assert.ok(progressDuringCalculation.percent >= 50);
+  assert.equal(calculation.body.feeSession.calculationProgress.phase, "complete");
+  assert.equal(calculation.body.feeSession.calculationProgress.totalPoints, 288);
+  assert.equal(calculation.body.feeSession.calculationProgress.metrics.clinicalStructuring.source, "openai");
+  assert.equal(calculation.body.feeSession.calculationProgress.metrics.clinicalStructuring.reasoningEffort, "minimal");
+  assert.equal(typeof calculation.body.feeSession.calculationProgress.metrics.clinicalStructuring.openAiProviderDurationMs, "number");
+  assert.equal(typeof calculation.body.feeSession.calculationProgress.metrics.clinicalStructuring.clinicalFactsConvertDurationMs, "number");
+  assert.equal(typeof calculation.body.feeSession.calculationProgress.metrics.ruleBasedClinicalInference.durationMs, "number");
 });
 
 test("adds review warning when calculation produces no candidate lines", async () => {
@@ -1110,6 +1301,27 @@ async function signedHeaders(platformStore) {
   return {
     cookie: `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; ${CSRF_COOKIE_NAME}=${session.csrfToken}`,
     "x-csrf-token": session.csrfToken
+  };
+}
+
+async function signedBearerHeaders(platformStore) {
+  const identity = platformStore.getLoginIdentity("clinic", "admin@example.com");
+  const { token } = createSignedSession({
+    orgId: identity.orgId,
+    memberId: identity.memberId,
+    organizationCode: identity.organizationCode,
+    loginId: identity.loginId,
+    tokenVersion: identity.tokenVersion,
+    globalRoles: ["org_admin"],
+    productRoles: { fee: ["admin"] },
+    csrfToken: "csrf_test"
+  }, {
+    now: new Date("2026-05-28T00:00:00.000Z"),
+    sessionSecret: "test-session-secret"
+  });
+
+  return {
+    authorization: `Bearer ${token}`
   };
 }
 
