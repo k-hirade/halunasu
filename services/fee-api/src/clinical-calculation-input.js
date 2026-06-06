@@ -1,3 +1,5 @@
+import { extractFeeClinicalFactsWithOpenAi } from "../../../packages/medical-core/src/fee/openai-fee-clinical-facts.js";
+
 export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "処置・手技",
   "薬剤処方",
@@ -35,7 +37,11 @@ const CLINICAL_AUTO_OPTION_KEYS = new Set([
 export async function buildClinicalCalculationPreparation({
   session = {},
   calculationInput = {},
-  feeCalculator
+  feeCalculator,
+  openAiApiKey = "",
+  openAiModel = "gpt-5.4-nano",
+  openAiReasoningEffort = "low",
+  clinicalFactsExtractor = null
 } = {}) {
   const manualOptions = manualCalculationOptions(session, calculationInput);
   if (isPlainObject(session.claimContext) || isPlainObject(calculationInput.claimContext)) {
@@ -52,38 +58,55 @@ export async function buildClinicalCalculationPreparation({
   const reviewWarnings = [];
 
   if (text) {
-    const outpatientBasic = inferOutpatientBasicOptions(text);
-    if (outpatientBasic) {
-      inferred.outpatient_basic = outpatientBasic;
-    }
+    const structured = await inferStructuredClinicalCalculationOptions({
+      text,
+      session,
+      feeCalculator,
+      openAiApiKey,
+      openAiModel,
+      openAiReasoningEffort,
+      clinicalFactsExtractor
+    });
 
-    const imaging = inferImagingOrders(text);
-    if (imaging.orders.length) {
-      inferred.imaging_orders = imaging.orders;
-    }
-    reviewWarnings.push(...imaging.reviewWarnings);
+    if (structured.used) {
+      Object.assign(inferred, structured.inferred);
+      reviewWarnings.push(...structured.reviewWarnings);
+    } else {
+      reviewWarnings.push(...structured.reviewWarnings);
 
-    const treatment = inferTreatmentOrders(text, session.orders);
-    if (treatment.orders.length) {
-      inferred.treatment_orders = treatment.orders;
-    }
-    reviewWarnings.push(...treatment.reviewWarnings);
+      const outpatientBasic = inferOutpatientBasicOptions(text);
+      if (outpatientBasic) {
+        inferred.outpatient_basic = outpatientBasic;
+      }
 
-    const drugInference = await inferMedicationOrders(text, feeCalculator);
-    if (drugInference.orders.length) {
-      inferred.medication_orders = drugInference.orders;
-      inferred.medication = {
-        delivery_kind: inferMedicationDeliveryKind(text),
-        prescription_category: "other"
-      };
-    }
-    reviewWarnings.push(...drugInference.reviewWarnings);
+      const imaging = inferImagingOrders(text);
+      if (imaging.orders.length) {
+        inferred.imaging_orders = imaging.orders;
+      }
+      reviewWarnings.push(...imaging.reviewWarnings);
 
-    const materialInference = await inferMaterialInputs(text, feeCalculator);
-    if (materialInference.inputs.length) {
-      inferred.material_inputs = materialInference.inputs;
+      const treatment = inferTreatmentOrders(text, session.orders);
+      if (treatment.orders.length) {
+        inferred.treatment_orders = treatment.orders;
+      }
+      reviewWarnings.push(...treatment.reviewWarnings);
+
+      const drugInference = await inferMedicationOrders(text, feeCalculator);
+      if (drugInference.orders.length) {
+        inferred.medication_orders = drugInference.orders;
+        inferred.medication = {
+          delivery_kind: inferMedicationDeliveryKind(text),
+          prescription_category: "other"
+        };
+      }
+      reviewWarnings.push(...drugInference.reviewWarnings);
+
+      const materialInference = await inferMaterialInputs(text, feeCalculator);
+      if (materialInference.inputs.length) {
+        inferred.material_inputs = materialInference.inputs;
+      }
+      reviewWarnings.push(...materialInference.reviewWarnings);
     }
-    reviewWarnings.push(...materialInference.reviewWarnings);
   }
 
   const autoKeys = Object.keys(inferred).filter((key) => (
@@ -107,6 +130,150 @@ export function normalizeClinicalText(value) {
     .replace(/\r\n?/gu, "\n")
     .replace(/[Ａ-Ｚａ-ｚ０-９]/gu, (char) => String.fromCharCode(char.charCodeAt(0) - 0xFEE0))
     .trim();
+}
+
+async function inferStructuredClinicalCalculationOptions({
+  text,
+  session = {},
+  feeCalculator,
+  openAiApiKey = "",
+  openAiModel = "gpt-5.4-nano",
+  openAiReasoningEffort = "low",
+  clinicalFactsExtractor = null
+} = {}) {
+  const extractor = typeof clinicalFactsExtractor === "function" ? clinicalFactsExtractor : null;
+  if (!extractor && !String(openAiApiKey || "").trim()) {
+    return { used: false, inferred: {}, reviewWarnings: [] };
+  }
+
+  try {
+    const factsResult = extractor
+      ? await extractor({
+        clinicalText: text,
+        session,
+        sessionContext: buildFeeSessionContext(session),
+        model: openAiModel,
+        reasoningEffort: openAiReasoningEffort
+      })
+      : await extractFeeClinicalFactsWithOpenAi({
+        apiKey: openAiApiKey,
+        clinicalText: text,
+        sessionContext: buildFeeSessionContext(session),
+        model: openAiModel,
+        reasoningEffort: openAiReasoningEffort
+      });
+    const facts = factsResult?.parsed || factsResult || {};
+    const converted = await clinicalFactsToCalculationOptions(facts, { text, session, feeCalculator });
+    return { used: true, ...converted };
+  } catch (error) {
+    return {
+      used: false,
+      inferred: {},
+      reviewWarnings: [
+        "AI構造化に失敗したため、従来のルールベース抽出で算定候補を作成しました。"
+      ]
+    };
+  }
+}
+
+async function clinicalFactsToCalculationOptions(facts = {}, { text = "", session = {}, feeCalculator } = {}) {
+  const inferred = {};
+  const reviewWarnings = [];
+  const imagingOrders = [];
+  const treatmentOrders = [];
+  const medicationOrders = [];
+  const materialInputs = [];
+
+  const visitKind = String(facts?.visit_type?.kind || "").trim();
+  if (visitKind === "initial") {
+    inferred.outpatient_basic = { fee_kind: "initial" };
+  } else if (visitKind === "revisit") {
+    inferred.outpatient_basic = { fee_kind: "revisit" };
+  }
+
+  for (const event of asArray(facts?.excluded_events)) {
+    const warning = excludedClinicalEventWarning(event);
+    if (warning) reviewWarnings.push(warning);
+  }
+
+  for (const missing of asArray(facts?.missing_information)) {
+    const reason = String(missing?.reason || "").trim();
+    const field = String(missing?.field || "").trim();
+    if (reason && /薬|数量|日数|検査|画像|材料|処置|施設|加算/u.test(`${field} ${reason}`)) {
+      reviewWarnings.push(reason);
+    }
+  }
+
+  for (const flag of asArray(facts?.review_flags)) {
+    if (String(flag || "").trim()) {
+      reviewWarnings.push(String(flag).trim());
+    }
+  }
+
+  for (const event of asArray(facts?.billing_events)) {
+    const type = normalizeClinicalEventType(event);
+    const status = normalizeClinicalEventStatus(event);
+    if (!isBillableClinicalEventStatus(status)) {
+      const warning = excludedClinicalEventWarning(event);
+      if (warning) reviewWarnings.push(warning);
+      continue;
+    }
+
+    if (type === "imaging") {
+      const imaging = imagingOrderFromClinicalEvent(event);
+      if (imaging.order) imagingOrders.push(imaging.order);
+      reviewWarnings.push(...imaging.reviewWarnings);
+      continue;
+    }
+
+    if (type === "medication") {
+      const medication = await medicationOrderFromClinicalEvent(event, feeCalculator);
+      if (medication.order) {
+        medicationOrders.push(medication.order);
+      }
+      reviewWarnings.push(...medication.reviewWarnings);
+      continue;
+    }
+
+    if (type === "material") {
+      const material = await materialInputFromClinicalEvent(event, feeCalculator);
+      if (material.input) {
+        materialInputs.push(material.input);
+      }
+      reviewWarnings.push(...material.reviewWarnings);
+      continue;
+    }
+
+    if (["procedure", "treatment"].includes(type)) {
+      const treatment = treatmentOrderFromClinicalEvent(event, session.orders);
+      if (treatment.order) {
+        treatmentOrders.push(treatment.order);
+      }
+      reviewWarnings.push(...treatment.reviewWarnings);
+    }
+  }
+
+  if (imagingOrders.length) {
+    inferred.imaging_orders = dedupeObjects(imagingOrders);
+  }
+  if (treatmentOrders.length) {
+    inferred.treatment_orders = dedupeObjects(treatmentOrders);
+  }
+  if (medicationOrders.length) {
+    inferred.medication_orders = dedupeObjects(medicationOrders, (item) => item.drug_code);
+    inferred.medication = {
+      delivery_kind: inferMedicationDeliveryKind(text),
+      prescription_category: "other"
+    };
+  }
+  if (materialInputs.length) {
+    inferred.material_inputs = dedupeObjects(materialInputs, (item) => item.code);
+  }
+
+  return {
+    inferred,
+    reviewWarnings: uniqueStrings(reviewWarnings)
+  };
 }
 
 function inferOutpatientBasicOptions(text) {
@@ -327,6 +494,243 @@ async function inferMaterialInputs(text, feeCalculator) {
   };
 }
 
+function buildFeeSessionContext(session = {}) {
+  return {
+    patientDisplayName: session.patientSnapshot?.displayName || "",
+    facilityName: session.facilitySnapshot?.displayName || "",
+    departmentName: session.departmentSnapshot?.displayName || "",
+    serviceDate: session.serviceDate || "",
+    billingMonth: session.billingMonth || "",
+    visitType: session.visitType || "",
+    diagnoses: asArray(session.diagnoses)
+      .map((diagnosis) => diagnosis?.name || diagnosis?.displayName || diagnosis)
+      .map((name) => String(name || "").trim())
+      .filter(Boolean)
+      .slice(0, 20)
+  };
+}
+
+function normalizeClinicalEventType(event = {}) {
+  return String(event?.type || "other").trim();
+}
+
+function normalizeClinicalEventStatus(event = {}) {
+  return String(event?.status || "unclear").trim();
+}
+
+function isBillableClinicalEventStatus(status) {
+  return ["performed", "prescribed", "administered"].includes(status);
+}
+
+function clinicalEventName(event = {}) {
+  return String(event?.name || "").trim();
+}
+
+function clinicalEventEvidence(event = {}) {
+  return [event?.evidence, event?.name, event?.review_reason]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function excludedClinicalEventWarning(event = {}) {
+  const type = normalizeClinicalEventType(event);
+  const status = normalizeClinicalEventStatus(event);
+  const name = clinicalEventName(event) || clinicalImagingDisplayName(event) || "項目";
+  const reason = String(event?.reason || event?.review_reason || "").trim();
+
+  if (type === "imaging" && ["planned", "ordered"].includes(status)) {
+    return `${name}は予定・依頼として記載されているため、今回算定候補には入れていません。実施済みの場合は内容を確認してください。`;
+  }
+  if (type === "medication" && status === "history") {
+    return `薬剤「${name}」は既往薬・内服中として記載されているため、今回処方の算定候補には入れていません。`;
+  }
+  if (type === "medication" && ["planned", "ordered", "instruction_only", "unclear"].includes(status)) {
+    return `薬剤「${name}」は今回処方として確定できないため、算定候補には入れていません。`;
+  }
+  if (type === "material" && status === "instruction_only") {
+    return `特定器材・材料「${name}」は指導・説明のみとして記載されているため、算定候補には入れていません。`;
+  }
+  if (type === "material" && ["planned", "ordered", "unclear"].includes(status)) {
+    return `特定器材・材料「${name}」は今回使用として確定できないため、算定候補には入れていません。`;
+  }
+  if (reason && ["planned", "ordered", "instruction_only", "history", "negated", "unclear"].includes(status)) {
+    return reason;
+  }
+  return "";
+}
+
+function imagingOrderFromClinicalEvent(event = {}) {
+  const reviewWarnings = [];
+  const kind = clinicalImagingKind(event);
+  const evidence = clinicalEventEvidence(event);
+  if (kind === "mri") {
+    reviewWarnings.push("MRI検査は機器区分がカルテ本文から確定できないため、旧入力契約の既定値（その他）で候補化しています。請求前に機器区分を確認してください。");
+    return {
+      order: {
+        kind: "mri",
+        mri_equipment_kind: "other",
+        contrast: hasLocalContrastContext(evidence, "mri"),
+        electronic_image_management: true
+      },
+      reviewWarnings
+    };
+  }
+  if (kind === "ct") {
+    reviewWarnings.push("CT検査は機器区分がカルテ本文から確定できないため、旧入力契約の既定値（その他）で候補化しています。請求前に機器区分を確認してください。");
+    return {
+      order: {
+        kind: "ct",
+        ct_equipment_kind: "other",
+        contrast: hasLocalContrastContext(evidence, "ct"),
+        electronic_image_management: true
+      },
+      reviewWarnings
+    };
+  }
+  if (kind === "simple_radiography") {
+    reviewWarnings.push("単純X線は撮影方式・写真診断区分がカルテ本文から完全には確定できないため、デジタル/写真診断イとして候補化しています。請求前に確認してください。");
+    return {
+      order: {
+        kind: "simple_radiography",
+        acquisition_kind: "digital",
+        radiography_diagnostic_kind: "simple_i",
+        electronic_image_management: true
+      },
+      reviewWarnings
+    };
+  }
+
+  if (kind) {
+    reviewWarnings.push(`${clinicalEventName(event) || clinicalImagingDisplayName(event)}は現在の算定ルールで直接候補化できないため、要確認です。`);
+  }
+  return { order: null, reviewWarnings };
+}
+
+function clinicalImagingKind(event = {}) {
+  const modality = String(event?.modality || "").trim();
+  if (["mri", "ct", "simple_radiography"].includes(modality)) {
+    return modality;
+  }
+  const text = clinicalEventEvidence(event);
+  if (/(?:^|[^A-Za-z])MRI(?:$|[^A-Za-z])|ＭＲＩ/u.test(text)) return "mri";
+  if (/(?:^|[^A-Za-z])CT(?:$|[^A-Za-z])|ＣＴ/u.test(text)) return "ct";
+  if (/(X線|Ｘ線|レントゲン|単純撮影)/u.test(text)) return "simple_radiography";
+  return modality && modality !== "none" ? modality : "";
+}
+
+function clinicalImagingDisplayName(event = {}) {
+  const kind = clinicalImagingKind(event);
+  if (kind === "mri") return "MRI検査";
+  if (kind === "ct") return "CT検査";
+  if (kind === "simple_radiography") return "単純X線";
+  return "";
+}
+
+async function medicationOrderFromClinicalEvent(event = {}, feeCalculator) {
+  const reviewWarnings = [];
+  const name = clinicalEventName(event);
+  if (!name) {
+    reviewWarnings.push("薬剤名がカルテ本文から確定できないため、薬剤算定候補には入れていません。");
+    return { order: null, reviewWarnings };
+  }
+  const quantity = medicationQuantityFromClinicalEvent(event);
+  if (!hasCalculableMedicationQuantity(quantity)) {
+    reviewWarnings.push(`薬剤「${name}」は数量または日数が不足しているため、算定候補には入れていません。`);
+    return { order: null, reviewWarnings };
+  }
+  const item = await searchFirstMasterItem(feeCalculator, "drug", name, "drug");
+  if (!item?.code) {
+    reviewWarnings.push(`薬剤「${name}」をマスターコードへ解決できませんでした。`);
+    return { order: null, reviewWarnings };
+  }
+  return {
+    order: {
+      drug_code: String(item.code),
+      ...quantity,
+      dispensing_kind: "internal_or_prn"
+    },
+    reviewWarnings
+  };
+}
+
+function medicationQuantityFromClinicalEvent(event = {}) {
+  const fromEvent = {
+    ...(numericText(event?.total_quantity) ? { total_quantity: numericText(event.total_quantity) } : {}),
+    ...(numericText(event?.quantity_per_day) ? { quantity_per_day: numericText(event.quantity_per_day) } : {}),
+    ...(integerText(event?.days) ? { days: integerText(event.days) } : {})
+  };
+  if (hasCalculableMedicationQuantity(fromEvent)) {
+    return fromEvent;
+  }
+
+  return {
+    ...inferMedicationQuantity(clinicalEventEvidence(event), clinicalEventName(event)),
+    ...fromEvent
+  };
+}
+
+async function materialInputFromClinicalEvent(event = {}, feeCalculator) {
+  const reviewWarnings = [];
+  const name = clinicalEventName(event);
+  if (!name) {
+    reviewWarnings.push("特定器材・材料名がカルテ本文から確定できないため、算定候補には入れていません。");
+    return { input: null, reviewWarnings };
+  }
+  const item = await searchFirstMasterItem(feeCalculator, "material", name, "material");
+  if (!item?.code) {
+    reviewWarnings.push(`特定器材・材料「${name}」をマスターコードへ解決できませんでした。`);
+    return { input: null, reviewWarnings };
+  }
+  return {
+    input: {
+      code: String(item.code),
+      quantity: numericText(event?.total_quantity) || numericText(event?.quantity_per_day) || "1"
+    },
+    reviewWarnings
+  };
+}
+
+function treatmentOrderFromClinicalEvent(event = {}, orders = []) {
+  const reviewWarnings = [];
+  if (hasSpecificProcedureCode(orders)) {
+    return { order: null, reviewWarnings };
+  }
+  const text = clinicalEventEvidence(event);
+  let kind = "";
+  if (/(熱傷|やけど)/u.test(text)) {
+    kind = "burn";
+  } else if (/(創傷|創部|裂創|擦過傷|洗浄|ガーゼ)/u.test(text)) {
+    kind = "wound";
+  }
+  if (!kind) {
+    return { order: null, reviewWarnings };
+  }
+  const areaSize = treatmentAreaSizeFromClinicalEvent(event) || inferTreatmentAreaSize(text);
+  if (!areaSize) {
+    reviewWarnings.push("処置面積がカルテ本文から確定できないため、処置料は要確認です。面積区分を確認してください。");
+  }
+  return {
+    order: {
+      kind,
+      area_size: areaSize
+    },
+    reviewWarnings
+  };
+}
+
+function treatmentAreaSizeFromClinicalEvent(event = {}) {
+  const area = Number(String(event?.area_size_cm2 || "").replace(/[^\d.]/g, ""));
+  if (!Number.isFinite(area) || area <= 0) {
+    return null;
+  }
+  if (area < 100) return "lt_100_cm2";
+  if (area < 500) return "ge_100_lt_500_cm2";
+  if (area < 3000) return "ge_500_lt_3000_cm2";
+  if (area < 6000) return "ge_3000_lt_6000_cm2";
+  return "ge_6000_cm2";
+}
+
 async function searchFirstMasterItem(feeCalculator, type, query, expectedKind) {
   try {
     const result = await feeCalculator.searchMaster({ type, query, limit: 5 });
@@ -504,6 +908,29 @@ function dedupeObjects(values = [], keyFn = (item) => JSON.stringify(item)) {
 
 function uniqueObjects(values = []) {
   return dedupeObjects(values);
+}
+
+function uniqueStrings(values = []) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function numericText(value) {
+  const normalized = String(value || "")
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/gu, (char) => String.fromCharCode(char.charCodeAt(0) - 0xFEE0))
+    .match(/\d+(?:\.\d+)?/u)?.[0];
+  return normalized || "";
+}
+
+function integerText(value) {
+  const normalized = numericText(value);
+  if (!normalized) return "";
+  const number = Number(normalized);
+  if (!Number.isFinite(number) || number <= 0) return "";
+  return String(Math.round(number));
 }
 
 function hasOwn(object, key) {

@@ -11,6 +11,7 @@ export * from "./store/create-store.js";
 export * from "./billing/access-status.js";
 export * from "./billing/plans.js";
 export * from "./finalize/finalize-session.js";
+export * from "./fee/openai-fee-clinical-facts.js";
 export * from "./medical/encounter-domains.js";
 export * from "./openai/responses-structured.js";
 export * from "./soap/clinical-facts.js";

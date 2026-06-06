@@ -316,7 +316,7 @@ async function routeFeeApiRequest(input = {}) {
     }
     assertFeeSessionReadyForCalculation(current);
     const calculationInput = validateCreateFeeCalculationInput(input.body || {});
-    const prepared = await prepareSessionForCalculation(current, calculationInput, feeCalculator);
+    const prepared = await prepareSessionForCalculation(current, calculationInput, feeCalculator, input);
     const calculationSession = prepared.patch
       ? (await feeStore.updateSession(context.session.orgId, parts[3], prepared.patch)).feeSession
       : current;
@@ -476,13 +476,29 @@ function assertFeeSessionReadyForCalculation(session = {}) {
   }
 }
 
-async function prepareSessionForCalculation(session = {}, calculationInput = {}, feeCalculator) {
+async function prepareSessionForCalculation(session = {}, calculationInput = {}, feeCalculator, input = {}) {
   const enriched = await enrichSessionOrdersForCalculation(session, feeCalculator);
   const baseSession = enriched.changed ? { ...session, orders: enriched.orders } : session;
   const legacy = await buildClinicalCalculationPreparation({
     session: baseSession,
     calculationInput,
-    feeCalculator
+    feeCalculator,
+    openAiApiKey: input.openAiApiKey || process.env.OPENAI_API_KEY || "",
+    openAiModel: (
+      input.openAiFeeClinicalModel
+      || process.env.OPENAI_FEE_CLINICAL_MODEL
+      || process.env.OPENAI_FACT_MODEL
+      || process.env.OPENAI_SOAP_MODEL
+      || "gpt-5.4-nano"
+    ),
+    openAiReasoningEffort: (
+      input.openAiFeeClinicalReasoningEffort
+      || process.env.OPENAI_FEE_CLINICAL_REASONING_EFFORT
+      || process.env.OPENAI_FACT_REASONING_EFFORT
+      || process.env.OPENAI_SOAP_REASONING_EFFORT
+      || "low"
+    ),
+    clinicalFactsExtractor: input.clinicalFactsExtractor
   });
   const patch = {};
 

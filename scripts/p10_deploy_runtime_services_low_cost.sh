@@ -115,6 +115,9 @@ deploy_service() {
   if [[ "${service}" == charting-finalize-* ]] && secret_exists "${project}" "OPENAI_API_KEY"; then
     secret_vars="${secret_vars},OPENAI_API_KEY=OPENAI_API_KEY:latest"
   fi
+  if [[ "${service}" == fee-api-* ]] && secret_exists "${project}" "OPENAI_API_KEY"; then
+    secret_vars="${secret_vars},OPENAI_API_KEY=OPENAI_API_KEY:latest"
+  fi
 
   echo "== ${project}/${service} =="
   billing_state="$(billing_enabled "${project}" | tr '[:upper:]' '[:lower:]')"
@@ -266,6 +269,8 @@ deploy_env() {
     "PLATFORM_STORE_BACKEND=firestore" \
     "FEE_MASTER_DB_PATH=/tmp/halunasu-fee-master/standard-master.sqlite" \
     "FEE_MASTER_DB_GZIP_PATH=/app/python/data/master/standard-master.sqlite.gz" \
+    "OPENAI_FEE_CLINICAL_MODEL=${OPENAI_FEE_CLINICAL_MODEL:-gpt-5.4-nano}" \
+    "OPENAI_FEE_CLINICAL_REASONING_EFFORT=${OPENAI_FEE_CLINICAL_REASONING_EFFORT:-low}" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
   fi

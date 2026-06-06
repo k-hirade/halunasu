@@ -563,6 +563,177 @@ test("rebuilds stale generated calculation options from current clinical context
   assert.deepEqual(detail.body.feeSession.calculationOptionsAutoKeys, ["imaging_orders"]);
 });
 
+test("uses structured clinical facts for calculation input when available", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterItems = {
+    "ロキソプロフェン": { kind: "drug", code: "620001001", name: "ロキソプロフェン錠60mg" },
+    "レバミピド": { kind: "drug", code: "620001002", name: "レバミピド錠100mg" },
+    "コルセット": { kind: "material", code: "710001001", name: "腰椎コルセット" }
+  };
+  stores.feeCalculator.searchMaster = async (input) => ({
+    query: input.query,
+    type: input.type,
+    items: masterItems[input.query] ? [masterItems[input.query]] : []
+  });
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 349,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "2週間後に再診", confidence: "medium" },
+    diagnoses: [
+      { name: "腰椎椎間板ヘルニア疑い", status: "suspected", evidence: "腰椎椎間板ヘルニア疑い" }
+    ],
+    billing_events: [
+      {
+        type: "imaging",
+        name: "腰椎X線",
+        status: "performed",
+        evidence: "腰椎X線（正面・側面）：L4/5椎間板スペース軽度狭小化",
+        modality: "simple_radiography",
+        body_site: "腰椎",
+        dose: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        unit: "",
+        frequency: "",
+        area_size_cm2: "",
+        review_reason: ""
+      },
+      {
+        type: "imaging",
+        name: "MRI腰椎",
+        status: "ordered",
+        evidence: "MRI腰椎オーダー（次回持参または当院撮影）",
+        modality: "mri",
+        body_site: "腰椎",
+        dose: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        unit: "",
+        frequency: "",
+        area_size_cm2: "",
+        review_reason: "予定・依頼として記載"
+      },
+      {
+        type: "medication",
+        name: "ロキソプロフェン",
+        status: "prescribed",
+        evidence: "ロキソプロフェン60mg 毎食後3錠／14日分処方",
+        modality: "none",
+        body_site: "",
+        dose: "60mg",
+        quantity_per_day: "3",
+        days: "14",
+        total_quantity: "",
+        unit: "錠",
+        frequency: "毎食後",
+        area_size_cm2: "",
+        review_reason: ""
+      },
+      {
+        type: "medication",
+        name: "レバミピド",
+        status: "prescribed",
+        evidence: "胃薬併用：レバミピド",
+        modality: "none",
+        body_site: "",
+        dose: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "42",
+        unit: "錠",
+        frequency: "",
+        area_size_cm2: "",
+        review_reason: ""
+      },
+      {
+        type: "medication",
+        name: "ロコアテープ",
+        status: "prescribed",
+        evidence: "湿布処方：ロコアテープ2枚／日",
+        modality: "none",
+        body_site: "",
+        dose: "",
+        quantity_per_day: "2",
+        days: "",
+        total_quantity: "",
+        unit: "枚",
+        frequency: "",
+        area_size_cm2: "",
+        review_reason: "日数不足"
+      },
+      {
+        type: "material",
+        name: "コルセット",
+        status: "instruction_only",
+        evidence: "腰椎コルセット装着指導",
+        modality: "none",
+        body_site: "腰椎",
+        dose: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        unit: "",
+        frequency: "",
+        area_size_cm2: "",
+        review_reason: "指導のみ"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Structured Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-05",
+    clinicalText: [
+      "腰椎X線（正面・側面）：L4/5椎間板スペース軽度狭小化",
+      "MRI腰椎オーダー（次回持参または当院撮影）",
+      "ロキソプロフェン60mg 毎食後3錠／14日分処方（胃薬併用：レバミピド）",
+      "湿布処方：ロコアテープ2枚／日",
+      "腰椎コルセット装着指導"
+    ].join("\n"),
+    diagnoses: [{ name: "腰椎椎間板ヘルニア疑い" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+  assert.deepEqual(receivedInput.calculationOptions.imaging_orders.map((order) => order.kind), ["simple_radiography"]);
+  assert.deepEqual(
+    receivedInput.calculationOptions.medication_orders.map((order) => order.drug_code).sort(),
+    ["620001001", "620001002"]
+  );
+  assert.equal(receivedInput.calculationOptions.material_inputs, undefined);
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
+});
+
 test("adds review warning when calculation produces no candidate lines", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -952,6 +1123,10 @@ function request(stores, method, path, body, headers = {}, overrides = {}) {
     feeStore: stores.feeStore,
     feeCalculator: stores.feeCalculator,
     env: overrides.env || "test",
+    clinicalFactsExtractor: overrides.clinicalFactsExtractor,
+    openAiApiKey: overrides.openAiApiKey,
+    openAiFeeClinicalModel: overrides.openAiFeeClinicalModel,
+    openAiFeeClinicalReasoningEffort: overrides.openAiFeeClinicalReasoningEffort,
     projectId: "medical-core-stg",
     region: "asia-northeast1",
     startedAt: new Date("2026-05-28T00:00:00.000Z"),
