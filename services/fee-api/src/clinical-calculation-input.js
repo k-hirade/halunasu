@@ -50,6 +50,7 @@ export async function buildClinicalCalculationPreparation({
       calculationOptions: Object.keys(manualOptions).length ? manualOptions : null,
       calculationOptionsAutoKeys: [],
       calculationOptionsSource: Object.keys(manualOptions).length ? "manual" : null,
+      diagnoses: [],
       reviewWarnings: [],
       metrics: {
         clinicalStructuring: {
@@ -62,6 +63,7 @@ export async function buildClinicalCalculationPreparation({
 
   const text = normalizeClinicalText(calculationInput.clinicalText || session.clinicalText || "");
   const inferred = {};
+  const inferredDiagnoses = [];
   const reviewWarnings = [];
   const metrics = {
     clinicalStructuring: {
@@ -105,6 +107,7 @@ export async function buildClinicalCalculationPreparation({
       Object.assign(inferred, normalizeClinicalInferredOptions(
         mergeCalculationOptions(structured.inferred, ruleBased.inferred)
       ));
+      inferredDiagnoses.push(...asArray(structured.diagnoses));
       reviewWarnings.push(...structured.reviewWarnings, ...ruleBased.reviewWarnings);
     } else {
       Object.assign(inferred, ruleBased.inferred);
@@ -121,6 +124,7 @@ export async function buildClinicalCalculationPreparation({
     calculationOptions: Object.keys(merged).length ? merged : null,
     calculationOptionsAutoKeys: autoKeys,
     calculationOptionsSource: calculationOptionsSource(manualOptions, autoKeys),
+    diagnoses: normalizeClinicalDiagnoses(inferredDiagnoses),
     reviewWarnings: normalizeReviewWarnings(reviewWarnings),
     metrics
   };
@@ -160,6 +164,9 @@ async function inferStructuredClinicalCalculationOptions({
         reasoningEffort: openAiReasoningEffort,
         openAiProviderDurationMs: 0,
         clinicalFactsConvertDurationMs: 0,
+        convertedDiagnosisCount: 0,
+        convertedOptionKeys: [],
+        convertedReviewWarningCount: 0,
         masterLookupCount: 0,
         masterLookupDurationMs: 0,
         timeoutMs: Number(openAiTimeoutMs || 0)
@@ -206,6 +213,7 @@ async function inferStructuredClinicalCalculationOptions({
       session,
       feeCalculator: conversionSearch.calculator
     });
+    const convertedOptionKeys = Object.keys(converted.inferred || {});
     return {
       used: true,
       ...converted,
@@ -218,6 +226,9 @@ async function inferStructuredClinicalCalculationOptions({
         extractedDiagnosisCount: Array.isArray(facts?.diagnoses) ? facts.diagnoses.length : 0,
         extractedBillingEventCount: Array.isArray(facts?.billing_events) ? facts.billing_events.length : 0,
         extractedExcludedEventCount: Array.isArray(facts?.excluded_events) ? facts.excluded_events.length : 0,
+        convertedDiagnosisCount: Array.isArray(converted.diagnoses) ? converted.diagnoses.length : 0,
+        convertedOptionKeys,
+        convertedReviewWarningCount: Array.isArray(converted.reviewWarnings) ? converted.reviewWarnings.length : 0,
         ...conversionSearch.snapshot(),
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
@@ -230,6 +241,7 @@ async function inferStructuredClinicalCalculationOptions({
     return {
       used: false,
       inferred: {},
+      diagnoses: [],
       reviewWarnings: [
         "AI構造化に失敗したため、従来のルールベース抽出で算定候補を作成しました。"
       ],
@@ -239,6 +251,9 @@ async function inferStructuredClinicalCalculationOptions({
         openAiProviderDurationMs: openAiProviderDurationMs || Date.now() - startedAt,
         firstOutputTextMs,
         clinicalFactsConvertDurationMs: 0,
+        convertedDiagnosisCount: 0,
+        convertedOptionKeys: [],
+        convertedReviewWarningCount: 0,
         ...conversionSearch.snapshot(),
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
@@ -334,6 +349,7 @@ async function inferRuleBasedClinicalCalculationOptions({ text = "", session = {
 
 async function clinicalFactsToCalculationOptions(facts = {}, { text = "", session = {}, feeCalculator } = {}) {
   const inferred = {};
+  const diagnoses = diagnosesFromClinicalFacts(facts);
   const reviewWarnings = [];
   const imagingOrders = [];
   const treatmentOrders = [];
@@ -349,6 +365,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     const warning = excludedClinicalEventWarning(event);
     if (warning) reviewWarnings.push(warning);
   }
+  reviewWarnings.push(...clinicalFactReviewWarnings(facts?.missing_information));
+  reviewWarnings.push(...clinicalFactReviewWarnings(facts?.review_flags));
 
   for (const event of asArray(facts?.billing_events)) {
     const type = normalizeClinicalEventType(event);
@@ -390,7 +408,11 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
         treatmentOrders.push(treatment.order);
       }
       reviewWarnings.push(...treatment.reviewWarnings);
+      continue;
     }
+
+    const warning = unsupportedClinicalEventWarning(event);
+    if (warning) reviewWarnings.push(warning);
   }
 
   if (imagingOrders.length) {
@@ -412,6 +434,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
 
   return {
     inferred,
+    diagnoses,
     reviewWarnings: normalizeReviewWarnings(reviewWarnings)
   };
 }
@@ -428,11 +451,10 @@ function outpatientBasicFromStructuredVisit(visitType = {}, text = "") {
   if (kind === "initial" && /(初診|初回受診|初めて|初来院)/u.test(evidence)) {
     return { fee_kind: "initial" };
   }
-  if (kind === "revisit" && /(再診|再来|フォロー|経過観察)/u.test(evidence)) {
+  if (kind === "revisit" && /(再診|再来|フォロー|経過観察)/u.test(evidence) && isCurrentVisitEvidence(evidence)) {
     return { fee_kind: "revisit" };
   }
-  const explicitRule = inferOutpatientBasicOptions(text);
-  return explicitRule?.fee_kind === kind ? explicitRule : null;
+  return null;
 }
 
 function inferOutpatientBasicOptions(text) {
@@ -443,7 +465,7 @@ function inferOutpatientBasicOptions(text) {
     if (/(初診|初回受診|初めて|初来院)/u.test(sentence)) {
       return { fee_kind: "initial" };
     }
-    if (/(再診|再来|フォロー|経過観察|再評価)/u.test(sentence)) {
+    if (/(再診|再来|フォロー|経過観察|再評価)/u.test(sentence) && isCurrentVisitEvidence(sentence)) {
       return { fee_kind: "revisit" };
     }
   }
@@ -669,6 +691,75 @@ function buildFeeSessionContext(session = {}) {
   };
 }
 
+function diagnosesFromClinicalFacts(facts = {}) {
+  return normalizeClinicalDiagnoses(asArray(facts?.diagnoses)
+    .map((diagnosis) => {
+      const name = cleanClinicalDiagnosisName(diagnosis?.name || diagnosis?.displayName || diagnosis);
+      if (!name) {
+        return null;
+      }
+      const status = normalizeDiagnosisStatus(diagnosis?.status);
+      if (!isUsableClinicalDiagnosisStatus(status)) {
+        return null;
+      }
+      return {
+        name,
+        ...(status ? { status } : {})
+      };
+    })
+    .filter(Boolean));
+}
+
+function cleanClinicalDiagnosisName(value) {
+  return String(value || "")
+    .replace(/^\s*(?:病名|診断名)\s*[:：]\s*/u, "")
+    .trim()
+    .slice(0, 120);
+}
+
+function normalizeClinicalDiagnoses(values = []) {
+  const seen = new Set();
+  const result = [];
+  for (const diagnosis of asArray(values)) {
+    const name = cleanClinicalDiagnosisName(diagnosis?.name || diagnosis?.displayName || diagnosis);
+    if (!name) {
+      continue;
+    }
+    const key = name.replace(/\s+/gu, "").toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    const status = normalizeDiagnosisStatus(diagnosis?.status);
+    result.push({
+      name,
+      ...(status ? { status } : {})
+    });
+  }
+  return result.slice(0, 20);
+}
+
+function normalizeDiagnosisStatus(value) {
+  const status = String(value || "").trim().toLowerCase();
+  if (["denied", "negated", "ruled_out", "family_history", "none"].includes(status)) {
+    return "excluded";
+  }
+  if (["confirmed", "suspected", "history", "active"].includes(status)) {
+    return status;
+  }
+  return "";
+}
+
+function isUsableClinicalDiagnosisStatus(status) {
+  if (status === "excluded") {
+    return false;
+  }
+  if (!status) {
+    return true;
+  }
+  return ["confirmed", "suspected", "history", "active"].includes(status);
+}
+
 function normalizeClinicalEventType(event = {}) {
   return String(event?.type || "other").trim();
 }
@@ -719,6 +810,51 @@ function excludedClinicalEventWarning(event = {}) {
   return "";
 }
 
+function clinicalFactReviewWarnings(values = []) {
+  return asArray(values)
+    .map((item) => {
+      if (typeof item === "string") {
+        return item.trim();
+      }
+      const name = String(item?.name || item?.item || "").trim();
+      const reason = String(item?.reason || item?.review_reason || item?.message || item?.detail || "").trim();
+      if (name && reason && !reason.includes(name)) {
+        return `${name}: ${reason}`;
+      }
+      return reason || name;
+    })
+    .filter(Boolean);
+}
+
+function unsupportedClinicalEventWarning(event = {}) {
+  const type = normalizeClinicalEventType(event);
+  const name = clinicalEventName(event) || "抽出項目";
+  if (type === "lab") {
+    return `${name}は検体検査として抽出しましたが、現在の自動算定では検査コード確定が未対応です。実施内容をマスター検索で確認してください。`;
+  }
+  if (type === "management") {
+    return `${name}は医学管理等として抽出しましたが、現在の自動算定では管理料コード確定が未対応です。算定条件を確認してください。`;
+  }
+  if (type === "counseling") {
+    return `${name}は指導・説明として抽出しましたが、現在の自動算定では算定可否の自動判定が未対応です。算定条件を確認してください。`;
+  }
+  if (type && type !== "other") {
+    return `${name}は${clinicalEventTypeLabel(type)}として抽出しましたが、現在の自動算定では直接候補化できないため、要確認です。`;
+  }
+  return "";
+}
+
+function clinicalEventTypeLabel(type) {
+  return {
+    injection: "注射",
+    rehabilitation: "リハビリ",
+    surgery: "手術",
+    home_care: "在宅",
+    pathology: "病理",
+    psychiatric: "精神科専門療法"
+  }[String(type || "").trim()] || "未対応項目";
+}
+
 function imagingOrderFromClinicalEvent(event = {}) {
   const reviewWarnings = [];
   const kind = clinicalImagingKind(event);
@@ -760,6 +896,11 @@ function imagingOrderFromClinicalEvent(event = {}) {
     };
   }
 
+  if (kind === "ultrasound") {
+    reviewWarnings.push(`${clinicalEventName(event) || "超音波検査"}は超音波検査として抽出しましたが、現在の自動算定では超音波検査コード確定が未対応です。実施内容をマスター検索で確認してください。`);
+    return { order: null, reviewWarnings };
+  }
+
   if (kind) {
     reviewWarnings.push(`${clinicalEventName(event) || clinicalImagingDisplayName(event)}は現在の算定ルールで直接候補化できないため、要確認です。`);
   }
@@ -768,13 +909,14 @@ function imagingOrderFromClinicalEvent(event = {}) {
 
 function clinicalImagingKind(event = {}) {
   const modality = String(event?.modality || "").trim();
-  if (["mri", "ct", "simple_radiography"].includes(modality)) {
+  if (["mri", "ct", "simple_radiography", "ultrasound"].includes(modality)) {
     return modality;
   }
   const text = clinicalEventEvidence(event);
   if (/(?:^|[^A-Za-z])MRI(?:$|[^A-Za-z])|ＭＲＩ/u.test(text)) return "mri";
   if (/(?:^|[^A-Za-z])CT(?:$|[^A-Za-z])|ＣＴ/u.test(text)) return "ct";
   if (/(X線|Ｘ線|レントゲン|単純撮影)/u.test(text)) return "simple_radiography";
+  if (/(超音波|エコー|経腟|経膣)/u.test(text)) return "ultrasound";
   return modality && modality !== "none" ? modality : "";
 }
 
@@ -783,6 +925,7 @@ function clinicalImagingDisplayName(event = {}) {
   if (kind === "mri") return "MRI検査";
   if (kind === "ct") return "CT検査";
   if (kind === "simple_radiography") return "単純X線";
+  if (kind === "ultrasound") return "超音波検査";
   return "";
 }
 
@@ -924,7 +1067,11 @@ function isPerformedImagingContext(sentence, kind) {
 }
 
 function isFutureOrOrderOnlyContext(sentence) {
-  return /(\d+\s*(?:日|週間|週|月)後|予定|次回|後日|紹介|持参|検討|依頼|オーダー|予約|後で|今後)/u.test(sentence);
+  return /(\d+\s*(?:日|週間|週|か月|カ月|ヶ月|ケ月|月)後|予定|次回|後日|紹介|持参|検討|依頼|オーダー|予約|後で|今後)/u.test(sentence);
+}
+
+function isCurrentVisitEvidence(sentence) {
+  return /(本日|今回|当日|外来|来院|受診|診察|診療|継続診療|定期受診|再来)/u.test(sentence);
 }
 
 function isNegatedContext(sentence) {

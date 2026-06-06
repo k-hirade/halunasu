@@ -362,7 +362,7 @@ test("allows CORS preflight for authenticated app routes from planned app origin
 
   assert.equal(response.statusCode, 204);
   assert.equal(response.headers["access-control-allow-origin"], "https://charting.stg.halunasu.com");
-  assert.equal(response.headers["access-control-allow-headers"], "content-type, x-csrf-token");
+  assert.equal(response.headers["access-control-allow-headers"], "authorization, content-type, x-csrf-token");
 });
 
 test("does not trust Netlify deploy previews for credentialed CORS by default", async () => {
@@ -434,6 +434,9 @@ test("logs in, checks session, enrolls MFA, and logs out", async () => {
   const session = await request(store, "GET", "/v1/auth/session", undefined, {
     cookie: loginCookie
   });
+  const bearerSession = await request(store, "GET", "/v1/auth/session", undefined, {
+    authorization: `Bearer ${login.body.accessToken}`
+  });
   const mfaEnroll = await request(store, "POST", "/v1/auth/mfa/enroll", {}, {
     cookie: loginCookie,
     "x-csrf-token": csrfToken
@@ -456,8 +459,12 @@ test("logs in, checks session, enrolls MFA, and logs out", async () => {
 
   assert.equal(login.statusCode, 200);
   assert.equal(login.body.session.loginId, "admin");
+  assert.match(login.body.accessToken, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
   assert.equal(session.statusCode, 200);
   assert.match(session.body.session.memberId, /^mem_/);
+  assert.equal(bearerSession.statusCode, 200);
+  assert.equal(bearerSession.body.session.memberId, session.body.session.memberId);
+  assert.equal(bearerSession.body.accessToken, login.body.accessToken);
   assert.equal(mfaEnroll.statusCode, 201);
   assert.match(mfaEnroll.body.mfa.otpauthUrl, /^otpauth:\/\/totp\//);
   assert.match(mfaEnroll.body.mfa.qrCodeDataUrl, /^data:image\/png;base64,/);

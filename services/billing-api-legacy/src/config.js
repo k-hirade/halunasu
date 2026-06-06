@@ -61,7 +61,7 @@ export function loadBillingConfig(env = process.env) {
     stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET || "",
     stripeApiBaseUrl: env.STRIPE_API_BASE_URL || "https://api.stripe.com/v1",
     stripeApiVersion: env.STRIPE_API_VERSION || "2026-03-25.dahlia",
-    stripePriceLookupKey: env.STRIPE_PRICE_LOOKUP_KEY || "medical_ai_monthly_jpy_v2",
+    stripePriceLookupKey: env.STRIPE_PRICE_LOOKUP_KEY || "halunasu_charting_flat_monthly_jpy_v1",
     stripeWebhookToleranceSeconds: parseInteger(env.STRIPE_WEBHOOK_TOLERANCE_SECONDS, 300),
     trialDays: parseInteger(env.BILLING_TRIAL_DAYS, 7),
     gracePeriodDays: parseInteger(env.BILLING_GRACE_PERIOD_DAYS, 7),

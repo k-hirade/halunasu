@@ -911,6 +911,9 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
   if (String(session.calculationOptionsSource || "") !== String(legacy.calculationOptionsSource || "")) {
     patch.calculationOptionsSource = legacy.calculationOptionsSource || null;
   }
+  if (!hasDiagnosisInput(baseSession) && Array.isArray(legacy.diagnoses) && legacy.diagnoses.length) {
+    patch.diagnoses = legacy.diagnoses;
+  }
 
   return {
     patch: Object.keys(patch).length ? patch : null,

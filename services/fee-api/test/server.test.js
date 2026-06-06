@@ -772,6 +772,127 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
 });
 
+test("persists structured diagnoses and reviews unsupported extracted events without false visit fee", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.searchMaster = async (input) => ({
+    query: input.query,
+    type: input.type,
+    items: []
+  });
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "3ヶ月後に再診", confidence: "medium" },
+    diagnoses: [
+      { name: "月経困難症", status: "confirmed", evidence: "月経困難症" },
+      { name: "子宮内膜症疑い", status: "suspected", evidence: "子宮内膜症疑い" },
+      { name: "左卵巣嚢胞", status: "suspected", evidence: "左卵巣に嚢胞性病変" }
+    ],
+    billing_events: [
+      {
+        type: "imaging",
+        name: "経腟超音波",
+        status: "performed",
+        evidence: "経腟超音波：左卵巣に約3cm程度の嚢胞性病変",
+        modality: "ultrasound",
+        review_reason: ""
+      },
+      {
+        type: "lab",
+        name: "CA125",
+        status: "performed",
+        evidence: "血液検査：CA125 68 U/mL",
+        modality: "none",
+        review_reason: ""
+      },
+      {
+        type: "imaging",
+        name: "MRI骨盤部",
+        status: "ordered",
+        evidence: "MRI骨盤部オーダー（子宮内膜症の範囲評価）",
+        modality: "mri",
+        review_reason: "予定・依頼"
+      },
+      {
+        type: "medication",
+        name: "低用量ピル（ルナベル配合錠LD）",
+        status: "prescribed",
+        evidence: "低用量ピル処方（ルナベル配合錠LD）",
+        modality: "none",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        review_reason: "数量または日数不足"
+      },
+      {
+        type: "medication",
+        name: "ロキソプロフェン60mg",
+        status: "prescribed",
+        evidence: "ロキソプロフェン60mg 月経痛時頓服処方",
+        modality: "none",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        review_reason: "数量または日数不足"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Gynecology Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-06",
+    clinicalText: [
+      "月経困難症、子宮内膜症疑い。",
+      "経腟超音波：左卵巣に約3cm程度の嚢胞性病変。",
+      "血液検査：CA125 68 U/mL。",
+      "MRI骨盤部オーダー（子宮内膜症の範囲評価）。",
+      "低用量ピル処方（ルナベル配合錠LD）。",
+      "ロキソプロフェン60mg 月経痛時頓服処方。",
+      "3ヶ月後に再診、嚢胞サイズ・症状の変化を評価。"
+    ].join("\n")
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions?.outpatient_basic, undefined);
+  assert.deepEqual(
+    calculation.body.feeSession.diagnoses.map((diagnosis) => diagnosis.name),
+    ["月経困難症", "子宮内膜症疑い", "左卵巣嚢胞"]
+  );
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("経腟超音波")));
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("CA125")));
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI骨盤部")));
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ルナベル")));
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロキソプロフェン")));
+  assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("病名が入力されていません")), false);
+});
+
 test("merges deterministic performed imaging when structured facts miss it", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);

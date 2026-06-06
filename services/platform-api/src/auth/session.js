@@ -78,6 +78,10 @@ export function parseCookies(cookieHeader) {
 }
 
 export function sessionTokenFromHeaders(headers = {}, options = {}) {
+  const bearer = bearerTokenFromHeaders(headers);
+  if (bearer) {
+    return bearer;
+  }
   return parseCookies(headerValue(headers, "cookie"))[sessionCookieName(options)];
 }
 
@@ -194,6 +198,12 @@ function headerValue(headers, name) {
   const foundKey = Object.keys(headers).find((key) => key.toLowerCase() === name.toLowerCase());
   const value = foundKey ? headers[foundKey] : undefined;
   return Array.isArray(value) ? value.join("; ") : value;
+}
+
+function bearerTokenFromHeaders(headers = {}) {
+  const value = headerValue(headers, "authorization");
+  const match = String(value || "").match(/^Bearer\s+(.+)$/iu);
+  return match?.[1]?.trim() || "";
 }
 
 function base64UrlEncode(value) {

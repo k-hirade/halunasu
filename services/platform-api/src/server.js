@@ -213,7 +213,7 @@ async function routePlatformApiRequest(input = {}) {
 
   if (method === "GET" && matches(parts, ["v1", "auth", "session"])) {
     const context = await requireSession(input, store);
-    return ok({ authenticated: true, session: sessionView(context) });
+    return ok({ authenticated: true, session: sessionView(context), accessToken: context.accessToken || null });
   }
 
   if (method === "POST" && matches(parts, ["v1", "auth", "logout"])) {
@@ -365,7 +365,8 @@ async function routePlatformApiRequest(input = {}) {
         enrolled: true
       },
       session: sessionResponse.sessionView,
-      csrfToken: sessionResponse.csrfToken
+      csrfToken: sessionResponse.csrfToken,
+      accessToken: sessionResponse.accessToken
     }, sessionResponse.headers);
   }
 
@@ -778,7 +779,8 @@ async function login(input, store) {
 
   return ok({
     session: sessionResponse.sessionView,
-    csrfToken: sessionResponse.csrfToken
+    csrfToken: sessionResponse.csrfToken,
+    accessToken: sessionResponse.accessToken
   }, sessionResponse.headers);
 }
 
@@ -816,7 +818,7 @@ async function requireSession(input, store) {
   const cacheKey = sessionContextCacheKey(session);
   const cached = getCachedSessionContext(input, cacheKey);
   if (cached) {
-    return cached;
+    return { ...cached, accessToken: token };
   }
 
   const identity = await store.getLoginIdentity(session.organizationCode, session.loginId);
@@ -834,7 +836,7 @@ async function requireSession(input, store) {
     throw unauthorizedError("Invalid session");
   }
 
-  const context = { session, identity, member };
+  const context = { session, identity, member, accessToken: token };
   setCachedSessionContext(input, cacheKey, context);
   return context;
 }
@@ -1116,6 +1118,9 @@ async function writeAuditEvent(input, store, orgId, event) {
 }
 
 function requireCsrf(input, session) {
+  if (hasBearerAuth(input.headers || {})) {
+    return;
+  }
   const headerToken = csrfTokenFromHeaders(input.headers || {});
   const cookieToken = parseCookies(headerValue(input.headers || {}, "cookie"))[csrfCookieName(cookieOptions(input))];
 
@@ -1202,6 +1207,7 @@ function createSessionResponse({ input, identity, member, organizationCode, mfaV
 
   return {
     csrfToken,
+    accessToken: token,
     sessionView: publicSessionView(session),
     headers: {
       "set-cookie": [
@@ -1826,7 +1832,7 @@ function corsHeaders(input) {
     "access-control-allow-origin": origin,
     "access-control-allow-credentials": "true",
     "access-control-allow-methods": "GET, POST, PATCH, OPTIONS",
-    "access-control-allow-headers": "content-type, x-csrf-token",
+    "access-control-allow-headers": "authorization, content-type, x-csrf-token",
     "vary": "Origin"
   };
 }
@@ -1834,6 +1840,7 @@ function corsHeaders(input) {
 function isAllowedWebOrigin(origin) {
   return defaultAllowedWebOrigins().includes(origin)
     || configuredAllowedWebOrigins().includes(origin)
+    || /^https:\/\/[a-z0-9-]+--halunasu-[a-z0-9-]+\.netlify\.app$/.test(origin)
     || /^http:\/\/localhost(:\d+)?$/.test(origin)
     || /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin);
 }
@@ -1905,6 +1912,10 @@ function headerValue(headers, name) {
   const foundKey = Object.keys(headers).find((key) => key.toLowerCase() === name.toLowerCase());
   const value = foundKey ? headers[foundKey] : undefined;
   return Array.isArray(value) ? value.join("; ") : value;
+}
+
+function hasBearerAuth(headers = {}) {
+  return /^Bearer\s+\S+/iu.test(String(headerValue(headers, "authorization") || ""));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
