@@ -276,6 +276,8 @@ function FeeSessionDetailView({ sessionId }) {
   const [form, setForm] = useState(defaultFeeForm);
   const [diagnosesTouched, setDiagnosesTouched] = useState(false);
   const [orderRows, setOrderRows] = useState([createEmptyOrderRow()]);
+  const [orderRowsTouched, setOrderRowsTouched] = useState(false);
+  const [clinicalTextBaselineHash, setClinicalTextBaselineHash] = useState("");
   const [patientFilter, setPatientFilter] = useState("");
   const [newPatient, setNewPatient] = useState(defaultPatientForm);
   const [patientPickerOpen, setPatientPickerOpen] = useState(false);
@@ -329,7 +331,9 @@ function FeeSessionDetailView({ sessionId }) {
         setReviewItems,
         setForm,
         setDiagnosesTouched,
-        setOrderRows
+        setOrderRows,
+        setOrderRowsTouched,
+        setClinicalTextBaselineHash
       });
     } catch (error) {
       setMessage({ type: "error", text: toUserFacingErrorMessage(error, "算定詳細を読み込めませんでした。") });
@@ -350,7 +354,9 @@ function FeeSessionDetailView({ sessionId }) {
       setReviewItems,
       setForm,
       setDiagnosesTouched,
-      setOrderRows
+      setOrderRows,
+      setOrderRowsTouched,
+      setClinicalTextBaselineHash
     });
     return detail;
   }, [feeApi, sessionId]);
@@ -468,7 +474,9 @@ function FeeSessionDetailView({ sessionId }) {
       form,
       orderRows,
       patients,
-      diagnosesTouched
+      diagnosesTouched,
+      orderRowsTouched,
+      clinicalTextBaselineHash
     });
     const response = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}`, {
       method: "PATCH",
@@ -481,7 +489,9 @@ function FeeSessionDetailView({ sessionId }) {
       setReviewItems,
       setForm,
       setDiagnosesTouched,
-      setOrderRows
+      setOrderRows,
+      setOrderRowsTouched,
+      setClinicalTextBaselineHash
     });
     if (!options.silent) {
       setMessage({ type: "success", text: "入力を保存しました。" });
@@ -522,7 +532,9 @@ function FeeSessionDetailView({ sessionId }) {
         setReviewItems,
         setForm,
         setDiagnosesTouched,
-        setOrderRows
+        setOrderRows,
+        setOrderRowsTouched,
+        setClinicalTextBaselineHash
       });
       setMessage({
         type: "success",
@@ -571,16 +583,19 @@ function FeeSessionDetailView({ sessionId }) {
   }
 
   function addOrderRow() {
+    setOrderRowsTouched(true);
     setOrderRows((current) => [...current.filter((row) => row.localName || row.standardCode), createEmptyOrderRow()]);
   }
 
   function updateOrderRow(index, field, value) {
+    setOrderRowsTouched(true);
     setOrderRows((current) => current.map((row, rowIndex) => (
       rowIndex === index ? { ...row, [field]: value } : row
     )));
   }
 
   function removeOrderRow(index) {
+    setOrderRowsTouched(true);
     setOrderRows((current) => {
       const nextRows = current.filter((_, rowIndex) => rowIndex !== index);
       return nextRows.length ? nextRows : [createEmptyOrderRow()];
@@ -609,6 +624,7 @@ function FeeSessionDetailView({ sessionId }) {
       return;
     }
 
+    setOrderRowsTouched(true);
     setOrderRows((current) => [
       ...current.filter((row) => row.localName || row.standardCode),
       {
@@ -1177,7 +1193,7 @@ function ReviewList({ disabled, items, onDecision, selected }) {
             <span className={badgeClass(item.status)}>{statusLabel(item.status)}</span>
           </header>
           <p>{item.displayReason || humanizeReviewMessage(item.reason || item.lineItem?.reason || "")}</p>
-          {item.lineItem ? <p>{lineMetaLabel(item.lineItem)} / {coverageLabel(item.lineItem.coverage)}</p> : null}
+          {item.lineItem ? <p>{lineMetaLabel(item.lineItem)}</p> : null}
           <div className="button-row">
             <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">承認</button>
             <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected")} type="button">却下</button>
@@ -1328,11 +1344,24 @@ function applyDetailResponse(response, setters) {
   setters.setForm(formFromFeeSession(session || {}));
   setters.setDiagnosesTouched?.(String(session?.diagnosesSource || "").trim() === "manual");
   setters.setOrderRows(orderRowsFromOrders(session?.orders || []));
+  setters.setOrderRowsTouched?.(false);
+  setters.setClinicalTextBaselineHash?.(clinicalTextHash(session?.clinicalText || ""));
 }
 
-function buildFeeSessionPayload({ defaultFacilityId, form, orderRows, patients, diagnosesTouched = false }) {
+function buildFeeSessionPayload({
+  defaultFacilityId,
+  form,
+  orderRows,
+  patients,
+  diagnosesTouched = false,
+  orderRowsTouched = false,
+  clinicalTextBaselineHash = ""
+}) {
   const patient = patients.find((item) => item.patientId === form.patientId);
-  const chartInput = buildChartOnlyInput(form, orderRows);
+  const chartInput = buildChartOnlyInput(form, orderRows, {
+    orderRowsTouched,
+    clinicalTextBaselineHash
+  });
   const diagnosesSource = diagnosesTouched ? "manual" : "clinical_auto";
   return {
     patientId: emptyToNull(form.patientId),
@@ -1407,8 +1436,13 @@ function sessionListQuery({ page, search, status }) {
   return `?${params.toString()}`;
 }
 
-function buildChartOnlyInput(form, orderRows) {
-  const manualOrderRows = orderRows.filter((row) => !isAutoPlaceholderOrderRow(row));
+function buildChartOnlyInput(form, orderRows, options = {}) {
+  const clinicalTextChanged = Boolean(options.clinicalTextBaselineHash)
+    && options.clinicalTextBaselineHash !== clinicalTextHash(form.clinicalText);
+  const shouldIgnoreSavedRows = clinicalTextChanged && !options.orderRowsTouched;
+  const manualOrderRows = shouldIgnoreSavedRows
+    ? []
+    : orderRows.filter((row) => !isAutoPlaceholderOrderRow(row));
   const hasManualOrders = parseOrdersFromRows(manualOrderRows).length > 0;
   const derivedOrderRows = hasManualOrders ? [] : deriveOrderRowsFromClinicalText(form.clinicalText);
   const diagnosesText = String(form.diagnosesText || "").trim() || deriveDiagnosesTextFromClinicalText(form.clinicalText);
@@ -1786,8 +1820,28 @@ function humanizeReviewMessage(message = "") {
   if (/Medication fee candidate for in_house/i.test(text)) {
     return "院内処方に関する投薬料候補です。処方内容と算定条件を確認してください。";
   }
+  if (/D026 judgement fee for group/i.test(text)) {
+    return "検査判断料の候補です。実施検査と同月算定条件を確認してください。";
+  }
+  if (/Collection fee requested by blood_venous/i.test(text)) {
+    return "静脈採血料の候補です。採血実施と算定条件を確認してください。";
+  }
+  if (/Outpatient rapid lab add-on skipped/i.test(text)) {
+    return "外来迅速検体検査加算は、当日説明・文書要件を確認できないため自動追加していません。";
+  }
+  if (/Required comment candidate:/i.test(text)) {
+    return text
+      .replace(/^Required comment candidate:\s*/iu, "レセプトコメントの確認: ")
+      .replace(/\s+needs\s+/iu, " に必要なコメント: ");
+  }
   if (/Imaging fee candidate for simple_radiography/i.test(text)) {
     return "単純X線に関する画像診断料候補です。撮影方式と写真診断区分を確認してください。";
+  }
+  if (/Imaging fee candidate for ct/i.test(text)) {
+    return "CT撮影に関する画像診断料候補です。撮影内容と機器区分を確認してください。";
+  }
+  if (/Imaging fee candidate for mri/i.test(text)) {
+    return "MRI撮影に関する画像診断料候補です。撮影内容と機器区分を確認してください。";
   }
   if (/Outpatient basic fee candidate for initial/i.test(text)) {
     return "初診料の候補です。受診履歴と初診の条件を確認してください。";

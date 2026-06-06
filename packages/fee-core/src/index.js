@@ -271,7 +271,7 @@ export function buildReviewItems(session = {}) {
     reviewItemId: `warning_${index + 1}`,
     sourceType: "warning",
     severity: "warning",
-    title: "算定警告",
+    title: reviewWarningTitle(message),
     reason: message,
     decision: decisions[`warning_${index + 1}`]
   }));
@@ -552,6 +552,48 @@ function reviewItem(input) {
     decision,
     lineItem: input.lineItem
   });
+}
+
+function reviewWarningTitle(message = "") {
+  const text = String(message || "");
+  if (/施設基準|facility_standard|hospital_profile_missing/u.test(text)) {
+    return "施設基準の確認";
+  }
+  if (/レセプトコメント|Required comment|コメント/u.test(text)) {
+    return "レセプトコメントの確認";
+  }
+  if (/外来迅速|rapid lab/u.test(text)) {
+    return "外来迅速検体検査加算の確認";
+  }
+  if (/D026|検査判断料|judgement fee/u.test(text)) {
+    return "検査判断料の確認";
+  }
+  if (/静脈採血|採血|blood_venous|Collection fee/u.test(text)) {
+    return "採血料の確認";
+  }
+  if (/CT|ＣＴ|MRI|ＭＲＩ|画像|Imaging fee/u.test(text)) {
+    return "画像診断料の確認";
+  }
+  if (/単純X線|単純x線|X線|x線|レントゲン|simple_radiography/u.test(text)) {
+    return "単純X線の撮影条件確認";
+  }
+  if (/超音波|経腟|経膣|エコー|ultrasound/u.test(text)) {
+    return "超音波検査の算定確認";
+  }
+  if (/CA\s*125|CA125|ＣＡ１２５/u.test(text)) {
+    return "CA125検査の算定確認";
+  }
+  if (/初診|再診|受診履歴|Outpatient basic/u.test(text)) {
+    return "初再診料の確認";
+  }
+  if (/投薬|処方料|調剤料|Medication fee/u.test(text)) {
+    return "投薬料の確認";
+  }
+  const drugName = text.match(/薬剤「([^」]+)」/u)?.[1];
+  if (drugName) {
+    return `${drugName}の確認`;
+  }
+  return "確認事項";
 }
 
 function requiredString(value, field) {

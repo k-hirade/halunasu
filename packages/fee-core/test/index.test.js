@@ -215,3 +215,21 @@ test("builds receipt drafts and resolves review items", () => {
   assert.ok(reviewItems.length >= 1);
   assert.equal(decided.reviewDecisions[reviewItems[0].reviewItemId].status, "approved");
 });
+
+test("builds target-specific warning review titles", () => {
+  const reviewItems = buildReviewItems({
+    calculationResult: {
+      warnings: [
+        "施設基準が登録されていないため、検体検査管理加算は自動追加していません。",
+        "検査判断料の候補です。実施検査と同月算定条件を確認してください。",
+        "薬剤「ロキソプロフェン」は数量または日数が不足しているため、算定候補には入れていません。"
+      ],
+      lineItems: []
+    }
+  });
+
+  assert.deepEqual(
+    reviewItems.map((item) => item.title),
+    ["施設基準の確認", "検査判断料の確認", "ロキソプロフェンの確認"]
+  );
+});
