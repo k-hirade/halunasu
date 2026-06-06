@@ -668,6 +668,10 @@ function extractedOrderLabels(options = {}) {
   for (const order of Array.isArray(options.treatment_orders) ? options.treatment_orders : []) {
     labels.push(treatmentProgressLabel(order));
   }
+  const procedureCodeCount = Array.isArray(options.procedure_codes) ? options.procedure_codes.length : 0;
+  if (procedureCodeCount) {
+    labels.push(`診療行為候補 ${procedureCodeCount}件`);
+  }
   const medicationCount = Array.isArray(options.medication_orders) ? options.medication_orders.length : 0;
   if (medicationCount) {
     labels.push(`薬剤候補 ${medicationCount}件`);

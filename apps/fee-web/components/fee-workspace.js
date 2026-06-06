@@ -748,7 +748,7 @@ function FeeSessionDetailView({ sessionId }) {
                   <span className="label">オーダー</span>
                   <h3>候補を確認・編集</h3>
                 </div>
-                <span className="fee-count">{parseOrdersFromRows(orderRows).length.toLocaleString()}件</span>
+                <span className="fee-count">手入力 {parseOrdersFromRows(orderRows).length.toLocaleString()}件</span>
               </div>
               <p className="field-note">カルテ本文から候補を補完します。追加・修正が必要な場合はマスター検索または表を編集してください。</p>
               <div className="master-search-panel master-search-panel--command">
@@ -1708,6 +1708,8 @@ function shouldSuppressWarningForExistingLine(item = {}, lineTexts = "") {
 function semanticReviewKey(item = {}, title = "", reason = "") {
   const text = `${title} ${reason} ${item.title || ""} ${item.reason || ""} ${item.lineItem?.name || ""}`.toLowerCase();
   if (/施設基準|hospital_profile_missing|facility_standard/u.test(text)) return "warning:facility_standard";
+  if (/ca\s*125|ca125/u.test(text)) return item.sourceType === "line_item" ? "line:lab:ca125" : "warning:lab:ca125";
+  if (/経腟|経膣|超音波|エコー|ultrasound/u.test(text)) return item.sourceType === "line_item" ? "line:procedure:ultrasound" : "warning:procedure:ultrasound";
   if (/mri|ｍｒｉ/u.test(text) && /予定|依頼|オーダー|planned|ordered/u.test(text)) return "warning:mri_planned";
   if (/単純x線|x線|レントゲン|simple_radiography/u.test(text) && /撮影方式|写真診断|機器|条件/u.test(text)) return "warning:simple_radiography_condition";
   if (/レバミピド/u.test(text) && /数量|日数|不足/u.test(text)) return "warning:drug_quantity:rebamipide";
@@ -1740,7 +1742,7 @@ function humanizeReviewMessage(message = "") {
   const raw = String(message || "").trim();
   if (!raw) return "算定候補の内容を確認してください。";
   const text = raw.replace(/^[a-z][a-z0-9_]*:\s*/iu, "").trim();
-  if (/hospital_profile_missing|施設基準がない|施設基準/u.test(raw)) {
+  if (/hospital_profile_missing|facility_standard|Lab management fee skipped|施設基準がない|施設基準/u.test(raw)) {
     return "施設基準が登録されていないため、施設基準が必要な加算は自動追加していません。";
   }
   if (/This result is a billing candidate/i.test(text)) {

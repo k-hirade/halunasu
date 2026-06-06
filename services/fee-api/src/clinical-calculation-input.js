@@ -876,10 +876,30 @@ function diagnosesFromClinicalFacts(facts = {}) {
 }
 
 function cleanClinicalDiagnosisName(value) {
-  return String(value || "")
+  const name = String(value || "")
     .replace(/^\s*(?:病名|診断名)\s*[:：]\s*/u, "")
     .trim()
     .slice(0, 120);
+  if (isClinicalFindingNotDiagnosis(name)) {
+    return "";
+  }
+  return name;
+}
+
+function isClinicalFindingNotDiagnosis(value) {
+  const text = normalizeClinicalText(value)
+    .replace(/\s+/gu, "");
+  if (!text) {
+    return false;
+  }
+  if (/(?:CA\s*[-]?\s*125|CA125|ＣＡ１２５|CEA|CRP|HbA1c|AST|ALT|血糖|尿酸|Dダイマー)/iu.test(text)
+    && /(高値|低値|陽性|陰性|基準値|U\/?mL|mg\/?dL|軽度|結果)/iu.test(text)) {
+    return true;
+  }
+  if (/^(?:血液検査|検査結果|検査値|所見)[:：]?/u.test(text)) {
+    return true;
+  }
+  return false;
 }
 
 function normalizeClinicalDiagnoses(values = []) {
@@ -1307,11 +1327,11 @@ async function searchPerformedProcedureCode(feeCalculator, {
 
   const normalizedQueries = uniqueStrings(queries).filter((query) => query.length >= 2);
   for (const query of normalizedQueries) {
-    const item = await searchProcedureMasterItem(feeCalculator, query);
+    const item = await searchProcedureMasterItem(feeCalculator, query, { name, categoryLabel });
     if (item?.code) {
       return {
         procedureCodes: [String(item.code)],
-        reviewWarnings: resolvedMessage ? [resolvedMessage] : []
+        reviewWarnings: []
       };
     }
   }
@@ -1322,31 +1342,97 @@ async function searchPerformedProcedureCode(feeCalculator, {
   };
 }
 
-async function searchProcedureMasterItem(feeCalculator, query) {
+async function searchProcedureMasterItem(feeCalculator, query, context = {}) {
   try {
     const result = await feeCalculator.searchMaster({ type: "procedure", query, limit: 5 });
     const items = Array.isArray(result?.items) ? result.items : [];
-    return items.find((item) => (
+    const candidates = items.filter((item) => (
       item?.code
       && (
         item.kind === "procedure"
         || item.sourceType === "medical_procedure_master"
         || item.source === "medical_procedure_master"
       )
-    )) || null;
+    ));
+    return candidates.find((item) => isHighConfidenceProcedureMasterItem(item, { ...context, query }))
+      || null;
   } catch {
     return null;
   }
+}
+
+function isHighConfidenceProcedureMasterItem(item = {}, { query = "", name = "", categoryLabel = "" } = {}) {
+  const itemText = normalizeProcedureMatchText([
+    item.name,
+    item.baseName,
+    item.displayName,
+    item.shortName
+  ].filter(Boolean).join(" "));
+  const contextText = normalizeProcedureMatchText([query, name, categoryLabel].filter(Boolean).join(" "));
+  if (!itemText || !contextText) {
+    return false;
+  }
+
+  if (isCa125Context(contextText)) {
+    return isCa125MasterName(itemText);
+  }
+
+  if (isUltrasoundContext(contextText)) {
+    if (!/超音波|エコー/u.test(itemText)) {
+      return false;
+    }
+    if (/aモード|mモード|ドプラ|心臓|頸動脈|甲状腺|乳腺/u.test(itemText) && isTransvaginalUltrasoundContext(contextText)) {
+      return false;
+    }
+    if (/aモード/u.test(itemText)) {
+      return false;
+    }
+    if (isTransvaginalUltrasoundContext(contextText)) {
+      return /(経腟|経膣|腟|膣|断層|子宮|卵巣|骨盤)/u.test(itemText);
+    }
+    return /(断層|胸腹部|体表|腹部|骨盤|経腟|経膣|子宮|卵巣)/u.test(itemText);
+  }
+
+  const queryKey = normalizeProcedureMatchText(query);
+  const nameKey = normalizeProcedureMatchText(name);
+  return Boolean(
+    (queryKey && itemText.includes(queryKey))
+    || (nameKey && itemText.includes(nameKey))
+  );
+}
+
+function normalizeProcedureMatchText(value) {
+  return String(value || "")
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/gu, (char) => String.fromCharCode(char.charCodeAt(0) - 0xFEE0))
+    .replace(/\s+/gu, "")
+    .replace(/[（）()・、,，.\-－ー]/gu, "")
+    .toLowerCase();
+}
+
+function isCa125Context(text) {
+  return /ca125|ca一二五|癌抗原125/u.test(text);
+}
+
+function isCa125MasterName(text) {
+  return /ca125|癌抗原125/u.test(text);
+}
+
+function isUltrasoundContext(text) {
+  return /超音波|エコー|経腟|経膣/u.test(text);
+}
+
+function isTransvaginalUltrasoundContext(text) {
+  return /経腟|経膣|腟|膣/u.test(text);
 }
 
 function procedureMasterQueriesFromEvidence(evidence) {
   const text = String(evidence || "");
   const queries = [];
   if (/(?:CA\s*125|CA125)/iu.test(text)) {
-    queries.push("CA125", "CA 125");
+    queries.push("CA125", "CA 125", "CA-125", "癌抗原125", "癌抗原１２５");
   }
   if (/(経腟超音波|経膣超音波|経腟エコー|経膣エコー)/u.test(text)) {
-    queries.push("経腟超音波", "経膣超音波", "超音波検査");
+    queries.push("経腟超音波", "経膣超音波", "経腟エコー", "経膣エコー", "子宮 超音波", "卵巣 超音波", "超音波検査");
   } else if (/(超音波|エコー)/u.test(text)) {
     queries.push("超音波検査", "超音波");
   }
@@ -1356,7 +1442,7 @@ function procedureMasterQueriesFromEvidence(evidence) {
 function ultrasoundMasterQueries(value) {
   const text = String(value || "");
   if (/(経腟|経膣)/u.test(text)) {
-    return ["経腟超音波", "経膣超音波", "超音波検査"];
+    return ["経腟超音波", "経膣超音波", "経腟エコー", "経膣エコー", "子宮 超音波", "卵巣 超音波", "超音波検査"];
   }
   return ["超音波検査", "超音波"];
 }
@@ -1600,6 +1686,9 @@ function cleanReviewWarning(value) {
     return "";
   }
   warning = warning.replace(/\s+/gu, " ");
+  if (/Lab management fee skipped: facility_standard_not_found|facility_standard_not_found/u.test(warning)) {
+    return "施設基準が登録されていないため、検体検査管理加算は自動追加していません。";
+  }
   warning = warning.replace(/^(?:hospital_profile_missing|facility_standard_not_found)\s*[:：]\s*/u, "");
   warning = warning.replace(/薬剤「([^」]+)」/gu, (match, name) => {
     const canonical = canonicalMedicationName(name);
@@ -1609,6 +1698,12 @@ function cleanReviewWarning(value) {
 }
 
 function reviewWarningDedupKey(warning) {
+  if (/(?:CA\s*125|CA125)/iu.test(warning)) {
+    return `lab:ca125:${reviewWarningReasonKey(warning)}`;
+  }
+  if (/(経腟|経膣|超音波|エコー)/u.test(warning)) {
+    return `procedure:ultrasound:${reviewWarningReasonKey(warning)}`;
+  }
   const medication = warning.match(/薬剤「([^」]+)」/u)?.[1];
   if (medication) {
     return `medication:${canonicalMedicationName(medication)}:${reviewWarningReasonKey(warning)}`;
@@ -1646,7 +1741,7 @@ function reviewWarningReasonKey(warning) {
   if (/(予定|依頼|オーダー|次回|今後)/u.test(warning)) {
     return "planned_only";
   }
-  if (/(未対応|コード確定|直接候補化できない)/u.test(warning)) {
+  if (/(未対応|コード確定|自動確定|標準コード|直接候補化できない)/u.test(warning)) {
     return "unsupported";
   }
   if (/施設基準/u.test(warning)) {

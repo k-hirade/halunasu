@@ -794,7 +794,7 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
       return {
         query: input.query,
         type: input.type,
-        items: [{ kind: "procedure", code: "160000999", name: "経腟超音波検査" }]
+        items: [{ kind: "procedure", code: "160072110", name: "超音波検査（Ａモード法）" }]
       };
     }
     return {
@@ -819,7 +819,8 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
     diagnoses: [
       { name: "月経困難症", status: "confirmed", evidence: "月経困難症" },
       { name: "子宮内膜症疑い", status: "suspected", evidence: "子宮内膜症疑い" },
-      { name: "左卵巣嚢胞", status: "suspected", evidence: "左卵巣に嚢胞性病変" }
+      { name: "左卵巣嚢胞", status: "suspected", evidence: "左卵巣に嚢胞性病変" },
+      { name: "CA125軽度高値", status: "confirmed", evidence: "CA125 68 U/mL" }
     ],
     billing_events: [
       {
@@ -905,14 +906,14 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "initial");
   assert.deepEqual(
     receivedInput.calculationOptions.procedure_codes.sort(),
-    ["160000999", "160200110"].sort()
+    ["160200110"].sort()
   );
   assert.deepEqual(
     calculation.body.feeSession.diagnoses.map((diagnosis) => diagnosis.name),
     ["月経困難症", "子宮内膜症疑い", "左卵巣嚢胞"]
   );
-  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("経腟超音波") && warning.includes("マスター候補")));
-  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("CA125") && warning.includes("マスター候補")));
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("経腟超音波") && warning.includes("標準コードを自動確定")));
+  assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("CA125") && warning.includes("マスター候補")), false);
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI骨盤部")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ルナベル")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロキソプロフェン")));
@@ -920,6 +921,10 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
   assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("文面から受診回数")), false);
   assert.equal(
     calculation.body.calculationResult.warnings.filter((warning) => warning.includes("ロキソプロフェン")).length,
+    1
+  );
+  assert.equal(
+    calculation.body.calculationResult.warnings.filter((warning) => /経腟|経膣|超音波/u.test(warning)).length,
     1
   );
   assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("病名が入力されていません")), false);
