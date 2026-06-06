@@ -171,7 +171,7 @@ async function routeFeeApiRequest(input = {}) {
   }
 
   if (method === "POST" && matches(parts, ["v1", "fee", "patients"])) {
-    requirePlatformCsrf(input.headers || {}, context.session);
+    requireMutationCsrf(input, context.session);
     const patient = await platformStore.createPatient(
       context.session.orgId,
       validateCreateFeePatientInput(input.body || {})
@@ -201,7 +201,7 @@ async function routeFeeApiRequest(input = {}) {
   }
 
   if (method === "POST" && matches(parts, ["v1", "fee", "sessions"])) {
-    requirePlatformCsrf(input.headers || {}, context.session);
+    requireMutationCsrf(input, context.session);
     const normalized = validateCreateFeeSessionInput(input.body || {});
     const patient = normalized.patientId || normalized.patient
       ? await resolveFeePatient(context, platformStore, normalized)
@@ -253,7 +253,7 @@ async function routeFeeApiRequest(input = {}) {
   }
 
   if (method === "PATCH" && isFeeSessionDocument(parts)) {
-    requirePlatformCsrf(input.headers || {}, context.session);
+    requireMutationCsrf(input, context.session);
     const current = await feeStore.getSession(context.session.orgId, parts[3]);
     if (!current) {
       return notFound("fee session not found");
@@ -289,7 +289,7 @@ async function routeFeeApiRequest(input = {}) {
   }
 
   if (method === "PATCH" && parts.length === 6 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "review-items") {
-    requirePlatformCsrf(input.headers || {}, context.session);
+    requireMutationCsrf(input, context.session);
     const result = await feeStore.decideReviewItem(context.session.orgId, parts[3], decodeURIComponent(parts[5]), input.body || {});
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.review_item_decided",
@@ -309,45 +309,54 @@ async function routeFeeApiRequest(input = {}) {
   }
 
   if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "calculate") {
-    requirePlatformCsrf(input.headers || {}, context.session);
+    requireMutationCsrf(input, context.session);
     const current = await feeStore.getSession(context.session.orgId, parts[3]);
     if (!current) {
       return notFound("fee session not found");
     }
     assertFeeSessionReadyForCalculation(current);
     const calculationInput = validateCreateFeeCalculationInput(input.body || {});
-    const prepared = await prepareSessionForCalculation(current, calculationInput, feeCalculator, input);
-    const calculationSession = prepared.patch
-      ? (await feeStore.updateSession(context.session.orgId, parts[3], prepared.patch)).feeSession
-      : current;
-    const calculationResult = await feeCalculator.calculate(
-      calculationSession,
-      buildCalculationInputForSession(calculationSession, calculationInput, prepared)
-    );
-    const result = await feeStore.saveCalculation(
-      context.session.orgId,
-      parts[3],
-      addSessionReviewWarnings(calculationSession, calculationResult, prepared.reviewWarnings)
-    );
-    await platformStore.createAuditEvent(context.session.orgId, {
-      eventType: "fee.calculated",
-      actorMemberId: context.session.memberId,
-      actorLoginId: context.session.loginId,
-      targetType: "fee_session",
-      targetId: result.feeSession.feeSessionId,
-      productId: PRODUCT_ID,
-      safePayload: {
-        feeSessionId: result.feeSession.feeSessionId,
-        calculationId: result.calculationResult.calculationId,
-        provider: result.calculationResult.provider,
-        totalPoints: result.calculationResult.totalPoints
-      }
+    if (shouldRunCalculationInline(input)) {
+      return created(await calculateFeeSessionNow({
+        context,
+        feeCalculator,
+        feeStore,
+        platformStore,
+        input,
+        feeSessionId: parts[3],
+        current,
+        calculationInput
+      }));
+    }
+
+    const queued = await feeStore.updateSession(context.session.orgId, parts[3], { status: "calculating" });
+    setImmediate(() => {
+      calculateFeeSessionNow({
+        context,
+        feeCalculator,
+        feeStore,
+        platformStore,
+        input,
+        feeSessionId: parts[3],
+        current,
+        calculationInput
+      }).catch(async (error) => {
+        console.error(JSON.stringify({
+          event: "fee.calculate.failed",
+          orgId: context.session.orgId,
+          feeSessionId: parts[3],
+          failedStage: error?.calculateStage || null,
+          failedStageDurationMs: error?.calculateStageDurationMs || null,
+          stageTimings: Array.isArray(error?.calculateStageTimings) ? error.calculateStageTimings : null,
+          error: safeLogError(error)
+        }));
+        await markCalculationFailed(feeStore, context.session.orgId, parts[3]).catch(() => null);
+      });
     });
 
-    return created({
-      ...result,
-      receiptDraft: buildReceiptDraft(result.feeSession, { now: input.now || new Date() }),
-      reviewItems: buildReviewItems(result.feeSession)
+    return accepted({
+      ...buildFeeSessionDetailFromSession(queued.feeSession, input.now || new Date()),
+      calculation: { status: "queued" }
     });
   }
 
@@ -377,6 +386,210 @@ async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now) {
     receiptDraft: buildReceiptDraft(feeSession, { now }),
     reviewItems: buildReviewItems(feeSession)
   };
+}
+
+function buildFeeSessionDetailFromSession(feeSession, now) {
+  return {
+    feeSession,
+    receiptDraft: buildReceiptDraft(feeSession, { now }),
+    reviewItems: buildReviewItems(feeSession)
+  };
+}
+
+async function calculateFeeSessionNow({
+  context,
+  feeCalculator,
+  feeStore,
+  platformStore,
+  input,
+  feeSessionId,
+  current,
+  calculationInput
+}) {
+  const overallStartedAt = Date.now();
+  const stageTimings = [];
+  const latest = await timedCalculationStage({
+    stage: "loadSession",
+    orgId: context.session.orgId,
+    feeSessionId,
+    stageTimings,
+    fn: () => feeStore.getSession(context.session.orgId, feeSessionId)
+  });
+  const session = latest || current;
+  const prepared = await timedCalculationStage({
+    stage: "prepare",
+    orgId: context.session.orgId,
+    feeSessionId,
+    stageTimings,
+    fn: () => prepareSessionForCalculation(session, calculationInput, feeCalculator, input),
+    detail: (result) => ({
+      clinicalStructuring: result?.metrics?.clinicalStructuring || null,
+      prepareStageTimings: result?.metrics?.stageTimings || [],
+      calculationOptionsKeys: Object.keys(result?.calculationOptions || {}),
+      reviewWarningCount: Array.isArray(result?.reviewWarnings) ? result.reviewWarnings.length : 0
+    })
+  });
+  const calculationSession = prepared.patch
+    ? (await timedCalculationStage({
+      stage: "savePreparedSession",
+      orgId: context.session.orgId,
+      feeSessionId,
+      stageTimings,
+      fn: () => feeStore.updateSession(context.session.orgId, feeSessionId, prepared.patch),
+      detail: () => ({
+        patchKeys: Object.keys(prepared.patch || {})
+      })
+    })).feeSession
+    : session;
+  const calculationInputForSession = buildCalculationInputForSession(calculationSession, calculationInput, prepared);
+  const calculationResult = await timedCalculationStage({
+    stage: "pythonCalculator",
+    orgId: context.session.orgId,
+    feeSessionId,
+    stageTimings,
+    fn: () => feeCalculator.calculate(
+      calculationSession,
+      calculationInputForSession
+    ),
+    detail: (result) => ({
+      provider: result?.provider || null,
+      status: result?.status || null,
+      totalPoints: Number(result?.totalPoints || 0),
+      lineItemCount: Array.isArray(result?.lineItems) ? result.lineItems.length : 0,
+      warningCount: Array.isArray(result?.warnings) ? result.warnings.length : 0
+    })
+  });
+  const result = await timedCalculationStage({
+    stage: "saveCalculation",
+    orgId: context.session.orgId,
+    feeSessionId,
+    stageTimings,
+    fn: () => feeStore.saveCalculation(
+      context.session.orgId,
+      feeSessionId,
+      addSessionReviewWarnings(calculationSession, calculationResult, prepared.reviewWarnings)
+    )
+  });
+  await timedCalculationStage({
+    stage: "audit",
+    orgId: context.session.orgId,
+    feeSessionId,
+    stageTimings,
+    fn: () => platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.calculated",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "fee_session",
+      targetId: result.feeSession.feeSessionId,
+      productId: PRODUCT_ID,
+      safePayload: {
+        feeSessionId: result.feeSession.feeSessionId,
+        calculationId: result.calculationResult.calculationId,
+        provider: result.calculationResult.provider,
+        totalPoints: result.calculationResult.totalPoints
+      }
+    })
+  });
+  console.info(JSON.stringify({
+    event: "fee.calculate.completed",
+    orgId: context.session.orgId,
+    feeSessionId,
+    status: result.feeSession.status,
+    totalPoints: result.calculationResult.totalPoints,
+    totalDurationMs: Date.now() - overallStartedAt,
+    calculatorDurationMs: stageDuration(stageTimings, "pythonCalculator"),
+    stageTimings,
+    clinicalStructuring: prepared.metrics?.clinicalStructuring || null
+  }));
+
+  return {
+    ...result,
+    receiptDraft: buildReceiptDraft(result.feeSession, { now: input.now || new Date() }),
+    reviewItems: buildReviewItems(result.feeSession)
+  };
+}
+
+async function markCalculationFailed(feeStore, orgId, feeSessionId) {
+  await feeStore.updateSession(orgId, feeSessionId, { status: "failed" });
+}
+
+function shouldRunCalculationInline(input = {}) {
+  return input.env === "test"
+    || input.body?.wait === true
+    || String(process.env.FEE_CALCULATION_INLINE || "").toLowerCase() === "true";
+}
+
+async function timedCalculationStage({
+  stage,
+  orgId,
+  feeSessionId,
+  stageTimings,
+  fn,
+  detail = null
+}) {
+  const startedAt = Date.now();
+  try {
+    const result = await fn();
+    const durationMs = Date.now() - startedAt;
+    const entry = { stage, durationMs };
+    stageTimings.push(entry);
+    console.info(JSON.stringify({
+      event: "fee.calculate.stage.completed",
+      orgId,
+      feeSessionId,
+      stage,
+      durationMs,
+      ...(typeof detail === "function" ? safeStageDetail(detail(result)) : {})
+    }));
+    return result;
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    const entry = { stage, durationMs, failed: true };
+    stageTimings.push(entry);
+    error.calculateStage = error.calculateStage || stage;
+    error.calculateStageDurationMs = error.calculateStageDurationMs || durationMs;
+    error.calculateStageTimings = error.calculateStageTimings || [...stageTimings];
+    console.error(JSON.stringify({
+      event: "fee.calculate.stage.failed",
+      orgId,
+      feeSessionId,
+      stage,
+      durationMs,
+      error: safeLogError(error)
+    }));
+    throw error;
+  }
+}
+
+async function measureStage(stageTimings, stage, fn) {
+  const startedAt = Date.now();
+  let failed = false;
+  try {
+    return await fn();
+  } catch (error) {
+    failed = true;
+    throw error;
+  } finally {
+    stageTimings.push({
+      stage,
+      durationMs: Date.now() - startedAt,
+      ...(failed ? { failed: true } : {})
+    });
+  }
+}
+
+function stageDuration(stageTimings, stage) {
+  const entry = stageTimings.find((candidate) => candidate.stage === stage);
+  return entry ? entry.durationMs : null;
+}
+
+function safeStageDetail(value) {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined)
+  );
 }
 
 async function resolveFeePatient(context, platformStore, input) {
@@ -477,9 +690,10 @@ function assertFeeSessionReadyForCalculation(session = {}) {
 }
 
 async function prepareSessionForCalculation(session = {}, calculationInput = {}, feeCalculator, input = {}) {
-  const enriched = await enrichSessionOrdersForCalculation(session, feeCalculator);
+  const stageTimings = [];
+  const enriched = await measureStage(stageTimings, "enrichOrders", () => enrichSessionOrdersForCalculation(session, feeCalculator));
   const baseSession = enriched.changed ? { ...session, orders: enriched.orders } : session;
-  const legacy = await buildClinicalCalculationPreparation({
+  const legacy = await measureStage(stageTimings, "clinicalCalculationPreparation", () => buildClinicalCalculationPreparation({
     session: baseSession,
     calculationInput,
     feeCalculator,
@@ -498,8 +712,13 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       || process.env.OPENAI_SOAP_REASONING_EFFORT
       || "low"
     ),
+    openAiTimeoutMs: Number(
+      input.openAiFeeClinicalTimeoutMs
+      || process.env.OPENAI_FEE_CLINICAL_TIMEOUT_MS
+      || 12000
+    ),
     clinicalFactsExtractor: input.clinicalFactsExtractor
-  });
+  }));
   const patch = {};
 
   if (enriched.changed) {
@@ -518,6 +737,10 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
   return {
     patch: Object.keys(patch).length ? patch : null,
     calculationOptions: legacy.calculationOptions,
+    metrics: {
+      ...(legacy.metrics || {}),
+      stageTimings
+    },
     reviewWarnings: uniqueStrings([
       ...(Array.isArray(legacy.reviewWarnings) ? legacy.reviewWarnings : []),
       ...unresolvedOrderWarnings(enriched.orders || baseSession.orders || [], legacy.calculationOptions || {})
@@ -829,6 +1052,10 @@ function created(body, headers = {}) {
   return { statusCode: 201, body, headers };
 }
 
+function accepted(body, headers = {}) {
+  return { statusCode: 202, body, headers };
+}
+
 function noContent(headers = {}) {
   return { statusCode: 204, body: {}, headers };
 }
@@ -872,7 +1099,7 @@ function corsHeaders(input) {
     "access-control-allow-origin": origin,
     "access-control-allow-credentials": "true",
     "access-control-allow-methods": "GET, POST, PATCH, OPTIONS",
-    "access-control-allow-headers": "content-type, x-csrf-token",
+    "access-control-allow-headers": "authorization, content-type, x-csrf-token",
     "vary": "Origin"
   };
 }
@@ -880,7 +1107,7 @@ function corsHeaders(input) {
 function isAllowedOrigin(origin) {
   return defaultAllowedWebOrigins().includes(origin)
     || configuredAllowedWebOrigins().includes(origin)
-    || /^https:\/\/[a-z0-9-]+--halunasu\.netlify\.app$/.test(origin)
+    || /^https:\/\/[a-z0-9-]+--halunasu-[a-z0-9-]+\.netlify\.app$/.test(origin)
     || /^http:\/\/localhost(:\d+)?$/.test(origin)
     || /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin);
 }
@@ -928,6 +1155,24 @@ function headerValue(headers, name) {
   const foundKey = Object.keys(headers).find((key) => key.toLowerCase() === name.toLowerCase());
   const value = foundKey ? headers[foundKey] : undefined;
   return Array.isArray(value) ? value.join("; ") : value;
+}
+
+function requireMutationCsrf(input, session) {
+  if (hasBearerAuth(input.headers || {})) {
+    return;
+  }
+  requirePlatformCsrf(input.headers || {}, session);
+}
+
+function hasBearerAuth(headers = {}) {
+  return /^Bearer\s+\S+/iu.test(String(headerValue(headers, "authorization") || ""));
+}
+
+function safeLogError(error) {
+  return [
+    error?.name || "Error",
+    error?.safeProviderMessage || error?.code || error?.message || ""
+  ].map((value) => String(value || "").trim()).filter(Boolean).join(": ").slice(0, 240);
 }
 
 function isFeeSessionDocument(parts) {

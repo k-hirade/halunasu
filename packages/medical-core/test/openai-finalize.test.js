@@ -339,6 +339,48 @@ test("structured OpenAI response validates API key, provider errors, output text
   );
 });
 
+test("structured OpenAI response timeout covers response body parsing", async () => {
+  await withFetch(
+    async (url, options) => {
+      assert.equal(url, "https://api.openai.com/v1/responses");
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          await new Promise((resolve, reject) => {
+            const timer = setTimeout(resolve, 100);
+            options.signal.addEventListener("abort", () => {
+              clearTimeout(timer);
+              const error = new Error("aborted");
+              error.name = "AbortError";
+              reject(error);
+            }, { once: true });
+          });
+          return { output_text: JSON.stringify({ ok: true }) };
+        }
+      };
+    },
+    async () => {
+      await assert.rejects(
+        () => createStructuredOpenAiResponse({
+          apiKey: "key",
+          model: "model",
+          instructions: "instructions",
+          input: "input",
+          schemaName: "x",
+          schema: { type: "object" },
+          timeoutMs: 10
+        }),
+        (error) => {
+          assert.equal(error.name, "TimeoutError");
+          assert.match(error.safeProviderMessage, /openai_response_timeout/);
+          return true;
+        }
+      );
+    }
+  );
+});
+
 test("structured OpenAI response streams output_text snapshots", async () => {
   const streamedPayload = {
     source_summary: {

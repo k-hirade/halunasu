@@ -25,6 +25,15 @@ function buildSafeProviderMessage({ status, payload, model }) {
   return parts.join(" ");
 }
 
+function structuredResponseTimeoutError({ model, timeoutMs }) {
+  const timeoutError = new Error(`OpenAI structured response timed out after ${timeoutMs}ms`);
+  timeoutError.name = "TimeoutError";
+  timeoutError.provider = "openai";
+  timeoutError.providerModel = model;
+  timeoutError.safeProviderMessage = `openai_response_timeout model=${model} timeout_ms=${timeoutMs}`;
+  return timeoutError;
+}
+
 function extractOutputText(payload) {
   if (typeof payload?.output_text === "string" && payload.output_text.trim()) {
     return payload.output_text.trim();
@@ -280,7 +289,8 @@ export async function createStructuredOpenAiResponse({
   reasoningEffort = "low",
   stream = false,
   onOutputTextDelta = null,
-  onOutputTextSnapshot = null
+  onOutputTextSnapshot = null,
+  timeoutMs = 0
 }) {
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
@@ -309,35 +319,60 @@ export async function createStructuredOpenAiResponse({
     body.stream = true;
   }
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body)
-  });
+  const controller = Number(timeoutMs) > 0 ? new AbortController() : null;
+  const timeout = controller
+    ? setTimeout(() => controller.abort(new Error(`OpenAI structured response timed out after ${timeoutMs}ms`)), Number(timeoutMs))
+    : null;
+  let response;
+  let payload;
+  let streamed;
+  try {
+    response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body),
+      signal: controller?.signal
+    });
 
-  if (!response.ok) {
-    const payload = await parseJsonResponse(response);
-    const providerError = payload?.error || {};
-    const error = new Error(
-      `OpenAI structured response failed (${response.status}): ${extractErrorMessage(payload)}`
-    );
-    error.provider = "openai";
-    error.providerStatusCode = response.status;
-    error.providerErrorType = providerError.type || null;
-    error.providerErrorCode = providerError.code || null;
-    error.providerErrorParam = providerError.param || null;
-    error.providerModel = model;
-    error.safeProviderMessage = buildSafeProviderMessage({ status: response.status, payload, model });
+    if (!response.ok) {
+      const errorPayload = await parseJsonResponse(response);
+      const providerError = errorPayload?.error || {};
+      const error = new Error(
+        `OpenAI structured response failed (${response.status}): ${extractErrorMessage(errorPayload)}`
+      );
+      error.provider = "openai";
+      error.providerStatusCode = response.status;
+      error.providerErrorType = providerError.type || null;
+      error.providerErrorCode = providerError.code || null;
+      error.providerErrorParam = providerError.param || null;
+      error.providerModel = model;
+      error.safeProviderMessage = buildSafeProviderMessage({ status: response.status, payload: errorPayload, model });
+      throw error;
+    }
+
+    streamed = shouldStream
+      ? await readStreamedStructuredResponse(response, { onOutputTextDelta, onOutputTextSnapshot })
+      : null;
+    payload = streamed?.payload || await response.json().catch((error) => {
+      if (controller?.signal?.aborted) {
+        throw error;
+      }
+      return null;
+    });
+  } catch (error) {
+    if (error?.name === "AbortError" || controller?.signal?.aborted) {
+      throw structuredResponseTimeoutError({ model, timeoutMs });
+    }
     throw error;
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
   }
 
-  const streamed = shouldStream
-    ? await readStreamedStructuredResponse(response, { onOutputTextDelta, onOutputTextSnapshot })
-    : null;
-  const payload = streamed?.payload || await response.json().catch(() => null);
   const text = (streamed?.outputText || extractOutputText(payload)).trim();
 
   if (!text) {
