@@ -1,4 +1,8 @@
 import { extractFeeClinicalFactsWithOpenAi } from "../../../packages/medical-core/src/fee/openai-fee-clinical-facts.js";
+import {
+  procedureHintQueries,
+  resolveClinicalProcedureHints
+} from "./clinical-master-resolver.js";
 
 export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "処置・手技",
@@ -478,6 +482,22 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       continue;
     }
 
+    if (type === "management") {
+      const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
+        categoryLabel: "医学管理等"
+      });
+      if (procedure.procedureCodes.length) {
+        procedureCodes.push(...procedure.procedureCodes);
+        commentInputs.push(...procedure.commentInputs);
+        collectionFeeInputs.push(...procedure.collectionFeeInputs);
+        reviewWarnings.push(...procedure.reviewWarnings);
+      } else {
+        const warning = unsupportedClinicalEventWarning(event);
+        if (warning) reviewWarnings.push(warning);
+      }
+      continue;
+    }
+
     const warning = unsupportedClinicalEventWarning(event);
     if (warning) reviewWarnings.push(warning);
   }
@@ -701,6 +721,13 @@ async function inferPerformedProcedureCodes(text, feeCalculator) {
     if (isNegatedContext(sentence) || isFutureOrOrderOnlyContext(sentence)) {
       continue;
     }
+    const hinted = resolveClinicalProcedureHints(sentence);
+    if (hinted.procedureCodes.length && isPerformedOrClaimedProcedureContext(sentence)) {
+      procedureCodes.push(...hinted.procedureCodes);
+      commentInputs.push(...hinted.commentInputs);
+      collectionFeeInputs.push(...hinted.collectionFeeInputs);
+      reviewWarnings.push(...hinted.reviewWarnings);
+    }
     if (/(経腟超音波|経膣超音波|超音波|エコー)/u.test(sentence) && isPerformedObjectiveFinding(sentence)) {
       const procedure = await searchPerformedProcedureCode(feeCalculator, {
         name: ultrasoundDisplayName(sentence),
@@ -738,6 +765,11 @@ async function inferPerformedProcedureCodes(text, feeCalculator) {
 
 function isPerformedObjectiveFinding(sentence) {
   return /(:|：|所見|結果|高値|低値|基準値|貯留|病変|あり|認める|施行|実施|検査|撮影)/u.test(sentence);
+}
+
+function isPerformedOrClaimedProcedureContext(sentence) {
+  return isPerformedObjectiveFinding(sentence)
+    || /(算定|管理料|療養計画書|署名取得|説明・署名|署名)/u.test(sentence);
 }
 
 function inferTreatmentOrders(text, orders = []) {
@@ -894,11 +926,11 @@ function buildFeeSessionContext(session = {}) {
     billingMonth: session.billingMonth || session.claimMonth || "",
     claimMonth: session.claimMonth || session.billingMonth || "",
     visitType: session.visitType || "",
-    diagnoses: asArray(session.diagnoses)
+    diagnoses: String(session.diagnosesSource || "").trim() === "manual" ? asArray(session.diagnoses)
       .map((diagnosis) => diagnosis?.name || diagnosis?.displayName || diagnosis)
       .map((name) => String(name || "").trim())
       .filter(Boolean)
-      .slice(0, 20)
+      .slice(0, 20) : []
   };
 }
 
@@ -1359,7 +1391,12 @@ async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculato
 
   const name = clinicalEventName(event);
   const categoryLabel = options.categoryLabel || "診療行為";
-  const alias = procedureAliasFromText([name, categoryLabel, clinicalEventEvidence(event)].filter(Boolean).join(" "));
+  const resolverText = [name, categoryLabel, clinicalEventEvidence(event)].filter(Boolean).join(" ");
+  const hinted = resolveClinicalProcedureHints(resolverText);
+  if (hinted.procedureCodes.length) {
+    return hinted;
+  }
+  const alias = procedureAliasFromText(resolverText);
   if (alias) {
     return alias;
   }
@@ -1384,6 +1421,11 @@ async function searchPerformedProcedureCode(feeCalculator, {
   resolvedMessage = "",
   unresolvedMessage = ""
 } = {}) {
+  const hinted = resolveClinicalProcedureHints([name, categoryLabel, ...queries].filter(Boolean).join(" "));
+  if (hinted.procedureCodes.length) {
+    return hinted;
+  }
+
   if (typeof feeCalculator?.searchMaster !== "function") {
     const alias = procedureAliasFromText([name, categoryLabel, ...queries].filter(Boolean).join(" "));
     if (alias) {
@@ -1530,7 +1572,7 @@ function isTransvaginalUltrasoundContext(text) {
 
 function procedureMasterQueriesFromEvidence(evidence) {
   const text = String(evidence || "");
-  const queries = [];
+  const queries = [...procedureHintQueries(text)];
   if (/(?:CA\s*125|CA125)/iu.test(text)) {
     queries.push("CA125", "CA 125", "CA-125", "ＣＡ１２５", "癌抗原125", "癌抗原１２５");
   }

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import http from "node:http";
 import {
   requirePlatformCsrf,
@@ -213,6 +214,7 @@ async function routeFeeApiRequest(input = {}) {
     const session = await feeStore.createSession({
       ...normalized,
       ...calculationOptionsProvenanceForClientInput(normalized),
+      ...diagnosesProvenanceForClientInput(normalized),
       orgId: context.session.orgId,
       patientId: patient?.patientId,
       patientSnapshot: patient ? patientSnapshot(patient, input.now || new Date()) : null,
@@ -852,7 +854,8 @@ async function resolveDepartment(context, platformStore, departmentId) {
 async function resolveFeeSessionPatch(context, platformStore, normalized, now) {
   const patch = {
     ...normalized,
-    ...calculationOptionsProvenanceForClientInput(normalized)
+    ...calculationOptionsProvenanceForClientInput(normalized),
+    ...diagnosesProvenanceForClientInput(normalized)
   };
   if (normalized.patientId || normalized.patient) {
     const patient = await resolveFeePatient(context, platformStore, normalized);
@@ -885,6 +888,17 @@ function calculationOptionsProvenanceForClientInput(input = {}) {
   return {
     calculationOptionsSource: isPlainObject(input.calculationOptions) ? "manual" : null,
     calculationOptionsAutoKeys: []
+  };
+}
+
+function diagnosesProvenanceForClientInput(input = {}) {
+  if (!hasOwn(input, "diagnoses")) {
+    return {};
+  }
+  const source = String(input.diagnosesSource || "").trim();
+  return {
+    diagnosesSource: source || "manual",
+    diagnosesClinicalTextHash: clinicalTextHash(input.clinicalText || "")
   };
 }
 
@@ -953,8 +967,10 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
   if (String(session.calculationOptionsSource || "") !== String(legacy.calculationOptionsSource || "")) {
     patch.calculationOptionsSource = legacy.calculationOptionsSource || null;
   }
-  if (!hasDiagnosisInput(baseSession) && Array.isArray(legacy.diagnoses) && legacy.diagnoses.length) {
+  if (shouldApplyClinicalDiagnoses(baseSession, legacy.diagnoses, calculationInput)) {
     patch.diagnoses = legacy.diagnoses;
+    patch.diagnosesSource = "clinical_auto";
+    patch.diagnosesClinicalTextHash = clinicalTextHash(calculationInput.clinicalText || baseSession.clinicalText || "");
   }
 
   return {
@@ -1210,6 +1226,48 @@ function hasDiagnosisInput(session = {}) {
     claimContext.diagnosis,
     claimContext.diagnosis_name
   ].some((value) => String(value || "").trim());
+}
+
+function shouldApplyClinicalDiagnoses(session = {}, inferredDiagnoses = [], calculationInput = {}) {
+  if (!Array.isArray(inferredDiagnoses) || inferredDiagnoses.length === 0) {
+    return false;
+  }
+  if (!hasDiagnosisInput(session)) {
+    return true;
+  }
+
+  const source = String(session.diagnosesSource || "").trim();
+  if (source === "manual") {
+    return false;
+  }
+
+  const currentHash = clinicalTextHash(calculationInput.clinicalText || session.clinicalText || "");
+  if (!source) {
+    return Boolean(currentHash);
+  }
+  return source === "clinical_auto"
+    && (
+      String(session.diagnosesClinicalTextHash || "") !== currentHash
+      || !sameDiagnosisNames(session.diagnoses, inferredDiagnoses)
+    );
+}
+
+function sameDiagnosisNames(left = [], right = []) {
+  const normalize = (values = []) => uniqueStrings((Array.isArray(values) ? values : [])
+    .map((diagnosis) => diagnosis?.name || diagnosis?.displayName || diagnosis)
+    .map((value) => String(value || "").replace(/\s+/gu, "").trim()))
+    .sort();
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
+}
+
+function clinicalTextHash(value) {
+  const text = String(value || "")
+    .replace(/\r\n?/gu, "\n")
+    .trim();
+  if (!text) {
+    return "";
+  }
+  return crypto.createHash("sha256").update(text).digest("hex").slice(0, 16);
 }
 
 function uniqueStrings(values = []) {

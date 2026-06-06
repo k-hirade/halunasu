@@ -585,7 +585,11 @@ def _calculation_messages(result: LabCalculationResult) -> tuple[CalculationMess
         )
 
     for required_comment in result.electronic_rules.required_comments:
-        if _required_comment_fulfilled(required_comment, result.comment_inputs):
+        if _required_comment_fulfilled_by_any_alternative(
+            required_comment,
+            result.electronic_rules.required_comments,
+            result.comment_inputs,
+        ):
             continue
         messages.append(
             CalculationMessage(
@@ -611,6 +615,34 @@ def _calculation_messages(result: LabCalculationResult) -> tuple[CalculationMess
         )
 
     return tuple(messages)
+
+
+def _required_comment_fulfilled_by_any_alternative(
+    required_comment: object,
+    required_comments: tuple[object, ...],
+    comment_inputs: tuple[CommentInput, ...],
+) -> bool:
+    if _required_comment_fulfilled(required_comment, comment_inputs):
+        return True
+
+    procedure_code = str(getattr(required_comment, "procedure_code", "") or "").strip()
+    requirement_kind = str(getattr(required_comment, "requirement_kind", "") or "").strip()
+    group_key = _required_comment_alternative_group_key(required_comment)
+    if not procedure_code or not group_key:
+        return False
+
+    for sibling in required_comments:
+        if sibling is required_comment:
+            continue
+        if str(getattr(sibling, "procedure_code", "") or "").strip() != procedure_code:
+            continue
+        if str(getattr(sibling, "requirement_kind", "") or "").strip() != requirement_kind:
+            continue
+        if _required_comment_alternative_group_key(sibling) != group_key:
+            continue
+        if _required_comment_fulfilled(sibling, comment_inputs):
+            return True
+    return False
 
 
 def _required_comment_fulfilled(
@@ -640,6 +672,16 @@ def _required_comment_fulfilled(
 
 def _normalize_comment_text(value: str) -> str:
     return "".join(str(value or "").split())
+
+
+def _required_comment_alternative_group_key(required_comment: object) -> str:
+    text = _normalize_comment_text(getattr(required_comment, "comment_text", ""))
+    if not text:
+        return ""
+    for delimiter in ("：", ":", "ア", "イ", "ウ", "エ", "オ"):
+        if delimiter in text:
+            return text.split(delimiter, 1)[0]
+    return text
 
 
 def _unique_codes(codes: list[str] | tuple[str, ...]) -> tuple[str, ...]:

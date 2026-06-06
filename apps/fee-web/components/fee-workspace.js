@@ -274,6 +274,7 @@ function FeeSessionDetailView({ sessionId }) {
   const [receiptDraft, setReceiptDraft] = useState(null);
   const [reviewItems, setReviewItems] = useState([]);
   const [form, setForm] = useState(defaultFeeForm);
+  const [diagnosesTouched, setDiagnosesTouched] = useState(false);
   const [orderRows, setOrderRows] = useState([createEmptyOrderRow()]);
   const [patientFilter, setPatientFilter] = useState("");
   const [newPatient, setNewPatient] = useState(defaultPatientForm);
@@ -327,6 +328,7 @@ function FeeSessionDetailView({ sessionId }) {
         setReceiptDraft,
         setReviewItems,
         setForm,
+        setDiagnosesTouched,
         setOrderRows
       });
     } catch (error) {
@@ -347,6 +349,7 @@ function FeeSessionDetailView({ sessionId }) {
       setReceiptDraft,
       setReviewItems,
       setForm,
+      setDiagnosesTouched,
       setOrderRows
     });
     return detail;
@@ -421,6 +424,19 @@ function FeeSessionDetailView({ sessionId }) {
     }));
   }
 
+  function updateClinicalText(value) {
+    setForm((current) => ({
+      ...current,
+      clinicalText: value,
+      diagnosesText: diagnosesTouched ? current.diagnosesText : deriveDiagnosesTextFromClinicalText(value)
+    }));
+  }
+
+  function updateDiagnosesText(value) {
+    setDiagnosesTouched(true);
+    updateForm("diagnosesText", value);
+  }
+
   function selectPatient(patientId) {
     updateForm("patientId", patientId);
     setPatientPickerOpen(false);
@@ -451,7 +467,8 @@ function FeeSessionDetailView({ sessionId }) {
       defaultFacilityId,
       form,
       orderRows,
-      patients
+      patients,
+      diagnosesTouched
     });
     const response = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}`, {
       method: "PATCH",
@@ -463,6 +480,7 @@ function FeeSessionDetailView({ sessionId }) {
       setReceiptDraft,
       setReviewItems,
       setForm,
+      setDiagnosesTouched,
       setOrderRows
     });
     if (!options.silent) {
@@ -503,6 +521,7 @@ function FeeSessionDetailView({ sessionId }) {
         setReceiptDraft,
         setReviewItems,
         setForm,
+        setDiagnosesTouched,
         setOrderRows
       });
       setMessage({
@@ -675,7 +694,7 @@ function FeeSessionDetailView({ sessionId }) {
                 className="clinical-textarea"
                 placeholder={"S/O/A/Pや診療メモをそのまま貼り付けてください。"}
                 value={form.clinicalText}
-                onChange={(event) => updateForm("clinicalText", event.target.value)}
+                onChange={(event) => updateClinicalText(event.target.value)}
               />
               <small>本文から病名・オーダー候補を自動補完します。必要な場合だけ下の条件を修正してください。</small>
             </label>
@@ -735,7 +754,7 @@ function FeeSessionDetailView({ sessionId }) {
                   className="diagnosis-textarea"
                   placeholder={"例: 熱傷\n創傷"}
                   value={form.diagnosesText}
-                  onChange={(event) => updateForm("diagnosesText", event.target.value)}
+                  onChange={(event) => updateDiagnosesText(event.target.value)}
                 />
                 <small>未入力の場合はカルテ本文から候補を補完し、不足時はレビューに出します。</small>
               </label>
@@ -1307,12 +1326,14 @@ function applyDetailResponse(response, setters) {
   setters.setReceiptDraft(response.receiptDraft || null);
   setters.setReviewItems(response.reviewItems || []);
   setters.setForm(formFromFeeSession(session || {}));
+  setters.setDiagnosesTouched?.(String(session?.diagnosesSource || "").trim() === "manual");
   setters.setOrderRows(orderRowsFromOrders(session?.orders || []));
 }
 
-function buildFeeSessionPayload({ defaultFacilityId, form, orderRows, patients }) {
+function buildFeeSessionPayload({ defaultFacilityId, form, orderRows, patients, diagnosesTouched = false }) {
   const patient = patients.find((item) => item.patientId === form.patientId);
   const chartInput = buildChartOnlyInput(form, orderRows);
+  const diagnosesSource = diagnosesTouched ? "manual" : "clinical_auto";
   return {
     patientId: emptyToNull(form.patientId),
     patientRef: patient?.externalPatientIds?.[0] || emptyToNull(form.patientId),
@@ -1323,6 +1344,8 @@ function buildFeeSessionPayload({ defaultFacilityId, form, orderRows, patients }
     setting: form.setting,
     clinicalText: form.clinicalText,
     diagnoses: parseDiagnoses(chartInput.diagnosesText),
+    diagnosesSource,
+    diagnosesClinicalTextHash: clinicalTextHash(form.clinicalText),
     orders: parseOrdersFromRows(chartInput.orderRows),
     claimContext: parseJsonObjectField(form.claimContextText, "詳細条件 JSON"),
     calculationOptions: parseJsonObjectField(form.calculationOptionsText, "算定オプション JSON")
@@ -1454,6 +1477,15 @@ function deriveDiagnosesTextFromClinicalText(value) {
 
 function normalizeClinicalText(value) {
   return String(value || "").trim();
+}
+
+function clinicalTextHash(value) {
+  const text = normalizeClinicalText(value).replace(/\r\n?/gu, "\n");
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+  }
+  return text ? `ui_${Math.abs(hash).toString(36)}` : "";
 }
 
 function splitClinicalSentences(value) {

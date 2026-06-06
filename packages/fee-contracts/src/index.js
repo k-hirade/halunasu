@@ -51,6 +51,8 @@ export function validateCreateFeeSessionInput(input = {}) {
     clinicalText: optionalMultilineString(input.clinicalText ?? input.clinical_text, 100000),
     orders: normalizeFeeOrders(input.orders ?? input.order_texts),
     diagnoses: normalizeDiagnoses(input.diagnoses),
+    diagnosesSource: optionalEnum(input.diagnosesSource ?? input.diagnoses_source, ["manual", "clinical_auto"], "diagnosesSource"),
+    diagnosesClinicalTextHash: optionalString(input.diagnosesClinicalTextHash ?? input.diagnoses_clinical_text_hash),
     insurance: isPlainObject(input.insurance) ? input.insurance : undefined,
     claimContext: hasOwn(input, "claimContext") || hasOwn(input, "claim_context")
       ? nullablePlainObject(input.claimContext ?? input.claim_context, "claimContext")
@@ -92,6 +94,12 @@ export function validateUpdateFeeSessionInput(input = {}) {
       : undefined,
     diagnoses: hasOwn(input, "diagnoses")
       ? normalizeDiagnoses(input.diagnoses)
+      : undefined,
+    diagnosesSource: hasOwn(input, "diagnosesSource") || hasOwn(input, "diagnoses_source")
+      ? optionalEnum(input.diagnosesSource ?? input.diagnoses_source, ["manual", "clinical_auto"], "diagnosesSource")
+      : undefined,
+    diagnosesClinicalTextHash: hasOwn(input, "diagnosesClinicalTextHash") || hasOwn(input, "diagnoses_clinical_text_hash")
+      ? optionalString(input.diagnosesClinicalTextHash ?? input.diagnoses_clinical_text_hash)
       : undefined,
     insurance: hasOwn(input, "insurance")
       ? nullablePlainObject(input.insurance, "insurance")

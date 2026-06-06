@@ -1091,6 +1091,92 @@ test("counts same-day existing patient sessions as patient history for basic fee
   assert.equal(calculation.body.feeSession.calculationProgress.metrics.patientHistory.priorSessionCount, 1);
 });
 
+test("replaces stale auto diagnoses and resolves chronic diabetes clinical facts", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 700,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "unknown", evidence: "", confidence: "low" },
+    diagnoses: [
+      { name: "2型糖尿病", status: "confirmed", evidence: "2型糖尿病" },
+      { name: "糖尿病性腎症第2期", status: "suspected", evidence: "微量アルブミン尿" },
+      { name: "高血圧症", status: "confirmed", evidence: "高血圧合併" },
+      { name: "脂質異常症", status: "confirmed", evidence: "脂質異常症合併" }
+    ],
+    billing_events: [
+      { type: "lab", name: "HbA1c", status: "performed", evidence: "HbA1c：7.8%", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
+      { type: "lab", name: "LDLコレステロール", status: "performed", evidence: "LDL：132mg/dL", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
+      { type: "lab", name: "中性脂肪", status: "performed", evidence: "TG：168mg/dL", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
+      { type: "lab", name: "クレアチニン", status: "performed", evidence: "eGFR：62mL/min/1.73m²", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
+      { type: "lab", name: "尿アルブミン", status: "performed", evidence: "尿アルブミン：42mg/gCr", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
+      { type: "management", name: "糖尿病合併症管理料", status: "performed", evidence: "糖尿病合併症管理料算定、療養計画書を説明・署名取得", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Diabetes Patient"
+  }, headers);
+  await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-05-01",
+    diagnoses: [{ name: "2型糖尿病" }]
+  }, headers);
+  const current = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-06",
+    clinicalText: [
+      "HbA1c：7.8%。LDL：132mg/dL、TG：168mg/dL。",
+      "eGFR：62mL/min/1.73m²。尿アルブミン：42mg/gCr。",
+      "2型糖尿病、糖尿病性腎症第2期、高血圧合併、脂質異常症合併。",
+      "糖尿病合併症管理料算定、療養計画書を患者に説明・署名取得。"
+    ].join("\n"),
+    diagnoses: [{ name: "月経困難症" }],
+    diagnosesSource: "clinical_auto"
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${current.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+  assert.deepEqual(
+    receivedInput.calculationOptions.procedure_codes.sort(),
+    ["113010010", "160004810", "160010010", "160019210", "160020910", "160167250"].sort()
+  );
+  assert.deepEqual(receivedInput.calculationOptions.lab_options.collection_fee_inputs, ["blood_venous"]);
+  assert.deepEqual(
+    calculation.body.feeSession.diagnoses.map((diagnosis) => diagnosis.name),
+    ["2型糖尿病", "糖尿病性腎症第2期", "高血圧症", "脂質異常症"]
+  );
+  assert.equal(
+    calculation.body.feeSession.diagnoses.some((diagnosis) => diagnosis.name === "月経困難症"),
+    false
+  );
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("糖尿病合併症管理料")));
+});
+
 test("merges deterministic performed imaging when structured facts miss it", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
