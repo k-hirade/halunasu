@@ -1028,7 +1028,7 @@ function CalculationResult({ calculation, feeSession, reviewItemCount = 0 }) {
     <div className="result">
       <div className="metric-row">
         <div className="metric">
-          <span>合計点数候補</span>
+          <span>候補化済み部分合計</span>
           <strong>{Number(calculation.totalPoints || 0).toLocaleString()}</strong>
         </div>
         <div className="metric">
@@ -1723,6 +1723,8 @@ function reviewItemTitle(item = {}) {
   if (/施設基準|hospital_profile_missing|facility_standard/u.test(text)) return "施設基準の確認";
   if (/mri|ｍｒｉ/u.test(text) && /予定|依頼|オーダー|planned|ordered/u.test(text)) return "MRIは予定扱い";
   if (/単純X線|単純x線|X線|x線|レントゲン|simple_radiography/u.test(text) && /撮影方式|写真診断|機器|条件/u.test(text)) return "単純X線の撮影条件確認";
+  if (/CA\s*125|CA125/u.test(text)) return "CA125検査の算定確認";
+  if (/経腟|経膣|超音波|エコー|ultrasound/u.test(text)) return "経腟超音波の算定確認";
   if (/レバミピド/u.test(text) && /数量|日数|不足/u.test(text)) return "レバミピドの数量/日数確認";
   if (/ロコア/u.test(text) && /数量|日数|不足/u.test(text)) return "湿布の数量/日数確認";
   if (/ロコア|湿布/u.test(text) && /マスター|解決でき/u.test(text)) return "湿布のマスター確認";

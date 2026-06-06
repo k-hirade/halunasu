@@ -96,6 +96,8 @@ def build_claim_payload(session: dict[str, Any], calculation_input: dict[str, An
         else:
             procedure_codes.append(code)
 
+    procedure_codes.extend(_string_list(options.get("procedure_codes")))
+
     claim_payload: dict[str, Any] = {
         "record_id": session.get("feeSessionId") or session.get("sessionId"),
         "patient": {
@@ -109,7 +111,7 @@ def build_claim_payload(session: dict[str, Any], calculation_input: dict[str, An
             "regional_bureau": facility.get("regionalBureau"),
             "is_outpatient": session.get("setting") != "inpatient",
         },
-        "procedure_codes": procedure_codes,
+        "procedure_codes": _unique_strings(procedure_codes),
         "drug_inputs": drug_inputs,
         "injection_drug_inputs": injection_drug_inputs,
         "material_inputs": material_inputs,
@@ -146,6 +148,26 @@ def _optional_object(source: dict[str, Any], camel_key: str, snake_key: str) -> 
     if snake_key in source:
         return source[snake_key]
     return None
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _unique_strings(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        normalized = str(value or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(normalized)
+    return result
 
 
 def _fee_line_items(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:

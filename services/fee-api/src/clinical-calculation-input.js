@@ -26,6 +26,7 @@ const CLINICAL_MATERIAL_TERMS = [
 ];
 
 const CLINICAL_AUTO_OPTION_KEYS = new Set([
+  "procedure_codes",
   "outpatient_basic",
   "imaging_orders",
   "treatment_orders",
@@ -337,7 +338,12 @@ async function inferRuleBasedClinicalCalculationOptions({ text = "", session = {
     inferred.imaging_orders = imaging.orders;
   }
   reviewWarnings.push(...imaging.reviewWarnings);
-  reviewWarnings.push(...inferPerformedUnsupportedClinicalEventWarnings(text));
+
+  const performedProcedureCodes = await inferPerformedProcedureCodes(text, feeCalculator);
+  if (performedProcedureCodes.procedureCodes.length) {
+    inferred.procedure_codes = performedProcedureCodes.procedureCodes;
+  }
+  reviewWarnings.push(...performedProcedureCodes.reviewWarnings);
 
   const treatment = inferTreatmentOrders(text, session.orders);
   if (treatment.orders.length) {
@@ -371,6 +377,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const inferred = {};
   const diagnoses = diagnosesFromClinicalFacts(facts);
   const reviewWarnings = [];
+  const procedureCodes = [];
   const imagingOrders = [];
   const treatmentOrders = [];
   const medicationOrders = [];
@@ -398,9 +405,19 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     }
 
     if (type === "imaging") {
-      const imaging = imagingOrderFromClinicalEvent(event);
+      const imaging = await imagingOrderFromClinicalEvent(event, feeCalculator);
       if (imaging.order) imagingOrders.push(imaging.order);
+      procedureCodes.push(...imaging.procedureCodes);
       reviewWarnings.push(...imaging.reviewWarnings);
+      continue;
+    }
+
+    if (type === "lab") {
+      const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
+        categoryLabel: "検体検査"
+      });
+      procedureCodes.push(...procedure.procedureCodes);
+      reviewWarnings.push(...procedure.reviewWarnings);
       continue;
     }
 
@@ -437,6 +454,9 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
 
   if (imagingOrders.length) {
     inferred.imaging_orders = dedupeObjects(imagingOrders);
+  }
+  if (procedureCodes.length) {
+    inferred.procedure_codes = uniqueStrings(procedureCodes);
   }
   if (treatmentOrders.length) {
     inferred.treatment_orders = dedupeObjects(treatmentOrders);
@@ -635,20 +655,40 @@ function inferImagingOrders(text) {
   };
 }
 
-function inferPerformedUnsupportedClinicalEventWarnings(text) {
+async function inferPerformedProcedureCodes(text, feeCalculator) {
+  const procedureCodes = [];
   const reviewWarnings = [];
   for (const sentence of splitClinicalSentences(text)) {
     if (isNegatedContext(sentence) || isFutureOrOrderOnlyContext(sentence)) {
       continue;
     }
     if (/(経腟超音波|経膣超音波|超音波|エコー)/u.test(sentence) && isPerformedObjectiveFinding(sentence)) {
-      reviewWarnings.push("経腟超音波は実施済みの客観所見として検出しましたが、現在の自動算定では超音波検査コード確定が未対応です。実施内容をマスター検索で確認してください。");
+      const procedure = await searchPerformedProcedureCode(feeCalculator, {
+        name: ultrasoundDisplayName(sentence),
+        categoryLabel: "超音波検査",
+        queries: ultrasoundMasterQueries(sentence),
+        unresolvedMessage: "超音波検査は実施済みの客観所見として検出しましたが、標準コードを自動確定できませんでした。部位と検査内容をマスター検索で確認してください。",
+        resolvedMessage: "超音波検査を実施済みとしてマスター候補に反映しました。部位・検査方法・算定条件を確認してください。"
+      });
+      procedureCodes.push(...procedure.procedureCodes);
+      reviewWarnings.push(...procedure.reviewWarnings);
     }
     if (/(?:CA\s*125|CA125)/iu.test(sentence) && isPerformedObjectiveFinding(sentence)) {
-      reviewWarnings.push("CA125は実施済みの検体検査として検出しましたが、現在の自動算定では検査コード確定が未対応です。実施内容をマスター検索で確認してください。");
+      const procedure = await searchPerformedProcedureCode(feeCalculator, {
+        name: "CA125",
+        categoryLabel: "検体検査",
+        queries: ["CA125", "CA 125"],
+        unresolvedMessage: "CA125は実施済みの検体検査として検出しましたが、標準コードを自動確定できませんでした。検査項目をマスター検索で確認してください。",
+        resolvedMessage: "CA125を実施済み検体検査としてマスター候補に反映しました。検査項目と算定条件を確認してください。"
+      });
+      procedureCodes.push(...procedure.procedureCodes);
+      reviewWarnings.push(...procedure.reviewWarnings);
     }
   }
-  return reviewWarnings;
+  return {
+    procedureCodes: uniqueStrings(procedureCodes),
+    reviewWarnings
+  };
 }
 
 function isPerformedObjectiveFinding(sentence) {
@@ -998,8 +1038,9 @@ function clinicalEventTypeLabel(type) {
   }[String(type || "").trim()] || "未対応項目";
 }
 
-function imagingOrderFromClinicalEvent(event = {}) {
+async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
   const reviewWarnings = [];
+  const procedureCodes = [];
   const kind = clinicalImagingKind(event);
   const evidence = clinicalEventEvidence(event);
   if (kind === "mri") {
@@ -1011,6 +1052,7 @@ function imagingOrderFromClinicalEvent(event = {}) {
         contrast: hasLocalContrastContext(evidence, "mri"),
         electronic_image_management: true
       },
+      procedureCodes,
       reviewWarnings
     };
   }
@@ -1023,6 +1065,7 @@ function imagingOrderFromClinicalEvent(event = {}) {
         contrast: hasLocalContrastContext(evidence, "ct"),
         electronic_image_management: true
       },
+      procedureCodes,
       reviewWarnings
     };
   }
@@ -1035,19 +1078,29 @@ function imagingOrderFromClinicalEvent(event = {}) {
         radiography_diagnostic_kind: "simple_i",
         electronic_image_management: true
       },
+      procedureCodes,
       reviewWarnings
     };
   }
 
   if (kind === "ultrasound") {
-    reviewWarnings.push(`${clinicalEventName(event) || "超音波検査"}は超音波検査として抽出しましたが、現在の自動算定では超音波検査コード確定が未対応です。実施内容をマスター検索で確認してください。`);
-    return { order: null, reviewWarnings };
+    const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
+      categoryLabel: "超音波検査",
+      queries: ultrasoundMasterQueries(clinicalEventEvidence(event) || clinicalEventName(event)),
+      unresolvedMessage: `${clinicalEventName(event) || "超音波検査"}は超音波検査として抽出しましたが、標準コードを自動確定できませんでした。部位と検査内容をマスター検索で確認してください。`,
+      resolvedMessage: `${clinicalEventName(event) || "超音波検査"}を実施済みとしてマスター候補に反映しました。部位・検査方法・算定条件を確認してください。`
+    });
+    return {
+      order: null,
+      procedureCodes: procedure.procedureCodes,
+      reviewWarnings: procedure.reviewWarnings
+    };
   }
 
   if (kind) {
     reviewWarnings.push(`${clinicalEventName(event) || clinicalImagingDisplayName(event)}は現在の算定ルールで直接候補化できないため、要確認です。`);
   }
-  return { order: null, reviewWarnings };
+  return { order: null, procedureCodes, reviewWarnings };
 }
 
 function clinicalImagingKind(event = {}) {
@@ -1212,6 +1265,106 @@ function treatmentAreaSizeFromClinicalEvent(event = {}) {
   return "ge_6000_cm2";
 }
 
+async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculator, options = {}) {
+  const status = normalizeClinicalEventStatus(event);
+  if (!isBillableClinicalEventStatus(status)) {
+    const warning = excludedClinicalEventWarning(event);
+    return {
+      procedureCodes: [],
+      reviewWarnings: warning ? [warning] : []
+    };
+  }
+
+  const name = clinicalEventName(event);
+  const categoryLabel = options.categoryLabel || "診療行為";
+  const queries = uniqueStrings([
+    ...(Array.isArray(options.queries) ? options.queries : []),
+    name,
+    ...procedureMasterQueriesFromEvidence(clinicalEventEvidence(event))
+  ]);
+  return searchPerformedProcedureCode(feeCalculator, {
+    name,
+    categoryLabel,
+    queries,
+    resolvedMessage: options.resolvedMessage || `${name || categoryLabel}を実施済みの${categoryLabel}としてマスター候補に反映しました。算定条件を確認してください。`,
+    unresolvedMessage: options.unresolvedMessage || `${name || categoryLabel}は実施済みの${categoryLabel}として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。`
+  });
+}
+
+async function searchPerformedProcedureCode(feeCalculator, {
+  name = "",
+  categoryLabel = "診療行為",
+  queries = [],
+  resolvedMessage = "",
+  unresolvedMessage = ""
+} = {}) {
+  if (typeof feeCalculator?.searchMaster !== "function") {
+    return {
+      procedureCodes: [],
+      reviewWarnings: [unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、マスター検索を利用できません。`]
+    };
+  }
+
+  const normalizedQueries = uniqueStrings(queries).filter((query) => query.length >= 2);
+  for (const query of normalizedQueries) {
+    const item = await searchProcedureMasterItem(feeCalculator, query);
+    if (item?.code) {
+      return {
+        procedureCodes: [String(item.code)],
+        reviewWarnings: resolvedMessage ? [resolvedMessage] : []
+      };
+    }
+  }
+
+  return {
+    procedureCodes: [],
+    reviewWarnings: [unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、標準コードを自動確定できませんでした。`]
+  };
+}
+
+async function searchProcedureMasterItem(feeCalculator, query) {
+  try {
+    const result = await feeCalculator.searchMaster({ type: "procedure", query, limit: 5 });
+    const items = Array.isArray(result?.items) ? result.items : [];
+    return items.find((item) => (
+      item?.code
+      && (
+        item.kind === "procedure"
+        || item.sourceType === "medical_procedure_master"
+        || item.source === "medical_procedure_master"
+      )
+    )) || null;
+  } catch {
+    return null;
+  }
+}
+
+function procedureMasterQueriesFromEvidence(evidence) {
+  const text = String(evidence || "");
+  const queries = [];
+  if (/(?:CA\s*125|CA125)/iu.test(text)) {
+    queries.push("CA125", "CA 125");
+  }
+  if (/(経腟超音波|経膣超音波|経腟エコー|経膣エコー)/u.test(text)) {
+    queries.push("経腟超音波", "経膣超音波", "超音波検査");
+  } else if (/(超音波|エコー)/u.test(text)) {
+    queries.push("超音波検査", "超音波");
+  }
+  return queries;
+}
+
+function ultrasoundMasterQueries(value) {
+  const text = String(value || "");
+  if (/(経腟|経膣)/u.test(text)) {
+    return ["経腟超音波", "経膣超音波", "超音波検査"];
+  }
+  return ["超音波検査", "超音波"];
+}
+
+function ultrasoundDisplayName(value) {
+  return /(経腟|経膣)/u.test(String(value || "")) ? "経腟超音波" : "超音波検査";
+}
+
 async function searchFirstMasterItem(feeCalculator, type, query, expectedKind) {
   try {
     const result = await feeCalculator.searchMaster({ type, query, limit: 5 });
@@ -1309,6 +1462,9 @@ function normalizeClinicalInferredOptions(options = {}) {
     return {};
   }
   const result = { ...options };
+  if (Array.isArray(result.procedure_codes)) {
+    result.procedure_codes = uniqueStrings(result.procedure_codes);
+  }
   if (Array.isArray(result.imaging_orders)) {
     result.imaging_orders = dedupeObjects(result.imaging_orders, (item) => item?.kind || JSON.stringify(item));
   }

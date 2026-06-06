@@ -114,6 +114,7 @@ class FeeApiBridgeTest(unittest.TestCase):
                 ],
                 "calculationOptions": {
                     "facility_standard_keys": ["検体検査管理加算1"],
+                    "procedure_codes": ["160000410", "160000310"],
                 },
             },
             {
@@ -125,6 +126,7 @@ class FeeApiBridgeTest(unittest.TestCase):
 
         self.assertEqual(payload["material_inputs"][0]["code"], "710000001")
         self.assertEqual(payload["material_inputs"][0]["quantity"], "2")
+        self.assertEqual(payload["procedure_codes"], ["160000410", "160000310"])
         self.assertEqual(payload["facility_standard_keys"], ["検体検査管理加算1"])
         self.assertEqual(payload["comment_inputs"][0]["code"], "840000001")
 

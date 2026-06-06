@@ -191,7 +191,12 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "For materials and devices, mark instruction_only when the text only says 装着指導, 説明, or self-care guidance rather than actual billed use.",
       "Each diagnosis and event must include a short evidence excerpt from the input text.",
       "Keep the response compact: evidence and reasons should be short excerpts, not explanations. Do not add dosage/unit/frequency details unless they are needed for quantity_per_day, days, total_quantity, or area_size_cm2.",
-      "Prefer billing_events and excluded_events. Keep missing_information and review_flags empty unless they add information not already present in an event."
+      "Prefer billing_events and excluded_events. Keep missing_information and review_flags empty unless they add information not already present in an event.",
+      "",
+      "Examples:",
+      "- Text: 経腟超音波：左卵巣に約3cmの嚢胞性病変。血液検査：CA125 68 U/mL。MRI骨盤部オーダー。ルナベル処方。 -> billing_events include 経腟超音波 as type=imaging status=performed modality=ultrasound, CA125 as type=lab status=performed, MRI骨盤部 as type=imaging status=ordered modality=mri, ルナベル as type=medication status=prescribed with empty quantity fields and missing_information for quantity/days.",
+      "- Text: 腰椎X線（正面・側面）：L4/5狭小化。MRI腰椎オーダー（次回）。ロキソプロフェン60mg 毎食後3錠／14日分処方。 -> billing_events include X線 as performed simple_radiography, MRI as ordered/planned, ロキソプロフェン as prescribed with quantity_per_day=3 and days=14.",
+      "- Do not create review_flags such as 今後の検討 or 方針確認 when the phrase is only follow-up planning and not a billable event."
     ].join("\n"),
     input,
     schemaName: "fee_clinical_facts",

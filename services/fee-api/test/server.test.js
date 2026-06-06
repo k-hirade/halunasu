@@ -782,11 +782,27 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let receivedInput = null;
-  stores.feeCalculator.searchMaster = async (input) => ({
-    query: input.query,
-    type: input.type,
-    items: []
-  });
+  stores.feeCalculator.searchMaster = async (input) => {
+    if (input.type === "procedure" && /CA\s*125|CA125/u.test(input.query)) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{ kind: "procedure", code: "160200110", name: "CA125" }]
+      };
+    }
+    if (input.type === "procedure" && /(経腟|経膣|超音波)/u.test(input.query)) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{ kind: "procedure", code: "160000999", name: "経腟超音波検査" }]
+      };
+    }
+    return {
+      query: input.query,
+      type: input.type,
+      items: []
+    };
+  };
   stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
     receivedInput = calculationInput;
     return {
@@ -888,11 +904,15 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "initial");
   assert.deepEqual(
+    receivedInput.calculationOptions.procedure_codes.sort(),
+    ["160000999", "160200110"].sort()
+  );
+  assert.deepEqual(
     calculation.body.feeSession.diagnoses.map((diagnosis) => diagnosis.name),
     ["月経困難症", "子宮内膜症疑い", "左卵巣嚢胞"]
   );
-  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("経腟超音波")));
-  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("CA125")));
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("経腟超音波") && warning.includes("マスター候補")));
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("CA125") && warning.includes("マスター候補")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI骨盤部")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ルナベル")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロキソプロフェン")));
