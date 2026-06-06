@@ -785,18 +785,21 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
   let receivedInput = null;
   let receivedSessionContext = null;
   stores.feeCalculator.searchMaster = async (input) => {
-    if (input.type === "procedure" && /CA\s*125|CA125/u.test(input.query)) {
+    if (input.type === "procedure" && /CA\s*125|CA125|ＣＡ１２５/u.test(input.query)) {
       return {
         query: input.query,
         type: input.type,
-        items: [{ kind: "procedure", code: "160200110", name: "CA125" }]
+        items: [{ kind: "procedure", code: "160038010", name: "ＣＡ１２５" }]
       };
     }
     if (input.type === "procedure" && /(経腟|経膣|超音波)/u.test(input.query)) {
       return {
         query: input.query,
         type: input.type,
-        items: [{ kind: "procedure", code: "160072110", name: "超音波検査（Ａモード法）" }]
+        items: [
+          { kind: "procedure", code: "160072110", name: "超音波検査（Ａモード法）" },
+          { kind: "procedure", code: "160072210", name: "超音波検査（断層撮影法）（胸腹部）" }
+        ]
       };
     }
     return {
@@ -914,13 +917,18 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "initial");
   assert.deepEqual(
     receivedInput.calculationOptions.procedure_codes.sort(),
-    ["160200110"].sort()
+    ["160038010", "160072210"].sort()
   );
+  assert.deepEqual(receivedInput.calculationOptions.lab_options.collection_fee_inputs, ["blood_venous"]);
+  assert.deepEqual(receivedInput.calculationOptions.comment_inputs, [{
+    code: "820100683",
+    text: "超音波検査（断層撮影法）（胸腹部）：ウ　女性生殖器領域"
+  }]);
   assert.deepEqual(
     calculation.body.feeSession.diagnoses.map((diagnosis) => diagnosis.name),
     ["月経困難症", "子宮内膜症疑い", "左卵巣嚢胞"]
   );
-  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("経腟超音波") && warning.includes("標準コードを自動確定")));
+  assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("経腟超音波") && warning.includes("標準コードを自動確定")), false);
   assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("CA125") && warning.includes("マスター候補")), false);
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI骨盤部")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ルナベル")));
@@ -933,9 +941,61 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
   );
   assert.equal(
     calculation.body.calculationResult.warnings.filter((warning) => /経腟|経膣|超音波/u.test(warning)).length,
-    1
+    0
   );
   assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("病名が入力されていません")), false);
+});
+
+test("rule-based fallback resolves gynecology lab and ultrasound aliases", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 925,
+      lineItems: [],
+      warnings: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Fallback Gynecology"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-06",
+    clinicalText: [
+      "O（Objective：客観的情報）",
+      "経腟超音波：ダグラス窩に少量の液体貯留、左卵巣に約3cm程度の嚢胞性病変。",
+      "血液検査：CA125 68 U/mL（基準値35以下）。",
+      "P（Plan：計画）",
+      "MRI骨盤部オーダー（子宮内膜症の範囲評価）。"
+    ].join("\n")
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSessionId || session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(
+    receivedInput.calculationOptions.procedure_codes.sort(),
+    ["160038010", "160072210"].sort()
+  );
+  assert.deepEqual(receivedInput.calculationOptions.lab_options.collection_fee_inputs, ["blood_venous"]);
+  assert.deepEqual(receivedInput.calculationOptions.comment_inputs, [{
+    code: "820100683",
+    text: "超音波検査（断層撮影法）（胸腹部）：ウ　女性生殖器領域"
+  }]);
 });
 
 test("infers revisit basic fee from prior patient fee sessions", async () => {

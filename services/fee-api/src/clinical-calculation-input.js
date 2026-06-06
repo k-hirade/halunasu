@@ -32,8 +32,24 @@ const CLINICAL_AUTO_OPTION_KEYS = new Set([
   "treatment_orders",
   "medication_orders",
   "medication",
-  "material_inputs"
+  "material_inputs",
+  "comment_inputs",
+  "lab_options"
 ]);
+
+const CLINICAL_PROCEDURE_ALIASES = Object.freeze({
+  ca125: {
+    code: "160038010",
+    collectionFeeInput: "blood_venous"
+  },
+  transvaginalUltrasound: {
+    code: "160072210",
+    commentInput: {
+      code: "820100683",
+      text: "超音波検査（断層撮影法）（胸腹部）：ウ　女性生殖器領域"
+    }
+  }
+});
 
 export async function buildClinicalCalculationPreparation({
   session = {},
@@ -343,6 +359,14 @@ async function inferRuleBasedClinicalCalculationOptions({ text = "", session = {
   if (performedProcedureCodes.procedureCodes.length) {
     inferred.procedure_codes = performedProcedureCodes.procedureCodes;
   }
+  if (performedProcedureCodes.commentInputs.length) {
+    inferred.comment_inputs = performedProcedureCodes.commentInputs;
+  }
+  if (performedProcedureCodes.collectionFeeInputs.length) {
+    inferred.lab_options = {
+      collection_fee_inputs: performedProcedureCodes.collectionFeeInputs
+    };
+  }
   reviewWarnings.push(...performedProcedureCodes.reviewWarnings);
 
   const treatment = inferTreatmentOrders(text, session.orders);
@@ -382,6 +406,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const treatmentOrders = [];
   const medicationOrders = [];
   const materialInputs = [];
+  const commentInputs = [];
+  const collectionFeeInputs = [];
 
   const outpatientBasic = outpatientBasicFromStructuredVisit(facts?.visit_type, text);
   if (outpatientBasic) {
@@ -408,6 +434,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       const imaging = await imagingOrderFromClinicalEvent(event, feeCalculator);
       if (imaging.order) imagingOrders.push(imaging.order);
       procedureCodes.push(...imaging.procedureCodes);
+      commentInputs.push(...imaging.commentInputs);
+      collectionFeeInputs.push(...imaging.collectionFeeInputs);
       reviewWarnings.push(...imaging.reviewWarnings);
       continue;
     }
@@ -417,6 +445,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
         categoryLabel: "検体検査"
       });
       procedureCodes.push(...procedure.procedureCodes);
+      commentInputs.push(...procedure.commentInputs);
+      collectionFeeInputs.push(...procedure.collectionFeeInputs);
       reviewWarnings.push(...procedure.reviewWarnings);
       continue;
     }
@@ -457,6 +487,14 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   }
   if (procedureCodes.length) {
     inferred.procedure_codes = uniqueStrings(procedureCodes);
+  }
+  if (commentInputs.length) {
+    inferred.comment_inputs = dedupeObjects(commentInputs, (item) => item?.code || item?.text || JSON.stringify(item));
+  }
+  if (collectionFeeInputs.length) {
+    inferred.lab_options = {
+      collection_fee_inputs: uniqueStrings(collectionFeeInputs)
+    };
   }
   if (treatmentOrders.length) {
     inferred.treatment_orders = dedupeObjects(treatmentOrders);
@@ -656,6 +694,8 @@ function inferImagingOrders(text) {
 
 async function inferPerformedProcedureCodes(text, feeCalculator) {
   const procedureCodes = [];
+  const commentInputs = [];
+  const collectionFeeInputs = [];
   const reviewWarnings = [];
   for (const sentence of splitClinicalSentences(text)) {
     if (isNegatedContext(sentence) || isFutureOrOrderOnlyContext(sentence)) {
@@ -670,22 +710,28 @@ async function inferPerformedProcedureCodes(text, feeCalculator) {
         resolvedMessage: "超音波検査を実施済みとしてマスター候補に反映しました。部位・検査方法・算定条件を確認してください。"
       });
       procedureCodes.push(...procedure.procedureCodes);
+      commentInputs.push(...procedure.commentInputs);
+      collectionFeeInputs.push(...procedure.collectionFeeInputs);
       reviewWarnings.push(...procedure.reviewWarnings);
     }
     if (/(?:CA\s*125|CA125)/iu.test(sentence) && isPerformedObjectiveFinding(sentence)) {
       const procedure = await searchPerformedProcedureCode(feeCalculator, {
         name: "CA125",
         categoryLabel: "検体検査",
-        queries: ["CA125", "CA 125"],
+        queries: ["CA125", "CA 125", "CA-125", "ＣＡ１２５", "癌抗原125", "癌抗原１２５"],
         unresolvedMessage: "CA125は実施済みの検体検査として検出しましたが、標準コードを自動確定できませんでした。検査項目をマスター検索で確認してください。",
         resolvedMessage: "CA125を実施済み検体検査としてマスター候補に反映しました。検査項目と算定条件を確認してください。"
       });
       procedureCodes.push(...procedure.procedureCodes);
+      commentInputs.push(...procedure.commentInputs);
+      collectionFeeInputs.push(...procedure.collectionFeeInputs);
       reviewWarnings.push(...procedure.reviewWarnings);
     }
   }
   return {
     procedureCodes: uniqueStrings(procedureCodes),
+    commentInputs: dedupeObjects(commentInputs, (item) => item?.code || item?.text || JSON.stringify(item)),
+    collectionFeeInputs: uniqueStrings(collectionFeeInputs),
     reviewWarnings
   };
 }
@@ -1079,6 +1125,8 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
         electronic_image_management: true
       },
       procedureCodes,
+      commentInputs: [],
+      collectionFeeInputs: [],
       reviewWarnings
     };
   }
@@ -1092,6 +1140,8 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
         electronic_image_management: true
       },
       procedureCodes,
+      commentInputs: [],
+      collectionFeeInputs: [],
       reviewWarnings
     };
   }
@@ -1105,6 +1155,8 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
         electronic_image_management: true
       },
       procedureCodes,
+      commentInputs: [],
+      collectionFeeInputs: [],
       reviewWarnings
     };
   }
@@ -1119,6 +1171,8 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
     return {
       order: null,
       procedureCodes: procedure.procedureCodes,
+      commentInputs: procedure.commentInputs,
+      collectionFeeInputs: procedure.collectionFeeInputs,
       reviewWarnings: procedure.reviewWarnings
     };
   }
@@ -1126,7 +1180,7 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
   if (kind) {
     reviewWarnings.push(`${clinicalEventName(event) || clinicalImagingDisplayName(event)}は現在の算定ルールで直接候補化できないため、要確認です。`);
   }
-  return { order: null, procedureCodes, reviewWarnings };
+  return { order: null, procedureCodes, commentInputs: [], collectionFeeInputs: [], reviewWarnings };
 }
 
 function clinicalImagingKind(event = {}) {
@@ -1297,12 +1351,18 @@ async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculato
     const warning = excludedClinicalEventWarning(event);
     return {
       procedureCodes: [],
+      commentInputs: [],
+      collectionFeeInputs: [],
       reviewWarnings: warning ? [warning] : []
     };
   }
 
   const name = clinicalEventName(event);
   const categoryLabel = options.categoryLabel || "診療行為";
+  const alias = procedureAliasFromText([name, categoryLabel, clinicalEventEvidence(event)].filter(Boolean).join(" "));
+  if (alias) {
+    return alias;
+  }
   const queries = uniqueStrings([
     ...(Array.isArray(options.queries) ? options.queries : []),
     name,
@@ -1325,10 +1385,21 @@ async function searchPerformedProcedureCode(feeCalculator, {
   unresolvedMessage = ""
 } = {}) {
   if (typeof feeCalculator?.searchMaster !== "function") {
+    const alias = procedureAliasFromText([name, categoryLabel, ...queries].filter(Boolean).join(" "));
+    if (alias) {
+      return alias;
+    }
     return {
       procedureCodes: [],
+      commentInputs: [],
+      collectionFeeInputs: [],
       reviewWarnings: [unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、マスター検索を利用できません。`]
     };
+  }
+
+  const alias = procedureAliasFromText([name, categoryLabel, ...queries].filter(Boolean).join(" "));
+  if (alias) {
+    return alias;
   }
 
   const normalizedQueries = uniqueStrings(queries).filter((query) => query.length >= 2);
@@ -1337,6 +1408,8 @@ async function searchPerformedProcedureCode(feeCalculator, {
     if (item?.code) {
       return {
         procedureCodes: [String(item.code)],
+        commentInputs: [],
+        collectionFeeInputs: [],
         reviewWarnings: []
       };
     }
@@ -1344,8 +1417,32 @@ async function searchPerformedProcedureCode(feeCalculator, {
 
   return {
     procedureCodes: [],
+    commentInputs: [],
+    collectionFeeInputs: [],
     reviewWarnings: [unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、標準コードを自動確定できませんでした。`]
   };
+}
+
+function procedureAliasFromText(value) {
+  const text = String(value || "");
+  const normalizedText = normalizeProcedureMatchText(text);
+  if (isCa125Context(normalizedText)) {
+    return {
+      procedureCodes: [CLINICAL_PROCEDURE_ALIASES.ca125.code],
+      commentInputs: [],
+      collectionFeeInputs: [CLINICAL_PROCEDURE_ALIASES.ca125.collectionFeeInput],
+      reviewWarnings: []
+    };
+  }
+  if (isUltrasoundContext(normalizedText) && isTransvaginalUltrasoundContext(normalizedText)) {
+    return {
+      procedureCodes: [CLINICAL_PROCEDURE_ALIASES.transvaginalUltrasound.code],
+      commentInputs: [CLINICAL_PROCEDURE_ALIASES.transvaginalUltrasound.commentInput],
+      collectionFeeInputs: [],
+      reviewWarnings: []
+    };
+  }
+  return null;
 }
 
 async function searchProcedureMasterItem(feeCalculator, query, context = {}) {
@@ -1435,7 +1532,7 @@ function procedureMasterQueriesFromEvidence(evidence) {
   const text = String(evidence || "");
   const queries = [];
   if (/(?:CA\s*125|CA125)/iu.test(text)) {
-    queries.push("CA125", "CA 125", "CA-125", "癌抗原125", "癌抗原１２５");
+    queries.push("CA125", "CA 125", "CA-125", "ＣＡ１２５", "癌抗原125", "癌抗原１２５");
   }
   if (/(経腟超音波|経膣超音波|経腟エコー|経膣エコー)/u.test(text)) {
     queries.push("経腟超音波", "経膣超音波", "経腟エコー", "経膣エコー", "子宮 超音波", "卵巣 超音波", "超音波検査");
@@ -1568,6 +1665,15 @@ function normalizeClinicalInferredOptions(options = {}) {
   }
   if (Array.isArray(result.material_inputs)) {
     result.material_inputs = dedupeObjects(result.material_inputs, (item) => item?.code || JSON.stringify(item));
+  }
+  if (Array.isArray(result.comment_inputs)) {
+    result.comment_inputs = dedupeObjects(result.comment_inputs, (item) => item?.code || item?.text || JSON.stringify(item));
+  }
+  if (isPlainObject(result.lab_options) && Array.isArray(result.lab_options.collection_fee_inputs)) {
+    result.lab_options = {
+      ...result.lab_options,
+      collection_fee_inputs: uniqueStrings(result.lab_options.collection_fee_inputs)
+    };
   }
   return result;
 }
