@@ -782,6 +782,7 @@ async function loadPriorFeeSessionsForPatient({
   try {
     return await feeStore.listPriorSessionsForPatient(orgId, session.patientId, {
       beforeServiceDate: session.serviceDate,
+      includeSameServiceDate: true,
       excludeFeeSessionId: feeSessionId || session.feeSessionId,
       limit: 10
     });

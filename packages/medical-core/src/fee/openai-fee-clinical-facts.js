@@ -222,7 +222,8 @@ function safeSessionContext(context = {}) {
     facilityName: context.facilityName || "",
     departmentName: context.departmentName || "",
     serviceDate: context.serviceDate || "",
-    billingMonth: context.billingMonth || "",
+    billingMonth: context.billingMonth || context.claimMonth || "",
+    claimMonth: context.claimMonth || context.billingMonth || "",
     visitType: context.visitType || "",
     diagnoses: Array.isArray(context.diagnoses) ? context.diagnoses.slice(0, 20) : []
   };

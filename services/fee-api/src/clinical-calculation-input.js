@@ -527,8 +527,7 @@ function inferOutpatientBasicFromPatientHistory({
 
   const currentDiagnosisNames = diagnosisNames(diagnoses);
   const usablePriorSessions = asArray(priorSessions)
-    .filter((prior) => prior && prior.feeSessionId !== session.feeSessionId)
-    .filter((prior) => !session.serviceDate || String(prior.serviceDate || "") < String(session.serviceDate || ""));
+    .filter((prior) => prior && prior.feeSessionId !== session.feeSessionId);
 
   const historyBasedBasic = usablePriorSessions.length
     ? { fee_kind: "revisit" }
@@ -846,7 +845,8 @@ function buildFeeSessionContext(session = {}) {
     facilityName: session.facilitySnapshot?.displayName || "",
     departmentName: session.departmentSnapshot?.displayName || "",
     serviceDate: session.serviceDate || "",
-    billingMonth: session.billingMonth || "",
+    billingMonth: session.billingMonth || session.claimMonth || "",
+    claimMonth: session.claimMonth || session.billingMonth || "",
     visitType: session.visitType || "",
     diagnoses: asArray(session.diagnoses)
       .map((diagnosis) => diagnosis?.name || diagnosis?.displayName || diagnosis)
@@ -1018,6 +1018,12 @@ function isActionableClinicalFactWarning(warning) {
     return false;
   }
   if (/文面から受診回数の明示なし/u.test(text)) {
+    return false;
+  }
+  if (/初診\/再診の明記なし|初診・再診の明記なし|診療形態.*明記なし/u.test(text)) {
+    return false;
+  }
+  if (/(billingMonth|claimMonth|請求月).*(未指定|未記載|不明)/iu.test(text)) {
     return false;
   }
   if (/適応検討のみで実施の記載なし/u.test(text)) {

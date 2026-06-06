@@ -135,6 +135,7 @@ export class FirestoreFeeStore {
       return [];
     }
     const beforeServiceDate = String(options.beforeServiceDate || "").trim();
+    const includeSameServiceDate = options.includeSameServiceDate === true;
     const excludeFeeSessionId = String(options.excludeFeeSessionId || "").trim();
     const limit = Math.min(50, Math.max(1, Number.parseInt(options.limit, 10) || 10));
 
@@ -142,7 +143,7 @@ export class FirestoreFeeStore {
       let query = this.orgCollection(orgId, collections.feeSessions)
         .where("patientId", "==", normalizedPatientId);
       if (beforeServiceDate) {
-        query = query.where("serviceDate", "<", beforeServiceDate);
+        query = query.where("serviceDate", includeSameServiceDate ? "<=" : "<", beforeServiceDate);
       }
       const snapshot = await query
         .orderBy("serviceDate", "desc")
@@ -154,6 +155,7 @@ export class FirestoreFeeStore {
     } catch {
       return this.listPriorSessionsForPatientByBoundedScan(orgId, normalizedPatientId, {
         beforeServiceDate,
+        includeSameServiceDate,
         excludeFeeSessionId,
         limit
       });
@@ -168,12 +170,18 @@ export class FirestoreFeeStore {
       .limit(scanLimit)
       .get();
     const beforeServiceDate = String(options.beforeServiceDate || "").trim();
+    const includeSameServiceDate = options.includeSameServiceDate === true;
     const excludeFeeSessionId = String(options.excludeFeeSessionId || "").trim();
     const limit = Math.min(50, Math.max(1, Number.parseInt(options.limit, 10) || 10));
     return docsFromSnapshot(snapshot)
       .filter((session) => String(session.patientId || "").trim() === patientId)
       .filter((session) => !excludeFeeSessionId || session.feeSessionId !== excludeFeeSessionId)
-      .filter((session) => !beforeServiceDate || String(session.serviceDate || "") < beforeServiceDate)
+      .filter((session) => (
+        !beforeServiceDate
+        || (includeSameServiceDate
+          ? String(session.serviceDate || "") <= beforeServiceDate
+          : String(session.serviceDate || "") < beforeServiceDate)
+      ))
       .sort((left, right) => (
         String(right.serviceDate || "").localeCompare(String(left.serviceDate || ""))
         || String(right.createdAt || "").localeCompare(String(left.createdAt || ""))

@@ -291,6 +291,7 @@ test("reconnects clinical text to legacy outpatient calculation input", async ()
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let receivedInput = null;
+  let receivedSessionContext = null;
   const masterItems = {
     "ロキソプロフェン": { kind: "drug", code: "620001001", name: "ロキソプロフェン錠60mg" },
     "レバミピド": { kind: "drug", code: "620001002", name: "レバミピド錠100mg" },
@@ -782,6 +783,7 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let receivedInput = null;
+  let receivedSessionContext = null;
   stores.feeCalculator.searchMaster = async (input) => {
     if (input.type === "procedure" && /CA\s*125|CA125/u.test(input.query)) {
       return {
@@ -814,7 +816,9 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
       warnings: []
     };
   };
-  const clinicalFactsExtractor = async () => ({
+  const clinicalFactsExtractor = async ({ sessionContext }) => {
+    receivedSessionContext = sessionContext;
+    return ({
     visit_type: { kind: "revisit", evidence: "3ヶ月後に再診", confidence: "medium" },
     diagnoses: [
       { name: "月経困難症", status: "confirmed", evidence: "月経困難症" },
@@ -873,7 +877,8 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
     excluded_events: [],
     missing_information: [],
     review_flags: []
-  });
+    });
+  };
 
   const patient = await request(stores, "POST", "/v1/fee/patients", {
     displayName: "Gynecology Patient"
@@ -882,6 +887,7 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
     patientId: patient.body.patient.patientId,
     facilityId: "fac_001",
     serviceDate: "2026-06-06",
+    claimMonth: "2026-06",
     clinicalText: [
       "月経困難症、子宮内膜症疑い。",
       "経腟超音波：左卵巣に約3cm程度の嚢胞性病変。",
@@ -903,6 +909,8 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
   );
 
   assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedSessionContext.billingMonth, "2026-06");
+  assert.equal(receivedSessionContext.claimMonth, "2026-06");
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "initial");
   assert.deepEqual(
     receivedInput.calculationOptions.procedure_codes.sort(),
@@ -974,6 +982,52 @@ test("infers revisit basic fee from prior patient fee sessions", async () => {
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("過去病名と今回病名")));
+  assert.equal(calculation.body.feeSession.calculationProgress.metrics.patientHistory.priorSessionCount, 1);
+});
+
+test("counts same-day existing patient sessions as patient history for basic fee", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 75,
+      lineItems: [],
+      warnings: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Same Day Patient"
+  }, headers);
+  await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-06",
+    diagnoses: [{ name: "月経困難症" }]
+  }, headers);
+  const current = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-06",
+    clinicalText: "月経困難症で受診。",
+    diagnoses: [{ name: "月経困難症" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${current.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
   assert.equal(calculation.body.feeSession.calculationProgress.metrics.patientHistory.priorSessionCount, 1);
 });
 
