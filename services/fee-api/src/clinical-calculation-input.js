@@ -40,7 +40,7 @@ export async function buildClinicalCalculationPreparation({
   feeCalculator,
   openAiApiKey = "",
   openAiModel = "gpt-5.4-nano",
-  openAiReasoningEffort = "minimal",
+  openAiReasoningEffort = "low",
   openAiTimeoutMs = 0,
   clinicalFactsExtractor = null
 } = {}) {
@@ -143,7 +143,7 @@ async function inferStructuredClinicalCalculationOptions({
   feeCalculator,
   openAiApiKey = "",
   openAiModel = "gpt-5.4-nano",
-  openAiReasoningEffort = "minimal",
+  openAiReasoningEffort = "low",
   openAiTimeoutMs = 0,
   clinicalFactsExtractor = null
 } = {}) {

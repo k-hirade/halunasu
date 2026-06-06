@@ -913,13 +913,13 @@ test("records fee calculation progress and split clinical structuring metrics", 
   );
 
   assert.equal(calculation.statusCode, 201);
-  assert.equal(extractorInput.reasoningEffort, "minimal");
+  assert.equal(extractorInput.reasoningEffort, "low");
   assert.equal(progressDuringCalculation.phase, "calculate");
   assert.ok(progressDuringCalculation.percent >= 50);
   assert.equal(calculation.body.feeSession.calculationProgress.phase, "complete");
   assert.equal(calculation.body.feeSession.calculationProgress.totalPoints, 288);
   assert.equal(calculation.body.feeSession.calculationProgress.metrics.clinicalStructuring.source, "openai");
-  assert.equal(calculation.body.feeSession.calculationProgress.metrics.clinicalStructuring.reasoningEffort, "minimal");
+  assert.equal(calculation.body.feeSession.calculationProgress.metrics.clinicalStructuring.reasoningEffort, "low");
   assert.equal(typeof calculation.body.feeSession.calculationProgress.metrics.clinicalStructuring.openAiProviderDurationMs, "number");
   assert.equal(typeof calculation.body.feeSession.calculationProgress.metrics.clinicalStructuring.clinicalFactsConvertDurationMs, "number");
   assert.equal(typeof calculation.body.feeSession.calculationProgress.metrics.ruleBasedClinicalInference.durationMs, "number");

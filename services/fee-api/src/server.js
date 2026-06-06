@@ -888,7 +888,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       || process.env.OPENAI_FEE_CLINICAL_REASONING_EFFORT
       || process.env.OPENAI_FACT_REASONING_EFFORT
       || process.env.OPENAI_SOAP_REASONING_EFFORT
-      || "minimal"
+      || "low"
     ),
     openAiTimeoutMs: Number(
       input.openAiFeeClinicalTimeoutMs

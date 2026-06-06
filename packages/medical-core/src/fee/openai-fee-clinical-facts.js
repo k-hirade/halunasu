@@ -160,7 +160,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
   clinicalText,
   sessionContext = {},
   model = "gpt-5.4-nano",
-  reasoningEffort = "minimal",
+  reasoningEffort = "low",
   timeoutMs = 0,
   stream = false,
   onOutputTextSnapshot = null
