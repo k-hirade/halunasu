@@ -142,6 +142,30 @@ async function routeFeeApiRequest(input = {}) {
     });
   }
 
+  if (method === "GET" && matches(parts, ["v1", "fee", "master", "browse"])) {
+    if (!isStgEnvironment(input.env)) {
+      return notFound("Route not found");
+    }
+    if (typeof feeCalculator.browseMaster !== "function") {
+      return ok({
+        type: "procedure",
+        query: "",
+        page: 1,
+        pageSize: 50,
+        totalCount: 0,
+        totalPages: 1,
+        items: [],
+        sources: [],
+        masterStatus: feeMasterStatus(feeCalculator)
+      });
+    }
+    const browseResult = await feeCalculator.browseMaster(masterBrowseOptionsFromUrl(url));
+    return ok({
+      ...browseResult,
+      masterStatus: feeMasterStatus(feeCalculator)
+    });
+  }
+
   if (method === "GET" && matches(parts, ["v1", "fee", "patients"])) {
     return ok({ patients: await platformStore.listPatients(context.session.orgId) });
   }
@@ -913,6 +937,17 @@ function masterSearchOptionsFromUrl(url) {
   };
 }
 
+function masterBrowseOptionsFromUrl(url) {
+  const type = String(url.searchParams.get("type") || "procedure").trim().toLowerCase();
+  const allowedTypes = new Set(["procedure", "drug", "material", "comment"]);
+  return {
+    type: allowedTypes.has(type) ? type : "procedure",
+    query: String(url.searchParams.get("q") || "").trim(),
+    page: parsePositiveInteger(url.searchParams.get("page"), 1, 10_000),
+    pageSize: parsePositiveInteger(url.searchParams.get("pageSize"), 50, 100)
+  };
+}
+
 function feeStatusesFromQuery(searchParams) {
   const status = String(searchParams.get("status") || "all").trim();
   if (!status || status === "all") {
@@ -952,6 +987,10 @@ function hasOwn(value, key) {
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isStgEnvironment(env) {
+  return String(env || "").trim().toLowerCase() === "stg";
 }
 
 function toErrorCode(name) {

@@ -17,6 +17,7 @@ const appConfigs = {
     envForTarget(env, targets) {
       return {
         HALUNASU_ENV: env,
+        NEXT_PUBLIC_HALUNASU_ENV: env,
         PLATFORM_PROXY_TARGET: targets.platform,
         PLATFORM_BASE_URL: "/api/platform",
         NEXT_PUBLIC_PLATFORM_BASE_URL: "/api/platform"
@@ -30,6 +31,7 @@ const appConfigs = {
     envForTarget(env, targets) {
       return {
         HALUNASU_ENV: env,
+        NEXT_PUBLIC_HALUNASU_ENV: env,
         PLATFORM_PROXY_TARGET: targets.platform,
         FEE_PROXY_TARGET: targets.fee,
         PLATFORM_BASE_URL: "/api/platform",
@@ -267,4 +269,3 @@ function formatCommand(parts) {
 function printUsage() {
   console.log("Usage: npm run deploy:netlify-admin-fee-next -- [--env stg|prod|all] [--app core-admin|fee-web|all] [--apply]");
 }
-

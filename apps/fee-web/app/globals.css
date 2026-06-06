@@ -1095,6 +1095,132 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   margin: 0;
 }
 
+.master-browser {
+  display: grid;
+  gap: 16px;
+}
+
+.master-browser-head,
+.master-browser-toolbar,
+.master-browser-meta,
+.master-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.master-browser-head h2 {
+  margin: 0;
+}
+
+.master-source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.master-source-card {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.master-source-card strong,
+.master-source-card span,
+.master-source-card small {
+  min-width: 0;
+}
+
+.master-source-card span {
+  color: #25364f;
+  font-weight: 800;
+}
+
+.master-source-card small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.master-browser-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.master-browser-tab {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 900;
+  padding: 9px 12px;
+}
+
+.master-browser-tab.is-active {
+  border-color: var(--accent-dark);
+  background: var(--soft-accent);
+  color: var(--accent-dark);
+}
+
+.master-browser-toolbar {
+  justify-content: flex-start;
+}
+
+.master-browser-toolbar label {
+  display: grid;
+  gap: 6px;
+  min-width: min(520px, 100%);
+  color: #25364f;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.master-browser-toolbar input {
+  width: 100%;
+  min-height: 42px;
+}
+
+.master-browser-meta {
+  justify-content: flex-start;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.master-table-wrap {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.master-data-table {
+  min-width: 960px;
+}
+
+.master-name-cell {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.master-name-cell strong,
+.master-name-cell small {
+  overflow-wrap: anywhere;
+}
+
+.master-name-cell small {
+  color: var(--muted);
+}
+
+.master-pagination {
+  justify-content: flex-end;
+}
+
 .account-summary {
   max-width: 720px;
 }

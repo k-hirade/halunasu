@@ -8,6 +8,7 @@ import { createGunzip } from "node:zlib";
 
 const MODULE_NAME = "medical_fee_calculation.api";
 const MASTER_SEARCH_MODULE_NAME = "medical_fee_calculation.master_search";
+const MASTER_BROWSER_MODULE_NAME = "medical_fee_calculation.master_browser";
 const WORKER_MODULE_NAME = "medical_fee_calculation.worker";
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -82,6 +83,23 @@ export class PythonFeeCalculator {
         type: input.type,
         query: input.query || input.q,
         limit: input.limit
+      }
+    });
+  }
+
+  async browseMaster(input = {}) {
+    await this.ensureMasterDbReady();
+    return runPythonJson({
+      moduleName: MASTER_BROWSER_MODULE_NAME,
+      pythonBin: this.pythonBin,
+      pythonPath: this.pythonPath,
+      timeoutMs: Math.min(this.timeoutMs, 10000),
+      payload: {
+        db_path: this.masterDbPath,
+        type: input.type,
+        query: input.query || input.q,
+        page: input.page,
+        pageSize: input.pageSize
       }
     });
   }

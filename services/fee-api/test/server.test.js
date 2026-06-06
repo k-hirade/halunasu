@@ -39,6 +39,37 @@ test("searches fee master through authenticated fee route", async () => {
   assert.equal(response.body.masterStatus.provider, "test_fee_engine");
 });
 
+test("browses fee master only in stg", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const stgResponse = await request(
+    stores,
+    "GET",
+    "/v1/fee/master/browse?type=procedure&q=初診&page=2&pageSize=25",
+    undefined,
+    headers,
+    { env: "stg" }
+  );
+  const prodResponse = await request(
+    stores,
+    "GET",
+    "/v1/fee/master/browse?type=procedure&q=初診",
+    undefined,
+    headers,
+    { env: "prod" }
+  );
+
+  assert.equal(stgResponse.statusCode, 200);
+  assert.equal(stgResponse.body.type, "procedure");
+  assert.equal(stgResponse.body.query, "初診");
+  assert.equal(stgResponse.body.page, 2);
+  assert.equal(stgResponse.body.pageSize, 25);
+  assert.equal(stgResponse.body.items[0].code, "111000110");
+  assert.equal(stgResponse.body.sources[0].sourceType, "medical_procedure_master");
+  assert.equal(stgResponse.body.masterStatus.provider, "test_fee_engine");
+  assert.equal(prodResponse.statusCode, 404);
+});
+
 test("creates Platform patients and product-owned fee sessions", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -447,6 +478,91 @@ test("sanitizes previously resolved placeholder codes before calculation", async
   assert.equal(receivedSession.orders[0].standardName, undefined);
 });
 
+test("rebuilds stale generated calculation options from current clinical context", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Stale Auto Options"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-03",
+    clinicalText: [
+      "O（Objective：客観的情報）",
+      "腰椎X線（正面・側面）：L4/5椎間板スペース軽度狭小化、骨棘形成あり",
+      "P（Plan：計画）",
+      "MRI腰椎オーダー（次回持参または当院撮影）",
+      "2週間後に再診、MRI結果をもとに治療方針を再評価"
+    ].join("\n"),
+    diagnoses: [{ name: "腰椎椎間板ヘルニア疑い" }]
+  }, headers);
+  stores.feeStore.updateSession("org_001", session.body.feeSession.feeSessionId, {
+    calculationOptions: {
+      outpatient_basic: { fee_kind: "revisit" },
+      imaging_orders: [
+        {
+          kind: "mri",
+          mri_equipment_kind: "other",
+          contrast: false,
+          electronic_image_management: true
+        },
+        {
+          kind: "simple_radiography",
+          acquisition_kind: "digital",
+          radiography_diagnostic_kind: "simple_i",
+          electronic_image_management: true
+        }
+      ]
+    },
+    calculationOptionsSource: null,
+    calculationOptionsAutoKeys: []
+  });
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+  const detail = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/detail`,
+    undefined,
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic, undefined);
+  assert.deepEqual(
+    receivedInput.calculationOptions.imaging_orders.map((order) => order.kind),
+    ["simple_radiography"]
+  );
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI検査は予定・依頼")));
+  assert.equal(detail.body.feeSession.calculationOptions.outpatient_basic, undefined);
+  assert.deepEqual(
+    detail.body.feeSession.calculationOptions.imaging_orders.map((order) => order.kind),
+    ["simple_radiography"]
+  );
+  assert.equal(detail.body.feeSession.calculationOptionsSource, "clinical_auto");
+  assert.deepEqual(detail.body.feeSession.calculationOptionsAutoKeys, ["imaging_orders"]);
+});
+
 test("adds review warning when calculation produces no candidate lines", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -525,9 +641,18 @@ test("keeps explicit legacy calculation options over inferred values", async () 
     {},
     headers
   );
+  const detail = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/detail`,
+    undefined,
+    headers
+  );
 
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+  assert.equal(detail.body.feeSession.calculationOptionsSource, "manual");
+  assert.deepEqual(detail.body.feeSession.calculationOptionsAutoKeys, []);
 });
 
 test("can create inline Platform patient when creating fee session", async () => {
@@ -714,6 +839,28 @@ function createStores(options = {}) {
         }]
       };
     },
+    async browseMaster(input) {
+      return {
+        type: input.type,
+        query: input.query,
+        page: input.page,
+        pageSize: input.pageSize,
+        totalCount: 1,
+        totalPages: 1,
+        items: [{
+          kind: "procedure",
+          code: "111000110",
+          name: "初診料",
+          points: 291,
+          sourceVersion: "test-master"
+        }],
+        sources: [{
+          sourceType: "medical_procedure_master",
+          sourceVersion: "test-master",
+          rowCount: 1
+        }]
+      };
+    },
     async calculate(feeSession) {
       return {
         provider: "test_fee_engine",
@@ -795,7 +942,7 @@ async function signedHeaders(platformStore) {
   };
 }
 
-function request(stores, method, path, body, headers = {}) {
+function request(stores, method, path, body, headers = {}, overrides = {}) {
   return handleFeeApiRequest({
     method,
     path,
@@ -804,7 +951,7 @@ function request(stores, method, path, body, headers = {}) {
     platformStore: stores.platformStore,
     feeStore: stores.feeStore,
     feeCalculator: stores.feeCalculator,
-    env: "test",
+    env: overrides.env || "test",
     projectId: "medical-core-stg",
     region: "asia-northeast1",
     startedAt: new Date("2026-05-28T00:00:00.000Z"),
