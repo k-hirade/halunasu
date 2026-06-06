@@ -157,7 +157,8 @@ export async function extractFeeClinicalFactsWithOpenAi({
   clinicalText,
   sessionContext = {},
   model = "gpt-5.4-nano",
-  reasoningEffort = "low"
+  reasoningEffort = "low",
+  timeoutMs = 0
 }) {
   const input = [
     "診療報酬算定の前処理として、カルテ本文から算定候補に関係する臨床事実だけを抽出してください。",
@@ -187,7 +188,8 @@ export async function extractFeeClinicalFactsWithOpenAi({
     ].join("\n"),
     input,
     schemaName: "fee_clinical_facts",
-    schema: feeClinicalFactsSchema
+    schema: feeClinicalFactsSchema,
+    timeoutMs
   });
 
   return {

@@ -58,6 +58,7 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
       facilitySnapshot: hasOwn(patch, "facilitySnapshot") ? patch.facilitySnapshot || null : undefined,
       departmentId: hasOwn(patch, "departmentId") ? patch.departmentId || null : undefined,
       departmentSnapshot: hasOwn(patch, "departmentSnapshot") ? patch.departmentSnapshot || null : undefined,
+      status: hasOwn(patch, "status") ? patch.status || current.status : undefined,
       serviceDate: patch.serviceDate,
       claimMonth: patch.claimMonth || (patch.serviceDate ? String(patch.serviceDate).slice(0, 7) : undefined),
       setting: patch.setting,
@@ -98,7 +99,13 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
     next.latestCalculationId = null;
   }
 
-  if (["draft", "ready", "failed", "calculated", "needs_review"].includes(current.status || "")) {
+  if (patch.status === "calculating") {
+    next.calculationResult = null;
+    next.calculationSummary = null;
+    next.latestCalculationId = null;
+  }
+
+  if (!hasOwn(patch, "status") && ["draft", "ready", "failed", "calculated", "needs_review"].includes(current.status || "")) {
     next.status = feeSessionHasRequiredCalculationContext(next) ? "ready" : "draft";
   }
 

@@ -27,5 +27,10 @@ packages/*/test/
 
 !python/
 python/*
+!python/data/
+python/data/*
+!python/data/master/
+python/data/master/*
+!python/data/master/*.sqlite.gz
 !python/medical_fee_calculation/
 !python/medical_fee_calculation/**
