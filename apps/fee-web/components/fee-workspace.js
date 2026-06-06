@@ -340,6 +340,51 @@ function FeeSessionDetailView({ sessionId }) {
     loadAll();
   }, [loadAll]);
 
+  const refreshDetail = useCallback(async () => {
+    const detail = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/detail`);
+    applyDetailResponse(detail, {
+      setFeeSession,
+      setReceiptDraft,
+      setReviewItems,
+      setForm,
+      setOrderRows
+    });
+    return detail;
+  }, [feeApi, sessionId]);
+
+  useEffect(() => {
+    if (feeSession?.status !== "calculating") {
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = window.setInterval(async () => {
+      try {
+        const detail = await refreshDetail();
+        if (cancelled) {
+          return;
+        }
+        const status = detail.feeSession?.status;
+        if (status && status !== "calculating") {
+          window.clearInterval(timer);
+          setMessage({
+            type: status === "failed" ? "error" : "success",
+            text: status === "failed"
+              ? "算定候補の作成に失敗しました。入力内容を確認してもう一度お試しください。"
+              : "算定が完了しました。"
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setMessage({ type: "error", text: toUserFacingErrorMessage(error, "算定結果を更新できませんでした。") });
+        }
+      }
+    }, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [feeSession?.status, refreshDetail]);
+
   useEffect(() => {
     if (!masterSearchAvailable) {
       setMasterItems([]);
@@ -446,7 +491,12 @@ function FeeSessionDetailView({ sessionId }) {
         setForm,
         setOrderRows
       });
-      setMessage({ type: "success", text: "算定が完了しました。" });
+      setMessage({
+        type: "success",
+        text: response.feeSession?.status === "calculating"
+          ? "算定候補を作成しています。"
+          : "算定が完了しました。"
+      });
     });
   }
 
@@ -557,6 +607,7 @@ function FeeSessionDetailView({ sessionId }) {
 
   const calculation = feeSession?.calculationResult || null;
   const patientName = feeSession?.patientSnapshot?.displayName || feeSession?.patientRef || feeSession?.patientId || "患者未選択";
+  const isCalculating = feeSession?.status === "calculating";
 
   return (
     <main className="fee-shell fee-shell--detail">
@@ -747,8 +798,10 @@ function FeeSessionDetailView({ sessionId }) {
           <small>算定結果は確定請求ではありません。根拠とレビュー項目を確認してください。</small>
         </div>
         <div className="fee-action-buttons">
-          <button className="btn btn--ghost" disabled={busy} form="fee-session-detail-form" type="submit">保存</button>
-          <button className="btn btn--primary" disabled={busy} onClick={calculate} type="button">カルテから算定候補を作成</button>
+          <button className="btn btn--ghost" disabled={busy || isCalculating} form="fee-session-detail-form" type="submit">保存</button>
+          <button className="btn btn--primary" disabled={busy || isCalculating} onClick={calculate} type="button">
+            {isCalculating ? "算定候補を作成中" : "カルテから算定候補を作成"}
+          </button>
           <button className="btn btn--ghost btn--icon" disabled={busy} onClick={loadAll} type="button" aria-label="最新の状態に更新">↻</button>
         </div>
       </div>
@@ -930,6 +983,18 @@ function OrderEditor({ onAdd, onRemove, onUpdate, rows }) {
 }
 
 function CalculationResult({ calculation, feeSession }) {
+  if (feeSession?.status === "calculating") {
+    return (
+      <div className="result result-empty">
+        <div className="notice-card">
+          <strong>算定候補を作成中です</strong>
+          <p>{feeSession?.patientSnapshot?.displayName || feeSession?.patientId || "患者未選択"} / {feeSession?.serviceDate || "診療日未設定"} / 計算中</p>
+        </div>
+        <p className="field-note">完了すると算定候補、レビュー項目、レセプト案が自動で更新されます。</p>
+      </div>
+    );
+  }
+
   if (!calculation) {
     return (
       <div className="result result-empty">
@@ -1150,6 +1215,9 @@ function useFeeApi() {
     const config = typeof window !== "undefined" ? window.__HALUNASU_FEE_CONFIG__ || {} : {};
     const baseUrl = config.feeBaseUrl || "/api/fee";
     const headers = { "content-type": "application/json" };
+    if (auth.accessToken) {
+      headers.authorization = `Bearer ${auth.accessToken}`;
+    }
     if (options.csrf && auth.csrfToken) {
       headers["x-csrf-token"] = auth.csrfToken;
     }
@@ -1167,7 +1235,7 @@ function useFeeApi() {
       throw error;
     }
     return payload;
-  }, [auth.csrfToken]);
+  }, [auth.accessToken, auth.csrfToken]);
 }
 
 async function runBusy(setBusy, setMessage, task) {
@@ -1492,6 +1560,7 @@ function reviewLabel(session) {
 function statusLabel(value) {
   return ({
     active: "作成中",
+    calculating: "計算中",
     review: "確認待ち",
     calculated: "算定候補作成済み",
     failed: "要確認",
@@ -1543,7 +1612,7 @@ function badgeClass(status) {
   if (["needs_review", "candidate", "rejected", "review", "failed"].includes(status)) {
     return "badge review";
   }
-  if (["confirmed", "approved", "calculated", "completed", "ready", "active"].includes(status)) {
+  if (["confirmed", "approved", "calculated", "completed", "ready", "active", "calculating"].includes(status)) {
     return "badge supported";
   }
   return "badge partial";

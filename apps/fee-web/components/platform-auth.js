@@ -4,17 +4,23 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { BRAND_NAME, PRODUCT_NAME } from "../lib/brand";
 
 const PlatformAuthContext = createContext(null);
+const ACCESS_TOKEN_STORAGE_KEY = "halunasu_platform_access_token";
 
 export function PlatformAuthProvider({ children, platformBaseUrl }) {
   const [status, setStatus] = useState("checking");
   const [session, setSession] = useState(null);
   const [csrfToken, setCsrfToken] = useState("");
+  const [accessToken, setAccessToken] = useState("");
   const [pendingLogin, setPendingLogin] = useState(null);
   const [mfa, setMfa] = useState({ mode: "", challenge: null });
   const [errorMessage, setErrorMessage] = useState("");
 
   const api = useCallback(async (path, options = {}) => {
     const headers = { "content-type": "application/json" };
+    const bearer = options.accessToken || accessToken;
+    if (bearer) {
+      headers.authorization = `Bearer ${bearer}`;
+    }
     const token = options.csrfToken || csrfToken;
     if (options.csrf && token) {
       headers["x-csrf-token"] = token;
@@ -34,23 +40,30 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
       throw error;
     }
     return payload;
-  }, [csrfToken, platformBaseUrl]);
+  }, [accessToken, csrfToken, platformBaseUrl]);
 
   const finishLogin = useCallback((payload) => {
+    const token = payload.accessToken || accessToken;
     setSession(payload.session || null);
     setCsrfToken(payload.csrfToken || readPlatformCsrfCookie());
+    setAccessToken(token || "");
+    writeAccessToken(token || "");
     setPendingLogin(null);
     setMfa({ mode: "", challenge: null });
     setErrorMessage("");
     setStatus("authenticated");
-  }, []);
+  }, [accessToken]);
 
   const beginMfaEnrollment = useCallback(async (payload) => {
     const token = payload.csrfToken || readPlatformCsrfCookie();
+    const bearer = payload.accessToken || accessToken;
+    setAccessToken(bearer || "");
+    writeAccessToken(bearer || "");
     const enrollment = await api("/v1/auth/mfa/enroll", {
       method: "POST",
       csrf: true,
       csrfToken: token,
+      accessToken: bearer,
       body: {}
     });
     setSession(payload.session || null);
@@ -58,7 +71,7 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
     setMfa({ mode: "enroll", challenge: enrollment.mfa || null });
     setErrorMessage("");
     setStatus("mfa");
-  }, [api]);
+  }, [accessToken, api]);
 
   const continueAfterLogin = useCallback(async (payload) => {
     if (shouldPromptMfaEnrollment(payload.session)) {
@@ -76,30 +89,28 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
       if (!payload.authenticated || !payload.session) {
         setSession(null);
         setCsrfToken("");
-        setStatus("unauthenticated");
-        return;
-      }
-
-      const token = readPlatformCsrfCookie();
-      if (!token) {
-        setSession(null);
-        setCsrfToken("");
+        setAccessToken("");
+        writeAccessToken("");
         setStatus("unauthenticated");
         return;
       }
 
       setSession(payload.session);
-      setCsrfToken(token);
+      setCsrfToken(payload.csrfToken || readPlatformCsrfCookie());
+      setAccessToken(payload.accessToken || accessToken || "");
+      writeAccessToken(payload.accessToken || accessToken || "");
       setStatus("authenticated");
     } catch (error) {
       setSession(null);
       setCsrfToken("");
+      setAccessToken("");
+      writeAccessToken("");
       setStatus("unauthenticated");
       if (error.status && error.status !== 401) {
         setErrorMessage("セッションの復元に失敗しました。再ログインしてください。");
       }
     }
-  }, [api]);
+  }, [accessToken, api]);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,9 +119,16 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
       setStatus("checking");
       setErrorMessage("");
       try {
+        const storedAccessToken = readAccessToken();
+        if (storedAccessToken) {
+          setAccessToken(storedAccessToken);
+        }
         const response = await fetch(`${platformBaseUrl}/v1/auth/session`, {
           method: "GET",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            ...(storedAccessToken ? { authorization: `Bearer ${storedAccessToken}` } : {})
+          },
           credentials: "include"
         });
         const payload = await response.json().catch(() => ({}));
@@ -120,20 +138,16 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
         if (!response.ok || !payload.authenticated || !payload.session) {
           setSession(null);
           setCsrfToken("");
-          setStatus("unauthenticated");
-          return;
-        }
-
-        const token = readPlatformCsrfCookie();
-        if (!token) {
-          setSession(null);
-          setCsrfToken("");
+          setAccessToken("");
+          writeAccessToken("");
           setStatus("unauthenticated");
           return;
         }
 
         setSession(payload.session);
-        setCsrfToken(token);
+        setCsrfToken(payload.csrfToken || readPlatformCsrfCookie());
+        setAccessToken(payload.accessToken || storedAccessToken || "");
+        writeAccessToken(payload.accessToken || storedAccessToken || "");
         setStatus("authenticated");
       } catch {
         if (cancelled) {
@@ -141,6 +155,8 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
         }
         setSession(null);
         setCsrfToken("");
+        setAccessToken("");
+        writeAccessToken("");
         setStatus("unauthenticated");
         setErrorMessage("セッションの復元に失敗しました。再ログインしてください。");
       }
@@ -221,6 +237,8 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
     }
     setSession(null);
     setCsrfToken("");
+    setAccessToken("");
+    writeAccessToken("");
     setPendingLogin(null);
     setMfa({ mode: "", challenge: null });
     setStatus("unauthenticated");
@@ -236,6 +254,8 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
     }
     setSession(null);
     setCsrfToken("");
+    setAccessToken("");
+    writeAccessToken("");
     setPendingLogin(null);
     setMfa({ mode: "", challenge: null });
     setErrorMessage("");
@@ -244,6 +264,7 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
 
   const value = useMemo(() => ({
     api,
+    accessToken,
     cancelMfa,
     csrfToken,
     errorMessage,
@@ -256,6 +277,7 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
     verifyMfa
   }), [
     api,
+    accessToken,
     cancelMfa,
     csrfToken,
     errorMessage,
@@ -473,6 +495,24 @@ export function usePlatformAuth() {
     throw new Error("usePlatformAuth must be used within PlatformAuthProvider");
   }
   return context;
+}
+
+function readAccessToken() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) || "";
+}
+
+function writeAccessToken(token) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (token) {
+    window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
+  } else {
+    window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  }
 }
 
 function readPlatformCsrfCookie() {
