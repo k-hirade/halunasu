@@ -441,7 +441,12 @@ async function prepareFeeSessionForCalculation({
     orgId: context.session.orgId,
     feeSessionId,
     stageTimings,
-    fn: () => prepareSessionForCalculation(session, calculationInput, feeCalculator, input),
+    fn: () => prepareSessionForCalculation(session, calculationInput, feeCalculator, {
+      ...input,
+      feeStore,
+      orgId: context.session.orgId,
+      feeSessionId
+    }),
     detail: (result) => ({
       clinicalStructuring: result?.metrics?.clinicalStructuring || null,
       ruleBasedClinicalInference: result?.metrics?.ruleBasedClinicalInference || null,
@@ -756,6 +761,31 @@ async function measureStage(stageTimings, stage, fn) {
   }
 }
 
+async function loadPriorFeeSessionsForPatient({
+  feeStore,
+  orgId,
+  session = {},
+  feeSessionId = ""
+} = {}) {
+  if (
+    !feeStore
+    || typeof feeStore.listPriorSessionsForPatient !== "function"
+    || !orgId
+    || !session.patientId
+  ) {
+    return [];
+  }
+  try {
+    return await feeStore.listPriorSessionsForPatient(orgId, session.patientId, {
+      beforeServiceDate: session.serviceDate,
+      excludeFeeSessionId: feeSessionId || session.feeSessionId,
+      limit: 10
+    });
+  } catch {
+    return [];
+  }
+}
+
 function stageDuration(stageTimings, stage) {
   const entry = stageTimings.find((candidate) => candidate.stage === stage);
   return entry ? entry.durationMs : null;
@@ -871,6 +901,12 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
   const stageTimings = [];
   const enriched = await measureStage(stageTimings, "enrichOrders", () => enrichSessionOrdersForCalculation(session, feeCalculator));
   const baseSession = enriched.changed ? { ...session, orders: enriched.orders } : session;
+  const priorSessions = await measureStage(stageTimings, "patientHistory", () => loadPriorFeeSessionsForPatient({
+    feeStore: input.feeStore,
+    orgId: input.orgId || baseSession.orgId,
+    session: baseSession,
+    feeSessionId: input.feeSessionId || baseSession.feeSessionId
+  }));
   const legacy = await measureStage(stageTimings, "clinicalCalculationPreparation", () => buildClinicalCalculationPreparation({
     session: baseSession,
     calculationInput,
@@ -895,6 +931,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       || process.env.OPENAI_FEE_CLINICAL_TIMEOUT_MS
       || 12000
     ),
+    priorSessions,
     clinicalFactsExtractor: input.clinicalFactsExtractor
   }));
   const patch = {};
@@ -920,6 +957,9 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     calculationOptions: legacy.calculationOptions,
     metrics: {
       ...(legacy.metrics || {}),
+      patientHistory: {
+        priorSessionCount: Array.isArray(priorSessions) ? priorSessions.length : 0
+      },
       stageTimings
     },
     reviewWarnings: uniqueStrings([

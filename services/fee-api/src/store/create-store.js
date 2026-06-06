@@ -35,6 +35,10 @@ export class LazyFirestoreFeeStore {
     return this.call("listSessions", orgId, options);
   }
 
+  async listPriorSessionsForPatient(orgId, patientId, options) {
+    return this.call("listPriorSessionsForPatient", orgId, patientId, options);
+  }
+
   async getSession(orgId, feeSessionId) {
     return this.call("getSession", orgId, feeSessionId);
   }

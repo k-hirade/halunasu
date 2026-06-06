@@ -586,19 +586,19 @@ test("rebuilds stale generated calculation options from current clinical context
   );
 
   assert.equal(calculation.statusCode, 201);
-  assert.equal(receivedInput.calculationOptions.outpatient_basic, undefined);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "initial");
   assert.deepEqual(
     receivedInput.calculationOptions.imaging_orders.map((order) => order.kind),
     ["simple_radiography"]
   );
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI検査は予定・依頼")));
-  assert.equal(detail.body.feeSession.calculationOptions.outpatient_basic, undefined);
+  assert.equal(detail.body.feeSession.calculationOptions.outpatient_basic.fee_kind, "initial");
   assert.deepEqual(
     detail.body.feeSession.calculationOptions.imaging_orders.map((order) => order.kind),
     ["simple_radiography"]
   );
   assert.equal(detail.body.feeSession.calculationOptionsSource, "clinical_auto");
-  assert.deepEqual(detail.body.feeSession.calculationOptionsAutoKeys, ["imaging_orders"]);
+  assert.deepEqual(detail.body.feeSession.calculationOptionsAutoKeys.sort(), ["imaging_orders", "outpatient_basic"].sort());
 });
 
 test("uses structured clinical facts for calculation input when available", async () => {
@@ -730,8 +730,14 @@ test("uses structured clinical facts for calculation input when available", asyn
       }
     ],
     excluded_events: [],
-    missing_information: [],
-    review_flags: []
+    missing_information: [
+      "空欄",
+      "頓服であるが数量（日数/回数/総量）の明記なし"
+    ],
+    review_flags: [
+      "文面から受診回数の明示なし",
+      "適応検討のみで実施の記載なし"
+    ]
   });
 
   const patient = await request(stores, "POST", "/v1/fee/patients", {
@@ -760,7 +766,7 @@ test("uses structured clinical facts for calculation input when available", asyn
   );
 
   assert.equal(calculation.statusCode, 201);
-  assert.equal(receivedInput.calculationOptions.outpatient_basic, undefined);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "initial");
   assert.deepEqual(receivedInput.calculationOptions.imaging_orders.map((order) => order.kind), ["simple_radiography"]);
   assert.deepEqual(
     receivedInput.calculationOptions.medication_orders.map((order) => order.drug_code).sort(),
@@ -772,7 +778,7 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
 });
 
-test("persists structured diagnoses and reviews unsupported extracted events without false visit fee", async () => {
+test("persists structured diagnoses and reviews unsupported extracted events with history-based basic fee", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let receivedInput = null;
@@ -880,7 +886,7 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
   );
 
   assert.equal(calculation.statusCode, 201);
-  assert.equal(receivedInput.calculationOptions?.outpatient_basic, undefined);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "initial");
   assert.deepEqual(
     calculation.body.feeSession.diagnoses.map((diagnosis) => diagnosis.name),
     ["月経困難症", "子宮内膜症疑い", "左卵巣嚢胞"]
@@ -890,7 +896,60 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI骨盤部")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ルナベル")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロキソプロフェン")));
+  assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("空欄")), false);
+  assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("文面から受診回数")), false);
+  assert.equal(
+    calculation.body.calculationResult.warnings.filter((warning) => warning.includes("ロキソプロフェン")).length,
+    1
+  );
   assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("病名が入力されていません")), false);
+});
+
+test("infers revisit basic fee from prior patient fee sessions", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 75,
+      lineItems: [],
+      warnings: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "History Patient"
+  }, headers);
+  await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-05-01",
+    diagnoses: [{ name: "腰痛症" }]
+  }, headers);
+  const current = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-06",
+    clinicalText: "下腹部痛で受診。",
+    diagnoses: [{ name: "月経困難症" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${current.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("過去病名と今回病名")));
+  assert.equal(calculation.body.feeSession.calculationProgress.metrics.patientHistory.priorSessionCount, 1);
 });
 
 test("merges deterministic performed imaging when structured facts miss it", async () => {
@@ -969,7 +1028,7 @@ test("merges deterministic performed imaging when structured facts miss it", asy
   );
 
   assert.equal(calculation.statusCode, 201);
-  assert.equal(receivedInput.calculationOptions.outpatient_basic, undefined);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "initial");
   assert.deepEqual(
     receivedInput.calculationOptions.imaging_orders.map((order) => order.kind),
     ["simple_radiography"]

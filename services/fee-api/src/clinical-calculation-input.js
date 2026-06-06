@@ -42,6 +42,7 @@ export async function buildClinicalCalculationPreparation({
   openAiModel = "gpt-5.4-nano",
   openAiReasoningEffort = "low",
   openAiTimeoutMs = 0,
+  priorSessions = [],
   clinicalFactsExtractor = null
 } = {}) {
   const manualOptions = manualCalculationOptions(session, calculationInput);
@@ -116,6 +117,24 @@ export async function buildClinicalCalculationPreparation({
   }
 
   const normalizedInferred = normalizeClinicalInferredOptions(inferred);
+  const historyBasic = inferOutpatientBasicFromPatientHistory({
+    session,
+    priorSessions,
+    diagnoses: [
+      ...asArray(session.diagnoses),
+      ...inferredDiagnoses
+    ],
+    currentOutpatientBasic: normalizedInferred.outpatient_basic || null
+  });
+  if (
+    !hasOwn(manualOptions, "outpatient_basic")
+    && historyBasic.outpatientBasic
+    && !normalizedInferred.outpatient_basic
+  ) {
+    normalizedInferred.outpatient_basic = historyBasic.outpatientBasic;
+  }
+  reviewWarnings.push(...historyBasic.reviewWarnings);
+
   const autoKeys = Object.keys(normalizedInferred).filter((key) => (
     CLINICAL_AUTO_OPTION_KEYS.has(key) && !hasOwn(manualOptions, key)
   ));
@@ -318,6 +337,7 @@ async function inferRuleBasedClinicalCalculationOptions({ text = "", session = {
     inferred.imaging_orders = imaging.orders;
   }
   reviewWarnings.push(...imaging.reviewWarnings);
+  reviewWarnings.push(...inferPerformedUnsupportedClinicalEventWarnings(text));
 
   const treatment = inferTreatmentOrders(text, session.orders);
   if (treatment.orders.length) {
@@ -472,6 +492,91 @@ function inferOutpatientBasicOptions(text) {
   return null;
 }
 
+function inferOutpatientBasicFromPatientHistory({
+  session = {},
+  priorSessions = [],
+  diagnoses = [],
+  currentOutpatientBasic = null
+} = {}) {
+  if (!session.patientId) {
+    return {
+      outpatientBasic: currentOutpatientBasic || null,
+      reviewWarnings: ["患者IDがないため、過去受診履歴に基づく初診/再診判定ができません。"]
+    };
+  }
+
+  const currentDiagnosisNames = diagnosisNames(diagnoses);
+  const usablePriorSessions = asArray(priorSessions)
+    .filter((prior) => prior && prior.feeSessionId !== session.feeSessionId)
+    .filter((prior) => !session.serviceDate || String(prior.serviceDate || "") < String(session.serviceDate || ""));
+
+  const historyBasedBasic = usablePriorSessions.length
+    ? { fee_kind: "revisit" }
+    : { fee_kind: "initial" };
+  const reviewWarnings = [];
+
+  if (currentOutpatientBasic?.fee_kind && currentOutpatientBasic.fee_kind !== historyBasedBasic.fee_kind) {
+    if (historyBasedBasic.fee_kind === "revisit") {
+      reviewWarnings.push("同一患者の過去算定記録があります。初診候補のままでよいか、新疾患初診か再診かを確認してください。");
+    } else {
+      reviewWarnings.push("同一患者の過去算定記録が見つかりません。再診候補のままでよいか、過去受診履歴を確認してください。");
+    }
+    return {
+      outpatientBasic: currentOutpatientBasic,
+      reviewWarnings
+    };
+  }
+
+  if (usablePriorSessions.length) {
+    const priorDiagnosisNames = diagnosisNames(usablePriorSessions.flatMap((prior) => asArray(prior.diagnoses)));
+    if (!currentDiagnosisNames.length) {
+      reviewWarnings.push("同一患者の過去算定記録があるため再診料候補を立てています。病名が未入力のため、継続診療か新疾患初診かを確認してください。");
+    } else if (priorDiagnosisNames.length && !hasRelatedDiagnosisName(currentDiagnosisNames, priorDiagnosisNames)) {
+      reviewWarnings.push("同一患者の過去算定記録があるため再診料候補を立てています。過去病名と今回病名の継続性を確認してください。");
+    }
+  }
+
+  return {
+    outpatientBasic: currentOutpatientBasic || historyBasedBasic,
+    reviewWarnings
+  };
+}
+
+function diagnosisNames(values = []) {
+  return normalizeClinicalDiagnoses(values)
+    .map((diagnosis) => diagnosis.name)
+    .filter(Boolean);
+}
+
+function hasRelatedDiagnosisName(currentNames = [], priorNames = []) {
+  const currentKeys = currentNames.map(normalizeDiagnosisMatchKey).filter(Boolean);
+  const priorKeys = priorNames.map(normalizeDiagnosisMatchKey).filter(Boolean);
+  return currentKeys.some((current) => priorKeys.some((prior) => (
+    current.includes(prior)
+    || prior.includes(current)
+    || shareDiagnosisToken(current, prior)
+  )));
+}
+
+function normalizeDiagnosisMatchKey(value) {
+  return String(value || "")
+    .replace(/疑い|の可能性|可能性|急性|慢性|症|病|疾患|障害|[\s（）()・、,]/gu, "")
+    .trim()
+    .toLowerCase();
+}
+
+function shareDiagnosisToken(left, right) {
+  if (left.length < 3 || right.length < 3) {
+    return false;
+  }
+  for (let index = 0; index <= left.length - 3; index += 1) {
+    if (right.includes(left.slice(index, index + 3))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function inferImagingOrders(text) {
   const orders = [];
   const reviewWarnings = [];
@@ -528,6 +633,26 @@ function inferImagingOrders(text) {
     orders: dedupeObjects(orders),
     reviewWarnings
   };
+}
+
+function inferPerformedUnsupportedClinicalEventWarnings(text) {
+  const reviewWarnings = [];
+  for (const sentence of splitClinicalSentences(text)) {
+    if (isNegatedContext(sentence) || isFutureOrOrderOnlyContext(sentence)) {
+      continue;
+    }
+    if (/(経腟超音波|経膣超音波|超音波|エコー)/u.test(sentence) && isPerformedObjectiveFinding(sentence)) {
+      reviewWarnings.push("経腟超音波は実施済みの客観所見として検出しましたが、現在の自動算定では超音波検査コード確定が未対応です。実施内容をマスター検索で確認してください。");
+    }
+    if (/(?:CA\s*125|CA125)/iu.test(sentence) && isPerformedObjectiveFinding(sentence)) {
+      reviewWarnings.push("CA125は実施済みの検体検査として検出しましたが、現在の自動算定では検査コード確定が未対応です。実施内容をマスター検索で確認してください。");
+    }
+  }
+  return reviewWarnings;
+}
+
+function isPerformedObjectiveFinding(sentence) {
+  return /(:|：|所見|結果|高値|低値|基準値|貯留|病変|あり|認める|施行|実施|検査|撮影)/u.test(sentence);
 }
 
 function inferTreatmentOrders(text, orders = []) {
@@ -823,7 +948,25 @@ function clinicalFactReviewWarnings(values = []) {
       }
       return reason || name;
     })
+    .filter(isActionableClinicalFactWarning)
     .filter(Boolean);
+}
+
+function isActionableClinicalFactWarning(warning) {
+  const text = String(warning || "").trim();
+  if (!text || /^(空欄|なし|無し|不明|未記載|確認事項)$/u.test(text)) {
+    return false;
+  }
+  if (/文面から受診回数の明示なし/u.test(text)) {
+    return false;
+  }
+  if (/適応検討のみで実施の記載なし/u.test(text)) {
+    return false;
+  }
+  if (/(数量|日数|回数|総量).*(明記なし|不足|不明)/u.test(text) && !/[「:：]/u.test(text)) {
+    return false;
+  }
+  return true;
 }
 
 function unsupportedClinicalEventWarning(event = {}) {
@@ -931,7 +1074,8 @@ function clinicalImagingDisplayName(event = {}) {
 
 async function medicationOrderFromClinicalEvent(event = {}, feeCalculator) {
   const reviewWarnings = [];
-  const name = clinicalEventName(event);
+  const rawName = clinicalEventName(event);
+  const name = canonicalMedicationName(rawName);
   if (!name) {
     reviewWarnings.push("薬剤名がカルテ本文から確定できないため、薬剤算定候補には入れていません。");
     return { order: null, reviewWarnings };
@@ -954,6 +1098,41 @@ async function medicationOrderFromClinicalEvent(event = {}, feeCalculator) {
     },
     reviewWarnings
   };
+}
+
+function canonicalMedicationName(value) {
+  let name = String(value || "")
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/gu, (char) => String.fromCharCode(char.charCodeAt(0) - 0xFEE0))
+    .replace(/\s+/gu, "")
+    .trim();
+  if (!name) {
+    return "";
+  }
+  const parenthesized = name.match(/[（(]([^（）()]+)[）)]/u)?.[1];
+  if (parenthesized && !/胃薬|湿布|頓服|併用|処方/u.test(parenthesized)) {
+    name = parenthesized;
+  }
+  name = name
+    .replace(/^(?:薬剤|処方薬)[:：]/u, "")
+    .replace(/(?:錠|カプセル|配合錠|テープ|クリーム|軟膏|散|顆粒|シロップ).*$/u, (match) => {
+      if (/^(?:錠|カプセル|配合錠|テープ|クリーム|軟膏|散|顆粒|シロップ)$/u.test(match)) {
+        return match;
+      }
+      return "";
+    })
+    .replace(/\d+(?:\.\d+)?\s*(?:mg|g|μg|mcg|mL|ml|%|ｍｇ|ｇ|μｇ|ｍＬ|％).*$/iu, "")
+    .replace(/[（(].*?[）)]/gu, "")
+    .trim();
+  if (/^ロキソプロフェン/u.test(name) || /^ロキソニン/u.test(name)) {
+    return "ロキソプロフェン";
+  }
+  if (/^レバミピド/u.test(name) || /^ムコスタ/u.test(name)) {
+    return "レバミピド";
+  }
+  if (/ルナベル/u.test(name)) {
+    return "ルナベル配合錠LD";
+  }
+  return name;
 }
 
 function medicationQuantityFromClinicalEvent(event = {}) {
@@ -1241,9 +1420,86 @@ function uniqueStrings(values = []) {
 }
 
 function normalizeReviewWarnings(values = []) {
-  return uniqueStrings(values)
-    .filter((warning) => !isLowValueClinicalReviewWarning(warning))
+  const result = [];
+  const seen = new Set();
+  for (const raw of values) {
+    const warning = cleanReviewWarning(raw);
+    if (!warning || isLowValueClinicalReviewWarning(warning)) {
+      continue;
+    }
+    const key = reviewWarningDedupKey(warning);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(warning);
+  }
+  return result
     .slice(0, 20);
+}
+
+function cleanReviewWarning(value) {
+  let warning = String(value || "").trim();
+  if (!warning) {
+    return "";
+  }
+  warning = warning.replace(/\s+/gu, " ");
+  warning = warning.replace(/^(?:hospital_profile_missing|facility_standard_not_found)\s*[:：]\s*/u, "");
+  warning = warning.replace(/薬剤「([^」]+)」/gu, (match, name) => {
+    const canonical = canonicalMedicationName(name);
+    return canonical ? `薬剤「${canonical}」` : match;
+  });
+  return isActionableClinicalFactWarning(warning) ? warning : "";
+}
+
+function reviewWarningDedupKey(warning) {
+  const medication = warning.match(/薬剤「([^」]+)」/u)?.[1];
+  if (medication) {
+    return `medication:${canonicalMedicationName(medication)}:${reviewWarningReasonKey(warning)}`;
+  }
+  if (/施設基準/u.test(warning)) {
+    return `facility:${reviewWarningReasonKey(warning)}`;
+  }
+  const planned = warning.match(/^(.+?)は予定・依頼/u)?.[1];
+  if (planned) {
+    return `planned:${normalizeReviewTarget(planned)}`;
+  }
+  const unsupported = warning.match(/^(.+?)は(?:実施済みの)?(?:検体検査|超音波検査|医学管理等|指導・説明|.+?)として/u)?.[1];
+  if (unsupported) {
+    return `unsupported:${normalizeReviewTarget(unsupported)}:${reviewWarningReasonKey(warning)}`;
+  }
+  const basic = warning.match(/(初診|再診|受診履歴|過去算定記録)/u)?.[1];
+  if (basic) {
+    return `visit:${reviewWarningReasonKey(warning)}`;
+  }
+  return warning;
+}
+
+function normalizeReviewTarget(value) {
+  return String(value || "")
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/gu, (char) => String.fromCharCode(char.charCodeAt(0) - 0xFEE0))
+    .replace(/\s+/gu, "")
+    .replace(/[「」『』（）()]/gu, "")
+    .toLowerCase();
+}
+
+function reviewWarningReasonKey(warning) {
+  if (/(数量|日数|総量|回数).*(不足|不明|明記なし)/u.test(warning)) {
+    return "quantity_missing";
+  }
+  if (/(予定|依頼|オーダー|次回|今後)/u.test(warning)) {
+    return "planned_only";
+  }
+  if (/(未対応|コード確定|直接候補化できない)/u.test(warning)) {
+    return "unsupported";
+  }
+  if (/施設基準/u.test(warning)) {
+    return "facility_standard";
+  }
+  if (/(初診|再診|受診履歴|過去算定記録)/u.test(warning)) {
+    return "visit_history";
+  }
+  return normalizeReviewTarget(warning).slice(0, 80);
 }
 
 function isLowValueClinicalReviewWarning(warning) {

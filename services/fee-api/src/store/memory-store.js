@@ -49,6 +49,26 @@ export class MemoryFeeStore {
     };
   }
 
+  listPriorSessionsForPatient(orgId, patientId, options = {}) {
+    const normalizedPatientId = String(patientId || "").trim();
+    if (!normalizedPatientId) {
+      return [];
+    }
+    const beforeServiceDate = String(options.beforeServiceDate || "").trim();
+    const excludeFeeSessionId = String(options.excludeFeeSessionId || "").trim();
+    const limit = Math.min(50, Math.max(1, Number.parseInt(options.limit, 10) || 10));
+
+    return [...this.sessionsForOrg(orgId).values()]
+      .filter((session) => String(session.patientId || "").trim() === normalizedPatientId)
+      .filter((session) => !excludeFeeSessionId || session.feeSessionId !== excludeFeeSessionId)
+      .filter((session) => !beforeServiceDate || String(session.serviceDate || "") < beforeServiceDate)
+      .sort((left, right) => (
+        String(right.serviceDate || "").localeCompare(String(left.serviceDate || ""))
+        || String(right.createdAt || "").localeCompare(String(left.createdAt || ""))
+      ))
+      .slice(0, limit);
+  }
+
   getSession(orgId, feeSessionId) {
     return this.sessionsForOrg(orgId).get(feeSessionId) || null;
   }

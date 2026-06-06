@@ -44,6 +44,13 @@ const SESSION_SUMMARY_FIELDS = [
   "schemaVersion"
 ];
 
+const PATIENT_HISTORY_FIELDS = [
+  ...SESSION_SUMMARY_FIELDS,
+  "diagnoses",
+  "calculationOptions",
+  "calculationOptionsSource"
+];
+
 export class FirestoreFeeStore {
   constructor(options = {}) {
     if (!options.db) {
@@ -120,6 +127,58 @@ export class FirestoreFeeStore {
       totalPages,
       totalCountApproximate: snapshot.size >= scanLimit
     };
+  }
+
+  async listPriorSessionsForPatient(orgId, patientId, options = {}) {
+    const normalizedPatientId = String(patientId || "").trim();
+    if (!normalizedPatientId) {
+      return [];
+    }
+    const beforeServiceDate = String(options.beforeServiceDate || "").trim();
+    const excludeFeeSessionId = String(options.excludeFeeSessionId || "").trim();
+    const limit = Math.min(50, Math.max(1, Number.parseInt(options.limit, 10) || 10));
+
+    try {
+      let query = this.orgCollection(orgId, collections.feeSessions)
+        .where("patientId", "==", normalizedPatientId);
+      if (beforeServiceDate) {
+        query = query.where("serviceDate", "<", beforeServiceDate);
+      }
+      const snapshot = await query
+        .orderBy("serviceDate", "desc")
+        .select(...PATIENT_HISTORY_FIELDS)
+        .limit(limit)
+        .get();
+      return docsFromSnapshot(snapshot)
+        .filter((session) => !excludeFeeSessionId || session.feeSessionId !== excludeFeeSessionId);
+    } catch {
+      return this.listPriorSessionsForPatientByBoundedScan(orgId, normalizedPatientId, {
+        beforeServiceDate,
+        excludeFeeSessionId,
+        limit
+      });
+    }
+  }
+
+  async listPriorSessionsForPatientByBoundedScan(orgId, patientId, options = {}) {
+    const scanLimit = Number.parseInt(process.env.FEE_PATIENT_HISTORY_SCAN_LIMIT || "500", 10) || 500;
+    const snapshot = await this.orgCollection(orgId, collections.feeSessions)
+      .orderBy("createdAt", "desc")
+      .select(...PATIENT_HISTORY_FIELDS)
+      .limit(scanLimit)
+      .get();
+    const beforeServiceDate = String(options.beforeServiceDate || "").trim();
+    const excludeFeeSessionId = String(options.excludeFeeSessionId || "").trim();
+    const limit = Math.min(50, Math.max(1, Number.parseInt(options.limit, 10) || 10));
+    return docsFromSnapshot(snapshot)
+      .filter((session) => String(session.patientId || "").trim() === patientId)
+      .filter((session) => !excludeFeeSessionId || session.feeSessionId !== excludeFeeSessionId)
+      .filter((session) => !beforeServiceDate || String(session.serviceDate || "") < beforeServiceDate)
+      .sort((left, right) => (
+        String(right.serviceDate || "").localeCompare(String(left.serviceDate || ""))
+        || String(right.createdAt || "").localeCompare(String(left.createdAt || ""))
+      ))
+      .slice(0, limit);
   }
 
   async getSession(orgId, feeSessionId) {
