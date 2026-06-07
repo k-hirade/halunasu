@@ -21,7 +21,13 @@ const CLINICAL_DRUG_TERMS = [
   { query: "ロコアテープ", patterns: [/ロコア/u, /ロコアテープ/u] },
   { query: "ゲーベンクリーム", patterns: [/ゲーベン/u, /ゲーベンクリーム/u] },
   { query: "アムロジピン", patterns: [/アムロジピン/u] },
-  { query: "カルボシステイン", patterns: [/カルボシステイン/u] }
+  { query: "カルボシステイン", patterns: [/カルボシステイン/u] },
+  { query: "メトホルミン", patterns: [/メトホルミン/u] },
+  { query: "シタグリプチン", patterns: [/シタグリプチン/u, /ジャヌビア/u, /グラクティブ/u] },
+  { query: "テルミサルタン", patterns: [/テルミサルタン/u, /ミカルディス/u] },
+  { query: "ロスバスタチン", patterns: [/ロスバスタチン/u, /クレストール/u] },
+  { query: "ルナベル配合錠LD", patterns: [/ルナベル/u] },
+  { query: "アスピリン", patterns: [/アスピリン/u, /バイアスピリン/u] }
 ];
 
 const CLINICAL_MATERIAL_TERMS = [
@@ -115,13 +121,20 @@ export async function buildClinicalCalculationPreparation({
     metrics.clinicalStructuring = structured.metrics;
     const ruleMetrics = createMasterSearchMetrics(feeCalculator);
     const ruleStartedAt = Date.now();
-    const ruleBased = await inferRuleBasedClinicalCalculationOptions({
-      text,
-      session,
-      feeCalculator: ruleMetrics.calculator
-    });
+    const ruleBased = structured.used
+      ? await inferDeterministicSupplementalClinicalCalculationOptions({
+        text,
+        session,
+        feeCalculator: ruleMetrics.calculator
+      })
+      : await inferRuleBasedClinicalCalculationOptions({
+        text,
+        session,
+        feeCalculator: ruleMetrics.calculator
+      });
     metrics.ruleBasedClinicalInference = {
       durationMs: Date.now() - ruleStartedAt,
+      source: structured.used ? "objective_supplement" : "fallback_rules",
       ...ruleMetrics.snapshot()
     };
 
@@ -150,7 +163,6 @@ export async function buildClinicalCalculationPreparation({
   if (
     !hasOwn(manualOptions, "outpatient_basic")
     && historyBasic.outpatientBasic
-    && !normalizedInferred.outpatient_basic
   ) {
     normalizedInferred.outpatient_basic = historyBasic.outpatientBasic;
   }
@@ -401,6 +413,50 @@ async function inferRuleBasedClinicalCalculationOptions({ text = "", session = {
   };
 }
 
+async function inferDeterministicSupplementalClinicalCalculationOptions({ text = "", session = {}, feeCalculator } = {}) {
+  const objectiveText = objectiveClinicalText(text);
+  if (!objectiveText) {
+    return {
+      inferred: {},
+      reviewWarnings: []
+    };
+  }
+
+  const inferred = {};
+  const reviewWarnings = [];
+
+  const imaging = inferImagingOrders(objectiveText);
+  if (imaging.orders.length) {
+    inferred.imaging_orders = imaging.orders;
+  }
+  reviewWarnings.push(...imaging.reviewWarnings);
+
+  const performedProcedureCodes = await inferPerformedProcedureCodes(objectiveText, feeCalculator);
+  if (performedProcedureCodes.procedureCodes.length) {
+    inferred.procedure_codes = performedProcedureCodes.procedureCodes;
+  }
+  if (performedProcedureCodes.commentInputs.length) {
+    inferred.comment_inputs = performedProcedureCodes.commentInputs;
+  }
+  if (performedProcedureCodes.collectionFeeInputs.length) {
+    inferred.lab_options = {
+      collection_fee_inputs: performedProcedureCodes.collectionFeeInputs
+    };
+  }
+  reviewWarnings.push(...performedProcedureCodes.reviewWarnings);
+
+  const treatment = inferTreatmentOrders(objectiveText, session.orders);
+  if (treatment.orders.length) {
+    inferred.treatment_orders = treatment.orders;
+  }
+  reviewWarnings.push(...treatment.reviewWarnings);
+
+  return {
+    inferred,
+    reviewWarnings
+  };
+}
+
 async function clinicalFactsToCalculationOptions(facts = {}, { text = "", session = {}, feeCalculator } = {}) {
   const inferred = {};
   const diagnoses = diagnosesFromClinicalFacts(facts);
@@ -594,12 +650,12 @@ function inferOutpatientBasicFromPatientHistory({
 
   if (currentOutpatientBasic?.fee_kind && currentOutpatientBasic.fee_kind !== historyBasedBasic.fee_kind) {
     if (historyBasedBasic.fee_kind === "revisit") {
-      reviewWarnings.push("同一患者の過去算定記録があります。初診候補のままでよいか、新疾患初診か再診かを確認してください。");
+      reviewWarnings.push("同一患者の過去算定記録があるため再診料候補を優先しています。新疾患初診として扱う場合は手動で確認してください。");
     } else {
-      reviewWarnings.push("同一患者の過去算定記録が見つかりません。再診候補のままでよいか、過去受診履歴を確認してください。");
+      reviewWarnings.push("同一患者の過去算定記録が見つからないため初診料候補を優先しています。過去受診履歴がある場合は手動で確認してください。");
     }
     return {
-      outpatientBasic: currentOutpatientBasic,
+      outpatientBasic: historyBasedBasic,
       reviewWarnings
     };
   }
@@ -660,7 +716,7 @@ function inferImagingOrders(text) {
   const sentences = splitClinicalSentences(text);
 
   for (const sentence of sentences) {
-    if (isNegatedContext(sentence)) {
+    if (isNegatedClinicalServiceContext(sentence)) {
       continue;
     }
     if (/(?:^|[^A-Za-z])MRI(?:$|[^A-Za-z])|ＭＲＩ/u.test(sentence)) {
@@ -1058,16 +1114,16 @@ function excludedClinicalEventWarning(event = {}) {
   if (type === "medication" && status === "history") {
     return `薬剤「${name}」は既往薬・内服中として記載されているため、今回処方の算定候補には入れていません。`;
   }
-  if (type === "medication" && ["planned", "ordered", "instruction_only", "unclear"].includes(status)) {
+  if (type === "medication" && ["planned", "ordered", "considered", "instruction_only", "unclear"].includes(status)) {
     return `薬剤「${name}」は今回処方として確定できないため、算定候補には入れていません。`;
   }
   if (type === "material" && status === "instruction_only") {
     return `特定器材・材料「${name}」は指導・説明のみとして記載されているため、算定候補には入れていません。`;
   }
-  if (type === "material" && ["planned", "ordered", "unclear"].includes(status)) {
+  if (type === "material" && ["planned", "ordered", "considered", "unclear"].includes(status)) {
     return `特定器材・材料「${name}」は今回使用として確定できないため、算定候補には入れていません。`;
   }
-  if (reason && ["planned", "ordered", "instruction_only", "history", "negated", "unclear"].includes(status)) {
+  if (reason && ["planned", "ordered", "considered", "instruction_only", "history", "negated", "unclear"].includes(status)) {
     return reason;
   }
   return "";
@@ -1615,6 +1671,50 @@ function splitClinicalSentences(text) {
     .filter(Boolean);
 }
 
+function objectiveClinicalText(text) {
+  const lines = normalizeClinicalText(text)
+    .split("\n")
+    .map((line) => line.trim());
+  const objectiveLines = [];
+  let inObjective = false;
+
+  for (const line of lines) {
+    if (!line) {
+      continue;
+    }
+    if (isObjectiveSectionHeading(line)) {
+      inObjective = true;
+      const inline = line.replace(/^O(?:bjective)?\s*[（(：:「\-\s]*(?:Objective)?[^）)：:]*[）):：]?\s*/iu, "").trim();
+      if (inline && inline !== line && !isClinicalSectionHeading(inline)) {
+        objectiveLines.push(inline);
+      }
+      continue;
+    }
+    if (inObjective && isClinicalSectionHeading(line)) {
+      break;
+    }
+    if (inObjective) {
+      objectiveLines.push(line);
+    }
+  }
+
+  return objectiveLines.join("\n").trim();
+}
+
+function isObjectiveSectionHeading(line) {
+  const text = String(line || "").trim();
+  return /^(?:O|Objective)\b/iu.test(text)
+    || /^O[（(：:]/iu.test(text)
+    || /客観的情報/u.test(text);
+}
+
+function isClinicalSectionHeading(line) {
+  const text = String(line || "").trim();
+  return /^(?:S|Subjective|A|Assessment|P|Plan)\b/iu.test(text)
+    || /^[SAP][（(：:]/iu.test(text)
+    || /(主観的情報|評価|計画)/u.test(text);
+}
+
 function findSentenceForTerm(text, term) {
   return splitClinicalSentences(text).find((sentence) => term.patterns.some((pattern) => pattern.test(sentence))) || "";
 }
@@ -1639,6 +1739,10 @@ function isCurrentVisitEvidence(sentence) {
 
 function isNegatedContext(sentence) {
   return /(なし|無し|否定|未実施|行わず|施行せず|撮影せず|中止)/u.test(sentence);
+}
+
+function isNegatedClinicalServiceContext(sentence) {
+  return /(未実施|行わず|施行せず|撮影せず|検査せず|撮影なし|検査なし|中止)/u.test(sentence);
 }
 
 function hasLocalContrastContext(sentence, kind) {

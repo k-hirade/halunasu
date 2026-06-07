@@ -132,6 +132,27 @@ export function procedureHintQueries(value = "") {
   if (/HbA1c|ＨｂＡ１ｃ/iu.test(text)) {
     queries.push("ＨｂＡ１ｃ");
   }
+  if (/(?:CRP|ＣＲＰ|C反応性蛋白)/iu.test(text)) {
+    queries.push("ＣＲＰ", "C反応性蛋白");
+  }
+  if (/(?:WBC|白血球|末梢血液一般|血算)/iu.test(text)) {
+    queries.push("末梢血液一般", "白血球");
+  }
+  if (/(?:Plt|血小板)/iu.test(text)) {
+    queries.push("血小板");
+  }
+  if (/(?:PT[-－]?INR|プロトロンビン)/iu.test(text)) {
+    queries.push("プロトロンビン時間");
+  }
+  if (/(?:AST|ＡＳＴ|GOT|ＧＯＴ)/iu.test(text)) {
+    queries.push("ＡＳＴ");
+  }
+  if (/(?:ALT|ＡＬＴ|GPT|ＧＰＴ)/iu.test(text)) {
+    queries.push("ＡＬＴ");
+  }
+  if (/(?:アルブミン|Alb|Ａｌｂ)/iu.test(text) && !/尿アルブミン|微量アルブミン尿/u.test(text)) {
+    queries.push("アルブミン");
+  }
   return uniqueStrings(queries);
 }
 

@@ -233,3 +233,56 @@ test("builds target-specific warning review titles", () => {
     ["施設基準の確認", "検査判断料の確認", "ロキソプロフェンの確認"]
   );
 });
+
+test("excludes rejected line items from receipt totals", () => {
+  const session = buildFeeSession({
+    orgId: "org_123",
+    createdByMemberId: "member_1",
+    patientId: "patient_1",
+    facilityId: "facility_1",
+    serviceDate: "2026-06-07"
+  }, {
+    feeSessionId: "fee_exclusion",
+    now: "2026-06-07T00:00:00.000Z"
+  });
+  const calculated = applyCalculationResult(session, {
+    lineItems: [
+      {
+        lineId: "line_1",
+        code: "111000110",
+        name: "初診料",
+        orderType: "basic",
+        points: 291,
+        totalPoints: 291,
+        status: "candidate",
+        source: "outpatient_basic_fee"
+      },
+      {
+        lineId: "line_2",
+        code: "160000000",
+        name: "検査候補",
+        orderType: "lab",
+        points: 100,
+        totalPoints: 100,
+        status: "candidate",
+        source: "medical_procedure_master"
+      }
+    ]
+  }, {
+    calculationId: "calc_exclusion",
+    now: "2026-06-07T00:01:00.000Z"
+  });
+  const rejected = applyReviewDecision(calculated, "line_line_2", {
+    status: "rejected"
+  }, {
+    now: "2026-06-07T00:02:00.000Z"
+  });
+  const receiptDraft = buildReceiptDraft(rejected, {
+    now: "2026-06-07T00:03:00.000Z"
+  });
+
+  assert.equal(receiptDraft.totalPoints, 291);
+  assert.equal(receiptDraft.lines.length, 2);
+  assert.equal(receiptDraft.lines.find((line) => line.sourceLineId === "line_2").includedInTotal, false);
+  assert.equal(receiptDraft.lineGroups.reduce((sum, group) => sum + group.totalPoints, 0), 291);
+});

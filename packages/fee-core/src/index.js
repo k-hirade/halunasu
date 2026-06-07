@@ -218,6 +218,7 @@ export function buildCalculationSummary(calculation = {}) {
 
 export function buildReceiptDraft(session = {}, options = {}) {
   const calculation = session.calculationResult || {};
+  const decisions = isPlainObject(session.reviewDecisions) ? session.reviewDecisions : {};
   const lineItems = Array.isArray(calculation.lineItems) ? calculation.lineItems : [];
   const warnings = Array.isArray(calculation.warnings) ? calculation.warnings : [];
   const lines = lineItems.map((line, index) => ({
@@ -233,8 +234,11 @@ export function buildReceiptDraft(session = {}, options = {}) {
     source: line.source || calculation.source || "fee-core",
     coverage: line.coverage,
     supportLevel: line.supportLevel,
-    reviewRequired: line.reviewRequired
+    reviewRequired: line.reviewRequired,
+    inclusionStatus: lineInclusionStatus(line, decisions),
+    includedInTotal: lineIncludedInTotal(line, decisions)
   }));
+  const includedLines = lines.filter((line) => line.includedInTotal !== false);
 
   return {
     receiptDraftId: `receipt_${requiredString(session.feeSessionId, "feeSessionId")}`,
@@ -249,9 +253,9 @@ export function buildReceiptDraft(session = {}, options = {}) {
     setting: session.setting || "outpatient",
     status: calculation.status ? "ready" : "not_calculated",
     exportStatus: "draft",
-    totalPoints: Number(calculation.totalPoints || lines.reduce((sum, line) => sum + line.totalPoints, 0)),
+    totalPoints: Number(includedLines.reduce((sum, line) => sum + line.totalPoints, 0)),
     lines,
-    lineGroups: groupReceiptLines(lines),
+    lineGroups: groupReceiptLines(includedLines),
     validationIssues: warnings.map((message, index) => ({
       issueId: `warning_${index + 1}`,
       severity: "warning",
@@ -275,20 +279,21 @@ export function buildReviewItems(session = {}) {
     reason: message,
     decision: decisions[`warning_${index + 1}`]
   }));
-  const lineReviewItems = lineItems
-    .filter((line) => {
-      const status = line.status || "candidate";
-      return ["candidate", "needs_review"].includes(status) || line.reviewRequired === true;
-    })
-    .map((line) => reviewItem({
-      reviewItemId: `line_${line.lineId || line.code || line.name}`,
+  const lineReviewItems = lineItems.map((line) => {
+    const reviewItemId = lineReviewItemId(line);
+    const status = line.status || "candidate";
+    const needsReview = ["candidate", "needs_review"].includes(status) || line.reviewRequired === true;
+    return reviewItem({
+      reviewItemId,
       sourceType: "line_item",
-      severity: "review",
+      severity: needsReview ? "review" : "info",
       title: line.name || line.code || "算定候補",
-      reason: line.reason || "算定候補を確認してください。",
+      reason: line.reason || (needsReview ? "算定候補を確認してください。" : "算定中の明細です。必要に応じて外せます。"),
+      defaultStatus: needsReview ? "needs_review" : "approved",
       lineItem: line,
-      decision: decisions[`line_${line.lineId || line.code || line.name}`]
-    }));
+      decision: decisions[reviewItemId]
+    });
+  });
 
   return [...warningItems, ...lineReviewItems];
 }
@@ -548,10 +553,29 @@ function reviewItem(input) {
     severity: input.severity,
     title: input.title,
     reason: input.reason,
-    status: decision?.status || "needs_review",
+    status: decision?.status || input.defaultStatus || "needs_review",
     decision,
     lineItem: input.lineItem
   });
+}
+
+function lineReviewItemId(line = {}) {
+  return `line_${line.lineId || line.code || line.name}`;
+}
+
+function lineDecision(line = {}, decisions = {}) {
+  return decisions[lineReviewItemId(line)] || null;
+}
+
+function lineInclusionStatus(line = {}, decisions = {}) {
+  const status = lineDecision(line, decisions)?.status;
+  if (status === "rejected") return "excluded";
+  if (status === "edited") return "pending";
+  return "included";
+}
+
+function lineIncludedInTotal(line = {}, decisions = {}) {
+  return lineInclusionStatus(line, decisions) === "included";
 }
 
 function reviewWarningTitle(message = "") {

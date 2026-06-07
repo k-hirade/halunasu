@@ -158,6 +158,7 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.equal(detail.body.receiptDraft.totalPoints, 137);
   assert.ok(detail.body.reviewItems.length >= 1);
   assert.equal(decision.body.feeSession.reviewDecisions[reviewItems.body.reviewItems[0].reviewItemId].status, "approved");
+  assert.equal(decision.body.receiptDraft.totalPoints, 137);
   assert.equal(listed.body.feeSessions.length, 1);
   assert.equal(listed.body.page, 1);
   assert.equal(listed.body.totalCount, 1);
@@ -1261,6 +1262,79 @@ test("merges deterministic performed imaging when structured facts miss it", asy
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
 });
 
+test("supplements structured facts only from objective findings", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 680,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "unknown", evidence: "", confidence: "low" },
+    diagnoses: [
+      { name: "脳梗塞疑い", status: "suspected", evidence: "左中大脳動脈領域脳梗塞" }
+    ],
+    billing_events: [],
+    excluded_events: [
+      {
+        type: "imaging",
+        name: "頭部MRI・MRA",
+        status: "ordered",
+        evidence: "頭部MRI・MRA緊急撮影",
+        reason: "計画欄の撮影予定"
+      }
+    ],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Stroke Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-06",
+    clinicalText: [
+      "O（Objective：客観的情報）",
+      "頭部CT：明らかな出血なし、早期虚血変化あり（左MCA領域）",
+      "血液検査：血糖142mg/dL",
+      "A（Assessment：評価）",
+      "左中大脳動脈領域脳梗塞（急性期）",
+      "P（Plan：計画）",
+      "頭部MRI・MRA緊急撮影（DWI・FLAIR）"
+    ].join("\n")
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(
+    receivedInput.calculationOptions.imaging_orders.map((order) => order.kind),
+    ["ct"]
+  );
+  assert.equal(
+    receivedInput.calculationOptions.imaging_orders.some((order) => order.kind === "mri"),
+    false
+  );
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("頭部MRI")));
+});
+
 test("records fee calculation progress and split clinical structuring metrics", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -1372,6 +1446,52 @@ test("adds review warning when calculation produces no candidate lines", async (
   assert.ok(calculation.body.reviewItems.length >= 1);
 });
 
+test("normalizes internal calculator warnings before returning review output", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.calculate = async () => ({
+    provider: "test_fee_engine",
+    source: "test",
+    status: "completed",
+    totalPoints: 0,
+    lineItems: [],
+    warnings: [
+      "Lab management fee skipped: facility_standard_not_found",
+      "hospital_profile_missing: 施設基準がないため検体検査管理加算は自動追加しない",
+      "D026 judgement fee for group 3",
+      "Collection fee requested by blood_venous",
+      "Medication fee candidate for in_house"
+    ]
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Warning Normalize Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-06",
+    clinicalText: "血液検査を実施。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(calculation.body.calculationResult.warnings.some((warning) => /Lab management|D026|Collection fee|Medication fee/i.test(warning)), false);
+  assert.equal(
+    calculation.body.calculationResult.warnings.filter((warning) => warning.includes("施設基準")).length,
+    1
+  );
+  assert.ok(calculation.body.reviewItems.some((item) => item.title === "検査判断料の確認"));
+  assert.ok(calculation.body.reviewItems.some((item) => item.title === "採血料の確認"));
+  assert.ok(calculation.body.reviewItems.some((item) => item.title === "投薬料の確認"));
+});
+
 test("keeps explicit legacy calculation options over inferred values", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -1420,6 +1540,89 @@ test("keeps explicit legacy calculation options over inferred values", async () 
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
   assert.equal(detail.body.feeSession.calculationOptionsSource, "manual");
   assert.deepEqual(detail.body.feeSession.calculationOptionsAutoKeys, []);
+});
+
+test("clears stale clinical-auto diagnoses when clinical text changes", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Clinical Reset Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-06",
+    clinicalText: "月経困難症。経腟超音波を実施。",
+    diagnoses: [{ name: "月経困難症" }],
+    diagnosesSource: "clinical_auto",
+    diagnosesClinicalTextHash: "old_hash"
+  }, headers);
+
+  const updated = await request(stores, "PATCH", `/v1/fee/sessions/${session.body.feeSession.feeSessionId}`, {
+    clinicalText: "2型糖尿病。HbA1cを確認し、療養計画書を説明した。",
+    diagnoses: [{ name: "月経困難症" }],
+    diagnosesSource: "clinical_auto"
+  }, headers);
+
+  assert.equal(updated.statusCode, 200);
+  assert.deepEqual(updated.body.feeSession.diagnoses, []);
+  assert.equal(updated.body.feeSession.diagnosesSource, "clinical_auto");
+  assert.notEqual(updated.body.feeSession.diagnosesClinicalTextHash, "old_hash");
+});
+
+test("patient history overrides structured initial visit inference", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 75,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "initial", evidence: "初診として来院", confidence: "high" },
+    diagnoses: [{ name: "糖尿病", status: "confirmed", evidence: "糖尿病" }],
+    billing_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "History Override Patient"
+  }, headers);
+  await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-05-01",
+    diagnoses: [{ name: "糖尿病" }]
+  }, headers);
+  const current = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-06",
+    clinicalText: "初診として来院。糖尿病の継続管理。",
+    diagnoses: [{ name: "糖尿病" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${current.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("再診料候補を優先")));
 });
 
 test("can create inline Platform patient when creating fee session", async () => {

@@ -261,7 +261,7 @@ async function routeFeeApiRequest(input = {}) {
       return notFound("fee session not found");
     }
     const normalized = validateUpdateFeeSessionInput(input.body || {});
-    const patch = await resolveFeeSessionPatch(context, platformStore, normalized, input.now || new Date());
+    const patch = await resolveFeeSessionPatch(context, platformStore, normalized, input.now || new Date(), current);
     const result = await feeStore.updateSession(context.session.orgId, parts[3], patch);
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.session_updated",
@@ -279,7 +279,10 @@ async function routeFeeApiRequest(input = {}) {
       }
     });
 
-    return ok(result);
+    return ok({
+      ...result,
+      receiptDraft: buildReceiptDraft(result.feeSession, { now: input.now || new Date() })
+    });
   }
 
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "receipt-draft") {
@@ -307,7 +310,10 @@ async function routeFeeApiRequest(input = {}) {
       }
     });
 
-    return ok(result);
+    return ok({
+      ...result,
+      receiptDraft: buildReceiptDraft(result.feeSession, { now: input.now || new Date() })
+    });
   }
 
   if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "calculate") {
@@ -851,12 +857,13 @@ async function resolveDepartment(context, platformStore, departmentId) {
   return department;
 }
 
-async function resolveFeeSessionPatch(context, platformStore, normalized, now) {
+async function resolveFeeSessionPatch(context, platformStore, normalized, now, current = {}) {
   const patch = {
     ...normalized,
     ...calculationOptionsProvenanceForClientInput(normalized),
     ...diagnosesProvenanceForClientInput(normalized)
   };
+  applyClinicalTextChangeGuards(patch, normalized, current);
   if (normalized.patientId || normalized.patient) {
     const patient = await resolveFeePatient(context, platformStore, normalized);
     patch.patientId = patient.patientId;
@@ -879,6 +886,36 @@ async function resolveFeeSessionPatch(context, platformStore, normalized, now) {
 
   delete patch.patient;
   return patch;
+}
+
+function applyClinicalTextChangeGuards(patch, normalized, current = {}) {
+  if (!hasOwn(normalized, "clinicalText")) {
+    return;
+  }
+  const nextHash = clinicalTextHash(normalized.clinicalText || "");
+  const currentHash = clinicalTextHash(current.clinicalText || "");
+  if (nextHash === currentHash) {
+    return;
+  }
+
+  const currentDiagnosisSource = String(current.diagnosesSource || "").trim();
+  const nextDiagnosisSource = hasOwn(normalized, "diagnosesSource")
+    ? String(normalized.diagnosesSource || "").trim()
+    : currentDiagnosisSource;
+  if (nextDiagnosisSource === "clinical_auto" || currentDiagnosisSource === "clinical_auto") {
+    patch.diagnoses = [];
+    patch.diagnosesSource = "clinical_auto";
+    patch.diagnosesClinicalTextHash = nextHash;
+  }
+
+  if (
+    String(current.calculationOptionsSource || "").trim() === "clinical_auto"
+    && !hasOwn(normalized, "calculationOptions")
+  ) {
+    patch.calculationOptions = null;
+    patch.calculationOptionsSource = null;
+    patch.calculationOptionsAutoKeys = [];
+  }
 }
 
 function calculationOptionsProvenanceForClientInput(input = {}) {
@@ -948,7 +985,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     openAiTimeoutMs: Number(
       input.openAiFeeClinicalTimeoutMs
       || process.env.OPENAI_FEE_CLINICAL_TIMEOUT_MS
-      || 12000
+      || 0
     ),
     priorSessions,
     clinicalFactsExtractor: input.clinicalFactsExtractor
@@ -969,6 +1006,10 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
   }
   if (shouldApplyClinicalDiagnoses(baseSession, legacy.diagnoses, calculationInput)) {
     patch.diagnoses = legacy.diagnoses;
+    patch.diagnosesSource = "clinical_auto";
+    patch.diagnosesClinicalTextHash = clinicalTextHash(calculationInput.clinicalText || baseSession.clinicalText || "");
+  } else if (shouldClearClinicalAutoDiagnoses(baseSession, legacy.diagnoses, calculationInput)) {
+    patch.diagnoses = [];
     patch.diagnosesSource = "clinical_auto";
     patch.diagnosesClinicalTextHash = clinicalTextHash(calculationInput.clinicalText || baseSession.clinicalText || "");
   }
@@ -1175,7 +1216,7 @@ function normalizeMasterMatchText(value) {
 }
 
 function addSessionReviewWarnings(session = {}, calculationResult = {}, extraWarnings = []) {
-  const warnings = uniqueStrings([
+  const warnings = normalizeCalculationWarnings([
     ...(Array.isArray(calculationResult.warnings) ? calculationResult.warnings : []),
     ...(Array.isArray(extraWarnings) ? extraWarnings : []),
     ...sessionLevelReviewWarnings(session)
@@ -1192,6 +1233,95 @@ function addSessionReviewWarnings(session = {}, calculationResult = {}, extraWar
     ...calculationResult,
     warnings
   };
+}
+
+function normalizeCalculationWarnings(values = []) {
+  const result = [];
+  const seen = new Set();
+  for (const value of values) {
+    const warning = normalizeCalculationWarning(value);
+    if (!warning) {
+      continue;
+    }
+    const key = calculationWarningKey(warning);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(warning);
+  }
+  return result;
+}
+
+function normalizeCalculationWarning(value = "") {
+  let warning = String(value || "").trim().replace(/\s+/gu, " ");
+  if (!warning) {
+    return "";
+  }
+  if (/Lab management fee skipped: facility_standard_not_found|facility_standard_not_found/u.test(warning)) {
+    return "施設基準が登録されていないため、検体検査管理加算は自動追加していません。";
+  }
+  if (/hospital_profile_missing/u.test(warning)) {
+    return warning.replace(/^hospital_profile_missing\s*[:：]\s*/u, "") || "施設基準を確認してください。";
+  }
+  if (/Outpatient rapid lab add-on skipped: same_day_result_explanation_and_document_required/i.test(warning)) {
+    return "外来迅速検体検査加算は、当日説明・文書要件を確認できないため自動追加していません。";
+  }
+  if (/Required comment candidate:/i.test(warning)) {
+    return warning
+      .replace(/^Required comment candidate:\s*/iu, "レセプトコメントの確認: ")
+      .replace(/\s+needs\s+/iu, " に必要なコメント: ");
+  }
+  if (/D026 judgement fee for group/i.test(warning)) {
+    return "検査判断料の候補です。実施検査と同月算定条件を確認してください。";
+  }
+  if (/Collection fee requested by blood_venous/i.test(warning)) {
+    return "静脈採血料の候補です。採血実施と算定条件を確認してください。";
+  }
+  if (/Imaging fee candidate for ct/i.test(warning)) {
+    return "CT撮影に関する画像診断料候補です。撮影内容と機器区分を確認してください。";
+  }
+  if (/Imaging fee candidate for mri/i.test(warning)) {
+    return "MRI撮影に関する画像診断料候補です。撮影内容と機器区分を確認してください。";
+  }
+  if (/Imaging fee candidate for simple_radiography/i.test(warning)) {
+    return "単純X線に関する画像診断料候補です。撮影方式と写真診断区分を確認してください。";
+  }
+  if (/Medication fee candidate for in_house/i.test(warning)) {
+    return "院内処方に関する投薬料候補です。処方内容と算定条件を確認してください。";
+  }
+  if (/Outpatient basic fee candidate for initial/i.test(warning)) {
+    return "初診料の候補です。受診履歴と初診の条件を確認してください。";
+  }
+  if (/Outpatient basic fee candidate for revisit/i.test(warning)) {
+    return "再診料の候補です。受診履歴と再診の条件を確認してください。";
+  }
+  if (/Input medical procedure code matched master only/i.test(warning)) {
+    return "標準マスターには一致しましたが、章ごとの算定条件は未確認です。";
+  }
+  return warning.replace(/^[a-z][a-z0-9_]*\s*[:：]\s*/iu, "");
+}
+
+function calculationWarningKey(warning = "") {
+  const text = String(warning || "").trim();
+  const medication = text.match(/薬剤「([^」]+)」/u)?.[1];
+  if (medication) {
+    return `medication:${medication.replace(/\d+(?:\.\d+)?\s*(?:mg|g|μg|mL).*$/iu, "").trim()}:${warningReasonKey(text)}`;
+  }
+  if (/施設基準/u.test(text)) return `facility:${warningReasonKey(text)}`;
+  if (/初診|再診|受診履歴|過去算定記録/u.test(text)) return `visit:${warningReasonKey(text)}`;
+  if (/超音波|エコー|経腟|経膣/u.test(text)) return `ultrasound:${warningReasonKey(text)}`;
+  if (/CA\s*125|CA125|ＣＡ１２５/u.test(text)) return `ca125:${warningReasonKey(text)}`;
+  return text.replace(/\s+/gu, "").slice(0, 120);
+}
+
+function warningReasonKey(warning = "") {
+  if (/(数量|日数|回数|総量).*(不足|不明|明記なし)/u.test(warning)) return "quantity";
+  if (/(予定|依頼|次回|今後|検討)/u.test(warning)) return "planned";
+  if (/(マスター|標準コード|未対応|自動確定|直接候補化できない)/u.test(warning)) return "unresolved";
+  if (/施設基準/u.test(warning)) return "facility";
+  if (/初診|再診|受診履歴|過去算定記録/u.test(warning)) return "visit";
+  return warning.replace(/\s+/gu, "").slice(0, 80);
 }
 
 function hasAnyCalculationInput(session = {}) {
@@ -1250,6 +1380,19 @@ function shouldApplyClinicalDiagnoses(session = {}, inferredDiagnoses = [], calc
       String(session.diagnosesClinicalTextHash || "") !== currentHash
       || !sameDiagnosisNames(session.diagnoses, inferredDiagnoses)
     );
+}
+
+function shouldClearClinicalAutoDiagnoses(session = {}, inferredDiagnoses = [], calculationInput = {}) {
+  if (Array.isArray(inferredDiagnoses) && inferredDiagnoses.length > 0) {
+    return false;
+  }
+  if (String(session.diagnosesSource || "").trim() !== "clinical_auto") {
+    return false;
+  }
+  if (!hasDiagnosisInput(session)) {
+    return false;
+  }
+  return Boolean(clinicalTextHash(calculationInput.clinicalText || session.clinicalText || ""));
 }
 
 function sameDiagnosisNames(left = [], right = []) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePlatformAuth } from "./platform-auth";
 
 const FEE_SESSION_PAGE_SIZE = 20;
@@ -288,6 +288,12 @@ function FeeSessionDetailView({ sessionId }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
+  const [autoSaveStatus, setAutoSaveStatus] = useState("saved");
+  const [autoSaveError, setAutoSaveError] = useState("");
+  const [candidateDetail, setCandidateDetail] = useState(null);
+  const suppressAutoSaveRef = useRef(false);
+  const autoSaveTimerRef = useRef(null);
+  const pendingAutoSaveRef = useRef(null);
 
   const masterSearchAvailable = Boolean(masterStatus);
   const filteredPatients = useMemo(() => {
@@ -309,6 +315,22 @@ function FeeSessionDetailView({ sessionId }) {
     [form.patientId, patients]
   );
 
+  const applyDetail = useCallback((detail) => {
+    suppressAutoSaveRef.current = true;
+    applyDetailResponse(detail, {
+      setFeeSession,
+      setReceiptDraft,
+      setReviewItems,
+      setForm,
+      setDiagnosesTouched,
+      setOrderRows,
+      setOrderRowsTouched,
+      setClinicalTextBaselineHash
+    });
+    setAutoSaveStatus("saved");
+    setAutoSaveError("");
+  }, []);
+
   useEffect(() => {
     setSelectedMasterIndex(0);
   }, [masterItems, masterQuery, masterType]);
@@ -325,22 +347,13 @@ function FeeSessionDetailView({ sessionId }) {
       setFacilities(bootstrap.facilities || []);
       setDepartments(bootstrap.departments || []);
       setMasterStatus(bootstrap.masterStatus || null);
-      applyDetailResponse(detail, {
-        setFeeSession,
-        setReceiptDraft,
-        setReviewItems,
-        setForm,
-        setDiagnosesTouched,
-        setOrderRows,
-        setOrderRowsTouched,
-        setClinicalTextBaselineHash
-      });
+      applyDetail(detail);
     } catch (error) {
       setMessage({ type: "error", text: toUserFacingErrorMessage(error, "算定詳細を読み込めませんでした。") });
     } finally {
       setLoading(false);
     }
-  }, [feeApi, sessionId]);
+  }, [applyDetail, feeApi, sessionId]);
 
   useEffect(() => {
     loadAll();
@@ -348,18 +361,9 @@ function FeeSessionDetailView({ sessionId }) {
 
   const refreshDetail = useCallback(async () => {
     const detail = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/detail`);
-    applyDetailResponse(detail, {
-      setFeeSession,
-      setReceiptDraft,
-      setReviewItems,
-      setForm,
-      setDiagnosesTouched,
-      setOrderRows,
-      setOrderRowsTouched,
-      setClinicalTextBaselineHash
-    });
+    applyDetail(detail);
     return detail;
-  }, [feeApi, sessionId]);
+  }, [applyDetail, feeApi, sessionId]);
 
   useEffect(() => {
     if (feeSession?.status !== "calculating") {
@@ -468,7 +472,7 @@ function FeeSessionDetailView({ sessionId }) {
     }
   }
 
-  async function saveDetails(options = {}) {
+  const saveDetails = useCallback(async (options = {}) => {
     const body = buildFeeSessionPayload({
       defaultFacilityId,
       form,
@@ -483,21 +487,60 @@ function FeeSessionDetailView({ sessionId }) {
       csrf: true,
       body
     });
-    applyDetailResponse(response, {
-      setFeeSession,
-      setReceiptDraft,
-      setReviewItems,
-      setForm,
-      setDiagnosesTouched,
-      setOrderRows,
-      setOrderRowsTouched,
-      setClinicalTextBaselineHash
-    });
+    applyDetail(response);
     if (!options.silent) {
       setMessage({ type: "success", text: "入力を保存しました。" });
     }
     return response;
-  }
+  }, [
+    applyDetail,
+    clinicalTextBaselineHash,
+    defaultFacilityId,
+    diagnosesTouched,
+    feeApi,
+    form,
+    orderRows,
+    orderRowsTouched,
+    patients,
+    sessionId
+  ]);
+
+  useEffect(() => {
+    if (loading || !feeSession?.feeSessionId || feeSession.status === "calculating") {
+      return undefined;
+    }
+    if (suppressAutoSaveRef.current) {
+      suppressAutoSaveRef.current = false;
+      return undefined;
+    }
+    window.clearTimeout(autoSaveTimerRef.current);
+    setAutoSaveStatus("pending");
+    setAutoSaveError("");
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      setAutoSaveStatus("saving");
+      const task = saveDetails({ silent: true, auto: true })
+        .then(() => {
+          setAutoSaveStatus("saved");
+          setAutoSaveError("");
+        })
+        .catch((error) => {
+          setAutoSaveStatus("error");
+          setAutoSaveError(toUserFacingErrorMessage(error, "自動保存できませんでした。"));
+        })
+        .finally(() => {
+          pendingAutoSaveRef.current = null;
+        });
+      pendingAutoSaveRef.current = task;
+    }, 700);
+    return () => window.clearTimeout(autoSaveTimerRef.current);
+  }, [
+    feeSession?.feeSessionId,
+    feeSession?.status,
+    form,
+    loading,
+    orderRows,
+    saveDetails
+  ]);
 
   async function handleSave(event) {
     event.preventDefault();
@@ -508,6 +551,10 @@ function FeeSessionDetailView({ sessionId }) {
 
   async function calculate() {
     await runBusy(setBusy, setMessage, async () => {
+      window.clearTimeout(autoSaveTimerRef.current);
+      if (pendingAutoSaveRef.current) {
+        await pendingAutoSaveRef.current;
+      }
       const saved = await saveDetails({ silent: true });
       setFeeSession((current) => ({
         ...(saved.feeSession || current || {}),
@@ -526,16 +573,7 @@ function FeeSessionDetailView({ sessionId }) {
         csrf: true,
         body: {}
       });
-      applyDetailResponse(response, {
-        setFeeSession,
-        setReceiptDraft,
-        setReviewItems,
-        setForm,
-        setDiagnosesTouched,
-        setOrderRows,
-        setOrderRowsTouched,
-        setClinicalTextBaselineHash
-      });
+      applyDetail(response);
       setMessage({
         type: "success",
         text: response.feeSession?.status === "calculating"
@@ -577,8 +615,12 @@ function FeeSessionDetailView({ sessionId }) {
         csrf: true,
         body: { status }
       });
+      setFeeSession(response.feeSession || feeSession);
       setReviewItems(response.reviewItems || []);
-      setMessage({ type: "success", text: "レビューを更新しました。" });
+      setReceiptDraft(response.receiptDraft || receiptDraft);
+      setAutoSaveStatus("saved");
+      setAutoSaveError("");
+      setMessage({ type: "success", text: "採否を更新しました。" });
     });
   }
 
@@ -815,23 +857,15 @@ function FeeSessionDetailView({ sessionId }) {
 
         <div className="fee-detail-main">
           <section className="fee-card fee-result-card">
-            <div className="fee-section-head">
-              <div>
-                <h2>算定候補</h2>
-                <p>候補化された算定行と点数を確認します。確認事項はレビュー欄にまとめています。</p>
-              </div>
-            </div>
-            <CalculationResult feeSession={feeSession} calculation={calculation} reviewItemCount={displayReviewItems.length} />
-          </section>
-
-          <section className="fee-card fee-review-card">
-            <div className="fee-section-head">
-              <div>
-                <h2>レビュー</h2>
-                <p>{displayReviewItems.length ? `要確認 ${displayReviewItems.length.toLocaleString()}件` : "確認が必要な項目はありません。"}</p>
-              </div>
-            </div>
-            <ReviewList disabled={busy} items={displayReviewItems} onDecision={decideReviewItem} selected={Boolean(sessionId)} />
+            <CandidateWorkbench
+              calculation={calculation}
+              disabled={busy}
+              feeSession={feeSession}
+              onDecision={decideReviewItem}
+              onOpenDetail={setCandidateDetail}
+              receiptDraft={receiptDraft}
+              reviewItems={displayReviewItems}
+            />
           </section>
 
           <section className="fee-card fee-receipt-card">
@@ -844,16 +878,16 @@ function FeeSessionDetailView({ sessionId }) {
       <div className="fee-action-bar">
         <div>
           <strong>{message?.type === "success" ? message.text : "入力内容を確認してください"}</strong>
-          <small>算定結果は確定請求ではありません。根拠とレビュー項目を確認してください。</small>
+          <small>{autoSaveLabel(autoSaveStatus, autoSaveError)}</small>
         </div>
         <div className="fee-action-buttons">
-          <button className="btn btn--ghost" disabled={busy || isCalculating} form="fee-session-detail-form" type="submit">保存</button>
           <button className="btn btn--primary" disabled={busy || isCalculating} onClick={calculate} type="button">
             {isCalculating ? "算定候補を作成中" : "カルテから算定候補を作成"}
           </button>
           <button className="btn btn--ghost btn--icon" disabled={busy} onClick={loadAll} type="button" aria-label="最新の状態に更新">↻</button>
         </div>
       </div>
+      <CandidateDetailModal item={candidateDetail} disabled={busy} onClose={() => setCandidateDetail(null)} onDecision={decideReviewItem} />
     </main>
   );
 }
@@ -1027,6 +1061,214 @@ function OrderEditor({ onAdd, onRemove, onUpdate, rows }) {
         </div>
       ))}
       <button className="btn btn--ghost btn--sm" onClick={onAdd} type="button">オーダー行を追加</button>
+    </div>
+  );
+}
+
+function CandidateWorkbench({ calculation, disabled, feeSession, onDecision, onOpenDetail, receiptDraft, reviewItems }) {
+  if (feeSession?.status === "calculating") {
+    return (
+      <div className="result result-empty">
+        <div className="notice-card">
+          <strong>算定候補を作成中です</strong>
+          <p>{feeSession?.patientSnapshot?.displayName || feeSession?.patientId || "患者未選択"} / {feeSession?.serviceDate || "診療日未設定"} / 計算中</p>
+        </div>
+        <CalculationProgress progress={feeSession?.calculationProgress} />
+        <p className="field-note">完了すると算定候補、確認項目、レセプト案が自動で更新されます。</p>
+      </div>
+    );
+  }
+
+  if (!calculation) {
+    return (
+      <div className="result result-empty">
+        <div className="fee-section-head">
+          <div>
+            <h2>算定候補</h2>
+            <p>患者とカルテ本文を確認し、「カルテから算定候補を作成」で候補を作成してください。</p>
+          </div>
+        </div>
+        <div className="notice-card">
+          <strong>算定記録を準備しました</strong>
+          <p>{feeSession?.patientSnapshot?.displayName || feeSession?.patientId || "患者未選択"} / {feeSession?.serviceDate || "診療日未設定"} / {statusLabel(feeSession?.status || "ready")}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const model = buildCandidateWorkbenchModel({ calculation, receiptDraft, reviewItems });
+  return (
+    <div className="candidate-workbench">
+      <div className="fee-section-head">
+        <div>
+          <h2>算定候補</h2>
+          <p>算定できる可能性を見逃さないよう、提案・採用中・修正が必要な項目に分けています。</p>
+        </div>
+      </div>
+
+      <div className="candidate-summary">
+        <div className="candidate-total">
+          <span>候補化済み部分合計</span>
+          <strong>{Number(model.includedTotalPoints || 0).toLocaleString()}点</strong>
+          <small>確定請求ではありません。採否を変えると合計も変わります。</small>
+        </div>
+        <div className="candidate-summary-grid">
+          <div><span>算定中</span><strong>{model.includedCount.toLocaleString()}件</strong></div>
+          <div><span>外し/保留</span><strong>{(model.excludedCount + model.pendingCount).toLocaleString()}件</strong></div>
+          <div><span>増点提案</span><strong>{model.proposals.length.toLocaleString()}件</strong></div>
+        </div>
+      </div>
+
+      <section className="candidate-bucket candidate-bucket--proposal">
+        <BucketHeader title="増点できる（提案）" count={model.proposals.length} note="条件を満たすなら点数にできる可能性がある項目です。" />
+        {model.proposals.length ? (
+          <div className="proposal-list">
+            {model.proposals.map((item) => (
+              <ProposalCard disabled={disabled} item={item} key={item.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
+            ))}
+          </div>
+        ) : <p className="field-note">今の入力から追加で提案できる項目はありません。</p>}
+      </section>
+
+      <section className="candidate-bucket">
+        <BucketHeader title="算定中" count={model.includedCount} note="いま合計点数に入っている明細です。必要に応じて外せます。" />
+        {model.lines.length ? (
+          <div className="candidate-line-list">
+            {model.lines.map((line) => (
+              <CandidateLineRow disabled={disabled} item={line} key={line.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
+            ))}
+          </div>
+        ) : <p className="field-note">算定中の明細はまだありません。</p>}
+      </section>
+
+      <section className="candidate-bucket">
+        <BucketHeader title="確認・修正が必要" count={model.issues.length} note="このままだと算定しづらい項目です。内容を確認してください。" />
+        {model.issues.length ? (
+          <div className="issue-list">
+            {model.issues.map((item) => (
+              <IssueCard disabled={disabled} item={item} key={item.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
+            ))}
+          </div>
+        ) : <p className="field-note">追加で確認が必要な項目はありません。</p>}
+      </section>
+    </div>
+  );
+}
+
+function BucketHeader({ count, note, title }) {
+  return (
+    <header className="candidate-bucket-head">
+      <div>
+        <h3>{title}</h3>
+        <p>{note}</p>
+      </div>
+      <span>{count.toLocaleString()}件</span>
+    </header>
+  );
+}
+
+function ProposalCard({ disabled, item, onDecision, onOpenDetail }) {
+  return (
+    <article className="proposal-card">
+      <div className="proposal-card-main">
+        <span className="proposal-kicker">条件を満たせば算定できます</span>
+        <h4>{item.displayTitle}</h4>
+        <p>{item.displayReason}</p>
+        <small>{item.conditionText}</small>
+      </div>
+      <div className="proposal-card-actions">
+        <span className="proposal-points">{item.pointsLabel}</span>
+        <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">なぜ？</button>
+        <button className="btn btn--primary btn--sm" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">
+          保留にする
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
+  return (
+    <article className={`candidate-line-row candidate-line-row--${item.inclusionStatus}`}>
+      <div className="candidate-line-action">
+        <select
+          aria-label={`${item.name}の採否`}
+          disabled={disabled}
+          value={item.decisionStatus}
+          onChange={(event) => onDecision(item.reviewItemId, event.target.value)}
+        >
+          <option value="approved">算定する</option>
+          <option value="edited">保留</option>
+          <option value="rejected">算定しない</option>
+        </select>
+      </div>
+      <div className="candidate-line-main">
+        <strong>{item.name}</strong>
+        <small>{item.metaLabel}</small>
+      </div>
+      <span className="candidate-line-status">{item.statusLabel}</span>
+      <strong className="candidate-line-points">{Number(item.totalPoints || 0).toLocaleString()}点</strong>
+      <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">?</button>
+    </article>
+  );
+}
+
+function IssueCard({ disabled, item, onDecision, onOpenDetail }) {
+  return (
+    <article className="issue-card">
+      <div>
+        <strong>{item.displayTitle}</strong>
+        <p>{item.displayReason}</p>
+      </div>
+      <div className="issue-card-actions">
+        <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">確認する</button>
+        <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">保留</button>
+      </div>
+    </article>
+  );
+}
+
+function CandidateDetailModal({ disabled, item, onClose, onDecision }) {
+  if (!item) {
+    return null;
+  }
+  const canDecide = Boolean(item.reviewItemId);
+  return (
+    <div className="fee-modal-overlay" role="presentation" onMouseDown={onClose}>
+      <section className="fee-modal-card" role="dialog" aria-modal="true" aria-label={item.displayTitle || item.name || "算定候補の説明"} onMouseDown={(event) => event.stopPropagation()}>
+        <header className="fee-modal-head">
+          <div>
+            <span className="label">{item.kindLabel || "算定候補"}</span>
+            <h2>{item.displayTitle || item.name}</h2>
+          </div>
+          <button className="btn btn--ghost btn--icon" onClick={onClose} type="button" aria-label="閉じる">×</button>
+        </header>
+        <div className="fee-modal-body">
+          <div className="modal-point-summary">
+            <span>点数</span>
+            <strong>{item.pointsLabel || `${Number(item.totalPoints || 0).toLocaleString()}点`}</strong>
+          </div>
+          <section>
+            <h3>判断のポイント</h3>
+            <p>{item.displayReason || item.reasonText || "算定条件を確認してください。"}</p>
+          </section>
+          <section>
+            <h3>条件</h3>
+            <p>{item.conditionText || "カルテ内容、実施状況、施設基準を確認してください。"}</p>
+          </section>
+        </div>
+        <footer className="fee-modal-footer">
+          {canDecide && item.kind === "line" ? (
+            <>
+              <button className="btn btn--primary" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">算定する</button>
+              <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">保留</button>
+              <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected")} type="button">算定しない</button>
+            </>
+          ) : canDecide ? (
+            <button className="btn btn--primary" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">保留にする</button>
+          ) : null}
+        </footer>
+      </section>
     </div>
   );
 }
@@ -1766,6 +2008,156 @@ function buildDisplayReviewItems(items = []) {
   return result;
 }
 
+function buildCandidateWorkbenchModel({ calculation, receiptDraft, reviewItems }) {
+  const items = Array.isArray(reviewItems) ? reviewItems : [];
+  const lineReviewMap = new Map(items
+    .filter((item) => item?.sourceType === "line_item")
+    .map((item) => [lineReviewItemClientId(item.lineItem || {}), item]));
+  const receiptLineMap = new Map((receiptDraft?.lines || []).map((line) => [receiptLineKey(line), line]));
+  const lines = (Array.isArray(calculation?.lineItems) ? calculation.lineItems : []).map((line) => {
+    const reviewItem = lineReviewMap.get(lineReviewItemClientId(line)) || null;
+    const receiptLine = receiptLineMap.get(lineReviewItemClientId(line)) || receiptLineMap.get(line.code || "") || null;
+    const decisionStatus = lineDecisionStatus(reviewItem, receiptLine);
+    const inclusionStatus = decisionStatus === "rejected" ? "excluded" : decisionStatus === "edited" ? "pending" : "included";
+    return {
+      kind: "line",
+      kindLabel: "算定中の明細",
+      reviewItemId: reviewItem?.reviewItemId || lineReviewItemClientId(line),
+      name: line.name || "未分類",
+      displayTitle: line.name || "算定候補",
+      displayReason: lineDisplayReason(line, reviewItem),
+      conditionText: lineConditionText(line),
+      decisionStatus,
+      inclusionStatus,
+      metaLabel: lineMetaLabel(line),
+      statusLabel: inclusionStatusLabel(inclusionStatus),
+      totalPoints: Number(line.totalPoints || 0),
+      pointsLabel: `${Number(line.totalPoints || 0).toLocaleString()}点`,
+      lineItem: line
+    };
+  });
+  const warningItems = items.filter((item) => item?.sourceType !== "line_item");
+  const proposals = [];
+  const issues = [];
+  for (const item of warningItems) {
+    const normalized = normalizeActionItem(item);
+    if (isIncreaseProposal(item, normalized)) {
+      proposals.push({
+        ...normalized,
+        kind: "proposal",
+        kindLabel: "増点提案",
+        pointsLabel: normalized.pointsLabel || "点数確認"
+      });
+    } else {
+      issues.push({
+        ...normalized,
+        kind: "issue",
+        kindLabel: "確認・修正"
+      });
+    }
+  }
+  const includedLines = lines.filter((line) => line.inclusionStatus === "included");
+  return {
+    lines,
+    proposals,
+    issues,
+    includedCount: includedLines.length,
+    excludedCount: lines.filter((line) => line.inclusionStatus === "excluded").length,
+    pendingCount: lines.filter((line) => line.inclusionStatus === "pending").length,
+    includedTotalPoints: receiptDraft?.totalPoints ?? includedLines.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0)
+  };
+}
+
+function lineReviewItemClientId(line = {}) {
+  return `line_${line.lineId || line.sourceLineId || line.code || line.name}`;
+}
+
+function receiptLineKey(line = {}) {
+  return line.sourceLineId ? `line_${line.sourceLineId}` : line.code || line.name || "";
+}
+
+function lineDecisionStatus(reviewItem, receiptLine) {
+  if (["approved", "rejected", "edited"].includes(reviewItem?.status)) {
+    return reviewItem.status;
+  }
+  if (receiptLine?.inclusionStatus === "excluded") return "rejected";
+  if (receiptLine?.inclusionStatus === "pending") return "edited";
+  return "approved";
+}
+
+function inclusionStatusLabel(status) {
+  return {
+    included: "算定中",
+    excluded: "算定しない",
+    pending: "保留"
+  }[status] || "算定中";
+}
+
+function lineDisplayReason(line = {}, reviewItem = null) {
+  const reason = reviewItem?.displayReason || humanizeReviewMessage(line.reason || reviewItem?.reason || "");
+  if (reason && reason !== "算定候補の内容を確認してください。") {
+    return reason;
+  }
+  return `${line.name || "この明細"}を候補化しています。条件に合わない場合は「算定しない」に変更してください。`;
+}
+
+function lineConditionText(line = {}) {
+  const category = lineBusinessCategory(line);
+  if (category === "基本料") return "受診履歴と初診/再診の条件を確認してください。";
+  if (category === "画像") return "実施済みの検査であること、撮影内容、機器区分を確認してください。";
+  if (category === "薬剤" || category === "投薬") return "今回処方した薬剤・日数・数量を確認してください。";
+  if (category === "検査" || category === "診療行為") return "当日に実施した内容であること、必要なコメントや病名を確認してください。";
+  return "カルテ内容と算定条件を確認してください。";
+}
+
+function normalizeActionItem(item = {}) {
+  const displayTitle = item.displayTitle || reviewItemTitle(item);
+  const displayReason = item.displayReason || humanizeReviewMessage(item.reason || item.lineItem?.reason || "");
+  return {
+    reviewItemId: item.reviewItemId,
+    displayTitle,
+    displayReason,
+    conditionText: proposalConditionText(displayTitle, displayReason),
+    reasonText: displayReason,
+    pointsLabel: proposalPointsLabel(item, displayTitle, displayReason),
+    sourceItem: item
+  };
+}
+
+function isIncreaseProposal(item = {}, normalized = {}) {
+  const text = `${normalized.displayTitle || ""} ${normalized.displayReason || ""} ${item.title || ""} ${item.reason || ""}`;
+  if (/終了|中止|既往薬|内服中|保留|次回判断|今回処方として確定できない/u.test(text)) {
+    return false;
+  }
+  return /加算|算定できます|算定でき|実施済みの場合|届出|施設基準|病名|コメント|数量|日数|処方|MRI|CT|超音波|CA125|検査判断料|採血料/u.test(text)
+    && !/次回|予定のみ|指導のみ|実施していません/u.test(text);
+}
+
+function proposalConditionText(title = "", reason = "") {
+  const text = `${title} ${reason}`;
+  if (/施設基準|届け出|届出/u.test(text)) {
+    return "施設基準を地方厚生局に届け出済みなら、該当する加算を算定できます。";
+  }
+  if (/MRI|CT|画像|撮影/u.test(text)) {
+    return "実際に当日実施した検査なら算定できます。予定や依頼だけの場合は保留にしてください。";
+  }
+  if (/薬剤|処方|数量|日数/u.test(text)) {
+    return "今回処方した薬剤で、日数・数量を確認できれば算定できます。";
+  }
+  if (/病名|コメント/u.test(text)) {
+    return "必要な病名またはレセプトコメントを確認・追記できれば算定できます。";
+  }
+  return "条件を満たす場合は算定できます。満たさない場合は保留にしてください。";
+}
+
+function proposalPointsLabel(item = {}, title = "", reason = "") {
+  const linePoints = Number(item.lineItem?.totalPoints || 0);
+  if (linePoints > 0) return `+${linePoints.toLocaleString()}点`;
+  const match = `${title} ${reason}`.match(/([+＋]\s*)?(\d{1,4})\s*点/u);
+  if (match) return `+${Number(match[2]).toLocaleString()}点`;
+  return "";
+}
+
 function shouldSuppressWarningForExistingLine(item = {}, lineTexts = "") {
   const text = `${item.title || ""} ${item.reason || ""}`;
   return /レバミピド/u.test(text) && /数量|日数|不足/u.test(text) && /レバミピド/u.test(lineTexts);
@@ -1902,11 +2294,18 @@ function statusLabel(value) {
     completed: "完了",
     candidate: "候補",
     confirmed: "確認済み",
-    approved: "承認",
-    rejected: "却下",
-    edited: "修正済み",
+    approved: "算定する",
+    rejected: "算定しない",
+    edited: "保留",
     not_calculated: "未算定"
   })[value] || value || "-";
+}
+
+function autoSaveLabel(status, error = "") {
+  if (status === "saving") return "保存中...";
+  if (status === "pending") return "変更を自動保存します。";
+  if (status === "error") return error || "自動保存できませんでした。";
+  return "保存済み";
 }
 
 function supportLevelLabel(level) {
