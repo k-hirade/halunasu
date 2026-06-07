@@ -276,6 +276,7 @@ function FeeSessionDetailView({ sessionId }) {
   const [candidateWorkbench, setCandidateWorkbench] = useState(null);
   const [form, setForm] = useState(defaultFeeForm);
   const [diagnosesTouched, setDiagnosesTouched] = useState(false);
+  const [diagnosesEditedSinceLoad, setDiagnosesEditedSinceLoad] = useState(false);
   const [orderRows, setOrderRows] = useState([createEmptyOrderRow()]);
   const [orderRowsTouched, setOrderRowsTouched] = useState(false);
   const [clinicalTextBaselineHash, setClinicalTextBaselineHash] = useState("");
@@ -325,6 +326,7 @@ function FeeSessionDetailView({ sessionId }) {
       setCandidateWorkbench,
       setForm,
       setDiagnosesTouched,
+      setDiagnosesEditedSinceLoad,
       setOrderRows,
       setOrderRowsTouched,
       setClinicalTextBaselineHash
@@ -437,15 +439,26 @@ function FeeSessionDetailView({ sessionId }) {
   }
 
   function updateClinicalText(value) {
+    const nextHash = clinicalTextHash(value);
+    const shouldResetLoadedDiagnoses = diagnosesTouched
+      && !diagnosesEditedSinceLoad
+      && Boolean(clinicalTextBaselineHash)
+      && nextHash !== clinicalTextBaselineHash;
+    if (shouldResetLoadedDiagnoses) {
+      setDiagnosesTouched(false);
+    }
     setForm((current) => ({
       ...current,
       clinicalText: value,
-      diagnosesText: diagnosesTouched ? current.diagnosesText : deriveDiagnosesTextFromClinicalText(value)
+      diagnosesText: (diagnosesTouched && !shouldResetLoadedDiagnoses)
+        ? current.diagnosesText
+        : deriveDiagnosesTextFromClinicalText(value)
     }));
   }
 
   function updateDiagnosesText(value) {
     setDiagnosesTouched(true);
+    setDiagnosesEditedSinceLoad(true);
     updateForm("diagnosesText", value);
   }
 
@@ -1249,8 +1262,9 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
 
 function IssueCard({ disabled, item, onDecision, onOpenDetail }) {
   return (
-    <article className="issue-card">
+    <article className={`issue-card issue-card--${item.issueCategory || "rule"}`}>
       <div>
+        <span className="issue-category-badge">{item.issueCategoryLabel || "確認事項"}</span>
         <strong>{item.displayTitle}</strong>
         <p>{item.displayReason}</p>
         {item.conditionText ? <small>{item.conditionText}</small> : null}
@@ -1626,6 +1640,7 @@ function applyDetailResponse(response, setters) {
   setters.setCandidateWorkbench?.(response.candidateWorkbench || null);
   setters.setForm(formFromFeeSession(session || {}));
   setters.setDiagnosesTouched?.(String(session?.diagnosesSource || "").trim() === "manual");
+  setters.setDiagnosesEditedSinceLoad?.(false);
   setters.setOrderRows(orderRowsFromOrders(session?.orders || []));
   setters.setOrderRowsTouched?.(false);
   setters.setClinicalTextBaselineHash?.(clinicalTextHash(session?.clinicalText || ""));
@@ -2204,15 +2219,52 @@ function lineConditionText(line = {}) {
 function normalizeActionItem(item = {}) {
   const displayTitle = item.displayTitle || reviewItemTitle(item);
   const displayReason = item.displayReason || humanizeReviewMessage(item.reason || item.lineItem?.reason || "");
+  const conditionText = proposalConditionText(displayTitle, displayReason);
+  const issueCategory = item.issueCategory
+    ? { key: item.issueCategory, label: item.issueCategoryLabel || "確認事項" }
+    : issueCategoryForActionItem(item, { displayTitle, displayReason, conditionText });
   return {
     reviewItemId: item.reviewItemId,
     displayTitle,
     displayReason,
-    conditionText: proposalConditionText(displayTitle, displayReason),
+    conditionText,
     reasonText: displayReason,
     pointsLabel: proposalPointsLabel(item, displayTitle, displayReason),
+    issueCategory: issueCategory.key,
+    issueCategoryLabel: issueCategory.label,
     sourceItem: item
   };
+}
+
+function issueCategoryForActionItem(item = {}, normalized = {}) {
+  const text = [
+    normalized.displayTitle,
+    normalized.displayReason,
+    normalized.conditionText,
+    item.title,
+    item.reason,
+    item.candidateProposal?.conditionText,
+    item.lineItem?.name
+  ].filter(Boolean).join(" ");
+  if (/施設基準|地方厚生局|届け出|届出|facility_standard|hospital_profile/u.test(text)) {
+    return { key: "facility", label: "施設設定" };
+  }
+  if (/病名|傷病名|コメント|適応|査定/u.test(text)) {
+    return { key: "diagnosis", label: "病名・コメント" };
+  }
+  if (/薬剤|処方|数量|日数|総量|1回量|1日回数/u.test(text)) {
+    return { key: "medication", label: "薬剤情報" };
+  }
+  if (/標準コード|マスター|コード確定|候補を選ぶ|検索/u.test(text)) {
+    return { key: "master", label: "マスター確認" };
+  }
+  if (/実施|予定|依頼|オーダー|検討|指導のみ|説明のみ|当日/u.test(text)) {
+    return { key: "evidence", label: "実施確認" };
+  }
+  if (/未入力|不足|入力|空欄/u.test(text)) {
+    return { key: "input", label: "入力不足" };
+  }
+  return { key: "rule", label: "算定条件" };
 }
 
 function isIncreaseProposal(item = {}, normalized = {}) {

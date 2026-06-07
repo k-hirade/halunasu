@@ -7,6 +7,7 @@ import {
 } from "../../../packages/auth-client/src/index.js";
 import { createSignedSession } from "../../platform-api/src/auth/session.js";
 import { MemoryPlatformStore } from "../../platform-api/src/store/memory-store.js";
+import { procedureHintQueries } from "../src/clinical-master-resolver.js";
 import { handleFeeApiRequest } from "../src/server.js";
 import { MemoryFeeStore } from "../src/store/memory-store.js";
 
@@ -1719,6 +1720,105 @@ test("clears stale clinical-auto diagnoses when clinical text changes", async ()
   assert.deepEqual(updated.body.feeSession.diagnoses, []);
   assert.equal(updated.body.feeSession.diagnosesSource, "clinical_auto");
   assert.notEqual(updated.body.feeSession.diagnosesClinicalTextHash, "old_hash");
+});
+
+test("clears carried-over manual diagnoses when clinical text is replaced", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Manual Diagnosis Carryover"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-07",
+    clinicalText: "S: 咳と鼻水。A: 急性上気道炎疑い",
+    diagnoses: [{ name: "急性上気道炎疑い" }],
+    diagnosesSource: "manual"
+  }, headers);
+
+  const patched = await request(stores, "PATCH", `/v1/fee/sessions/${session.body.feeSession.feeSessionId}`, {
+    clinicalText: [
+      "A（Assessment：評価）",
+      "季節性アレルギー性鼻炎（スギ・ヒノキ花粉症）",
+      "アレルギー性結膜炎合併"
+    ].join("\n"),
+    diagnoses: [{ name: "急性上気道炎疑い" }],
+    diagnosesSource: "manual"
+  }, headers);
+
+  assert.equal(patched.statusCode, 200);
+  assert.deepEqual(patched.body.feeSession.diagnoses, []);
+  assert.equal(patched.body.feeSession.diagnosesSource, "clinical_auto");
+});
+
+test("does not propose chronic management fee from past history only", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.searchMaster = async (input) => {
+    if (String(input.query || "").includes("特定疾患療養管理料")) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{ kind: "procedure", code: "113000001", name: "特定疾患療養管理料", points: 225 }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "2週間後に再診", confidence: "medium" },
+    diagnoses: [
+      { name: "季節性アレルギー性鼻炎", status: "active", evidence: "季節性アレルギー性鼻炎" },
+      { name: "アレルギー性結膜炎", status: "active", evidence: "アレルギー性結膜炎" }
+    ],
+    billing_events: [
+      {
+        type: "counseling",
+        name: "アレルゲン免疫療法の説明",
+        status: "performed",
+        evidence: "適応・効果・期間について説明",
+        review_reason: ""
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Allergy Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-07",
+    clinicalText: [
+      "既往歴：小児期に軽度の気管支喘息（現在は無症状）",
+      "A: 季節性アレルギー性鼻炎、アレルギー性結膜炎",
+      "P: アレルゲン免疫療法の適応・効果・期間について説明"
+    ].join("\n")
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  const proposals = calculation.body.calculationResult.candidateProposals || [];
+  assert.equal(proposals.some((proposal) => String(proposal.title || "").includes("特定疾患療養管理料")), false);
+});
+
+test("builds allergy test master hints by test type", () => {
+  assert.deepEqual(
+    procedureHintQueries("血液検査：IgE 412 IU/mL"),
+    ["非特異的ＩｇＥ", "IgE"]
+  );
+  assert.ok(procedureHintQueries("特異的IgE：スギ クラス4、ヒノキ クラス3").includes("特異的ＩｇＥ"));
+  assert.ok(procedureHintQueries("皮膚プリックテスト：スギ（+++）、ヒノキ（++）").includes("皮膚反応検査"));
 });
 
 test("patient history overrides structured initial visit inference", async () => {

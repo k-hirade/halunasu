@@ -1203,11 +1203,52 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   gap: 12px;
   align-items: center;
   background: #fbfdff;
+  border-left-width: 5px;
 }
 
 .issue-card strong {
   display: block;
   margin-bottom: 4px;
+}
+
+.issue-card--facility {
+  border-left-color: #0f766e;
+}
+
+.issue-card--diagnosis {
+  border-left-color: #7c3aed;
+}
+
+.issue-card--medication {
+  border-left-color: #c2410c;
+}
+
+.issue-card--master {
+  border-left-color: #2563eb;
+}
+
+.issue-card--evidence {
+  border-left-color: #ca8a04;
+}
+
+.issue-card--input {
+  border-left-color: #dc2626;
+}
+
+.issue-card--rule {
+  border-left-color: #64748b;
+}
+
+.issue-category-badge {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  background: #eef4f8;
+  color: #344054;
+  padding: 3px 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .fee-modal-overlay {

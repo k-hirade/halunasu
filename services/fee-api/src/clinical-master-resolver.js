@@ -135,7 +135,13 @@ export function procedureHintQueries(value = "") {
   if (/(?:CRP|ＣＲＰ|C反応性蛋白)/iu.test(text)) {
     queries.push("ＣＲＰ", "C反応性蛋白");
   }
-  if (/(?:IgE|ＩｇＥ|非特異的IgE|非特異的ＩｇＥ)/iu.test(text)) {
+  if (/(?:特異的\s*(?:IgE|ＩｇＥ)|(?:スギ|ヒノキ|ハウスダスト|ダニ|カモガヤ|ブタクサ)\s*(?:クラス|class)\s*\d)/iu.test(text)) {
+    queries.push("特異的ＩｇＥ", "アレルゲン特異的ＩｇＥ", "特異的IgE");
+  }
+  if (/(?:皮膚プリック|プリックテスト|スクラッチテスト|皮膚反応テスト|アレルゲン皮膚反応)/iu.test(text)) {
+    queries.push("皮膚反応検査", "スクラッチテスト", "皮内反応検査", "アレルゲン皮膚反応検査");
+  }
+  if (/(?:非特異的\s*(?:IgE|ＩｇＥ)|(?<!特異的)(?<!非特異的)(?:IgE|ＩｇＥ)\s*\d)/iu.test(text)) {
     queries.push("非特異的ＩｇＥ", "IgE");
   }
   if (/(?:好酸球|eosino|EOS)/iu.test(text)) {

@@ -699,6 +699,7 @@ async function buildClinicalCandidateProposals({
 
   const managementProposal = await chronicManagementFeeProposal({
     text: combinedText,
+    diagnoses,
     existingProcedureCodes,
     feeCalculator
   });
@@ -717,6 +718,7 @@ async function buildClinicalCandidateProposals({
 
 async function chronicManagementFeeProposal({
   text = "",
+  diagnoses = [],
   existingProcedureCodes = new Set(),
   feeCalculator
 } = {}) {
@@ -724,9 +726,13 @@ async function chronicManagementFeeProposal({
   if (!MANAGEMENT_GUIDANCE_PATTERN.test(normalizedText)) {
     return null;
   }
+  const currentDiagnosisText = diagnosisNames(diagnoses).join(" ");
+  if (!currentDiagnosisText) {
+    return null;
+  }
 
   const profiles = MANAGEMENT_CONTEXT_PROFILES.filter((profile) => (
-    profile.diagnosisPatterns.some((pattern) => pattern.test(normalizedText))
+    profile.diagnosisPatterns.some((pattern) => pattern.test(currentDiagnosisText))
     && (!profile.contextPatterns?.length || profile.contextPatterns.some((pattern) => pattern.test(normalizedText)))
   ));
   if (!profiles.length) {
@@ -1159,7 +1165,7 @@ async function inferPerformedProcedureCodes(text, feeCalculator) {
 }
 
 function isPerformedObjectiveFinding(sentence) {
-  return /(:|：|所見|結果|高値|低値|基準値|貯留|病変|あり|認める|施行|実施|検査|撮影)/u.test(sentence);
+  return /(:|：|所見|結果|高値|低値|基準値|貯留|病変|あり|認める|施行|実施|検査|撮影|テスト|クラス|\+{1,4}|陽性|陰性)/u.test(sentence);
 }
 
 function isPerformedOrClaimedProcedureContext(sentence) {

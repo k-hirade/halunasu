@@ -939,6 +939,7 @@ function normalizeCandidateActionItem(item = {}) {
   const hasCandidateLine = isPlainObject(proposal?.candidateLine) || isPlainObject(item.lineItem);
   const actionType = proposal?.actionType || (hasCandidateLine && potentialPoints > 0 ? "adoptable" : "confirm_required");
   const canAdopt = actionType === "adoptable" && hasCandidateLine && Number(potentialPoints || 0) > 0;
+  const issueCategory = issueCategoryForActionItem(item, { displayTitle, displayReason, conditionText });
   return {
     reviewItemId: item.reviewItemId,
     legacyReviewItemId: item.legacyReviewItemId,
@@ -957,6 +958,8 @@ function normalizeCandidateActionItem(item = {}) {
           ? "保留"
           : "条件を確認",
     canAdopt,
+    issueCategory: issueCategory.key,
+    issueCategoryLabel: issueCategory.label,
     status: item.status || "needs_review",
     decisionStatus: item.decision?.status || item.status || "needs_review",
     sourceType: item.sourceType || "warning",
@@ -964,6 +967,37 @@ function normalizeCandidateActionItem(item = {}) {
     candidateProposal: proposal,
     sourceItem: item
   };
+}
+
+function issueCategoryForActionItem(item = {}, normalized = {}) {
+  const text = [
+    normalized.displayTitle,
+    normalized.displayReason,
+    normalized.conditionText,
+    item.title,
+    item.reason,
+    item.candidateProposal?.conditionText,
+    item.lineItem?.name
+  ].filter(Boolean).join(" ");
+  if (/施設基準|地方厚生局|届け出|届出|facility_standard|hospital_profile/u.test(text)) {
+    return { key: "facility", label: "施設設定" };
+  }
+  if (/病名|傷病名|コメント|適応|査定/u.test(text)) {
+    return { key: "diagnosis", label: "病名・コメント" };
+  }
+  if (/薬剤|処方|数量|日数|総量|1回量|1日回数/u.test(text)) {
+    return { key: "medication", label: "薬剤情報" };
+  }
+  if (/標準コード|マスター|コード確定|候補を選ぶ|検索/u.test(text)) {
+    return { key: "master", label: "マスター確認" };
+  }
+  if (/実施|予定|依頼|オーダー|検討|指導のみ|説明のみ|当日/u.test(text)) {
+    return { key: "evidence", label: "実施確認" };
+  }
+  if (/未入力|不足|入力|空欄/u.test(text)) {
+    return { key: "input", label: "入力不足" };
+  }
+  return { key: "rule", label: "算定条件" };
 }
 
 function lineDisplayReason(line = {}, reviewItem = null) {

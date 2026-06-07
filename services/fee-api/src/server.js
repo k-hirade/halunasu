@@ -921,7 +921,15 @@ function applyClinicalTextChangeGuards(patch, normalized, current = {}) {
   const nextDiagnosisSource = hasOwn(normalized, "diagnosesSource")
     ? String(normalized.diagnosesSource || "").trim()
     : currentDiagnosisSource;
+  const carriesOverPreviousManualDiagnoses = nextDiagnosisSource === "manual"
+    && currentDiagnosisSource === "manual"
+    && hasOwn(normalized, "diagnoses")
+    && sameDiagnosisNames(normalized.diagnoses, current.diagnoses || []);
   if (nextDiagnosisSource === "clinical_auto" || currentDiagnosisSource === "clinical_auto") {
+    patch.diagnoses = [];
+    patch.diagnosesSource = "clinical_auto";
+    patch.diagnosesClinicalTextHash = nextHash;
+  } else if (carriesOverPreviousManualDiagnoses) {
     patch.diagnoses = [];
     patch.diagnosesSource = "clinical_auto";
     patch.diagnosesClinicalTextHash = nextHash;
