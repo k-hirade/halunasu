@@ -197,6 +197,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "Examples:",
       "- Text: 月経困難症、子宮内膜症疑い。経腟超音波：左卵巣に約3cmの嚢胞性病変。血液検査：CA125 68 U/mL。MRI骨盤部オーダー。ルナベル処方。 -> diagnoses include 月経困難症 and 子宮内膜症疑い only; do not include CA125軽度高値. billing_events include 経腟超音波 as type=imaging status=performed modality=ultrasound, CA125 as type=lab status=performed, MRI骨盤部 as type=imaging status=ordered modality=mri, ルナベル as type=medication status=prescribed with empty quantity fields and missing_information for quantity/days.",
       "- Text: 腰椎X線（正面・側面）：L4/5狭小化。MRI腰椎オーダー（次回）。ロキソプロフェン60mg 毎食後3錠／14日分処方。 -> billing_events include X線 as performed simple_radiography, MRI as ordered/planned, ロキソプロフェン as prescribed with quantity_per_day=3 and days=14.",
+      "- Text: アトピー性皮膚炎。IgE 680、好酸球520。スキンケア指導、外用薬の部位別説明、デュピクセントの適応・費用・投与方法を説明。 -> diagnoses include アトピー性皮膚炎 only. billing_events include IgE and 好酸球 as type=lab status=performed when written as objective results, and the guidance/explanation as type=management or counseling status=performed. Do not create medication event for 説明 or 塗布再指導. デュピクセント is medication only if prescribed/administered today; explanation alone is counseling/management.",
       "- Do not create review_flags such as 今後の検討 or 方針確認 when the phrase is only follow-up planning and not a billable event."
     ].join("\n"),
     input,

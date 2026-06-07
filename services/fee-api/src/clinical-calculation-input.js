@@ -27,12 +27,68 @@ const CLINICAL_DRUG_TERMS = [
   { query: "テルミサルタン", patterns: [/テルミサルタン/u, /ミカルディス/u] },
   { query: "ロスバスタチン", patterns: [/ロスバスタチン/u, /クレストール/u] },
   { query: "ルナベル配合錠LD", patterns: [/ルナベル/u] },
-  { query: "アスピリン", patterns: [/アスピリン/u, /バイアスピリン/u] }
+  { query: "アスピリン", patterns: [/アスピリン/u, /バイアスピリン/u] },
+  { query: "フェキソフェナジン", patterns: [/フェキソフェナジン/u, /アレグラ/u] },
+  { query: "アンテベート軟膏", patterns: [/アンテベート/u] },
+  { query: "タクロリムス軟膏", patterns: [/タクロリムス/u, /プロトピック/u] },
+  { query: "ヒルドイドローション", patterns: [/ヒルドイド/u] }
 ];
 
 const CLINICAL_MATERIAL_TERMS = [
   { query: "コルセット", patterns: [/コルセット/u] },
   { query: "非固着性シリコンガーゼ", patterns: [/ノンスティックガーゼ/u, /非固着性.*ガーゼ/u] }
+];
+
+const MANAGEMENT_CONTEXT_PROFILES = [
+  {
+    key: "dermatology_specific_disease_management",
+    diagnosisPatterns: [/アトピー性皮膚炎|アトピー|慢性湿疹|湿疹/u],
+    contextPatterns: [/皮膚|湿疹|外用|ステロイド|プロトピック|デュピクセント|スキンケア|保湿|入浴/u],
+    queries: ["皮膚科特定疾患指導管理料", "皮膚科特定疾患"],
+    preferredPatterns: [/皮膚科特定疾患指導管理料/u],
+    title: "皮膚科の慢性疾患管理料の確認",
+    reason: "慢性皮膚疾患に対して、外用薬の使い分け・保湿・スキンケア・入浴指導などの療養指導が記載されています。",
+    conditionText: "皮膚科を標榜する医療機関で、対象疾患に対して計画的な指導を行った場合は算定できる可能性があります。他の管理料との併算定可否を確認してください。"
+  },
+  {
+    key: "specific_disease_management",
+    diagnosisPatterns: [/気管支喘息|喘息/u],
+    contextPatterns: [/指導|説明|療養|計画|服薬|生活/u],
+    queries: ["特定疾患療養管理料"],
+    preferredPatterns: [/特定疾患療養管理料/u],
+    title: "特定疾患療養管理料の確認",
+    reason: "対象になり得る慢性疾患に対して、継続的な療養指導が記載されています。",
+    conditionText: "対象疾患・施設種別・同月算定条件を満たす場合は算定できる可能性があります。令和6年改定後の対象疾患か確認してください。"
+  },
+  {
+    key: "lifestyle_disease_management",
+    diagnosisPatterns: [/高血圧|糖尿病|脂質異常|高脂血/u],
+    contextPatterns: [/指導|説明|療養|計画書|署名|生活|栄養|運動|食事/u],
+    queries: ["生活習慣病管理料"],
+    preferredPatterns: [/生活習慣病管理料/u],
+    title: "生活習慣病管理料の確認",
+    reason: "生活習慣病に対して、療養計画・生活指導・服薬指導などが記載されています。",
+    conditionText: "高血圧・糖尿病・脂質異常症などは、令和6年改定後は特定疾患療養管理料ではなく生活習慣病管理料の条件を確認してください。療養計画書や同月算定条件を満たす場合に算定できます。"
+  }
+];
+
+const MANAGEMENT_GUIDANCE_PATTERN = /指導|説明|療養|計画書|署名|スキンケア|入浴|保湿|外用|塗布|部位別|生活指導|服薬指導|投与方法|費用/u;
+
+const CLINICAL_LAB_OPPORTUNITY_TERMS = [
+  {
+    key: "ige",
+    label: "IgE",
+    queries: ["非特異的IgE", "非特異的ＩｇＥ", "IgE", "ＩｇＥ"],
+    patterns: [/(?:IgE|ＩｇＥ)\s*[:：]?\s*\d+/iu],
+    conditionText: "当日実施した検査結果であれば算定できます。過去値・持参結果の場合は算定しないでください。"
+  },
+  {
+    key: "eosinophil",
+    label: "好酸球",
+    queries: ["好酸球", "末梢血液像", "白血球像"],
+    patterns: [/(?:好酸球|eosino|EOS)\s*[:：]?\s*\d+/iu],
+    conditionText: "当日実施した血液検査であれば算定できます。検査項目と同月の判断料・採血料を確認してください。"
+  }
 ];
 
 const CLINICAL_AUTO_OPTION_KEYS = new Set([
@@ -79,6 +135,7 @@ export async function buildClinicalCalculationPreparation({
       calculationOptionsAutoKeys: [],
       calculationOptionsSource: Object.keys(manualOptions).length ? "manual" : null,
       diagnoses: [],
+      candidateProposals: [],
       reviewWarnings: [],
       metrics: {
         clinicalStructuring: {
@@ -92,6 +149,7 @@ export async function buildClinicalCalculationPreparation({
   const text = normalizeClinicalText(calculationInput.clinicalText || session.clinicalText || "");
   const inferred = {};
   const inferredDiagnoses = [];
+  const candidateProposals = [];
   const reviewWarnings = [];
   const metrics = {
     clinicalStructuring: {
@@ -143,9 +201,11 @@ export async function buildClinicalCalculationPreparation({
         mergeCalculationOptions(structured.inferred, ruleBased.inferred)
       ));
       inferredDiagnoses.push(...asArray(structured.diagnoses));
+      candidateProposals.push(...asArray(structured.candidateProposals), ...asArray(ruleBased.candidateProposals));
       reviewWarnings.push(...structured.reviewWarnings, ...ruleBased.reviewWarnings);
     } else {
       Object.assign(inferred, ruleBased.inferred);
+      candidateProposals.push(...asArray(ruleBased.candidateProposals));
       reviewWarnings.push(...structured.reviewWarnings, ...ruleBased.reviewWarnings);
     }
   }
@@ -168,6 +228,18 @@ export async function buildClinicalCalculationPreparation({
   }
   reviewWarnings.push(...historyBasic.reviewWarnings);
 
+  const opportunityProposals = await buildClinicalCandidateProposals({
+    text,
+    diagnoses: [
+      ...asArray(session.diagnoses),
+      ...inferredDiagnoses
+    ],
+    calculationOptions: normalizedInferred,
+    reviewWarnings,
+    feeCalculator
+  });
+  candidateProposals.push(...opportunityProposals);
+
   const autoKeys = Object.keys(normalizedInferred).filter((key) => (
     CLINICAL_AUTO_OPTION_KEYS.has(key) && !hasOwn(manualOptions, key)
   ));
@@ -177,6 +249,7 @@ export async function buildClinicalCalculationPreparation({
     calculationOptionsAutoKeys: autoKeys,
     calculationOptionsSource: calculationOptionsSource(manualOptions, autoKeys),
     diagnoses: normalizeClinicalDiagnoses(inferredDiagnoses),
+    candidateProposals: normalizeCandidateProposals(candidateProposals),
     reviewWarnings: normalizeReviewWarnings(reviewWarnings),
     metrics
   };
@@ -208,6 +281,7 @@ async function inferStructuredClinicalCalculationOptions({
     return {
       used: false,
       inferred: {},
+      candidateProposals: [],
       reviewWarnings: [],
       metrics: {
         source: "rules_no_openai",
@@ -294,6 +368,7 @@ async function inferStructuredClinicalCalculationOptions({
       used: false,
       inferred: {},
       diagnoses: [],
+      candidateProposals: [],
       reviewWarnings: [
         "AI構造化に失敗したため、従来のルールベース抽出で算定候補を作成しました。"
       ],
@@ -589,8 +664,245 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   return {
     inferred,
     diagnoses,
+    candidateProposals: [],
     reviewWarnings: normalizeReviewWarnings(reviewWarnings)
   };
+}
+
+async function buildClinicalCandidateProposals({
+  text = "",
+  diagnoses = [],
+  calculationOptions = {},
+  reviewWarnings = [],
+  feeCalculator
+} = {}) {
+  if (!normalizeClinicalText(text)) {
+    return [];
+  }
+  const proposals = [];
+  const existingProcedureCodes = new Set(asArray(calculationOptions?.procedure_codes).map((code) => String(code || "")));
+  const diagnosisText = diagnosisNames(diagnoses).join(" ");
+  const combinedText = [text, diagnosisText, ...asArray(reviewWarnings)].join("\n");
+
+  const managementProposal = await chronicManagementFeeProposal({
+    text: combinedText,
+    existingProcedureCodes,
+    feeCalculator
+  });
+  if (managementProposal) {
+    proposals.push(managementProposal);
+  }
+
+  proposals.push(...await labValueCandidateProposals({
+    text,
+    existingProcedureCodes,
+    feeCalculator
+  }));
+
+  return normalizeCandidateProposals(proposals);
+}
+
+async function chronicManagementFeeProposal({
+  text = "",
+  existingProcedureCodes = new Set(),
+  feeCalculator
+} = {}) {
+  const normalizedText = normalizeClinicalText(text);
+  if (!MANAGEMENT_GUIDANCE_PATTERN.test(normalizedText)) {
+    return null;
+  }
+
+  const profiles = MANAGEMENT_CONTEXT_PROFILES.filter((profile) => (
+    profile.diagnosisPatterns.some((pattern) => pattern.test(normalizedText))
+    && (!profile.contextPatterns?.length || profile.contextPatterns.some((pattern) => pattern.test(normalizedText)))
+  ));
+  if (!profiles.length) {
+    return null;
+  }
+
+  for (const profile of profiles) {
+    const item = await searchProcedureCandidateItem(feeCalculator, profile.queries, profile.preferredPatterns);
+    if (!item?.code) {
+      continue;
+    }
+    if (existingProcedureCodes.has(String(item.code))) {
+      return null;
+    }
+    return candidateProposalFromProcedureItem({
+      proposalId: `clinical_${profile.key}_${item.code}`,
+      title: profile.title,
+      reason: profile.reason,
+      conditionText: profile.conditionText,
+      evidence: managementEvidenceText(normalizedText),
+      item,
+      sortOrder: 20,
+      basis: "カルテ本文から慢性疾患への指導・説明を検出しました。対象疾患・施設種別・併算定条件を満たす場合だけ採用してください。"
+    });
+  }
+
+  const fallback = profiles[0];
+  return {
+    proposalId: `clinical_${fallback.key}_confirm`,
+    title: fallback.title,
+    reason: fallback.reason,
+    conditionText: "該当する管理料をマスター検索で確認してください。条件を満たす場合は点数に追加できます。",
+    evidence: managementEvidenceText(normalizedText),
+    actionType: "confirm_required",
+    potentialPoints: 0,
+    orderType: "procedure",
+    source: "clinical_billing_opportunity",
+    sortOrder: 20
+  };
+}
+
+async function labValueCandidateProposals({ text = "", existingProcedureCodes = new Set(), feeCalculator } = {}) {
+  const proposals = [];
+  for (const term of CLINICAL_LAB_OPPORTUNITY_TERMS) {
+    const sentence = findSentenceForPatterns(text, term.patterns);
+    if (!sentence || isNegatedContext(sentence) || isFutureOrOrderOnlyContext(sentence)) {
+      continue;
+    }
+    const item = await searchProcedureCandidateItem(feeCalculator, term.queries, [
+      new RegExp(escapeRegExp(term.label), "u"),
+      ...term.queries.map((query) => new RegExp(escapeRegExp(query), "u"))
+    ]);
+    if (item?.code && existingProcedureCodes.has(String(item.code))) {
+      continue;
+    }
+    if (item?.code) {
+      proposals.push(candidateProposalFromProcedureItem({
+        proposalId: `clinical_lab_${term.key}_${item.code}`,
+        title: `${term.label}検査の確認`,
+        reason: `${term.label}の結果値がカルテに記載されています。`,
+        conditionText: term.conditionText,
+        evidence: sentence,
+        item,
+        sortOrder: 40,
+        basis: "客観所見に検査値があるため、当日実施かを確認して候補化します。"
+      }));
+    } else {
+      proposals.push({
+        proposalId: `clinical_lab_${term.key}_confirm`,
+        title: `${term.label}検査の確認`,
+        reason: `${term.label}の結果値がカルテに記載されています。`,
+        conditionText: `${term.conditionText} 標準コードはマスター検索で確認してください。`,
+        evidence: sentence,
+        actionType: "confirm_required",
+        potentialPoints: 0,
+        orderType: "procedure",
+        source: "clinical_billing_opportunity",
+        sortOrder: 40
+      });
+    }
+  }
+  return proposals;
+}
+
+async function searchProcedureCandidateItem(feeCalculator, queries = [], preferredPatterns = []) {
+  if (typeof feeCalculator?.searchMaster !== "function") {
+    return null;
+  }
+  for (const query of uniqueStrings(queries).filter((value) => value.length >= 2)) {
+    try {
+      const result = await feeCalculator.searchMaster({ type: "procedure", query, limit: 10 });
+      const items = asArray(result?.items).filter((item) => item?.code && (
+        item.kind === "procedure"
+        || item.sourceType === "medical_procedure_master"
+        || item.source === "medical_procedure_master"
+      ));
+      const preferred = items.find((item) => {
+        const text = [item.name, item.baseName, item.displayName, item.shortName].filter(Boolean).join(" ");
+        return preferredPatterns.some((pattern) => pattern.test(text));
+      });
+      const candidate = preferred || items.find((item) => Number(item.points || item.totalPoints || 0) > 0) || items[0];
+      if (candidate?.code) {
+        return candidate;
+      }
+    } catch {
+      // Master search is advisory here; failed lookups should not block calculation.
+    }
+  }
+  return null;
+}
+
+function candidateProposalFromProcedureItem({
+  proposalId,
+  title,
+  reason,
+  conditionText,
+  basis = "",
+  evidence = "",
+  item = {},
+  sortOrder = 50
+} = {}) {
+  const points = Number(item.points || item.totalPoints || 0);
+  return {
+    proposalId,
+    title,
+    reason,
+    conditionText,
+    basis,
+    evidence,
+    actionType: points > 0 ? "adoptable" : "confirm_required",
+    potentialPoints: points,
+    code: String(item.code || ""),
+    orderType: "procedure",
+    source: "clinical_billing_opportunity",
+    sortOrder,
+    candidateLine: {
+      lineId: `proposal_line_${String(proposalId || item.code || "").replace(/[^\w-]/gu, "_")}`,
+      code: String(item.code || ""),
+      name: item.name || item.displayName || item.baseName || title,
+      orderType: "procedure",
+      points,
+      quantity: 1,
+      totalPoints: points,
+      status: "candidate",
+      reason,
+      source: "medical_procedure_master",
+      coverage: {
+        scope: "master_lookup_only",
+        chapter: "procedure_code_master",
+        supportLevel: "review_required",
+        reviewRequired: true
+      },
+      supportLevel: "review_required",
+      reviewRequired: true
+    }
+  };
+}
+
+function normalizeCandidateProposals(values = []) {
+  const seen = new Set();
+  const result = [];
+  for (const value of asArray(values)) {
+    if (!value || typeof value !== "object") {
+      continue;
+    }
+    const key = [
+      value.proposalId,
+      value.code,
+      value.candidateLine?.code,
+      value.title
+    ].map((part) => String(part || "").trim()).filter(Boolean).join("|");
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
+}
+
+function findSentenceForPatterns(text = "", patterns = []) {
+  return splitClinicalSentences(text).find((sentence) => patterns.some((pattern) => pattern.test(sentence))) || "";
+}
+
+function managementEvidenceText(text = "") {
+  return splitClinicalSentences(text)
+    .find((sentence) => MANAGEMENT_GUIDANCE_PATTERN.test(sentence))
+    || splitClinicalSentences(text)[0]
+    || "";
 }
 
 function outpatientBasicFromStructuredVisit(visitType = {}, text = "") {
@@ -783,6 +1095,20 @@ async function inferPerformedProcedureCodes(text, feeCalculator) {
       commentInputs.push(...hinted.commentInputs);
       collectionFeeInputs.push(...hinted.collectionFeeInputs);
       reviewWarnings.push(...hinted.reviewWarnings);
+    }
+    const genericQueries = procedureHintQueries(sentence);
+    if (!hinted.procedureCodes.length && genericQueries.length && isPerformedObjectiveFinding(sentence)) {
+      const procedure = await searchPerformedProcedureCode(feeCalculator, {
+        name: genericQueries[0],
+        categoryLabel: "検体検査",
+        queries: genericQueries,
+        unresolvedMessage: `${genericQueries[0]}は実施済みの検体検査として検出しましたが、標準コードを自動確定できませんでした。検査項目をマスター検索で確認してください。`,
+        resolvedMessage: `${genericQueries[0]}を実施済み検体検査としてマスター候補に反映しました。検査項目と算定条件を確認してください。`
+      });
+      procedureCodes.push(...procedure.procedureCodes);
+      commentInputs.push(...procedure.commentInputs);
+      collectionFeeInputs.push(...procedure.collectionFeeInputs);
+      reviewWarnings.push(...procedure.reviewWarnings);
     }
     if (/(経腟超音波|経膣超音波|超音波|エコー)/u.test(sentence) && isPerformedObjectiveFinding(sentence)) {
       const procedure = await searchPerformedProcedureCode(feeCalculator, {
@@ -1108,6 +1434,9 @@ function excludedClinicalEventWarning(event = {}) {
   const name = clinicalEventName(event) || clinicalImagingDisplayName(event) || "項目";
   const reason = String(event?.reason || event?.review_reason || "").trim();
 
+  if (type === "medication" && isMedicationNameNoise(name)) {
+    return "";
+  }
   if (type === "imaging" && ["planned", "ordered"].includes(status)) {
     return `${name}は予定・依頼として記載されているため、今回算定候補には入れていません。実施済みの場合は内容を確認してください。`;
   }
@@ -1296,6 +1625,9 @@ function clinicalImagingDisplayName(event = {}) {
 async function medicationOrderFromClinicalEvent(event = {}, feeCalculator) {
   const reviewWarnings = [];
   const rawName = clinicalEventName(event);
+  if (isMedicationNameNoise(rawName)) {
+    return { order: null, reviewWarnings };
+  }
   const name = canonicalMedicationName(rawName);
   if (!name) {
     reviewWarnings.push("薬剤名がカルテ本文から確定できないため、薬剤算定候補には入れていません。");
@@ -1329,6 +1661,9 @@ function canonicalMedicationName(value) {
   if (!name) {
     return "";
   }
+  if (isMedicationNameNoise(name)) {
+    return "";
+  }
   const parenthesized = name.match(/[（(]([^（）()]+)[）)]/u)?.[1];
   if (parenthesized && !/胃薬|湿布|頓服|併用|処方/u.test(parenthesized)) {
     name = parenthesized;
@@ -1354,6 +1689,17 @@ function canonicalMedicationName(value) {
     return "ルナベル配合錠LD";
   }
   return name;
+}
+
+function isMedicationNameNoise(value) {
+  const text = String(value || "")
+    .replace(/\s+/gu, "")
+    .trim();
+  if (!text) {
+    return true;
+  }
+  return /^(?:塗布再指導|再指導|本日で終了|終了|継続|増量検討|切り替え|説明|指導)$/u.test(text)
+    || /指導|説明|検討|予定|予約|案内|許可|禁止|終了$/u.test(text);
 }
 
 function medicationQuantityFromClinicalEvent(event = {}) {

@@ -135,6 +135,12 @@ export function procedureHintQueries(value = "") {
   if (/(?:CRP|ＣＲＰ|C反応性蛋白)/iu.test(text)) {
     queries.push("ＣＲＰ", "C反応性蛋白");
   }
+  if (/(?:IgE|ＩｇＥ|非特異的IgE|非特異的ＩｇＥ)/iu.test(text)) {
+    queries.push("非特異的ＩｇＥ", "IgE");
+  }
+  if (/(?:好酸球|eosino|EOS)/iu.test(text)) {
+    queries.push("好酸球", "末梢血液像", "白血球像");
+  }
   if (/(?:WBC|白血球|末梢血液一般|血算)/iu.test(text)) {
     queries.push("末梢血液一般", "白血球");
   }

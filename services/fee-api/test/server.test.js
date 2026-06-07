@@ -1178,6 +1178,156 @@ test("replaces stale auto diagnoses and resolves chronic diabetes clinical facts
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("糖尿病合併症管理料")));
 });
 
+test("proposes dermatology chronic management and objective allergy labs without noisy medication warnings", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterItems = {
+    "皮膚科特定疾患指導管理料": [{
+      kind: "procedure",
+      code: "113999001",
+      name: "皮膚科特定疾患指導管理料（II）",
+      points: 100,
+      sourceType: "medical_procedure_master"
+    }],
+    "皮膚科特定疾患": [{
+      kind: "procedure",
+      code: "113999001",
+      name: "皮膚科特定疾患指導管理料（II）",
+      points: 100,
+      sourceType: "medical_procedure_master"
+    }],
+    "非特異的ＩｇＥ": [{
+      kind: "procedure",
+      code: "160999001",
+      name: "非特異的ＩｇＥ",
+      points: 110,
+      sourceType: "medical_procedure_master"
+    }],
+    IgE: [{
+      kind: "procedure",
+      code: "160999001",
+      name: "非特異的ＩｇＥ",
+      points: 110,
+      sourceType: "medical_procedure_master"
+    }],
+    "好酸球": [{
+      kind: "procedure",
+      code: "160999002",
+      name: "好酸球",
+      points: 15,
+      sourceType: "medical_procedure_master"
+    }],
+    "末梢血液像": [{
+      kind: "procedure",
+      code: "160999002",
+      name: "好酸球",
+      points: 15,
+      sourceType: "medical_procedure_master"
+    }]
+  };
+  stores.feeCalculator.searchMaster = async (input) => ({
+    query: input.query,
+    type: input.type,
+    items: masterItems[input.query] || []
+  });
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 75,
+      lineItems: [{
+        lineId: "basic_revisit",
+        code: "112007410",
+        name: "再診料",
+        orderType: "basic",
+        points: 75,
+        quantity: 1,
+        totalPoints: 75,
+        status: "candidate",
+        source: "outpatient_basic_fee",
+        reviewRequired: true
+      }],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "unknown", evidence: "", confidence: "low" },
+    diagnoses: [
+      { name: "アトピー性皮膚炎", status: "confirmed", evidence: "アトピー性皮膚炎、中等症" }
+    ],
+    billing_events: [
+      { type: "lab", name: "IgE", status: "performed", evidence: "IgE：680 IU/mL", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
+      { type: "lab", name: "好酸球", status: "performed", evidence: "好酸球：520/μL", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
+      { type: "management", name: "スキンケア指導", status: "performed", evidence: "保湿剤を朝晩塗るよう再指導、入浴指導", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
+      { type: "counseling", name: "デュピクセント説明", status: "performed", evidence: "適応・費用・投与方法を本日説明", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" }
+    ],
+    excluded_events: [
+      { type: "medication", name: "塗布再指導", status: "history", evidence: "保湿剤を朝晩塗るよう再指導", reason: "指導" }
+    ],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Derm Patient"
+  }, headers);
+  await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-05-01",
+    diagnoses: [{ name: "アトピー性皮膚炎" }]
+  }, headers);
+  const current = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-06",
+    clinicalText: [
+      "アトピー性皮膚炎、中等症。IgE：680 IU/mL、好酸球：520/μL。",
+      "外用薬の部位別使い分け、保湿、スキンケア、入浴指導を実施。",
+      "デュピクセントの適応・費用・投与方法を本日説明。"
+    ].join("\n")
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${current.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  const proposal = calculation.body.candidateWorkbench.proposals.find((item) => (
+    item.displayTitle.includes("皮膚科")
+  ));
+  assert.ok(proposal);
+  const adopted = await request(
+    stores,
+    "PATCH",
+    `/v1/fee/sessions/${current.body.feeSession.feeSessionId}/review-items/${encodeURIComponent(proposal.reviewItemId)}`,
+    { status: "approved", note: "条件確認済み" },
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+  assert.deepEqual(
+    receivedInput.calculationOptions.procedure_codes.sort(),
+    ["160999001", "160999002"].sort()
+  );
+  assert.equal(proposal.canAdopt, true);
+  assert.equal(proposal.potentialPoints, 100);
+  assert.equal(calculation.body.candidateWorkbench.potentialPointsTotal, 100);
+  assert.equal(
+    calculation.body.calculationResult.warnings.some((warning) => warning.includes("塗布再指導")),
+    false
+  );
+  assert.equal(adopted.statusCode, 200);
+  assert.equal(adopted.body.receiptDraft.totalPoints, 175);
+});
+
 test("merges deterministic performed imaging when structured facts miss it", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);

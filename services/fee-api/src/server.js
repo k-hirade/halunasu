@@ -11,6 +11,7 @@ import {
   validateUpdateFeeSessionInput
 } from "../../../packages/fee-contracts/src/index.js";
 import {
+  buildCandidateWorkbench,
   buildReceiptDraft,
   buildReviewItems
 } from "../../../packages/fee-core/src/index.js";
@@ -60,6 +61,11 @@ export function createFeeApiServer(options = {}) {
 
       sendJson(res, response.statusCode, response.body, response.headers);
     } catch (error) {
+      logFeeApiError(error, {
+        stage: "http_server",
+        method: req.method,
+        path: req.url
+      });
       const response = errorResponse(error);
       sendJson(res, response.statusCode, response.body, response.headers);
     }
@@ -70,6 +76,11 @@ export async function handleFeeApiRequest(input = {}) {
   try {
     return withCors(input, await routeFeeApiRequest(input));
   } catch (error) {
+    logFeeApiError(error, {
+      stage: "route",
+      method: input.method,
+      path: input.path
+    });
     return withCors(input, errorResponse(error));
   }
 }
@@ -281,7 +292,8 @@ async function routeFeeApiRequest(input = {}) {
 
     return ok({
       ...result,
-      receiptDraft: buildReceiptDraft(result.feeSession, { now: input.now || new Date() })
+      receiptDraft: buildReceiptDraft(result.feeSession, { now: input.now || new Date() }),
+      candidateWorkbench: buildCandidateWorkbench(result.feeSession, { now: input.now || new Date() })
     });
   }
 
@@ -312,7 +324,8 @@ async function routeFeeApiRequest(input = {}) {
 
     return ok({
       ...result,
-      receiptDraft: buildReceiptDraft(result.feeSession, { now: input.now || new Date() })
+      receiptDraft: buildReceiptDraft(result.feeSession, { now: input.now || new Date() }),
+      candidateWorkbench: buildCandidateWorkbench(result.feeSession, { now: input.now || new Date() })
     });
   }
 
@@ -371,7 +384,8 @@ async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now) {
   return {
     feeSession,
     receiptDraft: buildReceiptDraft(feeSession, { now }),
-    reviewItems: buildReviewItems(feeSession)
+    reviewItems: buildReviewItems(feeSession),
+    candidateWorkbench: buildCandidateWorkbench(feeSession, { now })
   };
 }
 
@@ -534,6 +548,10 @@ async function calculatePreparedFeeSessionNow({
       feeSessionId,
       addSessionReviewWarnings(calculationSession, {
         ...calculationResult,
+        candidateProposals: uniqueCandidateProposals([
+          ...(Array.isArray(calculationResult.candidateProposals) ? calculationResult.candidateProposals : []),
+          ...(Array.isArray(prepared.candidateProposals) ? prepared.candidateProposals : [])
+        ]),
         calculationProgress: feeCalculationProgress({
           phase: "complete",
           percent: 100,
@@ -582,7 +600,8 @@ async function calculatePreparedFeeSessionNow({
   return {
     ...result,
     receiptDraft: buildReceiptDraft(result.feeSession, { now: input.now || new Date() }),
-    reviewItems: buildReviewItems(result.feeSession)
+    reviewItems: buildReviewItems(result.feeSession),
+    candidateWorkbench: buildCandidateWorkbench(result.feeSession, { now: input.now || new Date() })
   };
 }
 
@@ -1017,6 +1036,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
   return {
     patch: Object.keys(patch).length ? patch : null,
     calculationOptions: legacy.calculationOptions,
+    candidateProposals: Array.isArray(legacy.candidateProposals) ? legacy.candidateProposals : [],
     metrics: {
       ...(legacy.metrics || {}),
       patientHistory: {
@@ -1233,6 +1253,30 @@ function addSessionReviewWarnings(session = {}, calculationResult = {}, extraWar
     ...calculationResult,
     warnings
   };
+}
+
+function uniqueCandidateProposals(values = []) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    if (!value || typeof value !== "object") {
+      continue;
+    }
+    const key = [
+      value.proposalId,
+      value.proposal_id,
+      value.code,
+      value.candidateLine?.code,
+      value.candidate_line?.code,
+      value.title
+    ].map((part) => String(part || "").trim()).filter(Boolean).join("|");
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
 }
 
 function normalizeCalculationWarnings(values = []) {
@@ -1500,6 +1544,32 @@ function errorResponse(error) {
       field: error.field
     }
   };
+}
+
+function logFeeApiError(error, context = {}) {
+  const statusCode = Number.isInteger(error.statusCode) ? error.statusCode : 500;
+  if (statusCode < 500) {
+    return;
+  }
+
+  console.error(JSON.stringify({
+    event: "fee_api_error",
+    statusCode,
+    name: error.name || "Error",
+    message: error.message || "Internal server error",
+    stack: error.stack,
+    stage: context.stage || "unknown",
+    method: context.method || null,
+    path: safeLogPath(context.path)
+  }));
+}
+
+function safeLogPath(path) {
+  try {
+    return new URL(path || "/", "http://localhost").pathname;
+  } catch {
+    return "/";
+  }
 }
 
 function withCors(input, response) {
