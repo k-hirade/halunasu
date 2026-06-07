@@ -273,6 +273,7 @@ function FeeSessionDetailView({ sessionId }) {
   const [feeSession, setFeeSession] = useState(null);
   const [receiptDraft, setReceiptDraft] = useState(null);
   const [reviewItems, setReviewItems] = useState([]);
+  const [candidateWorkbench, setCandidateWorkbench] = useState(null);
   const [form, setForm] = useState(defaultFeeForm);
   const [diagnosesTouched, setDiagnosesTouched] = useState(false);
   const [orderRows, setOrderRows] = useState([createEmptyOrderRow()]);
@@ -321,6 +322,7 @@ function FeeSessionDetailView({ sessionId }) {
       setFeeSession,
       setReceiptDraft,
       setReviewItems,
+      setCandidateWorkbench,
       setForm,
       setDiagnosesTouched,
       setOrderRows,
@@ -618,6 +620,7 @@ function FeeSessionDetailView({ sessionId }) {
       setFeeSession(response.feeSession || feeSession);
       setReviewItems(response.reviewItems || []);
       setReceiptDraft(response.receiptDraft || receiptDraft);
+      setCandidateWorkbench(response.candidateWorkbench || null);
       setAutoSaveStatus("saved");
       setAutoSaveError("");
       setMessage({ type: "success", text: "採否を更新しました。" });
@@ -863,6 +866,7 @@ function FeeSessionDetailView({ sessionId }) {
               feeSession={feeSession}
               onDecision={decideReviewItem}
               onOpenDetail={setCandidateDetail}
+              candidateWorkbench={candidateWorkbench}
               receiptDraft={receiptDraft}
               reviewItems={displayReviewItems}
             />
@@ -1065,7 +1069,7 @@ function OrderEditor({ onAdd, onRemove, onUpdate, rows }) {
   );
 }
 
-function CandidateWorkbench({ calculation, disabled, feeSession, onDecision, onOpenDetail, receiptDraft, reviewItems }) {
+function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSession, onDecision, onOpenDetail, receiptDraft, reviewItems }) {
   if (feeSession?.status === "calculating") {
     return (
       <div className="result result-empty">
@@ -1096,7 +1100,13 @@ function CandidateWorkbench({ calculation, disabled, feeSession, onDecision, onO
     );
   }
 
-  const model = buildCandidateWorkbenchModel({ calculation, receiptDraft, reviewItems });
+  const model = normalizeCandidateWorkbenchModel(
+    candidateWorkbench || buildCandidateWorkbenchModel({ calculation, receiptDraft, reviewItems })
+  );
+  const adjustmentLines = [...model.pendingLines, ...model.excludedLines];
+  const needsReviewCount = Number(model.counts?.needsReview ?? model.needsReviewCount ?? (model.proposals.length + model.issues.length + model.pendingLines.length));
+  const potentialPointsTotal = Number(model.potentialPointsTotal || 0);
+  const coverageSummary = model.coverageSummary || {};
   return (
     <div className="candidate-workbench">
       <div className="fee-section-head">
@@ -1108,16 +1118,23 @@ function CandidateWorkbench({ calculation, disabled, feeSession, onDecision, onO
 
       <div className="candidate-summary">
         <div className="candidate-total">
-          <span>候補化済み部分合計</span>
+          <span>{coverageSummary.title || "候補化済み部分合計"}</span>
           <strong>{Number(model.includedTotalPoints || 0).toLocaleString()}点</strong>
-          <small>確定請求ではありません。採否を変えると合計も変わります。</small>
+          <small>{coverageSummary.description || "確定請求ではありません。採否を変えると合計も変わります。"}</small>
         </div>
         <div className="candidate-summary-grid">
           <div><span>算定中</span><strong>{model.includedCount.toLocaleString()}件</strong></div>
-          <div><span>外し/保留</span><strong>{(model.excludedCount + model.pendingCount).toLocaleString()}件</strong></div>
-          <div><span>増点提案</span><strong>{model.proposals.length.toLocaleString()}件</strong></div>
+          <div><span>要確認</span><strong>{needsReviewCount.toLocaleString()}件</strong></div>
+          <div><span>増点余地</span><strong>{potentialPointsTotal > 0 ? `+${potentialPointsTotal.toLocaleString()}点` : `${model.proposals.length.toLocaleString()}件`}</strong></div>
         </div>
       </div>
+      {Array.isArray(coverageSummary.badges) && coverageSummary.badges.length ? (
+        <div className="candidate-coverage-badges" aria-label="候補化範囲">
+          {coverageSummary.badges.map((badge) => (
+            <span key={badge}>{badge}</span>
+          ))}
+        </div>
+      ) : null}
 
       <section className="candidate-bucket candidate-bucket--proposal">
         <BucketHeader title="増点できる（提案）" count={model.proposals.length} note="条件を満たすなら点数にできる可能性がある項目です。" />
@@ -1132,14 +1149,25 @@ function CandidateWorkbench({ calculation, disabled, feeSession, onDecision, onO
 
       <section className="candidate-bucket">
         <BucketHeader title="算定中" count={model.includedCount} note="いま合計点数に入っている明細です。必要に応じて外せます。" />
-        {model.lines.length ? (
+        {model.includedLines.length ? (
           <div className="candidate-line-list">
-            {model.lines.map((line) => (
+            {model.includedLines.map((line) => (
               <CandidateLineRow disabled={disabled} item={line} key={line.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
             ))}
           </div>
         ) : <p className="field-note">算定中の明細はまだありません。</p>}
       </section>
+
+      {adjustmentLines.length ? (
+        <section className="candidate-bucket">
+          <BucketHeader title="外し/保留" count={adjustmentLines.length} note="合計から外している、または後で判断する明細です。" />
+          <div className="candidate-line-list">
+            {adjustmentLines.map((line) => (
+              <CandidateLineRow disabled={disabled} item={line} key={line.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="candidate-bucket">
         <BucketHeader title="確認・修正が必要" count={model.issues.length} note="このままだと算定しづらい項目です。内容を確認してください。" />
@@ -1177,10 +1205,9 @@ function ProposalCard({ disabled, item, onDecision, onOpenDetail }) {
         <small>{item.conditionText}</small>
       </div>
       <div className="proposal-card-actions">
-        <span className="proposal-points">{item.pointsLabel}</span>
-        <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">なぜ？</button>
-        <button className="btn btn--primary btn--sm" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">
-          保留にする
+        <span className="proposal-points">{item.pointsLabel || "点数確認"}</span>
+        <button className="btn btn--primary btn--sm" disabled={disabled} onClick={() => onOpenDetail(item)} type="button">
+          条件を確認
         </button>
       </div>
     </article>
@@ -1205,6 +1232,13 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
       <div className="candidate-line-main">
         <strong>{item.name}</strong>
         <small>{item.metaLabel}</small>
+        {Array.isArray(item.attentionNotes) && item.attentionNotes.length ? (
+          <div className="candidate-line-notes">
+            {item.attentionNotes.map((note) => (
+              <span key={note}>{note}</span>
+            ))}
+          </div>
+        ) : null}
       </div>
       <span className="candidate-line-status">{item.statusLabel}</span>
       <strong className="candidate-line-points">{Number(item.totalPoints || 0).toLocaleString()}点</strong>
@@ -1219,6 +1253,7 @@ function IssueCard({ disabled, item, onDecision, onOpenDetail }) {
       <div>
         <strong>{item.displayTitle}</strong>
         <p>{item.displayReason}</p>
+        {item.conditionText ? <small>{item.conditionText}</small> : null}
       </div>
       <div className="issue-card-actions">
         <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">確認する</button>
@@ -1263,6 +1298,11 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision }) {
               <button className="btn btn--primary" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">算定する</button>
               <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">保留</button>
               <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected")} type="button">算定しない</button>
+            </>
+          ) : canDecide && item.kind === "proposal" && item.canAdopt ? (
+            <>
+              <button className="btn btn--primary" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">{item.nextActionLabel || `算定する ${item.pointsLabel || ""}`.trim()}</button>
+              <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">保留</button>
             </>
           ) : canDecide ? (
             <button className="btn btn--primary" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">保留にする</button>
@@ -1583,6 +1623,7 @@ function applyDetailResponse(response, setters) {
   setters.setFeeSession(session || null);
   setters.setReceiptDraft(response.receiptDraft || null);
   setters.setReviewItems(response.reviewItems || []);
+  setters.setCandidateWorkbench?.(response.candidateWorkbench || null);
   setters.setForm(formFromFeeSession(session || {}));
   setters.setDiagnosesTouched?.(String(session?.diagnosesSource || "").trim() === "manual");
   setters.setOrderRows(orderRowsFromOrders(session?.orders || []));
@@ -2008,6 +2049,51 @@ function buildDisplayReviewItems(items = []) {
   return result;
 }
 
+function normalizeCandidateWorkbenchModel(model = {}) {
+  const lines = Array.isArray(model.lines) ? model.lines : [];
+  const includedLines = Array.isArray(model.includedLines)
+    ? model.includedLines
+    : lines.filter((line) => line.inclusionStatus !== "pending" && line.inclusionStatus !== "excluded");
+  const pendingLines = Array.isArray(model.pendingLines)
+    ? model.pendingLines
+    : lines.filter((line) => line.inclusionStatus === "pending");
+  const excludedLines = Array.isArray(model.excludedLines)
+    ? model.excludedLines
+    : lines.filter((line) => line.inclusionStatus === "excluded");
+  const proposals = Array.isArray(model.proposals) ? model.proposals : [];
+  const issues = Array.isArray(model.issues) ? model.issues : [];
+  const includedCount = Number(model.includedCount ?? model.counts?.included ?? includedLines.length);
+  const pendingCount = Number(model.pendingCount ?? model.counts?.pending ?? pendingLines.length);
+  const excludedCount = Number(model.excludedCount ?? model.counts?.excluded ?? excludedLines.length);
+  const needsReview = Number(model.counts?.needsReview ?? model.needsReviewCount ?? (proposals.length + issues.length + pendingLines.length));
+  const potentialPointsTotal = Number(model.potentialPointsTotal ?? proposals.reduce((sum, item) => sum + Number(item.potentialPoints || 0), 0));
+  return {
+    ...model,
+    lines,
+    includedLines,
+    pendingLines,
+    excludedLines,
+    proposals,
+    issues,
+    counts: {
+      ...(model.counts || {}),
+      included: includedCount,
+      pending: pendingCount,
+      excluded: excludedCount,
+      proposals: Number(model.counts?.proposals ?? proposals.length),
+      issues: Number(model.counts?.issues ?? issues.length),
+      needsReview
+    },
+    includedCount,
+    pendingCount,
+    excludedCount,
+    needsReviewCount: needsReview,
+    potentialPointsTotal,
+    coverageSummary: model.coverageSummary || null,
+    includedTotalPoints: Number(model.includedTotalPoints ?? model.totalPoints ?? 0)
+  };
+}
+
 function buildCandidateWorkbenchModel({ calculation, receiptDraft, reviewItems }) {
   const items = Array.isArray(reviewItems) ? reviewItems : [];
   const lineReviewMap = new Map(items
@@ -2057,13 +2143,18 @@ function buildCandidateWorkbenchModel({ calculation, receiptDraft, reviewItems }
     }
   }
   const includedLines = lines.filter((line) => line.inclusionStatus === "included");
+  const pendingLines = lines.filter((line) => line.inclusionStatus === "pending");
+  const excludedLines = lines.filter((line) => line.inclusionStatus === "excluded");
   return {
     lines,
+    includedLines,
+    pendingLines,
+    excludedLines,
     proposals,
     issues,
     includedCount: includedLines.length,
-    excludedCount: lines.filter((line) => line.inclusionStatus === "excluded").length,
-    pendingCount: lines.filter((line) => line.inclusionStatus === "pending").length,
+    excludedCount: excludedLines.length,
+    pendingCount: pendingLines.length,
     includedTotalPoints: receiptDraft?.totalPoints ?? includedLines.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0)
   };
 }
