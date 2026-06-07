@@ -5,6 +5,7 @@ import {
   feeProjectId,
   LazyFirestoreFeeStore
 } from "../src/store/create-store.js";
+import { FirestoreFeeStore } from "../src/store/firestore-store.js";
 import { MemoryFeeStore } from "../src/store/memory-store.js";
 
 test("uses fee product project for Firestore", () => {
@@ -90,3 +91,100 @@ test("stores fee sessions by organization and saves calculation results", () => 
   assert.ok(reviewItems.length >= 1);
   assert.equal(decided.feeSession.reviewDecisions[reviewItems[0].reviewItemId].status, "approved");
 });
+
+test("Firestore fee store strips undefined review decision fields before persisting", async () => {
+  let counter = 0;
+  const docs = new Map();
+  const store = new FirestoreFeeStore({
+    db: fakeFirestoreDb(docs),
+    now: () => new Date("2026-05-28T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const session = await store.createSession({
+    orgId: "org_123",
+    patientId: "pat_123",
+    facilityId: "fac_123",
+    createdByMemberId: "mem_123",
+    serviceDate: "2026-05-28"
+  });
+  await store.saveCalculation("org_123", session.feeSessionId, {
+    provider: "test_fee_engine",
+    source: "test",
+    status: "completed",
+    totalPoints: 88,
+    warnings: ["施設基準を確認してください。"],
+    lineItems: [{
+      lineId: "line_1",
+      code: "160000410",
+      name: "血液検査",
+      orderType: "lab",
+      points: 88,
+      totalPoints: 88,
+      status: "candidate",
+      source: "test"
+    }]
+  });
+  const reviewItems = await store.listReviewItems("org_123", session.feeSessionId);
+  const warningReviewItem = reviewItems.find((item) => item.sourceType === "warning");
+  const held = await store.decideReviewItem("org_123", session.feeSessionId, "warning_1", {
+    status: "edited"
+  });
+  const excluded = await store.decideReviewItem("org_123", session.feeSessionId, "line_line_1", {
+    status: "rejected"
+  });
+  const receiptDraft = await store.getReceiptDraft("org_123", session.feeSessionId);
+
+  assert.ok(warningReviewItem.reviewItemId.startsWith("warning_"));
+  assert.equal(warningReviewItem.legacyReviewItemId, "warning_1");
+  assert.equal(held.feeSession.reviewDecisions[warningReviewItem.reviewItemId].status, "edited");
+  assert.equal(Object.hasOwn(held.feeSession.reviewDecisions[warningReviewItem.reviewItemId], "note"), false);
+  assert.equal(Object.hasOwn(excluded.feeSession.reviewDecisions.line_line_1, "replacementText"), false);
+  assertNoUndefined(docs.get("organizations/org_123/fee_sessions/fee_001"));
+  assert.equal(receiptDraft.totalPoints, 0);
+});
+
+function fakeFirestoreDb(docs) {
+  return {
+    doc(path) {
+      return {
+        async get() {
+          return {
+            exists: docs.has(path),
+            data: () => docs.get(path)
+          };
+        },
+        async set(value) {
+          assertNoUndefined(value);
+          docs.set(path, value);
+        },
+        collection(name) {
+          return fakeCollection(`${path}/${name}`, docs);
+        }
+      };
+    }
+  };
+}
+
+function fakeCollection(path, docs) {
+  return {
+    doc(id) {
+      return fakeFirestoreDb(docs).doc(`${path}/${id}`);
+    }
+  };
+}
+
+function assertNoUndefined(value) {
+  if (Array.isArray(value)) {
+    value.forEach(assertNoUndefined);
+    return;
+  }
+  if (!value || typeof value !== "object") {
+    assert.notEqual(value, undefined);
+    return;
+  }
+
+  for (const [key, item] of Object.entries(value)) {
+    assert.notEqual(item, undefined, `${key} should not be undefined`);
+    assertNoUndefined(item);
+  }
+}

@@ -158,6 +158,9 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
     ?? lineItems.reduce((sum, line) => sum + line.totalPoints, 0)
   );
   const warnings = normalizeWarnings(calculation.warnings || calculation.messages || []);
+  const candidateProposals = normalizeCandidateProposals(
+    calculation.candidateProposals || calculation.candidate_proposals || calculation.proposals || []
+  );
   const coverage = normalizeCalculationCoverage(calculation.coverage, lineItems, warnings);
 
   return compactObject({
@@ -181,6 +184,7 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
     },
     totalPoints,
     lineItems,
+    candidateProposals,
     warnings,
     coverage,
     messages: Array.isArray(calculation.messages) ? calculation.messages : [],
@@ -220,24 +224,22 @@ export function buildReceiptDraft(session = {}, options = {}) {
   const calculation = session.calculationResult || {};
   const decisions = isPlainObject(session.reviewDecisions) ? session.reviewDecisions : {};
   const lineItems = Array.isArray(calculation.lineItems) ? calculation.lineItems : [];
+  const candidateProposals = Array.isArray(calculation.candidateProposals) ? calculation.candidateProposals : [];
   const warnings = Array.isArray(calculation.warnings) ? calculation.warnings : [];
-  const lines = lineItems.map((line, index) => ({
-    receiptLineId: line.lineId || `line_${index + 1}`,
-    sourceLineId: line.lineId || null,
-    code: line.code || null,
-    name: line.name || "未分類",
-    orderType: line.orderType || "unknown",
-    points: Number(line.points || 0),
-    quantity: Number(line.quantity || 1),
-    totalPoints: Number(line.totalPoints || 0),
-    status: line.status || "candidate",
-    source: line.source || calculation.source || "fee-core",
-    coverage: line.coverage,
-    supportLevel: line.supportLevel,
-    reviewRequired: line.reviewRequired,
-    inclusionStatus: lineInclusionStatus(line, decisions),
-    includedInTotal: lineIncludedInTotal(line, decisions)
-  }));
+  const baseLines = lineItems.map((line, index) => receiptLineFromCalculationLine(line, index, calculation, decisions));
+  const baseLineKeys = new Set(baseLines.map((line) => receiptLineSemanticKey(line)));
+  const adoptedProposalLines = candidateProposals
+    .filter((proposal) => proposalIncludedInTotal(proposal, decisions))
+    .map((proposal, index) => receiptLineFromProposal(proposal, index, calculation))
+    .filter((line) => {
+      const key = receiptLineSemanticKey(line);
+      if (baseLineKeys.has(key)) {
+        return false;
+      }
+      baseLineKeys.add(key);
+      return true;
+    });
+  const lines = [...baseLines, ...adoptedProposalLines];
   const includedLines = lines.filter((line) => line.includedInTotal !== false);
 
   return {
@@ -257,7 +259,8 @@ export function buildReceiptDraft(session = {}, options = {}) {
     lines,
     lineGroups: groupReceiptLines(includedLines),
     validationIssues: warnings.map((message, index) => ({
-      issueId: `warning_${index + 1}`,
+      issueId: warningReviewItemId(message, index),
+      legacyIssueId: legacyWarningReviewItemId(index),
       severity: "warning",
       message
     })),
@@ -266,19 +269,81 @@ export function buildReceiptDraft(session = {}, options = {}) {
   };
 }
 
+function receiptLineFromCalculationLine(line = {}, index = 0, calculation = {}, decisions = {}) {
+  return {
+    receiptLineId: line.lineId || `line_${index + 1}`,
+    sourceLineId: line.lineId || null,
+    code: line.code || null,
+    name: line.name || "未分類",
+    orderType: line.orderType || "unknown",
+    points: Number(line.points || 0),
+    quantity: Number(line.quantity || 1),
+    totalPoints: Number(line.totalPoints || 0),
+    status: line.status || "candidate",
+    source: line.source || calculation.source || "fee-core",
+    coverage: line.coverage,
+    supportLevel: line.supportLevel,
+    reviewRequired: line.reviewRequired,
+    inclusionStatus: lineInclusionStatus(line, decisions),
+    includedInTotal: lineIncludedInTotal(line, decisions)
+  };
+}
+
+function receiptLineFromProposal(proposal = {}, index = 0, calculation = {}) {
+  const line = proposal.candidateLine || {};
+  return {
+    receiptLineId: `proposal_${proposal.proposalId || index + 1}`,
+    sourceLineId: line.lineId || null,
+    sourceProposalId: proposal.proposalId || null,
+    reviewItemId: proposalReviewItemId(proposal),
+    code: line.code || proposal.code || null,
+    name: line.name || proposal.title || "増点提案",
+    orderType: line.orderType || proposal.orderType || "other",
+    points: Number(line.points || proposal.potentialPoints || 0),
+    quantity: Number(line.quantity || 1),
+    totalPoints: Number(line.totalPoints || proposal.potentialPoints || 0),
+    status: line.status || "candidate",
+    source: line.source || proposal.source || calculation.source || "candidate_proposal",
+    coverage: line.coverage || null,
+    supportLevel: line.supportLevel || "candidate",
+    reviewRequired: true,
+    inclusionStatus: "included",
+    includedInTotal: true
+  };
+}
+
 export function buildReviewItems(session = {}) {
   const calculation = session.calculationResult || {};
   const decisions = isPlainObject(session.reviewDecisions) ? session.reviewDecisions : {};
   const warnings = Array.isArray(calculation.warnings) ? calculation.warnings : [];
   const lineItems = Array.isArray(calculation.lineItems) ? calculation.lineItems : [];
-  const warningItems = warnings.map((message, index) => reviewItem({
-    reviewItemId: `warning_${index + 1}`,
-    sourceType: "warning",
-    severity: "warning",
-    title: reviewWarningTitle(message),
-    reason: message,
-    decision: decisions[`warning_${index + 1}`]
-  }));
+  const candidateProposals = Array.isArray(calculation.candidateProposals) ? calculation.candidateProposals : [];
+  const warningItems = warnings.map((message, index) => {
+    const reviewItemId = warningReviewItemId(message, index);
+    const legacyReviewItemId = legacyWarningReviewItemId(index);
+    return reviewItem({
+      reviewItemId,
+      legacyReviewItemId,
+      sourceType: "warning",
+      severity: "warning",
+      title: reviewWarningTitle(message),
+      reason: message,
+      decision: decisions[reviewItemId] || decisions[legacyReviewItemId]
+    });
+  });
+  const proposalItems = candidateProposals.map((proposal) => {
+    const reviewItemId = proposalReviewItemId(proposal);
+    return reviewItem({
+      reviewItemId,
+      sourceType: "candidate_proposal",
+      severity: "proposal",
+      title: proposal.title || proposal.candidateLine?.name || "増点提案",
+      reason: proposal.reason || proposal.conditionText || "条件を満たす場合は算定できます。",
+      defaultStatus: "needs_review",
+      candidateProposal: proposal,
+      decision: decisions[reviewItemId]
+    });
+  });
   const lineReviewItems = lineItems.map((line) => {
     const reviewItemId = lineReviewItemId(line);
     const status = line.status || "candidate";
@@ -295,14 +360,177 @@ export function buildReviewItems(session = {}) {
     });
   });
 
-  return [...warningItems, ...lineReviewItems];
+  return [...warningItems, ...proposalItems, ...lineReviewItems];
+}
+
+export function buildCandidateWorkbench(session = {}, options = {}) {
+  const receiptDraft = options.receiptDraft || buildReceiptDraft(session, options);
+  const reviewItems = options.reviewItems || buildReviewItems(session);
+  const reviewItemById = new Map(reviewItems.map((item) => [item.reviewItemId, item]));
+  const lineReviewMap = new Map(reviewItems
+    .filter((item) => item?.sourceType === "line_item")
+    .map((item) => [lineReviewItemId(item.lineItem || {}), item]));
+  const lines = (receiptDraft.lines || []).map((line) => {
+    const reviewItem = (line.reviewItemId ? reviewItemById.get(line.reviewItemId) : null)
+      || lineReviewMap.get(lineReviewItemId({
+      lineId: line.sourceLineId,
+      code: line.code,
+      name: line.name
+    }))
+      || null;
+    const inclusionStatus = line.inclusionStatus || "included";
+    const decisionStatus = reviewItem?.decision?.status
+      || (inclusionStatus === "excluded" ? "rejected" : inclusionStatus === "pending" ? "edited" : "approved");
+    const businessCategory = receiptGroupLabel(line.orderType);
+    return {
+      kind: "line",
+      kindLabel: "算定中の明細",
+      reviewItemId: reviewItem?.reviewItemId || lineReviewItemId({
+        lineId: line.sourceLineId,
+        code: line.code,
+        name: line.name
+      }),
+      sourceReviewItemId: reviewItem?.reviewItemId || null,
+      receiptLineId: line.receiptLineId,
+      sourceLineId: line.sourceLineId,
+      name: line.name || "未分類",
+      displayTitle: line.name || "算定候補",
+      displayReason: lineDisplayReason(line, reviewItem),
+      conditionText: lineConditionText(line),
+      decisionStatus,
+      inclusionStatus,
+      metaLabel: line.code ? `${line.code} / ${businessCategory}` : businessCategory,
+      statusLabel: inclusionStatusLabel(inclusionStatus),
+      totalPoints: Number(line.totalPoints || 0),
+      pointsLabel: `${Number(line.totalPoints || 0).toLocaleString()}点`,
+      code: line.code || null,
+      orderType: line.orderType || "unknown",
+      businessCategory,
+      reviewRequired: line.reviewRequired === true,
+      sourceProposalId: line.sourceProposalId || null,
+      lineItem: line
+    };
+  });
+  const proposalItems = reviewItems.filter((item) => item?.sourceType === "candidate_proposal");
+  const warningItems = reviewItems.filter((item) => item?.sourceType === "warning");
+  attachWarningsToLines(lines, warningItems);
+  const lineTexts = lines.map((line) => `${line.name || ""} ${line.displayTitle || ""}`).join(" ");
+  const proposals = [];
+  const issues = [];
+  const seen = new Set();
+
+  for (const item of proposalItems) {
+    if (item.status === "approved" || item.status === "rejected") {
+      continue;
+    }
+    const normalized = normalizeCandidateActionItem(item);
+    const key = candidateActionSemanticKey(item, normalized);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    const actionItem = {
+      ...normalized,
+      adoptionReason: normalized.canAdopt
+        ? "条件を確認して算定する場合は、合計点数に追加できます。"
+        : "この提案は条件確認やコード確定が必要なため、現時点では自動で点数に追加しません。"
+    };
+    if (normalized.canAdopt) {
+      proposals.push({
+        ...actionItem,
+        kind: "proposal",
+        kindLabel: "増点提案",
+        bucket: "proposal"
+      });
+    } else {
+      issues.push({
+        ...actionItem,
+        kind: "issue",
+        kindLabel: "確認・修正",
+        bucket: "issue"
+      });
+    }
+  }
+
+  for (const item of warningItems) {
+    if (shouldSuppressWarningForExistingLine(item, lineTexts)) {
+      continue;
+    }
+    const normalized = normalizeCandidateActionItem(item);
+    const key = candidateActionSemanticKey(item, normalized);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    if (isIncreaseProposal(item, normalized)) {
+      proposals.push({
+        ...normalized,
+        kind: "proposal",
+        kindLabel: "増点提案",
+        bucket: "proposal",
+        canAdopt: false,
+        adoptionReason: "この提案は条件確認やコード確定が必要なため、現時点では自動で点数に追加しません。"
+      });
+    } else {
+      issues.push({
+        ...normalized,
+        kind: "issue",
+        kindLabel: "確認・修正",
+        bucket: "issue"
+      });
+    }
+  }
+
+  const includedLines = lines.filter((line) => line.inclusionStatus === "included");
+  const pendingLines = lines.filter((line) => line.inclusionStatus === "pending");
+  const excludedLines = lines.filter((line) => line.inclusionStatus === "excluded");
+  const reviewLineCount = includedLines.filter((line) => line.reviewRequired === true).length + pendingLines.length;
+  const potentialPointsTotal = proposals.reduce((sum, item) => sum + Number(item.potentialPoints || 0), 0);
+  const coverageSummary = buildCoverageSummary({
+    calculation: session.calculationResult || {},
+    includedLines,
+    pendingLines,
+    excludedLines,
+    proposals,
+    issues
+  });
+
+  return {
+    schemaVersion: 1,
+    totalPoints: Number(receiptDraft.totalPoints || 0),
+    includedTotalPoints: Number(receiptDraft.totalPoints || 0),
+    lines,
+    includedLines,
+    pendingLines,
+    excludedLines,
+    proposals,
+    issues,
+    counts: {
+      included: includedLines.length,
+      pending: pendingLines.length,
+      excluded: excludedLines.length,
+      proposals: proposals.length,
+      issues: issues.length,
+      reviewLines: reviewLineCount,
+      needsReview: proposals.length + issues.length + reviewLineCount
+    },
+    coverageSummary,
+    potentialPointsTotal,
+    includedCount: includedLines.length,
+    pendingCount: pendingLines.length,
+    excludedCount: excludedLines.length,
+    needsReviewCount: proposals.length + issues.length + reviewLineCount,
+    generatedAt: receiptDraft.generatedAt || timestamp(options.now)
+  };
 }
 
 export function applyReviewDecision(current = {}, reviewItemId, input = {}, options = {}) {
   const decision = validateReviewDecisionInput(input);
   const items = buildReviewItems(current);
-  const exists = items.some((item) => item.reviewItemId === reviewItemId);
-  if (!exists) {
+  const matchedItem = items.find((item) => (
+    item.reviewItemId === reviewItemId || item.legacyReviewItemId === reviewItemId
+  ));
+  if (!matchedItem) {
     const error = new Error("review item not found");
     error.name = "NotFoundError";
     error.statusCode = 404;
@@ -312,10 +540,10 @@ export function applyReviewDecision(current = {}, reviewItemId, input = {}, opti
   const now = timestamp(options.now);
   const reviewDecisions = {
     ...(current.reviewDecisions || {}),
-    [reviewItemId]: {
+    [matchedItem.reviewItemId]: compactObject({
       ...decision,
       decidedAt: now
-    }
+    })
   };
   const updated = {
     ...current,
@@ -336,6 +564,7 @@ export function createId(prefix) {
 
 function calculationNeedsReview(calculation) {
   return (calculation.warnings || []).length > 0
+    || (calculation.candidateProposals || []).length > 0
     || calculation.coverage?.reviewRequired === true
     || (calculation.lineItems || []).some((line) => {
       const status = line.status || "candidate";
@@ -382,6 +611,58 @@ function normalizeLineItems(items) {
       supportLevel,
       reviewRequired
     });
+  });
+}
+
+function normalizeCandidateProposals(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item, index) => normalizeCandidateProposal(item, index))
+    .filter(Boolean);
+}
+
+function normalizeCandidateProposal(item = {}, index = 0) {
+  if (!isPlainObject(item)) {
+    return null;
+  }
+  const proposalId = item.proposalId || item.proposal_id || item.id || `proposal_${stableHash(JSON.stringify(item))}`;
+  const rawLine = item.candidateLine || item.candidate_line || item.lineItem || item.line_item || null;
+  const candidateLine = isPlainObject(rawLine)
+    ? normalizeLineItems([{
+      ...rawLine,
+      lineId: rawLine.lineId || rawLine.line_id || `proposal_line_${proposalId}`,
+      status: rawLine.status || "candidate"
+    }])[0]
+    : null;
+  const potentialPoints = Number(
+    item.potentialPoints
+    ?? item.potential_points
+    ?? item.points
+    ?? candidateLine?.totalPoints
+    ?? 0
+  );
+  const title = item.title || item.name || candidateLine?.name || "増点提案";
+  const reason = item.reason || item.message || item.description || "";
+  const conditionText = item.conditionText || item.condition_text || item.condition || "";
+  const actionType = item.actionType || item.action_type || (candidateLine && potentialPoints > 0 ? "adoptable" : "confirm_required");
+
+  return compactObject({
+    proposalId: String(proposalId),
+    title,
+    reason,
+    conditionText,
+    basis: item.basis || item.basisText || item.basis_text || null,
+    evidence: item.evidence || null,
+    actionType,
+    potentialPoints,
+    code: item.code || candidateLine?.code || null,
+    orderType: item.orderType || item.order_type || candidateLine?.orderType || null,
+    source: item.source || "candidate_proposal",
+    candidateLine,
+    sortOrder: Number(item.sortOrder ?? item.sort_order ?? index + 1)
   });
 }
 
@@ -549,18 +830,33 @@ function reviewItem(input) {
   const decision = isPlainObject(input.decision) ? input.decision : null;
   return compactObject({
     reviewItemId: input.reviewItemId,
+    legacyReviewItemId: input.legacyReviewItemId,
     sourceType: input.sourceType,
     severity: input.severity,
     title: input.title,
     reason: input.reason,
     status: decision?.status || input.defaultStatus || "needs_review",
     decision,
-    lineItem: input.lineItem
+    lineItem: input.lineItem,
+    candidateProposal: input.candidateProposal
   });
+}
+
+function warningReviewItemId(message = "", index = 0) {
+  const normalized = String(message || "").trim() || `warning_${index + 1}`;
+  return `warning_${stableHash(normalized)}`;
+}
+
+function legacyWarningReviewItemId(index = 0) {
+  return `warning_${index + 1}`;
 }
 
 function lineReviewItemId(line = {}) {
   return `line_${line.lineId || line.code || line.name}`;
+}
+
+function proposalReviewItemId(proposal = {}) {
+  return `proposal_${proposal.proposalId || stableHash(`${proposal.title || ""}:${proposal.code || ""}`)}`;
 }
 
 function lineDecision(line = {}, decisions = {}) {
@@ -576,6 +872,20 @@ function lineInclusionStatus(line = {}, decisions = {}) {
 
 function lineIncludedInTotal(line = {}, decisions = {}) {
   return lineInclusionStatus(line, decisions) === "included";
+}
+
+function proposalDecision(proposal = {}, decisions = {}) {
+  return decisions[proposalReviewItemId(proposal)] || null;
+}
+
+function proposalIncludedInTotal(proposal = {}, decisions = {}) {
+  return proposalDecision(proposal, decisions)?.status === "approved"
+    && isPlainObject(proposal.candidateLine)
+    && Number(proposal.potentialPoints || proposal.candidateLine?.totalPoints || 0) > 0;
+}
+
+function receiptLineSemanticKey(line = {}) {
+  return `${line.code || ""}:${line.name || ""}:${line.orderType || ""}`;
 }
 
 function reviewWarningTitle(message = "") {
@@ -618,6 +928,250 @@ function reviewWarningTitle(message = "") {
     return `${drugName}の確認`;
   }
   return "確認事項";
+}
+
+function normalizeCandidateActionItem(item = {}) {
+  const proposal = item.candidateProposal || null;
+  const displayTitle = item.title || proposal?.title || reviewWarningTitle(item.reason || "");
+  const displayReason = humanizeReviewMessage(item.reason || proposal?.reason || "");
+  const conditionText = proposal?.conditionText || proposalConditionText(displayTitle, displayReason);
+  const potentialPoints = proposal?.potentialPoints || proposalPotentialPoints(item, displayTitle, displayReason);
+  const hasCandidateLine = isPlainObject(proposal?.candidateLine) || isPlainObject(item.lineItem);
+  const actionType = proposal?.actionType || (hasCandidateLine && potentialPoints > 0 ? "adoptable" : "confirm_required");
+  const canAdopt = actionType === "adoptable" && hasCandidateLine && Number(potentialPoints || 0) > 0;
+  return {
+    reviewItemId: item.reviewItemId,
+    legacyReviewItemId: item.legacyReviewItemId,
+    displayTitle,
+    displayReason,
+    conditionText,
+    reasonText: displayReason,
+    pointsLabel: pointsLabelForPotential(potentialPoints),
+    potentialPoints,
+    actionType,
+    nextActionLabel: canAdopt
+      ? `算定する +${Number(potentialPoints || 0).toLocaleString()}点`
+      : actionType === "select_required"
+        ? "候補を選ぶ"
+        : actionType === "not_billable_now"
+          ? "保留"
+          : "条件を確認",
+    canAdopt,
+    status: item.status || "needs_review",
+    decisionStatus: item.decision?.status || item.status || "needs_review",
+    sourceType: item.sourceType || "warning",
+    candidateLine: proposal?.candidateLine || item.lineItem || null,
+    candidateProposal: proposal,
+    sourceItem: item
+  };
+}
+
+function lineDisplayReason(line = {}, reviewItem = null) {
+  const reason = humanizeReviewMessage(reviewItem?.reason || line.reason || "");
+  if (reason && reason !== "算定候補の内容を確認してください。") {
+    return reason;
+  }
+  return `${line.name || "この明細"}を候補化しています。条件に合わない場合は「算定しない」に変更してください。`;
+}
+
+function lineConditionText(line = {}) {
+  const category = receiptGroupLabel(line.orderType);
+  if (category === "基本料") return "受診履歴と初診/再診の条件を確認してください。";
+  if (category === "画像") return "実施済みの検査であること、撮影内容、機器区分を確認してください。";
+  if (category === "投薬") return "今回処方した薬剤・日数・数量を確認してください。";
+  if (category === "検査" || category === "手技" || category === "処置") return "当日に実施した内容であること、必要なコメントや病名を確認してください。";
+  return "カルテ内容と算定条件を確認してください。";
+}
+
+function inclusionStatusLabel(status) {
+  return {
+    included: "算定中",
+    excluded: "算定しない",
+    pending: "保留"
+  }[status] || "算定中";
+}
+
+function isIncreaseProposal(item = {}, normalized = {}) {
+  return normalized.canAdopt === true
+    && !["approved", "rejected", "edited"].includes(normalized.decisionStatus)
+    && item.sourceType === "candidate_proposal";
+}
+
+function proposalConditionText(title = "", reason = "") {
+  const text = `${title} ${reason}`;
+  if (/施設基準|届け出|届出/u.test(text)) {
+    return "施設基準を地方厚生局に届け出済みなら、該当する加算を算定できます。";
+  }
+  if (/MRI|CT|画像|撮影/u.test(text)) {
+    return "実際に当日実施した検査なら算定できます。予定や依頼だけの場合は保留にしてください。";
+  }
+  if (/薬剤|処方|数量|日数/u.test(text)) {
+    return "必要な情報: 1回量、1日回数、日数または総量。例: 60mg 1日2回 7日分。入力後に薬剤料などを再計算できます。";
+  }
+  if (/病名|コメント/u.test(text)) {
+    return "必要な病名またはレセプトコメントを確認・追記できれば算定できます。";
+  }
+  return "条件を満たす場合は算定できます。満たさない場合は保留にしてください。";
+}
+
+function proposalPotentialPoints(item = {}, title = "", reason = "") {
+  const linePoints = Number(item.lineItem?.totalPoints || 0);
+  if (linePoints > 0) return linePoints;
+  const match = `${title} ${reason}`.match(/([+＋]\s*)?(\d{1,4})\s*点/u);
+  return match ? Number(match[2]) : null;
+}
+
+function proposalPointsLabel(item = {}, title = "", reason = "") {
+  const points = proposalPotentialPoints(item, title, reason);
+  return pointsLabelForPotential(points);
+}
+
+function pointsLabelForPotential(points) {
+  return points ? `+${points.toLocaleString()}点` : "";
+}
+
+function shouldSuppressWarningForExistingLine(item = {}, lineTexts = "") {
+  const text = `${item.title || ""} ${item.reason || ""}`;
+  if (isVisitFeeReviewText(text) && /初診料|再診料|基本料/u.test(lineTexts)) {
+    return true;
+  }
+  const drugName = text.match(/薬剤「([^」]+)」/u)?.[1];
+  if (drugName && /数量|日数|不足/u.test(text)) {
+    return lineTexts.includes(drugName);
+  }
+  return false;
+}
+
+function attachWarningsToLines(lines = [], warningItems = []) {
+  if (!Array.isArray(lines) || !Array.isArray(warningItems)) {
+    return;
+  }
+  const basicLine = lines.find((line) => /初診料|再診料/u.test(`${line.name || ""} ${line.displayTitle || ""}`));
+  if (!basicLine) {
+    return;
+  }
+  for (const item of warningItems) {
+    const text = `${item.title || ""} ${item.reason || ""}`;
+    if (!isVisitFeeReviewText(text)) {
+      continue;
+    }
+    const note = humanizeReviewMessage(item.reason || "");
+    basicLine.attentionNotes = uniqueCompact([...(basicLine.attentionNotes || []), note]);
+    if (!basicLine.displayReason || /受診履歴と初診\/再診|候補化しています/u.test(basicLine.displayReason)) {
+      basicLine.displayReason = note;
+    }
+  }
+}
+
+function isVisitFeeReviewText(text = "") {
+  return /初診|再診|受診履歴|過去算定記録|Outpatient basic/u.test(String(text || ""));
+}
+
+function buildCoverageSummary({ calculation = {}, includedLines = [], pendingLines = [], excludedLines = [], proposals = [], issues = [] } = {}) {
+  const supportLevel = calculation.coverage?.supportLevel || calculation.coverage?.support_level || "partial";
+  const includedScopeLabels = uniqueCompact(includedLines.map((line) => line.businessCategory || receiptGroupLabel(line.orderType)));
+  const excludedScopeLabels = uniqueCompact(excludedLines.map((line) => line.businessCategory || receiptGroupLabel(line.orderType)));
+  const pendingScopeLabels = uniqueCompact(pendingLines.map((line) => line.businessCategory || receiptGroupLabel(line.orderType)));
+  const unresolvedCount = proposals.length + issues.length + pendingLines.length;
+  const description = supportLevel === "supported"
+    ? "候補化できた算定行の合計です。確定請求前に採否と根拠を確認してください。"
+    : "現在のカルテとマスター照合から候補化できた範囲の合計です。未確認項目は確定前に確認してください。";
+  return compactObject({
+    title: "候補化済み部分合計",
+    supportLevel,
+    supportLevelLabel: supportLevel === "supported" ? "対応範囲内" : "部分対応",
+    description,
+    includedScopeLabels,
+    pendingScopeLabels,
+    excludedScopeLabels,
+    unresolvedCount,
+    badges: [
+      ...includedScopeLabels.map((label) => `${label}を候補化`),
+      unresolvedCount > 0 ? `要確認 ${unresolvedCount}件` : "追加確認なし"
+    ]
+  });
+}
+
+function uniqueCompact(values = []) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function candidateActionSemanticKey(item = {}, normalized = {}) {
+  const text = `${normalized.displayTitle || ""} ${normalized.displayReason || ""} ${item.title || ""} ${item.reason || ""}`.toLowerCase();
+  if (/施設基準|hospital_profile_missing|facility_standard/u.test(text)) return "warning:facility_standard";
+  if (/ca\s*125|ca125|ｃａ１２５/u.test(text)) return "warning:lab:ca125";
+  if (/経腟|経膣|超音波|エコー|ultrasound/u.test(text)) return "warning:procedure:ultrasound";
+  if (/mri|ｍｒｉ/u.test(text) && /予定|依頼|オーダー|planned|ordered/u.test(text)) return "warning:mri_planned";
+  if (/単純x線|x線|レントゲン|simple_radiography/u.test(text) && /撮影方式|写真診断|機器|条件/u.test(text)) return "warning:simple_radiography_condition";
+  const drugName = text.match(/薬剤「([^」]+)」/u)?.[1];
+  if (drugName && /数量|日数|不足/u.test(text)) return `warning:drug_quantity:${normalizeSemanticToken(drugName)}`;
+  return `${item.sourceType || "review"}:${normalized.displayTitle || ""}:${normalized.displayReason || ""}`;
+}
+
+function humanizeReviewMessage(message = "") {
+  const raw = String(message || "").trim();
+  if (!raw) return "算定候補の内容を確認してください。";
+  const text = raw.replace(/^[a-z][a-z0-9_]*:\s*/iu, "").trim();
+  if (/hospital_profile_missing|facility_standard|Lab management fee skipped|施設基準がない|施設基準/u.test(raw)) {
+    return "施設基準が登録されていないため、施設基準が必要な加算は自動追加していません。";
+  }
+  if (/This result is a billing candidate/i.test(text)) {
+    return "この結果は算定候補です。確定請求前に内容を確認してください。";
+  }
+  if (/Input drug code; medical drug fee rounded/i.test(text)) {
+    return "入力された薬剤コードから薬剤料を候補化しました。薬価合計を点数に換算しています。";
+  }
+  if (/Medication fee candidate for in_house/i.test(text)) {
+    return "院内処方に関する投薬料候補です。処方内容と算定条件を確認してください。";
+  }
+  if (/D026 judgement fee for group/i.test(text)) {
+    return "検査判断料の候補です。実施検査と同月算定条件を確認してください。";
+  }
+  if (/Collection fee requested by blood_venous/i.test(text)) {
+    return "静脈採血料の候補です。採血実施と算定条件を確認してください。";
+  }
+  if (/Outpatient rapid lab add-on skipped/i.test(text)) {
+    return "外来迅速検体検査加算は、当日説明・文書要件を確認できないため自動追加していません。";
+  }
+  if (/Required comment candidate:/i.test(text)) {
+    return text
+      .replace(/^Required comment candidate:\s*/iu, "レセプトコメントの確認: ")
+      .replace(/\s+needs\s+/iu, " に必要なコメント: ");
+  }
+  if (/Imaging fee skipped: duplicate imaging order/i.test(text)) {
+    return "画像診断の重複候補を除外しました。必要な撮影だけが算定されているか確認してください。";
+  }
+  if (/Imaging fee candidate for simple_radiography/i.test(text)) {
+    return "単純X線に関する画像診断料候補です。撮影方式と写真診断区分を確認してください。";
+  }
+  if (/Imaging fee candidate for ct/i.test(text)) {
+    return "CT撮影に関する画像診断料候補です。撮影内容と機器区分を確認してください。";
+  }
+  if (/Imaging fee candidate for mri/i.test(text)) {
+    return "MRI撮影に関する画像診断料候補です。撮影内容と機器区分を確認してください。";
+  }
+  if (/Outpatient basic fee candidate for initial/i.test(text)) {
+    return "初診料の候補です。受診履歴と初診の条件を確認してください。";
+  }
+  if (/Outpatient basic fee candidate for revisit/i.test(text)) {
+    return "再診料の候補です。受診履歴と再診の条件を確認してください。";
+  }
+  if (/Input medical procedure code matched master only/i.test(text)) {
+    return "標準マスターには一致しましたが、章ごとの算定条件は未確認です。";
+  }
+  return text;
+}
+
+function stableHash(value = "") {
+  return crypto.createHash("sha256").update(String(value)).digest("hex").slice(0, 16);
+}
+
+function normalizeSemanticToken(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{Letter}\p{Number}]+/gu, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function requiredString(value, field) {

@@ -193,6 +193,8 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "Each diagnosis and event must include a short evidence excerpt from the input text.",
       "Keep the response compact: evidence and reasons should be short excerpts, not explanations. Do not add dosage/unit/frequency details unless they are needed for quantity_per_day, days, total_quantity, or area_size_cm2.",
       "Prefer billing_events and excluded_events. Keep missing_information and review_flags empty unless they add information not already present in an event.",
+      "The examples below are schema examples only. Do not prefer those diseases, drugs, tests, or specialties. Apply the same event extraction rules to any clinical specialty.",
+      "When a performed lab value, imaging result, treatment, management, or counseling event is present in Objective or Plan, extract the event generically by its clinical name even if it is not shown in the examples.",
       "",
       "Examples:",
       "- Text: 月経困難症、子宮内膜症疑い。経腟超音波：左卵巣に約3cmの嚢胞性病変。血液検査：CA125 68 U/mL。MRI骨盤部オーダー。ルナベル処方。 -> diagnoses include 月経困難症 and 子宮内膜症疑い only; do not include CA125軽度高値. billing_events include 経腟超音波 as type=imaging status=performed modality=ultrasound, CA125 as type=lab status=performed, MRI骨盤部 as type=imaging status=ordered modality=mri, ルナベル as type=medication status=prescribed with empty quantity fields and missing_information for quantity/days.",

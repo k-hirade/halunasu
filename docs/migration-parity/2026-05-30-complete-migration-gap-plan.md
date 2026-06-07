@@ -34,7 +34,7 @@
 
 | Old asset | Decision | Reason |
 | --- | --- | --- |
-| `services/billing` as active billing runtime | Do not reactivate | 課金、signup、Stripe webhook、entitlementはCore Platform APIへ集約する。旧billingは`services/billing-api-legacy`として参照保存のみ。 |
+| `services/billing` as active billing runtime | Do not reactivate | 課金、signup、Stripe webhook、entitlementはCore Platform APIへ集約する。旧billingは`services/billing-api-legacy`として参照保存のみ。誤起動時の価格不整合を避けるため、legacy側のプラン定義とデフォルトStripe lookup keyだけは現行の月額30,000円/税込33,000円、`halunasu_charting_flat_monthly_jpy_v1`へ合わせる。 |
 | Charting `/contact-signup` public flow as primary signup | Do not keep as active flow | 入口はLP `signup.html` -> Platform APIへ統一する。旧Charting routeはLPへredirectする互換導線で十分。 |
 | `cloudbuild.billing.yaml`, `cloudbuild.gateway.yaml`, `cloudbuild.finalize.yaml` | Do not restore as active deploy config | `cloudbuild.node-service.yaml` とP10 deploy scriptに集約済み。旧per-service YAMLは運用分岐を増やすだけ。 |
 | `bootstrap_gcp_serverless.sh`, `deploy_cloud_run_zero_fixed.sh` | Do not restore as active scripts | 旧GCP project前提のbootstrap/deployであり、現行のproject split/low-cost scriptと責務が重複する。 |

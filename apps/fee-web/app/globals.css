@@ -1011,6 +1011,22 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   font-size: 1.2rem;
 }
 
+.candidate-coverage-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.candidate-coverage-badges span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 10px;
+}
+
 .candidate-bucket {
   border-top: 1px solid var(--line);
   padding-top: 14px;
@@ -1152,6 +1168,20 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.candidate-line-notes {
+  display: grid;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.candidate-line-notes span,
+.issue-card small {
+  color: #7a4b00;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .candidate-line-status {

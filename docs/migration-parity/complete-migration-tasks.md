@@ -58,6 +58,7 @@ flowchart LR
 - Stripeの正アカウントは `medical-ai` (`acct_1TPAYOADFhjr3GQS`)。
 - 正アカウントのPROD/live Productは `ハルナス` (`prod_UOMtOPqM6ZMlSI`)。Price v2は `medical_ai_monthly_jpy_v2` (`price_1TTss7ADFhjr3GQSZkTEOBcF`)、月額22,000円。
 - 正アカウントのSTG/test Productは `ハルナス` (`prod_UNxntCvcqendyQ`)。2026-05-30にSTG parity用Price v2 `medical_ai_monthly_jpy_v2` (`price_1Tcd88ADFhjr3GQSkOQfgEpB`)、月額22,000円を追加した。
+- 2026-06-06時点の現行商用価格は月額30,000円、税込33,000円。上記の `medical_ai_monthly_jpy_v2` は旧価格の調査記録であり、現行Checkoutでは再利用しない。現行のPlatform Checkoutは `halunasu_charting_flat_monthly_jpy_v1` を使う。
 - 旧Core STGの `medical-core-stg` Secret `STRIPE_SECRET_KEY` は誤接続アカウント `acct_1TPAYbA2mWuSL3Xa` のrestricted test keyを参照していたため、正アカウント `acct_1TPAYOADFhjr3GQS` のtest keyへ差し替え済み。
 - 正アカウントのCore STG webhookは `we_1Tcd8EADFhjr3GQSH2U7lcxM`。URLは `https://stg.halunasu.com/api/platform/v1/stripe/webhook`。
 - 正アカウントの旧test webhook `we_1TRM5WADFhjr3GQS96BvzjJM` と、誤接続アカウント側のCore STG webhook `we_1TcbBPA2mWuSL3XaHhp431E3` はdisabledへ変更済み。

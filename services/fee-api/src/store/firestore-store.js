@@ -63,10 +63,10 @@ export class FirestoreFeeStore {
   }
 
   async createSession(input) {
-    const session = buildFeeSession(input, {
+    const session = sanitizeForFirestore(buildFeeSession(input, {
       feeSessionId: this.idFactory("fee"),
       now: this.timestamp()
-    });
+    }));
 
     await this.doc(feeSessionPath(session.orgId, session.feeSessionId)).set(session);
     return session;
@@ -199,9 +199,9 @@ export class FirestoreFeeStore {
       throw notFoundError("fee session not found");
     }
 
-    const updated = applyFeeSessionPatch(current, patch, {
+    const updated = sanitizeForFirestore(applyFeeSessionPatch(current, patch, {
       now: this.timestamp()
-    });
+    }));
     await this.doc(feeSessionPath(orgId, feeSessionId)).set(updated);
 
     return {
@@ -215,10 +215,10 @@ export class FirestoreFeeStore {
       throw notFoundError("fee session not found");
     }
 
-    const updated = applyCalculationResult(current, calculationResult, {
+    const updated = sanitizeForFirestore(applyCalculationResult(current, calculationResult, {
       calculationId: this.idFactory("calc"),
       now: this.timestamp()
-    });
+    }));
     await this.doc(feeSessionPath(orgId, feeSessionId)).set(updated);
 
     return {
@@ -253,9 +253,9 @@ export class FirestoreFeeStore {
       throw notFoundError("fee session not found");
     }
 
-    const updated = applyReviewDecision(current, reviewItemId, input, {
+    const updated = sanitizeForFirestore(applyReviewDecision(current, reviewItemId, input, {
       now: this.timestamp()
-    });
+    }));
     await this.doc(feeSessionPath(orgId, feeSessionId)).set(updated);
 
     return {
@@ -294,6 +294,25 @@ export async function createFirestoreDb(options = {}) {
 
 function docsFromSnapshot(snapshot) {
   return snapshot.docs.map((doc) => doc.data());
+}
+
+function sanitizeForFirestore(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeForFirestore(item));
+  }
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => [key, sanitizeForFirestore(item)])
+  );
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 async function countQuery(query) {

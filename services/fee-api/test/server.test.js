@@ -376,11 +376,12 @@ test("reconnects clinical text to legacy outpatient calculation input", async ()
   );
   assert.deepEqual(
     receivedInput.calculationOptions.medication_orders.map((order) => order.drug_code).sort(),
-    ["620001001", "620001002"]
+    ["620001001"]
   );
   assert.equal(receivedInput.calculationOptions.medication_orders.some((order) => order.drug_code === "620001003"), false);
   assert.equal(receivedInput.calculationOptions.material_inputs, undefined);
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI")));
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("レバミピド")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
   assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("オーダー「画像診断」")), false);
   assert.equal(detail.body.feeSession.calculationOptions.outpatient_basic.fee_kind, "initial");

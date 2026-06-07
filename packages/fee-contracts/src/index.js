@@ -134,11 +134,11 @@ export function validateCreateFeeCalculationInput(input = {}) {
 }
 
 export function validateReviewDecisionInput(input = {}) {
-  return {
+  return compactObject({
     status: optionalEnum(input.status, feeReviewDecisionStatuses, "status") || "approved",
     note: optionalMultilineString(input.note, 5000),
     replacementText: optionalMultilineString(input.replacementText ?? input.replacement_text, 20000)
-  };
+  });
 }
 
 export function normalizeFeeOrders(value) {

@@ -286,6 +286,7 @@ PROD:
 ```
 
 Do not reuse `medical_ai_monthly_jpy_v2` for the new launch price because it currently points to 22,000 JPY/month.
+The LP legal display and legacy fallback plan constants must show the current launch price: 30,000 JPY tax-exclusive / 33,000 JPY tax-inclusive.
 
 Initial Checkout Session line items:
 

@@ -65,6 +65,7 @@ Steps:
    - 正Stripeアカウントは `medical-ai` (`acct_1TPAYOADFhjr3GQS`)。
    - 正アカウントのPROD/live Productは `ハルナス` (`prod_UOMtOPqM6ZMlSI`)。Price v2は `medical_ai_monthly_jpy_v2` (`price_1TTss7ADFhjr3GQSZkTEOBcF`)、月額22,000円。
    - 正アカウントのSTG/test Productは `ハルナス` (`prod_UNxntCvcqendyQ`)。STG parity用Price v2 `medical_ai_monthly_jpy_v2` (`price_1Tcd88ADFhjr3GQSkOQfgEpB`) を2026-05-30に追加。
+   - 2026-06-06時点の現行商用価格は月額30,000円、税込33,000円。`medical_ai_monthly_jpy_v2` は旧価格の調査記録であり、現行Checkoutでは再利用しない。現行のPlatform Checkoutは `halunasu_charting_flat_monthly_jpy_v1` を使う。
    - 旧Core STGは誤接続アカウント `acct_1TPAYbA2mWuSL3Xa` を参照していたため、`medical-core-stg` の `STRIPE_SECRET_KEY` を正アカウントtest keyへ差し替え済み。
    - 正アカウントのCore STG webhook `we_1Tcd8EADFhjr3GQSH2U7lcxM` はenabled。正アカウント旧test webhook `we_1TRM5WADFhjr3GQS96BvzjJM` と誤接続アカウントのCore STG webhook `we_1TcbBPA2mWuSL3XaHhp431E3` はdisabled。
    - Core PRODには正アカウントのlive restricted keyとCore live webhook secretを設定済み。Core live webhook `we_1TcdVxADFhjr3GQSUv5L4qLt` はenabled。旧live webhook `we_1TPXYiADFhjr3GQSR83I19Fq` はdisabled。

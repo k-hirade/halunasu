@@ -4,6 +4,7 @@ import {
   applyCalculationResult,
   applyFeeSessionPatch,
   applyReviewDecision,
+  buildCandidateWorkbench,
   buildReceiptDraft,
   buildFeeSession,
   normalizeCalculationResult,
@@ -286,3 +287,234 @@ test("excludes rejected line items from receipt totals", () => {
   assert.equal(receiptDraft.lines.find((line) => line.sourceLineId === "line_2").includedInTotal, false);
   assert.equal(receiptDraft.lineGroups.reduce((sum, group) => sum + group.totalPoints, 0), 291);
 });
+
+test("stores review decisions without undefined optional fields", () => {
+  const session = buildFeeSession({
+    orgId: "org_123",
+    createdByMemberId: "member_1",
+    patientId: "patient_1",
+    facilityId: "facility_1",
+    serviceDate: "2026-06-07"
+  }, {
+    feeSessionId: "fee_review_decision",
+    now: "2026-06-07T00:00:00.000Z"
+  });
+  const calculated = applyCalculationResult(session, {
+    warnings: ["施設基準を確認してください。"],
+    lineItems: [{
+      lineId: "line_1",
+      code: "111000110",
+      name: "初診料",
+      orderType: "basic",
+      points: 291,
+      totalPoints: 291,
+      status: "candidate",
+      source: "outpatient_basic_fee"
+    }]
+  }, {
+    calculationId: "calc_review_decision",
+    now: "2026-06-07T00:01:00.000Z"
+  });
+  const warningReviewItemId = buildReviewItems(calculated).find((item) => item.sourceType === "warning").reviewItemId;
+  const heldWarning = applyReviewDecision(calculated, warningReviewItemId, {
+    status: "edited"
+  }, {
+    now: "2026-06-07T00:02:00.000Z"
+  });
+  const excludedLine = applyReviewDecision(heldWarning, "line_line_1", {
+    status: "rejected"
+  }, {
+    now: "2026-06-07T00:03:00.000Z"
+  });
+  const receiptDraft = buildReceiptDraft(excludedLine, {
+    now: "2026-06-07T00:04:00.000Z"
+  });
+
+  assert.equal(excludedLine.reviewDecisions[warningReviewItemId].status, "edited");
+  assert.equal(Object.hasOwn(excludedLine.reviewDecisions[warningReviewItemId], "note"), false);
+  assert.equal(Object.hasOwn(excludedLine.reviewDecisions[warningReviewItemId], "replacementText"), false);
+  assert.equal(Object.hasOwn(excludedLine.reviewDecisions.line_line_1, "note"), false);
+  assertNoUndefined(excludedLine.reviewDecisions);
+  assert.equal(receiptDraft.totalPoints, 0);
+});
+
+test("builds structured candidate workbench buckets from receipt and review data", () => {
+  const session = buildFeeSession({
+    orgId: "org_123",
+    createdByMemberId: "member_1",
+    patientId: "patient_1",
+    facilityId: "facility_1",
+    serviceDate: "2026-06-07"
+  }, {
+    feeSessionId: "fee_workbench",
+    now: "2026-06-07T00:00:00.000Z"
+  });
+  const calculated = applyCalculationResult(session, {
+    warnings: [
+      "施設基準が登録されていないため、検体検査管理加算は自動追加していません。",
+      "薬剤「ロキソプロフェン」は数量または日数が不足しているため、算定候補には入れていません。"
+    ],
+    lineItems: [
+      {
+        lineId: "line_1",
+        code: "112007410",
+        name: "再診料",
+        orderType: "basic",
+        points: 75,
+        totalPoints: 75,
+        status: "candidate",
+        source: "outpatient_basic_fee"
+      },
+      {
+        lineId: "line_2",
+        code: "160000000",
+        name: "検査候補",
+        orderType: "lab",
+        points: 100,
+        totalPoints: 100,
+        status: "candidate",
+        source: "medical_procedure_master"
+      }
+    ]
+  }, {
+    calculationId: "calc_workbench",
+    now: "2026-06-07T00:01:00.000Z"
+  });
+  const pending = applyReviewDecision(calculated, "line_line_2", {
+    status: "edited"
+  }, {
+    now: "2026-06-07T00:02:00.000Z"
+  });
+  const workbench = buildCandidateWorkbench(pending, {
+    now: "2026-06-07T00:03:00.000Z"
+  });
+
+  assert.equal(workbench.includedTotalPoints, 75);
+  assert.equal(workbench.includedLines.length, 1);
+  assert.equal(workbench.pendingLines.length, 1);
+  assert.equal(workbench.excludedLines.length, 0);
+  assert.equal(workbench.proposals.length, 0);
+  assert.equal(workbench.issues.length, 2);
+  assert.ok(workbench.issues.every((item) => item.kind === "issue"));
+  assert.ok(workbench.issues.find((item) => item.displayTitle === "ロキソプロフェンの確認").conditionText.includes("60mg 1日2回 7日分"));
+});
+
+test("attaches visit-fee review warnings to the basic fee line", () => {
+  const session = buildFeeSession({
+    orgId: "org_123",
+    createdByMemberId: "member_1",
+    patientId: "patient_1",
+    facilityId: "facility_1",
+    serviceDate: "2026-06-07"
+  }, {
+    feeSessionId: "fee_visit_warning",
+    now: "2026-06-07T00:00:00.000Z"
+  });
+  const calculated = applyCalculationResult(session, {
+    warnings: [
+      "同一患者の過去算定記録があるため再診料候補を立てています。過去病名と今回病名の継続性を確認してください。"
+    ],
+    lineItems: [{
+      lineId: "line_1",
+      code: "112007410",
+      name: "再診料",
+      orderType: "basic",
+      points: 75,
+      totalPoints: 75,
+      status: "candidate",
+      source: "outpatient_basic_fee"
+    }]
+  }, {
+    calculationId: "calc_visit_warning",
+    now: "2026-06-07T00:01:00.000Z"
+  });
+  const workbench = buildCandidateWorkbench(calculated, {
+    now: "2026-06-07T00:02:00.000Z"
+  });
+
+  assert.equal(workbench.proposals.length, 0);
+  assert.equal(workbench.issues.length, 0);
+  assert.equal(workbench.includedLines[0].attentionNotes.length, 1);
+  assert.match(workbench.includedLines[0].attentionNotes[0], /過去病名と今回病名/u);
+});
+
+test("adopts structured increase proposals into receipt totals", () => {
+  const session = buildFeeSession({
+    orgId: "org_123",
+    createdByMemberId: "member_1",
+    patientId: "patient_1",
+    facilityId: "facility_1",
+    serviceDate: "2026-06-07"
+  }, {
+    feeSessionId: "fee_proposal",
+    now: "2026-06-07T00:00:00.000Z"
+  });
+  const calculated = applyCalculationResult(session, {
+    lineItems: [{
+      lineId: "line_1",
+      code: "112007410",
+      name: "再診料",
+      orderType: "basic",
+      points: 75,
+      totalPoints: 75,
+      status: "candidate",
+      source: "outpatient_basic_fee"
+    }],
+    candidateProposals: [{
+      proposalId: "lab_management_addon",
+      title: "検体検査管理加算",
+      reason: "施設基準を届け出済みなら算定できます。",
+      conditionText: "検体検査管理加算の施設基準を届け出済みであることを確認してください。",
+      potentialPoints: 40,
+      candidateLine: {
+        code: "160000000",
+        name: "検体検査管理加算",
+        orderType: "lab",
+        points: 40,
+        totalPoints: 40,
+        status: "candidate",
+        source: "lab_management_fee"
+      }
+    }]
+  }, {
+    calculationId: "calc_proposal",
+    now: "2026-06-07T00:01:00.000Z"
+  });
+  const proposal = buildCandidateWorkbench(calculated).proposals[0];
+  const adopted = applyReviewDecision(calculated, proposal.reviewItemId, {
+    status: "approved"
+  }, {
+    now: "2026-06-07T00:02:00.000Z"
+  });
+  const receiptDraft = buildReceiptDraft(adopted, {
+    now: "2026-06-07T00:03:00.000Z"
+  });
+  const workbench = buildCandidateWorkbench(adopted, {
+    receiptDraft,
+    now: "2026-06-07T00:04:00.000Z"
+  });
+
+  assert.equal(proposal.canAdopt, true);
+  assert.equal(proposal.pointsLabel, "+40点");
+  assert.equal(receiptDraft.totalPoints, 115);
+  assert.equal(receiptDraft.lines.some((line) => line.sourceProposalId === "lab_management_addon"), true);
+  assert.equal(workbench.proposals.length, 0);
+  assert.equal(workbench.includedLines.length, 2);
+  assert.equal(workbench.includedTotalPoints, 115);
+});
+
+function assertNoUndefined(value) {
+  if (Array.isArray(value)) {
+    value.forEach(assertNoUndefined);
+    return;
+  }
+  if (!value || typeof value !== "object") {
+    assert.notEqual(value, undefined);
+    return;
+  }
+
+  for (const [key, item] of Object.entries(value)) {
+    assert.notEqual(item, undefined, `${key} should not be undefined`);
+    assertNoUndefined(item);
+  }
+}

@@ -100,6 +100,7 @@ npm run deploy:netlify-charting-next -- --env prod --apply
 - Netlify Next Runtimeの生成物が `apps/charting-web/apps/charting-web/.netlify` 側へ出る問題を、`scripts/p16_deploy_charting_next_netlify.mjs` のsync/patch/deploy処理で再現可能にした。
 - `.gcloudignore.fee-api` を追加し、Fee APIだけ公式master gzipをCloud Build contextへ含めるようにした。
 - `p10_deploy_runtime_services_low_cost.sh` はFee APIを `memory=2Gi` / `timeout=180s` にしつつ、`min=0` / `maxScale=1` を維持する。
+- Fee APIのOpenAIカルテ構造化は `OPENAI_FEE_CLINICAL_TIMEOUT_MS=0` を既定とする。これはSOAP生成と同じくアプリ側で短時間abortしない設定で、OpenAIが遅い時も構造化結果を待ち、算定精度を優先する。Cloud Run全体のtimeoutは別途 `180s` のまま。
 
 運用メモ:
 

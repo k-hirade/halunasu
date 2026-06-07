@@ -4,8 +4,8 @@ const BILLING_PLANS = Object.freeze([
     displayName: "ハルナス",
     description: "ハルナス 月額プラン",
     currency: "jpy",
-    taxExclusiveUnitAmount: 20000,
-    unitAmount: 22000,
+    taxExclusiveUnitAmount: 30000,
+    unitAmount: 33000,
     interval: "month",
     intervalCount: 1,
     seatQuantity: 1
