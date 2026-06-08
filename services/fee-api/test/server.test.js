@@ -389,6 +389,222 @@ test("reconnects clinical text to legacy outpatient calculation input", async ()
   assert.equal(detail.body.feeSession.calculationOptions.imaging_orders.length, 1);
 });
 
+test("structured inpatient sessions suppress outpatient basic and infer inpatient basic fee", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      engineStatus: "ok",
+      totalPoints: 1688,
+      lineItems: [{
+        lineId: "line_inpatient_basic",
+        code: calculationInput.calculationOptions.inpatient_basic.basic_fee_code,
+        name: "急性期一般入院料１",
+        orderType: "inpatient_basic",
+        points: 1688,
+        quantity: calculationInput.calculationOptions.inpatient_basic.basic_fee_days,
+        totalPoints: 1688,
+        status: "candidate",
+        source: "inpatient_basic_fee",
+        reviewRequired: true
+      }],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "initial", evidence: "初診として入院", confidence: "high" },
+    diagnoses: [{ name: "肺炎", status: "active", evidence: "肺炎で入院" }],
+    billing_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Inpatient Structured"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    setting: "inpatient",
+    serviceDate: "2026-06-05",
+    clinicalText: "肺炎で入院。急性期一般入院料1として2日分を明示。初診として入院管理を開始した。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  const detail = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/detail`,
+    undefined,
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic, undefined);
+  assert.deepEqual(receivedInput.calculationOptions.inpatient_basic, {
+    basic_fee_code: "190117710",
+    basic_fee_days: 2,
+    facility_standard_key: "一般入院"
+  });
+  assert.deepEqual(receivedInput.calculationOptions.facility_standard_keys, ["一般入院"]);
+  assert.equal(calculation.body.calculationResult.totalPoints, 1688);
+  assert.deepEqual(
+    detail.body.feeSession.calculationOptionsAutoKeys.sort(),
+    ["facility_standard_keys", "inpatient_basic"].sort()
+  );
+  assert.ok(detail.body.feeSession.calculationProgress.extractedOrders.includes("入院基本料候補 2日分"));
+});
+
+test("rule based inpatient sessions infer inpatient basic without outpatient basic", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      engineStatus: "ok",
+      totalPoints: 1688,
+      lineItems: [],
+      warnings: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Inpatient Rules"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    setting: "inpatient",
+    serviceDate: "2026-06-05",
+    clinicalText: "肺炎で入院1日目。急性期一般入院料1で管理。初診時から継続して病棟で全身状態を観察。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic, undefined);
+  assert.deepEqual(receivedInput.calculationOptions.inpatient_basic, {
+    basic_fee_code: "190117710",
+    basic_fee_days: 1,
+    facility_standard_key: "一般入院"
+  });
+  assert.deepEqual(receivedInput.calculationOptions.facility_standard_keys, ["一般入院"]);
+});
+
+test("DPC inpatient sessions do not auto infer fee-for-service inpatient basic", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      engineStatus: "needs_review",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "DPC Inpatient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    setting: "inpatient",
+    serviceDate: "2026-06-05",
+    clinicalText: "肺炎で入院3日目。DPC対象病院で管理中。当日確認した主な診療内容は「急性期一般入院料1、DPCレビュー」。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+  const detail = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/detail`,
+    undefined,
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions?.inpatient_basic, undefined);
+  assert.equal(receivedInput.calculationOptions?.facility_standard_keys, undefined);
+  assert.equal(detail.body.feeSession.calculationOptionsAutoKeys.includes("inpatient_basic"), false);
+  assert.equal(detail.body.feeSession.calculationProgress.extractedOrders.includes("入院基本料候補 3日分"), false);
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("DPCレビュー")));
+});
+
+test("missing setting with negated inpatient context remains outpatient", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      engineStatus: "ok",
+      totalPoints: 288,
+      lineItems: [],
+      warnings: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Outpatient Missing Setting"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    serviceDate: "2026-06-05",
+    clinicalText: "発熱と咽頭痛で初診。全身状態は安定しており、入院適応は低い。外来で経過観察とした。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions?.inpatient_basic, undefined);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "initial");
+});
+
 test("does not promote placeholder categories to billing codes", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);

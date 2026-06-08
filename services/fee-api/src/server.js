@@ -689,6 +689,10 @@ function extractedOrderLabels(options = {}) {
   if (options.outpatient_basic?.fee_kind) {
     labels.push(options.outpatient_basic.fee_kind === "initial" ? "初診料候補" : "再診料候補");
   }
+  if (options.inpatient_basic?.basic_fee_code) {
+    const days = Number(options.inpatient_basic.basic_fee_days || 1);
+    labels.push(`入院基本料候補${days > 1 ? ` ${days}日分` : ""}`);
+  }
   for (const order of Array.isArray(options.imaging_orders) ? options.imaging_orders : []) {
     labels.push(imagingProgressLabel(order));
   }
