@@ -41,7 +41,7 @@ const DPC_CONTEXT_PATTERN = /DPC|診断群分類|包括評価/u;
 const STRONG_INPATIENT_CONTEXT_PATTERN = /入院\s*\d{1,2}\s*日目|入院中|入院管理|病棟で|病棟管理|急性期一般入院料\s*[1-6]|入院基本料|DPC対象病院|DPC.*(?:管理|入院|対象)|(?:入院|病棟).*(?:継続|管理|観察)/u;
 const NON_CURRENT_INPATIENT_CONTEXT_PATTERN = /入院適応(?:は)?低い|入院適応なし|入院不要|入院なし|入院は不要|退院後|退院希望|入院歴|過去.{0,12}入院|前回入院|入院前/u;
 
-export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v2";
+export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v3";
 
 const DIRECT_RETRIEVAL_FEE_CATEGORIES_BY_EVENT_TYPE = Object.freeze({
   lab: new Set(["lab_test_basic"]),
@@ -52,6 +52,18 @@ const DIRECT_RETRIEVAL_FEE_CATEGORIES_BY_EVENT_TYPE = Object.freeze({
   management: new Set(["management_fee"]),
   counseling: new Set(["management_fee"])
 });
+
+const CT_EQUIPMENT_KIND_PATTERNS = Object.freeze([
+  { kind: "multislice_128_or_more", pattern: /(?:128\s*列\s*以上|128列以上|百二十八列以上)/u },
+  { kind: "multislice_64_to_128", pattern: /(?:64\s*列\s*以上\s*128\s*列\s*未満|64列以上128列未満|六十四列以上百二十八列未満)/u },
+  { kind: "multislice_16_to_64", pattern: /(?:16\s*列\s*以上\s*64\s*列\s*未満|16列以上64列未満|十六列以上六十四列未満)/u },
+  { kind: "multislice_4_to_16", pattern: /(?:4\s*列\s*以上\s*16\s*列\s*未満|4列以上16列未満|四列以上十六列未満)/u }
+]);
+
+const MRI_EQUIPMENT_KIND_PATTERNS = Object.freeze([
+  { kind: "three_tesla", pattern: /(?:3\s*T|３\s*T|3テスラ|３テスラ|三テスラ)/iu },
+  { kind: "one_point_five_tesla", pattern: /(?:1\.5\s*T|１\.５\s*T|1\.5テスラ|１\.５テスラ|一・五テスラ)/iu }
+]);
 
 export async function buildClinicalCalculationPreparation({
   session = {},
@@ -198,6 +210,11 @@ export async function buildClinicalCalculationPreparation({
       normalizedInferred.outpatient_basic = historyBasic.outpatientBasic;
     }
     reviewWarnings.push(...historyBasic.reviewWarnings);
+    reviewWarnings.push(...inferPediatricAddOnReviewWarnings({
+      session,
+      text,
+      outpatientBasic: normalizedInferred.outpatient_basic || historyBasic.outpatientBasic || null
+    }));
   }
 
   const autoKeys = Object.keys(normalizedInferred).filter((key) => (
@@ -1476,6 +1493,57 @@ function hasRelatedDiagnosisName(currentNames = [], priorNames = []) {
   )));
 }
 
+function inferPediatricAddOnReviewWarnings({ session = {}, text = "", outpatientBasic = null } = {}) {
+  if (!outpatientBasic?.fee_kind || isInpatientEncounter(session, text)) {
+    return [];
+  }
+  const age = patientAgeOnServiceDate(session);
+  const normalizedText = normalizeClinicalText(text);
+  const explicitlyMentioned = /乳幼児|幼児|小児加算|乳幼児加算|小児科外来診療料/u.test(normalizedText);
+  if (!(Number.isFinite(age) && age < 6) && !explicitlyMentioned) {
+    return [];
+  }
+  return [
+    "小児加算の確認: 患者年齢またはカルテ記載から小児加算の対象になり得ます。初診/再診、受付時刻、時間外・休日・深夜、施設区分を確認してください。"
+  ];
+}
+
+function patientAgeOnServiceDate(session = {}) {
+  const serviceDate = parseDateOnly(session?.serviceDate || session?.encounter?.serviceDate);
+  const birthDate = parseDateOnly(
+    session?.patientSnapshot?.birthDate
+    || session?.patient?.birthDate
+    || session?.patientBirthDate
+  );
+  if (!serviceDate || !birthDate || birthDate > serviceDate) {
+    return Number.NaN;
+  }
+  let age = serviceDate.getUTCFullYear() - birthDate.getUTCFullYear();
+  const serviceMonth = serviceDate.getUTCMonth();
+  const birthMonth = birthDate.getUTCMonth();
+  if (
+    serviceMonth < birthMonth
+    || (serviceMonth === birthMonth && serviceDate.getUTCDate() < birthDate.getUTCDate())
+  ) {
+    age -= 1;
+  }
+  return age;
+}
+
+function parseDateOnly(value) {
+  const match = String(value || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})/u);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
 function normalizeDiagnosisMatchKey(value) {
   return String(value || "")
     .replace(/疑い|の可能性|可能性|急性|慢性|症|病|疾患|障害|[\s（）()・、,]/gu, "")
@@ -1495,6 +1563,68 @@ function shareDiagnosisToken(left, right) {
   return false;
 }
 
+function ctEquipmentKindFromText(value = "") {
+  const text = normalizeClinicalText(value);
+  for (const { kind, pattern } of CT_EQUIPMENT_KIND_PATTERNS) {
+    if (pattern.test(text)) {
+      return kind;
+    }
+  }
+  return "";
+}
+
+function mriEquipmentKindFromText(value = "") {
+  const text = normalizeClinicalText(value);
+  for (const { kind, pattern } of MRI_EQUIPMENT_KIND_PATTERNS) {
+    if (pattern.test(text)) {
+      return kind;
+    }
+  }
+  return "";
+}
+
+function clinicalEventEquipmentKind(event = {}, imagingKind = "") {
+  const explicit = [
+    event?.equipment_kind,
+    event?.equipmentKind,
+    event?.ct_equipment_kind,
+    event?.ctEquipmentKind,
+    event?.mri_equipment_kind,
+    event?.mriEquipmentKind,
+    event?.payload?.equipment_kind,
+    event?.payload?.equipmentKind,
+    event?.payload?.ct_equipment_kind,
+    event?.payload?.ctEquipmentKind,
+    event?.payload?.mri_equipment_kind,
+    event?.payload?.mriEquipmentKind
+  ].map((value) => String(value || "").trim()).find(Boolean);
+  if (explicit) {
+    return normalizeImagingEquipmentKind(explicit, imagingKind);
+  }
+  const evidence = clinicalEventEvidence(event);
+  return imagingKind === "ct" ? ctEquipmentKindFromText(evidence) : mriEquipmentKindFromText(evidence);
+}
+
+function normalizeImagingEquipmentKind(value = "", imagingKind = "") {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return "";
+  }
+  const known = new Set([
+    "multislice_4_to_16",
+    "multislice_16_to_64",
+    "multislice_64_to_128",
+    "multislice_128_or_more",
+    "three_tesla",
+    "one_point_five_tesla",
+    "other"
+  ]);
+  if (known.has(normalized)) {
+    return normalized;
+  }
+  return imagingKind === "ct" ? ctEquipmentKindFromText(normalized) : mriEquipmentKindFromText(normalized);
+}
+
 function inferImagingOrders(text) {
   const orders = [];
   const reviewWarnings = [];
@@ -1508,13 +1638,18 @@ function inferImagingOrders(text) {
       if (isFutureOrOrderOnlyContext(sentence)) {
         reviewWarnings.push("MRI検査は予定・依頼として記載されているため、今回算定候補には入れていません。実施済みの場合は撮影内容を確認してください。");
       } else if (isPerformedImagingContext(sentence, "mri")) {
-        orders.push({
+        const equipmentKind = mriEquipmentKindFromText(sentence);
+        const order = {
           kind: "mri",
-          mri_equipment_kind: "other",
           contrast: hasLocalContrastContext(sentence, "mri"),
           electronic_image_management: true
-        });
-        reviewWarnings.push("MRI検査は機器区分がカルテ本文から確定できないため、旧入力契約の既定値（その他）で候補化しています。請求前に機器区分を確認してください。");
+        };
+        if (equipmentKind) {
+          order.mri_equipment_kind = equipmentKind;
+        } else {
+          reviewWarnings.push("MRI検査は機器区分がカルテ本文から確定できないため、点数確定前に機器区分を確認してください。");
+        }
+        orders.push(order);
       }
       continue;
     }
@@ -1522,13 +1657,18 @@ function inferImagingOrders(text) {
       if (isFutureOrOrderOnlyContext(sentence)) {
         reviewWarnings.push("CT検査は予定・依頼として記載されているため、今回算定候補には入れていません。実施済みの場合は撮影内容を確認してください。");
       } else if (isPerformedImagingContext(sentence, "ct")) {
-        orders.push({
+        const equipmentKind = ctEquipmentKindFromText(sentence);
+        const order = {
           kind: "ct",
-          ct_equipment_kind: "other",
           contrast: hasLocalContrastContext(sentence, "ct"),
           electronic_image_management: true
-        });
-        reviewWarnings.push("CT検査は機器区分がカルテ本文から確定できないため、旧入力契約の既定値（その他）で候補化しています。請求前に機器区分を確認してください。");
+        };
+        if (equipmentKind) {
+          order.ct_equipment_kind = equipmentKind;
+        } else {
+          reviewWarnings.push("CT検査は機器区分がカルテ本文から確定できないため、点数確定前に機器区分を確認してください。");
+        }
+        orders.push(order);
       }
       continue;
     }
@@ -2352,14 +2492,19 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
   const kind = clinicalImagingKind(event);
   const evidence = clinicalEventEvidence(event);
   if (kind === "mri") {
-    reviewWarnings.push("MRI検査は機器区分がカルテ本文から確定できないため、旧入力契約の既定値（その他）で候補化しています。請求前に機器区分を確認してください。");
+    const equipmentKind = clinicalEventEquipmentKind(event, "mri");
+    const order = {
+      kind: "mri",
+      contrast: hasLocalContrastContext(evidence, "mri"),
+      electronic_image_management: true
+    };
+    if (equipmentKind) {
+      order.mri_equipment_kind = equipmentKind;
+    } else {
+      reviewWarnings.push("MRI検査は機器区分がカルテ本文から確定できないため、点数確定前に機器区分を確認してください。");
+    }
     return {
-      order: {
-        kind: "mri",
-        mri_equipment_kind: "other",
-        contrast: hasLocalContrastContext(evidence, "mri"),
-        electronic_image_management: true
-      },
+      order,
       procedureCodes,
       commentInputs: [],
       collectionFeeInputs: [],
@@ -2368,14 +2513,19 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
     };
   }
   if (kind === "ct") {
-    reviewWarnings.push("CT検査は機器区分がカルテ本文から確定できないため、旧入力契約の既定値（その他）で候補化しています。請求前に機器区分を確認してください。");
+    const equipmentKind = clinicalEventEquipmentKind(event, "ct");
+    const order = {
+      kind: "ct",
+      contrast: hasLocalContrastContext(evidence, "ct"),
+      electronic_image_management: true
+    };
+    if (equipmentKind) {
+      order.ct_equipment_kind = equipmentKind;
+    } else {
+      reviewWarnings.push("CT検査は機器区分がカルテ本文から確定できないため、点数確定前に機器区分を確認してください。");
+    }
     return {
-      order: {
-        kind: "ct",
-        ct_equipment_kind: "other",
-        contrast: hasLocalContrastContext(evidence, "ct"),
-        electronic_image_management: true
-      },
+      order,
       procedureCodes,
       commentInputs: [],
       collectionFeeInputs: [],
@@ -2830,6 +2980,7 @@ function clinicalEventSearchQueries(event = {}, { categoryLabel = "", extraQueri
     bodySite && name ? `${bodySite}${name}` : "",
     modality && name ? `${modality} ${name}` : "",
     ...procedureMasterQueriesFromEvidence(evidence),
+    ...clinicalEventAliasQueries(event),
     categoryLabel
   ];
   // LLM search phrases are only a fallback hint. Master search should primarily
@@ -2847,6 +2998,84 @@ function clinicalEventSearchQueries(event = {}, { categoryLabel = "", extraQueri
     ...deterministicTerms,
     ...llmHints
   ]);
+}
+
+function clinicalEventAliasQueries(event = {}) {
+  const type = normalizeClinicalEventType(event);
+  if (type === "lab" || type === "exam") {
+    return labAliasQueries(event);
+  }
+  if (type === "imaging") {
+    return imagingAliasQueries(event);
+  }
+  return [];
+}
+
+function labAliasQueries(event = {}) {
+  const text = normalizeClinicalText([
+    clinicalEventName(event),
+    clinicalEventEvidence(event),
+    ...asArray(event?.payload?.analytes),
+    ...asArray(event?.payload?.pathogenTargets),
+    event?.payload?.method,
+    event?.payload?.specimen
+  ].filter(Boolean).join(" "));
+  const queries = [];
+
+  const hasCovid = /COVID|ＣＯＶＩＤ|SARS|ＳＡＲＳ|コロナ|新型コロナ/u.test(text);
+  const hasInfluenza = /インフル|influenza|ＩＮＦＬＵＥＮＺＡ|flu|ＦＬＵ/u.test(text);
+  const hasRapidOrAntigen = /迅速|抗原|定性|Ag|Ａｇ/u.test(text);
+  if (hasCovid && hasInfluenza) {
+    queries.push("ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性");
+    queries.push("新型コロナ インフルエンザ 抗原同時検出");
+  } else if (hasCovid && hasRapidOrAntigen) {
+    queries.push("ＳＡＲＳ－ＣｏＶ－２抗原検出");
+  } else if (hasInfluenza && hasRapidOrAntigen) {
+    queries.push("インフルエンザウイルス抗原定性");
+  }
+
+  if (/溶連菌|A群|Ａ群|strep|ＳＴＲＥＰ/u.test(text)) {
+    queries.push("Ａ群β溶連菌迅速試験定性");
+    queries.push("溶連菌迅速検査");
+  }
+  if (/\bCRP\b|ＣＲＰ|C反応性蛋白|Ｃ反応性蛋白/u.test(text)) {
+    queries.push("ＣＲＰ");
+  }
+  if (/CBC|ＣＢＣ|血算|末梢血液一般|血球計算|白血球|赤血球|血小板/u.test(text)) {
+    queries.push("末梢血液一般検査");
+  }
+  if (/尿一般|尿定性|尿蛋白|尿糖|尿潜血|尿検査/u.test(text)) {
+    queries.push("尿中一般物質定性半定量検査");
+  }
+  return uniqueStrings(queries);
+}
+
+function imagingAliasQueries(event = {}) {
+  const text = normalizeClinicalText([
+    clinicalEventName(event),
+    clinicalEventEvidence(event),
+    event?.payload?.bodySite,
+    event?.body_site,
+    event?.bodySite,
+    event?.modality
+  ].filter(Boolean).join(" "));
+  const queries = [];
+  if (/眼軸長|IOL|ＩＯＬ|眼内レンズ度数/u.test(text)) {
+    queries.push("光学的眼軸長測定");
+  }
+  if (/細隙灯|スリット/u.test(text)) {
+    queries.push("スリットＭ");
+  }
+  if (/眼底/u.test(text)) {
+    queries.push("精密眼底検査");
+  }
+  if (/視野/u.test(text)) {
+    queries.push("精密視野検査");
+  }
+  if (/眼圧/u.test(text)) {
+    queries.push("精密眼圧測定");
+  }
+  return uniqueStrings(queries);
 }
 
 function procedureMasterQueriesFromEvidence(evidence = "") {

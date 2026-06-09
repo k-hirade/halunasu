@@ -137,6 +137,14 @@ def build_claim_payload(session: dict[str, Any], calculation_input: dict[str, An
         if key in options:
             claim_payload[key] = options[key]
 
+    if "facility_standard_keys" not in claim_payload:
+        facility_standard_keys = _unique_strings(
+            _string_list(facility.get("facilityStandardKeys"))
+            + _string_list(facility.get("facility_standard_keys"))
+        )
+        if facility_standard_keys:
+            claim_payload["facility_standard_keys"] = facility_standard_keys
+
     _drop_none(claim_payload["patient"])
     _drop_none(claim_payload["encounter"])
     return claim_payload
