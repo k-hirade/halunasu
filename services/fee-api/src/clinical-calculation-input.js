@@ -264,11 +264,15 @@ async function inferStructuredClinicalCalculationOptions({
         firstOutputTextMs,
         clinicalFactsConvertDurationMs: Date.now() - conversionStartedAt,
         extractedDiagnosisCount: Array.isArray(facts?.diagnoses) ? facts.diagnoses.length : 0,
+        extractedClinicalEventCount: clinicalEventsFromClinicalFacts(facts).length,
         extractedBillingEventCount: Array.isArray(facts?.billing_events) ? facts.billing_events.length : 0,
         extractedExcludedEventCount: Array.isArray(facts?.excluded_events) ? facts.excluded_events.length : 0,
         convertedDiagnosisCount: Array.isArray(converted.diagnoses) ? converted.diagnoses.length : 0,
         convertedOptionKeys,
         convertedReviewWarningCount: Array.isArray(converted.reviewWarnings) ? converted.reviewWarnings.length : 0,
+        convertedMasterCandidateCount: Array.isArray(converted.masterCandidates) ? converted.masterCandidates.length : 0,
+        convertedBillingCandidateCount: Array.isArray(converted.billingCandidates) ? converted.billingCandidates.length : 0,
+        convertedReviewIssueCount: Array.isArray(converted.reviewIssues) ? converted.reviewIssues.length : 0,
         ...conversionSearch.snapshot(),
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
@@ -429,6 +433,10 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const commentInputs = [];
   const collectionFeeInputs = [];
   const candidateProposals = [];
+  const masterCandidates = [];
+  const billingCandidates = [];
+  const reviewIssues = [];
+  const clinicalEvents = clinicalEventsFromClinicalFacts(facts);
 
   if (isInpatientEncounter(session, text)) {
     const inpatientBasic = inferInpatientBasicOptions(text, session);
@@ -441,19 +449,24 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     }
   }
 
-  for (const event of asArray(facts?.excluded_events)) {
-    const warning = excludedClinicalEventWarning(event);
-    if (warning) reviewWarnings.push(warning);
+  for (const event of excludedClinicalEventsFromClinicalFacts(facts)) {
+    const issue = reviewIssueFromExcludedClinicalEvent(event);
+    if (issue) {
+      reviewIssues.push(issue);
+      reviewWarnings.push(issue.messageForStaff);
+    }
   }
   reviewWarnings.push(...clinicalFactReviewWarnings(facts?.missing_information));
   reviewWarnings.push(...clinicalFactReviewWarnings(facts?.review_flags));
 
-  for (const event of asArray(facts?.billing_events)) {
+  for (const event of clinicalEvents) {
     const type = normalizeClinicalEventType(event);
-    const status = normalizeClinicalEventStatus(event);
     if (!isBillableClinicalEvent(event)) {
-      const warning = excludedClinicalEventWarning(event);
-      if (warning) reviewWarnings.push(warning);
+      const issue = reviewIssueFromExcludedClinicalEvent(event);
+      if (issue) {
+        reviewIssues.push(issue);
+        reviewWarnings.push(issue.messageForStaff);
+      }
       continue;
     }
 
@@ -463,6 +476,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       procedureCodes.push(...imaging.procedureCodes);
       commentInputs.push(...imaging.commentInputs);
       collectionFeeInputs.push(...imaging.collectionFeeInputs);
+      masterCandidates.push(...asArray(imaging.masterCandidates));
+      billingCandidates.push(...billingCandidatesFromProcedureResult(event, imaging));
       reviewWarnings.push(...imaging.reviewWarnings);
       continue;
     }
@@ -474,6 +489,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       procedureCodes.push(...procedure.procedureCodes);
       commentInputs.push(...procedure.commentInputs);
       collectionFeeInputs.push(...procedure.collectionFeeInputs);
+      masterCandidates.push(...asArray(procedure.masterCandidates));
+      billingCandidates.push(...billingCandidatesFromProcedureResult(event, procedure));
       reviewWarnings.push(...procedure.reviewWarnings);
       continue;
     }
@@ -483,6 +500,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       if (medication.order) {
         medicationOrders.push(medication.order);
       }
+      masterCandidates.push(...asArray(medication.masterCandidates));
+      billingCandidates.push(...billingCandidatesFromMedicationResult(event, medication));
       reviewWarnings.push(...medication.reviewWarnings);
       continue;
     }
@@ -492,6 +511,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       if (material.input) {
         materialInputs.push(material.input);
       }
+      masterCandidates.push(...asArray(material.masterCandidates));
+      billingCandidates.push(...billingCandidatesFromMaterialResult(event, material));
       reviewWarnings.push(...material.reviewWarnings);
       continue;
     }
@@ -503,6 +524,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       procedureCodes.push(...procedure.procedureCodes);
       commentInputs.push(...procedure.commentInputs);
       collectionFeeInputs.push(...procedure.collectionFeeInputs);
+      masterCandidates.push(...asArray(procedure.masterCandidates));
+      billingCandidates.push(...billingCandidatesFromProcedureResult(event, procedure));
       reviewWarnings.push(...procedure.reviewWarnings);
       continue;
     }
@@ -516,6 +539,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
         procedureCodes.push(...procedure.procedureCodes);
         commentInputs.push(...procedure.commentInputs);
         collectionFeeInputs.push(...procedure.collectionFeeInputs);
+        masterCandidates.push(...asArray(procedure.masterCandidates));
+        billingCandidates.push(...billingCandidatesFromProcedureResult(event, procedure));
         reviewWarnings.push(...procedure.reviewWarnings);
       } else {
         const proposal = await clinicalEventCandidateProposal(event, feeCalculator, {
@@ -524,16 +549,23 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
         });
         if (proposal) {
           candidateProposals.push(proposal);
+          billingCandidates.push(billingCandidateFromProposal(event, proposal));
         } else {
-          const warning = unsupportedClinicalEventWarning(event);
-          if (warning) reviewWarnings.push(warning);
+          const issue = reviewIssueFromUnsupportedClinicalEvent(event);
+          if (issue) {
+            reviewIssues.push(issue);
+            reviewWarnings.push(issue.messageForStaff);
+          }
         }
       }
       continue;
     }
 
-    const warning = unsupportedClinicalEventWarning(event);
-    if (warning) reviewWarnings.push(warning);
+    const issue = reviewIssueFromUnsupportedClinicalEvent(event);
+    if (issue) {
+      reviewIssues.push(issue);
+      reviewWarnings.push(issue.messageForStaff);
+    }
   }
 
   if (imagingOrders.length) {
@@ -565,7 +597,11 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     inferred,
     diagnoses,
     candidateProposals: normalizeCandidateProposals(candidateProposals),
-    reviewWarnings: normalizeReviewWarnings(reviewWarnings)
+    reviewWarnings: normalizeReviewWarnings(reviewWarnings),
+    clinicalEvents,
+    masterCandidates: normalizeMasterCandidates(masterCandidates),
+    billingCandidates: normalizeBillingCandidates(billingCandidates),
+    reviewIssues: normalizeReviewIssues(reviewIssues)
   };
 }
 
@@ -681,6 +717,145 @@ function candidateProposalFromProcedureItem({
       reviewRequired: true
     }
   };
+}
+
+function masterCandidateFromItem(item = {}, event = {}, {
+  masterType = "medical_service",
+  rank = 1,
+  candidateStatus = "strong_match",
+  searchQuery = ""
+} = {}) {
+  if (!item?.code) {
+    return null;
+  }
+  const code = String(item.code || "");
+  const name = item.name || item.displayName || item.baseName || item.shortName || "";
+  return {
+    masterCandidateId: `mc_${candidateIdPart([event?.clinicalEventId, code, searchQuery].join("_"))}`,
+    clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    masterType,
+    masterCode: code,
+    masterName: name,
+    points: Number(item.points || item.totalPoints || 0),
+    category: item.kind || item.sourceType || item.source || "",
+    searchQuery,
+    searchScore: Number(item.score || 0) || null,
+    rank,
+    candidateStatus,
+    source: item.sourceType || item.source || ""
+  };
+}
+
+function normalizeMasterCandidates(values = []) {
+  const seen = new Set();
+  const result = [];
+  for (const candidate of asArray(values).filter(Boolean)) {
+    const key = [
+      candidate.clinicalEventId,
+      candidate.masterType,
+      candidate.masterCode,
+      candidate.searchQuery
+    ].join("|");
+    if (!candidate.masterCode || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(candidate);
+  }
+  return result.slice(0, 80);
+}
+
+function billingCandidatesFromProcedureResult(event = {}, result = {}) {
+  const procedureCodeSet = new Set(asArray(result?.procedureCodes).map((code) => String(code || "")));
+  return asArray(result?.masterCandidates)
+    .filter((candidate) => procedureCodeSet.has(String(candidate.masterCode || "")))
+    .map((candidate) => ({
+      billingCandidateId: `bc_${candidateIdPart([event?.clinicalEventId, candidate.masterCode].join("_"))}`,
+      clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+      masterCandidateId: candidate.masterCandidateId,
+      candidateKind: "procedure",
+      eligibilityStatus: "billable",
+      safetyLevel: "safe_if_confirmed",
+      code: candidate.masterCode,
+      name: candidate.masterName,
+      pointValue: candidate.points,
+      source: "rule_engine_master_match"
+    }));
+}
+
+function billingCandidatesFromMedicationResult(event = {}, result = {}) {
+  if (!result?.order?.drug_code) {
+    return [];
+  }
+  const candidate = asArray(result.masterCandidates).find((item) => item.masterCode === String(result.order.drug_code));
+  return [{
+    billingCandidateId: `bc_${candidateIdPart([event?.clinicalEventId, result.order.drug_code].join("_"))}`,
+    clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    masterCandidateId: candidate?.masterCandidateId || "",
+    candidateKind: "drug",
+    eligibilityStatus: "billable",
+    safetyLevel: "safe_if_confirmed",
+    code: String(result.order.drug_code),
+    name: candidate?.masterName || clinicalEventName(event),
+    pointValue: candidate?.points || 0,
+    source: "rule_engine_master_match"
+  }];
+}
+
+function billingCandidatesFromMaterialResult(event = {}, result = {}) {
+  if (!result?.input?.code) {
+    return [];
+  }
+  const candidate = asArray(result.masterCandidates).find((item) => item.masterCode === String(result.input.code));
+  return [{
+    billingCandidateId: `bc_${candidateIdPart([event?.clinicalEventId, result.input.code].join("_"))}`,
+    clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    masterCandidateId: candidate?.masterCandidateId || "",
+    candidateKind: "material",
+    eligibilityStatus: "billable",
+    safetyLevel: "safe_if_confirmed",
+    code: String(result.input.code),
+    name: candidate?.masterName || clinicalEventName(event),
+    pointValue: candidate?.points || 0,
+    source: "rule_engine_master_match"
+  }];
+}
+
+function billingCandidateFromProposal(event = {}, proposal = {}) {
+  if (!proposal) {
+    return null;
+  }
+  return {
+    billingCandidateId: `bc_${candidateIdPart([event?.clinicalEventId, proposal.proposalId].join("_"))}`,
+    clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    masterCandidateId: "",
+    candidateKind: "proposal",
+    eligibilityStatus: "proposal",
+    safetyLevel: "safe_if_confirmed",
+    code: proposal.code || proposal.candidateLine?.code || "",
+    name: proposal.title || clinicalEventName(event),
+    pointValue: Number(proposal.potentialPoints || proposal.candidateLine?.points || 0),
+    source: "rule_engine_proposal"
+  };
+}
+
+function normalizeBillingCandidates(values = []) {
+  const seen = new Set();
+  const result = [];
+  for (const candidate of asArray(values).filter(Boolean)) {
+    const key = [
+      candidate.clinicalEventId,
+      candidate.candidateKind,
+      candidate.code,
+      candidate.name
+    ].join("|");
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(candidate);
+  }
+  return result.slice(0, 80);
 }
 
 function normalizeCandidateProposals(values = []) {
@@ -1207,6 +1382,225 @@ function diagnosesFromClinicalFacts(facts = {}) {
     .filter(Boolean));
 }
 
+function clinicalEventsFromClinicalFacts(facts = {}) {
+  const sourceEvents = asArray(facts?.clinical_events).length
+    ? asArray(facts.clinical_events)
+    : asArray(facts?.billing_events);
+  return sourceEvents
+    .map((event, index) => normalizeClinicalEvent(event, index))
+    .filter(Boolean);
+}
+
+function excludedClinicalEventsFromClinicalFacts(facts = {}) {
+  return asArray(facts?.excluded_events)
+    .map((event, index) => normalizeClinicalEvent(event, index, { excluded: true }))
+    .filter(Boolean);
+}
+
+function normalizeClinicalEvent(event = {}, index = 0, { excluded = false } = {}) {
+  if (!isPlainObject(event)) {
+    return null;
+  }
+  const type = normalizeClinicalEventType(event);
+  const name = clinicalEventName(event);
+  if (!name && !type) {
+    return null;
+  }
+  const actionStatus = normalizeClinicalEventActionStatus(event, { excluded });
+  const temporalRelation = normalizeClinicalEventTemporalRelation(event, { actionStatus });
+  const providerOwnership = normalizeClinicalEventProviderOwnership(event);
+  const sourceOrigin = normalizeClinicalEventSourceOrigin(event, { providerOwnership, temporalRelation });
+  const resultAssertion = normalizeClinicalEventResultAssertion(event);
+  const certainty = normalizeClinicalEventCertainty(event);
+  const clinicalEventId = String(event?.clinical_event_id || event?.clinicalEventId || event?.event_id || event?.eventId || "")
+    || `ce_${index + 1}_${candidateIdPart([type, name, clinicalEventEvidence(event)].join("_"))}`;
+  const legacyStatus = legacyStatusFromClinicalEvent({
+    actionStatus,
+    temporalRelation,
+    providerOwnership,
+    originalStatus: event?.status
+  });
+  return {
+    ...event,
+    clinicalEventId,
+    clinical_event_id: clinicalEventId,
+    type,
+    name,
+    actionStatus,
+    action_status: actionStatus,
+    temporalRelation,
+    temporal_relation: temporalRelation,
+    sourceOrigin,
+    source_origin: sourceOrigin,
+    providerOwnership,
+    provider_ownership: providerOwnership,
+    resultAssertion,
+    result_assertion: resultAssertion,
+    certainty,
+    status: legacyStatus,
+    date_relation: legacyDateRelationFromClinicalEvent({ temporalRelation, providerOwnership }),
+    section: normalizeClinicalSection(event?.section),
+    evidence: String(event?.evidence || "").trim(),
+    search_queries: uniqueStrings([
+      ...asArray(event?.search_queries),
+      ...asArray(event?.searchQueries)
+    ]),
+    modality: String(event?.modality || "none").trim() || "none",
+    body_site: String(event?.body_site || event?.bodySite || "").trim(),
+    quantity_per_day: String(event?.quantity_per_day || event?.quantityPerDay || "").trim(),
+    days: String(event?.days || "").trim(),
+    total_quantity: String(event?.total_quantity || event?.totalQuantity || "").trim(),
+    area_size_cm2: String(event?.area_size_cm2 || event?.areaSizeCm2 || "").trim(),
+    review_reason: String(event?.review_reason || event?.reviewReason || event?.reason || "").trim()
+  };
+}
+
+function normalizeClinicalEventActionStatus(event = {}, { excluded = false } = {}) {
+  const explicit = String(event?.action_status || event?.actionStatus || "").trim();
+  if ([
+    "performed",
+    "prescribed",
+    "administered",
+    "ordered",
+    "planned",
+    "considered",
+    "instruction_only",
+    "not_performed",
+    "unknown"
+  ].includes(explicit)) {
+    return explicit;
+  }
+
+  const legacy = String(event?.status || "").trim();
+  if (["performed", "prescribed", "administered", "planned", "ordered", "considered", "instruction_only"].includes(legacy)) {
+    return legacy;
+  }
+  if (legacy === "negated") {
+    return "not_performed";
+  }
+  if (legacy === "history" || legacy === "other_provider") {
+    return "performed";
+  }
+  if (excluded) {
+    return "unknown";
+  }
+  return legacy === "unclear" ? "unknown" : "unknown";
+}
+
+function normalizeClinicalEventTemporalRelation(event = {}, { actionStatus = "" } = {}) {
+  const explicit = String(event?.temporal_relation || event?.temporalRelation || "").trim();
+  if (["current_visit", "same_day_but_unknown", "past", "future", "unknown"].includes(explicit)) {
+    return explicit;
+  }
+  const legacy = String(event?.date_relation || event?.dateRelation || "").trim();
+  if (legacy === "current_visit") return "current_visit";
+  if (legacy === "future") return "future";
+  if (legacy === "past" || legacy === "other_provider") return "past";
+  const status = String(event?.status || "").trim();
+  if (["planned", "ordered", "considered"].includes(actionStatus) || ["planned", "ordered", "considered"].includes(status)) {
+    return "future";
+  }
+  if (status === "history" || status === "other_provider") {
+    return "past";
+  }
+  if (["performed", "prescribed", "administered"].includes(actionStatus)) {
+    return "current_visit";
+  }
+  return "unknown";
+}
+
+function normalizeClinicalEventSourceOrigin(event = {}, { providerOwnership = "", temporalRelation = "" } = {}) {
+  const explicit = String(event?.source_origin || event?.sourceOrigin || "").trim();
+  if ([
+    "own_clinic_record",
+    "patient_reported",
+    "external_document",
+    "carried_in_result",
+    "other_provider_record",
+    "unknown"
+  ].includes(explicit)) {
+    return explicit;
+  }
+  const text = clinicalEventEvidence(event);
+  if (providerOwnership === "other_provider" || /他院|前医|かかりつけ|紹介元/u.test(text)) {
+    return "other_provider_record";
+  }
+  if (/持参|健診結果|外部資料/u.test(text)) {
+    return "carried_in_result";
+  }
+  if (temporalRelation === "past") {
+    return "patient_reported";
+  }
+  return "own_clinic_record";
+}
+
+function normalizeClinicalEventResultAssertion(event = {}) {
+  const explicit = String(event?.result_assertion || event?.resultAssertion || "").trim();
+  if (["positive", "negative", "normal", "abnormal", "numeric", "not_applicable", "unknown"].includes(explicit)) {
+    return explicit;
+  }
+  const text = clinicalEventEvidence(event);
+  if (/[<>]?\d+(?:\.\d+)?\s*(?:%|％|mg\/?dL|IU\/?mL|U\/?mL|mmHg|cm|mm|\/μL|\/uL)/iu.test(text)) {
+    return "numeric";
+  }
+  if (/陰性|なし|異常なし|正常範囲|正常/u.test(text)) {
+    return /異常なし|正常/u.test(text) ? "normal" : "negative";
+  }
+  if (/陽性|高値|低値|異常|あり|認める/u.test(text)) {
+    return "abnormal";
+  }
+  return "unknown";
+}
+
+function normalizeClinicalEventCertainty(event = {}) {
+  const explicit = String(event?.certainty || "").trim();
+  if (["explicit", "inferred", "ambiguous"].includes(explicit)) {
+    return explicit;
+  }
+  const text = clinicalEventEvidence(event);
+  if (/疑い|可能性|示唆|検討|かもしれない/u.test(text)) {
+    return "ambiguous";
+  }
+  if (text) {
+    return "explicit";
+  }
+  return "ambiguous";
+}
+
+function normalizeClinicalSection(value) {
+  const section = String(value || "unknown").trim().toUpperCase();
+  return ["S", "O", "A", "P"].includes(section) ? section : "unknown";
+}
+
+function legacyStatusFromClinicalEvent({
+  actionStatus = "",
+  temporalRelation = "",
+  providerOwnership = "",
+  originalStatus = ""
+} = {}) {
+  const original = String(originalStatus || "").trim();
+  if (["performed", "prescribed", "administered", "planned", "ordered", "considered", "instruction_only", "history", "other_provider", "negated", "unclear"].includes(original)) {
+    if (["history", "other_provider", "negated", "unclear"].includes(original)) {
+      return original;
+    }
+  }
+  if (providerOwnership === "other_provider") return "other_provider";
+  if (temporalRelation === "past") return "history";
+  if (actionStatus === "not_performed") return "negated";
+  if (["performed", "prescribed", "administered", "planned", "ordered", "considered", "instruction_only"].includes(actionStatus)) {
+    return actionStatus;
+  }
+  return "unclear";
+}
+
+function legacyDateRelationFromClinicalEvent({ temporalRelation = "", providerOwnership = "" } = {}) {
+  if (providerOwnership === "other_provider") return "other_provider";
+  if (temporalRelation === "future") return "future";
+  if (temporalRelation === "past") return "past";
+  if (temporalRelation === "current_visit" || temporalRelation === "same_day_but_unknown") return "current_visit";
+  return "unknown";
+}
+
 function cleanClinicalDiagnosisName(value) {
   const name = String(value || "")
     .replace(/^\s*(?:病名|診断名)\s*[:：]\s*/u, "")
@@ -1282,7 +1676,11 @@ function normalizeClinicalEventType(event = {}) {
 }
 
 function normalizeClinicalEventStatus(event = {}) {
-  return String(event?.status || "unclear").trim();
+  return String(event?.status || legacyStatusFromClinicalEvent({
+    actionStatus: event?.action_status || event?.actionStatus,
+    temporalRelation: event?.temporal_relation || event?.temporalRelation,
+    providerOwnership: event?.provider_ownership || event?.providerOwnership
+  }) || "unclear").trim();
 }
 
 function isBillableClinicalEventStatus(status) {
@@ -1290,24 +1688,31 @@ function isBillableClinicalEventStatus(status) {
 }
 
 function normalizeClinicalEventDateRelation(event = {}) {
-  return String(event?.date_relation || event?.dateRelation || "unknown").trim();
+  return legacyDateRelationFromClinicalEvent({
+    temporalRelation: event?.temporal_relation || event?.temporalRelation || event?.date_relation || event?.dateRelation,
+    providerOwnership: event?.provider_ownership || event?.providerOwnership
+  });
 }
 
 function normalizeClinicalEventProviderOwnership(event = {}) {
-  return String(event?.provider_ownership || event?.providerOwnership || "unknown").trim();
+  const value = String(event?.provider_ownership || event?.providerOwnership || "unknown").trim();
+  if (value === "other_department") {
+    return "same_institution_other_department";
+  }
+  return value;
 }
 
 function isBillableClinicalEvent(event = {}) {
-  const status = normalizeClinicalEventStatus(event);
-  if (!isBillableClinicalEventStatus(status)) {
+  const actionStatus = String(event?.action_status || event?.actionStatus || normalizeClinicalEventStatus(event)).trim();
+  if (!["performed", "prescribed", "administered"].includes(actionStatus)) {
     return false;
   }
-  const dateRelation = normalizeClinicalEventDateRelation(event);
-  if (["future", "past", "other_provider"].includes(dateRelation)) {
+  const temporalRelation = String(event?.temporal_relation || event?.temporalRelation || normalizeClinicalEventDateRelation(event)).trim();
+  if (["future", "past"].includes(temporalRelation)) {
     return false;
   }
   const providerOwnership = normalizeClinicalEventProviderOwnership(event);
-  if (["other_department", "other_provider"].includes(providerOwnership)) {
+  if (["same_institution_other_department", "other_provider"].includes(providerOwnership)) {
     return false;
   }
   return true;
@@ -1335,7 +1740,7 @@ function excludedClinicalEventWarning(event = {}) {
   if (type === "medication" && isMedicationNameNoise(name)) {
     return "";
   }
-  if (["other_department", "other_provider"].includes(providerOwnership)) {
+  if (["same_institution_other_department", "other_department", "other_provider"].includes(providerOwnership)) {
     return `${name}は他科・他院で管理または実施された内容として抽出されたため、今回の算定候補には入れていません。`;
   }
   if (["past", "other_provider"].includes(dateRelation)) {
@@ -1423,6 +1828,85 @@ function unsupportedClinicalEventWarning(event = {}) {
   return "";
 }
 
+function reviewIssueFromExcludedClinicalEvent(event = {}) {
+  const messageForStaff = excludedClinicalEventWarning(event);
+  if (!messageForStaff) {
+    return null;
+  }
+  return {
+    reviewIssueId: `issue_${candidateIdPart([event?.clinicalEventId, clinicalEventName(event), messageForStaff].join("_"))}`,
+    issueCode: reviewIssueCodeFromWarning(messageForStaff, event),
+    severity: "warning",
+    title: reviewIssueTitleFromWarning(messageForStaff, event),
+    messageForStaff,
+    relatedClinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    evidence: clinicalEventEvidence(event),
+    source: "clinical_event_rule"
+  };
+}
+
+function reviewIssueFromUnsupportedClinicalEvent(event = {}) {
+  const messageForStaff = unsupportedClinicalEventWarning(event);
+  if (!messageForStaff) {
+    return null;
+  }
+  return {
+    reviewIssueId: `issue_${candidateIdPart([event?.clinicalEventId, clinicalEventName(event), messageForStaff].join("_"))}`,
+    issueCode: "unsupported_event",
+    severity: "warning",
+    title: clinicalEventName(event) ? `${clinicalEventName(event)}の確認` : "確認事項",
+    messageForStaff,
+    relatedClinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    evidence: clinicalEventEvidence(event),
+    source: "clinical_event_rule"
+  };
+}
+
+function reviewIssueCodeFromWarning(message = "", event = {}) {
+  const text = String(message || "");
+  const status = normalizeClinicalEventStatus(event);
+  if (/他科|他院/u.test(text)) return "other_provider";
+  if (/過去値|持参/u.test(text)) return "past_or_carried_in";
+  if (/予定|依頼|今後/u.test(text)) return "planned_not_performed";
+  if (/数量|日数|総量|回数/u.test(text)) return "missing_quantity";
+  if (/施設基準/u.test(text)) return "facility_unknown";
+  if (["planned", "ordered", "considered"].includes(status)) return "planned_not_performed";
+  if (status === "instruction_only") return "instruction_only";
+  return "needs_review";
+}
+
+function reviewIssueTitleFromWarning(message = "", event = {}) {
+  const text = String(message || "");
+  if (/他科|他院/u.test(text)) return "他科・他院情報";
+  if (/過去値|持参/u.test(text)) return "過去値・持参情報";
+  if (/予定|依頼|今後/u.test(text)) return "実施確認";
+  if (/数量|日数|総量|回数/u.test(text)) return "数量・日数の確認";
+  if (/施設基準/u.test(text)) return "施設基準の確認";
+  const name = clinicalEventName(event);
+  return name ? `${name}の確認` : "確認事項";
+}
+
+function normalizeReviewIssues(values = []) {
+  const seen = new Set();
+  const result = [];
+  for (const issue of asArray(values)) {
+    if (!issue || typeof issue !== "object") {
+      continue;
+    }
+    const key = [
+      issue.issueCode,
+      issue.relatedClinicalEventId,
+      normalizeReviewTarget(issue.messageForStaff || issue.title || "")
+    ].join("|");
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(issue);
+  }
+  return result.slice(0, 40);
+}
+
 function clinicalEventTypeLabel(type) {
   return {
     injection: "注射",
@@ -1451,6 +1935,7 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
       procedureCodes,
       commentInputs: [],
       collectionFeeInputs: [],
+      masterCandidates: [],
       reviewWarnings
     };
   }
@@ -1466,6 +1951,7 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
       procedureCodes,
       commentInputs: [],
       collectionFeeInputs: [],
+      masterCandidates: [],
       reviewWarnings
     };
   }
@@ -1481,6 +1967,7 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
       procedureCodes,
       commentInputs: [],
       collectionFeeInputs: [],
+      masterCandidates: [],
       reviewWarnings
     };
   }
@@ -1496,6 +1983,7 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
       procedureCodes: procedure.procedureCodes,
       commentInputs: procedure.commentInputs,
       collectionFeeInputs: procedure.collectionFeeInputs,
+      masterCandidates: procedure.masterCandidates,
       reviewWarnings: procedure.reviewWarnings
     };
   }
@@ -1503,7 +1991,7 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
   if (kind) {
     reviewWarnings.push(`${clinicalEventName(event) || clinicalImagingDisplayName(event)}は現在の算定ルールで直接候補化できないため、要確認です。`);
   }
-  return { order: null, procedureCodes, commentInputs: [], collectionFeeInputs: [], reviewWarnings };
+  return { order: null, procedureCodes, commentInputs: [], collectionFeeInputs: [], masterCandidates: [], reviewWarnings };
 }
 
 function clinicalImagingKind(event = {}) {
@@ -1532,22 +2020,22 @@ async function medicationOrderFromClinicalEvent(event = {}, feeCalculator) {
   const reviewWarnings = [];
   const rawName = clinicalEventName(event);
   if (isMedicationNameNoise(rawName)) {
-    return { order: null, reviewWarnings };
+    return { order: null, masterCandidates: [], reviewWarnings };
   }
   const name = canonicalMedicationName(rawName);
   if (!name) {
     reviewWarnings.push("薬剤名がカルテ本文から確定できないため、薬剤算定候補には入れていません。");
-    return { order: null, reviewWarnings };
+    return { order: null, masterCandidates: [], reviewWarnings };
   }
   const quantity = medicationQuantityFromClinicalEvent(event);
   if (!hasCalculableMedicationQuantity(quantity)) {
     reviewWarnings.push(`薬剤「${name}」は数量または日数が不足しているため、算定候補には入れていません。`);
-    return { order: null, reviewWarnings };
+    return { order: null, masterCandidates: [], reviewWarnings };
   }
   const item = await searchFirstMasterItem(feeCalculator, "drug", name, "drug");
   if (!item?.code) {
     reviewWarnings.push(`薬剤「${name}」をマスターコードへ解決できませんでした。`);
-    return { order: null, reviewWarnings };
+    return { order: null, masterCandidates: [], reviewWarnings };
   }
   return {
     order: {
@@ -1555,6 +2043,12 @@ async function medicationOrderFromClinicalEvent(event = {}, feeCalculator) {
       ...quantity,
       dispensing_kind: "internal_or_prn"
     },
+    masterCandidates: [
+      masterCandidateFromItem(item, event, {
+        masterType: "drug",
+        searchQuery: name
+      })
+    ].filter(Boolean),
     reviewWarnings
   };
 }
@@ -1620,18 +2114,24 @@ async function materialInputFromClinicalEvent(event = {}, feeCalculator) {
   const name = clinicalEventName(event);
   if (!name) {
     reviewWarnings.push("特定器材・材料名がカルテ本文から確定できないため、算定候補には入れていません。");
-    return { input: null, reviewWarnings };
+    return { input: null, masterCandidates: [], reviewWarnings };
   }
   const item = await searchFirstMasterItem(feeCalculator, "material", name, "material");
   if (!item?.code) {
     reviewWarnings.push(`特定器材・材料「${name}」をマスターコードへ解決できませんでした。`);
-    return { input: null, reviewWarnings };
+    return { input: null, masterCandidates: [], reviewWarnings };
   }
   return {
     input: {
       code: String(item.code),
       quantity: numericText(event?.total_quantity) || numericText(event?.quantity_per_day) || "1"
     },
+    masterCandidates: [
+      masterCandidateFromItem(item, event, {
+        masterType: "material",
+        searchQuery: name
+      })
+    ].filter(Boolean),
     reviewWarnings
   };
 }
@@ -1644,6 +2144,7 @@ async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculato
       procedureCodes: [],
       commentInputs: [],
       collectionFeeInputs: [],
+      masterCandidates: [],
       reviewWarnings: warning ? [warning] : []
     };
   }
@@ -1655,6 +2156,7 @@ async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculato
     extraQueries: options.queries
   });
   return searchPerformedProcedureCode(feeCalculator, {
+    event,
     name,
     categoryLabel,
     queries,
@@ -1664,6 +2166,7 @@ async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculato
 }
 
 async function searchPerformedProcedureCode(feeCalculator, {
+  event = {},
   name = "",
   categoryLabel = "診療行為",
   queries = [],
@@ -1675,6 +2178,7 @@ async function searchPerformedProcedureCode(feeCalculator, {
       procedureCodes: [],
       commentInputs: [],
       collectionFeeInputs: [],
+      masterCandidates: [],
       reviewWarnings: [unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、マスター検索を利用できません。`]
     };
   }
@@ -1687,6 +2191,12 @@ async function searchPerformedProcedureCode(feeCalculator, {
         procedureCodes: [String(item.code)],
         commentInputs: [],
         collectionFeeInputs: [],
+        masterCandidates: [
+          masterCandidateFromItem(item, event, {
+            masterType: "medical_service",
+            searchQuery: query
+          })
+        ].filter(Boolean),
         reviewWarnings: []
       };
     }
@@ -1696,6 +2206,7 @@ async function searchPerformedProcedureCode(feeCalculator, {
     procedureCodes: [],
     commentInputs: [],
     collectionFeeInputs: [],
+    masterCandidates: [],
     reviewWarnings: [unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、標準コードを自動確定できませんでした。`]
   };
 }

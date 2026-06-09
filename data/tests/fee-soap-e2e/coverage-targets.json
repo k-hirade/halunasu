@@ -1,0 +1,302 @@
+{
+  "schemaVersion": "fee-soap-e2e.coverage-targets.v1",
+  "targetId": "near-comprehensive-fee-soap-coverage-2026-06",
+  "purpose": "診療報酬算定SOAP E2Eデータセットを、全診療科・主要算定章・安全/未対応領域に近い網羅性へ拡張するための機械可読ターゲット。",
+  "notes": [
+    "全マスターコードの網羅ではなく、診療科、算定章、よくある診療パターン、未対応/安全系を層化して代表ケースを持つ。",
+    "department は encounter.department の値で判定する。将来の生成データではこのキーに合わせる。",
+    "billingDomains は billingTargets、expectedExtraction、title からケース単位で判定する。SOAP本文の汎用説明文だけでは判定しない。"
+  ],
+  "expectedDatasetScale": {
+    "minimumCases": 600,
+    "recommendedCases": 800,
+    "exactMinimum": 250,
+    "reviewRequiredMinimum": 180,
+    "safetyOrUnsupportedMinimum": 120
+  },
+  "departments": [
+    { "key": "internal_medicine", "label": "総合内科・一般内科", "minCases": 80, "minExact": 45, "minSafetyOrUnsupported": 12 },
+    { "key": "pediatrics", "label": "小児科", "minCases": 30, "minExact": 12, "minSafetyOrUnsupported": 6 },
+    { "key": "dermatology", "label": "皮膚科", "minCases": 30, "minExact": 15, "minSafetyOrUnsupported": 5 },
+    { "key": "otolaryngology", "label": "耳鼻咽喉科", "minCases": 20, "minExact": 8, "minSafetyOrUnsupported": 4 },
+    { "key": "ophthalmology", "label": "眼科", "minCases": 20, "minExact": 8, "minSafetyOrUnsupported": 4 },
+    { "key": "orthopedics", "label": "整形外科", "minCases": 25, "minExact": 10, "minSafetyOrUnsupported": 5 },
+    { "key": "surgery", "label": "外科", "minCases": 25, "minExact": 8, "minSafetyOrUnsupported": 8 },
+    { "key": "psychiatry", "label": "精神科", "minCases": 20, "minExact": 6, "minSafetyOrUnsupported": 8 },
+    { "key": "rehabilitation", "label": "リハビリテーション科", "minCases": 15, "minExact": 4, "minSafetyOrUnsupported": 7 },
+    { "key": "obgyn", "label": "産婦人科", "minCases": 20, "minExact": 8, "minSafetyOrUnsupported": 4 },
+    { "key": "urology", "label": "泌尿器科", "minCases": 20, "minExact": 8, "minSafetyOrUnsupported": 4 },
+    { "key": "cardiology", "label": "循環器内科", "minCases": 20, "minExact": 8, "minSafetyOrUnsupported": 4 },
+    { "key": "gastroenterology", "label": "消化器内科", "minCases": 20, "minExact": 8, "minSafetyOrUnsupported": 5 },
+    { "key": "respiratory", "label": "呼吸器内科", "minCases": 20, "minExact": 8, "minSafetyOrUnsupported": 4 },
+    { "key": "neurology", "label": "脳神経内科・脳神経外科", "minCases": 15, "minExact": 5, "minSafetyOrUnsupported": 4 },
+    { "key": "emergency", "label": "救急", "minCases": 15, "minExact": 5, "minSafetyOrUnsupported": 5 },
+    { "key": "nephrology_dialysis", "label": "腎臓内科・透析", "minCases": 15, "minExact": 5, "minSafetyOrUnsupported": 6 },
+    { "key": "homecare", "label": "在宅医療", "minCases": 15, "minExact": 4, "minSafetyOrUnsupported": 7 },
+    { "key": "radiology", "label": "放射線科", "minCases": 10, "minExact": 4, "minSafetyOrUnsupported": 3 },
+    { "key": "pathology", "label": "病理診断", "minCases": 10, "minExact": 3, "minSafetyOrUnsupported": 5 }
+  ],
+  "billingDomains": [
+    {
+      "key": "basic",
+      "label": "A 基本診療料",
+      "minCases": 120,
+      "minExact": 80,
+      "minSafetyOrUnsupported": 10,
+      "sources": ["outpatient_basic_fee", "inpatient_basic_fee", "visit_type_candidate"],
+      "patterns": ["初診料", "再診料", "外来診療料", "入院基本料", "急性期一般入院料"]
+    },
+    {
+      "key": "medical_management",
+      "label": "B 医学管理等",
+      "minCases": 60,
+      "minExact": 20,
+      "minSafetyOrUnsupported": 12,
+      "sources": ["management_candidate", "facility_based_candidate"],
+      "patterns": ["管理料", "指導料", "療養管理", "生活習慣病", "特定疾患"]
+    },
+    {
+      "key": "homecare",
+      "label": "C 在宅医療",
+      "minCases": 25,
+      "minExact": 6,
+      "minSafetyOrUnsupported": 12,
+      "patterns": ["在宅", "訪問診療", "往診", "在宅酸素", "在宅自己"]
+    },
+    {
+      "key": "lab",
+      "label": "D 検査",
+      "minCases": 120,
+      "minExact": 70,
+      "minSafetyOrUnsupported": 20,
+      "sources": ["d026", "collection_fee", "lab_management", "lab_candidate", "collection_fee_candidate", "medical_procedure_master"],
+      "patterns": ["検査", "採血", "尿", "CRP", "HbA1c", "抗原", "PCR", "判断料", "検体"]
+    },
+    {
+      "key": "pathology",
+      "label": "N 病理診断",
+      "minCases": 20,
+      "minExact": 5,
+      "minSafetyOrUnsupported": 10,
+      "sources": ["pathology_candidate"],
+      "patterns": ["病理", "細胞診", "生検"]
+    },
+    {
+      "key": "imaging",
+      "label": "E 画像診断",
+      "minCases": 60,
+      "minExact": 25,
+      "minSafetyOrUnsupported": 12,
+      "sources": ["imaging_fee", "imaging_candidate"],
+      "patterns": ["画像", "CT", "MRI", "X線", "レントゲン", "単純撮影", "超音波", "エコー", "電子画像"]
+    },
+    {
+      "key": "medication",
+      "label": "F 投薬",
+      "minCases": 80,
+      "minExact": 35,
+      "minSafetyOrUnsupported": 16,
+      "sources": ["medication_fee", "medication_fee_candidate", "drug_master", "drug_candidate", "drug"],
+      "patterns": ["処方", "薬剤", "薬", "外用", "頓服", "一般名処方", "抗菌薬"]
+    },
+    {
+      "key": "injection",
+      "label": "G 注射",
+      "minCases": 25,
+      "minExact": 8,
+      "minSafetyOrUnsupported": 8,
+      "sources": ["injection_candidate"],
+      "patterns": ["注射", "点滴", "静注", "皮下注", "筋注"]
+    },
+    {
+      "key": "rehab",
+      "label": "H リハビリテーション",
+      "minCases": 20,
+      "minExact": 4,
+      "minSafetyOrUnsupported": 10,
+      "patterns": ["リハビリ", "運動器リハ", "脳血管疾患等リハ", "心大血管"]
+    },
+    {
+      "key": "psychiatry",
+      "label": "I 精神科専門療法",
+      "minCases": 20,
+      "minExact": 5,
+      "minSafetyOrUnsupported": 10,
+      "patterns": ["精神科", "通院精神療法", "認知療法", "集団精神療法", "面接時間"]
+    },
+    {
+      "key": "procedure",
+      "label": "J 処置",
+      "minCases": 60,
+      "minExact": 25,
+      "minSafetyOrUnsupported": 15,
+      "sources": ["treatment_fee", "treatment_candidate", "procedure_candidate"],
+      "patterns": ["処置", "創傷", "熱傷", "洗浄", "ガーゼ", "手技"]
+    },
+    {
+      "key": "surgery",
+      "label": "K 手術",
+      "minCases": 30,
+      "minExact": 8,
+      "minSafetyOrUnsupported": 15,
+      "sources": ["surgery_candidate"],
+      "patterns": ["手術", "切除術", "切開", "腹腔鏡", "縫合"]
+    },
+    {
+      "key": "anesthesia",
+      "label": "L 麻酔",
+      "minCases": 15,
+      "minExact": 3,
+      "minSafetyOrUnsupported": 8,
+      "sources": ["anesthesia_candidate"],
+      "patterns": ["麻酔", "鎮静"]
+    },
+    {
+      "key": "radiation_therapy",
+      "label": "M 放射線治療",
+      "minCases": 10,
+      "minExact": 2,
+      "minSafetyOrUnsupported": 6,
+      "patterns": ["放射線治療", "照射", "定位放射線"]
+    },
+    {
+      "key": "dpc_inpatient",
+      "label": "入院・DPC",
+      "minCases": 20,
+      "minExact": 8,
+      "minSafetyOrUnsupported": 8,
+      "sources": ["inpatient_basic_fee", "dpc_candidate"],
+      "patterns": ["入院", "DPC", "診断群分類", "急性期一般入院料"]
+    },
+    {
+      "key": "emergency_time_addons",
+      "label": "救急・時間外・休日・深夜",
+      "minCases": 20,
+      "minExact": 6,
+      "minSafetyOrUnsupported": 8,
+      "sources": ["emergency_candidate", "time_based_candidate"],
+      "patterns": ["救急", "時間外", "休日", "深夜", "夜間", "乳幼児時間外"]
+    },
+    {
+      "key": "pediatric_addons",
+      "label": "小児加算・小児特有",
+      "minCases": 20,
+      "minExact": 8,
+      "minSafetyOrUnsupported": 6,
+      "patterns": ["小児", "乳幼児", "男児", "女児", "小児抗菌薬", "保育園"]
+    },
+    {
+      "key": "facility_standards",
+      "label": "施設基準・届出",
+      "minCases": 40,
+      "minExact": 12,
+      "minSafetyOrUnsupported": 16,
+      "sources": ["facility_based_candidate"],
+      "patterns": ["施設基準", "届出", "画像診断管理加算", "検体検査管理加算"]
+    },
+    {
+      "key": "safety_negation",
+      "label": "否定文・予定・過去歴・他院実施",
+      "minCases": 40,
+      "minExact": 0,
+      "minSafetyOrUnsupported": 30,
+      "sources": ["planned_procedure", "history_only", "not_performed", "external_record_only", "considered_only", "conflict", "external_test_history"],
+      "patterns": ["未実施", "予定", "前回", "過去", "他院", "家族歴", "検討のみ", "不要", "矛盾"]
+    },
+    {
+      "key": "split_multi_day",
+      "label": "複数日記録・月内履歴・分割",
+      "minCases": 15,
+      "minExact": 3,
+      "minSafetyOrUnsupported": 8,
+      "sources": ["split_required"],
+      "patterns": ["複数日", "月内", "同月", "分割", "履歴"]
+    },
+    {
+      "key": "materials",
+      "label": "特定器材・材料",
+      "minCases": 15,
+      "minExact": 5,
+      "minSafetyOrUnsupported": 5,
+      "patterns": ["特定器材", "材料", "カテーテル", "ドレーン", "ギプス"]
+    },
+    {
+      "key": "dialysis_transfusion",
+      "label": "透析・輸血",
+      "minCases": 20,
+      "minExact": 4,
+      "minSafetyOrUnsupported": 10,
+      "patterns": ["透析", "人工腎臓", "輸血", "血液製剤"]
+    },
+    {
+      "key": "endoscopy",
+      "label": "内視鏡",
+      "minCases": 15,
+      "minExact": 4,
+      "minSafetyOrUnsupported": 8,
+      "patterns": ["内視鏡", "胃カメラ", "大腸カメラ", "上部消化管内視鏡"]
+    }
+  ],
+  "departmentDomainTargets": [
+    { "department": "internal_medicine", "domain": "basic", "minCases": 25 },
+    { "department": "internal_medicine", "domain": "lab", "minCases": 35 },
+    { "department": "internal_medicine", "domain": "medication", "minCases": 25 },
+    { "department": "internal_medicine", "domain": "medical_management", "minCases": 18 },
+    { "department": "internal_medicine", "domain": "safety_negation", "minCases": 18 },
+    { "department": "pediatrics", "domain": "pediatric_addons", "minCases": 12 },
+    { "department": "pediatrics", "domain": "lab", "minCases": 10 },
+    { "department": "pediatrics", "domain": "medication", "minCases": 10 },
+    { "department": "pediatrics", "domain": "safety_negation", "minCases": 6 },
+    { "department": "dermatology", "domain": "procedure", "minCases": 15 },
+    { "department": "dermatology", "domain": "medication", "minCases": 12 },
+    { "department": "dermatology", "domain": "surgery", "minCases": 6 },
+    { "department": "dermatology", "domain": "pathology", "minCases": 6 },
+    { "department": "otolaryngology", "domain": "procedure", "minCases": 8 },
+    { "department": "otolaryngology", "domain": "lab", "minCases": 8 },
+    { "department": "otolaryngology", "domain": "medication", "minCases": 8 },
+    { "department": "ophthalmology", "domain": "procedure", "minCases": 8 },
+    { "department": "ophthalmology", "domain": "imaging", "minCases": 8 },
+    { "department": "ophthalmology", "domain": "medication", "minCases": 6 },
+    { "department": "orthopedics", "domain": "imaging", "minCases": 8 },
+    { "department": "orthopedics", "domain": "procedure", "minCases": 8 },
+    { "department": "orthopedics", "domain": "rehab", "minCases": 8 },
+    { "department": "orthopedics", "domain": "surgery", "minCases": 6 },
+    { "department": "surgery", "domain": "surgery", "minCases": 10 },
+    { "department": "surgery", "domain": "anesthesia", "minCases": 6 },
+    { "department": "surgery", "domain": "pathology", "minCases": 6 },
+    { "department": "surgery", "domain": "procedure", "minCases": 8 },
+    { "department": "psychiatry", "domain": "psychiatry", "minCases": 10 },
+    { "department": "psychiatry", "domain": "medication", "minCases": 8 },
+    { "department": "psychiatry", "domain": "safety_negation", "minCases": 6 },
+    { "department": "rehabilitation", "domain": "rehab", "minCases": 10 },
+    { "department": "obgyn", "domain": "lab", "minCases": 8 },
+    { "department": "obgyn", "domain": "imaging", "minCases": 8 },
+    { "department": "obgyn", "domain": "medical_management", "minCases": 6 },
+    { "department": "urology", "domain": "lab", "minCases": 8 },
+    { "department": "urology", "domain": "procedure", "minCases": 8 },
+    { "department": "urology", "domain": "surgery", "minCases": 6 },
+    { "department": "cardiology", "domain": "lab", "minCases": 8 },
+    { "department": "cardiology", "domain": "imaging", "minCases": 8 },
+    { "department": "cardiology", "domain": "medical_management", "minCases": 8 },
+    { "department": "gastroenterology", "domain": "lab", "minCases": 8 },
+    { "department": "gastroenterology", "domain": "imaging", "minCases": 6 },
+    { "department": "gastroenterology", "domain": "endoscopy", "minCases": 8 },
+    { "department": "gastroenterology", "domain": "pathology", "minCases": 6 },
+    { "department": "respiratory", "domain": "lab", "minCases": 8 },
+    { "department": "respiratory", "domain": "imaging", "minCases": 8 },
+    { "department": "respiratory", "domain": "medical_management", "minCases": 8 },
+    { "department": "respiratory", "domain": "homecare", "minCases": 5 },
+    { "department": "neurology", "domain": "imaging", "minCases": 6 },
+    { "department": "neurology", "domain": "rehab", "minCases": 5 },
+    { "department": "emergency", "domain": "emergency_time_addons", "minCases": 8 },
+    { "department": "emergency", "domain": "imaging", "minCases": 6 },
+    { "department": "emergency", "domain": "procedure", "minCases": 6 },
+    { "department": "nephrology_dialysis", "domain": "dialysis_transfusion", "minCases": 8 },
+    { "department": "nephrology_dialysis", "domain": "lab", "minCases": 8 },
+    { "department": "homecare", "domain": "homecare", "minCases": 10 },
+    { "department": "homecare", "domain": "medical_management", "minCases": 6 },
+    { "department": "radiology", "domain": "imaging", "minCases": 8 },
+    { "department": "radiology", "domain": "radiation_therapy", "minCases": 5 },
+    { "department": "pathology", "domain": "pathology", "minCases": 8 }
+  ]
+}
