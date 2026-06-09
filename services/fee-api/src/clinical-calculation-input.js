@@ -366,12 +366,6 @@ async function inferRuleBasedClinicalCalculationOptions({ text = "", session = {
   }
   reviewWarnings.push(...imaging.reviewWarnings);
 
-  const treatment = inferTreatmentOrders(text, session.orders);
-  if (treatment.orders.length) {
-    inferred.treatment_orders = treatment.orders;
-  }
-  reviewWarnings.push(...treatment.reviewWarnings);
-
   const drugInference = await inferMedicationOrders(text, feeCalculator);
   if (drugInference.orders.length) {
     inferred.medication_orders = drugInference.orders;
@@ -418,12 +412,6 @@ async function inferDeterministicSupplementalClinicalCalculationOptions({ text =
   }
   reviewWarnings.push(...imaging.reviewWarnings);
 
-  const treatment = inferTreatmentOrders(objectiveText, session.orders);
-  if (treatment.orders.length) {
-    inferred.treatment_orders = treatment.orders;
-  }
-  reviewWarnings.push(...treatment.reviewWarnings);
-
   return {
     inferred,
     reviewWarnings
@@ -436,7 +424,6 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const reviewWarnings = [];
   const procedureCodes = [];
   const imagingOrders = [];
-  const treatmentOrders = [];
   const medicationOrders = [];
   const materialInputs = [];
   const commentInputs = [];
@@ -510,21 +497,13 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     }
 
     if (["procedure", "exam", "treatment"].includes(type)) {
-      if (type === "exam" || type === "procedure") {
-        const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
-          categoryLabel: type === "exam" ? "検査・処置" : "診療行為"
-        });
-        procedureCodes.push(...procedure.procedureCodes);
-        commentInputs.push(...procedure.commentInputs);
-        collectionFeeInputs.push(...procedure.collectionFeeInputs);
-        reviewWarnings.push(...procedure.reviewWarnings);
-        continue;
-      }
-      const treatment = treatmentOrderFromClinicalEvent(event, session.orders);
-      if (treatment.order) {
-        treatmentOrders.push(treatment.order);
-      }
-      reviewWarnings.push(...treatment.reviewWarnings);
+      const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
+        categoryLabel: type === "exam" ? "検査・処置" : type === "treatment" ? "処置・手技" : "診療行為"
+      });
+      procedureCodes.push(...procedure.procedureCodes);
+      commentInputs.push(...procedure.commentInputs);
+      collectionFeeInputs.push(...procedure.collectionFeeInputs);
+      reviewWarnings.push(...procedure.reviewWarnings);
       continue;
     }
 
@@ -570,9 +549,6 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     inferred.lab_options = {
       collection_fee_inputs: uniqueStrings(collectionFeeInputs)
     };
-  }
-  if (treatmentOrders.length) {
-    inferred.treatment_orders = dedupeObjects(treatmentOrders);
   }
   if (medicationOrders.length) {
     inferred.medication_orders = dedupeObjects(medicationOrders, (item) => item.drug_code);
@@ -1024,57 +1000,6 @@ function isPerformedObjectiveFinding(sentence) {
   return /(:|：|所見|結果|高値|低値|基準値|貯留|病変|あり|認める|施行|実施|検査|撮影|テスト|クラス|\+{1,4}|陽性|陰性)/u.test(sentence);
 }
 
-function inferTreatmentOrders(text, orders = []) {
-  const treatmentOrders = [];
-  const reviewWarnings = [];
-  if (hasSpecificProcedureCode(orders)) {
-    return { orders: treatmentOrders, reviewWarnings };
-  }
-  for (const sentence of splitClinicalSentences(text)) {
-    if (isNegatedContext(sentence) || isFutureOrOrderOnlyContext(sentence)) {
-      continue;
-    }
-    if (/(熱傷|やけど)/u.test(sentence)) {
-      treatmentOrders.push({
-        kind: "burn",
-        area_size: inferTreatmentAreaSize(sentence)
-      });
-    } else if (/(創傷|創部|裂創|擦過傷|洗浄|ガーゼ)/u.test(sentence)) {
-      treatmentOrders.push({
-        kind: "wound",
-        area_size: inferTreatmentAreaSize(sentence)
-      });
-    }
-  }
-  for (const order of treatmentOrders) {
-    if (!order.area_size) {
-      reviewWarnings.push("処置面積がカルテ本文から確定できないため、処置料は要確認です。面積区分を確認してください。");
-    }
-  }
-  return {
-    orders: dedupeObjects(treatmentOrders),
-    reviewWarnings
-  };
-}
-
-function inferTreatmentAreaSize(text) {
-  const match = text.match(/(\d+(?:\.\d+)?)\s*[×xX]\s*(\d+(?:\.\d+)?)\s*cm/iu);
-  if (match) {
-    const area = Number(match[1]) * Number(match[2]);
-    if (Number.isFinite(area)) {
-      if (area < 100) return "lt_100_cm2";
-      if (area < 500) return "ge_100_lt_500_cm2";
-      if (area < 3000) return "ge_500_lt_3000_cm2";
-      if (area < 6000) return "ge_3000_lt_6000_cm2";
-      return "ge_6000_cm2";
-    }
-  }
-  if (/(100\s*cm2\s*未満|100\s*cm²\s*未満|１００ｃｍ２未満)/u.test(text)) {
-    return "lt_100_cm2";
-  }
-  return null;
-}
-
 async function inferMedicationOrders(text, feeCalculator) {
   const orders = [];
   const reviewWarnings = [];
@@ -1226,10 +1151,10 @@ function materialNameCandidatesFromClinicalText(text = "") {
   const seen = new Set();
   const result = [];
   for (const sentence of splitClinicalSentences(text)) {
-    if (!/(材料|特定器材|使用|装着|保護|固定|交換|ガーゼ|コルセット|シーネ|包帯|カテーテル|ドレーン|フィルム|パッド)/u.test(sentence)) {
+    if (!/(材料|特定器材|使用|装着|保護|固定|交換|シーネ|包帯|カテーテル|ドレーン|フィルム|パッド)/u.test(sentence)) {
       continue;
     }
-    const matches = sentence.matchAll(/([一-龥ァ-ヶーA-Za-z0-9]+(?:ガーゼ|コルセット|シーネ|包帯|カテーテル|ドレーン|チューブ|フィルム|パッド))/gu);
+    const matches = sentence.matchAll(/([一-龥ァ-ヶーA-Za-z0-9]+(?:シーネ|包帯|カテーテル|ドレーン|チューブ|フィルム|パッド))/gu);
     for (const match of matches) {
       const query = String(match[1] || "").trim();
       if (!query || /(湿布|貼付薬)$/u.test(query)) {
@@ -1300,7 +1225,7 @@ function isClinicalFindingNotDiagnosis(value) {
     return false;
   }
   if (/(高値|低値|陽性|陰性|基準値|結果|[<>]?\d+(?:\.\d+)?\s*(?:U\/?mL|IU\/?mL|mg\/?dL|ng\/?mL|pg\/?mL|%|％|\/μL|\/uL))/iu.test(text)
-    && !/(炎|症|病|癌|腫瘍|白内障|緑内障|糖尿病|高血圧|喘息|鼻炎|湿疹|骨折|梗塞|不全|障害|嚢胞|症候群)$/u.test(text)) {
+    && !/(炎|症|病|癌|腫瘍|不全|障害|嚢胞|症候群|疾患|異常)$/u.test(text)) {
     return true;
   }
   if (/^(?:血液検査|検査結果|検査値|所見)[:：]?/u.test(text)) {
@@ -1711,46 +1636,6 @@ async function materialInputFromClinicalEvent(event = {}, feeCalculator) {
   };
 }
 
-function treatmentOrderFromClinicalEvent(event = {}, orders = []) {
-  const reviewWarnings = [];
-  if (hasSpecificProcedureCode(orders)) {
-    return { order: null, reviewWarnings };
-  }
-  const text = clinicalEventEvidence(event);
-  let kind = "";
-  if (/(熱傷|やけど)/u.test(text)) {
-    kind = "burn";
-  } else if (/(創傷|創部|裂創|擦過傷|洗浄|ガーゼ)/u.test(text)) {
-    kind = "wound";
-  }
-  if (!kind) {
-    return { order: null, reviewWarnings };
-  }
-  const areaSize = treatmentAreaSizeFromClinicalEvent(event) || inferTreatmentAreaSize(text);
-  if (!areaSize) {
-    reviewWarnings.push("処置面積がカルテ本文から確定できないため、処置料は要確認です。面積区分を確認してください。");
-  }
-  return {
-    order: {
-      kind,
-      area_size: areaSize
-    },
-    reviewWarnings
-  };
-}
-
-function treatmentAreaSizeFromClinicalEvent(event = {}) {
-  const area = Number(String(event?.area_size_cm2 || "").replace(/[^\d.]/g, ""));
-  if (!Number.isFinite(area) || area <= 0) {
-    return null;
-  }
-  if (area < 100) return "lt_100_cm2";
-  if (area < 500) return "ge_100_lt_500_cm2";
-  if (area < 3000) return "ge_500_lt_3000_cm2";
-  if (area < 6000) return "ge_3000_lt_6000_cm2";
-  return "ge_6000_cm2";
-}
-
 async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculator, options = {}) {
   const status = normalizeClinicalEventStatus(event);
   if (!isBillableClinicalEventStatus(status)) {
@@ -2125,21 +2010,6 @@ function calculationOptionsSource(manualOptions = {}, autoKeys = []) {
     return "clinical_auto";
   }
   return null;
-}
-
-function hasSpecificProcedureCode(orders = []) {
-  return Array.isArray(orders) && orders.some((order) => {
-    if (!order || typeof order !== "object") return false;
-    const type = String(order.orderType || order.order_type || "").trim();
-    return ["procedure", "treatment"].includes(type) && orderHasCode(order);
-  });
-}
-
-function orderHasCode(order = {}) {
-  return ["standardCode", "standard_code", "localCode", "local_code", "code"].some((key) => {
-    const value = order[key];
-    return typeof value === "string" && value.trim();
-  });
 }
 
 function dedupeObjects(values = [], keyFn = (item) => JSON.stringify(item)) {

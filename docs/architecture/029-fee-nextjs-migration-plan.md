@@ -6,7 +6,7 @@
 
 診療報酬算定アプリとCore Adminは、SOAP/カルテ作成と同じ Next.js 構造へ移行する。
 
-ただし、現行の `apps/fee-web/index.html` と `apps/core-admin/index.html` は本番稼働中の静的SPAなので、最初から本番の Netlify 設定を切り替えない。まず各アプリ内に Next.js App Router の骨格を追加し、SOAPと同じナビゲーション/管理ページ構造を作る。その後、既存機能を段階的にReactコンポーネントへ移す。
+2026-06-09時点で、診療報酬算定アプリとCore AdminはNext.js配信へ切替済み。`apps/fee-web/index.html` の旧静的SPAは削除済みで、Fee WebはNext.js App Router版のみを正とする。
 
 ## 現状
 

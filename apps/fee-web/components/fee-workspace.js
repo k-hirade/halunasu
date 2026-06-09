@@ -21,33 +21,6 @@ const MASTER_TYPES = [
   ["comment", "コメント"],
   ["all", "すべて"]
 ];
-const CLINICAL_ORDER_RULES = [
-  {
-    orderType: "procedure",
-    localName: "創傷処置（１００ｃｍ２未満）",
-    standardCode: "140000610",
-    standardName: "創傷処置（１００ｃｍ２未満）",
-    patterns: [/創傷/u, /創部/u, /熱傷/u, /洗浄/u, /ガーゼ/u]
-  },
-  {
-    orderType: "drug",
-    localName: "ゲーベンクリーム１％",
-    standardCode: "620008991",
-    standardName: "ゲーベンクリーム１％",
-    patterns: [/ゲーベン/u]
-  },
-  {
-    orderType: "material",
-    localName: "非固着性シリコンガーゼ（平坦部位用）",
-    standardCode: "710010306",
-    standardName: "非固着性シリコンガーゼ（平坦部位用）",
-    patterns: [/ノンスティックガーゼ/u, /非固着性.*ガーゼ/u]
-  },
-  { orderType: "lab", localName: "検体検査", patterns: [/検査/u, /採血/u, /血液/u, /尿検査/u, /CRP/iu, /HbA1c/iu] },
-  { orderType: "injection", localName: "注射", patterns: [/注射/u, /点滴/u, /静注/u, /皮下注/u] },
-  { orderType: "imaging", localName: "画像診断", patterns: [/画像/u, /レントゲン/u, /X線/iu, /(?:^|[^A-Za-z])CT(?:$|[^A-Za-z])/iu, /(?:^|[^A-Za-z])MRI(?:$|[^A-Za-z])/iu] },
-  { orderType: "treatment", localName: "医学管理等", patterns: [/指導/u, /管理/u, /療養/u, /説明/u] }
-];
 const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "処置・手技",
   "薬剤処方",
@@ -66,17 +39,6 @@ const CLINICAL_AUTO_CALCULATION_OPTION_KEYS = new Set([
   "medication",
   "material_inputs"
 ]);
-const CLINICAL_DIAGNOSIS_RULES = [
-  { name: "腰椎椎間板ヘルニア疑い", patterns: [/腰椎椎間板ヘルニア/u, /椎間板ヘルニア/u] },
-  { name: "腰痛症", patterns: [/腰痛/u] },
-  { name: "熱傷", patterns: [/熱傷/u, /やけど/u] },
-  { name: "創傷", patterns: [/創傷/u, /創部/u, /裂創/u, /擦過傷/u] },
-  { name: "急性上気道炎疑い", patterns: [/風邪/u, /上気道/u, /咽頭/u, /咳/u, /鼻汁/u] },
-  { name: "高血圧症", patterns: [/高血圧/u] },
-  { name: "糖尿病", patterns: [/糖尿病/u, /HbA1c/iu] },
-  { name: "脂質異常症", patterns: [/脂質異常/u, /高脂血/u] }
-];
-
 export function FeeWorkspace({ mode = "list", sessionId = "" }) {
   if (mode === "detail") {
     return <FeeSessionDetailView sessionId={sessionId} />;
@@ -932,7 +894,7 @@ function FeeSettingsModal({
                 <span>病名</span>
                 <textarea
                   className="diagnosis-textarea"
-                  placeholder={"例: 熱傷\n創傷"}
+                  placeholder={"必要に応じて病名を1行ずつ入力してください"}
                   value={form.diagnosesText}
                   onChange={(event) => onUpdateDiagnosesText(event.target.value)}
                 />
@@ -1684,7 +1646,6 @@ function buildFeeSessionPayload({
     diagnosesSource,
     diagnosesClinicalTextHash: clinicalTextHash(form.clinicalText),
     orders: parseOrdersFromRows(chartInput.orderRows),
-    claimContext: parseJsonObjectField(form.claimContextText, "詳細条件 JSON"),
     calculationOptions: parseJsonObjectField(form.calculationOptionsText, "算定オプション JSON")
   };
 }
@@ -1700,7 +1661,6 @@ function defaultFeeForm() {
     setting: "outpatient",
     clinicalText: "",
     diagnosesText: "",
-    claimContextText: "",
     calculationOptionsText: ""
   };
 }
@@ -1726,7 +1686,6 @@ function formFromFeeSession(session = {}) {
     setting: session.setting || "outpatient",
     clinicalText: session.clinicalText || "",
     diagnosesText: formatDiagnoses(session.diagnoses),
-    claimContextText: formatJsonObject(session.claimContext),
     calculationOptionsText: formatJsonObject(editableCalculationOptions)
   };
 }
@@ -1765,27 +1724,7 @@ function deriveOrderRowsFromClinicalText(value) {
   if (!text) {
     return [];
   }
-  const rows = [];
-  for (const rule of CLINICAL_ORDER_RULES) {
-    if (rule.patterns.some((pattern) => pattern.test(text))) {
-      rows.push({
-        orderType: rule.orderType,
-        localName: rule.localName,
-        standardCode: rule.standardCode || "",
-        standardName: rule.standardName || "",
-        quantity: "1"
-      });
-    }
-  }
-  if (!rows.length && text.length >= 20) {
-    rows.push({
-      orderType: "other",
-      localName: "カルテ記載内容から算定候補を確認",
-      standardCode: "",
-      quantity: "1"
-    });
-  }
-  return dedupeRows(rows);
+  return [];
 }
 
 function isAutoPlaceholderOrderRow(row = {}) {
@@ -1803,18 +1742,7 @@ function deriveDiagnosesTextFromClinicalText(value) {
   if (explicitDiagnosis) {
     return explicitDiagnosis;
   }
-  const names = [];
-  for (const sentence of splitClinicalSentences(text)) {
-    if (isHistoricalDiagnosisContext(sentence)) {
-      continue;
-    }
-    for (const rule of CLINICAL_DIAGNOSIS_RULES) {
-      if (rule.patterns.some((pattern) => pattern.test(sentence))) {
-        names.push(rule.name);
-      }
-    }
-  }
-  return Array.from(new Set(names)).join("\n");
+  return "";
 }
 
 function normalizeClinicalText(value) {
@@ -1828,29 +1756,6 @@ function clinicalTextHash(value) {
     hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
   }
   return text ? `ui_${Math.abs(hash).toString(36)}` : "";
-}
-
-function splitClinicalSentences(value) {
-  return normalizeClinicalText(value)
-    .split(/[\n。]+/u)
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function isHistoricalDiagnosisContext(value) {
-  return /(既往|既往歴|内服中|持病|併存|合併症|服用中|常用)/u.test(value);
-}
-
-function dedupeRows(rows) {
-  const seen = new Set();
-  return rows.filter((row) => {
-    const key = `${row.orderType}:${row.localName}`;
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
 }
 
 function parseDiagnoses(value) {
@@ -2282,7 +2187,7 @@ function isIncreaseProposal(item = {}, normalized = {}) {
   if (/終了|中止|既往薬|内服中|保留|次回判断|今回処方として確定できない/u.test(text)) {
     return false;
   }
-  return /加算|算定できます|算定でき|実施済みの場合|届出|施設基準|病名|コメント|数量|日数|処方|MRI|CT|超音波|CA125|検査判断料|採血料/u.test(text)
+  return /加算|算定できます|算定でき|実施済みの場合|届出|施設基準|病名|コメント|数量|日数|処方|MRI|CT|超音波|検査判断料|採血料/u.test(text)
     && !/次回|予定のみ|指導のみ|実施していません/u.test(text);
 }
 
@@ -2313,20 +2218,20 @@ function proposalPointsLabel(item = {}, title = "", reason = "") {
 
 function shouldSuppressWarningForExistingLine(item = {}, lineTexts = "") {
   const text = `${item.title || ""} ${item.reason || ""}`;
-  return /レバミピド/u.test(text) && /数量|日数|不足/u.test(text) && /レバミピド/u.test(lineTexts);
+  const drugName = text.match(/薬剤「([^」]+)」/u)?.[1];
+  return Boolean(drugName)
+    && /数量|日数|不足/u.test(text)
+    && lineTexts.includes(drugName);
 }
 
 function semanticReviewKey(item = {}, title = "", reason = "") {
   const text = `${title} ${reason} ${item.title || ""} ${item.reason || ""} ${item.lineItem?.name || ""}`.toLowerCase();
   if (/施設基準|hospital_profile_missing|facility_standard/u.test(text)) return "warning:facility_standard";
-  if (/ca\s*125|ca125/u.test(text)) return item.sourceType === "line_item" ? "line:lab:ca125" : "warning:lab:ca125";
-  if (/経腟|経膣|超音波|エコー|ultrasound/u.test(text)) return item.sourceType === "line_item" ? "line:procedure:ultrasound" : "warning:procedure:ultrasound";
   if (/mri|ｍｒｉ/u.test(text) && /予定|依頼|オーダー|planned|ordered/u.test(text)) return "warning:mri_planned";
   if (/単純x線|x線|レントゲン|simple_radiography/u.test(text) && /撮影方式|写真診断|機器|条件/u.test(text)) return "warning:simple_radiography_condition";
-  if (/レバミピド/u.test(text) && /数量|日数|不足/u.test(text)) return "warning:drug_quantity:rebamipide";
-  if (/ロコア/u.test(text) && /数量|日数|不足/u.test(text)) return "warning:drug_quantity:locoa";
-  if (/ロコア|湿布/u.test(text) && /マスター|解決でき/u.test(text)) return "warning:patch_master";
-  if (/コルセット/u.test(text)) return "warning:corset_instruction";
+  const drugName = text.match(/薬剤「([^」]+)」/u)?.[1];
+  if (drugName && /数量|日数|不足/u.test(text)) return `warning:drug_quantity:${normalizeSearch(drugName)}`;
+  if (/材料|特定器材/u.test(text) && /マスター|解決でき/u.test(text)) return `warning:material_master:${title}:${reason}`;
   if (item.sourceType === "line_item") return `line:${item.lineItem?.code || item.lineItem?.name || item.reviewItemId}`;
   return `${item.sourceType || "review"}:${title}:${reason}`;
 }
@@ -2336,12 +2241,9 @@ function reviewItemTitle(item = {}) {
   if (/施設基準|hospital_profile_missing|facility_standard/u.test(text)) return "施設基準の確認";
   if (/mri|ｍｒｉ/u.test(text) && /予定|依頼|オーダー|planned|ordered/u.test(text)) return "MRIは予定扱い";
   if (/単純X線|単純x線|X線|x線|レントゲン|simple_radiography/u.test(text) && /撮影方式|写真診断|機器|条件/u.test(text)) return "単純X線の撮影条件確認";
-  if (/CA\s*125|CA125/u.test(text)) return "CA125検査の算定確認";
-  if (/経腟|経膣|超音波|エコー|ultrasound/u.test(text)) return "経腟超音波の算定確認";
-  if (/レバミピド/u.test(text) && /数量|日数|不足/u.test(text)) return "レバミピドの数量/日数確認";
-  if (/ロコア/u.test(text) && /数量|日数|不足/u.test(text)) return "湿布の数量/日数確認";
-  if (/ロコア|湿布/u.test(text) && /マスター|解決でき/u.test(text)) return "湿布のマスター確認";
-  if (/コルセット/u.test(text)) return "コルセットは指導のみ";
+  const drugName = text.match(/薬剤「([^」]+)」/u)?.[1];
+  if (drugName) return `${drugName}の確認`;
+  if (/材料|特定器材/u.test(text) && /マスター|解決でき/u.test(text)) return "特定器材のマスター確認";
   if (/調剤料|処方料|Medication fee/i.test(text)) return "投薬料の確認";
   if (/単純撮影|画像|Imaging fee/i.test(text)) return "画像診断料の確認";
   if (/初診|再診|Outpatient basic/i.test(text)) return "初再診料の確認";

@@ -724,9 +724,6 @@ function imagingProgressLabel(order = {}) {
 }
 
 function treatmentProgressLabel(order = {}) {
-  const kind = String(order.kind || "").trim();
-  if (kind === "burn") return "熱傷処置候補";
-  if (kind === "wound") return "創傷処置候補";
   return "処置候補";
 }
 

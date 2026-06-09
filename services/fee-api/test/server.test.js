@@ -378,7 +378,10 @@ test("reconnects clinical text to legacy outpatient calculation input", async ()
   assert.equal(receivedInput.calculationOptions.material_inputs, undefined);
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("レバミピド")));
-  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
+  assert.equal(
+    calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")),
+    false
+  );
   assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("オーダー「画像診断」")), false);
   assert.equal(detail.body.feeSession.calculationOptions.outpatient_basic.fee_kind, "initial");
   assert.equal(detail.body.feeSession.calculationOptions.imaging_orders.length, 1);

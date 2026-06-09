@@ -911,12 +911,6 @@ function reviewWarningTitle(message = "") {
   if (/単純X線|単純x線|X線|x線|レントゲン|simple_radiography/u.test(text)) {
     return "単純X線の撮影条件確認";
   }
-  if (/超音波|経腟|経膣|エコー|ultrasound/u.test(text)) {
-    return "超音波検査の算定確認";
-  }
-  if (/CA\s*125|CA125|ＣＡ１２５/u.test(text)) {
-    return "CA125検査の算定確認";
-  }
   if (/初診|再診|受診履歴|Outpatient basic/u.test(text)) {
     return "初再診料の確認";
   }
@@ -1133,8 +1127,6 @@ function uniqueCompact(values = []) {
 function candidateActionSemanticKey(item = {}, normalized = {}) {
   const text = `${normalized.displayTitle || ""} ${normalized.displayReason || ""} ${item.title || ""} ${item.reason || ""}`.toLowerCase();
   if (/施設基準|hospital_profile_missing|facility_standard/u.test(text)) return "warning:facility_standard";
-  if (/ca\s*125|ca125|ｃａ１２５/u.test(text)) return "warning:lab:ca125";
-  if (/経腟|経膣|超音波|エコー|ultrasound/u.test(text)) return "warning:procedure:ultrasound";
   if (/mri|ｍｒｉ/u.test(text) && /予定|依頼|オーダー|planned|ordered/u.test(text)) return "warning:mri_planned";
   if (/単純x線|x線|レントゲン|simple_radiography/u.test(text) && /撮影方式|写真診断|機器|条件/u.test(text)) return "warning:simple_radiography_condition";
   const drugName = text.match(/薬剤「([^」]+)」/u)?.[1];

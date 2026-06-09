@@ -26,15 +26,6 @@ const apps = [
     }
   },
   {
-    name: "fee-web",
-    path: "apps/fee-web",
-    htmlFiles: ["index.html"],
-    meta: {
-      "halunasu-platform-api-base-url": "platformApi",
-      "halunasu-fee-api-base-url": "feeApi"
-    }
-  },
-  {
     name: "referral-web",
     path: "apps/referral-web",
     htmlFiles: ["index.html"],

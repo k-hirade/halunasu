@@ -96,17 +96,13 @@ try {
     const patchBody = await apiMocks.patchPromise;
     assert.deepEqual(
       patchBody.orders.map((order) => [order.orderType, order.localName, order.standardCode]),
-      [
-        ["procedure", "創傷処置（１００ｃｍ２未満）", "140000610"],
-        ["drug", "ゲーベンクリーム１％", "620008991"],
-        ["material", "非固着性シリコンガーゼ（平坦部位用）", "710010306"]
-      ],
-      "chart-only calculation must submit specific master-coded candidate orders"
+      [],
+      "chart-only calculation must not submit client-side fixed coded orders"
     );
     assert.deepEqual(
       patchBody.diagnoses.map((diagnosis) => diagnosis.name),
-      ["熱傷", "創傷"],
-      "negated fever must not create an acute URI diagnosis"
+      [],
+      "chart-only calculation must not submit client-side fixed diagnoses"
     );
     await browser.close();
   } catch (error) {
