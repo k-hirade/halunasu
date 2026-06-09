@@ -1366,8 +1366,8 @@ function calculationWarningKey(warning = "") {
   }
   if (/施設基準/u.test(text)) return `facility:${warningReasonKey(text)}`;
   if (/初診|再診|受診履歴|過去算定記録/u.test(text)) return `visit:${warningReasonKey(text)}`;
-  if (/超音波|エコー|経腟|経膣/u.test(text)) return `ultrasound:${warningReasonKey(text)}`;
-  if (/CA\s*125|CA125|ＣＡ１２５/u.test(text)) return `ca125:${warningReasonKey(text)}`;
+  const procedureCode = text.match(/\b(\d{6,})\b/u)?.[1];
+  if (procedureCode) return `procedure:${procedureCode}:${warningReasonKey(text)}`;
   return text.replace(/\s+/gu, "").slice(0, 120);
 }
 

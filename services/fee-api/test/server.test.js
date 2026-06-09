@@ -7,7 +7,6 @@ import {
 } from "../../../packages/auth-client/src/index.js";
 import { createSignedSession } from "../../platform-api/src/auth/session.js";
 import { MemoryPlatformStore } from "../../platform-api/src/store/memory-store.js";
-import { procedureHintQueries } from "../src/clinical-master-resolver.js";
 import { handleFeeApiRequest } from "../src/server.js";
 import { MemoryFeeStore } from "../src/store/memory-store.js";
 
@@ -375,11 +374,7 @@ test("reconnects clinical text to legacy outpatient calculation input", async ()
     receivedInput.calculationOptions.imaging_orders.map((order) => order.kind).sort(),
     ["simple_radiography"]
   );
-  assert.deepEqual(
-    receivedInput.calculationOptions.medication_orders.map((order) => order.drug_code).sort(),
-    ["620001001"]
-  );
-  assert.equal(receivedInput.calculationOptions.medication_orders.some((order) => order.drug_code === "620001003"), false);
+  assert.equal(receivedInput.calculationOptions.medication_orders, undefined);
   assert.equal(receivedInput.calculationOptions.material_inputs, undefined);
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("レバミピド")));
@@ -998,33 +993,20 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
 });
 
-test("persists structured diagnoses and reviews unsupported extracted events with history-based basic fee", async () => {
+test("persists structured diagnoses and resolves clinical event search queries with history-based basic fee", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let receivedInput = null;
   let receivedSessionContext = null;
+  const procedureItems = {
+    "ＣＡ１２５": [{ kind: "procedure", code: "160038010", name: "ＣＡ１２５" }],
+    "超音波検査（断層撮影法）（胸腹部）": [{ kind: "procedure", code: "160072210", name: "超音波検査（断層撮影法）（胸腹部）" }]
+  };
   stores.feeCalculator.searchMaster = async (input) => {
-    if (input.type === "procedure" && /CA\s*125|CA125|ＣＡ１２５/u.test(input.query)) {
-      return {
-        query: input.query,
-        type: input.type,
-        items: [{ kind: "procedure", code: "160038010", name: "ＣＡ１２５" }]
-      };
-    }
-    if (input.type === "procedure" && /(経腟|経膣|超音波)/u.test(input.query)) {
-      return {
-        query: input.query,
-        type: input.type,
-        items: [
-          { kind: "procedure", code: "160072110", name: "超音波検査（Ａモード法）" },
-          { kind: "procedure", code: "160072210", name: "超音波検査（断層撮影法）（胸腹部）" }
-        ]
-      };
-    }
     return {
       query: input.query,
       type: input.type,
-      items: []
+      items: procedureItems[input.query] || []
     };
   };
   stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
@@ -1054,6 +1036,10 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
         name: "経腟超音波",
         status: "performed",
         evidence: "経腟超音波：左卵巣に約3cm程度の嚢胞性病変",
+        section: "O",
+        date_relation: "current_visit",
+        provider_ownership: "own_clinic",
+        search_queries: ["超音波検査（断層撮影法）（胸腹部）"],
         modality: "ultrasound",
         review_reason: ""
       },
@@ -1062,6 +1048,10 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
         name: "CA125",
         status: "performed",
         evidence: "血液検査：CA125 68 U/mL",
+        section: "O",
+        date_relation: "current_visit",
+        provider_ownership: "own_clinic",
+        search_queries: ["ＣＡ１２５"],
         modality: "none",
         review_reason: ""
       },
@@ -1070,6 +1060,10 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
         name: "MRI骨盤部",
         status: "ordered",
         evidence: "MRI骨盤部オーダー（子宮内膜症の範囲評価）",
+        section: "P",
+        date_relation: "future",
+        provider_ownership: "own_clinic",
+        search_queries: ["MRI撮影"],
         modality: "mri",
         review_reason: "予定・依頼"
       },
@@ -1078,6 +1072,10 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
         name: "低用量ピル（ルナベル配合錠LD）",
         status: "prescribed",
         evidence: "低用量ピル処方（ルナベル配合錠LD）",
+        section: "P",
+        date_relation: "current_visit",
+        provider_ownership: "own_clinic",
+        search_queries: ["ルナベル配合錠LD"],
         modality: "none",
         quantity_per_day: "",
         days: "",
@@ -1089,6 +1087,10 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
         name: "ロキソプロフェン60mg",
         status: "prescribed",
         evidence: "ロキソプロフェン60mg 月経痛時頓服処方",
+        section: "P",
+        date_relation: "current_visit",
+        provider_ownership: "own_clinic",
+        search_queries: ["ロキソプロフェン"],
         modality: "none",
         quantity_per_day: "",
         days: "",
@@ -1138,11 +1140,8 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
     receivedInput.calculationOptions.procedure_codes.sort(),
     ["160038010", "160072210"].sort()
   );
-  assert.deepEqual(receivedInput.calculationOptions.lab_options.collection_fee_inputs, ["blood_venous"]);
-  assert.deepEqual(receivedInput.calculationOptions.comment_inputs, [{
-    code: "820100683",
-    text: "超音波検査（断層撮影法）（胸腹部）：ウ　女性生殖器領域"
-  }]);
+  assert.equal(receivedInput.calculationOptions.lab_options, undefined);
+  assert.equal(receivedInput.calculationOptions.comment_inputs, undefined);
   assert.deepEqual(
     calculation.body.feeSession.diagnoses.map((diagnosis) => diagnosis.name),
     ["月経困難症", "子宮内膜症疑い", "左卵巣嚢胞"]
@@ -1165,7 +1164,7 @@ test("persists structured diagnoses and reviews unsupported extracted events wit
   assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("病名が入力されていません")), false);
 });
 
-test("rule-based fallback resolves gynecology lab and ultrasound aliases", async () => {
+test("rule-based fallback does not inject disease-specific procedure hints", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let receivedInput = null;
@@ -1206,15 +1205,10 @@ test("rule-based fallback resolves gynecology lab and ultrasound aliases", async
   );
 
   assert.equal(calculation.statusCode, 201);
-  assert.deepEqual(
-    receivedInput.calculationOptions.procedure_codes.sort(),
-    ["160038010", "160072210"].sort()
-  );
-  assert.deepEqual(receivedInput.calculationOptions.lab_options.collection_fee_inputs, ["blood_venous"]);
-  assert.deepEqual(receivedInput.calculationOptions.comment_inputs, [{
-    code: "820100683",
-    text: "超音波検査（断層撮影法）（胸腹部）：ウ　女性生殖器領域"
-  }]);
+  assert.equal(receivedInput.calculationOptions.procedure_codes, undefined);
+  assert.equal(receivedInput.calculationOptions.lab_options, undefined);
+  assert.equal(receivedInput.calculationOptions.comment_inputs, undefined);
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI")));
 });
 
 test("infers revisit basic fee from prior patient fee sessions", async () => {
@@ -1310,10 +1304,19 @@ test("counts same-day existing patient sessions as patient history for basic fee
   assert.equal(calculation.body.feeSession.calculationProgress.metrics.patientHistory.priorSessionCount, 1);
 });
 
-test("replaces stale auto diagnoses and resolves chronic diabetes clinical facts", async () => {
+test("replaces stale auto diagnoses and resolves generic clinical event search queries", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let receivedInput = null;
+  const procedureItems = {
+    "アルブミン定量（尿）": [{ kind: "procedure", code: "160004810", name: "アルブミン定量（尿）" }],
+    "医学管理料": [{ kind: "procedure", code: "113900000", name: "医学管理料（テスト）" }]
+  };
+  stores.feeCalculator.searchMaster = async (input) => ({
+    query: input.query,
+    type: input.type,
+    items: procedureItems[input.query] || []
+  });
   stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
     receivedInput = calculationInput;
     return {
@@ -1334,12 +1337,40 @@ test("replaces stale auto diagnoses and resolves chronic diabetes clinical facts
       { name: "脂質異常症", status: "confirmed", evidence: "脂質異常症合併" }
     ],
     billing_events: [
-      { type: "lab", name: "HbA1c", status: "performed", evidence: "HbA1c：7.8%", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
-      { type: "lab", name: "LDLコレステロール", status: "performed", evidence: "LDL：132mg/dL", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
-      { type: "lab", name: "中性脂肪", status: "performed", evidence: "TG：168mg/dL", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
-      { type: "lab", name: "クレアチニン", status: "performed", evidence: "eGFR：62mL/min/1.73m²", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
-      { type: "lab", name: "尿アルブミン", status: "performed", evidence: "尿アルブミン：42mg/gCr", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
-      { type: "management", name: "糖尿病合併症管理料", status: "performed", evidence: "糖尿病合併症管理料算定、療養計画書を説明・署名取得", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" }
+      {
+        type: "lab",
+        name: "尿アルブミン",
+        status: "performed",
+        evidence: "尿アルブミン：42mg/gCr",
+        section: "O",
+        date_relation: "current_visit",
+        provider_ownership: "own_clinic",
+        search_queries: ["アルブミン定量（尿）"],
+        modality: "none",
+        body_site: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: ""
+      },
+      {
+        type: "management",
+        name: "療養計画書による管理指導",
+        status: "performed",
+        evidence: "療養計画書を患者に説明・署名取得",
+        section: "P",
+        date_relation: "current_visit",
+        provider_ownership: "own_clinic",
+        search_queries: ["医学管理料"],
+        modality: "none",
+        body_site: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: ""
+      }
     ],
     excluded_events: [],
     missing_information: [],
@@ -1382,9 +1413,9 @@ test("replaces stale auto diagnoses and resolves chronic diabetes clinical facts
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
   assert.deepEqual(
     receivedInput.calculationOptions.procedure_codes.sort(),
-    ["113010010", "160004810", "160010010", "160019210", "160020910", "160167250"].sort()
+    ["113900000", "160004810"].sort()
   );
-  assert.deepEqual(receivedInput.calculationOptions.lab_options.collection_fee_inputs, ["blood_venous"]);
+  assert.equal(receivedInput.calculationOptions.lab_options, undefined);
   assert.deepEqual(
     calculation.body.feeSession.diagnoses.map((diagnosis) => diagnosis.name),
     ["2型糖尿病", "糖尿病性腎症第2期", "高血圧症", "脂質異常症"]
@@ -1393,54 +1424,19 @@ test("replaces stale auto diagnoses and resolves chronic diabetes clinical facts
     calculation.body.feeSession.diagnoses.some((diagnosis) => diagnosis.name === "月経困難症"),
     false
   );
-  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("糖尿病合併症管理料")));
+  assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("糖尿病合併症管理料")), false);
 });
 
-test("proposes dermatology chronic management and objective allergy labs without noisy medication warnings", async () => {
+test("builds adoptable management proposals from generic clinical event search queries", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let receivedInput = null;
   const masterItems = {
-    "皮膚科特定疾患指導管理料": [{
+    "慢性疾患指導": [{
       kind: "procedure",
       code: "113999001",
-      name: "皮膚科特定疾患指導管理料（II）",
-      points: 100,
-      sourceType: "medical_procedure_master"
-    }],
-    "皮膚科特定疾患": [{
-      kind: "procedure",
-      code: "113999001",
-      name: "皮膚科特定疾患指導管理料（II）",
-      points: 100,
-      sourceType: "medical_procedure_master"
-    }],
-    "非特異的ＩｇＥ": [{
-      kind: "procedure",
-      code: "160999001",
-      name: "非特異的ＩｇＥ",
-      points: 110,
-      sourceType: "medical_procedure_master"
-    }],
-    IgE: [{
-      kind: "procedure",
-      code: "160999001",
-      name: "非特異的ＩｇＥ",
-      points: 110,
-      sourceType: "medical_procedure_master"
-    }],
-    "好酸球": [{
-      kind: "procedure",
-      code: "160999002",
-      name: "好酸球",
-      points: 15,
-      sourceType: "medical_procedure_master"
-    }],
-    "末梢血液像": [{
-      kind: "procedure",
-      code: "160999002",
-      name: "好酸球",
-      points: 15,
+      name: "特定疾患療養管理料（テスト）",
+      points: 225,
       sourceType: "medical_procedure_master"
     }]
   };
@@ -1474,38 +1470,51 @@ test("proposes dermatology chronic management and objective allergy labs without
   const clinicalFactsExtractor = async () => ({
     visit_type: { kind: "unknown", evidence: "", confidence: "low" },
     diagnoses: [
-      { name: "アトピー性皮膚炎", status: "confirmed", evidence: "アトピー性皮膚炎、中等症" }
+      { name: "慢性疾患", status: "confirmed", evidence: "慢性疾患の継続管理" }
     ],
     billing_events: [
-      { type: "lab", name: "IgE", status: "performed", evidence: "IgE：680 IU/mL", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
-      { type: "lab", name: "好酸球", status: "performed", evidence: "好酸球：520/μL", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
-      { type: "management", name: "スキンケア指導", status: "performed", evidence: "保湿剤を朝晩塗るよう再指導、入浴指導", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" },
-      { type: "counseling", name: "デュピクセント説明", status: "performed", evidence: "適応・費用・投与方法を本日説明", modality: "none", body_site: "", quantity_per_day: "", days: "", total_quantity: "", area_size_cm2: "", review_reason: "" }
+      {
+        type: "management",
+        name: "慢性疾患指導",
+        status: "performed",
+        evidence: "療養上の注意点を本日説明し、継続管理の方針を確認",
+        section: "P",
+        date_relation: "current_visit",
+        provider_ownership: "own_clinic",
+        search_queries: ["慢性疾患指導"],
+        modality: "none",
+        body_site: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: ""
+      }
     ],
     excluded_events: [
-      { type: "medication", name: "塗布再指導", status: "history", evidence: "保湿剤を朝晩塗るよう再指導", reason: "指導" }
+      { type: "medication", name: "再指導", status: "history", evidence: "薬剤の使い方を再指導", reason: "指導" }
     ],
     missing_information: [],
     review_flags: []
   });
 
   const patient = await request(stores, "POST", "/v1/fee/patients", {
-    displayName: "Derm Patient"
+    displayName: "Management Proposal Patient"
   }, headers);
   await request(stores, "POST", "/v1/fee/sessions", {
     patientId: patient.body.patient.patientId,
     facilityId: "fac_001",
     serviceDate: "2026-05-01",
-    diagnoses: [{ name: "アトピー性皮膚炎" }]
+    diagnoses: [{ name: "慢性疾患" }]
   }, headers);
   const current = await request(stores, "POST", "/v1/fee/sessions", {
     patientId: patient.body.patient.patientId,
     facilityId: "fac_001",
     serviceDate: "2026-06-06",
     clinicalText: [
-      "アトピー性皮膚炎、中等症。IgE：680 IU/mL、好酸球：520/μL。",
-      "外用薬の部位別使い分け、保湿、スキンケア、入浴指導を実施。",
-      "デュピクセントの適応・費用・投与方法を本日説明。"
+      "慢性疾患の継続管理。",
+      "療養上の注意点を本日説明し、継続管理の方針を確認。",
+      "薬剤の使い方を再指導。"
     ].join("\n")
   }, headers);
 
@@ -1518,7 +1527,7 @@ test("proposes dermatology chronic management and objective allergy labs without
     { clinicalFactsExtractor }
   );
   const proposal = calculation.body.candidateWorkbench.proposals.find((item) => (
-    item.displayTitle.includes("皮膚科")
+    item.displayTitle.includes("慢性疾患指導")
   ));
   assert.ok(proposal);
   const adopted = await request(
@@ -1531,19 +1540,16 @@ test("proposes dermatology chronic management and objective allergy labs without
 
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
-  assert.deepEqual(
-    receivedInput.calculationOptions.procedure_codes.sort(),
-    ["160999001", "160999002"].sort()
-  );
+  assert.equal(receivedInput.calculationOptions.procedure_codes, undefined);
   assert.equal(proposal.canAdopt, true);
-  assert.equal(proposal.potentialPoints, 100);
-  assert.equal(calculation.body.candidateWorkbench.potentialPointsTotal, 100);
+  assert.equal(proposal.potentialPoints, 225);
+  assert.equal(calculation.body.candidateWorkbench.potentialPointsTotal, 225);
   assert.equal(
-    calculation.body.calculationResult.warnings.some((warning) => warning.includes("塗布再指導")),
+    calculation.body.calculationResult.warnings.some((warning) => warning.includes("再指導")),
     false
   );
   assert.equal(adopted.statusCode, 200);
-  assert.equal(adopted.body.receiptDraft.totalPoints, 175);
+  assert.equal(adopted.body.receiptDraft.totalPoints, 300);
 });
 
 test("merges deterministic performed imaging when structured facts miss it", async () => {
@@ -2026,15 +2032,6 @@ test("does not propose chronic management fee from past history only", async () 
   assert.equal(calculation.statusCode, 201);
   const proposals = calculation.body.calculationResult.candidateProposals || [];
   assert.equal(proposals.some((proposal) => String(proposal.title || "").includes("特定疾患療養管理料")), false);
-});
-
-test("builds allergy test master hints by test type", () => {
-  assert.deepEqual(
-    procedureHintQueries("血液検査：IgE 412 IU/mL"),
-    ["非特異的ＩｇＥ", "IgE"]
-  );
-  assert.ok(procedureHintQueries("特異的IgE：スギ クラス4、ヒノキ クラス3").includes("特異的ＩｇＥ"));
-  assert.ok(procedureHintQueries("皮膚プリックテスト：スギ（+++）、ヒノキ（++）").includes("皮膚反応検査"));
 });
 
 test("patient history overrides structured initial visit inference", async () => {

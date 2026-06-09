@@ -13,7 +13,7 @@ This document covers seven recurring issues:
 1. Prevent stale previous input or extracted results from being reused after the chart text changes.
 2. Decide initial/revisit fee from patient history, not from LLM phrasing.
 3. Separate performed, planned, considered, instruction-only, and history events before billing.
-4. Resolve master naming variation with shared clinical aliases.
+4. Resolve master naming variation through LLM event `search_queries` and conservative master search.
 5. Deduplicate medication warnings by canonical medication name.
 6. Keep unresolved billable facts as review candidates.
 7. Group review output by target and hide low-value/internal messages.
@@ -79,27 +79,30 @@ Intent:
 
 The user should review actual billing ambiguity, not every piece of clinical prose.
 
-### 4. Master matching and aliases
+### 4. Master matching
 
 ASIS:
 
-- A small alias layer exists for CA125, diabetic labs, diabetic management, and transvaginal ultrasound.
-- Search fallback is intentionally high-confidence, so many synonym variants become unresolved.
+- Procedure matching mixed two concepts: LLM event extraction and hardcoded clinical hints.
+- Fixed hints for individual labs, disease-management fees, and specialty-specific procedures made some trial SOAPs look better, but did not generalize to new specialties.
+- Search fallback is intentionally high-confidence, so many synonym variants remain unresolved unless the extracted event carries good search terms.
 
 TOBE:
 
-- Keep high-confidence matching, but expand aliases as shared clinical vocabulary rather than one-off SOAP patches.
-- Alias entries should represent common clinical concepts, not a single test case sentence.
+- Remove fixed clinical hint lists from calculation logic.
+- Use LLM-extracted medical events plus `search_queries` as the primary bridge to the fee master.
+- Keep code/point assignment grounded in the master data; do not let the LLM invent billing codes or points.
+- Unresolved events should remain visible as review items instead of being silently dropped.
 
 Intent:
 
-Improve recall while avoiding unsafe low-confidence code assignment.
+Improve recall by better clinical-event extraction while avoiding one-off SOAP patches and unsafe low-confidence code assignment.
 
 ### 5. Medication warning deduplication
 
 ASIS:
 
-- Medication names are canonicalized in some paths, but duplicate warnings can still appear when LLM and deterministic extraction produce variants such as `ロキソプロフェン60mg` and `ロキソプロフェン`.
+- Medication names are normalized in some paths, but duplicate warnings can still appear when LLM and deterministic extraction produce dose-bearing and plain-name variants of the same drug.
 
 TOBE:
 
@@ -148,7 +151,7 @@ Reduce review volume and make each item actionable for medical office users.
 1. Add a server-side guard that resets stale auto diagnoses when the chart text hash changes or current extraction returns no diagnoses.
 2. Make history-based initial/revisit the default calculation option, with conflict warnings instead of preserving LLM/rule output.
 3. Strengthen review warning normalization and deduplication for medications, imaging, facility standards, visit history, and internal engine messages.
-4. Add a small generic alias expansion for common clinical concepts already supported by the calculation engine.
+4. Use LLM-extracted event `search_queries` as the bridge to master search; do not add hardcoded clinical hint tables.
 5. Keep unresolved billable facts as warnings, not silent drops.
 6. Add focused tests for stale-auto clearing, history overriding LLM visit type, warning dedupe, and review output normalization.
 
@@ -167,7 +170,9 @@ Reduce review volume and make each item actionable for medical office users.
   - Patient history overrides LLM/rule visit type unless the user explicitly supplied manual calculation options.
   - Medication and excluded-event normalization was expanded for recurring chronic disease examples.
 - `services/fee-api/src/clinical-master-resolver.js`
-  - Shared procedure alias queries were expanded for common lab terms such as CRP, WBC, platelet, PT-INR, AST/ALT, and albumin.
+  - Removed. Fixed clinical hint lists are no longer part of calculation.
+- `packages/medical-core/src/fee/openai-fee-clinical-facts.js`
+  - Clinical extraction now carries event status, section, date relation, provider ownership, and master-search queries.
 - `packages/fee-core/src/index.js`
   - Warning review items now receive target-specific titles, for example `施設基準の確認`, `検査判断料の確認`, and `{薬剤名}の確認`.
 

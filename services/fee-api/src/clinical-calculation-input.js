@@ -1,8 +1,4 @@
 import { extractFeeClinicalFactsWithOpenAi } from "../../../packages/medical-core/src/fee/openai-fee-clinical-facts.js";
-import {
-  procedureHintQueries,
-  resolveClinicalProcedureHints
-} from "./clinical-master-resolver.js";
 
 export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "処置・手技",
@@ -14,41 +10,6 @@ export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "注射",
   "カルテ記載内容から算定候補を確認"
 ]);
-
-const MANAGEMENT_CONTEXT_PROFILES = [
-  {
-    key: "dermatology_specific_disease_management",
-    diagnosisPatterns: [/アトピー性皮膚炎|アトピー|慢性湿疹|湿疹/u],
-    contextPatterns: [/皮膚|湿疹|外用|ステロイド|プロトピック|デュピクセント|スキンケア|保湿|入浴/u],
-    queries: ["皮膚科特定疾患指導管理料", "皮膚科特定疾患"],
-    preferredPatterns: [/皮膚科特定疾患指導管理料/u],
-    title: "皮膚科の慢性疾患管理料の確認",
-    reason: "慢性皮膚疾患に対して、外用薬の使い分け・保湿・スキンケア・入浴指導などの療養指導が記載されています。",
-    conditionText: "皮膚科を標榜する医療機関で、対象疾患に対して計画的な指導を行った場合は算定できる可能性があります。他の管理料との併算定可否を確認してください。"
-  },
-  {
-    key: "specific_disease_management",
-    diagnosisPatterns: [/気管支喘息|喘息/u],
-    contextPatterns: [/指導|説明|療養|計画|服薬|生活/u],
-    queries: ["特定疾患療養管理料"],
-    preferredPatterns: [/特定疾患療養管理料/u],
-    title: "特定疾患療養管理料の確認",
-    reason: "対象になり得る慢性疾患に対して、継続的な療養指導が記載されています。",
-    conditionText: "対象疾患・施設種別・同月算定条件を満たす場合は算定できる可能性があります。令和6年改定後の対象疾患か確認してください。"
-  },
-  {
-    key: "lifestyle_disease_management",
-    diagnosisPatterns: [/高血圧|糖尿病|脂質異常|高脂血/u],
-    contextPatterns: [/指導|説明|療養|計画書|署名|生活|栄養|運動|食事/u],
-    queries: ["生活習慣病管理料"],
-    preferredPatterns: [/生活習慣病管理料/u],
-    title: "生活習慣病管理料の確認",
-    reason: "生活習慣病に対して、療養計画・生活指導・服薬指導などが記載されています。",
-    conditionText: "高血圧・糖尿病・脂質異常症などは、令和6年改定後は特定疾患療養管理料ではなく生活習慣病管理料の条件を確認してください。療養計画書や同月算定条件を満たす場合に算定できます。"
-  }
-];
-
-const MANAGEMENT_GUIDANCE_PATTERN = /指導|説明|療養|計画書|署名|スキンケア|入浴|保湿|外用|塗布|部位別|生活指導|服薬指導|投与方法|費用/u;
 
 const CLINICAL_AUTO_OPTION_KEYS = new Set([
   "procedure_codes",
@@ -76,20 +37,6 @@ const ACUTE_GENERAL_INPATIENT_BASIC_CODES = Object.freeze({
 const DPC_CONTEXT_PATTERN = /DPC|診断群分類|包括評価/u;
 const STRONG_INPATIENT_CONTEXT_PATTERN = /入院\s*\d{1,2}\s*日目|入院中|入院管理|病棟で|病棟管理|急性期一般入院料\s*[1-6]|入院基本料|DPC対象病院|DPC.*(?:管理|入院|対象)|(?:入院|病棟).*(?:継続|管理|観察)/u;
 const NON_CURRENT_INPATIENT_CONTEXT_PATTERN = /入院適応(?:は)?低い|入院適応なし|入院不要|入院なし|入院は不要|退院後|退院希望|入院歴|過去.{0,12}入院|前回入院|入院前/u;
-
-const CLINICAL_PROCEDURE_ALIASES = Object.freeze({
-  ca125: {
-    code: "160038010",
-    collectionFeeInput: "blood_venous"
-  },
-  transvaginalUltrasound: {
-    code: "160072210",
-    commentInput: {
-      code: "820100683",
-      text: "超音波検査（断層撮影法）（胸腹部）：ウ　女性生殖器領域"
-    }
-  }
-});
 
 export async function buildClinicalCalculationPreparation({
   session = {},
@@ -206,18 +153,6 @@ export async function buildClinicalCalculationPreparation({
     }
     reviewWarnings.push(...historyBasic.reviewWarnings);
   }
-
-  const opportunityProposals = await buildClinicalCandidateProposals({
-    text,
-    diagnoses: [
-      ...asArray(session.diagnoses),
-      ...inferredDiagnoses
-    ],
-    calculationOptions: normalizedInferred,
-    reviewWarnings,
-    feeCalculator
-  });
-  candidateProposals.push(...opportunityProposals);
 
   const autoKeys = Object.keys(normalizedInferred).filter((key) => (
     CLINICAL_AUTO_OPTION_KEYS.has(key) && !hasOwn(manualOptions, key)
@@ -431,20 +366,6 @@ async function inferRuleBasedClinicalCalculationOptions({ text = "", session = {
   }
   reviewWarnings.push(...imaging.reviewWarnings);
 
-  const performedProcedureCodes = await inferPerformedProcedureCodes(text, feeCalculator);
-  if (performedProcedureCodes.procedureCodes.length) {
-    inferred.procedure_codes = performedProcedureCodes.procedureCodes;
-  }
-  if (performedProcedureCodes.commentInputs.length) {
-    inferred.comment_inputs = performedProcedureCodes.commentInputs;
-  }
-  if (performedProcedureCodes.collectionFeeInputs.length) {
-    inferred.lab_options = {
-      collection_fee_inputs: performedProcedureCodes.collectionFeeInputs
-    };
-  }
-  reviewWarnings.push(...performedProcedureCodes.reviewWarnings);
-
   const treatment = inferTreatmentOrders(text, session.orders);
   if (treatment.orders.length) {
     inferred.treatment_orders = treatment.orders;
@@ -497,20 +418,6 @@ async function inferDeterministicSupplementalClinicalCalculationOptions({ text =
   }
   reviewWarnings.push(...imaging.reviewWarnings);
 
-  const performedProcedureCodes = await inferPerformedProcedureCodes(objectiveText, feeCalculator);
-  if (performedProcedureCodes.procedureCodes.length) {
-    inferred.procedure_codes = performedProcedureCodes.procedureCodes;
-  }
-  if (performedProcedureCodes.commentInputs.length) {
-    inferred.comment_inputs = performedProcedureCodes.commentInputs;
-  }
-  if (performedProcedureCodes.collectionFeeInputs.length) {
-    inferred.lab_options = {
-      collection_fee_inputs: performedProcedureCodes.collectionFeeInputs
-    };
-  }
-  reviewWarnings.push(...performedProcedureCodes.reviewWarnings);
-
   const treatment = inferTreatmentOrders(objectiveText, session.orders);
   if (treatment.orders.length) {
     inferred.treatment_orders = treatment.orders;
@@ -557,7 +464,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   for (const event of asArray(facts?.billing_events)) {
     const type = normalizeClinicalEventType(event);
     const status = normalizeClinicalEventStatus(event);
-    if (!isBillableClinicalEventStatus(status)) {
+    if (!isBillableClinicalEvent(event)) {
       const warning = excludedClinicalEventWarning(event);
       if (warning) reviewWarnings.push(warning);
       continue;
@@ -602,7 +509,17 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       continue;
     }
 
-    if (["procedure", "treatment"].includes(type)) {
+    if (["procedure", "exam", "treatment"].includes(type)) {
+      if (type === "exam" || type === "procedure") {
+        const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
+          categoryLabel: type === "exam" ? "検査・処置" : "診療行為"
+        });
+        procedureCodes.push(...procedure.procedureCodes);
+        commentInputs.push(...procedure.commentInputs);
+        collectionFeeInputs.push(...procedure.collectionFeeInputs);
+        reviewWarnings.push(...procedure.reviewWarnings);
+        continue;
+      }
       const treatment = treatmentOrderFromClinicalEvent(event, session.orders);
       if (treatment.order) {
         treatmentOrders.push(treatment.order);
@@ -685,11 +602,7 @@ async function clinicalEventCandidateProposal(event = {}, feeCalculator, {
   const title = `${name || categoryLabel}の算定確認`;
   const reason = `${name || categoryLabel}を${categoryLabel}に関係する医療イベントとして抽出しました。`;
   const conditionText = `${categoryLabel}として算定できる項目があれば、対象疾患・施設基準・同月算定条件を確認してください。`;
-  const queries = uniqueStrings([
-    name,
-    ...procedureMasterQueriesFromEvidence(evidence),
-    categoryLabel
-  ]);
+  const queries = clinicalEventSearchQueries(event, { categoryLabel });
   const item = await searchProcedureCandidateItem(feeCalculator, queries, [
     ...(name ? [new RegExp(escapeRegExp(name), "u")] : []),
     new RegExp(escapeRegExp(categoryLabel), "u")
@@ -718,145 +631,6 @@ async function clinicalEventCandidateProposal(event = {}, feeCalculator, {
     source: "clinical_event_opportunity",
     sortOrder
   };
-}
-
-async function buildClinicalCandidateProposals({
-  text = "",
-  diagnoses = [],
-  calculationOptions = {},
-  reviewWarnings = [],
-  feeCalculator
-} = {}) {
-  if (!normalizeClinicalText(text)) {
-    return [];
-  }
-  const proposals = [];
-  const existingProcedureCodes = new Set(asArray(calculationOptions?.procedure_codes).map((code) => String(code || "")));
-  const diagnosisText = diagnosisNames(diagnoses).join(" ");
-  const combinedText = [text, diagnosisText, ...asArray(reviewWarnings)].join("\n");
-
-  const managementProposal = await chronicManagementFeeProposal({
-    text: combinedText,
-    diagnoses,
-    existingProcedureCodes,
-    feeCalculator
-  });
-  if (managementProposal) {
-    proposals.push(managementProposal);
-  }
-
-  proposals.push(...await labValueCandidateProposals({
-    text,
-    existingProcedureCodes,
-    feeCalculator
-  }));
-
-  return normalizeCandidateProposals(proposals);
-}
-
-async function chronicManagementFeeProposal({
-  text = "",
-  diagnoses = [],
-  existingProcedureCodes = new Set(),
-  feeCalculator
-} = {}) {
-  const normalizedText = normalizeClinicalText(text);
-  if (!MANAGEMENT_GUIDANCE_PATTERN.test(normalizedText)) {
-    return null;
-  }
-  const currentDiagnosisText = diagnosisNames(diagnoses).join(" ");
-  if (!currentDiagnosisText) {
-    return null;
-  }
-
-  const profiles = MANAGEMENT_CONTEXT_PROFILES.filter((profile) => (
-    profile.diagnosisPatterns.some((pattern) => pattern.test(currentDiagnosisText))
-    && (!profile.contextPatterns?.length || profile.contextPatterns.some((pattern) => pattern.test(normalizedText)))
-  ));
-  if (!profiles.length) {
-    return null;
-  }
-
-  for (const profile of profiles) {
-    const item = await searchProcedureCandidateItem(feeCalculator, profile.queries, profile.preferredPatterns);
-    if (!item?.code) {
-      continue;
-    }
-    if (existingProcedureCodes.has(String(item.code))) {
-      return null;
-    }
-    return candidateProposalFromProcedureItem({
-      proposalId: `clinical_${profile.key}_${item.code}`,
-      title: profile.title,
-      reason: profile.reason,
-      conditionText: profile.conditionText,
-      evidence: managementEvidenceText(normalizedText),
-      item,
-      sortOrder: 20,
-      basis: "カルテ本文から慢性疾患への指導・説明を検出しました。対象疾患・施設種別・併算定条件を満たす場合だけ採用してください。"
-    });
-  }
-
-  const fallback = profiles[0];
-  return {
-    proposalId: `clinical_${fallback.key}_confirm`,
-    title: fallback.title,
-    reason: fallback.reason,
-    conditionText: "該当する管理料をマスター検索で確認してください。条件を満たす場合は点数に追加できます。",
-    evidence: managementEvidenceText(normalizedText),
-    actionType: "confirm_required",
-    potentialPoints: 0,
-    orderType: "procedure",
-    source: "clinical_billing_opportunity",
-    sortOrder: 20
-  };
-}
-
-async function labValueCandidateProposals({ text = "", existingProcedureCodes = new Set(), feeCalculator } = {}) {
-  const proposals = [];
-  for (const sentence of splitClinicalSentences(text)) {
-    if (isNegatedContext(sentence) || isFutureOrOrderOnlyContext(sentence) || !isPerformedObjectiveFinding(sentence)) {
-      continue;
-    }
-    const queries = procedureHintQueries(sentence);
-    if (!queries.length) {
-      continue;
-    }
-    const label = queries[0];
-    const item = await searchProcedureCandidateItem(feeCalculator, queries, [
-      new RegExp(escapeRegExp(label), "u"),
-      ...queries.map((query) => new RegExp(escapeRegExp(query), "u"))
-    ]);
-    if (item?.code && existingProcedureCodes.has(String(item.code))) {
-      continue;
-    }
-    if (item?.code) {
-      proposals.push(candidateProposalFromProcedureItem({
-        proposalId: `clinical_lab_${candidateIdPart(label)}_${item.code}`,
-        title: `${label}検査の確認`,
-        reason: `${label}の結果値がカルテに記載されています。`,
-        conditionText: "当日実施した検査結果であれば算定できます。過去値・持参結果の場合は算定しないでください。",
-        evidence: sentence,
-        item,
-        sortOrder: 40,
-        basis: "客観所見に検査値があるため、当日実施かを確認して候補化します。"
-      }));
-    } else {
-      proposals.push({
-        proposalId: `clinical_lab_${candidateIdPart(label)}_confirm`,
-        title: `${label}検査の確認`,
-        reason: `${label}の結果値がカルテに記載されています。`,
-        conditionText: "当日実施した検査結果であれば算定できます。標準コードはマスター検索で確認してください。",
-        evidence: sentence,
-        actionType: "confirm_required",
-        potentialPoints: 0,
-        orderType: "procedure",
-        source: "clinical_billing_opportunity",
-        sortOrder: 40
-      });
-    }
-  }
-  return proposals;
 }
 
 async function searchProcedureCandidateItem(feeCalculator, queries = [], preferredPatterns = []) {
@@ -953,13 +727,6 @@ function normalizeCandidateProposals(values = []) {
     result.push(value);
   }
   return result;
-}
-
-function managementEvidenceText(text = "") {
-  return splitClinicalSentences(text)
-    .find((sentence) => MANAGEMENT_GUIDANCE_PATTERN.test(sentence))
-    || splitClinicalSentences(text)[0]
-    || "";
 }
 
 function outpatientBasicFromStructuredVisit(visitType = {}, text = "") {
@@ -1253,78 +1020,8 @@ function inferImagingOrders(text) {
   };
 }
 
-async function inferPerformedProcedureCodes(text, feeCalculator) {
-  const procedureCodes = [];
-  const commentInputs = [];
-  const collectionFeeInputs = [];
-  const reviewWarnings = [];
-  for (const sentence of splitClinicalSentences(text)) {
-    if (isNegatedContext(sentence) || isFutureOrOrderOnlyContext(sentence)) {
-      continue;
-    }
-    const hinted = resolveClinicalProcedureHints(sentence);
-    if (hinted.procedureCodes.length && isPerformedOrClaimedProcedureContext(sentence)) {
-      procedureCodes.push(...hinted.procedureCodes);
-      commentInputs.push(...hinted.commentInputs);
-      collectionFeeInputs.push(...hinted.collectionFeeInputs);
-      reviewWarnings.push(...hinted.reviewWarnings);
-    }
-    const genericQueries = procedureHintQueries(sentence);
-    if (!hinted.procedureCodes.length && genericQueries.length && isPerformedObjectiveFinding(sentence)) {
-      const procedure = await searchPerformedProcedureCode(feeCalculator, {
-        name: genericQueries[0],
-        categoryLabel: "検体検査",
-        queries: genericQueries,
-        unresolvedMessage: `${genericQueries[0]}は実施済みの検体検査として検出しましたが、標準コードを自動確定できませんでした。検査項目をマスター検索で確認してください。`,
-        resolvedMessage: `${genericQueries[0]}を実施済み検体検査としてマスター候補に反映しました。検査項目と算定条件を確認してください。`
-      });
-      procedureCodes.push(...procedure.procedureCodes);
-      commentInputs.push(...procedure.commentInputs);
-      collectionFeeInputs.push(...procedure.collectionFeeInputs);
-      reviewWarnings.push(...procedure.reviewWarnings);
-    }
-    if (/(経腟超音波|経膣超音波|超音波|エコー)/u.test(sentence) && isPerformedObjectiveFinding(sentence)) {
-      const procedure = await searchPerformedProcedureCode(feeCalculator, {
-        name: ultrasoundDisplayName(sentence),
-        categoryLabel: "超音波検査",
-        queries: ultrasoundMasterQueries(sentence),
-        unresolvedMessage: "超音波検査は実施済みの客観所見として検出しましたが、標準コードを自動確定できませんでした。部位と検査内容をマスター検索で確認してください。",
-        resolvedMessage: "超音波検査を実施済みとしてマスター候補に反映しました。部位・検査方法・算定条件を確認してください。"
-      });
-      procedureCodes.push(...procedure.procedureCodes);
-      commentInputs.push(...procedure.commentInputs);
-      collectionFeeInputs.push(...procedure.collectionFeeInputs);
-      reviewWarnings.push(...procedure.reviewWarnings);
-    }
-    if (/(?:CA\s*125|CA125)/iu.test(sentence) && isPerformedObjectiveFinding(sentence)) {
-      const procedure = await searchPerformedProcedureCode(feeCalculator, {
-        name: "CA125",
-        categoryLabel: "検体検査",
-        queries: ["CA125", "CA 125", "CA-125", "ＣＡ１２５", "癌抗原125", "癌抗原１２５"],
-        unresolvedMessage: "CA125は実施済みの検体検査として検出しましたが、標準コードを自動確定できませんでした。検査項目をマスター検索で確認してください。",
-        resolvedMessage: "CA125を実施済み検体検査としてマスター候補に反映しました。検査項目と算定条件を確認してください。"
-      });
-      procedureCodes.push(...procedure.procedureCodes);
-      commentInputs.push(...procedure.commentInputs);
-      collectionFeeInputs.push(...procedure.collectionFeeInputs);
-      reviewWarnings.push(...procedure.reviewWarnings);
-    }
-  }
-  return {
-    procedureCodes: uniqueStrings(procedureCodes),
-    commentInputs: dedupeObjects(commentInputs, (item) => item?.code || item?.text || JSON.stringify(item)),
-    collectionFeeInputs: uniqueStrings(collectionFeeInputs),
-    reviewWarnings
-  };
-}
-
 function isPerformedObjectiveFinding(sentence) {
   return /(:|：|所見|結果|高値|低値|基準値|貯留|病変|あり|認める|施行|実施|検査|撮影|テスト|クラス|\+{1,4}|陽性|陰性)/u.test(sentence);
-}
-
-function isPerformedOrClaimedProcedureContext(sentence) {
-  return isPerformedObjectiveFinding(sentence)
-    || /(算定|管理料|療養計画書|署名取得|説明・署名|署名)/u.test(sentence);
 }
 
 function inferTreatmentOrders(text, orders = []) {
@@ -1535,7 +1232,7 @@ function materialNameCandidatesFromClinicalText(text = "") {
     const matches = sentence.matchAll(/([一-龥ァ-ヶーA-Za-z0-9]+(?:ガーゼ|コルセット|シーネ|包帯|カテーテル|ドレーン|チューブ|フィルム|パッド))/gu);
     for (const match of matches) {
       const query = String(match[1] || "").trim();
-      if (!query || /ロコア|湿布|貼付薬/u.test(query)) {
+      if (!query || /(湿布|貼付薬)$/u.test(query)) {
         continue;
       }
       const key = query.toLowerCase();
@@ -1602,8 +1299,8 @@ function isClinicalFindingNotDiagnosis(value) {
   if (!text) {
     return false;
   }
-  if (/(?:CA\s*[-]?\s*125|CA125|ＣＡ１２５|CEA|CRP|HbA1c|AST|ALT|血糖|尿酸|Dダイマー)/iu.test(text)
-    && /(高値|低値|陽性|陰性|基準値|U\/?mL|mg\/?dL|軽度|結果)/iu.test(text)) {
+  if (/(高値|低値|陽性|陰性|基準値|結果|[<>]?\d+(?:\.\d+)?\s*(?:U\/?mL|IU\/?mL|mg\/?dL|ng\/?mL|pg\/?mL|%|％|\/μL|\/uL))/iu.test(text)
+    && !/(炎|症|病|癌|腫瘍|白内障|緑内障|糖尿病|高血圧|喘息|鼻炎|湿疹|骨折|梗塞|不全|障害|嚢胞|症候群)$/u.test(text)) {
     return true;
   }
   if (/^(?:血液検査|検査結果|検査値|所見)[:：]?/u.test(text)) {
@@ -1667,6 +1364,30 @@ function isBillableClinicalEventStatus(status) {
   return ["performed", "prescribed", "administered"].includes(status);
 }
 
+function normalizeClinicalEventDateRelation(event = {}) {
+  return String(event?.date_relation || event?.dateRelation || "unknown").trim();
+}
+
+function normalizeClinicalEventProviderOwnership(event = {}) {
+  return String(event?.provider_ownership || event?.providerOwnership || "unknown").trim();
+}
+
+function isBillableClinicalEvent(event = {}) {
+  const status = normalizeClinicalEventStatus(event);
+  if (!isBillableClinicalEventStatus(status)) {
+    return false;
+  }
+  const dateRelation = normalizeClinicalEventDateRelation(event);
+  if (["future", "past", "other_provider"].includes(dateRelation)) {
+    return false;
+  }
+  const providerOwnership = normalizeClinicalEventProviderOwnership(event);
+  if (["other_department", "other_provider"].includes(providerOwnership)) {
+    return false;
+  }
+  return true;
+}
+
 function clinicalEventName(event = {}) {
   return String(event?.name || "").trim();
 }
@@ -1681,11 +1402,22 @@ function clinicalEventEvidence(event = {}) {
 function excludedClinicalEventWarning(event = {}) {
   const type = normalizeClinicalEventType(event);
   const status = normalizeClinicalEventStatus(event);
+  const dateRelation = normalizeClinicalEventDateRelation(event);
+  const providerOwnership = normalizeClinicalEventProviderOwnership(event);
   const name = clinicalEventName(event) || clinicalImagingDisplayName(event) || "項目";
   const reason = String(event?.reason || event?.review_reason || "").trim();
 
   if (type === "medication" && isMedicationNameNoise(name)) {
     return "";
+  }
+  if (["other_department", "other_provider"].includes(providerOwnership)) {
+    return `${name}は他科・他院で管理または実施された内容として抽出されたため、今回の算定候補には入れていません。`;
+  }
+  if (["past", "other_provider"].includes(dateRelation)) {
+    return `${name}は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。`;
+  }
+  if (dateRelation === "future") {
+    return `${name}は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。`;
   }
   if (type === "imaging" && ["planned", "ordered"].includes(status)) {
     return `${name}は予定・依頼として記載されているため、今回算定候補には入れていません。実施済みの場合は内容を確認してください。`;
@@ -1831,7 +1563,6 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
   if (kind === "ultrasound") {
     const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
       categoryLabel: "超音波検査",
-      queries: ultrasoundMasterQueries(clinicalEventEvidence(event) || clinicalEventName(event)),
       unresolvedMessage: `${clinicalEventName(event) || "超音波検査"}は超音波検査として抽出しましたが、標準コードを自動確定できませんでした。部位と検査内容をマスター検索で確認してください。`,
       resolvedMessage: `${clinicalEventName(event) || "超音波検査"}を実施済みとしてマスター候補に反映しました。部位・検査方法・算定条件を確認してください。`
     });
@@ -1859,7 +1590,7 @@ function clinicalImagingKind(event = {}) {
   if (/(?:^|[^A-Za-z])MRI(?:$|[^A-Za-z])|ＭＲＩ/u.test(text)) return "mri";
   if (/(?:^|[^A-Za-z])CT(?:$|[^A-Za-z])|ＣＴ/u.test(text)) return "ct";
   if (/(X線|Ｘ線|レントゲン|単純撮影)/u.test(text)) return "simple_radiography";
-  if (/(超音波|エコー|経腟|経膣)/u.test(text)) return "ultrasound";
+  if (/(超音波|エコー)/u.test(text)) return "ultrasound";
   return modality && modality !== "none" ? modality : "";
 }
 
@@ -1929,15 +1660,6 @@ function canonicalMedicationName(value) {
     .replace(/\d+(?:\.\d+)?\s*(?:mg|g|μg|mcg|mL|ml|%|ｍｇ|ｇ|μｇ|ｍＬ|％).*$/iu, "")
     .replace(/[（(].*?[）)]/gu, "")
     .trim();
-  if (/^ロキソプロフェン/u.test(name) || /^ロキソニン/u.test(name)) {
-    return "ロキソプロフェン";
-  }
-  if (/^レバミピド/u.test(name) || /^ムコスタ/u.test(name)) {
-    return "レバミピド";
-  }
-  if (/ルナベル/u.test(name)) {
-    return "ルナベル配合錠LD";
-  }
   return name;
 }
 
@@ -1948,7 +1670,7 @@ function isMedicationNameNoise(value) {
   if (!text) {
     return true;
   }
-  return /^(?:塗布再指導|再指導|本日で終了|終了|継続|増量検討|切り替え|説明|指導)$/u.test(text)
+  return /^(?:再指導|終了|継続|増量検討|切り替え|説明|指導)$/u.test(text)
     || /指導|説明|検討|予定|予約|案内|許可|禁止|終了$/u.test(text);
 }
 
@@ -2043,20 +1765,10 @@ async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculato
 
   const name = clinicalEventName(event);
   const categoryLabel = options.categoryLabel || "診療行為";
-  const resolverText = [name, categoryLabel, clinicalEventEvidence(event)].filter(Boolean).join(" ");
-  const hinted = resolveClinicalProcedureHints(resolverText);
-  if (hinted.procedureCodes.length) {
-    return hinted;
-  }
-  const alias = procedureAliasFromText(resolverText);
-  if (alias) {
-    return alias;
-  }
-  const queries = uniqueStrings([
-    ...(Array.isArray(options.queries) ? options.queries : []),
-    name,
-    ...procedureMasterQueriesFromEvidence(clinicalEventEvidence(event))
-  ]);
+  const queries = clinicalEventSearchQueries(event, {
+    categoryLabel,
+    extraQueries: options.queries
+  });
   return searchPerformedProcedureCode(feeCalculator, {
     name,
     categoryLabel,
@@ -2073,27 +1785,13 @@ async function searchPerformedProcedureCode(feeCalculator, {
   resolvedMessage = "",
   unresolvedMessage = ""
 } = {}) {
-  const hinted = resolveClinicalProcedureHints([name, categoryLabel, ...queries].filter(Boolean).join(" "));
-  if (hinted.procedureCodes.length) {
-    return hinted;
-  }
-
   if (typeof feeCalculator?.searchMaster !== "function") {
-    const alias = procedureAliasFromText([name, categoryLabel, ...queries].filter(Boolean).join(" "));
-    if (alias) {
-      return alias;
-    }
     return {
       procedureCodes: [],
       commentInputs: [],
       collectionFeeInputs: [],
       reviewWarnings: [unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、マスター検索を利用できません。`]
     };
-  }
-
-  const alias = procedureAliasFromText([name, categoryLabel, ...queries].filter(Boolean).join(" "));
-  if (alias) {
-    return alias;
   }
 
   const normalizedQueries = uniqueStrings(queries).filter((query) => query.length >= 2);
@@ -2115,28 +1813,6 @@ async function searchPerformedProcedureCode(feeCalculator, {
     collectionFeeInputs: [],
     reviewWarnings: [unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、標準コードを自動確定できませんでした。`]
   };
-}
-
-function procedureAliasFromText(value) {
-  const text = String(value || "");
-  const normalizedText = normalizeProcedureMatchText(text);
-  if (isCa125Context(normalizedText)) {
-    return {
-      procedureCodes: [CLINICAL_PROCEDURE_ALIASES.ca125.code],
-      commentInputs: [],
-      collectionFeeInputs: [CLINICAL_PROCEDURE_ALIASES.ca125.collectionFeeInput],
-      reviewWarnings: []
-    };
-  }
-  if (isUltrasoundContext(normalizedText) && isTransvaginalUltrasoundContext(normalizedText)) {
-    return {
-      procedureCodes: [CLINICAL_PROCEDURE_ALIASES.transvaginalUltrasound.code],
-      commentInputs: [CLINICAL_PROCEDURE_ALIASES.transvaginalUltrasound.commentInput],
-      collectionFeeInputs: [],
-      reviewWarnings: []
-    };
-  }
-  return null;
 }
 
 async function searchProcedureMasterItem(feeCalculator, query, context = {}) {
@@ -2170,31 +1846,15 @@ function isHighConfidenceProcedureMasterItem(item = {}, { query = "", name = "",
     return false;
   }
 
-  if (isCa125Context(contextText)) {
-    return isCa125MasterName(itemText);
-  }
-
-  if (isUltrasoundContext(contextText)) {
-    if (!/超音波|エコー/u.test(itemText)) {
-      return false;
-    }
-    if (/aモード|mモード|ドプラ|心臓|頸動脈|甲状腺|乳腺/u.test(itemText) && isTransvaginalUltrasoundContext(contextText)) {
-      return false;
-    }
-    if (/aモード/u.test(itemText)) {
-      return false;
-    }
-    if (isTransvaginalUltrasoundContext(contextText)) {
-      return /(経腟|経膣|腟|膣|断層|子宮|卵巣|骨盤)/u.test(itemText);
-    }
-    return /(断層|胸腹部|体表|腹部|骨盤|経腟|経膣|子宮|卵巣)/u.test(itemText);
-  }
-
   const queryKey = normalizeProcedureMatchText(query);
   const nameKey = normalizeProcedureMatchText(name);
+  const queryTokens = procedureMatchTokens(query);
+  const nameTokens = procedureMatchTokens(name);
   return Boolean(
     (queryKey && itemText.includes(queryKey))
     || (nameKey && itemText.includes(nameKey))
+    || queryTokens.some((token) => token.length >= 3 && itemText.includes(token))
+    || nameTokens.some((token) => token.length >= 3 && itemText.includes(token))
   );
 }
 
@@ -2206,46 +1866,39 @@ function normalizeProcedureMatchText(value) {
     .toLowerCase();
 }
 
-function isCa125Context(text) {
-  return /ca125|ca一二五|癌抗原125/u.test(text);
+function procedureMatchTokens(value = "") {
+  return normalizeProcedureMatchText(value)
+    .split(/(?:検査|測定|撮影|処置|管理料|指導料|料|法|術|血液|尿|眼|鼻|耳|皮膚|腹部|胸部)/u)
+    .map((token) => token.trim())
+    .filter(Boolean);
 }
 
-function isCa125MasterName(text) {
-  return /ca125|癌抗原125/u.test(text);
+function clinicalEventSearchQueries(event = {}, { categoryLabel = "", extraQueries = [] } = {}) {
+  const name = clinicalEventName(event);
+  const evidence = clinicalEventEvidence(event);
+  return uniqueStrings([
+    ...asArray(extraQueries),
+    ...asArray(event?.search_queries),
+    ...asArray(event?.searchQueries),
+    name,
+    ...procedureMasterQueriesFromEvidence(evidence),
+    categoryLabel
+  ]);
 }
 
-function isUltrasoundContext(text) {
-  return /超音波|エコー|経腟|経膣/u.test(text);
-}
-
-function isTransvaginalUltrasoundContext(text) {
-  return /経腟|経膣|腟|膣/u.test(text);
-}
-
-function procedureMasterQueriesFromEvidence(evidence) {
-  const text = String(evidence || "");
-  const queries = [...procedureHintQueries(text)];
-  if (/(?:CA\s*125|CA125)/iu.test(text)) {
-    queries.push("CA125", "CA 125", "CA-125", "ＣＡ１２５", "癌抗原125", "癌抗原１２５");
+function procedureMasterQueriesFromEvidence(evidence = "") {
+  const queries = [];
+  const text = normalizeClinicalText(evidence);
+  for (const sentence of splitClinicalSentences(text)) {
+    const head = sentence.split(/[:：]/u)[0]?.trim();
+    if (head && head.length >= 2 && head.length <= 40) {
+      queries.push(head);
+    }
+    for (const match of sentence.matchAll(/([一-龥ァ-ヶーA-Za-z0-9]{2,30}(?:検査|測定|撮影|処置|管理料|指導料|計算|テスト|スクリーニング))/gu)) {
+      queries.push(match[1]);
+    }
   }
-  if (/(経腟超音波|経膣超音波|経腟エコー|経膣エコー)/u.test(text)) {
-    queries.push("経腟超音波", "経膣超音波", "経腟エコー", "経膣エコー", "子宮 超音波", "卵巣 超音波", "超音波検査");
-  } else if (/(超音波|エコー)/u.test(text)) {
-    queries.push("超音波検査", "超音波");
-  }
-  return queries;
-}
-
-function ultrasoundMasterQueries(value) {
-  const text = String(value || "");
-  if (/(経腟|経膣)/u.test(text)) {
-    return ["経腟超音波", "経膣超音波", "経腟エコー", "経膣エコー", "子宮 超音波", "卵巣 超音波", "超音波検査"];
-  }
-  return ["超音波検査", "超音波"];
-}
-
-function ultrasoundDisplayName(value) {
-  return /(経腟|経膣)/u.test(String(value || "")) ? "経腟超音波" : "超音波検査";
+  return uniqueStrings(queries);
 }
 
 async function searchFirstMasterItem(feeCalculator, type, query, expectedKind) {
@@ -2548,11 +2201,9 @@ function cleanReviewWarning(value) {
 }
 
 function reviewWarningDedupKey(warning) {
-  if (/(?:CA\s*125|CA125)/iu.test(warning)) {
-    return `lab:ca125:${reviewWarningReasonKey(warning)}`;
-  }
-  if (/(経腟|経膣|超音波|エコー)/u.test(warning)) {
-    return `procedure:ultrasound:${reviewWarningReasonKey(warning)}`;
+  const procedureCode = warning.match(/\b(\d{6,})\b/u)?.[1];
+  if (procedureCode) {
+    return `procedure:${procedureCode}:${reviewWarningReasonKey(warning)}`;
   }
   const medication = warning.match(/薬剤「([^」]+)」/u)?.[1];
   if (medication) {

@@ -6,8 +6,10 @@ const EVENT_STATUSES = [
   "administered",
   "planned",
   "ordered",
+  "considered",
   "instruction_only",
   "history",
+  "other_provider",
   "negated",
   "unclear"
 ];
@@ -16,6 +18,7 @@ const EVENT_TYPES = [
   "outpatient_basic",
   "imaging",
   "procedure",
+  "exam",
   "treatment",
   "medication",
   "injection",
@@ -74,7 +77,7 @@ const feeClinicalFactsSchema = {
     },
     billing_events: {
       type: "array",
-      maxItems: 6,
+      maxItems: 18,
       items: {
         type: "object",
         additionalProperties: false,
@@ -82,7 +85,11 @@ const feeClinicalFactsSchema = {
           "type",
           "name",
           "status",
+          "section",
+          "date_relation",
+          "provider_ownership",
           "evidence",
+          "search_queries",
           "modality",
           "body_site",
           "quantity_per_day",
@@ -141,7 +148,24 @@ function eventProperties() {
     type: { type: "string", enum: EVENT_TYPES },
     name: shortString(60),
     status: { type: "string", enum: EVENT_STATUSES },
+    section: {
+      type: "string",
+      enum: ["S", "O", "A", "P", "unknown"]
+    },
+    date_relation: {
+      type: "string",
+      enum: ["current_visit", "future", "past", "other_provider", "unknown"]
+    },
+    provider_ownership: {
+      type: "string",
+      enum: ["own_clinic", "other_department", "other_provider", "unknown"]
+    },
     evidence: shortString(90),
+    search_queries: {
+      type: "array",
+      maxItems: 5,
+      items: shortString(40)
+    },
     modality: {
       type: "string",
       enum: ["simple_radiography", "ct", "mri", "ultrasound", "endoscopy", "other", "none"]
@@ -188,8 +212,11 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "If a medication is described as 既往, 内服中, 持参薬, 常用, 継続中, or 以前から, mark it history unless the text clearly says it was newly prescribed today.",
       "For medications, extract days and quantity per day only when explicitly written. Otherwise leave the fields empty and add missing_information.",
       "For imaging, set modality to simple_radiography, ct, mri, ultrasound, endoscopy, or other when explicit. Planned imaging should not be mixed with performed imaging.",
+      "For every billing_event, set section to S/O/A/P when clear, date_relation to current_visit/future/past/other_provider/unknown, and provider_ownership to own_clinic/other_department/other_provider/unknown.",
+      "Use other_department or other_provider when the text says another department or outside doctor is managing it, for example 内科主治医, 他院, かかりつけ, 紹介元, 持参結果.",
+      "search_queries must be Japanese master-search phrases for the event, not billing codes or point values. Include concise synonyms when useful, e.g. 眼圧測定, 細隙灯顕微鏡検査, 精密眼底検査, 視野検査, 眼軸長測定.",
       "For materials and devices, mark instruction_only when the text only says 装着指導, 説明, or self-care guidance rather than actual billed use.",
-      "Do not put lab values, abnormal findings, or measurement results into diagnoses. For example CA125軽度高値, CRP高値, and ダグラス窩液体貯留 are findings/events, not diagnoses.",
+      "Do not put lab values, abnormal findings, or measurement results into diagnoses. Numeric test values, marker elevations, and isolated imaging findings are findings/events, not diagnoses.",
       "Each diagnosis and event must include a short evidence excerpt from the input text.",
       "Keep the response compact: evidence and reasons should be short excerpts, not explanations. Do not add dosage/unit/frequency details unless they are needed for quantity_per_day, days, total_quantity, or area_size_cm2.",
       "Prefer billing_events and excluded_events. Keep missing_information and review_flags empty unless they add information not already present in an event.",
@@ -197,9 +224,10 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "When a performed lab value, imaging result, treatment, management, or counseling event is present in Objective or Plan, extract the event generically by its clinical name even if it is not shown in the examples.",
       "",
       "Examples:",
-      "- Text: 月経困難症、子宮内膜症疑い。経腟超音波：左卵巣に約3cmの嚢胞性病変。血液検査：CA125 68 U/mL。MRI骨盤部オーダー。ルナベル処方。 -> diagnoses include 月経困難症 and 子宮内膜症疑い only; do not include CA125軽度高値. billing_events include 経腟超音波 as type=imaging status=performed modality=ultrasound, CA125 as type=lab status=performed, MRI骨盤部 as type=imaging status=ordered modality=mri, ルナベル as type=medication status=prescribed with empty quantity fields and missing_information for quantity/days.",
-      "- Text: 腰椎X線（正面・側面）：L4/5狭小化。MRI腰椎オーダー（次回）。ロキソプロフェン60mg 毎食後3錠／14日分処方。 -> billing_events include X線 as performed simple_radiography, MRI as ordered/planned, ロキソプロフェン as prescribed with quantity_per_day=3 and days=14.",
-      "- Text: アトピー性皮膚炎。IgE 680、好酸球520。スキンケア指導、外用薬の部位別説明、デュピクセントの適応・費用・投与方法を説明。 -> diagnoses include アトピー性皮膚炎 only. billing_events include IgE and 好酸球 as type=lab status=performed when written as objective results, and the guidance/explanation as type=management or counseling status=performed. Do not create medication event for 説明 or 塗布再指導. デュピクセント is medication only if prescribed/administered today; explanation alone is counseling/management.",
+      "- Text: O欄に「検査名：数値/所見」がある場合 -> billing_events include that test or exam as status=performed, section=O, date_relation=current_visit, provider_ownership=own_clinic, with search_queries suitable for master search.",
+      "- Text: P欄に「検査オーダー」「次回」「予定」「後日」がある場合 -> status=planned or ordered, section=P, date_relation=future. Do not mix it with performed events unless O欄 also has same-day results.",
+      "- Text: 既往歴、持参結果、他科主治医、他院、かかりつけで管理中 -> status=history or other_provider, date_relation=past or other_provider, provider_ownership=other_department/other_provider. Do not mark it as own_clinic billing.",
+      "- Text: 処方薬は、今回新規処方/変更/継続処方が明確な場合だけ medication status=prescribed. 説明・指導・検討だけなら counseling/management or planned, not medication.",
       "- Do not create review_flags such as 今後の検討 or 方針確認 when the phrase is only follow-up planning and not a billable event."
     ].join("\n"),
     input,
