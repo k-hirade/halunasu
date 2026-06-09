@@ -1,4 +1,7 @@
-import { extractFeeClinicalFactsWithOpenAi } from "../../../packages/medical-core/src/fee/openai-fee-clinical-facts.js";
+import {
+  FEE_CLINICAL_FACTS_PROMPT_VERSION,
+  extractFeeClinicalFactsWithOpenAi
+} from "../../../packages/medical-core/src/fee/openai-fee-clinical-facts.js";
 
 export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "処置・手技",
@@ -38,6 +41,8 @@ const DPC_CONTEXT_PATTERN = /DPC|診断群分類|包括評価/u;
 const STRONG_INPATIENT_CONTEXT_PATTERN = /入院\s*\d{1,2}\s*日目|入院中|入院管理|病棟で|病棟管理|急性期一般入院料\s*[1-6]|入院基本料|DPC対象病院|DPC.*(?:管理|入院|対象)|(?:入院|病棟).*(?:継続|管理|観察)/u;
 const NON_CURRENT_INPATIENT_CONTEXT_PATTERN = /入院適応(?:は)?低い|入院適応なし|入院不要|入院なし|入院は不要|退院後|退院希望|入院歴|過去.{0,12}入院|前回入院|入院前/u;
 
+export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v2";
+
 export async function buildClinicalCalculationPreparation({
   session = {},
   calculationInput = {},
@@ -58,10 +63,27 @@ export async function buildClinicalCalculationPreparation({
       diagnoses: [],
       candidateProposals: [],
       reviewWarnings: [],
+      clinicalEvents: [],
+      masterCandidates: [],
+      billingCandidates: [],
+      reviewIssues: [],
+      clinicalExtraction: clinicalExtractionMetadata({
+        session,
+        calculationInput,
+        source: "manual",
+        openAiModel,
+        openAiReasoningEffort,
+        feeCalculator
+      }),
       metrics: {
         clinicalStructuring: {
           source: "manual",
-          durationMs: 0
+          durationMs: 0,
+          model: openAiModel,
+          reasoningEffort: openAiReasoningEffort,
+          promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
+          ruleSetVersion: FEE_CLINICAL_RULE_SET_VERSION,
+          masterVersion: feeMasterVersion(feeCalculator)
         }
       }
     };
@@ -72,11 +94,19 @@ export async function buildClinicalCalculationPreparation({
   const inferredDiagnoses = [];
   const candidateProposals = [];
   const reviewWarnings = [];
+  const clinicalEvents = [];
+  const masterCandidates = [];
+  const billingCandidates = [];
+  const reviewIssues = [];
   const metrics = {
     clinicalStructuring: {
       source: text ? "not_run" : "no_clinical_text",
       durationMs: 0,
       model: openAiModel,
+      reasoningEffort: openAiReasoningEffort,
+      promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
+      ruleSetVersion: FEE_CLINICAL_RULE_SET_VERSION,
+      masterVersion: feeMasterVersion(feeCalculator),
       timeoutMs: Number(openAiTimeoutMs || 0)
     },
     ruleBasedClinicalInference: {
@@ -124,6 +154,10 @@ export async function buildClinicalCalculationPreparation({
       inferredDiagnoses.push(...asArray(structured.diagnoses));
       candidateProposals.push(...asArray(structured.candidateProposals), ...asArray(ruleBased.candidateProposals));
       reviewWarnings.push(...structured.reviewWarnings, ...ruleBased.reviewWarnings);
+      clinicalEvents.push(...asArray(structured.clinicalEvents));
+      masterCandidates.push(...asArray(structured.masterCandidates));
+      billingCandidates.push(...asArray(structured.billingCandidates));
+      reviewIssues.push(...asArray(structured.reviewIssues));
     } else {
       Object.assign(inferred, ruleBased.inferred);
       candidateProposals.push(...asArray(ruleBased.candidateProposals));
@@ -165,6 +199,25 @@ export async function buildClinicalCalculationPreparation({
     diagnoses: normalizeClinicalDiagnoses(inferredDiagnoses),
     candidateProposals: normalizeCandidateProposals(candidateProposals),
     reviewWarnings: normalizeReviewWarnings(reviewWarnings),
+    clinicalEvents: normalizeClinicalEventsForResult(clinicalEvents),
+    masterCandidates: normalizeMasterCandidates(masterCandidates),
+    billingCandidates: normalizeBillingCandidates(billingCandidates),
+    reviewIssues: normalizeReviewIssues(reviewIssues),
+    clinicalExtraction: clinicalExtractionMetadata({
+      session,
+      calculationInput,
+      source: metrics.clinicalStructuring?.source || "unknown",
+      openAiModel,
+      openAiReasoningEffort,
+      openAiTimeoutMs,
+      feeCalculator,
+      clinicalEventCount: clinicalEvents.length,
+      masterCandidateCount: masterCandidates.length,
+      billingCandidateCount: billingCandidates.length,
+      reviewIssueCount: reviewIssues.length,
+      responseId: metrics.clinicalStructuring?.responseId || null,
+      usage: metrics.clinicalStructuring?.usage || null
+    }),
     metrics
   };
 }
@@ -202,6 +255,9 @@ async function inferStructuredClinicalCalculationOptions({
         durationMs: 0,
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
+        promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
+        ruleSetVersion: FEE_CLINICAL_RULE_SET_VERSION,
+        masterVersion: feeMasterVersion(feeCalculator),
         openAiProviderDurationMs: 0,
         clinicalFactsConvertDurationMs: 0,
         convertedDiagnosisCount: 0,
@@ -276,6 +332,9 @@ async function inferStructuredClinicalCalculationOptions({
         ...conversionSearch.snapshot(),
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
+        promptVersion: factsResult?.promptVersion || FEE_CLINICAL_FACTS_PROMPT_VERSION,
+        ruleSetVersion: FEE_CLINICAL_RULE_SET_VERSION,
+        masterVersion: feeMasterVersion(feeCalculator),
         timeoutMs: Number(openAiTimeoutMs || 0),
         responseId: factsResult?.responseId || null,
         usage: factsResult?.usage || null
@@ -302,6 +361,9 @@ async function inferStructuredClinicalCalculationOptions({
         ...conversionSearch.snapshot(),
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
+        promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
+        ruleSetVersion: FEE_CLINICAL_RULE_SET_VERSION,
+        masterVersion: feeMasterVersion(feeCalculator),
         timeoutMs: Number(openAiTimeoutMs || 0),
         fallbackReason: safeClinicalStructuringError(error)
       }
@@ -347,6 +409,68 @@ function createMasterSearchMetrics(feeCalculator) {
     },
     snapshot: () => ({ ...metrics })
   };
+}
+
+function feeMasterVersion(feeCalculator) {
+  return String(
+    feeCalculator?.masterVersion
+    || feeCalculator?.version
+    || process.env.FEE_MASTER_VERSION
+    || process.env.FEE_MASTER_DB_VERSION
+    || "runtime-master-current"
+  );
+}
+
+function clinicalExtractionMetadata({
+  session = {},
+  calculationInput = {},
+  source = "unknown",
+  openAiModel = "gpt-5.4-nano",
+  openAiReasoningEffort = "low",
+  openAiTimeoutMs = 0,
+  feeCalculator,
+  clinicalEventCount = 0,
+  masterCandidateCount = 0,
+  billingCandidateCount = 0,
+  reviewIssueCount = 0,
+  responseId = null,
+  usage = null
+} = {}) {
+  const text = normalizeClinicalText(calculationInput.clinicalText || session.clinicalText || "");
+  const inputHash = clinicalInputHash([
+    session.orgId,
+    session.feeSessionId,
+    session.patientId,
+    session.serviceDate,
+    text
+  ].join("\n"));
+  return {
+    runId: `clinical_${inputHash}`,
+    source,
+    inputHash,
+    model: openAiModel,
+    reasoningEffort: openAiReasoningEffort,
+    timeoutMs: Number(openAiTimeoutMs || 0),
+    promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
+    ruleSetVersion: FEE_CLINICAL_RULE_SET_VERSION,
+    masterVersion: feeMasterVersion(feeCalculator),
+    responseId,
+    usage: usage || null,
+    clinicalEventCount: Number(clinicalEventCount || 0),
+    masterCandidateCount: Number(masterCandidateCount || 0),
+    billingCandidateCount: Number(billingCandidateCount || 0),
+    reviewIssueCount: Number(reviewIssueCount || 0)
+  };
+}
+
+function clinicalInputHash(value) {
+  const text = String(value || "");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 async function inferRuleBasedClinicalCalculationOptions({ text = "", session = {}, feeCalculator } = {}) {
@@ -1391,6 +1515,52 @@ function clinicalEventsFromClinicalFacts(facts = {}) {
     .filter(Boolean);
 }
 
+function normalizeClinicalEventsForResult(values = []) {
+  const seen = new Set();
+  const result = [];
+  for (const [index, event] of asArray(values).filter(Boolean).entries()) {
+    const normalized = normalizeClinicalEvent(event, index);
+    if (!normalized) {
+      continue;
+    }
+    const key = [
+      normalized.clinicalEventId,
+      normalized.type,
+      normalized.name,
+      normalized.actionStatus,
+      normalized.temporalRelation,
+      normalized.providerOwnership,
+      normalized.evidence
+    ].join("|");
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push({
+      clinicalEventId: normalized.clinicalEventId,
+      type: normalized.type,
+      name: normalized.name,
+      actionStatus: normalized.actionStatus,
+      temporalRelation: normalized.temporalRelation,
+      sourceOrigin: normalized.sourceOrigin,
+      providerOwnership: normalized.providerOwnership,
+      resultAssertion: normalized.resultAssertion,
+      certainty: normalized.certainty,
+      section: normalized.section,
+      evidence: normalized.evidence,
+      modality: normalized.modality,
+      bodySite: normalized.body_site,
+      areaSizeCm2: normalized.area_size_cm2,
+      quantityPerDay: normalized.quantity_per_day,
+      days: normalized.days,
+      totalQuantity: normalized.total_quantity,
+      searchTerms: clinicalEventSearchQueries(normalized),
+      reviewReason: normalized.review_reason
+    });
+  }
+  return result.slice(0, 120);
+}
+
 function excludedClinicalEventsFromClinicalFacts(facts = {}) {
   return asArray(facts?.excluded_events)
     .map((event, index) => normalizeClinicalEvent(event, index, { excluded: true }))
@@ -2272,13 +2442,29 @@ function procedureMatchTokens(value = "") {
 function clinicalEventSearchQueries(event = {}, { categoryLabel = "", extraQueries = [] } = {}) {
   const name = clinicalEventName(event);
   const evidence = clinicalEventEvidence(event);
-  return uniqueStrings([
-    ...asArray(extraQueries),
-    ...asArray(event?.search_queries),
-    ...asArray(event?.searchQueries),
+  const bodySite = String(event?.body_site || event?.bodySite || "").trim();
+  const modality = String(event?.modality || "").trim();
+  const deterministicTerms = [
     name,
+    bodySite && name ? `${bodySite}${name}` : "",
+    modality && name ? `${modality} ${name}` : "",
     ...procedureMasterQueriesFromEvidence(evidence),
     categoryLabel
+  ];
+  // LLM search phrases are only a fallback hint. Master search should primarily
+  // follow normalized clinical-event attributes and evidence-derived terms.
+  const llmHints = [
+    ...(event?.search_terms?.primary ? [event.search_terms.primary] : []),
+    ...asArray(event?.search_terms?.synonyms),
+    ...(event?.searchTerms?.primary ? [event.searchTerms.primary] : []),
+    ...asArray(event?.searchTerms?.synonyms),
+    ...asArray(event?.searchQueries),
+    ...asArray(event?.search_queries)
+  ];
+  return uniqueStrings([
+    ...asArray(extraQueries),
+    ...deterministicTerms,
+    ...llmHints
   ]);
 }
 

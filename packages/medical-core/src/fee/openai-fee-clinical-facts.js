@@ -1,5 +1,7 @@
 import { createStructuredOpenAiResponse } from "../openai/responses-structured.js";
 
+export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v2";
+
 const LEGACY_EVENT_STATUSES = [
   "performed",
   "prescribed",
@@ -305,6 +307,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
     ...result.parsed,
     provider: "openai",
     model,
+    promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
     responseId: result.responseId || null,
     usage: result.usage || null
   };

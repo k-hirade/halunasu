@@ -161,6 +161,10 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
   const candidateProposals = normalizeCandidateProposals(
     calculation.candidateProposals || calculation.candidate_proposals || calculation.proposals || []
   );
+  const clinicalEvents = normalizeClinicalEvents(calculation.clinicalEvents || calculation.clinical_events || []);
+  const masterCandidates = normalizeMasterCandidates(calculation.masterCandidates || calculation.master_candidates || []);
+  const billingCandidates = normalizeBillingCandidates(calculation.billingCandidates || calculation.billing_candidates || []);
+  const reviewIssues = normalizeReviewIssues(calculation.reviewIssues || calculation.review_issues || []);
   const coverage = normalizeCalculationCoverage(calculation.coverage, lineItems, warnings);
 
   return compactObject({
@@ -185,6 +189,13 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
     totalPoints,
     lineItems,
     candidateProposals,
+    clinicalEvents,
+    masterCandidates,
+    billingCandidates,
+    reviewIssues,
+    clinicalExtraction: isPlainObject(calculation.clinicalExtraction || calculation.clinical_extraction)
+      ? calculation.clinicalExtraction || calculation.clinical_extraction
+      : undefined,
     warnings,
     coverage,
     messages: Array.isArray(calculation.messages) ? calculation.messages : [],
@@ -318,7 +329,27 @@ export function buildReviewItems(session = {}) {
   const warnings = Array.isArray(calculation.warnings) ? calculation.warnings : [];
   const lineItems = Array.isArray(calculation.lineItems) ? calculation.lineItems : [];
   const candidateProposals = Array.isArray(calculation.candidateProposals) ? calculation.candidateProposals : [];
+  const reviewIssues = Array.isArray(calculation.reviewIssues) ? calculation.reviewIssues : [];
+  const reviewIssueMessageSet = new Set(reviewIssues
+    .map((issue) => String(issue.messageForStaff || "").trim())
+    .filter(Boolean));
+  const structuredIssueItems = reviewIssues.map((issue) => {
+    const reviewItemId = reviewIssueReviewItemId(issue);
+    return reviewItem({
+      reviewItemId,
+      sourceType: "review_issue",
+      severity: issue.severity || "warning",
+      title: issue.title || reviewWarningTitle(issue.messageForStaff),
+      reason: issue.messageForStaff || "確認が必要です。",
+      defaultStatus: "needs_review",
+      reviewIssue: issue,
+      decision: decisions[reviewItemId]
+    });
+  });
   const warningItems = warnings.map((message, index) => {
+    if (reviewIssueMessageSet.has(String(message || "").trim())) {
+      return null;
+    }
     const reviewItemId = warningReviewItemId(message, index);
     const legacyReviewItemId = legacyWarningReviewItemId(index);
     return reviewItem({
@@ -360,7 +391,7 @@ export function buildReviewItems(session = {}) {
     });
   });
 
-  return [...warningItems, ...proposalItems, ...lineReviewItems];
+  return [...structuredIssueItems, ...warningItems.filter(Boolean), ...proposalItems, ...lineReviewItems];
 }
 
 export function buildCandidateWorkbench(session = {}, options = {}) {
@@ -412,7 +443,7 @@ export function buildCandidateWorkbench(session = {}, options = {}) {
     };
   });
   const proposalItems = reviewItems.filter((item) => item?.sourceType === "candidate_proposal");
-  const warningItems = reviewItems.filter((item) => item?.sourceType === "warning");
+  const warningItems = reviewItems.filter((item) => item?.sourceType === "warning" || item?.sourceType === "review_issue");
   attachWarningsToLines(lines, warningItems);
   const lineTexts = lines.map((line) => `${line.name || ""} ${line.displayTitle || ""}`).join(" ");
   const proposals = [];
@@ -565,6 +596,7 @@ export function createId(prefix) {
 function calculationNeedsReview(calculation) {
   return (calculation.warnings || []).length > 0
     || (calculation.candidateProposals || []).length > 0
+    || (calculation.reviewIssues || []).length > 0
     || calculation.coverage?.reviewRequired === true
     || (calculation.lineItems || []).some((line) => {
       const status = line.status || "candidate";
@@ -664,6 +696,121 @@ function normalizeCandidateProposal(item = {}, index = 0) {
     candidateLine,
     sortOrder: Number(item.sortOrder ?? item.sort_order ?? index + 1)
   });
+}
+
+function normalizeClinicalEvents(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items
+    .map((item, index) => {
+      if (!isPlainObject(item)) {
+        return null;
+      }
+      return compactObject({
+        clinicalEventId: item.clinicalEventId || item.clinical_event_id || `clinical_event_${index + 1}`,
+        type: item.type || item.eventType || item.event_type || "other",
+        name: item.name || item.eventNameNormalized || item.event_name_normalized || item.eventNameOriginal || item.event_name_original || "",
+        actionStatus: item.actionStatus || item.action_status || item.status || "unknown",
+        temporalRelation: item.temporalRelation || item.temporal_relation || item.dateRelation || item.date_relation || "unknown",
+        sourceOrigin: item.sourceOrigin || item.source_origin || null,
+        providerOwnership: item.providerOwnership || item.provider_ownership || null,
+        resultAssertion: item.resultAssertion || item.result_assertion || null,
+        certainty: item.certainty || null,
+        section: item.section || "unknown",
+        evidence: item.evidence || "",
+        modality: item.modality || null,
+        bodySite: item.bodySite || item.body_site || null,
+        areaSizeCm2: item.areaSizeCm2 || item.area_size_cm2 || null,
+        quantityPerDay: item.quantityPerDay || item.quantity_per_day || null,
+        days: item.days || null,
+        totalQuantity: item.totalQuantity || item.total_quantity || null,
+        searchTerms: Array.isArray(item.searchTerms) ? item.searchTerms.slice(0, 12) : [],
+        reviewReason: item.reviewReason || item.review_reason || null
+      });
+    })
+    .filter((item) => item && (item.name || item.evidence))
+    .slice(0, 120);
+}
+
+function normalizeMasterCandidates(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items
+    .map((item, index) => {
+      if (!isPlainObject(item)) {
+        return null;
+      }
+      return compactObject({
+        masterCandidateId: item.masterCandidateId || item.master_candidate_id || `master_candidate_${index + 1}`,
+        clinicalEventId: item.clinicalEventId || item.clinical_event_id || null,
+        masterType: item.masterType || item.master_type || null,
+        masterCode: item.masterCode || item.master_code || item.code || null,
+        masterName: item.masterName || item.master_name || item.name || null,
+        points: Number(item.points || 0),
+        category: item.category || null,
+        searchQuery: item.searchQuery || item.search_query || null,
+        searchScore: item.searchScore ?? item.search_score ?? null,
+        rank: item.rank ?? null,
+        candidateStatus: item.candidateStatus || item.candidate_status || null,
+        source: item.source || null
+      });
+    })
+    .filter((item) => item && item.masterCode)
+    .slice(0, 120);
+}
+
+function normalizeBillingCandidates(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items
+    .map((item, index) => {
+      if (!isPlainObject(item)) {
+        return null;
+      }
+      return compactObject({
+        billingCandidateId: item.billingCandidateId || item.billing_candidate_id || `billing_candidate_${index + 1}`,
+        clinicalEventId: item.clinicalEventId || item.clinical_event_id || null,
+        masterCandidateId: item.masterCandidateId || item.master_candidate_id || null,
+        candidateKind: item.candidateKind || item.candidate_kind || null,
+        eligibilityStatus: item.eligibilityStatus || item.eligibility_status || null,
+        safetyLevel: item.safetyLevel || item.safety_level || null,
+        code: item.code || null,
+        name: item.name || null,
+        pointValue: Number(item.pointValue ?? item.point_value ?? item.points ?? 0),
+        source: item.source || null
+      });
+    })
+    .filter((item) => item && (item.code || item.name))
+    .slice(0, 120);
+}
+
+function normalizeReviewIssues(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items
+    .map((item, index) => {
+      if (!isPlainObject(item)) {
+        return null;
+      }
+      return compactObject({
+        reviewIssueId: item.reviewIssueId || item.review_issue_id || `review_issue_${index + 1}`,
+        issueCode: item.issueCode || item.issue_code || "needs_review",
+        severity: item.severity || "warning",
+        title: item.title || null,
+        messageForStaff: item.messageForStaff || item.message_for_staff || item.message || item.reason || "",
+        requiredInput: item.requiredInput || item.required_input || null,
+        relatedEventId: item.relatedEventId || item.related_event_id || null,
+        relatedCandidateId: item.relatedCandidateId || item.related_candidate_id || null,
+        evidence: item.evidence || null,
+        resolutionOptions: Array.isArray(item.resolutionOptions) ? item.resolutionOptions : []
+      });
+    })
+    .filter((item) => item && item.messageForStaff)
+    .slice(0, 120);
 }
 
 function normalizeCalculationCoverage(coverage, lineItems, warnings) {
@@ -838,7 +985,8 @@ function reviewItem(input) {
     status: decision?.status || input.defaultStatus || "needs_review",
     decision,
     lineItem: input.lineItem,
-    candidateProposal: input.candidateProposal
+    candidateProposal: input.candidateProposal,
+    reviewIssue: input.reviewIssue
   });
 }
 
@@ -857,6 +1005,10 @@ function lineReviewItemId(line = {}) {
 
 function proposalReviewItemId(proposal = {}) {
   return `proposal_${proposal.proposalId || stableHash(`${proposal.title || ""}:${proposal.code || ""}`)}`;
+}
+
+function reviewIssueReviewItemId(issue = {}) {
+  return `issue_${issue.reviewIssueId || stableHash(`${issue.issueCode || ""}:${issue.messageForStaff || ""}`)}`;
 }
 
 function lineDecision(line = {}, decisions = {}) {

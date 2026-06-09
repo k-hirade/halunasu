@@ -552,6 +552,11 @@ async function calculatePreparedFeeSessionNow({
           ...(Array.isArray(calculationResult.candidateProposals) ? calculationResult.candidateProposals : []),
           ...(Array.isArray(prepared.candidateProposals) ? prepared.candidateProposals : [])
         ]),
+        clinicalEvents: Array.isArray(prepared.clinicalEvents) ? prepared.clinicalEvents : [],
+        masterCandidates: Array.isArray(prepared.masterCandidates) ? prepared.masterCandidates : [],
+        billingCandidates: Array.isArray(prepared.billingCandidates) ? prepared.billingCandidates : [],
+        reviewIssues: Array.isArray(prepared.reviewIssues) ? prepared.reviewIssues : [],
+        clinicalExtraction: prepared.clinicalExtraction || null,
         calculationProgress: feeCalculationProgress({
           phase: "complete",
           percent: 100,
@@ -1046,6 +1051,11 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     patch: Object.keys(patch).length ? patch : null,
     calculationOptions: legacy.calculationOptions,
     candidateProposals: Array.isArray(legacy.candidateProposals) ? legacy.candidateProposals : [],
+    clinicalEvents: Array.isArray(legacy.clinicalEvents) ? legacy.clinicalEvents : [],
+    masterCandidates: Array.isArray(legacy.masterCandidates) ? legacy.masterCandidates : [],
+    billingCandidates: Array.isArray(legacy.billingCandidates) ? legacy.billingCandidates : [],
+    reviewIssues: Array.isArray(legacy.reviewIssues) ? legacy.reviewIssues : [],
+    clinicalExtraction: legacy.clinicalExtraction || null,
     metrics: {
       ...(legacy.metrics || {}),
       patientHistory: {

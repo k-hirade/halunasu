@@ -1036,6 +1036,16 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v2");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v2");
+  assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
+    event.name === "腰椎X線"
+    && event.actionStatus === "performed"
+    && event.temporalRelation === "current_visit"
+  )));
+  assert.ok(calculation.body.calculationResult.masterCandidates.some((candidate) => candidate.masterCode === "620001001"));
+  assert.ok(calculation.body.calculationResult.billingCandidates.some((candidate) => candidate.code === "620001001"));
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.messageForStaff.includes("コルセット")));
 });
 
 test("persists structured diagnoses and resolves clinical event search queries with history-based basic fee", async () => {
