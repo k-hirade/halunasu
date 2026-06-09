@@ -1048,6 +1048,116 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.messageForStaff.includes("コルセット")));
 });
 
+test("gates lab master search to direct lab test items and records trace", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    if (input.type === "procedure" && input.query === "ＣＲＰ") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [
+          {
+            kind: "procedure",
+            code: "160061910",
+            name: "生化学的検査（１）判断料",
+            points: 144,
+            feeCategory: "lab_judgment",
+            itemRole: "judgment",
+            directRetrievalAllowed: false
+          },
+          {
+            kind: "procedure",
+            code: "160000001",
+            name: "ＣＲＰ",
+            points: 16,
+            feeCategory: "lab_test_basic",
+            itemRole: "base",
+            directRetrievalAllowed: true
+          }
+        ]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "発熱", status: "confirmed", evidence: "発熱" }],
+    clinical_events: [
+      {
+        type: "lab",
+        name: "ＣＲＰ",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "numeric",
+        certainty: "explicit",
+        section: "O",
+        evidence: "血液検査：ＣＲＰ 0.3 mg/dL",
+        search_queries: ["ＣＲＰ"]
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Lab Gate Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-09",
+    clinicalText: "O: 血液検査：ＣＲＰ 0.3 mg/dL",
+    diagnoses: [{ name: "発熱" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(masterSearches.some((input) => input.type === "procedure" && input.query === "ＣＲＰ"), true);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160000001"]);
+  assert.deepEqual(receivedInput.calculationOptions.lab_options.collection_fee_inputs, ["blood_venous"]);
+  assert.equal(
+    calculation.body.calculationResult.masterCandidates.some((candidate) => candidate.masterCode === "160061910"),
+    false
+  );
+  assert.ok(calculation.body.calculationResult.masterCandidates.some((candidate) => (
+    candidate.masterCode === "160000001"
+    && candidate.feeCategory === "lab_test_basic"
+    && candidate.directRetrievalAllowed === true
+  )));
+  const trace = calculation.body.calculationResult.clinicalExtraction.trace;
+  assert.ok(trace.some((item) => (
+    item.stage === "master_search"
+    && item.outcome === "matched"
+    && item.searches.some((search) => search.filteredCandidates.some((candidate) => candidate.code === "160061910"))
+  )));
+  assert.ok(trace.some((item) => item.stage === "lab_rule_expansion"));
+});
+
 test("persists structured diagnoses and resolves clinical event search queries with history-based basic fee", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -1195,7 +1305,7 @@ test("persists structured diagnoses and resolves clinical event search queries w
     receivedInput.calculationOptions.procedure_codes.sort(),
     ["160038010", "160072210"].sort()
   );
-  assert.equal(receivedInput.calculationOptions.lab_options, undefined);
+  assert.deepEqual(receivedInput.calculationOptions.lab_options.collection_fee_inputs, ["blood_venous"]);
   assert.equal(receivedInput.calculationOptions.comment_inputs, undefined);
   assert.deepEqual(
     calculation.body.feeSession.diagnoses.map((diagnosis) => diagnosis.name),

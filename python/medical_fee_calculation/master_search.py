@@ -65,6 +65,20 @@ def _search_procedures(db: sqlite3.Connection, query: str, limit: int) -> list[d
             p.points,
             p.effective_from,
             p.effective_to,
+            p.inout_applicability,
+            p.outpatient_aggregate,
+            p.inpatient_aggregate,
+            p.bundle_lab_group,
+            p.judgement_kind,
+            p.judgement_group,
+            p.specimen_comment_flag,
+            p.facility_standard_codes,
+            p.chapter,
+            p.part,
+            p.alpha_part,
+            p.section,
+            p.branch,
+            p.item,
             s.source_version,
             s.published_at,
             s.imported_at
@@ -94,22 +108,98 @@ def _search_procedures(db: sqlite3.Connection, query: str, limit: int) -> list[d
         (*_like_params(query), query, f"{query}%", limit),
     ).fetchall()
     return [
-        _compact(
-            {
-                "kind": "procedure",
-                "code": row["code"],
-                "name": row["name"],
-                "baseName": row["base_name"],
-                "points": row["points"],
-                "effectiveFrom": row["effective_from"],
-                "effectiveTo": row["effective_to"],
-                "sourceVersion": row["source_version"],
-                "publishedAt": row["published_at"],
-                "importedAt": row["imported_at"],
-            }
-        )
+        _medical_procedure_item(row)
         for row in rows
     ]
+
+
+def _medical_procedure_item(row: sqlite3.Row) -> dict[str, Any]:
+    role = _medical_procedure_role(row)
+    return _compact(
+        {
+            "kind": "procedure",
+            "code": row["code"],
+            "name": row["name"],
+            "baseName": row["base_name"],
+            "points": row["points"],
+            "effectiveFrom": row["effective_from"],
+            "effectiveTo": row["effective_to"],
+            "inoutApplicability": row["inout_applicability"],
+            "outpatientAggregate": row["outpatient_aggregate"],
+            "inpatientAggregate": row["inpatient_aggregate"],
+            "bundleLabGroup": row["bundle_lab_group"],
+            "judgementKind": row["judgement_kind"],
+            "judgementGroup": row["judgement_group"],
+            "specimenCommentFlag": row["specimen_comment_flag"],
+            "facilityStandardCodes": row["facility_standard_codes"],
+            "chapter": row["chapter"],
+            "part": row["part"],
+            "alphaPart": row["alpha_part"],
+            "section": row["section"],
+            "branch": row["branch"],
+            "item": row["item"],
+            **role,
+            "sourceVersion": row["source_version"],
+            "publishedAt": row["published_at"],
+            "importedAt": row["imported_at"],
+        }
+    )
+
+
+def _medical_procedure_role(row: sqlite3.Row) -> dict[str, Any]:
+    code = str(row["code"] or "")
+    name = f"{row['name'] or ''} {row['base_name'] or ''}"
+    chapter = str(row["chapter"] or "")
+    part = str(row["part"] or "")
+    section = str(row["section"] or "")
+    judgement_kind = str(row["judgement_kind"] or "")
+
+    fee_category = "procedure_basic"
+    item_role = "base"
+    if "減算" in name or "不適合" in name:
+        fee_category = "reduction"
+        item_role = "reduction"
+    elif chapter == "2" and part == "03" and section == "026" and judgement_kind == "2":
+        fee_category = "lab_judgment"
+        item_role = "judgment"
+    elif chapter == "2" and part == "03" and section == "027":
+        fee_category = "lab_judgment"
+        item_role = "judgment"
+    elif chapter == "2" and part == "03" and _section_between(section, 400, 419):
+        fee_category = "lab_collection"
+        item_role = "collection"
+    elif chapter == "2" and part == "03" and _section_between(section, 0, 24) and judgement_kind == "1":
+        fee_category = "lab_test_basic"
+        item_role = "base"
+    elif "外来迅速検体検査加算" in name or "検体検査管理加算" in name:
+        fee_category = "lab_addon"
+        item_role = "addon"
+    elif code.startswith("111") or code.startswith("112"):
+        fee_category = "basic_fee"
+        item_role = "base"
+    elif code.startswith("113") or "管理料" in name or "指導料" in name:
+        fee_category = "management_fee"
+        item_role = "base"
+    elif code.startswith("170") or any(token in name for token in ("ＣＴ", "CT", "ＭＲＩ", "MRI", "撮影", "画像")):
+        fee_category = "imaging_basic"
+        item_role = "base"
+
+    derived_only = item_role in {"addon", "judgment", "collection", "reduction"}
+    return {
+        "feeCategory": fee_category,
+        "itemRole": item_role,
+        "derivedOnly": derived_only,
+        "directRetrievalAllowed": not derived_only,
+        "requiresParentCode": derived_only,
+    }
+
+
+def _section_between(value: str, minimum: int, maximum: int) -> bool:
+    try:
+        number = int(str(value or ""))
+    except ValueError:
+        return False
+    return minimum <= number <= maximum
 
 
 def _search_drugs(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:

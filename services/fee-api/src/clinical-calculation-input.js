@@ -43,6 +43,16 @@ const NON_CURRENT_INPATIENT_CONTEXT_PATTERN = /入院適応(?:は)?低い|入院
 
 export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v2";
 
+const DIRECT_RETRIEVAL_FEE_CATEGORIES_BY_EVENT_TYPE = Object.freeze({
+  lab: new Set(["lab_test_basic"]),
+  imaging: new Set(["imaging_basic", "physiological_exam_basic", "procedure_basic"]),
+  exam: new Set(["lab_test_basic", "imaging_basic", "physiological_exam_basic", "procedure_basic"]),
+  procedure: new Set(["procedure_basic", "treatment_basic", "physiological_exam_basic"]),
+  treatment: new Set(["procedure_basic", "treatment_basic"]),
+  management: new Set(["management_fee"]),
+  counseling: new Set(["management_fee"])
+});
+
 export async function buildClinicalCalculationPreparation({
   session = {},
   calculationInput = {},
@@ -98,6 +108,7 @@ export async function buildClinicalCalculationPreparation({
   const masterCandidates = [];
   const billingCandidates = [];
   const reviewIssues = [];
+  const clinicalTrace = [];
   const metrics = {
     clinicalStructuring: {
       source: text ? "not_run" : "no_clinical_text",
@@ -158,6 +169,7 @@ export async function buildClinicalCalculationPreparation({
       masterCandidates.push(...asArray(structured.masterCandidates));
       billingCandidates.push(...asArray(structured.billingCandidates));
       reviewIssues.push(...asArray(structured.reviewIssues));
+      clinicalTrace.push(...asArray(structured.clinicalTrace));
     } else {
       Object.assign(inferred, ruleBased.inferred);
       candidateProposals.push(...asArray(ruleBased.candidateProposals));
@@ -215,6 +227,7 @@ export async function buildClinicalCalculationPreparation({
       masterCandidateCount: masterCandidates.length,
       billingCandidateCount: billingCandidates.length,
       reviewIssueCount: reviewIssues.length,
+      clinicalTrace,
       responseId: metrics.clinicalStructuring?.responseId || null,
       usage: metrics.clinicalStructuring?.usage || null
     }),
@@ -329,6 +342,7 @@ async function inferStructuredClinicalCalculationOptions({
         convertedMasterCandidateCount: Array.isArray(converted.masterCandidates) ? converted.masterCandidates.length : 0,
         convertedBillingCandidateCount: Array.isArray(converted.billingCandidates) ? converted.billingCandidates.length : 0,
         convertedReviewIssueCount: Array.isArray(converted.reviewIssues) ? converted.reviewIssues.length : 0,
+        convertedClinicalTraceCount: Array.isArray(converted.clinicalTrace) ? converted.clinicalTrace.length : 0,
         ...conversionSearch.snapshot(),
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
@@ -433,6 +447,7 @@ function clinicalExtractionMetadata({
   masterCandidateCount = 0,
   billingCandidateCount = 0,
   reviewIssueCount = 0,
+  clinicalTrace = [],
   responseId = null,
   usage = null
 } = {}) {
@@ -459,7 +474,8 @@ function clinicalExtractionMetadata({
     clinicalEventCount: Number(clinicalEventCount || 0),
     masterCandidateCount: Number(masterCandidateCount || 0),
     billingCandidateCount: Number(billingCandidateCount || 0),
-    reviewIssueCount: Number(reviewIssueCount || 0)
+    reviewIssueCount: Number(reviewIssueCount || 0),
+    trace: normalizeClinicalTrace(clinicalTrace)
   };
 }
 
@@ -560,6 +576,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const masterCandidates = [];
   const billingCandidates = [];
   const reviewIssues = [];
+  const clinicalTrace = [];
   const clinicalEvents = clinicalEventsFromClinicalFacts(facts);
 
   if (isInpatientEncounter(session, text)) {
@@ -603,19 +620,22 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       masterCandidates.push(...asArray(imaging.masterCandidates));
       billingCandidates.push(...billingCandidatesFromProcedureResult(event, imaging));
       reviewWarnings.push(...imaging.reviewWarnings);
+      clinicalTrace.push(...asArray(imaging.traceEvents));
       continue;
     }
 
     if (type === "lab") {
       const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
-        categoryLabel: "検体検査"
+        categoryLabel: "検体検査",
+        allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event)
       });
       procedureCodes.push(...procedure.procedureCodes);
       commentInputs.push(...procedure.commentInputs);
-      collectionFeeInputs.push(...procedure.collectionFeeInputs);
+      collectionFeeInputs.push(...procedure.collectionFeeInputs, ...labCollectionFeeInputsFromClinicalEvent(event, procedure));
       masterCandidates.push(...asArray(procedure.masterCandidates));
       billingCandidates.push(...billingCandidatesFromProcedureResult(event, procedure));
       reviewWarnings.push(...procedure.reviewWarnings);
+      clinicalTrace.push(...asArray(procedure.traceEvents), ...labRuleTraceEvents(event, procedure));
       continue;
     }
 
@@ -643,7 +663,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
 
     if (["procedure", "exam", "treatment"].includes(type)) {
       const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
-        categoryLabel: type === "exam" ? "検査・処置" : type === "treatment" ? "処置・手技" : "診療行為"
+        categoryLabel: type === "exam" ? "検査・処置" : type === "treatment" ? "処置・手技" : "診療行為",
+        allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event)
       });
       procedureCodes.push(...procedure.procedureCodes);
       commentInputs.push(...procedure.commentInputs);
@@ -651,13 +672,15 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       masterCandidates.push(...asArray(procedure.masterCandidates));
       billingCandidates.push(...billingCandidatesFromProcedureResult(event, procedure));
       reviewWarnings.push(...procedure.reviewWarnings);
+      clinicalTrace.push(...asArray(procedure.traceEvents));
       continue;
     }
 
     if (["management", "counseling"].includes(type)) {
       const categoryLabel = type === "management" ? "医学管理等" : "指導料";
       const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
-        categoryLabel
+        categoryLabel,
+        allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event)
       });
       if (procedure.procedureCodes.length) {
         procedureCodes.push(...procedure.procedureCodes);
@@ -666,6 +689,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
         masterCandidates.push(...asArray(procedure.masterCandidates));
         billingCandidates.push(...billingCandidatesFromProcedureResult(event, procedure));
         reviewWarnings.push(...procedure.reviewWarnings);
+        clinicalTrace.push(...asArray(procedure.traceEvents));
       } else {
         const proposal = await clinicalEventCandidateProposal(event, feeCalculator, {
           categoryLabel,
@@ -725,7 +749,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     clinicalEvents,
     masterCandidates: normalizeMasterCandidates(masterCandidates),
     billingCandidates: normalizeBillingCandidates(billingCandidates),
-    reviewIssues: normalizeReviewIssues(reviewIssues)
+    reviewIssues: normalizeReviewIssues(reviewIssues),
+    clinicalTrace: normalizeClinicalTrace(clinicalTrace)
   };
 }
 
@@ -742,7 +767,9 @@ async function clinicalEventCandidateProposal(event = {}, feeCalculator, {
   const item = await searchProcedureCandidateItem(feeCalculator, queries, [
     ...(name ? [new RegExp(escapeRegExp(name), "u")] : []),
     new RegExp(escapeRegExp(categoryLabel), "u")
-  ]);
+  ], {
+    allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event)
+  });
   if (item?.code) {
     return candidateProposalFromProcedureItem({
       proposalId: `clinical_event_${candidateIdPart(name || categoryLabel)}_${item.code}`,
@@ -769,10 +796,11 @@ async function clinicalEventCandidateProposal(event = {}, feeCalculator, {
   };
 }
 
-async function searchProcedureCandidateItem(feeCalculator, queries = [], preferredPatterns = []) {
+async function searchProcedureCandidateItem(feeCalculator, queries = [], preferredPatterns = [], options = {}) {
   if (typeof feeCalculator?.searchMaster !== "function") {
     return null;
   }
+  const allowedFeeCategories = options.allowedFeeCategories || null;
   for (const query of uniqueStrings(queries).filter((value) => value.length >= 2)) {
     try {
       const result = await feeCalculator.searchMaster({ type: "procedure", query, limit: 10 });
@@ -780,7 +808,9 @@ async function searchProcedureCandidateItem(feeCalculator, queries = [], preferr
         item.kind === "procedure"
         || item.sourceType === "medical_procedure_master"
         || item.source === "medical_procedure_master"
-      ));
+      ))
+        .map((item) => annotateMedicalServiceCandidate(item))
+        .filter((item) => !directRetrievalFilterReason(item, { allowedFeeCategories }));
       const preferred = items.find((item) => {
         const text = [item.name, item.baseName, item.displayName, item.shortName].filter(Boolean).join(" ");
         return preferredPatterns.some((pattern) => pattern.test(text));
@@ -847,11 +877,13 @@ function masterCandidateFromItem(item = {}, event = {}, {
   masterType = "medical_service",
   rank = 1,
   candidateStatus = "strong_match",
-  searchQuery = ""
+  searchQuery = "",
+  generatedBy = "master_search"
 } = {}) {
   if (!item?.code) {
     return null;
   }
+  const classified = classifyMedicalServiceCandidate(item);
   const code = String(item.code || "");
   const name = item.name || item.displayName || item.baseName || item.shortName || "";
   return {
@@ -862,11 +894,20 @@ function masterCandidateFromItem(item = {}, event = {}, {
     masterName: name,
     points: Number(item.points || item.totalPoints || 0),
     category: item.kind || item.sourceType || item.source || "",
+    feeCategory: classified.feeCategory,
+    itemRole: classified.itemRole,
+    directRetrievalAllowed: classified.directRetrievalAllowed,
+    requiresParentCode: classified.requiresParentCode,
+    derivedOnly: classified.derivedOnly,
     searchQuery,
     searchScore: Number(item.score || 0) || null,
     rank,
     candidateStatus,
-    source: item.sourceType || item.source || ""
+    source: item.sourceType || item.source || "",
+    sourceVersion: item.sourceVersion || item.source_version || "",
+    effectiveFrom: item.effectiveFrom || item.effective_from || "",
+    effectiveTo: item.effectiveTo || item.effective_to || "",
+    generatedBy
   };
 }
 
@@ -889,6 +930,220 @@ function normalizeMasterCandidates(values = []) {
   return result.slice(0, 80);
 }
 
+function stringValue(value) {
+  return String(value || "").trim();
+}
+
+function annotateMedicalServiceCandidate(item = {}) {
+  const classified = classifyMedicalServiceCandidate(item);
+  return {
+    ...item,
+    feeCategory: classified.feeCategory,
+    itemRole: classified.itemRole,
+    directRetrievalAllowed: classified.directRetrievalAllowed,
+    requiresParentCode: classified.requiresParentCode,
+    derivedOnly: classified.derivedOnly
+  };
+}
+
+function classifyMedicalServiceCandidate(item = {}) {
+  const explicitFeeCategory = stringValue(item.feeCategory || item.fee_category || item.categoryRole || item.category_role);
+  const explicitItemRole = stringValue(item.itemRole || item.item_role || item.role);
+  if (explicitFeeCategory || explicitItemRole) {
+    const itemRole = normalizeMasterItemRole(explicitItemRole || inferRoleFromFeeCategory(explicitFeeCategory));
+    const feeCategory = explicitFeeCategory || inferFeeCategoryFromRole(itemRole);
+    return normalizedMedicalServiceClassification({
+      feeCategory,
+      itemRole,
+      directRetrievalAllowed: item.directRetrievalAllowed ?? item.direct_retrieval_allowed,
+      requiresParentCode: item.requiresParentCode ?? item.requires_parent_code
+    });
+  }
+
+  const code = String(item.code || "");
+  const text = normalizeProcedureMatchText([
+    item.name,
+    item.baseName,
+    item.displayName,
+    item.shortName
+  ].filter(Boolean).join(" "));
+
+  if (/減算|不適合/u.test(text)) {
+    return normalizedMedicalServiceClassification({ feeCategory: "reduction", itemRole: "reduction" });
+  }
+  if (/判断料/u.test(text)) {
+    return normalizedMedicalServiceClassification({ feeCategory: "lab_judgment", itemRole: "judgment" });
+  }
+  if (/検体検査管理加算|外来迅速検体検査加算/u.test(text)) {
+    return normalizedMedicalServiceClassification({ feeCategory: "lab_addon", itemRole: "addon" });
+  }
+  if (/採血|静脈血|動脈血|B-V|ＢＶ|検体採取/iu.test(text)) {
+    return normalizedMedicalServiceClassification({ feeCategory: "lab_collection", itemRole: "collection" });
+  }
+  if (code.startsWith("111") || code.startsWith("112")) {
+    return normalizedMedicalServiceClassification({ feeCategory: "basic_fee", itemRole: "base" });
+  }
+  if (code.startsWith("113") || /管理料|指導料/u.test(text)) {
+    return normalizedMedicalServiceClassification({ feeCategory: "management_fee", itemRole: "base" });
+  }
+  if (code.startsWith("170") || /ct|mri|画像|撮影/u.test(text)) {
+    return normalizedMedicalServiceClassification({ feeCategory: "imaging_basic", itemRole: "base" });
+  }
+  if (code.startsWith("160")) {
+    if (/超音波|心電図|視野|眼圧|眼底|スリット|眼軸|内視鏡|呼吸機能/u.test(text)) {
+      return normalizedMedicalServiceClassification({ feeCategory: "physiological_exam_basic", itemRole: "base" });
+    }
+    return normalizedMedicalServiceClassification({ feeCategory: "lab_test_basic", itemRole: "base" });
+  }
+  if (code.startsWith("140")) {
+    return normalizedMedicalServiceClassification({ feeCategory: "treatment_basic", itemRole: "base" });
+  }
+  return normalizedMedicalServiceClassification({ feeCategory: "procedure_basic", itemRole: "base" });
+}
+
+function normalizedMedicalServiceClassification({
+  feeCategory = "procedure_basic",
+  itemRole = "base",
+  directRetrievalAllowed = null,
+  requiresParentCode = null
+} = {}) {
+  const normalizedRole = normalizeMasterItemRole(itemRole);
+  const category = stringValue(feeCategory) || inferFeeCategoryFromRole(normalizedRole);
+  const derivedOnly = ["addon", "judgment", "collection", "reduction"].includes(normalizedRole);
+  const directAllowed = directRetrievalAllowed == null
+    ? !derivedOnly
+    : Boolean(directRetrievalAllowed);
+  return {
+    feeCategory: category,
+    itemRole: normalizedRole,
+    directRetrievalAllowed: directAllowed && !derivedOnly,
+    requiresParentCode: requiresParentCode == null ? derivedOnly : Boolean(requiresParentCode),
+    derivedOnly
+  };
+}
+
+function normalizeMasterItemRole(value) {
+  const role = stringValue(value);
+  if (["addon", "judgment", "collection", "reduction", "comment", "material", "base"].includes(role)) {
+    return role;
+  }
+  return "base";
+}
+
+function inferRoleFromFeeCategory(value) {
+  const category = stringValue(value);
+  if (category.includes("addon")) return "addon";
+  if (category.includes("judgment")) return "judgment";
+  if (category.includes("collection")) return "collection";
+  if (category.includes("reduction")) return "reduction";
+  return "base";
+}
+
+function inferFeeCategoryFromRole(role) {
+  if (role === "addon") return "procedure_addon";
+  if (role === "judgment") return "lab_judgment";
+  if (role === "collection") return "lab_collection";
+  if (role === "reduction") return "reduction";
+  return "procedure_basic";
+}
+
+function directRetrievalFilterReason(item = {}, { allowedFeeCategories = null } = {}) {
+  const classified = classifyMedicalServiceCandidate(item);
+  if (classified.derivedOnly || !classified.directRetrievalAllowed) {
+    return `derived_only:${classified.itemRole || classified.feeCategory}`;
+  }
+  const allowed = allowedFeeCategorySet(allowedFeeCategories);
+  if (allowed.size && !allowed.has(classified.feeCategory)) {
+    return `category_gate:${classified.feeCategory}`;
+  }
+  return "";
+}
+
+function allowedDirectRetrievalFeeCategoriesForEvent(event = {}) {
+  const type = normalizeClinicalEventType(event);
+  return DIRECT_RETRIEVAL_FEE_CATEGORIES_BY_EVENT_TYPE[type] || new Set(["procedure_basic"]);
+}
+
+function allowedFeeCategorySet(value) {
+  if (value instanceof Set) {
+    return value;
+  }
+  return new Set(asArray(value).map((item) => String(item || "").trim()).filter(Boolean));
+}
+
+function allowedFeeCategoriesForTrace(value) {
+  return [...allowedFeeCategorySet(value)].sort();
+}
+
+function filteredCandidateTrace(candidate = {}, reason = "") {
+  const classified = classifyMedicalServiceCandidate(candidate);
+  return {
+    code: String(candidate.code || ""),
+    name: candidate.name || candidate.displayName || candidate.baseName || candidate.shortName || "",
+    feeCategory: classified.feeCategory,
+    itemRole: classified.itemRole,
+    reason
+  };
+}
+
+function searchTraceSummary(query = "", search = {}) {
+  return {
+    query,
+    outcome: search?.item?.code ? "matched" : search?.error ? "error" : "no_match",
+    inspectedCount: Number(search?.inspectedCount || 0),
+    selectedCode: search?.item?.code ? String(search.item.code) : "",
+    filteredCandidates: asArray(search?.filteredCandidates).slice(0, 5),
+    error: search?.error || ""
+  };
+}
+
+function clinicalTraceEvent({
+  stage = "unknown",
+  event = {},
+  categoryLabel = "",
+  outcome = "",
+  allowedFeeCategories = null,
+  query = "",
+  selected = null,
+  searches = [],
+  message = ""
+} = {}) {
+  return {
+    traceId: `trace_${candidateIdPart([stage, event?.clinicalEventId || event?.clinical_event_id, outcome, query].join("_"))}`,
+    stage,
+    clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    eventType: normalizeClinicalEventType(event),
+    eventName: clinicalEventName(event),
+    categoryLabel,
+    outcome,
+    allowedFeeCategories: allowedFeeCategoriesForTrace(allowedFeeCategories),
+    query,
+    selected,
+    searches: asArray(searches),
+    message
+  };
+}
+
+function normalizeClinicalTrace(values = []) {
+  const seen = new Set();
+  const result = [];
+  for (const trace of asArray(values).filter(Boolean)) {
+    const key = trace.traceId || [
+      trace.stage,
+      trace.clinicalEventId,
+      trace.eventName,
+      trace.outcome,
+      trace.query
+    ].join("|");
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(trace);
+  }
+  return result.slice(0, 120);
+}
+
 function billingCandidatesFromProcedureResult(event = {}, result = {}) {
   const procedureCodeSet = new Set(asArray(result?.procedureCodes).map((code) => String(code || "")));
   return asArray(result?.masterCandidates)
@@ -903,6 +1158,9 @@ function billingCandidatesFromProcedureResult(event = {}, result = {}) {
       code: candidate.masterCode,
       name: candidate.masterName,
       pointValue: candidate.points,
+      feeCategory: candidate.feeCategory,
+      itemRole: candidate.itemRole,
+      generatedBy: candidate.generatedBy,
       source: "rule_engine_master_match"
     }));
 }
@@ -2145,6 +2403,7 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
   if (kind === "ultrasound") {
     const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
       categoryLabel: "超音波検査",
+      allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event),
       unresolvedMessage: `${clinicalEventName(event) || "超音波検査"}は超音波検査として抽出しましたが、標準コードを自動確定できませんでした。部位と検査内容をマスター検索で確認してください。`,
       resolvedMessage: `${clinicalEventName(event) || "超音波検査"}を実施済みとしてマスター候補に反映しました。部位・検査方法・算定条件を確認してください。`
     });
@@ -2154,7 +2413,8 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
       commentInputs: procedure.commentInputs,
       collectionFeeInputs: procedure.collectionFeeInputs,
       masterCandidates: procedure.masterCandidates,
-      reviewWarnings: procedure.reviewWarnings
+      reviewWarnings: procedure.reviewWarnings,
+      traceEvents: procedure.traceEvents
     };
   }
 
@@ -2306,6 +2566,64 @@ async function materialInputFromClinicalEvent(event = {}, feeCalculator) {
   };
 }
 
+function labCollectionFeeInputsFromClinicalEvent(event = {}, procedure = {}) {
+  if (!asArray(procedure?.procedureCodes).length) {
+    return [];
+  }
+  return hasExplicitBloodCollectionEvidence(event) ? ["blood_venous"] : [];
+}
+
+function hasExplicitBloodCollectionEvidence(event = {}) {
+  const text = normalizeClinicalText([
+    clinicalEventName(event),
+    clinicalEventEvidence(event),
+    event?.specimen,
+    event?.sample,
+    event?.payload?.specimen
+  ].filter(Boolean).join("\n"));
+  return /採血|血液検査|血清|血漿|末梢血|静脈血/u.test(text);
+}
+
+function labRuleTraceEvents(event = {}, procedure = {}) {
+  const procedureCodes = asArray(procedure?.procedureCodes).map((code) => String(code || "")).filter(Boolean);
+  if (!procedureCodes.length) {
+    return [];
+  }
+  const derived = [
+    {
+      kind: "lab_judgment_fee",
+      generatedBy: "python.lab_rules.add_d026_judgement_fees",
+      reason: "検査実施料コードから検査判断料を派生します。"
+    },
+    {
+      kind: "lab_management_fee",
+      generatedBy: "python.lab_rules.add_lab_management_fee",
+      reason: "判断料と施設基準が確認できる場合のみ検体検査管理加算を派生します。"
+    }
+  ];
+  if (hasExplicitBloodCollectionEvidence(event)) {
+    derived.push({
+      kind: "collection_fee_input",
+      generatedBy: "clinical_event.lab_collection_input",
+      input: "blood_venous",
+      reason: "カルテに採血または血液検査の明示があるため、採血料の候補入力を渡します。"
+    });
+  }
+  return [
+    clinicalTraceEvent({
+      stage: "lab_rule_expansion",
+      event,
+      categoryLabel: "検体検査",
+      outcome: "prepared",
+      message: "lab_derived_items_are_generated_by_python_rules",
+      selected: {
+        procedureCodes,
+        derived
+      }
+    })
+  ];
+}
+
 async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculator, options = {}) {
   const status = normalizeClinicalEventStatus(event);
   if (!isBillableClinicalEventStatus(status)) {
@@ -2330,6 +2648,7 @@ async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculato
     name,
     categoryLabel,
     queries,
+    allowedFeeCategories: options.allowedFeeCategories || allowedDirectRetrievalFeeCategoriesForEvent(event),
     resolvedMessage: options.resolvedMessage || `${name || categoryLabel}を実施済みの${categoryLabel}としてマスター候補に反映しました。算定条件を確認してください。`,
     unresolvedMessage: options.unresolvedMessage || `${name || categoryLabel}は実施済みの${categoryLabel}として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。`
   });
@@ -2340,44 +2659,81 @@ async function searchPerformedProcedureCode(feeCalculator, {
   name = "",
   categoryLabel = "診療行為",
   queries = [],
+  allowedFeeCategories = null,
   resolvedMessage = "",
   unresolvedMessage = ""
 } = {}) {
   if (typeof feeCalculator?.searchMaster !== "function") {
+    const traceEvents = [clinicalTraceEvent({
+      stage: "master_search",
+      event,
+      categoryLabel,
+      outcome: "unavailable",
+      allowedFeeCategories,
+      message: "master_search_unavailable"
+    })];
     return {
       procedureCodes: [],
       commentInputs: [],
       collectionFeeInputs: [],
       masterCandidates: [],
-      reviewWarnings: [unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、マスター検索を利用できません。`]
+      reviewWarnings: [unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、マスター検索を利用できません。`],
+      traceEvents
     };
   }
 
-  const normalizedQueries = uniqueStrings(queries).filter((query) => query.length >= 2);
+  const normalizedQueries = uniqueStrings(queries).filter((query) => query.length >= 2).slice(0, 8);
+  const searchTrace = [];
   for (const query of normalizedQueries) {
-    const item = await searchProcedureMasterItem(feeCalculator, query, { name, categoryLabel });
-    if (item?.code) {
+    const search = await searchProcedureMasterItem(feeCalculator, query, {
+      name,
+      categoryLabel,
+      allowedFeeCategories
+    });
+    searchTrace.push(searchTraceSummary(query, search));
+    if (search?.item?.code) {
+      const item = search.item;
+      const masterCandidate = masterCandidateFromItem(item, event, {
+        masterType: "medical_service",
+        searchQuery: query
+      });
       return {
         procedureCodes: [String(item.code)],
         commentInputs: [],
         collectionFeeInputs: [],
-        masterCandidates: [
-          masterCandidateFromItem(item, event, {
-            masterType: "medical_service",
-            searchQuery: query
+        masterCandidates: [masterCandidate].filter(Boolean),
+        reviewWarnings: [],
+        traceEvents: [
+          clinicalTraceEvent({
+            stage: "master_search",
+            event,
+            categoryLabel,
+            outcome: "matched",
+            allowedFeeCategories,
+            query,
+            selected: masterCandidate,
+            searches: searchTrace
           })
-        ].filter(Boolean),
-        reviewWarnings: []
+        ]
       };
     }
   }
 
+  const traceEvents = [clinicalTraceEvent({
+    stage: "master_search",
+    event,
+    categoryLabel,
+    outcome: "unresolved",
+    allowedFeeCategories,
+    searches: searchTrace
+  })];
   return {
     procedureCodes: [],
     commentInputs: [],
     collectionFeeInputs: [],
     masterCandidates: [],
-    reviewWarnings: [unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、標準コードを自動確定できませんでした。`]
+    reviewWarnings: [unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、標準コードを自動確定できませんでした。`],
+    traceEvents
   };
 }
 
@@ -2392,11 +2748,36 @@ async function searchProcedureMasterItem(feeCalculator, query, context = {}) {
         || item.sourceType === "medical_procedure_master"
         || item.source === "medical_procedure_master"
       )
-    ));
-    return candidates.find((item) => isHighConfidenceProcedureMasterItem(item, { ...context, query }))
-      || null;
-  } catch {
-    return null;
+    ))
+      .map((item) => annotateMedicalServiceCandidate(item));
+    const filteredCandidates = [];
+    for (const candidate of candidates) {
+      const filterReason = directRetrievalFilterReason(candidate, context);
+      if (filterReason) {
+        filteredCandidates.push(filteredCandidateTrace(candidate, filterReason));
+        continue;
+      }
+      if (isHighConfidenceProcedureMasterItem(candidate, { ...context, query })) {
+        return {
+          item: candidate,
+          inspectedCount: candidates.length,
+          filteredCandidates
+        };
+      }
+    }
+    return {
+      item: null,
+      inspectedCount: candidates.length,
+      filteredCandidates
+    };
+  } catch (error) {
+    return {
+      item: null,
+      inspectedCount: 0,
+      filteredCandidates: [],
+      error: "master_search_failed",
+      message: error instanceof Error ? error.message : String(error || "")
+    };
   }
 }
 

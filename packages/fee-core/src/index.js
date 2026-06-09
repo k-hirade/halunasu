@@ -750,11 +750,32 @@ function normalizeMasterCandidates(items) {
         masterName: item.masterName || item.master_name || item.name || null,
         points: Number(item.points || 0),
         category: item.category || null,
+        feeCategory: item.feeCategory || item.fee_category || null,
+        itemRole: item.itemRole || item.item_role || null,
+        directRetrievalAllowed: hasOwn(item, "directRetrievalAllowed")
+          ? Boolean(item.directRetrievalAllowed)
+          : hasOwn(item, "direct_retrieval_allowed")
+            ? Boolean(item.direct_retrieval_allowed)
+            : undefined,
+        requiresParentCode: hasOwn(item, "requiresParentCode")
+          ? Boolean(item.requiresParentCode)
+          : hasOwn(item, "requires_parent_code")
+            ? Boolean(item.requires_parent_code)
+            : undefined,
+        derivedOnly: hasOwn(item, "derivedOnly")
+          ? Boolean(item.derivedOnly)
+          : hasOwn(item, "derived_only")
+            ? Boolean(item.derived_only)
+            : undefined,
         searchQuery: item.searchQuery || item.search_query || null,
         searchScore: item.searchScore ?? item.search_score ?? null,
         rank: item.rank ?? null,
         candidateStatus: item.candidateStatus || item.candidate_status || null,
-        source: item.source || null
+        source: item.source || null,
+        sourceVersion: item.sourceVersion || item.source_version || null,
+        effectiveFrom: item.effectiveFrom || item.effective_from || null,
+        effectiveTo: item.effectiveTo || item.effective_to || null,
+        generatedBy: item.generatedBy || item.generated_by || null
       });
     })
     .filter((item) => item && item.masterCode)
@@ -780,6 +801,9 @@ function normalizeBillingCandidates(items) {
         code: item.code || null,
         name: item.name || null,
         pointValue: Number(item.pointValue ?? item.point_value ?? item.points ?? 0),
+        feeCategory: item.feeCategory || item.fee_category || null,
+        itemRole: item.itemRole || item.item_role || null,
+        generatedBy: item.generatedBy || item.generated_by || null,
         source: item.source || null
       });
     })
