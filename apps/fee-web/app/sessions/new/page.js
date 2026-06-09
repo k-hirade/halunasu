@@ -1,6 +1,5 @@
-import { FeeWorkspace } from "../../../components/fee-workspace";
+import { redirect } from "next/navigation";
 
 export default function NewSessionPage() {
-  return <FeeWorkspace mode="new" />;
+  redirect("/sessions");
 }
-

@@ -534,7 +534,6 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
 .fee-detail-main,
 .fee-detail-form,
 .patient-create-form,
-.review-list,
 .receipt-list,
 .result,
 .fee-settings-grid {
@@ -615,6 +614,37 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
 .fee-subsection-head h3 {
   margin: 0;
   font-size: 1rem;
+}
+
+.fee-input-summary {
+  background: #fff;
+}
+
+.fee-input-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.fee-input-summary-grid div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 11px 12px;
+}
+
+.fee-input-summary-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.fee-input-summary-grid strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
 }
 
 .notice-card,
@@ -895,65 +925,6 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   gap: 10px;
 }
 
-.advanced-fee-inputs {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  min-width: 0;
-  padding: 12px;
-  background: #fbfdff;
-}
-
-.advanced-fee-inputs summary {
-  cursor: pointer;
-  font-weight: 900;
-}
-
-.advanced-fee-inputs-grid {
-  margin-top: 12px;
-}
-
-.advanced-fee-inputs-body {
-  display: grid;
-  gap: 14px;
-  margin-top: 14px;
-}
-
-.advanced-fee-inputs--nested {
-  background: #fff;
-}
-
-.mono-textarea {
-  min-height: 160px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-}
-
-.metric-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.metric {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fbfdff;
-  padding: 14px;
-}
-
-.metric span {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.metric strong {
-  display: block;
-  margin-top: 4px;
-  font-size: 1.35rem;
-}
-
 .candidate-workbench,
 .candidate-bucket,
 .proposal-list,
@@ -1133,7 +1104,7 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
 
 .candidate-line-row {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr) auto auto 38px;
+  grid-template-columns: 132px minmax(0, 1fr) auto auto auto;
   gap: 10px;
   align-items: center;
 }
@@ -1269,6 +1240,27 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+}
+
+.fee-settings-modal {
+  width: min(760px, 100%);
+}
+
+.fee-settings-section {
+  display: grid;
+  gap: 14px;
+}
+
+.fee-settings-section label {
+  display: grid;
+  gap: 6px;
+  color: #26364f;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.fee-settings-modal .fee-form-grid--conditions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .fee-modal-head,
@@ -1454,13 +1446,11 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   white-space: nowrap;
 }
 
-.line-table-wrap,
 .fee-table-wrap {
   width: 100%;
   overflow-x: auto;
 }
 
-.line-table,
 .fee-data-table {
   width: 100%;
   min-width: 760px;
@@ -1468,8 +1458,6 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   font-size: 14px;
 }
 
-.line-table th,
-.line-table td,
 .fee-data-table th,
 .fee-data-table td {
   border-bottom: 1px solid var(--line);
@@ -1478,7 +1466,6 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   vertical-align: top;
 }
 
-.line-table th,
 .fee-data-table th {
   color: #26364f;
   font-size: 12px;
@@ -1486,16 +1473,6 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   background: #f8fafc;
 }
 
-.line-name {
-  display: grid;
-  gap: 3px;
-}
-
-.line-name small {
-  color: var(--muted);
-}
-
-.review-item,
 .receipt-line {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1503,7 +1480,6 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   padding: 14px;
 }
 
-.review-item header,
 .receipt-line header {
   display: flex;
   align-items: flex-start;
@@ -1797,12 +1773,12 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   .fee-detail-grid,
   .fee-form-grid--conditions,
   .fee-form-grid--two,
+  .fee-input-summary-grid,
   .candidate-summary,
   .candidate-summary-grid,
   .proposal-card,
   .candidate-line-row,
   .issue-card,
-  .metric-row,
   .calculation-progress-preview,
   .master-search-controls,
   .order-editor-row {
@@ -1837,8 +1813,12 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
 
   .fee-action-buttons {
     display: grid;
-    grid-template-columns: minmax(0, 1.6fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     justify-content: stretch;
+  }
+
+  .fee-action-buttons .btn--primary {
+    grid-column: 1 / -1;
   }
 
   .proposal-card-actions,

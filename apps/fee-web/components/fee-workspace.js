@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePlatformAuth } from "./platform-auth";
 
 const FEE_SESSION_PAGE_SIZE = 20;
-const MAX_RENDERED_LINE_ITEMS = 120;
 const ORDER_TYPE_OPTIONS = [
   ["procedure", "処置・手技"],
   ["lab", "検査"],
@@ -79,10 +78,6 @@ const CLINICAL_DIAGNOSIS_RULES = [
 ];
 
 export function FeeWorkspace({ mode = "list", sessionId = "" }) {
-  if (mode === "new") {
-    return <NewFeeSessionView />;
-  }
-
   if (mode === "detail") {
     return <FeeSessionDetailView sessionId={sessionId} />;
   }
@@ -214,56 +209,6 @@ function FeeSessionListView() {
   );
 }
 
-function NewFeeSessionView() {
-  const feeApi = useFeeApi();
-  const [creating, setCreating] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-
-  async function createSession() {
-    setCreating(true);
-    setErrorMessage("");
-    try {
-      const response = await feeApi("/v1/fee/sessions", {
-        method: "POST",
-        csrf: true,
-        body: {}
-      });
-      const nextId = response.feeSession?.feeSessionId;
-      if (!nextId) {
-        throw new Error("作成した算定記録のIDを取得できませんでした。");
-      }
-      window.location.replace(`/sessions/${encodeURIComponent(nextId)}`);
-    } catch (error) {
-      setErrorMessage(toUserFacingErrorMessage(error, "算定記録を作成できませんでした。"));
-      setCreating(false);
-    }
-  }
-
-  return (
-    <main className="fee-shell">
-      <header className="fee-page-head">
-        <div>
-          <h1>新しい算定</h1>
-          <p>空の算定記録を作成してから、患者、診療日、オーダーを入力します。</p>
-        </div>
-        <a className="btn btn--ghost" href="/sessions">一覧へ戻る</a>
-      </header>
-
-      <section className="fee-card fee-quick-start">
-        <div>
-          <span className="label">算定記録</span>
-          <h2>入力画面を開きます</h2>
-          <p>作成後、自動的に算定詳細へ移動します。詳細画面で入力保存、算定候補作成、レビュー更新ができます。</p>
-        </div>
-        <button className="btn btn--primary btn--lg" disabled={creating} onClick={createSession} type="button">
-          算定記録を作成
-        </button>
-      </section>
-      {errorMessage ? <div className="fee-error-state" role="status">{errorMessage}</div> : null}
-    </main>
-  );
-}
-
 function FeeSessionDetailView({ sessionId }) {
   const feeApi = useFeeApi();
   const [patients, setPatients] = useState([]);
@@ -293,6 +238,7 @@ function FeeSessionDetailView({ sessionId }) {
   const [autoSaveStatus, setAutoSaveStatus] = useState("saved");
   const [autoSaveError, setAutoSaveError] = useState("");
   const [candidateDetail, setCandidateDetail] = useState(null);
+  const [settingsModalMode, setSettingsModalMode] = useState(null);
   const suppressAutoSaveRef = useRef(false);
   const autoSaveTimerRef = useRef(null);
   const pendingAutoSaveRef = useRef(null);
@@ -557,13 +503,6 @@ function FeeSessionDetailView({ sessionId }) {
     saveDetails
   ]);
 
-  async function handleSave(event) {
-    event.preventDefault();
-    await runBusy(setBusy, setMessage, async () => {
-      await saveDetails();
-    });
-  }
-
   async function calculate() {
     await runBusy(setBusy, setMessage, async () => {
       window.clearTimeout(autoSaveTimerRef.current);
@@ -637,6 +576,18 @@ function FeeSessionDetailView({ sessionId }) {
       setAutoSaveStatus("saved");
       setAutoSaveError("");
       setMessage({ type: "success", text: "採否を更新しました。" });
+    });
+  }
+
+  async function copyReceiptDraft() {
+    if (!receiptDraft) {
+      setMessage({ type: "error", text: "コピーできるレセプト案がまだありません。" });
+      return;
+    }
+    await runBusy(setBusy, setMessage, async () => {
+      const text = formatReceiptDraftForClipboard({ feeSession, receiptDraft });
+      await writeClipboardText(text);
+      setMessage({ type: "success", text: "レセプト案をコピーしました。" });
     });
   }
 
@@ -715,6 +666,7 @@ function FeeSessionDetailView({ sessionId }) {
   const calculation = feeSession?.calculationResult || null;
   const patientName = feeSession?.patientSnapshot?.displayName || feeSession?.patientRef || feeSession?.patientId || "患者未選択";
   const isCalculating = feeSession?.status === "calculating";
+  const saveStatusLabel = autoSaveLabel(autoSaveStatus, autoSaveError);
 
   return (
     <main className="fee-shell fee-shell--detail">
@@ -743,7 +695,7 @@ function FeeSessionDetailView({ sessionId }) {
             <span className="badge review">要レビュー前提</span>
           </div>
 
-          <form className="fee-detail-form" id="fee-session-detail-form" onSubmit={handleSave}>
+          <form className="fee-detail-form" id="fee-session-detail-form">
             <div className="patient-picker-row">
               <PatientPicker
                 filteredPatients={filteredPatients}
@@ -773,101 +725,13 @@ function FeeSessionDetailView({ sessionId }) {
               <small>本文から病名・オーダー候補を自動補完します。必要な場合だけ下の条件を修正してください。</small>
             </label>
 
-            <section className="fee-subsection">
-              <div className="fee-subsection-head">
-                <div>
-                  <span className="label">自動補完</span>
-                  <h3>算定条件</h3>
-                </div>
-                <MasterStatus available={masterSearchAvailable} />
-              </div>
-              <div className="fee-form-grid fee-form-grid--conditions">
-                {facilities.length > 1 ? (
-                  <label>
-                    <span>施設</span>
-                    <select value={form.facilityId || defaultFacilityId} onChange={(event) => updateForm("facilityId", event.target.value)}>
-                      <option value="">施設を選択</option>
-                      {facilities.map((facility) => (
-                        <option key={facility.facilityId} value={facility.facilityId}>
-                          {facility.displayName} ({facility.medicalInstitutionCode || "code未設定"})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-                <label>
-                  <span>診療科</span>
-                  <select value={form.departmentId} onChange={(event) => updateForm("departmentId", event.target.value)}>
-                    <option value="">未指定</option>
-                    {departments.map((department) => (
-                      <option key={department.departmentId} value={department.departmentId}>
-                        {department.displayName || "名称未設定"}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>区分</span>
-                  <select value={form.setting} onChange={(event) => updateForm("setting", event.target.value)}>
-                    <option value="outpatient">外来</option>
-                    <option value="inpatient">入院（限定対応）</option>
-                  </select>
-                </label>
-                <label>
-                  <span>診療日</span>
-                  <input type="date" value={form.serviceDate} onChange={(event) => updateForm("serviceDate", event.target.value)} />
-                </label>
-                <label>
-                  <span>請求月</span>
-                  <input type="month" value={form.claimMonth} onChange={(event) => updateForm("claimMonth", event.target.value)} />
-                </label>
-              </div>
-              <label>
-                <span>病名</span>
-                <textarea
-                  className="diagnosis-textarea"
-                  placeholder={"例: 熱傷\n創傷"}
-                  value={form.diagnosesText}
-                  onChange={(event) => updateDiagnosesText(event.target.value)}
-                />
-                <small>未入力の場合はカルテ本文から候補を補完し、不足時はレビューに出します。</small>
-              </label>
-              <ScopeNotice setting={form.setting} />
-            </section>
-
-            <section className="fee-subsection">
-              <div className="fee-subsection-head">
-                <div>
-                  <span className="label">オーダー</span>
-                  <h3>候補を確認・編集</h3>
-                </div>
-                <span className="fee-count">手入力 {parseOrdersFromRows(orderRows).length.toLocaleString()}件</span>
-              </div>
-              <p className="field-note">カルテ本文から候補を補完します。追加・修正が必要な場合はマスター検索または表を編集してください。</p>
-              <div className="master-search-panel master-search-panel--command">
-                <div className="master-search-controls">
-                  <select value={masterType} onChange={(event) => setMasterType(event.target.value)} disabled={!masterSearchAvailable}>
-                    {MASTER_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                  <input
-                    type="search"
-                    placeholder={masterSearchAvailable ? "名称またはコードで検索" : "マスター検索APIの反映待ちです"}
-                    value={masterQuery}
-                    onChange={(event) => setMasterQuery(event.target.value)}
-                    onKeyDown={handleMasterSearchKeyDown}
-                    disabled={!masterSearchAvailable}
-                  />
-                </div>
-                <MasterSearchResults
-                  available={masterSearchAvailable}
-                  items={masterItems}
-                  query={masterQuery}
-                  onAdd={addMasterSearchItem}
-                  selectedIndex={selectedMasterIndex}
-                />
-              </div>
-              <OrderEditor rows={orderRows} onAdd={addOrderRow} onRemove={removeOrderRow} onUpdate={updateOrderRow} />
-            </section>
+            <FeeInputSummary
+              departments={departments}
+              form={form}
+              orderCount={parseOrdersFromRows(orderRows).length}
+              onOpenConditions={() => setSettingsModalMode("conditions")}
+              onOpenOrders={() => setSettingsModalMode("orders")}
+            />
           </form>
         </section>
 
@@ -894,18 +758,228 @@ function FeeSessionDetailView({ sessionId }) {
 
       <div className="fee-action-bar">
         <div>
-          <strong>{message?.type === "success" ? message.text : "入力内容を確認してください"}</strong>
-          <small>{autoSaveLabel(autoSaveStatus, autoSaveError)}</small>
+          <strong>{saveStatusLabel}</strong>
+          <small>{autoSaveStatus === "error" ? "通信状態を確認してください。" : "入力と採否は自動保存されます。"}</small>
         </div>
         <div className="fee-action-buttons">
           <button className="btn btn--primary" disabled={busy || isCalculating} onClick={calculate} type="button">
             {isCalculating ? "算定候補を作成中" : "カルテから算定候補を作成"}
           </button>
+          <button className="btn btn--ghost" disabled={busy || !receiptDraft} onClick={copyReceiptDraft} type="button">
+            レセプト案をコピー
+          </button>
           <button className="btn btn--ghost btn--icon" disabled={busy} onClick={loadAll} type="button" aria-label="最新の状態に更新">↻</button>
         </div>
       </div>
+      <FeeSettingsModal
+        available={masterSearchAvailable}
+        defaultFacilityId={defaultFacilityId}
+        departments={departments}
+        facilities={facilities}
+        form={form}
+        handleMasterSearchKeyDown={handleMasterSearchKeyDown}
+        items={masterItems}
+        masterQuery={masterQuery}
+        masterType={masterType}
+        mode={settingsModalMode}
+        onAddMaster={addMasterSearchItem}
+        onAddOrderRow={addOrderRow}
+        onClose={() => setSettingsModalMode(null)}
+        onMasterQueryChange={setMasterQuery}
+        onMasterTypeChange={setMasterType}
+        onRemoveOrderRow={removeOrderRow}
+        onUpdateForm={updateForm}
+        onUpdateDiagnosesText={updateDiagnosesText}
+        onUpdateOrderRow={updateOrderRow}
+        orderRows={orderRows}
+        orderCount={parseOrdersFromRows(orderRows).length}
+        selectedMasterIndex={selectedMasterIndex}
+      />
       <CandidateDetailModal item={candidateDetail} disabled={busy} onClose={() => setCandidateDetail(null)} onDecision={decideReviewItem} />
     </main>
+  );
+}
+
+function FeeInputSummary({ departments, form, onOpenConditions, onOpenOrders, orderCount }) {
+  const department = departments.find((item) => item.departmentId === form.departmentId);
+  const diagnosisCount = form.diagnosesText.split(/\n+/u).map((item) => item.trim()).filter(Boolean).length;
+  return (
+    <section className="fee-subsection fee-input-summary">
+      <div className="fee-subsection-head">
+        <div>
+          <span className="label">自動補完</span>
+          <h3>算定条件と手動オーダー</h3>
+        </div>
+      </div>
+      <div className="fee-input-summary-grid">
+        <div>
+          <span>診療科</span>
+          <strong>{department?.displayName || "未指定"}</strong>
+        </div>
+        <div>
+          <span>区分</span>
+          <strong>{form.setting === "inpatient" ? "入院（限定対応）" : "外来"}</strong>
+        </div>
+        <div>
+          <span>診療日</span>
+          <strong>{form.serviceDate || "未設定"}</strong>
+        </div>
+        <div>
+          <span>請求月</span>
+          <strong>{form.claimMonth || "未設定"}</strong>
+        </div>
+        <div>
+          <span>病名</span>
+          <strong>{diagnosisCount ? `${diagnosisCount.toLocaleString()}件` : "自動補完"}</strong>
+        </div>
+        <div>
+          <span>手入力オーダー</span>
+          <strong>{orderCount.toLocaleString()}件</strong>
+        </div>
+      </div>
+      <div className="button-row">
+        <button className="btn btn--ghost" onClick={onOpenConditions} type="button">算定条件を確認</button>
+        <button className="btn btn--ghost" onClick={onOpenOrders} type="button">オーダーを確認</button>
+      </div>
+    </section>
+  );
+}
+
+function FeeSettingsModal({
+  available,
+  defaultFacilityId,
+  departments,
+  facilities,
+  form,
+  handleMasterSearchKeyDown,
+  items,
+  masterQuery,
+  masterType,
+  mode,
+  onAddMaster,
+  onAddOrderRow,
+  onClose,
+  onMasterQueryChange,
+  onMasterTypeChange,
+  onRemoveOrderRow,
+  onUpdateDiagnosesText,
+  onUpdateForm,
+  onUpdateOrderRow,
+  orderCount,
+  orderRows,
+  selectedMasterIndex
+}) {
+  if (!mode) {
+    return null;
+  }
+  const showConditions = mode === "conditions";
+  return (
+    <div className="fee-modal-overlay" role="presentation" onMouseDown={onClose}>
+      <section className="fee-modal-card fee-settings-modal" role="dialog" aria-modal="true" aria-label={showConditions ? "算定条件の確認" : "オーダーの確認"} onMouseDown={(event) => event.stopPropagation()}>
+        <header className="fee-modal-head">
+          <div>
+            <span className="label">{showConditions ? "算定条件" : "オーダー"}</span>
+            <h2>{showConditions ? "算定条件を確認" : "オーダーを確認"}</h2>
+          </div>
+          <button className="btn btn--ghost btn--icon" onClick={onClose} type="button" aria-label="閉じる">×</button>
+        </header>
+        <div className="fee-modal-body">
+          {showConditions ? (
+            <div className="fee-settings-section">
+              <MasterStatus available={available} />
+              <div className="fee-form-grid fee-form-grid--conditions">
+                {facilities.length > 1 ? (
+                  <label>
+                    <span>施設</span>
+                    <select value={form.facilityId || defaultFacilityId} onChange={(event) => onUpdateForm("facilityId", event.target.value)}>
+                      <option value="">施設を選択</option>
+                      {facilities.map((facility) => (
+                        <option key={facility.facilityId} value={facility.facilityId}>
+                          {facility.displayName} ({facility.medicalInstitutionCode || "code未設定"})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <label>
+                  <span>診療科</span>
+                  <select value={form.departmentId} onChange={(event) => onUpdateForm("departmentId", event.target.value)}>
+                    <option value="">未指定</option>
+                    {departments.map((department) => (
+                      <option key={department.departmentId} value={department.departmentId}>
+                        {department.displayName || "名称未設定"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>区分</span>
+                  <select value={form.setting} onChange={(event) => onUpdateForm("setting", event.target.value)}>
+                    <option value="outpatient">外来</option>
+                    <option value="inpatient">入院（限定対応）</option>
+                  </select>
+                </label>
+                <label>
+                  <span>診療日</span>
+                  <input type="date" value={form.serviceDate} onChange={(event) => onUpdateForm("serviceDate", event.target.value)} />
+                </label>
+                <label>
+                  <span>請求月</span>
+                  <input type="month" value={form.claimMonth} onChange={(event) => onUpdateForm("claimMonth", event.target.value)} />
+                </label>
+              </div>
+              <label>
+                <span>病名</span>
+                <textarea
+                  className="diagnosis-textarea"
+                  placeholder={"例: 熱傷\n創傷"}
+                  value={form.diagnosesText}
+                  onChange={(event) => onUpdateDiagnosesText(event.target.value)}
+                />
+                <small>未入力の場合はカルテ本文から候補を補完し、不足時はレビューに出します。</small>
+              </label>
+              <ScopeNotice setting={form.setting} />
+            </div>
+          ) : (
+            <div className="fee-settings-section">
+              <div className="fee-section-head">
+                <div>
+                  <h3>候補を確認・編集</h3>
+                  <p>カルテ本文から候補を補完します。必要な場合だけマスター検索または表で修正してください。</p>
+                </div>
+                <span className="fee-count">手入力 {orderCount.toLocaleString()}件</span>
+              </div>
+              <div className="master-search-panel master-search-panel--command">
+                <div className="master-search-controls">
+                  <select value={masterType} onChange={(event) => onMasterTypeChange(event.target.value)} disabled={!available}>
+                    {MASTER_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                  <input
+                    type="search"
+                    placeholder={available ? "名称またはコードで検索" : "マスター検索APIの反映待ちです"}
+                    value={masterQuery}
+                    onChange={(event) => onMasterQueryChange(event.target.value)}
+                    onKeyDown={handleMasterSearchKeyDown}
+                    disabled={!available}
+                  />
+                </div>
+                <MasterSearchResults
+                  available={available}
+                  items={items}
+                  query={masterQuery}
+                  onAdd={onAddMaster}
+                  selectedIndex={selectedMasterIndex}
+                />
+              </div>
+              <OrderEditor rows={orderRows} onAdd={onAddOrderRow} onRemove={onRemoveOrderRow} onUpdate={onUpdateOrderRow} />
+            </div>
+          )}
+        </div>
+        <footer className="fee-modal-footer">
+          <button className="btn btn--primary" onClick={onClose} type="button">閉じる</button>
+        </footer>
+      </section>
+    </div>
   );
 }
 
@@ -1255,7 +1329,7 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
       </div>
       <span className="candidate-line-status">{item.statusLabel}</span>
       <strong className="candidate-line-points">{Number(item.totalPoints || 0).toLocaleString()}点</strong>
-      <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">?</button>
+      <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">詳細</button>
     </article>
   );
 }
@@ -1327,59 +1401,6 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision }) {
   );
 }
 
-function CalculationResult({ calculation, feeSession, reviewItemCount = 0 }) {
-  if (feeSession?.status === "calculating") {
-    return (
-      <div className="result result-empty">
-        <div className="notice-card">
-          <strong>算定候補を作成中です</strong>
-          <p>{feeSession?.patientSnapshot?.displayName || feeSession?.patientId || "患者未選択"} / {feeSession?.serviceDate || "診療日未設定"} / 計算中</p>
-        </div>
-        <CalculationProgress progress={feeSession?.calculationProgress} />
-        <p className="field-note">完了すると算定候補、レビュー項目、レセプト案が自動で更新されます。</p>
-      </div>
-    );
-  }
-
-  if (!calculation) {
-    return (
-      <div className="result result-empty">
-        <div className="notice-card">
-          <strong>算定記録を準備しました</strong>
-          <p>{feeSession?.patientSnapshot?.displayName || feeSession?.patientId || "患者未選択"} / {feeSession?.serviceDate || "診療日未設定"} / {statusLabel(feeSession?.status || "ready")}</p>
-        </div>
-        <p className="field-note">患者とカルテ本文を確認し、「カルテから算定候補を作成」で候補を作成してください。</p>
-      </div>
-    );
-  }
-
-  const coverage = calculation.coverage || {};
-  const lineItems = Array.isArray(calculation.lineItems) ? calculation.lineItems : [];
-  return (
-    <div className="result">
-      <div className="metric-row">
-        <div className="metric">
-          <span>候補化済み部分合計</span>
-          <strong>{Number(calculation.totalPoints || 0).toLocaleString()}</strong>
-        </div>
-        <div className="metric">
-          <span>要確認</span>
-          <strong>{Number(reviewItemCount || 0).toLocaleString()}</strong>
-        </div>
-        <div className="metric">
-          <span>対応範囲</span>
-          <strong>{supportLevelLabel(coverage.supportLevel || coverage.support_level)}</strong>
-        </div>
-      </div>
-      <div className="notice-card">
-        <strong>{scopeLabel(coverage.scope)}</strong>
-        <p>{humanizeCoverageDescription(coverage.description) || "算定候補・レビュー支援として表示しています。確定請求前に内容を確認してください。"}</p>
-      </div>
-      <LineItemTable lineItems={lineItems} />
-    </div>
-  );
-}
-
 function CalculationProgress({ progress }) {
   const normalized = normalizeCalculationProgress(progress);
   const diagnoses = Array.isArray(normalized.diagnoses) ? normalized.diagnoses : [];
@@ -1434,73 +1455,6 @@ function CalculationProgress({ progress }) {
   );
 }
 
-function LineItemTable({ lineItems }) {
-  if (!lineItems.length) {
-    return <p className="field-note">算定行はまだありません。</p>;
-  }
-  const visibleLineItems = lineItems.slice(0, MAX_RENDERED_LINE_ITEMS);
-  const hiddenCount = lineItems.length - visibleLineItems.length;
-  return (
-    <>
-      {hiddenCount > 0 ? (
-        <p className="field-note">算定行が多いため、先頭{MAX_RENDERED_LINE_ITEMS}件を表示しています。残り{hiddenCount.toLocaleString()}件はレセプト案で確認してください。</p>
-      ) : null}
-      <div className="line-table-wrap">
-        <table className="line-table">
-          <thead>
-            <tr>
-              <th>算定候補</th>
-              <th>状態</th>
-              <th>区分</th>
-              <th>点数</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleLineItems.map((line, index) => (
-              <tr key={`${line.code || "line"}-${index}`}>
-                <td>
-                  <div className="line-name">
-                    <strong>{line.name || "未分類"}</strong>
-                    <small>{lineMetaLabel(line)}</small>
-                  </div>
-                </td>
-                <td><span className={badgeClass(line.status)}>{statusLabel(line.status)}</span></td>
-                <td>{lineBusinessCategory(line)}</td>
-                <td>{Number(line.totalPoints || 0).toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-}
-
-function ReviewList({ disabled, items, onDecision, selected }) {
-  if (!items.length) {
-    return <div className="fee-empty-state">{selected ? "確認が必要な項目はありません。" : "算定記録を選択してください。"}</div>;
-  }
-  return (
-    <div className="review-list">
-      {items.map((item) => (
-        <article className="review-item" key={item.reviewItemId}>
-          <header>
-            <span>{item.displayTitle || reviewItemTitle(item)}</span>
-            <span className={badgeClass(item.status)}>{statusLabel(item.status)}</span>
-          </header>
-          <p>{item.displayReason || humanizeReviewMessage(item.reason || item.lineItem?.reason || "")}</p>
-          {item.lineItem ? <p>{lineMetaLabel(item.lineItem)}</p> : null}
-          <div className="button-row">
-            <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">承認</button>
-            <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected")} type="button">却下</button>
-            <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">修正済み</button>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
 function ReceiptDraft({ receiptDraft, selected }) {
   if (!receiptDraft) {
     return <div className="fee-empty-state">{selected ? "算定候補を作成すると、レセプト案が表示されます。" : "算定記録を選択してください。"}</div>;
@@ -1525,6 +1479,62 @@ function ReceiptDraft({ receiptDraft, selected }) {
       ))}
     </div>
   );
+}
+
+function formatReceiptDraftForClipboard({ feeSession, receiptDraft }) {
+  const patientName = feeSession?.patientSnapshot?.displayName || feeSession?.patientRef || feeSession?.patientId || "患者未選択";
+  const serviceDate = feeSession?.serviceDate || "診療日未設定";
+  const claimMonth = receiptDraft?.claimMonth || feeSession?.claimMonth || "請求月未設定";
+  const totalPoints = Number(receiptDraft?.totalPoints || 0);
+  const lines = [
+    "レセプト案",
+    `患者: ${patientName}`,
+    `診療日: ${serviceDate}`,
+    `請求月: ${claimMonth}`,
+    `合計: ${totalPoints.toLocaleString()}点`,
+    ""
+  ];
+
+  const groups = Array.isArray(receiptDraft?.lineGroups) ? receiptDraft.lineGroups : [];
+  if (groups.length) {
+    for (const group of groups) {
+      lines.push(`${group.label || "未分類"}: ${Number(group.totalPoints || 0).toLocaleString()}点`);
+      for (const line of group.lines || []) {
+        lines.push(`- ${line.name || "名称未設定"} ${Number(line.totalPoints || 0).toLocaleString()}点 (${statusLabel(line.status)})`);
+      }
+      lines.push("");
+    }
+  } else {
+    const receiptLines = Array.isArray(receiptDraft?.lines) ? receiptDraft.lines : [];
+    for (const line of receiptLines) {
+      lines.push(`- ${line.name || "名称未設定"} ${Number(line.totalPoints || 0).toLocaleString()}点 (${statusLabel(line.status)})`);
+    }
+  }
+
+  return lines.join("\n").trim();
+}
+
+async function writeClipboardText(text) {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  if (typeof document === "undefined") {
+    throw new Error("クリップボードを利用できません。");
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-1000px";
+  textarea.style.left = "-1000px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!copied) {
+    throw new Error("クリップボードへコピーできませんでした。");
+  }
 }
 
 function SessionSkeleton() {

@@ -71,11 +71,16 @@ try {
     const detailColumns = await page.locator(".fee-detail-grid").evaluate((element) => getComputedStyle(element).gridTemplateColumns);
     assert.ok(detailColumns.trim().split(/\s+/).length >= 2, "desktop fee detail view must use two robust columns");
 
-    const manualOrderEditorVisible = await page.getByRole("button", { name: "オーダー行を追加" }).isVisible();
-    assert.equal(manualOrderEditorVisible, true, "manual order editor must remain available as an editable candidate table");
+    await page.getByRole("button", { name: "オーダーを確認" }).click();
+    const orderDialog = page.getByRole("dialog", { name: "オーダーの確認" });
+    await orderDialog.waitFor();
+    const manualOrderEditorVisible = await orderDialog.getByRole("button", { name: "オーダー行を追加" }).isVisible();
+    assert.equal(manualOrderEditorVisible, true, "manual order editor must remain available inside the order confirmation dialog");
+    await orderDialog.locator(".fee-modal-footer").getByRole("button", { name: "閉じる" }).click();
     assert.equal(await page.getByText("詳細条件 JSON").count(), 0, "claimContext JSON editor must be removed from the UI");
     assert.equal(await page.getByText("算定オプション JSON").count(), 0, "calculationOptions JSON editor must be removed from the UI");
     assert.equal(await page.locator(".fee-action-bar").isVisible(), true, "detail actions must be available in the action bar");
+    assert.equal(await page.getByRole("button", { name: "レセプト案をコピー" }).isVisible(), true, "receipt draft copy must be available as a terminal action");
 
     const hasDetailHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     assert.equal(hasDetailHorizontalOverflow, false);
