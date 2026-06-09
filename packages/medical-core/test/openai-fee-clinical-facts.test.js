@@ -39,6 +39,34 @@ function feeClinicalFactsPayload() {
   };
 }
 
+function assertStrictObjectSchemasHaveRequiredProperties(schema, path = "schema") {
+  if (!schema || typeof schema !== "object") {
+    return;
+  }
+
+  if (schema.type === "object" && schema.properties) {
+    assert.equal(
+      schema.additionalProperties,
+      false,
+      `${path} should reject additional properties`
+    );
+    const propertyKeys = Object.keys(schema.properties).sort();
+    const requiredKeys = [...(schema.required || [])].sort();
+    assert.deepEqual(
+      requiredKeys,
+      propertyKeys,
+      `${path} required keys must match properties for OpenAI strict json_schema`
+    );
+    for (const key of propertyKeys) {
+      assertStrictObjectSchemasHaveRequiredProperties(schema.properties[key], `${path}.properties.${key}`);
+    }
+  }
+
+  if (schema.type === "array") {
+    assertStrictObjectSchemasHaveRequiredProperties(schema.items, `${path}.items`);
+  }
+}
+
 test("fee clinical facts prompt preserves performed tests with normal or negative results", async () => {
   let requestBody = null;
 
@@ -62,6 +90,30 @@ test("fee clinical facts prompt preserves performed tests with normal or negativ
   assert.match(requestBody.instructions, /action_status=performed/);
   assert.match(requestBody.instructions, /陰性\/正常\/異常なし/);
   assert.match(requestBody.instructions, /Use action_status=not_performed only when the clinical text says the act itself was not performed/);
+});
+
+test("fee clinical facts schema is valid for OpenAI strict json_schema", async () => {
+  let requestBody = null;
+
+  await withFetch(
+    async (url, options) => {
+      assert.equal(url, "https://api.openai.com/v1/responses");
+      requestBody = JSON.parse(options.body);
+      return jsonResponse({
+        output_text: JSON.stringify(feeClinicalFactsPayload())
+      });
+    },
+    async () => {
+      await extractFeeClinicalFactsWithOpenAi({
+        apiKey: "test-key",
+        clinicalText: "O: 胸部X線 異常なし。",
+        sessionContext: {}
+      });
+    }
+  );
+
+  assert.equal(requestBody.text.format.strict, true);
+  assertStrictObjectSchemasHaveRequiredProperties(requestBody.text.format.schema);
 });
 
 test("fee clinical facts schema keeps enough diagnoses and excluded events for complex notes", async () => {

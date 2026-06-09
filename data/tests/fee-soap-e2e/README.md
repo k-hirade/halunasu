@@ -83,6 +83,20 @@ Use:
 
 For `review_required`, `unsupported_expected`, `safety`, and `split_required` cases, `forbiddenCandidates` means the item must not be treated as an automatically finalized billing line before the required review topics are resolved. A review-only mention is allowed when the case also expects `engineStatus=needs_review`.
 
+## Visit History Setup
+
+Initial/revisit behavior depends on actual patient history in the fee app, not only on SOAP text.
+
+The E2E evaluator therefore prepares synthetic patient history before the target case is created:
+
+- outpatient cases with `encounter.visitType = "revisit"` are created with one prior fee session for the same synthetic patient.
+- outpatient cases whose `expectedClaimContext.outpatient_basic.fee_kind` is `revisit` are also seeded with one prior fee session.
+- initial, unknown, and inpatient cases are left without seeded outpatient prior history unless a case explicitly says otherwise in future metadata.
+
+The prior session is synthetic, uses the same generated patient, and has a service date one day before the target case. This keeps the product behavior realistic: the app's patient-history rule sees a prior fee session for revisit cases and no prior fee session for initial cases.
+
+Use `--no-seed-visit-history` only when debugging the extractor or intentionally testing the no-history path.
+
 ## Difficulty Axes
 
 `difficultyLevel` is the SOAP extraction difficulty.
@@ -130,6 +144,8 @@ npm run eval:fee-soap-e2e -- --limit 10
 npm run eval:fee-soap-e2e -- --case L1-007-ct-head-revisit
 npm run eval:fee-soap-e2e -- --assertion exact
 npm run eval:fee-soap-e2e -- --assertion exact --use-expected-claim-context
+npm run eval:fee-soap-e2e -- --case COV-L1-301-pediatrics-pediatric_addons-exact
+npm run eval:fee-soap-e2e -- --case COV-L1-301-pediatrics-pediatric_addons-exact --no-seed-visit-history
 npm run eval:fee-soap-e2e:strict
 ```
 

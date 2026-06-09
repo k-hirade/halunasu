@@ -113,7 +113,15 @@ async function evaluateCase(item, runner, options) {
   const caseStartedAt = Date.now();
   const caseResult = emptyCaseResult(item);
   try {
-    const createPayload = buildCreateSessionPayload(item, runner);
+    const historySeed = await seedVisitHistoryIfNeeded(item, runner, options, caseResult);
+    if (historySeed?.failed) {
+      return failCase(caseResult, "api_contract", historySeed.message, caseStartedAt);
+    }
+
+    const createPayload = buildCreateSessionPayload(item, runner, {
+      patientId: historySeed?.patientId || "",
+      sourceSystem: "fee_soap_e2e_dataset"
+    });
     const createStartedAt = Date.now();
     const createResponse = await runner.request("POST", "/v1/fee/sessions", createPayload, { csrf: true });
     caseResult.durationMs.createSession = Date.now() - createStartedAt;
@@ -168,22 +176,132 @@ async function evaluateCase(item, runner, options) {
   }
 }
 
-function buildCreateSessionPayload(item, runner = {}) {
+async function seedVisitHistoryIfNeeded(item, runner, options, caseResult) {
+  const required = shouldSeedPriorVisitHistory(item, options);
+  caseResult.historySeed.required = required;
+  caseResult.historySeed.reason = required ? visitHistorySeedReason(item) : "none";
+  if (!required) {
+    return null;
+  }
+
+  const seedPayload = buildPriorVisitHistoryPayload(item, runner);
+  const seedStartedAt = Date.now();
+  const seedResponse = await runner.request("POST", "/v1/fee/sessions", seedPayload, { csrf: true });
+  caseResult.durationMs.seedVisitHistory = Date.now() - seedStartedAt;
+  caseResult.http.seedVisitHistory = responseView(seedResponse);
+  if (seedResponse.statusCode >= 400) {
+    const message = `seed prior visit history failed: ${safeErrorMessage(seedResponse.body)}`;
+    caseResult.historySeed = {
+      ...caseResult.historySeed,
+      created: false,
+      failed: true,
+      message
+    };
+    return caseResult.historySeed;
+  }
+
+  const feeSession = seedResponse.body?.feeSession || {};
+  const patientId = feeSession.patientId || "";
+  if (!patientId) {
+    const message = "seed prior visit history response did not include patientId";
+    caseResult.historySeed = {
+      ...caseResult.historySeed,
+      created: false,
+      failed: true,
+      message
+    };
+    return caseResult.historySeed;
+  }
+
+  caseResult.historySeed = {
+    ...caseResult.historySeed,
+    created: true,
+    failed: false,
+    feeSessionId: feeSession.feeSessionId || null,
+    patientId,
+    serviceDate: seedPayload.serviceDate || null
+  };
+  return caseResult.historySeed;
+}
+
+function shouldSeedPriorVisitHistory(item, options = {}) {
+  if (options.seedVisitHistory === false) {
+    return false;
+  }
+  const encounter = item.encounter || {};
+  const setting = encounter.setting === "inpatient" ? "inpatient" : "outpatient";
+  if (setting !== "outpatient") {
+    return false;
+  }
+  const visitType = String(encounter.visitType || encounter.visit_type || "").trim().toLowerCase();
+  const expectedFeeKind = String(item.expectedClaimContext?.outpatient_basic?.fee_kind || "").trim().toLowerCase();
+  return visitType === "revisit" || expectedFeeKind === "revisit";
+}
+
+function visitHistorySeedReason(item) {
+  const encounter = item.encounter || {};
+  const visitType = String(encounter.visitType || encounter.visit_type || "").trim().toLowerCase();
+  const expectedFeeKind = String(item.expectedClaimContext?.outpatient_basic?.fee_kind || "").trim().toLowerCase();
+  if (visitType === "revisit") return "encounter.visitType=revisit";
+  if (expectedFeeKind === "revisit") return "expectedClaimContext.outpatient_basic.fee_kind=revisit";
+  return "none";
+}
+
+function buildPriorVisitHistoryPayload(item, runner = {}) {
+  const payload = buildCreateSessionPayload(item, runner, {
+    serviceDate: priorServiceDate(serviceDateForCase(item)),
+    clinicalText: priorVisitHistoryClinicalText(item),
+    sourceSystem: "fee_soap_e2e_dataset_prior_history"
+  });
+  payload.claimMonth = payload.serviceDate ? payload.serviceDate.slice(0, 7) : undefined;
+  return payload;
+}
+
+function buildCreateSessionPayload(item, runner = {}, overrides = {}) {
   const patient = item.patient || {};
   const encounter = item.encounter || {};
-  return {
-    patient: {
+  const patientId = String(overrides.patientId || "").trim();
+  const payload = {
+    facilityId: runner.facilityId || "fac_fee_e2e",
+    departmentId: departmentIdForEncounter(encounter, runner.departmentIds),
+    serviceDate: overrides.serviceDate || serviceDateForCase(item),
+    setting: encounter.setting === "inpatient" ? "inpatient" : "outpatient",
+    clinicalText: overrides.clinicalText || item.chart?.standard || soapText(item),
+    sourceSystem: overrides.sourceSystem || "fee_soap_e2e_dataset"
+  };
+  if (patientId) {
+    payload.patientId = patientId;
+  } else {
+    payload.patient = {
       displayName: `E2E ${item.caseId}`,
       sex: ["male", "female", "other", "unknown"].includes(patient.sex) ? patient.sex : "unknown",
       externalPatientIds: [item.caseId]
-    },
-    facilityId: runner.facilityId || "fac_fee_e2e",
-    departmentId: departmentIdForEncounter(encounter, runner.departmentIds),
-    serviceDate: encounter.serviceDate || encounter.service_date || "2026-06-07",
-    setting: encounter.setting === "inpatient" ? "inpatient" : "outpatient",
-    clinicalText: item.chart?.standard || soapText(item),
-    sourceSystem: "fee_soap_e2e_dataset"
-  };
+    };
+  }
+  return payload;
+}
+
+function serviceDateForCase(item) {
+  const encounter = item.encounter || {};
+  return encounter.serviceDate || encounter.service_date || "2026-06-07";
+}
+
+function priorServiceDate(serviceDate) {
+  const date = new Date(`${serviceDate || "2026-06-07"}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) {
+    return "2026-06-06";
+  }
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function priorVisitHistoryClinicalText(item) {
+  return [
+    "S: E2Eの再診判定用に作成する過去受診記録。",
+    "O: 過去に同一患者として外来診療を受けた記録。",
+    "A: 継続診療の履歴。",
+    "P: 経過観察。"
+  ].join("\n");
 }
 
 function buildCalculatePayload(item, options) {
@@ -640,9 +758,19 @@ function emptyCaseResult(item) {
     failureMessages: [],
     chartHash: sha256(soapText(item)),
     feeSessionId: null,
+    historySeed: {
+      required: false,
+      reason: "none",
+      created: false,
+      failed: false,
+      feeSessionId: null,
+      patientId: null,
+      serviceDate: null
+    },
     http: {},
     durationMs: {
       total: 0,
+      seedVisitHistory: 0,
       createSession: 0,
       calculateRequest: 0,
       detail: 0
@@ -924,6 +1052,7 @@ function parseArgs(argv) {
     openai: false,
     verboseApiLogs: false,
     useExpectedClaimContext: false,
+    seedVisitHistory: true,
     spawnPython: false,
     caseTimeoutMs: 60000,
     slowMs: 30000,
@@ -944,6 +1073,7 @@ function parseArgs(argv) {
     else if (arg === "--openai") parsed.openai = true;
     else if (arg === "--verbose-api-logs") parsed.verboseApiLogs = true;
     else if (arg === "--use-expected-claim-context") parsed.useExpectedClaimContext = true;
+    else if (arg === "--no-seed-visit-history") parsed.seedVisitHistory = false;
     else if (arg === "--spawn-python") parsed.spawnPython = true;
     else if (arg === "--case-timeout-ms") parsed.caseTimeoutMs = Number(next());
     else if (arg === "--slow-ms") parsed.slowMs = Number(next());
@@ -974,6 +1104,7 @@ Options:
   --openai                         Local mode only: use OPENAI_API_KEY for clinical structuring
   --verbose-api-logs               Print fee-api internal stage logs to stdout
   --use-expected-claim-context     Debug mode: bypass SOAP extraction and calculate from expectedClaimContext
+  --no-seed-visit-history          Do not create prior sessions for outpatient revisit cases
   --master-db-path PATH            Local mode master sqlite path
 
 STG env:
