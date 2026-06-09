@@ -169,9 +169,6 @@ const feeClinicalFactsSchema = {
           type: { type: "string", enum: EVENT_TYPES },
           name: shortString(60),
           status: { type: "string", enum: LEGACY_EVENT_STATUSES },
-          action_status: { type: "string", enum: ACTION_STATUSES },
-          temporal_relation: { type: "string", enum: TEMPORAL_RELATIONS },
-          provider_ownership: { type: "string", enum: PROVIDER_OWNERSHIPS },
           evidence: shortString(90),
           reason: shortString(90)
         }
@@ -216,11 +213,6 @@ function eventProperties() {
     section: {
       type: "string",
       enum: ["S", "O", "A", "P", "unknown"]
-    },
-    status: { type: "string", enum: LEGACY_EVENT_STATUSES },
-    date_relation: {
-      type: "string",
-      enum: ["current_visit", "future", "past", "other_provider", "unknown"]
     },
     evidence: shortString(90),
     search_queries: {
