@@ -11,6 +11,8 @@ const MASTER_SEARCH_MODULE_NAME = "medical_fee_calculation.master_search";
 const MASTER_BROWSER_MODULE_NAME = "medical_fee_calculation.master_browser";
 const WORKER_MODULE_NAME = "medical_fee_calculation.worker";
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const DEFAULT_MASTER_SEARCH_CACHE_MAX_ENTRIES = 250;
+const DEFAULT_MASTER_SEARCH_CACHE_TTL_MS = 60_000;
 
 export function createFeeCalculatorFromEnv(env = process.env) {
   const gzipPath = env.FEE_MASTER_DB_GZIP_PATH || env.MEDICAL_FEE_MASTER_DB_GZIP_PATH || "";
@@ -24,7 +26,9 @@ export function createFeeCalculatorFromEnv(env = process.env) {
     masterDbPath,
     masterDbGzipPath: gzipPath,
     timeoutMs: Number(env.FEE_CALCULATOR_TIMEOUT_MS || 30000),
-    workerMode: env.FEE_PYTHON_WORKER_MODE === "spawn" || env.FEE_PYTHON_WORKER === "0" ? false : true
+    workerMode: env.FEE_PYTHON_WORKER_MODE === "spawn" || env.FEE_PYTHON_WORKER === "0" ? false : true,
+    masterSearchCacheMaxEntries: positiveInteger(env.FEE_MASTER_SEARCH_CACHE_MAX_ENTRIES, DEFAULT_MASTER_SEARCH_CACHE_MAX_ENTRIES),
+    masterSearchCacheTtlMs: positiveInteger(env.FEE_MASTER_SEARCH_CACHE_TTL_MS, DEFAULT_MASTER_SEARCH_CACHE_TTL_MS)
   });
   if (env.FEE_MASTER_DB_PREPARE_ON_START === "true") {
     calculator.ensureMasterDbReady().catch(() => {});
@@ -46,6 +50,9 @@ export class PythonFeeCalculator {
     this.workerStderrBuffer = "";
     this.workerRequestCounter = 0;
     this.workerPending = new Map();
+    this.masterSearchCache = new Map();
+    this.masterSearchCacheMaxEntries = options.masterSearchCacheMaxEntries ?? DEFAULT_MASTER_SEARCH_CACHE_MAX_ENTRIES;
+    this.masterSearchCacheTtlMs = options.masterSearchCacheTtlMs ?? DEFAULT_MASTER_SEARCH_CACHE_TTL_MS;
   }
 
   async calculate(session, input = {}) {
@@ -73,18 +80,29 @@ export class PythonFeeCalculator {
 
   async searchMaster(input = {}) {
     await this.ensureMasterDbReady();
-    return runPythonJson({
-      moduleName: MASTER_SEARCH_MODULE_NAME,
-      pythonBin: this.pythonBin,
-      pythonPath: this.pythonPath,
-      timeoutMs: Math.min(this.timeoutMs, 10000),
-      payload: {
-        db_path: this.masterDbPath,
-        type: input.type,
-        query: input.query || input.q,
-        limit: input.limit
-      }
-    });
+    const payload = {
+      db_path: this.masterDbPath,
+      type: input.type,
+      query: input.query || input.q,
+      limit: input.limit
+    };
+    const cacheKey = this.masterSearchCacheKey(payload);
+    const cached = this.getCachedMasterSearch(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const promise = this.executeMasterSearch(payload)
+      .then((result) => {
+        this.setCachedMasterSearch(cacheKey, result);
+        return result;
+      })
+      .catch((error) => {
+        this.masterSearchCache.delete(cacheKey);
+        throw error;
+      });
+    this.setPendingMasterSearch(cacheKey, promise);
+    return promise;
   }
 
   async browseMaster(input = {}) {
@@ -119,7 +137,10 @@ export class PythonFeeCalculator {
       masterDbGzipBytes: masterDbGzipPathExists ? statSync(this.masterDbGzipPath).size : null,
       timeoutMs: this.timeoutMs,
       workerMode: this.workerMode ? "persistent" : "spawn",
-      workerRunning: Boolean(this.worker)
+      workerRunning: Boolean(this.worker),
+      masterSearchCacheEntries: this.masterSearchCache.size,
+      masterSearchCacheMaxEntries: this.masterSearchCacheMaxEntries,
+      masterSearchCacheTtlMs: this.masterSearchCacheTtlMs
     };
   }
 
@@ -170,16 +191,17 @@ export class PythonFeeCalculator {
     }
   }
 
-  runWorkerJson(payload) {
+  runWorkerJson(payload, options = {}) {
     const child = this.ensureWorker();
-    const requestId = `fee_calc_${++this.workerRequestCounter}`;
+    const requestId = `${options.requestIdPrefix || "fee_calc"}_${++this.workerRequestCounter}`;
+    const timeoutMs = options.timeoutMs || this.timeoutMs;
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.workerPending.delete(requestId);
         this.stopWorker();
         reject(feeCalculationTimeoutError());
-      }, this.timeoutMs);
+      }, timeoutMs);
       this.workerPending.set(requestId, {
         resolve,
         reject,
@@ -187,6 +209,87 @@ export class PythonFeeCalculator {
       });
       child.stdin.write(`${JSON.stringify({ id: requestId, payload })}\n`);
     });
+  }
+
+  executeMasterSearch(payload) {
+    const timeoutMs = Math.min(this.timeoutMs, 10000);
+    if (this.workerMode) {
+      return this.runWorkerJson(
+        {
+          ...payload,
+          op: "master_search"
+        },
+        {
+          requestIdPrefix: "fee_master_search",
+          timeoutMs
+        }
+      );
+    }
+    return runPythonJson({
+      moduleName: MASTER_SEARCH_MODULE_NAME,
+      pythonBin: this.pythonBin,
+      pythonPath: this.pythonPath,
+      timeoutMs,
+      payload
+    });
+  }
+
+  masterSearchCacheKey(payload) {
+    return JSON.stringify({
+      dbPath: payload.db_path || "",
+      type: String(payload.type || "all").trim().toLowerCase(),
+      query: String(payload.query || payload.q || "").trim(),
+      limit: payload.limit ?? null
+    });
+  }
+
+  getCachedMasterSearch(cacheKey) {
+    const entry = this.masterSearchCache.get(cacheKey);
+    if (!entry) {
+      return null;
+    }
+    if (entry.promise) {
+      return entry.promise;
+    }
+    if (entry.expiresAt <= Date.now()) {
+      this.masterSearchCache.delete(cacheKey);
+      return null;
+    }
+    this.masterSearchCache.delete(cacheKey);
+    this.masterSearchCache.set(cacheKey, entry);
+    return entry.result;
+  }
+
+  setPendingMasterSearch(cacheKey, promise) {
+    this.masterSearchCache.set(cacheKey, {
+      promise,
+      expiresAt: Date.now() + this.masterSearchCacheTtlMs
+    });
+    this.pruneMasterSearchCache();
+  }
+
+  setCachedMasterSearch(cacheKey, result) {
+    this.masterSearchCache.set(cacheKey, {
+      result,
+      expiresAt: Date.now() + this.masterSearchCacheTtlMs
+    });
+    this.pruneMasterSearchCache();
+  }
+
+  pruneMasterSearchCache() {
+    const now = Date.now();
+    for (const [cacheKey, entry] of this.masterSearchCache.entries()) {
+      if (!entry.promise && entry.expiresAt <= now) {
+        this.masterSearchCache.delete(cacheKey);
+      }
+    }
+    while (this.masterSearchCache.size > this.masterSearchCacheMaxEntries) {
+      const oldestKey = this.masterSearchCache.keys().next().value;
+      if (!oldestKey) {
+        break;
+      }
+      this.masterSearchCache.delete(oldestKey);
+    }
   }
 
   ensureWorker() {
@@ -291,6 +394,14 @@ function feeCalculationTimeoutError() {
   error.name = "FeeCalculationTimeoutError";
   error.statusCode = 504;
   return error;
+}
+
+function positiveInteger(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return Math.floor(parsed);
 }
 
 function runPythonJson(options) {

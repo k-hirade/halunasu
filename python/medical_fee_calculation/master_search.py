@@ -8,6 +8,7 @@ from typing import Any
 
 
 MASTER_TYPES = frozenset({"procedure", "drug", "material", "comment", "all"})
+_DB_CONNECTIONS: dict[str, sqlite3.Connection] = {}
 
 
 def search_master(payload: dict[str, Any]) -> dict[str, Any]:
@@ -25,26 +26,33 @@ def search_master(payload: dict[str, Any]) -> dict[str, Any]:
 
     limit = _bounded_limit(payload.get("limit"))
     per_type_limit = limit if master_type != "all" else max(3, min(8, limit))
-    db = sqlite3.connect(Path(db_path))
-    db.row_factory = sqlite3.Row
-    try:
-        items: list[dict[str, Any]] = []
-        if master_type in {"procedure", "all"}:
-            items.extend(_search_procedures(db, query, per_type_limit))
-        if master_type in {"drug", "all"}:
-            items.extend(_search_drugs(db, query, per_type_limit))
-        if master_type in {"material", "all"}:
-            items.extend(_search_materials(db, query, per_type_limit))
-        if master_type in {"comment", "all"}:
-            items.extend(_search_comments(db, query, per_type_limit))
-    finally:
-        db.close()
+    db = _master_db(db_path)
+    items: list[dict[str, Any]] = []
+    if master_type in {"procedure", "all"}:
+        items.extend(_search_procedures(db, query, per_type_limit))
+    if master_type in {"drug", "all"}:
+        items.extend(_search_drugs(db, query, per_type_limit))
+    if master_type in {"material", "all"}:
+        items.extend(_search_materials(db, query, per_type_limit))
+    if master_type in {"comment", "all"}:
+        items.extend(_search_comments(db, query, per_type_limit))
 
     return {
         "query": query,
         "type": master_type,
         "items": items[:limit],
     }
+
+
+def _master_db(db_path: str) -> sqlite3.Connection:
+    resolved_path = str(Path(db_path).expanduser().resolve())
+    db = _DB_CONNECTIONS.get(resolved_path)
+    if db is None:
+        db = sqlite3.connect(resolved_path)
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA query_only = ON")
+        _DB_CONNECTIONS[resolved_path] = db
+    return db
 
 
 def _search_procedures(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
