@@ -90,6 +90,8 @@ Use:
 - `requiredReviewTopics` for review reasons that must be surfaced.
 - `forbiddenCandidates` for candidates that must not be produced or must not be marked as finalized.
 
+For `exact` cases, `expectedClaimContext` must still be supported by the SOAP note. Context-derived does not mean arbitrary: if an exact case expects CT, MRI, simple radiography, ultrasound, electronic image management, CT equipment kind, or outside prescription fee, the chart must contain a corresponding current-visit clinical anchor. Review-topic text such as `CT機器区分確認` alone is not enough evidence that CT was performed.
+
 For `review_required`, `unsupported_expected`, `safety`, and `split_required` cases, `forbiddenCandidates` means the item must not be treated as an automatically finalized billing line before the required review topics are resolved. A review-only mention is allowed when the case also expects `engineStatus=needs_review`.
 
 ## Visit History Setup

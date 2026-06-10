@@ -83,6 +83,9 @@ for (const item of data.cases || []) {
   if (/E2E|テスト|抽出/.test(chartText)) {
     errors.push(`${id}: chart text contains test metadata`);
   }
+  for (const message of exactClaimContextEvidenceErrors(item, chartText)) {
+    errors.push(`${id}: ${message}`);
+  }
 
   const extraction = item.expectedExtraction;
   if (!extraction) {
@@ -239,4 +242,74 @@ function normalizeLabel(value) {
     .normalize("NFKC")
     .replace(/\s+/g, "")
     .trim();
+}
+
+function exactClaimContextEvidenceErrors(item, chartText) {
+  if (item.expectedCalculation?.assertionLevel !== "exact") return [];
+  const messages = [];
+  const normalizedText = normalizeEvidenceText(chartText);
+  for (const [index, order] of (item.expectedClaimContext?.imaging_orders || []).entries()) {
+    const kind = normalizeLabel(order?.kind).toLowerCase();
+    if (!kind) continue;
+    if (!hasImagingModalityEvidence(normalizedText, kind)) {
+      messages.push(`expectedClaimContext.imaging_orders[${index}].kind=${kind} is not supported by performed imaging wording in chart`);
+    }
+    if (order.electronic_image_management && !hasElectronicImageManagementEvidence(normalizedText)) {
+      messages.push(`expectedClaimContext.imaging_orders[${index}].electronic_image_management=true lacks electronic image management wording in chart`);
+    }
+    if (kind === "ct" && order.ct_equipment_kind && !hasCtEquipmentEvidence(normalizedText, order.ct_equipment_kind)) {
+      messages.push(`expectedClaimContext.imaging_orders[${index}].ct_equipment_kind=${order.ct_equipment_kind} lacks CT equipment-kind wording in chart`);
+    }
+  }
+
+  const expectedCodes = new Set((item.expectedCalculation?.candidateCodes || []).map(String));
+  if (expectedCodes.has("120002910") && !hasOutsidePrescriptionEvidence(normalizedText)) {
+    messages.push("candidate code 120002910 requires outside-prescription wording in chart");
+  }
+  return messages;
+}
+
+function normalizeEvidenceText(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    // Review topics can contain billing labels used only as expected review language.
+    // They are not evidence that the clinical service was performed.
+    .replace(/確認すべき論点は「[^」]*」/gu, "")
+    .replace(/確認論点は「[^」]*」/gu, "")
+    .replace(/\s+/g, "");
+}
+
+function hasImagingModalityEvidence(text, kind) {
+  switch (kind) {
+    case "ct":
+      return /CT撮影|CTを実施|CTで撮影|CT検査|コンピューター?断層|マルチスライスCT/u.test(text);
+    case "mri":
+      return /MRI撮影|MRIを実施|MRI検査|磁気共鳴/u.test(text);
+    case "simple_radiography":
+    case "xray":
+      return /単純X線撮影|X線撮影|X線を実施|レントゲン|単純撮影/u.test(text);
+    case "ultrasound":
+      return /超音波検査|超音波を実施|エコー/u.test(text);
+    default:
+      return true;
+  }
+}
+
+function hasElectronicImageManagementEvidence(text) {
+  return /電子画像管理|電子的?に?保存|電子保存|電子.*管理/u.test(text);
+}
+
+function hasCtEquipmentEvidence(text, equipmentKind) {
+  const kind = normalizeLabel(equipmentKind).toLowerCase();
+  if (kind === "multislice_16_to_64") {
+    return /16列以上64列未満|16列.*64列未満|マルチスライス型機器|マルチスライスCT/u.test(text);
+  }
+  if (kind === "multislice_64_or_more") {
+    return /64列以上|64列.*マルチスライス/u.test(text);
+  }
+  return /機器区分|マルチスライス|CT撮影/u.test(text);
+}
+
+function hasOutsidePrescriptionEvidence(text) {
+  return /院外処方箋|院外処方|処方箋.*交付|院外薬局/u.test(text);
 }

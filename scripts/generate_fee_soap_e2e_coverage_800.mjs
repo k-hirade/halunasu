@@ -312,18 +312,72 @@ function makeExactCase({ source, caseId, department, domain, index }) {
     clone.expectedClaimContext.encounter.service_date = serviceDate;
     clone.expectedClaimContext.encounter.is_outpatient = clone.encounter.setting !== "inpatient";
   }
+  const exactScenario = scenarioAlignedToExactContext(scenario, clone);
   clone.chart = {
     format: "soap",
-    soap: buildSoap({ scenario, patient: clone.patient, encounter: clone.encounter, assertionLevel: "exact" }),
+    soap: buildSoap({ scenario: exactScenario, patient: clone.patient, encounter: clone.encounter, assertionLevel: "exact" }),
     standard: ""
   };
   clone.chart.standard = standardNote(clone.chart.soap);
-  clone.expectedExtraction = expectedExtractionForExact(clone, scenario);
+  clone.expectedExtraction = expectedExtractionForExact(clone, exactScenario);
   clone.status = "master_verified";
   clone.qualityLabel = "verified";
   clone.reviewPolicy = reviewPolicy("exact", true);
   clone.sourceReviewPolicy = sourceReviewPolicy("exact", true);
   return clone;
+}
+
+function scenarioAlignedToExactContext(scenario, item) {
+  const aligned = { ...scenario };
+  const billingTargetNames = (item.billingTargets || [])
+    .map((target) => String(target.name || "").trim())
+    .filter(Boolean);
+  if (billingTargetNames.length) {
+    aligned.targets = billingTargetNames.map((name) => ({
+      name,
+      type: targetTypeForName(name)
+    }));
+  }
+
+  const imagingOrders = item.expectedClaimContext?.imaging_orders || [];
+  if (imagingOrders.length) {
+    aligned.objective = exactImagingObjective(imagingOrders, scenario.objective);
+  }
+  if ((item.expectedCalculation?.candidateCodes || []).map(String).includes("120002910")) {
+    aligned.chief = `${scenario.chief} 当日は院外処方箋を交付した。`;
+    aligned.objective = "当日、院外処方箋を交付した。処方箋料、院内外区分、一般名処方の有無を診療録で確認した。";
+  }
+
+  return aligned;
+}
+
+function targetTypeForName(name) {
+  if (/CT|ＣＴ|MRI|単純撮影|X線|Ｘ線|超音波|画像/u.test(name)) return "imaging_candidate";
+  if (/処方|調剤|薬/u.test(name)) return "medication_fee_candidate";
+  if (/初診料|再診料|入院料/u.test(name)) return "basic_fee";
+  if (/判断料|検査|CRP|ＣＲＰ|HbA1c|ＨｂＡ１ｃ/u.test(name)) return "lab_candidate";
+  return "fee_candidate";
+}
+
+function exactImagingObjective(imagingOrders, fallback) {
+  const order = imagingOrders[0] || {};
+  const kind = String(order.kind || "").toLowerCase();
+  if (kind === "ct") {
+    const equipment = order.ct_equipment_kind === "multislice_16_to_64"
+      ? "16列以上64列未満マルチスライス型機器"
+      : "機器区分";
+    return `CT撮影を実施し、身体所見と照合した。${equipment}、撮影部位、電子保存、造影有無を診療録で確認した。`;
+  }
+  if (kind === "mri") {
+    return "MRI撮影を実施し、身体所見と照合した。機器区分、撮影部位、電子保存、造影有無を診療録で確認した。";
+  }
+  if (kind === "simple_radiography" || kind === "xray") {
+    return "単純X線撮影を実施し、身体所見と照合した。撮影部位、撮影方式、電子保存、写真診断区分を診療録で確認した。";
+  }
+  if (kind === "ultrasound") {
+    return "超音波検査を実施し、身体所見と照合した。検査部位、検査方法、所見を診療録で確認した。";
+  }
+  return fallback;
 }
 
 function makeNonExactCase({ caseId, assertionLevel, department, domain, index }) {
