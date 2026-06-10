@@ -41,7 +41,7 @@ const DPC_CONTEXT_PATTERN = /DPC|診断群分類|包括評価/u;
 const STRONG_INPATIENT_CONTEXT_PATTERN = /入院\s*\d{1,2}\s*日目|入院中|入院管理|病棟で|病棟管理|急性期一般入院料\s*[1-6]|入院基本料|DPC対象病院|DPC.*(?:管理|入院|対象)|(?:入院|病棟).*(?:継続|管理|観察)/u;
 const NON_CURRENT_INPATIENT_CONTEXT_PATTERN = /入院適応(?:は)?低い|入院適応なし|入院不要|入院なし|入院は不要|退院後|退院希望|入院歴|過去.{0,12}入院|前回入院|入院前/u;
 
-export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v3";
+export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v4";
 
 const DIRECT_RETRIEVAL_FEE_CATEGORIES_BY_EVENT_TYPE = Object.freeze({
   lab: new Set(["lab_test_basic"]),
@@ -49,8 +49,8 @@ const DIRECT_RETRIEVAL_FEE_CATEGORIES_BY_EVENT_TYPE = Object.freeze({
   exam: new Set(["lab_test_basic", "imaging_basic", "physiological_exam_basic", "procedure_basic"]),
   procedure: new Set(["procedure_basic", "treatment_basic", "physiological_exam_basic"]),
   treatment: new Set(["procedure_basic", "treatment_basic"]),
-  management: new Set(["management_fee"]),
-  counseling: new Set(["management_fee"])
+  management: new Set(),
+  counseling: new Set()
 });
 
 const CT_EQUIPMENT_KIND_PATTERNS = Object.freeze([
@@ -695,34 +695,19 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
 
     if (["management", "counseling"].includes(type)) {
       const categoryLabel = type === "management" ? "医学管理等" : "指導料";
-      const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
-        categoryLabel,
-        allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event)
-      });
-      if (procedure.procedureCodes.length) {
-        procedureCodes.push(...procedure.procedureCodes);
-        commentInputs.push(...procedure.commentInputs);
-        collectionFeeInputs.push(...procedure.collectionFeeInputs);
-        masterCandidates.push(...asArray(procedure.masterCandidates));
-        billingCandidates.push(...billingCandidatesFromProcedureResult(event, procedure));
-        reviewWarnings.push(...procedure.reviewWarnings);
-        clinicalTrace.push(...asArray(procedure.traceEvents));
-      } else {
-        const proposal = await clinicalEventCandidateProposal(event, feeCalculator, {
-          categoryLabel,
-          sortOrder: type === "management" ? 25 : 30
-        });
-        if (proposal) {
-          candidateProposals.push(proposal);
-          billingCandidates.push(billingCandidateFromProposal(event, proposal));
-        } else {
-          const issue = reviewIssueFromUnsupportedClinicalEvent(event);
-          if (issue) {
-            reviewIssues.push(issue);
-            reviewWarnings.push(issue.messageForStaff);
-          }
-        }
+      const issue = reviewIssueFromManagementClinicalEvent(event, { categoryLabel });
+      if (issue) {
+        reviewIssues.push(issue);
+        reviewWarnings.push(issue.messageForStaff);
       }
+      clinicalTrace.push(clinicalTraceEvent({
+        stage: "management_review_gate",
+        event,
+        categoryLabel,
+        outcome: "review_required",
+        allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event),
+        message: "management_fee_direct_retrieval_disabled"
+      }));
       continue;
     }
 
@@ -1069,8 +1054,9 @@ function directRetrievalFilterReason(item = {}, { allowedFeeCategories = null } 
   if (classified.derivedOnly || !classified.directRetrievalAllowed) {
     return `derived_only:${classified.itemRole || classified.feeCategory}`;
   }
+  const hasExplicitCategoryGate = allowedFeeCategories instanceof Set || Array.isArray(allowedFeeCategories);
   const allowed = allowedFeeCategorySet(allowedFeeCategories);
-  if (allowed.size && !allowed.has(classified.feeCategory)) {
+  if (hasExplicitCategoryGate && !allowed.has(classified.feeCategory)) {
     return `category_gate:${classified.feeCategory}`;
   }
   return "";
@@ -2430,6 +2416,23 @@ function reviewIssueFromUnsupportedClinicalEvent(event = {}) {
   };
 }
 
+function reviewIssueFromManagementClinicalEvent(event = {}, { categoryLabel = "医学管理等" } = {}) {
+  const name = clinicalEventName(event);
+  const title = name ? `${name}の算定条件確認` : `${categoryLabel}の算定条件確認`;
+  const messageForStaff = `${name || categoryLabel}は管理料・指導料に関係する記載として抽出しました。対象疾患、指導・説明の記録、管理主体、施設基準、同月算定履歴を確認してから採用してください。自動算定には入れていません。`;
+  return {
+    reviewIssueId: `issue_${candidateIdPart([event?.clinicalEventId, title, messageForStaff].join("_"))}`,
+    issueCode: "management_fee_review_required",
+    severity: "warning",
+    title,
+    messageForStaff,
+    requiredInput: "対象疾患、指導・説明の記録、管理主体、施設基準、同月算定履歴",
+    relatedClinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    evidence: clinicalEventEvidence(event),
+    source: "management_review_gate"
+  };
+}
+
 function reviewIssueCodeFromWarning(message = "", event = {}) {
   const text = String(message || "");
   const status = normalizeClinicalEventStatus(event);
@@ -2720,7 +2723,14 @@ function labCollectionFeeInputsFromClinicalEvent(event = {}, procedure = {}) {
   if (!asArray(procedure?.procedureCodes).length) {
     return [];
   }
-  return hasExplicitBloodCollectionEvidence(event) ? ["blood_venous"] : [];
+  const inputs = [];
+  if (hasExplicitBloodCollectionEvidence(event)) {
+    inputs.push("blood_venous");
+  }
+  if (hasNasopharyngealSwabCollectionEvidence(event)) {
+    inputs.push("nasopharyngeal_swab");
+  }
+  return uniqueStrings(inputs);
 }
 
 function hasExplicitBloodCollectionEvidence(event = {}) {
@@ -2732,6 +2742,17 @@ function hasExplicitBloodCollectionEvidence(event = {}) {
     event?.payload?.specimen
   ].filter(Boolean).join("\n"));
   return /採血|血液検査|血清|血漿|末梢血|静脈血/u.test(text);
+}
+
+function hasNasopharyngealSwabCollectionEvidence(event = {}) {
+  const text = normalizeClinicalText([
+    clinicalEventName(event),
+    clinicalEventEvidence(event),
+    event?.specimen,
+    event?.sample,
+    event?.payload?.specimen
+  ].filter(Boolean).join("\n"));
+  return /鼻咽頭|鼻腔|咽頭|ぬぐい|拭い|スワブ|swab/iu.test(text);
 }
 
 function labRuleTraceEvents(event = {}, procedure = {}) {
@@ -2751,12 +2772,12 @@ function labRuleTraceEvents(event = {}, procedure = {}) {
       reason: "判断料と施設基準が確認できる場合のみ検体検査管理加算を派生します。"
     }
   ];
-  if (hasExplicitBloodCollectionEvidence(event)) {
+  for (const input of labCollectionFeeInputsFromClinicalEvent(event, { procedureCodes })) {
     derived.push({
       kind: "collection_fee_input",
       generatedBy: "clinical_event.lab_collection_input",
-      input: "blood_venous",
-      reason: "カルテに採血または血液検査の明示があるため、採血料の候補入力を渡します。"
+      input,
+      reason: collectionFeeInputTraceReason(input)
     });
   }
   return [
@@ -2772,6 +2793,16 @@ function labRuleTraceEvents(event = {}, procedure = {}) {
       }
     })
   ];
+}
+
+function collectionFeeInputTraceReason(input = "") {
+  if (input === "blood_venous") {
+    return "カルテに採血または血液検査の明示があるため、採血料の候補入力を渡します。";
+  }
+  if (input === "nasopharyngeal_swab") {
+    return "カルテに鼻咽頭・鼻腔・咽頭ぬぐい等の検体採取が明示されているため、検体採取料の候補入力を渡します。";
+  }
+  return "カルテに検体採取が明示されているため、検体採取料の候補入力を渡します。";
 }
 
 async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculator, options = {}) {

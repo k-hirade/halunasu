@@ -1037,7 +1037,7 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
   assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v2");
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v3");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v4");
   assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
     event.name === "腰椎X線"
     && event.actionStatus === "performed"
@@ -1578,7 +1578,7 @@ test("replaces stale auto diagnoses and resolves generic clinical event search q
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
   assert.deepEqual(
     receivedInput.calculationOptions.procedure_codes.sort(),
-    ["113900000", "160004810"].sort()
+    ["160004810"]
   );
   assert.equal(receivedInput.calculationOptions.lab_options, undefined);
   assert.deepEqual(
@@ -1590,9 +1590,13 @@ test("replaces stale auto diagnoses and resolves generic clinical event search q
     false
   );
   assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("糖尿病合併症管理料")), false);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => (
+    issue.issueCode === "management_fee_review_required"
+    && issue.messageForStaff.includes("療養計画書による管理指導")
+  )));
 });
 
-test("builds adoptable management proposals from generic clinical event search queries", async () => {
+test("gates management events into review instead of adoptable proposals", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let receivedInput = null;
@@ -1691,30 +1695,19 @@ test("builds adoptable management proposals from generic clinical event search q
     headers,
     { clinicalFactsExtractor }
   );
-  const proposal = calculation.body.candidateWorkbench.proposals.find((item) => (
-    item.displayTitle.includes("慢性疾患指導")
-  ));
-  assert.ok(proposal);
-  const adopted = await request(
-    stores,
-    "PATCH",
-    `/v1/fee/sessions/${current.body.feeSession.feeSessionId}/review-items/${encodeURIComponent(proposal.reviewItemId)}`,
-    { status: "approved", note: "条件確認済み" },
-    headers
-  );
-
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
   assert.equal(receivedInput.calculationOptions.procedure_codes, undefined);
-  assert.equal(proposal.canAdopt, true);
-  assert.equal(proposal.potentialPoints, 225);
-  assert.equal(calculation.body.candidateWorkbench.potentialPointsTotal, 225);
+  assert.equal(calculation.body.candidateWorkbench.proposals.length, 0);
+  assert.equal(calculation.body.candidateWorkbench.potentialPointsTotal, 0);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => (
+    issue.issueCode === "management_fee_review_required"
+    && issue.messageForStaff.includes("慢性疾患指導")
+  )));
   assert.equal(
     calculation.body.calculationResult.warnings.some((warning) => warning.includes("再指導")),
     false
   );
-  assert.equal(adopted.statusCode, 200);
-  assert.equal(adopted.body.receiptDraft.totalPoints, 300);
 });
 
 test("merges deterministic performed imaging when structured facts miss it", async () => {

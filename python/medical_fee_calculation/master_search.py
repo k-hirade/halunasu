@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+import unicodedata
 from pathlib import Path
 from typing import Any
 
 
 MASTER_TYPES = frozenset({"procedure", "drug", "material", "comment", "all"})
 _DB_CONNECTIONS: dict[str, sqlite3.Connection] = {}
+_MAX_QUERY_VARIANTS = 8
 
 
 def search_master(payload: dict[str, Any]) -> dict[str, Any]:
@@ -56,8 +58,16 @@ def _master_db(db_path: str) -> sqlite3.Connection:
 
 
 def _search_procedures(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+    search_condition, search_params = _text_search_condition(
+        (
+            "p.code",
+            "p.short_name",
+            "COALESCE(p.base_name, '')",
+        ),
+        query,
+    )
     rows = db.execute(
-        """
+        f"""
         SELECT
             p.code,
             p.short_name AS name,
@@ -91,11 +101,7 @@ def _search_procedures(db: sqlite3.Connection, query: str, limit: int) -> list[d
             ORDER BY imported_at DESC, id DESC
             LIMIT 1
           )
-          AND (
-            p.code LIKE ?
-            OR p.short_name LIKE ?
-            OR COALESCE(p.base_name, '') LIKE ?
-          )
+          AND ({search_condition})
         ORDER BY
             CASE
               WHEN p.code = ? THEN 0
@@ -105,7 +111,7 @@ def _search_procedures(db: sqlite3.Connection, query: str, limit: int) -> list[d
             p.code
         LIMIT ?
         """,
-        (*_like_params(query), query, f"{query}%", limit),
+        (*search_params, query, f"{query}%", limit),
     ).fetchall()
     return [
         _medical_procedure_item(row)
@@ -203,8 +209,17 @@ def _section_between(value: str, minimum: int, maximum: int) -> bool:
 
 
 def _search_drugs(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+    search_condition, search_params = _text_search_condition(
+        (
+            "d.code",
+            "d.name",
+            "COALESCE(d.base_name, '')",
+            "COALESCE(d.kana, '')",
+        ),
+        query,
+    )
     rows = db.execute(
-        """
+        f"""
         SELECT
             d.code,
             d.name,
@@ -226,12 +241,7 @@ def _search_drugs(db: sqlite3.Connection, query: str, limit: int) -> list[dict[s
             ORDER BY imported_at DESC, id DESC
             LIMIT 1
           )
-          AND (
-            d.code LIKE ?
-            OR d.name LIKE ?
-            OR COALESCE(d.base_name, '') LIKE ?
-            OR COALESCE(d.kana, '') LIKE ?
-          )
+          AND ({search_condition})
         ORDER BY
             CASE
               WHEN d.code = ? THEN 0
@@ -241,7 +251,7 @@ def _search_drugs(db: sqlite3.Connection, query: str, limit: int) -> list[dict[s
             d.code
         LIMIT ?
         """,
-        (*_like_params(query, count=4), query, f"{query}%", limit),
+        (*search_params, query, f"{query}%", limit),
     ).fetchall()
     return [
         _compact(
@@ -265,8 +275,17 @@ def _search_drugs(db: sqlite3.Connection, query: str, limit: int) -> list[dict[s
 
 
 def _search_materials(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+    search_condition, search_params = _text_search_condition(
+        (
+            "m.code",
+            "m.name",
+            "COALESCE(m.base_name, '')",
+            "COALESCE(m.kana, '')",
+        ),
+        query,
+    )
     rows = db.execute(
-        """
+        f"""
         SELECT
             m.code,
             m.name,
@@ -288,12 +307,7 @@ def _search_materials(db: sqlite3.Connection, query: str, limit: int) -> list[di
             ORDER BY imported_at DESC, id DESC
             LIMIT 1
           )
-          AND (
-            m.code LIKE ?
-            OR m.name LIKE ?
-            OR COALESCE(m.base_name, '') LIKE ?
-            OR COALESCE(m.kana, '') LIKE ?
-          )
+          AND ({search_condition})
         ORDER BY
             CASE
               WHEN m.code = ? THEN 0
@@ -303,7 +317,7 @@ def _search_materials(db: sqlite3.Connection, query: str, limit: int) -> list[di
             m.code
         LIMIT ?
         """,
-        (*_like_params(query, count=4), query, f"{query}%", limit),
+        (*search_params, query, f"{query}%", limit),
     ).fetchall()
     return [
         _compact(
@@ -327,8 +341,16 @@ def _search_materials(db: sqlite3.Connection, query: str, limit: int) -> list[di
 
 
 def _search_comments(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+    search_condition, search_params = _text_search_condition(
+        (
+            "c.code",
+            "c.comment_text",
+            "COALESCE(c.kana, '')",
+        ),
+        query,
+    )
     rows = db.execute(
-        """
+        f"""
         SELECT
             c.code,
             c.comment_text,
@@ -347,11 +369,7 @@ def _search_comments(db: sqlite3.Connection, query: str, limit: int) -> list[dic
             ORDER BY imported_at DESC, id DESC
             LIMIT 1
           )
-          AND (
-            c.code LIKE ?
-            OR c.comment_text LIKE ?
-            OR COALESCE(c.kana, '') LIKE ?
-          )
+          AND ({search_condition})
         ORDER BY
             CASE
               WHEN c.code = ? THEN 0
@@ -361,7 +379,7 @@ def _search_comments(db: sqlite3.Connection, query: str, limit: int) -> list[dic
             c.code
         LIMIT ?
         """,
-        (*_like_params(query), query, f"{query}%", limit),
+        (*search_params, query, f"{query}%", limit),
     ).fetchall()
     return [
         _compact(
@@ -381,9 +399,67 @@ def _search_comments(db: sqlite3.Connection, query: str, limit: int) -> list[dic
     ]
 
 
-def _like_params(query: str, *, count: int = 3) -> tuple[str, ...]:
-    like = f"%{query}%"
-    return tuple(like for _ in range(count))
+def _text_search_condition(fields: tuple[str, ...], query: str) -> tuple[str, tuple[str, ...]]:
+    variants = _query_variants(query)
+    clauses: list[str] = []
+    params: list[str] = []
+    for field in fields:
+        for variant in variants:
+            clauses.append(f"{field} LIKE ?")
+            params.append(f"%{variant}%")
+    return " OR ".join(clauses), tuple(params)
+
+
+def _query_variants(query: str) -> tuple[str, ...]:
+    raw = str(query or "").strip()
+    if not raw:
+        return ("",)
+
+    nfkc = unicodedata.normalize("NFKC", raw)
+    candidates = [
+        raw,
+        nfkc,
+        _ascii_alnum_to_fullwidth(nfkc),
+        _ascii_alnum_to_fullwidth(nfkc.upper()),
+        _ascii_alnum_to_fullwidth(nfkc.lower()),
+    ]
+    for value in list(candidates):
+        candidates.extend(_hyphen_variants(value))
+
+    seen: set[str] = set()
+    variants: list[str] = []
+    for value in candidates:
+        normalized = str(value or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        variants.append(normalized)
+        if len(variants) >= _MAX_QUERY_VARIANTS:
+            break
+    return tuple(variants)
+
+
+def _ascii_alnum_to_fullwidth(value: str) -> str:
+    converted: list[str] = []
+    for char in str(value or ""):
+        code = ord(char)
+        if 0x30 <= code <= 0x39 or 0x41 <= code <= 0x5A or 0x61 <= code <= 0x7A:
+            converted.append(chr(code + 0xFEE0))
+        elif char == "-":
+            converted.append("－")
+        else:
+            converted.append(char)
+    return "".join(converted)
+
+
+def _hyphen_variants(value: str) -> list[str]:
+    text = str(value or "")
+    if not any(char in text for char in ("-", "－", "−")):
+        return []
+    variants = []
+    for hyphen in ("-", "－", "−"):
+        variants.append(text.replace("-", hyphen).replace("－", hyphen).replace("−", hyphen))
+    return variants
 
 
 def _bounded_limit(value: object) -> int:
