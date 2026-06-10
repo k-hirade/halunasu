@@ -241,7 +241,7 @@ export function buildReceiptDraft(session = {}, options = {}) {
   const baseLineKeys = new Set(baseLines.map((line) => receiptLineSemanticKey(line)));
   const adoptedProposalLines = candidateProposals
     .filter((proposal) => proposalIncludedInTotal(proposal, decisions))
-    .map((proposal, index) => receiptLineFromProposal(proposal, index, calculation))
+    .map((proposal, index) => receiptLineFromProposal(proposal, index, calculation, { included: true }))
     .filter((line) => {
       const key = receiptLineSemanticKey(line);
       if (baseLineKeys.has(key)) {
@@ -300,8 +300,9 @@ function receiptLineFromCalculationLine(line = {}, index = 0, calculation = {}, 
   };
 }
 
-function receiptLineFromProposal(proposal = {}, index = 0, calculation = {}) {
+function receiptLineFromProposal(proposal = {}, index = 0, calculation = {}, options = {}) {
   const line = proposal.candidateLine || {};
+  const included = options.included === true;
   return {
     receiptLineId: `proposal_${proposal.proposalId || index + 1}`,
     sourceLineId: line.lineId || null,
@@ -318,8 +319,8 @@ function receiptLineFromProposal(proposal = {}, index = 0, calculation = {}) {
     coverage: line.coverage || null,
     supportLevel: line.supportLevel || "candidate",
     reviewRequired: true,
-    inclusionStatus: "included",
-    includedInTotal: true
+    inclusionStatus: included ? "included" : "pending",
+    includedInTotal: included
   };
 }
 
@@ -693,6 +694,7 @@ function normalizeCandidateProposal(item = {}, index = 0) {
     code: item.code || candidateLine?.code || null,
     orderType: item.orderType || item.order_type || candidateLine?.orderType || null,
     source: item.source || "candidate_proposal",
+    policy: isPlainObject(item.policy) ? item.policy : null,
     candidateLine,
     sortOrder: Number(item.sortOrder ?? item.sort_order ?? index + 1)
   });
@@ -721,6 +723,8 @@ function normalizeClinicalEvents(items) {
         evidence: item.evidence || "",
         modality: item.modality || null,
         bodySite: item.bodySite || item.body_site || null,
+        specimen: item.specimen || item.sample || item.payload?.specimen || null,
+        collectionMethod: item.collectionMethod || item.collection_method || item.payload?.collectionMethod || item.payload?.collection_method || null,
         areaSizeCm2: item.areaSizeCm2 || item.area_size_cm2 || null,
         quantityPerDay: item.quantityPerDay || item.quantity_per_day || null,
         days: item.days || null,
@@ -827,9 +831,12 @@ function normalizeReviewIssues(items) {
         title: item.title || null,
         messageForStaff: item.messageForStaff || item.message_for_staff || item.message || item.reason || "",
         requiredInput: item.requiredInput || item.required_input || null,
-        relatedEventId: item.relatedEventId || item.related_event_id || null,
+        relatedEventId: item.relatedEventId || item.related_event_id || item.relatedClinicalEventId || item.related_clinical_event_id || null,
+        relatedClinicalEventId: item.relatedClinicalEventId || item.related_clinical_event_id || item.relatedEventId || item.related_event_id || null,
         relatedCandidateId: item.relatedCandidateId || item.related_candidate_id || null,
         evidence: item.evidence || null,
+        source: item.source || null,
+        policy: isPlainObject(item.policy) ? item.policy : null,
         resolutionOptions: Array.isArray(item.resolutionOptions) ? item.resolutionOptions : []
       });
     })
@@ -999,6 +1006,8 @@ function receiptGroupLabel(orderType) {
 
 function reviewItem(input) {
   const decision = isPlainObject(input.decision) ? input.decision : null;
+  const reviewIssue = isPlainObject(input.reviewIssue) ? input.reviewIssue : null;
+  const candidateProposal = isPlainObject(input.candidateProposal) ? input.candidateProposal : null;
   return compactObject({
     reviewItemId: input.reviewItemId,
     legacyReviewItemId: input.legacyReviewItemId,
@@ -1007,6 +1016,9 @@ function reviewItem(input) {
     title: input.title,
     reason: input.reason,
     status: decision?.status || input.defaultStatus || "needs_review",
+    issueCode: input.issueCode || reviewIssue?.issueCode || reviewIssue?.issue_code || null,
+    source: input.source || reviewIssue?.source || candidateProposal?.source || null,
+    policy: input.policy || reviewIssue?.policy || candidateProposal?.policy || null,
     decision,
     lineItem: input.lineItem,
     candidateProposal: input.candidateProposal,
@@ -1055,9 +1067,18 @@ function proposalDecision(proposal = {}, decisions = {}) {
 }
 
 function proposalIncludedInTotal(proposal = {}, decisions = {}) {
+  if (proposalIsReviewOnly(proposal)) {
+    return false;
+  }
   return proposalDecision(proposal, decisions)?.status === "approved"
     && isPlainObject(proposal.candidateLine)
     && Number(proposal.potentialPoints || proposal.candidateLine?.totalPoints || 0) > 0;
+}
+
+function proposalIsReviewOnly(proposal = {}) {
+  return proposal.policy?.riskGate === "review_only"
+    || proposal.actionType === "review_only"
+    || proposal.actionType === "not_billable_now";
 }
 
 function receiptLineSemanticKey(line = {}) {
@@ -1102,17 +1123,25 @@ function reviewWarningTitle(message = "") {
 
 function normalizeCandidateActionItem(item = {}) {
   const proposal = item.candidateProposal || null;
+  const reviewIssue = item.reviewIssue || null;
+  const issueCode = item.issueCode || reviewIssue?.issueCode || reviewIssue?.issue_code || null;
+  const policy = item.policy || reviewIssue?.policy || proposal?.policy || null;
+  const source = item.source || reviewIssue?.source || proposal?.source || null;
   const displayTitle = item.title || proposal?.title || reviewWarningTitle(item.reason || "");
   const displayReason = humanizeReviewMessage(item.reason || proposal?.reason || "");
-  const conditionText = proposal?.conditionText || proposalConditionText(displayTitle, displayReason);
+  const conditionText = proposal?.conditionText || structuredReviewConditionText({ issueCode, policy, reviewIssue }) || proposalConditionText(displayTitle, displayReason);
   const potentialPoints = proposal?.potentialPoints || proposalPotentialPoints(item, displayTitle, displayReason);
   const hasCandidateLine = isPlainObject(proposal?.candidateLine) || isPlainObject(item.lineItem);
-  const actionType = proposal?.actionType || (hasCandidateLine && potentialPoints > 0 ? "adoptable" : "confirm_required");
+  const reviewOnly = isReviewOnlyPolicy({ issueCode, policy });
+  const actionType = reviewOnly
+    ? "not_billable_now"
+    : proposal?.actionType || (hasCandidateLine && potentialPoints > 0 ? "adoptable" : "confirm_required");
   const canAdopt = actionType === "adoptable" && hasCandidateLine && Number(potentialPoints || 0) > 0;
-  const issueCategory = issueCategoryForActionItem(item, { displayTitle, displayReason, conditionText });
+  const issueCategory = issueCategoryForActionItem(item, { displayTitle, displayReason, conditionText, issueCode, policy });
   return {
     reviewItemId: item.reviewItemId,
     legacyReviewItemId: item.legacyReviewItemId,
+    issueCode,
     displayTitle,
     displayReason,
     conditionText,
@@ -1125,21 +1154,30 @@ function normalizeCandidateActionItem(item = {}) {
       : actionType === "select_required"
         ? "候補を選ぶ"
         : actionType === "not_billable_now"
-          ? "保留"
+          ? "人手で確認"
           : "条件を確認",
     canAdopt,
+    reviewOnly,
     issueCategory: issueCategory.key,
     issueCategoryLabel: issueCategory.label,
     status: item.status || "needs_review",
     decisionStatus: item.decision?.status || item.status || "needs_review",
     sourceType: item.sourceType || "warning",
+    source,
+    policy,
     candidateLine: proposal?.candidateLine || item.lineItem || null,
     candidateProposal: proposal,
+    reviewIssue,
     sourceItem: item
   };
 }
 
 function issueCategoryForActionItem(item = {}, normalized = {}) {
+  const issueCode = normalized.issueCode || item.issueCode || item.reviewIssue?.issueCode || item.reviewIssue?.issue_code || "";
+  const structuredCategory = issueCategoryForCode(issueCode);
+  if (structuredCategory) {
+    return structuredCategory;
+  }
   const text = [
     normalized.displayTitle,
     normalized.displayReason,
@@ -1168,6 +1206,45 @@ function issueCategoryForActionItem(item = {}, normalized = {}) {
     return { key: "input", label: "入力不足" };
   }
   return { key: "rule", label: "算定条件" };
+}
+
+function issueCategoryForCode(issueCode = "") {
+  return {
+    facility_unknown: { key: "facility", label: "施設設定" },
+    hospital_profile_missing: { key: "facility", label: "施設設定" },
+    management_fee_review_required: { key: "management", label: "管理料" },
+    specimen_collection_fee_review_required: { key: "specimen", label: "検体採取" },
+    ambiguous_master: { key: "master", label: "マスター確認" },
+    master_not_found: { key: "master", label: "マスター確認" },
+    missing_quantity: { key: "medication", label: "数量・日数" },
+    missing_body_site: { key: "input", label: "部位・範囲" },
+    missing_equipment_kind: { key: "input", label: "機器区分" },
+    planned_not_performed: { key: "evidence", label: "実施確認" },
+    instruction_only: { key: "evidence", label: "実施確認" },
+    other_provider: { key: "evidence", label: "他科・他院" },
+    past_or_carried_in: { key: "evidence", label: "過去値・持参" },
+    unsupported_event: { key: "unsupported", label: "未対応項目" }
+  }[String(issueCode || "").trim()] || null;
+}
+
+function isReviewOnlyPolicy({ issueCode = "", policy = null } = {}) {
+  if (policy?.riskGate === "review_only") {
+    return true;
+  }
+  return ["management_fee_review_required"].includes(String(issueCode || "").trim());
+}
+
+function structuredReviewConditionText({ issueCode = "", policy = null, reviewIssue = null } = {}) {
+  if (issueCode === "management_fee_review_required" || policy?.riskGate === "review_only") {
+    return "管理料は自動で点数に入れていません。対象疾患、管理主体、同月履歴、施設基準、指導・説明の記録を人手で確認してください。";
+  }
+  if (issueCode === "specimen_collection_fee_review_required") {
+    return "検体採取料は検査本体から自動算定していません。検体、採取方法、同日算定条件を確認してください。";
+  }
+  if (reviewIssue?.requiredInput) {
+    return `確認する情報: ${reviewIssue.requiredInput}`;
+  }
+  return "";
 }
 
 function lineDisplayReason(line = {}, reviewItem = null) {

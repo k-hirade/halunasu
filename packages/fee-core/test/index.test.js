@@ -503,6 +503,129 @@ test("adopts structured increase proposals into receipt totals", () => {
   assert.equal(workbench.includedTotalPoints, 115);
 });
 
+test("keeps review-only proposals out of proposals and receipt totals", () => {
+  const session = buildFeeSession({
+    orgId: "org_123",
+    createdByMemberId: "member_1",
+    patientId: "patient_1",
+    facilityId: "facility_1",
+    serviceDate: "2026-06-07"
+  }, {
+    feeSessionId: "fee_review_only_proposal",
+    now: "2026-06-07T00:00:00.000Z"
+  });
+  const calculated = applyCalculationResult(session, {
+    lineItems: [{
+      lineId: "line_1",
+      code: "112007410",
+      name: "再診料",
+      orderType: "basic",
+      points: 75,
+      totalPoints: 75,
+      status: "candidate",
+      source: "outpatient_basic_fee"
+    }],
+    candidateProposals: [{
+      proposalId: "management_review_only",
+      title: "管理料確認",
+      reason: "管理料は人手確認が必要です。",
+      potentialPoints: 225,
+      actionType: "not_billable_now",
+      policy: {
+        generationSource: "conditional_independent",
+        riskGate: "review_only"
+      },
+      candidateLine: {
+        code: "113999001",
+        name: "管理料テスト",
+        orderType: "procedure",
+        points: 225,
+        totalPoints: 225,
+        status: "candidate",
+        source: "management_fee"
+      }
+    }]
+  }, {
+    calculationId: "calc_review_only_proposal",
+    now: "2026-06-07T00:01:00.000Z"
+  });
+  const initialWorkbench = buildCandidateWorkbench(calculated, {
+    now: "2026-06-07T00:01:30.000Z"
+  });
+  const items = buildReviewItems(calculated);
+  const proposalReviewItem = items.find((item) => item.candidateProposal?.proposalId === "management_review_only");
+  const adopted = applyReviewDecision(calculated, proposalReviewItem.reviewItemId, {
+    status: "approved"
+  }, {
+    now: "2026-06-07T00:02:00.000Z"
+  });
+  const receiptDraft = buildReceiptDraft(adopted, {
+    now: "2026-06-07T00:03:00.000Z"
+  });
+  const workbench = buildCandidateWorkbench(adopted, {
+    receiptDraft,
+    now: "2026-06-07T00:04:00.000Z"
+  });
+
+  assert.equal(initialWorkbench.proposals.length, 0);
+  assert.equal(initialWorkbench.issues.length, 1);
+  assert.equal(initialWorkbench.issues[0].reviewOnly, true);
+  assert.equal(receiptDraft.totalPoints, 75);
+  assert.equal(receiptDraft.lines.some((line) => line.sourceProposalId === "management_review_only"), false);
+  assert.equal(workbench.proposals.length, 0);
+});
+
+test("preserves clinical event specimen and review issue policy metadata", () => {
+  const session = buildFeeSession({
+    orgId: "org_123",
+    createdByMemberId: "member_1",
+    patientId: "patient_1",
+    facilityId: "facility_1",
+    serviceDate: "2026-06-07"
+  }, {
+    feeSessionId: "fee_metadata",
+    now: "2026-06-07T00:00:00.000Z"
+  });
+  const calculated = applyCalculationResult(session, {
+    clinicalEvents: [{
+      clinicalEventId: "event_swab",
+      type: "lab",
+      name: "インフルエンザ迅速検査",
+      actionStatus: "performed",
+      specimen: "鼻咽頭ぬぐい液",
+      collectionMethod: "スワブ採取",
+      evidence: "鼻咽頭ぬぐい液で迅速検査を実施"
+    }],
+    reviewIssues: [{
+      reviewIssueId: "issue_swab",
+      issueCode: "specimen_collection_fee_review_required",
+      severity: "warning",
+      title: "検体採取確認",
+      messageForStaff: "検体採取料は人手確認が必要です。",
+      relatedClinicalEventId: "event_swab",
+      source: "derived_item_policy",
+      policy: {
+        generationSource: "derived_from_parent",
+        riskGate: "review"
+      }
+    }]
+  }, {
+    calculationId: "calc_metadata",
+    now: "2026-06-07T00:01:00.000Z"
+  });
+  const event = calculated.calculationResult.clinicalEvents[0];
+  const issue = calculated.calculationResult.reviewIssues[0];
+  const workbench = buildCandidateWorkbench(calculated, {
+    now: "2026-06-07T00:02:00.000Z"
+  });
+
+  assert.equal(event.specimen, "鼻咽頭ぬぐい液");
+  assert.equal(event.collectionMethod, "スワブ採取");
+  assert.equal(issue.source, "derived_item_policy");
+  assert.equal(issue.policy.riskGate, "review");
+  assert.equal(workbench.issues[0].issueCategory, "specimen");
+});
+
 function assertNoUndefined(value) {
   if (Array.isArray(value)) {
     value.forEach(assertNoUndefined);

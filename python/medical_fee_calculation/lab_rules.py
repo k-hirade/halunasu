@@ -381,7 +381,7 @@ def add_d026_judgement_fees(
                 code=str(fee["judgement_fee_code"]),
                 name=str(fee["judgement_fee_name"]),
                 points=float(fee["points"]),
-                reason=f"D026 judgement fee for group {group}",
+                reason=f"D026検査判断料（区分{group}）を実施検査から自動候補化",
             )
         )
 
@@ -548,7 +548,7 @@ def add_collection_fees(
                 code=str(fee["code"]),
                 name=str(fee["short_name"]),
                 points=float(fee["points"]),
-                reason=f"Collection fee requested by {input_value}",
+                reason=f"検体採取料を採取方法（{input_value}）から自動候補化",
             )
         )
 

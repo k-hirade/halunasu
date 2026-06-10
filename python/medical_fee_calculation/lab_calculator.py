@@ -497,11 +497,11 @@ def _effective_claim_facility_standard_keys(
 
 
 def _claim_item_source(reason: str) -> str:
-    if reason.startswith("D026"):
+    if reason.startswith("D026") or reason.startswith("D026検査判断料"):
         return "d026"
     if reason.startswith("Lab management"):
         return "lab_management"
-    if reason.startswith("Collection"):
+    if reason.startswith("Collection") or reason.startswith("検体採取料"):
         return "collection_fee"
     if reason.startswith("Outpatient rapid"):
         return "outpatient_rapid_lab"

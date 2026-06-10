@@ -1150,10 +1150,10 @@ function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSess
   }
 
   const model = normalizeCandidateWorkbenchModel(
-    candidateWorkbench || buildCandidateWorkbenchModel({ calculation, receiptDraft, reviewItems })
+    candidateWorkbench || emptyCandidateWorkbenchModel({ calculation })
   );
   const adjustmentLines = [...model.pendingLines, ...model.excludedLines];
-  const needsReviewCount = Number(model.counts?.needsReview ?? model.needsReviewCount ?? (model.proposals.length + model.issues.length + model.pendingLines.length));
+  const needsReviewCount = Number(model.counts.needsReview || 0);
   const potentialPointsTotal = Number(model.potentialPointsTotal || 0);
   const coverageSummary = model.coverageSummary || {};
   return (
@@ -1172,9 +1172,9 @@ function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSess
           <small>{coverageSummary.description || "確定請求ではありません。採否を変えると合計も変わります。"}</small>
         </div>
         <div className="candidate-summary-grid">
-          <div><span>算定中</span><strong>{model.includedCount.toLocaleString()}件</strong></div>
+          <div><span>算定中</span><strong>{Number(model.counts.included || 0).toLocaleString()}件</strong></div>
           <div><span>要確認</span><strong>{needsReviewCount.toLocaleString()}件</strong></div>
-          <div><span>増点余地</span><strong>{potentialPointsTotal > 0 ? `+${potentialPointsTotal.toLocaleString()}点` : `${model.proposals.length.toLocaleString()}件`}</strong></div>
+          <div><span>増点余地</span><strong>{potentialPointsTotal > 0 ? `+${potentialPointsTotal.toLocaleString()}点` : `${Number(model.counts.proposals || 0).toLocaleString()}件`}</strong></div>
         </div>
       </div>
       {Array.isArray(coverageSummary.badges) && coverageSummary.badges.length ? (
@@ -1197,7 +1197,7 @@ function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSess
       </section>
 
       <section className="candidate-bucket">
-        <BucketHeader title="算定中" count={model.includedCount} note="いま合計点数に入っている明細です。必要に応じて外せます。" />
+        <BucketHeader title="算定中" count={Number(model.counts.included || 0)} note="いま合計点数に入っている明細です。必要に応じて外せます。" />
         {model.includedLines.length ? (
           <div className="candidate-line-list">
             {model.includedLines.map((line) => (
@@ -1992,11 +1992,14 @@ function normalizeCandidateWorkbenchModel(model = {}) {
     : lines.filter((line) => line.inclusionStatus === "excluded");
   const proposals = Array.isArray(model.proposals) ? model.proposals : [];
   const issues = Array.isArray(model.issues) ? model.issues : [];
-  const includedCount = Number(model.includedCount ?? model.counts?.included ?? includedLines.length);
-  const pendingCount = Number(model.pendingCount ?? model.counts?.pending ?? pendingLines.length);
-  const excludedCount = Number(model.excludedCount ?? model.counts?.excluded ?? excludedLines.length);
-  const needsReview = Number(model.counts?.needsReview ?? model.needsReviewCount ?? (proposals.length + issues.length + pendingLines.length));
-  const potentialPointsTotal = Number(model.potentialPointsTotal ?? proposals.reduce((sum, item) => sum + Number(item.potentialPoints || 0), 0));
+  const rawCounts = model.counts && typeof model.counts === "object" ? model.counts : {};
+  const includedCount = Number(rawCounts.included ?? 0);
+  const pendingCount = Number(rawCounts.pending ?? 0);
+  const excludedCount = Number(rawCounts.excluded ?? 0);
+  const proposalCount = Number(rawCounts.proposals ?? 0);
+  const issueCount = Number(rawCounts.issues ?? 0);
+  const needsReview = Number(rawCounts.needsReview ?? 0);
+  const potentialPointsTotal = Number(model.potentialPointsTotal ?? 0);
   return {
     ...model,
     lines,
@@ -2006,12 +2009,11 @@ function normalizeCandidateWorkbenchModel(model = {}) {
     proposals,
     issues,
     counts: {
-      ...(model.counts || {}),
       included: includedCount,
       pending: pendingCount,
       excluded: excludedCount,
-      proposals: Number(model.counts?.proposals ?? proposals.length),
-      issues: Number(model.counts?.issues ?? issues.length),
+      proposals: proposalCount,
+      issues: issueCount,
       needsReview
     },
     includedCount,
@@ -2024,196 +2026,32 @@ function normalizeCandidateWorkbenchModel(model = {}) {
   };
 }
 
-function buildCandidateWorkbenchModel({ calculation, receiptDraft, reviewItems }) {
-  const items = Array.isArray(reviewItems) ? reviewItems : [];
-  const lineReviewMap = new Map(items
-    .filter((item) => item?.sourceType === "line_item")
-    .map((item) => [lineReviewItemClientId(item.lineItem || {}), item]));
-  const receiptLineMap = new Map((receiptDraft?.lines || []).map((line) => [receiptLineKey(line), line]));
-  const lines = (Array.isArray(calculation?.lineItems) ? calculation.lineItems : []).map((line) => {
-    const reviewItem = lineReviewMap.get(lineReviewItemClientId(line)) || null;
-    const receiptLine = receiptLineMap.get(lineReviewItemClientId(line)) || receiptLineMap.get(line.code || "") || null;
-    const decisionStatus = lineDecisionStatus(reviewItem, receiptLine);
-    const inclusionStatus = decisionStatus === "rejected" ? "excluded" : decisionStatus === "edited" ? "pending" : "included";
-    return {
-      kind: "line",
-      kindLabel: "算定中の明細",
-      reviewItemId: reviewItem?.reviewItemId || lineReviewItemClientId(line),
-      name: line.name || "未分類",
-      displayTitle: line.name || "算定候補",
-      displayReason: lineDisplayReason(line, reviewItem),
-      conditionText: lineConditionText(line),
-      decisionStatus,
-      inclusionStatus,
-      metaLabel: lineMetaLabel(line),
-      statusLabel: inclusionStatusLabel(inclusionStatus),
-      totalPoints: Number(line.totalPoints || 0),
-      pointsLabel: `${Number(line.totalPoints || 0).toLocaleString()}点`,
-      lineItem: line
-    };
-  });
-  const warningItems = items.filter((item) => item?.sourceType !== "line_item");
-  const proposals = [];
-  const issues = [];
-  for (const item of warningItems) {
-    const normalized = normalizeActionItem(item);
-    if (isIncreaseProposal(item, normalized)) {
-      proposals.push({
-        ...normalized,
-        kind: "proposal",
-        kindLabel: "増点提案",
-        pointsLabel: normalized.pointsLabel || "点数確認"
-      });
-    } else {
-      issues.push({
-        ...normalized,
-        kind: "issue",
-        kindLabel: "確認・修正"
-      });
-    }
-  }
-  const includedLines = lines.filter((line) => line.inclusionStatus === "included");
-  const pendingLines = lines.filter((line) => line.inclusionStatus === "pending");
-  const excludedLines = lines.filter((line) => line.inclusionStatus === "excluded");
+function emptyCandidateWorkbenchModel({ calculation } = {}) {
+  const totalPoints = Number(calculation?.totalPoints || 0);
   return {
-    lines,
-    includedLines,
-    pendingLines,
-    excludedLines,
-    proposals,
-    issues,
-    includedCount: includedLines.length,
-    excludedCount: excludedLines.length,
-    pendingCount: pendingLines.length,
-    includedTotalPoints: receiptDraft?.totalPoints ?? includedLines.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0)
+    schemaVersion: 1,
+    totalPoints,
+    includedTotalPoints: totalPoints,
+    lines: [],
+    includedLines: [],
+    pendingLines: [],
+    excludedLines: [],
+    proposals: [],
+    issues: [],
+    counts: {
+      included: 0,
+      pending: 0,
+      excluded: 0,
+      proposals: 0,
+      issues: 0,
+      needsReview: 0
+    },
+    coverageSummary: {
+      title: "候補化済み部分合計",
+      description: "算定候補の表示モデルを取得できませんでした。再度「カルテから算定候補を作成」を実行してください。"
+    },
+    potentialPointsTotal: 0
   };
-}
-
-function lineReviewItemClientId(line = {}) {
-  return `line_${line.lineId || line.sourceLineId || line.code || line.name}`;
-}
-
-function receiptLineKey(line = {}) {
-  return line.sourceLineId ? `line_${line.sourceLineId}` : line.code || line.name || "";
-}
-
-function lineDecisionStatus(reviewItem, receiptLine) {
-  if (["approved", "rejected", "edited"].includes(reviewItem?.status)) {
-    return reviewItem.status;
-  }
-  if (receiptLine?.inclusionStatus === "excluded") return "rejected";
-  if (receiptLine?.inclusionStatus === "pending") return "edited";
-  return "approved";
-}
-
-function inclusionStatusLabel(status) {
-  return {
-    included: "算定中",
-    excluded: "算定しない",
-    pending: "保留"
-  }[status] || "算定中";
-}
-
-function lineDisplayReason(line = {}, reviewItem = null) {
-  const reason = reviewItem?.displayReason || humanizeReviewMessage(line.reason || reviewItem?.reason || "");
-  if (reason && reason !== "算定候補の内容を確認してください。") {
-    return reason;
-  }
-  return `${line.name || "この明細"}を候補化しています。条件に合わない場合は「算定しない」に変更してください。`;
-}
-
-function lineConditionText(line = {}) {
-  const category = lineBusinessCategory(line);
-  if (category === "基本料") return "受診履歴と初診/再診の条件を確認してください。";
-  if (category === "画像") return "実施済みの検査であること、撮影内容、機器区分を確認してください。";
-  if (category === "薬剤" || category === "投薬") return "今回処方した薬剤・日数・数量を確認してください。";
-  if (category === "検査" || category === "診療行為") return "当日に実施した内容であること、必要なコメントや病名を確認してください。";
-  return "カルテ内容と算定条件を確認してください。";
-}
-
-function normalizeActionItem(item = {}) {
-  const displayTitle = item.displayTitle || reviewItemTitle(item);
-  const displayReason = item.displayReason || humanizeReviewMessage(item.reason || item.lineItem?.reason || "");
-  const conditionText = proposalConditionText(displayTitle, displayReason);
-  const issueCategory = item.issueCategory
-    ? { key: item.issueCategory, label: item.issueCategoryLabel || "確認事項" }
-    : issueCategoryForActionItem(item, { displayTitle, displayReason, conditionText });
-  return {
-    reviewItemId: item.reviewItemId,
-    displayTitle,
-    displayReason,
-    conditionText,
-    reasonText: displayReason,
-    pointsLabel: proposalPointsLabel(item, displayTitle, displayReason),
-    issueCategory: issueCategory.key,
-    issueCategoryLabel: issueCategory.label,
-    sourceItem: item
-  };
-}
-
-function issueCategoryForActionItem(item = {}, normalized = {}) {
-  const text = [
-    normalized.displayTitle,
-    normalized.displayReason,
-    normalized.conditionText,
-    item.title,
-    item.reason,
-    item.candidateProposal?.conditionText,
-    item.lineItem?.name
-  ].filter(Boolean).join(" ");
-  if (/施設基準|地方厚生局|届け出|届出|facility_standard|hospital_profile/u.test(text)) {
-    return { key: "facility", label: "施設設定" };
-  }
-  if (/病名|傷病名|コメント|適応|査定/u.test(text)) {
-    return { key: "diagnosis", label: "病名・コメント" };
-  }
-  if (/薬剤|処方|数量|日数|総量|1回量|1日回数/u.test(text)) {
-    return { key: "medication", label: "薬剤情報" };
-  }
-  if (/標準コード|マスター|コード確定|候補を選ぶ|検索/u.test(text)) {
-    return { key: "master", label: "マスター確認" };
-  }
-  if (/実施|予定|依頼|オーダー|検討|指導のみ|説明のみ|当日/u.test(text)) {
-    return { key: "evidence", label: "実施確認" };
-  }
-  if (/未入力|不足|入力|空欄/u.test(text)) {
-    return { key: "input", label: "入力不足" };
-  }
-  return { key: "rule", label: "算定条件" };
-}
-
-function isIncreaseProposal(item = {}, normalized = {}) {
-  const text = `${normalized.displayTitle || ""} ${normalized.displayReason || ""} ${item.title || ""} ${item.reason || ""}`;
-  if (/終了|中止|既往薬|内服中|保留|次回判断|今回処方として確定できない/u.test(text)) {
-    return false;
-  }
-  return /加算|算定できます|算定でき|実施済みの場合|届出|施設基準|病名|コメント|数量|日数|処方|MRI|CT|超音波|検査判断料|採血料/u.test(text)
-    && !/次回|予定のみ|指導のみ|実施していません/u.test(text);
-}
-
-function proposalConditionText(title = "", reason = "") {
-  const text = `${title} ${reason}`;
-  if (/施設基準|届け出|届出/u.test(text)) {
-    return "施設基準を地方厚生局に届け出済みなら、該当する加算を算定できます。";
-  }
-  if (/MRI|CT|画像|撮影/u.test(text)) {
-    return "実際に当日実施した検査なら算定できます。予定や依頼だけの場合は保留にしてください。";
-  }
-  if (/薬剤|処方|数量|日数/u.test(text)) {
-    return "今回処方した薬剤で、日数・数量を確認できれば算定できます。";
-  }
-  if (/病名|コメント/u.test(text)) {
-    return "必要な病名またはレセプトコメントを確認・追記できれば算定できます。";
-  }
-  return "条件を満たす場合は算定できます。満たさない場合は保留にしてください。";
-}
-
-function proposalPointsLabel(item = {}, title = "", reason = "") {
-  const linePoints = Number(item.lineItem?.totalPoints || 0);
-  if (linePoints > 0) return `+${linePoints.toLocaleString()}点`;
-  const match = `${title} ${reason}`.match(/([+＋]\s*)?(\d{1,4})\s*点/u);
-  if (match) return `+${Number(match[2]).toLocaleString()}点`;
-  return "";
 }
 
 function shouldSuppressWarningForExistingLine(item = {}, lineTexts = "") {
