@@ -1036,7 +1036,7 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v3");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v4");
   assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v6");
   assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
     event.name === "腰椎X線"
@@ -1930,6 +1930,7 @@ test("recovers concrete topical drug from medication evidence when LLM event nam
     diagnoses: [{ name: "皮膚びらん", status: "confirmed", evidence: "皮膚びらん" }],
     clinical_events: [{
       type: "medication",
+      billing_domain: "standard_medication",
       name: "院内外用薬",
       action_status: "prescribed",
       temporal_relation: "current_visit",
@@ -1982,6 +1983,7 @@ test("recovers concrete topical drug from medication evidence when LLM event nam
 
   assert.equal(calculation.statusCode, 201);
   assert.ok(masterSearches.some((search) => String(search.query || "").includes("ゲーベン")));
+  assert.equal(masterSearches.some((search) => /^(?:院内外用薬|外用薬)$/u.test(String(search.query || ""))), false);
   assert.deepEqual(receivedInput.calculationOptions.medication_orders, [{
     drug_code: "620008991",
     total_quantity: "5",
@@ -2019,6 +2021,7 @@ test("routes pathology and emergency time addon events into review-only domain t
     clinical_events: [
       {
         type: "pathology",
+        billing_domain: "unknown",
         name: "病理診断/細胞診",
         action_status: "performed",
         temporal_relation: "current_visit",
@@ -2041,8 +2044,9 @@ test("routes pathology and emergency time addon events into review-only domain t
       },
       {
         type: "emergency_time_addon",
+        billing_domain: "unknown",
         name: "時間外/休日/救急加算",
-        action_status: "performed",
+        action_status: "considered",
         temporal_relation: "current_visit",
         source_origin: "own_clinic_record",
         provider_ownership: "own_clinic",
@@ -2100,6 +2104,154 @@ test("routes pathology and emergency time addon events into review-only domain t
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "救急加算確認"));
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "受付時刻確認"));
   assert.equal(calculation.body.candidateWorkbench.proposals.length, 0);
+});
+
+test("does not divert ordinary lab specimen submission or symptom timing into review-only domains", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    if (input.type === "procedure" && input.query === "ＣＲＰ") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160054710",
+          name: "ＣＲＰ",
+          points: 16,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 91,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "発熱", status: "confirmed", evidence: "発熱" }],
+    clinical_events: [
+      {
+        type: "lab",
+        billing_domain: "standard_lab",
+        name: "ＣＲＰ",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "numeric",
+        certainty: "explicit",
+        section: "O",
+        evidence: "静脈採血も行い、検体提出。ＣＲＰ 0.3mg/dL。",
+        search_queries: ["ＣＲＰ"],
+        modality: "none",
+        body_site: "",
+        specimen: "血液",
+        collection_method: "静脈採血",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: ""
+      },
+      {
+        type: "other",
+        billing_domain: "unknown",
+        name: "夜間頻尿",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "patient_reported",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "explicit",
+        section: "S",
+        evidence: "夜間頻尿を確認した。",
+        search_queries: ["夜間頻尿"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: ""
+      },
+      {
+        type: "emergency_time_addon",
+        billing_domain: "emergency_time_addon",
+        name: "救急加算",
+        action_status: "not_performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "explicit",
+        section: "S",
+        evidence: "救急要請はなかった。",
+        search_queries: ["救急加算"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: ""
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Domain Counterexample Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "静脈採血も行い、検体提出。ＣＲＰ 0.3mg/dL。夜間頻尿を確認した。救急要請はなかった。",
+    diagnoses: [{ name: "発熱" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.ok(masterSearches.some((search) => search.type === "procedure" && search.query === "ＣＲＰ"));
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160054710"]);
+  assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "病理未対応"), false);
+  assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "検体提出確認"), false);
+  assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "救急加算確認"), false);
+  assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "受付時刻確認"), false);
+  assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
+    event.name === "ＣＲＰ"
+    && event.billingDomain === "standard_lab"
+    && event.specimen === "血液"
+  )));
 });
 
 test("merges deterministic performed imaging when structured facts miss it", async () => {

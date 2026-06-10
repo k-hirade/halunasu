@@ -89,8 +89,12 @@ const REVIEW_TOPIC_TAXONOMY = Object.freeze({
     label: "受付時刻確認",
     issueCode: "missing_reception_time"
   }),
-  medication_quantity_check: Object.freeze({
-    label: "薬剤日数・数量確認",
+  missing_medication_days: Object.freeze({
+    label: "薬剤日数不足",
+    issueCode: "missing_quantity"
+  }),
+  missing_total_quantity: Object.freeze({
+    label: "総量不足",
     issueCode: "missing_quantity"
   })
 });
@@ -171,9 +175,6 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   if (/施設基準/u.test(text)) {
     return "facility_standard_check";
   }
-  if (/マスター|標準コード|候補/u.test(text) && /確定でき|複数|確認/u.test(text)) {
-    return "ambiguous_master_check";
-  }
   if (/病理未対応|病理診断|細胞診/u.test(text)) {
     return "pathology_unsupported";
   }
@@ -186,8 +187,17 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   if (/受付時刻/u.test(text)) {
     return "reception_time_check";
   }
+  if (/薬剤日数不足|処方日数|服用日数|使用日数/u.test(text)) {
+    return "missing_medication_days";
+  }
+  if (/総量不足|総量|全量|本数|枚数/u.test(text) && /不足|不明|未記載|明記/u.test(text)) {
+    return "missing_total_quantity";
+  }
   if (/薬剤/u.test(text) && /数量|日数|総量|回数/u.test(text)) {
-    return "medication_quantity_check";
+    return "missing_medication_days";
+  }
+  if (/マスター|標準コード|候補/u.test(text) && /確定でき|複数|確認/u.test(text)) {
+    return "ambiguous_master_check";
   }
   const type = normalizeClinicalEventType(event);
   if (type === "management" || type === "counseling") {
@@ -762,6 +772,29 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
 
   for (const event of clinicalEvents) {
     const type = normalizeClinicalEventType(event);
+    if (!isBillableClinicalEvent(event)) {
+      const reviewOnlyDomain = reviewOnlyClinicalEventDomain(event);
+      if (reviewOnlyDomain && !isNegatedClinicalEvent(event)) {
+        const domainIssues = reviewIssuesFromReviewOnlyDomainClinicalEvent(event);
+        reviewIssues.push(...domainIssues);
+        reviewWarnings.push(...domainIssues.map((issue) => issue.messageForStaff));
+        clinicalTrace.push(clinicalTraceEvent({
+          stage: "review_only_domain_gate",
+          event,
+          categoryLabel: reviewOnlyDomainLabel(reviewOnlyDomain),
+          outcome: "review_required",
+          message: "review_only_domain_non_billable_review_required"
+        }));
+        continue;
+      }
+      const issue = reviewIssueFromExcludedClinicalEvent(event);
+      if (issue) {
+        reviewIssues.push(issue);
+        reviewWarnings.push(issue.messageForStaff);
+      }
+      continue;
+    }
+    const reviewOnlyDomain = reviewOnlyClinicalEventDomain(event);
     const domainIssues = reviewIssuesFromReviewOnlyDomainClinicalEvent(event);
     if (domainIssues.length) {
       reviewIssues.push(...domainIssues);
@@ -769,18 +802,10 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       clinicalTrace.push(clinicalTraceEvent({
         stage: "review_only_domain_gate",
         event,
-        categoryLabel: reviewOnlyDomainLabel(reviewOnlyClinicalEventDomain(event)),
+        categoryLabel: reviewOnlyDomainLabel(reviewOnlyDomain),
         outcome: "review_required",
         message: "review_only_domain_direct_retrieval_disabled"
       }));
-      continue;
-    }
-    if (!isBillableClinicalEvent(event)) {
-      const issue = reviewIssueFromExcludedClinicalEvent(event);
-      if (issue) {
-        reviewIssues.push(issue);
-        reviewWarnings.push(issue.messageForStaff);
-      }
       continue;
     }
 
@@ -2292,6 +2317,7 @@ function normalizeClinicalEventsForResult(values = []) {
       temporalRelation: normalized.temporalRelation,
       sourceOrigin: normalized.sourceOrigin,
       providerOwnership: normalized.providerOwnership,
+      billingDomain: normalizeClinicalEventBillingDomain(normalized),
       resultAssertion: normalized.resultAssertion,
       certainty: normalized.certainty,
       section: normalized.section,
@@ -2330,6 +2356,7 @@ function normalizeClinicalEvent(event = {}, index = 0, { excluded = false } = {}
   const temporalRelation = normalizeClinicalEventTemporalRelation(event, { actionStatus });
   const providerOwnership = normalizeClinicalEventProviderOwnership(event);
   const sourceOrigin = normalizeClinicalEventSourceOrigin(event, { providerOwnership, temporalRelation });
+  const billingDomain = normalizeClinicalEventBillingDomain(event, { type });
   const resultAssertion = normalizeClinicalEventResultAssertion(event);
   const certainty = normalizeClinicalEventCertainty(event);
   const clinicalEventId = String(event?.clinical_event_id || event?.clinicalEventId || event?.event_id || event?.eventId || "")
@@ -2352,6 +2379,8 @@ function normalizeClinicalEvent(event = {}, index = 0, { excluded = false } = {}
     temporal_relation: temporalRelation,
     sourceOrigin,
     source_origin: sourceOrigin,
+    billingDomain,
+    billing_domain: billingDomain,
     providerOwnership,
     provider_ownership: providerOwnership,
     resultAssertion,
@@ -2597,6 +2626,44 @@ function normalizeClinicalEventType(event = {}) {
   return String(event?.type || "other").trim();
 }
 
+function normalizeClinicalEventBillingDomain(event = {}, { type = "" } = {}) {
+  const value = String(event?.billing_domain || event?.billingDomain || event?.domain || "").trim();
+  const allowed = new Set([
+    "standard_lab",
+    "standard_imaging",
+    "standard_procedure",
+    "standard_medication",
+    "standard_material",
+    "standard_management",
+    "standard_counseling",
+    "pathology",
+    "emergency_time_addon",
+    "psychiatry_special",
+    "anesthesia",
+    "surgery",
+    "rehabilitation",
+    "home_care",
+    "unknown"
+  ]);
+  if (allowed.has(value) && value !== "unknown") {
+    return value;
+  }
+  const eventType = String(type || normalizeClinicalEventType(event));
+  return {
+    lab: "standard_lab",
+    imaging: "standard_imaging",
+    procedure: "standard_procedure",
+    treatment: "standard_procedure",
+    medication: "standard_medication",
+    injection: "standard_procedure",
+    material: "standard_material",
+    management: "standard_management",
+    counseling: "standard_counseling",
+    pathology: "pathology",
+    emergency_time_addon: "emergency_time_addon"
+  }[eventType] || "unknown";
+}
+
 function normalizeClinicalEventStatus(event = {}) {
   return String(event?.status || legacyStatusFromClinicalEvent({
     actionStatus: event?.action_status || event?.actionStatus,
@@ -2733,29 +2800,13 @@ function isActionableClinicalFactWarning(warning) {
 }
 
 function reviewOnlyClinicalEventDomain(event = {}) {
-  const type = normalizeClinicalEventType(event);
-  const text = normalizeClinicalText([
-    type,
-    clinicalEventName(event),
-    clinicalEventEvidence(event),
-    event?.review_reason || event?.reviewReason || ""
-  ].filter(Boolean).join(" "));
-  if (
-    type === "pathology"
-    || /病理領域|病理診断|細胞診|組織診|生検提出|検体提出|標本(?:種類|作製|提出)/u.test(text)
-  ) {
-    return "pathology";
-  }
-  if (
-    type === "emergency_time_addon"
-    || (
-      /救急|時間外|休日|深夜|夜間|受付時刻/u.test(text)
-      && /加算|算定|条件|確認|不足|不明|記載/u.test(text)
-    )
-  ) {
-    return "emergency_time_addon";
-  }
-  return "";
+  const domain = normalizeClinicalEventBillingDomain(event);
+  return ["pathology", "emergency_time_addon"].includes(domain) ? domain : "";
+}
+
+function isNegatedClinicalEvent(event = {}) {
+  const actionStatus = String(event?.action_status || event?.actionStatus || normalizeClinicalEventStatus(event)).trim();
+  return ["not_performed", "negated"].includes(actionStatus);
 }
 
 function reviewOnlyDomainLabel(domain = "") {
@@ -3091,7 +3142,7 @@ async function medicationOrderFromClinicalEvent(event = {}, feeCalculator) {
   }
   const quantity = medicationQuantityFromClinicalEvent(event);
   if (!hasCalculableMedicationQuantity(quantity)) {
-    reviewWarnings.push(`薬剤日数・数量確認: 薬剤「${name}」は数量または日数が不足しているため、算定候補には入れていません。`);
+    reviewWarnings.push(...medicationQuantityReviewWarnings(name, event, quantity));
     return { order: null, masterCandidates: [], reviewWarnings };
   }
   const medicationSearch = await searchMedicationMasterForClinicalEvent(feeCalculator, event, name);
@@ -3122,7 +3173,7 @@ async function searchMedicationMasterForClinicalEvent(feeCalculator, event = {},
     primaryName,
     ...clinicalEventSearchQueries(event),
     ...medicationNameCandidatesFromClinicalText(clinicalEventEvidence(event)).map((candidate) => candidate.query)
-  ].map(canonicalMedicationName).filter(Boolean));
+  ].map(canonicalMedicationName).filter((query) => query && !isMedicationSearchCategoryNoise(query)));
   for (const query of queries) {
     const item = await searchFirstMasterItem(feeCalculator, "drug", query, "drug");
     if (item?.code) {
@@ -3130,6 +3181,30 @@ async function searchMedicationMasterForClinicalEvent(feeCalculator, event = {},
     }
   }
   return { item: null, query: primaryName };
+}
+
+function medicationQuantityReviewWarnings(name = "薬剤", event = {}, quantity = {}) {
+  const warnings = [];
+  const text = `${clinicalEventEvidence(event)} ${clinicalEventName(event)} ${name}`;
+  const external = medicationDispensingKindFromText(text, name) === "external";
+  if (external && !quantity.total_quantity) {
+    warnings.push(`総量不足: 薬剤「${name}」は総量（例: 5g、1本、10mL）が不足しているため、算定候補には入れていません。`);
+  }
+  if (!external && !(quantity.quantity_per_day && quantity.days) && !quantity.total_quantity) {
+    warnings.push(`薬剤日数不足: 薬剤「${name}」は日数または総量が不足しているため、算定候補には入れていません。`);
+  }
+  if (!warnings.length) {
+    warnings.push(`薬剤日数不足: 薬剤「${name}」は数量または日数が不足しているため、算定候補には入れていません。`);
+  }
+  return warnings;
+}
+
+function isMedicationSearchCategoryNoise(value = "") {
+  const text = String(value || "").replace(/\s+/gu, "").trim();
+  if (!text) {
+    return true;
+  }
+  return /^(?:薬剤|処方薬|外用薬|内服薬|頓服薬|院内処方|院外処方|院内外用薬|点眼薬|点鼻薬|貼付薬|塗布薬|抗菌薬|抗生剤|鎮痛薬|解熱鎮痛薬|降圧薬|スタチン|保湿剤|ステロイド軟膏)$/u.test(text);
 }
 
 function canonicalMedicationName(value) {

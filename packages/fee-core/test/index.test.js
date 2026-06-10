@@ -590,6 +590,7 @@ test("preserves clinical event specimen and review issue policy metadata", () =>
     clinicalEvents: [{
       clinicalEventId: "event_swab",
       type: "lab",
+      billingDomain: "standard_lab",
       name: "インフルエンザ迅速検査",
       actionStatus: "performed",
       specimen: "鼻咽頭ぬぐい液",
@@ -621,6 +622,7 @@ test("preserves clinical event specimen and review issue policy metadata", () =>
 
   assert.equal(event.specimen, "鼻咽頭ぬぐい液");
   assert.equal(event.collectionMethod, "スワブ採取");
+  assert.equal(event.billingDomain, "standard_lab");
   assert.equal(issue.source, "derived_item_policy");
   assert.equal(issue.policy.riskGate, "review");
   assert.equal(workbench.issues[0].issueCategory, "specimen");
