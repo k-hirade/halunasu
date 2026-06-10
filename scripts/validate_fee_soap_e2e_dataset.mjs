@@ -266,6 +266,18 @@ function exactClaimContextEvidenceErrors(item, chartText) {
   if (expectedCodes.has("120002910") && !hasOutsidePrescriptionEvidence(normalizedText)) {
     messages.push("candidate code 120002910 requires outside-prescription wording in chart");
   }
+  messages.push(...exactCandidateCodeEvidenceErrors(item, normalizedText, expectedCodes));
+  return messages;
+}
+
+function exactCandidateCodeEvidenceErrors(item, normalizedText, expectedCodes) {
+  const messages = [];
+  for (const code of expectedCodes) {
+    const rule = exactCodeEvidenceRule(code);
+    if (!rule) continue;
+    const result = rule({ item, text: normalizedText, expectedCodes });
+    if (result) messages.push(`candidate code ${code} ${result}`);
+  }
   return messages;
 }
 
@@ -312,4 +324,108 @@ function hasCtEquipmentEvidence(text, equipmentKind) {
 
 function hasOutsidePrescriptionEvidence(text) {
   return /院外処方箋|院外処方|処方箋.*交付|院外薬局/u.test(text);
+}
+
+function exactCodeEvidenceRule(code) {
+  switch (code) {
+    case "111000110":
+      return ({ item }) => {
+        const feeKind = item.expectedClaimContext?.outpatient_basic?.fee_kind || item.encounter?.visitType;
+        return feeKind === "initial" ? "" : "requires initial-visit context";
+      };
+    case "112007410":
+      return ({ item }) => {
+        const feeKind = item.expectedClaimContext?.outpatient_basic?.fee_kind || item.encounter?.visitType;
+        return feeKind === "revisit" ? "" : "requires revisit context";
+      };
+    case "111000370":
+    case "112000970":
+      return ({ item }) => (Number(item.patient?.age) < 6 ? "" : "requires infant age context");
+    case "190117710":
+      return ({ item, text }) => {
+        if (!item.expectedClaimContext?.inpatient_basic) return "requires expectedClaimContext.inpatient_basic";
+        if (!/急性期一般入院料\s*1|急性期一般入院料1|急性期一般入院料１/u.test(text)) {
+          return "requires acute general inpatient fee wording in chart";
+        }
+        if (!/入院初日から\s*\d+日分|入院初日から\s*[０-９]+日分|\d+日分|[０-９]+日分|入院\d+日目|入院[０-９]+日目|入院日数/u.test(text)) {
+          return "requires inpatient day-count wording in chart";
+        }
+        if (/DPC対象|診断群分類|包括評価/u.test(text) && !/DPC対象ではない|DPC対象外|出来高入院料|DPCレビューとは分け/u.test(text)) {
+          return "must not assert fee-for-service inpatient basic fee in positive DPC context";
+        }
+        return "";
+      };
+    case "160169450":
+      return ({ text }) => (/インフルエンザ.*抗原|インフル.*迅速|インフル.*検査/u.test(text) ? "" : "requires influenza rapid antigen evidence");
+    case "160044110":
+      return ({ text }) => (/(A群|Ａ群)?.*溶連菌.*迅速|溶連菌.*検査/u.test(text) ? "" : "requires group A strep rapid test evidence");
+    case "160230050":
+      return ({ text }) => (/(SARS|COVID|コロナ|CoV|ＣｏＶ).*(インフル|Influenza).*同時|同時.*(SARS|COVID|コロナ|CoV|ＣｏＶ).*(インフル|Influenza)/iu.test(text) ? "" : "requires SARS-CoV-2 and influenza simultaneous antigen evidence");
+    case "160054710":
+      return ({ text }) => (/CRP|ＣＲＰ|C反応性蛋白|Ｃ反応性蛋白/u.test(text) ? "" : "requires CRP evidence");
+    case "160008010":
+      return ({ text }) => (/末梢血液一般|血算|CBC|白血球|赤血球|血小板/u.test(text) ? "" : "requires peripheral blood/CBC evidence");
+    case "160000310":
+      return ({ text }) => (/尿一般|尿検査|尿定性/u.test(text) ? "" : "requires urinalysis evidence");
+    case "160000410":
+      return ({ text }) => (/尿蛋白|蛋白尿|尿.*蛋白/u.test(text) ? "" : "requires urine protein evidence");
+    case "160095710":
+      return ({ text }) => (/静脈採血|採血|血液検査|血液.*検体/u.test(text) ? "" : "requires blood collection evidence");
+    case "170011810":
+      return ({ text }) => {
+        if (!hasImagingModalityEvidence(text, "ct")) return "requires performed CT wording in chart";
+        if (!hasCtEquipmentEvidence(text, "multislice_16_to_64")) return "requires 16-to-64 multislice CT equipment wording";
+        return "";
+      };
+    case "170028810":
+      return ({ text }) => (hasElectronicImageManagementEvidence(text) ? "" : "requires electronic image management wording");
+    case "170012070":
+      return ({ text }) => (/造影剤|造影CT|造影ＣＴ|造影.*使用/u.test(text) ? "" : "requires contrast-use evidence");
+    case "170000410":
+      return ({ text }) => (/写真診断|単純撮影.*診断|画像診断/u.test(text) ? "" : "requires simple radiography diagnosis wording");
+    case "170027910":
+      return ({ text }) => (/デジタル撮影|デジタル.*X線|デジタル.*Ｘ線/u.test(text) ? "" : "requires digital radiography wording");
+    case "140032010":
+      return ({ text }) => {
+        if (!/熱傷|やけど|火傷/u.test(text)) return "requires burn-treatment evidence";
+        if (!/100cm2未満|100cm²未満|１００cm2未満|１００cm²未満|100平方センチ未満|4×6cm|4x6cm|4×5cm|4x5cm/u.test(text)) {
+          return "requires burn area wording supporting under 100cm2";
+        }
+        return "";
+      };
+    case "140032110":
+      return ({ text }) => {
+        if (!/熱傷|やけど|火傷/u.test(text)) return "requires burn-treatment evidence";
+        if (!/100cm2以上|100cm²以上|１００cm2以上|１００cm²以上|100平方センチ以上|150cm2|150cm²|１５０cm2|１５０cm²/u.test(text)) {
+          return "requires burn area wording supporting 100cm2 or more";
+        }
+        return "";
+      };
+    case "140000610":
+      return ({ text }) => {
+        if (!/創傷|創部|傷|切創|擦過創/u.test(text)) return "requires wound-treatment evidence";
+        if (!/100cm2未満|100cm²未満|１００cm2未満|１００cm²未満|100平方センチ未満|小範囲/u.test(text)) {
+          return "requires wound area wording supporting under 100cm2";
+        }
+        return "";
+      };
+    case "140000710":
+      return ({ text }) => {
+        if (!/創傷|創部|傷|切創|擦過創/u.test(text)) return "requires wound-treatment evidence";
+        if (!/100cm2以上|100cm²以上|１００cm2以上|１００cm²以上|100平方センチ以上/u.test(text)) {
+          return "requires wound area wording supporting 100cm2 or more";
+        }
+        return "";
+      };
+    case "620008991":
+      return ({ text }) => (/ゲーベン|スルファジアジン銀/u.test(text) ? "" : "requires Geben cream/drug evidence");
+    case "120001010":
+      return ({ text }) => (/外用薬|外用|塗布|軟膏|クリーム/u.test(text) ? "" : "requires topical medication dispensing evidence");
+    case "120001210":
+      return ({ text }) => (/処方|院内.*処方|投薬/u.test(text) ? "" : "requires prescription fee evidence");
+    case "120004270":
+      return ({ text }) => (/一般名処方|一般名で処方/u.test(text) ? "" : "requires generic-name prescription evidence");
+    default:
+      return null;
+  }
 }

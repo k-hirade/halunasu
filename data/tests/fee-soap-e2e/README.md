@@ -90,7 +90,19 @@ Use:
 - `requiredReviewTopics` for review reasons that must be surfaced.
 - `forbiddenCandidates` for candidates that must not be produced or must not be marked as finalized.
 
-For `exact` cases, `expectedClaimContext` must still be supported by the SOAP note. Context-derived does not mean arbitrary: if an exact case expects CT, MRI, simple radiography, ultrasound, electronic image management, CT equipment kind, or outside prescription fee, the chart must contain a corresponding current-visit clinical anchor. Review-topic text such as `CT機器区分確認` alone is not enough evidence that CT was performed.
+For `exact` cases, `expectedClaimContext` and expected candidate codes must still be supported by the SOAP note or by explicit patient/encounter context. Context-derived does not mean arbitrary. If an exact case expects imaging, lab tests, B-V blood collection, treatment, in-house or outside medication fees, inpatient basic fees, pediatric add-ons, electronic image management, CT equipment kind, generic prescription add-on, or outside prescription fee, the chart/context must contain a corresponding current-visit clinical anchor.
+
+Examples:
+
+- CT exact cases need performed CT wording, and CT equipment-kind wording when the expected context fixes an equipment kind.
+- Simple radiography exact cases need performed simple X-ray wording and the expected digital/photo-diagnosis wording.
+- Lab exact cases need the relevant test evidence such as influenza antigen, group A strep rapid test, SARS-CoV-2/influenza simultaneous antigen, CRP, CBC/peripheral blood, urinalysis, or urine protein.
+- B-V exact cases need blood collection wording such as venous blood draw or blood specimen submission.
+- Treatment exact cases need treatment type and area evidence, such as burn/wound wording plus an area bucket.
+- Inpatient basic exact cases need acute general inpatient fee wording and day-count wording.
+- Outside prescription and generic prescription add-on exact cases need outside-prescription and generic-name prescription wording.
+
+Review-topic text such as `CT機器区分確認` or `検体採取確認` alone is not enough evidence that the clinical service was performed.
 
 For `review_required`, `unsupported_expected`, `safety`, and `split_required` cases, `forbiddenCandidates` means the item must not be treated as an automatically finalized billing line before the required review topics are resolved. A review-only mention is allowed when the case also expects `engineStatus=needs_review`.
 

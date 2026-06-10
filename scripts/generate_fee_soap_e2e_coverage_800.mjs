@@ -343,7 +343,11 @@ function scenarioAlignedToExactContext(scenario, item) {
   if (imagingOrders.length) {
     aligned.objective = exactImagingObjective(imagingOrders, scenario.objective);
   }
-  if ((item.expectedCalculation?.candidateCodes || []).map(String).includes("120002910")) {
+  const expectedCodes = (item.expectedCalculation?.candidateCodes || []).map(String);
+  if (expectedCodes.includes("160095710") && !/採血|血液検査|血液.*検体/u.test(aligned.objective || "")) {
+    aligned.objective = `${aligned.objective} 同日に静脈採血を実施し、血液検体を提出した。`;
+  }
+  if (expectedCodes.includes("120002910")) {
     aligned.chief = `${scenario.chief} 当日は院外処方箋を交付した。`;
     aligned.objective = "当日、院外処方箋を交付した。処方箋料、院内外区分、一般名処方の有無を診療録で確認した。";
   }
