@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { decorateDatasetCaseTypes } from "./fee_soap_case_type_signature.mjs";
 
 const repoRoot = process.cwd();
 const datasetPath = path.join(repoRoot, "data/tests/fee-soap-e2e/fee-soap-e2e-cases.json");
@@ -45,6 +46,8 @@ function main() {
   if (dataset.cases.length !== targetTotal) {
     throw new Error(`expected ${targetTotal} cases, got ${dataset.cases.length}`);
   }
+
+  decorateDatasetCaseTypes(dataset);
 
   fs.writeFileSync(outputPath, `${JSON.stringify(dataset, null, 2)}\n`);
 

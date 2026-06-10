@@ -24,6 +24,8 @@ Each case contains the chart and expected result together:
   - human-readable target fee items and line points.
 - `evidence`
   - master/version/source evidence for the expected points.
+- `caseTypeAxes`, `caseTypeSignature`
+  - case-type metadata used to keep the 800 cases unique beyond `caseId`. `caseTypeSignature` is a short hash recomputed by `scripts/fee_soap_case_type_signature.mjs`.
 - `status`, `qualityLabel`, `reviewPolicy`
   - review and quality metadata.
 
@@ -47,11 +49,18 @@ The non-exact cases are intentionally not point-perfect gold. They are used to v
 
 The 500 expansion cases are synthetic and medical-office-review-before. They are not production gold. The added `exact` cases reuse existing verified claim contexts so the calculation layer can still be regression-tested while the SOAP language broadens department and domain coverage.
 
-The non-exact cases are generated as sufficiently detailed SOAP notes, not thin placeholders. Current measured SOAP text lengths are min 637 / avg 929 / max 1,164 characters across all 800 cases. The 500 added `COV-...` cases are min 844 / avg 894 / max 950 characters.
+The non-exact cases are generated as sufficiently detailed SOAP notes, not thin placeholders. Current measured SOAP text lengths are min 777 / avg 1,064 / max 1,294 characters across all 800 cases.
 
 Exact cases preserve the manually thickened clinical notes where available. Some exact seed cases are intentionally concise, so the validator minimum remains 600 characters.
 
 Coverage audit currently meets the 800-case recommended scale and the minimum case counts for major billing domains including injection, materials, dialysis/transfusion, and endoscopy. Remaining audit gaps are intentional quality-stage gaps or near-threshold department gaps after removing fake exact coverage from unsupported domains.
+
+The dataset also enforces case-type uniqueness:
+
+- `caseTypeSignature`: 800 unique hash signatures / 800 cases.
+- Duplicate case-type groups: 0.
+- `caseTypeSignature` does not treat `caseId`, date, or random strings as a meaningful type by themselves.
+- Cases with the same base billing/review structure are separated by clinical documentation axes such as caregiver involvement, outside information, planned-item separation, patient background, and safety-netting context.
 
 DPC and fee-for-service inpatient basic fee cases are separated:
 
@@ -120,6 +129,7 @@ Current data is still not medical-office reviewed. `productionGoldAllowed` stays
 
 ```bash
 npm run generate:fee-soap-e2e
+npm run assign:fee-soap-case-types
 npm run generate:fee-soap-e2e:coverage-800
 npm run test:fee-soap-e2e
 npm run eval:fee-soap-e2e

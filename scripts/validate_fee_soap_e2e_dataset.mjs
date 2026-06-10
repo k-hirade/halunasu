@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { caseTypeAudit, caseTypeSignature } from "./fee_soap_case_type_signature.mjs";
 
 const repoRoot = process.cwd();
 const datasetPath = "data/tests/fee-soap-e2e/fee-soap-e2e-cases.json";
@@ -13,6 +14,7 @@ const assertionCounts = {};
 const qualityCounts = {};
 const statusCounts = {};
 const difficultyCounts = {};
+let caseTypeSummary = null;
 
 if (data.datasetId !== "fee-soap-e2e-cases") {
   errors.push(`datasetId must be fee-soap-e2e-cases, found ${data.datasetId}`);
@@ -41,6 +43,8 @@ for (const item of data.cases || []) {
     "patient",
     "encounter",
     "chart",
+    "caseTypeAxes",
+    "caseTypeSignature",
     "status",
     "qualityLabel",
     "expectedExtraction",
@@ -53,6 +57,15 @@ for (const item of data.cases || []) {
   ]) {
     if (item[key] === undefined) {
       errors.push(`${id}: ${key} is missing`);
+    }
+  }
+
+  if (!item.caseTypeAxes || typeof item.caseTypeAxes !== "object" || Array.isArray(item.caseTypeAxes)) {
+    errors.push(`${id}: caseTypeAxes must be an object`);
+  } else {
+    const recomputedSignature = caseTypeSignature(item);
+    if (item.caseTypeSignature !== recomputedSignature) {
+      errors.push(`${id}: caseTypeSignature is stale or invalid`);
     }
   }
 
@@ -140,6 +153,14 @@ for (const item of data.cases || []) {
 }
 
 const charCounts = (data.cases || []).map((item) => ["S", "O", "A", "P"].flatMap((section) => item.chart?.soap?.[section] || []).join("\n").length);
+caseTypeSummary = caseTypeAudit(data.cases || []);
+if (caseTypeSummary.uniqueCaseTypeSignatures !== expectedCount) {
+  errors.push(`caseTypeSignature unique count ${caseTypeSummary.uniqueCaseTypeSignatures} != ${expectedCount}`);
+}
+if (caseTypeSummary.duplicateCaseTypeSignatureGroups > 0) {
+  errors.push(`caseTypeSignature duplicate groups ${caseTypeSummary.duplicateCaseTypeSignatureGroups}`);
+}
+
 const summary = {
   datasetId: data.datasetId,
   path: datasetPath,
@@ -150,7 +171,13 @@ const summary = {
   difficultyCounts,
   minChars: Math.min(...charCounts),
   avgChars: Math.round(charCounts.reduce((sum, value) => sum + value, 0) / charCounts.length),
-  maxChars: Math.max(...charCounts)
+  maxChars: Math.max(...charCounts),
+  caseTypeSummary: {
+    uniqueCaseTypeSignatures: caseTypeSummary.uniqueCaseTypeSignatures,
+    duplicateCaseTypeSignatureGroups: caseTypeSummary.duplicateCaseTypeSignatureGroups,
+    uniqueBaseSignatures: caseTypeSummary.uniqueBaseSignatures,
+    duplicateBaseSignatureGroups: caseTypeSummary.duplicateBaseSignatureGroups
+  }
 };
 
 const minimumAssertionCounts = {

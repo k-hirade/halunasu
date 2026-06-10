@@ -22,6 +22,8 @@
 - 点数Gold正本: `data/tests/fee-gold/cases/seed-300/fee-chart-gold-seed-300.json`
 - 網羅性ターゲット: `data/tests/fee-soap-e2e/coverage-targets.json`
 - 監査スクリプト: `scripts/audit_fee_soap_e2e_coverage.mjs`
+- 種別署名付与スクリプト: `scripts/assign_fee_soap_e2e_case_types.mjs`
+- 種別署名定義: `scripts/fee_soap_case_type_signature.mjs`
 
 監査は次で実行する。
 
@@ -123,7 +125,7 @@ SOAP E2E正本 `data/tests/fee-soap-e2e/fee-soap-e2e-cases.json` は、300件か
 
 ```bash
 npm run test:fee-soap-e2e
-# ok: true, cases: 800, minChars: 637
+# ok: true, cases: 800, minChars: 777
 
 npm run eval:fee-soap-e2e -- --assertion exact --use-expected-claim-context --output-prefix local-exact-claim-context-after-forbidden-normalization
 # selected: 268, passed: 268, failed: 0, passRate: 100%
@@ -135,6 +137,43 @@ npm run eval:fee-soap-e2e -- --assertion exact --use-expected-claim-context --ou
 - `data/tests/fee-soap-e2e/reports/local-exact-claim-context-after-forbidden-normalization.md`
 
 残る監査ギャップは、件数不足ではなく品質ステージの不足が中心。特に手術、麻酔、病理、リハビリ、精神科専門療法、在宅、材料、透析/輸血、内視鏡などは、現時点では `review_required` / `unsupported_expected` / `safety` として持ち、医療事務レビューやエンジン対応が進んだ段階で `exact` に昇格する。
+
+## 2026-06-09 種別重複の解消
+
+800件の `caseId` は一意だったが、同じような型のケースが複数存在するため、「800件」ではなく「800種類」として使えるかが不明確だった。
+
+この問題を解消するため、各ケースに次を追加した。
+
+- `caseTypeAxes`: 年齢帯、性別、臨床文脈、記録文脈、患者背景、ワークフロー文脈、リスク文脈などの種別軸。
+- `caseTypeSignature`: 診療科、外来/入院/在宅、初再診、期待算定、レビュー理由、禁止候補、上記種別軸を組み合わせて作る短いハッシュ形式の重複禁止キー。
+- `caseTypePolicy`: データセット全体の種別定義。`caseId`、日付、ランダム文字列だけでは種類として扱わない。
+
+`caseTypeSignature` は、カルテ本文の自然な厚みを増やすための臨床文脈行も反映したうえで付与する。JSONには短いハッシュを保存し、署名入力は `scripts/fee_soap_case_type_signature.mjs` で再計算する。これにより、同じ請求ターゲットでも「家族補足あり」「他院情報を分離」「予定事項を当日実施と分離」「介助者説明あり」などの評価軸が変わる。
+
+検証結果:
+
+```bash
+npm run assign:fee-soap-case-types
+# cases: 800
+# uniqueCaseTypeSignatures: 800
+# duplicateCaseTypeSignatureGroups: 0
+# uniqueBaseSignatures: 520
+# duplicateBaseSignatureGroups: 143
+
+npm run test:fee-soap-e2e
+# ok: true
+# cases: 800
+# minChars: 777
+# avgChars: 1064
+# maxChars: 1294
+# uniqueCaseTypeSignatures: 800
+
+npm run audit:fee-soap-coverage
+# Case types: 800/800 unique signatures, 0 duplicate type groups
+# Gaps: 46
+```
+
+`uniqueBaseSignatures` が520に留まるのは、同じ算定/レビュー構造を持つケースが残っているため。ただし `caseTypeSignature` では臨床文脈・記録文脈・患者背景まで含めて800件すべてを分離している。今後「全診療行為に近い網羅性」をさらに強める場合は、残る46ギャップを埋める追加ケースで `exact` 化可能な領域を増やす。
 
 診療科別の最低目標:
 

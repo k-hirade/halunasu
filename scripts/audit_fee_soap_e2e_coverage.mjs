@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { caseTypeAudit } from "./fee_soap_case_type_signature.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = parseArgs(process.argv.slice(2));
@@ -57,6 +58,7 @@ if (args.strict && report.summary.totalGapCount > 0) {
 }
 
 function buildReport({ dataset, targets, cases, caseViews, datasetPath, targetsPath }) {
+  const typeAudit = caseTypeAudit(cases);
   const departmentRows = asArray(targets.departments).map((target) => {
     const matching = caseViews.filter((item) => item.department === target.key);
     const exact = matching.filter((item) => item.assertionLevel === "exact");
@@ -159,6 +161,13 @@ function buildReport({ dataset, targets, cases, caseViews, datasetPath, targetsP
         + departmentGaps.length
         + domainGaps.length
         + departmentDomainGaps.length,
+      caseTypes: {
+        totalCases: typeAudit.totalCases,
+        uniqueCaseTypeSignatures: typeAudit.uniqueCaseTypeSignatures,
+        duplicateCaseTypeSignatureGroups: typeAudit.duplicateCaseTypeSignatureGroups,
+        uniqueBaseSignatures: typeAudit.uniqueBaseSignatures,
+        duplicateBaseSignatureGroups: typeAudit.duplicateBaseSignatureGroups
+      },
       topDepartmentGaps: departmentGaps.slice(0, 12),
       topDomainGaps: domainGaps.slice(0, 12),
       topDepartmentDomainGaps: departmentDomainGaps.slice(0, 20)
@@ -270,6 +279,7 @@ function markdownSummary(report) {
   const lines = [
     `Coverage audit: ${report.datasetId || "(unknown dataset)"}`,
     `Cases: ${report.summary.totalCases} / minimum ${report.summary.targetMinimumCases} / recommended ${report.summary.targetRecommendedCases}`,
+    `Case types: ${report.summary.caseTypes.uniqueCaseTypeSignatures}/${report.summary.caseTypes.totalCases} unique signatures, ${report.summary.caseTypes.duplicateCaseTypeSignatureGroups} duplicate type groups`,
     `Gaps: ${report.summary.totalGapCount}`,
     "",
     "Top department gaps:",
@@ -296,6 +306,19 @@ function markdownReport(report) {
     "## Summary",
     "",
     table(["Metric", "Actual", "Target", "Gap"], report.scaleRows.map((row) => [row.key, row.actual, row.target, row.gap])),
+    "",
+    "## Case Type Uniqueness",
+    "",
+    table(
+      ["Metric", "Value"],
+      [
+        ["totalCases", report.summary.caseTypes.totalCases],
+        ["uniqueCaseTypeSignatures", report.summary.caseTypes.uniqueCaseTypeSignatures],
+        ["duplicateCaseTypeSignatureGroups", report.summary.caseTypes.duplicateCaseTypeSignatureGroups],
+        ["uniqueBaseSignatures", report.summary.caseTypes.uniqueBaseSignatures],
+        ["duplicateBaseSignatureGroups", report.summary.caseTypes.duplicateBaseSignatureGroups]
+      ]
+    ),
     "",
     "## Department Targets",
     "",

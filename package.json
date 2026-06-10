@@ -31,6 +31,7 @@
     "generate:fee-gold": "node scripts/generate_fee_gold_seed_300.mjs",
     "test:fee-soap-e2e": "node scripts/validate_fee_soap_e2e_dataset.mjs",
     "generate:fee-soap-e2e": "node scripts/generate_fee_soap_e2e_cases.mjs",
+    "assign:fee-soap-case-types": "node scripts/assign_fee_soap_e2e_case_types.mjs",
     "generate:fee-soap-e2e:coverage-800": "node scripts/generate_fee_soap_e2e_coverage_800.mjs",
     "eval:fee-soap-e2e": "node scripts/evaluate_fee_soap_e2e_dataset.mjs",
     "eval:fee-soap-e2e:strict": "node scripts/evaluate_fee_soap_e2e_dataset.mjs --strict",
