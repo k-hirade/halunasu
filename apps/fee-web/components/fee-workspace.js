@@ -179,7 +179,6 @@ function FeeSessionDetailView({ sessionId }) {
   const [masterStatus, setMasterStatus] = useState(null);
   const [feeSession, setFeeSession] = useState(null);
   const [receiptDraft, setReceiptDraft] = useState(null);
-  const [reviewItems, setReviewItems] = useState([]);
   const [candidateWorkbench, setCandidateWorkbench] = useState(null);
   const [form, setForm] = useState(defaultFeeForm);
   const [diagnosesTouched, setDiagnosesTouched] = useState(false);
@@ -230,7 +229,6 @@ function FeeSessionDetailView({ sessionId }) {
     applyDetailResponse(detail, {
       setFeeSession,
       setReceiptDraft,
-      setReviewItems,
       setCandidateWorkbench,
       setForm,
       setDiagnosesTouched,
@@ -336,8 +334,6 @@ function FeeSessionDetailView({ sessionId }) {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [feeApi, masterQuery, masterSearchAvailable, masterStatus, masterType]);
-
-  const displayReviewItems = useMemo(() => buildDisplayReviewItems(reviewItems), [reviewItems]);
 
   function updateForm(field, value) {
     setForm((current) => ({
@@ -532,7 +528,6 @@ function FeeSessionDetailView({ sessionId }) {
         body: { status }
       });
       setFeeSession(response.feeSession || feeSession);
-      setReviewItems(response.reviewItems || []);
       setReceiptDraft(response.receiptDraft || receiptDraft);
       setCandidateWorkbench(response.candidateWorkbench || null);
       setAutoSaveStatus("saved");
@@ -706,8 +701,6 @@ function FeeSessionDetailView({ sessionId }) {
               onDecision={decideReviewItem}
               onOpenDetail={setCandidateDetail}
               candidateWorkbench={candidateWorkbench}
-              receiptDraft={receiptDraft}
-              reviewItems={displayReviewItems}
             />
           </section>
 
@@ -1118,7 +1111,7 @@ function OrderEditor({ onAdd, onRemove, onUpdate, rows }) {
   );
 }
 
-function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSession, onDecision, onOpenDetail, receiptDraft, reviewItems }) {
+function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSession, onDecision, onOpenDetail }) {
   if (feeSession?.status === "calculating") {
     return (
       <div className="result result-empty">
@@ -1153,6 +1146,12 @@ function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSess
     candidateWorkbench || emptyCandidateWorkbenchModel({ calculation })
   );
   const adjustmentLines = [...model.pendingLines, ...model.excludedLines];
+  const includedCount = Number(model.counts.included || 0);
+  const pendingCount = Number(model.counts.pending || 0);
+  const excludedCount = Number(model.counts.excluded || 0);
+  const proposalCount = Number(model.counts.proposals || 0);
+  const issueCount = Number(model.counts.issues || 0);
+  const adjustmentCount = pendingCount + excludedCount;
   const needsReviewCount = Number(model.counts.needsReview || 0);
   const potentialPointsTotal = Number(model.potentialPointsTotal || 0);
   const coverageSummary = model.coverageSummary || {};
@@ -1172,9 +1171,9 @@ function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSess
           <small>{coverageSummary.description || "確定請求ではありません。採否を変えると合計も変わります。"}</small>
         </div>
         <div className="candidate-summary-grid">
-          <div><span>算定中</span><strong>{Number(model.counts.included || 0).toLocaleString()}件</strong></div>
+          <div><span>算定中</span><strong>{includedCount.toLocaleString()}件</strong></div>
           <div><span>要確認</span><strong>{needsReviewCount.toLocaleString()}件</strong></div>
-          <div><span>増点余地</span><strong>{potentialPointsTotal > 0 ? `+${potentialPointsTotal.toLocaleString()}点` : `${Number(model.counts.proposals || 0).toLocaleString()}件`}</strong></div>
+          <div><span>増点余地</span><strong>{potentialPointsTotal > 0 ? `+${potentialPointsTotal.toLocaleString()}点` : `${proposalCount.toLocaleString()}件`}</strong></div>
         </div>
       </div>
       {Array.isArray(coverageSummary.badges) && coverageSummary.badges.length ? (
@@ -1186,7 +1185,7 @@ function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSess
       ) : null}
 
       <section className="candidate-bucket candidate-bucket--proposal">
-        <BucketHeader title="増点できる（提案）" count={model.proposals.length} note="条件を満たすなら点数にできる可能性がある項目です。" />
+        <BucketHeader title="増点できる（提案）" count={proposalCount} note="条件を満たすなら点数にできる可能性がある項目です。" />
         {model.proposals.length ? (
           <div className="proposal-list">
             {model.proposals.map((item) => (
@@ -1197,7 +1196,7 @@ function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSess
       </section>
 
       <section className="candidate-bucket">
-        <BucketHeader title="算定中" count={Number(model.counts.included || 0)} note="いま合計点数に入っている明細です。必要に応じて外せます。" />
+        <BucketHeader title="算定中" count={includedCount} note="いま合計点数に入っている明細です。必要に応じて外せます。" />
         {model.includedLines.length ? (
           <div className="candidate-line-list">
             {model.includedLines.map((line) => (
@@ -1207,19 +1206,21 @@ function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSess
         ) : <p className="field-note">算定中の明細はまだありません。</p>}
       </section>
 
-      {adjustmentLines.length ? (
+      {adjustmentCount ? (
         <section className="candidate-bucket">
-          <BucketHeader title="外し/保留" count={adjustmentLines.length} note="合計から外している、または後で判断する明細です。" />
-          <div className="candidate-line-list">
-            {adjustmentLines.map((line) => (
-              <CandidateLineRow disabled={disabled} item={line} key={line.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
-            ))}
-          </div>
+          <BucketHeader title="外し/保留" count={adjustmentCount} note="合計から外している、または後で判断する明細です。" />
+          {adjustmentLines.length ? (
+            <div className="candidate-line-list">
+              {adjustmentLines.map((line) => (
+                <CandidateLineRow disabled={disabled} item={line} key={line.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
+              ))}
+            </div>
+          ) : <p className="field-note">外し/保留の明細を表示できません。再計算してください。</p>}
         </section>
       ) : null}
 
       <section className="candidate-bucket">
-        <BucketHeader title="確認・修正が必要" count={model.issues.length} note="このままだと算定しづらい項目です。内容を確認してください。" />
+        <BucketHeader title="確認・修正が必要" count={issueCount} note="このままだと算定しづらい項目です。内容を確認してください。" />
         {model.issues.length ? (
           <div className="issue-list">
             {model.issues.map((item) => (
@@ -1608,7 +1609,6 @@ function applyDetailResponse(response, setters) {
   const session = response.feeSession || response;
   setters.setFeeSession(session || null);
   setters.setReceiptDraft(response.receiptDraft || null);
-  setters.setReviewItems(response.reviewItems || []);
   setters.setCandidateWorkbench?.(response.candidateWorkbench || null);
   setters.setForm(formFromFeeSession(session || {}));
   setters.setDiagnosesTouched?.(String(session?.diagnosesSource || "").trim() === "manual");
@@ -1952,33 +1952,6 @@ function asStringList(value) {
     : [];
 }
 
-function buildDisplayReviewItems(items = []) {
-  const lineTexts = (Array.isArray(items) ? items : [])
-    .filter((item) => item?.sourceType === "line_item")
-    .map((item) => `${item.lineItem?.name || ""} ${item.title || ""}`)
-    .join(" ");
-  const seen = new Set();
-  const result = [];
-  for (const item of Array.isArray(items) ? items : []) {
-    if (item?.sourceType === "warning" && shouldSuppressWarningForExistingLine(item, lineTexts)) {
-      continue;
-    }
-    const displayTitle = reviewItemTitle(item);
-    const displayReason = humanizeReviewMessage(item.reason || item.lineItem?.reason || "");
-    const key = semanticReviewKey(item, displayTitle, displayReason);
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    result.push({
-      ...item,
-      displayTitle,
-      displayReason
-    });
-  }
-  return result;
-}
-
 function normalizeCandidateWorkbenchModel(model = {}) {
   const lines = Array.isArray(model.lines) ? model.lines : [];
   const includedLines = Array.isArray(model.includedLines)
@@ -2052,126 +2025,6 @@ function emptyCandidateWorkbenchModel({ calculation } = {}) {
     },
     potentialPointsTotal: 0
   };
-}
-
-function shouldSuppressWarningForExistingLine(item = {}, lineTexts = "") {
-  const text = `${item.title || ""} ${item.reason || ""}`;
-  const drugName = text.match(/薬剤「([^」]+)」/u)?.[1];
-  return Boolean(drugName)
-    && /数量|日数|不足/u.test(text)
-    && lineTexts.includes(drugName);
-}
-
-function semanticReviewKey(item = {}, title = "", reason = "") {
-  const text = `${title} ${reason} ${item.title || ""} ${item.reason || ""} ${item.lineItem?.name || ""}`.toLowerCase();
-  if (/施設基準|hospital_profile_missing|facility_standard/u.test(text)) return "warning:facility_standard";
-  if (/mri|ｍｒｉ/u.test(text) && /予定|依頼|オーダー|planned|ordered/u.test(text)) return "warning:mri_planned";
-  if (/単純x線|x線|レントゲン|simple_radiography/u.test(text) && /撮影方式|写真診断|機器|条件/u.test(text)) return "warning:simple_radiography_condition";
-  const drugName = text.match(/薬剤「([^」]+)」/u)?.[1];
-  if (drugName && /数量|日数|不足/u.test(text)) return `warning:drug_quantity:${normalizeSearch(drugName)}`;
-  if (/材料|特定器材/u.test(text) && /マスター|解決でき/u.test(text)) return `warning:material_master:${title}:${reason}`;
-  if (item.sourceType === "line_item") return `line:${item.lineItem?.code || item.lineItem?.name || item.reviewItemId}`;
-  return `${item.sourceType || "review"}:${title}:${reason}`;
-}
-
-function reviewItemTitle(item = {}) {
-  const text = `${item.title || ""} ${item.reason || ""} ${item.lineItem?.name || ""}`;
-  if (/施設基準|hospital_profile_missing|facility_standard/u.test(text)) return "施設基準の確認";
-  if (/mri|ｍｒｉ/u.test(text) && /予定|依頼|オーダー|planned|ordered/u.test(text)) return "MRIは予定扱い";
-  if (/単純X線|単純x線|X線|x線|レントゲン|simple_radiography/u.test(text) && /撮影方式|写真診断|機器|条件/u.test(text)) return "単純X線の撮影条件確認";
-  const drugName = text.match(/薬剤「([^」]+)」/u)?.[1];
-  if (drugName) return `${drugName}の確認`;
-  if (/材料|特定器材/u.test(text) && /マスター|解決でき/u.test(text)) return "特定器材のマスター確認";
-  if (/調剤料|処方料|Medication fee/i.test(text)) return "投薬料の確認";
-  if (/単純撮影|画像|Imaging fee/i.test(text)) return "画像診断料の確認";
-  if (/初診|再診|Outpatient basic/i.test(text)) return "初再診料の確認";
-  if (item.sourceType === "warning") return "確認事項";
-  return item.title || item.lineItem?.name || "算定候補の確認";
-}
-
-function humanizeReviewMessage(message = "") {
-  const raw = String(message || "").trim();
-  if (!raw) return "算定候補の内容を確認してください。";
-  const text = raw.replace(/^[a-z][a-z0-9_]*:\s*/iu, "").trim();
-  if (/hospital_profile_missing|facility_standard|Lab management fee skipped|施設基準がない|施設基準/u.test(raw)) {
-    return "施設基準が登録されていないため、施設基準が必要な加算は自動追加していません。";
-  }
-  if (/This result is a billing candidate/i.test(text)) {
-    return "この結果は算定候補です。確定請求前に内容を確認してください。";
-  }
-  if (/Input drug code; medical drug fee rounded/i.test(text)) {
-    return "入力された薬剤コードから薬剤料を候補化しました。薬価合計を点数に換算しています。";
-  }
-  if (/Medication fee candidate for in_house/i.test(text)) {
-    return "院内処方に関する投薬料候補です。処方内容と算定条件を確認してください。";
-  }
-  if (/D026 judgement fee for group/i.test(text)) {
-    return "検査判断料の候補です。実施検査と同月算定条件を確認してください。";
-  }
-  if (/Collection fee requested by blood_venous/i.test(text)) {
-    return "静脈採血料の候補です。採血実施と算定条件を確認してください。";
-  }
-  if (/Outpatient rapid lab add-on skipped/i.test(text)) {
-    return "外来迅速検体検査加算は、当日説明・文書要件を確認できないため自動追加していません。";
-  }
-  if (/Required comment candidate:/i.test(text)) {
-    return text
-      .replace(/^Required comment candidate:\s*/iu, "レセプトコメントの確認: ")
-      .replace(/\s+needs\s+/iu, " に必要なコメント: ");
-  }
-  if (/Imaging fee candidate for simple_radiography/i.test(text)) {
-    return "単純X線に関する画像診断料候補です。撮影方式と写真診断区分を確認してください。";
-  }
-  if (/Imaging fee candidate for ct/i.test(text)) {
-    return "CT撮影に関する画像診断料候補です。撮影内容と機器区分を確認してください。";
-  }
-  if (/Imaging fee candidate for mri/i.test(text)) {
-    return "MRI撮影に関する画像診断料候補です。撮影内容と機器区分を確認してください。";
-  }
-  if (/Outpatient basic fee candidate for initial/i.test(text)) {
-    return "初診料の候補です。受診履歴と初診の条件を確認してください。";
-  }
-  if (/Outpatient basic fee candidate for revisit/i.test(text)) {
-    return "再診料の候補です。受診履歴と再診の条件を確認してください。";
-  }
-  if (/Input medical procedure code matched master only/i.test(text)) {
-    return "標準マスターには一致しましたが、章ごとの算定条件は未確認です。";
-  }
-  return text
-    .replace(/\bmaster lookup\b/giu, "マスター照合")
-    .replace(/\bin_house\b/giu, "院内処方")
-    .replace(/\bsimple_radiography\b/giu, "単純X線")
-    .replace(/\bmedical_fee_calculation\b/giu, "算定エンジン")
-    .replace(/\bdrug_master\b|\bmedical_procedure_master\b|\bmaterial_master\b/giu, "")
-    .replace(/\s{2,}/gu, " ")
-    .trim();
-}
-
-function lineMetaLabel(line = {}) {
-  const code = String(line.code || "").trim();
-  const category = lineBusinessCategory(line);
-  return [code, category].filter(Boolean).join(" / ") || category || "分類未設定";
-}
-
-function lineBusinessCategory(line = {}) {
-  const text = `${line.orderType || ""} ${line.source || ""} ${line.coverage?.scope || ""}`.toLowerCase();
-  if (/outpatient_basic|basic/u.test(text)) return "基本料";
-  if (/medication_fee/u.test(text)) return "投薬";
-  if (/drug/u.test(text)) return "薬剤";
-  if (/imaging/u.test(text)) return "画像";
-  if (/lab/u.test(text)) return "検査";
-  if (/material/u.test(text)) return "特定器材";
-  if (/procedure|treatment|medical_procedure/u.test(text)) return "診療行為";
-  return "算定候補";
-}
-
-function humanizeCoverageDescription(value = "") {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  if (/billing candidate and review-support draft/i.test(text)) {
-    return "対応範囲内で候補化できた算定行です。確定請求前にレビューしてください。";
-  }
-  return humanizeReviewMessage(text);
 }
 
 function statusLabel(value) {
