@@ -1036,8 +1036,8 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v2");
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v4");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v3");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v5");
   assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
     event.name === "腰椎X線"
     && event.actionStatus === "performed"
@@ -1156,6 +1156,183 @@ test("gates lab master search to direct lab test items and records trace", async
     && item.searches.some((search) => search.filteredCandidates.some((candidate) => candidate.code === "160061910"))
   )));
   assert.ok(trace.some((item) => item.stage === "lab_rule_expansion"));
+});
+
+test("routes non-blood specimen collection fees to review instead of auto collection input", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.searchMaster = async (input) => {
+    if (input.type === "procedure" && String(input.query || "").includes("インフル")) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160169450",
+          name: "インフルエンザウイルス抗原定性",
+          points: 139,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 139,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "インフルエンザ疑い", status: "suspected", evidence: "インフルエンザ疑い" }],
+    clinical_events: [
+      {
+        type: "lab",
+        name: "インフルエンザ抗原",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "positive",
+        certainty: "explicit",
+        section: "O",
+        evidence: "鼻咽頭ぬぐい液でインフルエンザウイルス抗原定性を院内実施。",
+        search_queries: ["インフルエンザ抗原"],
+        specimen: "鼻咽頭ぬぐい液",
+        collection_method: "スワブ採取"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Swab Review Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-09",
+    clinicalText: "O: 鼻咽頭ぬぐい液でインフルエンザウイルス抗原定性を院内実施。",
+    diagnoses: [{ name: "インフルエンザ疑い" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160169450"]);
+  assert.equal(receivedInput.calculationOptions.lab_options, undefined);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => (
+    issue.issueCode === "specimen_collection_fee_review_required"
+    && issue.title === "検体採取確認"
+  )));
+  const trace = calculation.body.calculationResult.clinicalExtraction.trace;
+  assert.ok(trace.some((item) => (
+    item.stage === "lab_rule_expansion"
+    && item.selected?.derived?.some((derived) => derived.kind === "collection_fee_review")
+  )));
+});
+
+test("does not infer specimen collection fee review from throat findings alone", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.searchMaster = async (input) => {
+    if (input.type === "procedure" && String(input.query || "").includes("インフル")) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160169450",
+          name: "インフルエンザウイルス抗原定性",
+          points: 139,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 139,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "インフルエンザ疑い", status: "suspected", evidence: "インフルエンザ疑い" }],
+    clinical_events: [
+      {
+        type: "lab",
+        name: "インフルエンザ抗原",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "positive",
+        certainty: "explicit",
+        section: "O",
+        evidence: "咽頭発赤あり。インフルエンザウイルス抗原定性を院内実施。",
+        search_queries: ["インフルエンザ抗原"],
+        specimen: "",
+        collection_method: ""
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Throat Finding Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-09",
+    clinicalText: "O: 咽頭発赤あり。インフルエンザウイルス抗原定性を院内実施。",
+    diagnoses: [{ name: "インフルエンザ疑い" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160169450"]);
+  assert.equal(receivedInput.calculationOptions.lab_options, undefined);
+  assert.equal(
+    calculation.body.calculationResult.reviewIssues.some((issue) => issue.issueCode === "specimen_collection_fee_review_required"),
+    false
+  );
 });
 
 test("persists structured diagnoses and resolves clinical event search queries with history-based basic fee", async () => {
@@ -1600,6 +1777,7 @@ test("gates management events into review instead of adoptable proposals", async
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let receivedInput = null;
+  const masterSearches = [];
   const masterItems = {
     "慢性疾患指導": [{
       kind: "procedure",
@@ -1609,11 +1787,14 @@ test("gates management events into review instead of adoptable proposals", async
       sourceType: "medical_procedure_master"
     }]
   };
-  stores.feeCalculator.searchMaster = async (input) => ({
-    query: input.query,
-    type: input.type,
-    items: masterItems[input.query] || []
-  });
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    return {
+      query: input.query,
+      type: input.type,
+      items: masterItems[input.query] || []
+    };
+  };
   stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
     receivedInput = calculationInput;
     return {
@@ -1698,6 +1879,7 @@ test("gates management events into review instead of adoptable proposals", async
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
   assert.equal(receivedInput.calculationOptions.procedure_codes, undefined);
+  assert.equal(masterSearches.length, 0);
   assert.equal(calculation.body.candidateWorkbench.proposals.length, 0);
   assert.equal(calculation.body.candidateWorkbench.potentialPointsTotal, 0);
   assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => (

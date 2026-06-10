@@ -1,6 +1,6 @@
 import { createStructuredOpenAiResponse } from "../openai/responses-structured.js";
 
-export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v2";
+export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v3";
 
 const LEGACY_EVENT_STATUSES = [
   "performed",
@@ -149,6 +149,8 @@ const feeClinicalFactsSchema = {
           "search_queries",
           "modality",
           "body_site",
+          "specimen",
+          "collection_method",
           "quantity_per_day",
           "days",
           "total_quantity",
@@ -225,6 +227,8 @@ function eventProperties() {
       enum: ["simple_radiography", "ct", "mri", "ultrasound", "endoscopy", "other", "none"]
     },
     body_site: shortString(40),
+    specimen: shortString(40),
+    collection_method: shortString(40),
     quantity_per_day: shortString(20),
     days: shortString(20),
     total_quantity: shortString(20),
@@ -268,6 +272,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "If a result or treatment is described as 持参, 前医, 他院, かかりつけ, 健診, 内科主治医, or outside records, keep the clinical event but set source_origin and provider_ownership accordingly. Do not treat it as own_clinic current billing.",
       "If a medication is described as 既往, 内服中, 持参薬, 常用, 継続中, or 以前から, do not mark it prescribed unless the text clearly says it was prescribed today.",
       "For medications, extract days and quantity per day only when explicitly written. Otherwise leave the fields empty and add missing_information.",
+      "For lab tests and specimen-based procedures, extract specimen and collection_method only when explicit, such as blood, urine, nasal swab, nasopharyngeal swab, throat swab, sputum, stool, tissue, or puncture fluid. Leave them empty when the note only describes a finding such as 咽頭発赤 or 鼻汁 without specimen collection.",
       "For imaging, set modality to simple_radiography, ct, mri, ultrasound, endoscopy, or other when explicit. Planned imaging should not be mixed with performed imaging.",
       "When a procedure or treatment may vary by body site or measured size, such as wound, burn, dermatology, or site-dependent procedures, extract body_site and numeric area_size_cm2 whenever they are explicitly written. Do not infer a size that is not written; leave area_size_cm2 empty and add review_reason for missing size when the size affects billing classification.",
       "For every clinical_event, set section to S/O/A/P when clear. Use temporal_relation=current_visit/past/future/unknown; source_origin=own_clinic_record/patient_reported/external_document/carried_in_result/other_provider_record/unknown; provider_ownership=own_clinic/same_institution_other_department/other_provider/unknown.",

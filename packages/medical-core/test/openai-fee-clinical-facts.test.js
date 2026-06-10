@@ -140,8 +140,35 @@ test("fee clinical facts schema keeps enough diagnoses and excluded events for c
   assert.equal(schema.properties.diagnoses.maxItems, 8);
   assert.equal(schema.properties.excluded_events.maxItems, 8);
   assert.ok(schema.properties.clinical_events);
+  assert.ok(schema.properties.clinical_events.items.properties.specimen);
+  assert.ok(schema.properties.clinical_events.items.properties.collection_method);
   assert.equal(schema.required.includes("clinical_events"), true);
   assert.equal(schema.required.includes("billing_events"), false);
+});
+
+test("fee clinical facts prompt asks for explicit specimen and collection method without inferring from findings", async () => {
+  let requestBody = null;
+
+  await withFetch(
+    async (url, options) => {
+      assert.equal(url, "https://api.openai.com/v1/responses");
+      requestBody = JSON.parse(options.body);
+      return jsonResponse({
+        output_text: JSON.stringify(feeClinicalFactsPayload())
+      });
+    },
+    async () => {
+      await extractFeeClinicalFactsWithOpenAi({
+        apiKey: "test-key",
+        clinicalText: "O: 咽頭発赤あり。鼻咽頭ぬぐい液でインフルエンザ検査を実施。",
+        sessionContext: {}
+      });
+    }
+  );
+
+  assert.match(requestBody.instructions, /specimen/);
+  assert.match(requestBody.instructions, /collection_method/);
+  assert.match(requestBody.instructions, /咽頭発赤/);
 });
 
 test("fee clinical facts prompt asks for explicit area and body site when billing classification may depend on them", async () => {

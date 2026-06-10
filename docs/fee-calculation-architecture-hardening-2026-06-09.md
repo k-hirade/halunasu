@@ -413,7 +413,9 @@ type EncounterContextSnapshot = {
 | `procedure` | `procedure_basic` | `procedure_addon`, `comment`, `reduction` |
 | `medication` | `drug` | `medication_fee` 派生行 |
 | `material` | `material` | comment / addon |
-| `management` | `management_fee` | disease-only inferred fees |
+| `management` | なし（初期実装では直接検索しない） | `management_fee`, disease-only inferred fees |
+
+管理料は `clinical_event` として抽出してよいが、病名や指導文言だけでコード・点数を直接検索して候補化しない。対象疾患、管理主体、同月履歴、施設/診療科条件、記録要件を確認する `review_issue` に落とし、管理料moduleが十分な条件を持てる段階で `proposal` または `billing_candidate` を生成する。
 
 ### Forbidden Candidate Filter
 
@@ -424,6 +426,20 @@ if candidate.itemRole == "reduction":
 if candidate.itemRole in ["judgment", "addon", "derived_only"]:
   reject unless parentBillingCandidateId exists or ruleEngineGenerated == true
 ```
+
+### Derived Item Policy
+
+派生項目は「生成元」と「リスクゲート」を分けて扱う。`derived` と呼ぶだけでは、判断料のように自動で足せるものと、検体採取料や管理料のように人の確認が必要なものが混ざるため。
+
+| 項目カテゴリ | 生成元 | 充足時 | 欠落/曖昧時 | 意図 |
+| --- | --- | --- | --- | --- |
+| 検査判断料 | 親検査コードから派生 | auto | review | 検査分類から機械的に導出できるため |
+| 採血料（B-V等） | 親検査 + 血液検体の明示 | auto | review | `採血` / `血液検査` など臨床事実が明示される場合のみ |
+| 非血液の検体採取料 | 親検査 + specimen/collection_method | review | review | 検体と採取方法が明示されても、同日算定条件や親行為確認が必要なため自動合計へ入れない |
+| 検体検査管理加算 | 親検査 + 判断料 + 施設基準 | auto（施設基準確認済みのみ） | 出さない/施設設定review | 施設基準不明のまま自動追加しない |
+| 管理料 | 独立項目 | review_only | review_only | 病名だけで出さず、管理主体・記録・同月履歴・施設条件を人が確認するため |
+
+この表はコード分岐ではなくポリシーテーブルとして実装し、新しい派生項目を追加する時も同じ軸で判断する。単語単位のパッチではなく、`clinical_event` の構造化属性と親候補から一貫して分類する。
 
 ## Rule Engine
 
@@ -462,7 +478,7 @@ exclude:
 2. `lab_test_basic` だけを直接マッチ。
 3. `LabPayload` から検査分類を付与。
 4. 検査分類から判断料を派生。
-5. 採血/検体採取の条件からB-V等を派生。
+5. 採血は血液検体の明示がある場合のみ自動派生し、非血液の検体採取料は `specimen` / `collection_method` を根拠にreviewへ送る。
 6. 迅速検査や施設基準が必要な加算はproposal/reviewへ。
 7. 減算は施設/算定条件からのみ生成。
 
@@ -658,4 +674,3 @@ BUCKET_MISMATCH
 - 厚生労働省「令和８年度診療報酬改定について」では、算定方法、実施上の留意事項、基本診療料・特掲診療料の施設基準、施設基準チェックリスト、疑義解釈、訂正通知が分かれて掲載されている。
 - 社会保険診療報酬支払基金「基本マスター」では、医科診療行為、医薬品、特定器材、コメント、傷病名、修飾語などの基本マスターが分けて提供されている。
 - OpenAI Structured OutputsはJSON Schema準拠に有効だが、domain correctnessは保証しない。アプリ側のvalidation、ルール評価、テスト分解が必要。
-

@@ -58,12 +58,9 @@ def _master_db(db_path: str) -> sqlite3.Connection:
 
 
 def _search_procedures(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
-    search_condition, search_params = _text_search_condition(
-        (
-            "p.code",
-            "p.short_name",
-            "COALESCE(p.base_name, '')",
-        ),
+    search_condition, search_params = _master_search_condition(
+        "p.code",
+        ("p.short_name", "COALESCE(p.base_name, '')"),
         query,
     )
     rows = db.execute(
@@ -209,13 +206,9 @@ def _section_between(value: str, minimum: int, maximum: int) -> bool:
 
 
 def _search_drugs(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
-    search_condition, search_params = _text_search_condition(
-        (
-            "d.code",
-            "d.name",
-            "COALESCE(d.base_name, '')",
-            "COALESCE(d.kana, '')",
-        ),
+    search_condition, search_params = _master_search_condition(
+        "d.code",
+        ("d.name", "COALESCE(d.base_name, '')", "COALESCE(d.kana, '')"),
         query,
     )
     rows = db.execute(
@@ -275,13 +268,9 @@ def _search_drugs(db: sqlite3.Connection, query: str, limit: int) -> list[dict[s
 
 
 def _search_materials(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
-    search_condition, search_params = _text_search_condition(
-        (
-            "m.code",
-            "m.name",
-            "COALESCE(m.base_name, '')",
-            "COALESCE(m.kana, '')",
-        ),
+    search_condition, search_params = _master_search_condition(
+        "m.code",
+        ("m.name", "COALESCE(m.base_name, '')", "COALESCE(m.kana, '')"),
         query,
     )
     rows = db.execute(
@@ -341,12 +330,9 @@ def _search_materials(db: sqlite3.Connection, query: str, limit: int) -> list[di
 
 
 def _search_comments(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
-    search_condition, search_params = _text_search_condition(
-        (
-            "c.code",
-            "c.comment_text",
-            "COALESCE(c.kana, '')",
-        ),
+    search_condition, search_params = _master_search_condition(
+        "c.code",
+        ("c.comment_text", "COALESCE(c.kana, '')"),
         query,
     )
     rows = db.execute(
@@ -397,6 +383,11 @@ def _search_comments(db: sqlite3.Connection, query: str, limit: int) -> list[dic
         )
         for row in rows
     ]
+
+
+def _master_search_condition(code_field: str, text_fields: tuple[str, ...], query: str) -> tuple[str, tuple[str, ...]]:
+    text_condition, text_params = _text_search_condition(text_fields, query)
+    return f"{code_field} LIKE ? OR {text_condition}", (f"%{query}%", *text_params)
 
 
 def _text_search_condition(fields: tuple[str, ...], query: str) -> tuple[str, tuple[str, ...]]:
