@@ -1,6 +1,6 @@
 import { createStructuredOpenAiResponse } from "../openai/responses-structured.js";
 
-export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v3";
+export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v4";
 
 const LEGACY_EVENT_STATUSES = [
   "performed",
@@ -86,6 +86,24 @@ const EVENT_TYPES = [
   "other"
 ];
 
+const BILLING_DOMAINS = [
+  "standard_lab",
+  "standard_imaging",
+  "standard_procedure",
+  "standard_medication",
+  "standard_material",
+  "standard_management",
+  "standard_counseling",
+  "pathology",
+  "emergency_time_addon",
+  "psychiatry_special",
+  "anesthesia",
+  "surgery",
+  "rehabilitation",
+  "home_care",
+  "unknown"
+];
+
 const feeClinicalFactsSchema = {
   type: "object",
   additionalProperties: false,
@@ -139,6 +157,7 @@ const feeClinicalFactsSchema = {
         additionalProperties: false,
         required: [
           "type",
+          "billing_domain",
           "name",
           "action_status",
           "temporal_relation",
@@ -207,6 +226,7 @@ function shortString(maxLength = 70) {
 function eventProperties() {
   return {
     type: { type: "string", enum: EVENT_TYPES },
+    billing_domain: { type: "string", enum: BILLING_DOMAINS },
     name: shortString(60),
     action_status: { type: "string", enum: ACTION_STATUSES },
     temporal_relation: { type: "string", enum: TEMPORAL_RELATIONS },
@@ -267,6 +287,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "You are a Japanese medical billing clinical-structure extraction engine.",
       "Return only facts supported by the provided clinical text and session context.",
       "Your output is clinical_events, not billing candidates. Do not calculate points. Do not choose billing codes. Do not decide billable/proposal/review eligibility. Downstream master search and rules will decide those.",
+      "For each clinical_event, set billing_domain as a structured meaning label. Use standard_lab for ordinary specimen tests including blood/urine/rapid tests and ordinary specimen submission; pathology only for pathology diagnosis, cytology, histology, tissue specimen pathology submission, or specimen preparation in a pathology-diagnosis context; emergency_time_addon only for emergency/time-after-hours/holiday/night billing add-on context such as 救急加算, 時間外加算, 休日加算, 深夜加算, or受付時刻確認 for those add-ons. Do not mark symptom timing such as 夜間頻尿 or 夜間咳嗽 as emergency_time_addon.",
       "Separate action_status, temporal_relation, source_origin, provider_ownership, result_assertion, and certainty. Do not compress them into one status.",
       "Use action_status=performed/prescribed/administered only for actions that happened during the current encounter or are clearly prescribed/administered by this clinic today.",
       "For tests and procedures, if the act itself was performed, set action_status=performed even when the result is normal, negative, no abnormality, unchanged, or ruled out. Do not exclude the event just because the result is 陰性/正常/異常なし. Set result_assertion=negative/normal instead. Use action_status=not_performed only when the clinical text says the act itself was not performed, cancelled, or denied.",
@@ -276,6 +297,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "For medication events, name must be the exact drug/product/generic name written in the note. Do not use category labels such as 処方薬, 院内処方, 院内外用薬, 外用薬, or 薬剤 as the event name when a concrete drug name appears in the evidence. One drug equals one medication event.",
       "For medications, extract days and quantity per day only when explicitly written. Otherwise leave the fields empty and add missing_information.",
       "For lab tests and specimen-based procedures, extract specimen and collection_method only when explicit, such as blood, urine, nasal swab, nasopharyngeal swab, throat swab, sputum, stool, tissue, or puncture fluid. Leave them empty when the note only describes a finding such as 咽頭発赤 or 鼻汁 without specimen collection.",
+      "Domain contrast examples: 静脈採血後に検体提出 is billing_domain=standard_lab, not pathology. 組織標本を病理提出 or 細胞診検体を提出 is billing_domain=pathology. 夜間頻尿 is a symptom/time context, not emergency_time_addon. 時間外加算の算定条件確認 is billing_domain=emergency_time_addon.",
       "For imaging, set modality to simple_radiography, ct, mri, ultrasound, endoscopy, or other when explicit. Planned imaging should not be mixed with performed imaging.",
       "When a procedure or treatment may vary by body site or measured size, such as wound, burn, dermatology, or site-dependent procedures, extract body_site and numeric area_size_cm2 whenever they are explicitly written. Do not infer a size that is not written; leave area_size_cm2 empty and add review_reason for missing size when the size affects billing classification.",
       "For every clinical_event, set section to S/O/A/P when clear. Use temporal_relation=current_visit/past/future/unknown; source_origin=own_clinic_record/patient_reported/external_document/carried_in_result/other_provider_record/unknown; provider_ownership=own_clinic/same_institution_other_department/other_provider/unknown.",

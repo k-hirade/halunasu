@@ -729,6 +729,7 @@ function normalizeClinicalEvents(items) {
         temporalRelation: item.temporalRelation || item.temporal_relation || item.dateRelation || item.date_relation || "unknown",
         sourceOrigin: item.sourceOrigin || item.source_origin || null,
         providerOwnership: item.providerOwnership || item.provider_ownership || null,
+        billingDomain: item.billingDomain || item.billing_domain || item.domain || null,
         resultAssertion: item.resultAssertion || item.result_assertion || null,
         certainty: item.certainty || null,
         section: item.section || "unknown",

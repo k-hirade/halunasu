@@ -140,6 +140,7 @@ test("fee clinical facts schema keeps enough diagnoses and excluded events for c
   assert.equal(schema.properties.diagnoses.maxItems, 8);
   assert.equal(schema.properties.excluded_events.maxItems, 8);
   assert.ok(schema.properties.clinical_events);
+  assert.ok(schema.properties.clinical_events.items.properties.billing_domain);
   assert.ok(schema.properties.clinical_events.items.properties.specimen);
   assert.ok(schema.properties.clinical_events.items.properties.collection_method);
   assert.equal(schema.required.includes("clinical_events"), true);
@@ -169,6 +170,32 @@ test("fee clinical facts prompt asks for explicit specimen and collection method
   assert.match(requestBody.instructions, /specimen/);
   assert.match(requestBody.instructions, /collection_method/);
   assert.match(requestBody.instructions, /咽頭発赤/);
+});
+
+test("fee clinical facts prompt delegates domain classification to structured billing domain", async () => {
+  let requestBody = null;
+
+  await withFetch(
+    async (url, options) => {
+      assert.equal(url, "https://api.openai.com/v1/responses");
+      requestBody = JSON.parse(options.body);
+      return jsonResponse({
+        output_text: JSON.stringify(feeClinicalFactsPayload())
+      });
+    },
+    async () => {
+      await extractFeeClinicalFactsWithOpenAi({
+        apiKey: "test-key",
+        clinicalText: "静脈採血後に検体提出。夜間頻尿あり。時間外加算の算定条件確認。",
+        sessionContext: {}
+      });
+    }
+  );
+
+  assert.match(requestBody.instructions, /billing_domain/);
+  assert.match(requestBody.instructions, /静脈採血後に検体提出 is billing_domain=standard_lab/);
+  assert.match(requestBody.instructions, /夜間頻尿 is a symptom\/time context, not emergency_time_addon/);
+  assert.match(requestBody.instructions, /時間外加算の算定条件確認 is billing_domain=emergency_time_addon/);
 });
 
 test("fee clinical facts prompt asks for explicit area and body site when billing classification may depend on them", async () => {
