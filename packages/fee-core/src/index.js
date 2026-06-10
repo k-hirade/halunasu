@@ -27,6 +27,8 @@ export function buildFeeSession(input = {}, options = {}) {
     serviceDate,
     claimMonth: input.claimMonth || serviceDate.slice(0, 7),
     setting: input.setting || "outpatient",
+    admissionDate: input.admissionDate || input.admission_date || null,
+    inpatientBasicDays: input.inpatientBasicDays || input.inpatient_basic_days || null,
     clinicalText: input.clinicalText || "",
     orders: Array.isArray(input.orders) ? input.orders : [],
     diagnoses: Array.isArray(input.diagnoses) ? input.diagnoses : [],
@@ -65,6 +67,12 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
       serviceDate: patch.serviceDate,
       claimMonth: patch.claimMonth || (patch.serviceDate ? String(patch.serviceDate).slice(0, 7) : undefined),
       setting: patch.setting,
+      admissionDate: hasOwn(patch, "admissionDate") || hasOwn(patch, "admission_date")
+        ? patch.admissionDate || patch.admission_date || null
+        : undefined,
+      inpatientBasicDays: hasOwn(patch, "inpatientBasicDays") || hasOwn(patch, "inpatient_basic_days")
+        ? patch.inpatientBasicDays || patch.inpatient_basic_days || null
+        : undefined,
       clinicalText: hasOwn(patch, "clinicalText") ? patch.clinicalText || "" : undefined,
       orders: hasOwn(patch, "orders") ? patch.orders : undefined,
       diagnoses: hasOwn(patch, "diagnoses") ? patch.diagnoses : undefined,
@@ -91,6 +99,10 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
     "serviceDate",
     "claimMonth",
     "setting",
+    "admissionDate",
+    "admission_date",
+    "inpatientBasicDays",
+    "inpatient_basic_days",
     "clinicalText",
     "orders",
     "diagnoses",
@@ -340,7 +352,7 @@ export function buildReviewItems(session = {}) {
       reviewItemId,
       sourceType: "review_issue",
       severity: issue.severity || "warning",
-      title: issue.title || reviewWarningTitle(issue.messageForStaff),
+      title: issue.topicLabel || issue.title || reviewWarningTitle(issue.messageForStaff),
       reason: issue.messageForStaff || "確認が必要です。",
       defaultStatus: "needs_review",
       reviewIssue: issue,
@@ -827,6 +839,8 @@ function normalizeReviewIssues(items) {
       return compactObject({
         reviewIssueId: item.reviewIssueId || item.review_issue_id || `review_issue_${index + 1}`,
         issueCode: item.issueCode || item.issue_code || "needs_review",
+        topicCode: item.topicCode || item.topic_code || null,
+        topicLabel: item.topicLabel || item.topic_label || null,
         severity: item.severity || "warning",
         title: item.title || null,
         messageForStaff: item.messageForStaff || item.message_for_staff || item.message || item.reason || "",
@@ -1017,6 +1031,8 @@ function reviewItem(input) {
     reason: input.reason,
     status: decision?.status || input.defaultStatus || "needs_review",
     issueCode: input.issueCode || reviewIssue?.issueCode || reviewIssue?.issue_code || null,
+    topicCode: input.topicCode || reviewIssue?.topicCode || reviewIssue?.topic_code || null,
+    topicLabel: input.topicLabel || reviewIssue?.topicLabel || reviewIssue?.topic_label || null,
     source: input.source || reviewIssue?.source || candidateProposal?.source || null,
     policy: input.policy || reviewIssue?.policy || candidateProposal?.policy || null,
     decision,
@@ -1087,6 +1103,10 @@ function receiptLineSemanticKey(line = {}) {
 
 function reviewWarningTitle(message = "") {
   const text = String(message || "");
+  const topicLabel = text.match(/^([^\s:：]{2,20}確認)\s*[:：]/u)?.[1];
+  if (topicLabel) {
+    return topicLabel;
+  }
   if (/施設基準|facility_standard|hospital_profile_missing/u.test(text)) {
     return "施設基準の確認";
   }
@@ -1213,12 +1233,16 @@ function issueCategoryForCode(issueCode = "") {
     facility_unknown: { key: "facility", label: "施設設定" },
     hospital_profile_missing: { key: "facility", label: "施設設定" },
     management_fee_review_required: { key: "management", label: "管理料" },
+    same_month_unknown: { key: "management", label: "同月履歴" },
     specimen_collection_fee_review_required: { key: "specimen", label: "検体採取" },
     ambiguous_master: { key: "master", label: "マスター確認" },
     master_not_found: { key: "master", label: "マスター確認" },
     missing_quantity: { key: "medication", label: "数量・日数" },
     missing_body_site: { key: "input", label: "部位・範囲" },
     missing_equipment_kind: { key: "input", label: "機器区分" },
+    missing_inpatient_days: { key: "input", label: "入院日数" },
+    missing_ward_type: { key: "input", label: "病棟区分" },
+    contrast_unknown: { key: "imaging", label: "造影確認" },
     planned_not_performed: { key: "evidence", label: "実施確認" },
     instruction_only: { key: "evidence", label: "実施確認" },
     other_provider: { key: "evidence", label: "他科・他院" },

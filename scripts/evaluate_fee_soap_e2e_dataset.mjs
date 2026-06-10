@@ -260,6 +260,7 @@ function buildPriorVisitHistoryPayload(item, runner = {}) {
 function buildCreateSessionPayload(item, runner = {}, overrides = {}) {
   const patient = item.patient || {};
   const encounter = item.encounter || {};
+  const expectedEncounter = item.expectedClaimContext?.encounter || {};
   const patientId = String(overrides.patientId || "").trim();
   const payload = {
     facilityId: runner.facilityId || "fac_fee_e2e",
@@ -277,6 +278,12 @@ function buildCreateSessionPayload(item, runner = {}, overrides = {}) {
       sex: ["male", "female", "other", "unknown"].includes(patient.sex) ? patient.sex : "unknown",
       externalPatientIds: [item.caseId]
     };
+  }
+  if (expectedEncounter.admission_date || encounter.admissionDate || encounter.admission_date) {
+    payload.admissionDate = expectedEncounter.admission_date || encounter.admissionDate || encounter.admission_date;
+  }
+  if (item.expectedClaimContext?.inpatient_basic?.basic_fee_days) {
+    payload.inpatientBasicDays = item.expectedClaimContext.inpatient_basic.basic_fee_days;
   }
   return payload;
 }

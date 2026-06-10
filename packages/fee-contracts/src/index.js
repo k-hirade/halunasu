@@ -48,6 +48,8 @@ export function validateCreateFeeSessionInput(input = {}) {
     serviceDate,
     claimMonth: optionalClaimMonth(input.claimMonth ?? input.claim_month) || (serviceDate ? serviceDate.slice(0, 7) : undefined),
     setting: optionalEnum(input.setting, feeSettings, "setting") || "outpatient",
+    admissionDate: optionalDate(input.admissionDate ?? input.admission_date, "admissionDate"),
+    inpatientBasicDays: optionalPositiveInteger(input.inpatientBasicDays ?? input.inpatient_basic_days, "inpatientBasicDays"),
     clinicalText: optionalMultilineString(input.clinicalText ?? input.clinical_text, 100000),
     orders: normalizeFeeOrders(input.orders ?? input.order_texts),
     diagnoses: normalizeDiagnoses(input.diagnoses),
@@ -86,6 +88,12 @@ export function validateUpdateFeeSessionInput(input = {}) {
         ? serviceDate.slice(0, 7)
         : undefined,
     setting: optionalEnum(input.setting, feeSettings, "setting"),
+    admissionDate: hasOwn(input, "admissionDate") || hasOwn(input, "admission_date")
+      ? optionalDate(input.admissionDate ?? input.admission_date, "admissionDate")
+      : undefined,
+    inpatientBasicDays: hasOwn(input, "inpatientBasicDays") || hasOwn(input, "inpatient_basic_days")
+      ? optionalPositiveInteger(input.inpatientBasicDays ?? input.inpatient_basic_days, "inpatientBasicDays")
+      : undefined,
     clinicalText: hasOwn(input, "clinicalText") || hasOwn(input, "clinical_text")
       ? multilineStringValue(input.clinicalText ?? input.clinical_text, 100000)
       : undefined,
@@ -368,6 +376,17 @@ function optionalPositiveNumber(value, field) {
     throw validationError(`${field} must be a positive number`, field);
   }
 
+  return number;
+}
+
+function optionalPositiveInteger(value, field) {
+  const number = optionalPositiveNumber(value, field);
+  if (number === undefined) {
+    return undefined;
+  }
+  if (!Number.isInteger(number)) {
+    throw validationError(`${field} must be a positive integer`, field);
+  }
   return number;
 }
 
