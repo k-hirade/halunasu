@@ -72,6 +72,26 @@ const REVIEW_TOPIC_TAXONOMY = Object.freeze({
   ambiguous_master_check: Object.freeze({
     label: "マスター候補確認",
     issueCode: "ambiguous_master"
+  }),
+  pathology_unsupported: Object.freeze({
+    label: "病理未対応",
+    issueCode: "pathology_unsupported"
+  }),
+  specimen_submission_check: Object.freeze({
+    label: "検体提出確認",
+    issueCode: "specimen_submission_check"
+  }),
+  emergency_addon_check: Object.freeze({
+    label: "救急加算確認",
+    issueCode: "emergency_addon_review_required"
+  }),
+  reception_time_check: Object.freeze({
+    label: "受付時刻確認",
+    issueCode: "missing_reception_time"
+  }),
+  medication_quantity_check: Object.freeze({
+    label: "薬剤日数・数量確認",
+    issueCode: "missing_quantity"
   })
 });
 
@@ -153,6 +173,21 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   }
   if (/マスター|標準コード|候補/u.test(text) && /確定でき|複数|確認/u.test(text)) {
     return "ambiguous_master_check";
+  }
+  if (/病理未対応|病理診断|細胞診/u.test(text)) {
+    return "pathology_unsupported";
+  }
+  if (/検体提出|標本/u.test(text)) {
+    return "specimen_submission_check";
+  }
+  if (/救急加算|時間外加算|休日加算|深夜加算/u.test(text)) {
+    return "emergency_addon_check";
+  }
+  if (/受付時刻/u.test(text)) {
+    return "reception_time_check";
+  }
+  if (/薬剤/u.test(text) && /数量|日数|総量|回数/u.test(text)) {
+    return "medication_quantity_check";
   }
   const type = normalizeClinicalEventType(event);
   if (type === "management" || type === "counseling") {
@@ -727,6 +762,19 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
 
   for (const event of clinicalEvents) {
     const type = normalizeClinicalEventType(event);
+    const domainIssues = reviewIssuesFromReviewOnlyDomainClinicalEvent(event);
+    if (domainIssues.length) {
+      reviewIssues.push(...domainIssues);
+      reviewWarnings.push(...domainIssues.map((issue) => issue.messageForStaff));
+      clinicalTrace.push(clinicalTraceEvent({
+        stage: "review_only_domain_gate",
+        event,
+        categoryLabel: reviewOnlyDomainLabel(reviewOnlyClinicalEventDomain(event)),
+        outcome: "review_required",
+        message: "review_only_domain_direct_retrieval_disabled"
+      }));
+      continue;
+    }
     if (!isBillableClinicalEvent(event)) {
       const issue = reviewIssueFromExcludedClinicalEvent(event);
       if (issue) {
@@ -2013,7 +2061,7 @@ async function inferMedicationOrders(text, feeCalculator) {
     orders.push({
       drug_code: String(item.code),
       ...quantity,
-      dispensing_kind: "internal_or_prn"
+      dispensing_kind: medicationDispensingKindFromText(sentence, query)
     });
   }
   return {
@@ -2079,9 +2127,12 @@ function inferMedicationQuantity(text, query) {
   const days = nearby.match(/(\d+)\s*日分/u)?.[1];
   const perDay = nearby.match(/(?:毎食後|毎食|1日|１日)\s*(\d+)\s*(?:錠|枚|包|回)?/u)?.[1]
     || nearby.match(/(\d+)\s*(?:錠|枚|包)\s*[/／]\s*日/u)?.[1];
-  const totalQuantity = nearby.match(/総量\s*(\d+(?:\.\d+)?)/u)?.[1];
+  const totalQuantity = nearby.match(/総量\s*(\d+(?:\.\d+)?)/u)?.[1]
+    || normalizedText.match(/総量\s*(\d+(?:\.\d+)?)/u)?.[1];
+  const externalTotalQuantity = inferExternalMedicationTotalQuantity(nearby)
+    || inferExternalMedicationTotalQuantity(normalizedText);
   return {
-    ...(totalQuantity ? { total_quantity: totalQuantity } : {}),
+    ...(totalQuantity || externalTotalQuantity ? { total_quantity: totalQuantity || externalTotalQuantity } : {}),
     ...(perDay ? { quantity_per_day: perDay } : {}),
     ...(days ? { days } : {})
   };
@@ -2089,6 +2140,22 @@ function inferMedicationQuantity(text, query) {
 
 function hasCalculableMedicationQuantity(quantity = {}) {
   return Boolean(quantity.total_quantity || (quantity.quantity_per_day && quantity.days));
+}
+
+function inferExternalMedicationTotalQuantity(text = "") {
+  if (!isExternalMedicationContext(text)) {
+    return "";
+  }
+  const match = String(text || "").match(/(?:を|総量|全量|合計)?\s*(\d+(?:\.\d+)?)\s*(?:g|Ｇ|ｍL|mL|ml|ＭＬ|本|枚|包)(?=\s*(?:院内|処方|外用|塗布|点眼|点鼻|貼付|$|[、。]))/iu);
+  return match?.[1] || "";
+}
+
+function isExternalMedicationContext(text = "") {
+  return /(外用|塗布|軟膏|クリーム|ローション|テープ|貼付|点眼|点鼻|点耳|ゲル|フォーム|スプレー|坐薬|膣錠|膣剤)/u.test(String(text || ""));
+}
+
+function medicationDispensingKindFromText(text = "", name = "") {
+  return isExternalMedicationContext(`${text} ${name}`) ? "external" : "internal_or_prn";
 }
 
 function inferMedicationDeliveryKind(text) {
@@ -2665,6 +2732,105 @@ function isActionableClinicalFactWarning(warning) {
   return true;
 }
 
+function reviewOnlyClinicalEventDomain(event = {}) {
+  const type = normalizeClinicalEventType(event);
+  const text = normalizeClinicalText([
+    type,
+    clinicalEventName(event),
+    clinicalEventEvidence(event),
+    event?.review_reason || event?.reviewReason || ""
+  ].filter(Boolean).join(" "));
+  if (
+    type === "pathology"
+    || /病理領域|病理診断|細胞診|組織診|生検提出|検体提出|標本(?:種類|作製|提出)/u.test(text)
+  ) {
+    return "pathology";
+  }
+  if (
+    type === "emergency_time_addon"
+    || (
+      /救急|時間外|休日|深夜|夜間|受付時刻/u.test(text)
+      && /加算|算定|条件|確認|不足|不明|記載/u.test(text)
+    )
+  ) {
+    return "emergency_time_addon";
+  }
+  return "";
+}
+
+function reviewOnlyDomainLabel(domain = "") {
+  return {
+    pathology: "病理診断",
+    emergency_time_addon: "救急・時間外加算"
+  }[String(domain || "")] || "未対応項目";
+}
+
+function reviewIssuesFromReviewOnlyDomainClinicalEvent(event = {}) {
+  const domain = reviewOnlyClinicalEventDomain(event);
+  if (!domain) {
+    return [];
+  }
+  const name = clinicalEventName(event);
+  const eventId = event?.clinicalEventId || event?.clinical_event_id || "";
+  const evidence = clinicalEventEvidence(event);
+  if (domain === "pathology") {
+    return [
+      withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart([eventId, "pathology_unsupported", name, evidence].join("_"))}`,
+        issueCode: "pathology_unsupported",
+        severity: "warning",
+        title: "病理未対応",
+        messageForStaff: `病理未対応: ${name || "病理診断/細胞診"}は病理診断・細胞診領域として抽出しました。現行の自動算定では確定算定せず、病理診断/細胞診の区分を人手で確認してください。`,
+        relatedClinicalEventId: eventId,
+        evidence,
+        source: "review_only_domain_gate",
+        policy: { riskGate: "review_only", domain }
+      }, "pathology_unsupported"),
+      withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart([eventId, "specimen_submission_check", name, evidence].join("_"))}`,
+        issueCode: "specimen_submission_check",
+        severity: "warning",
+        title: "検体提出確認",
+        messageForStaff: `検体提出確認: ${name || "病理検体"}について、検体提出、標本種類、診断区分、結果説明予定を確認してください。自動算定には入れていません。`,
+        requiredInput: "検体提出の有無、標本種類、病理診断/細胞診の区分",
+        relatedClinicalEventId: eventId,
+        evidence,
+        source: "review_only_domain_gate",
+        policy: { riskGate: "review_only", domain }
+      }, "specimen_submission_check")
+    ];
+  }
+  if (domain === "emergency_time_addon") {
+    return [
+      withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart([eventId, "emergency_addon_check", name, evidence].join("_"))}`,
+        issueCode: "emergency_addon_review_required",
+        severity: "warning",
+        title: "救急加算確認",
+        messageForStaff: `救急加算確認: ${name || "救急・時間外加算"}は時間外・休日・深夜・救急加算に関係する記載として抽出しました。診療体制、受付時刻、休日/時間外条件を確認してください。自動算定には入れていません。`,
+        requiredInput: "診療体制、受付時刻、休日/時間外/深夜条件",
+        relatedClinicalEventId: eventId,
+        evidence,
+        source: "review_only_domain_gate",
+        policy: { riskGate: "review_only", domain }
+      }, "emergency_addon_check"),
+      withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart([eventId, "reception_time_check", name, evidence].join("_"))}`,
+        issueCode: "missing_reception_time",
+        severity: "warning",
+        title: "受付時刻確認",
+        messageForStaff: "受付時刻確認: 時間外・休日・深夜・救急加算の判定には受付時刻と診療日条件が必要です。未確認のため自動算定には入れていません。",
+        requiredInput: "受付時刻、診療日、休日/時間外/深夜条件",
+        relatedClinicalEventId: eventId,
+        evidence,
+        source: "review_only_domain_gate",
+        policy: { riskGate: "review_only", domain }
+      }, "reception_time_check")
+    ];
+  }
+  return [];
+}
+
 function unsupportedClinicalEventWarning(event = {}) {
   const type = normalizeClinicalEventType(event);
   const name = clinicalEventName(event) || "抽出項目";
@@ -2792,7 +2958,8 @@ function clinicalEventTypeLabel(type) {
     surgery: "手術",
     home_care: "在宅",
     pathology: "病理",
-    psychiatric: "精神科専門療法"
+    psychiatric: "精神科専門療法",
+    emergency_time_addon: "救急・時間外加算"
   }[String(type || "").trim()] || "未対応項目";
 }
 
@@ -2924,28 +3091,45 @@ async function medicationOrderFromClinicalEvent(event = {}, feeCalculator) {
   }
   const quantity = medicationQuantityFromClinicalEvent(event);
   if (!hasCalculableMedicationQuantity(quantity)) {
-    reviewWarnings.push(`薬剤「${name}」は数量または日数が不足しているため、算定候補には入れていません。`);
+    reviewWarnings.push(`薬剤日数・数量確認: 薬剤「${name}」は数量または日数が不足しているため、算定候補には入れていません。`);
     return { order: null, masterCandidates: [], reviewWarnings };
   }
-  const item = await searchFirstMasterItem(feeCalculator, "drug", name, "drug");
+  const medicationSearch = await searchMedicationMasterForClinicalEvent(feeCalculator, event, name);
+  const item = medicationSearch.item;
   if (!item?.code) {
     reviewWarnings.push(`薬剤「${name}」をマスターコードへ解決できませんでした。`);
     return { order: null, masterCandidates: [], reviewWarnings };
   }
+  const resolvedName = medicationSearch.query || name;
   return {
     order: {
       drug_code: String(item.code),
       ...quantity,
-      dispensing_kind: "internal_or_prn"
+      dispensing_kind: medicationDispensingKindFromText(clinicalEventEvidence(event), resolvedName)
     },
     masterCandidates: [
       masterCandidateFromItem(item, event, {
         masterType: "drug",
-        searchQuery: name
+        searchQuery: resolvedName
       })
     ].filter(Boolean),
     reviewWarnings
   };
+}
+
+async function searchMedicationMasterForClinicalEvent(feeCalculator, event = {}, primaryName = "") {
+  const queries = uniqueStrings([
+    primaryName,
+    ...clinicalEventSearchQueries(event),
+    ...medicationNameCandidatesFromClinicalText(clinicalEventEvidence(event)).map((candidate) => candidate.query)
+  ].map(canonicalMedicationName).filter(Boolean));
+  for (const query of queries) {
+    const item = await searchFirstMasterItem(feeCalculator, "drug", query, "drug");
+    if (item?.code) {
+      return { item, query };
+    }
+  }
+  return { item: null, query: primaryName };
 }
 
 function canonicalMedicationName(value) {

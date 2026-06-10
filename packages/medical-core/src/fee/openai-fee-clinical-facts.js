@@ -80,6 +80,8 @@ const EVENT_TYPES = [
   "lab",
   "management",
   "counseling",
+  "pathology",
+  "emergency_time_addon",
   "follow_up",
   "other"
 ];
@@ -271,6 +273,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "If a test or procedure is described with 次回, 予定, 後日, 検討, 依頼, オーダー, 予約, or 今後, set action_status=planned/ordered/considered and temporal_relation=future unless the same sentence clearly says it was already performed.",
       "If a result or treatment is described as 持参, 前医, 他院, かかりつけ, 健診, 内科主治医, or outside records, keep the clinical event but set source_origin and provider_ownership accordingly. Do not treat it as own_clinic current billing.",
       "If a medication is described as 既往, 内服中, 持参薬, 常用, 継続中, or 以前から, do not mark it prescribed unless the text clearly says it was prescribed today.",
+      "For medication events, name must be the exact drug/product/generic name written in the note. Do not use category labels such as 処方薬, 院内処方, 院内外用薬, 外用薬, or 薬剤 as the event name when a concrete drug name appears in the evidence. One drug equals one medication event.",
       "For medications, extract days and quantity per day only when explicitly written. Otherwise leave the fields empty and add missing_information.",
       "For lab tests and specimen-based procedures, extract specimen and collection_method only when explicit, such as blood, urine, nasal swab, nasopharyngeal swab, throat swab, sputum, stool, tissue, or puncture fluid. Leave them empty when the note only describes a finding such as 咽頭発赤 or 鼻汁 without specimen collection.",
       "For imaging, set modality to simple_radiography, ct, mri, ultrasound, endoscopy, or other when explicit. Planned imaging should not be mixed with performed imaging.",

@@ -1235,6 +1235,10 @@ function issueCategoryForCode(issueCode = "") {
     management_fee_review_required: { key: "management", label: "管理料" },
     same_month_unknown: { key: "management", label: "同月履歴" },
     specimen_collection_fee_review_required: { key: "specimen", label: "検体採取" },
+    specimen_submission_check: { key: "unsupported", label: "病理・検体提出" },
+    pathology_unsupported: { key: "unsupported", label: "病理" },
+    emergency_addon_review_required: { key: "time", label: "救急・時間外" },
+    missing_reception_time: { key: "time", label: "受付時刻" },
     ambiguous_master: { key: "master", label: "マスター確認" },
     master_not_found: { key: "master", label: "マスター確認" },
     missing_quantity: { key: "medication", label: "数量・日数" },
@@ -1255,11 +1259,23 @@ function isReviewOnlyPolicy({ issueCode = "", policy = null } = {}) {
   if (policy?.riskGate === "review_only") {
     return true;
   }
-  return ["management_fee_review_required"].includes(String(issueCode || "").trim());
+  return [
+    "management_fee_review_required",
+    "pathology_unsupported",
+    "specimen_submission_check",
+    "emergency_addon_review_required",
+    "missing_reception_time"
+  ].includes(String(issueCode || "").trim());
 }
 
 function structuredReviewConditionText({ issueCode = "", policy = null, reviewIssue = null } = {}) {
   if (issueCode === "management_fee_review_required" || policy?.riskGate === "review_only") {
+    if (issueCode === "pathology_unsupported" || issueCode === "specimen_submission_check") {
+      return "病理診断・細胞診は自動で点数に入れていません。検体提出、標本種類、診断区分を人手で確認してください。";
+    }
+    if (issueCode === "emergency_addon_review_required" || issueCode === "missing_reception_time") {
+      return "救急・時間外・休日・深夜加算は自動で点数に入れていません。受付時刻、診療体制、休日/時間外条件を人手で確認してください。";
+    }
     return "管理料は自動で点数に入れていません。対象疾患、管理主体、同月履歴、施設基準、指導・説明の記録を人手で確認してください。";
   }
   if (issueCode === "specimen_collection_fee_review_required") {

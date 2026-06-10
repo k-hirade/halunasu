@@ -1892,6 +1892,216 @@ test("gates management events into review instead of adoptable proposals", async
   );
 });
 
+test("recovers concrete topical drug from medication evidence when LLM event name is generic", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    if (input.type === "drug" && String(input.query || "").includes("ゲーベン")) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "drug",
+          code: "620008991",
+          name: "ゲーベンクリーム１％",
+          points: 48,
+          sourceType: "drug_master"
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 131,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "high" },
+    diagnoses: [{ name: "皮膚びらん", status: "confirmed", evidence: "皮膚びらん" }],
+    clinical_events: [{
+      type: "medication",
+      name: "院内外用薬",
+      action_status: "prescribed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "not_applicable",
+      certainty: "explicit",
+      section: "O",
+      evidence: "ゲーベンクリーム1%を5g院内で外用薬として処方。外用薬の調剤として扱う。",
+      search_queries: ["院内外用薬"],
+      modality: "none",
+      body_site: "",
+      specimen: "",
+      collection_method: "",
+      quantity_per_day: "",
+      days: "",
+      total_quantity: "",
+      area_size_cm2: "",
+      review_reason: ""
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Topical Drug Patient"
+  }, headers);
+  await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-05-01",
+    diagnoses: [{ name: "皮膚びらん" }]
+  }, headers);
+  const current = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "ゲーベンクリーム1%を5g院内で外用薬として処方。外用薬の調剤として扱う。"
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${current.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.ok(masterSearches.some((search) => String(search.query || "").includes("ゲーベン")));
+  assert.deepEqual(receivedInput.calculationOptions.medication_orders, [{
+    drug_code: "620008991",
+    total_quantity: "5",
+    dispensing_kind: "external"
+  }]);
+  assert.deepEqual(receivedInput.calculationOptions.medication, {
+    delivery_kind: "in_house",
+    prescription_category: "other"
+  });
+});
+
+test("routes pathology and emergency time addon events into review-only domain topics", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 75,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "術後創部", status: "confirmed", evidence: "術後創部" }],
+    clinical_events: [
+      {
+        type: "pathology",
+        name: "病理診断/細胞診",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "explicit",
+        section: "O",
+        evidence: "検体採取、提出先、標本種類、結果説明予定を記録。病理領域として要レビュー。",
+        search_queries: ["病理診断", "細胞診"],
+        modality: "none",
+        body_site: "",
+        specimen: "組織",
+        collection_method: "検体提出",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: ""
+      },
+      {
+        type: "emergency_time_addon",
+        name: "時間外/休日/救急加算",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "O",
+        evidence: "救急・時間外の記載はあるが、受付時刻と算定条件が不足している。",
+        search_queries: ["救急加算", "時間外加算"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: "受付時刻不足"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Review Domain Patient"
+  }, headers);
+  await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-05-01"
+  }, headers);
+  const current = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "病理領域として要レビュー。救急・時間外の記載はあるが、受付時刻と算定条件が不足。"
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${current.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.procedure_codes, undefined);
+  assert.equal(masterSearches.length, 0);
+  const reviewIssues = calculation.body.calculationResult.reviewIssues;
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "病理未対応"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "検体提出確認"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "救急加算確認"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "受付時刻確認"));
+  assert.equal(calculation.body.candidateWorkbench.proposals.length, 0);
+});
+
 test("merges deterministic performed imaging when structured facts miss it", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
