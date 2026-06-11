@@ -1153,7 +1153,7 @@ test("gates lab master search to direct lab test items and records trace", async
     ],
     excluded_events: [],
     missing_information: [],
-    review_flags: []
+    review_flags: ["NSAIDs注意"]
   });
 
   const patient = await request(stores, "POST", "/v1/fee/patients", {
@@ -1195,6 +1195,10 @@ test("gates lab master search to direct lab test items and records trace", async
     && item.searches.some((search) => search.filteredCandidates.some((candidate) => candidate.code === "160061910"))
   )));
   assert.ok(trace.some((item) => item.stage === "lab_rule_expansion"));
+  assert.ok(trace.some((item) => (
+    item.stage === "clinical_fact_review_flag_suppressed"
+    && item.warning === "NSAIDs注意"
+  )));
 });
 
 test("does not auto-code lab concepts that only appear in LLM search queries", async () => {
@@ -2778,6 +2782,90 @@ test("does not divert ordinary lab specimen submission or symptom timing into re
     && event.billingDomain === "standard_lab"
     && event.specimen === "血液"
   )));
+});
+
+test("does not infer B-V from venous thrombosis history or serum value mention", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.searchMaster = async (input) => {
+    if (input.type === "procedure" && input.query === "尿一般") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160000310",
+          name: "尿一般",
+          points: 26,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 26,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "尿路感染症疑い", status: "suspected", evidence: "尿路感染症疑い" }],
+    clinical_events: [
+      {
+        type: "lab",
+        billing_domain: "standard_lab",
+        name: "尿一般",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "normal",
+        certainty: "explicit",
+        section: "O",
+        evidence: "尿一般を実施。血清Cr 1.2。既往歴に静脈血栓症あり。",
+        search_queries: ["尿一般"],
+        specimen: "尿",
+        collection_method: "院内尿検体"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Blood Collection False Positive Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "再診。尿一般を実施。血清Cr 1.2。既往歴に静脈血栓症あり。",
+    diagnoses: [{ name: "尿路感染症疑い" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160000310"]);
+  assert.deepEqual(receivedInput.calculationOptions.lab_options?.collection_fee_inputs || [], []);
 });
 
 test("merges deterministic performed imaging when structured facts miss it", async () => {

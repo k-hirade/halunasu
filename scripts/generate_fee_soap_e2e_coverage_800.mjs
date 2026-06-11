@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { hasPerformedBloodCollectionEvidence } from "../packages/fee-contracts/src/index.js";
 import { decorateDatasetCaseTypes } from "./fee_soap_case_type_signature.mjs";
 
 const repoRoot = process.cwd();
@@ -353,16 +354,6 @@ function scenarioAlignedToExactContext(scenario, item) {
   }
 
   return aligned;
-}
-
-function hasPerformedBloodCollectionEvidence(text = "") {
-  if (/(?:静脈採血|採血)(?:を|も|は|で)?(?:実施|行(?:った|い|う)|した|あり|確認)|血液検体を採取|血清|血漿|末梢血|静脈血/u.test(text)) {
-    return true;
-  }
-  if (/(?:採血|血液検査|血液検体).{0,12}(?:必要性|必要|検討|判断|予定|未実施|実施なし)|(?:必要性|必要|検討|判断|予定).{0,12}(?:採血|血液検査|血液検体)/u.test(text)) {
-    return false;
-  }
-  return false;
 }
 
 function targetTypeForName(name) {

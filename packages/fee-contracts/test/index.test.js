@@ -4,7 +4,10 @@ import {
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput,
   validateUpdateFeeSessionInput,
-  validateCreateFeeCalculationInput
+  validateCreateFeeCalculationInput,
+  hasPerformedBloodCollectionEvidence,
+  hasPerformedBloodCollectionEvidenceInText,
+  isClinicalDateRatioFalsePositiveContext
 } from "../src/index.js";
 
 test("normalizes fee session input to Platform identifiers", () => {
@@ -109,4 +112,21 @@ test("normalizes calculation override input", () => {
   assert.equal(input.orders[0].orderType, "lab");
   assert.deepEqual(input.claimContext.procedure_codes, ["160000410"]);
   assert.deepEqual(input.calculationOptions.comment_inputs[0], { code: "840000001", text: "コメント" });
+});
+
+test("detects performed blood collection using the shared strict predicate", () => {
+  assert.equal(hasPerformedBloodCollectionEvidenceInText("O: 静脈採血を実施し、血液検体を提出した。"), true);
+  assert.equal(hasPerformedBloodCollectionEvidenceInText("O: 静脈採血でCRP 0.3mg/dLを確認した。"), true);
+  assert.equal(hasPerformedBloodCollectionEvidenceInText("O: 採血の必要性を確認した。"), false);
+  assert.equal(hasPerformedBloodCollectionEvidenceInText("既往歴: 静脈血栓症。O: 尿検査を実施。"), false);
+  assert.equal(hasPerformedBloodCollectionEvidenceInText("O: 血清Cr 1.2mg/dL、尿一般を確認。"), false);
+  assert.equal(hasPerformedBloodCollectionEvidence({ specimen: "血清" }), true);
+  assert.equal(hasPerformedBloodCollectionEvidence({ payload: { collection_method: "blood_venous" } }), true);
+});
+
+test("filters pain-scale ratios from clinical date extraction contexts", () => {
+  assert.equal(isClinicalDateRatioFalsePositiveContext("疼痛 NRS 7/10、VAS 6/10"), true);
+  assert.equal(isClinicalDateRatioFalsePositiveContext("血圧 130/80"), true);
+  assert.equal(isClinicalDateRatioFalsePositiveContext("7/10 再診、採血実施"), false);
+  assert.equal(isClinicalDateRatioFalsePositiveContext("7/10に再診予定"), false);
 });

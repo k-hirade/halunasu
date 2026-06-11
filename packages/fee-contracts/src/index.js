@@ -1,4 +1,12 @@
 export const feeSettings = Object.freeze(["outpatient", "inpatient"]);
+export {
+  hasBloodCollectionNegationOrPlanningContext,
+  hasPerformedBloodCollectionEvidence,
+  hasPerformedBloodCollectionEvidenceInText,
+  hasStructuredBloodCollectionEvidence,
+  isClinicalDateRatioFalsePositiveContext,
+  normalizeClinicalPredicateText
+} from "./clinical-predicates.js";
 export const feeSessionStatuses = Object.freeze([
   "draft",
   "ready",

@@ -2,6 +2,11 @@ import {
   FEE_CLINICAL_FACTS_PROMPT_VERSION,
   extractFeeClinicalFactsWithOpenAi
 } from "../../../packages/medical-core/src/fee/openai-fee-clinical-facts.js";
+import {
+  hasPerformedBloodCollectionEvidence,
+  hasPerformedBloodCollectionEvidenceInText,
+  isClinicalDateRatioFalsePositiveContext
+} from "../../../packages/fee-contracts/src/index.js";
 
 export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "処置・手技",
@@ -41,6 +46,8 @@ const DPC_CONTEXT_PATTERN = /DPC|診断群分類|包括評価/u;
 const NON_DPC_CONTEXT_PATTERN = /DPC\s*(?:対象外|対象ではない|対象でない|非対象)|DPC.{0,16}(?:ではない|でない|対象外|分け|別)|出来高.{0,20}(?:入院料|扱う|算定|確認)|包括評価.{0,16}(?:ではない|でない|対象外)|診断群分類.{0,16}(?:ではない|でない|対象外)/u;
 const STRONG_INPATIENT_CONTEXT_PATTERN = /入院\s*\d{1,2}\s*日目|入院中|入院管理|病棟で|病棟管理|急性期一般入院料\s*[1-6]|入院基本料|DPC対象病院|DPC.*(?:管理|入院|対象)|(?:入院|病棟).*(?:継続|管理|観察)/u;
 const NON_CURRENT_INPATIENT_CONTEXT_PATTERN = /入院適応(?:は)?低い|入院適応なし|入院不要|入院なし|入院は不要|退院後|退院希望|入院歴|過去.{0,12}入院|前回入院|入院前/u;
+const THIRD_PARTY_INPATIENT_CONTEXT_PATTERN = /(?:母|父|妻|夫|家族|祖母|祖父|子|兄|弟|姉|妹).{0,16}入院中|入院中.{0,16}(?:母|父|妻|夫|家族|祖母|祖父|子|兄|弟|姉|妹)/u;
+const OTHER_PROVIDER_DPC_CONTEXT_PATTERN = /DPC.{0,16}(?:病院|医療機関|他院|前医).{0,16}(?:転院|紹介|受診|から)|(?:転院|紹介).{0,16}DPC/u;
 
 export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v6";
 
@@ -500,7 +507,7 @@ export async function buildClinicalCalculationPreparation({
   if (isInpatientEncounter(session, text) && !hasOwn(manualOptions, "outpatient_basic")) {
     delete normalizedInferred.outpatient_basic;
   }
-  if (!isInpatientEncounter(session, text)) {
+  if (!isInpatientEncounter(session, text) && !hasUnresolvedInpatientEncounterText(session, text)) {
     const historyBasic = inferOutpatientBasicFromPatientHistory({
       session,
       priorSessions,
@@ -821,7 +828,7 @@ async function inferRuleBasedClinicalCalculationOptions({ text = "", session = {
     const inpatientBasic = inferInpatientBasicOptions(text, session);
     Object.assign(inferred, inpatientBasic.inferred);
     reviewWarnings.push(...inpatientBasic.reviewWarnings);
-  } else {
+  } else if (!hasUnresolvedInpatientEncounterText(session, text)) {
     const outpatientBasic = inferOutpatientBasicOptions(text);
     if (outpatientBasic) {
       inferred.outpatient_basic = outpatientBasic;
@@ -902,6 +909,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const reviewIssues = [];
   const clinicalTrace = [];
   const clinicalEvents = clinicalEventsFromClinicalFacts(facts);
+  const suppressedClinicalFactWarnings = [];
   let hasCaseLevelLabProcedureCode = false;
   let hasCaseLevelBloodCollectionEvidence = hasCaseLevelBloodCollectionEvidenceFromText(text);
 
@@ -910,9 +918,17 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     Object.assign(inferred, inpatientBasic.inferred);
     reviewWarnings.push(...inpatientBasic.reviewWarnings);
   } else {
-    const outpatientBasic = outpatientBasicFromStructuredVisit(facts?.visit_type, text);
-    if (outpatientBasic) {
-      inferred.outpatient_basic = outpatientBasic;
+    const hasUnresolvedInpatientText = !hasExplicitEncounterSetting(session) && hasInpatientCareContext(text);
+    if (hasUnresolvedInpatientText) {
+      reviewWarnings.push(
+        "病棟区分確認: 入院診療の可能性がある記載があります。外来/入院の診療区分を確認してください。本文だけでは入院基本料を自動候補化しません。",
+        "入院日数確認: 入院基本料を算定する場合は、入院日と算定日数を確認してください。"
+      );
+    } else {
+      const outpatientBasic = outpatientBasicFromStructuredVisit(facts?.visit_type, text);
+      if (outpatientBasic) {
+        inferred.outpatient_basic = outpatientBasic;
+      }
     }
   }
 
@@ -924,7 +940,11 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     }
   }
   reviewWarnings.push(...clinicalFactReviewWarnings(facts?.missing_information));
-  reviewWarnings.push(...clinicalFactReviewWarnings(facts?.review_flags));
+  reviewWarnings.push(...clinicalFactReviewWarnings(facts?.review_flags, {
+    onSuppressed: (warning, reason) => {
+      suppressedClinicalFactWarnings.push({ warning, reason, source: "review_flags" });
+    }
+  }));
   const splitMultiDayIssue = reviewIssueFromSplitMultiDayText(text);
   if (splitMultiDayIssue) {
     reviewIssues.push(splitMultiDayIssue);
@@ -1098,6 +1118,16 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     inferred.lab_options = {
       collection_fee_inputs: uniqueStrings(collectionFeeInputs)
     };
+  }
+
+  for (const suppressed of suppressedClinicalFactWarnings) {
+    clinicalTrace.push({
+      stage: "clinical_fact_review_flag_suppressed",
+      outcome: "suppressed",
+      source: suppressed.source,
+      message: suppressed.reason,
+      warning: suppressed.warning
+    });
   }
   if (medicationOrders.length) {
     inferred.medication_orders = dedupeObjects(medicationOrders, (item) => item.drug_code);
@@ -1900,27 +1930,38 @@ function clampInpatientDays(value) {
 }
 
 function isInpatientEncounter(session = {}, text = "") {
-  const setting = String(session?.setting || session?.encounter?.setting || "").trim().toLowerCase();
+  const setting = encounterSetting(session);
   if (setting === "inpatient") {
     return true;
   }
   if (setting === "outpatient") {
     return false;
   }
-  return hasInpatientCareContext(text);
+  return false;
 }
 
 function hasInpatientCareContext(text = "") {
   const normalizedText = normalizeClinicalText(text);
-  if (!normalizedText || NON_CURRENT_INPATIENT_CONTEXT_PATTERN.test(normalizedText)) {
+  if (
+    !normalizedText
+    || NON_CURRENT_INPATIENT_CONTEXT_PATTERN.test(normalizedText)
+    || THIRD_PARTY_INPATIENT_CONTEXT_PATTERN.test(normalizedText)
+  ) {
     return false;
   }
   return STRONG_INPATIENT_CONTEXT_PATTERN.test(normalizedText);
 }
 
+function hasUnresolvedInpatientEncounterText(session = {}, text = "") {
+  return !hasExplicitEncounterSetting(session) && hasInpatientCareContext(text);
+}
+
 function hasDpcContext(text = "", session = {}) {
   const normalizedText = normalizeClinicalText(text);
   if (hasNonDpcContext(normalizedText, session)) {
+    return false;
+  }
+  if (OTHER_PROVIDER_DPC_CONTEXT_PATTERN.test(normalizedText)) {
     return false;
   }
   if (DPC_CONTEXT_PATTERN.test(normalizedText)) {
@@ -1938,6 +1979,14 @@ function hasDpcContext(text = "", session = {}) {
     || Boolean(option.dpc_code)
     || Boolean(option.classification_code)
   ));
+}
+
+function encounterSetting(session = {}) {
+  return String(session?.setting || session?.encounter?.setting || "").trim().toLowerCase();
+}
+
+function hasExplicitEncounterSetting(session = {}) {
+  return Boolean(encounterSetting(session));
 }
 
 function hasNonDpcContext(text = "", session = {}) {
@@ -3000,7 +3049,7 @@ function excludedClinicalEventWarning(event = {}) {
   return "";
 }
 
-function clinicalFactReviewWarnings(values = []) {
+function clinicalFactReviewWarnings(values = [], { onSuppressed } = {}) {
   return asArray(values)
     .map((item) => {
       if (typeof item === "string") {
@@ -3013,31 +3062,52 @@ function clinicalFactReviewWarnings(values = []) {
       }
       return reason || name;
     })
-    .filter(isActionableClinicalFactWarning)
+    .filter((warning) => isActionableClinicalFactWarning(warning, { onSuppressed }))
     .filter(Boolean);
 }
 
-function isActionableClinicalFactWarning(warning) {
+function isActionableClinicalFactWarning(warning, { onSuppressed } = {}) {
   const text = String(warning || "").trim();
   if (!text || /^(空欄|なし|無し|不明|未記載|確認事項)$/u.test(text)) {
+    onSuppressed?.(text, "empty_or_placeholder_review_flag");
     return false;
   }
+  if (reviewTopicCodeFromWarning(text)) {
+    return true;
+  }
+  if (hasActionableClinicalReviewTarget(text)) {
+    return true;
+  }
   if (/文面から受診回数の明示なし/u.test(text)) {
+    onSuppressed?.(text, "non_actionable_visit_count_flag");
     return false;
   }
   if (/初診\/再診の明記なし|初診・再診の明記なし|診療形態.*明記なし/u.test(text)) {
+    onSuppressed?.(text, "non_actionable_visit_type_flag");
     return false;
   }
   if (/(billingMonth|claimMonth|請求月).*(未指定|未記載|不明)/iu.test(text)) {
+    onSuppressed?.(text, "non_actionable_claim_month_flag");
     return false;
   }
   if (/適応検討のみで実施の記載なし/u.test(text)) {
+    onSuppressed?.(text, "non_actionable_considered_only_flag");
     return false;
   }
   if (/(数量|日数|回数|総量).*(明記なし|不足|不明)/u.test(text) && !/[「:：]/u.test(text)) {
+    onSuppressed?.(text, "quantity_flag_without_target");
     return false;
   }
-  return true;
+  onSuppressed?.(text, "no_taxonomy_or_actionable_target");
+  return false;
+}
+
+function hasActionableClinicalReviewTarget(text = "") {
+  const value = String(text || "").trim();
+  if (!value) return false;
+  if (/\d{6,}/u.test(value)) return true;
+  if (/[「『][^」』]{2,}[」』]/u.test(value)) return true;
+  return /(薬剤|検査|画像|CT|ＣＴ|MRI|ＭＲＩ|X線|Ｘ線|超音波|処方|採血|検体|病理|細胞診|リハビリ|在宅|訪問診療|手術|麻酔|精神科|透析|輸血|内視鏡|放射線治療|尿|CRP|ＣＲＰ|HbA1c|ＨｂＡ１ｃ|インフル|溶連菌|SARS|COVID|コロナ|造影|電子保存|施設基準|届出)/iu.test(value);
 }
 
 function reviewOnlyClinicalEventDomain(event = {}) {
@@ -3416,7 +3486,7 @@ function isValidMonthDay(month, day) {
 }
 
 function isVitalOrRatioDateFalsePositiveContext(text = "") {
-  return /(血圧|BP|mmHg|脈拍|HR|SpO2|SPO2|酸素飽和度|体温|BT|BMI|身長|体重|回\/分|\/分|mg\/dL|g\/dL|mL\/min|μL|mm3|前回比|比率|割合|%|％)/iu.test(text);
+  return isClinicalDateRatioFalsePositiveContext(text);
 }
 
 function reviewIssueFromManagementClinicalEvent(event = {}, { categoryLabel = "医学管理等" } = {}) {
@@ -3831,25 +3901,14 @@ function labCollectionFeeInputsFromClinicalEvent(event = {}, procedure = {}) {
 }
 
 function hasExplicitBloodCollectionEvidence(event = {}) {
-  const text = normalizeClinicalText([
-    clinicalEventName(event),
-    clinicalEventEvidence(event),
-    event?.specimen,
-    event?.sample,
-    event?.payload?.specimen,
-    event?.collection_method,
-    event?.payload?.collection_method
-  ].filter(Boolean).join("\n"));
-  if (/(?:静脈採血|採血)(?:を|も|は|で)?(?:実施|行(?:った|い|う)|した|あり|確認)|血液検体を採取|血清|血漿|末梢血|静脈血/u.test(text)) {
-    return true;
-  }
-  if (/(?:静脈採血|採血)で(?![^。\n]{0,30}(?:必要性|必要|検討|判断|予定|未実施|実施なし))[^。\n]{0,80}(?:確認|測定|提出|検査)/u.test(text)) {
-    return true;
-  }
-  if (/(?:採血|血液検査|血液検体).{0,12}(?:必要性|必要|検討|判断|予定|未実施|実施なし)|(?:必要性|必要|検討|判断|予定).{0,12}(?:採血|血液検査|血液検体)/u.test(text)) {
-    return false;
-  }
-  return false;
+  return hasPerformedBloodCollectionEvidence({
+    name: clinicalEventName(event),
+    evidence: clinicalEventEvidence(event),
+    specimen: event?.specimen,
+    sample: event?.sample,
+    collection_method: event?.collection_method,
+    payload: event?.payload
+  });
 }
 
 function hasCaseLevelBloodCollectionEvidenceFromText(text = "") {
@@ -3857,7 +3916,7 @@ function hasCaseLevelBloodCollectionEvidenceFromText(text = "") {
     if (/(前回|過去|他院|前医|持参|予定|次回|後日|必要性|必要|検討|判断|未実施|実施なし)/u.test(sentence)) {
       continue;
     }
-    if (hasExplicitBloodCollectionEvidence({ evidence: sentence })) {
+    if (hasPerformedBloodCollectionEvidenceInText(sentence)) {
       return true;
     }
   }
@@ -4845,7 +4904,7 @@ function reviewWarningReasonKey(warning) {
 }
 
 function isLowValueClinicalReviewWarning(warning) {
-  return /^(診断精査目的|治療方針再評価|NSAIDs注意)/u.test(warning);
+  return !String(warning || "").trim();
 }
 
 function asArray(value) {
