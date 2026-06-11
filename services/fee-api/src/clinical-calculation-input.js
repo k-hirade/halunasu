@@ -124,6 +124,46 @@ const REVIEW_TOPIC_TAXONOMY = Object.freeze({
   home_visit_check: Object.freeze({
     label: "訪問診療確認",
     issueCode: "home_visit_unknown"
+  }),
+  psychiatry_special_unsupported: Object.freeze({
+    label: "精神科専門療法未対応",
+    issueCode: "psychiatry_special_unsupported"
+  }),
+  surgery_unsupported: Object.freeze({
+    label: "手術未対応",
+    issueCode: "surgery_unsupported"
+  }),
+  anesthesia_unsupported: Object.freeze({
+    label: "麻酔未対応",
+    issueCode: "anesthesia_unsupported"
+  }),
+  dialysis_unsupported: Object.freeze({
+    label: "透析未対応",
+    issueCode: "dialysis_unsupported"
+  }),
+  transfusion_unsupported: Object.freeze({
+    label: "輸血未対応",
+    issueCode: "transfusion_unsupported"
+  }),
+  endoscopy_unsupported: Object.freeze({
+    label: "内視鏡未対応",
+    issueCode: "endoscopy_unsupported"
+  }),
+  radiation_therapy_unsupported: Object.freeze({
+    label: "放射線治療未対応",
+    issueCode: "radiation_therapy_unsupported"
+  }),
+  biopsy_check: Object.freeze({
+    label: "生検有無確認",
+    issueCode: "biopsy_status_unknown"
+  }),
+  irradiation_condition_check: Object.freeze({
+    label: "照射条件確認",
+    issueCode: "irradiation_condition_unknown"
+  }),
+  procedure_detail_check: Object.freeze({
+    label: "手技内容確認",
+    issueCode: "procedure_detail_unknown"
   })
 });
 
@@ -212,17 +252,47 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   if (/検査コード|検査名|標準コード|検査項目/u.test(text) && /(確認|不明|未確定|不足)/u.test(text)) {
     return "lab_code_check";
   }
+  if (/実施単位|単位数/u.test(text) && /リハビリ/u.test(text)) {
+    return "rehab_unit_check";
+  }
   if (/リハビリ未対応|リハビリテーション/u.test(text)) {
     return "rehab_unsupported";
   }
-  if (/実施単位|単位数/u.test(text) && /リハビリ/u.test(text)) {
-    return "rehab_unit_check";
+  if (/訪問診療/u.test(text)) {
+    return "home_visit_check";
   }
   if (/在宅医療未対応|在宅医療|在宅/u.test(text)) {
     return "home_care_unsupported";
   }
-  if (/訪問診療/u.test(text)) {
-    return "home_visit_check";
+  if (/精神科専門療法未対応|精神科専門療法/u.test(text)) {
+    return "psychiatry_special_unsupported";
+  }
+  if (/手術未対応/u.test(text)) {
+    return "surgery_unsupported";
+  }
+  if (/麻酔未対応/u.test(text)) {
+    return "anesthesia_unsupported";
+  }
+  if (/透析未対応/u.test(text)) {
+    return "dialysis_unsupported";
+  }
+  if (/輸血未対応/u.test(text)) {
+    return "transfusion_unsupported";
+  }
+  if (/生検/u.test(text) && /(有無|確認|不明|必要)/u.test(text)) {
+    return "biopsy_check";
+  }
+  if (/照射/u.test(text) && /(条件|部位|線量|回数|確認|不明|必要)/u.test(text)) {
+    return "irradiation_condition_check";
+  }
+  if (/手技内容|手技/u.test(text) && /(確認|不明|必要)/u.test(text)) {
+    return "procedure_detail_check";
+  }
+  if (/内視鏡未対応|内視鏡/u.test(text)) {
+    return "endoscopy_unsupported";
+  }
+  if (/放射線治療未対応|放射線治療/u.test(text)) {
+    return "radiation_therapy_unsupported";
   }
   if (/病理未対応|病理診断|細胞診/u.test(text)) {
     return "pathology_unsupported";
@@ -881,6 +951,9 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       commentInputs.push(...procedure.commentInputs);
       collectionFeeInputs.push(...procedure.collectionFeeInputs, ...labCollectionFeeInputsFromClinicalEvent(event, procedure));
       reviewIssues.push(...collectionFeeReviewIssues);
+      reviewIssues.push(...reviewIssuesFromClinicalWarnings(event, procedure.reviewWarnings, {
+        source: "clinical_event_lab_guard"
+      }));
       masterCandidates.push(...asArray(procedure.masterCandidates));
       billingCandidates.push(...billingCandidatesFromProcedureResult(event, procedure));
       reviewWarnings.push(...procedure.reviewWarnings);
@@ -2345,7 +2418,7 @@ function expandCompositeLabClinicalEvent(event = {}) {
   if (!["lab", "exam"].includes(type)) {
     return [event];
   }
-  const concepts = labConceptsFromClinicalEvent(event);
+  const concepts = labConceptsFromClinicalEventName(event);
   if (concepts.length <= 1) {
     return [event];
   }
@@ -2358,8 +2431,7 @@ function expandCompositeLabClinicalEvent(event = {}) {
       name: concept.name,
       search_queries: uniqueStrings([
         concept.query,
-        ...concept.aliases,
-        ...asArray(event.search_queries)
+        ...concept.aliases
       ]),
       review_reason: event.review_reason || "複数の検査名を含む記載から検査ごとに分割"
     };
@@ -2721,6 +2793,11 @@ function normalizeClinicalEventBillingDomain(event = {}, { type = "" } = {}) {
     "surgery",
     "rehabilitation",
     "home_care",
+    "endoscopy",
+    "dialysis",
+    "transfusion",
+    "radiation_therapy",
+    "injection_review_only",
     "unknown"
   ]);
   if (allowed.has(value) && value !== "unknown") {
@@ -2738,7 +2815,12 @@ function normalizeClinicalEventBillingDomain(event = {}, { type = "" } = {}) {
     management: "standard_management",
     counseling: "standard_counseling",
     pathology: "pathology",
-    emergency_time_addon: "emergency_time_addon"
+    emergency_time_addon: "emergency_time_addon",
+    endoscopy: "endoscopy",
+    dialysis: "dialysis",
+    transfusion: "transfusion",
+    radiation_therapy: "radiation_therapy",
+    injection_review_only: "injection_review_only"
   }[eventType] || "unknown";
 }
 
@@ -2886,7 +2968,12 @@ function reviewOnlyClinicalEventDomain(event = {}) {
     "home_care",
     "psychiatry_special",
     "anesthesia",
-    "surgery"
+    "surgery",
+    "endoscopy",
+    "dialysis",
+    "transfusion",
+    "radiation_therapy",
+    "injection_review_only"
   ].includes(domain) ? domain : "";
 }
 
@@ -2903,7 +2990,12 @@ function reviewOnlyDomainLabel(domain = "") {
     home_care: "在宅医療",
     psychiatry_special: "精神科専門療法",
     anesthesia: "麻酔",
-    surgery: "手術"
+    surgery: "手術",
+    endoscopy: "内視鏡",
+    dialysis: "透析",
+    transfusion: "輸血",
+    radiation_therapy: "放射線治療",
+    injection_review_only: "注射"
   }[String(domain || "")] || "未対応項目";
 }
 
@@ -3024,21 +3116,79 @@ function reviewIssuesFromReviewOnlyDomainClinicalEvent(event = {}) {
       }, "home_visit_check")
     ];
   }
-  if (["psychiatry_special", "anesthesia", "surgery"].includes(domain)) {
-    const label = reviewOnlyDomainLabel(domain);
-    return [
+  if ([
+    "psychiatry_special",
+    "anesthesia",
+    "surgery",
+    "dialysis",
+    "transfusion",
+    "endoscopy",
+    "radiation_therapy",
+    "injection_review_only"
+  ].includes(domain)) {
+    const primaryTopicByDomain = {
+      psychiatry_special: "psychiatry_special_unsupported",
+      anesthesia: "anesthesia_unsupported",
+      surgery: "surgery_unsupported",
+      dialysis: "dialysis_unsupported",
+      transfusion: "transfusion_unsupported",
+      endoscopy: "endoscopy_unsupported",
+      radiation_therapy: "radiation_therapy_unsupported",
+      injection_review_only: "ambiguous_master_check"
+    };
+    const helperTopicByDomain = {
+      anesthesia: {
+        topicCode: "procedure_detail_check",
+        title: "手技内容確認",
+        requiredInput: "麻酔方法、実施時間、管理区分"
+      },
+      surgery: {
+        topicCode: "procedure_detail_check",
+        title: "手技内容確認",
+        requiredInput: "術式、部位、左右、使用材料"
+      },
+      endoscopy: {
+        topicCode: "biopsy_check",
+        title: "生検有無確認",
+        requiredInput: "生検の有無、検体提出、内視鏡の部位"
+      },
+      radiation_therapy: {
+        topicCode: "irradiation_condition_check",
+        title: "照射条件確認",
+        requiredInput: "照射部位、線量、回数、方法"
+      }
+    };
+    const topicCode = primaryTopicByDomain[domain] || "ambiguous_master_check";
+    const label = reviewTopicDefinition(topicCode)?.label || reviewOnlyDomainLabel(domain);
+    const issues = [
       withReviewTopic({
         reviewIssueId: `issue_${candidateIdPart([eventId, domain, name, evidence].join("_"))}`,
         issueCode: `${domain}_unsupported`,
         severity: "warning",
-        title: `${label}の確認`,
-        messageForStaff: `${label}の確認: ${name || label}は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。`,
+        title: label,
+        messageForStaff: `${label}: ${name || reviewOnlyDomainLabel(domain)}は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。`,
         relatedClinicalEventId: eventId,
         evidence,
         source: "review_only_domain_gate",
         policy: { riskGate: "review_only", domain }
-      }, "")
+      }, topicCode)
     ];
+    const helper = helperTopicByDomain[domain];
+    if (helper) {
+      issues.push(withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart([eventId, helper.topicCode, name, evidence].join("_"))}`,
+        issueCode: helper.topicCode,
+        severity: "warning",
+        title: helper.title,
+        messageForStaff: `${helper.title}: ${name || reviewOnlyDomainLabel(domain)}の算定判断に必要な情報を確認してください。自動算定には入れていません。`,
+        requiredInput: helper.requiredInput,
+        relatedClinicalEventId: eventId,
+        evidence,
+        source: "review_only_domain_gate",
+        policy: { riskGate: "review_only", domain }
+      }, helper.topicCode));
+    }
+    return issues;
   }
   return [];
 }
@@ -3113,6 +3263,30 @@ function reviewIssueFromManagementClinicalEvent(event = {}, { categoryLabel = "�
     source: "management_review_gate",
     policy
   }, "target_disease_check");
+}
+
+function reviewIssuesFromClinicalWarnings(event = {}, warnings = [], { source = "clinical_event_rule" } = {}) {
+  return asArray(warnings)
+    .map((messageForStaff) => reviewIssueFromClinicalWarning(event, messageForStaff, { source }))
+    .filter(Boolean);
+}
+
+function reviewIssueFromClinicalWarning(event = {}, messageForStaff = "", { source = "clinical_event_rule" } = {}) {
+  const message = String(messageForStaff || "").trim();
+  if (!message) {
+    return null;
+  }
+  const topicCode = reviewTopicCodeFromWarning(message, event);
+  return withReviewTopic({
+    reviewIssueId: `issue_${candidateIdPart([event?.clinicalEventId, clinicalEventName(event), message, source].join("_"))}`,
+    issueCode: reviewIssueCodeFromWarning(message, event),
+    severity: "warning",
+    title: reviewIssueTitleFromWarning(message, event),
+    messageForStaff: message,
+    relatedClinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    evidence: clinicalEventEvidence(event),
+    source
+  }, topicCode);
 }
 
 function reviewIssueCodeFromWarning(message = "", event = {}) {
@@ -3670,6 +3844,18 @@ async function searchPerformedProcedureCode(feeCalculator, {
     searchTrace.push(searchTraceSummary(query, search));
     if (search?.item?.code) {
       const item = search.item;
+      if (isUnsupportedLabMasterMatchForEvent(event, item)) {
+        searchTrace.push({
+          query,
+          outcome: "filtered",
+          reason: "lab_master_concept_not_present_in_event_name",
+          item: {
+            code: item.code,
+            name: item.name
+          }
+        });
+        continue;
+      }
       const masterCandidate = masterCandidateFromItem(item, event, {
         masterType: "medical_service",
         searchQuery: query
@@ -3820,11 +4006,43 @@ function clinicalEventSearchQueries(event = {}, { categoryLabel = "", extraQueri
     ...asArray(event?.searchQueries),
     ...asArray(event?.search_queries)
   ];
-  return uniqueStrings([
+  return filterClinicalEventSearchQueries(event, uniqueStrings([
     ...asArray(extraQueries),
     ...deterministicTerms,
     ...llmHints
-  ]);
+  ]));
+}
+
+function filterClinicalEventSearchQueries(event = {}, queries = []) {
+  const type = normalizeClinicalEventType(event);
+  if (!["lab", "exam"].includes(type)) {
+    return uniqueStrings(queries);
+  }
+  const nameConceptKeys = new Set(labConceptsFromClinicalEventName(event).map((concept) => concept.key));
+  return uniqueStrings(queries).filter((query) => {
+    const queryConcepts = labConceptsFromText(query);
+    if (!queryConcepts.length) {
+      return true;
+    }
+    return queryConcepts.some((concept) => nameConceptKeys.has(concept.key));
+  });
+}
+
+function isUnsupportedLabMasterMatchForEvent(event = {}, item = {}) {
+  const type = normalizeClinicalEventType(event);
+  if (!["lab", "exam"].includes(type)) {
+    return false;
+  }
+  const nameConceptKeys = new Set(labConceptsFromClinicalEventName(event).map((concept) => concept.key));
+  const itemConcepts = labConceptsFromText([
+    item?.name,
+    item?.masterName,
+    item?.normalizedName
+  ].filter(Boolean).join(" "));
+  if (!itemConcepts.length) {
+    return false;
+  }
+  return !itemConcepts.some((concept) => nameConceptKeys.has(concept.key));
 }
 
 function clinicalEventAliasQueries(event = {}) {
@@ -3841,8 +4059,6 @@ function clinicalEventAliasQueries(event = {}) {
 function labAliasQueries(event = {}) {
   const text = normalizeClinicalText([
     clinicalEventName(event),
-    clinicalEventEvidence(event),
-    ...asArray(event?.payload?.analytes),
     ...asArray(event?.payload?.pathogenTargets),
     event?.payload?.method,
     event?.payload?.specimen
@@ -3944,16 +4160,8 @@ const LAB_CONCEPT_DEFINITIONS = Object.freeze([
   })
 ]);
 
-function labConceptsFromClinicalEvent(event = {}) {
-  const text = normalizeClinicalText([
-    clinicalEventName(event),
-    clinicalEventEvidence(event),
-    ...asArray(event?.payload?.analytes),
-    ...asArray(event?.payload?.pathogenTargets),
-    event?.payload?.method,
-    ...asArray(event?.search_queries),
-    ...asArray(event?.searchQueries)
-  ].filter(Boolean).join(" "));
+function labConceptsFromClinicalEventName(event = {}) {
+  const text = normalizeClinicalText(clinicalEventName(event));
   return labConceptsFromText(text);
 }
 
@@ -3969,7 +4177,20 @@ function labConceptsFromText(text = "") {
 }
 
 function labEventNameSupportedByRawEvidence(event = {}) {
-  const nameConcepts = labConceptsFromText(clinicalEventName(event));
+  const nameConcepts = labConceptsFromClinicalEventName(event);
+  const nameConceptKeys = new Set(nameConcepts.map((concept) => concept.key));
+  const queryConceptKeys = new Set(labConceptsFromText([
+    ...asArray(event?.search_queries),
+    ...asArray(event?.searchQueries),
+    event?.search_terms?.primary,
+    ...asArray(event?.search_terms?.synonyms),
+    event?.searchTerms?.primary,
+    ...asArray(event?.searchTerms?.synonyms)
+  ].filter(Boolean).join(" ")).map((concept) => concept.key));
+  const unsupportedQueryConcepts = [...queryConceptKeys].filter((key) => !nameConceptKeys.has(key));
+  if (unsupportedQueryConcepts.length) {
+    return false;
+  }
   if (!nameConcepts.length) {
     return true;
   }

@@ -60,7 +60,10 @@ if (!selectedCases.length) {
 }
 
 const startedAt = Date.now();
-const runner = args.mode === "stg" ? await createStgRunner(args) : await createLocalRunner(args);
+const facilityFixtureAudit = buildFacilityFixtureAudit(selectedCases);
+const runner = args.mode === "stg"
+  ? await createStgRunner(args, facilityFixtureAudit)
+  : await createLocalRunner(args, facilityFixtureAudit);
 const results = [];
 
 for (const item of selectedCases) {
@@ -99,6 +102,11 @@ const report = {
     reportContainsSecrets: false
   },
   summary,
+  facilityFixtureAudit: {
+    ...facilityFixtureAudit,
+    runnerMode: runner.facilityFixture?.mode || args.mode,
+    seededFacilityStandards: runner.facilityFixture?.seededFacilityStandards || []
+  },
   results
 };
 
@@ -112,6 +120,7 @@ if (args.strict && summary.failed > 0) {
 async function evaluateCase(item, runner, options) {
   const caseStartedAt = Date.now();
   const caseResult = emptyCaseResult(item);
+  caseResult.facilityFixture = runner.facilityFixture || caseResult.facilityFixture;
   try {
     const historySeed = await seedVisitHistoryIfNeeded(item, runner, options, caseResult);
     if (historySeed?.failed) {
@@ -282,18 +291,6 @@ function buildCreateSessionPayload(item, runner = {}, overrides = {}) {
   if (expectedEncounter.admission_date || encounter.admissionDate || encounter.admission_date) {
     payload.admissionDate = expectedEncounter.admission_date || encounter.admissionDate || encounter.admission_date;
   }
-  if (item.expectedClaimContext?.inpatient_basic?.basic_fee_days) {
-    payload.inpatientBasicDays = item.expectedClaimContext.inpatient_basic.basic_fee_days;
-  }
-  const facilityStandardKeys = Array.isArray(item.expectedClaimContext?.facility_standard_keys)
-    ? item.expectedClaimContext.facility_standard_keys.filter(Boolean)
-    : [];
-  if (facilityStandardKeys.length) {
-    payload.calculationOptions = {
-      ...(payload.calculationOptions || {}),
-      facility_standard_keys: facilityStandardKeys
-    };
-  }
   return payload;
 }
 
@@ -327,7 +324,34 @@ function buildCalculatePayload(item, options) {
   return {};
 }
 
-async function createLocalRunner(options) {
+function buildFacilityFixtureAudit(cases = []) {
+  const exactRequired = new Set();
+  const reviewFacilityCases = [];
+  for (const item of cases) {
+    const level = String(item.expectedCalculation?.assertionLevel || "").trim();
+    for (const key of asStrings(item.expectedClaimContext?.facility_standard_keys)) {
+      if (level === "exact") {
+        exactRequired.add(key);
+      }
+    }
+    const chart = normalizeText(soapText(item));
+    if (level !== "exact" && /(施設基準|届出|届け出|地方厚生局)/u.test(chart)) {
+      reviewFacilityCases.push(item.caseId);
+    }
+  }
+  const seededFacilityStandardKeys = [...exactRequired].sort();
+  const collisions = [];
+  return {
+    fixtureKey: "default",
+    seededFacilityStandardKeys,
+    exactRequiredFacilityStandardKeys: seededFacilityStandardKeys,
+    facilityUnknownCaseIds: reviewFacilityCases,
+    collisions,
+    collisionPolicy: collisions.length ? "case_group_fixture_required" : "single_fixture_ok"
+  };
+}
+
+async function createLocalRunner(options, facilityFixtureAudit = {}) {
   let idCounter = 0;
   const idFactory = (prefix) => {
     idCounter += 1;
@@ -360,7 +384,8 @@ async function createLocalRunner(options) {
     displayName: "E2E検証クリニック",
     medicalInstitutionCode: "1312345",
     regionalBureau: "kanto-shinetsu",
-    prefecture: "tokyo"
+    prefecture: "tokyo",
+    facilityStandardKeys: facilityFixtureAudit.seededFacilityStandardKeys || []
   });
   const departments = [
     ["internal_medicine", "内科", "01"],
@@ -414,6 +439,12 @@ async function createLocalRunner(options) {
   return {
     facilityId: facility.facilityId,
     departmentIds,
+    facilityFixture: {
+      mode: "local_fixture",
+      fixtureKey: facilityFixtureAudit.fixtureKey || "default",
+      seededFacilityStandards: facilityFixtureAudit.seededFacilityStandardKeys || [],
+      collisions: facilityFixtureAudit.collisions || []
+    },
     async request(method, apiPath, body = undefined, requestOptions = {}) {
       const requestBody = requestOptions.body !== undefined ? requestOptions.body : body;
       const requestHeaders = requestOptions.csrf ? headers : { cookie: headers.cookie };
@@ -444,7 +475,7 @@ async function createLocalRunner(options) {
   };
 }
 
-async function createStgRunner(options) {
+async function createStgRunner(options, facilityFixtureAudit = {}) {
   const platformBaseUrl = normalizedBaseUrl(process.env.FEE_E2E_PLATFORM_BASE_URL || process.env.PLATFORM_API_BASE_URL);
   const feeBaseUrl = normalizedBaseUrl(process.env.FEE_E2E_FEE_BASE_URL || process.env.FEE_API_BASE_URL);
   const organizationCode = process.env.FEE_E2E_ORGANIZATION_CODE;
@@ -491,6 +522,13 @@ async function createStgRunner(options) {
   return {
     facilityId,
     departmentIds,
+    facilityFixture: {
+      mode: "stg_existing_facility",
+      fixtureKey: facilityFixtureAudit.fixtureKey || "stg-existing",
+      seededFacilityStandards: [],
+      expectedFacilityStandards: facilityFixtureAudit.seededFacilityStandardKeys || [],
+      collisions: facilityFixtureAudit.collisions || []
+    },
     async request(method, apiPath, body = undefined, requestOptions = {}) {
       const requestBody = requestOptions.body !== undefined ? requestOptions.body : body;
       return httpJson(`${feeBaseUrl}${apiPath}`, {
@@ -782,6 +820,13 @@ function emptyCaseResult(item) {
       feeSessionId: null,
       patientId: null,
       serviceDate: null
+    },
+    facilityFixture: {
+      mode: null,
+      fixtureKey: null,
+      seededFacilityStandards: [],
+      expectedFacilityStandards: [],
+      collisions: []
     },
     http: {},
     durationMs: {

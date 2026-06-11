@@ -1,6 +1,6 @@
 import { createStructuredOpenAiResponse } from "../openai/responses-structured.js";
 
-export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v5";
+export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v6";
 
 const LEGACY_EVENT_STATUSES = [
   "performed",
@@ -101,6 +101,11 @@ const BILLING_DOMAINS = [
   "surgery",
   "rehabilitation",
   "home_care",
+  "endoscopy",
+  "dialysis",
+  "transfusion",
+  "radiation_therapy",
+  "injection_review_only",
   "unknown"
 ];
 
@@ -299,8 +304,8 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "Do not infer a concrete blood test name from blood collection alone. A sentence such as 静脈採血を行った, 採血して検体提出, or 血液検体を採取 supports specimen/collection_method, but it does not by itself support CBC, 末梢血液一般, CRP, HbA1c, or other analytes unless those test names or results are explicitly written.",
       "For medications, extract days and quantity per day only when explicitly written. Otherwise leave the fields empty and add missing_information.",
       "For lab tests and specimen-based procedures, extract specimen and collection_method only when explicit, such as blood, urine, nasal swab, nasopharyngeal swab, throat swab, sputum, stool, tissue, or puncture fluid. Leave them empty when the note only describes a finding such as 咽頭発赤 or 鼻汁 without specimen collection.",
-      "For rehabilitation, home medical care, psychiatry-special therapy, anesthesia, surgery, pathology, and emergency/time add-on topics, preserve them as clinical_events with the appropriate billing_domain. Do not convert them into standard_procedure just because the text contains 行為, 指導, 管理, or 確認.",
-      "Domain contrast examples: 静脈採血後に検体提出 is billing_domain=standard_lab, not pathology. 組織標本を病理提出 or 細胞診検体を提出 is billing_domain=pathology. 夜間頻尿 is a symptom/time context, not emergency_time_addon. 時間外加算の算定条件確認 is billing_domain=emergency_time_addon.",
+      "For rehabilitation, home medical care, psychiatry-special therapy, anesthesia, surgery, endoscopy, dialysis, transfusion, radiation therapy, pathology, injection review-only topics, and emergency/time add-on topics, preserve them as clinical_events with the appropriate billing_domain. Do not convert them into standard_procedure just because the text contains 行為, 指導, 管理, or 確認.",
+      "Domain contrast examples: 静脈採血後に検体提出 is billing_domain=standard_lab, not pathology. 組織標本を病理提出 or 細胞診検体を提出 is billing_domain=pathology. 内視鏡検査・生検はbilling_domain=endoscopy. 透析はbilling_domain=dialysis. 輸血はbilling_domain=transfusion. 放射線治療・照射条件はbilling_domain=radiation_therapy. 夜間頻尿 is a symptom/time context, not emergency_time_addon. 時間外加算の算定条件確認 is billing_domain=emergency_time_addon.",
       "For imaging, set modality to simple_radiography, ct, mri, ultrasound, endoscopy, or other when explicit. Planned imaging should not be mixed with performed imaging.",
       "When a procedure or treatment may vary by body site or measured size, such as wound, burn, dermatology, or site-dependent procedures, extract body_site and numeric area_size_cm2 whenever they are explicitly written. Do not infer a size that is not written; leave area_size_cm2 empty and add review_reason for missing size when the size affects billing classification.",
       "For every clinical_event, set section to S/O/A/P when clear. Use temporal_relation=current_visit/past/future/unknown; source_origin=own_clinic_record/patient_reported/external_document/carried_in_result/other_provider_record/unknown; provider_ownership=own_clinic/same_institution_other_department/other_provider/unknown.",

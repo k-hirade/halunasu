@@ -157,6 +157,10 @@ for (const item of data.cases || []) {
 
 const charCounts = (data.cases || []).map((item) => ["S", "O", "A", "P"].flatMap((section) => item.chart?.soap?.[section] || []).join("\n").length);
 caseTypeSummary = caseTypeAudit(data.cases || []);
+const facilityFixtureAudit = auditFacilityFixtureAssumptions(data.cases || []);
+for (const collision of facilityFixtureAudit.collisions) {
+  errors.push(`facility fixture collision: ${collision}`);
+}
 if (caseTypeSummary.uniqueCaseTypeSignatures !== expectedCount) {
   errors.push(`caseTypeSignature unique count ${caseTypeSummary.uniqueCaseTypeSignatures} != ${expectedCount}`);
 }
@@ -180,7 +184,8 @@ const summary = {
     duplicateCaseTypeSignatureGroups: caseTypeSummary.duplicateCaseTypeSignatureGroups,
     uniqueBaseSignatures: caseTypeSummary.uniqueBaseSignatures,
     duplicateBaseSignatureGroups: caseTypeSummary.duplicateBaseSignatureGroups
-  }
+  },
+  facilityFixtureAudit
 };
 
 const minimumAssertionCounts = {
@@ -235,6 +240,43 @@ function forbiddenBillingCollisions(item) {
     }
   }
   return collisions;
+}
+
+function auditFacilityFixtureAssumptions(cases = []) {
+  const exactRequiredKeys = new Set();
+  const nonExactExplicitKeys = new Map();
+  const unknownFacilityCases = [];
+  for (const item of cases) {
+    const level = String(item.expectedCalculation?.assertionLevel || "");
+    const keys = (Array.isArray(item.expectedClaimContext?.facility_standard_keys) ? item.expectedClaimContext.facility_standard_keys : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    if (level === "exact") {
+      for (const key of keys) exactRequiredKeys.add(key);
+    } else {
+      for (const key of keys) {
+        if (!nonExactExplicitKeys.has(key)) nonExactExplicitKeys.set(key, []);
+        nonExactExplicitKeys.get(key).push(item.caseId);
+      }
+      const chartText = ["S", "O", "A", "P"].flatMap((section) => item.chart?.soap?.[section] || []).join("\n");
+      const reviewTopics = item.expectedExtraction?.requiredReviewTopics || [];
+      if (/(施設基準|届出|届け出|地方厚生局)/u.test(chartText) || reviewTopics.some((topic) => /施設基準|届出/u.test(String(topic || "")))) {
+        unknownFacilityCases.push(item.caseId);
+      }
+    }
+  }
+  const collisions = [];
+  for (const key of exactRequiredKeys) {
+    if (nonExactExplicitKeys.has(key)) {
+      collisions.push(`${key} required by exact fixture but explicitly configured by non-exact cases ${nonExactExplicitKeys.get(key).slice(0, 8).join(",")}`);
+    }
+  }
+  return {
+    exactRequiredFacilityStandardKeys: [...exactRequiredKeys].sort(),
+    facilityUnknownCaseCount: unknownFacilityCases.length,
+    facilityUnknownCaseIdsSample: unknownFacilityCases.slice(0, 20),
+    collisions
+  };
 }
 
 function normalizeLabel(value) {

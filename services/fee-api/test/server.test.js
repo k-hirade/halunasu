@@ -211,6 +211,45 @@ test("calculates fee sessions inline outside test env", async () => {
   assert.equal(detail.body.feeSession.calculationSummary.totalPoints, 137);
 });
 
+test("loads facility standards from Platform facility profile during calculation", async () => {
+  const stores = createStores({ facilityStandardKeys: ["検体検査管理加算2"] });
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Facility Profile Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "O: 尿検査を実施。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.facility_standard_keys, ["検体検査管理加算2"]);
+  assert.ok(calculation.body.feeSession.calculationOptionsAutoKeys.includes("facility_standard_keys"));
+});
+
 test("resolves name-only orders against master before calculation", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -1036,7 +1075,7 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v5");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v6");
   assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v6");
   assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
     event.name === "腰椎X線"
@@ -1156,6 +1195,86 @@ test("gates lab master search to direct lab test items and records trace", async
     && item.searches.some((search) => search.filteredCandidates.some((candidate) => candidate.code === "160061910"))
   )));
   assert.ok(trace.some((item) => item.stage === "lab_rule_expansion"));
+});
+
+test("does not auto-code lab concepts that only appear in LLM search queries", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    return {
+      query: input.query,
+      type: input.type,
+      items: [{
+        kind: "procedure",
+        code: "160054710",
+        name: "ＣＲＰ",
+        points: 16,
+        feeCategory: "lab_test_basic",
+        itemRole: "base",
+        directRetrievalAllowed: true
+      }]
+    };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [],
+    clinical_events: [
+      {
+        type: "lab",
+        billing_domain: "standard_lab",
+        name: "血液検査",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "unknown",
+        certainty: "ambiguous",
+        section: "O",
+        evidence: "静脈採血を行い、検体提出した。",
+        search_queries: ["ＣＲＰ"]
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Lab Query Guard Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-09",
+    clinicalText: "O: 静脈採血を行い、検体提出した。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
+  assert.equal(masterSearches.some((input) => input.query === "ＣＲＰ"), false);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicCode === "lab_code_check"));
 });
 
 test("routes non-blood specimen collection fees to review instead of auto collection input", async () => {
@@ -2155,6 +2274,167 @@ test("routes pathology and emergency time addon events into review-only domain t
         total_quantity: "",
         area_size_cm2: "",
         review_reason: "訪問診療確認"
+      },
+      {
+        type: "management",
+        billing_domain: "psychiatry_special",
+        name: "通院精神療法",
+        action_status: "considered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "P",
+        evidence: "精神科専門療法の算定条件を確認する。",
+        search_queries: ["通院精神療法"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: "精神科専門療法確認"
+      },
+      {
+        type: "procedure",
+        billing_domain: "surgery",
+        name: "手術",
+        action_status: "considered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "P",
+        evidence: "手術の手技内容を確認する。",
+        search_queries: ["手術"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: "手技内容確認"
+      },
+      {
+        type: "procedure",
+        billing_domain: "anesthesia",
+        name: "麻酔",
+        action_status: "considered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "P",
+        evidence: "麻酔方法と管理区分を確認する。",
+        search_queries: ["麻酔"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: "麻酔確認"
+      },
+      {
+        type: "procedure",
+        billing_domain: "endoscopy",
+        name: "内視鏡検査",
+        action_status: "considered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "P",
+        evidence: "内視鏡検査の生検有無を確認する。",
+        search_queries: ["内視鏡"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: "生検有無確認"
+      },
+      {
+        type: "procedure",
+        billing_domain: "dialysis",
+        name: "透析",
+        action_status: "considered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "P",
+        evidence: "透析条件を確認する。",
+        search_queries: ["透析"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: "透析確認"
+      },
+      {
+        type: "procedure",
+        billing_domain: "transfusion",
+        name: "輸血",
+        action_status: "considered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "P",
+        evidence: "輸血の実施内容を確認する。",
+        search_queries: ["輸血"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: "輸血確認"
+      },
+      {
+        type: "procedure",
+        billing_domain: "radiation_therapy",
+        name: "放射線治療",
+        action_status: "considered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "P",
+        evidence: "放射線治療の照射条件を確認する。",
+        search_queries: ["放射線治療"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: "照射条件確認"
       }
     ],
     excluded_events: [],
@@ -2198,6 +2478,15 @@ test("routes pathology and emergency time addon events into review-only domain t
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "実施単位確認"));
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "在宅医療未対応"));
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "訪問診療確認"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "精神科専門療法未対応"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "手術未対応"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "麻酔未対応"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "内視鏡未対応"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "生検有無確認"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "透析未対応"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "輸血未対応"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "放射線治療未対応"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "照射条件確認"));
   assert.equal(calculation.body.candidateWorkbench.proposals.length, 0);
 });
 
@@ -3226,7 +3515,8 @@ function createStores(options = {}) {
     displayName: "春ナスクリニック",
     medicalInstitutionCode: "1312345",
     regionalBureau: "kanto-shinetsu",
-    prefecture: "tokyo"
+    prefecture: "tokyo",
+    facilityStandardKeys: options.facilityStandardKeys || []
   });
   platformStore.createDepartment(organization.orgId, {
     facilityId: "fac_001",

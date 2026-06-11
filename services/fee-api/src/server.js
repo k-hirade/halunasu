@@ -415,6 +415,7 @@ async function calculateFeeSessionNow({
     context,
     feeCalculator,
     feeStore,
+    platformStore,
     input,
     feeSessionId,
     session: calculating.feeSession,
@@ -451,6 +452,7 @@ async function prepareFeeSessionForCalculation({
   context,
   feeCalculator,
   feeStore,
+  platformStore,
   input,
   feeSessionId,
   session,
@@ -466,6 +468,7 @@ async function prepareFeeSessionForCalculation({
     fn: () => prepareSessionForCalculation(session, calculationInput, feeCalculator, {
       ...input,
       feeStore,
+      platformStore,
       orgId: context.session.orgId,
       feeSessionId
     }),
@@ -990,6 +993,11 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
   const stageTimings = [];
   const enriched = await measureStage(stageTimings, "enrichOrders", () => enrichSessionOrdersForCalculation(session, feeCalculator));
   const baseSession = enriched.changed ? { ...session, orders: enriched.orders } : session;
+  const facilityProfile = await measureStage(stageTimings, "facilityProfile", () => loadFacilityProfileForCalculation({
+    platformStore: input.platformStore,
+    orgId: input.orgId || baseSession.orgId,
+    session: baseSession
+  }));
   const priorSessions = await measureStage(stageTimings, "patientHistory", () => loadPriorFeeSessionsForPatient({
     feeStore: input.feeStore,
     orgId: input.orgId || baseSession.orgId,
@@ -1023,25 +1031,26 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     priorSessions,
     clinicalFactsExtractor: input.clinicalFactsExtractor
   }));
+  const prepared = applyFacilityProfileToPreparation(legacy, facilityProfile);
   const patch = {};
 
   if (enriched.changed) {
     patch.orders = enriched.orders;
   }
-  if (!hasEquivalentJson(session.calculationOptions || null, legacy.calculationOptions || null)) {
-    patch.calculationOptions = legacy.calculationOptions || null;
+  if (!hasEquivalentJson(session.calculationOptions || null, prepared.calculationOptions || null)) {
+    patch.calculationOptions = prepared.calculationOptions || null;
   }
-  if (!hasEquivalentJson(session.calculationOptionsAutoKeys || [], legacy.calculationOptionsAutoKeys || [])) {
-    patch.calculationOptionsAutoKeys = legacy.calculationOptionsAutoKeys || [];
+  if (!hasEquivalentJson(session.calculationOptionsAutoKeys || [], prepared.calculationOptionsAutoKeys || [])) {
+    patch.calculationOptionsAutoKeys = prepared.calculationOptionsAutoKeys || [];
   }
-  if (String(session.calculationOptionsSource || "") !== String(legacy.calculationOptionsSource || "")) {
-    patch.calculationOptionsSource = legacy.calculationOptionsSource || null;
+  if (String(session.calculationOptionsSource || "") !== String(prepared.calculationOptionsSource || "")) {
+    patch.calculationOptionsSource = prepared.calculationOptionsSource || null;
   }
-  if (shouldApplyClinicalDiagnoses(baseSession, legacy.diagnoses, calculationInput)) {
-    patch.diagnoses = legacy.diagnoses;
+  if (shouldApplyClinicalDiagnoses(baseSession, prepared.diagnoses, calculationInput)) {
+    patch.diagnoses = prepared.diagnoses;
     patch.diagnosesSource = "clinical_auto";
     patch.diagnosesClinicalTextHash = clinicalTextHash(calculationInput.clinicalText || baseSession.clinicalText || "");
-  } else if (shouldClearClinicalAutoDiagnoses(baseSession, legacy.diagnoses, calculationInput)) {
+  } else if (shouldClearClinicalAutoDiagnoses(baseSession, prepared.diagnoses, calculationInput)) {
     patch.diagnoses = [];
     patch.diagnosesSource = "clinical_auto";
     patch.diagnosesClinicalTextHash = clinicalTextHash(calculationInput.clinicalText || baseSession.clinicalText || "");
@@ -1049,25 +1058,93 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
 
   return {
     patch: Object.keys(patch).length ? patch : null,
-    calculationOptions: legacy.calculationOptions,
-    candidateProposals: Array.isArray(legacy.candidateProposals) ? legacy.candidateProposals : [],
-    clinicalEvents: Array.isArray(legacy.clinicalEvents) ? legacy.clinicalEvents : [],
-    masterCandidates: Array.isArray(legacy.masterCandidates) ? legacy.masterCandidates : [],
-    billingCandidates: Array.isArray(legacy.billingCandidates) ? legacy.billingCandidates : [],
-    reviewIssues: Array.isArray(legacy.reviewIssues) ? legacy.reviewIssues : [],
-    clinicalExtraction: legacy.clinicalExtraction || null,
+    calculationOptions: prepared.calculationOptions,
+    candidateProposals: Array.isArray(prepared.candidateProposals) ? prepared.candidateProposals : [],
+    clinicalEvents: Array.isArray(prepared.clinicalEvents) ? prepared.clinicalEvents : [],
+    masterCandidates: Array.isArray(prepared.masterCandidates) ? prepared.masterCandidates : [],
+    billingCandidates: Array.isArray(prepared.billingCandidates) ? prepared.billingCandidates : [],
+    reviewIssues: Array.isArray(prepared.reviewIssues) ? prepared.reviewIssues : [],
+    clinicalExtraction: prepared.clinicalExtraction || null,
     metrics: {
-      ...(legacy.metrics || {}),
+      ...(prepared.metrics || {}),
       patientHistory: {
         priorSessionCount: Array.isArray(priorSessions) ? priorSessions.length : 0
       },
       stageTimings
     },
     reviewWarnings: uniqueStrings([
-      ...(Array.isArray(legacy.reviewWarnings) ? legacy.reviewWarnings : []),
-      ...unresolvedOrderWarnings(enriched.orders || baseSession.orders || [], legacy.calculationOptions || {})
+      ...(Array.isArray(prepared.reviewWarnings) ? prepared.reviewWarnings : []),
+      ...unresolvedOrderWarnings(enriched.orders || baseSession.orders || [], prepared.calculationOptions || {})
     ])
   };
+}
+
+async function loadFacilityProfileForCalculation({ platformStore, orgId, session = {} } = {}) {
+  const facilityId = String(session.facilityId || session.facilitySnapshot?.facilityId || "").trim();
+  if (!facilityId) {
+    return {
+      source: "missing_facility",
+      facilityId: "",
+      facilityStandardKeys: []
+    };
+  }
+  const fromStore = platformStore?.getFacility
+    ? await platformStore.getFacility(orgId, facilityId)
+    : null;
+  const facility = fromStore || session.facilitySnapshot || {};
+  return {
+    source: fromStore ? "platform_facility" : "session_snapshot",
+    facilityId,
+    facilityStandardKeys: uniqueStrings(facility.facilityStandardKeys || facility.facility_standard_keys || [])
+  };
+}
+
+function applyFacilityProfileToPreparation(prepared = {}, facilityProfile = {}) {
+  const facilityKeys = uniqueStrings(facilityProfile.facilityStandardKeys || []);
+  const metrics = {
+    ...(prepared.metrics || {}),
+    facilityProfile: {
+      source: facilityProfile.source || "none",
+      facilityId: facilityProfile.facilityId || "",
+      facilityStandardKeyCount: facilityKeys.length
+    }
+  };
+  if (!facilityKeys.length) {
+    return {
+      ...prepared,
+      metrics
+    };
+  }
+
+  const currentOptions = isPlainObject(prepared.calculationOptions) ? prepared.calculationOptions : {};
+  const mergedKeys = uniqueStrings([
+    ...(Array.isArray(currentOptions.facility_standard_keys) ? currentOptions.facility_standard_keys : []),
+    ...facilityKeys
+  ]);
+  return {
+    ...prepared,
+    calculationOptions: {
+      ...currentOptions,
+      facility_standard_keys: mergedKeys
+    },
+    calculationOptionsAutoKeys: uniqueStrings([
+      ...(Array.isArray(prepared.calculationOptionsAutoKeys) ? prepared.calculationOptionsAutoKeys : []),
+      "facility_standard_keys"
+    ]),
+    calculationOptionsSource: mergedCalculationOptionsSource(prepared.calculationOptionsSource),
+    metrics
+  };
+}
+
+function mergedCalculationOptionsSource(source = "") {
+  const normalized = String(source || "").trim();
+  if (!normalized) {
+    return "clinical_auto";
+  }
+  if (normalized === "manual") {
+    return "manual_with_clinical_auto";
+  }
+  return normalized;
 }
 
 function buildCalculationInputForSession(session = {}, input = {}, prepared = {}) {
