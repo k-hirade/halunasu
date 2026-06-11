@@ -742,7 +742,7 @@ function accuracyView(item, actual) {
   const actualSignalText = [
     ...actual.lineItems.map((line) => `${line.code} ${line.name}`),
     ...actual.candidateProposals.map((item) => `${item.name} ${item.title} ${item.reason}`),
-    ...(actual.clinicalEvents || []).map((event) => `${event.name} ${event.type} ${event.billingDomain} ${event.evidence}`),
+    ...(actual.clinicalEvents || []).map((event) => `${event.name} ${event.type} ${event.billingDomain}`),
     ...actual.reviewText
   ].join(" ");
   const actualCodes = asStrings(actual.candidateCodes);
@@ -769,7 +769,7 @@ function missingView(item, actual) {
     ...actual.diagnoses,
     ...actual.lineItems.map((line) => `${line.code} ${line.name}`),
     ...actual.candidateProposals.map((proposal) => `${proposal.name} ${proposal.title} ${proposal.reason}`),
-    ...(actual.clinicalEvents || []).map((event) => `${event.name} ${event.type} ${event.billingDomain} ${event.evidence}`),
+    ...(actual.clinicalEvents || []).map((event) => `${event.name} ${event.type} ${event.billingDomain}`),
     ...actual.reviewText
   ].join(" ");
   return {

@@ -2346,6 +2346,52 @@ test("routes pathology and emergency time addon events into review-only domain t
       },
       {
         type: "procedure",
+        billing_domain: "anesthesia",
+        name: "麻酔前評価",
+        action_status: "considered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "P",
+        evidence: "術前麻酔面接を実施した可能性があり、面接時間を確認する。",
+        search_queries: ["術前麻酔面接"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: "面接時間確認"
+      },
+      {
+        type: "procedure",
+        billing_domain: "anesthesia",
+        name: "麻酔薬投与",
+        action_status: "considered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "P",
+        evidence: "麻酔薬剤の投与量と投与経路を確認する。",
+        search_queries: ["麻酔薬"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: "薬剤量確認"
+      },
+      {
+        type: "procedure",
         billing_domain: "endoscopy",
         name: "内視鏡検査",
         action_status: "considered",
@@ -2481,6 +2527,9 @@ test("routes pathology and emergency time addon events into review-only domain t
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "精神科専門療法未対応"));
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "手術未対応"));
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "麻酔未対応"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "手技内容確認"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "面接時間確認"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "薬剤量確認"));
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "内視鏡未対応"));
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "生検有無確認"));
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "透析未対応"));
@@ -2702,7 +2751,7 @@ test("does not divert ordinary lab specimen submission or symptom timing into re
     patientId: patient.body.patient.patientId,
     facilityId: "fac_001",
     serviceDate: "2026-06-10",
-    clinicalText: "静脈採血も行い、検体提出。ＣＲＰ 0.3mg/dL。夜間頻尿を確認した。救急要請はなかった。",
+    clinicalText: "再診。血圧130/80、再測定128/76。静脈採血も行い、検体提出。ＣＲＰ 0.3mg/dL。夜間頻尿を確認した。救急要請はなかった。",
     diagnoses: [{ name: "発熱" }]
   }, headers);
 
@@ -2723,6 +2772,7 @@ test("does not divert ordinary lab specimen submission or symptom timing into re
   assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "検体提出確認"), false);
   assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "救急加算確認"), false);
   assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "受付時刻確認"), false);
+  assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "複数日記録分割"), false);
   assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
     event.name === "ＣＲＰ"
     && event.billingDomain === "standard_lab"

@@ -121,6 +121,10 @@ const REVIEW_TOPIC_TAXONOMY = Object.freeze({
     label: "薬剤量確認",
     issueCode: "missing_medication_amount"
   }),
+  anesthesia_interview_time_check: Object.freeze({
+    label: "面接時間確認",
+    issueCode: "anesthesia_interview_time_unknown"
+  }),
   split_multi_day_check: Object.freeze({
     label: "複数日記録分割",
     issueCode: "split_multi_day_review_required"
@@ -333,6 +337,9 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   }
   if (/薬剤量|投与量|用量/u.test(text) && /(確認|不足|不明|未記載|明記|必要)/u.test(text)) {
     return "medication_amount_check";
+  }
+  if (/面接時間|術前(?:診察|面接|評価)|麻酔.*(?:面接|診察|評価)/u.test(text)) {
+    return "anesthesia_interview_time_check";
   }
   if (/総量不足|総量|全量|本数|枚数/u.test(text) && /不足|不明|未記載|明記/u.test(text)) {
     return "missing_total_quantity";
@@ -3215,11 +3222,6 @@ function reviewIssuesFromReviewOnlyDomainClinicalEvent(event = {}) {
       split_multi_day: "split_multi_day_check"
     };
     const helperTopicByDomain = {
-      anesthesia: {
-        topicCode: "medication_amount_check",
-        title: "薬剤量確認",
-        requiredInput: "麻酔薬剤名、投与量、投与経路、実施時間"
-      },
       surgery: {
         topicCode: "procedure_detail_check",
         title: "手技内容確認",
@@ -3251,8 +3253,10 @@ function reviewIssuesFromReviewOnlyDomainClinicalEvent(event = {}) {
         policy: { riskGate: "review_only", domain }
       }, topicCode)
     ];
-    const helper = helperTopicByDomain[domain];
-    if (helper) {
+    const helpers = domain === "anesthesia"
+      ? anesthesiaHelperTopicsForClinicalEvent(event)
+      : helperTopicByDomain[domain] ? [helperTopicByDomain[domain]] : [];
+    for (const helper of helpers) {
       issues.push(withReviewTopic({
         reviewIssueId: `issue_${candidateIdPart([eventId, helper.topicCode, name, evidence].join("_"))}`,
         issueCode: helper.topicCode,
@@ -3324,6 +3328,40 @@ function reviewIssueFromUnsupportedClinicalEvent(event = {}) {
   };
 }
 
+function anesthesiaHelperTopicsForClinicalEvent(event = {}) {
+  const text = normalizeClinicalText([
+    clinicalEventName(event),
+    clinicalEventEvidence(event),
+    event?.review_reason,
+    event?.reviewReason,
+    ...asArray(event?.search_queries),
+    ...asArray(event?.searchQueries)
+  ].join(" "));
+  const helpers = [];
+  if (/(薬剤|麻酔薬|投与|用量|投与量|投与経路|mg|mL|ml|単位|持続|静注|吸入)/iu.test(text)) {
+    helpers.push({
+      topicCode: "medication_amount_check",
+      title: "薬剤量確認",
+      requiredInput: "麻酔薬剤名、投与量、投与経路、実施時間"
+    });
+  }
+  if (/(面接|術前診察|術前面接|術前評価|麻酔科診察|麻酔前評価|説明時間)/u.test(text)) {
+    helpers.push({
+      topicCode: "anesthesia_interview_time_check",
+      title: "面接時間確認",
+      requiredInput: "術前診察・面接の実施有無、実施時間、担当者"
+    });
+  }
+  if (!helpers.length || /(麻酔方法|管理区分|手技|方法|区分|全身麻酔|局所麻酔|硬膜外|脊椎麻酔)/u.test(text)) {
+    helpers.push({
+      topicCode: "procedure_detail_check",
+      title: "手技内容確認",
+      requiredInput: "麻酔方法、管理区分、実施時間、併用手技"
+    });
+  }
+  return dedupeObjects(helpers, (helper) => helper.topicCode);
+}
+
 function reviewIssueFromSplitMultiDayText(text = "") {
   if (!hasSplitMultiDayRecordContext(text)) {
     return null;
@@ -3345,11 +3383,40 @@ function hasSplitMultiDayRecordContext(text = "") {
   if (/複数日記録|複数日の診療|複数日診療|日別ケース|日別に?分割/u.test(normalized)) {
     return true;
   }
+  const dates = extractClinicalDateMentions(normalized);
+  return dates.length >= 2 && /(初診|再診|受診|外来|検査|処置|説明|結果)/u.test(normalized);
+}
+
+function extractClinicalDateMentions(text = "") {
   const dates = new Set();
-  for (const match of normalized.matchAll(/(?:20\d{2}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2}|(?:\d{1,2})月(?:\d{1,2})日)/gu)) {
-    dates.add(match[0]);
+  const normalized = normalizeClinicalText(text);
+  const patterns = [
+    { regex: /20(\d{2})[/-](\d{1,2})[/-](\d{1,2})/gu, monthGroup: 2, dayGroup: 3 },
+    { regex: /(^|[^\d])(\d{1,2})[/-](\d{1,2})(?!\d)/gu, monthGroup: 2, dayGroup: 3 },
+    { regex: /(\d{1,2})月(\d{1,2})日/gu, monthGroup: 1, dayGroup: 2 }
+  ];
+  for (const pattern of patterns) {
+    for (const match of normalized.matchAll(pattern.regex)) {
+      const raw = match[0].trim();
+      const month = Number(match[pattern.monthGroup]);
+      const day = Number(match[pattern.dayGroup]);
+      const index = match.index || 0;
+      const context = normalized.slice(Math.max(0, index - 16), Math.min(normalized.length, index + raw.length + 16));
+      if (!isValidMonthDay(month, day) || isVitalOrRatioDateFalsePositiveContext(context)) {
+        continue;
+      }
+      dates.add(raw.replace(/^[^\d]+/u, ""));
+    }
   }
-  return dates.size >= 2 && /(初診|再診|受診|外来|検査|処置|説明|結果)/u.test(normalized);
+  return [...dates];
+}
+
+function isValidMonthDay(month, day) {
+  return Number.isInteger(month) && Number.isInteger(day) && month >= 1 && month <= 12 && day >= 1 && day <= 31;
+}
+
+function isVitalOrRatioDateFalsePositiveContext(text = "") {
+  return /(血圧|BP|mmHg|脈拍|HR|SpO2|SPO2|酸素飽和度|体温|BT|BMI|身長|体重|回\/分|\/分|mg\/dL|g\/dL|mL\/min|μL|mm3|前回比|比率|割合|%|％)/iu.test(text);
 }
 
 function reviewIssueFromManagementClinicalEvent(event = {}, { categoryLabel = "医学管理等" } = {}) {
