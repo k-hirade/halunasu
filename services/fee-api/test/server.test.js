@@ -1323,8 +1323,8 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v8");
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v7");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v9");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v8");
   assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
     event.name === "腰椎X線"
     && event.actionStatus === "performed"
@@ -1527,6 +1527,156 @@ test("does not auto-code lab concepts that only appear in LLM search queries", a
   assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
   assert.equal(masterSearches.some((input) => input.query === "ＣＲＰ"), false);
   assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicCode === "lab_code_check"));
+});
+
+test("recovers named performed lab events from checklist findings before master search", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  let extractorChecklistMenu = [];
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    if (input.type === "procedure" && input.query === "尿一般") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160000310",
+          name: "尿一般",
+          points: 26,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async ({ checklistMenu }) => {
+    extractorChecklistMenu = checklistMenu;
+    return {
+      visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+      diagnoses: [],
+      clinical_events: [],
+      checklist_findings: [{
+        menu_id: "lab:urine_general",
+        status: "performed_today",
+        evidence: "尿一般を実施",
+        reason: "本文に実施記載あり"
+      }],
+      excluded_events: [],
+      missing_information: [],
+      review_flags: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Checklist Lab Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 尿一般を実施。異常なし。",
+    diagnoses: [{ name: "尿路感染症疑い" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.ok(extractorChecklistMenu.some((item) => item.menuId === "lab:urine_general"));
+  assert.ok(masterSearches.some((input) => input.type === "procedure" && input.query === "尿一般"));
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160000310"]);
+  assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
+    event.name === "尿一般"
+    && event.actionStatus === "performed"
+  )));
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => (
+    item.stage === "checklist_recall"
+    && item.outcome === "recovered"
+  )));
+});
+
+test("does not recover checklist findings without a quoted evidence span", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [],
+    clinical_events: [],
+    checklist_findings: [{
+      menu_id: "lab:urine_general",
+      status: "performed_today",
+      evidence: "尿一般を実施",
+      reason: "本文に実施記載あり"
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Checklist Guard Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 尿検査の予定を説明。",
+    diagnoses: [{ name: "尿路感染症疑い" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(masterSearches.some((input) => input.query === "尿一般"), false);
+  assert.equal(receivedInput.calculationOptions?.procedure_codes, undefined);
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => (
+    item.stage === "checklist_recall"
+    && item.outcome === "ignored"
+  )));
 });
 
 test("routes non-blood specimen collection fees to review instead of auto collection input", async () => {

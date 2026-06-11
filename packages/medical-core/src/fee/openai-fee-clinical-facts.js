@@ -1,6 +1,6 @@
 import { createStructuredOpenAiResponse } from "../openai/responses-structured.js";
 
-export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v8";
+export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v9";
 
 const LEGACY_EVENT_STATUSES = [
   "performed",
@@ -68,6 +68,15 @@ const CERTAINTY_LEVELS = [
   "ambiguous"
 ];
 
+const CHECKLIST_STATUSES = [
+  "performed_today",
+  "planned",
+  "past_or_external",
+  "mentioned_not_performed",
+  "not_in_text",
+  "unclear"
+];
+
 const EVENT_TYPES = [
   "outpatient_basic",
   "imaging",
@@ -118,6 +127,7 @@ const feeClinicalFactsSchema = {
     "visit_facts",
     "diagnoses",
     "clinical_events",
+    "checklist_findings",
     "excluded_events",
     "missing_information",
     "review_flags"
@@ -208,6 +218,21 @@ const feeClinicalFactsSchema = {
         properties: eventProperties()
       }
     },
+    checklist_findings: {
+      type: "array",
+      maxItems: 30,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["menu_id", "status", "evidence", "reason"],
+        properties: {
+          menu_id: shortString(50),
+          status: { type: "string", enum: CHECKLIST_STATUSES },
+          evidence: shortString(90),
+          reason: shortString(70)
+        }
+      }
+    },
     excluded_events: {
       type: "array",
       maxItems: 8,
@@ -290,6 +315,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
   apiKey,
   clinicalText,
   sessionContext = {},
+  checklistMenu = [],
   model = "gpt-5.4-nano",
   reasoningEffort = "low",
   timeoutMs = 0,
@@ -301,6 +327,9 @@ export async function extractFeeClinicalFactsWithOpenAi({
     "",
     "Session context:",
     JSON.stringify(safeSessionContext(sessionContext), null, 2),
+    "",
+    "Checklist menu:",
+    JSON.stringify(safeClinicalChecklistMenu(checklistMenu), null, 2),
     "",
     "Clinical text:",
     String(clinicalText || "").trim()
@@ -314,6 +343,9 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "You are a Japanese medical billing clinical-structure extraction engine.",
       "Return only facts supported by the provided clinical text and session context.",
       "Your output is clinical_events, not billing candidates. Do not calculate points. Do not choose billing codes. Do not decide billable/proposal/review eligibility. Downstream master search and rules will decide those.",
+      "In addition to free clinical_events extraction, answer checklist_findings for every item in the Checklist menu. This checklist is only a recall aid: it does not make an item billable by itself. Downstream rules will still verify evidence, timing, ownership, master mapping, and policy gates.",
+      "For each checklist menu item, return exactly one checklist_finding with the same menu_id. Use status=performed_today only when the note supports that the item happened in this clinic during this encounter. Use planned for future/order/予定/依頼/予約/次回. Use past_or_external for 前回/以前/他院/前医/持参/健診/他科/主治医. Use mentioned_not_performed when the note says the act was not done. Use not_in_text when the menu item is not actually supported by the note. Use unclear when named but timing/ownership/performance cannot be determined.",
+      "For checklist_findings evidence, quote a short exact excerpt from the clinical text when status is not_in_text leave evidence empty. Do not invent evidence.",
       "For each clinical_event, set billing_domain as a structured meaning label. Use standard_lab for ordinary specimen tests including blood/urine/rapid tests and ordinary specimen submission; pathology only for pathology diagnosis, cytology, histology, tissue specimen pathology submission, or specimen preparation in a pathology-diagnosis context; emergency_time_addon only for emergency/time-after-hours/holiday/night billing add-on context such as 救急加算, 時間外加算, 休日加算, 深夜加算, or受付時刻確認 for those add-ons. Do not mark symptom timing such as 夜間頻尿 or 夜間咳嗽 as emergency_time_addon.",
       "Separate action_status, temporal_relation, source_origin, provider_ownership, result_assertion, and certainty. Do not compress them into one status.",
       "Use action_status=performed/prescribed/administered only for actions that happened during the current encounter or are clearly prescribed/administered by this clinic today.",
@@ -378,4 +410,15 @@ function safeSessionContext(context = {}) {
     visitType: context.visitType || "",
     diagnoses: Array.isArray(context.diagnoses) ? context.diagnoses.slice(0, 20) : []
   };
+}
+
+function safeClinicalChecklistMenu(menu = []) {
+  return Array.isArray(menu)
+    ? menu.slice(0, 30).map((item) => ({
+      menu_id: String(item?.menuId || item?.menu_id || "").slice(0, 50),
+      label: String(item?.label || "").slice(0, 60),
+      kind: String(item?.kind || "").slice(0, 40),
+      domain: String(item?.billingDomain || item?.billing_domain || "").slice(0, 40)
+    })).filter((item) => item.menu_id && item.label)
+    : [];
 }

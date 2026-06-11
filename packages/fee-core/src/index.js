@@ -743,7 +743,8 @@ function normalizeClinicalEvents(items) {
         days: item.days || null,
         totalQuantity: item.totalQuantity || item.total_quantity || null,
         searchTerms: Array.isArray(item.searchTerms) ? item.searchTerms.slice(0, 12) : [],
-        reviewReason: item.reviewReason || item.review_reason || null
+        reviewReason: item.reviewReason || item.review_reason || null,
+        source: item.source || item.extractionSource || item.extraction_source || null
       });
     })
     .filter((item) => item && (item.name || item.evidence))

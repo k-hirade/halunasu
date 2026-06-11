@@ -52,7 +52,7 @@ const OTHER_PROVIDER_DPC_CONTEXT_PATTERN = /DPC.{0,16}(?:病院|医療機関|他
 // Keep this intentionally narrow so ordinary clinical phrases are not dropped.
 const SYNTHETIC_CLINICAL_META_SENTENCE_PATTERN = /(当日確認した主な診療内容|確認すべき論点|点数に直結する名称|会計前に当日実施した内容|診療内容は最終確認|expectedClaimContext)/u;
 
-export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v7";
+export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v8";
 
 const REVIEW_TOPIC_TAXONOMY = Object.freeze({
   contrast_check: Object.freeze({
@@ -619,6 +619,7 @@ async function inferStructuredClinicalCalculationOptions({
 
   const startedAt = Date.now();
   const conversionSearch = createMasterSearchMetrics(feeCalculator);
+  const checklistMenu = buildClinicalChecklistMenu(text);
   let openAiProviderDurationMs = 0;
   let firstOutputTextMs = null;
   let firstSnapshotSeen = false;
@@ -629,6 +630,7 @@ async function inferStructuredClinicalCalculationOptions({
         clinicalText: text,
         session,
         sessionContext: buildFeeSessionContext(session),
+        checklistMenu,
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
         timeoutMs: openAiTimeoutMs
@@ -637,6 +639,7 @@ async function inferStructuredClinicalCalculationOptions({
         apiKey: openAiApiKey,
         clinicalText: text,
         sessionContext: buildFeeSessionContext(session),
+        checklistMenu,
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
         timeoutMs: openAiTimeoutMs,
@@ -654,7 +657,8 @@ async function inferStructuredClinicalCalculationOptions({
     const converted = await clinicalFactsToCalculationOptions(facts, {
       text,
       session,
-      feeCalculator: conversionSearch.calculator
+      feeCalculator: conversionSearch.calculator,
+      checklistMenu
     });
     const convertedOptionKeys = Object.keys(converted.inferred || {});
     return {
@@ -668,6 +672,8 @@ async function inferStructuredClinicalCalculationOptions({
         clinicalFactsConvertDurationMs: Date.now() - conversionStartedAt,
         extractedDiagnosisCount: Array.isArray(facts?.diagnoses) ? facts.diagnoses.length : 0,
         extractedClinicalEventCount: clinicalEventsFromClinicalFacts(facts).length,
+        extractedChecklistFindingCount: Array.isArray(facts?.checklist_findings) ? facts.checklist_findings.length : 0,
+        checklistMenuCount: checklistMenu.length,
         extractedBillingEventCount: Array.isArray(facts?.billing_events) ? facts.billing_events.length : 0,
         extractedExcludedEventCount: Array.isArray(facts?.excluded_events) ? facts.excluded_events.length : 0,
         convertedDiagnosisCount: Array.isArray(converted.diagnoses) ? converted.diagnoses.length : 0,
@@ -896,7 +902,7 @@ async function inferDeterministicSupplementalClinicalCalculationOptions({ text =
   };
 }
 
-async function clinicalFactsToCalculationOptions(facts = {}, { text = "", session = {}, feeCalculator } = {}) {
+async function clinicalFactsToCalculationOptions(facts = {}, { text = "", session = {}, feeCalculator, checklistMenu = [] } = {}) {
   const inferred = {};
   const diagnoses = diagnosesFromClinicalFacts(facts);
   const reviewWarnings = [];
@@ -911,10 +917,20 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const billingCandidates = [];
   const reviewIssues = [];
   const clinicalTrace = [];
-  const clinicalEvents = clinicalEventsFromClinicalFacts(facts);
+  let clinicalEvents = clinicalEventsFromClinicalFacts(facts);
+  const checklistRecovery = clinicalEventsFromChecklistFindings({
+    facts,
+    checklistMenu,
+    clinicalText: text,
+    existingEvents: clinicalEvents
+  });
+  if (checklistRecovery.events.length) {
+    clinicalEvents = [...clinicalEvents, ...checklistRecovery.events];
+  }
   const suppressedClinicalFactWarnings = [];
   let hasCaseLevelLabProcedureCode = false;
   let hasCaseLevelBloodCollectionEvidence = hasCaseLevelBloodCollectionEvidenceFromText(text);
+  clinicalTrace.push(...checklistRecovery.traceEvents);
 
   if (isInpatientEncounter(session, text)) {
     const inpatientBasic = inferInpatientBasicOptions(text, session);
@@ -2596,6 +2612,190 @@ function clinicalEventsFromClinicalFacts(facts = {}) {
     .filter(Boolean);
 }
 
+function clinicalEventsFromChecklistFindings({
+  facts = {},
+  checklistMenu = [],
+  clinicalText = "",
+  existingEvents = []
+} = {}) {
+  const menuById = new Map(asArray(checklistMenu).map((item) => [String(item.menuId || item.menu_id || ""), item]));
+  const existing = asArray(existingEvents);
+  const events = [];
+  const traceEvents = [];
+  for (const [index, finding] of asArray(facts?.checklist_findings).entries()) {
+    const menuId = String(finding?.menu_id || finding?.menuId || "").trim();
+    const status = normalizeChecklistFindingStatus(finding?.status);
+    const menu = menuById.get(menuId);
+    if (!menu || status === "not_in_text") {
+      continue;
+    }
+    const evidence = String(finding?.evidence || "").trim();
+    if (!checklistFindingEvidenceIsUsable({ status, evidence, clinicalText })) {
+      traceEvents.push({
+        stage: "checklist_recall",
+        outcome: "ignored",
+        menuId,
+        status,
+        label: menu?.label || "",
+        message: "checklist_evidence_missing_or_not_in_text"
+      });
+      continue;
+    }
+    if (existing.some((event) => clinicalEventMatchesChecklistMenu(event, menu))) {
+      traceEvents.push({
+        stage: "checklist_recall",
+        outcome: "already_extracted",
+        menuId,
+        status,
+        label: menu.label || ""
+      });
+      continue;
+    }
+    const event = normalizeClinicalEvent(checklistFindingToClinicalEvent({
+      finding,
+      menu,
+      index
+    }), index);
+    if (!event) {
+      continue;
+    }
+    events.push(event);
+    existing.push(event);
+    traceEvents.push(clinicalTraceEvent({
+      stage: "checklist_recall",
+      event,
+      categoryLabel: menu.label || event.name,
+      outcome: "recovered",
+      message: `checklist_${status}`
+    }));
+  }
+  return {
+    events,
+    traceEvents
+  };
+}
+
+function normalizeChecklistFindingStatus(value = "") {
+  const status = String(value || "").trim();
+  return [
+    "performed_today",
+    "planned",
+    "past_or_external",
+    "mentioned_not_performed",
+    "not_in_text",
+    "unclear"
+  ].includes(status) ? status : "unclear";
+}
+
+function checklistFindingEvidenceIsUsable({ status = "", evidence = "", clinicalText = "" } = {}) {
+  if (status === "not_in_text") {
+    return false;
+  }
+  const normalizedEvidence = normalizeClinicalText(evidence);
+  if (!normalizedEvidence) {
+    return false;
+  }
+  const normalizedText = normalizeClinicalText(clinicalText);
+  return normalizedText.includes(normalizedEvidence);
+}
+
+function clinicalEventMatchesChecklistMenu(event = {}, menu = {}) {
+  const menuType = String(menu.eventType || menu.type || menu.kind || "").trim();
+  const menuDomain = String(menu.billingDomain || menu.billing_domain || "").trim();
+  const eventType = normalizeClinicalEventType(event);
+  const eventDomain = normalizeClinicalEventBillingDomain(event);
+  if (menuDomain && menuDomain === eventDomain) {
+    if (menu.kind === "domain") {
+      return true;
+    }
+    if (menuType && menuType !== eventType) {
+      return false;
+    }
+  }
+  const eventName = normalizeClinicalText(clinicalEventName(event));
+  const label = normalizeClinicalText(menu.label || menu.name || "");
+  if (label && eventName.includes(label)) {
+    return true;
+  }
+  if (menu.kind === "lab" && labConceptsFromClinicalEventName(event).some((concept) => concept.key === menu.conceptKey)) {
+    return true;
+  }
+  if (menu.kind === "imaging") {
+    const modality = String(event?.modality || "").trim();
+    return modality && modality === menu.modality;
+  }
+  return false;
+}
+
+function checklistFindingToClinicalEvent({ finding = {}, menu = {}, index = 0 } = {}) {
+  const status = normalizeChecklistFindingStatus(finding.status);
+  const statusMapping = {
+    performed_today: {
+      action_status: menu.eventType === "medication" ? "prescribed" : "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      certainty: "inferred"
+    },
+    planned: {
+      action_status: "planned",
+      temporal_relation: "future",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      certainty: "ambiguous"
+    },
+    past_or_external: {
+      action_status: "performed",
+      temporal_relation: "past",
+      source_origin: "other_provider_record",
+      provider_ownership: "other_provider",
+      certainty: "ambiguous"
+    },
+    mentioned_not_performed: {
+      action_status: "not_performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      certainty: "explicit"
+    },
+    unclear: {
+      action_status: "unknown",
+      temporal_relation: "unknown",
+      source_origin: "unknown",
+      provider_ownership: "unknown",
+      certainty: "ambiguous"
+    }
+  };
+  const mapped = statusMapping[status] || statusMapping.unclear;
+  return {
+    clinical_event_id: `checklist_${candidateIdPart(menu.menuId || menu.menu_id || menu.label || index)}`,
+    type: menu.eventType || menu.type || (menu.kind === "domain" ? "other" : menu.kind) || "other",
+    billing_domain: menu.billingDomain || menu.billing_domain || "unknown",
+    name: menu.name || menu.label || "確認項目",
+    ...mapped,
+    result_assertion: "unknown",
+    section: "unknown",
+    evidence: String(finding.evidence || "").trim(),
+    search_queries: uniqueStrings([
+      menu.query,
+      menu.name,
+      menu.label,
+      ...asArray(menu.searchQueries),
+      ...asArray(menu.search_queries)
+    ].filter(Boolean)),
+    modality: menu.modality || "none",
+    body_site: "",
+    specimen: "",
+    collection_method: "",
+    quantity_per_day: "",
+    days: "",
+    total_quantity: "",
+    area_size_cm2: "",
+    review_reason: String(finding.reason || "チェックリスト検証で回収").trim(),
+    source: "checklist_recall"
+  };
+}
+
 function expandCompositeLabClinicalEvent(event = {}) {
   const type = normalizeClinicalEventType(event);
   if (!["lab", "exam"].includes(type)) {
@@ -2664,7 +2864,8 @@ function normalizeClinicalEventsForResult(values = []) {
       days: normalized.days,
       totalQuantity: normalized.total_quantity,
       searchTerms: clinicalEventSearchQueries(normalized),
-      reviewReason: normalized.review_reason
+      reviewReason: normalized.review_reason,
+      source: normalized.source || normalized.extractionSource || ""
     });
   }
   return result.slice(0, 120);
@@ -4381,6 +4582,203 @@ function clinicalEventAliasQueries(event = {}) {
     return imagingAliasQueries(event);
   }
   return [];
+}
+
+function buildClinicalChecklistMenu(text = "") {
+  const clinicalOnlyText = splitClinicalSentences(text)
+    .filter((sentence) => !isClinicalMetaSentence(sentence))
+    .join("\n");
+  const normalized = normalizeClinicalText(clinicalOnlyText);
+  const menu = [];
+  const addMenu = (item = {}) => {
+    const menuId = String(item.menuId || "").trim();
+    const label = String(item.label || item.name || "").trim();
+    if (!menuId || !label || menu.some((existing) => existing.menuId === menuId)) {
+      return;
+    }
+    menu.push({
+      menuId,
+      label,
+      kind: item.kind || item.eventType || "other",
+      eventType: item.eventType || item.kind || "other",
+      billingDomain: item.billingDomain || "unknown",
+      name: item.name || label,
+      query: item.query || item.name || label,
+      searchQueries: uniqueStrings(asArray(item.searchQueries)),
+      modality: item.modality || "none",
+      conceptKey: item.conceptKey || ""
+    });
+  };
+
+  for (const concept of labConceptsFromText(normalized)) {
+    addMenu({
+      menuId: `lab:${concept.key}`,
+      label: concept.name,
+      kind: "lab",
+      eventType: "lab",
+      billingDomain: "standard_lab",
+      name: concept.name,
+      query: concept.query,
+      searchQueries: [concept.query, ...concept.aliases],
+      conceptKey: concept.key
+    });
+  }
+
+  for (const rapid of rapidLabChecklistItems(normalized)) {
+    addMenu(rapid);
+  }
+
+  if (/(?:^|[^A-Za-z])CT(?:$|[^A-Za-z])|ＣＴ/u.test(normalized)) {
+    addMenu({
+      menuId: "imaging:ct",
+      label: "CT",
+      kind: "imaging",
+      eventType: "imaging",
+      billingDomain: "standard_imaging",
+      name: "CT",
+      query: "ＣＴ撮影",
+      searchQueries: ["ＣＴ撮影"],
+      modality: "ct"
+    });
+  }
+  if (/(?:^|[^A-Za-z])MRI(?:$|[^A-Za-z])|ＭＲＩ/u.test(normalized)) {
+    addMenu({
+      menuId: "imaging:mri",
+      label: "MRI",
+      kind: "imaging",
+      eventType: "imaging",
+      billingDomain: "standard_imaging",
+      name: "MRI",
+      query: "ＭＲＩ撮影",
+      searchQueries: ["ＭＲＩ撮影"],
+      modality: "mri"
+    });
+  }
+  if (/(X線|Ｘ線|レントゲン|単純撮影)/u.test(normalized)) {
+    addMenu({
+      menuId: "imaging:simple_radiography",
+      label: "単純X線",
+      kind: "imaging",
+      eventType: "imaging",
+      billingDomain: "standard_imaging",
+      name: "単純X線",
+      query: "単純撮影",
+      searchQueries: ["単純撮影", "Ｘ線"],
+      modality: "simple_radiography"
+    });
+  }
+  if (/(超音波|エコー)/u.test(normalized)) {
+    addMenu({
+      menuId: "imaging:ultrasound",
+      label: "超音波検査",
+      kind: "imaging",
+      eventType: "imaging",
+      billingDomain: "standard_imaging",
+      name: "超音波検査",
+      query: "超音波検査",
+      searchQueries: ["超音波検査"],
+      modality: "ultrasound"
+    });
+  }
+
+  if (/(特定器材|材料|医療材料|ガーゼ|創傷被覆材|被覆材|シーネ|コルセット|カテーテル|チューブ)/u.test(normalized)) {
+    addMenu({
+      menuId: "material:medical_material",
+      label: "特定器材・材料",
+      kind: "material",
+      eventType: "material",
+      billingDomain: "standard_material",
+      name: "特定器材・材料",
+      query: "特定器材 材料"
+    });
+  }
+
+  for (const domain of reviewOnlyDomainChecklistItems(normalized)) {
+    addMenu(domain);
+  }
+
+  return menu.slice(0, 30);
+}
+
+function rapidLabChecklistItems(text = "") {
+  const items = [];
+  const hasCovid = /COVID|SARS|コロナ|新型コロナ/u.test(text);
+  const hasInfluenza = /インフル|influenza|flu/u.test(text);
+  const hasRapidOrAntigen = /迅速|抗原|定性|Ag/u.test(text);
+  if (hasCovid && hasInfluenza && hasRapidOrAntigen) {
+    items.push({
+      menuId: "lab:covid_flu_antigen",
+      label: "新型コロナ・インフル抗原同時検査",
+      kind: "lab",
+      eventType: "lab",
+      billingDomain: "standard_lab",
+      name: "新型コロナ・インフル抗原同時検査",
+      query: "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+      searchQueries: ["ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性"]
+    });
+  } else if (hasCovid && hasRapidOrAntigen) {
+    items.push({
+      menuId: "lab:covid_antigen",
+      label: "新型コロナ抗原検査",
+      kind: "lab",
+      eventType: "lab",
+      billingDomain: "standard_lab",
+      name: "新型コロナ抗原検査",
+      query: "ＳＡＲＳ－ＣｏＶ－２抗原検出",
+      searchQueries: ["ＳＡＲＳ－ＣｏＶ－２抗原検出"]
+    });
+  } else if (hasInfluenza && hasRapidOrAntigen) {
+    items.push({
+      menuId: "lab:influenza_antigen",
+      label: "インフルエンザ抗原検査",
+      kind: "lab",
+      eventType: "lab",
+      billingDomain: "standard_lab",
+      name: "インフルエンザ抗原検査",
+      query: "インフルエンザウイルス抗原定性",
+      searchQueries: ["インフルエンザウイルス抗原定性"]
+    });
+  }
+  if (/溶連菌|A群|strep/u.test(text)) {
+    items.push({
+      menuId: "lab:group_a_strep_rapid",
+      label: "A群β溶連菌迅速検査",
+      kind: "lab",
+      eventType: "lab",
+      billingDomain: "standard_lab",
+      name: "A群β溶連菌迅速検査",
+      query: "Ａ群β溶連菌迅速試験定性",
+      searchQueries: ["Ａ群β溶連菌迅速試験定性", "溶連菌迅速検査"]
+    });
+  }
+  return items;
+}
+
+function reviewOnlyDomainChecklistItems(text = "") {
+  const definitions = [
+    { domain: "surgery", label: "手術", pattern: /手術|術式|切除術|縫合術|手術同意|手術説明/u },
+    { domain: "anesthesia", label: "麻酔", pattern: /麻酔|術前診察|麻酔科|全身麻酔|局所麻酔/u },
+    { domain: "pathology", label: "病理診断・細胞診", pattern: /病理|細胞診|組織診|標本|生検/u },
+    { domain: "rehabilitation", label: "リハビリテーション", pattern: /リハビリ|運動器リハ|脳血管リハ|廃用症候群リハ|実施単位/u },
+    { domain: "home_care", label: "在宅医療", pattern: /在宅医療|訪問診療|往診|在宅自己注射|在宅酸素/u },
+    { domain: "psychiatry_special", label: "精神科専門療法", pattern: /精神科専門療法|通院精神療法|精神療法|認知行動療法/u },
+    { domain: "endoscopy", label: "内視鏡", pattern: /内視鏡|胃カメラ|大腸カメラ|上部消化管内視鏡|下部消化管内視鏡/u },
+    { domain: "dialysis", label: "透析", pattern: /透析|血液透析|腹膜透析/u },
+    { domain: "transfusion", label: "輸血", pattern: /輸血|赤血球液|血小板製剤|血漿/u },
+    { domain: "radiation_therapy", label: "放射線治療", pattern: /放射線治療|照射|線量/u },
+    { domain: "emergency_time_addon", label: "救急・時間外加算", pattern: /救急加算|時間外加算|休日加算|深夜加算|受付時刻/u }
+  ];
+  return definitions
+    .filter((definition) => definition.pattern.test(text))
+    .map((definition) => ({
+      menuId: `domain:${definition.domain}`,
+      label: definition.label,
+      kind: "domain",
+      eventType: ["pathology", "emergency_time_addon"].includes(definition.domain) ? definition.domain : "other",
+      billingDomain: definition.domain,
+      name: definition.label,
+      query: definition.label
+    }));
 }
 
 function labAliasQueries(event = {}) {

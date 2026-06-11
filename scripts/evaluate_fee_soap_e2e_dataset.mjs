@@ -739,7 +739,11 @@ function actualView({ feeSession, calculationResult, reviewItems, candidateWorkb
       reason: item.reason || "",
       points: Number(item.points || item.totalPoints || 0)
     })),
-    clinicalEvents: (Array.isArray(feeSession.clinicalEvents) ? feeSession.clinicalEvents : []).map((event) => ({
+    clinicalEvents: (
+      Array.isArray(feeSession.clinicalEvents) ? feeSession.clinicalEvents
+        : Array.isArray(feeSession.calculationResult?.clinicalEvents) ? feeSession.calculationResult.clinicalEvents
+          : []
+    ).map((event) => ({
       id: event.clinicalEventId || event.clinical_event_id || "",
       name: event.name || event.event_name || event.eventName || "",
       type: event.type || event.event_type || event.eventType || "",
@@ -747,6 +751,7 @@ function actualView({ feeSession, calculationResult, reviewItems, candidateWorkb
       temporalRelation: event.temporal_relation || event.temporalRelation || "",
       billingDomain: event.billing_domain || event.billingDomain || "",
       certainty: event.certainty || "",
+      source: event.source || "",
       evidence: String(event.evidence || event.evidence_text || "").slice(0, 160)
     })),
     reviewText,

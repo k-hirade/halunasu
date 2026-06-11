@@ -38,6 +38,7 @@ function feeClinicalFactsPayload() {
     },
     diagnoses: [],
     clinical_events: [],
+    checklist_findings: [],
     excluded_events: [],
     missing_information: [],
     review_flags: []
@@ -146,11 +147,39 @@ test("fee clinical facts schema keeps enough diagnoses and excluded events for c
   assert.equal(schema.properties.excluded_events.maxItems, 8);
   assert.ok(schema.properties.visit_facts);
   assert.ok(schema.properties.clinical_events);
+  assert.ok(schema.properties.checklist_findings);
   assert.ok(schema.properties.clinical_events.items.properties.billing_domain);
   assert.ok(schema.properties.clinical_events.items.properties.specimen);
   assert.ok(schema.properties.clinical_events.items.properties.collection_method);
   assert.equal(schema.required.includes("clinical_events"), true);
+  assert.equal(schema.required.includes("checklist_findings"), true);
   assert.equal(schema.required.includes("billing_events"), false);
+});
+
+test("fee clinical facts prompt asks the model to answer every checklist menu item", async () => {
+  let requestBody = null;
+
+  await withFetch(
+    async (url, options) => {
+      assert.equal(url, "https://api.openai.com/v1/responses");
+      requestBody = JSON.parse(options.body);
+      return jsonResponse({
+        output_text: JSON.stringify(feeClinicalFactsPayload())
+      });
+    },
+    async () => {
+      await extractFeeClinicalFactsWithOpenAi({
+        apiKey: "test-key",
+        clinicalText: "O: 尿一般を実施。",
+        sessionContext: {},
+        checklistMenu: [{ menuId: "lab:urine_general", label: "尿一般", kind: "lab", billingDomain: "standard_lab" }]
+      });
+    }
+  );
+
+  assert.match(requestBody.instructions, /checklist_findings/);
+  assert.match(requestBody.instructions, /performed_today/);
+  assert.match(requestBody.input, /lab:urine_general/);
 });
 
 test("fee clinical facts prompt asks for explicit specimen and collection method without inferring from findings", async () => {
