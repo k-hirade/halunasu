@@ -344,7 +344,7 @@ function scenarioAlignedToExactContext(scenario, item) {
     aligned.objective = exactImagingObjective(imagingOrders, scenario.objective);
   }
   const expectedCodes = (item.expectedCalculation?.candidateCodes || []).map(String);
-  if (expectedCodes.includes("160095710") && !/採血|血液検査|血液.*検体/u.test(aligned.objective || "")) {
+  if (expectedCodes.includes("160095710") && !hasPerformedBloodCollectionEvidence(aligned.objective || "")) {
     aligned.objective = `${aligned.objective} 同日に静脈採血を実施し、血液検体を提出した。`;
   }
   if (expectedCodes.includes("120002910")) {
@@ -353,6 +353,16 @@ function scenarioAlignedToExactContext(scenario, item) {
   }
 
   return aligned;
+}
+
+function hasPerformedBloodCollectionEvidence(text = "") {
+  if (/(?:静脈採血|採血)(?:を|も|は|で)?(?:実施|行(?:った|い|う)|した|あり|確認)|血液検体を採取|血清|血漿|末梢血|静脈血/u.test(text)) {
+    return true;
+  }
+  if (/(?:採血|血液検査|血液検体).{0,12}(?:必要性|必要|検討|判断|予定|未実施|実施なし)|(?:必要性|必要|検討|判断|予定).{0,12}(?:採血|血液検査|血液検体)/u.test(text)) {
+    return false;
+  }
+  return false;
 }
 
 function targetTypeForName(name) {

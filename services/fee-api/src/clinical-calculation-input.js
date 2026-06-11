@@ -69,6 +69,18 @@ const REVIEW_TOPIC_TAXONOMY = Object.freeze({
     label: "施設基準確認",
     issueCode: "facility_unknown"
   }),
+  notification_check: Object.freeze({
+    label: "届出確認",
+    issueCode: "facility_notification_unknown"
+  }),
+  blood_collection_check: Object.freeze({
+    label: "採血料確認",
+    issueCode: "blood_collection_review_required"
+  }),
+  lab_code_check: Object.freeze({
+    label: "検査コード確認",
+    issueCode: "ambiguous_master"
+  }),
   ambiguous_master_check: Object.freeze({
     label: "マスター候補確認",
     issueCode: "ambiguous_master"
@@ -96,6 +108,22 @@ const REVIEW_TOPIC_TAXONOMY = Object.freeze({
   missing_total_quantity: Object.freeze({
     label: "総量不足",
     issueCode: "missing_quantity"
+  }),
+  rehab_unsupported: Object.freeze({
+    label: "リハビリ未対応",
+    issueCode: "rehabilitation_unsupported"
+  }),
+  rehab_unit_check: Object.freeze({
+    label: "実施単位確認",
+    issueCode: "rehabilitation_unit_unknown"
+  }),
+  home_care_unsupported: Object.freeze({
+    label: "在宅医療未対応",
+    issueCode: "home_care_unsupported"
+  }),
+  home_visit_check: Object.freeze({
+    label: "訪問診療確認",
+    issueCode: "home_visit_unknown"
   })
 });
 
@@ -172,8 +200,29 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   if (/病棟|入院料の種別/u.test(text)) {
     return "ward_type_check";
   }
+  if (/届出|届け出|地方厚生局/u.test(text)) {
+    return "notification_check";
+  }
   if (/施設基準/u.test(text)) {
     return "facility_standard_check";
+  }
+  if (/採血料|静脈採血料|Ｂ-?Ｖ|B-?V|blood_venous|Collection fee/u.test(text)) {
+    return "blood_collection_check";
+  }
+  if (/検査コード|検査名|標準コード|検査項目/u.test(text) && /(確認|不明|未確定|不足)/u.test(text)) {
+    return "lab_code_check";
+  }
+  if (/リハビリ未対応|リハビリテーション/u.test(text)) {
+    return "rehab_unsupported";
+  }
+  if (/実施単位|単位数/u.test(text) && /リハビリ/u.test(text)) {
+    return "rehab_unit_check";
+  }
+  if (/在宅医療未対応|在宅医療|在宅/u.test(text)) {
+    return "home_care_unsupported";
+  }
+  if (/訪問診療/u.test(text)) {
+    return "home_visit_check";
   }
   if (/病理未対応|病理診断|細胞診/u.test(text)) {
     return "pathology_unsupported";
@@ -2284,8 +2333,37 @@ function clinicalEventsFromClinicalFacts(facts = {}) {
     ? asArray(facts.clinical_events)
     : asArray(facts?.billing_events);
   return sourceEvents
-    .map((event, index) => normalizeClinicalEvent(event, index))
+    .flatMap((event, index) => {
+      const normalized = normalizeClinicalEvent(event, index);
+      return normalized ? expandCompositeLabClinicalEvent(normalized) : [];
+    })
     .filter(Boolean);
+}
+
+function expandCompositeLabClinicalEvent(event = {}) {
+  const type = normalizeClinicalEventType(event);
+  if (!["lab", "exam"].includes(type)) {
+    return [event];
+  }
+  const concepts = labConceptsFromClinicalEvent(event);
+  if (concepts.length <= 1) {
+    return [event];
+  }
+  return concepts.map((concept) => {
+    const clinicalEventId = `${event.clinicalEventId || event.clinical_event_id}_${concept.key}`;
+    return {
+      ...event,
+      clinicalEventId,
+      clinical_event_id: clinicalEventId,
+      name: concept.name,
+      search_queries: uniqueStrings([
+        concept.query,
+        ...concept.aliases,
+        ...asArray(event.search_queries)
+      ]),
+      review_reason: event.review_reason || "複数の検査名を含む記載から検査ごとに分割"
+    };
+  });
 }
 
 function normalizeClinicalEventsForResult(values = []) {
@@ -2801,7 +2879,15 @@ function isActionableClinicalFactWarning(warning) {
 
 function reviewOnlyClinicalEventDomain(event = {}) {
   const domain = normalizeClinicalEventBillingDomain(event);
-  return ["pathology", "emergency_time_addon"].includes(domain) ? domain : "";
+  return [
+    "pathology",
+    "emergency_time_addon",
+    "rehabilitation",
+    "home_care",
+    "psychiatry_special",
+    "anesthesia",
+    "surgery"
+  ].includes(domain) ? domain : "";
 }
 
 function isNegatedClinicalEvent(event = {}) {
@@ -2812,7 +2898,12 @@ function isNegatedClinicalEvent(event = {}) {
 function reviewOnlyDomainLabel(domain = "") {
   return {
     pathology: "病理診断",
-    emergency_time_addon: "救急・時間外加算"
+    emergency_time_addon: "救急・時間外加算",
+    rehabilitation: "リハビリテーション",
+    home_care: "在宅医療",
+    psychiatry_special: "精神科専門療法",
+    anesthesia: "麻酔",
+    surgery: "手術"
   }[String(domain || "")] || "未対応項目";
 }
 
@@ -2877,6 +2968,76 @@ function reviewIssuesFromReviewOnlyDomainClinicalEvent(event = {}) {
         source: "review_only_domain_gate",
         policy: { riskGate: "review_only", domain }
       }, "reception_time_check")
+    ];
+  }
+  if (domain === "rehabilitation") {
+    return [
+      withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart([eventId, "rehab_unsupported", name, evidence].join("_"))}`,
+        issueCode: "rehabilitation_unsupported",
+        severity: "warning",
+        title: "リハビリ未対応",
+        messageForStaff: `リハビリ未対応: ${name || "リハビリテーション"}はリハビリテーション領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。`,
+        relatedClinicalEventId: eventId,
+        evidence,
+        source: "review_only_domain_gate",
+        policy: { riskGate: "review_only", domain }
+      }, "rehab_unsupported"),
+      withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart([eventId, "rehab_unit_check", name, evidence].join("_"))}`,
+        issueCode: "rehabilitation_unit_unknown",
+        severity: "warning",
+        title: "実施単位確認",
+        messageForStaff: "実施単位確認: リハビリテーション料の判定には疾患別区分、実施単位数、実施者、施設基準が必要です。未確認のため自動算定には入れていません。",
+        requiredInput: "疾患別区分、実施単位数、実施者、施設基準",
+        relatedClinicalEventId: eventId,
+        evidence,
+        source: "review_only_domain_gate",
+        policy: { riskGate: "review_only", domain }
+      }, "rehab_unit_check")
+    ];
+  }
+  if (domain === "home_care") {
+    return [
+      withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart([eventId, "home_care_unsupported", name, evidence].join("_"))}`,
+        issueCode: "home_care_unsupported",
+        severity: "warning",
+        title: "在宅医療未対応",
+        messageForStaff: `在宅医療未対応: ${name || "在宅医療"}は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。`,
+        relatedClinicalEventId: eventId,
+        evidence,
+        source: "review_only_domain_gate",
+        policy: { riskGate: "review_only", domain }
+      }, "home_care_unsupported"),
+      withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart([eventId, "home_visit_check", name, evidence].join("_"))}`,
+        issueCode: "home_visit_unknown",
+        severity: "warning",
+        title: "訪問診療確認",
+        messageForStaff: "訪問診療確認: 在宅医療の判定には訪問診療/往診の実施区分、訪問日、同月履歴、施設基準が必要です。未確認のため自動算定には入れていません。",
+        requiredInput: "訪問診療/往診の実施区分、訪問日、同月履歴、施設基準",
+        relatedClinicalEventId: eventId,
+        evidence,
+        source: "review_only_domain_gate",
+        policy: { riskGate: "review_only", domain }
+      }, "home_visit_check")
+    ];
+  }
+  if (["psychiatry_special", "anesthesia", "surgery"].includes(domain)) {
+    const label = reviewOnlyDomainLabel(domain);
+    return [
+      withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart([eventId, domain, name, evidence].join("_"))}`,
+        issueCode: `${domain}_unsupported`,
+        severity: "warning",
+        title: `${label}の確認`,
+        messageForStaff: `${label}の確認: ${name || label}は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。`,
+        relatedClinicalEventId: eventId,
+        evidence,
+        source: "review_only_domain_gate",
+        policy: { riskGate: "review_only", domain }
+      }, "")
     ];
   }
   return [];
@@ -2975,7 +3136,7 @@ function reviewIssueTitleFromWarning(message = "", event = {}) {
   if (/過去値|持参/u.test(text)) return "過去値・持参情報";
   if (/予定|依頼|今後/u.test(text)) return "実施確認";
   if (/数量|日数|総量|回数/u.test(text)) return "数量・日数の確認";
-  if (/施設基準/u.test(text)) return "施設基準の確認";
+  if (/施設基準/u.test(text)) return "施設基準確認";
   const name = clinicalEventName(event);
   return name ? `${name}の確認` : "確認事項";
 }
@@ -3311,7 +3472,16 @@ function hasExplicitBloodCollectionEvidence(event = {}) {
     event?.collection_method,
     event?.payload?.collection_method
   ].filter(Boolean).join("\n"));
-  return /採血|血液検査|血清|血漿|末梢血|静脈血/u.test(text);
+  if (/(?:静脈採血|採血)(?:を|も|は|で)?(?:実施|行(?:った|い|う)|した|あり|確認)|血液検体を採取|血清|血漿|末梢血|静脈血/u.test(text)) {
+    return true;
+  }
+  if (/(?:静脈採血|採血)で(?![^。\n]{0,30}(?:必要性|必要|検討|判断|予定|未実施|実施なし))[^。\n]{0,80}(?:確認|測定|提出|検査)/u.test(text)) {
+    return true;
+  }
+  if (/(?:採血|血液検査|血液検体).{0,12}(?:必要性|必要|検討|判断|予定|未実施|実施なし)|(?:必要性|必要|検討|判断|予定).{0,12}(?:採血|血液検査|血液検体)/u.test(text)) {
+    return false;
+  }
+  return false;
 }
 
 function labCollectionFeeReviewIssuesFromClinicalEvent(event = {}, procedure = {}) {
@@ -3430,6 +3600,22 @@ async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculato
 
   const name = clinicalEventName(event);
   const categoryLabel = options.categoryLabel || "診療行為";
+  if (["lab", "exam"].includes(normalizeClinicalEventType(event)) && !labEventNameSupportedByRawEvidence(event)) {
+    return {
+      procedureCodes: [],
+      commentInputs: [],
+      collectionFeeInputs: [],
+      masterCandidates: [],
+      reviewWarnings: [`検査コード確認: ${name || categoryLabel}は検査名として抽出されましたが、カルテ本文の根拠から具体的な検査項目を確定できません。採血や検体提出だけから検査名を推定せず、検査項目を確認してください。`],
+      traceEvents: [clinicalTraceEvent({
+        stage: "lab_evidence_guard",
+        event,
+        categoryLabel,
+        outcome: "review_required",
+        message: "lab_name_not_supported_by_raw_evidence"
+      })]
+    };
+  }
   const queries = clinicalEventSearchQueries(event, {
     categoryLabel,
     extraQueries: options.queries
@@ -3662,6 +3848,9 @@ function labAliasQueries(event = {}) {
     event?.payload?.specimen
   ].filter(Boolean).join(" "));
   const queries = [];
+  for (const concept of labConceptsFromText(text)) {
+    queries.push(concept.query, ...concept.aliases);
+  }
 
   const hasCovid = /COVID|ＣＯＶＩＤ|SARS|ＳＡＲＳ|コロナ|新型コロナ/u.test(text);
   const hasInfluenza = /インフル|influenza|ＩＮＦＬＵＥＮＺＡ|flu|ＦＬＵ/u.test(text);
@@ -3679,16 +3868,119 @@ function labAliasQueries(event = {}) {
     queries.push("Ａ群β溶連菌迅速試験定性");
     queries.push("溶連菌迅速検査");
   }
-  if (/\bCRP\b|ＣＲＰ|C反応性蛋白|Ｃ反応性蛋白/u.test(text)) {
-    queries.push("ＣＲＰ");
-  }
-  if (/CBC|ＣＢＣ|血算|末梢血液一般|血球計算|白血球|赤血球|血小板/u.test(text)) {
-    queries.push("末梢血液一般検査");
-  }
-  if (/尿一般|尿定性|尿蛋白|尿糖|尿潜血|尿検査/u.test(text)) {
-    queries.push("尿中一般物質定性半定量検査");
-  }
   return uniqueStrings(queries);
+}
+
+const LAB_CONCEPT_DEFINITIONS = Object.freeze([
+  Object.freeze({
+    key: "urine_general",
+    name: "尿一般",
+    query: "尿一般",
+    aliases: ["尿中一般物質定性半定量検査", "尿定性"],
+    pattern: /尿一般|尿定性|尿中一般物質|尿検査/u
+  }),
+  Object.freeze({
+    key: "urine_protein",
+    name: "尿蛋白",
+    query: "尿蛋白",
+    aliases: ["蛋白尿"],
+    pattern: /尿蛋白|蛋白尿|尿.*蛋白/u
+  }),
+  Object.freeze({
+    key: "crp",
+    name: "ＣＲＰ",
+    query: "ＣＲＰ",
+    aliases: ["C反応性蛋白", "Ｃ反応性蛋白"],
+    pattern: /\bCRP\b|ＣＲＰ|C反応性蛋白|Ｃ反応性蛋白/u
+  }),
+  Object.freeze({
+    key: "cbc",
+    name: "末梢血液一般検査",
+    query: "末梢血液一般検査",
+    aliases: ["血算", "ＣＢＣ"],
+    pattern: /CBC|ＣＢＣ|血算|末梢血液一般|血球計算|白血球|赤血球|血小板/u
+  }),
+  Object.freeze({
+    key: "glucose",
+    name: "グルコース",
+    query: "グルコース",
+    aliases: ["血糖"],
+    pattern: /グルコース|血糖/u
+  }),
+  Object.freeze({
+    key: "hba1c",
+    name: "ＨｂＡ１ｃ",
+    query: "ＨｂＡ１ｃ",
+    aliases: ["HbA1c"],
+    pattern: /HbA1c|ＨｂＡ１ｃ/u
+  }),
+  Object.freeze({
+    key: "tcho",
+    name: "Ｔｃｈｏ",
+    query: "Ｔｃｈｏ",
+    aliases: ["総コレステロール"],
+    pattern: /Tcho|Ｔｃｈｏ|総コレステロール|総コレステ/u
+  }),
+  Object.freeze({
+    key: "ldl",
+    name: "ＬＤＬ－コレステロール",
+    query: "ＬＤＬ－コレステロール",
+    aliases: ["LDL"],
+    pattern: /\bLDL\b|ＬＤＬ/u
+  }),
+  Object.freeze({
+    key: "tg",
+    name: "ＴＧ",
+    query: "ＴＧ",
+    aliases: ["中性脂肪"],
+    pattern: /\bTG\b|ＴＧ|中性脂肪/u
+  }),
+  Object.freeze({
+    key: "creatinine",
+    name: "クレアチニン",
+    query: "クレアチニン",
+    aliases: ["Cr"],
+    pattern: /クレアチニン|(?:^|[^\p{L}])Cr(?:$|[^\p{L}])/u
+  })
+]);
+
+function labConceptsFromClinicalEvent(event = {}) {
+  const text = normalizeClinicalText([
+    clinicalEventName(event),
+    clinicalEventEvidence(event),
+    ...asArray(event?.payload?.analytes),
+    ...asArray(event?.payload?.pathogenTargets),
+    event?.payload?.method,
+    ...asArray(event?.search_queries),
+    ...asArray(event?.searchQueries)
+  ].filter(Boolean).join(" "));
+  return labConceptsFromText(text);
+}
+
+function labConceptsFromText(text = "") {
+  const normalized = normalizeClinicalText(text);
+  const concepts = [];
+  for (const concept of LAB_CONCEPT_DEFINITIONS) {
+    if (concept.pattern.test(normalized)) {
+      concepts.push(concept);
+    }
+  }
+  return concepts;
+}
+
+function labEventNameSupportedByRawEvidence(event = {}) {
+  const nameConcepts = labConceptsFromText(clinicalEventName(event));
+  if (!nameConcepts.length) {
+    return true;
+  }
+  const rawText = normalizeClinicalText([
+    event?.evidence
+  ].filter(Boolean).join(" "));
+  if (!rawText) {
+    return false;
+  }
+  const rawConceptKeys = new Set(labConceptsFromText(rawText).map((concept) => concept.key));
+  return nameConcepts.some((concept) => rawConceptKeys.has(concept.key));
 }
 
 function imagingAliasQueries(event = {}) {
@@ -4026,7 +4318,7 @@ function cleanReviewWarning(value) {
   }
   warning = warning.replace(/\s+/gu, " ");
   if (/Lab management fee skipped: facility_standard_not_found|facility_standard_not_found/u.test(warning)) {
-    return "施設基準が登録されていないため、検体検査管理加算は自動追加していません。";
+    return "施設基準確認: 検体検査管理加算の届出確認が必要です。施設基準が登録されていないため、検体検査管理加算は自動追加していません。";
   }
   warning = warning.replace(/^(?:hospital_profile_missing|facility_standard_not_found)\s*[:：]\s*/u, "");
   warning = warning.replace(/薬剤「([^」]+)」/gu, (match, name) => {

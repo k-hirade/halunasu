@@ -326,6 +326,16 @@ function hasOutsidePrescriptionEvidence(text) {
   return /院外処方箋|院外処方|処方箋.*交付|院外薬局/u.test(text);
 }
 
+function hasPerformedBloodCollectionEvidence(text) {
+  if (/(?:静脈採血|採血)(?:を|も|は|で)?(?:実施|行(?:った|い|う)|した|あり|確認)|血液検体を採取|血清|血漿|末梢血|静脈血/u.test(text)) {
+    return true;
+  }
+  if (/(?:採血|血液検査|血液検体).{0,12}(?:必要性|必要|検討|判断|予定|未実施|実施なし)|(?:必要性|必要|検討|判断|予定).{0,12}(?:採血|血液検査|血液検体)/u.test(text)) {
+    return false;
+  }
+  return false;
+}
+
 function exactCodeEvidenceRule(code) {
   switch (code) {
     case "111000110":
@@ -370,7 +380,7 @@ function exactCodeEvidenceRule(code) {
     case "160000410":
       return ({ text }) => (/尿蛋白|蛋白尿|尿.*蛋白/u.test(text) ? "" : "requires urine protein evidence");
     case "160095710":
-      return ({ text }) => (/静脈採血|採血|血液検査|血液.*検体/u.test(text) ? "" : "requires blood collection evidence");
+      return ({ text }) => (hasPerformedBloodCollectionEvidence(text) ? "" : "requires performed blood collection evidence, not only blood-collection consideration");
     case "170011810":
       return ({ text }) => {
         if (!hasImagingModalityEvidence(text, "ct")) return "requires performed CT wording in chart";

@@ -1109,7 +1109,7 @@ function reviewWarningTitle(message = "") {
     return topicLabel;
   }
   if (/施設基準|facility_standard|hospital_profile_missing/u.test(text)) {
-    return "施設基準の確認";
+    return "施設基準確認";
   }
   if (/レセプトコメント|Required comment|コメント/u.test(text)) {
     return "レセプトコメントの確認";
@@ -1121,7 +1121,7 @@ function reviewWarningTitle(message = "") {
     return "検査判断料の確認";
   }
   if (/静脈採血|採血|blood_venous|Collection fee/u.test(text)) {
-    return "採血料の確認";
+    return "採血料確認";
   }
   if (/CT|ＣＴ|MRI|ＭＲＩ|画像|Imaging fee/u.test(text)) {
     return "画像診断料の確認";

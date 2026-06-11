@@ -1322,7 +1322,7 @@ function normalizeCalculationWarning(value = "") {
     return "";
   }
   if (/Lab management fee skipped: facility_standard_not_found|facility_standard_not_found/u.test(warning)) {
-    return "施設基準が登録されていないため、検体検査管理加算は自動追加していません。";
+    return "施設基準確認: 検体検査管理加算の届出確認が必要です。施設基準が登録されていないため、検体検査管理加算は自動追加していません。";
   }
   if (/hospital_profile_missing/u.test(warning)) {
     return warning.replace(/^hospital_profile_missing\s*[:：]\s*/u, "") || "施設基準を確認してください。";

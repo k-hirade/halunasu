@@ -1036,7 +1036,7 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v4");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v5");
   assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v6");
   assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
     event.name === "腰椎X線"
@@ -1108,7 +1108,7 @@ test("gates lab master search to direct lab test items and records trace", async
         result_assertion: "numeric",
         certainty: "explicit",
         section: "O",
-        evidence: "血液検査：ＣＲＰ 0.3 mg/dL",
+        evidence: "静脈採血を行い、ＣＲＰ 0.3 mg/dLを確認",
         search_queries: ["ＣＲＰ"]
       }
     ],
@@ -1124,7 +1124,7 @@ test("gates lab master search to direct lab test items and records trace", async
     patientId: patient.body.patient.patientId,
     facilityId: "fac_001",
     serviceDate: "2026-06-09",
-    clinicalText: "O: 血液検査：ＣＲＰ 0.3 mg/dL",
+    clinicalText: "O: 静脈採血を行い、ＣＲＰ 0.3 mg/dLを確認",
     diagnoses: [{ name: "発熱" }]
   }, headers);
   const calculation = await request(
@@ -1172,6 +1172,51 @@ test("routes non-blood specimen collection fees to review instead of auto collec
           code: "160169450",
           name: "インフルエンザウイルス抗原定性",
           points: 139,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    if (input.type === "procedure" && input.query === "尿一般") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160000310",
+          name: "尿一般",
+          points: 26,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    if (input.type === "procedure" && input.query === "尿蛋白") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160000410",
+          name: "尿蛋白",
+          points: 0,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    if (input.type === "procedure" && input.query === "末梢血液一般検査") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160008010",
+          name: "末梢血液一般検査",
+          points: 21,
           feeCategory: "lab_test_basic",
           itemRole: "base",
           directRetrievalAllowed: true
@@ -1389,7 +1434,7 @@ test("persists structured diagnoses and resolves clinical event search queries w
         type: "lab",
         name: "CA125",
         status: "performed",
-        evidence: "血液検査：CA125 68 U/mL",
+        evidence: "静脈採血でCA125 68 U/mLを確認",
         section: "O",
         date_relation: "current_visit",
         provider_ownership: "own_clinic",
@@ -1457,7 +1502,7 @@ test("persists structured diagnoses and resolves clinical event search queries w
     clinicalText: [
       "月経困難症、子宮内膜症疑い。",
       "経腟超音波：左卵巣に約3cm程度の嚢胞性病変。",
-      "血液検査：CA125 68 U/mL。",
+      "静脈採血でCA125 68 U/mLを確認。",
       "MRI骨盤部オーダー（子宮内膜症の範囲評価）。",
       "低用量ピル処方（ルナベル配合錠LD）。",
       "ロキソプロフェン60mg 月経痛時頓服処方。",
@@ -2064,6 +2109,52 @@ test("routes pathology and emergency time addon events into review-only domain t
         total_quantity: "",
         area_size_cm2: "",
         review_reason: "受付時刻不足"
+      },
+      {
+        type: "management",
+        billing_domain: "rehabilitation",
+        name: "運動器リハビリテーション",
+        action_status: "considered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "P",
+        evidence: "リハビリテーション料は実施単位と施設基準を確認する。",
+        search_queries: ["運動器リハビリテーション"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: "実施単位確認"
+      },
+      {
+        type: "management",
+        billing_domain: "home_care",
+        name: "在宅医療",
+        action_status: "considered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "P",
+        evidence: "在宅医療の訪問診療区分と同月履歴を確認する。",
+        search_queries: ["在宅医療", "訪問診療"],
+        modality: "none",
+        body_site: "",
+        specimen: "",
+        collection_method: "",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: "訪問診療確認"
       }
     ],
     excluded_events: [],
@@ -2103,6 +2194,10 @@ test("routes pathology and emergency time addon events into review-only domain t
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "検体提出確認"));
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "救急加算確認"));
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "受付時刻確認"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "リハビリ未対応"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "実施単位確認"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "在宅医療未対応"));
+  assert.ok(reviewIssues.some((issue) => issue.topicLabel === "訪問診療確認"));
   assert.equal(calculation.body.candidateWorkbench.proposals.length, 0);
 });
 
@@ -2122,6 +2217,51 @@ test("does not divert ordinary lab specimen submission or symptom timing into re
           code: "160054710",
           name: "ＣＲＰ",
           points: 16,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    if (input.type === "procedure" && input.query === "尿一般") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160000310",
+          name: "尿一般",
+          points: 26,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    if (input.type === "procedure" && input.query === "尿蛋白") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160000410",
+          name: "尿蛋白",
+          points: 7,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    if (input.type === "procedure" && input.query === "末梢血液一般検査") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160008010",
+          name: "末梢血液一般検査",
+          points: 21,
           feeCategory: "lab_test_basic",
           itemRole: "base",
           directRetrievalAllowed: true
@@ -2167,6 +2307,52 @@ test("does not divert ordinary lab specimen submission or symptom timing into re
         total_quantity: "",
         area_size_cm2: "",
         review_reason: ""
+      },
+      {
+        type: "lab",
+        billing_domain: "standard_lab",
+        name: "尿一般、尿蛋白",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "normal",
+        certainty: "explicit",
+        section: "O",
+        evidence: "院内尿検体で尿一般、尿蛋白を確認。",
+        search_queries: ["尿一般", "尿蛋白"],
+        modality: "none",
+        body_site: "",
+        specimen: "尿",
+        collection_method: "院内尿検体",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: ""
+      },
+      {
+        type: "lab",
+        billing_domain: "standard_lab",
+        name: "末梢血液一般検査",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "unknown",
+        certainty: "ambiguous",
+        section: "O",
+        evidence: "静脈採血も行い、検体提出。",
+        search_queries: ["末梢血液一般検査"],
+        modality: "none",
+        body_site: "",
+        specimen: "血液",
+        collection_method: "静脈採血",
+        quantity_per_day: "",
+        days: "",
+        total_quantity: "",
+        area_size_cm2: "",
+        review_reason: "採血だけで検査名は不明"
       },
       {
         type: "other",
@@ -2242,7 +2428,8 @@ test("does not divert ordinary lab specimen submission or symptom timing into re
 
   assert.equal(calculation.statusCode, 201);
   assert.ok(masterSearches.some((search) => search.type === "procedure" && search.query === "ＣＲＰ"));
-  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160054710"]);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160054710", "160000310", "160000410"]);
+  assert.equal(receivedInput.calculationOptions.procedure_codes.includes("160008010"), false);
   assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "病理未対応"), false);
   assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "検体提出確認"), false);
   assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "救急加算確認"), false);
@@ -2564,7 +2751,7 @@ test("normalizes internal calculator warnings before returning review output", a
     1
   );
   assert.ok(calculation.body.reviewItems.some((item) => item.title === "検査判断料の確認"));
-  assert.ok(calculation.body.reviewItems.some((item) => item.title === "採血料の確認"));
+  assert.ok(calculation.body.reviewItems.some((item) => item.title === "採血料確認"));
   assert.ok(calculation.body.reviewItems.some((item) => item.title === "投薬料の確認"));
 });
 

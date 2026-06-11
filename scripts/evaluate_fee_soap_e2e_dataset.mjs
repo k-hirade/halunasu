@@ -285,6 +285,15 @@ function buildCreateSessionPayload(item, runner = {}, overrides = {}) {
   if (item.expectedClaimContext?.inpatient_basic?.basic_fee_days) {
     payload.inpatientBasicDays = item.expectedClaimContext.inpatient_basic.basic_fee_days;
   }
+  const facilityStandardKeys = Array.isArray(item.expectedClaimContext?.facility_standard_keys)
+    ? item.expectedClaimContext.facility_standard_keys.filter(Boolean)
+    : [];
+  if (facilityStandardKeys.length) {
+    payload.calculationOptions = {
+      ...(payload.calculationOptions || {}),
+      facility_standard_keys: facilityStandardKeys
+    };
+  }
   return payload;
 }
 
