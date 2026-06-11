@@ -231,7 +231,7 @@ test("builds target-specific warning review titles", () => {
 
   assert.deepEqual(
     reviewItems.map((item) => item.title),
-    ["施設基準確認", "検査判断料の確認", "ロキソプロフェンの確認"]
+    ["施設基準確認", "判断料確認", "ロキソプロフェンの確認"]
   );
 });
 

@@ -1075,7 +1075,7 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v6");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v7");
   assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v6");
   assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
     event.name === "腰椎X線"
@@ -3039,7 +3039,7 @@ test("normalizes internal calculator warnings before returning review output", a
     calculation.body.calculationResult.warnings.filter((warning) => warning.includes("施設基準")).length,
     1
   );
-  assert.ok(calculation.body.reviewItems.some((item) => item.title === "検査判断料の確認"));
+  assert.ok(calculation.body.reviewItems.some((item) => item.title === "判断料確認"));
   assert.ok(calculation.body.reviewItems.some((item) => item.title === "採血料確認"));
   assert.ok(calculation.body.reviewItems.some((item) => item.title === "投薬料の確認"));
 });

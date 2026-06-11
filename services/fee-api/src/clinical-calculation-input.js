@@ -69,9 +69,17 @@ const REVIEW_TOPIC_TAXONOMY = Object.freeze({
     label: "施設基準確認",
     issueCode: "facility_unknown"
   }),
+  electronic_image_management_check: Object.freeze({
+    label: "電子保存確認",
+    issueCode: "electronic_image_management_unknown"
+  }),
   notification_check: Object.freeze({
     label: "届出確認",
     issueCode: "facility_notification_unknown"
+  }),
+  judgement_fee_check: Object.freeze({
+    label: "判断料確認",
+    issueCode: "judgement_fee_review_required"
   }),
   blood_collection_check: Object.freeze({
     label: "採血料確認",
@@ -108,6 +116,14 @@ const REVIEW_TOPIC_TAXONOMY = Object.freeze({
   missing_total_quantity: Object.freeze({
     label: "総量不足",
     issueCode: "missing_quantity"
+  }),
+  medication_amount_check: Object.freeze({
+    label: "薬剤量確認",
+    issueCode: "missing_medication_amount"
+  }),
+  split_multi_day_check: Object.freeze({
+    label: "複数日記録分割",
+    issueCode: "split_multi_day_review_required"
   }),
   rehab_unsupported: Object.freeze({
     label: "リハビリ未対応",
@@ -246,6 +262,12 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   if (/施設基準/u.test(text)) {
     return "facility_standard_check";
   }
+  if (/電子(?:画像管理|保存|的.*保存)|電子.*管理/u.test(text) && /(確認|未確定|不明|有無|必要)/u.test(text)) {
+    return "electronic_image_management_check";
+  }
+  if (/D026|検査判断料|判断料/u.test(text)) {
+    return "judgement_fee_check";
+  }
   if (/採血料|静脈採血料|Ｂ-?Ｖ|B-?V|blood_venous|Collection fee/u.test(text)) {
     return "blood_collection_check";
   }
@@ -309,6 +331,9 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   if (/薬剤日数不足|処方日数|服用日数|使用日数/u.test(text)) {
     return "missing_medication_days";
   }
+  if (/薬剤量|投与量|用量/u.test(text) && /(確認|不足|不明|未記載|明記|必要)/u.test(text)) {
+    return "medication_amount_check";
+  }
   if (/総量不足|総量|全量|本数|枚数/u.test(text) && /不足|不明|未記載|明記/u.test(text)) {
     return "missing_total_quantity";
   }
@@ -317,6 +342,9 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   }
   if (/マスター|標準コード|候補/u.test(text) && /確定でき|複数|確認/u.test(text)) {
     return "ambiguous_master_check";
+  }
+  if (/複数日|複数の日付|日別|分割/u.test(text) && /(記録|診療|確認|分割)/u.test(text)) {
+    return "split_multi_day_check";
   }
   const type = normalizeClinicalEventType(event);
   if (type === "management" || type === "counseling") {
@@ -867,6 +895,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const reviewIssues = [];
   const clinicalTrace = [];
   const clinicalEvents = clinicalEventsFromClinicalFacts(facts);
+  let hasCaseLevelLabProcedureCode = false;
+  let hasCaseLevelBloodCollectionEvidence = hasCaseLevelBloodCollectionEvidenceFromText(text);
 
   if (isInpatientEncounter(session, text)) {
     const inpatientBasic = inferInpatientBasicOptions(text, session);
@@ -888,6 +918,11 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   }
   reviewWarnings.push(...clinicalFactReviewWarnings(facts?.missing_information));
   reviewWarnings.push(...clinicalFactReviewWarnings(facts?.review_flags));
+  const splitMultiDayIssue = reviewIssueFromSplitMultiDayText(text);
+  if (splitMultiDayIssue) {
+    reviewIssues.push(splitMultiDayIssue);
+    reviewWarnings.push(splitMultiDayIssue.messageForStaff);
+  }
 
   for (const event of clinicalEvents) {
     const type = normalizeClinicalEventType(event);
@@ -912,6 +947,9 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
         reviewWarnings.push(issue.messageForStaff);
       }
       continue;
+    }
+    if (hasExplicitBloodCollectionEvidence(event)) {
+      hasCaseLevelBloodCollectionEvidence = true;
     }
     const reviewOnlyDomain = reviewOnlyClinicalEventDomain(event);
     const domainIssues = reviewIssuesFromReviewOnlyDomainClinicalEvent(event);
@@ -948,6 +986,9 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       });
       const collectionFeeReviewIssues = labCollectionFeeReviewIssuesFromClinicalEvent(event, procedure);
       procedureCodes.push(...procedure.procedureCodes);
+      if (asArray(procedure.procedureCodes).length) {
+        hasCaseLevelLabProcedureCode = true;
+      }
       commentInputs.push(...procedure.commentInputs);
       collectionFeeInputs.push(...procedure.collectionFeeInputs, ...labCollectionFeeInputsFromClinicalEvent(event, procedure));
       reviewIssues.push(...collectionFeeReviewIssues);
@@ -1032,6 +1073,19 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   }
   if (commentInputs.length) {
     inferred.comment_inputs = dedupeObjects(commentInputs, (item) => item?.code || item?.text || JSON.stringify(item));
+  }
+  if (hasCaseLevelLabProcedureCode && hasCaseLevelBloodCollectionEvidence) {
+    collectionFeeInputs.push("blood_venous");
+    clinicalTrace.push(clinicalTraceEvent({
+      stage: "case_level_lab_collection",
+      categoryLabel: "検体検査",
+      outcome: "prepared",
+      selected: {
+        input: "blood_venous",
+        policy: DERIVED_BILLING_ITEM_POLICIES.blood_collection
+      },
+      message: "case_level_blood_collection_evidence_applied"
+    }));
   }
   if (collectionFeeInputs.length) {
     inferred.lab_options = {
@@ -2110,11 +2164,16 @@ function inferImagingOrders(text) {
       } else if (isPerformedImagingContext(sentence, "mri")) {
         const equipmentKind = mriEquipmentKindFromText(sentence);
         const contrastState = localContrastState(sentence, "mri");
+        const electronicState = localElectronicImageManagementState(sentence);
         const order = {
           kind: "mri",
-          contrast: contrastState === "present",
-          electronic_image_management: true
+          contrast: contrastState === "present"
         };
+        if (electronicState === "present") {
+          order.electronic_image_management = true;
+        } else if (electronicState === "unknown") {
+          reviewWarnings.push("電子保存確認: MRI検査の電子保存・電子画像管理の有無がカルテ本文から確定できません。算定条件を確認してください。");
+        }
         if (contrastState === "unknown") {
           reviewWarnings.push("造影確認: MRI検査の造影有無がカルテ本文から確定できません。造影剤を使用したか確認してください。");
         }
@@ -2133,11 +2192,16 @@ function inferImagingOrders(text) {
       } else if (isPerformedImagingContext(sentence, "ct")) {
         const equipmentKind = ctEquipmentKindFromText(sentence);
         const contrastState = localContrastState(sentence, "ct");
+        const electronicState = localElectronicImageManagementState(sentence);
         const order = {
           kind: "ct",
-          contrast: contrastState === "present",
-          electronic_image_management: true
+          contrast: contrastState === "present"
         };
+        if (electronicState === "present") {
+          order.electronic_image_management = true;
+        } else if (electronicState === "unknown") {
+          reviewWarnings.push("電子保存確認: CT検査の電子保存・電子画像管理の有無がカルテ本文から確定できません。算定条件を確認してください。");
+        }
         if (contrastState === "unknown") {
           reviewWarnings.push("造影確認: CT検査の造影有無がカルテ本文から確定できません。造影剤を使用したか確認してください。");
         }
@@ -2154,12 +2218,22 @@ function inferImagingOrders(text) {
       if (isFutureOrOrderOnlyContext(sentence)) {
         reviewWarnings.push("単純X線は予定・依頼として記載されているため、今回算定候補には入れていません。実施済みの場合は撮影内容を確認してください。");
       } else if (isPerformedImagingContext(sentence, "simple_radiography")) {
-        orders.push({
+        const contrastState = localContrastState(sentence, "ct");
+        const electronicState = localElectronicImageManagementState(sentence);
+        const order = {
           kind: "simple_radiography",
           acquisition_kind: "digital",
-          radiography_diagnostic_kind: "simple_i",
-          electronic_image_management: true
-        });
+          radiography_diagnostic_kind: "simple_i"
+        };
+        if (electronicState === "present") {
+          order.electronic_image_management = true;
+        } else if (electronicState === "unknown") {
+          reviewWarnings.push("電子保存確認: 単純X線の電子保存・電子画像管理の有無がカルテ本文から確定できません。算定条件を確認してください。");
+        }
+        if (contrastState === "unknown") {
+          reviewWarnings.push("造影確認: 画像検査の造影有無がカルテ本文から確定できません。造影剤を使用したか確認してください。");
+        }
+        orders.push(order);
         reviewWarnings.push("単純X線は撮影方式・写真診断区分がカルテ本文から完全には確定できないため、デジタル/写真診断イとして候補化しています。請求前に確認してください。");
       }
     }
@@ -2973,7 +3047,8 @@ function reviewOnlyClinicalEventDomain(event = {}) {
     "dialysis",
     "transfusion",
     "radiation_therapy",
-    "injection_review_only"
+    "injection_review_only",
+    "split_multi_day"
   ].includes(domain) ? domain : "";
 }
 
@@ -2995,7 +3070,8 @@ function reviewOnlyDomainLabel(domain = "") {
     dialysis: "透析",
     transfusion: "輸血",
     radiation_therapy: "放射線治療",
-    injection_review_only: "注射"
+    injection_review_only: "注射",
+    split_multi_day: "複数日記録"
   }[String(domain || "")] || "未対応項目";
 }
 
@@ -3124,7 +3200,8 @@ function reviewIssuesFromReviewOnlyDomainClinicalEvent(event = {}) {
     "transfusion",
     "endoscopy",
     "radiation_therapy",
-    "injection_review_only"
+    "injection_review_only",
+    "split_multi_day"
   ].includes(domain)) {
     const primaryTopicByDomain = {
       psychiatry_special: "psychiatry_special_unsupported",
@@ -3134,13 +3211,14 @@ function reviewIssuesFromReviewOnlyDomainClinicalEvent(event = {}) {
       transfusion: "transfusion_unsupported",
       endoscopy: "endoscopy_unsupported",
       radiation_therapy: "radiation_therapy_unsupported",
-      injection_review_only: "ambiguous_master_check"
+      injection_review_only: "ambiguous_master_check",
+      split_multi_day: "split_multi_day_check"
     };
     const helperTopicByDomain = {
       anesthesia: {
-        topicCode: "procedure_detail_check",
-        title: "手技内容確認",
-        requiredInput: "麻酔方法、実施時間、管理区分"
+        topicCode: "medication_amount_check",
+        title: "薬剤量確認",
+        requiredInput: "麻酔薬剤名、投与量、投与経路、実施時間"
       },
       surgery: {
         topicCode: "procedure_detail_check",
@@ -3244,6 +3322,34 @@ function reviewIssueFromUnsupportedClinicalEvent(event = {}) {
     evidence: clinicalEventEvidence(event),
     source: "clinical_event_rule"
   };
+}
+
+function reviewIssueFromSplitMultiDayText(text = "") {
+  if (!hasSplitMultiDayRecordContext(text)) {
+    return null;
+  }
+  return withReviewTopic({
+    reviewIssueId: `issue_${candidateIdPart(["split_multi_day", normalizeClinicalText(text).slice(0, 80)].join("_"))}`,
+    issueCode: "split_multi_day_review_required",
+    severity: "warning",
+    title: "複数日記録分割",
+    messageForStaff: "複数日記録分割: 複数日の診療内容が同じカルテ本文に含まれる可能性があります。当日分と別日分を分けて確認してください。自動算定には入れていません。",
+    requiredInput: "当日分の診療内容、別日分の診療内容、各診療日",
+    source: "split_multi_day_guard",
+    evidence: ""
+  }, "split_multi_day_check");
+}
+
+function hasSplitMultiDayRecordContext(text = "") {
+  const normalized = normalizeClinicalText(text);
+  if (/複数日記録|複数日の診療|複数日診療|日別ケース|日別に?分割/u.test(normalized)) {
+    return true;
+  }
+  const dates = new Set();
+  for (const match of normalized.matchAll(/(?:20\d{2}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2}|(?:\d{1,2})月(?:\d{1,2})日)/gu)) {
+    dates.add(match[0]);
+  }
+  return dates.size >= 2 && /(初診|再診|受診|外来|検査|処置|説明|結果)/u.test(normalized);
 }
 
 function reviewIssueFromManagementClinicalEvent(event = {}, { categoryLabel = "医学管理等" } = {}) {
@@ -3360,11 +3466,16 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
   if (kind === "mri") {
     const equipmentKind = clinicalEventEquipmentKind(event, "mri");
     const contrastState = localContrastState(evidence, "mri");
+    const electronicState = clinicalEventElectronicImageManagementState(event);
     const order = {
       kind: "mri",
-      contrast: contrastState === "present",
-      electronic_image_management: true
+      contrast: contrastState === "present"
     };
+    if (electronicState === "present") {
+      order.electronic_image_management = true;
+    } else if (electronicState === "unknown") {
+      reviewWarnings.push("電子保存確認: MRI検査の電子保存・電子画像管理の有無がカルテ本文から確定できません。算定条件を確認してください。");
+    }
     if (equipmentKind) {
       order.mri_equipment_kind = equipmentKind;
     } else {
@@ -3382,11 +3493,16 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
   if (kind === "ct") {
     const equipmentKind = clinicalEventEquipmentKind(event, "ct");
     const contrastState = localContrastState(evidence, "ct");
+    const electronicState = clinicalEventElectronicImageManagementState(event);
     const order = {
       kind: "ct",
-      contrast: contrastState === "present",
-      electronic_image_management: true
+      contrast: contrastState === "present"
     };
+    if (electronicState === "present") {
+      order.electronic_image_management = true;
+    } else if (electronicState === "unknown") {
+      reviewWarnings.push("電子保存確認: CT検査の電子保存・電子画像管理の有無がカルテ本文から確定できません。算定条件を確認してください。");
+    }
     if (equipmentKind) {
       order.ct_equipment_kind = equipmentKind;
     } else {
@@ -3402,14 +3518,25 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
     };
   }
   if (kind === "simple_radiography") {
+    const contrastState = localContrastState(evidence, "ct");
+    const electronicState = clinicalEventElectronicImageManagementState(event);
     reviewWarnings.push("単純X線は撮影方式・写真診断区分がカルテ本文から完全には確定できないため、デジタル/写真診断イとして候補化しています。請求前に確認してください。");
+    if (contrastState === "unknown") {
+      reviewWarnings.push("造影確認: 画像検査の造影有無がカルテ本文から確定できません。造影剤を使用したか確認してください。");
+    }
+    if (electronicState === "unknown") {
+      reviewWarnings.push("電子保存確認: 単純X線の電子保存・電子画像管理の有無がカルテ本文から確定できません。算定条件を確認してください。");
+    }
+    const order = {
+      kind: "simple_radiography",
+      acquisition_kind: "digital",
+      radiography_diagnostic_kind: "simple_i"
+    };
+    if (electronicState === "present") {
+      order.electronic_image_management = true;
+    }
     return {
-      order: {
-        kind: "simple_radiography",
-        acquisition_kind: "digital",
-        radiography_diagnostic_kind: "simple_i",
-        electronic_image_management: true
-      },
+      order,
       procedureCodes,
       commentInputs: [],
       collectionFeeInputs: [],
@@ -3654,6 +3781,18 @@ function hasExplicitBloodCollectionEvidence(event = {}) {
   }
   if (/(?:採血|血液検査|血液検体).{0,12}(?:必要性|必要|検討|判断|予定|未実施|実施なし)|(?:必要性|必要|検討|判断|予定).{0,12}(?:採血|血液検査|血液検体)/u.test(text)) {
     return false;
+  }
+  return false;
+}
+
+function hasCaseLevelBloodCollectionEvidenceFromText(text = "") {
+  for (const sentence of splitClinicalSentences(text)) {
+    if (/(前回|過去|他院|前医|持参|予定|次回|後日|必要性|必要|検討|判断|未実施|実施なし)/u.test(sentence)) {
+      continue;
+    }
+    if (hasExplicitBloodCollectionEvidence({ evidence: sentence })) {
+      return true;
+    }
   }
   return false;
 }
@@ -4342,7 +4481,7 @@ function hasLocalContrastContext(sentence, kind) {
 
 function localContrastState(sentence, kind) {
   const text = normalizeClinicalText(sentence);
-  if (/(造影なし|造影無し|非造影|単純(?:CT|ＣＴ|MRI|ＭＲＩ)?)/u.test(text)) {
+  if (/(造影なし|造影無し|非造影|単純(?:CT|ＣＴ|MRI|ＭＲＩ))/u.test(text)) {
     return "absent";
   }
   if (/(造影有無|造影の有無|造影.*確認|造影.*未確定|造影.*不明|造影.*要確認)/u.test(text)) {
@@ -4360,6 +4499,41 @@ function localContrastState(sentence, kind) {
 
 function hasUnknownContrastContext(sentence) {
   return localContrastState(sentence, "ct") === "unknown" || localContrastState(sentence, "mri") === "unknown";
+}
+
+function clinicalEventElectronicImageManagementState(event = {}) {
+  const explicitValues = [
+    event?.electronic_image_management,
+    event?.electronicImageManagement,
+    event?.payload?.electronic_image_management,
+    event?.payload?.electronicImageManagement
+  ];
+  for (const value of explicitValues) {
+    if (value === true || value === "true" || value === "present" || value === "yes") {
+      return "present";
+    }
+    if (value === false || value === "false" || value === "absent" || value === "no") {
+      return "absent";
+    }
+  }
+  return localElectronicImageManagementState(clinicalEventEvidence(event));
+}
+
+function localElectronicImageManagementState(sentence = "") {
+  const text = normalizeClinicalText(sentence);
+  if (!/電子/u.test(text)) {
+    return "absent";
+  }
+  if (/(電子画像管理|電子保存|電子的保存|電子.*管理).{0,20}(?:なし|無し|行わず|未実施)|(?:フィルム|紙焼き).{0,12}(?:保存|管理)/u.test(text)) {
+    return "absent";
+  }
+  if (/(電子画像管理|電子保存|電子的保存|電子.*管理).{0,24}(?:確認|有無|未確定|不明|必要|要確認)|(?:確認|有無|未確定|不明|必要|要確認).{0,24}(?:電子画像管理|電子保存|電子的保存|電子.*管理)/u.test(text)) {
+    return "unknown";
+  }
+  if (/(電子画像管理あり|電子保存あり|電子的に保存|電子保存・管理あり|電子.*保存.*管理|電子.*管理.*保存|電子画像管理)/u.test(text)) {
+    return "present";
+  }
+  return "unknown";
 }
 
 function isCurrentPrescriptionContext(sentence) {

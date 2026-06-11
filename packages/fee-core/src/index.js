@@ -1118,7 +1118,7 @@ function reviewWarningTitle(message = "") {
     return "外来迅速検体検査加算の確認";
   }
   if (/D026|検査判断料|judgement fee/u.test(text)) {
-    return "検査判断料の確認";
+    return "判断料確認";
   }
   if (/静脈採血|採血|blood_venous|Collection fee/u.test(text)) {
     return "採血料確認";
@@ -1445,10 +1445,10 @@ function humanizeReviewMessage(message = "") {
     return "院内処方に関する投薬料候補です。処方内容と算定条件を確認してください。";
   }
   if (/D026 judgement fee for group/i.test(text)) {
-    return "検査判断料の候補です。実施検査と同月算定条件を確認してください。";
+    return "判断料確認: 検査判断料の候補です。実施検査と同月算定条件を確認してください。";
   }
   if (/Collection fee requested by blood_venous/i.test(text)) {
-    return "静脈採血料の候補です。採血実施と算定条件を確認してください。";
+    return "採血料確認: 静脈採血料の候補です。採血実施と算定条件を確認してください。";
   }
   if (/Outpatient rapid lab add-on skipped/i.test(text)) {
     return "外来迅速検体検査加算は、当日説明・文書要件を確認できないため自動追加していません。";

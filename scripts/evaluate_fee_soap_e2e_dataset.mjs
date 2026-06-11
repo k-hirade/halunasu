@@ -105,7 +105,9 @@ const report = {
   facilityFixtureAudit: {
     ...facilityFixtureAudit,
     runnerMode: runner.facilityFixture?.mode || args.mode,
-    seededFacilityStandards: runner.facilityFixture?.seededFacilityStandards || []
+    seededFacilityStandards: runner.facilityFixture?.seededFacilityStandards || [],
+    seedStatus: runner.facilityFixture?.seedStatus || null,
+    seedError: runner.facilityFixture?.seedError || ""
   },
   results
 };
@@ -326,12 +328,16 @@ function buildCalculatePayload(item, options) {
 
 function buildFacilityFixtureAudit(cases = []) {
   const exactRequired = new Set();
+  const unknownRequired = new Set();
   const reviewFacilityCases = [];
   for (const item of cases) {
     const level = String(item.expectedCalculation?.assertionLevel || "").trim();
-    for (const key of asStrings(item.expectedClaimContext?.facility_standard_keys)) {
+    const expectedKeys = asStrings(item.expectedClaimContext?.facility_standard_keys);
+    for (const key of expectedKeys) {
       if (level === "exact") {
         exactRequired.add(key);
+      } else {
+        unknownRequired.add(key);
       }
     }
     const chart = normalizeText(soapText(item));
@@ -340,11 +346,12 @@ function buildFacilityFixtureAudit(cases = []) {
     }
   }
   const seededFacilityStandardKeys = [...exactRequired].sort();
-  const collisions = [];
+  const collisions = seededFacilityStandardKeys.filter((key) => unknownRequired.has(key));
   return {
     fixtureKey: "default",
     seededFacilityStandardKeys,
     exactRequiredFacilityStandardKeys: seededFacilityStandardKeys,
+    facilityUnknownExpectedKeys: [...unknownRequired].sort(),
     facilityUnknownCaseIds: reviewFacilityCases,
     collisions,
     collisionPolicy: collisions.length ? "case_group_fixture_required" : "single_fixture_ok"
@@ -443,7 +450,9 @@ async function createLocalRunner(options, facilityFixtureAudit = {}) {
       mode: "local_fixture",
       fixtureKey: facilityFixtureAudit.fixtureKey || "default",
       seededFacilityStandards: facilityFixtureAudit.seededFacilityStandardKeys || [],
-      collisions: facilityFixtureAudit.collisions || []
+      collisions: facilityFixtureAudit.collisions || [],
+      seedStatus: "seeded",
+      seedError: ""
     },
     async request(method, apiPath, body = undefined, requestOptions = {}) {
       const requestBody = requestOptions.body !== undefined ? requestOptions.body : body;
@@ -518,6 +527,15 @@ async function createStgRunner(options, facilityFixtureAudit = {}) {
     throw new Error(`STG organization bootstrap failed: ${safeErrorMessage(bootstrap.body)}`);
   }
   const { facilityId, departmentIds } = stgFacilityContext(bootstrap.body || {});
+  const facilitySeed = await seedStgFacilityStandards({
+    platformBaseUrl,
+    orgId,
+    facilityId,
+    jar,
+    csrfToken,
+    bootstrap: bootstrap.body || {},
+    desiredKeys: facilityFixtureAudit.seededFacilityStandardKeys || []
+  });
 
   return {
     facilityId,
@@ -525,9 +543,11 @@ async function createStgRunner(options, facilityFixtureAudit = {}) {
     facilityFixture: {
       mode: "stg_existing_facility",
       fixtureKey: facilityFixtureAudit.fixtureKey || "stg-existing",
-      seededFacilityStandards: [],
+      seededFacilityStandards: facilitySeed.seededFacilityStandards,
       expectedFacilityStandards: facilityFixtureAudit.seededFacilityStandardKeys || [],
-      collisions: facilityFixtureAudit.collisions || []
+      collisions: facilityFixtureAudit.collisions || [],
+      seedStatus: facilitySeed.status,
+      seedError: facilitySeed.error || ""
     },
     async request(method, apiPath, body = undefined, requestOptions = {}) {
       const requestBody = requestOptions.body !== undefined ? requestOptions.body : body;
@@ -539,6 +559,55 @@ async function createStgRunner(options, facilityFixtureAudit = {}) {
       });
     },
     close() {}
+  };
+}
+
+async function seedStgFacilityStandards({
+  platformBaseUrl = "",
+  orgId = "",
+  facilityId = "",
+  jar = null,
+  csrfToken = "",
+  bootstrap = {},
+  desiredKeys = []
+} = {}) {
+  const desired = uniqueStrings(desiredKeys);
+  const facilities = Array.isArray(bootstrap.facilities) ? bootstrap.facilities : [];
+  const facility = facilities.find((item) => item.facilityId === facilityId) || {};
+  const existing = uniqueStrings(facility.facilityStandardKeys || facility.facility_standard_keys || []);
+  const merged = uniqueStrings([...existing, ...desired]);
+  if (!desired.length) {
+    return {
+      status: "not_required",
+      seededFacilityStandards: existing,
+      error: ""
+    };
+  }
+  if (merged.length === existing.length && merged.every((key) => existing.includes(key))) {
+    return {
+      status: "already_seeded",
+      seededFacilityStandards: existing,
+      error: ""
+    };
+  }
+  const response = await httpJson(`${platformBaseUrl}/v1/organizations/${encodeURIComponent(orgId)}/facilities/${encodeURIComponent(facilityId)}`, {
+    method: "PATCH",
+    body: { facilityStandardKeys: merged },
+    jar,
+    headers: { "x-csrf-token": csrfToken }
+  });
+  if (response.statusCode >= 400) {
+    return {
+      status: "failed",
+      seededFacilityStandards: existing,
+      error: safeErrorMessage(response.body)
+    };
+  }
+  const updated = response.body?.facility || {};
+  return {
+    status: "seeded",
+    seededFacilityStandards: uniqueStrings(updated.facilityStandardKeys || updated.facility_standard_keys || merged),
+    error: ""
   };
 }
 
@@ -615,6 +684,16 @@ function actualView({ feeSession, calculationResult, reviewItems, candidateWorkb
       reason: item.reason || "",
       points: Number(item.points || item.totalPoints || 0)
     })),
+    clinicalEvents: (Array.isArray(feeSession.clinicalEvents) ? feeSession.clinicalEvents : []).map((event) => ({
+      id: event.clinicalEventId || event.clinical_event_id || "",
+      name: event.name || event.event_name || event.eventName || "",
+      type: event.type || event.event_type || event.eventType || "",
+      actionStatus: event.action_status || event.actionStatus || event.status || "",
+      temporalRelation: event.temporal_relation || event.temporalRelation || "",
+      billingDomain: event.billing_domain || event.billingDomain || "",
+      certainty: event.certainty || "",
+      evidence: String(event.evidence || event.evidence_text || "").slice(0, 160)
+    })),
     reviewText,
     progress: feeSession.calculationProgress || null
   };
@@ -663,6 +742,7 @@ function accuracyView(item, actual) {
   const actualSignalText = [
     ...actual.lineItems.map((line) => `${line.code} ${line.name}`),
     ...actual.candidateProposals.map((item) => `${item.name} ${item.title} ${item.reason}`),
+    ...(actual.clinicalEvents || []).map((event) => `${event.name} ${event.type} ${event.billingDomain} ${event.evidence}`),
     ...actual.reviewText
   ].join(" ");
   const actualCodes = asStrings(actual.candidateCodes);
@@ -689,6 +769,7 @@ function missingView(item, actual) {
     ...actual.diagnoses,
     ...actual.lineItems.map((line) => `${line.code} ${line.name}`),
     ...actual.candidateProposals.map((proposal) => `${proposal.name} ${proposal.title} ${proposal.reason}`),
+    ...(actual.clinicalEvents || []).map((event) => `${event.name} ${event.type} ${event.billingDomain} ${event.evidence}`),
     ...actual.reviewText
   ].join(" ");
   return {
@@ -826,7 +907,9 @@ function emptyCaseResult(item) {
       fixtureKey: null,
       seededFacilityStandards: [],
       expectedFacilityStandards: [],
-      collisions: []
+      collisions: [],
+      seedStatus: null,
+      seedError: ""
     },
     http: {},
     durationMs: {

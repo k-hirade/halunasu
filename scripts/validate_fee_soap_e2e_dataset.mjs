@@ -328,6 +328,8 @@ function normalizeEvidenceText(value) {
     .normalize("NFKC")
     // Review topics can contain billing labels used only as expected review language.
     // They are not evidence that the clinical service was performed.
+    .replace(/当日確認した主な診療内容は「[^」]*」/gu, "")
+    .replace(/当日実施と混同しやすい内容は「[^」]*」/gu, "")
     .replace(/確認すべき論点は「[^」]*」/gu, "")
     .replace(/確認論点は「[^」]*」/gu, "")
     .replace(/\s+/g, "");

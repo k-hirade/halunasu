@@ -1413,10 +1413,10 @@ function normalizeCalculationWarning(value = "") {
       .replace(/\s+needs\s+/iu, " に必要なコメント: ");
   }
   if (/D026 judgement fee for group/i.test(warning)) {
-    return "検査判断料の候補です。実施検査と同月算定条件を確認してください。";
+    return "判断料確認: 検査判断料の候補です。実施検査と同月算定条件を確認してください。";
   }
   if (/Collection fee requested by blood_venous/i.test(warning)) {
-    return "静脈採血料の候補です。採血実施と算定条件を確認してください。";
+    return "採血料確認: 静脈採血料の候補です。採血実施と算定条件を確認してください。";
   }
   if (/Imaging fee candidate for ct/i.test(warning)) {
     return "CT撮影に関する画像診断料候補です。撮影内容と機器区分を確認してください。";
