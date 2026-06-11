@@ -49,7 +49,7 @@ const NON_CURRENT_INPATIENT_CONTEXT_PATTERN = /入院適応(?:は)?低い|入院
 const THIRD_PARTY_INPATIENT_CONTEXT_PATTERN = /(?:母|父|妻|夫|家族|祖母|祖父|子|兄|弟|姉|妹).{0,16}入院中|入院中.{0,16}(?:母|父|妻|夫|家族|祖母|祖父|子|兄|弟|姉|妹)/u;
 const OTHER_PROVIDER_DPC_CONTEXT_PATTERN = /DPC.{0,16}(?:病院|医療機関|他院|前医).{0,16}(?:転院|紹介|受診|から)|(?:転院|紹介).{0,16}DPC/u;
 
-export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v6";
+export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v7";
 
 const REVIEW_TOPIC_TAXONOMY = Object.freeze({
   contrast_check: Object.freeze({
@@ -994,7 +994,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     }
 
     if (type === "imaging") {
-      const imaging = await imagingOrderFromClinicalEvent(event, feeCalculator);
+      const imaging = await imagingOrderFromClinicalEvent(event, feeCalculator, { clinicalText: text });
       if (imaging.order) imagingOrders.push(imaging.order);
       procedureCodes.push(...imaging.procedureCodes);
       commentInputs.push(...imaging.commentInputs);
@@ -1009,7 +1009,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     if (type === "lab") {
       const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
         categoryLabel: "検体検査",
-        allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event)
+        allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event),
+        clinicalText: text
       });
       const collectionFeeReviewIssues = labCollectionFeeReviewIssuesFromClinicalEvent(event, procedure);
       procedureCodes.push(...procedure.procedureCodes);
@@ -1129,12 +1130,18 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       warning: suppressed.warning
     });
   }
+  const visitMedication = medicationOptionsFromVisitFacts(facts?.visit_facts);
   if (medicationOrders.length) {
     inferred.medication_orders = dedupeObjects(medicationOrders, (item) => item.drug_code);
     inferred.medication = {
-      delivery_kind: inferMedicationDeliveryKind(text),
-      prescription_category: "other"
+      delivery_kind: visitMedication?.delivery_kind || inferMedicationDeliveryKind(text),
+      prescription_category: "other",
+      ...(visitMedication?.generic_name_prescription_add_on ? {
+        generic_name_prescription_add_on: visitMedication.generic_name_prescription_add_on
+      } : {})
     };
+  } else if (visitMedication) {
+    inferred.medication = visitMedication;
   }
   if (materialInputs.length) {
     inferred.material_inputs = dedupeObjects(materialInputs, (item) => item.code);
@@ -2163,7 +2170,7 @@ function mriEquipmentKindFromText(value = "") {
   return "";
 }
 
-function clinicalEventEquipmentKind(event = {}, imagingKind = "") {
+function clinicalEventEquipmentKind(event = {}, imagingKind = "", clinicalText = "") {
   const explicit = [
     event?.equipment_kind,
     event?.equipmentKind,
@@ -2182,7 +2189,31 @@ function clinicalEventEquipmentKind(event = {}, imagingKind = "") {
     return normalizeImagingEquipmentKind(explicit, imagingKind);
   }
   const evidence = clinicalEventEvidence(event);
-  return imagingKind === "ct" ? ctEquipmentKindFromText(evidence) : mriEquipmentKindFromText(evidence);
+  const fromEvidence = imagingKind === "ct" ? ctEquipmentKindFromText(evidence) : mriEquipmentKindFromText(evidence);
+  if (fromEvidence) {
+    return fromEvidence;
+  }
+  return imagingEquipmentKindForKindInText(clinicalText, imagingKind);
+}
+
+function imagingEquipmentKindForKindInText(text = "", imagingKind = "") {
+  if (!text || !imagingKind) {
+    return "";
+  }
+  const objectiveText = objectiveClinicalText(text) || text;
+  for (const sentence of splitClinicalSentences(objectiveText)) {
+    if (isFutureOrOrderOnlyContext(sentence) || isNegatedClinicalServiceContext(sentence)) {
+      continue;
+    }
+    if (!sentenceMatchesImagingKind(sentence, imagingKind)) {
+      continue;
+    }
+    const equipmentKind = imagingKind === "ct" ? ctEquipmentKindFromText(sentence) : mriEquipmentKindFromText(sentence);
+    if (equipmentKind) {
+      return equipmentKind;
+    }
+  }
+  return "";
 }
 
 function normalizeImagingEquipmentKind(value = "", imagingKind = "") {
@@ -2440,6 +2471,22 @@ function inferMedicationDeliveryKind(text) {
     return "outside_prescription";
   }
   return "in_house";
+}
+
+function medicationOptionsFromVisitFacts(visitFacts = {}) {
+  if (!isPlainObject(visitFacts)) {
+    return null;
+  }
+  if (String(visitFacts.outside_prescription_issued || "").trim() !== "yes") {
+    return null;
+  }
+  return {
+    delivery_kind: "outside_prescription",
+    prescription_category: "other",
+    ...(String(visitFacts.generic_name_prescription || "").trim() === "yes" ? {
+      generic_name_prescription_add_on: "generic_name_add_on_1"
+    } : {})
+  };
 }
 
 async function inferMaterialInputs(text, feeCalculator) {
@@ -3592,7 +3639,7 @@ function clinicalEventTypeLabel(type) {
   }[String(type || "").trim()] || "未対応項目";
 }
 
-async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
+async function imagingOrderFromClinicalEvent(event = {}, feeCalculator, options = {}) {
   const reviewWarnings = [];
   const procedureCodes = [];
   const kind = clinicalImagingKind(event);
@@ -3601,9 +3648,12 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
     reviewWarnings.push("造影確認: 画像検査の造影有無がカルテ本文から確定できません。造影剤を使用したか確認してください。");
   }
   if (kind === "mri") {
-    const equipmentKind = clinicalEventEquipmentKind(event, "mri");
+    const equipmentKind = clinicalEventEquipmentKind(event, "mri", options.clinicalText);
     const contrastState = localContrastState(evidence, "mri");
-    const electronicState = clinicalEventElectronicImageManagementState(event);
+    const electronicState = clinicalEventElectronicImageManagementState(event, {
+      clinicalText: options.clinicalText,
+      imagingKind: "mri"
+    });
     const order = {
       kind: "mri",
       contrast: contrastState === "present"
@@ -3628,9 +3678,12 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
     };
   }
   if (kind === "ct") {
-    const equipmentKind = clinicalEventEquipmentKind(event, "ct");
+    const equipmentKind = clinicalEventEquipmentKind(event, "ct", options.clinicalText);
     const contrastState = localContrastState(evidence, "ct");
-    const electronicState = clinicalEventElectronicImageManagementState(event);
+    const electronicState = clinicalEventElectronicImageManagementState(event, {
+      clinicalText: options.clinicalText,
+      imagingKind: "ct"
+    });
     const order = {
       kind: "ct",
       contrast: contrastState === "present"
@@ -3656,7 +3709,10 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator) {
   }
   if (kind === "simple_radiography") {
     const contrastState = localContrastState(evidence, "ct");
-    const electronicState = clinicalEventElectronicImageManagementState(event);
+    const electronicState = clinicalEventElectronicImageManagementState(event, {
+      clinicalText: options.clinicalText,
+      imagingKind: "simple_radiography"
+    });
     reviewWarnings.push("単純X線は撮影方式・写真診断区分がカルテ本文から完全には確定できないため、デジタル/写真診断イとして候補化しています。請求前に確認してください。");
     if (contrastState === "unknown") {
       reviewWarnings.push("造影確認: 画像検査の造影有無がカルテ本文から確定できません。造影剤を使用したか確認してください。");
@@ -4039,7 +4095,7 @@ async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculato
 
   const name = clinicalEventName(event);
   const categoryLabel = options.categoryLabel || "診療行為";
-  if (["lab", "exam"].includes(normalizeClinicalEventType(event)) && !labEventNameSupportedByRawEvidence(event)) {
+  if (["lab", "exam"].includes(normalizeClinicalEventType(event)) && !labEventNameSupportedByRawEvidence(event, options.clinicalText)) {
     return {
       procedureCodes: [],
       commentInputs: [],
@@ -4441,7 +4497,7 @@ function labConceptsFromText(text = "") {
   return concepts;
 }
 
-function labEventNameSupportedByRawEvidence(event = {}) {
+function labEventNameSupportedByRawEvidence(event = {}, clinicalText = "") {
   const nameConcepts = labConceptsFromClinicalEventName(event);
   const nameConceptKeys = new Set(nameConcepts.map((concept) => concept.key));
   const queryConceptKeys = new Set(labConceptsFromText([
@@ -4459,14 +4515,52 @@ function labEventNameSupportedByRawEvidence(event = {}) {
   if (!nameConcepts.length) {
     return true;
   }
-  const rawText = normalizeClinicalText([
+  const eventEvidence = normalizeClinicalText([
     event?.evidence
   ].filter(Boolean).join(" "));
-  if (!rawText) {
+  if (eventEvidence && nameConcepts.some((concept) => labConceptAppearsInPerformedClinicalSentence(eventEvidence, concept))) {
+    return true;
+  }
+  return nameConcepts.some((concept) => labConceptAppearsInPerformedClinicalSentence(clinicalText, concept));
+}
+
+function labConceptAppearsInPerformedClinicalSentence(text = "", concept = {}) {
+  if (!concept?.pattern) {
     return false;
   }
-  const rawConceptKeys = new Set(labConceptsFromText(rawText).map((concept) => concept.key));
-  return nameConcepts.some((concept) => rawConceptKeys.has(concept.key));
+  for (const sentence of splitClinicalSentences(text)) {
+    const normalized = normalizeClinicalText(sentence);
+    if (!normalized || isClinicalMetaSentence(normalized)) {
+      continue;
+    }
+    if (isFutureOrOrderOnlyContext(normalized) || isNegatedClinicalServiceContext(normalized)) {
+      continue;
+    }
+    if (!concept.pattern.test(normalized)) {
+      continue;
+    }
+    if (hasPerformedLabContext(normalized) || hasLabResultContext(normalized, concept)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isClinicalMetaSentence(sentence = "") {
+  return /(当日確認した主な診療内容|確認すべき論点|点数に直結する名称|会計前に当日実施した内容|診療内容は最終確認|expectedClaimContext|期待|ゴールド)/u.test(String(sentence || ""));
+}
+
+function hasPerformedLabContext(sentence = "") {
+  const text = normalizeClinicalText(sentence);
+  return /(実施|施行|行った|行い|検査した|測定した|測定|採取した|提出した|検体提出|検査結果|結果)/u.test(text);
+}
+
+function hasLabResultContext(sentence = "", concept = {}) {
+  const text = normalizeClinicalText(sentence);
+  if (!concept?.pattern?.test(text)) {
+    return false;
+  }
+  return /[:：＝=]|確認|陽性|陰性|正常|異常なし|高値|低値|\d+(?:\.\d+)?\s*(?:mg\/dL|U\/mL|%|％|\/μL|\/uL|mL\/min|IU\/mL)/iu.test(text);
 }
 
 function imagingAliasQueries(event = {}) {
@@ -4627,7 +4721,7 @@ function hasUnknownContrastContext(sentence) {
   return localContrastState(sentence, "ct") === "unknown" || localContrastState(sentence, "mri") === "unknown";
 }
 
-function clinicalEventElectronicImageManagementState(event = {}) {
+function clinicalEventElectronicImageManagementState(event = {}, options = {}) {
   const explicitValues = [
     event?.electronic_image_management,
     event?.electronicImageManagement,
@@ -4642,7 +4736,45 @@ function clinicalEventElectronicImageManagementState(event = {}) {
       return "absent";
     }
   }
+  const textState = electronicImageManagementStateForKindInText(options.clinicalText, options.imagingKind);
+  if (textState) {
+    return textState;
+  }
   return localElectronicImageManagementState(clinicalEventEvidence(event));
+}
+
+function electronicImageManagementStateForKindInText(text = "", imagingKind = "") {
+  if (!text || !imagingKind) {
+    return "";
+  }
+  const objectiveText = objectiveClinicalText(text) || text;
+  for (const sentence of splitClinicalSentences(objectiveText)) {
+    if (isFutureOrOrderOnlyContext(sentence) || isNegatedClinicalServiceContext(sentence)) {
+      continue;
+    }
+    if (!sentenceMatchesImagingKind(sentence, imagingKind)) {
+      continue;
+    }
+    const state = localElectronicImageManagementState(sentence);
+    if (state === "present" || state === "unknown" || state === "absent") {
+      return state;
+    }
+  }
+  return "";
+}
+
+function sentenceMatchesImagingKind(sentence = "", imagingKind = "") {
+  const text = normalizeClinicalText(sentence);
+  if (imagingKind === "ct") {
+    return /(?:^|[^A-Za-z])CT(?:$|[^A-Za-z])|ＣＴ/u.test(text);
+  }
+  if (imagingKind === "mri") {
+    return /(?:^|[^A-Za-z])MRI(?:$|[^A-Za-z])|ＭＲＩ/u.test(text);
+  }
+  if (imagingKind === "simple_radiography") {
+    return /(X線|Ｘ線|レントゲン|単純撮影)/u.test(text);
+  }
+  return false;
 }
 
 function localElectronicImageManagementState(sentence = "") {
@@ -4650,14 +4782,14 @@ function localElectronicImageManagementState(sentence = "") {
   if (!/電子/u.test(text)) {
     return "absent";
   }
+  if (/(電子画像管理あり|電子保存あり|電子的に保存|電子保存・管理あり|電子.*保存.*管理|電子.*管理.*保存|電子画像管理)/u.test(text)) {
+    return "present";
+  }
   if (/(電子画像管理|電子保存|電子的保存|電子.*管理).{0,20}(?:なし|無し|行わず|未実施)|(?:フィルム|紙焼き).{0,12}(?:保存|管理)/u.test(text)) {
     return "absent";
   }
   if (/(電子画像管理|電子保存|電子的保存|電子.*管理).{0,24}(?:確認|有無|未確定|不明|必要|要確認)|(?:確認|有無|未確定|不明|必要|要確認).{0,24}(?:電子画像管理|電子保存|電子的保存|電子.*管理)/u.test(text)) {
     return "unknown";
-  }
-  if (/(電子画像管理あり|電子保存あり|電子的に保存|電子保存・管理あり|電子.*保存.*管理|電子.*管理.*保存|電子画像管理)/u.test(text)) {
-    return "present";
   }
   return "unknown";
 }
@@ -4710,7 +4842,7 @@ function normalizeClinicalInferredOptions(options = {}) {
     result.procedure_codes = uniqueStrings(result.procedure_codes);
   }
   if (Array.isArray(result.imaging_orders)) {
-    result.imaging_orders = dedupeObjects(result.imaging_orders, (item) => item?.kind || JSON.stringify(item));
+    result.imaging_orders = mergeImagingOrders(result.imaging_orders);
   }
   if (Array.isArray(result.treatment_orders)) {
     result.treatment_orders = dedupeObjects(result.treatment_orders);
@@ -4729,6 +4861,37 @@ function normalizeClinicalInferredOptions(options = {}) {
       ...result.lab_options,
       collection_fee_inputs: uniqueStrings(result.lab_options.collection_fee_inputs)
     };
+  }
+  return result;
+}
+
+function mergeImagingOrders(orders = []) {
+  const byKind = new Map();
+  const result = [];
+  for (const order of asArray(orders)) {
+    if (!isPlainObject(order)) {
+      continue;
+    }
+    const key = String(order.kind || "").trim() || JSON.stringify(order);
+    if (!byKind.has(key)) {
+      const copy = { ...order };
+      byKind.set(key, copy);
+      result.push(copy);
+      continue;
+    }
+    const existing = byKind.get(key);
+    for (const [field, value] of Object.entries(order)) {
+      if (value === undefined || value === null || value === "") {
+        continue;
+      }
+      if (!hasOwn(existing, field) || existing[field] === undefined || existing[field] === null || existing[field] === "") {
+        existing[field] = value;
+        continue;
+      }
+      if (typeof existing[field] === "boolean" && existing[field] === false && value === true) {
+        existing[field] = true;
+      }
+    }
   }
   return result;
 }

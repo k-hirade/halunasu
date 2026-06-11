@@ -31,6 +31,11 @@ function feeClinicalFactsPayload() {
       evidence: "",
       confidence: "low"
     },
+    visit_facts: {
+      outside_prescription_issued: "unknown",
+      generic_name_prescription: "unknown",
+      prescription_evidence: ""
+    },
     diagnoses: [],
     clinical_events: [],
     excluded_events: [],
@@ -139,6 +144,7 @@ test("fee clinical facts schema keeps enough diagnoses and excluded events for c
   const schema = requestBody.text.format.schema;
   assert.equal(schema.properties.diagnoses.maxItems, 8);
   assert.equal(schema.properties.excluded_events.maxItems, 8);
+  assert.ok(schema.properties.visit_facts);
   assert.ok(schema.properties.clinical_events);
   assert.ok(schema.properties.clinical_events.items.properties.billing_domain);
   assert.ok(schema.properties.clinical_events.items.properties.specimen);

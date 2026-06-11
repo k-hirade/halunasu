@@ -858,6 +858,84 @@ test("rebuilds stale generated calculation options from current clinical context
   assert.deepEqual(detail.body.feeSession.calculationOptionsAutoKeys.sort(), ["imaging_orders", "outpatient_basic"].sort());
 });
 
+test("merges deterministic CT attributes into structured imaging event", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 1095,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "頭部外傷", status: "suspected", evidence: "頭部外傷" }],
+    clinical_events: [{
+      type: "imaging",
+      billing_domain: "standard_imaging",
+      name: "頭部CT",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "normal",
+      certainty: "explicit",
+      section: "O",
+      evidence: "頭部CT撮影を実施。",
+      search_queries: ["頭部CT"],
+      modality: "ct",
+      body_site: "頭部",
+      specimen: "",
+      collection_method: "",
+      quantity_per_day: "",
+      days: "",
+      total_quantity: "",
+      area_size_cm2: "",
+      review_reason: ""
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "CT Merge Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: [
+      "O（Objective：客観的情報）",
+      "CT撮影を実施し、16列以上64列未満マルチスライス型機器、電子保存あり、造影なしを確認した。"
+    ].join("\n"),
+    diagnoses: [{ name: "頭部外傷" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.imaging_orders, [{
+    kind: "ct",
+    contrast: false,
+    electronic_image_management: true,
+    ct_equipment_kind: "multislice_16_to_64"
+  }]);
+});
+
 test("uses structured clinical facts for calculation input when available", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -1075,8 +1153,8 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v7");
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v6");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v8");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v7");
   assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
     event.name === "腰椎X線"
     && event.actionStatus === "performed"
@@ -1415,6 +1493,117 @@ test("routes non-blood specimen collection fees to review instead of auto collec
     item.stage === "lab_rule_expansion"
     && item.selected?.derived?.some((derived) => derived.kind === "collection_fee_review")
   )));
+});
+
+test("uses clinical text performed lab sentence as support but ignores template-only lab mentions", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const masterSearches = [];
+  let receivedInput = null;
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    if (input.type === "procedure" && input.query === "尿一般") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160000310",
+          name: "尿一般",
+          points: 26,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 26,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "膀胱炎疑い", status: "suspected", evidence: "膀胱炎疑い" }],
+    clinical_events: [{
+      type: "lab",
+      billing_domain: "standard_lab",
+      name: "尿一般",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "unknown",
+      certainty: "explicit",
+      section: "O",
+      evidence: "検体検査を実施。",
+      search_queries: ["尿一般"],
+      modality: "none",
+      body_site: "",
+      specimen: "尿",
+      collection_method: "院内尿検体",
+      quantity_per_day: "",
+      days: "",
+      total_quantity: "",
+      area_size_cm2: "",
+      review_reason: ""
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Lab Full Text Support Patient"
+  }, headers);
+  const supported = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "再診。排尿時痛があり、尿一般を実施。",
+    diagnoses: [{ name: "膀胱炎疑い" }]
+  }, headers);
+  let calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${supported.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160000310"]);
+  assert.ok(masterSearches.some((search) => search.query === "尿一般"));
+
+  masterSearches.length = 0;
+  receivedInput = null;
+  const templateOnly = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-11",
+    clinicalText: "当日確認した主な診療内容は「尿一般」。確認すべき論点は「検査コード」。",
+    diagnoses: [{ name: "膀胱炎疑い" }]
+  }, headers);
+  calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${templateOnly.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
+  assert.equal(masterSearches.some((search) => search.query === "尿一般"), false);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "検査コード確認"));
 });
 
 test("does not infer specimen collection fee review from throat findings alone", async () => {
@@ -2160,6 +2349,64 @@ test("recovers concrete topical drug from medication evidence when LLM event nam
   assert.deepEqual(receivedInput.calculationOptions.medication, {
     delivery_kind: "in_house",
     prescription_category: "other"
+  });
+});
+
+test("derives outside prescription fee options from structured visit facts without a drug line", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 68,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    visit_facts: {
+      outside_prescription_issued: "yes",
+      generic_name_prescription: "yes",
+      prescription_evidence: "院外処方箋を一般名で交付"
+    },
+    diagnoses: [{ name: "アレルギー性結膜炎", status: "confirmed", evidence: "アレルギー性結膜炎" }],
+    clinical_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Outside Prescription Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "院外処方箋を一般名処方で交付した。",
+    diagnoses: [{ name: "アレルギー性結膜炎" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.medication_orders, undefined);
+  assert.deepEqual(receivedInput.calculationOptions.medication, {
+    delivery_kind: "outside_prescription",
+    prescription_category: "other",
+    generic_name_prescription_add_on: "generic_name_add_on_1"
   });
 });
 

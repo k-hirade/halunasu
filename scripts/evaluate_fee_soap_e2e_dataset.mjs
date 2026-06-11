@@ -122,8 +122,9 @@ if (args.strict && summary.failed > 0) {
 async function evaluateCase(item, runner, options) {
   const caseStartedAt = Date.now();
   const caseResult = emptyCaseResult(item);
-  caseResult.facilityFixture = runner.facilityFixture || caseResult.facilityFixture;
   try {
+    const caseFacilityFixture = await runner.prepareCase?.(item);
+    caseResult.facilityFixture = caseFacilityFixture || facilityFixtureForCase(item, runner) || runner.facilityFixture || caseResult.facilityFixture;
     const historySeed = await seedVisitHistoryIfNeeded(item, runner, options, caseResult);
     if (historySeed?.failed) {
       return failCase(caseResult, "api_contract", historySeed.message, caseStartedAt);
@@ -273,8 +274,9 @@ function buildCreateSessionPayload(item, runner = {}, overrides = {}) {
   const encounter = item.encounter || {};
   const expectedEncounter = item.expectedClaimContext?.encounter || {};
   const patientId = String(overrides.patientId || "").trim();
+  const facilityFixture = facilityFixtureForCase(item, runner);
   const payload = {
-    facilityId: runner.facilityId || "fac_fee_e2e",
+    facilityId: facilityFixture?.facilityId || runner.facilityId || "fac_fee_e2e",
     departmentId: departmentIdForEncounter(encounter, runner.departmentIds),
     serviceDate: overrides.serviceDate || serviceDateForCase(item),
     setting: encounter.setting === "inpatient" ? "inpatient" : "outpatient",
@@ -330,9 +332,20 @@ function buildFacilityFixtureAudit(cases = []) {
   const exactRequired = new Set();
   const unknownRequired = new Set();
   const reviewFacilityCases = [];
+  const fixtureMap = new Map();
   for (const item of cases) {
     const level = String(item.expectedCalculation?.assertionLevel || "").trim();
     const expectedKeys = asStrings(item.expectedClaimContext?.facility_standard_keys);
+    const caseKeys = level === "exact" ? expectedKeys : [];
+    const fixtureKey = facilityFixtureKeyForKeys(caseKeys);
+    if (!fixtureMap.has(fixtureKey)) {
+      fixtureMap.set(fixtureKey, {
+        fixtureKey,
+        seededFacilityStandardKeys: caseKeys.slice().sort(),
+        caseIds: []
+      });
+    }
+    fixtureMap.get(fixtureKey).caseIds.push(item.caseId);
     for (const key of expectedKeys) {
       if (level === "exact") {
         exactRequired.add(key);
@@ -350,12 +363,35 @@ function buildFacilityFixtureAudit(cases = []) {
   return {
     fixtureKey: "default",
     seededFacilityStandardKeys,
+    fixtures: [...fixtureMap.values()],
     exactRequiredFacilityStandardKeys: seededFacilityStandardKeys,
     facilityUnknownExpectedKeys: [...unknownRequired].sort(),
     facilityUnknownCaseIds: reviewFacilityCases,
     collisions,
     collisionPolicy: collisions.length ? "case_group_fixture_required" : "single_fixture_ok"
   };
+}
+
+function facilityStandardKeysForCase(item = {}) {
+  const level = String(item.expectedCalculation?.assertionLevel || "").trim();
+  return level === "exact" ? asStrings(item.expectedClaimContext?.facility_standard_keys).sort() : [];
+}
+
+function facilityFixtureKeyForCase(item = {}) {
+  return facilityFixtureKeyForKeys(facilityStandardKeysForCase(item));
+}
+
+function facilityFixtureKeyForKeys(keys = []) {
+  const normalized = uniqueStrings(keys).sort();
+  if (!normalized.length) {
+    return "default";
+  }
+  return `standards_${sha256(normalized.join("|")).slice(0, 10)}`;
+}
+
+function facilityFixtureForCase(item = {}, runner = {}) {
+  const key = facilityFixtureKeyForCase(item);
+  return runner.facilityFixturesByKey?.[key] || null;
 }
 
 async function createLocalRunner(options, facilityFixtureAudit = {}) {
@@ -387,13 +423,31 @@ async function createLocalRunner(options, facilityFixtureAudit = {}) {
     productRoles: { fee: ["medical_clerk"] },
     password: "local only fee e2e runner password"
   });
-  const facility = platformStore.createFacility(organization.orgId, {
-    displayName: "E2E検証クリニック",
-    medicalInstitutionCode: "1312345",
-    regionalBureau: "kanto-shinetsu",
-    prefecture: "tokyo",
-    facilityStandardKeys: facilityFixtureAudit.seededFacilityStandardKeys || []
-  });
+  const fixtureDefinitions = Array.isArray(facilityFixtureAudit.fixtures) && facilityFixtureAudit.fixtures.length
+    ? facilityFixtureAudit.fixtures
+    : [{ fixtureKey: "default", seededFacilityStandardKeys: [] }];
+  const facilityFixturesByKey = {};
+  for (const fixture of fixtureDefinitions) {
+    const facility = platformStore.createFacility(organization.orgId, {
+      displayName: fixture.fixtureKey === "default" ? "E2E検証クリニック" : `E2E検証クリニック ${fixture.fixtureKey}`,
+      medicalInstitutionCode: fixture.fixtureKey === "default" ? "1312345" : `13${String(Object.keys(facilityFixturesByKey).length + 12345).slice(-5)}`,
+      regionalBureau: "kanto-shinetsu",
+      prefecture: "tokyo",
+      facilityStandardKeys: fixture.seededFacilityStandardKeys || []
+    });
+    facilityFixturesByKey[fixture.fixtureKey] = {
+      mode: "local_fixture",
+      fixtureKey: fixture.fixtureKey,
+      facilityId: facility.facilityId,
+      seededFacilityStandards: fixture.seededFacilityStandardKeys || [],
+      expectedFacilityStandards: fixture.seededFacilityStandardKeys || [],
+      collisions: facilityFixtureAudit.collisions || [],
+      seedStatus: "seeded",
+      seedError: ""
+    };
+  }
+  const defaultFixture = facilityFixturesByKey.default || Object.values(facilityFixturesByKey)[0];
+  const facility = { facilityId: defaultFixture.facilityId };
   const departments = [
     ["internal_medicine", "内科", "01"],
     ["pediatrics", "小児科", "10"],
@@ -446,10 +500,11 @@ async function createLocalRunner(options, facilityFixtureAudit = {}) {
   return {
     facilityId: facility.facilityId,
     departmentIds,
+    facilityFixturesByKey,
     facilityFixture: {
       mode: "local_fixture",
       fixtureKey: facilityFixtureAudit.fixtureKey || "default",
-      seededFacilityStandards: facilityFixtureAudit.seededFacilityStandardKeys || [],
+      seededFacilityStandards: defaultFixture.seededFacilityStandards || [],
       collisions: facilityFixtureAudit.collisions || [],
       seedStatus: "seeded",
       seedError: ""
@@ -527,27 +582,46 @@ async function createStgRunner(options, facilityFixtureAudit = {}) {
     throw new Error(`STG organization bootstrap failed: ${safeErrorMessage(bootstrap.body)}`);
   }
   const { facilityId, departmentIds } = stgFacilityContext(bootstrap.body || {});
-  const facilitySeed = await seedStgFacilityStandards({
-    platformBaseUrl,
-    orgId,
+  const baseFixture = {
+    mode: "stg_existing_facility",
+    fixtureKey: "default",
     facilityId,
-    jar,
-    csrfToken,
-    bootstrap: bootstrap.body || {},
-    desiredKeys: facilityFixtureAudit.seededFacilityStandardKeys || []
-  });
+    seededFacilityStandards: [],
+    expectedFacilityStandards: [],
+    collisions: facilityFixtureAudit.collisions || [],
+    seedStatus: "pending",
+    seedError: ""
+  };
 
   return {
     facilityId,
     departmentIds,
-    facilityFixture: {
-      mode: "stg_existing_facility",
-      fixtureKey: facilityFixtureAudit.fixtureKey || "stg-existing",
-      seededFacilityStandards: facilitySeed.seededFacilityStandards,
-      expectedFacilityStandards: facilityFixtureAudit.seededFacilityStandardKeys || [],
-      collisions: facilityFixtureAudit.collisions || [],
-      seedStatus: facilitySeed.status,
-      seedError: facilitySeed.error || ""
+    facilityFixturesByKey: { default: baseFixture },
+    facilityFixture: baseFixture,
+    async prepareCase(item = {}) {
+      const expectedKeys = facilityStandardKeysForCase(item);
+      const fixtureKey = facilityFixtureKeyForKeys(expectedKeys);
+      const facilitySeed = await setStgFacilityStandards({
+        platformBaseUrl,
+        orgId,
+        facilityId,
+        jar,
+        csrfToken,
+        desiredKeys: expectedKeys
+      });
+      const fixture = {
+        mode: "stg_existing_facility",
+        fixtureKey,
+        facilityId,
+        seededFacilityStandards: facilitySeed.seededFacilityStandards,
+        expectedFacilityStandards: expectedKeys,
+        collisions: facilityFixtureAudit.collisions || [],
+        seedStatus: facilitySeed.status,
+        seedError: facilitySeed.error || ""
+      };
+      this.facilityFixturesByKey[fixtureKey] = fixture;
+      this.facilityFixture = fixture;
+      return fixture;
     },
     async request(method, apiPath, body = undefined, requestOptions = {}) {
       const requestBody = requestOptions.body !== undefined ? requestOptions.body : body;
@@ -562,51 +636,32 @@ async function createStgRunner(options, facilityFixtureAudit = {}) {
   };
 }
 
-async function seedStgFacilityStandards({
+async function setStgFacilityStandards({
   platformBaseUrl = "",
   orgId = "",
   facilityId = "",
   jar = null,
   csrfToken = "",
-  bootstrap = {},
   desiredKeys = []
 } = {}) {
   const desired = uniqueStrings(desiredKeys);
-  const facilities = Array.isArray(bootstrap.facilities) ? bootstrap.facilities : [];
-  const facility = facilities.find((item) => item.facilityId === facilityId) || {};
-  const existing = uniqueStrings(facility.facilityStandardKeys || facility.facility_standard_keys || []);
-  const merged = uniqueStrings([...existing, ...desired]);
-  if (!desired.length) {
-    return {
-      status: "not_required",
-      seededFacilityStandards: existing,
-      error: ""
-    };
-  }
-  if (merged.length === existing.length && merged.every((key) => existing.includes(key))) {
-    return {
-      status: "already_seeded",
-      seededFacilityStandards: existing,
-      error: ""
-    };
-  }
   const response = await httpJson(`${platformBaseUrl}/v1/organizations/${encodeURIComponent(orgId)}/facilities/${encodeURIComponent(facilityId)}`, {
     method: "PATCH",
-    body: { facilityStandardKeys: merged },
+    body: { facilityStandardKeys: desired },
     jar,
     headers: { "x-csrf-token": csrfToken }
   });
   if (response.statusCode >= 400) {
     return {
       status: "failed",
-      seededFacilityStandards: existing,
+      seededFacilityStandards: [],
       error: safeErrorMessage(response.body)
     };
   }
   const updated = response.body?.facility || {};
   return {
-    status: "seeded",
-    seededFacilityStandards: uniqueStrings(updated.facilityStandardKeys || updated.facility_standard_keys || merged),
+    status: desired.length ? "seeded" : "cleared",
+    seededFacilityStandards: uniqueStrings(updated.facilityStandardKeys || updated.facility_standard_keys || desired),
     error: ""
   };
 }

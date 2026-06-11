@@ -1,6 +1,6 @@
 import { createStructuredOpenAiResponse } from "../openai/responses-structured.js";
 
-export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v7";
+export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v8";
 
 const LEGACY_EVENT_STATUSES = [
   "performed",
@@ -115,6 +115,7 @@ const feeClinicalFactsSchema = {
   additionalProperties: false,
   required: [
     "visit_type",
+    "visit_facts",
     "diagnoses",
     "clinical_events",
     "excluded_events",
@@ -136,6 +137,26 @@ const feeClinicalFactsSchema = {
           type: "string",
           enum: ["high", "medium", "low"]
         }
+      }
+    },
+    visit_facts: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "outside_prescription_issued",
+        "generic_name_prescription",
+        "prescription_evidence"
+      ],
+      properties: {
+        outside_prescription_issued: {
+          type: "string",
+          enum: ["yes", "no", "unknown"]
+        },
+        generic_name_prescription: {
+          type: "string",
+          enum: ["yes", "no", "unknown"]
+        },
+        prescription_evidence: shortString(90)
       }
     },
     diagnoses: {
@@ -304,6 +325,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "For lab events, one performed test equals one clinical_event. If a sentence lists multiple tests such as 尿一般、尿蛋白, CRPと末梢血液一般, HbA1cと血糖, split them into separate lab clinical_events with the concrete test name in each name/search_queries. Do not merge multiple test names into one lab event.",
       "Event preservation rule: if a concrete test, procedure, treatment, medication, imaging exam, management fee context, or unsupported billing-domain topic is named in the note, preserve it as a clinical_event even when implementation status is uncertain. Use certainty=ambiguous and action_status=unknown/considered/planned as appropriate; do not drop the named event into generic missing_information only.",
       "Do not infer a concrete blood test name from blood collection alone. A sentence such as 静脈採血を行った, 採血して検体提出, or 血液検体を採取 supports specimen/collection_method, but it does not by itself support CBC, 末梢血液一般, CRP, HbA1c, or other analytes unless those test names or results are explicitly written.",
+      "Set visit_facts.outside_prescription_issued=yes only when the note explicitly says an outside prescription or prescription slip was issued today, such as 院外処方, 処方箋交付, or 処方箋を交付. Set generic_name_prescription=yes only when the note explicitly says 一般名処方 or generic-name prescription. These are visit-level facts, not medication names.",
       "For medications, extract days and quantity per day only when explicitly written. Otherwise leave the fields empty and add missing_information.",
       "For lab tests and specimen-based procedures, extract specimen and collection_method only when explicit, such as blood, urine, nasal swab, nasopharyngeal swab, throat swab, sputum, stool, tissue, or puncture fluid. Leave them empty when the note only describes a finding such as 咽頭発赤 or 鼻汁 without specimen collection.",
       "For rehabilitation, home medical care, psychiatry-special therapy, anesthesia, surgery, endoscopy, dialysis, transfusion, radiation therapy, pathology, injection review-only topics, split-multi-day notes, and emergency/time add-on topics, preserve them as clinical_events with the appropriate billing_domain. Do not convert them into standard_procedure just because the text contains 行為, 指導, 管理, or 確認.",
