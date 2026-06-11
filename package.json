@@ -36,6 +36,7 @@
     "eval:fee-soap-e2e": "node scripts/evaluate_fee_soap_e2e_dataset.mjs",
     "eval:fee-soap-e2e:strict": "node scripts/evaluate_fee_soap_e2e_dataset.mjs --strict",
     "eval:fee-soap-e2e:stg": "node scripts/evaluate_fee_soap_e2e_dataset.mjs --mode stg",
+    "audit:fee-checklist-recall": "node scripts/audit_fee_checklist_menu_recall.mjs",
     "audit:fee-soap-coverage": "node scripts/audit_fee_soap_e2e_coverage.mjs",
     "build:fee-master": "PYTHONPATH=python python3 scripts/build_fee_master_official.py",
     "audit:fee-master": "PYTHONPATH=python python3 scripts/audit_fee_master_coverage.py",

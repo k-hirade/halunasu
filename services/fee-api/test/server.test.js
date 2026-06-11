@@ -1679,6 +1679,98 @@ test("does not recover checklist findings without a quoted evidence span", async
   )));
 });
 
+test("blocks billable free extraction when checklist contradicts the event", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    if (input.type === "procedure" && input.query === "尿一般") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160000310",
+          name: "尿一般",
+          points: 26,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [],
+    clinical_events: [{
+      clinical_event_id: "ce_free_urine_general",
+      type: "lab",
+      name: "尿一般",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      provider_ownership: "own_clinic",
+      source_origin: "own_clinic_record",
+      evidence: "尿一般を実施",
+      search_queries: ["尿一般"]
+    }],
+    checklist_findings: [{
+      menu_id: "lab:urine_general",
+      status: "not_in_text",
+      evidence: "",
+      reason: "本文には尿一般の記載がない"
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Checklist Conflict Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 尿一般を実施。異常なし。",
+    diagnoses: [{ name: "尿路感染症疑い" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(masterSearches.some((input) => input.query === "尿一般"), false);
+  assert.equal(receivedInput.calculationOptions?.procedure_codes, undefined);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => (
+    issue.topicCode === "clinical_event_conflict_check"
+    && /尿一般/u.test(issue.messageForStaff)
+  )));
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => (
+    item.stage === "checklist_consistency"
+    && item.outcome === "blocked"
+  )));
+});
+
 test("routes non-blood specimen collection fees to review instead of auto collection input", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);

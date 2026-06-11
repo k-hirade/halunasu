@@ -103,6 +103,10 @@ const REVIEW_TOPIC_TAXONOMY = Object.freeze({
     label: "マスター候補確認",
     issueCode: "ambiguous_master"
   }),
+  clinical_event_conflict_check: Object.freeze({
+    label: "抽出結果確認",
+    issueCode: "clinical_event_conflict"
+  }),
   pathology_unsupported: Object.freeze({
     label: "病理未対応",
     issueCode: "pathology_unsupported"
@@ -918,6 +922,20 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const reviewIssues = [];
   const clinicalTrace = [];
   let clinicalEvents = clinicalEventsFromClinicalFacts(facts);
+  const checklistContradictions = clinicalEventContradictionsFromChecklistFindings({
+    facts,
+    checklistMenu,
+    clinicalText: text,
+    existingEvents: clinicalEvents
+  });
+  if (checklistContradictions.blockedEventIds.size) {
+    clinicalEvents = clinicalEvents.filter((event) => !checklistContradictions.blockedEventIds.has(clinicalEventIdentity(event)));
+  }
+  if (checklistContradictions.reviewIssues.length) {
+    reviewIssues.push(...checklistContradictions.reviewIssues);
+    reviewWarnings.push(...checklistContradictions.reviewIssues.map((issue) => issue.messageForStaff));
+  }
+  clinicalTrace.push(...checklistContradictions.traceEvents);
   const checklistRecovery = clinicalEventsFromChecklistFindings({
     facts,
     checklistMenu,
@@ -2675,6 +2693,112 @@ function clinicalEventsFromChecklistFindings({
   };
 }
 
+const BLOCKING_CHECKLIST_CONTRADICTION_STATUSES = new Set([
+  "not_in_text",
+  "mentioned_not_performed",
+  "planned",
+  "past_or_external"
+]);
+
+function clinicalEventContradictionsFromChecklistFindings({
+  facts = {},
+  checklistMenu = [],
+  clinicalText = "",
+  existingEvents = []
+} = {}) {
+  const menuById = new Map(asArray(checklistMenu).map((item) => [String(item.menuId || item.menu_id || ""), item]));
+  const blockedEventIds = new Set();
+  const reviewIssues = [];
+  const traceEvents = [];
+  for (const finding of asArray(facts?.checklist_findings)) {
+    const menuId = String(finding?.menu_id || finding?.menuId || "").trim();
+    const status = normalizeChecklistFindingStatus(finding?.status);
+    const menu = menuById.get(menuId);
+    if (!menu) {
+      continue;
+    }
+    const matchingEvents = asArray(existingEvents).filter((event) => (
+      isBillableClinicalEvent(event)
+      && clinicalEventMatchesChecklistMenu(event, menu)
+    ));
+    if (!matchingEvents.length) {
+      continue;
+    }
+    if (status === "unclear") {
+      for (const event of matchingEvents) {
+        traceEvents.push(clinicalTraceEvent({
+          stage: "checklist_consistency",
+          event,
+          categoryLabel: menu.label || clinicalEventName(event),
+          outcome: "warning",
+          message: "checklist_unclear_for_billable_event"
+        }));
+      }
+      continue;
+    }
+    if (!BLOCKING_CHECKLIST_CONTRADICTION_STATUSES.has(status)) {
+      continue;
+    }
+    const evidence = String(finding?.evidence || "").trim();
+    const evidenceUsable = status === "not_in_text"
+      ? true
+      : checklistFindingEvidenceIsUsable({ status, evidence, clinicalText });
+    for (const event of matchingEvents) {
+      const eventId = clinicalEventIdentity(event);
+      blockedEventIds.add(eventId);
+      const issue = reviewIssueFromChecklistContradiction({
+        event,
+        menu,
+        finding,
+        evidenceUsable
+      });
+      reviewIssues.push(issue);
+      traceEvents.push(clinicalTraceEvent({
+        stage: "checklist_consistency",
+        event,
+        categoryLabel: menu.label || clinicalEventName(event),
+        outcome: "blocked",
+        message: `checklist_contradiction_${status}${evidenceUsable ? "" : "_without_quoted_evidence"}`
+      }));
+    }
+  }
+  return {
+    blockedEventIds,
+    reviewIssues: dedupeObjects(reviewIssues, (issue) => issue.reviewIssueId),
+    traceEvents
+  };
+}
+
+function reviewIssueFromChecklistContradiction({ event = {}, menu = {}, finding = {}, evidenceUsable = true } = {}) {
+  const name = clinicalEventName(event) || menu.label || "算定候補";
+  const status = normalizeChecklistFindingStatus(finding?.status);
+  const statusLabel = checklistFindingStatusLabel(status);
+  const evidence = String(finding?.evidence || "").trim() || clinicalEventEvidence(event);
+  const evidenceNote = evidenceUsable ? "" : " チェックリスト側の根拠引用が本文と一致しないため、特に確認が必要です。";
+  const messageForStaff = `抽出結果確認: ${name}は自由抽出では今回実施として抽出されましたが、チェックリストでは「${statusLabel}」と判定されています。自動算定には入れず、カルテ上の実施事実を確認してください。${evidenceNote}`;
+  return withReviewTopic({
+    reviewIssueId: `issue_${candidateIdPart([clinicalEventIdentity(event), menu.menuId || menu.menu_id, status, evidence].join("_"))}`,
+    issueCode: "clinical_event_conflict",
+    severity: "warning",
+    title: "抽出結果確認",
+    messageForStaff,
+    relatedClinicalEventId: clinicalEventIdentity(event),
+    evidence,
+    source: "checklist_consistency"
+  }, "clinical_event_conflict_check");
+}
+
+function checklistFindingStatusLabel(status = "") {
+  return {
+    performed_today: "今回実施",
+    planned: "予定・依頼",
+    past_or_external: "過去または他院",
+    mentioned_not_performed: "未実施",
+    not_in_text: "本文に記載なし",
+    unclear: "不明"
+  }[status] || "不明";
+}
+
 function normalizeChecklistFindingStatus(value = "") {
   const status = String(value || "").trim();
   return [
@@ -3253,6 +3377,10 @@ function isBillableClinicalEvent(event = {}) {
 
 function clinicalEventName(event = {}) {
   return String(event?.name || "").trim();
+}
+
+function clinicalEventIdentity(event = {}) {
+  return String(event?.clinicalEventId || event?.clinical_event_id || event?.eventId || event?.event_id || "").trim();
 }
 
 function clinicalEventEvidence(event = {}) {
@@ -4584,7 +4712,7 @@ function clinicalEventAliasQueries(event = {}) {
   return [];
 }
 
-function buildClinicalChecklistMenu(text = "") {
+export function buildClinicalChecklistMenu(text = "") {
   const clinicalOnlyText = splitClinicalSentences(text)
     .filter((sentence) => !isClinicalMetaSentence(sentence))
     .join("\n");
