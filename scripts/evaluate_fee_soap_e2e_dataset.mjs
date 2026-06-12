@@ -53,6 +53,18 @@ const reportDir = reportDirArgIndex >= 0 && process.argv[reportDirArgIndex + 1]
 const defaultNow = new Date("2026-06-07T00:00:00.000Z");
 const localSessionSecret = "fee-soap-e2e-local-session-secret";
 const args = parseArgs(process.argv.slice(2));
+const DIAGNOSTIC_TRACE_STAGES = new Set([
+  "lab_evidence_guard",
+  "checklist_consistency",
+  "checklist_recall",
+  "visit_facts_consistency",
+  "review_only_domain_gate",
+  "management_review_gate",
+  "case_level_lab_collection",
+  "lab_rule_expansion",
+  "non_billable_observation_skip",
+  "clinical_fact_review_flag_suppressed"
+]);
 
 if (args.help) {
   printHelp();
@@ -800,25 +812,16 @@ function actualView({ feeSession, calculationResult, reviewItems, candidateWorkb
       billingDomain: event.billing_domain || event.billingDomain || "",
       certainty: event.certainty || "",
       source: event.source || "",
+      searchTerms: Array.isArray(event.searchTerms) ? event.searchTerms.slice(0, 12)
+        : Array.isArray(event.search_terms) ? event.search_terms.slice(0, 12)
+          : Array.isArray(event.search_queries) ? event.search_queries.slice(0, 12)
+            : [],
       evidence: String(event.evidence || event.evidence_text || "").slice(0, 160)
     })),
     reviewText,
     progress: feeSession.calculationProgress || null
   };
 }
-
-const DIAGNOSTIC_TRACE_STAGES = new Set([
-  "lab_evidence_guard",
-  "checklist_consistency",
-  "checklist_recall",
-  "visit_facts_consistency",
-  "review_only_domain_gate",
-  "management_review_gate",
-  "case_level_lab_collection",
-  "lab_rule_expansion",
-  "non_billable_observation_skip",
-  "clinical_fact_review_flag_suppressed"
-]);
 
 function traceStageCounts(trace = []) {
   const counts = {};

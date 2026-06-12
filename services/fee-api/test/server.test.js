@@ -4154,6 +4154,139 @@ test("does not divert ordinary lab specimen submission or symptom timing into re
   )));
 });
 
+test("filters lab search-query concept smuggling without rejecting the anchored lab event", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    if (input.type === "procedure" && input.query === "尿一般") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160000310",
+          name: "尿一般",
+          points: 26,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    if (input.type === "procedure" && input.query === "尿蛋白") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160000410",
+          name: "尿蛋白",
+          points: 7,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    if (input.type === "procedure" && input.query === "末梢血液一般検査") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160008010",
+          name: "末梢血液一般検査",
+          points: 21,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 26,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "膀胱炎", status: "confirmed", evidence: "膀胱炎" }],
+    clinical_events: [
+      {
+        type: "lab",
+        billing_domain: "standard_lab",
+        name: "尿定性（尿一般）",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "abnormal",
+        certainty: "explicit",
+        section: "O",
+        evidence: "院内で尿定性を実施。白血球反応陽性。",
+        search_queries: ["尿一般", "尿蛋白"],
+        specimen: "尿",
+        collection_method: "院内尿検体"
+      },
+      {
+        type: "lab",
+        billing_domain: "standard_lab",
+        name: "血液検査",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "unknown",
+        certainty: "ambiguous",
+        section: "O",
+        evidence: "静脈採血も施行し、血液検体を外注へ提出。",
+        search_queries: ["末梢血液一般検査"],
+        specimen: "血液",
+        collection_method: "静脈採血"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Lab Query Filter Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "再診。院内で尿定性を実施。白血球反応陽性。静脈採血も施行し、血液検体を外注へ提出。",
+    diagnoses: [{ name: "膀胱炎" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160000310"]);
+  assert.equal(masterSearches.some((search) => search.query === "尿蛋白"), false);
+  assert.equal(masterSearches.some((search) => search.query === "末梢血液一般検査"), false);
+});
+
 test("does not infer B-V from venous thrombosis history or serum value mention", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -4386,6 +4519,100 @@ test("maps taxonomy-labelled management review events before target disease fall
   assert.equal(reviewIssues.filter((issue) => issue.topicLabel === "同日重複確認").length, 1);
   assert.equal(reviewIssues.filter((issue) => issue.topicLabel === "対象疾患確認").length, 1);
   assert.equal(calculation.body.candidateWorkbench.proposals.some((proposal) => /同日重複|初診\/再診/u.test(proposal.title || "")), false);
+});
+
+test("emits structural review topics for unresolved procedure, injection, and management events", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.searchMaster = async (input) => ({ query: input.query, type: input.type, items: [] });
+  stores.feeCalculator.calculate = async () => ({
+    provider: "test_fee_engine",
+    source: "test",
+    status: "completed",
+    totalPoints: 75,
+    lineItems: [],
+    warnings: []
+  });
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", confidence: "medium", evidence: "再診" },
+    diagnoses: [{ name: "処置後状態", status: "active", evidence: "処置後状態" }],
+    clinical_events: [
+      {
+        type: "procedure",
+        billing_domain: "standard_procedure",
+        name: "角膜異物除去",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "explicit",
+        section: "O",
+        evidence: "右眼角膜の異物を点眼麻酔下に除去。",
+        body_site: "右眼角膜",
+        search_queries: ["角膜異物除去"]
+      },
+      {
+        type: "injection",
+        billing_domain: "standard_injection",
+        name: "補液",
+        action_status: "administered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "O",
+        evidence: "脱水補正目的で補液を行ったが、経路と薬剤量の記録を確認する。",
+        search_queries: ["補液"]
+      },
+      {
+        type: "management",
+        billing_domain: "standard_management",
+        name: "慢性疾患管理",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "P",
+        evidence: "療養上の注意と継続管理方針を説明した。",
+        review_reason: "管理料条件の確認"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Structural Topic Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "右眼角膜の異物を点眼麻酔下に除去。脱水補正目的で補液を行ったが、経路と薬剤量の記録を確認する。療養上の注意と継続管理方針を説明した。",
+    diagnoses: [{ name: "処置後状態" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  const labels = calculation.body.calculationResult.reviewIssues.map((issue) => issue.topicLabel);
+  assert.equal(calculation.statusCode, 201);
+  assert.ok(labels.includes("手技内容確認"));
+  assert.ok(labels.includes("処置部位確認"));
+  assert.ok(labels.includes("注射経路確認"));
+  assert.ok(labels.includes("薬剤量確認"));
+  assert.ok(labels.includes("療養計画確認"));
 });
 
 test("merges deterministic performed imaging when structured facts miss it", async () => {

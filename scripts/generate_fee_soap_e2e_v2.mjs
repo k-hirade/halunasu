@@ -88,6 +88,7 @@ const dataset = {
     realismAxes: item.realismAxes,
     ...(item.variantOf ? { variantOf: item.variantOf } : {}),
     ...(item.styleProfile ? { styleProfile: item.styleProfile } : {}),
+    ...(Array.isArray(item.knownProductGaps) && item.knownProductGaps.length ? { knownProductGaps: item.knownProductGaps } : {}),
     distractors: item.distractors || [],
     chart: { soap: item.soap, standard: chartStandard(item.soap) },
     status: "draft_pending_medical_review",

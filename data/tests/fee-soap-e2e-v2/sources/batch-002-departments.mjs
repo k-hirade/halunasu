@@ -371,6 +371,7 @@ export const cases = [
     title: "放射線科 胸部XP再診(電子画像管理あり施設)",
     department: "radiology",
     facilityFixtureKey: "clinic_imaging",
+    knownProductGaps: ["facility_image_profile_electronic_image_management"],
     difficultyLevel: "L2",
     patient: { age: 72, sex: "male" },
     encounter: { setting: "outpatient", visitType: "revisit", serviceDate: "2026-07-12" },
