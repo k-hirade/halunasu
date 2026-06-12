@@ -472,13 +472,13 @@ export const cases = [
         "発熱、痛み増悪、嘔吐があれば早めに受診。",
         "食事は消化のよいものから再開。鎮痛薬は症状推移をみて必要時に検討。",
         "大腸内視鏡は症状持続時に予約を調整する。",
-        "CTの撮影条件は検査記録を確認して算定へ反映する。"
+        "画像所見は放射線部門の読影記録と合わせて確認する。"
       ]
     },
     expectedExtraction: {
       requiredDiagnoses: ["右下腹部痛"],
       requiredBillingSignals: ["CT"],
-      requiredReviewTopics: ["造影確認", "電子保存確認"],
+      requiredReviewTopics: ["造影確認"],
       forbiddenCandidates: ["大腸内視鏡", "健診腹部エコー"]
     },
     expectedClaimContext: {

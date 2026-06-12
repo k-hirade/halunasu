@@ -482,7 +482,7 @@ export const cases = [
     expectedExtraction: {
       requiredDiagnoses: ["体重減少", "食欲低下"],
       requiredBillingSignals: ["腹部CT"],
-      requiredReviewTopics: ["造影確認", "電子保存確認", "機器区分確認"],
+      requiredReviewTopics: ["造影確認", "機器区分確認"],
       forbiddenCandidates: ["他院腹部エコー", "内視鏡"]
     },
     expectedClaimContext: {

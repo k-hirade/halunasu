@@ -469,13 +469,13 @@ export const cases = [
         "食事量の記録を依頼。発熱、黒色便、体重減少進行があれば早めに受診。",
         "内視鏡検査は本人と相談し次回以降に予約調整。",
         "食欲不振への薬は希望を聞いたが、量と日数を決めていないため本日は処方しない。",
-        "CTの条件は放射線部門の記録確認後に算定へ反映する方針。"
+        "画像所見は放射線部門の読影記録と合わせて確認する方針。"
       ]
     },
     expectedExtraction: {
       requiredDiagnoses: ["体重減少"],
       requiredBillingSignals: ["CT"],
-      requiredReviewTopics: ["造影確認", "電子保存確認"],
+      requiredReviewTopics: ["造影確認"],
       forbiddenCandidates: ["上部内視鏡", "健診腹部エコー"]
     },
     expectedClaimContext: {

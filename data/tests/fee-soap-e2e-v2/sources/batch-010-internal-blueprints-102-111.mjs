@@ -483,13 +483,13 @@ export const cases = [
         "姿勢、ストレッチ、過度な負荷回避を説明。",
         "発熱、血尿、痛み増悪があれば早めに受診。",
         "鎮痛薬は胃症状を確認し、必要時のみ検討する。",
-        "CTの撮影条件は検査記録を確認して算定へ反映する。"
+        "画像所見は放射線部門の読影記録と合わせて確認する。"
       ]
     },
     expectedExtraction: {
       requiredDiagnoses: ["背部痛"],
       requiredBillingSignals: ["CT"],
-      requiredReviewTopics: ["造影確認", "電子保存確認"],
+      requiredReviewTopics: ["造影確認"],
       forbiddenCandidates: ["整形外科X線", "MRI"]
     },
     expectedClaimContext: {

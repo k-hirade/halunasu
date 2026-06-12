@@ -30,6 +30,7 @@ import { createFeeStoreFromEnv } from "./store/create-store.js";
 
 const PRODUCT_ID = "fee";
 const FEE_PRODUCT_ROLES = ["admin", "doctor", "nurse", "medical_clerk", "viewer"];
+const DEFAULT_OPENAI_FEE_CLINICAL_TIMEOUT_MS = 60000;
 
 export function createFeeApiServer(options = {}) {
   const startedAt = new Date();
@@ -1026,7 +1027,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     openAiTimeoutMs: Number(
       input.openAiFeeClinicalTimeoutMs
       || process.env.OPENAI_FEE_CLINICAL_TIMEOUT_MS
-      || 0
+      || DEFAULT_OPENAI_FEE_CLINICAL_TIMEOUT_MS
     ),
     priorSessions,
     clinicalFactsExtractor: input.clinicalFactsExtractor

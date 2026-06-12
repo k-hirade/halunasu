@@ -52,7 +52,7 @@ const OTHER_PROVIDER_DPC_CONTEXT_PATTERN = /DPC.{0,16}(?:病院|医療機関|他
 // Keep this intentionally narrow so ordinary clinical phrases are not dropped.
 const SYNTHETIC_CLINICAL_META_SENTENCE_PATTERN = /(当日確認した主な診療内容|確認すべき論点|点数に直結する名称|会計前に当日実施した内容|診療内容は最終確認|expectedClaimContext)/u;
 
-export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v9";
+export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v10";
 
 const REVIEW_TOPIC_TAXONOMY = Object.freeze({
   visit_type_check: Object.freeze({
@@ -90,6 +90,10 @@ const REVIEW_TOPIC_TAXONOMY = Object.freeze({
   electronic_image_management_check: Object.freeze({
     label: "電子保存確認",
     issueCode: "electronic_image_management_unknown"
+  }),
+  equipment_kind_check: Object.freeze({
+    label: "機器区分確認",
+    issueCode: "equipment_kind_unknown"
   }),
   notification_check: Object.freeze({
     label: "届出確認",
@@ -343,6 +347,9 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   }
   if (/電子(?:画像管理|保存|的.*保存)|電子.*管理/u.test(text) && /(確認|未確定|不明|有無|必要)/u.test(text)) {
     return "electronic_image_management_check";
+  }
+  if (/(?:機器区分|装置区分|撮影装置|ct_equipment_kind|mri_equipment_kind)/iu.test(text) && /(確認|未確定|不明|不足|必要|なし|無い|ない)/u.test(text)) {
+    return "equipment_kind_check";
   }
   if (/D026|検査判断料|判断料/u.test(text)) {
     return "judgement_fee_check";
@@ -2473,7 +2480,7 @@ function inferImagingOrders(text) {
         if (equipmentKind) {
           order.mri_equipment_kind = equipmentKind;
         } else {
-          reviewWarnings.push("MRI検査は機器区分がカルテ本文から確定できないため、点数確定前に機器区分を確認してください。");
+          reviewWarnings.push("機器区分確認: MRI検査は機器区分が施設プロファイルまたはカルテ本文から確定できないため、機器区分を確認してください。");
         }
         orders.push(order);
       }
@@ -2501,7 +2508,7 @@ function inferImagingOrders(text) {
         if (equipmentKind) {
           order.ct_equipment_kind = equipmentKind;
         } else {
-          reviewWarnings.push("CT検査は機器区分がカルテ本文から確定できないため、点数確定前に機器区分を確認してください。");
+          reviewWarnings.push("機器区分確認: CT検査は機器区分が施設プロファイルまたはカルテ本文から確定できないため、機器区分を確認してください。");
         }
         orders.push(order);
       }
@@ -2929,13 +2936,16 @@ function clinicalEventsFromChecklistFindings({
       });
       continue;
     }
-    if (existing.some((event) => clinicalEventMatchesChecklistMenu(event, menu))) {
+    const matchedExisting = existing.find((event) => clinicalEventMatchesChecklistMenu(event, menu));
+    if (matchedExisting) {
+      const enriched = enrichClinicalEventWithChecklistMenu(matchedExisting, menu);
       traceEvents.push({
         stage: "checklist_recall",
-        outcome: "already_extracted",
+        outcome: enriched ? "enriched_existing" : "already_extracted",
         menuId,
         status,
-        label: menu.label || ""
+        label: menu.label || "",
+        eventName: clinicalEventName(matchedExisting)
       });
       continue;
     }
@@ -3102,13 +3112,23 @@ function clinicalEventMatchesChecklistMenu(event = {}, menu = {}) {
     if (menu.kind === "domain") {
       return true;
     }
-    if (menuType && menuType !== eventType) {
+    if (menuType && !clinicalChecklistEventTypesEquivalent(menuType, eventType)) {
       return false;
     }
   }
   const eventName = normalizeClinicalText(clinicalEventName(event));
+  const eventText = normalizeClinicalText([
+    clinicalEventName(event),
+    clinicalEventEvidence(event),
+    ...asArray(event?.search_queries),
+    ...asArray(event?.searchQueries)
+  ].join(" "));
   const label = normalizeClinicalText(menu.label || menu.name || "");
   if (label && eventName.includes(label)) {
+    return true;
+  }
+  const matchTerms = uniqueStrings(asArray(menu.matchTerms)).map((term) => normalizeClinicalText(term)).filter(Boolean);
+  if (matchTerms.length && matchTerms.some((term) => eventText.includes(term))) {
     return true;
   }
   if (menu.kind === "lab" && labConceptsFromClinicalEventName(event).some((concept) => concept.key === menu.conceptKey)) {
@@ -3119,6 +3139,56 @@ function clinicalEventMatchesChecklistMenu(event = {}, menu = {}) {
     return modality && modality === menu.modality;
   }
   return false;
+}
+
+function clinicalChecklistEventTypesEquivalent(a = "", b = "") {
+  const left = String(a || "").trim();
+  const right = String(b || "").trim();
+  if (!left || !right || left === right) {
+    return true;
+  }
+  const groups = [
+    new Set(["procedure", "treatment"]),
+    new Set(["exam", "lab"]),
+    new Set(["exam", "imaging"])
+  ];
+  return groups.some((group) => group.has(left) && group.has(right));
+}
+
+function enrichClinicalEventWithChecklistMenu(event = {}, menu = {}) {
+  if (!event || typeof event !== "object") {
+    return false;
+  }
+  const additions = uniqueStrings([
+    menu.query,
+    menu.name,
+    menu.label,
+    ...asArray(menu.searchQueries),
+    ...asArray(menu.search_queries)
+  ]).filter(Boolean);
+  if (!additions.length) {
+    return false;
+  }
+  const current = uniqueStrings([
+    ...asArray(event.search_queries),
+    ...asArray(event.searchQueries)
+  ]);
+  const merged = uniqueStrings([...current, ...additions]).slice(0, 12);
+  const changed = merged.length !== current.length || merged.some((value, index) => value !== current[index]);
+  if (changed) {
+    event.search_queries = merged;
+    event.searchQueries = merged;
+  }
+  const menuIds = uniqueStrings([
+    ...asArray(event.checklistMenuIds),
+    ...asArray(event.checklist_menu_ids),
+    menu.menuId || menu.menu_id
+  ]).filter(Boolean);
+  if (menuIds.length) {
+    event.checklistMenuIds = menuIds;
+    event.checklist_menu_ids = menuIds;
+  }
+  return changed;
 }
 
 function checklistFindingToClinicalEvent({ finding = {}, menu = {}, index = 0 } = {}) {
@@ -4162,6 +4232,10 @@ function reviewIssuesFromManagementClinicalEvent(event = {}, { categoryLabel = "
     source: "management_review_gate",
     policy
   }, "target_disease_check");
+  const issues = [targetDiseaseIssue];
+  if (!carePlanReviewNeededForManagementClinicalEvent(event)) {
+    return issues;
+  }
   const carePlanMessage = `療養計画確認: ${name || categoryLabel}は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。`;
   const carePlanIssue = withReviewTopic({
     reviewIssueId: `issue_${candidateIdPart([event?.clinicalEventId, "care_plan_check", carePlanMessage].join("_"))}`,
@@ -4175,7 +4249,20 @@ function reviewIssuesFromManagementClinicalEvent(event = {}, { categoryLabel = "
     source: "management_review_gate",
     policy
   }, "care_plan_check");
-  return [targetDiseaseIssue, carePlanIssue];
+  issues.push(carePlanIssue);
+  return issues;
+}
+
+function carePlanReviewNeededForManagementClinicalEvent(event = {}) {
+  const text = normalizeClinicalText([
+    clinicalEventName(event),
+    clinicalEventEvidence(event),
+    event?.review_reason,
+    event?.reviewReason,
+    ...asArray(event?.search_queries),
+    ...asArray(event?.searchQueries)
+  ].join(" "));
+  return /(療養|計画|指導|説明|教育|管理方針|継続管理|生活指導|服薬指導|栄養指導|運動指導|自己管理|治療方針|注意事項)/u.test(text);
 }
 
 function reviewIssuesFromClinicalWarnings(event = {}, warnings = [], { source = "clinical_event_rule" } = {}) {
@@ -4359,7 +4446,7 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator, options 
     if (equipmentKind) {
       order.mri_equipment_kind = equipmentKind;
     } else {
-      reviewWarnings.push("MRI検査は機器区分がカルテ本文から確定できないため、点数確定前に機器区分を確認してください。");
+      reviewWarnings.push("機器区分確認: MRI検査は機器区分が施設プロファイルまたはカルテ本文から確定できないため、機器区分を確認してください。");
     }
     return {
       order,
@@ -4389,7 +4476,7 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator, options 
     if (equipmentKind) {
       order.ct_equipment_kind = equipmentKind;
     } else {
-      reviewWarnings.push("CT検査は機器区分がカルテ本文から確定できないため、点数確定前に機器区分を確認してください。");
+      reviewWarnings.push("機器区分確認: CT検査は機器区分が施設プロファイルまたはカルテ本文から確定できないため、機器区分を確認してください。");
     }
     return {
       order,
@@ -5336,7 +5423,8 @@ export function buildClinicalChecklistMenu(text = "") {
       query: item.query || item.name || label,
       searchQueries: uniqueStrings(asArray(item.searchQueries)),
       modality: item.modality || "none",
-      conceptKey: item.conceptKey || ""
+      conceptKey: item.conceptKey || "",
+      matchTerms: uniqueStrings(asArray(item.matchTerms))
     });
   };
 
@@ -5440,14 +5528,48 @@ const PROCEDURE_CHECKLIST_DEFINITIONS = Object.freeze([
     label: "熱傷処置",
     query: "熱傷処置",
     aliases: ["熱傷処置（１００ｃｍ２未満）", "熱傷処置"],
-    pattern: /熱傷|火傷|やけど|熱傷処置/u
+    pattern: /熱傷|火傷|やけど|熱傷処置/u,
+    matchTerms: ["熱傷", "火傷", "やけど"]
   }),
   Object.freeze({
     key: "wound_treatment",
     label: "創傷処置",
     query: "創傷処置",
     aliases: ["創傷処置（１００ｃｍ２未満）", "創傷処置"],
-    pattern: /創傷|創部(?:洗浄|消毒|処置|保護)|創傷処置|縫合後処置/u
+    pattern: /創傷|創部(?:洗浄|消毒|処置|保護)|創傷処置|縫合後処置/u,
+    matchTerms: ["創傷", "創部", "切創", "裂創"]
+  }),
+  Object.freeze({
+    key: "suture_or_wound_closure",
+    label: "創傷処理・縫合",
+    query: "創傷処理",
+    aliases: ["創傷処理", "縫合処置"],
+    pattern: /(?:創|裂創|切創|挫創).{0,16}(?:縫合|閉鎖)|縫合処置|創傷処理/u,
+    matchTerms: ["縫合", "創傷処理", "裂創", "切創"]
+  }),
+  Object.freeze({
+    key: "incision_drainage",
+    label: "切開排膿処置",
+    query: "切開排膿",
+    aliases: ["皮膚切開術", "切開排膿"],
+    pattern: /(?:膿瘍|感染粉瘤|化膿).{0,16}(?:切開|排膿)|切開排膿/u,
+    matchTerms: ["膿瘍", "切開", "排膿"]
+  }),
+  Object.freeze({
+    key: "cerumen_removal",
+    label: "耳垢栓塞除去",
+    query: "耳垢栓塞除去",
+    aliases: ["耳垢栓塞除去", "耳処置"],
+    pattern: /耳垢|耳垢栓塞|耳処置/u,
+    matchTerms: ["耳垢", "耳処置"]
+  }),
+  Object.freeze({
+    key: "nasal_treatment",
+    label: "鼻処置",
+    query: "鼻処置",
+    aliases: ["鼻処置", "鼻腔処置"],
+    pattern: /鼻処置|鼻腔処置|鼻洗浄/u,
+    matchTerms: ["鼻処置", "鼻腔処置", "鼻洗浄"]
   })
 ]);
 
@@ -5462,7 +5584,8 @@ function procedureChecklistItems(text = "") {
       billingDomain: "standard_procedure",
       name: definition.label,
       query: definition.query,
-      searchQueries: [definition.query, ...definition.aliases]
+      searchQueries: [definition.query, ...definition.aliases],
+      matchTerms: definition.matchTerms || []
     }));
 }
 
@@ -5532,6 +5655,7 @@ function reviewOnlyDomainChecklistItems(text = "") {
     { domain: "dialysis", label: "透析", pattern: /透析|血液透析|腹膜透析/u },
     { domain: "transfusion", label: "輸血", pattern: /輸血|赤血球液|血小板製剤|血漿/u },
     { domain: "radiation_therapy", label: "放射線治療", pattern: /放射線治療|照射|線量/u },
+    { domain: "injection_review_only", label: "注射", pattern: /注射|皮下注|筋注|静注|点滴|投与経路/u },
     { domain: "emergency_time_addon", label: "救急・時間外加算", pattern: /救急加算|時間外加算|休日加算|深夜加算|受付時刻/u }
   ];
   return definitions

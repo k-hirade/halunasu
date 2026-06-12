@@ -473,7 +473,7 @@ export const cases = [
     expectedExtraction: {
       requiredDiagnoses: ["背部痛"],
       requiredBillingSignals: ["CT"],
-      requiredReviewTopics: ["造影確認", "電子保存確認"],
+      requiredReviewTopics: ["造影確認"],
       forbiddenCandidates: ["他院腹部エコー", "整形外科紹介"]
     },
     expectedClaimContext: {

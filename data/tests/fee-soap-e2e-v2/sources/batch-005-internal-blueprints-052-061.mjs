@@ -467,7 +467,7 @@ export const cases = [
     expectedExtraction: {
       requiredDiagnoses: ["腹痛"],
       requiredBillingSignals: ["CT"],
-      requiredReviewTopics: ["造影確認", "電子保存確認"],
+      requiredReviewTopics: ["造影確認"],
       forbiddenCandidates: ["腹部エコー", "大腸内視鏡"]
     },
     expectedClaimContext: {

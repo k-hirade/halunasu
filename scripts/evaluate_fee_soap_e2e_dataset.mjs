@@ -52,6 +52,8 @@ const reportDir = reportDirArgIndex >= 0 && process.argv[reportDirArgIndex + 1]
   : path.join(repoRoot, "data/tests/fee-soap-e2e/reports");
 const defaultNow = new Date("2026-06-07T00:00:00.000Z");
 const localSessionSecret = "fee-soap-e2e-local-session-secret";
+const DEFAULT_OPENAI_FEE_CLINICAL_TIMEOUT_MS = 60000;
+const STABILITY_CASE_PASS_THRESHOLD = 0.9;
 const args = parseArgs(process.argv.slice(2));
 const DIAGNOSTIC_TRACE_STAGES = new Set([
   "lab_evidence_guard",
@@ -82,6 +84,9 @@ const facilityFixtureAudit = buildFacilityFixtureAudit(selectedCases);
 const runner = args.mode === "stg"
   ? await createStgRunner(args, facilityFixtureAudit)
   : await createLocalRunner(args, facilityFixtureAudit);
+if (args.warmup !== false) {
+  await runner.warmUp?.();
+}
 const results = [];
 
 for (const item of selectedCases) {
@@ -547,7 +552,7 @@ async function createLocalRunner(options, facilityFixtureAudit = {}) {
         openAiApiKey: options.openai ? process.env.OPENAI_API_KEY : "",
         openAiFeeClinicalModel: options.openai ? (process.env.OPENAI_FEE_CLINICAL_MODEL || process.env.OPENAI_FACT_MODEL) : "",
         openAiFeeClinicalReasoningEffort: options.openai ? (process.env.OPENAI_FEE_CLINICAL_REASONING_EFFORT || "minimal") : "minimal",
-        openAiFeeClinicalTimeoutMs: Number(process.env.OPENAI_FEE_CLINICAL_TIMEOUT_MS || 0)
+        openAiFeeClinicalTimeoutMs: Number(process.env.OPENAI_FEE_CLINICAL_TIMEOUT_MS || DEFAULT_OPENAI_FEE_CLINICAL_TIMEOUT_MS)
       });
       return options.verboseApiLogs ? execute() : withSuppressedConsoleInfo(execute);
     },
@@ -649,6 +654,23 @@ async function createStgRunner(options, facilityFixtureAudit = {}) {
         jar,
         headers: requestOptions.csrf ? { "x-csrf-token": csrfToken } : {}
       });
+    },
+    async warmUp() {
+      const started = Date.now();
+      const checks = [];
+      for (const apiPath of ["/healthz", "/readyz"]) {
+        try {
+          const response = await httpJson(`${feeBaseUrl}${apiPath}`, { method: "GET", jar });
+          checks.push({ apiPath, statusCode: response.statusCode });
+        } catch (error) {
+          checks.push({ apiPath, statusCode: 0, error: safeExceptionMessage(error) });
+        }
+      }
+      this.warmup = {
+        durationMs: Date.now() - started,
+        checks
+      };
+      return this.warmup;
     },
     close() {}
   };
@@ -1032,10 +1054,13 @@ function unexpectedCandidateCodes(item, actual) {
 }
 
 function emptyCaseResult(item) {
+  const knownProductGaps = asStrings(item.knownProductGaps);
   return {
     caseId: item.caseId,
     assertionLevel: item.expectedCalculation?.assertionLevel || null,
     difficultyLevel: item.difficultyLevel || null,
+    knownProductGaps,
+    hasKnownProductGap: knownProductGaps.length > 0,
     status: "failed",
     failedStage: null,
     failureMessages: [],
@@ -1099,12 +1124,50 @@ function failCase(caseResult, stage, message, caseStartedAt = null) {
 
 function buildSummary(results, meta) {
   const failed = results.filter((item) => item.status !== "passed");
+  const knownGapResults = results.filter((item) => item.hasKnownProductGap);
+  const failedKnownGapResults = failed.filter((item) => item.hasKnownProductGap);
+  const failedWithoutKnownGaps = failed.filter((item) => !item.hasKnownProductGap);
   const passed = results.length - failed.length;
+  const clinicalStructuringSources = countBy(results, (item) => (
+    item.durationMs?.clinicalStructuringSource
+    || item.actual?.clinicalExtractionVersion?.source
+    || "unknown"
+  ));
   return {
     ...meta,
+    headline: {
+      passed,
+      failed: failedWithoutKnownGaps.length,
+      knownGap: failedKnownGapResults.length,
+      stabilityEscalationThreshold: STABILITY_CASE_PASS_THRESHOLD
+    },
     passed,
     failed: failed.length,
+    failedWithoutKnownProductGaps: failedWithoutKnownGaps.length,
     passRate: round(passed / Math.max(1, results.length)),
+    effectivePassRateExcludingKnownProductGaps: round(passed / Math.max(1, results.length - failedKnownGapResults.length)),
+    clinicalStructuringSources,
+    clinicalStructuringFallbackRate: round(Number(clinicalStructuringSources.rules_fallback || 0) / Math.max(1, results.length)),
+    knownProductGaps: {
+      totalCases: knownGapResults.length,
+      passed: knownGapResults.filter((item) => item.status === "passed").length,
+      failed: failedKnownGapResults.length,
+      failedCaseIds: failedKnownGapResults.map((item) => item.caseId),
+      byGap: countGroups(
+        knownGapResults.flatMap((item) => item.knownProductGaps.map((gap) => ({
+          gap,
+          status: item.status,
+          caseId: item.caseId
+        }))),
+        (item) => item.gap,
+        (items) => ({
+          total: items.length,
+          passed: items.filter((item) => item.status === "passed").length,
+          failed: items.filter((item) => item.status !== "passed").length,
+          failedCaseIds: items.filter((item) => item.status !== "passed").map((item) => item.caseId)
+        })
+      )
+    },
     byAssertion: countGroups(results, (item) => item.assertionLevel, (items) => ({
       total: items.length,
       passed: items.filter((item) => item.status === "passed").length,
@@ -1155,11 +1218,34 @@ function markdownReport(report) {
   lines.push("");
   lines.push("## Summary");
   lines.push("");
+  lines.push(`- Headline passed: ${report.summary.headline?.passed ?? report.summary.passed}`);
+  lines.push(`- Headline failed: ${report.summary.headline?.failed ?? report.summary.failedWithoutKnownProductGaps}`);
+  lines.push(`- Headline knownGap: ${report.summary.headline?.knownGap ?? 0}`);
   lines.push(`- Total: ${report.summary.selected}`);
   lines.push(`- Passed: ${report.summary.passed}`);
   lines.push(`- Failed: ${report.summary.failed}`);
+  lines.push(`- Failed excluding known product gaps: ${report.summary.failedWithoutKnownProductGaps}`);
   lines.push(`- Pass rate: ${Math.round(report.summary.passRate * 100)}%`);
+  lines.push(`- Effective pass rate excluding known gaps: ${Math.round((report.summary.effectivePassRateExcludingKnownProductGaps || 0) * 100)}%`);
   lines.push(`- Avg duration: ${report.summary.avgDurationMs}ms`);
+  lines.push(`- Clinical structuring sources: ${Object.entries(report.summary.clinicalStructuringSources || {}).map(([source, count]) => `${source}=${count}`).join(", ") || "-"}`);
+  lines.push(`- Rules fallback rate: ${Math.round((report.summary.clinicalStructuringFallbackRate || 0) * 100)}%`);
+  lines.push(`- P2 verifier/self-consistency trigger: case stability < ${Math.round((report.summary.headline?.stabilityEscalationThreshold || STABILITY_CASE_PASS_THRESHOLD) * 100)}%`);
+  if (report.summary.knownProductGaps?.totalCases) {
+    lines.push(`- Known product gap cases: ${report.summary.knownProductGaps.totalCases} (failed: ${report.summary.knownProductGaps.failed})`);
+  }
+  lines.push("");
+  lines.push("## Known Product Gaps");
+  lines.push("");
+  if (report.summary.knownProductGaps?.totalCases) {
+    lines.push("| gap | total | passed | failed | failed cases |");
+    lines.push("| --- | ---: | ---: | ---: | --- |");
+    for (const [gap, value] of Object.entries(report.summary.knownProductGaps.byGap || {})) {
+      lines.push(`| ${gap} | ${value.total} | ${value.passed} | ${value.failed} | ${escapeTable(value.failedCaseIds.join(", ") || "-")} |`);
+    }
+  } else {
+    lines.push("- none");
+  }
   lines.push("");
   lines.push("## Failure By Stage");
   lines.push("");
@@ -1346,6 +1432,7 @@ function parseArgs(argv) {
     useExpectedClaimContext: false,
     seedVisitHistory: true,
     spawnPython: false,
+    warmup: true,
     caseTimeoutMs: 60000,
     slowMs: 30000,
     masterDbPath: "",
@@ -1367,6 +1454,7 @@ function parseArgs(argv) {
     else if (arg === "--verbose-api-logs") parsed.verboseApiLogs = true;
     else if (arg === "--use-expected-claim-context") parsed.useExpectedClaimContext = true;
     else if (arg === "--no-seed-visit-history") parsed.seedVisitHistory = false;
+    else if (arg === "--no-warmup") parsed.warmup = false;
     else if (arg === "--spawn-python") parsed.spawnPython = true;
     else if (arg === "--case-timeout-ms") parsed.caseTimeoutMs = Number(next());
     else if (arg === "--slow-ms") parsed.slowMs = Number(next());
@@ -1401,6 +1489,7 @@ Options:
   --verbose-api-logs               Print fee-api internal stage logs to stdout
   --use-expected-claim-context     Debug mode: bypass SOAP extraction and calculate from expectedClaimContext
   --no-seed-visit-history          Do not create prior sessions for outpatient revisit cases
+  --no-warmup                      Skip non-mutating health checks before evaluation
   --master-db-path PATH            Local mode master sqlite path
 
 STG env:
@@ -1418,9 +1507,15 @@ STG env:
 function printSummary(summary) {
   console.log(JSON.stringify({
     selected: summary.selected,
+    headline: summary.headline,
     passed: summary.passed,
     failed: summary.failed,
+    failedWithoutKnownProductGaps: summary.failedWithoutKnownProductGaps,
+    knownProductGaps: summary.knownProductGaps,
     passRate: summary.passRate,
+    effectivePassRateExcludingKnownProductGaps: summary.effectivePassRateExcludingKnownProductGaps,
+    clinicalStructuringSources: summary.clinicalStructuringSources,
+    clinicalStructuringFallbackRate: summary.clinicalStructuringFallbackRate,
     failureByStage: summary.failureByStage,
     avgDurationMs: summary.avgDurationMs,
     reportDir: path.relative(repoRoot, reportDir)

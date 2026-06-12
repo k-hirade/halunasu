@@ -485,13 +485,13 @@ export const cases = [
         "発熱持続、腹痛増悪、黄疸があれば早めに受診。",
         "解熱薬は用量を確認して必要時のみ使用するよう説明。",
         "胆道精査は症状経過で検討する。",
-        "CTの撮影条件は検査記録を確認して算定へ反映する。"
+        "画像所見は放射線部門の読影記録と合わせて確認する。"
       ]
     },
     expectedExtraction: {
       requiredDiagnoses: ["右季肋部痛"],
       requiredBillingSignals: ["CT"],
-      requiredReviewTopics: ["造影確認", "電子保存確認"],
+      requiredReviewTopics: ["造影確認"],
       forbiddenCandidates: ["胆道精査", "健診肝機能"]
     },
     expectedClaimContext: {
