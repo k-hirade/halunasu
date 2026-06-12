@@ -703,6 +703,7 @@ function stgFacilityContext(bootstrap) {
 function actualView({ feeSession, calculationResult, reviewItems, candidateWorkbench }) {
   const lineItems = Array.isArray(calculationResult.lineItems) ? calculationResult.lineItems : [];
   const candidateProposals = Array.isArray(candidateWorkbench?.proposals) ? candidateWorkbench.proposals : [];
+  const clinicalExtraction = calculationResult.clinicalExtraction || feeSession.calculationResult?.clinicalExtraction || null;
   const reviewText = [
     ...(Array.isArray(calculationResult.warnings) ? calculationResult.warnings : []),
     ...reviewItems.flatMap((item) => [item.title, item.message, item.reason]),
@@ -739,6 +740,27 @@ function actualView({ feeSession, calculationResult, reviewItems, candidateWorkb
       reason: item.reason || "",
       points: Number(item.points || item.totalPoints || 0)
     })),
+    visitFacts: clinicalExtraction?.visitFacts || null,
+    checklistFindingStatusCounts: clinicalExtraction?.checklistFindingStatusCounts || null,
+    masterSearchTrace: (clinicalExtraction?.trace || [])
+      .filter((item) => item.stage === "master_search")
+      .map((item) => ({
+        eventName: item.eventName || "",
+        outcome: item.outcome || "",
+        query: item.query || "",
+        selected: item.selected ? {
+          code: item.selected.masterCode || item.selected.code || "",
+          name: item.selected.masterName || item.selected.name || ""
+        } : null,
+        searches: (item.searches || []).map((search) => ({
+          query: search.query || "",
+          outcome: search.outcome || "",
+          selectedCode: search.selectedCode || "",
+          filteredCandidates: search.filteredCandidates || [],
+          ambiguousCandidates: search.ambiguousCandidates || [],
+          ambiguityReason: search.ambiguityReason || ""
+        }))
+      })).slice(0, 20),
     clinicalEvents: (
       Array.isArray(feeSession.clinicalEvents) ? feeSession.clinicalEvents
         : Array.isArray(feeSession.calculationResult?.clinicalEvents) ? feeSession.calculationResult.clinicalEvents

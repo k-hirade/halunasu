@@ -52,7 +52,7 @@ const OTHER_PROVIDER_DPC_CONTEXT_PATTERN = /DPC.{0,16}(?:病院|医療機関|他
 // Keep this intentionally narrow so ordinary clinical phrases are not dropped.
 const SYNTHETIC_CLINICAL_META_SENTENCE_PATTERN = /(当日確認した主な診療内容|確認すべき論点|点数に直結する名称|会計前に当日実施した内容|診療内容は最終確認|expectedClaimContext)/u;
 
-export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v8";
+export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v9";
 
 const REVIEW_TOPIC_TAXONOMY = Object.freeze({
   contrast_check: Object.freeze({
@@ -134,6 +134,10 @@ const REVIEW_TOPIC_TAXONOMY = Object.freeze({
   medication_amount_check: Object.freeze({
     label: "薬剤量確認",
     issueCode: "missing_medication_amount"
+  }),
+  medication_delivery_check: Object.freeze({
+    label: "院内外処方確認",
+    issueCode: "medication_delivery_unknown"
   }),
   anesthesia_interview_time_check: Object.freeze({
     label: "面接時間確認",
@@ -352,6 +356,9 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   if (/薬剤量|投与量|用量/u.test(text) && /(確認|不足|不明|未記載|明記|必要)/u.test(text)) {
     return "medication_amount_check";
   }
+  if (/院内外処方|院内処方|院外処方|処方箋/u.test(text) && /(確認|矛盾|不明|必要)/u.test(text)) {
+    return "medication_delivery_check";
+  }
   if (/面接時間|術前(?:診察|面接|評価)|麻酔.*(?:面接|診察|評価)/u.test(text)) {
     return "anesthesia_interview_time_check";
   }
@@ -459,6 +466,8 @@ export async function buildClinicalCalculationPreparation({
       masterLookupDurationMs: 0
     }
   };
+  let extractedVisitFacts = null;
+  let checklistFindingStatusCounts = null;
 
   if (text) {
     const structured = await inferStructuredClinicalCalculationOptions({
@@ -472,6 +481,8 @@ export async function buildClinicalCalculationPreparation({
       clinicalFactsExtractor
     });
     metrics.clinicalStructuring = structured.metrics;
+    extractedVisitFacts = structured.visitFacts || null;
+    checklistFindingStatusCounts = structured.checklistFindingStatusCounts || null;
     const ruleMetrics = createMasterSearchMetrics(feeCalculator);
     const ruleStartedAt = Date.now();
     const ruleBased = structured.used
@@ -566,6 +577,8 @@ export async function buildClinicalCalculationPreparation({
       billingCandidateCount: billingCandidates.length,
       reviewIssueCount: reviewIssues.length,
       clinicalTrace,
+      visitFacts: extractedVisitFacts,
+      checklistFindingStatusCounts,
       responseId: metrics.clinicalStructuring?.responseId || null,
       usage: metrics.clinicalStructuring?.usage || null
     }),
@@ -696,7 +709,9 @@ async function inferStructuredClinicalCalculationOptions({
         timeoutMs: Number(openAiTimeoutMs || 0),
         responseId: factsResult?.responseId || null,
         usage: factsResult?.usage || null
-      }
+      },
+      visitFacts: normalizeVisitFactsForTrace(facts?.visit_facts),
+      checklistFindingStatusCounts: checklistFindingStatusCounts(facts?.checklist_findings)
     };
   } catch (error) {
     return {
@@ -779,6 +794,40 @@ function feeMasterVersion(feeCalculator) {
   );
 }
 
+function normalizeVisitFactsForTrace(visitFacts = null) {
+  if (!isPlainObject(visitFacts)) {
+    return null;
+  }
+  const result = {};
+  for (const [key, value] of Object.entries(visitFacts)) {
+    if (value == null) {
+      continue;
+    }
+    if (Array.isArray(value)) {
+      result[key] = value.slice(0, 8).map((item) => String(item || "").slice(0, 120));
+      continue;
+    }
+    if (isPlainObject(value)) {
+      result[key] = Object.fromEntries(Object.entries(value).slice(0, 12).map(([childKey, childValue]) => [
+        childKey,
+        String(childValue || "").slice(0, 120)
+      ]));
+      continue;
+    }
+    result[key] = String(value || "").slice(0, 160);
+  }
+  return Object.keys(result).length ? result : null;
+}
+
+function checklistFindingStatusCounts(findings = []) {
+  const counts = {};
+  for (const finding of asArray(findings)) {
+    const status = normalizeChecklistFindingStatus(finding?.status);
+    counts[status] = Number(counts[status] || 0) + 1;
+  }
+  return Object.keys(counts).length ? counts : null;
+}
+
 function clinicalExtractionMetadata({
   session = {},
   calculationInput = {},
@@ -792,6 +841,8 @@ function clinicalExtractionMetadata({
   billingCandidateCount = 0,
   reviewIssueCount = 0,
   clinicalTrace = [],
+  visitFacts = null,
+  checklistFindingStatusCounts = null,
   responseId = null,
   usage = null
 } = {}) {
@@ -819,6 +870,8 @@ function clinicalExtractionMetadata({
     masterCandidateCount: Number(masterCandidateCount || 0),
     billingCandidateCount: Number(billingCandidateCount || 0),
     reviewIssueCount: Number(reviewIssueCount || 0),
+    visitFacts: normalizeVisitFactsForTrace(visitFacts),
+    checklistFindingStatusCounts: checklistFindingStatusCounts || null,
     trace: normalizeClinicalTrace(clinicalTrace)
   };
 }
@@ -1170,7 +1223,25 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       warning: suppressed.warning
     });
   }
-  const visitMedication = medicationOptionsFromVisitFacts(facts?.visit_facts);
+  const visitMedicationDecision = medicationOptionsDecisionFromVisitFacts(facts?.visit_facts, {
+    clinicalText: text,
+    clinicalEvents,
+    medicationOrders
+  });
+  if (visitMedicationDecision.reviewIssue) {
+    reviewIssues.push(visitMedicationDecision.reviewIssue);
+    reviewWarnings.push(visitMedicationDecision.reviewIssue.messageForStaff);
+    clinicalTrace.push({
+      stage: "visit_facts_consistency",
+      outcome: "blocked",
+      topicCode: visitMedicationDecision.reviewIssue.topicCode,
+      message: "outside_prescription_visit_fact_conflicted_or_unverified",
+      visitFacts: compactVisitFactsForTrace(facts?.visit_facts)
+    });
+  } else if (visitMedicationDecision.trace) {
+    clinicalTrace.push(visitMedicationDecision.trace);
+  }
+  const visitMedication = visitMedicationDecision.options;
   if (medicationOrders.length) {
     inferred.medication_orders = dedupeObjects(medicationOrders, (item) => item.drug_code);
     inferred.medication = {
@@ -1628,10 +1699,12 @@ function filteredCandidateTrace(candidate = {}, reason = "") {
 function searchTraceSummary(query = "", search = {}) {
   return {
     query,
-    outcome: search?.item?.code ? "matched" : search?.error ? "error" : "no_match",
+    outcome: search?.item?.code ? "matched" : search?.error ? "error" : search?.ambiguousCandidates?.length ? "ambiguous" : "no_match",
     inspectedCount: Number(search?.inspectedCount || 0),
     selectedCode: search?.item?.code ? String(search.item.code) : "",
     filteredCandidates: asArray(search?.filteredCandidates).slice(0, 5),
+    ambiguousCandidates: asArray(search?.ambiguousCandidates).slice(0, 5),
+    ambiguityReason: search?.ambiguityReason || "",
     error: search?.error || ""
   };
 }
@@ -2526,6 +2599,110 @@ function medicationOptionsFromVisitFacts(visitFacts = {}) {
     ...(String(visitFacts.generic_name_prescription || "").trim() === "yes" ? {
       generic_name_prescription_add_on: "generic_name_add_on_1"
     } : {})
+  };
+}
+
+function medicationOptionsDecisionFromVisitFacts(visitFacts = {}, {
+  clinicalText = "",
+  clinicalEvents = [],
+  medicationOrders = []
+} = {}) {
+  const options = medicationOptionsFromVisitFacts(visitFacts);
+  if (!options) {
+    return { options: null, reviewIssue: null, trace: null };
+  }
+  const evidence = String(visitFacts?.prescription_evidence || "").trim();
+  const evidenceQuoted = evidence
+    ? normalizeClinicalText(clinicalText).includes(normalizeClinicalText(evidence))
+    : false;
+  const evidenceSupportsOutside = evidenceQuoted && isOutsidePrescriptionEvidence(evidence);
+  const evidenceConflictsWithOutside = evidenceQuoted && isInHousePrescriptionEvidence(evidence);
+  const hasInHouseMedication = asArray(clinicalEvents).some((event) => (
+    normalizeClinicalEventType(event) === "medication"
+    && isInHousePrescriptionEvidence(clinicalEventEvidence(event))
+  ));
+
+  if (!evidenceSupportsOutside || evidenceConflictsWithOutside) {
+    return {
+      options: null,
+      reviewIssue: reviewIssueFromMedicationDeliveryConflict({
+        evidence,
+        reason: evidenceQuoted
+          ? "outside_prescription_evidence_not_supported"
+          : "outside_prescription_evidence_not_quoted",
+        hasInHouseMedication,
+        medicationOrderCount: asArray(medicationOrders).length
+      }),
+      trace: null
+    };
+  }
+
+  if (hasInHouseMedication && asArray(medicationOrders).length) {
+    return {
+      options: null,
+      reviewIssue: reviewIssueFromMedicationDeliveryConflict({
+        evidence,
+        reason: "outside_prescription_with_in_house_medication_event",
+        hasInHouseMedication: true,
+        medicationOrderCount: asArray(medicationOrders).length
+      }),
+      trace: null
+    };
+  }
+
+  return {
+    options,
+    reviewIssue: null,
+    trace: {
+      stage: "visit_facts_consistency",
+      outcome: "accepted",
+      message: "outside_prescription_visit_fact_verified",
+      visitFacts: compactVisitFactsForTrace(visitFacts)
+    }
+  };
+}
+
+function reviewIssueFromMedicationDeliveryConflict({
+  evidence = "",
+  reason = "",
+  hasInHouseMedication = false,
+  medicationOrderCount = 0
+} = {}) {
+  const detail = hasInHouseMedication || medicationOrderCount
+    ? " 院内処方として解決できる薬剤イベントがあるため、院外処方箋料を自動追加しません。"
+    : " 院外処方箋交付の根拠が確認できないため、院外処方箋料を自動追加しません。";
+  return withReviewTopic({
+    reviewIssueId: `issue_${candidateIdPart(["medication_delivery", reason, evidence].join("_"))}`,
+    issueCode: "medication_delivery_unknown",
+    severity: "warning",
+    title: "院内外処方確認",
+    messageForStaff: `院内外処方確認: visit_factsは院外処方を示していますが、根拠引用が院外処方箋交付として確認できません。${detail}`,
+    evidence,
+    source: "visit_facts_consistency",
+    details: {
+      reason,
+      hasInHouseMedication,
+      medicationOrderCount
+    }
+  }, "medication_delivery_check");
+}
+
+function isOutsidePrescriptionEvidence(text = "") {
+  return /(院外処方|院外処方箋|処方箋(?:を)?(?:交付|発行)|処方せん(?:を)?(?:交付|発行))/u.test(String(text || ""));
+}
+
+function isInHousePrescriptionEvidence(text = "") {
+  return /(院内(?:で|処方|投薬)|院内外用薬|院内処方|院内で外用薬として処方)/u.test(String(text || ""));
+}
+
+function compactVisitFactsForTrace(visitFacts = {}) {
+  if (!isPlainObject(visitFacts)) {
+    return null;
+  }
+  return {
+    outside_prescription_issued: String(visitFacts.outside_prescription_issued || ""),
+    generic_name_prescription: String(visitFacts.generic_name_prescription || ""),
+    prescription_evidence: String(visitFacts.prescription_evidence || "").slice(0, 100)
   };
 }
 
@@ -4491,6 +4668,7 @@ async function searchPerformedProcedureCode(feeCalculator, {
 
   const normalizedQueries = uniqueStrings(queries).filter((query) => query.length >= 2).slice(0, 8);
   const searchTrace = [];
+  let ambiguousSearch = null;
   for (const query of normalizedQueries) {
     const search = await searchProcedureMasterItem(feeCalculator, query, {
       name,
@@ -4498,6 +4676,10 @@ async function searchPerformedProcedureCode(feeCalculator, {
       allowedFeeCategories
     });
     searchTrace.push(searchTraceSummary(query, search));
+    if (search?.ambiguousCandidates?.length && !ambiguousSearch) {
+      ambiguousSearch = { query, search };
+      continue;
+    }
     if (search?.item?.code) {
       const item = search.item;
       if (isUnsupportedLabMasterMatchForEvent(event, item)) {
@@ -4551,7 +4733,9 @@ async function searchPerformedProcedureCode(feeCalculator, {
     commentInputs: [],
     collectionFeeInputs: [],
     masterCandidates: [],
-    reviewWarnings: [unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、標準コードを自動確定できませんでした。`],
+    reviewWarnings: [ambiguousSearch
+      ? `マスター候補確認: ${name || categoryLabel}は複数の標準コード候補があり、カルテ本文から修飾条件を自動確定できませんでした。候補を確認してください。`
+      : unresolvedMessage || `${name || categoryLabel}は実施済みとして検出しましたが、標準コードを自動確定できませんでした。`],
     traceEvents
   };
 }
@@ -4570,19 +4754,37 @@ async function searchProcedureMasterItem(feeCalculator, query, context = {}) {
     ))
       .map((item) => annotateMedicalServiceCandidate(item));
     const filteredCandidates = [];
+    const viableCandidates = [];
     for (const candidate of candidates) {
       const filterReason = directRetrievalFilterReason(candidate, context);
       if (filterReason) {
         filteredCandidates.push(filteredCandidateTrace(candidate, filterReason));
         continue;
       }
-      if (isHighConfidenceProcedureMasterItem(candidate, { ...context, query })) {
-        return {
+      const assessment = procedureMasterCandidateAssessment(candidate, { ...context, query });
+      if (assessment.highConfidence) {
+        viableCandidates.push({
           item: candidate,
-          inspectedCount: candidates.length,
-          filteredCandidates
-        };
+          ...assessment
+        });
       }
+    }
+    const selected = selectProcedureMasterCandidate(viableCandidates, { ...context, query });
+    if (selected?.ambiguous) {
+      return {
+        item: null,
+        inspectedCount: candidates.length,
+        filteredCandidates,
+        ambiguousCandidates: selected.candidates.map((candidate) => ambiguousCandidateTrace(candidate)),
+        ambiguityReason: selected.reason
+      };
+    }
+    if (selected?.item) {
+      return {
+        item: selected.item,
+        inspectedCount: candidates.length,
+        filteredCandidates
+      };
     }
     return {
       item: null,
@@ -4601,6 +4803,10 @@ async function searchProcedureMasterItem(feeCalculator, query, context = {}) {
 }
 
 function isHighConfidenceProcedureMasterItem(item = {}, { query = "", name = "", categoryLabel = "" } = {}) {
+  return procedureMasterCandidateAssessment(item, { query, name, categoryLabel }).highConfidence;
+}
+
+function procedureMasterCandidateAssessment(item = {}, { query = "", name = "", categoryLabel = "" } = {}) {
   const itemText = normalizeProcedureMatchText([
     item.name,
     item.baseName,
@@ -4609,19 +4815,36 @@ function isHighConfidenceProcedureMasterItem(item = {}, { query = "", name = "",
   ].filter(Boolean).join(" "));
   const contextText = normalizeProcedureMatchText([query, name, categoryLabel].filter(Boolean).join(" "));
   if (!itemText || !contextText) {
-    return false;
+    return {
+      highConfidence: false,
+      score: 0,
+      unmatchedModifiers: []
+    };
   }
 
   const queryKey = normalizeProcedureMatchText(query);
   const nameKey = normalizeProcedureMatchText(name);
   const queryTokens = procedureMatchTokens(query);
   const nameTokens = procedureMatchTokens(name);
-  return Boolean(
-    (queryKey && itemText.includes(queryKey))
-    || (nameKey && itemText.includes(nameKey))
-    || queryTokens.some((token) => token.length >= 3 && itemText.includes(token))
-    || nameTokens.some((token) => token.length >= 3 && itemText.includes(token))
-  );
+  const itemNameKeys = procedureCandidateNameKeys(item);
+  const contextModifiers = procedureModifierSet(contextText);
+  const itemModifiers = procedureModifierSet(itemText);
+  const unmatchedModifiers = [...itemModifiers].filter((modifier) => !contextModifiers.has(modifier));
+  let score = 0;
+  if (queryKey && itemNameKeys.has(queryKey)) score += 110;
+  if (nameKey && itemNameKeys.has(nameKey)) score += 110;
+  if (queryKey && itemText.includes(queryKey)) score += 70;
+  if (nameKey && itemText.includes(nameKey)) score += 70;
+  if (queryTokens.some((token) => token.length >= 3 && itemText.includes(token))) score += 35;
+  if (nameTokens.some((token) => token.length >= 3 && itemText.includes(token))) score += 35;
+  if (unmatchedModifiers.length && !contextModifiers.size) score -= 45;
+  if (unmatchedModifiers.length && contextModifiers.size) score -= 15;
+  return {
+    highConfidence: score >= 40,
+    score,
+    unmatchedModifiers,
+    matchedModifiers: [...itemModifiers].filter((modifier) => contextModifiers.has(modifier))
+  };
 }
 
 function normalizeProcedureMatchText(value) {
@@ -4630,6 +4853,89 @@ function normalizeProcedureMatchText(value) {
     .replace(/\s+/gu, "")
     .replace(/[（）()・、,，.\-－ー]/gu, "")
     .toLowerCase();
+}
+
+const PROCEDURE_MODIFIER_TERMS = Object.freeze([
+  "定性",
+  "定量",
+  "半定量",
+  "精密",
+  "簡易",
+  "断層",
+  "造影",
+  "単純"
+]);
+
+function procedureModifierSet(value = "") {
+  const text = normalizeProcedureMatchText(value);
+  return new Set(PROCEDURE_MODIFIER_TERMS.filter((term) => text.includes(normalizeProcedureMatchText(term))));
+}
+
+function procedureCandidateNameKeys(item = {}) {
+  return new Set([
+    item.name,
+    item.baseName,
+    item.displayName,
+    item.shortName
+  ].map((value) => normalizeProcedureMatchText(value)).filter(Boolean));
+}
+
+function selectProcedureMasterCandidate(candidates = [], context = {}) {
+  if (!candidates.length) {
+    return null;
+  }
+  const sorted = [...candidates].sort((a, b) => b.score - a.score);
+  const top = sorted[0];
+  const tied = sorted.filter((candidate) => Math.abs(candidate.score - top.score) <= 8);
+  if (tied.length > 1) {
+    return {
+      ambiguous: true,
+      candidates: tied.slice(0, 5),
+      reason: "similar_candidate_scores"
+    };
+  }
+  if (top.unmatchedModifiers?.length && hasSiblingWithoutUnmatchedModifier(top, sorted, context)) {
+    return {
+      ambiguous: true,
+      candidates: sorted.slice(0, 5),
+      reason: "modifier_without_context"
+    };
+  }
+  return {
+    item: top.item
+  };
+}
+
+function hasSiblingWithoutUnmatchedModifier(top = {}, candidates = [], context = {}) {
+  const topCore = stripProcedureModifiers(top.item?.name || top.item?.baseName || top.item?.displayName || top.item?.shortName || "");
+  if (!topCore) {
+    return false;
+  }
+  return candidates.some((candidate) => (
+    candidate !== top
+    && stripProcedureModifiers(candidate.item?.name || candidate.item?.baseName || candidate.item?.displayName || candidate.item?.shortName || "") === topCore
+    && !candidate.unmatchedModifiers?.length
+  ));
+}
+
+function stripProcedureModifiers(value = "") {
+  let text = normalizeProcedureMatchText(value);
+  for (const modifier of PROCEDURE_MODIFIER_TERMS) {
+    text = text.replaceAll(normalizeProcedureMatchText(modifier), "");
+  }
+  return text;
+}
+
+function ambiguousCandidateTrace(candidate = {}) {
+  const item = candidate.item || {};
+  return {
+    code: String(item.code || ""),
+    name: item.name || item.displayName || item.baseName || item.shortName || "",
+    feeCategory: item.feeCategory || "",
+    itemRole: item.itemRole || "",
+    score: Number(candidate.score || 0),
+    unmatchedModifiers: asArray(candidate.unmatchedModifiers)
+  };
 }
 
 function procedureMatchTokens(value = "") {
@@ -4809,6 +5115,10 @@ export function buildClinicalChecklistMenu(text = "") {
     });
   }
 
+  for (const procedure of procedureChecklistItems(normalized)) {
+    addMenu(procedure);
+  }
+
   if (/(特定器材|材料|医療材料|ガーゼ|創傷被覆材|被覆材|シーネ|コルセット|カテーテル|チューブ)/u.test(normalized)) {
     addMenu({
       menuId: "material:medical_material",
@@ -4826,6 +5136,38 @@ export function buildClinicalChecklistMenu(text = "") {
   }
 
   return menu.slice(0, 30);
+}
+
+const PROCEDURE_CHECKLIST_DEFINITIONS = Object.freeze([
+  Object.freeze({
+    key: "burn_treatment",
+    label: "熱傷処置",
+    query: "熱傷処置",
+    aliases: ["熱傷処置（１００ｃｍ２未満）", "熱傷処置"],
+    pattern: /熱傷|火傷|やけど|熱傷処置/u
+  }),
+  Object.freeze({
+    key: "wound_treatment",
+    label: "創傷処置",
+    query: "創傷処置",
+    aliases: ["創傷処置（１００ｃｍ２未満）", "創傷処置"],
+    pattern: /創傷|創部(?:洗浄|消毒|処置|保護)|創傷処置|縫合後処置/u
+  })
+]);
+
+function procedureChecklistItems(text = "") {
+  return PROCEDURE_CHECKLIST_DEFINITIONS
+    .filter((definition) => definition.pattern.test(text))
+    .map((definition) => ({
+      menuId: `procedure:${definition.key}`,
+      label: definition.label,
+      kind: "procedure",
+      eventType: "treatment",
+      billingDomain: "standard_procedure",
+      name: definition.label,
+      query: definition.query,
+      searchQueries: [definition.query, ...definition.aliases]
+    }));
 }
 
 function rapidLabChecklistItems(text = "") {

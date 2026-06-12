@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from medical_fee_calculation.master_search import _master_search_condition, _query_variants
+from medical_fee_calculation.master_search import _master_search_condition, _medical_procedure_role, _query_variants
 
 
 class MasterSearchNormalizationTest(unittest.TestCase):
@@ -22,6 +22,21 @@ class MasterSearchNormalizationTest(unittest.TestCase):
         self.assertEqual(condition.count("p.code LIKE ?"), 1)
         self.assertGreater(condition.count("p.short_name LIKE ?"), 1)
         self.assertEqual(params[0], "%CRP%")
+
+    def test_d000_lab_items_are_basic_lab_tests_even_without_judgement_kind(self):
+        role = _medical_procedure_role({
+            "code": "160000310",
+            "name": "尿一般",
+            "base_name": "尿一般",
+            "chapter": "2",
+            "part": "03",
+            "section": "000",
+            "judgement_kind": "0",
+        })
+
+        self.assertEqual(role["feeCategory"], "lab_test_basic")
+        self.assertEqual(role["itemRole"], "base")
+        self.assertEqual(role["directRetrievalAllowed"], True)
 
 
 if __name__ == "__main__":

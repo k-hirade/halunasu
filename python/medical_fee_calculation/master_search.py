@@ -171,7 +171,7 @@ def _medical_procedure_role(row: sqlite3.Row) -> dict[str, Any]:
     elif chapter == "2" and part == "03" and _section_between(section, 400, 419):
         fee_category = "lab_collection"
         item_role = "collection"
-    elif chapter == "2" and part == "03" and _section_between(section, 0, 24) and judgement_kind == "1":
+    elif chapter == "2" and part == "03" and _section_between(section, 0, 24):
         fee_category = "lab_test_basic"
         item_role = "base"
     elif "外来迅速検体検査加算" in name or "検体検査管理加算" in name:
