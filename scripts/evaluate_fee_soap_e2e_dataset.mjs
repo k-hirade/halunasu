@@ -42,7 +42,10 @@ class CookieJar {
 }
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const datasetPath = path.join(repoRoot, "data/tests/fee-soap-e2e/fee-soap-e2e-cases.json");
+const datasetArgIndex = process.argv.indexOf("--dataset");
+const datasetPath = datasetArgIndex >= 0 && process.argv[datasetArgIndex + 1]
+  ? path.resolve(repoRoot, process.argv[datasetArgIndex + 1])
+  : path.join(repoRoot, "data/tests/fee-soap-e2e/fee-soap-e2e-cases.json");
 const reportDir = path.join(repoRoot, "data/tests/fee-soap-e2e/reports");
 const defaultNow = new Date("2026-06-07T00:00:00.000Z");
 const localSessionSecret = "fee-soap-e2e-local-session-secret";
@@ -1304,6 +1307,7 @@ function parseArgs(argv) {
     else if (arg === "--case-timeout-ms") parsed.caseTimeoutMs = Number(next());
     else if (arg === "--slow-ms") parsed.slowMs = Number(next());
     else if (arg === "--master-db-path") parsed.masterDbPath = next();
+    else if (arg === "--dataset") next();
     else throw new Error(`Unknown argument: ${arg}`);
   }
   if (!["local", "stg"].includes(parsed.mode)) {

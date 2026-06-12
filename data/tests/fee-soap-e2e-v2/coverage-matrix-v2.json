@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "fee-soap-e2e-v2.coverage-matrix.v1",
+  "totalCases": 500,
+  "notes": [
+    "第1波500件の配分。第2波500件は本行列の代表ケース型に対する文体バリアント。",
+    "assertionMix はデータセット全体目標: exact 175 / review_required 200 / safety+unsupported 100 / split_required 25。",
+    "departments のキーは v1 coverage-targets.json と互換。セル単位の厳密割付は生成時に当行列の min を満たすように行う。"
+  ],
+  "assertionMix": {
+    "exact": 175,
+    "review_required": 200,
+    "safety": 50,
+    "unsupported_expected": 50,
+    "split_required": 25
+  },
+  "departments": [
+    { "key": "internal_medicine", "minCases": 60, "minExact": 28 },
+    { "key": "pediatrics", "minCases": 25, "minExact": 10 },
+    { "key": "dermatology", "minCases": 25, "minExact": 12 },
+    { "key": "otolaryngology", "minCases": 20, "minExact": 8 },
+    { "key": "ophthalmology", "minCases": 20, "minExact": 8 },
+    { "key": "orthopedics", "minCases": 22, "minExact": 9 },
+    { "key": "surgery", "minCases": 20, "minExact": 6 },
+    { "key": "psychiatry", "minCases": 18, "minExact": 3 },
+    { "key": "rehabilitation", "minCases": 14, "minExact": 2 },
+    { "key": "obgyn", "minCases": 18, "minExact": 7 },
+    { "key": "urology", "minCases": 18, "minExact": 7 },
+    { "key": "cardiology", "minCases": 20, "minExact": 8 },
+    { "key": "gastroenterology", "minCases": 20, "minExact": 7 },
+    { "key": "respiratory", "minCases": 20, "minExact": 8 },
+    { "key": "neurology", "minCases": 14, "minExact": 5 },
+    { "key": "emergency", "minCases": 14, "minExact": 4 },
+    { "key": "nephrology_dialysis", "minCases": 14, "minExact": 4 },
+    { "key": "homecare", "minCases": 14, "minExact": 2 },
+    { "key": "radiology", "minCases": 12, "minExact": 4 },
+    { "key": "pathology", "minCases": 12, "minExact": 2 }
+  ],
+  "billingDomains": [
+    { "key": "basic", "minCases": 60, "minExact": 40 },
+    { "key": "lab", "minCases": 70, "minExact": 35 },
+    { "key": "imaging", "minCases": 45, "minExact": 20 },
+    { "key": "medication", "minCases": 55, "minExact": 22 },
+    { "key": "injection", "minCases": 18, "minExact": 0 },
+    { "key": "procedure", "minCases": 40, "minExact": 16 },
+    { "key": "medical_management", "minCases": 40, "minExact": 0 },
+    { "key": "materials", "minCases": 12, "minExact": 0 },
+    { "key": "pathology", "minCases": 14, "minExact": 0 },
+    { "key": "endoscopy", "minCases": 12, "minExact": 0 },
+    { "key": "dialysis_transfusion", "minCases": 12, "minExact": 0 },
+    { "key": "rehab", "minCases": 12, "minExact": 0 },
+    { "key": "psychiatry", "minCases": 12, "minExact": 0 },
+    { "key": "surgery", "minCases": 14, "minExact": 0 },
+    { "key": "anesthesia", "minCases": 10, "minExact": 0 },
+    { "key": "radiation_therapy", "minCases": 8, "minExact": 0 },
+    { "key": "homecare", "minCases": 12, "minExact": 0 },
+    { "key": "emergency_time_addons", "minCases": 14, "minExact": 4 },
+    { "key": "pediatric_addons", "minCases": 12, "minExact": 4 },
+    { "key": "facility_standards", "minCases": 16, "minExact": 6 },
+    { "key": "inpatient_basic", "minCases": 12, "minExact": 4 },
+    { "key": "split_multi_day", "minCases": 14, "minExact": 0 },
+    { "key": "safety_negation", "minCases": 24, "minExact": 0 }
+  ]
+}

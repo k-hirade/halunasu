@@ -1,0 +1,4146 @@
+{
+  "schemaVersion": "fee-soap-e2e-cases.v2",
+  "datasetId": "fee-soap-e2e-v2",
+  "version": "2026-06-12.batches.2",
+  "purpose": "実カルテに近い文体での診療報酬算定E2Eゴールド第2世代。",
+  "goldContract": {
+    "templateMetaSentencesForbidden": true,
+    "officialMasterNamesInChartForbidden": true,
+    "facilityAttributesInChartForbidden": true,
+    "performedPredicate": "実施|施行|行った(「確認した」単独は実施根拠にしない)",
+    "distractorPolicy": "distractorsは本文に存在するが算定してはならない情報。否定・過去・他院・市販・予定のいずれかの文脈で明示する。"
+  },
+  "sourceBatches": [
+    "batch-001-pilot.mjs",
+    "batch-002-departments.mjs"
+  ],
+  "cases": [
+    {
+      "caseId": "V2-IM-LAB-001",
+      "title": "内科 膀胱炎疑い再診 尿定性+採血(検体検査管理加算届出施設)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 38,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-06",
+        "department": "internal_medicine"
+      },
+      "facilityFixtureKey": "clinic_lab",
+      "realismAxes": [
+        "abbreviation",
+        "negative_findings",
+        "lab_raw_values",
+        "otc_medication",
+        "negated_exam"
+      ],
+      "distractors": [
+        {
+          "type": "otc_medication",
+          "name": "ロキソニンS",
+          "note": "市販薬。薬剤料を算定しない"
+        },
+        {
+          "type": "pending_external_result",
+          "name": "尿培養",
+          "note": "前回提出済み・結果待ち。本日の検査ではない"
+        },
+        {
+          "type": "negated_exam",
+          "name": "腹部エコー",
+          "note": "今回は行わず、と明記。算定しない"
+        },
+        {
+          "type": "unrelated_complaint",
+          "name": "便秘",
+          "note": "診察内の相談。算定対象なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "3日前からの排尿時痛で7/3に受診し、本日再診。",
+            "排尿時痛は少し軽くなったが残尿感が続く。トイレが近く、夜間も2回起きる。",
+            "発熱なし、悪寒なし。肉眼的血尿なし。腰や背中の痛みもなし。",
+            "痛みが強いときは自宅にあったロキソニンSを1回だけ内服した。",
+            "もともと便秘がちで、ここ数日は市販のオリゴ糖で様子を見ているとのこと。",
+            "仕事はデスクワーク。水分はコーヒー中心であまり摂れていない。妊娠の可能性はなし。",
+            "既往: 20代に扁桃炎で抗菌薬を使用、薬疹などのアレルギー歴はなし。膀胱炎は2年前にも1回。"
+          ],
+          "O": [
+            "KT 36.8、BP 118/72、P 68整。",
+            "腹部平坦・軟。下腹部に軽度圧痛、反跳痛なし。CVA叩打痛なし。",
+            "院内で尿定性・尿蛋白を実施。混濁(+)、白血球反応(2+)、亜硝酸塩(+)、蛋白(±)、潜血(-)。",
+            "静脈採血も施行し、生化学・血算は外注へ提出。",
+            "前回(7/3)提出の尿培養はまだ結果未着。",
+            "腹部エコーは症状の経過から今回は行わず。"
+          ],
+          "A": [
+            "急性膀胱炎の遷延。亜硝酸塩陽性で細菌尿が示唆される。",
+            "発熱・CVA叩打痛なく、腎盂腎炎を示唆する所見はない。便秘は機能性で経過観察可。"
+          ],
+          "P": [
+            "培養と外注結果を確認のうえ抗菌薬の選択・継続を判断する。結果は電話で連絡予定。",
+            "水分摂取を増やすよう指導(コーヒー以外で1日1.5L目安)。",
+            "発熱・腰背部痛・血尿が出たら早めに再診するよう説明した。",
+            "排尿を我慢しないこと、カフェインの摂りすぎを控えることも併せて助言。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n3日前からの排尿時痛で7/3に受診し、本日再診。\n排尿時痛は少し軽くなったが残尿感が続く。トイレが近く、夜間も2回起きる。\n発熱なし、悪寒なし。肉眼的血尿なし。腰や背中の痛みもなし。\n痛みが強いときは自宅にあったロキソニンSを1回だけ内服した。\nもともと便秘がちで、ここ数日は市販のオリゴ糖で様子を見ているとのこと。\n仕事はデスクワーク。水分はコーヒー中心であまり摂れていない。妊娠の可能性はなし。\n既往: 20代に扁桃炎で抗菌薬を使用、薬疹などのアレルギー歴はなし。膀胱炎は2年前にも1回。\n\nO（Objective：客観的情報）\nKT 36.8、BP 118/72、P 68整。\n腹部平坦・軟。下腹部に軽度圧痛、反跳痛なし。CVA叩打痛なし。\n院内で尿定性・尿蛋白を実施。混濁(+)、白血球反応(2+)、亜硝酸塩(+)、蛋白(±)、潜血(-)。\n静脈採血も施行し、生化学・血算は外注へ提出。\n前回(7/3)提出の尿培養はまだ結果未着。\n腹部エコーは症状の経過から今回は行わず。\n\nA（Assessment：評価）\n急性膀胱炎の遷延。亜硝酸塩陽性で細菌尿が示唆される。\n発熱・CVA叩打痛なく、腎盂腎炎を示唆する所見はない。便秘は機能性で経過観察可。\n\nP（Plan：計画）\n培養と外注結果を確認のうえ抗菌薬の選択・継続を判断する。結果は電話で連絡予定。\n水分摂取を増やすよう指導(コーヒー以外で1日1.5L目安)。\n発熱・腰背部痛・血尿が出たら早めに再診するよう説明した。\n排尿を我慢しないこと、カフェインの摂りすぎを控えることも併せて助言。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "膀胱炎"
+        ],
+        "requiredBillingSignals": [
+          "尿一般",
+          "尿蛋白",
+          "尿・糞便等検査判断料",
+          "Ｂ－Ｖ",
+          "検体検査管理加算"
+        ],
+        "requiredReviewTopics": [],
+        "forbiddenCandidates": [
+          "超音波検査"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-06",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "procedure_codes": [
+          "160000310",
+          "160000410"
+        ],
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        },
+        "lab_options": {
+          "collection_fee_inputs": [
+            "blood_venous"
+          ]
+        },
+        "facility_standard_keys": [
+          "検体検査管理加算2"
+        ]
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 282,
+        "candidateCodes": [
+          "160000310",
+          "160000410",
+          "112007410",
+          "160061710",
+          "160182770",
+          "160095710"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        },
+        {
+          "name": "尿一般",
+          "points": 26
+        },
+        {
+          "name": "尿蛋白",
+          "points": 7
+        },
+        {
+          "name": "尿・糞便等検査判断料",
+          "points": 34
+        },
+        {
+          "name": "Ｂ－Ｖ",
+          "points": 40
+        },
+        {
+          "name": "検体検査管理加算（２）",
+          "points": 100
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "internal_medicine",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_lab",
+        "realismAxes": [
+          "abbreviation",
+          "negative_findings",
+          "lab_raw_values",
+          "otc_medication",
+          "negated_exam"
+        ],
+        "distractorTypes": [
+          "otc_medication",
+          "pending_external_result",
+          "negated_exam",
+          "unrelated_complaint"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:34e06ecd389df6dc2f7ebfd317c8e97a"
+    },
+    {
+      "caseId": "V2-PED-LAB-002",
+      "title": "小児科 発熱再診 インフル・溶連菌迅速",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 4,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-13",
+        "department": "pediatrics"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "abbreviation",
+        "family_context",
+        "patient_words",
+        "negated_treatment"
+      ],
+      "distractors": [
+        {
+          "type": "family_history",
+          "name": "兄のインフルエンザ",
+          "note": "家族の罹患。患者の算定対象ではない"
+        },
+        {
+          "type": "negated_treatment",
+          "name": "点滴",
+          "note": "不要と判断、実施せず"
+        },
+        {
+          "type": "home_medication",
+          "name": "アンヒバ坐剤(自宅残り)",
+          "note": "処方なし。薬剤料を算定しない"
+        },
+        {
+          "type": "normal_exam_mention",
+          "name": "鼓膜所見",
+          "note": "診察の一部。中耳炎処置なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "昨日(7/12)発熱で受診し、本日も39度台が続くため再診。",
+            "母:「夜もぐったりしていて、水分はなんとか摂れている」。",
+            "咽頭痛あり。咳は軽度、鼻汁あり。嘔吐・下痢なし。",
+            "5日前に兄(小2)がインフルエンザAと診断され自宅療養中。保育園でも複数発生。",
+            "昨夜は自宅に残っていたアンヒバ坐剤100mgを1回使用し、一時的に38度前半まで下がった。",
+            "食欲は普段の半分程度。おしっこは出ている。",
+            "今季のインフルエンザワクチンは未接種。熱性けいれんの既往なし。きょうだいは兄と本人の2人。"
+          ],
+          "O": [
+            "KT 38.9、P 128、SpO2 98%(室内気)。体重16.2kg。",
+            "活気やや不良だが、あやすと笑顔あり。脱水所見なし。皮疹なし、項部硬直なし。",
+            "咽頭発赤(+)、扁桃白苔(+)。頸部リンパ節は両側に小豆大を数個触知。",
+            "鼓膜は両側とも発赤なし。呼吸音清、陥没呼吸なし。",
+            "鼻咽頭ぬぐい液でインフル迅速と溶連菌迅速を施行。インフルA(+)、溶連菌(-)。",
+            "経口摂取できており、点滴は不要と判断し行わず。"
+          ],
+          "A": [
+            "インフルエンザA型。兄からの家族内感染と考える。",
+            "溶連菌は陰性。中耳炎・肺炎を示唆する所見なし。脱水なし。"
+          ],
+          "P": [
+            "自宅安静と水分摂取をこまめに摂るよう指導。",
+            "解熱剤は自宅のアンヒバ坐剤を使用してよいと説明(体重から100mgで適量)。",
+            "呼吸が苦しそう、ぐったりして水分が摂れない、けいれん等があればすぐ受診。",
+            "登園は発症後5日かつ解熱後3日を経過してからと説明。母へ書面も渡した。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n昨日(7/12)発熱で受診し、本日も39度台が続くため再診。\n母:「夜もぐったりしていて、水分はなんとか摂れている」。\n咽頭痛あり。咳は軽度、鼻汁あり。嘔吐・下痢なし。\n5日前に兄(小2)がインフルエンザAと診断され自宅療養中。保育園でも複数発生。\n昨夜は自宅に残っていたアンヒバ坐剤100mgを1回使用し、一時的に38度前半まで下がった。\n食欲は普段の半分程度。おしっこは出ている。\n今季のインフルエンザワクチンは未接種。熱性けいれんの既往なし。きょうだいは兄と本人の2人。\n\nO（Objective：客観的情報）\nKT 38.9、P 128、SpO2 98%(室内気)。体重16.2kg。\n活気やや不良だが、あやすと笑顔あり。脱水所見なし。皮疹なし、項部硬直なし。\n咽頭発赤(+)、扁桃白苔(+)。頸部リンパ節は両側に小豆大を数個触知。\n鼓膜は両側とも発赤なし。呼吸音清、陥没呼吸なし。\n鼻咽頭ぬぐい液でインフル迅速と溶連菌迅速を施行。インフルA(+)、溶連菌(-)。\n経口摂取できており、点滴は不要と判断し行わず。\n\nA（Assessment：評価）\nインフルエンザA型。兄からの家族内感染と考える。\n溶連菌は陰性。中耳炎・肺炎を示唆する所見なし。脱水なし。\n\nP（Plan：計画）\n自宅安静と水分摂取をこまめに摂るよう指導。\n解熱剤は自宅のアンヒバ坐剤を使用してよいと説明(体重から100mgで適量)。\n呼吸が苦しそう、ぐったりして水分が摂れない、けいれん等があればすぐ受診。\n登園は発症後5日かつ解熱後3日を経過してからと説明。母へ書面も渡した。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "インフルエンザ"
+        ],
+        "requiredBillingSignals": [
+          "インフルエンザウイルス抗原定性",
+          "Ａ群β溶連菌迅速試験定性",
+          "免疫学的検査判断料"
+        ],
+        "requiredReviewTopics": [
+          "検体採取確認"
+        ],
+        "forbiddenCandidates": [
+          "点滴注射"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-13",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "procedure_codes": [
+          "160169450",
+          "160044110"
+        ],
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 472,
+        "candidateCodes": [
+          "160169450",
+          "160044110",
+          "112007410",
+          "160062110"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        },
+        {
+          "name": "インフルエンザウイルス抗原定性",
+          "points": 132
+        },
+        {
+          "name": "Ａ群β溶連菌迅速試験定性",
+          "points": 121
+        },
+        {
+          "name": "免疫学的検査判断料",
+          "points": 144
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "pediatrics",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "abbreviation",
+          "family_context",
+          "patient_words",
+          "negated_treatment"
+        ],
+        "distractorTypes": [
+          "family_history",
+          "negated_treatment",
+          "home_medication",
+          "normal_exam_mention"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:135aaeeceac3ad9b720599b3f60b23d2"
+    },
+    {
+      "caseId": "V2-DERM-MED-003",
+      "title": "皮膚科 前腕熱傷再診 院内外用処方+熱傷処置",
+      "difficultyLevel": "L1",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 35,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-08",
+        "department": "dermatology"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "numeric_anchor",
+        "short_lines",
+        "otc_medication"
+      ],
+      "distractors": [
+        {
+          "type": "otc_medication",
+          "name": "市販の白色ワセリン",
+          "note": "受診前の自己処置。算定しない"
+        },
+        {
+          "type": "considered_only",
+          "name": "破傷風トキソイド",
+          "note": "初診時に不要と判断済みの経緯記載のみ"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "7/3に調理中の熱湯で右前腕を受傷し、当日から当院で処置中。受傷5日目。",
+            "痛みはだいぶ軽くなった。夜は眠れている。仕事(調理補助)は患部を覆って続けている。",
+            "受診前の2日間は自己判断で市販の白色ワセリンを塗っていたとのこと(初診時聴取済み)。"
+          ],
+          "O": [
+            "右前腕伸側に約4×3cmのII度熱傷。水疱は破れ、浸出液は少量に減少。",
+            "周囲発赤なし、悪臭なし、感染徴候なし。上皮化が辺縁から始まっている。",
+            "周囲の健常皮膚に掻破痕なし。指の可動・知覚は問題なし。",
+            "創部を生理食塩水で洗浄し、熱傷部の処置を施行。非固着性ガーゼで保護。"
+          ],
+          "A": [
+            "右前腕II度熱傷、経過良好。感染なし。",
+            "破傷風トキソイドは初診時に創の性状から不要と判断しており、方針変更なし。"
+          ],
+          "P": [
+            "ゲーベンクリーム1% 10gを院内処方。1日1回、入浴後に塗布しガーゼ保護を継続。",
+            "1週間後に再診。浸出液増加・発赤・痛みの再燃があれば早めに受診。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n7/3に調理中の熱湯で右前腕を受傷し、当日から当院で処置中。受傷5日目。\n痛みはだいぶ軽くなった。夜は眠れている。仕事(調理補助)は患部を覆って続けている。\n受診前の2日間は自己判断で市販の白色ワセリンを塗っていたとのこと(初診時聴取済み)。\n\nO（Objective：客観的情報）\n右前腕伸側に約4×3cmのII度熱傷。水疱は破れ、浸出液は少量に減少。\n周囲発赤なし、悪臭なし、感染徴候なし。上皮化が辺縁から始まっている。\n周囲の健常皮膚に掻破痕なし。指の可動・知覚は問題なし。\n創部を生理食塩水で洗浄し、熱傷部の処置を施行。非固着性ガーゼで保護。\n\nA（Assessment：評価）\n右前腕II度熱傷、経過良好。感染なし。\n破傷風トキソイドは初診時に創の性状から不要と判断しており、方針変更なし。\n\nP（Plan：計画）\nゲーベンクリーム1% 10gを院内処方。1日1回、入浴後に塗布しガーゼ保護を継続。\n1週間後に再診。浸出液増加・発赤・痛みの再燃があれば早めに受診。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "熱傷"
+        ],
+        "requiredBillingSignals": [
+          "熱傷処置",
+          "ゲーベンクリーム",
+          "調剤料",
+          "処方料"
+        ],
+        "requiredReviewTopics": [],
+        "forbiddenCandidates": [
+          "処方箋料",
+          "破傷風トキソイド"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-08",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "drug_inputs": [
+          {
+            "code": "620008991",
+            "quantity": "10"
+          }
+        ],
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        },
+        "medication": {
+          "delivery_kind": "in_house",
+          "prescription_category": "other",
+          "dispensing_kinds": [
+            "external"
+          ]
+        },
+        "treatment_orders": [
+          {
+            "kind": "burn",
+            "area_size": "lt_100_cm2"
+          }
+        ]
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 273,
+        "candidateCodes": [
+          "620008991",
+          "112007410",
+          "120001010",
+          "120001210",
+          "140032010"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        },
+        {
+          "name": "熱傷処置（１００ｃｍ２未満）",
+          "points": 135
+        },
+        {
+          "name": "ゲーベンクリーム１％ 10g",
+          "points": 13
+        },
+        {
+          "name": "調剤料（外用薬）",
+          "points": 8
+        },
+        {
+          "name": "処方料（その他）",
+          "points": 42
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "dermatology",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "numeric_anchor",
+          "short_lines",
+          "otc_medication"
+        ],
+        "distractorTypes": [
+          "otc_medication",
+          "considered_only"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:0801cad206964bbada420647f0608e6a"
+    },
+    {
+      "caseId": "V2-IM-MED-004",
+      "title": "内科 上気道炎初診 院外処方(一般名)",
+      "difficultyLevel": "L1",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 29,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "initial",
+        "serviceDate": "2026-07-21",
+        "department": "internal_medicine"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "abbreviation",
+        "prescription_detail",
+        "negated_exam",
+        "social_history"
+      ],
+      "distractors": [
+        {
+          "type": "negated_exam",
+          "name": "インフルエンザ迅速検査",
+          "note": "流行状況と経過から不要と判断し実施せず"
+        },
+        {
+          "type": "social_context",
+          "name": "喫煙歴",
+          "note": "問診情報。算定対象なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "3日前から咽頭痛と鼻汁。当院は初めての受診。",
+            "発熱は昨日まで37度台前半、今朝は36度台。咳は少し。痰は白色少量。",
+            "周囲に同様の症状の同僚が1人。家族は無症状。",
+            "喫煙10本/日×9年。飲酒は機会飲酒。アレルギー歴なし、常用薬なし。",
+            "仕事は営業職で、声を使うため早く治したいとのこと。"
+          ],
+          "O": [
+            "KT 36.9、BP 124/76、P 72整、SpO2 98%。",
+            "咽頭軽度発赤、扁桃白苔なし。頸部リンパ節腫脹なし。",
+            "肺音清、ラ音なし。心音整。",
+            "解熱傾向で経過も典型的な感冒であり、インフルエンザ迅速検査は流行状況からも不要と判断し実施せず。"
+          ],
+          "A": [
+            "急性上気道炎。細菌性二次感染を示唆する所見なし。"
+          ],
+          "P": [
+            "対症療法で経過をみる方針を説明。",
+            "院外処方箋を交付(一般名処方)。カルボシステイン錠500mg 3T 分3 毎食後 7日分、トラネキサム酸錠250mg 3T 分3 7日分。",
+            "禁煙が回復にも有利と説明し、リーフレットを渡した。",
+            "1週間で改善しない、高熱が出る、呼吸が苦しい場合は再診を指示。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n3日前から咽頭痛と鼻汁。当院は初めての受診。\n発熱は昨日まで37度台前半、今朝は36度台。咳は少し。痰は白色少量。\n周囲に同様の症状の同僚が1人。家族は無症状。\n喫煙10本/日×9年。飲酒は機会飲酒。アレルギー歴なし、常用薬なし。\n仕事は営業職で、声を使うため早く治したいとのこと。\n\nO（Objective：客観的情報）\nKT 36.9、BP 124/76、P 72整、SpO2 98%。\n咽頭軽度発赤、扁桃白苔なし。頸部リンパ節腫脹なし。\n肺音清、ラ音なし。心音整。\n解熱傾向で経過も典型的な感冒であり、インフルエンザ迅速検査は流行状況からも不要と判断し実施せず。\n\nA（Assessment：評価）\n急性上気道炎。細菌性二次感染を示唆する所見なし。\n\nP（Plan：計画）\n対症療法で経過をみる方針を説明。\n院外処方箋を交付(一般名処方)。カルボシステイン錠500mg 3T 分3 毎食後 7日分、トラネキサム酸錠250mg 3T 分3 7日分。\n禁煙が回復にも有利と説明し、リーフレットを渡した。\n1週間で改善しない、高熱が出る、呼吸が苦しい場合は再診を指示。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "急性上気道炎"
+        ],
+        "requiredBillingSignals": [
+          "処方箋料",
+          "一般名処方加算"
+        ],
+        "requiredReviewTopics": [],
+        "forbiddenCandidates": [
+          "調剤料",
+          "インフルエンザウイルス抗原定性"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-21",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "medication": {
+          "delivery_kind": "outside_prescription",
+          "prescription_category": "other",
+          "generic_name_prescription_add_on": "generic_name_add_on_1"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 361,
+        "candidateCodes": [
+          "111000110",
+          "120002910",
+          "120004270"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "初診料",
+          "points": 291
+        },
+        {
+          "name": "処方箋料（リフィル以外・その他）",
+          "points": 60
+        },
+        {
+          "name": "一般名処方加算１（処方箋料）",
+          "points": 10
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "internal_medicine",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "abbreviation",
+          "prescription_detail",
+          "negated_exam",
+          "social_history"
+        ],
+        "distractorTypes": [
+          "negated_exam",
+          "social_context"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:6298f408f5e7e203435a47b19af66563"
+    },
+    {
+      "caseId": "V2-IM-IMG-005",
+      "title": "内科 頭痛精査再診 頭部CT(機器・電子保存は施設属性)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 52,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-09",
+        "department": "internal_medicine"
+      },
+      "facilityFixtureKey": "clinic_imaging",
+      "realismAxes": [
+        "abbreviation",
+        "negative_findings",
+        "facility_attribute_not_in_chart",
+        "other_provider_history",
+        "otc_medication"
+      ],
+      "distractors": [
+        {
+          "type": "other_provider_past_imaging",
+          "name": "頭部MRI(他院・半年前)",
+          "note": "他院の過去検査。算定しない"
+        },
+        {
+          "type": "otc_medication",
+          "name": "市販ロキソニン",
+          "note": "市販薬。算定しない"
+        },
+        {
+          "type": "home_record",
+          "name": "血圧手帳",
+          "note": "自宅測定値。算定対象なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "高血圧で当院通院中(アムロジピン継続中)。3日前から後頭部の鈍痛が持続するため予約外で来院。",
+            "痛みは締め付けられる感じで一日中続く。朝にやや強い。嘔気・嘔吐なし、視覚異常なし。",
+            "痛みは肩こりが強い日に悪化し、休日はやや軽い。今朝は5/10程度。",
+            "市販のロキソニンを2回内服し、数時間は楽になる。",
+            "半年前に人間ドックのオプションで他院の頭部MRIを受けており、その際は異常なしと言われたとのこと(本人談、画像は未持参)。",
+            "血圧手帳では自宅血圧は朝130〜140台。最近仕事のストレスが強い。"
+          ],
+          "O": [
+            "BP 142/88、P 76整。",
+            "意識清明。瞳孔正円同大、対光反射迅速。眼振なし。",
+            "項部硬直なし。四肢の麻痺・しびれなし、歩行正常。腱反射左右差なし。",
+            "後頸部から肩にかけて筋緊張が強く、圧痛あり。",
+            "年齢と高血圧、痛みの持続を考慮し頭部CTを施行。出血・占拠性病変・明らかな虚血性変化なし。"
+          ],
+          "A": [
+            "緊張型頭痛が最も疑わしい。頭部CTで器質的疾患は否定的。",
+            "他院MRI(半年前・異常なし)の経過とも矛盾しない。血圧はやや高め。"
+          ],
+          "P": [
+            "肩頸部のストレッチと入浴を指導。鎮痛薬は市販薬の頓用継続で可と説明。",
+            "血圧は家庭血圧の記録を継続し、次回定期受診時に降圧薬の調整を検討。",
+            "突然の激しい頭痛、麻痺、ろれつ難があれば直ちに受診するよう説明。",
+            "次回の定期受診(今月末予約済み)で頭痛の経過も合わせて確認する。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n高血圧で当院通院中(アムロジピン継続中)。3日前から後頭部の鈍痛が持続するため予約外で来院。\n痛みは締め付けられる感じで一日中続く。朝にやや強い。嘔気・嘔吐なし、視覚異常なし。\n痛みは肩こりが強い日に悪化し、休日はやや軽い。今朝は5/10程度。\n市販のロキソニンを2回内服し、数時間は楽になる。\n半年前に人間ドックのオプションで他院の頭部MRIを受けており、その際は異常なしと言われたとのこと(本人談、画像は未持参)。\n血圧手帳では自宅血圧は朝130〜140台。最近仕事のストレスが強い。\n\nO（Objective：客観的情報）\nBP 142/88、P 76整。\n意識清明。瞳孔正円同大、対光反射迅速。眼振なし。\n項部硬直なし。四肢の麻痺・しびれなし、歩行正常。腱反射左右差なし。\n後頸部から肩にかけて筋緊張が強く、圧痛あり。\n年齢と高血圧、痛みの持続を考慮し頭部CTを施行。出血・占拠性病変・明らかな虚血性変化なし。\n\nA（Assessment：評価）\n緊張型頭痛が最も疑わしい。頭部CTで器質的疾患は否定的。\n他院MRI(半年前・異常なし)の経過とも矛盾しない。血圧はやや高め。\n\nP（Plan：計画）\n肩頸部のストレッチと入浴を指導。鎮痛薬は市販薬の頓用継続で可と説明。\n血圧は家庭血圧の記録を継続し、次回定期受診時に降圧薬の調整を検討。\n突然の激しい頭痛、麻痺、ろれつ難があれば直ちに受診するよう説明。\n次回の定期受診(今月末予約済み)で頭痛の経過も合わせて確認する。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "緊張型頭痛"
+        ],
+        "requiredBillingSignals": [
+          "ＣＴ撮影",
+          "コンピューター断層診断"
+        ],
+        "requiredReviewTopics": [],
+        "forbiddenCandidates": [
+          "ＭＲＩ撮影"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-09",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        },
+        "imaging_orders": [
+          {
+            "kind": "ct",
+            "ct_equipment_kind": "multislice_16_to_64",
+            "electronic_image_management": true
+          }
+        ]
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 1095,
+        "candidateCodes": [
+          "112007410",
+          "170011810",
+          "170028810"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        },
+        {
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900
+        },
+        {
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "internal_medicine",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_imaging",
+        "realismAxes": [
+          "abbreviation",
+          "negative_findings",
+          "facility_attribute_not_in_chart",
+          "other_provider_history",
+          "otc_medication"
+        ],
+        "distractorTypes": [
+          "other_provider_past_imaging",
+          "otc_medication",
+          "home_record"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:51c04694045425ea7439c11b162a690a"
+    },
+    {
+      "caseId": "V2-ORTH-IMG-006",
+      "title": "整形外科 膝外傷初診 膝XP2方向(DR・電子画像管理なし施設)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 44,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "initial",
+        "serviceDate": "2026-07-15",
+        "department": "orthopedics"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "abbreviation",
+        "numeric_anchor",
+        "planned_exam",
+        "past_history"
+      ],
+      "distractors": [
+        {
+          "type": "planned_exam",
+          "name": "MRI",
+          "note": "2週間後に検討。本日は算定しない"
+        },
+        {
+          "type": "past_history",
+          "name": "腰椎椎間板ヘルニア",
+          "note": "既往。本日の算定対象ではない"
+        },
+        {
+          "type": "home_medication",
+          "name": "湿布(自宅残り)",
+          "note": "処方なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "2日前、駅の階段を下りる際に荷物を持ったまま右膝を内側に捻った。当院初診。",
+            "受傷直後から内側の痛み。荷重時痛があり、階段下りで増悪。膝崩れ感・ロッキングはなし。",
+            "腫れは昨日がピークで今日は少し引いた印象。自宅にあった湿布を貼って様子をみていた。",
+            "既往: 5年前に腰椎椎間板ヘルニア(保存的治療で軽快)。常用薬なし。アレルギーなし。",
+            "学生時代はサッカー。膝のけがは今回が初めて。",
+            "仕事は倉庫内作業で、しゃがみ動作が多い。早期復帰を希望。"
+          ],
+          "O": [
+            "歩行は軽度跛行。右膝に軽度腫脹、熱感は軽度。皮下出血なし。膝蓋跳動は明らかでない。",
+            "左膝と比較し周径+1cm程度。内側関節裂隙に圧痛。外反ストレスで疼痛誘発、明らかな不安定性なし。",
+            "前方引き出し・ラックマン陰性。マクマレー陰性。可動域 0-130度(左は0-140度)。",
+            "右膝XP 2方向(DR)を施行。骨折線なし、関節裂隙狭小化なし、骨棘なし。"
+          ],
+          "A": [
+            "右膝内側側副靭帯損傷(grade I-II)疑い。骨傷なし。",
+            "半月板損傷は理学所見上は否定的だが、経過で再評価する。"
+          ],
+          "P": [
+            "サポーター装着と、しゃがみ込み・捻り動作の回避を指導。",
+            "アイシングを1日数回。仕事は重量物を避ければ継続可と説明。",
+            "2週間後に再診。改善が乏しければMRIを検討する。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n2日前、駅の階段を下りる際に荷物を持ったまま右膝を内側に捻った。当院初診。\n受傷直後から内側の痛み。荷重時痛があり、階段下りで増悪。膝崩れ感・ロッキングはなし。\n腫れは昨日がピークで今日は少し引いた印象。自宅にあった湿布を貼って様子をみていた。\n既往: 5年前に腰椎椎間板ヘルニア(保存的治療で軽快)。常用薬なし。アレルギーなし。\n学生時代はサッカー。膝のけがは今回が初めて。\n仕事は倉庫内作業で、しゃがみ動作が多い。早期復帰を希望。\n\nO（Objective：客観的情報）\n歩行は軽度跛行。右膝に軽度腫脹、熱感は軽度。皮下出血なし。膝蓋跳動は明らかでない。\n左膝と比較し周径+1cm程度。内側関節裂隙に圧痛。外反ストレスで疼痛誘発、明らかな不安定性なし。\n前方引き出し・ラックマン陰性。マクマレー陰性。可動域 0-130度(左は0-140度)。\n右膝XP 2方向(DR)を施行。骨折線なし、関節裂隙狭小化なし、骨棘なし。\n\nA（Assessment：評価）\n右膝内側側副靭帯損傷(grade I-II)疑い。骨傷なし。\n半月板損傷は理学所見上は否定的だが、経過で再評価する。\n\nP（Plan：計画）\nサポーター装着と、しゃがみ込み・捻り動作の回避を指導。\nアイシングを1日数回。仕事は重量物を避ければ継続可と説明。\n2週間後に再診。改善が乏しければMRIを検討する。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "内側側副靭帯損傷"
+        ],
+        "requiredBillingSignals": [
+          "単純撮影",
+          "写真診断"
+        ],
+        "requiredReviewTopics": [],
+        "forbiddenCandidates": [
+          "電子画像管理加算",
+          "ＭＲＩ撮影"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-15",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "imaging_orders": [
+          {
+            "kind": "simple_radiography",
+            "acquisition_kind": "digital",
+            "radiography_diagnostic_kind": "simple_i"
+          }
+        ]
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 444,
+        "candidateCodes": [
+          "111000110",
+          "170000410",
+          "170027910"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "初診料",
+          "points": 291
+        },
+        {
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85
+        },
+        {
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "orthopedics",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "abbreviation",
+          "numeric_anchor",
+          "planned_exam",
+          "past_history"
+        ],
+        "distractorTypes": [
+          "planned_exam",
+          "past_history",
+          "home_medication"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:7bf8a89bc63364778aefc17e12d2a75c"
+    },
+    {
+      "caseId": "V2-CARD-MGMT-007",
+      "title": "循環器内科 高血圧・脂質異常 定期再診(管理料はレビュー)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 67,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-10",
+        "department": "cardiology"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "abbreviation",
+        "chronic_followup",
+        "past_lab_values",
+        "planned_exam"
+      ],
+      "distractors": [
+        {
+          "type": "past_lab_values",
+          "name": "前回採血(LDL/HbA1c)",
+          "note": "過去結果の参照。本日の検査ではない"
+        },
+        {
+          "type": "past_exam",
+          "name": "心電図(前回実施)",
+          "note": "本日は施行せず、と明記。算定しない"
+        },
+        {
+          "type": "planned_exam",
+          "name": "次回採血",
+          "note": "来月予定。本日は算定しない"
+        },
+        {
+          "type": "home_record",
+          "name": "家庭血圧記録",
+          "note": "自宅測定。算定対象なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "高血圧・脂質異常症で月1回通院中。体調変化なし。",
+            "家庭血圧は朝126〜134/78前後で安定。怠薬なし。残薬もなし。",
+            "胸痛・動悸・息切れなし。下肢のむくみなし。夜間の睡眠は良好。",
+            "ウォーキングは週3回30分を継続。間食を減らし、体重は1kg減。",
+            "喫煙は20年前にやめた。飲酒はビール350mlを週2回程度。",
+            "家族歴: 父が脳梗塞(70代)。妻と同居。減塩は「味噌汁を1日1杯にした」とのこと。"
+          ],
+          "O": [
+            "BP 134/82、P 70整。心音整、雑音なし。呼吸音清。下腿浮腫なし。",
+            "前回(6/12)採血: LDL 118、HDL 52、TG 140、HbA1c 5.8。",
+            "心電図は前回受診時に実施済みで異常なし(本日は施行せず)。",
+            "体重 68.4kg(前回比 -1.0kg)、腹囲 86cm。"
+          ],
+          "A": [
+            "血圧・脂質ともコントロール良好。生活習慣の改善が維持できている。"
+          ],
+          "P": [
+            "生活習慣病の療養計画に沿って、減塩と運動継続を指導した。本人の目標(体重-2kg)を再確認。",
+            "処方は前回と同じ内容を院外で継続(アムロジピン5mg、ロスバスタチン2.5mg)。",
+            "次回は来月、定期採血を予定(脂質・肝腎機能・HbA1c)。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n高血圧・脂質異常症で月1回通院中。体調変化なし。\n家庭血圧は朝126〜134/78前後で安定。怠薬なし。残薬もなし。\n胸痛・動悸・息切れなし。下肢のむくみなし。夜間の睡眠は良好。\nウォーキングは週3回30分を継続。間食を減らし、体重は1kg減。\n喫煙は20年前にやめた。飲酒はビール350mlを週2回程度。\n家族歴: 父が脳梗塞(70代)。妻と同居。減塩は「味噌汁を1日1杯にした」とのこと。\n\nO（Objective：客観的情報）\nBP 134/82、P 70整。心音整、雑音なし。呼吸音清。下腿浮腫なし。\n前回(6/12)採血: LDL 118、HDL 52、TG 140、HbA1c 5.8。\n心電図は前回受診時に実施済みで異常なし(本日は施行せず)。\n体重 68.4kg(前回比 -1.0kg)、腹囲 86cm。\n\nA（Assessment：評価）\n血圧・脂質ともコントロール良好。生活習慣の改善が維持できている。\n\nP（Plan：計画）\n生活習慣病の療養計画に沿って、減塩と運動継続を指導した。本人の目標(体重-2kg)を再確認。\n処方は前回と同じ内容を院外で継続(アムロジピン5mg、ロスバスタチン2.5mg)。\n次回は来月、定期採血を予定(脂質・肝腎機能・HbA1c)。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "高血圧"
+        ],
+        "requiredBillingSignals": [
+          "生活習慣病管理料"
+        ],
+        "requiredReviewTopics": [
+          "管理料確認",
+          "同月履歴確認"
+        ],
+        "forbiddenCandidates": [
+          "生活習慣病管理料"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-10",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "review_required",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "cardiology",
+        "assertionLevel": "review_required",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "abbreviation",
+          "chronic_followup",
+          "past_lab_values",
+          "planned_exam"
+        ],
+        "distractorTypes": [
+          "past_lab_values",
+          "past_exam",
+          "planned_exam",
+          "home_record"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:83faf7848d19d5a618504e703caf6077"
+    },
+    {
+      "caseId": "V2-SURG-PATH-008",
+      "title": "外科 背部腫瘤切除 病理提出(病理・手術はレビュー)",
+      "difficultyLevel": "L3",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 58,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-17",
+        "department": "surgery"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "procedure_detail",
+        "specimen_flow",
+        "past_exam",
+        "materials_mention"
+      ],
+      "distractors": [
+        {
+          "type": "past_exam",
+          "name": "エコー(前回)",
+          "note": "前回実施済みの参照。本日の算定ではない"
+        },
+        {
+          "type": "other_provider_history",
+          "name": "前医での抗菌薬治療(2ヶ月前)",
+          "note": "他院の過去治療。算定しない"
+        },
+        {
+          "type": "allergy_check",
+          "name": "キシロカインアレルギー",
+          "note": "安全確認。算定対象なし"
+        },
+        {
+          "type": "otc_medication",
+          "name": "市販鎮痛薬(術後)",
+          "note": "必要時は市販で可と説明。処方なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "背部のしこりが半年で増大し、前回受診時に切除の方針とした。本日切除目的で来院。",
+            "痛みはないが、椅子の背もたれに当たって気になる。仕事は介護職で背部が当たる場面が多い。",
+            "2ヶ月前に一度赤く腫れて痛み、近医(前医)で抗菌薬を処方され軽快した経緯あり。",
+            "局所麻酔薬(キシロカイン)のアレルギー歴なし。抗凝固薬・抗血小板薬の内服なし。",
+            "朝食は普通に摂取。仕事は明日から可能か質問あり。"
+          ],
+          "O": [
+            "背部正中やや右に約2cmの皮下腫瘤。可動性良好、圧痛なし。皮膚面に開口部様の黒点あり。",
+            "周囲皮膚に発赤・熱感なし(炎症は消退)。",
+            "前回施行のエコーでは境界明瞭な嚢腫様病変で、深部への連続なし(既評価)。",
+            "BP 128/76、P 72。同意書を確認のうえ、消毒・ドレープ後、1%キシロカイン5mLで局所麻酔し腫瘤切除を施行。",
+            "被膜ごと摘出、内容はアテローム様。出血少量で電気凝固は不要。5-0ナイロンで4針縫合。",
+            "摘出検体はホルマリン固定し、病理組織診断へ提出。創部はガーゼで被覆。",
+            "術後の気分不良なし、止血確認して帰宅可。"
+          ],
+          "A": [
+            "粉瘤の臨床診断。過去の感染エピソードは前医治療で消退しており、本日は非炎症期の摘出。",
+            "肉眼的に悪性を示唆する所見なし、病理結果待ち。"
+          ],
+          "P": [
+            "創部は明日から短時間のシャワー可。入浴(湯船)は抜糸まで控える。明日と1週間後(抜糸)に再診。",
+            "本日の運転は問題ないが、背部の突っ張り感があれば無理をしないよう説明。",
+            "痛みが出た場合は市販の鎮痛薬で対応可と説明(処方なし)。",
+            "病理結果は次回以降に説明。発赤・腫脹・痛みの増強があれば早めに受診。",
+            "介護業務での背部圧迫は数日避け、重労働は抜糸まで控えるよう説明。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n背部のしこりが半年で増大し、前回受診時に切除の方針とした。本日切除目的で来院。\n痛みはないが、椅子の背もたれに当たって気になる。仕事は介護職で背部が当たる場面が多い。\n2ヶ月前に一度赤く腫れて痛み、近医(前医)で抗菌薬を処方され軽快した経緯あり。\n局所麻酔薬(キシロカイン)のアレルギー歴なし。抗凝固薬・抗血小板薬の内服なし。\n朝食は普通に摂取。仕事は明日から可能か質問あり。\n\nO（Objective：客観的情報）\n背部正中やや右に約2cmの皮下腫瘤。可動性良好、圧痛なし。皮膚面に開口部様の黒点あり。\n周囲皮膚に発赤・熱感なし(炎症は消退)。\n前回施行のエコーでは境界明瞭な嚢腫様病変で、深部への連続なし(既評価)。\nBP 128/76、P 72。同意書を確認のうえ、消毒・ドレープ後、1%キシロカイン5mLで局所麻酔し腫瘤切除を施行。\n被膜ごと摘出、内容はアテローム様。出血少量で電気凝固は不要。5-0ナイロンで4針縫合。\n摘出検体はホルマリン固定し、病理組織診断へ提出。創部はガーゼで被覆。\n術後の気分不良なし、止血確認して帰宅可。\n\nA（Assessment：評価）\n粉瘤の臨床診断。過去の感染エピソードは前医治療で消退しており、本日は非炎症期の摘出。\n肉眼的に悪性を示唆する所見なし、病理結果待ち。\n\nP（Plan：計画）\n創部は明日から短時間のシャワー可。入浴(湯船)は抜糸まで控える。明日と1週間後(抜糸)に再診。\n本日の運転は問題ないが、背部の突っ張り感があれば無理をしないよう説明。\n痛みが出た場合は市販の鎮痛薬で対応可と説明(処方なし)。\n病理結果は次回以降に説明。発赤・腫脹・痛みの増強があれば早めに受診。\n介護業務での背部圧迫は数日避け、重労働は抜糸まで控えるよう説明。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "粉瘤"
+        ],
+        "requiredBillingSignals": [
+          "病理"
+        ],
+        "requiredReviewTopics": [
+          "病理未対応",
+          "検体提出確認",
+          "手術未対応"
+        ],
+        "forbiddenCandidates": [
+          "病理組織標本作製"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-17",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "review_required",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "surgery",
+        "assertionLevel": "review_required",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "procedure_detail",
+          "specimen_flow",
+          "past_exam",
+          "materials_mention"
+        ],
+        "distractorTypes": [
+          "past_exam",
+          "other_provider_history",
+          "allergy_check",
+          "otc_medication"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:82fb3eedc01227dca575c6e3353e097b"
+    },
+    {
+      "caseId": "V2-EMER-TIME-009",
+      "title": "内科 夜間受診 腹痛(時間外系加算はレビュー)",
+      "difficultyLevel": "L3",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 31,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "initial",
+        "serviceDate": "2026-07-22",
+        "department": "internal_medicine"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "time_context",
+        "negative_findings",
+        "negated_exam",
+        "social_history"
+      ],
+      "distractors": [
+        {
+          "type": "negated_exam",
+          "name": "心電図",
+          "note": "不要と判断し実施せず"
+        },
+        {
+          "type": "negated_exam",
+          "name": "採血",
+          "note": "経過観察可と判断し本日は行わず"
+        },
+        {
+          "type": "social_context",
+          "name": "飲酒歴",
+          "note": "問診情報"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "21:10受付。夕食(焼肉、ビール500ml)の後、20時頃から心窩部痛が出現し来院。当院初診。",
+            "痛みは持続性のしくしくした痛みで、増悪傾向はない。放散痛なし。嘔気は軽度、嘔吐なし。下痢なし。",
+            "胸痛・背部痛・冷汗なし。同様の痛みは過去にも飲酒後に時々あった。",
+            "最終排便は今朝で普通便。黒色便なし。海外渡航歴なし。",
+            "ピロリ菌は「調べたことがない」とのこと。健診は毎年受けているが胃カメラは未経験。",
+            "既往特記なし。常用薬なし。飲酒は週3回、ビール500ml程度。喫煙なし。本日は夜勤明けで睡眠不足。"
+          ],
+          "O": [
+            "KT 36.7、BP 126/78、P 74整、SpO2 99%。",
+            "眼瞼結膜に貧血なし、眼球結膜に黄疸なし。",
+            "腹部平坦・軟。腸蠕動音正常。心窩部に軽度圧痛、反跳痛・筋性防御なし。",
+            "マーフィー徴候陰性。背部叩打痛なし。右下腹部に圧痛なし。",
+            "胸部聴診で異常なし。皮疹なし。",
+            "院内で30分程度経過を観察したが、痛みの増悪なく歩行・会話も問題なし。",
+            "年齢・症状の性状・随伴症状から心疾患は否定的と判断し、心電図は実施せず。",
+            "腹膜刺激徴候がなく全身状態良好のため、採血も本日は行わず経過観察可と判断。"
+          ],
+          "A": [
+            "急性胃炎(アルコール・食事性)疑い。緊急性を示す所見なし。",
+            "胆石症・膵炎は所見上否定的。虫垂炎初期は完全には否定できないが、圧痛部位と経過から可能性は低い。"
+          ],
+          "P": [
+            "本日は飲食を控えめにし、水分は少量ずつ摂るよう指導。明朝改善なければ午前中に再診を指示。",
+            "痛みの増強、痛みの右下腹部への移動、嘔吐、黒色便、発熱があれば夜間でも救急受診するよう説明。",
+            "常習的な飲酒後の心窩部痛については、改善しなければ後日の内視鏡検査を相談する。飲酒量の見直しも助言。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n21:10受付。夕食(焼肉、ビール500ml)の後、20時頃から心窩部痛が出現し来院。当院初診。\n痛みは持続性のしくしくした痛みで、増悪傾向はない。放散痛なし。嘔気は軽度、嘔吐なし。下痢なし。\n胸痛・背部痛・冷汗なし。同様の痛みは過去にも飲酒後に時々あった。\n最終排便は今朝で普通便。黒色便なし。海外渡航歴なし。\nピロリ菌は「調べたことがない」とのこと。健診は毎年受けているが胃カメラは未経験。\n既往特記なし。常用薬なし。飲酒は週3回、ビール500ml程度。喫煙なし。本日は夜勤明けで睡眠不足。\n\nO（Objective：客観的情報）\nKT 36.7、BP 126/78、P 74整、SpO2 99%。\n眼瞼結膜に貧血なし、眼球結膜に黄疸なし。\n腹部平坦・軟。腸蠕動音正常。心窩部に軽度圧痛、反跳痛・筋性防御なし。\nマーフィー徴候陰性。背部叩打痛なし。右下腹部に圧痛なし。\n胸部聴診で異常なし。皮疹なし。\n院内で30分程度経過を観察したが、痛みの増悪なく歩行・会話も問題なし。\n年齢・症状の性状・随伴症状から心疾患は否定的と判断し、心電図は実施せず。\n腹膜刺激徴候がなく全身状態良好のため、採血も本日は行わず経過観察可と判断。\n\nA（Assessment：評価）\n急性胃炎(アルコール・食事性)疑い。緊急性を示す所見なし。\n胆石症・膵炎は所見上否定的。虫垂炎初期は完全には否定できないが、圧痛部位と経過から可能性は低い。\n\nP（Plan：計画）\n本日は飲食を控えめにし、水分は少量ずつ摂るよう指導。明朝改善なければ午前中に再診を指示。\n痛みの増強、痛みの右下腹部への移動、嘔吐、黒色便、発熱があれば夜間でも救急受診するよう説明。\n常習的な飲酒後の心窩部痛については、改善しなければ後日の内視鏡検査を相談する。飲酒量の見直しも助言。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "急性胃炎"
+        ],
+        "requiredBillingSignals": [],
+        "requiredReviewTopics": [
+          "救急加算確認",
+          "受付時刻確認"
+        ],
+        "forbiddenCandidates": [
+          "時間外加算",
+          "心電図",
+          "内視鏡"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-22",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "safety",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "初診料",
+          "points": 291
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "internal_medicine",
+        "assertionLevel": "safety",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "time_context",
+          "negative_findings",
+          "negated_exam",
+          "social_history"
+        ],
+        "distractorTypes": [
+          "negated_exam",
+          "negated_exam",
+          "social_context"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:0c3f135fba47546f20d0bf7ac4d55a27"
+    },
+    {
+      "caseId": "V2-HOME-010",
+      "title": "在宅 定期訪問診療(在宅領域は未対応レビュー)",
+      "difficultyLevel": "L3",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 84,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-11",
+        "department": "homecare"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "homecare_context",
+        "caregiver",
+        "planned_care",
+        "medication_management"
+      ],
+      "distractors": [
+        {
+          "type": "planned_care",
+          "name": "インフルエンザワクチン",
+          "note": "秋に予定の話題。本日は算定しない"
+        },
+        {
+          "type": "planned_exam",
+          "name": "認知機能スクリーニング",
+          "note": "次回検討。本日は実施なし"
+        },
+        {
+          "type": "medication_management_context",
+          "name": "一包化・服薬管理",
+          "note": "状況記載。本日の調剤行為ではない"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "月2回の定期訪問診療。独居・要介護2。娘が週3回訪問し、ヘルパーが週2回。",
+            "食欲は安定し、3食摂れている。夜間の咳なし。息切れの自覚なし。睡眠は中途覚醒1回程度。",
+            "服薬は一包化したものを娘がカレンダーにセットし、飲み忘れはほぼない。",
+            "先月からデイサービスを週1回利用開始し、「行くのが楽しみ」とのこと。",
+            "娘より「最近、同じ話を繰り返すことが少し気になる」との相談あり。",
+            "「最近は朝の体操を再開した」とのこと。転倒なし。"
+          ],
+          "O": [
+            "BP 128/70、P 68整、SpO2 97%(室内気)、KT 36.4。体重は娘の計測で42.8kg(横ばい)。",
+            "心音整、呼吸音清。下腿浮腫なし。頸静脈怒張なし。褥瘡なし。",
+            "口腔内の乾燥なし、皮膚の張りも保たれ脱水所見なし。",
+            "居室内の移動は伝い歩きで安定。室温・湿度は適切に管理されている(エアコン使用)。",
+            "住環境に大きな段差なし、手すり設置済み。",
+            "会話は成立し、日付の見当識も保たれている。診察中の応答に大きな低下は感じない。"
+          ],
+          "A": [
+            "慢性心不全・高血圧、在宅で安定。服薬アドヒアランス良好。",
+            "ADLは維持。脱水・低栄養の徴候なし。",
+            "もの忘れの訴えは現時点で生活に支障なし。次回以降に簡易的な評価を検討。"
+          ],
+          "P": [
+            "内服は現行どおり継続。残薬を確認し、次回処方分の数量を調整予定。次回訪問は2週間後。",
+            "暑い時期のため、水分摂取と室温管理の継続を本人と娘に説明(熱中症予防)。",
+            "体重が2kg以上増える、夜間の息苦しさが出る場合は臨時連絡するよう娘とケアマネに共有。",
+            "もの忘れについては次回訪問時に簡易スクリーニングを検討すると娘に説明。",
+            "秋のインフルエンザワクチンは10月頃に訪問時接種を予定として相談。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n月2回の定期訪問診療。独居・要介護2。娘が週3回訪問し、ヘルパーが週2回。\n食欲は安定し、3食摂れている。夜間の咳なし。息切れの自覚なし。睡眠は中途覚醒1回程度。\n服薬は一包化したものを娘がカレンダーにセットし、飲み忘れはほぼない。\n先月からデイサービスを週1回利用開始し、「行くのが楽しみ」とのこと。\n娘より「最近、同じ話を繰り返すことが少し気になる」との相談あり。\n「最近は朝の体操を再開した」とのこと。転倒なし。\n\nO（Objective：客観的情報）\nBP 128/70、P 68整、SpO2 97%(室内気)、KT 36.4。体重は娘の計測で42.8kg(横ばい)。\n心音整、呼吸音清。下腿浮腫なし。頸静脈怒張なし。褥瘡なし。\n口腔内の乾燥なし、皮膚の張りも保たれ脱水所見なし。\n居室内の移動は伝い歩きで安定。室温・湿度は適切に管理されている(エアコン使用)。\n住環境に大きな段差なし、手すり設置済み。\n会話は成立し、日付の見当識も保たれている。診察中の応答に大きな低下は感じない。\n\nA（Assessment：評価）\n慢性心不全・高血圧、在宅で安定。服薬アドヒアランス良好。\nADLは維持。脱水・低栄養の徴候なし。\nもの忘れの訴えは現時点で生活に支障なし。次回以降に簡易的な評価を検討。\n\nP（Plan：計画）\n内服は現行どおり継続。残薬を確認し、次回処方分の数量を調整予定。次回訪問は2週間後。\n暑い時期のため、水分摂取と室温管理の継続を本人と娘に説明(熱中症予防)。\n体重が2kg以上増える、夜間の息苦しさが出る場合は臨時連絡するよう娘とケアマネに共有。\nもの忘れについては次回訪問時に簡易スクリーニングを検討すると娘に説明。\n秋のインフルエンザワクチンは10月頃に訪問時接種を予定として相談。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "慢性心不全"
+        ],
+        "requiredBillingSignals": [],
+        "requiredReviewTopics": [
+          "在宅医療未対応",
+          "訪問診療確認"
+        ],
+        "forbiddenCandidates": [
+          "在宅患者訪問診療料",
+          "インフルエンザワクチン"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-11",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "unsupported_expected",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "homecare",
+        "assertionLevel": "unsupported_expected",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "homecare_context",
+          "caregiver",
+          "planned_care",
+          "medication_management"
+        ],
+        "distractorTypes": [
+          "planned_care",
+          "planned_exam",
+          "medication_management_context"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:81716b9ede90fed44dd3e63f9e550ff0"
+    },
+    {
+      "caseId": "V2-ENT-LAB-011",
+      "title": "耳鼻咽喉科 発熱・咽頭痛再診 インフル迅速",
+      "difficultyLevel": "L1",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 26,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-14",
+        "department": "otolaryngology"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "abbreviation",
+        "negative_findings"
+      ],
+      "distractors": [
+        {
+          "type": "home_medication",
+          "name": "市販のど飴・解熱薬",
+          "note": "市販品。算定しない"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "昨日からの発熱・咽頭痛で昨日受診し、本日再診。",
+            "今朝はKT 38.2まで上昇。関節痛と倦怠感が出てきた。咳は軽度。",
+            "職場でインフルエンザの同僚あり。市販の解熱薬とのど飴で様子を見ていた。",
+            "嚥下は痛いが水分は摂れている。"
+          ],
+          "O": [
+            "KT 38.0、P 92。咽頭発赤(+)、扁桃腫大なし、白苔なし。",
+            "鼓膜両側異常なし。鼻粘膜発赤あり、水様性鼻汁。頸部リンパ節圧痛軽度。",
+            "鼻咽頭ぬぐい液でインフル迅速を施行。A型(+)。"
+          ],
+          "A": [
+            "インフルエンザA型。咽頭所見は随伴性で、細菌性扁桃炎は否定的。"
+          ],
+          "P": [
+            "自宅安静、水分摂取を指導。市販解熱薬の継続使用で可と説明。",
+            "出勤は発症後5日を目安に。呼吸苦・水分摂取不能時は早めに再診。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n昨日からの発熱・咽頭痛で昨日受診し、本日再診。\n今朝はKT 38.2まで上昇。関節痛と倦怠感が出てきた。咳は軽度。\n職場でインフルエンザの同僚あり。市販の解熱薬とのど飴で様子を見ていた。\n嚥下は痛いが水分は摂れている。\n\nO（Objective：客観的情報）\nKT 38.0、P 92。咽頭発赤(+)、扁桃腫大なし、白苔なし。\n鼓膜両側異常なし。鼻粘膜発赤あり、水様性鼻汁。頸部リンパ節圧痛軽度。\n鼻咽頭ぬぐい液でインフル迅速を施行。A型(+)。\n\nA（Assessment：評価）\nインフルエンザA型。咽頭所見は随伴性で、細菌性扁桃炎は否定的。\n\nP（Plan：計画）\n自宅安静、水分摂取を指導。市販解熱薬の継続使用で可と説明。\n出勤は発症後5日を目安に。呼吸苦・水分摂取不能時は早めに再診。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "インフルエンザ"
+        ],
+        "requiredBillingSignals": [
+          "インフルエンザウイルス抗原定性",
+          "免疫学的検査判断料"
+        ],
+        "requiredReviewTopics": [
+          "検体採取確認"
+        ],
+        "forbiddenCandidates": []
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-14",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "procedure_codes": [
+          "160169450"
+        ],
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 351,
+        "candidateCodes": [
+          "160169450",
+          "112007410",
+          "160062110"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        },
+        {
+          "name": "インフルエンザウイルス抗原定性",
+          "points": 132
+        },
+        {
+          "name": "免疫学的検査判断料",
+          "points": 144
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "otolaryngology",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "abbreviation",
+          "negative_findings"
+        ],
+        "distractorTypes": [
+          "home_medication"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:e67348bbe5ddcd97be959ba6d369e3d9"
+    },
+    {
+      "caseId": "V2-OPH-MED-012",
+      "title": "眼科 アレルギー性結膜炎初診 院外処方(一般名)",
+      "difficultyLevel": "L1",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 33,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "initial",
+        "serviceDate": "2026-07-16",
+        "department": "ophthalmology"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "abbreviation",
+        "prescription_detail",
+        "otc_medication"
+      ],
+      "distractors": [
+        {
+          "type": "otc_medication",
+          "name": "市販の人工涙液",
+          "note": "市販品。算定しない"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "1週間前から両眼のかゆみと充血。当院初診。",
+            "毎年この時期に同様の症状。市販の人工涙液で一時しのぎしていた。",
+            "コンタクトレンズは使用していない。眼脂は少量、漿液性。視力低下の自覚なし。",
+            "くしゃみ・鼻のかゆみも軽くあり、花粉症と言われたことがある。"
+          ],
+          "O": [
+            "両眼球結膜に充血、乳頭増殖を認める。角膜清明、フルオレセイン染色で上皮欠損なし。",
+            "前房に炎症所見なし。眼瞼結膜に浮腫軽度。",
+            "視力 右1.0、左1.0(矯正)。眼圧は触診上問題なし。"
+          ],
+          "A": [
+            "両アレルギー性結膜炎。角膜病変なし。"
+          ],
+          "P": [
+            "院外処方箋を交付(一般名処方)。オロパタジン点眼液0.1% 5mL 両眼1日4回。",
+            "かゆみが強いときは冷罨法を併用。2週間で改善なければ再診。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n1週間前から両眼のかゆみと充血。当院初診。\n毎年この時期に同様の症状。市販の人工涙液で一時しのぎしていた。\nコンタクトレンズは使用していない。眼脂は少量、漿液性。視力低下の自覚なし。\nくしゃみ・鼻のかゆみも軽くあり、花粉症と言われたことがある。\n\nO（Objective：客観的情報）\n両眼球結膜に充血、乳頭増殖を認める。角膜清明、フルオレセイン染色で上皮欠損なし。\n前房に炎症所見なし。眼瞼結膜に浮腫軽度。\n視力 右1.0、左1.0(矯正)。眼圧は触診上問題なし。\n\nA（Assessment：評価）\n両アレルギー性結膜炎。角膜病変なし。\n\nP（Plan：計画）\n院外処方箋を交付(一般名処方)。オロパタジン点眼液0.1% 5mL 両眼1日4回。\nかゆみが強いときは冷罨法を併用。2週間で改善なければ再診。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "アレルギー性結膜炎"
+        ],
+        "requiredBillingSignals": [
+          "処方箋料",
+          "一般名処方加算"
+        ],
+        "requiredReviewTopics": [],
+        "forbiddenCandidates": [
+          "調剤料"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-16",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "medication": {
+          "delivery_kind": "outside_prescription",
+          "prescription_category": "other",
+          "generic_name_prescription_add_on": "generic_name_add_on_1"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 361,
+        "candidateCodes": [
+          "111000110",
+          "120002910",
+          "120004270"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "初診料",
+          "points": 291
+        },
+        {
+          "name": "処方箋料（リフィル以外・その他）",
+          "points": 60
+        },
+        {
+          "name": "一般名処方加算１（処方箋料）",
+          "points": 10
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "ophthalmology",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "abbreviation",
+          "prescription_detail",
+          "otc_medication"
+        ],
+        "distractorTypes": [
+          "otc_medication"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:164db13e337635178d2c157567562543"
+    },
+    {
+      "caseId": "V2-URO-LAB-013",
+      "title": "泌尿器科 結石フォロー再診 尿検査(届出なし施設)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 47,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-09",
+        "department": "urology"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "abbreviation",
+        "other_provider_history",
+        "planned_exam"
+      ],
+      "distractors": [
+        {
+          "type": "other_provider_past_imaging",
+          "name": "CT(救急病院・先月)",
+          "note": "他院の過去検査。算定しない"
+        },
+        {
+          "type": "planned_exam",
+          "name": "超音波",
+          "note": "次回予定。本日は算定しない"
+        },
+        {
+          "type": "home_medication",
+          "name": "ウラリット(他院処方継続中)",
+          "note": "他院処方。本日の算定なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "先月、右尿管結石の疝痛発作で救急病院を受診し、CTで4mmの下部尿管結石を指摘された(他院)。",
+            "自然排石待ちの方針で当院フォロー中。本日再診。",
+            "1週間前に強い痛みの後、排尿時に小さな砂粒のようなものが出た気がするとのこと。以後痛みなし。",
+            "救急病院で処方されたウラリットは残りを内服継続中。肉眼的血尿なし。",
+            "発作時は右腰背部から下腹部への激痛で冷や汗が出たが、以後は鈍い違和感のみ。",
+            "仕事は外回りの営業で夏場は汗が多い。水分は意識して摂るようにしている。"
+          ],
+          "O": [
+            "KT 36.5。腹部平坦・軟、圧痛なし。右CVA叩打痛なし。",
+            "院内で尿定性・尿蛋白を実施。潜血(±)、蛋白(-)、白血球反応(-)。",
+            "BP 124/78。残尿感の訴えなし。"
+          ],
+          "A": [
+            "右尿管結石、排石された可能性が高い。尿所見もほぼ正常化。"
+          ],
+          "P": [
+            "排石確認のため次回受診時に超音波を予定。",
+            "水分摂取2L/日の継続を指導。疝痛再燃時は早めに受診。",
+            "再発予防としてシュウ酸の多い食品の摂りすぎとビールでの水分補給を避けるよう説明。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n先月、右尿管結石の疝痛発作で救急病院を受診し、CTで4mmの下部尿管結石を指摘された(他院)。\n自然排石待ちの方針で当院フォロー中。本日再診。\n1週間前に強い痛みの後、排尿時に小さな砂粒のようなものが出た気がするとのこと。以後痛みなし。\n救急病院で処方されたウラリットは残りを内服継続中。肉眼的血尿なし。\n発作時は右腰背部から下腹部への激痛で冷や汗が出たが、以後は鈍い違和感のみ。\n仕事は外回りの営業で夏場は汗が多い。水分は意識して摂るようにしている。\n\nO（Objective：客観的情報）\nKT 36.5。腹部平坦・軟、圧痛なし。右CVA叩打痛なし。\n院内で尿定性・尿蛋白を実施。潜血(±)、蛋白(-)、白血球反応(-)。\nBP 124/78。残尿感の訴えなし。\n\nA（Assessment：評価）\n右尿管結石、排石された可能性が高い。尿所見もほぼ正常化。\n\nP（Plan：計画）\n排石確認のため次回受診時に超音波を予定。\n水分摂取2L/日の継続を指導。疝痛再燃時は早めに受診。\n再発予防としてシュウ酸の多い食品の摂りすぎとビールでの水分補給を避けるよう説明。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "尿管結石"
+        ],
+        "requiredBillingSignals": [
+          "尿一般",
+          "尿蛋白",
+          "尿・糞便等検査判断料"
+        ],
+        "requiredReviewTopics": [],
+        "forbiddenCandidates": [
+          "ＣＴ撮影",
+          "超音波検査"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-09",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "procedure_codes": [
+          "160000310",
+          "160000410"
+        ],
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 142,
+        "candidateCodes": [
+          "160000310",
+          "160000410",
+          "112007410",
+          "160061710"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        },
+        {
+          "name": "尿一般",
+          "points": 26
+        },
+        {
+          "name": "尿蛋白",
+          "points": 7
+        },
+        {
+          "name": "尿・糞便等検査判断料",
+          "points": 34
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "urology",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "abbreviation",
+          "other_provider_history",
+          "planned_exam"
+        ],
+        "distractorTypes": [
+          "other_provider_past_imaging",
+          "planned_exam",
+          "home_medication"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:b4cdf122e41fbc29180b170ab28c2d18"
+    },
+    {
+      "caseId": "V2-GI-LAB-014",
+      "title": "消化器内科 腹痛精査再診 CRP・血算+採血",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 41,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-10",
+        "department": "gastroenterology"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "abbreviation",
+        "lab_raw_values",
+        "negated_exam"
+      ],
+      "distractors": [
+        {
+          "type": "negated_exam",
+          "name": "腹部CT",
+          "note": "現時点では行わず、と明記"
+        },
+        {
+          "type": "planned_exam",
+          "name": "大腸内視鏡",
+          "note": "症状持続時に検討。本日は実施なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "1週間前からの左下腹部痛で3日前に受診し、本日再診。",
+            "痛みは軽快傾向。排便は1日1回に戻り、血便なし。発熱の自覚なし。",
+            "食欲は普通。体重減少なし。",
+            "既往: 20代で虫垂炎手術。便通はもともと2日に1回程度。仕事は事務職で座位が長い。",
+            "市販の整腸剤を自己判断で併用している。"
+          ],
+          "O": [
+            "KT 36.9。腹部平坦・軟。左下腹部に軽度圧痛が残るが、反跳痛なし。",
+            "腫瘤触知なし。腸蠕動音正常。",
+            "炎症の推移を確認するため静脈採血を施行し、CRPと血算を院内で測定。",
+            "CRP 0.8(前回2.4)、WBC 6800(前回9200)。",
+            "改善傾向が明らかであり、腹部CTは現時点では行わず。"
+          ],
+          "A": [
+            "憩室炎(軽症)の改善過程と判断。炎症反応も低下。"
+          ],
+          "P": [
+            "食事は低残渣を継続し、来週から通常食へ戻す。",
+            "症状が持続・再燃する場合は大腸内視鏡を検討すると説明。",
+            "1週間後に再診し、症状消失していれば終診とする。",
+            "腹痛増強・発熱・血便があれば早めに受診。",
+            "水分摂取と食物繊維の漸増について資料を渡した。再診は1週間後。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n1週間前からの左下腹部痛で3日前に受診し、本日再診。\n痛みは軽快傾向。排便は1日1回に戻り、血便なし。発熱の自覚なし。\n食欲は普通。体重減少なし。\n既往: 20代で虫垂炎手術。便通はもともと2日に1回程度。仕事は事務職で座位が長い。\n市販の整腸剤を自己判断で併用している。\n\nO（Objective：客観的情報）\nKT 36.9。腹部平坦・軟。左下腹部に軽度圧痛が残るが、反跳痛なし。\n腫瘤触知なし。腸蠕動音正常。\n炎症の推移を確認するため静脈採血を施行し、CRPと血算を院内で測定。\nCRP 0.8(前回2.4)、WBC 6800(前回9200)。\n改善傾向が明らかであり、腹部CTは現時点では行わず。\n\nA（Assessment：評価）\n憩室炎(軽症)の改善過程と判断。炎症反応も低下。\n\nP（Plan：計画）\n食事は低残渣を継続し、来週から通常食へ戻す。\n症状が持続・再燃する場合は大腸内視鏡を検討すると説明。\n1週間後に再診し、症状消失していれば終診とする。\n腹痛増強・発熱・血便があれば早めに受診。\n水分摂取と食物繊維の漸増について資料を渡した。再診は1週間後。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "憩室炎"
+        ],
+        "requiredBillingSignals": [
+          "ＣＲＰ",
+          "末梢血液一般",
+          "血液学的検査判断料",
+          "免疫学的検査判断料",
+          "Ｂ－Ｖ"
+        ],
+        "requiredReviewTopics": [],
+        "forbiddenCandidates": [
+          "ＣＴ撮影",
+          "内視鏡"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-10",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "procedure_codes": [
+          "160054710",
+          "160008010"
+        ],
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        },
+        "lab_options": {
+          "collection_fee_inputs": [
+            "blood_venous"
+          ]
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 421,
+        "candidateCodes": [
+          "160054710",
+          "160008010",
+          "112007410",
+          "160061810",
+          "160062110",
+          "160095710"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        },
+        {
+          "name": "ＣＲＰ",
+          "points": 16
+        },
+        {
+          "name": "末梢血液一般検査",
+          "points": 21
+        },
+        {
+          "name": "血液学的検査判断料",
+          "points": 125
+        },
+        {
+          "name": "免疫学的検査判断料",
+          "points": 144
+        },
+        {
+          "name": "Ｂ－Ｖ",
+          "points": 40
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "gastroenterology",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "abbreviation",
+          "lab_raw_values",
+          "negated_exam"
+        ],
+        "distractorTypes": [
+          "negated_exam",
+          "planned_exam"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:fc3c1d90c673a14213a8d9a65a1eb154"
+    },
+    {
+      "caseId": "V2-RESP-LAB-015",
+      "title": "呼吸器内科 発熱初診 コロナ・インフル同時抗原+採血",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 55,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "initial",
+        "serviceDate": "2026-07-18",
+        "department": "respiratory"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "abbreviation",
+        "negative_findings",
+        "social_history"
+      ],
+      "distractors": [
+        {
+          "type": "negated_exam",
+          "name": "胸部X線",
+          "note": "肺音清で本日は撮影せず"
+        },
+        {
+          "type": "social_context",
+          "name": "喫煙歴",
+          "note": "問診情報"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "昨日からの発熱38度台と咽頭痛、倦怠感。当院初診。",
+            "咳は乾性で軽度。呼吸苦なし。嗅覚・味覚の異常なし。",
+            "職場で先週コロナ陽性者が出た。インフルの同僚もいるとのこと。",
+            "喫煙20本/日×30年。COPDの指摘は健診で受けたことがない。基礎疾患なし。",
+            "同居の妻は無症状。明日からの出勤可否を気にしている。",
+            "水分は摂れており、食欲はやや低下。市販の解熱薬は未使用。"
+          ],
+          "O": [
+            "KT 38.4、SpO2 97%、P 96。咽頭発赤(+)。",
+            "肺音清、ラ音なし。呼吸数18。",
+            "鼻咽頭ぬぐい液でコロナ・インフルの同時抗原検査を施行。いずれも判定待ちで、結果は後ほど本人へ連絡。",
+            "脱水評価と炎症確認のため静脈採血も施行し外注へ提出。",
+            "肺音清・SpO2正常のため胸部X線は本日は撮影せず。"
+          ],
+          "A": [
+            "急性上気道炎。コロナ・インフルの鑑別中。下気道感染を示唆する所見なし。"
+          ],
+          "P": [
+            "結果判明まで自宅待機とマスク着用を指導。",
+            "解熱しない・呼吸苦が出る場合は連絡のうえ再診。",
+            "喫煙については症状改善後に禁煙外来の案内を希望されれば行う。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n昨日からの発熱38度台と咽頭痛、倦怠感。当院初診。\n咳は乾性で軽度。呼吸苦なし。嗅覚・味覚の異常なし。\n職場で先週コロナ陽性者が出た。インフルの同僚もいるとのこと。\n喫煙20本/日×30年。COPDの指摘は健診で受けたことがない。基礎疾患なし。\n同居の妻は無症状。明日からの出勤可否を気にしている。\n水分は摂れており、食欲はやや低下。市販の解熱薬は未使用。\n\nO（Objective：客観的情報）\nKT 38.4、SpO2 97%、P 96。咽頭発赤(+)。\n肺音清、ラ音なし。呼吸数18。\n鼻咽頭ぬぐい液でコロナ・インフルの同時抗原検査を施行。いずれも判定待ちで、結果は後ほど本人へ連絡。\n脱水評価と炎症確認のため静脈採血も施行し外注へ提出。\n肺音清・SpO2正常のため胸部X線は本日は撮影せず。\n\nA（Assessment：評価）\n急性上気道炎。コロナ・インフルの鑑別中。下気道感染を示唆する所見なし。\n\nP（Plan：計画）\n結果判明まで自宅待機とマスク着用を指導。\n解熱しない・呼吸苦が出る場合は連絡のうえ再診。\n喫煙については症状改善後に禁煙外来の案内を希望されれば行う。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "急性上気道炎"
+        ],
+        "requiredBillingSignals": [
+          "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "免疫学的検査判断料",
+          "Ｂ－Ｖ"
+        ],
+        "requiredReviewTopics": [
+          "検体採取確認"
+        ],
+        "forbiddenCandidates": [
+          "単純撮影"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-18",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "procedure_codes": [
+          "160230050"
+        ],
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "lab_options": {
+          "collection_fee_inputs": [
+            "blood_venous"
+          ]
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 700,
+        "candidateCodes": [
+          "160230050",
+          "111000110",
+          "160062110",
+          "160095710"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "初診料",
+          "points": 291
+        },
+        {
+          "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "points": 225
+        },
+        {
+          "name": "免疫学的検査判断料",
+          "points": 144
+        },
+        {
+          "name": "Ｂ－Ｖ",
+          "points": 40
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "respiratory",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "abbreviation",
+          "negative_findings",
+          "social_history"
+        ],
+        "distractorTypes": [
+          "negated_exam",
+          "social_context"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:d0df11edd5811bc2ab526bce5aa2fe62"
+    },
+    {
+      "caseId": "V2-NEUR-IMG-016",
+      "title": "脳神経内科 頭痛初診 頭部CT(施設属性参照)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 61,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "initial",
+        "serviceDate": "2026-07-19",
+        "department": "neurology"
+      },
+      "facilityFixtureKey": "clinic_imaging",
+      "realismAxes": [
+        "abbreviation",
+        "negative_findings",
+        "facility_attribute_not_in_chart"
+      ],
+      "distractors": [
+        {
+          "type": "planned_exam",
+          "name": "MRI",
+          "note": "症状再燃時に検討。本日は実施なし"
+        },
+        {
+          "type": "home_medication",
+          "name": "降圧薬(他院処方)",
+          "note": "他院での継続処方。本日の算定なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "今朝、新聞を読んでいる際に突然これまで経験のない強い頭痛が数分続いた。現在は軽い鈍痛。当院初診。",
+            "嘔吐なし。意識消失なし。複視・しびれなし。",
+            "高血圧で近医から降圧薬を処方され内服中。今朝も内服済み。",
+            "頭痛の既往はほとんどない。家族歴に脳卒中なし。"
+          ],
+          "O": [
+            "BP 156/92、P 80整。意識清明、GCS 15。",
+            "瞳孔正円同大、対光反射迅速。眼球運動制限なし。構音障害なし。",
+            "四肢麻痺なし、感覚障害なし。項部硬直なし、ケルニッヒ徴候陰性。",
+            "突然発症の頭痛であり、くも膜下出血の除外目的で頭部CTを施行。",
+            "くも膜下腔・脳実質に出血なし。占拠性病変なし。"
+          ],
+          "A": [
+            "雷鳴頭痛の訴えだがCTで出血は否定的。現時点では一次性頭痛の可能性が高い。",
+            "ただし発症初期のSAHはCTで偽陰性があり得るため、経過観察を厳重にする。"
+          ],
+          "P": [
+            "本日は帰宅とし、再度の突然の激しい頭痛・嘔吐・意識障害があれば直ちに救急受診するよう本人と妻に説明。",
+            "症状が再燃する場合はMRI/MRAを検討。",
+            "血圧については処方元の近医での調整を依頼する書面を渡した。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n今朝、新聞を読んでいる際に突然これまで経験のない強い頭痛が数分続いた。現在は軽い鈍痛。当院初診。\n嘔吐なし。意識消失なし。複視・しびれなし。\n高血圧で近医から降圧薬を処方され内服中。今朝も内服済み。\n頭痛の既往はほとんどない。家族歴に脳卒中なし。\n\nO（Objective：客観的情報）\nBP 156/92、P 80整。意識清明、GCS 15。\n瞳孔正円同大、対光反射迅速。眼球運動制限なし。構音障害なし。\n四肢麻痺なし、感覚障害なし。項部硬直なし、ケルニッヒ徴候陰性。\n突然発症の頭痛であり、くも膜下出血の除外目的で頭部CTを施行。\nくも膜下腔・脳実質に出血なし。占拠性病変なし。\n\nA（Assessment：評価）\n雷鳴頭痛の訴えだがCTで出血は否定的。現時点では一次性頭痛の可能性が高い。\nただし発症初期のSAHはCTで偽陰性があり得るため、経過観察を厳重にする。\n\nP（Plan：計画）\n本日は帰宅とし、再度の突然の激しい頭痛・嘔吐・意識障害があれば直ちに救急受診するよう本人と妻に説明。\n症状が再燃する場合はMRI/MRAを検討。\n血圧については処方元の近医での調整を依頼する書面を渡した。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "頭痛"
+        ],
+        "requiredBillingSignals": [
+          "ＣＴ撮影",
+          "コンピューター断層診断"
+        ],
+        "requiredReviewTopics": [],
+        "forbiddenCandidates": [
+          "ＭＲＩ撮影"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-19",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "imaging_orders": [
+          {
+            "kind": "ct",
+            "ct_equipment_kind": "multislice_16_to_64",
+            "electronic_image_management": true
+          }
+        ]
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 1311,
+        "candidateCodes": [
+          "111000110",
+          "170011810",
+          "170028810"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "初診料",
+          "points": 291
+        },
+        {
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900
+        },
+        {
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "neurology",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_imaging",
+        "realismAxes": [
+          "abbreviation",
+          "negative_findings",
+          "facility_attribute_not_in_chart"
+        ],
+        "distractorTypes": [
+          "planned_exam",
+          "home_medication"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:cfe816de03f7a4cb344eafaed414c349"
+    },
+    {
+      "caseId": "V2-RAD-IMG-017",
+      "title": "放射線科 胸部XP再診(電子画像管理あり施設)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 72,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-12",
+        "department": "radiology"
+      },
+      "facilityFixtureKey": "clinic_imaging",
+      "realismAxes": [
+        "abbreviation",
+        "past_exam",
+        "facility_attribute_not_in_chart"
+      ],
+      "distractors": [
+        {
+          "type": "past_exam",
+          "name": "前回XP(3ヶ月前)",
+          "note": "過去画像との比較参照。本日の算定は今回分のみ"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "肺炎後の経過観察で通院中。3ヶ月ぶりの再診。",
+            "今年1月に市中肺炎で他院に10日間入院し、退院後の画像フォローを当院で継続している。",
+            "咳・痰なし。息切れなし。体重変化なし。",
+            "禁煙は継続できている(肺炎を機に禁煙して半年)。",
+            "日常生活での息切れなし。散歩を毎朝30分。食欲・体重も安定。",
+            "退院後の咳は1ヶ月ほどで消失し、以後は再燃していない。",
+            "高血圧で内服中(他院)だが、血圧は安定しているとのこと。"
+          ],
+          "O": [
+            "KT 36.4、SpO2 98%。呼吸音清。",
+            "経過確認のため胸部XPを施行。前回(4月)画像と比較し、右下肺野の浸潤影は完全に消退。",
+            "新規の異常陰影なし。心拡大なし。肋骨横隔膜角は両側鋭。",
+            "BP 130/74、P 72。聴診で副雑音なし。SpO2 98%。",
+            "体重は退院時から+1.5kgで適正範囲に回復。歩行時のSpO2低下なし。"
+          ],
+          "A": [
+            "肺炎後変化は消退し、治癒と判断。"
+          ],
+          "P": [
+            "経過観察終了とする。咳・発熱が続く場合は再診を指示。",
+            "年1回の健診での胸部撮影は継続するよう勧めた。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n肺炎後の経過観察で通院中。3ヶ月ぶりの再診。\n今年1月に市中肺炎で他院に10日間入院し、退院後の画像フォローを当院で継続している。\n咳・痰なし。息切れなし。体重変化なし。\n禁煙は継続できている(肺炎を機に禁煙して半年)。\n日常生活での息切れなし。散歩を毎朝30分。食欲・体重も安定。\n退院後の咳は1ヶ月ほどで消失し、以後は再燃していない。\n高血圧で内服中(他院)だが、血圧は安定しているとのこと。\n\nO（Objective：客観的情報）\nKT 36.4、SpO2 98%。呼吸音清。\n経過確認のため胸部XPを施行。前回(4月)画像と比較し、右下肺野の浸潤影は完全に消退。\n新規の異常陰影なし。心拡大なし。肋骨横隔膜角は両側鋭。\nBP 130/74、P 72。聴診で副雑音なし。SpO2 98%。\n体重は退院時から+1.5kgで適正範囲に回復。歩行時のSpO2低下なし。\n\nA（Assessment：評価）\n肺炎後変化は消退し、治癒と判断。\n\nP（Plan：計画）\n経過観察終了とする。咳・発熱が続く場合は再診を指示。\n年1回の健診での胸部撮影は継続するよう勧めた。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "肺炎"
+        ],
+        "requiredBillingSignals": [
+          "単純撮影",
+          "写真診断",
+          "電子画像管理加算"
+        ],
+        "requiredReviewTopics": [],
+        "forbiddenCandidates": []
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-12",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        },
+        "imaging_orders": [
+          {
+            "kind": "simple_radiography",
+            "acquisition_kind": "digital",
+            "radiography_diagnostic_kind": "simple_i",
+            "electronic_image_management": true
+          }
+        ]
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 285,
+        "candidateCodes": [
+          "112007410",
+          "170000410",
+          "170027910",
+          "170000210"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        },
+        {
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85
+        },
+        {
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68
+        },
+        {
+          "name": "電子画像管理加算（単純撮影）",
+          "points": 57
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "radiology",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_imaging",
+        "realismAxes": [
+          "abbreviation",
+          "past_exam",
+          "facility_attribute_not_in_chart"
+        ],
+        "distractorTypes": [
+          "past_exam"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:1a8541c4024ab03534bd06991d4e07f0"
+    },
+    {
+      "caseId": "V2-OBGYN-LAB-018",
+      "title": "産婦人科 膀胱炎症状初診 尿検査+採血",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 27,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "initial",
+        "serviceDate": "2026-07-15",
+        "department": "obgyn"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "abbreviation",
+        "negative_findings",
+        "pregnancy_context"
+      ],
+      "distractors": [
+        {
+          "type": "negated_exam",
+          "name": "経腟超音波",
+          "note": "症状から不要と判断し実施せず"
+        },
+        {
+          "type": "unrelated_topic",
+          "name": "子宮頸がん検診",
+          "note": "次回の話題。本日は実施なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "2日前からの排尿時痛と頻尿。かかりつけがなく当院初診。",
+            "発熱なし。腰背部痛なし。帯下の増加・性状変化なし。不正出血なし。",
+            "最終月経は2週間前から5日間、周期は順調。妊娠の可能性は低いとのこと。",
+            "子宮頸がん検診は2年受けていないため、後日受けたいと希望あり。",
+            "既往特記なし。薬剤アレルギーなし。性感染症の心当たりはないとのこと。"
+          ],
+          "O": [
+            "KT 36.6。下腹部に軽度圧痛。CVA叩打痛なし。",
+            "院内で尿定性・尿蛋白を実施。白血球反応(2+)、亜硝酸塩(+)、蛋白(-)、潜血(±)。",
+            "腎機能と炎症の確認のため静脈採血を施行し外注へ提出。",
+            "婦人科疾患を示唆する所見はなく、経腟超音波は本日は実施せず。",
+            "BP 110/68、P 76。外陰部の発赤・潰瘍なし。",
+            "下腹部以外の診察所見に異常なし。"
+          ],
+          "A": [
+            "急性膀胱炎。上部尿路感染・婦人科疾患は否定的。"
+          ],
+          "P": [
+            "外注結果を待って抗菌薬の要否を連絡する。水分摂取を励行。",
+            "頸がん検診は次回受診時に予約を取ることとした。",
+            "発熱・腰痛出現時は早めに再診。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n2日前からの排尿時痛と頻尿。かかりつけがなく当院初診。\n発熱なし。腰背部痛なし。帯下の増加・性状変化なし。不正出血なし。\n最終月経は2週間前から5日間、周期は順調。妊娠の可能性は低いとのこと。\n子宮頸がん検診は2年受けていないため、後日受けたいと希望あり。\n既往特記なし。薬剤アレルギーなし。性感染症の心当たりはないとのこと。\n\nO（Objective：客観的情報）\nKT 36.6。下腹部に軽度圧痛。CVA叩打痛なし。\n院内で尿定性・尿蛋白を実施。白血球反応(2+)、亜硝酸塩(+)、蛋白(-)、潜血(±)。\n腎機能と炎症の確認のため静脈採血を施行し外注へ提出。\n婦人科疾患を示唆する所見はなく、経腟超音波は本日は実施せず。\nBP 110/68、P 76。外陰部の発赤・潰瘍なし。\n下腹部以外の診察所見に異常なし。\n\nA（Assessment：評価）\n急性膀胱炎。上部尿路感染・婦人科疾患は否定的。\n\nP（Plan：計画）\n外注結果を待って抗菌薬の要否を連絡する。水分摂取を励行。\n頸がん検診は次回受診時に予約を取ることとした。\n発熱・腰痛出現時は早めに再診。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "膀胱炎"
+        ],
+        "requiredBillingSignals": [
+          "尿一般",
+          "尿蛋白",
+          "尿・糞便等検査判断料",
+          "Ｂ－Ｖ"
+        ],
+        "requiredReviewTopics": [],
+        "forbiddenCandidates": [
+          "超音波検査"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-15",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "procedure_codes": [
+          "160000310",
+          "160000410"
+        ],
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "lab_options": {
+          "collection_fee_inputs": [
+            "blood_venous"
+          ]
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "exact",
+        "totalPoints": 398,
+        "candidateCodes": [
+          "160000310",
+          "160000410",
+          "111000110",
+          "160061710",
+          "160095710"
+        ],
+        "engineStatus": "completed"
+      },
+      "billingTargets": [
+        {
+          "name": "初診料",
+          "points": 291
+        },
+        {
+          "name": "尿一般",
+          "points": 26
+        },
+        {
+          "name": "尿蛋白",
+          "points": 7
+        },
+        {
+          "name": "尿・糞便等検査判断料",
+          "points": 34
+        },
+        {
+          "name": "Ｂ－Ｖ",
+          "points": 40
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "obgyn",
+        "assertionLevel": "exact",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "abbreviation",
+          "negative_findings",
+          "pregnancy_context"
+        ],
+        "distractorTypes": [
+          "negated_exam",
+          "unrelated_topic"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:613351a68e19d85d320a33bd730dc499"
+    },
+    {
+      "caseId": "V2-EMER-SPLIT-019",
+      "title": "救急 複数日の記録が混在(分割が必要)",
+      "difficultyLevel": "L3",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 36,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-22",
+        "department": "emergency"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "multi_day_record",
+        "time_context",
+        "abbreviation"
+      ],
+      "distractors": [
+        {
+          "type": "previous_day_acts",
+          "name": "7/20の診療行為",
+          "note": "別日の行為。本日(7/22)分と分けて算定が必要"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "【7/20 23:40受付】社会人サッカーの試合中に左足関節を内反方向に捻り、痛みで歩行困難となり夜間受診。",
+            "7/20時点: 受傷直後から外くるぶし周囲が腫れ、荷重でズキッと痛む。しびれなし。",
+            "【7/22 本日】再診。腫れは残るが荷重時痛は軽減。",
+            "7/20の受診時に固定の説明を受け、自宅で安静にし、仕事はデスクワークに変更してもらった。",
+            "本日は腫れの確認と固定の調整目的で来院。痛み止めは使わずに過ごせている。",
+            "来週末の試合は欠場と決めた。通勤は可能だが駅の階段がやや不安とのこと。"
+          ],
+          "O": [
+            "7/20: 左外果周囲に腫脹・圧痛、皮下出血なし。外果XPで骨折なし(当日撮影)。RICEを指導し弾性包帯固定を実施、帰宅とした。",
+            "本日7/22: 腫脹は軽減、皮下出血が外果下方に出現(吸収過程)。圧痛は前距腓靭帯部に限局。",
+            "本日7/22: 前距腓靭帯部の圧痛は残るが、つま先立ちが短時間可能。動揺性なし。",
+            "本日は画像の追加は行わず、固定の巻き直しを実施。装具への変更は次回判断。"
+          ],
+          "A": [
+            "左足関節外側靭帯損傷(grade II)。骨傷は7/20のXPで否定済み。"
+          ],
+          "P": [
+            "固定継続、荷重は痛みに応じて漸増。入浴時の固定の外し方を再説明。",
+            "アイシングは腫れが引くまで1日2回継続。",
+            "復帰はジョギングから段階的に。再捻挫予防のチューブ訓練を紹介。",
+            "1週間後に再診。腫脹・痛みの増悪時は早めに受診。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n【7/20 23:40受付】社会人サッカーの試合中に左足関節を内反方向に捻り、痛みで歩行困難となり夜間受診。\n7/20時点: 受傷直後から外くるぶし周囲が腫れ、荷重でズキッと痛む。しびれなし。\n【7/22 本日】再診。腫れは残るが荷重時痛は軽減。\n7/20の受診時に固定の説明を受け、自宅で安静にし、仕事はデスクワークに変更してもらった。\n本日は腫れの確認と固定の調整目的で来院。痛み止めは使わずに過ごせている。\n来週末の試合は欠場と決めた。通勤は可能だが駅の階段がやや不安とのこと。\n\nO（Objective：客観的情報）\n7/20: 左外果周囲に腫脹・圧痛、皮下出血なし。外果XPで骨折なし(当日撮影)。RICEを指導し弾性包帯固定を実施、帰宅とした。\n本日7/22: 腫脹は軽減、皮下出血が外果下方に出現(吸収過程)。圧痛は前距腓靭帯部に限局。\n本日7/22: 前距腓靭帯部の圧痛は残るが、つま先立ちが短時間可能。動揺性なし。\n本日は画像の追加は行わず、固定の巻き直しを実施。装具への変更は次回判断。\n\nA（Assessment：評価）\n左足関節外側靭帯損傷(grade II)。骨傷は7/20のXPで否定済み。\n\nP（Plan：計画）\n固定継続、荷重は痛みに応じて漸増。入浴時の固定の外し方を再説明。\nアイシングは腫れが引くまで1日2回継続。\n復帰はジョギングから段階的に。再捻挫予防のチューブ訓練を紹介。\n1週間後に再診。腫脹・痛みの増悪時は早めに受診。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "足関節靭帯損傷"
+        ],
+        "requiredBillingSignals": [
+          "複数日診療"
+        ],
+        "requiredReviewTopics": [
+          "複数日記録分割"
+        ],
+        "forbiddenCandidates": []
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-22",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "split_required",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料(本日分のみ)",
+          "points": 75
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "emergency",
+        "assertionLevel": "split_required",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "multi_day_record",
+          "time_context",
+          "abbreviation"
+        ],
+        "distractorTypes": [
+          "previous_day_acts"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:1857c5335e72da6e061e83067b826b04"
+    },
+    {
+      "caseId": "V2-PSY-020",
+      "title": "精神科 通院精神療法(専門療法は未対応レビュー)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 42,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-11",
+        "department": "psychiatry"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "interview_detail",
+        "medication_context"
+      ],
+      "distractors": [
+        {
+          "type": "outside_prescription_context",
+          "name": "抗うつ薬(院外継続)",
+          "note": "前回からの継続処方の文脈。本日の新規行為と区別"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "うつ病で通院中。2週間ぶりの再診。",
+            "気分は「先月よりは少し楽」。睡眠は中途覚醒が週2回程度に減少。",
+            "食欲は回復傾向で体重は横ばい。仕事は時短勤務を継続中で、先週から週4日出勤に増やした。",
+            "頓用の睡眠薬(院外)は週1回程度の使用に減っている。希死念慮なし。",
+            "「朝の準備が前ほど億劫でなくなった」とのこと。",
+            "週末は家族と外出できた。趣味の読書も少しずつ再開している。",
+            "通勤電車も以前ほど苦痛ではなくなったとのこと。頭痛などの身体症状なし。"
+          ],
+          "O": [
+            "表情はやや硬いが、会話のテンポは改善。思考制止は軽度。",
+            "面接を約20分実施し、復職ペースの調整と睡眠衛生について話し合った。",
+            "「失敗したら全部だめ」という考えが出たときの対処(考えの書き出し)を一緒に確認した。"
+          ],
+          "A": [
+            "うつ病、回復期。再燃の兆候なし。"
+          ],
+          "P": [
+            "現行の抗うつ薬を院外で継続。増量は見送り。",
+            "次回2週間後。眠れない日が続く場合は早めに連絡するよう伝えた。",
+            "産業医との面談が来週予定されており、就業配慮の情報提供書を準備する。頓用薬の残数を確認した。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\nうつ病で通院中。2週間ぶりの再診。\n気分は「先月よりは少し楽」。睡眠は中途覚醒が週2回程度に減少。\n食欲は回復傾向で体重は横ばい。仕事は時短勤務を継続中で、先週から週4日出勤に増やした。\n頓用の睡眠薬(院外)は週1回程度の使用に減っている。希死念慮なし。\n「朝の準備が前ほど億劫でなくなった」とのこと。\n週末は家族と外出できた。趣味の読書も少しずつ再開している。\n通勤電車も以前ほど苦痛ではなくなったとのこと。頭痛などの身体症状なし。\n\nO（Objective：客観的情報）\n表情はやや硬いが、会話のテンポは改善。思考制止は軽度。\n面接を約20分実施し、復職ペースの調整と睡眠衛生について話し合った。\n「失敗したら全部だめ」という考えが出たときの対処(考えの書き出し)を一緒に確認した。\n\nA（Assessment：評価）\nうつ病、回復期。再燃の兆候なし。\n\nP（Plan：計画）\n現行の抗うつ薬を院外で継続。増量は見送り。\n次回2週間後。眠れない日が続く場合は早めに連絡するよう伝えた。\n産業医との面談が来週予定されており、就業配慮の情報提供書を準備する。頓用薬の残数を確認した。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "うつ病"
+        ],
+        "requiredBillingSignals": [],
+        "requiredReviewTopics": [
+          "精神科専門療法未対応",
+          "面接時間確認"
+        ],
+        "forbiddenCandidates": [
+          "通院・在宅精神療法"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-11",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "unsupported_expected",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "psychiatry",
+        "assertionLevel": "unsupported_expected",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "interview_detail",
+          "medication_context"
+        ],
+        "distractorTypes": [
+          "outside_prescription_context"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:0fdd475379774ae1f4f67840d61efb8a"
+    },
+    {
+      "caseId": "V2-REH-021",
+      "title": "リハビリテーション科 運動器リハ(未対応レビュー)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 69,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-09",
+        "department": "rehabilitation"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "rehab_detail",
+        "adl_context"
+      ],
+      "distractors": [
+        {
+          "type": "past_surgery",
+          "name": "人工膝関節置換術(他院・2ヶ月前)",
+          "note": "他院の手術。本日の算定なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "右TKA後(2ヶ月前、他院で手術)のリハビリ目的で通院中。",
+            "階段昇降がまだ不安で、特に下りで手すりが必要。夜間痛はなし。",
+            "自主トレ(タオルつぶし・SLR・座位での膝伸展)は毎日継続している。",
+            "趣味の畑仕事に復帰したいという目標がある。",
+            "杖なし歩行は屋内で数歩試しているが、まだ不安が強い。",
+            "術創部の痛みはなく、しびれもない。"
+          ],
+          "O": [
+            "右膝可動域 0-115度(前回0-110度)。大腿四頭筋筋力MMT4。",
+            "歩行はT字杖で安定。理学療法士による運動器リハビリテーションを40分実施。",
+            "メニュー: 可動域訓練、大腿四頭筋強化、階段昇降動作練習、屋内応用歩行。",
+            "訓練中のバイタル変動なし。膝周囲の腫脹・熱感なし。",
+            "10m歩行は杖ありで12秒、前回より1秒短縮。",
+            "階段は手すり使用で2足1段から1足1段へ移行練習中。疼痛の訴えなし。"
+          ],
+          "A": [
+            "右TKA後、回復は順調。可動域・筋力とも改善傾向。"
+          ],
+          "P": [
+            "リハビリは週2回を継続。自主トレメニューを一部更新。",
+            "次回診察時に屋外歩行の評価を行う。自主トレの回数は現行どおりで継続。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n右TKA後(2ヶ月前、他院で手術)のリハビリ目的で通院中。\n階段昇降がまだ不安で、特に下りで手すりが必要。夜間痛はなし。\n自主トレ(タオルつぶし・SLR・座位での膝伸展)は毎日継続している。\n趣味の畑仕事に復帰したいという目標がある。\n杖なし歩行は屋内で数歩試しているが、まだ不安が強い。\n術創部の痛みはなく、しびれもない。\n\nO（Objective：客観的情報）\n右膝可動域 0-115度(前回0-110度)。大腿四頭筋筋力MMT4。\n歩行はT字杖で安定。理学療法士による運動器リハビリテーションを40分実施。\nメニュー: 可動域訓練、大腿四頭筋強化、階段昇降動作練習、屋内応用歩行。\n訓練中のバイタル変動なし。膝周囲の腫脹・熱感なし。\n10m歩行は杖ありで12秒、前回より1秒短縮。\n階段は手すり使用で2足1段から1足1段へ移行練習中。疼痛の訴えなし。\n\nA（Assessment：評価）\n右TKA後、回復は順調。可動域・筋力とも改善傾向。\n\nP（Plan：計画）\nリハビリは週2回を継続。自主トレメニューを一部更新。\n次回診察時に屋外歩行の評価を行う。自主トレの回数は現行どおりで継続。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "人工膝関節置換術後"
+        ],
+        "requiredBillingSignals": [
+          "リハビリテーション"
+        ],
+        "requiredReviewTopics": [
+          "リハビリ未対応",
+          "実施単位確認"
+        ],
+        "forbiddenCandidates": [
+          "運動器リハビリテーション料"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-09",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "unsupported_expected",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "rehabilitation",
+        "assertionLevel": "unsupported_expected",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "rehab_detail",
+          "adl_context"
+        ],
+        "distractorTypes": [
+          "past_surgery"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:e6502c37e96a9ff85bdc93c7312e8c9a"
+    },
+    {
+      "caseId": "V2-NEPH-022",
+      "title": "腎臓内科 維持透析(透析・輸血領域は未対応レビュー)",
+      "difficultyLevel": "L3",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 66,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-08",
+        "department": "nephrology_dialysis"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "dialysis_detail",
+        "lab_raw_values",
+        "interdialytic_context"
+      ],
+      "distractors": [
+        {
+          "type": "past_lab_values",
+          "name": "前回採血(K/Hb)",
+          "note": "過去結果の参照"
+        },
+        {
+          "type": "considered_only",
+          "name": "輸血",
+          "note": "貧血進行時の選択肢として言及のみ。実施なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "維持血液透析中(月水金)。本日は定期診察日。",
+            "透析間の体重増加は2.0kg前後で管理良好。シャント音は本人確認で良好。",
+            "下肢のつりが透析後半にときどきある。食事は減塩を継続し、カリウムの多い果物は控えている。",
+            "便通は1日1回。シャント側の腕に重い物を提げないよう注意している。",
+            "妻と二人暮らしで、透析日は送迎を利用。",
+            "食欲は安定。透析後の疲労感は以前より軽くなったとのこと。",
+            "シャント穿刺部の痛み・腫れの自覚なし。",
+            "睡眠は良好。透析翌日の倦怠感も許容範囲とのこと。皮膚掻痒は軽度。"
+          ],
+          "O": [
+            "BP 138/76(透析前)。シャント音・スリル良好。下腿浮腫なし。",
+            "本日、血液透析を4時間実施。除水2.1kg、経過中の血圧低下なし。",
+            "前回採血: K 4.8、Hb 10.2、P 5.1。",
+            "ドライウェイト 58.0kgで本日終了時57.9kg。透析中の最低血圧 102/60で症状なし。",
+            "足背動脈触知良好、足趾に創なし(フットチェック)。"
+          ],
+          "A": [
+            "維持透析は安定。貧血はESA継続で経過観察、進行時は輸血も選択肢になるが現時点では不要。",
+            "下肢のつりは除水速度の調整で対応。"
+          ],
+          "P": [
+            "透析条件は除水計画を微調整。次回採血は来週の透析時に予定。",
+            "リンの食事指導を栄養士と相談する。下肢のつりには透析後半の除水速度を緩める設定とした。",
+            "フットケアの自己観察を継続するよう説明。次回診察は次週の透析日に合わせる。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n維持血液透析中(月水金)。本日は定期診察日。\n透析間の体重増加は2.0kg前後で管理良好。シャント音は本人確認で良好。\n下肢のつりが透析後半にときどきある。食事は減塩を継続し、カリウムの多い果物は控えている。\n便通は1日1回。シャント側の腕に重い物を提げないよう注意している。\n妻と二人暮らしで、透析日は送迎を利用。\n食欲は安定。透析後の疲労感は以前より軽くなったとのこと。\nシャント穿刺部の痛み・腫れの自覚なし。\n睡眠は良好。透析翌日の倦怠感も許容範囲とのこと。皮膚掻痒は軽度。\n\nO（Objective：客観的情報）\nBP 138/76(透析前)。シャント音・スリル良好。下腿浮腫なし。\n本日、血液透析を4時間実施。除水2.1kg、経過中の血圧低下なし。\n前回採血: K 4.8、Hb 10.2、P 5.1。\nドライウェイト 58.0kgで本日終了時57.9kg。透析中の最低血圧 102/60で症状なし。\n足背動脈触知良好、足趾に創なし(フットチェック)。\n\nA（Assessment：評価）\n維持透析は安定。貧血はESA継続で経過観察、進行時は輸血も選択肢になるが現時点では不要。\n下肢のつりは除水速度の調整で対応。\n\nP（Plan：計画）\n透析条件は除水計画を微調整。次回採血は来週の透析時に予定。\nリンの食事指導を栄養士と相談する。下肢のつりには透析後半の除水速度を緩める設定とした。\nフットケアの自己観察を継続するよう説明。次回診察は次週の透析日に合わせる。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "慢性腎不全"
+        ],
+        "requiredBillingSignals": [
+          "人工腎臓"
+        ],
+        "requiredReviewTopics": [
+          "透析未対応",
+          "輸血未対応"
+        ],
+        "forbiddenCandidates": [
+          "人工腎臓",
+          "輸血"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-08",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "unsupported_expected",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "nephrology_dialysis",
+        "assertionLevel": "unsupported_expected",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "dialysis_detail",
+          "lab_raw_values",
+          "interdialytic_context"
+        ],
+        "distractorTypes": [
+          "past_lab_values",
+          "considered_only"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:feb36e2b2e8d47d891785faec9d5fa63"
+    },
+    {
+      "caseId": "V2-PATH-023",
+      "title": "病理診断科 他科切除検体の病理診断(未対応レビュー)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 63,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-16",
+        "department": "pathology"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "specimen_flow",
+        "report_context"
+      ],
+      "distractors": [
+        {
+          "type": "other_department_act",
+          "name": "皮膚生検(皮膚科・先週)",
+          "note": "採取行為は他科の前回算定。本日は病理側の文脈"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "先週皮膚科で施行された背部皮膚生検の病理診断について、結果説明目的の受診。",
+            "病変は数年前からあり、最近やや隆起してきたため生検に至った経緯。",
+            "本人は悪性かどうかを強く心配している。",
+            "皮膚科からの臨床情報: 背部の角化性紅斑、ステロイド外用で部分反応。"
+          ],
+          "O": [
+            "提出検体: 皮膚生検1個(ホルマリン固定)。標本はHE染色で作製済み。",
+            "鏡検所見: 表皮内に異型細胞は認めず、真皮に軽度の炎症細胞浸潤。",
+            "病理組織診断: 慢性皮膚炎に矛盾しない像。悪性所見なし。",
+            "肉眼所見: 5mm大の皮膚片1個。切片は2枚作製。",
+            "基底細胞癌・有棘細胞癌を疑う構造は認めず、追加の免疫染色は不要と判断。"
+          ],
+          "A": [
+            "良性病変。臨床診断(湿疹)と整合する。悪性リンパ腫を示唆する稠密な浸潤もない。"
+          ],
+          "P": [
+            "皮膚科へ報告書を送付し、報告は本日付で確定。患者には皮膚科外来で最終説明を行う。",
+            "経過で増大・潰瘍化があれば再生検が望ましい旨を報告書に付記。",
+            "標本は規定どおり保管。",
+            "臨床医からの追加質問があれば鏡検所見を補足する。報告書は本日付で確定。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n先週皮膚科で施行された背部皮膚生検の病理診断について、結果説明目的の受診。\n病変は数年前からあり、最近やや隆起してきたため生検に至った経緯。\n本人は悪性かどうかを強く心配している。\n皮膚科からの臨床情報: 背部の角化性紅斑、ステロイド外用で部分反応。\n\nO（Objective：客観的情報）\n提出検体: 皮膚生検1個(ホルマリン固定)。標本はHE染色で作製済み。\n鏡検所見: 表皮内に異型細胞は認めず、真皮に軽度の炎症細胞浸潤。\n病理組織診断: 慢性皮膚炎に矛盾しない像。悪性所見なし。\n肉眼所見: 5mm大の皮膚片1個。切片は2枚作製。\n基底細胞癌・有棘細胞癌を疑う構造は認めず、追加の免疫染色は不要と判断。\n\nA（Assessment：評価）\n良性病変。臨床診断(湿疹)と整合する。悪性リンパ腫を示唆する稠密な浸潤もない。\n\nP（Plan：計画）\n皮膚科へ報告書を送付し、報告は本日付で確定。患者には皮膚科外来で最終説明を行う。\n経過で増大・潰瘍化があれば再生検が望ましい旨を報告書に付記。\n標本は規定どおり保管。\n臨床医からの追加質問があれば鏡検所見を補足する。報告書は本日付で確定。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "慢性皮膚炎"
+        ],
+        "requiredBillingSignals": [
+          "病理"
+        ],
+        "requiredReviewTopics": [
+          "病理未対応",
+          "検体提出確認"
+        ],
+        "forbiddenCandidates": [
+          "病理組織標本作製"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-16",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "unsupported_expected",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "pathology",
+        "assertionLevel": "unsupported_expected",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "specimen_flow",
+          "report_context"
+        ],
+        "distractorTypes": [
+          "other_department_act"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:09bd3ad8171b07851ad8a12bb3d45192"
+    },
+    {
+      "caseId": "V2-GI-ENDO-024",
+      "title": "消化器内科 上部内視鏡実施(内視鏡は未対応レビュー)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 49,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-17",
+        "department": "gastroenterology"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "procedure_detail",
+        "biopsy_context"
+      ],
+      "distractors": [
+        {
+          "type": "negated_act",
+          "name": "生検",
+          "note": "今回は生検を行わず、と明記"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "心窩部痛の精査目的で前回予約した上部消化管内視鏡を本日施行予定で来院。",
+            "朝から絶食で来院。抗血栓薬の内服なし。キシロカインのアレルギーなし。",
+            "過去に胃カメラの経験はなく、緊張が強いとのことで事前に手順を説明した。",
+            "体重減少なし。黒色便なし。家族歴に胃癌なし。"
+          ],
+          "O": [
+            "鎮痙薬使用のうえ、経口で上部消化管内視鏡を施行。",
+            "食道: 異常なし。胃: 前庭部に発赤を伴うびらん数個。十二指腸: 異常なし。",
+            "びらんは良性の性状で、今回は生検を行わず経過観察とした。",
+            "ピロリ感染を示唆する萎縮性変化は目立たない。観察中の写真記録あり。",
+            "検査中のバイタル安定、終了後の気分不良なし。",
+            "観察範囲: 食道入口部から十二指腸下行脚まで。前庭部以外に粘膜病変なし。",
+            "送気による腹満は軽度で、検査後30分の休憩で軽快。帰宅時の歩行安定。"
+          ],
+          "A": [
+            "びらん性胃炎。悪性を示唆する所見なし。"
+          ],
+          "P": [
+            "酸分泌抑制薬を院外で処方予定(次回外来で評価のうえ)。本日の飲食は2時間後から可。",
+            "症状が持続する場合は再検査と生検を検討。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n心窩部痛の精査目的で前回予約した上部消化管内視鏡を本日施行予定で来院。\n朝から絶食で来院。抗血栓薬の内服なし。キシロカインのアレルギーなし。\n過去に胃カメラの経験はなく、緊張が強いとのことで事前に手順を説明した。\n体重減少なし。黒色便なし。家族歴に胃癌なし。\n\nO（Objective：客観的情報）\n鎮痙薬使用のうえ、経口で上部消化管内視鏡を施行。\n食道: 異常なし。胃: 前庭部に発赤を伴うびらん数個。十二指腸: 異常なし。\nびらんは良性の性状で、今回は生検を行わず経過観察とした。\nピロリ感染を示唆する萎縮性変化は目立たない。観察中の写真記録あり。\n検査中のバイタル安定、終了後の気分不良なし。\n観察範囲: 食道入口部から十二指腸下行脚まで。前庭部以外に粘膜病変なし。\n送気による腹満は軽度で、検査後30分の休憩で軽快。帰宅時の歩行安定。\n\nA（Assessment：評価）\nびらん性胃炎。悪性を示唆する所見なし。\n\nP（Plan：計画）\n酸分泌抑制薬を院外で処方予定(次回外来で評価のうえ)。本日の飲食は2時間後から可。\n症状が持続する場合は再検査と生検を検討。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "びらん性胃炎"
+        ],
+        "requiredBillingSignals": [
+          "内視鏡"
+        ],
+        "requiredReviewTopics": [
+          "内視鏡未対応",
+          "生検有無確認"
+        ],
+        "forbiddenCandidates": [
+          "内視鏡的生検法"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-17",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "review_required",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "gastroenterology",
+        "assertionLevel": "review_required",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "procedure_detail",
+          "biopsy_context"
+        ],
+        "distractorTypes": [
+          "negated_act"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:7dca32c56e58890a058b0c28e2ffee85"
+    },
+    {
+      "caseId": "V2-IM-INJ-025",
+      "title": "内科 点滴実施(注射料はレビュー)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 24,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "initial",
+        "serviceDate": "2026-07-20",
+        "department": "internal_medicine"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "acute_care",
+        "numeric_anchor"
+      ],
+      "distractors": [
+        {
+          "type": "negated_exam",
+          "name": "血液検査",
+          "note": "改善したため本日は行わず"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "昨夜からの嘔吐・下痢で当院初診。今朝から水分も戻してしまう。",
+            "家族に同症状あり(昨日発症の夫)。海外渡航なし。生もの摂取は2日前に刺身。",
+            "最終飲水は今朝6時で少量。排尿は昨夜から2回と少なめ。"
+          ],
+          "O": [
+            "KT 37.4、BP 102/64、P 96。口唇乾燥あり、皮膚ツルゴール軽度低下。",
+            "腹部は軟、臍周囲に軽度圧痛。腸蠕動音亢進。",
+            "脱水補正のため末梢静脈路を確保し、細胞外液500mLの点滴を実施。",
+            "点滴中はバイタル安定し、滴下終了後のBP 112/70、P 84。",
+            "点滴後は嘔気軽減し、水分少量摂取可能となった。状態改善のため血液検査は本日は行わず。"
+          ],
+          "A": [
+            "感染性胃腸炎による軽度脱水。点滴後は改善。"
+          ],
+          "P": [
+            "経口補水を少量頻回で再開。本日は消化の良い食事を指示。",
+            "尿が半日出ない・ぐったりする場合は再診。整腸剤は市販のもので可と説明。",
+            "家族内感染予防として手洗い・タオル分けを指導。",
+            "明日も嘔吐が続く場合は再診し、点滴の追加と検査を検討すると説明。",
+            "仕事(保育士)は症状消失後48時間まで休むよう助言。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n昨夜からの嘔吐・下痢で当院初診。今朝から水分も戻してしまう。\n家族に同症状あり(昨日発症の夫)。海外渡航なし。生もの摂取は2日前に刺身。\n最終飲水は今朝6時で少量。排尿は昨夜から2回と少なめ。\n\nO（Objective：客観的情報）\nKT 37.4、BP 102/64、P 96。口唇乾燥あり、皮膚ツルゴール軽度低下。\n腹部は軟、臍周囲に軽度圧痛。腸蠕動音亢進。\n脱水補正のため末梢静脈路を確保し、細胞外液500mLの点滴を実施。\n点滴中はバイタル安定し、滴下終了後のBP 112/70、P 84。\n点滴後は嘔気軽減し、水分少量摂取可能となった。状態改善のため血液検査は本日は行わず。\n\nA（Assessment：評価）\n感染性胃腸炎による軽度脱水。点滴後は改善。\n\nP（Plan：計画）\n経口補水を少量頻回で再開。本日は消化の良い食事を指示。\n尿が半日出ない・ぐったりする場合は再診。整腸剤は市販のもので可と説明。\n家族内感染予防として手洗い・タオル分けを指導。\n明日も嘔吐が続く場合は再診し、点滴の追加と検査を検討すると説明。\n仕事(保育士)は症状消失後48時間まで休むよう助言。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "感染性胃腸炎"
+        ],
+        "requiredBillingSignals": [
+          "点滴"
+        ],
+        "requiredReviewTopics": [
+          "注射経路確認",
+          "薬剤量確認"
+        ],
+        "forbiddenCandidates": [
+          "点滴注射"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-20",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "review_required",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "初診料",
+          "points": 291
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "internal_medicine",
+        "assertionLevel": "review_required",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "acute_care",
+          "numeric_anchor"
+        ],
+        "distractorTypes": [
+          "negated_exam"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:1fb78a7a7d5c5ba263e9aeb63f98feb9"
+    },
+    {
+      "caseId": "V2-SURG-MAT-026",
+      "title": "外科 創傷処置+被覆材使用(材料はレビュー)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 52,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-13",
+        "department": "surgery"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "materials_mention",
+        "numeric_anchor"
+      ],
+      "distractors": [
+        {
+          "type": "home_care_context",
+          "name": "自宅での被覆材交換",
+          "note": "自宅手技の説明。本日の算定とは区別"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "下腿挫創の処置で通院中。受傷8日目。",
+            "自宅では指導どおり1日1回シャワー洗浄し、渡した被覆材を貼り替えている。",
+            "受傷は自宅の階段で転倒し角にぶつけたもの。仕事(配送業)は患部を保護して継続している。",
+            "痛みは貼り替え時のみ軽度。発熱なし。",
+            "糖尿病などの既往なし。破傷風は受傷時に追加接種済み(初診時)。"
+          ],
+          "O": [
+            "左下腿前面の創は約3×2cm、肉芽良好。感染徴候なし。",
+            "創部を洗浄し創傷処置を実施。滲出液が中等量のため、ハイドロファイバー被覆材を1枚使用して保護。",
+            "周囲皮膚の浸軟は軽度で、保護クリームで対応。創周囲の知覚正常。",
+            "経過記録用に創部の写真を撮影。",
+            "KT 36.6。創縁の発赤なし、圧痛は軽度。滲出液に膿性変化なし。",
+            "歩行への影響なし。下肢の腫脹・発赤なし。"
+          ],
+          "A": [
+            "左下腿挫創、肉芽形成期。経過良好で感染の合併なし。"
+          ],
+          "P": [
+            "自宅での貼り替え用に被覆材を2枚渡し、交換手技を再確認。入浴は浴槽も可とした。",
+            "次回3日後。滲出液の増加・悪臭があれば早めに受診。入浴は浴槽も可とした。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n下腿挫創の処置で通院中。受傷8日目。\n自宅では指導どおり1日1回シャワー洗浄し、渡した被覆材を貼り替えている。\n受傷は自宅の階段で転倒し角にぶつけたもの。仕事(配送業)は患部を保護して継続している。\n痛みは貼り替え時のみ軽度。発熱なし。\n糖尿病などの既往なし。破傷風は受傷時に追加接種済み(初診時)。\n\nO（Objective：客観的情報）\n左下腿前面の創は約3×2cm、肉芽良好。感染徴候なし。\n創部を洗浄し創傷処置を実施。滲出液が中等量のため、ハイドロファイバー被覆材を1枚使用して保護。\n周囲皮膚の浸軟は軽度で、保護クリームで対応。創周囲の知覚正常。\n経過記録用に創部の写真を撮影。\nKT 36.6。創縁の発赤なし、圧痛は軽度。滲出液に膿性変化なし。\n歩行への影響なし。下肢の腫脹・発赤なし。\n\nA（Assessment：評価）\n左下腿挫創、肉芽形成期。経過良好で感染の合併なし。\n\nP（Plan：計画）\n自宅での貼り替え用に被覆材を2枚渡し、交換手技を再確認。入浴は浴槽も可とした。\n次回3日後。滲出液の増加・悪臭があれば早めに受診。入浴は浴槽も可とした。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "挫創"
+        ],
+        "requiredBillingSignals": [
+          "創傷処置",
+          "特定器材"
+        ],
+        "requiredReviewTopics": [
+          "材料確認",
+          "数量確認"
+        ],
+        "forbiddenCandidates": []
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-13",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "review_required",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "surgery",
+        "assertionLevel": "review_required",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "materials_mention",
+          "numeric_anchor"
+        ],
+        "distractorTypes": [
+          "home_care_context"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:5c19bf332291b168309a2470291d8324"
+    },
+    {
+      "caseId": "V2-ENT-PROC-027",
+      "title": "耳鼻咽喉科 鼻処置(手技内容はレビュー)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 8,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "revisit",
+        "serviceDate": "2026-07-10",
+        "department": "otolaryngology"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "pediatric_context",
+        "procedure_detail"
+      ],
+      "distractors": [
+        {
+          "type": "planned_exam",
+          "name": "アレルギー検査",
+          "note": "次回検討。本日は実施なし"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "アレルギー性鼻炎の疑いで通院中。鼻閉が続くため母と来院。",
+            "夜間の口呼吸とくしゃみが続き、いびきも出てきた。鼻汁は透明でサラサラ。",
+            "保育園では目をこする様子もあると連絡帳に記載あり。",
+            "ペットなし。家族に花粉症(父)。",
+            "睡眠への影響が出ており、母は内服開始も視野に入れたい意向。"
+          ],
+          "O": [
+            "両下鼻甲介は蒼白に腫脹、水様性鼻汁が中等量。",
+            "鼻汁を吸引し、ネブライザーによる鼻処置を実施。",
+            "処置への嫌がりは軽度で、吸引後は鼻通りが改善した様子。",
+            "咽頭への後鼻漏は軽度。鼓膜両側異常なし。"
+          ],
+          "A": [
+            "アレルギー性鼻炎の疑い。発熱なく膿性鼻汁もないため感染性鼻炎の要素は乏しい。"
+          ],
+          "P": [
+            "原因把握のため、次回アレルギー検査(特異的IgE)を検討すると母に説明。",
+            "鼻のかみ方を母と本人に指導。内服は現時点では開始せず様子をみる。",
+            "寝室の換気と寝具の掃除など環境調整も説明。",
+            "プールの可否について質問あり、現状は可と回答。鼻血の既往なし。",
+            "症状が強い日は受診してよいと伝えた。次回は2週間後、症状の記録を持参してもらう。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\nアレルギー性鼻炎の疑いで通院中。鼻閉が続くため母と来院。\n夜間の口呼吸とくしゃみが続き、いびきも出てきた。鼻汁は透明でサラサラ。\n保育園では目をこする様子もあると連絡帳に記載あり。\nペットなし。家族に花粉症(父)。\n睡眠への影響が出ており、母は内服開始も視野に入れたい意向。\n\nO（Objective：客観的情報）\n両下鼻甲介は蒼白に腫脹、水様性鼻汁が中等量。\n鼻汁を吸引し、ネブライザーによる鼻処置を実施。\n処置への嫌がりは軽度で、吸引後は鼻通りが改善した様子。\n咽頭への後鼻漏は軽度。鼓膜両側異常なし。\n\nA（Assessment：評価）\nアレルギー性鼻炎の疑い。発熱なく膿性鼻汁もないため感染性鼻炎の要素は乏しい。\n\nP（Plan：計画）\n原因把握のため、次回アレルギー検査(特異的IgE)を検討すると母に説明。\n鼻のかみ方を母と本人に指導。内服は現時点では開始せず様子をみる。\n寝室の換気と寝具の掃除など環境調整も説明。\nプールの可否について質問あり、現状は可と回答。鼻血の既往なし。\n症状が強い日は受診してよいと伝えた。次回は2週間後、症状の記録を持参してもらう。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "アレルギー性鼻炎"
+        ],
+        "requiredBillingSignals": [
+          "鼻処置"
+        ],
+        "requiredReviewTopics": [
+          "手技内容確認"
+        ],
+        "forbiddenCandidates": [
+          "特異的ＩｇＥ"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-10",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "review_required",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "再診料",
+          "points": 75
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "otolaryngology",
+        "assertionLevel": "review_required",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "pediatric_context",
+          "procedure_detail"
+        ],
+        "distractorTypes": [
+          "planned_exam"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:c2cfa5d6e8e03b0d777b3367a9f730f4"
+    },
+    {
+      "caseId": "V2-OPH-PROC-028",
+      "title": "眼科 角膜異物除去(処置部位・手技はレビュー)",
+      "difficultyLevel": "L2",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 39,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "initial",
+        "serviceDate": "2026-07-23",
+        "department": "ophthalmology"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "occupational_context",
+        "procedure_detail"
+      ],
+      "distractors": [
+        {
+          "type": "occupational_context",
+          "name": "労災の可能性",
+          "note": "保険区分の確認事項。算定行為ではない"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "本日午前、工場でグラインダー作業中に右眼に異物が入った。保護メガネは着用していなかった。当院初診。",
+            "右眼の異物感と流涙が続く。受傷直後に水道水で洗眼したが改善しなかった。視力低下の自覚は軽度。",
+            "仕事中の受傷であり、労災の手続きについて総務に確認中とのこと。"
+          ],
+          "O": [
+            "右眼視力 0.8(矯正)、左 1.2。",
+            "細隙灯で角膜中央やや下方に金属様異物を確認。前房に炎症所見なし。",
+            "眼圧は両眼とも正常範囲。左眼に異常なし。",
+            "点眼麻酔下に角膜異物を除去。錆輪は残存なし。フルオレセインで上皮欠損は小範囲。",
+            "前房出血なし、虹彩損傷なし。",
+            "瞼結膜・円蓋部に残存異物なし(上眼瞼翻転で確認)。"
+          ],
+          "A": [
+            "右角膜異物(除去後)。感染予防が必要。"
+          ],
+          "P": [
+            "抗菌点眼を院外で処方予定。保護メガネの常用を指導。",
+            "点眼の手技を説明し、こすらないよう指導。当面はコンタクト不可(未使用者)。",
+            "職場には保護メガネ着用の徹底を依頼するよう本人へ説明。",
+            "車の運転は本日は控えるよう伝えた。仕事は明日から可。",
+            "明日再診し上皮化を確認する。痛み増強時はすぐ受診。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n本日午前、工場でグラインダー作業中に右眼に異物が入った。保護メガネは着用していなかった。当院初診。\n右眼の異物感と流涙が続く。受傷直後に水道水で洗眼したが改善しなかった。視力低下の自覚は軽度。\n仕事中の受傷であり、労災の手続きについて総務に確認中とのこと。\n\nO（Objective：客観的情報）\n右眼視力 0.8(矯正)、左 1.2。\n細隙灯で角膜中央やや下方に金属様異物を確認。前房に炎症所見なし。\n眼圧は両眼とも正常範囲。左眼に異常なし。\n点眼麻酔下に角膜異物を除去。錆輪は残存なし。フルオレセインで上皮欠損は小範囲。\n前房出血なし、虹彩損傷なし。\n瞼結膜・円蓋部に残存異物なし(上眼瞼翻転で確認)。\n\nA（Assessment：評価）\n右角膜異物(除去後)。感染予防が必要。\n\nP（Plan：計画）\n抗菌点眼を院外で処方予定。保護メガネの常用を指導。\n点眼の手技を説明し、こすらないよう指導。当面はコンタクト不可(未使用者)。\n職場には保護メガネ着用の徹底を依頼するよう本人へ説明。\n車の運転は本日は控えるよう伝えた。仕事は明日から可。\n明日再診し上皮化を確認する。痛み増強時はすぐ受診。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "角膜異物"
+        ],
+        "requiredBillingSignals": [
+          "角膜異物除去"
+        ],
+        "requiredReviewTopics": [
+          "処置部位確認",
+          "手技内容確認"
+        ],
+        "forbiddenCandidates": []
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-23",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "review_required",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "初診料",
+          "points": 291
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "ophthalmology",
+        "assertionLevel": "review_required",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "occupational_context",
+          "procedure_detail"
+        ],
+        "distractorTypes": [
+          "occupational_context"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:728f50812150719f5db0afd7e9e780ff"
+    },
+    {
+      "caseId": "V2-PED-TIME-029",
+      "title": "小児科 夜間の発熱受診(時間外系はレビュー)",
+      "difficultyLevel": "L3",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 2,
+        "sex": "female"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "initial",
+        "serviceDate": "2026-07-24",
+        "department": "pediatrics"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "time_context",
+        "pediatric_context",
+        "negative_findings"
+      ],
+      "distractors": [
+        {
+          "type": "negated_exam",
+          "name": "迅速検査",
+          "note": "発熱初日で偽陰性の可能性が高く本日は実施せず"
+        },
+        {
+          "type": "family_context",
+          "name": "母の不安",
+          "note": "問診情報"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "20:50受付。本日夕方からの発熱で、初めて当院を受診。",
+            "母:「初めての高熱でどうしていいか分からず」。KT自宅測定で39.0。",
+            "日中は保育園で普段どおり過ごし、夕方のお迎え時に顔が赤いことに気づいたとのこと。",
+            "機嫌は悪いが水分(麦茶)は摂れている。咳・鼻汁は軽度。嘔吐・下痢なし。耳を触る仕草なし。",
+            "けいれんの既往なし。予防接種は月齢相当に完了。",
+            "保育園では本日、同じクラスに発熱の子が2人いたとのこと。",
+            "母自身も昨日から喉の違和感があるとのこと。本人の食事は夕食を少量摂取。"
+          ],
+          "O": [
+            "KT 38.8、SpO2 99%、P 140。大泉門は閉鎖。",
+            "活気は保たれ、あやすと笑う。皮疹なし。項部硬直なし。",
+            "咽頭発赤軽度。鼓膜両側異常なし。呼吸音清、陥没呼吸なし。",
+            "皮膚ツルゴール正常、口腔内の乾燥なし。股関節の開排制限なし、四肢の動き対称。",
+            "発熱初日でありインフル等の迅速検査は偽陰性の可能性が高く、本日は実施せず。"
+          ],
+          "A": [
+            "急性上気道炎(ウイルス性)の初期と判断。重症感染症を示唆する所見なし。"
+          ],
+          "P": [
+            "水分摂取と衣服・室温の調整を指導。解熱剤の使用目安を説明(市販小児用で可)。",
+            "明日も高熱が続く場合は日中に再診し迅速検査を検討。",
+            "ぐったり・けいれん・水分摂取不能・おしっこが半日出ない場合は夜間でも救急へ。",
+            "観察ポイント(呼吸の速さ、顔色、水分量)を紙に書いて母に渡し、不安への対応も説明した。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n20:50受付。本日夕方からの発熱で、初めて当院を受診。\n母:「初めての高熱でどうしていいか分からず」。KT自宅測定で39.0。\n日中は保育園で普段どおり過ごし、夕方のお迎え時に顔が赤いことに気づいたとのこと。\n機嫌は悪いが水分(麦茶)は摂れている。咳・鼻汁は軽度。嘔吐・下痢なし。耳を触る仕草なし。\nけいれんの既往なし。予防接種は月齢相当に完了。\n保育園では本日、同じクラスに発熱の子が2人いたとのこと。\n母自身も昨日から喉の違和感があるとのこと。本人の食事は夕食を少量摂取。\n\nO（Objective：客観的情報）\nKT 38.8、SpO2 99%、P 140。大泉門は閉鎖。\n活気は保たれ、あやすと笑う。皮疹なし。項部硬直なし。\n咽頭発赤軽度。鼓膜両側異常なし。呼吸音清、陥没呼吸なし。\n皮膚ツルゴール正常、口腔内の乾燥なし。股関節の開排制限なし、四肢の動き対称。\n発熱初日でありインフル等の迅速検査は偽陰性の可能性が高く、本日は実施せず。\n\nA（Assessment：評価）\n急性上気道炎(ウイルス性)の初期と判断。重症感染症を示唆する所見なし。\n\nP（Plan：計画）\n水分摂取と衣服・室温の調整を指導。解熱剤の使用目安を説明(市販小児用で可)。\n明日も高熱が続く場合は日中に再診し迅速検査を検討。\nぐったり・けいれん・水分摂取不能・おしっこが半日出ない場合は夜間でも救急へ。\n観察ポイント(呼吸の速さ、顔色、水分量)を紙に書いて母に渡し、不安への対応も説明した。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "急性上気道炎"
+        ],
+        "requiredBillingSignals": [],
+        "requiredReviewTopics": [
+          "救急加算確認",
+          "受付時刻確認",
+          "小児加算確認"
+        ],
+        "forbiddenCandidates": [
+          "時間外加算",
+          "乳幼児加算"
+        ]
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-24",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "safety",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "初診料",
+          "points": 291
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "pediatrics",
+        "assertionLevel": "safety",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "time_context",
+          "pediatric_context",
+          "negative_findings"
+        ],
+        "distractorTypes": [
+          "negated_exam",
+          "family_context"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:bd9b1ceef61d98659aea29f6c4126d38"
+    },
+    {
+      "caseId": "V2-IM-VISIT-030",
+      "title": "内科 初診/再診が本文から確定できない(レビュー)",
+      "difficultyLevel": "L3",
+      "calculationDifficulty": 1,
+      "patient": {
+        "age": 59,
+        "sex": "male"
+      },
+      "encounter": {
+        "setting": "outpatient",
+        "visitType": "unknown",
+        "serviceDate": "2026-07-21",
+        "department": "internal_medicine"
+      },
+      "facilityFixtureKey": "clinic_basic",
+      "realismAxes": [
+        "ambiguous_visit_type",
+        "negative_findings"
+      ],
+      "distractors": [
+        {
+          "type": "ambiguous_history",
+          "name": "数年前の受診歴(本人記憶曖昧)",
+          "note": "初診/再診の判定材料が不完全"
+        }
+      ],
+      "chart": {
+        "soap": {
+          "S": [
+            "1ヶ月前からの倦怠感で受診。「数年前に一度この辺りの内科にかかった気がするが、ここだったか覚えていない」とのこと。",
+            "受付でも過去カルテは即時には見つからず、確認中。",
+            "倦怠感は朝より夕方に強く、休日にまとめて寝ても回復感が乏しい。",
+            "体重変化なし。睡眠はやや浅く、妻からいびきと夜間の呼吸停止様のエピソードを指摘されている。",
+            "仕事は管理職で残業が月40時間程度。飲酒は缶ビール1本/日。健診は昨年受け、大きな指摘はなかったと記憶。",
+            "気分の落ち込みの自覚は「ない」とのことだが、楽しめることが減った感じはあるという。",
+            "コーヒーを1日5杯ほど飲む。運動習慣はこの1年ほぼない。常用薬・サプリなし。"
+          ],
+          "O": [
+            "KT 36.5、BP 132/84、P 72。眼瞼結膜貧血なし。甲状腺腫大なし。",
+            "心音・呼吸音異常なし。腹部異常なし。下腿浮腫なし。",
+            "体重 78kg、BMI 26.4。咽頭は軽度の狭小化あり(扁桃肥大なし)。"
+          ],
+          "A": [
+            "倦怠感の精査。器質的疾患を示唆する身体所見は現時点でなし。",
+            "鑑別: 甲状腺機能異常、貧血、睡眠時無呼吸、うつ状態。いびきの指摘から睡眠時無呼吸の評価も考慮。"
+          ],
+          "P": [
+            "過去の受診記録は事務で継続確認とする。",
+            "次回、空腹時の採血(血算・生化学・甲状腺)を予定。",
+            "生活リズムの記録(就寝・起床・飲酒)をつけてくるよう依頼。",
+            "眠気の質問紙を渡し、次回持参してもらう。採血は空腹で午前に来てもらう。"
+          ]
+        },
+        "standard": "S（Subjective：主観的情報）\n1ヶ月前からの倦怠感で受診。「数年前に一度この辺りの内科にかかった気がするが、ここだったか覚えていない」とのこと。\n受付でも過去カルテは即時には見つからず、確認中。\n倦怠感は朝より夕方に強く、休日にまとめて寝ても回復感が乏しい。\n体重変化なし。睡眠はやや浅く、妻からいびきと夜間の呼吸停止様のエピソードを指摘されている。\n仕事は管理職で残業が月40時間程度。飲酒は缶ビール1本/日。健診は昨年受け、大きな指摘はなかったと記憶。\n気分の落ち込みの自覚は「ない」とのことだが、楽しめることが減った感じはあるという。\nコーヒーを1日5杯ほど飲む。運動習慣はこの1年ほぼない。常用薬・サプリなし。\n\nO（Objective：客観的情報）\nKT 36.5、BP 132/84、P 72。眼瞼結膜貧血なし。甲状腺腫大なし。\n心音・呼吸音異常なし。腹部異常なし。下腿浮腫なし。\n体重 78kg、BMI 26.4。咽頭は軽度の狭小化あり(扁桃肥大なし)。\n\nA（Assessment：評価）\n倦怠感の精査。器質的疾患を示唆する身体所見は現時点でなし。\n鑑別: 甲状腺機能異常、貧血、睡眠時無呼吸、うつ状態。いびきの指摘から睡眠時無呼吸の評価も考慮。\n\nP（Plan：計画）\n過去の受診記録は事務で継続確認とする。\n次回、空腹時の採血(血算・生化学・甲状腺)を予定。\n生活リズムの記録(就寝・起床・飲酒)をつけてくるよう依頼。\n眠気の質問紙を渡し、次回持参してもらう。採血は空腹で午前に来てもらう。"
+      },
+      "status": "draft_pending_medical_review",
+      "qualityLabel": "synthetic_v2",
+      "expectedExtraction": {
+        "requiredDiagnoses": [
+          "倦怠感"
+        ],
+        "requiredBillingSignals": [],
+        "requiredReviewTopics": [
+          "初診/再診確認"
+        ],
+        "forbiddenCandidates": []
+      },
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-07-21",
+          "is_outpatient": true,
+          "regional_bureau": "kanto-shinetsu",
+          "medical_institution_code": "1312345"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        }
+      },
+      "expectedCalculation": {
+        "assertionLevel": "review_required",
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "billingTargets": [
+        {
+          "name": "初診料(履歴確認後に確定)",
+          "points": 291
+        }
+      ],
+      "evidence": [
+        {
+          "source": "engine_replay",
+          "note": "exactのexpectedCalculationはclaim-context再生検証で確定。医療事務レビュー前。"
+        }
+      ],
+      "reviewPolicy": {
+        "productionGoldAllowed": false,
+        "medicalOfficeReviewed": false
+      },
+      "caseTypeAxes": {
+        "department": "internal_medicine",
+        "assertionLevel": "review_required",
+        "facilityFixtureKey": "clinic_basic",
+        "realismAxes": [
+          "ambiguous_visit_type",
+          "negative_findings"
+        ],
+        "distractorTypes": [
+          "ambiguous_history"
+        ]
+      },
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:e007d77e795549051439a2ef06f78233"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "fee-soap-e2e-v2.facility-fixtures.v1",
+  "notes": [
+    "ケースは facilityFixtureKey でいずれかを参照する。施設属性はカルテ本文に書かない。",
+    "equipment / electronicImageManagement は現行製品が未参照の施設属性。製品側の施設プロファイル拡張で読むようになるまで、抽出経路ではこの属性に依存するexactは落ちる(正しい計測)。",
+    "facilityStandardKeys は評価ハーネスがPlatform施設にseedする。"
+  ],
+  "fixtures": {
+    "clinic_basic": {
+      "label": "無床クリニック(届出なし)",
+      "facilityStandardKeys": [],
+      "equipment": { "ct": null, "mri": null },
+      "electronicImageManagement": false
+    },
+    "clinic_lab": {
+      "label": "無床クリニック(検体検査管理加算2届出)",
+      "facilityStandardKeys": ["検体検査管理加算2"],
+      "equipment": { "ct": null, "mri": null },
+      "electronicImageManagement": false
+    },
+    "clinic_imaging": {
+      "label": "画像対応クリニック(16-64列CT・電子画像管理)",
+      "facilityStandardKeys": [],
+      "equipment": { "ct": "multislice_16_to_64", "mri": "one_point_five_tesla" },
+      "electronicImageManagement": true
+    },
+    "clinic_full": {
+      "label": "検査・画像充実クリニック(検体検査管理加算2・16-64列CT・電子画像管理)",
+      "facilityStandardKeys": ["検体検査管理加算2"],
+      "equipment": { "ct": "multislice_16_to_64", "mri": "one_point_five_tesla" },
+      "electronicImageManagement": true
+    },
+    "hospital_acute": {
+      "label": "急性期一般入院料1届出病院(出来高)",
+      "facilityStandardKeys": ["一般入院", "検体検査管理加算2"],
+      "equipment": { "ct": "multislice_64_to_128", "mri": "three_tesla" },
+      "electronicImageManagement": true
+    }
+  }
+}
