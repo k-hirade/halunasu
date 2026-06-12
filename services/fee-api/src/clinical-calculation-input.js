@@ -4681,6 +4681,22 @@ async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculato
 
   const name = clinicalEventName(event);
   const categoryLabel = options.categoryLabel || "診療行為";
+  if (isRoutineNonBillableObservationEvent(event)) {
+    return {
+      procedureCodes: [],
+      commentInputs: [],
+      collectionFeeInputs: [],
+      masterCandidates: [],
+      reviewWarnings: [],
+      traceEvents: [clinicalTraceEvent({
+        stage: "non_billable_observation_skip",
+        event,
+        categoryLabel,
+        outcome: "skipped",
+        message: "routine_observation_not_sent_to_master_search"
+      })]
+    };
+  }
   if (["lab", "exam"].includes(normalizeClinicalEventType(event)) && !labEventNameSupportedByRawEvidence(event, options.clinicalText)) {
     return {
       procedureCodes: [],
@@ -5048,14 +5064,84 @@ function procedureMatchTokens(value = "") {
     .filter(Boolean);
 }
 
+const ROUTINE_OBSERVATION_NAME_PATTERN = /^(?:体温|血圧|BP|脈拍|心拍数|HR|呼吸数|SpO2|酸素飽和度|身長|体重|BMI|意識|JCS|GCS)(?:測定|確認|記録)?$/iu;
+const ROUTINE_FINDING_NAME_PATTERN = /(?:所見|聴診|視診|触診)$/u;
+const BILLABLE_EXAM_CUE_PATTERN = /(?:検査|テスト|試験|撮影|内視鏡|心電図|脳波|筋電図|超音波|エコー|CT|MRI|X線|レントゲン|眼底|眼圧|視力|視野|細隙灯|プリック|パッチテスト|負荷|肺機能|呼吸機能|血液|尿|便)/iu;
+
+function isRoutineNonBillableObservationEvent(event = {}) {
+  if (normalizeClinicalEventType(event) !== "exam") {
+    return false;
+  }
+  const name = normalizeClinicalText(clinicalEventName(event));
+  if (!name) {
+    return false;
+  }
+  const compactName = normalizeMatchText(name);
+  const evidence = normalizeClinicalText(clinicalEventEvidence(event));
+  const compactEvidence = normalizeMatchText(evidence);
+  if (BILLABLE_EXAM_CUE_PATTERN.test(name) && !ROUTINE_OBSERVATION_NAME_PATTERN.test(name)) {
+    return false;
+  }
+  if (ROUTINE_OBSERVATION_NAME_PATTERN.test(name) || ROUTINE_OBSERVATION_NAME_PATTERN.test(compactName)) {
+    return true;
+  }
+  if (
+    ROUTINE_FINDING_NAME_PATTERN.test(name)
+    && !BILLABLE_EXAM_CUE_PATTERN.test(name)
+    && !BILLABLE_EXAM_CUE_PATTERN.test(evidence)
+  ) {
+    return true;
+  }
+  if (
+    /(?:聴診|呼吸音|wheeze|ラ音|咽頭所見|鼻腔所見|眼所見|耳所見)/iu.test(compactName)
+    && !BILLABLE_EXAM_CUE_PATTERN.test(evidence)
+  ) {
+    return true;
+  }
+  if (
+    /(?:体温|血圧|脈拍|心拍数|呼吸数|spo2|酸素飽和度)/iu.test(compactName)
+    && /(?:\d|正常|清明|整|室内気|なし|無し)/u.test(compactEvidence)
+    && !BILLABLE_EXAM_CUE_PATTERN.test(evidence)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function normalizedSearchModifier(value = "") {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  const normalized = normalizeMatchText(text);
+  if (!normalized || ["none", "unknown", "null", "なし", "無し", "不明"].includes(normalized)) {
+    return "";
+  }
+  return text;
+}
+
+function bodySiteNameQuery(bodySite = "", name = "") {
+  const site = String(bodySite || "").trim();
+  const eventName = String(name || "").trim();
+  if (!site || !eventName) {
+    return "";
+  }
+  const normalizedSite = normalizeProcedureMatchText(site);
+  const normalizedName = normalizeProcedureMatchText(eventName);
+  if (normalizedSite && normalizedName.startsWith(normalizedSite)) {
+    return "";
+  }
+  return `${site}${eventName}`;
+}
+
 function clinicalEventSearchQueries(event = {}, { categoryLabel = "", extraQueries = [] } = {}) {
   const name = clinicalEventName(event);
   const evidence = clinicalEventEvidence(event);
-  const bodySite = String(event?.body_site || event?.bodySite || "").trim();
-  const modality = String(event?.modality || "").trim();
+  const bodySite = normalizedSearchModifier(event?.body_site || event?.bodySite);
+  const modality = normalizedSearchModifier(event?.modality);
   const deterministicTerms = [
     name,
-    bodySite && name ? `${bodySite}${name}` : "",
+    bodySiteNameQuery(bodySite, name),
     modality && name ? `${modality} ${name}` : "",
     ...procedureMasterQueriesFromEvidence(evidence),
     ...clinicalEventAliasQueries(event),

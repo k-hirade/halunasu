@@ -710,6 +710,7 @@ function actualView({ feeSession, calculationResult, reviewItems, candidateWorkb
   const lineItems = Array.isArray(calculationResult.lineItems) ? calculationResult.lineItems : [];
   const candidateProposals = Array.isArray(candidateWorkbench?.proposals) ? candidateWorkbench.proposals : [];
   const clinicalExtraction = calculationResult.clinicalExtraction || feeSession.calculationResult?.clinicalExtraction || null;
+  const clinicalTrace = Array.isArray(clinicalExtraction?.trace) ? clinicalExtraction.trace : [];
   const reviewText = [
     ...(Array.isArray(calculationResult.warnings) ? calculationResult.warnings : []),
     ...reviewItems.flatMap((item) => [item.title, item.message, item.reason]),
@@ -746,9 +747,28 @@ function actualView({ feeSession, calculationResult, reviewItems, candidateWorkb
       reason: item.reason || "",
       points: Number(item.points || item.totalPoints || 0)
     })),
+    clinicalExtractionVersion: clinicalExtraction ? {
+      source: clinicalExtraction.source || null,
+      model: clinicalExtraction.model || null,
+      reasoningEffort: clinicalExtraction.reasoningEffort || null,
+      promptVersion: clinicalExtraction.promptVersion || null,
+      ruleSetVersion: clinicalExtraction.ruleSetVersion || null,
+      masterVersion: clinicalExtraction.masterVersion || null,
+      runId: clinicalExtraction.runId || null,
+      responseId: clinicalExtraction.responseId || null,
+      clinicalEventCount: Number(clinicalExtraction.clinicalEventCount || 0),
+      masterCandidateCount: Number(clinicalExtraction.masterCandidateCount || 0),
+      billingCandidateCount: Number(clinicalExtraction.billingCandidateCount || 0),
+      reviewIssueCount: Number(clinicalExtraction.reviewIssueCount || 0)
+    } : null,
     visitFacts: clinicalExtraction?.visitFacts || null,
     checklistFindingStatusCounts: clinicalExtraction?.checklistFindingStatusCounts || null,
-    masterSearchTrace: (clinicalExtraction?.trace || [])
+    clinicalTraceStageCounts: traceStageCounts(clinicalTrace),
+    diagnosticTrace: clinicalTrace
+      .filter((item) => DIAGNOSTIC_TRACE_STAGES.has(item.stage))
+      .map(diagnosticTraceView)
+      .slice(0, 80),
+    masterSearchTrace: clinicalTrace
       .filter((item) => item.stage === "master_search")
       .map((item) => ({
         eventName: item.eventName || "",
@@ -784,6 +804,43 @@ function actualView({ feeSession, calculationResult, reviewItems, candidateWorkb
     })),
     reviewText,
     progress: feeSession.calculationProgress || null
+  };
+}
+
+const DIAGNOSTIC_TRACE_STAGES = new Set([
+  "lab_evidence_guard",
+  "checklist_consistency",
+  "checklist_recall",
+  "visit_facts_consistency",
+  "review_only_domain_gate",
+  "management_review_gate",
+  "case_level_lab_collection",
+  "lab_rule_expansion",
+  "non_billable_observation_skip",
+  "clinical_fact_review_flag_suppressed"
+]);
+
+function traceStageCounts(trace = []) {
+  const counts = {};
+  for (const item of trace) {
+    const stage = item?.stage || "unknown";
+    counts[stage] = Number(counts[stage] || 0) + 1;
+  }
+  return counts;
+}
+
+function diagnosticTraceView(item = {}) {
+  return {
+    stage: item.stage || "",
+    outcome: item.outcome || "",
+    eventName: item.eventName || "",
+    eventType: item.eventType || "",
+    clinicalEventId: item.clinicalEventId || "",
+    categoryLabel: item.categoryLabel || "",
+    topicCode: item.topicCode || "",
+    query: item.query || "",
+    message: item.message || "",
+    selected: item.selected || null
   };
 }
 

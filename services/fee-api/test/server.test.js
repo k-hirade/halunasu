@@ -1449,6 +1449,92 @@ test("gates lab master search to direct lab test items and records trace", async
   )));
 });
 
+test("skips routine vital observation master search and avoids noisy query modifiers", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    return {
+      query: input.query,
+      type: input.type,
+      items: []
+    };
+  };
+  stores.feeCalculator.calculate = async () => ({
+    provider: "test_fee_engine",
+    source: "test",
+    status: "completed",
+    totalPoints: 0,
+    lineItems: [],
+    warnings: []
+  });
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [],
+    clinical_events: [
+      {
+        clinical_event_id: "ce_spo2",
+        type: "exam",
+        name: "SpO2測定",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        provider_ownership: "own_clinic",
+        source_origin: "own_clinic_record",
+        evidence: "SpO2 98%(室内気)",
+        search_queries: ["SpO2測定"],
+        modality: "none",
+        body_site: ""
+      },
+      {
+        clinical_event_id: "ce_visual_acuity",
+        type: "exam",
+        name: "右眼視力測定",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        provider_ownership: "own_clinic",
+        source_origin: "own_clinic_record",
+        evidence: "右眼視力測定を実施。",
+        search_queries: ["視力測定"],
+        modality: "none",
+        body_site: "右眼"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Routine Observation Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: SpO2 98%(室内気)。右眼視力測定を実施。",
+    diagnoses: [{ name: "視力低下" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(masterSearches.some((input) => /SpO2|spo2/u.test(String(input.query || ""))), false);
+  assert.equal(masterSearches.some((input) => /^none\s/u.test(String(input.query || ""))), false);
+  assert.equal(masterSearches.some((input) => String(input.query || "").includes("右眼右眼")), false);
+  assert.equal(masterSearches.some((input) => input.query === "右眼視力測定"), true);
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => (
+    item.stage === "non_billable_observation_skip"
+    && item.eventName === "SpO2測定"
+  )));
+});
+
 test("does not auto-code lab concepts that only appear in LLM search queries", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
