@@ -201,7 +201,7 @@
           "unrelated_complaint"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:34e06ecd389df6dc2f7ebfd317c8e97a"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:6e00e2a77cf1d2c2063c55cbd39eb7c6"
     },
     {
       "caseId": "V2-PED-LAB-002",
@@ -368,7 +368,7 @@
           "normal_exam_mention"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:135aaeeceac3ad9b720599b3f60b23d2"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:3377fce844449621e23591749fab543b"
     },
     {
       "caseId": "V2-DERM-MED-003",
@@ -533,7 +533,7 @@
           "considered_only"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:0801cad206964bbada420647f0608e6a"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:dccb1c097991322f3f8dd30b8510388a"
     },
     {
       "caseId": "V2-IM-MED-004",
@@ -677,7 +677,7 @@
           "social_context"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:6298f408f5e7e203435a47b19af66563"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:a182a830319f0273d3ebbff2f3a6c967"
     },
     {
       "caseId": "V2-IM-IMG-005",
@@ -833,7 +833,7 @@
           "home_record"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:51c04694045425ea7439c11b162a690a"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:60529be01d670a3bd76b08bc769c9a6d"
     },
     {
       "caseId": "V2-ORTH-IMG-006",
@@ -986,7 +986,7 @@
           "home_medication"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:7bf8a89bc63364778aefc17e12d2a75c"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:2e847ad90d4c32b1b1760701e8a52337"
     },
     {
       "caseId": "V2-CARD-MGMT-007",
@@ -1125,7 +1125,7 @@
           "home_record"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:83faf7848d19d5a618504e703caf6077"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:695d674a8c7bd106c35e8dd892381228"
     },
     {
       "caseId": "V2-SURG-PATH-008",
@@ -1270,7 +1270,7 @@
           "otc_medication"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:82fb3eedc01227dca575c6e3353e097b"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:74e87ca7bc620294d524bfb44bbc1d8a"
     },
     {
       "caseId": "V2-EMER-TIME-009",
@@ -1408,7 +1408,7 @@
           "social_context"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:0c3f135fba47546f20d0bf7ac4d55a27"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:1c948d564aa127f26e61553a9ff45e00"
     },
     {
       "caseId": "V2-HOME-010",
@@ -1546,7 +1546,7 @@
           "medication_management_context"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:81716b9ede90fed44dd3e63f9e550ff0"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:8947efdb1e36998220ae28364f65caee"
     },
     {
       "caseId": "V2-ENT-LAB-011",
@@ -1673,7 +1673,7 @@
           "home_medication"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:e67348bbe5ddcd97be959ba6d369e3d9"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:037738a33d813a4f9afcd75deea05aae"
     },
     {
       "caseId": "V2-OPH-MED-012",
@@ -1804,7 +1804,7 @@
           "otc_medication"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:164db13e337635178d2c157567562543"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:283a23d614d09a2029b7d9b32f0fbd4b"
     },
     {
       "caseId": "V2-URO-LAB-013",
@@ -1956,7 +1956,7 @@
           "home_medication"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:b4cdf122e41fbc29180b170ab28c2d18"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:8f785b67bbe69eca95dcff50a33a0c8b"
     },
     {
       "caseId": "V2-GI-LAB-014",
@@ -2122,7 +2122,7 @@
           "planned_exam"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:fc3c1d90c673a14213a8d9a65a1eb154"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:486d5c4967314e642172fcba4bc08b74"
     },
     {
       "caseId": "V2-RESP-LAB-015",
@@ -2275,7 +2275,7 @@
           "social_context"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:d0df11edd5811bc2ab526bce5aa2fe62"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:040f9bb3d779bec8490db0753c11912b"
     },
     {
       "caseId": "V2-NEUR-IMG-016",
@@ -2418,7 +2418,7 @@
           "home_medication"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:cfe816de03f7a4cb344eafaed414c349"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:a4be1abd5928790315d0d7efa216ccf4"
     },
     {
       "caseId": "V2-RAD-IMG-017",
@@ -2561,7 +2561,7 @@
           "past_exam"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:1a8541c4024ab03534bd06991d4e07f0"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:afeea2cd1c36336b65160aed0c78670b"
     },
     {
       "caseId": "V2-OBGYN-LAB-018",
@@ -2719,7 +2719,7 @@
           "unrelated_topic"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:613351a68e19d85d320a33bd730dc499"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:36d8948636a77fec141b1a4c2b13a0c4"
     },
     {
       "caseId": "V2-EMER-SPLIT-019",
@@ -2836,7 +2836,7 @@
           "previous_day_acts"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:1857c5335e72da6e061e83067b826b04"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:fc6ed3343d7189a9f3dc5eb9cae3c7f8"
     },
     {
       "caseId": "V2-PSY-020",
@@ -2951,7 +2951,7 @@
           "outside_prescription_context"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:0fdd475379774ae1f4f67840d61efb8a"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:931f835646ac4665a985c71fc794fad8"
     },
     {
       "caseId": "V2-REH-021",
@@ -3069,7 +3069,7 @@
           "past_surgery"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:e6502c37e96a9ff85bdc93c7312e8c9a"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:152dea18c59cc678ebbdaf445dc00a7b"
     },
     {
       "caseId": "V2-NEPH-022",
@@ -3199,7 +3199,7 @@
           "considered_only"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:feb36e2b2e8d47d891785faec9d5fa63"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:b6e351f7485e00b2370633906184297b"
     },
     {
       "caseId": "V2-PATH-023",
@@ -3316,7 +3316,7 @@
           "other_department_act"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:09bd3ad8171b07851ad8a12bb3d45192"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:fe8616b48ce4bac10bc5287e37e46d96"
     },
     {
       "caseId": "V2-GI-ENDO-024",
@@ -3433,7 +3433,7 @@
           "negated_act"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:7dca32c56e58890a058b0c28e2ffee85"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:87e871899d6bef935b8c36ed86bc6f4b"
     },
     {
       "caseId": "V2-IM-INJ-025",
@@ -3550,7 +3550,7 @@
           "negated_exam"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:1fb78a7a7d5c5ba263e9aeb63f98feb9"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:53b67fd41b4b10bec18c5f9c8928d7fe"
     },
     {
       "caseId": "V2-SURG-MAT-026",
@@ -3666,7 +3666,7 @@
           "home_care_context"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:5c19bf332291b168309a2470291d8324"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:2c589dba1b7bcf13cdf4ce4a8f9935ea"
     },
     {
       "caseId": "V2-ENT-PROC-027",
@@ -3783,7 +3783,7 @@
           "planned_exam"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:c2cfa5d6e8e03b0d777b3367a9f730f4"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:b97a2bd0db7ea8c954e48f419cb652a2"
     },
     {
       "caseId": "V2-OPH-PROC-028",
@@ -3899,7 +3899,7 @@
           "occupational_context"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:728f50812150719f5db0afd7e9e780ff"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:cdfb8581f313937e70bf6e378fe4b93d"
     },
     {
       "caseId": "V2-PED-TIME-029",
@@ -4027,7 +4027,7 @@
           "family_context"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:bd9b1ceef61d98659aea29f6c4126d38"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:f919f653c8a381bb638ea3aded512598"
     },
     {
       "caseId": "V2-IM-VISIT-030",
@@ -4141,7 +4141,7 @@
           "ambiguous_history"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:e007d77e795549051439a2ef06f78233"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:6b1c05d343725794df90f25d20639b83"
     },
     {
       "caseId": "V2-DERM-MED-031",
@@ -4265,7 +4265,7 @@
           "otc_medication"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:def469ec52d2ab0ec4771f8c83b93462"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:01d4a7e435bbd7d64820152c0bfc3282"
     },
     {
       "caseId": "V2-ORTH-IMG-032",
@@ -4410,7 +4410,7 @@
           "other_provider_history"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:fbf675599460c518c2106c973326aa91"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:6dd31a80b8fa55f7de76127262cd39c3"
     },
     {
       "caseId": "V2-PED-LAB-033",
@@ -4563,7 +4563,7 @@
           "family_context"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:39333b3cc78137b9ae692ce86cc86bb9"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:60fed18b004f22ec8dec00a571413cc9"
     },
     {
       "caseId": "V2-RESP-LAB-034",
@@ -4716,7 +4716,7 @@
           "past_lab_values"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:a1b0c2ee80d3d2761ca6435dd0b31e23"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:0bfa4c8d8428b69dd980efb0f73c7ae2"
     },
     {
       "caseId": "V2-PSY-MED-035",
@@ -4862,7 +4862,7 @@
           "considered_only"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:f590c8623de9f35fcc970d6fc24583c0"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:c4a8749fd92d637f35bcd5eb92b18e11"
     },
     {
       "caseId": "V2-IM-MGMT-036",
@@ -4989,7 +4989,7 @@
           "planned_exam"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:e185162f4732e19714f0d06c0f6a8fd3"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:8b3875722638ccc2c3b70ff8304e8269"
     },
     {
       "caseId": "V2-DERM-MGMT-037",
@@ -5109,7 +5109,7 @@
           "otc_medication"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:aa3bd73790df3570baa0f680f0583067"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:9a26fc92b7c2b0911f6cfe48a1b04543"
     },
     {
       "caseId": "V2-RESP-MGMT-038",
@@ -5228,7 +5228,7 @@
           "negated_exam"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:602ad9f4a1d1a7aea66311ba6f72c74a"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:b95e29e0acfc7085a378198e2509caf0"
     },
     {
       "caseId": "V2-CARD-IMG-039",
@@ -5344,7 +5344,7 @@
           "past_exam"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:14a803b3b7842b0e399b5aad7901bb0a"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:36cf992423a008d624a2b79b5df09276"
     },
     {
       "caseId": "V2-GI-MED-040",
@@ -5460,7 +5460,7 @@
           "other_provider_history"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:bac87ee790db429f06ff2e477ae7c8aa"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:c78a3d230d0f4a57be83e8253c27c0aa"
     },
     {
       "caseId": "V2-NEUR-IMG-041",
@@ -5582,7 +5582,7 @@
           "other_provider_history"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:56cbdbfc87cb6620281b604403a417a9"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:8918bcd2514374dd57413c30113d1e3a"
     },
     {
       "caseId": "V2-OBGYN-LAB-042",
@@ -5700,7 +5700,7 @@
           "unrelated_topic"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:2c168d9eda202215e7bce86b7b2d0af2"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:5f073d5e2924dd11a9295ad00a4d4ecf"
     },
     {
       "caseId": "V2-URO-PROC-043",
@@ -5816,7 +5816,7 @@
           "planned_exam"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:4a4d1b058fab433e44feb1480318d93f"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:da71e44ac11c10c4edb224539938c789"
     },
     {
       "caseId": "V2-ENT-LAB-044",
@@ -5931,7 +5931,7 @@
           "family_context"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:19d7d2dd74e6bdb94e30a950bba1d3c6"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:da51f0b7c5408464c158b2eb8d7b0365"
     },
     {
       "caseId": "V2-HOME-VISIT-045",
@@ -6061,7 +6061,7 @@
           "negated_treatment"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:7d779bceb7ad9668de4e0eb846fa690a"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:d102bc2d2c19d3c418767f29b11c13ca"
     },
     {
       "caseId": "V2-RAD-IMG-046",
@@ -6178,7 +6178,7 @@
           "other_provider_history"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:885638213fcf440b3cb00f21d857f182"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:48942ec9793bd59b8634fc2ab8c82b24"
     },
     {
       "caseId": "V2-REH-DOC-047",
@@ -6296,7 +6296,7 @@
           "other_provider_history"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:08020e6db48515e57c0788f88f5d0f35"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:e0dadd961902f62b554a9b14efc06d20"
     },
     {
       "caseId": "V2-IM-NEG-048",
@@ -6429,7 +6429,7 @@
           "negated_treatment"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:e76c1e67dbf0d78e96e679635e6a71cc"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:6645f7c3cc1731cd14e4d858b1e0f6cd"
     },
     {
       "caseId": "V2-EMER-TIME-049",
@@ -6559,7 +6559,7 @@
           "social_context"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:bdce90ea23ead2754ac7432f8c45f16a"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:7297fbbda6e47ed1f8d838b0e6ccfb08"
     },
     {
       "caseId": "V2-SURG-SAFE-050",
@@ -6687,7 +6687,7 @@
           "planned_exam"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:0ee2ee193920387a1574ccc7a0556d0e"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:ed8f477e5eb1dbfb9aa2d876acec10a4"
     },
     {
       "caseId": "V2-GI-SPLIT-051",
@@ -6806,7 +6806,7 @@
           "previous_day_acts"
         ]
       },
-      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:d2bb69c9931e4f914bbc9f3609e3776a"
+      "caseTypeSignature": "fee-soap-e2e-v2.case-type.v1:98a5b12c5efdcab99049a4af09e3bf2e"
     }
   ]
 }

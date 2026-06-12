@@ -11,11 +11,16 @@ const outPath = path.join(repoRoot, "data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-
 
 const batchFiles = fs.readdirSync(sourcesDir).filter((name) => name.endsWith(".mjs")).sort();
 const allCases = [];
+const includedBatchFiles = [];
 for (const file of batchFiles) {
   const module = await import(pathToFileURL(path.join(sourcesDir, file)).href);
+  if (module.includeInDataset === false) {
+    continue;
+  }
   if (!Array.isArray(module.cases)) {
     throw new Error(`${file} does not export cases[]`);
   }
+  includedBatchFiles.push(file);
   allCases.push(...module.cases);
 }
 
@@ -44,6 +49,7 @@ function chartStandard(soap) {
 
 function caseTypeSignature(item) {
   const basis = JSON.stringify({
+    ...(item.caseTypeKey ? { caseTypeKey: item.caseTypeKey } : {}),
     department: item.department,
     assertion: item.expectedCalculation.assertionLevel,
     codes: item.expectedCalculation.candidateCodes,
@@ -60,7 +66,7 @@ function caseTypeSignature(item) {
 const dataset = {
   schemaVersion: "fee-soap-e2e-cases.v2",
   datasetId: "fee-soap-e2e-v2",
-  version: `2026-06-12.batches.${batchFiles.length}`,
+  version: `2026-06-12.batches.${includedBatchFiles.length}`,
   purpose: "実カルテに近い文体での診療報酬算定E2Eゴールド第2世代。",
   goldContract: {
     templateMetaSentencesForbidden: true,
@@ -69,7 +75,7 @@ const dataset = {
     performedPredicate: "実施|施行|行った(「確認した」単独は実施根拠にしない)",
     distractorPolicy: "distractorsは本文に存在するが算定してはならない情報。否定・過去・他院・市販・予定のいずれかの文脈で明示する。"
   },
-  sourceBatches: batchFiles,
+  sourceBatches: includedBatchFiles,
   cases: allCases.map((item) => ({
     caseId: item.caseId,
     title: item.title,
@@ -78,9 +84,10 @@ const dataset = {
     patient: item.patient,
     encounter: { ...item.encounter, department: item.department },
     facilityFixtureKey: item.facilityFixtureKey,
+    ...(item.caseTypeKey ? { caseTypeKey: item.caseTypeKey } : {}),
     realismAxes: item.realismAxes,
-    variantOf: item.variantOf || null,
-    styleProfile: item.styleProfile || null,
+    ...(item.variantOf ? { variantOf: item.variantOf } : {}),
+    ...(item.styleProfile ? { styleProfile: item.styleProfile } : {}),
     distractors: item.distractors || [],
     chart: { soap: item.soap, standard: chartStandard(item.soap) },
     status: "draft_pending_medical_review",
@@ -94,6 +101,7 @@ const dataset = {
     caseTypeAxes: {
       department: item.department,
       assertionLevel: item.expectedCalculation.assertionLevel,
+      ...(item.caseTypeKey ? { caseTypeKey: item.caseTypeKey } : {}),
       facilityFixtureKey: item.facilityFixtureKey,
       realismAxes: item.realismAxes,
       distractorTypes: (item.distractors || []).map((d) => d.type)
@@ -108,6 +116,6 @@ const byAssertion = {};
 for (const c of dataset.cases) {
   byAssertion[c.expectedCalculation.assertionLevel] = (byAssertion[c.expectedCalculation.assertionLevel] || 0) + 1;
 }
-console.log(`wrote ${dataset.cases.length} cases (${batchFiles.join(", ")})`);
+console.log(`wrote ${dataset.cases.length} cases (${includedBatchFiles.join(", ")})`);
 console.log(`assertions: ${JSON.stringify(byAssertion)}`);
 console.log(`chart length: min ${Math.min(...lengths)} / avg ${Math.round(lengths.reduce((a, b) => a + b, 0) / lengths.length)} / max ${Math.max(...lengths)}`);

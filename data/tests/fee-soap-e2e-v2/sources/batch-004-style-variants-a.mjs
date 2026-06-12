@@ -1,4 +1,7 @@
 // v2 batch-004: 文体バリアント第1群(exact族中心)。variantOfで基底の請求側を継承し、カルテのみ差し替え。
+// 1000ケースの主データは独立シナリオを手書きで作るため、短文variantは補修完了まで通常生成から除外する。
+export const includeInDataset = false;
+
 export const cases = [
   {
     caseId: "V2-IM-LAB-001-VT",
