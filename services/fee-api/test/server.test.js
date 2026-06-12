@@ -4152,6 +4152,156 @@ test("does not infer B-V from venous thrombosis history or serum value mention",
   assert.deepEqual(receivedInput.calculationOptions.lab_options?.collection_fee_inputs || [], []);
 });
 
+test("emits visit type review topic from uncertain structured visit type", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.calculate = async () => ({
+    provider: "test_fee_engine",
+    source: "test",
+    status: "completed",
+    totalPoints: 291,
+    lineItems: [{
+      lineId: "line_initial",
+      code: "111000110",
+      name: "初診料",
+      orderType: "outpatient_basic",
+      points: 291,
+      quantity: 1,
+      totalPoints: 291,
+      status: "candidate",
+      source: "outpatient_basic_fee",
+      reviewRequired: true
+    }],
+    warnings: []
+  });
+  const clinicalFactsExtractor = async () => ({
+    visit_type: {
+      kind: "unknown",
+      confidence: "low",
+      evidence: "初診か再診か、診療録だけでは確定しきれないため、追加確認が必要。"
+    },
+    diagnoses: [{ name: "頭痛", status: "active", evidence: "頭痛" }],
+    clinical_events: [{
+      type: "counseling",
+      billing_domain: "standard_management",
+      name: "初診/再診の確認",
+      action_status: "considered",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "not_applicable",
+      certainty: "ambiguous",
+      section: "A",
+      evidence: "初診か再診か、診療録だけでは確定しきれないため、追加確認が必要。",
+      review_reason: "初診/再診の確認が必要"
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Visit Type Review Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "初診か再診か、診療録だけでは確定しきれないため、追加確認が必要。",
+    diagnoses: [{ name: "頭痛" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  const reviewIssues = calculation.body.calculationResult.reviewIssues;
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(reviewIssues.filter((issue) => issue.topicLabel === "初診/再診確認").length, 1);
+  assert.equal(reviewIssues.some((issue) => issue.topicLabel === "対象疾患確認"), false);
+});
+
+test("maps taxonomy-labelled management review events before target disease fallback", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.calculate = async () => ({
+    provider: "test_fee_engine",
+    source: "test",
+    status: "completed",
+    totalPoints: 291,
+    lineItems: [],
+    warnings: []
+  });
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "initial", confidence: "high", evidence: "初診" },
+    diagnoses: [{ name: "角膜異物疑い", status: "suspected", evidence: "角膜異物疑い" }],
+    clinical_events: [
+      {
+        type: "management",
+        billing_domain: "standard_management",
+        name: "同日重複確認（条件未確認の処置への対応方針）",
+        action_status: "considered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "A",
+        evidence: "同日重複確認が必要。",
+        review_reason: "同日重複確認"
+      },
+      {
+        type: "management",
+        billing_domain: "standard_management",
+        name: "管理料の確認",
+        action_status: "considered",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "A",
+        evidence: "管理料の対象疾患を確認する。",
+        review_reason: "対象疾患確認"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Same Day Duplicate Review Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "同日重複確認が必要。管理料の対象疾患を確認する。",
+    diagnoses: [{ name: "角膜異物疑い" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  const reviewIssues = calculation.body.calculationResult.reviewIssues;
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(reviewIssues.filter((issue) => issue.topicLabel === "同日重複確認").length, 1);
+  assert.equal(reviewIssues.filter((issue) => issue.topicLabel === "対象疾患確認").length, 1);
+  assert.equal(calculation.body.candidateWorkbench.proposals.some((proposal) => /同日重複|初診\/再診/u.test(proposal.title || "")), false);
+});
+
 test("merges deterministic performed imaging when structured facts miss it", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
