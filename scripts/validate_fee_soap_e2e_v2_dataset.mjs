@@ -16,6 +16,7 @@ const errors = [];
 const warnings = [];
 
 const META_SENTENCE_PATTERN = /(当日確認した主な診療内容|確認すべき論点|確認論点は|点数に直結する名称|会計前に当日実施した内容|当日実施と混同しやすい内容)/u;
+const SYSTEM_BILLING_VOCAB_PATTERN = /(自動確定|算定上|算定候補|請求候補|会計前に確認|会計上|算定時)/u;
 // 全角括弧つきの点数表正式名称(例: ＣＴ撮影（１６列…）、処方箋料（リフィル…))をカルテに書かない
 const OFFICIAL_NAME_PATTERN = /(ＣＴ撮影（|ＭＲＩ撮影（|処方箋料（|電子画像管理加算|検体検査管理加算|外来迅速検体検査加算|単純撮影（イ）|一般名処方加算|入院料１|入院料２)/u;
 // 施設属性(機器列数・電子保存体制・届出)はfixtureが持つ
@@ -43,6 +44,7 @@ const EXACT_CODE_ANCHOR_RULES = {
 
 const ids = new Set();
 const signatures = new Set();
+const chartLineOccurrences = new Map();
 
 for (const item of dataset.cases || []) {
   const cid = item.caseId || "(no id)";
@@ -71,10 +73,21 @@ for (const item of dataset.cases || []) {
 
   // 2) 文体リント
   if (META_SENTENCE_PATTERN.test(chart)) fail("chart contains forbidden template/meta sentence");
+  if (SYSTEM_BILLING_VOCAB_PATTERN.test(chart)) fail("chart contains billing-system vocabulary");
   if (OFFICIAL_NAME_PATTERN.test(chart)) fail("chart contains official master/billing name");
   if (FACILITY_ATTRIBUTE_PATTERN.test(chart)) fail("chart contains facility attribute (equipment/e-management/notification)");
   if (/[A-Za-z]{6,}\s/u.test(chart.replace(/SpO2|GCS|MMT|CRP|WBC|LDL|HDL|TG|HbA1c|COPD|TKA|XP|DR|CVA|KT|BT|BP|ESA|HE|IgE/gu, ""))) {
     warn("chart may contain unintended English words");
+  }
+  for (const rawLine of chart.split(/\n+/u)) {
+    const line = rawLine.trim();
+    if (line.length < 18) continue;
+    if (/^(S|O|A|P)（|^(S|O|A|P):/u.test(line)) continue;
+    if (/^(BP|KT|BT|SpO2|HR|P)\b/u.test(line)) continue;
+    const entry = chartLineOccurrences.get(line) || { count: 0, caseIds: new Set() };
+    entry.count += 1;
+    entry.caseIds.add(cid);
+    chartLineOccurrences.set(line, entry);
   }
 
   // 3) exactアンカー
@@ -105,6 +118,15 @@ for (const item of dataset.cases || []) {
     if (name && !chart.includes(name.slice(0, Math.min(4, name.length)))) {
       warn(`distractor "${distractor.name}" not clearly present in chart`);
     }
+  }
+}
+
+for (const [line, entry] of chartLineOccurrences.entries()) {
+  if (entry.caseIds.size >= 5) {
+    warnings.push({
+      caseId: "cross-case",
+      warning: `same chart line appears in ${entry.caseIds.size} cases: ${line.slice(0, 80)}`
+    });
   }
 }
 
