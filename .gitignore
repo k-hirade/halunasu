@@ -19,3 +19,4 @@ python/data/master/*.sqlite-*
 python/data/master/*.sqlite.gz
 data/tests/fee-soap-e2e/reports/
 data/tests/fee-soap-e2e-v2/reports/
+data/tests/fee-soap-e2e-v2/
