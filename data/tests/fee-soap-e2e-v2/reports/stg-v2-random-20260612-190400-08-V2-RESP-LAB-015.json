@@ -1,0 +1,732 @@
+{
+  "schemaVersion": "fee-soap-e2e-evaluation.v1",
+  "generatedAt": "2026-06-12T10:06:44.378Z",
+  "datasetId": "fee-soap-e2e-v2",
+  "datasetVersion": "2026-06-12.batches.3",
+  "datasetPath": "data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json",
+  "mode": "stg",
+  "filters": {
+    "caseId": "V2-RESP-LAB-015",
+    "assertionLevel": null,
+    "limit": null
+  },
+  "security": {
+    "syntheticDataOnly": true,
+    "soapTextIncluded": false,
+    "credentialsIncluded": false,
+    "reportContainsSecrets": false
+  },
+  "summary": {
+    "mode": "stg",
+    "strict": false,
+    "selected": 1,
+    "totalDatasetCases": 51,
+    "durationMs": 12717,
+    "passed": 1,
+    "failed": 0,
+    "passRate": 1,
+    "byAssertion": {
+      "exact": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0
+      }
+    },
+    "failureByStage": {},
+    "avgDurationMs": 11825,
+    "slowest": [
+      {
+        "caseId": "V2-RESP-LAB-015",
+        "assertionLevel": "exact",
+        "durationMs": 11825,
+        "failedStage": null
+      }
+    ],
+    "worstBillingSignalRecall": [
+      {
+        "caseId": "V2-RESP-LAB-015",
+        "assertionLevel": "exact",
+        "billingSignalRecall": 1,
+        "missingBillingSignals": []
+      }
+    ]
+  },
+  "facilityFixtureAudit": {
+    "fixtureKey": "default",
+    "seededFacilityStandardKeys": [],
+    "fixtures": [
+      {
+        "fixtureKey": "default",
+        "seededFacilityStandardKeys": [],
+        "caseIds": [
+          "V2-RESP-LAB-015"
+        ]
+      }
+    ],
+    "exactRequiredFacilityStandardKeys": [],
+    "facilityUnknownExpectedKeys": [],
+    "facilityUnknownCaseIds": [],
+    "collisions": [],
+    "collisionPolicy": "single_fixture_ok",
+    "runnerMode": "stg_existing_facility",
+    "seededFacilityStandards": [],
+    "seedStatus": "cleared",
+    "seedError": ""
+  },
+  "results": [
+    {
+      "caseId": "V2-RESP-LAB-015",
+      "assertionLevel": "exact",
+      "difficultyLevel": "L2",
+      "status": "passed",
+      "failedStage": null,
+      "failureMessages": [],
+      "chartHash": "ec9d3bc1c9dc1ab6f11ad8c6179cf80701483a607753530b730561bb2936521d",
+      "feeSessionId": "fee_d45e9aed94fc424bbfd3457d4e",
+      "historySeed": {
+        "required": false,
+        "reason": "none",
+        "created": false,
+        "failed": false,
+        "feeSessionId": null,
+        "patientId": null,
+        "serviceDate": null
+      },
+      "facilityFixture": {
+        "mode": "stg_existing_facility",
+        "fixtureKey": "default",
+        "facilityId": "fac_48e3768bdf33786b56bda39b60",
+        "seededFacilityStandards": [],
+        "expectedFacilityStandards": [],
+        "collisions": [],
+        "seedStatus": "cleared",
+        "seedError": ""
+      },
+      "http": {
+        "createSession": {
+          "statusCode": 201,
+          "error": null
+        },
+        "calculate": {
+          "statusCode": 201,
+          "error": null
+        },
+        "detail": {
+          "statusCode": 200,
+          "error": null
+        }
+      },
+      "durationMs": {
+        "total": 11825,
+        "seedVisitHistory": 0,
+        "createSession": 385,
+        "calculateRequest": 11064,
+        "detail": 230,
+        "prepare": 0,
+        "savePreparedSession": 0,
+        "pythonCalculator": 0,
+        "saveCalculation": 0,
+        "audit": 0,
+        "clinicalStructuring": 10474,
+        "openAiProvider": 10118,
+        "firstOutputText": null,
+        "ruleBasedInference": 0,
+        "masterLookup": 349,
+        "masterLookupCount": 29,
+        "model": "gpt-5.4-nano",
+        "reasoningEffort": "low",
+        "clinicalStructuringSource": "openai"
+      },
+      "accuracy": {
+        "diagnosisRecall": 1,
+        "billingSignalRecall": 1,
+        "candidateCodeRecall": 1,
+        "candidateCodePrecision": 1,
+        "reviewTopicRecall": 1,
+        "forbiddenViolationCount": 0,
+        "totalPointDelta": 0
+      },
+      "expected": {
+        "totalPoints": 700,
+        "candidateCodes": [
+          "160230050",
+          "111000110",
+          "160062110",
+          "160095710"
+        ],
+        "engineStatus": "completed"
+      },
+      "actual": {
+        "totalPoints": 700,
+        "candidateCodes": [
+          "160230050",
+          "111000110",
+          "160062110",
+          "160095710"
+        ],
+        "engineStatus": "needs_review",
+        "status": "needs_review",
+        "lineItems": [
+          {
+            "code": "160230050",
+            "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+            "status": "needs_review",
+            "supportLevel": "review_required",
+            "reviewRequired": true,
+            "totalPoints": 225
+          },
+          {
+            "code": "111000110",
+            "name": "初診料",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 291
+          },
+          {
+            "code": "160062110",
+            "name": "免疫学的検査判断料",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 144
+          },
+          {
+            "code": "160095710",
+            "name": "Ｂ－Ｖ",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 40
+          }
+        ],
+        "reviewItems": [
+          {
+            "title": "検体採取確認",
+            "message": "検体採取確認: 鼻咽頭ぬぐい液 コロナ・インフル抗原検査に検体採取の記載があります。検体採取料は検査本体から自動算定せず、採取方法、同日算定条件、必要な親行為を確認してから採用してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "検査コード確認",
+            "message": "静脈採血（検体採取）は実施済みの検体検査として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "検体採取確認",
+            "message": "検体採取確認: 新型コロナ・インフル抗原同時検査に検体採取の記載があります。検体採取料は検査本体から自動算定せず、採取方法、同日算定条件、必要な親行為を確認してから採用してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "施設基準確認",
+            "message": "施設基準確認: 検体検査管理加算の届出確認が必要です。施設基準が登録されていないため、検体検査管理加算は自動追加していません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "レセプトコメントの確認",
+            "message": "レセプトコメントの確認: 160230050 ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性 に必要なコメント: 830100503 検査が必要と判断した医学的根拠（ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性）；",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+            "message": "Input medical procedure code matched master only; chapter-specific billing rules are not confirmed",
+            "status": "needs_review",
+            "severity": "review"
+          },
+          {
+            "title": "初診料",
+            "message": "Outpatient basic fee candidate for initial",
+            "status": "needs_review",
+            "severity": "review"
+          },
+          {
+            "title": "免疫学的検査判断料",
+            "message": "D026検査判断料（区分5）を実施検査から自動候補化",
+            "status": "needs_review",
+            "severity": "review"
+          },
+          {
+            "title": "Ｂ－Ｖ",
+            "message": "検体採取料を採取方法（blood_venous）から自動候補化",
+            "status": "needs_review",
+            "severity": "review"
+          }
+        ],
+        "candidateProposals": [],
+        "diagnoses": [
+          "急性上気道炎",
+          "コロナ・インフルの鑑別中"
+        ],
+        "calculationOptionsSource": "clinical_auto",
+        "calculationOptionsAutoKeys": [
+          "outpatient_basic",
+          "procedure_codes",
+          "lab_options"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": ""
+        },
+        "checklistFindingStatusCounts": {
+          "performed_today": 1,
+          "mentioned_not_performed": 1
+        },
+        "masterSearchTrace": [
+          {
+            "eventName": "鼻咽頭ぬぐい液 コロナ・インフル抗原検査",
+            "outcome": "matched",
+            "query": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+            "selected": {
+              "code": "160230050",
+              "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性"
+            },
+            "searches": [
+              {
+                "query": "鼻咽頭ぬぐい液 コロナ・インフル抗原検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 鼻咽頭ぬぐい液 コロナ・インフル抗原検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "鼻咽頭ぬぐい液でコロナ・インフルの同時抗原検査を施行",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "同時抗原検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "いずれも判定待ち 鼻咽頭ぬぐい液 コロナ・インフル抗原検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "インフル抗原検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+                "outcome": "matched",
+                "selectedCode": "160230050",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "静脈採血（検体採取）",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "静脈採血（検体採取）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 静脈採血（検体採取）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "脱水評価と炎症確認のため静脈採血も施行し外注へ提出",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検体検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [
+                  {
+                    "code": "160145410",
+                    "name": "基本的検体検査実施料（４週間以内）",
+                    "feeCategory": "procedure_basic",
+                    "itemRole": "base",
+                    "reason": "category_gate:procedure_basic"
+                  },
+                  {
+                    "code": "160149110",
+                    "name": "基本的検体検査判断料",
+                    "feeCategory": "lab_judgment",
+                    "itemRole": "judgment",
+                    "reason": "derived_only:judgment"
+                  },
+                  {
+                    "code": "160161610",
+                    "name": "検体検査管理加算（３）",
+                    "feeCategory": "lab_addon",
+                    "itemRole": "addon",
+                    "reason": "derived_only:addon"
+                  },
+                  {
+                    "code": "160165310",
+                    "name": "基本的検体検査実施料（４週間超）",
+                    "feeCategory": "procedure_basic",
+                    "itemRole": "base",
+                    "reason": "category_gate:procedure_basic"
+                  },
+                  {
+                    "code": "160170170",
+                    "name": "検体検査管理加算（１）",
+                    "feeCategory": "lab_addon",
+                    "itemRole": "addon",
+                    "reason": "derived_only:addon"
+                  }
+                ],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "静脈採血",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "脱水評価",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "炎症確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "外注 検体提出",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "新型コロナ・インフル抗原同時検査",
+            "outcome": "matched",
+            "query": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+            "selected": {
+              "code": "160230050",
+              "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性"
+            },
+            "searches": [
+              {
+                "query": "新型コロナ・インフル抗原同時検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 新型コロナ・インフル抗原同時検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "鼻咽頭ぬぐい液でコロナ・インフルの同時抗原検査を施行",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "同時抗原検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "新型コロナ・インフル抗原同時検査 同時抗原検査（鼻咽頭ぬぐい液）を施行し判定待ち",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "インフル抗原同時検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+                "outcome": "matched",
+                "selectedCode": "160230050",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          }
+        ],
+        "clinicalEvents": [
+          {
+            "id": "ce_1_lab_鼻咽頭ぬぐい液_コロナ_インフル抗原検査_鼻咽頭ぬぐい液でコロナ_インフルの同時抗原検査",
+            "name": "鼻咽頭ぬぐい液 コロナ・インフル抗原検査",
+            "type": "lab",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "鼻咽頭ぬぐい液でコロナ・インフルの同時抗原検査を施行。いずれも判定待ち"
+          },
+          {
+            "id": "ce_2_lab_静脈採血_検体採取__脱水評価と炎症確認のため静脈採血も施行し外注へ提出_静脈採血_検体",
+            "name": "静脈採血（検体採取）",
+            "type": "lab",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "脱水評価と炎症確認のため静脈採血も施行し外注へ提出。"
+          },
+          {
+            "id": "ce_3_imaging_胸部X線_肺音清_SpO2正常のため胸部X線は本日は撮影せず_胸部X線",
+            "name": "胸部X線",
+            "type": "imaging",
+            "actionStatus": "not_performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_imaging",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "肺音清・SpO2正常のため胸部X線は本日は撮影せず。"
+          },
+          {
+            "id": "ce_4_counseling_自宅待機とマスク着用の指導_結果判明まで自宅待機とマスク着用を指導_自宅待",
+            "name": "自宅待機とマスク着用の指導",
+            "type": "counseling",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "結果判明まで自宅待機とマスク着用を指導。"
+          },
+          {
+            "id": "ce_5_follow_up_解熱しない_呼吸苦出現時の再診指示_解熱しない_呼吸苦が出る場合は連絡のうえ",
+            "name": "解熱しない/呼吸苦出現時の再診指示",
+            "type": "follow_up",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "解熱しない・呼吸苦が出る場合は連絡のうえ再診。"
+          },
+          {
+            "id": "checklist_lab_covid_flu_antigen",
+            "name": "新型コロナ・インフル抗原同時検査",
+            "type": "lab",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_lab",
+            "certainty": "inferred",
+            "source": "checklist_recall",
+            "evidence": "鼻咽頭ぬぐい液でコロナ・インフルの同時抗原検査を施行。"
+          }
+        ],
+        "reviewText": [
+          "施設基準確認: 検体検査管理加算の届出確認が必要です。施設基準が登録されていないため、検体検査管理加算は自動追加していません。",
+          "レセプトコメントの確認: 160230050 ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性 に必要なコメント: 830100503 検査が必要と判断した医学的根拠（ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性）；",
+          "検体採取確認: 鼻咽頭ぬぐい液 コロナ・インフル抗原検査に検体採取の記載があります。検体採取料は検査本体から自動算定せず、採取方法、同日算定条件、必要な親行為を確認してから採用してください。",
+          "静脈採血（検体採取）は実施済みの検体検査として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "検体採取確認: 新型コロナ・インフル抗原同時検査に検体採取の記載があります。検体採取料は検査本体から自動算定せず、採取方法、同日算定条件、必要な親行為を確認してから採用してください。",
+          "検体採取確認",
+          "検体採取確認: 鼻咽頭ぬぐい液 コロナ・インフル抗原検査に検体採取の記載があります。検体採取料は検査本体から自動算定せず、採取方法、同日算定条件、必要な親行為を確認してから採用してください。",
+          "検査コード確認",
+          "静脈採血（検体採取）は実施済みの検体検査として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "検体採取確認",
+          "検体採取確認: 新型コロナ・インフル抗原同時検査に検体採取の記載があります。検体採取料は検査本体から自動算定せず、採取方法、同日算定条件、必要な親行為を確認してから採用してください。",
+          "施設基準確認",
+          "施設基準確認: 検体検査管理加算の届出確認が必要です。施設基準が登録されていないため、検体検査管理加算は自動追加していません。",
+          "レセプトコメントの確認",
+          "レセプトコメントの確認: 160230050 ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性 に必要なコメント: 830100503 検査が必要と判断した医学的根拠（ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性）；",
+          "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "Input medical procedure code matched master only; chapter-specific billing rules are not confirmed",
+          "初診料",
+          "Outpatient basic fee candidate for initial",
+          "免疫学的検査判断料",
+          "D026検査判断料（区分5）を実施検査から自動候補化",
+          "Ｂ－Ｖ",
+          "検体採取料を採取方法（blood_venous）から自動候補化"
+        ],
+        "progress": {
+          "phase": "complete",
+          "label": "完了",
+          "message": "算定候補の作成が完了しました。",
+          "percent": 100,
+          "updatedAt": "2026-06-12T10:06:43.969Z",
+          "metrics": {
+            "clinicalStructuring": {
+              "source": "openai",
+              "durationMs": 10474,
+              "openAiProviderDurationMs": 10118,
+              "firstOutputTextMs": null,
+              "clinicalFactsConvertDurationMs": 355,
+              "extractedDiagnosisCount": 2,
+              "extractedClinicalEventCount": 5,
+              "extractedChecklistFindingCount": 2,
+              "checklistMenuCount": 2,
+              "extractedBillingEventCount": 0,
+              "extractedExcludedEventCount": 0,
+              "convertedDiagnosisCount": 2,
+              "convertedOptionKeys": [
+                "outpatient_basic",
+                "procedure_codes",
+                "lab_options"
+              ],
+              "convertedReviewWarningCount": 3,
+              "convertedMasterCandidateCount": 2,
+              "convertedBillingCandidateCount": 2,
+              "convertedReviewIssueCount": 3,
+              "convertedClinicalTraceCount": 8,
+              "masterLookupCount": 29,
+              "masterLookupDurationMs": 349,
+              "model": "gpt-5.4-nano",
+              "reasoningEffort": "low",
+              "promptVersion": "fee-clinical-events-v9",
+              "ruleSetVersion": "fee-clinical-rules-v9",
+              "masterVersion": "runtime-master-current",
+              "timeoutMs": 0,
+              "responseId": "resp_05bf9d35e4fba274016a2bda296804819a82706f94d2d0851b",
+              "usage": {
+                "input_tokens": 3773,
+                "input_tokens_details": {
+                  "cached_tokens": 2816
+                },
+                "output_tokens": 1110,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 4883
+              }
+            },
+            "ruleBasedClinicalInference": {
+              "durationMs": 0,
+              "source": "objective_supplement",
+              "masterLookupCount": 0,
+              "masterLookupDurationMs": 0
+            },
+            "facilityProfile": {
+              "source": "platform_facility",
+              "facilityId": "fac_48e3768bdf33786b56bda39b60",
+              "facilityStandardKeyCount": 0
+            },
+            "patientHistory": {
+              "priorSessionCount": 0
+            },
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 18
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 79
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 10475
+              }
+            ]
+          },
+          "diagnoses": [
+            "急性上気道炎",
+            "コロナ・インフルの鑑別中"
+          ],
+          "extractedOrders": [
+            "初診料候補",
+            "診療行為候補 1件"
+          ],
+          "lineItems": [
+            "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+            "初診料",
+            "免疫学的検査判断料",
+            "Ｂ－Ｖ"
+          ],
+          "totalPoints": 700,
+          "lineItemCount": 4,
+          "warningCount": 3
+        }
+      },
+      "missing": {
+        "diagnoses": [],
+        "billingSignals": [],
+        "candidateCodes": [],
+        "reviewTopics": []
+      },
+      "unexpected": {
+        "forbiddenCandidateViolations": [],
+        "confirmedForbiddenCandidates": [],
+        "unexpectedCandidateCodes": []
+      }
+    }
+  ]
+}

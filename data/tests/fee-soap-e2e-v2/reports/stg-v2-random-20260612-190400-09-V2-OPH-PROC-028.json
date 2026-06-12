@@ -1,0 +1,1056 @@
+{
+  "schemaVersion": "fee-soap-e2e-evaluation.v1",
+  "generatedAt": "2026-06-12T10:07:12.306Z",
+  "datasetId": "fee-soap-e2e-v2",
+  "datasetVersion": "2026-06-12.batches.3",
+  "datasetPath": "data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json",
+  "mode": "stg",
+  "filters": {
+    "caseId": "V2-OPH-PROC-028",
+    "assertionLevel": null,
+    "limit": null
+  },
+  "security": {
+    "syntheticDataOnly": true,
+    "soapTextIncluded": false,
+    "credentialsIncluded": false,
+    "reportContainsSecrets": false
+  },
+  "summary": {
+    "mode": "stg",
+    "strict": false,
+    "selected": 1,
+    "totalDatasetCases": 51,
+    "durationMs": 27831,
+    "passed": 0,
+    "failed": 1,
+    "passRate": 0,
+    "byAssertion": {
+      "review_required": {
+        "total": 1,
+        "passed": 0,
+        "failed": 1
+      }
+    },
+    "failureByStage": {
+      "review_policy": 1
+    },
+    "avgDurationMs": 26912,
+    "slowest": [
+      {
+        "caseId": "V2-OPH-PROC-028",
+        "assertionLevel": "review_required",
+        "durationMs": 26912,
+        "failedStage": "review_policy"
+      }
+    ],
+    "worstBillingSignalRecall": [
+      {
+        "caseId": "V2-OPH-PROC-028",
+        "assertionLevel": "review_required",
+        "billingSignalRecall": 1,
+        "missingBillingSignals": []
+      }
+    ]
+  },
+  "facilityFixtureAudit": {
+    "fixtureKey": "default",
+    "seededFacilityStandardKeys": [],
+    "fixtures": [
+      {
+        "fixtureKey": "default",
+        "seededFacilityStandardKeys": [],
+        "caseIds": [
+          "V2-OPH-PROC-028"
+        ]
+      }
+    ],
+    "exactRequiredFacilityStandardKeys": [],
+    "facilityUnknownExpectedKeys": [],
+    "facilityUnknownCaseIds": [],
+    "collisions": [],
+    "collisionPolicy": "single_fixture_ok",
+    "runnerMode": "stg_existing_facility",
+    "seededFacilityStandards": [],
+    "seedStatus": "cleared",
+    "seedError": ""
+  },
+  "results": [
+    {
+      "caseId": "V2-OPH-PROC-028",
+      "assertionLevel": "review_required",
+      "difficultyLevel": "L2",
+      "status": "failed",
+      "failedStage": "review_policy",
+      "failureMessages": [
+        "missing review topics: 処置部位確認, 手技内容確認"
+      ],
+      "chartHash": "6cdebde0deda9e65f051115ee273b0a6489b71fc483bbebf779f89b3091ea0ef",
+      "feeSessionId": "fee_b14e2df7c9da4744b80d92f35e",
+      "historySeed": {
+        "required": false,
+        "reason": "none",
+        "created": false,
+        "failed": false,
+        "feeSessionId": null,
+        "patientId": null,
+        "serviceDate": null
+      },
+      "facilityFixture": {
+        "mode": "stg_existing_facility",
+        "fixtureKey": "default",
+        "facilityId": "fac_48e3768bdf33786b56bda39b60",
+        "seededFacilityStandards": [],
+        "expectedFacilityStandards": [],
+        "collisions": [],
+        "seedStatus": "cleared",
+        "seedError": ""
+      },
+      "http": {
+        "createSession": {
+          "statusCode": 201,
+          "error": null
+        },
+        "calculate": {
+          "statusCode": 201,
+          "error": null
+        },
+        "detail": {
+          "statusCode": 200,
+          "error": null
+        }
+      },
+      "durationMs": {
+        "total": 26912,
+        "seedVisitHistory": 0,
+        "createSession": 328,
+        "calculateRequest": 26188,
+        "detail": 243,
+        "prepare": 0,
+        "savePreparedSession": 0,
+        "pythonCalculator": 0,
+        "saveCalculation": 0,
+        "audit": 0,
+        "clinicalStructuring": 25586,
+        "openAiProvider": 24832,
+        "firstOutputText": null,
+        "ruleBasedInference": 0,
+        "masterLookup": 749,
+        "masterLookupCount": 48,
+        "model": "gpt-5.4-nano",
+        "reasoningEffort": "low",
+        "clinicalStructuringSource": "openai"
+      },
+      "accuracy": {
+        "diagnosisRecall": 1,
+        "billingSignalRecall": 1,
+        "candidateCodeRecall": null,
+        "candidateCodePrecision": null,
+        "reviewTopicRecall": 0,
+        "forbiddenViolationCount": 0,
+        "totalPointDelta": null
+      },
+      "expected": {
+        "totalPoints": null,
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "actual": {
+        "totalPoints": 291,
+        "candidateCodes": [
+          "111000110"
+        ],
+        "engineStatus": "needs_review",
+        "status": "needs_review",
+        "lineItems": [
+          {
+            "code": "111000110",
+            "name": "初診料",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 291
+          }
+        ],
+        "reviewItems": [
+          {
+            "title": "対象疾患確認",
+            "message": "対象疾患確認: 保護メガネの常用・着用徹底の指導は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "在宅医療未対応",
+            "message": "在宅医療未対応: コンタクト不可（当面は使用しない）は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "訪問診療確認",
+            "message": "訪問診療確認: 在宅医療の判定には訪問診療/往診の実施区分、訪問日、同月履歴、施設基準が必要です。未確認のため自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "初診/再診確認",
+            "message": "明日再診（上皮化の確認）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "マスター候補確認",
+            "message": "抗菌点眼は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "施設基準確認",
+            "message": "施設基準がないため検体検査管理加算は自動追加しない",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "「抗菌点眼」の記載のみで薬剤名が不明",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "処方予定はあるが、処方箋交付（交付の事実）の記載なし",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "右眼視力測定（矯正視力）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "細隙灯検査は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "眼圧測定（両眼）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "点眼麻酔下での角膜異物除去は実施済みの診療行為として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "フルオレセインによる上皮欠損評価は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "上眼瞼翻転による残存異物確認は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "初診料",
+            "message": "Outpatient basic fee candidate for initial",
+            "status": "needs_review",
+            "severity": "review"
+          }
+        ],
+        "candidateProposals": [],
+        "diagnoses": [
+          "右角膜異物（除去後）",
+          "異物による流涙・異物感（症状）"
+        ],
+        "calculationOptionsSource": "clinical_auto",
+        "calculationOptionsAutoKeys": [
+          "outpatient_basic"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": "「抗菌点眼を院外で処方予定」"
+        },
+        "checklistFindingStatusCounts": {
+          "unclear": 1
+        },
+        "masterSearchTrace": [
+          {
+            "eventName": "右眼視力測定（矯正視力）",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "右眼視力測定（矯正視力）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "右眼右眼視力測定（矯正視力）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 右眼視力測定（矯正視力）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "「右眼視力 0.8(矯正)、左 1.2",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "」 右眼視力測定（矯正視力）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "右眼視力測定",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "右眼 視力 矯正",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "細隙灯検査",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "細隙灯検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "右眼細隙灯検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 細隙灯検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "「細隙灯で角膜中央やや下方に金属様異物を確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "」 細隙灯検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "細隙灯 検査 角膜異物",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "スリットランプ 眼科 診察",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "眼圧測定（両眼）",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "眼圧測定（両眼）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "両眼眼圧測定（両眼）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 眼圧測定（両眼）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "「眼圧は両眼とも正常範囲",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "」 眼圧測定（両眼）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "眼圧測定",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "眼圧測定 両眼 正常範囲",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "点眼麻酔下での角膜異物除去",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "点眼麻酔下での角膜異物除去",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "右眼角膜点眼麻酔下での角膜異物除去",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 点眼麻酔下での角膜異物除去",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "「点眼麻酔下に角膜異物を除去",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "錆輪は残存なし",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "」 点眼麻酔下での角膜異物除去",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "診療行為",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [
+                  {
+                    "code": "190108790",
+                    "name": "特定入院料減算（１００分の４０）（他医受診・包括診療行為算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190108890",
+                    "name": "入院基本料減算（１００分の４０）（他医受診・包括診療行為算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190109090",
+                    "name": "入院基本料減算（１００分の２０）（他医受診・包括診療行為算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190142090",
+                    "name": "特定入院料減算（１００分の１０）（他医受診・包括診療行為未算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190142190",
+                    "name": "入院基本料減算（１００分の１０）（他医受診・包括診療行為未算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  }
+                ],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "点眼麻酔 角膜異物 除去",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "フルオレセインによる上皮欠損評価",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "フルオレセインによる上皮欠損評価",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "右眼角膜フルオレセインによる上皮欠損評価",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none フルオレセインによる上皮欠損評価",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "「フルオレセインで上皮欠損は小範囲",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "」 フルオレセインによる上皮欠損評価",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "フルオレセイン 上皮欠損 評価",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "眼科 フルオレセイン 検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "上眼瞼翻転による残存異物確認",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "上眼瞼翻転による残存異物確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "上眼瞼/瞼結膜/円蓋部上眼瞼翻転による残存異物確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 上眼瞼翻転による残存異物確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "「瞼結膜・円蓋部に残存異物なし(上眼瞼翻転で確認)",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "」 上眼瞼翻転による残存異物確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "上眼瞼翻転 残存異物 確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "瞼結膜 円蓋部 異物確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          }
+        ],
+        "clinicalEvents": [
+          {
+            "id": "ce_1_exam_右眼視力測定_矯正視力___右眼視力_0_8_矯正_左_1_2_右眼視力測定_矯正視力",
+            "name": "右眼視力測定（矯正視力）",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「右眼視力 0.8(矯正)、左 1.2。」"
+          },
+          {
+            "id": "ce_2_exam_細隙灯検査__細隙灯で角膜中央やや下方に金属様異物を確認_細隙灯検査",
+            "name": "細隙灯検査",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「細隙灯で角膜中央やや下方に金属様異物を確認。」"
+          },
+          {
+            "id": "ce_3_exam_眼圧測定_両眼___眼圧は両眼とも正常範囲_眼圧測定_両眼",
+            "name": "眼圧測定（両眼）",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「眼圧は両眼とも正常範囲。」"
+          },
+          {
+            "id": "ce_4_procedure_点眼麻酔下での角膜異物除去__点眼麻酔下に角膜異物を除去_錆輪は残存なし_点",
+            "name": "点眼麻酔下での角膜異物除去",
+            "type": "procedure",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_procedure",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「点眼麻酔下に角膜異物を除去。錆輪は残存なし。」"
+          },
+          {
+            "id": "ce_5_exam_フルオレセインによる上皮欠損評価__フルオレセインで上皮欠損は小範囲_フルオレセインに",
+            "name": "フルオレセインによる上皮欠損評価",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「フルオレセインで上皮欠損は小範囲。」"
+          },
+          {
+            "id": "ce_6_exam_上眼瞼翻転による残存異物確認__瞼結膜_円蓋部に残存異物なし_上眼瞼翻転で確認_上眼瞼",
+            "name": "上眼瞼翻転による残存異物確認",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「瞼結膜・円蓋部に残存異物なし(上眼瞼翻転で確認)。」"
+          },
+          {
+            "id": "ce_7_counseling_保護メガネの常用_着用徹底の指導__保護メガネの常用を指導_および_職場に",
+            "name": "保護メガネの常用・着用徹底の指導",
+            "type": "counseling",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「保護メガネの常用を指導。」および「職場には保護メガネ着用の徹底を依頼するよう本人へ説明。」"
+          },
+          {
+            "id": "ce_8_counseling_点眼手技の説明とこすらないよう指導__点眼の手技を説明し_こすらないよう指",
+            "name": "点眼手技の説明とこすらないよう指導",
+            "type": "counseling",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「点眼の手技を説明し、こすらないよう指導。」"
+          },
+          {
+            "id": "ce_9_management_コンタクト不可_当面は使用しない___当面はコンタクト不可_未使用者_コン",
+            "name": "コンタクト不可（当面は使用しない）",
+            "type": "management",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "home_care",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「当面はコンタクト不可(未使用者)。」"
+          },
+          {
+            "id": "ce_10_counseling_車の運転は本日は控えるよう指示__車の運転は本日は控えるよう伝えた_車の運",
+            "name": "車の運転は本日は控えるよう指示",
+            "type": "counseling",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「車の運転は本日は控えるよう伝えた。」"
+          },
+          {
+            "id": "ce_11_follow_up_明日再診_上皮化の確認___明日再診し上皮化を確認する_明日再診_上皮化の確",
+            "name": "明日再診（上皮化の確認）",
+            "type": "follow_up",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「明日再診し上皮化を確認する。」"
+          },
+          {
+            "id": "ce_12_management_痛み増強時はすぐ受診の指示__痛み増強時はすぐ受診_痛み増強時はすぐ受診の",
+            "name": "痛み増強時はすぐ受診の指示",
+            "type": "management",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「痛み増強時はすぐ受診。】」"
+          },
+          {
+            "id": "ce_13_medication_抗菌点眼__抗菌点眼を院外で処方予定_抗菌点眼_具体的な薬剤名_用法用量の",
+            "name": "抗菌点眼",
+            "type": "medication",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "standard_medication",
+            "certainty": "ambiguous",
+            "source": "",
+            "evidence": "「抗菌点眼を院外で処方予定。」"
+          }
+        ],
+        "reviewText": [
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "「抗菌点眼」の記載のみで薬剤名が不明",
+          "処方予定はあるが、処方箋交付（交付の事実）の記載なし",
+          "右眼視力測定（矯正視力）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "細隙灯検査は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "眼圧測定（両眼）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "点眼麻酔下での角膜異物除去は実施済みの診療行為として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "フルオレセインによる上皮欠損評価は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "上眼瞼翻転による残存異物確認は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "在宅医療未対応: コンタクト不可（当面は使用しない）は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "明日再診（上皮化の確認）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "抗菌点眼は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "対象疾患確認",
+          "対象疾患確認: 保護メガネの常用・着用徹底の指導は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+          "在宅医療未対応",
+          "在宅医療未対応: コンタクト不可（当面は使用しない）は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "訪問診療確認",
+          "訪問診療確認: 在宅医療の判定には訪問診療/往診の実施区分、訪問日、同月履歴、施設基準が必要です。未確認のため自動算定には入れていません。",
+          "初診/再診確認",
+          "明日再診（上皮化の確認）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "マスター候補確認",
+          "抗菌点眼は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "施設基準確認",
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "確認事項",
+          "「抗菌点眼」の記載のみで薬剤名が不明",
+          "確認事項",
+          "処方予定はあるが、処方箋交付（交付の事実）の記載なし",
+          "確認事項",
+          "右眼視力測定（矯正視力）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "細隙灯検査は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "眼圧測定（両眼）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "点眼麻酔下での角膜異物除去は実施済みの診療行為として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "フルオレセインによる上皮欠損評価は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "上眼瞼翻転による残存異物確認は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "初診料",
+          "Outpatient basic fee candidate for initial"
+        ],
+        "progress": {
+          "phase": "complete",
+          "label": "完了",
+          "message": "算定候補の作成が完了しました。",
+          "percent": 100,
+          "updatedAt": "2026-06-12T10:07:11.884Z",
+          "metrics": {
+            "clinicalStructuring": {
+              "source": "openai",
+              "durationMs": 25586,
+              "openAiProviderDurationMs": 24832,
+              "firstOutputTextMs": null,
+              "clinicalFactsConvertDurationMs": 753,
+              "extractedDiagnosisCount": 2,
+              "extractedClinicalEventCount": 13,
+              "extractedChecklistFindingCount": 1,
+              "checklistMenuCount": 1,
+              "extractedBillingEventCount": 0,
+              "extractedExcludedEventCount": 0,
+              "convertedDiagnosisCount": 2,
+              "convertedOptionKeys": [
+                "outpatient_basic"
+              ],
+              "convertedReviewWarningCount": 12,
+              "convertedMasterCandidateCount": 0,
+              "convertedBillingCandidateCount": 0,
+              "convertedReviewIssueCount": 5,
+              "convertedClinicalTraceCount": 13,
+              "masterLookupCount": 48,
+              "masterLookupDurationMs": 749,
+              "model": "gpt-5.4-nano",
+              "reasoningEffort": "low",
+              "promptVersion": "fee-clinical-events-v9",
+              "ruleSetVersion": "fee-clinical-rules-v9",
+              "masterVersion": "runtime-master-current",
+              "timeoutMs": 0,
+              "responseId": "resp_0c7e391c6978a6f2016a2bda3638948198ac9486019849681e",
+              "usage": {
+                "input_tokens": 3721,
+                "input_tokens_details": {
+                  "cached_tokens": 2816
+                },
+                "output_tokens": 3386,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 7107
+              }
+            },
+            "ruleBasedClinicalInference": {
+              "durationMs": 0,
+              "source": "objective_supplement",
+              "masterLookupCount": 0,
+              "masterLookupDurationMs": 0
+            },
+            "facilityProfile": {
+              "source": "platform_facility",
+              "facilityId": "fac_48e3768bdf33786b56bda39b60",
+              "facilityStandardKeyCount": 0
+            },
+            "patientHistory": {
+              "priorSessionCount": 0
+            },
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 25
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 82
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 25588
+              }
+            ]
+          },
+          "diagnoses": [
+            "右角膜異物（除去後）",
+            "異物による流涙・異物感（症状）"
+          ],
+          "extractedOrders": [
+            "初診料候補"
+          ],
+          "lineItems": [
+            "初診料"
+          ],
+          "totalPoints": 291,
+          "lineItemCount": 1,
+          "warningCount": 1
+        }
+      },
+      "missing": {
+        "diagnoses": [],
+        "billingSignals": [],
+        "candidateCodes": [],
+        "reviewTopics": [
+          "処置部位確認",
+          "手技内容確認"
+        ]
+      },
+      "unexpected": {
+        "forbiddenCandidateViolations": [],
+        "confirmedForbiddenCandidates": [],
+        "unexpectedCandidateCodes": []
+      }
+    }
+  ]
+}

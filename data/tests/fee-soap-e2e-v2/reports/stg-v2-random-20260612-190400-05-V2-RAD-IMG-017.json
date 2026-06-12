@@ -1,0 +1,697 @@
+{
+  "schemaVersion": "fee-soap-e2e-evaluation.v1",
+  "generatedAt": "2026-06-12T10:05:42.486Z",
+  "datasetId": "fee-soap-e2e-v2",
+  "datasetVersion": "2026-06-12.batches.3",
+  "datasetPath": "data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json",
+  "mode": "stg",
+  "filters": {
+    "caseId": "V2-RAD-IMG-017",
+    "assertionLevel": null,
+    "limit": null
+  },
+  "security": {
+    "syntheticDataOnly": true,
+    "soapTextIncluded": false,
+    "credentialsIncluded": false,
+    "reportContainsSecrets": false
+  },
+  "summary": {
+    "mode": "stg",
+    "strict": false,
+    "selected": 1,
+    "totalDatasetCases": 51,
+    "durationMs": 9408,
+    "passed": 0,
+    "failed": 1,
+    "passRate": 0,
+    "byAssertion": {
+      "exact": {
+        "total": 1,
+        "passed": 0,
+        "failed": 1
+      }
+    },
+    "failureByStage": {
+      "extraction": 1
+    },
+    "avgDurationMs": 8804,
+    "slowest": [
+      {
+        "caseId": "V2-RAD-IMG-017",
+        "assertionLevel": "exact",
+        "durationMs": 8804,
+        "failedStage": "extraction"
+      }
+    ],
+    "worstBillingSignalRecall": [
+      {
+        "caseId": "V2-RAD-IMG-017",
+        "assertionLevel": "exact",
+        "billingSignalRecall": 0.667,
+        "missingBillingSignals": [
+          "電子画像管理加算"
+        ]
+      }
+    ]
+  },
+  "facilityFixtureAudit": {
+    "fixtureKey": "default",
+    "seededFacilityStandardKeys": [],
+    "fixtures": [
+      {
+        "fixtureKey": "default",
+        "seededFacilityStandardKeys": [],
+        "caseIds": [
+          "V2-RAD-IMG-017"
+        ]
+      }
+    ],
+    "exactRequiredFacilityStandardKeys": [],
+    "facilityUnknownExpectedKeys": [],
+    "facilityUnknownCaseIds": [],
+    "collisions": [],
+    "collisionPolicy": "single_fixture_ok",
+    "runnerMode": "stg_existing_facility",
+    "seededFacilityStandards": [],
+    "seedStatus": "cleared",
+    "seedError": ""
+  },
+  "results": [
+    {
+      "caseId": "V2-RAD-IMG-017",
+      "assertionLevel": "exact",
+      "difficultyLevel": "L2",
+      "status": "failed",
+      "failedStage": "extraction",
+      "failureMessages": [
+        "totalPoints 228 != expected 285",
+        "missing candidate codes: 170000210",
+        "missing billing signals: 電子画像管理加算"
+      ],
+      "chartHash": "5728f64a75df43b448eaba0f6e33ef53b078b57e5253105651d8ac7480ba4b79",
+      "feeSessionId": "fee_762f59b4cdbc4015a224e61680",
+      "historySeed": {
+        "required": true,
+        "reason": "encounter.visitType=revisit",
+        "created": true,
+        "failed": false,
+        "feeSessionId": "fee_7972a979f74449f6a55f8008c1",
+        "patientId": "pat_7aae661ba5f042da9ff0117772",
+        "serviceDate": "2026-07-11"
+      },
+      "facilityFixture": {
+        "mode": "stg_existing_facility",
+        "fixtureKey": "default",
+        "facilityId": "fac_48e3768bdf33786b56bda39b60",
+        "seededFacilityStandards": [],
+        "expectedFacilityStandards": [],
+        "collisions": [],
+        "seedStatus": "cleared",
+        "seedError": ""
+      },
+      "http": {
+        "seedVisitHistory": {
+          "statusCode": 201,
+          "error": null
+        },
+        "createSession": {
+          "statusCode": 201,
+          "error": null
+        },
+        "calculate": {
+          "statusCode": 201,
+          "error": null
+        },
+        "detail": {
+          "statusCode": 200,
+          "error": null
+        }
+      },
+      "durationMs": {
+        "total": 8804,
+        "seedVisitHistory": 349,
+        "createSession": 194,
+        "calculateRequest": 7917,
+        "detail": 177,
+        "prepare": 0,
+        "savePreparedSession": 0,
+        "pythonCalculator": 0,
+        "saveCalculation": 0,
+        "audit": 0,
+        "clinicalStructuring": 7139,
+        "openAiProvider": 6828,
+        "firstOutputText": null,
+        "ruleBasedInference": 0,
+        "masterLookup": 306,
+        "masterLookupCount": 22,
+        "model": "gpt-5.4-nano",
+        "reasoningEffort": "low",
+        "clinicalStructuringSource": "openai"
+      },
+      "accuracy": {
+        "diagnosisRecall": 1,
+        "billingSignalRecall": 0.667,
+        "candidateCodeRecall": 0.75,
+        "candidateCodePrecision": 1,
+        "reviewTopicRecall": null,
+        "forbiddenViolationCount": 0,
+        "totalPointDelta": -57
+      },
+      "expected": {
+        "totalPoints": 285,
+        "candidateCodes": [
+          "112007410",
+          "170000410",
+          "170027910",
+          "170000210"
+        ],
+        "engineStatus": "completed"
+      },
+      "actual": {
+        "totalPoints": 228,
+        "candidateCodes": [
+          "112007410",
+          "170000410",
+          "170027910"
+        ],
+        "engineStatus": "needs_review",
+        "status": "needs_review",
+        "lineItems": [
+          {
+            "code": "112007410",
+            "name": "再診料",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 75
+          },
+          {
+            "code": "170000410",
+            "name": "単純撮影（イ）の写真診断",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 85
+          },
+          {
+            "code": "170027910",
+            "name": "単純撮影（デジタル撮影）",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 68
+          }
+        ],
+        "reviewItems": [
+          {
+            "title": "マスター候補確認",
+            "message": "単純X線は撮影方式・写真診断区分がカルテ本文から完全には確定できないため、デジタル/写真診断イとして候補化しています。請求前に確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "対象疾患確認",
+            "message": "対象疾患確認: 経過観察終了は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "マスター候補確認",
+            "message": "健診での胸部撮影継続の勧めは今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "施設基準確認",
+            "message": "施設基準がないため検体検査管理加算は自動追加しない",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "SpO2測定（経皮的酸素飽和度）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "呼吸音聴取は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "心拡大の確認は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "再診料",
+            "message": "Outpatient basic fee candidate for revisit",
+            "status": "needs_review",
+            "severity": "review"
+          },
+          {
+            "title": "単純撮影（イ）の写真診断",
+            "message": "Imaging fee candidate for simple_radiography",
+            "status": "needs_review",
+            "severity": "review"
+          },
+          {
+            "title": "単純撮影（デジタル撮影）",
+            "message": "Imaging fee candidate for simple_radiography",
+            "status": "needs_review",
+            "severity": "review"
+          }
+        ],
+        "candidateProposals": [],
+        "diagnoses": [
+          "肺炎後変化"
+        ],
+        "calculationOptionsSource": "clinical_auto",
+        "calculationOptionsAutoKeys": [
+          "imaging_orders",
+          "outpatient_basic"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": ""
+        },
+        "checklistFindingStatusCounts": null,
+        "masterSearchTrace": [
+          {
+            "eventName": "SpO2測定（経皮的酸素飽和度）",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "SpO2測定（経皮的酸素飽和度）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none SpO2測定（経皮的酸素飽和度）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "KT 36.4、SpO2 98%",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "SpO2測定",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "SpO2 測定",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "経皮的酸素飽和度",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "呼吸音聴取",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "呼吸音聴取",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "肺呼吸音聴取",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 呼吸音聴取",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "呼吸音清",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "聴診で副雑音なし",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "呼吸音 聴取",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "副雑音 なし",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "心拡大の確認",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "心拡大の確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "胸部心拡大の確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 心拡大の確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "心拡大なし",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "心拡大 なし",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "心胸郭比",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          }
+        ],
+        "clinicalEvents": [
+          {
+            "id": "ce_1_imaging_胸部XP_経過確認のため胸部XPを施行_胸部XP",
+            "name": "胸部XP",
+            "type": "imaging",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_imaging",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "経過確認のため胸部XPを施行。"
+          },
+          {
+            "id": "ce_2_exam_SpO2測定_経皮的酸素飽和度__KT_36_4_SpO2_98_SpO2測定_経皮的",
+            "name": "SpO2測定（経皮的酸素飽和度）",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "KT 36.4、SpO2 98%。"
+          },
+          {
+            "id": "ce_3_exam_呼吸音聴取_呼吸音清_聴診で副雑音なし_呼吸音聴取",
+            "name": "呼吸音聴取",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "呼吸音清。聴診で副雑音なし。"
+          },
+          {
+            "id": "ce_4_exam_心拡大の確認_心拡大なし_心拡大の確認",
+            "name": "心拡大の確認",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "心拡大なし。"
+          },
+          {
+            "id": "ce_5_management_経過観察終了_経過観察終了とする_経過観察終了",
+            "name": "経過観察終了",
+            "type": "management",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "経過観察終了とする。"
+          },
+          {
+            "id": "ce_6_counseling_健診での胸部撮影継続の勧め_年1回の健診での胸部撮影は継続するよう勧めた_",
+            "name": "健診での胸部撮影継続の勧め",
+            "type": "counseling",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "年1回の健診での胸部撮影は継続するよう勧めた。"
+          }
+        ],
+        "reviewText": [
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "単純X線は撮影方式・写真診断区分がカルテ本文から完全には確定できないため、デジタル/写真診断イとして候補化しています。請求前に確認してください。",
+          "SpO2測定（経皮的酸素飽和度）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "呼吸音聴取は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "心拡大の確認は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "健診での胸部撮影継続の勧めは今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "マスター候補確認",
+          "単純X線は撮影方式・写真診断区分がカルテ本文から完全には確定できないため、デジタル/写真診断イとして候補化しています。請求前に確認してください。",
+          "対象疾患確認",
+          "対象疾患確認: 経過観察終了は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+          "マスター候補確認",
+          "健診での胸部撮影継続の勧めは今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "施設基準確認",
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "確認事項",
+          "SpO2測定（経皮的酸素飽和度）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "呼吸音聴取は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "心拡大の確認は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "再診料",
+          "Outpatient basic fee candidate for revisit",
+          "単純撮影（イ）の写真診断",
+          "Imaging fee candidate for simple_radiography",
+          "単純撮影（デジタル撮影）",
+          "Imaging fee candidate for simple_radiography"
+        ],
+        "progress": {
+          "phase": "complete",
+          "label": "完了",
+          "message": "算定候補の作成が完了しました。",
+          "percent": 100,
+          "updatedAt": "2026-06-12T10:05:41.956Z",
+          "metrics": {
+            "clinicalStructuring": {
+              "source": "openai",
+              "durationMs": 7139,
+              "openAiProviderDurationMs": 6828,
+              "firstOutputTextMs": null,
+              "clinicalFactsConvertDurationMs": 311,
+              "extractedDiagnosisCount": 1,
+              "extractedClinicalEventCount": 6,
+              "extractedChecklistFindingCount": 0,
+              "checklistMenuCount": 0,
+              "extractedBillingEventCount": 0,
+              "extractedExcludedEventCount": 0,
+              "convertedDiagnosisCount": 1,
+              "convertedOptionKeys": [
+                "imaging_orders"
+              ],
+              "convertedReviewWarningCount": 6,
+              "convertedMasterCandidateCount": 0,
+              "convertedBillingCandidateCount": 0,
+              "convertedReviewIssueCount": 3,
+              "convertedClinicalTraceCount": 4,
+              "masterLookupCount": 22,
+              "masterLookupDurationMs": 306,
+              "model": "gpt-5.4-nano",
+              "reasoningEffort": "low",
+              "promptVersion": "fee-clinical-events-v9",
+              "ruleSetVersion": "fee-clinical-rules-v9",
+              "masterVersion": "runtime-master-current",
+              "timeoutMs": 0,
+              "responseId": "resp_0d06d203de3ce509016a2bd9eeca44819b9b591c13374ac924",
+              "usage": {
+                "input_tokens": 3668,
+                "input_tokens_details": {
+                  "cached_tokens": 2816
+                },
+                "output_tokens": 958,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 4626
+              }
+            },
+            "ruleBasedClinicalInference": {
+              "durationMs": 0,
+              "source": "objective_supplement",
+              "masterLookupCount": 0,
+              "masterLookupDurationMs": 0
+            },
+            "facilityProfile": {
+              "source": "platform_facility",
+              "facilityId": "fac_48e3768bdf33786b56bda39b60",
+              "facilityStandardKeyCount": 0
+            },
+            "patientHistory": {
+              "priorSessionCount": 1
+            },
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 28
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 129
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 7141
+              }
+            ]
+          },
+          "diagnoses": [
+            "肺炎後変化"
+          ],
+          "extractedOrders": [
+            "再診料候補",
+            "単純X線候補"
+          ],
+          "lineItems": [
+            "再診料",
+            "単純撮影（イ）の写真診断",
+            "単純撮影（デジタル撮影）"
+          ],
+          "totalPoints": 228,
+          "lineItemCount": 3,
+          "warningCount": 1
+        }
+      },
+      "missing": {
+        "diagnoses": [],
+        "billingSignals": [
+          "電子画像管理加算"
+        ],
+        "candidateCodes": [
+          "170000210"
+        ],
+        "reviewTopics": []
+      },
+      "unexpected": {
+        "forbiddenCandidateViolations": [],
+        "confirmedForbiddenCandidates": [],
+        "unexpectedCandidateCodes": []
+      }
+    }
+  ]
+}

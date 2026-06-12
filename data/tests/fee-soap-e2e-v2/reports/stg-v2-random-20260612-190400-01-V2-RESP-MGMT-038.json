@@ -1,0 +1,1111 @@
+{
+  "schemaVersion": "fee-soap-e2e-evaluation.v1",
+  "generatedAt": "2026-06-12T10:04:50.350Z",
+  "datasetId": "fee-soap-e2e-v2",
+  "datasetVersion": "2026-06-12.batches.3",
+  "datasetPath": "data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json",
+  "mode": "stg",
+  "filters": {
+    "caseId": "V2-RESP-MGMT-038",
+    "assertionLevel": null,
+    "limit": null
+  },
+  "security": {
+    "syntheticDataOnly": true,
+    "soapTextIncluded": false,
+    "credentialsIncluded": false,
+    "reportContainsSecrets": false
+  },
+  "summary": {
+    "mode": "stg",
+    "strict": false,
+    "selected": 1,
+    "totalDatasetCases": 51,
+    "durationMs": 50176,
+    "passed": 0,
+    "failed": 1,
+    "passRate": 0,
+    "byAssertion": {
+      "review_required": {
+        "total": 1,
+        "passed": 0,
+        "failed": 1
+      }
+    },
+    "failureByStage": {
+      "review_policy": 1
+    },
+    "avgDurationMs": 46388,
+    "slowest": [
+      {
+        "caseId": "V2-RESP-MGMT-038",
+        "assertionLevel": "review_required",
+        "durationMs": 46388,
+        "failedStage": "review_policy"
+      }
+    ],
+    "worstBillingSignalRecall": [
+      {
+        "caseId": "V2-RESP-MGMT-038",
+        "assertionLevel": "review_required",
+        "billingSignalRecall": 0,
+        "missingBillingSignals": []
+      }
+    ]
+  },
+  "facilityFixtureAudit": {
+    "fixtureKey": "default",
+    "seededFacilityStandardKeys": [],
+    "fixtures": [
+      {
+        "fixtureKey": "default",
+        "seededFacilityStandardKeys": [],
+        "caseIds": [
+          "V2-RESP-MGMT-038"
+        ]
+      }
+    ],
+    "exactRequiredFacilityStandardKeys": [],
+    "facilityUnknownExpectedKeys": [],
+    "facilityUnknownCaseIds": [],
+    "collisions": [],
+    "collisionPolicy": "single_fixture_ok",
+    "runnerMode": "stg_existing_facility",
+    "seededFacilityStandards": [],
+    "seedStatus": "cleared",
+    "seedError": ""
+  },
+  "results": [
+    {
+      "caseId": "V2-RESP-MGMT-038",
+      "assertionLevel": "review_required",
+      "difficultyLevel": "L2",
+      "status": "failed",
+      "failedStage": "review_policy",
+      "failureMessages": [
+        "missing review topics: 療養計画確認"
+      ],
+      "chartHash": "7ed484ddb4899b6ba3e464645c3e9b3f789dc459efabac63fb3b4d681334f104",
+      "feeSessionId": "fee_6079c40133ef4296bc7324ccd3",
+      "historySeed": {
+        "required": true,
+        "reason": "encounter.visitType=revisit",
+        "created": true,
+        "failed": false,
+        "feeSessionId": "fee_6217a956722242da9c135f0b68",
+        "patientId": "pat_c20653c40ee64b2a8aa0b63d64",
+        "serviceDate": "2026-07-29"
+      },
+      "facilityFixture": {
+        "mode": "stg_existing_facility",
+        "fixtureKey": "default",
+        "facilityId": "fac_48e3768bdf33786b56bda39b60",
+        "seededFacilityStandards": [],
+        "expectedFacilityStandards": [],
+        "collisions": [],
+        "seedStatus": "cleared",
+        "seedError": ""
+      },
+      "http": {
+        "seedVisitHistory": {
+          "statusCode": 201,
+          "error": null
+        },
+        "createSession": {
+          "statusCode": 201,
+          "error": null
+        },
+        "calculate": {
+          "statusCode": 201,
+          "error": null
+        },
+        "detail": {
+          "statusCode": 200,
+          "error": null
+        }
+      },
+      "durationMs": {
+        "total": 46388,
+        "seedVisitHistory": 2422,
+        "createSession": 370,
+        "calculateRequest": 42984,
+        "detail": 351,
+        "prepare": 0,
+        "savePreparedSession": 0,
+        "pythonCalculator": 0,
+        "saveCalculation": 0,
+        "audit": 0,
+        "clinicalStructuring": 41889,
+        "openAiProvider": 20018,
+        "firstOutputText": null,
+        "ruleBasedInference": 2,
+        "masterLookup": 21843,
+        "masterLookupCount": 40,
+        "model": "gpt-5.4-nano",
+        "reasoningEffort": "low",
+        "clinicalStructuringSource": "openai"
+      },
+      "accuracy": {
+        "diagnosisRecall": 1,
+        "billingSignalRecall": 0,
+        "candidateCodeRecall": null,
+        "candidateCodePrecision": null,
+        "reviewTopicRecall": 0.5,
+        "forbiddenViolationCount": 0,
+        "totalPointDelta": null
+      },
+      "expected": {
+        "totalPoints": null,
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "actual": {
+        "totalPoints": 75,
+        "candidateCodes": [
+          "112007410"
+        ],
+        "engineStatus": "needs_review",
+        "status": "needs_review",
+        "lineItems": [
+          {
+            "code": "112007410",
+            "name": "再診料",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 75
+          }
+        ],
+        "reviewItems": [
+          {
+            "title": "初診/再診確認",
+            "message": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "対象疾患確認",
+            "message": "対象疾患確認: 残薬カウンタの確認は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "検査コード確認",
+            "message": "SpO2は実施済みの検体検査として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "検査コード確認",
+            "message": "体温（KT）は実施済みの検体検査として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "検査コード確認",
+            "message": "脈拍（P）は実施済みの検体検査として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "マスター候補確認",
+            "message": "次回受診（2ヶ月後）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "在宅医療未対応",
+            "message": "在宅医療未対応: 台風シーズンの自己管理メモを渡すは在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "訪問診療確認",
+            "message": "訪問診療確認: 在宅医療の判定には訪問診療/往診の実施区分、訪問日、同月履歴、施設基準が必要です。未確認のため自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "マスター候補確認",
+            "message": "インフルエンザワクチン（秋に接種予定）案内は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "施設基準確認",
+            "message": "施設基準がないため検体検査管理加算は自動追加しない",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "吸入手技の確認は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "呼吸音の聴診は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "咽頭所見（発赤なし）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "鼻炎症状（なし）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "吸入薬の確認",
+            "message": "薬剤日数不足: 薬剤「吸入薬」は日数または総量が不足しているため、算定候補には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "対象疾患確認",
+            "message": "対象疾患確認: 妊娠予定があれば申し出る説明は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "再診料",
+            "message": "Outpatient basic fee candidate for revisit",
+            "status": "needs_review",
+            "severity": "review"
+          }
+        ],
+        "candidateProposals": [],
+        "diagnoses": [
+          "気管支喘息",
+          "喘息（良好なコントロール）"
+        ],
+        "calculationOptionsSource": "clinical_auto",
+        "calculationOptionsAutoKeys": [
+          "outpatient_basic"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": "吸入薬は院外で継続処方。"
+        },
+        "checklistFindingStatusCounts": null,
+        "masterSearchTrace": [
+          {
+            "eventName": "吸入手技の確認",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "吸入手技の確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 吸入手技の確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "吸入手技を確認し、吸気のタイミングのずれを修正した",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "吸入手技 確認",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "吸気 タイミング 修正",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "SpO2",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "SpO2",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none SpO2",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "SpO2 99%、 SpO2",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検体検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [
+                  {
+                    "code": "160145410",
+                    "name": "基本的検体検査実施料（４週間以内）",
+                    "feeCategory": "procedure_basic",
+                    "itemRole": "base",
+                    "reason": "category_gate:procedure_basic"
+                  },
+                  {
+                    "code": "160149110",
+                    "name": "基本的検体検査判断料",
+                    "feeCategory": "lab_judgment",
+                    "itemRole": "judgment",
+                    "reason": "derived_only:judgment"
+                  },
+                  {
+                    "code": "160161610",
+                    "name": "検体検査管理加算（３）",
+                    "feeCategory": "lab_addon",
+                    "itemRole": "addon",
+                    "reason": "derived_only:addon"
+                  },
+                  {
+                    "code": "160165310",
+                    "name": "基本的検体検査実施料（４週間超）",
+                    "feeCategory": "procedure_basic",
+                    "itemRole": "base",
+                    "reason": "category_gate:procedure_basic"
+                  },
+                  {
+                    "code": "160170170",
+                    "name": "検体検査管理加算（１）",
+                    "feeCategory": "lab_addon",
+                    "itemRole": "addon",
+                    "reason": "derived_only:addon"
+                  }
+                ],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "SpO2 測定",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "呼吸音の聴診",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "呼吸音の聴診",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "呼吸器呼吸音の聴診",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 呼吸音の聴診",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "呼吸音清、wheezeなし",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "呼吸音 聴診",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "wheeze なし",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "体温（KT）",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "体温（KT）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 体温（KT）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "KT 36.5、 体温（KT）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検体検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [
+                  {
+                    "code": "160145410",
+                    "name": "基本的検体検査実施料（４週間以内）",
+                    "feeCategory": "procedure_basic",
+                    "itemRole": "base",
+                    "reason": "category_gate:procedure_basic"
+                  },
+                  {
+                    "code": "160149110",
+                    "name": "基本的検体検査判断料",
+                    "feeCategory": "lab_judgment",
+                    "itemRole": "judgment",
+                    "reason": "derived_only:judgment"
+                  },
+                  {
+                    "code": "160161610",
+                    "name": "検体検査管理加算（３）",
+                    "feeCategory": "lab_addon",
+                    "itemRole": "addon",
+                    "reason": "derived_only:addon"
+                  },
+                  {
+                    "code": "160165310",
+                    "name": "基本的検体検査実施料（４週間超）",
+                    "feeCategory": "procedure_basic",
+                    "itemRole": "base",
+                    "reason": "category_gate:procedure_basic"
+                  },
+                  {
+                    "code": "160170170",
+                    "name": "検体検査管理加算（１）",
+                    "feeCategory": "lab_addon",
+                    "itemRole": "addon",
+                    "reason": "derived_only:addon"
+                  }
+                ],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "体温 測定",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "脈拍（P）",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "脈拍（P）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 脈拍（P）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "P 72",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検体検査",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [
+                  {
+                    "code": "160145410",
+                    "name": "基本的検体検査実施料（４週間以内）",
+                    "feeCategory": "procedure_basic",
+                    "itemRole": "base",
+                    "reason": "category_gate:procedure_basic"
+                  },
+                  {
+                    "code": "160149110",
+                    "name": "基本的検体検査判断料",
+                    "feeCategory": "lab_judgment",
+                    "itemRole": "judgment",
+                    "reason": "derived_only:judgment"
+                  },
+                  {
+                    "code": "160161610",
+                    "name": "検体検査管理加算（３）",
+                    "feeCategory": "lab_addon",
+                    "itemRole": "addon",
+                    "reason": "derived_only:addon"
+                  },
+                  {
+                    "code": "160165310",
+                    "name": "基本的検体検査実施料（４週間超）",
+                    "feeCategory": "procedure_basic",
+                    "itemRole": "base",
+                    "reason": "category_gate:procedure_basic"
+                  },
+                  {
+                    "code": "160170170",
+                    "name": "検体検査管理加算（１）",
+                    "feeCategory": "lab_addon",
+                    "itemRole": "addon",
+                    "reason": "derived_only:addon"
+                  }
+                ],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "脈拍 測定",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "咽頭所見（発赤なし）",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "咽頭所見（発赤なし）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "咽頭咽頭所見（発赤なし）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 咽頭所見（発赤なし）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "咽頭発赤なし",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "咽頭 発赤",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "鼻炎症状（なし）",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "鼻炎症状（なし）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "鼻鼻炎症状（なし）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 鼻炎症状（なし）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "鼻炎症状もなし",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "鼻炎症状 評価",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          }
+        ],
+        "clinicalEvents": [
+          {
+            "id": "ce_1_exam_吸入手技の確認_吸入手技を確認し_吸気のタイミングのずれを修正した_吸入手技の確認",
+            "name": "吸入手技の確認",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "吸入手技を確認し、吸気のタイミングのずれを修正した。"
+          },
+          {
+            "id": "ce_2_management_残薬カウンタの確認_残薬カウンタも確認_残薬カウンタの確認",
+            "name": "残薬カウンタの確認",
+            "type": "management",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "残薬カウンタも確認。"
+          },
+          {
+            "id": "ce_3_lab_SpO2_SpO2_99_SpO2",
+            "name": "SpO2",
+            "type": "lab",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "SpO2 99%、"
+          },
+          {
+            "id": "ce_4_exam_呼吸音の聴診_呼吸音清_wheezeなし_呼吸音の聴診",
+            "name": "呼吸音の聴診",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "呼吸音清、wheezeなし。"
+          },
+          {
+            "id": "ce_5_lab_体温_KT__KT_36_5_体温_KT",
+            "name": "体温（KT）",
+            "type": "lab",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "KT 36.5、"
+          },
+          {
+            "id": "ce_6_lab_脈拍_P__P_72_脈拍_P",
+            "name": "脈拍（P）",
+            "type": "lab",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "P 72。"
+          },
+          {
+            "id": "ce_7_lab_呼吸機能検査_症状が安定しているため_呼吸機能検査は本日は実施せず_呼吸機能検査",
+            "name": "呼吸機能検査",
+            "type": "lab",
+            "actionStatus": "not_performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "症状が安定しているため、呼吸機能検査は本日は実施せず。"
+          },
+          {
+            "id": "ce_8_exam_咽頭所見_発赤なし__咽頭発赤なし_咽頭所見_発赤なし",
+            "name": "咽頭所見（発赤なし）",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "咽頭発赤なし。"
+          },
+          {
+            "id": "ce_9_exam_鼻炎症状_なし__鼻炎症状もなし_鼻炎症状_なし",
+            "name": "鼻炎症状（なし）",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "鼻炎症状もなし。"
+          },
+          {
+            "id": "ce_10_counseling_増悪時対応_発作治療薬の使い方_受診目安_の再確認_増悪時の対応_発作治療",
+            "name": "増悪時対応（発作治療薬の使い方・受診目安）の再確認",
+            "type": "counseling",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "増悪時の対応(発作治療薬の使い方と受診の目安)を再確認した。"
+          },
+          {
+            "id": "ce_11_medication_吸入薬_院外で継続処方__吸入薬は院外で継続処方_吸入薬_院外で継続処方",
+            "name": "吸入薬（院外で継続処方）",
+            "type": "medication",
+            "actionStatus": "prescribed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_medication",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "吸入薬は院外で継続処方。"
+          },
+          {
+            "id": "ce_12_follow_up_次回受診_2ヶ月後__次回は2ヶ月後_次回受診_2ヶ月後",
+            "name": "次回受診（2ヶ月後）",
+            "type": "follow_up",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "次回は2ヶ月後。"
+          },
+          {
+            "id": "ce_13_management_台風シーズンの自己管理メモを渡す_台風シーズンの自己管理メモを渡した_台風",
+            "name": "台風シーズンの自己管理メモを渡す",
+            "type": "management",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "home_care",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "台風シーズンの自己管理メモを渡した。"
+          },
+          {
+            "id": "ce_14_counseling_インフルエンザワクチン_秋に接種予定_案内_インフルエンザワクチンは秋に接",
+            "name": "インフルエンザワクチン（秋に接種予定）案内",
+            "type": "counseling",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "インフルエンザワクチンは秋に接種予定として案内した。"
+          },
+          {
+            "id": "ce_15_counseling_妊娠予定があれば申し出る説明_妊娠の予定があれば申し出るよう説明_妊娠予定",
+            "name": "妊娠予定があれば申し出る説明",
+            "type": "counseling",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "妊娠の予定があれば申し出るよう説明。"
+          }
+        ],
+        "reviewText": [
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+          "吸入手技の確認は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "SpO2は実施済みの検体検査として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "呼吸音の聴診は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "体温（KT）は実施済みの検体検査として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "脈拍（P）は実施済みの検体検査として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "咽頭所見（発赤なし）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "鼻炎症状（なし）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "薬剤日数不足: 薬剤「吸入薬」は日数または総量が不足しているため、算定候補には入れていません。",
+          "次回受診（2ヶ月後）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "在宅医療未対応: 台風シーズンの自己管理メモを渡すは在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "インフルエンザワクチン（秋に接種予定）案内は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "対象疾患確認: 妊娠予定があれば申し出る説明は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+          "初診/再診確認",
+          "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+          "対象疾患確認",
+          "対象疾患確認: 残薬カウンタの確認は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+          "検査コード確認",
+          "SpO2は実施済みの検体検査として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "検査コード確認",
+          "体温（KT）は実施済みの検体検査として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "検査コード確認",
+          "脈拍（P）は実施済みの検体検査として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "マスター候補確認",
+          "次回受診（2ヶ月後）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "在宅医療未対応",
+          "在宅医療未対応: 台風シーズンの自己管理メモを渡すは在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "訪問診療確認",
+          "訪問診療確認: 在宅医療の判定には訪問診療/往診の実施区分、訪問日、同月履歴、施設基準が必要です。未確認のため自動算定には入れていません。",
+          "マスター候補確認",
+          "インフルエンザワクチン（秋に接種予定）案内は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "施設基準確認",
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "確認事項",
+          "吸入手技の確認は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "呼吸音の聴診は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "咽頭所見（発赤なし）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "鼻炎症状（なし）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "吸入薬の確認",
+          "薬剤日数不足: 薬剤「吸入薬」は日数または総量が不足しているため、算定候補には入れていません。",
+          "対象疾患確認",
+          "対象疾患確認: 妊娠予定があれば申し出る説明は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+          "再診料",
+          "Outpatient basic fee candidate for revisit"
+        ],
+        "progress": {
+          "phase": "complete",
+          "label": "完了",
+          "message": "算定候補の作成が完了しました。",
+          "percent": 100,
+          "updatedAt": "2026-06-12T10:04:49.533Z",
+          "metrics": {
+            "clinicalStructuring": {
+              "source": "openai",
+              "durationMs": 41889,
+              "openAiProviderDurationMs": 20018,
+              "firstOutputTextMs": null,
+              "clinicalFactsConvertDurationMs": 21868,
+              "extractedDiagnosisCount": 2,
+              "extractedClinicalEventCount": 15,
+              "extractedChecklistFindingCount": 0,
+              "checklistMenuCount": 0,
+              "extractedBillingEventCount": 0,
+              "extractedExcludedEventCount": 0,
+              "convertedDiagnosisCount": 2,
+              "convertedOptionKeys": [],
+              "convertedReviewWarningCount": 14,
+              "convertedMasterCandidateCount": 0,
+              "convertedBillingCandidateCount": 0,
+              "convertedReviewIssueCount": 9,
+              "convertedClinicalTraceCount": 11,
+              "masterLookupCount": 40,
+              "masterLookupDurationMs": 21843,
+              "model": "gpt-5.4-nano",
+              "reasoningEffort": "low",
+              "promptVersion": "fee-clinical-events-v9",
+              "ruleSetVersion": "fee-clinical-rules-v9",
+              "masterVersion": "runtime-master-current",
+              "timeoutMs": 0,
+              "responseId": "resp_022843abf8084cd2016a2bd9988ca8819587386e38c35e55d7",
+              "usage": {
+                "input_tokens": 3652,
+                "input_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "output_tokens": 3240,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 6892
+              }
+            },
+            "ruleBasedClinicalInference": {
+              "durationMs": 2,
+              "source": "objective_supplement",
+              "masterLookupCount": 0,
+              "masterLookupDurationMs": 0
+            },
+            "facilityProfile": {
+              "source": "platform_facility",
+              "facilityId": "fac_48e3768bdf33786b56bda39b60",
+              "facilityStandardKeyCount": 0
+            },
+            "patientHistory": {
+              "priorSessionCount": 1
+            },
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 60
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 135
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 41896
+              }
+            ]
+          },
+          "diagnoses": [
+            "気管支喘息",
+            "喘息（良好なコントロール）"
+          ],
+          "extractedOrders": [
+            "再診料候補"
+          ],
+          "lineItems": [
+            "再診料"
+          ],
+          "totalPoints": 75,
+          "lineItemCount": 1,
+          "warningCount": 1
+        }
+      },
+      "missing": {
+        "diagnoses": [],
+        "billingSignals": [],
+        "candidateCodes": [],
+        "reviewTopics": [
+          "療養計画確認"
+        ]
+      },
+      "unexpected": {
+        "forbiddenCandidateViolations": [],
+        "confirmedForbiddenCandidates": [],
+        "unexpectedCandidateCodes": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,612 @@
+{
+  "schemaVersion": "fee-soap-e2e-evaluation.v1",
+  "generatedAt": "2026-06-12T10:05:56.813Z",
+  "datasetId": "fee-soap-e2e-v2",
+  "datasetVersion": "2026-06-12.batches.3",
+  "datasetPath": "data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json",
+  "mode": "stg",
+  "filters": {
+    "caseId": "V2-IM-LAB-001",
+    "assertionLevel": null,
+    "limit": null
+  },
+  "security": {
+    "syntheticDataOnly": true,
+    "soapTextIncluded": false,
+    "credentialsIncluded": false,
+    "reportContainsSecrets": false
+  },
+  "summary": {
+    "mode": "stg",
+    "strict": false,
+    "selected": 1,
+    "totalDatasetCases": 51,
+    "durationMs": 14234,
+    "passed": 0,
+    "failed": 1,
+    "passRate": 0,
+    "byAssertion": {
+      "exact": {
+        "total": 1,
+        "passed": 0,
+        "failed": 1
+      }
+    },
+    "failureByStage": {
+      "extraction": 1
+    },
+    "avgDurationMs": 13539,
+    "slowest": [
+      {
+        "caseId": "V2-IM-LAB-001",
+        "assertionLevel": "exact",
+        "durationMs": 13539,
+        "failedStage": "extraction"
+      }
+    ],
+    "worstBillingSignalRecall": [
+      {
+        "caseId": "V2-IM-LAB-001",
+        "assertionLevel": "exact",
+        "billingSignalRecall": 0.8,
+        "missingBillingSignals": [
+          "尿一般"
+        ]
+      }
+    ]
+  },
+  "facilityFixtureAudit": {
+    "fixtureKey": "default",
+    "seededFacilityStandardKeys": [
+      "検体検査管理加算2"
+    ],
+    "fixtures": [
+      {
+        "fixtureKey": "standards_ff7921e194",
+        "seededFacilityStandardKeys": [
+          "検体検査管理加算2"
+        ],
+        "caseIds": [
+          "V2-IM-LAB-001"
+        ]
+      }
+    ],
+    "exactRequiredFacilityStandardKeys": [
+      "検体検査管理加算2"
+    ],
+    "facilityUnknownExpectedKeys": [],
+    "facilityUnknownCaseIds": [],
+    "collisions": [],
+    "collisionPolicy": "single_fixture_ok",
+    "runnerMode": "stg_existing_facility",
+    "seededFacilityStandards": [
+      "検体検査管理加算2"
+    ],
+    "seedStatus": "seeded",
+    "seedError": ""
+  },
+  "results": [
+    {
+      "caseId": "V2-IM-LAB-001",
+      "assertionLevel": "exact",
+      "difficultyLevel": "L2",
+      "status": "failed",
+      "failedStage": "extraction",
+      "failureMessages": [
+        "totalPoints 256 != expected 282",
+        "missing candidate codes: 160000310",
+        "missing billing signals: 尿一般"
+      ],
+      "chartHash": "f34b144f349af668b7d2f140b99c62dfc867577abcfe71d26989ba49f76b91ae",
+      "feeSessionId": "fee_fd606c2f108b482db7c140ce05",
+      "historySeed": {
+        "required": true,
+        "reason": "encounter.visitType=revisit",
+        "created": true,
+        "failed": false,
+        "feeSessionId": "fee_b89629098ef4450ea72dbc1be2",
+        "patientId": "pat_5ebc8cdc39924d618c02ec7f79",
+        "serviceDate": "2026-07-05"
+      },
+      "facilityFixture": {
+        "mode": "stg_existing_facility",
+        "fixtureKey": "standards_ff7921e194",
+        "facilityId": "fac_48e3768bdf33786b56bda39b60",
+        "seededFacilityStandards": [
+          "検体検査管理加算2"
+        ],
+        "expectedFacilityStandards": [
+          "検体検査管理加算2"
+        ],
+        "collisions": [],
+        "seedStatus": "seeded",
+        "seedError": ""
+      },
+      "http": {
+        "seedVisitHistory": {
+          "statusCode": 201,
+          "error": null
+        },
+        "createSession": {
+          "statusCode": 201,
+          "error": null
+        },
+        "calculate": {
+          "statusCode": 201,
+          "error": null
+        },
+        "detail": {
+          "statusCode": 200,
+          "error": null
+        }
+      },
+      "durationMs": {
+        "total": 13539,
+        "seedVisitHistory": 314,
+        "createSession": 242,
+        "calculateRequest": 12610,
+        "detail": 159,
+        "prepare": 0,
+        "savePreparedSession": 0,
+        "pythonCalculator": 0,
+        "saveCalculation": 0,
+        "audit": 0,
+        "clinicalStructuring": 11999,
+        "openAiProvider": 11977,
+        "firstOutputText": null,
+        "ruleBasedInference": 1,
+        "masterLookup": 15,
+        "masterLookupCount": 1,
+        "model": "gpt-5.4-nano",
+        "reasoningEffort": "low",
+        "clinicalStructuringSource": "openai"
+      },
+      "accuracy": {
+        "diagnosisRecall": 1,
+        "billingSignalRecall": 0.8,
+        "candidateCodeRecall": 0.833,
+        "candidateCodePrecision": 1,
+        "reviewTopicRecall": null,
+        "forbiddenViolationCount": 0,
+        "totalPointDelta": -26
+      },
+      "expected": {
+        "totalPoints": 282,
+        "candidateCodes": [
+          "160000310",
+          "160000410",
+          "112007410",
+          "160061710",
+          "160182770",
+          "160095710"
+        ],
+        "engineStatus": "completed"
+      },
+      "actual": {
+        "totalPoints": 256,
+        "candidateCodes": [
+          "160000410",
+          "112007410",
+          "160061710",
+          "160182770",
+          "160095710"
+        ],
+        "engineStatus": "ok",
+        "status": "needs_review",
+        "lineItems": [
+          {
+            "code": "160000410",
+            "name": "尿蛋白",
+            "status": "needs_review",
+            "supportLevel": "review_required",
+            "reviewRequired": true,
+            "totalPoints": 7
+          },
+          {
+            "code": "112007410",
+            "name": "再診料",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 75
+          },
+          {
+            "code": "160061710",
+            "name": "尿・糞便等検査判断料",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 34
+          },
+          {
+            "code": "160182770",
+            "name": "検体検査管理加算（２）",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 100
+          },
+          {
+            "code": "160095710",
+            "name": "Ｂ－Ｖ",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 40
+          }
+        ],
+        "reviewItems": [
+          {
+            "title": "検査コード確認",
+            "message": "検査コード確認: 尿定性は検査名として抽出されましたが、カルテ本文の根拠から具体的な検査項目を確定できません。採血や検体提出だけから検査名を推定せず、検査項目を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "過去値・持参情報",
+            "message": "尿培養は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "過去値・持参情報",
+            "message": "ロキソニンSは過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "マスター候補確認",
+            "message": "培養と外注結果の確認は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "尿蛋白",
+            "message": "Input medical procedure code matched master only; chapter-specific billing rules are not confirmed",
+            "status": "needs_review",
+            "severity": "review"
+          },
+          {
+            "title": "再診料",
+            "message": "Outpatient basic fee candidate for revisit",
+            "status": "needs_review",
+            "severity": "review"
+          },
+          {
+            "title": "尿・糞便等検査判断料",
+            "message": "D026検査判断料（区分1）を実施検査から自動候補化",
+            "status": "needs_review",
+            "severity": "review"
+          },
+          {
+            "title": "検体検査管理加算（２）",
+            "message": "Lab management fee for facility standard 検体検査管理加算2",
+            "status": "needs_review",
+            "severity": "review"
+          },
+          {
+            "title": "Ｂ－Ｖ",
+            "message": "検体採取料を採取方法（blood_venous）から自動候補化",
+            "status": "needs_review",
+            "severity": "review"
+          }
+        ],
+        "candidateProposals": [],
+        "diagnoses": [
+          "急性膀胱炎の遷延",
+          "細菌尿が示唆"
+        ],
+        "calculationOptionsSource": "clinical_auto",
+        "calculationOptionsAutoKeys": [
+          "outpatient_basic",
+          "procedure_codes",
+          "lab_options",
+          "facility_standard_keys"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": ""
+        },
+        "checklistFindingStatusCounts": {
+          "performed_today": 2,
+          "unclear": 1,
+          "mentioned_not_performed": 1
+        },
+        "masterSearchTrace": [
+          {
+            "eventName": "尿蛋白",
+            "outcome": "matched",
+            "query": "尿蛋白",
+            "selected": {
+              "code": "160000410",
+              "name": "尿蛋白"
+            },
+            "searches": [
+              {
+                "query": "尿蛋白",
+                "outcome": "matched",
+                "selectedCode": "160000410",
+                "filteredCandidates": [
+                  {
+                    "code": "140063610",
+                    "name": "血漿交換療法（ＬＤＬアフェレシス療法）",
+                    "feeCategory": "procedure_basic",
+                    "itemRole": "base",
+                    "reason": "category_gate:procedure_basic"
+                  }
+                ],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          }
+        ],
+        "clinicalEvents": [
+          {
+            "id": "ce_1_lab_尿定性_院内で尿定性_尿蛋白を実施_混濁_白血球反応_2_亜硝酸塩_蛋白_潜血_-_尿定",
+            "name": "尿定性",
+            "type": "lab",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "院内で尿定性・尿蛋白を実施。混濁(+)、白血球反応(2+)、亜硝酸塩(+)、蛋白(±)、潜血(-)。"
+          },
+          {
+            "id": "ce_2_lab_尿蛋白_院内で尿定性_尿蛋白を実施_蛋白_尿蛋白",
+            "name": "尿蛋白",
+            "type": "lab",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "院内で尿定性・尿蛋白を実施。...蛋白(±)"
+          },
+          {
+            "id": "ce_3_lab_生化学_静脈採血も施行し_生化学_血算は外注へ提出_生化学",
+            "name": "生化学",
+            "type": "lab",
+            "actionStatus": "ordered",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_lab",
+            "certainty": "inferred",
+            "source": "",
+            "evidence": "静脈採血も施行し、生化学・血算は外注へ提出。"
+          },
+          {
+            "id": "ce_4_lab_血算_静脈採血も施行し_生化学_血算は外注へ提出_血算",
+            "name": "血算",
+            "type": "lab",
+            "actionStatus": "ordered",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_lab",
+            "certainty": "inferred",
+            "source": "",
+            "evidence": "静脈採血も施行し、生化学・血算は外注へ提出。"
+          },
+          {
+            "id": "ce_5_imaging_腹部エコー_腹部エコーは症状の経過から今回は行わず_腹部エコー",
+            "name": "腹部エコー",
+            "type": "imaging",
+            "actionStatus": "not_performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_imaging",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "腹部エコーは症状の経過から今回は行わず。"
+          },
+          {
+            "id": "ce_6_lab_尿培養_前回_7_3_提出の尿培養はまだ結果未着_尿培養",
+            "name": "尿培養",
+            "type": "lab",
+            "actionStatus": "planned",
+            "temporalRelation": "past",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "前回(7/3)提出の尿培養はまだ結果未着。"
+          },
+          {
+            "id": "ce_7_management_水分摂取を増やすよう指導_1日1_5L目安__水分摂取を増やすよう指導_コ",
+            "name": "水分摂取を増やすよう指導（1日1.5L目安）",
+            "type": "management",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "水分摂取を増やすよう指導(コーヒー以外で1日1.5L目安)。"
+          },
+          {
+            "id": "ce_8_counseling_発熱_腰背部痛_血尿時の早期再診説明_発熱_腰背部痛_血尿が出たら早めに再",
+            "name": "発熱・腰背部痛・血尿時の早期再診説明",
+            "type": "counseling",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "発熱・腰背部痛・血尿が出たら早めに再診するよう説明した。"
+          },
+          {
+            "id": "ce_9_counseling_排尿を我慢しないこと_カフェイン摂取を控える助言_排尿を我慢しないこと_カ",
+            "name": "排尿を我慢しないこと、カフェイン摂取を控える助言",
+            "type": "counseling",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "排尿を我慢しないこと、カフェインの摂りすぎを控えることも併せて助言。"
+          },
+          {
+            "id": "ce_10_medication_ロキソニンS_痛みが強いときは自宅にあったロキソニンSを1回だけ内服した_",
+            "name": "ロキソニンS",
+            "type": "medication",
+            "actionStatus": "administered",
+            "temporalRelation": "past",
+            "billingDomain": "standard_medication",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "痛みが強いときは自宅にあったロキソニンSを1回だけ内服した。"
+          },
+          {
+            "id": "ce_11_management_培養と外注結果の確認_培養と外注結果を確認のうえ抗菌薬の選択_継続を判断す",
+            "name": "培養と外注結果の確認",
+            "type": "management",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "培養と外注結果を確認のうえ抗菌薬の選択・継続を判断する。結果は電話で連絡予定。"
+          }
+        ],
+        "reviewText": [
+          "検査コード確認: 尿定性は検査名として抽出されましたが、カルテ本文の根拠から具体的な検査項目を確定できません。採血や検体提出だけから検査名を推定せず、検査項目を確認してください。",
+          "尿培養は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+          "培養と外注結果の確認は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "検査コード確認",
+          "検査コード確認: 尿定性は検査名として抽出されましたが、カルテ本文の根拠から具体的な検査項目を確定できません。採血や検体提出だけから検査名を推定せず、検査項目を確認してください。",
+          "過去値・持参情報",
+          "尿培養は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+          "過去値・持参情報",
+          "ロキソニンSは過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+          "マスター候補確認",
+          "培養と外注結果の確認は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "尿蛋白",
+          "Input medical procedure code matched master only; chapter-specific billing rules are not confirmed",
+          "再診料",
+          "Outpatient basic fee candidate for revisit",
+          "尿・糞便等検査判断料",
+          "D026検査判断料（区分1）を実施検査から自動候補化",
+          "検体検査管理加算（２）",
+          "Lab management fee for facility standard 検体検査管理加算2",
+          "Ｂ－Ｖ",
+          "検体採取料を採取方法（blood_venous）から自動候補化"
+        ],
+        "progress": {
+          "phase": "complete",
+          "label": "完了",
+          "message": "算定候補の作成が完了しました。",
+          "percent": 100,
+          "updatedAt": "2026-06-12T10:05:56.469Z",
+          "metrics": {
+            "clinicalStructuring": {
+              "source": "openai",
+              "durationMs": 11999,
+              "openAiProviderDurationMs": 11977,
+              "firstOutputTextMs": null,
+              "clinicalFactsConvertDurationMs": 21,
+              "extractedDiagnosisCount": 3,
+              "extractedClinicalEventCount": 11,
+              "extractedChecklistFindingCount": 4,
+              "checklistMenuCount": 4,
+              "extractedBillingEventCount": 0,
+              "extractedExcludedEventCount": 0,
+              "convertedDiagnosisCount": 2,
+              "convertedOptionKeys": [
+                "outpatient_basic",
+                "procedure_codes",
+                "lab_options"
+              ],
+              "convertedReviewWarningCount": 3,
+              "convertedMasterCandidateCount": 1,
+              "convertedBillingCandidateCount": 1,
+              "convertedReviewIssueCount": 4,
+              "convertedClinicalTraceCount": 6,
+              "masterLookupCount": 1,
+              "masterLookupDurationMs": 15,
+              "model": "gpt-5.4-nano",
+              "reasoningEffort": "low",
+              "promptVersion": "fee-clinical-events-v9",
+              "ruleSetVersion": "fee-clinical-rules-v9",
+              "masterVersion": "runtime-master-current",
+              "timeoutMs": 0,
+              "responseId": "resp_0978ee78968dba9b016a2bd9f86998819bbce01c4f6ee42a02",
+              "usage": {
+                "input_tokens": 4013,
+                "input_tokens_details": {
+                  "cached_tokens": 2816
+                },
+                "output_tokens": 2174,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 6187
+              }
+            },
+            "ruleBasedClinicalInference": {
+              "durationMs": 1,
+              "source": "objective_supplement",
+              "masterLookupCount": 0,
+              "masterLookupDurationMs": 0
+            },
+            "facilityProfile": {
+              "source": "platform_facility",
+              "facilityId": "fac_48e3768bdf33786b56bda39b60",
+              "facilityStandardKeyCount": 1
+            },
+            "patientHistory": {
+              "priorSessionCount": 1
+            },
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 25
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 112
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 12001
+              }
+            ]
+          },
+          "diagnoses": [
+            "急性膀胱炎の遷延",
+            "細菌尿が示唆"
+          ],
+          "extractedOrders": [
+            "再診料候補",
+            "診療行為候補 1件"
+          ],
+          "lineItems": [
+            "尿蛋白",
+            "再診料",
+            "尿・糞便等検査判断料",
+            "検体検査管理加算（２）",
+            "Ｂ－Ｖ"
+          ],
+          "totalPoints": 256,
+          "lineItemCount": 5,
+          "warningCount": 0
+        }
+      },
+      "missing": {
+        "diagnoses": [],
+        "billingSignals": [
+          "尿一般"
+        ],
+        "candidateCodes": [
+          "160000310"
+        ],
+        "reviewTopics": []
+      },
+      "unexpected": {
+        "forbiddenCandidateViolations": [],
+        "confirmedForbiddenCandidates": [],
+        "unexpectedCandidateCodes": []
+      }
+    }
+  ]
+}

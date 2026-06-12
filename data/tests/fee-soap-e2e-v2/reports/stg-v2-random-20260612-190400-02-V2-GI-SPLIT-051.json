@@ -1,0 +1,546 @@
+{
+  "schemaVersion": "fee-soap-e2e-evaluation.v1",
+  "generatedAt": "2026-06-12T10:05:08.733Z",
+  "datasetId": "fee-soap-e2e-v2",
+  "datasetVersion": "2026-06-12.batches.3",
+  "datasetPath": "data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json",
+  "mode": "stg",
+  "filters": {
+    "caseId": "V2-GI-SPLIT-051",
+    "assertionLevel": null,
+    "limit": null
+  },
+  "security": {
+    "syntheticDataOnly": true,
+    "soapTextIncluded": false,
+    "credentialsIncluded": false,
+    "reportContainsSecrets": false
+  },
+  "summary": {
+    "mode": "stg",
+    "strict": false,
+    "selected": 1,
+    "totalDatasetCases": 51,
+    "durationMs": 18277,
+    "passed": 1,
+    "failed": 0,
+    "passRate": 1,
+    "byAssertion": {
+      "split_required": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0
+      }
+    },
+    "failureByStage": {},
+    "avgDurationMs": 17565,
+    "slowest": [
+      {
+        "caseId": "V2-GI-SPLIT-051",
+        "assertionLevel": "split_required",
+        "durationMs": 17565,
+        "failedStage": null
+      }
+    ],
+    "worstBillingSignalRecall": [
+      {
+        "caseId": "V2-GI-SPLIT-051",
+        "assertionLevel": "split_required",
+        "billingSignalRecall": 0.5,
+        "missingBillingSignals": [
+          "複数日診療"
+        ]
+      }
+    ]
+  },
+  "facilityFixtureAudit": {
+    "fixtureKey": "default",
+    "seededFacilityStandardKeys": [],
+    "fixtures": [
+      {
+        "fixtureKey": "default",
+        "seededFacilityStandardKeys": [],
+        "caseIds": [
+          "V2-GI-SPLIT-051"
+        ]
+      }
+    ],
+    "exactRequiredFacilityStandardKeys": [],
+    "facilityUnknownExpectedKeys": [],
+    "facilityUnknownCaseIds": [],
+    "collisions": [],
+    "collisionPolicy": "single_fixture_ok",
+    "runnerMode": "stg_existing_facility",
+    "seededFacilityStandards": [],
+    "seedStatus": "cleared",
+    "seedError": ""
+  },
+  "results": [
+    {
+      "caseId": "V2-GI-SPLIT-051",
+      "assertionLevel": "split_required",
+      "difficultyLevel": "L3",
+      "status": "passed",
+      "failedStage": null,
+      "failureMessages": [],
+      "chartHash": "c0e51e7dfcc764ee723ec1206f714a38e5cd8ad986d657bc687a4136c742800d",
+      "feeSessionId": "fee_a7eb77b68f9b471799fc3da8fb",
+      "historySeed": {
+        "required": true,
+        "reason": "encounter.visitType=revisit",
+        "created": true,
+        "failed": false,
+        "feeSessionId": "fee_d12502d5bd22486bb54ab1bb02",
+        "patientId": "pat_02b1a7797cae4d319bb9508f94",
+        "serviceDate": "2026-08-11"
+      },
+      "facilityFixture": {
+        "mode": "stg_existing_facility",
+        "fixtureKey": "default",
+        "facilityId": "fac_48e3768bdf33786b56bda39b60",
+        "seededFacilityStandards": [],
+        "expectedFacilityStandards": [],
+        "collisions": [],
+        "seedStatus": "cleared",
+        "seedError": ""
+      },
+      "http": {
+        "seedVisitHistory": {
+          "statusCode": 201,
+          "error": null
+        },
+        "createSession": {
+          "statusCode": 201,
+          "error": null
+        },
+        "calculate": {
+          "statusCode": 201,
+          "error": null
+        },
+        "detail": {
+          "statusCode": 200,
+          "error": null
+        }
+      },
+      "durationMs": {
+        "total": 17565,
+        "seedVisitHistory": 524,
+        "createSession": 417,
+        "calculateRequest": 15902,
+        "detail": 516,
+        "prepare": 0,
+        "savePreparedSession": 0,
+        "pythonCalculator": 0,
+        "saveCalculation": 0,
+        "audit": 0,
+        "clinicalStructuring": 15171,
+        "openAiProvider": 15164,
+        "firstOutputText": null,
+        "ruleBasedInference": 1,
+        "masterLookup": 0,
+        "masterLookupCount": 0,
+        "model": "gpt-5.4-nano",
+        "reasoningEffort": "low",
+        "clinicalStructuringSource": "openai"
+      },
+      "accuracy": {
+        "diagnosisRecall": 0,
+        "billingSignalRecall": 0.5,
+        "candidateCodeRecall": null,
+        "candidateCodePrecision": null,
+        "reviewTopicRecall": 0.667,
+        "forbiddenViolationCount": 0,
+        "totalPointDelta": null
+      },
+      "expected": {
+        "totalPoints": null,
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "actual": {
+        "totalPoints": 75,
+        "candidateCodes": [
+          "112007410"
+        ],
+        "engineStatus": "needs_review",
+        "status": "needs_review",
+        "lineItems": [
+          {
+            "code": "112007410",
+            "name": "再診料",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 75
+          }
+        ],
+        "reviewItems": [
+          {
+            "title": "複数日記録分割",
+            "message": "複数日記録分割: 複数日の診療内容が同じカルテ本文に含まれる可能性があります。当日分と別日分を分けて確認してください。自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "内視鏡未対応",
+            "message": "大腸内視鏡は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "過去値・持参情報",
+            "message": "生検鉗子による検体採取（S状結腸ポリープ）は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "病理未対応",
+            "message": "病理未対応: 病理（ポリープ検体）提出は病理診断・細胞診領域として抽出しました。現行の自動算定では確定算定せず、病理診断/細胞診の区分を人手で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "検体提出確認",
+            "message": "検体提出確認: 病理（ポリープ検体）提出について、検体提出、標本種類、診断区分、結果説明予定を確認してください。自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "結果説明のための再診（8/12）の確認",
+            "message": "結果説明のための再診（8/12）は未対応項目として抽出しましたが、現在の自動算定では直接候補化できないため、要確認です。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "マスター候補確認",
+            "message": "病理結果（1週間後）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "マスター候補確認",
+            "message": "次回外来（8/19）予約は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "対象疾患確認",
+            "message": "対象疾患確認: 食事制限解除（検査後）は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "内視鏡未対応",
+            "message": "腺腫の場合の内視鏡的切除方針の相談（病理結果により）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "施設基準確認",
+            "message": "施設基準がないため検体検査管理加算は自動追加しない",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "初再診料の確認",
+            "message": "同一患者の過去算定記録があるため再診料候補を立てています。病名が未入力のため、継続診療か新疾患初診かを確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "病名が入力されていません。査定リスク確認のため、主病名または疑い病名を入力してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "再診料",
+            "message": "Outpatient basic fee candidate for revisit",
+            "status": "needs_review",
+            "severity": "review"
+          }
+        ],
+        "candidateProposals": [],
+        "diagnoses": [],
+        "calculationOptionsSource": "clinical_auto",
+        "calculationOptionsAutoKeys": [
+          "outpatient_basic"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": ""
+        },
+        "checklistFindingStatusCounts": {
+          "performed_today": 1,
+          "past_or_external": 1
+        },
+        "masterSearchTrace": [],
+        "clinicalEvents": [
+          {
+            "id": "ce_1_procedure_大腸内視鏡_8_10_大腸内視鏡を施行_前処置良好_回盲部まで挿入_大腸内視",
+            "name": "大腸内視鏡",
+            "type": "procedure",
+            "actionStatus": "performed",
+            "temporalRelation": "past",
+            "billingDomain": "standard_procedure",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "8/10: 大腸内視鏡を施行。前処置良好、回盲部まで挿入。"
+          },
+          {
+            "id": "ce_2_material_生検鉗子による検体採取_S状結腸ポリープ__生検鉗子で検体を採取し病理へ提出_",
+            "name": "生検鉗子による検体採取（S状結腸ポリープ）",
+            "type": "material",
+            "actionStatus": "performed",
+            "temporalRelation": "past",
+            "billingDomain": "standard_material",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "生検鉗子で検体を採取し病理へ提出。"
+          },
+          {
+            "id": "ce_3_pathology_病理_ポリープ検体_提出_生検鉗子で検体を採取し病理へ提出_病理_ポリープ検",
+            "name": "病理（ポリープ検体）提出",
+            "type": "pathology",
+            "actionStatus": "ordered",
+            "temporalRelation": "past",
+            "billingDomain": "pathology",
+            "certainty": "inferred",
+            "source": "",
+            "evidence": "生検鉗子で検体を採取し病理へ提出。"
+          },
+          {
+            "id": "ce_4_follow_up_結果説明のための再診_8_12___8_12_本日_結果説明のため再診_結果",
+            "name": "結果説明のための再診（8/12）",
+            "type": "follow_up",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "【8/12 本日】結果説明のため再診。"
+          },
+          {
+            "id": "ce_5_follow_up_病理結果_1週間後__病理結果は1週間後に判明予定_病理結果_1週間後",
+            "name": "病理結果（1週間後）",
+            "type": "follow_up",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "病理結果は1週間後に判明予定。"
+          },
+          {
+            "id": "ce_6_follow_up_次回外来_8_19_予約_次回外来は8_19で予約済み_次回外来_8_19_",
+            "name": "次回外来（8/19）予約",
+            "type": "follow_up",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "次回外来は8/19で予約済み。"
+          },
+          {
+            "id": "ce_7_management_食事制限解除_検査後__本日は食事制限を解除_食事制限解除_検査後",
+            "name": "食事制限解除（検査後）",
+            "type": "management",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "本日は食事制限を解除。"
+          },
+          {
+            "id": "ce_8_counseling_腹痛_血便があれば早めに受診するよう指示_腹痛_血便があれば早めに受診_腹",
+            "name": "腹痛・血便があれば早めに受診するよう指示",
+            "type": "counseling",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "腹痛・血便があれば早めに受診。"
+          },
+          {
+            "id": "ce_9_management_定期的な内視鏡フォローの必要性説明_1_3年間隔__今後の定期的な内視鏡フ",
+            "name": "定期的な内視鏡フォローの必要性説明（1〜3年間隔）",
+            "type": "management",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "今後の定期的な内視鏡フォロー(結果により1〜3年間隔)の必要性を説明した。"
+          },
+          {
+            "id": "ce_10_management_腺腫の場合の内視鏡的切除方針の相談_病理結果により__腺腫であれば内視鏡的",
+            "name": "腺腫の場合の内視鏡的切除方針の相談（病理結果により）",
+            "type": "management",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "腺腫であれば内視鏡的切除の方針を相談する。"
+          }
+        ],
+        "reviewText": [
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "複数日記録分割: 複数日の診療内容が同じカルテ本文に含まれる可能性があります。当日分と別日分を分けて確認してください。自動算定には入れていません。",
+          "大腸内視鏡は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+          "生検鉗子による検体採取（S状結腸ポリープ）は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+          "病理未対応: 病理（ポリープ検体）提出は病理診断・細胞診領域として抽出しました。現行の自動算定では確定算定せず、病理診断/細胞診の区分を人手で確認してください。",
+          "検体提出確認: 病理（ポリープ検体）提出について、検体提出、標本種類、診断区分、結果説明予定を確認してください。自動算定には入れていません。",
+          "結果説明のための再診（8/12）は未対応項目として抽出しましたが、現在の自動算定では直接候補化できないため、要確認です。",
+          "病理結果（1週間後）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "次回外来（8/19）予約は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "腺腫の場合の内視鏡的切除方針の相談（病理結果により）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "同一患者の過去算定記録があるため再診料候補を立てています。病名が未入力のため、継続診療か新疾患初診かを確認してください。",
+          "病名が入力されていません。査定リスク確認のため、主病名または疑い病名を入力してください。",
+          "複数日記録分割",
+          "複数日記録分割: 複数日の診療内容が同じカルテ本文に含まれる可能性があります。当日分と別日分を分けて確認してください。自動算定には入れていません。",
+          "内視鏡未対応",
+          "大腸内視鏡は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+          "過去値・持参情報",
+          "生検鉗子による検体採取（S状結腸ポリープ）は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+          "病理未対応",
+          "病理未対応: 病理（ポリープ検体）提出は病理診断・細胞診領域として抽出しました。現行の自動算定では確定算定せず、病理診断/細胞診の区分を人手で確認してください。",
+          "検体提出確認",
+          "検体提出確認: 病理（ポリープ検体）提出について、検体提出、標本種類、診断区分、結果説明予定を確認してください。自動算定には入れていません。",
+          "結果説明のための再診（8/12）の確認",
+          "結果説明のための再診（8/12）は未対応項目として抽出しましたが、現在の自動算定では直接候補化できないため、要確認です。",
+          "マスター候補確認",
+          "病理結果（1週間後）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "マスター候補確認",
+          "次回外来（8/19）予約は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "対象疾患確認",
+          "対象疾患確認: 食事制限解除（検査後）は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+          "内視鏡未対応",
+          "腺腫の場合の内視鏡的切除方針の相談（病理結果により）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "施設基準確認",
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "初再診料の確認",
+          "同一患者の過去算定記録があるため再診料候補を立てています。病名が未入力のため、継続診療か新疾患初診かを確認してください。",
+          "確認事項",
+          "病名が入力されていません。査定リスク確認のため、主病名または疑い病名を入力してください。",
+          "再診料",
+          "Outpatient basic fee candidate for revisit"
+        ],
+        "progress": {
+          "phase": "complete",
+          "label": "完了",
+          "message": "算定候補の作成が完了しました。",
+          "percent": 100,
+          "updatedAt": "2026-06-12T10:05:07.958Z",
+          "metrics": {
+            "clinicalStructuring": {
+              "source": "openai",
+              "durationMs": 15171,
+              "openAiProviderDurationMs": 15164,
+              "firstOutputTextMs": null,
+              "clinicalFactsConvertDurationMs": 6,
+              "extractedDiagnosisCount": 1,
+              "extractedClinicalEventCount": 10,
+              "extractedChecklistFindingCount": 2,
+              "checklistMenuCount": 2,
+              "extractedBillingEventCount": 0,
+              "extractedExcludedEventCount": 0,
+              "convertedDiagnosisCount": 0,
+              "convertedOptionKeys": [
+                "outpatient_basic"
+              ],
+              "convertedReviewWarningCount": 10,
+              "convertedMasterCandidateCount": 0,
+              "convertedBillingCandidateCount": 0,
+              "convertedReviewIssueCount": 10,
+              "convertedClinicalTraceCount": 3,
+              "masterLookupCount": 0,
+              "masterLookupDurationMs": 0,
+              "model": "gpt-5.4-nano",
+              "reasoningEffort": "low",
+              "promptVersion": "fee-clinical-events-v9",
+              "ruleSetVersion": "fee-clinical-rules-v9",
+              "masterVersion": "runtime-master-current",
+              "timeoutMs": 0,
+              "responseId": "resp_0d2923ea7ecf4beb016a2bd9c4be04819394004464118e9dc5",
+              "usage": {
+                "input_tokens": 3876,
+                "input_tokens_details": {
+                  "cached_tokens": 2816
+                },
+                "output_tokens": 2615,
+                "output_tokens_details": {
+                  "reasoning_tokens": 77
+                },
+                "total_tokens": 6491
+              }
+            },
+            "ruleBasedClinicalInference": {
+              "durationMs": 1,
+              "source": "objective_supplement",
+              "masterLookupCount": 0,
+              "masterLookupDurationMs": 0
+            },
+            "facilityProfile": {
+              "source": "platform_facility",
+              "facilityId": "fac_48e3768bdf33786b56bda39b60",
+              "facilityStandardKeyCount": 0
+            },
+            "patientHistory": {
+              "priorSessionCount": 1
+            },
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 30
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 113
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 15173
+              }
+            ]
+          },
+          "diagnoses": [],
+          "extractedOrders": [
+            "再診料候補"
+          ],
+          "lineItems": [
+            "再診料"
+          ],
+          "totalPoints": 75,
+          "lineItemCount": 1,
+          "warningCount": 1
+        }
+      },
+      "missing": {
+        "diagnoses": [
+          "大腸ポリープ"
+        ],
+        "billingSignals": [
+          "複数日診療"
+        ],
+        "candidateCodes": [],
+        "reviewTopics": [
+          "生検有無確認"
+        ]
+      },
+      "unexpected": {
+        "forbiddenCandidateViolations": [],
+        "confirmedForbiddenCandidates": [],
+        "unexpectedCandidateCodes": []
+      }
+    }
+  ]
+}

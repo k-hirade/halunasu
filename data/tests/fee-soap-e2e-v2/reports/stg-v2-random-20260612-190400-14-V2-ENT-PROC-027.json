@@ -1,0 +1,944 @@
+{
+  "schemaVersion": "fee-soap-e2e-evaluation.v1",
+  "generatedAt": "2026-06-12T10:08:33.714Z",
+  "datasetId": "fee-soap-e2e-v2",
+  "datasetVersion": "2026-06-12.batches.3",
+  "datasetPath": "data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json",
+  "mode": "stg",
+  "filters": {
+    "caseId": "V2-ENT-PROC-027",
+    "assertionLevel": null,
+    "limit": null
+  },
+  "security": {
+    "syntheticDataOnly": true,
+    "soapTextIncluded": false,
+    "credentialsIncluded": false,
+    "reportContainsSecrets": false
+  },
+  "summary": {
+    "mode": "stg",
+    "strict": false,
+    "selected": 1,
+    "totalDatasetCases": 51,
+    "durationMs": 25597,
+    "passed": 0,
+    "failed": 1,
+    "passRate": 0,
+    "byAssertion": {
+      "review_required": {
+        "total": 1,
+        "passed": 0,
+        "failed": 1
+      }
+    },
+    "failureByStage": {
+      "review_policy": 1
+    },
+    "avgDurationMs": 25010,
+    "slowest": [
+      {
+        "caseId": "V2-ENT-PROC-027",
+        "assertionLevel": "review_required",
+        "durationMs": 25010,
+        "failedStage": "review_policy"
+      }
+    ],
+    "worstBillingSignalRecall": [
+      {
+        "caseId": "V2-ENT-PROC-027",
+        "assertionLevel": "review_required",
+        "billingSignalRecall": 1,
+        "missingBillingSignals": []
+      }
+    ]
+  },
+  "facilityFixtureAudit": {
+    "fixtureKey": "default",
+    "seededFacilityStandardKeys": [],
+    "fixtures": [
+      {
+        "fixtureKey": "default",
+        "seededFacilityStandardKeys": [],
+        "caseIds": [
+          "V2-ENT-PROC-027"
+        ]
+      }
+    ],
+    "exactRequiredFacilityStandardKeys": [],
+    "facilityUnknownExpectedKeys": [],
+    "facilityUnknownCaseIds": [],
+    "collisions": [],
+    "collisionPolicy": "single_fixture_ok",
+    "runnerMode": "stg_existing_facility",
+    "seededFacilityStandards": [],
+    "seedStatus": "cleared",
+    "seedError": ""
+  },
+  "results": [
+    {
+      "caseId": "V2-ENT-PROC-027",
+      "assertionLevel": "review_required",
+      "difficultyLevel": "L2",
+      "status": "failed",
+      "failedStage": "review_policy",
+      "failureMessages": [
+        "missing review topics: 手技内容確認"
+      ],
+      "chartHash": "d7d0b2ebf2b05aab7aa469e644b2fe542de837c4f1ccd606a2cebb8c613f2dd8",
+      "feeSessionId": "fee_3867cf1ded28420e925dd1739e",
+      "historySeed": {
+        "required": true,
+        "reason": "encounter.visitType=revisit",
+        "created": true,
+        "failed": false,
+        "feeSessionId": "fee_1e6096f7e6574f2d9bc58315ba",
+        "patientId": "pat_2ed7a774e02c48e4a71f687a37",
+        "serviceDate": "2026-07-09"
+      },
+      "facilityFixture": {
+        "mode": "stg_existing_facility",
+        "fixtureKey": "default",
+        "facilityId": "fac_48e3768bdf33786b56bda39b60",
+        "seededFacilityStandards": [],
+        "expectedFacilityStandards": [],
+        "collisions": [],
+        "seedStatus": "cleared",
+        "seedError": ""
+      },
+      "http": {
+        "seedVisitHistory": {
+          "statusCode": 201,
+          "error": null
+        },
+        "createSession": {
+          "statusCode": 201,
+          "error": null
+        },
+        "calculate": {
+          "statusCode": 201,
+          "error": null
+        },
+        "detail": {
+          "statusCode": 200,
+          "error": null
+        }
+      },
+      "durationMs": {
+        "total": 25010,
+        "seedVisitHistory": 433,
+        "createSession": 215,
+        "calculateRequest": 23973,
+        "detail": 179,
+        "prepare": 0,
+        "savePreparedSession": 0,
+        "pythonCalculator": 0,
+        "saveCalculation": 0,
+        "audit": 0,
+        "clinicalStructuring": 23481,
+        "openAiProvider": 22834,
+        "firstOutputText": null,
+        "ruleBasedInference": 0,
+        "masterLookup": 643,
+        "masterLookupCount": 38,
+        "model": "gpt-5.4-nano",
+        "reasoningEffort": "low",
+        "clinicalStructuringSource": "openai"
+      },
+      "accuracy": {
+        "diagnosisRecall": 1,
+        "billingSignalRecall": 1,
+        "candidateCodeRecall": null,
+        "candidateCodePrecision": null,
+        "reviewTopicRecall": 0,
+        "forbiddenViolationCount": 0,
+        "totalPointDelta": null
+      },
+      "expected": {
+        "totalPoints": null,
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "actual": {
+        "totalPoints": 75,
+        "candidateCodes": [
+          "112007410"
+        ],
+        "engineStatus": "needs_review",
+        "status": "needs_review",
+        "lineItems": [
+          {
+            "code": "112007410",
+            "name": "再診料",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 75
+          }
+        ],
+        "reviewItems": [
+          {
+            "title": "初診/再診確認",
+            "message": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "マスター候補確認",
+            "message": "特異的IgE（アレルギー検査）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "在宅医療未対応",
+            "message": "在宅医療未対応: 次回受診（2週間後）・症状記録持参は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "訪問診療確認",
+            "message": "訪問診療確認: 在宅医療の判定には訪問診療/往診の実施区分、訪問日、同月履歴、施設基準が必要です。未確認のため自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "施設基準確認",
+            "message": "施設基準がないため検体検査管理加算は自動追加しない",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "鼻腔所見（両下鼻甲介：蒼白・腫脹、水様性鼻汁）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "鼻汁吸引は実施済みの診療行為として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "ネブライザーによる鼻処置は実施済みの診療行為として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "後鼻漏（咽頭への後鼻漏）軽度は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "鼓膜所見（両側異常なし）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "再診料",
+            "message": "Outpatient basic fee candidate for revisit",
+            "status": "needs_review",
+            "severity": "review"
+          }
+        ],
+        "candidateProposals": [],
+        "diagnoses": [
+          "アレルギー性鼻炎の疑い"
+        ],
+        "calculationOptionsSource": "clinical_auto",
+        "calculationOptionsAutoKeys": [
+          "outpatient_basic"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": ""
+        },
+        "checklistFindingStatusCounts": null,
+        "masterSearchTrace": [
+          {
+            "eventName": "鼻腔所見（両下鼻甲介：蒼白・腫脹、水様性鼻汁）",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "鼻腔所見（両下鼻甲介：蒼白・腫脹、水様性鼻汁）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "鼻腔/鼻甲介鼻腔所見（両下鼻甲介：蒼白・腫脹、水様性鼻汁）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 鼻腔所見（両下鼻甲介：蒼白・腫脹、水様性鼻汁）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "「両下鼻甲介は蒼白に腫脹、水様性鼻汁が中等量",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "」 鼻腔所見（両下鼻甲介",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "両下鼻甲介 蒼白 腫脹 水様性鼻汁",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "鼻汁吸引",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "鼻汁吸引",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "鼻腔鼻汁吸引",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 鼻汁吸引",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "「鼻汁を吸引し…実施",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "」 鼻汁吸引",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "診療行為",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [
+                  {
+                    "code": "190108790",
+                    "name": "特定入院料減算（１００分の４０）（他医受診・包括診療行為算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190108890",
+                    "name": "入院基本料減算（１００分の４０）（他医受診・包括診療行為算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190109090",
+                    "name": "入院基本料減算（１００分の２０）（他医受診・包括診療行為算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190142090",
+                    "name": "特定入院料減算（１００分の１０）（他医受診・包括診療行為未算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190142190",
+                    "name": "入院基本料減算（１００分の１０）（他医受診・包括診療行為未算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  }
+                ],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "鼻汁 吸引",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "鼻吸引",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "ネブライザーによる鼻処置",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "ネブライザーによる鼻処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "鼻ネブライザーによる鼻処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none ネブライザーによる鼻処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "「ネブライザーによる鼻処置を実施",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "」 ネブライザーによる鼻処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "診療行為",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [
+                  {
+                    "code": "190108790",
+                    "name": "特定入院料減算（１００分の４０）（他医受診・包括診療行為算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190108890",
+                    "name": "入院基本料減算（１００分の４０）（他医受診・包括診療行為算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190109090",
+                    "name": "入院基本料減算（１００分の２０）（他医受診・包括診療行為算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190142090",
+                    "name": "特定入院料減算（１００分の１０）（他医受診・包括診療行為未算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190142190",
+                    "name": "入院基本料減算（１００分の１０）（他医受診・包括診療行為未算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  }
+                ],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "ネブライザー 鼻処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "鼻 ネブライザー",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "後鼻漏（咽頭への後鼻漏）軽度",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "後鼻漏（咽頭への後鼻漏）軽度",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "咽頭/後鼻漏後鼻漏（咽頭への後鼻漏）軽度",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 後鼻漏（咽頭への後鼻漏）軽度",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "「咽頭への後鼻漏は軽度",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "」 後鼻漏（咽頭への後鼻漏）軽度",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "咽頭 後鼻漏 軽度",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "鼓膜所見（両側異常なし）",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "鼓膜所見（両側異常なし）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "耳/鼓膜鼓膜所見（両側異常なし）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 鼓膜所見（両側異常なし）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "「鼓膜両側異常なし",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "」 鼓膜所見（両側異常なし）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "鼓膜 両側 異常なし",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "耳 鼓膜所見",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          }
+        ],
+        "clinicalEvents": [
+          {
+            "id": "ce_1_exam_鼻腔所見_両下鼻甲介_蒼白_腫脹_水様性鼻汁___両下鼻甲介は蒼白に腫脹_水様性鼻汁が",
+            "name": "鼻腔所見（両下鼻甲介：蒼白・腫脹、水様性鼻汁）",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「両下鼻甲介は蒼白に腫脹、水様性鼻汁が中等量。」"
+          },
+          {
+            "id": "ce_2_procedure_鼻汁吸引__鼻汁を吸引し_実施_鼻汁吸引",
+            "name": "鼻汁吸引",
+            "type": "procedure",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_procedure",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「鼻汁を吸引し…実施。」"
+          },
+          {
+            "id": "ce_3_procedure_ネブライザーによる鼻処置__ネブライザーによる鼻処置を実施_ネブライザーによ",
+            "name": "ネブライザーによる鼻処置",
+            "type": "procedure",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_procedure",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「ネブライザーによる鼻処置を実施。」"
+          },
+          {
+            "id": "ce_4_exam_後鼻漏_咽頭への後鼻漏_軽度__咽頭への後鼻漏は軽度_後鼻漏_咽頭への後鼻漏_軽度",
+            "name": "後鼻漏（咽頭への後鼻漏）軽度",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「咽頭への後鼻漏は軽度。」"
+          },
+          {
+            "id": "ce_5_exam_鼓膜所見_両側異常なし___鼓膜両側異常なし_鼓膜所見_両側異常なし",
+            "name": "鼓膜所見（両側異常なし）",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「鼓膜両側異常なし。」"
+          },
+          {
+            "id": "ce_6_lab_特異的IgE_アレルギー検査___次回アレルギー検査_特異的IgE_を検討_特異的IgE",
+            "name": "特異的IgE（アレルギー検査）",
+            "type": "lab",
+            "actionStatus": "considered",
+            "temporalRelation": "future",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「次回アレルギー検査(特異的IgE)を検討」"
+          },
+          {
+            "id": "ce_7_counseling_鼻のかみ方の指導__鼻のかみ方を母と本人に指導_鼻のかみ方の指導",
+            "name": "鼻のかみ方の指導",
+            "type": "counseling",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「鼻のかみ方を母と本人に指導。」"
+          },
+          {
+            "id": "ce_8_management_内服は現時点で開始せず様子見__内服は現時点では開始せず様子をみる_内服は",
+            "name": "内服は現時点で開始せず様子見",
+            "type": "management",
+            "actionStatus": "considered",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「内服は現時点では開始せず様子をみる。」"
+          },
+          {
+            "id": "ce_9_counseling_環境調整_寝室の換気_寝具の掃除_説明__寝室の換気と寝具の掃除など環境調",
+            "name": "環境調整（寝室の換気・寝具の掃除）説明",
+            "type": "counseling",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「寝室の換気と寝具の掃除など環境調整も説明。」"
+          },
+          {
+            "id": "ce_10_counseling_プール可否_現状は可と回答___現状は可と回答_プール可否_現状は可と回答",
+            "name": "プール可否（現状は可と回答）",
+            "type": "counseling",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「現状は可と回答。」"
+          },
+          {
+            "id": "ce_11_follow_up_次回受診_2週間後_症状記録持参__次回は2週間後_症状の記録を持参してもら",
+            "name": "次回受診（2週間後）・症状記録持参",
+            "type": "follow_up",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "home_care",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「次回は2週間後、症状の記録を持参してもらう。」"
+          }
+        ],
+        "reviewText": [
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+          "鼻腔所見（両下鼻甲介：蒼白・腫脹、水様性鼻汁）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "鼻汁吸引は実施済みの診療行為として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "ネブライザーによる鼻処置は実施済みの診療行為として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "後鼻漏（咽頭への後鼻漏）軽度は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "鼓膜所見（両側異常なし）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "特異的IgE（アレルギー検査）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "在宅医療未対応: 次回受診（2週間後）・症状記録持参は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "初診/再診確認",
+          "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+          "マスター候補確認",
+          "特異的IgE（アレルギー検査）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "在宅医療未対応",
+          "在宅医療未対応: 次回受診（2週間後）・症状記録持参は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "訪問診療確認",
+          "訪問診療確認: 在宅医療の判定には訪問診療/往診の実施区分、訪問日、同月履歴、施設基準が必要です。未確認のため自動算定には入れていません。",
+          "施設基準確認",
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "確認事項",
+          "鼻腔所見（両下鼻甲介：蒼白・腫脹、水様性鼻汁）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "鼻汁吸引は実施済みの診療行為として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "ネブライザーによる鼻処置は実施済みの診療行為として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "後鼻漏（咽頭への後鼻漏）軽度は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "鼓膜所見（両側異常なし）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "再診料",
+          "Outpatient basic fee candidate for revisit"
+        ],
+        "progress": {
+          "phase": "complete",
+          "label": "完了",
+          "message": "算定候補の作成が完了しました。",
+          "percent": 100,
+          "updatedAt": "2026-06-12T10:08:33.369Z",
+          "metrics": {
+            "clinicalStructuring": {
+              "source": "openai",
+              "durationMs": 23481,
+              "openAiProviderDurationMs": 22834,
+              "firstOutputTextMs": null,
+              "clinicalFactsConvertDurationMs": 647,
+              "extractedDiagnosisCount": 2,
+              "extractedClinicalEventCount": 11,
+              "extractedChecklistFindingCount": 0,
+              "checklistMenuCount": 0,
+              "extractedBillingEventCount": 0,
+              "extractedExcludedEventCount": 0,
+              "convertedDiagnosisCount": 1,
+              "convertedOptionKeys": [],
+              "convertedReviewWarningCount": 9,
+              "convertedMasterCandidateCount": 0,
+              "convertedBillingCandidateCount": 0,
+              "convertedReviewIssueCount": 4,
+              "convertedClinicalTraceCount": 6,
+              "masterLookupCount": 38,
+              "masterLookupDurationMs": 643,
+              "model": "gpt-5.4-nano",
+              "reasoningEffort": "low",
+              "promptVersion": "fee-clinical-events-v9",
+              "ruleSetVersion": "fee-clinical-rules-v9",
+              "masterVersion": "runtime-master-current",
+              "timeoutMs": 0,
+              "responseId": "resp_0b86f0dfffc2e2f2016a2bda89d9f8819aa8db7b7eb4e3736d",
+              "usage": {
+                "input_tokens": 3670,
+                "input_tokens_details": {
+                  "cached_tokens": 2816
+                },
+                "output_tokens": 2660,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 6330
+              }
+            },
+            "ruleBasedClinicalInference": {
+              "durationMs": 0,
+              "source": "objective_supplement",
+              "masterLookupCount": 0,
+              "masterLookupDurationMs": 0
+            },
+            "facilityProfile": {
+              "source": "platform_facility",
+              "facilityId": "fac_48e3768bdf33786b56bda39b60",
+              "facilityStandardKeyCount": 0
+            },
+            "patientHistory": {
+              "priorSessionCount": 1
+            },
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 15
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 98
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 23483
+              }
+            ]
+          },
+          "diagnoses": [
+            "アレルギー性鼻炎の疑い"
+          ],
+          "extractedOrders": [
+            "再診料候補"
+          ],
+          "lineItems": [
+            "再診料"
+          ],
+          "totalPoints": 75,
+          "lineItemCount": 1,
+          "warningCount": 1
+        }
+      },
+      "missing": {
+        "diagnoses": [],
+        "billingSignals": [],
+        "candidateCodes": [],
+        "reviewTopics": [
+          "手技内容確認"
+        ]
+      },
+      "unexpected": {
+        "forbiddenCandidateViolations": [],
+        "confirmedForbiddenCandidates": [],
+        "unexpectedCandidateCodes": []
+      }
+    }
+  ]
+}

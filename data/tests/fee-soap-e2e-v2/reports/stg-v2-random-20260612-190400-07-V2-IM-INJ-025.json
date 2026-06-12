@@ -1,0 +1,1229 @@
+{
+  "schemaVersion": "fee-soap-e2e-evaluation.v1",
+  "generatedAt": "2026-06-12T10:06:31.544Z",
+  "datasetId": "fee-soap-e2e-v2",
+  "datasetVersion": "2026-06-12.batches.3",
+  "datasetPath": "data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json",
+  "mode": "stg",
+  "filters": {
+    "caseId": "V2-IM-INJ-025",
+    "assertionLevel": null,
+    "limit": null
+  },
+  "security": {
+    "syntheticDataOnly": true,
+    "soapTextIncluded": false,
+    "credentialsIncluded": false,
+    "reportContainsSecrets": false
+  },
+  "summary": {
+    "mode": "stg",
+    "strict": false,
+    "selected": 1,
+    "totalDatasetCases": 51,
+    "durationMs": 34638,
+    "passed": 0,
+    "failed": 1,
+    "passRate": 0,
+    "byAssertion": {
+      "review_required": {
+        "total": 1,
+        "passed": 0,
+        "failed": 1
+      }
+    },
+    "failureByStage": {
+      "review_policy": 1
+    },
+    "avgDurationMs": 33928,
+    "slowest": [
+      {
+        "caseId": "V2-IM-INJ-025",
+        "assertionLevel": "review_required",
+        "durationMs": 33928,
+        "failedStage": "review_policy"
+      }
+    ],
+    "worstBillingSignalRecall": [
+      {
+        "caseId": "V2-IM-INJ-025",
+        "assertionLevel": "review_required",
+        "billingSignalRecall": 1,
+        "missingBillingSignals": []
+      }
+    ]
+  },
+  "facilityFixtureAudit": {
+    "fixtureKey": "default",
+    "seededFacilityStandardKeys": [],
+    "fixtures": [
+      {
+        "fixtureKey": "default",
+        "seededFacilityStandardKeys": [],
+        "caseIds": [
+          "V2-IM-INJ-025"
+        ]
+      }
+    ],
+    "exactRequiredFacilityStandardKeys": [],
+    "facilityUnknownExpectedKeys": [],
+    "facilityUnknownCaseIds": [],
+    "collisions": [],
+    "collisionPolicy": "single_fixture_ok",
+    "runnerMode": "stg_existing_facility",
+    "seededFacilityStandards": [],
+    "seedStatus": "cleared",
+    "seedError": ""
+  },
+  "results": [
+    {
+      "caseId": "V2-IM-INJ-025",
+      "assertionLevel": "review_required",
+      "difficultyLevel": "L2",
+      "status": "failed",
+      "failedStage": "review_policy",
+      "failureMessages": [
+        "missing review topics: 注射経路確認, 薬剤量確認"
+      ],
+      "chartHash": "4c4fad0e54b50044d77429c6fa73be76c02e84d27c1c076306657147673f7c9f",
+      "feeSessionId": "fee_1b69a443b9e24a228cee71b09c",
+      "historySeed": {
+        "required": false,
+        "reason": "none",
+        "created": false,
+        "failed": false,
+        "feeSessionId": null,
+        "patientId": null,
+        "serviceDate": null
+      },
+      "facilityFixture": {
+        "mode": "stg_existing_facility",
+        "fixtureKey": "default",
+        "facilityId": "fac_48e3768bdf33786b56bda39b60",
+        "seededFacilityStandards": [],
+        "expectedFacilityStandards": [],
+        "collisions": [],
+        "seedStatus": "cleared",
+        "seedError": ""
+      },
+      "http": {
+        "createSession": {
+          "statusCode": 201,
+          "error": null
+        },
+        "calculate": {
+          "statusCode": 201,
+          "error": null
+        },
+        "detail": {
+          "statusCode": 200,
+          "error": null
+        }
+      },
+      "durationMs": {
+        "total": 33928,
+        "seedVisitHistory": 0,
+        "createSession": 249,
+        "calculateRequest": 33264,
+        "detail": 254,
+        "prepare": 0,
+        "savePreparedSession": 0,
+        "pythonCalculator": 0,
+        "saveCalculation": 0,
+        "audit": 0,
+        "clinicalStructuring": 32576,
+        "openAiProvider": 31517,
+        "firstOutputText": null,
+        "ruleBasedInference": 0,
+        "masterLookup": 1053,
+        "masterLookupCount": 56,
+        "model": "gpt-5.4-nano",
+        "reasoningEffort": "low",
+        "clinicalStructuringSource": "openai"
+      },
+      "accuracy": {
+        "diagnosisRecall": 1,
+        "billingSignalRecall": 1,
+        "candidateCodeRecall": null,
+        "candidateCodePrecision": null,
+        "reviewTopicRecall": 0,
+        "forbiddenViolationCount": 0,
+        "totalPointDelta": null
+      },
+      "expected": {
+        "totalPoints": null,
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "actual": {
+        "totalPoints": 291,
+        "candidateCodes": [
+          "111000110"
+        ],
+        "engineStatus": "needs_review",
+        "status": "needs_review",
+        "lineItems": [
+          {
+            "code": "111000110",
+            "name": "初診料",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 291
+          }
+        ],
+        "reviewItems": [
+          {
+            "title": "対象疾患確認",
+            "message": "対象疾患確認: 点滴後の嘔気軽減・水分少量摂取可能は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "在宅医療未対応",
+            "message": "在宅医療未対応: 尿が半日出ない/ぐったりする場合は再診は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "訪問診療確認",
+            "message": "訪問診療確認: 在宅医療の判定には訪問診療/往診の実施区分、訪問日、同月履歴、施設基準が必要です。未確認のため自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "初診/再診確認",
+            "message": "明日も嘔吐継続なら再診し、点滴追加と検査を検討は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "施設基準確認",
+            "message": "施設基準がないため検体検査管理加算は自動追加しない",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "体温 37.4℃は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "血圧 102/64は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "脈拍 96は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "口唇乾燥は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "皮膚ツルゴール軽度低下は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "臍周囲軽度圧痛は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "腸蠕動音亢進は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "末梢静脈路の確保は実施済みの診療行為として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "細胞外液 点滴は実施済みの処置・手技として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "血圧 112/70（点滴終了後）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "確認事項",
+            "message": "脈拍 84（点滴終了後）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "初診料",
+            "message": "Outpatient basic fee candidate for initial",
+            "status": "needs_review",
+            "severity": "review"
+          }
+        ],
+        "candidateProposals": [],
+        "diagnoses": [
+          "感染性胃腸炎による軽度脱水"
+        ],
+        "calculationOptionsSource": "clinical_auto",
+        "calculationOptionsAutoKeys": [
+          "outpatient_basic"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": ""
+        },
+        "checklistFindingStatusCounts": null,
+        "masterSearchTrace": [
+          {
+            "eventName": "体温 37.4℃",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "体温 37.4℃",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 体温 37.4℃",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "KT 37.4 体温 37.4℃",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "体温 37.4",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "血圧 102/64",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "血圧 102/64",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 血圧 102/64",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "BP 102/64 血圧 102/64",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "脈拍 96",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "脈拍 96",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 脈拍 96",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "P 96 脈拍 96",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "口唇乾燥",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "口唇乾燥",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "口唇口唇乾燥",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 口唇乾燥",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "口唇乾燥あり 口唇乾燥",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "皮膚ツルゴール軽度低下",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "皮膚ツルゴール軽度低下",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "皮膚皮膚ツルゴール軽度低下",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 皮膚ツルゴール軽度低下",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "皮膚ツルゴール軽度低下 皮膚ツルゴール軽度低下",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "皮膚ツルゴール 軽度低下",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "臍周囲軽度圧痛",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "臍周囲軽度圧痛",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "臍周囲臍周囲軽度圧痛",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 臍周囲軽度圧痛",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "臍周囲に軽度圧痛 臍周囲軽度圧痛",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "臍周囲 圧痛",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "腸蠕動音亢進",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "腸蠕動音亢進",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "腹部腸蠕動音亢進",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 腸蠕動音亢進",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "腸蠕動音亢進 腸蠕動音亢進",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "腸蠕動音 亢進",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "末梢静脈路の確保",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "末梢静脈路の確保",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 末梢静脈路の確保",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "末梢静脈路を確保し 末梢静脈路の確保",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "診療行為",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [
+                  {
+                    "code": "190108790",
+                    "name": "特定入院料減算（１００分の４０）（他医受診・包括診療行為算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190108890",
+                    "name": "入院基本料減算（１００分の４０）（他医受診・包括診療行為算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190109090",
+                    "name": "入院基本料減算（１００分の２０）（他医受診・包括診療行為算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190142090",
+                    "name": "特定入院料減算（１００分の１０）（他医受診・包括診療行為未算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  },
+                  {
+                    "code": "190142190",
+                    "name": "入院基本料減算（１００分の１０）（他医受診・包括診療行為未算定）",
+                    "feeCategory": "reduction",
+                    "itemRole": "reduction",
+                    "reason": "derived_only:reduction"
+                  }
+                ],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "末梢静脈路確保",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "細胞外液 点滴",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "細胞外液 点滴",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 細胞外液 点滴",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "細胞外液500mLの点滴を実施 細胞外液 点滴",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "処置・手技",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "細胞外液 点滴 500mL",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "血圧 112/70（点滴終了後）",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "血圧 112/70（点滴終了後）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 血圧 112/70（点滴終了後）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "滴下終了後のBP 112/70 血圧 112/70（点滴終了後）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "血圧 112/70",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          },
+          {
+            "eventName": "脈拍 84（点滴終了後）",
+            "outcome": "unresolved",
+            "query": "",
+            "selected": null,
+            "searches": [
+              {
+                "query": "脈拍 84（点滴終了後）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "none 脈拍 84（点滴終了後）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "滴下終了後のBP 112/70、P 84 脈拍 84（点滴終了後）",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "検査・処置",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              },
+              {
+                "query": "脈拍 84",
+                "outcome": "no_match",
+                "selectedCode": "",
+                "filteredCandidates": [],
+                "ambiguousCandidates": [],
+                "ambiguityReason": ""
+              }
+            ]
+          }
+        ],
+        "clinicalEvents": [
+          {
+            "id": "ce_1_exam_体温_37_4__KT_37_4_体温_37_4",
+            "name": "体温 37.4℃",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "KT 37.4"
+          },
+          {
+            "id": "ce_2_exam_血圧_102_64_BP_102_64_血圧_102_64",
+            "name": "血圧 102/64",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "BP 102/64"
+          },
+          {
+            "id": "ce_3_exam_脈拍_96_P_96_脈拍_96",
+            "name": "脈拍 96",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "P 96"
+          },
+          {
+            "id": "ce_4_exam_口唇乾燥_口唇乾燥あり_口唇乾燥",
+            "name": "口唇乾燥",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "口唇乾燥あり"
+          },
+          {
+            "id": "ce_5_exam_皮膚ツルゴール軽度低下_皮膚ツルゴール軽度低下_皮膚ツルゴール軽度低下",
+            "name": "皮膚ツルゴール軽度低下",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "皮膚ツルゴール軽度低下"
+          },
+          {
+            "id": "ce_6_exam_臍周囲軽度圧痛_臍周囲に軽度圧痛_臍周囲軽度圧痛",
+            "name": "臍周囲軽度圧痛",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "臍周囲に軽度圧痛"
+          },
+          {
+            "id": "ce_7_exam_腸蠕動音亢進_腸蠕動音亢進_腸蠕動音亢進",
+            "name": "腸蠕動音亢進",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "腸蠕動音亢進"
+          },
+          {
+            "id": "ce_8_procedure_末梢静脈路の確保_末梢静脈路を確保し_末梢静脈路の確保",
+            "name": "末梢静脈路の確保",
+            "type": "procedure",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "末梢静脈路を確保し"
+          },
+          {
+            "id": "ce_9_treatment_細胞外液_点滴_細胞外液500mLの点滴を実施_細胞外液_点滴",
+            "name": "細胞外液 点滴",
+            "type": "treatment",
+            "actionStatus": "administered",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "細胞外液500mLの点滴を実施"
+          },
+          {
+            "id": "ce_10_exam_血圧_112_70_点滴終了後__滴下終了後のBP_112_70_血圧_112_70_",
+            "name": "血圧 112/70（点滴終了後）",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "滴下終了後のBP 112/70"
+          },
+          {
+            "id": "ce_11_exam_脈拍_84_点滴終了後__滴下終了後のBP_112_70_P_84_脈拍_84_点滴終",
+            "name": "脈拍 84（点滴終了後）",
+            "type": "exam",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "unknown",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "滴下終了後のBP 112/70、P 84"
+          },
+          {
+            "id": "ce_12_management_点滴後の嘔気軽減_水分少量摂取可能_点滴後は嘔気軽減し_水分少量摂取可能と",
+            "name": "点滴後の嘔気軽減・水分少量摂取可能",
+            "type": "management",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "点滴後は嘔気軽減し、水分少量摂取可能となった"
+          },
+          {
+            "id": "ce_13_lab_血液検査_状態改善のため血液検査は本日は行わず_血液検査",
+            "name": "血液検査",
+            "type": "lab",
+            "actionStatus": "not_performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "状態改善のため血液検査は本日は行わず"
+          },
+          {
+            "id": "ce_14_counseling_経口補水を少量頻回で再開_経口補水を少量頻回で再開_本日は消化の良い食事を",
+            "name": "経口補水を少量頻回で再開",
+            "type": "counseling",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "経口補水を少量頻回で再開。本日は消化の良い食事を指示。"
+          },
+          {
+            "id": "ce_15_management_整腸剤は市販品で可_整腸剤は市販のもので可と説明_整腸剤は市販品で可",
+            "name": "整腸剤は市販品で可",
+            "type": "management",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "整腸剤は市販のもので可と説明。"
+          },
+          {
+            "id": "ce_16_counseling_家族内感染予防_手洗い_タオル分け_指導_家族内感染予防として手洗い_タオ",
+            "name": "家族内感染予防（手洗い・タオル分け）指導",
+            "type": "counseling",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "家族内感染予防として手洗い・タオル分けを指導。"
+          },
+          {
+            "id": "ce_17_follow_up_尿が半日出ない_ぐったりする場合は再診_尿が半日出ない_ぐったりする場合は再",
+            "name": "尿が半日出ない/ぐったりする場合は再診",
+            "type": "follow_up",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "home_care",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "尿が半日出ない・ぐったりする場合は再診。"
+          },
+          {
+            "id": "ce_18_follow_up_明日も嘔吐継続なら再診し_点滴追加と検査を検討_明日も嘔吐が続く場合は再診し",
+            "name": "明日も嘔吐継続なら再診し、点滴追加と検査を検討",
+            "type": "follow_up",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "明日も嘔吐が続く場合は再診し、点滴の追加と検査を検討すると説明。"
+          }
+        ],
+        "reviewText": [
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "体温 37.4℃は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "血圧 102/64は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "脈拍 96は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "口唇乾燥は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "皮膚ツルゴール軽度低下は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "臍周囲軽度圧痛は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "腸蠕動音亢進は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "末梢静脈路の確保は実施済みの診療行為として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "細胞外液 点滴は実施済みの処置・手技として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "血圧 112/70（点滴終了後）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "脈拍 84（点滴終了後）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "在宅医療未対応: 尿が半日出ない/ぐったりする場合は再診は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "明日も嘔吐継続なら再診し、点滴追加と検査を検討は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "対象疾患確認",
+          "対象疾患確認: 点滴後の嘔気軽減・水分少量摂取可能は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+          "在宅医療未対応",
+          "在宅医療未対応: 尿が半日出ない/ぐったりする場合は再診は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "訪問診療確認",
+          "訪問診療確認: 在宅医療の判定には訪問診療/往診の実施区分、訪問日、同月履歴、施設基準が必要です。未確認のため自動算定には入れていません。",
+          "初診/再診確認",
+          "明日も嘔吐継続なら再診し、点滴追加と検査を検討は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "施設基準確認",
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "確認事項",
+          "体温 37.4℃は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "血圧 102/64は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "脈拍 96は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "口唇乾燥は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "皮膚ツルゴール軽度低下は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "臍周囲軽度圧痛は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "腸蠕動音亢進は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "末梢静脈路の確保は実施済みの診療行為として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "細胞外液 点滴は実施済みの処置・手技として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "血圧 112/70（点滴終了後）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "確認事項",
+          "脈拍 84（点滴終了後）は実施済みの検査・処置として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。",
+          "初診料",
+          "Outpatient basic fee candidate for initial"
+        ],
+        "progress": {
+          "phase": "complete",
+          "label": "完了",
+          "message": "算定候補の作成が完了しました。",
+          "percent": 100,
+          "updatedAt": "2026-06-12T10:06:31.021Z",
+          "metrics": {
+            "clinicalStructuring": {
+              "source": "openai",
+              "durationMs": 32576,
+              "openAiProviderDurationMs": 31517,
+              "firstOutputTextMs": null,
+              "clinicalFactsConvertDurationMs": 1058,
+              "extractedDiagnosisCount": 1,
+              "extractedClinicalEventCount": 18,
+              "extractedChecklistFindingCount": 0,
+              "checklistMenuCount": 0,
+              "extractedBillingEventCount": 0,
+              "extractedExcludedEventCount": 0,
+              "convertedDiagnosisCount": 1,
+              "convertedOptionKeys": [
+                "outpatient_basic"
+              ],
+              "convertedReviewWarningCount": 14,
+              "convertedMasterCandidateCount": 0,
+              "convertedBillingCandidateCount": 0,
+              "convertedReviewIssueCount": 4,
+              "convertedClinicalTraceCount": 13,
+              "masterLookupCount": 56,
+              "masterLookupDurationMs": 1053,
+              "model": "gpt-5.4-nano",
+              "reasoningEffort": "low",
+              "promptVersion": "fee-clinical-events-v9",
+              "ruleSetVersion": "fee-clinical-rules-v9",
+              "masterVersion": "runtime-master-current",
+              "timeoutMs": 0,
+              "responseId": "resp_08ccddbc2986174b016a2bda0672a0819b9580ae0773b79bb6",
+              "usage": {
+                "input_tokens": 3675,
+                "input_tokens_details": {
+                  "cached_tokens": 2816
+                },
+                "output_tokens": 3807,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 7482
+              }
+            },
+            "ruleBasedClinicalInference": {
+              "durationMs": 0,
+              "source": "objective_supplement",
+              "masterLookupCount": 0,
+              "masterLookupDurationMs": 0
+            },
+            "facilityProfile": {
+              "source": "platform_facility",
+              "facilityId": "fac_48e3768bdf33786b56bda39b60",
+              "facilityStandardKeyCount": 0
+            },
+            "patientHistory": {
+              "priorSessionCount": 0
+            },
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 33
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 98
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 32578
+              }
+            ]
+          },
+          "diagnoses": [
+            "感染性胃腸炎による軽度脱水"
+          ],
+          "extractedOrders": [
+            "初診料候補"
+          ],
+          "lineItems": [
+            "初診料"
+          ],
+          "totalPoints": 291,
+          "lineItemCount": 1,
+          "warningCount": 1
+        }
+      },
+      "missing": {
+        "diagnoses": [],
+        "billingSignals": [],
+        "candidateCodes": [],
+        "reviewTopics": [
+          "注射経路確認",
+          "薬剤量確認"
+        ]
+      },
+      "unexpected": {
+        "forbiddenCandidateViolations": [],
+        "confirmedForbiddenCandidates": [],
+        "unexpectedCandidateCodes": []
+      }
+    }
+  ]
+}

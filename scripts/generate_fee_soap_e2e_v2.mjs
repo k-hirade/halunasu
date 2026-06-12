@@ -19,6 +19,19 @@ for (const file of batchFiles) {
   allCases.push(...module.cases);
 }
 
+// 文体バリアント: variantOf で基底ケースの請求側(検証済み)を継承し、カルテ・文体軸・ディストラクタのみ差し替える。
+const baseById = new Map(allCases.filter((c) => !c.variantOf).map((c) => [c.caseId, c]));
+for (const item of allCases) {
+  if (!item.variantOf) continue;
+  const base = baseById.get(item.variantOf);
+  if (!base) throw new Error(`variantOf not found: ${item.variantOf} (${item.caseId})`);
+  for (const key of ["department", "facilityFixtureKey", "patient", "encounter", "expectedExtraction", "expectedClaimContext", "expectedCalculation", "billingTargets"]) {
+    if (item[key] === undefined) item[key] = base[key];
+  }
+  item.title = item.title || `${base.title} [variant:${item.styleProfile || "alt"}]`;
+  item.difficultyLevel = item.difficultyLevel || base.difficultyLevel;
+}
+
 function chartStandard(soap) {
   const sections = [
     ["S（Subjective：主観的情報）", soap.S],
@@ -37,7 +50,9 @@ function caseTypeSignature(item) {
     topics: item.expectedExtraction.requiredReviewTopics,
     fixture: item.facilityFixtureKey,
     realism: item.realismAxes,
-    distractors: (item.distractors || []).map((d) => d.type)
+    distractors: (item.distractors || []).map((d) => d.type),
+    variantOf: item.variantOf || null,
+    styleProfile: item.styleProfile || null
   });
   return `fee-soap-e2e-v2.case-type.v1:${crypto.createHash("sha256").update(basis).digest("hex").slice(0, 32)}`;
 }
@@ -64,6 +79,8 @@ const dataset = {
     encounter: { ...item.encounter, department: item.department },
     facilityFixtureKey: item.facilityFixtureKey,
     realismAxes: item.realismAxes,
+    variantOf: item.variantOf || null,
+    styleProfile: item.styleProfile || null,
     distractors: item.distractors || [],
     chart: { soap: item.soap, standard: chartStandard(item.soap) },
     status: "draft_pending_medical_review",

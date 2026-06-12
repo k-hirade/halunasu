@@ -1,0 +1,445 @@
+{
+  "schemaVersion": "fee-soap-e2e-evaluation.v1",
+  "generatedAt": "2026-06-12T10:07:24.708Z",
+  "datasetId": "fee-soap-e2e-v2",
+  "datasetVersion": "2026-06-12.batches.3",
+  "datasetPath": "data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json",
+  "mode": "stg",
+  "filters": {
+    "caseId": "V2-PSY-MED-035",
+    "assertionLevel": null,
+    "limit": null
+  },
+  "security": {
+    "syntheticDataOnly": true,
+    "soapTextIncluded": false,
+    "credentialsIncluded": false,
+    "reportContainsSecrets": false
+  },
+  "summary": {
+    "mode": "stg",
+    "strict": false,
+    "selected": 1,
+    "totalDatasetCases": 51,
+    "durationMs": 12240,
+    "passed": 0,
+    "failed": 1,
+    "passRate": 0,
+    "byAssertion": {
+      "exact": {
+        "total": 1,
+        "passed": 0,
+        "failed": 1
+      }
+    },
+    "failureByStage": {
+      "extraction": 1
+    },
+    "avgDurationMs": 11571,
+    "slowest": [
+      {
+        "caseId": "V2-PSY-MED-035",
+        "assertionLevel": "exact",
+        "durationMs": 11571,
+        "failedStage": "extraction"
+      }
+    ],
+    "worstBillingSignalRecall": [
+      {
+        "caseId": "V2-PSY-MED-035",
+        "assertionLevel": "exact",
+        "billingSignalRecall": 0.5,
+        "missingBillingSignals": [
+          "一般名処方加算"
+        ]
+      }
+    ]
+  },
+  "facilityFixtureAudit": {
+    "fixtureKey": "default",
+    "seededFacilityStandardKeys": [],
+    "fixtures": [
+      {
+        "fixtureKey": "default",
+        "seededFacilityStandardKeys": [],
+        "caseIds": [
+          "V2-PSY-MED-035"
+        ]
+      }
+    ],
+    "exactRequiredFacilityStandardKeys": [],
+    "facilityUnknownExpectedKeys": [],
+    "facilityUnknownCaseIds": [],
+    "collisions": [],
+    "collisionPolicy": "single_fixture_ok",
+    "runnerMode": "stg_existing_facility",
+    "seededFacilityStandards": [],
+    "seedStatus": "cleared",
+    "seedError": ""
+  },
+  "results": [
+    {
+      "caseId": "V2-PSY-MED-035",
+      "assertionLevel": "exact",
+      "difficultyLevel": "L2",
+      "status": "failed",
+      "failedStage": "extraction",
+      "failureMessages": [
+        "totalPoints 291 != expected 361",
+        "missing candidate codes: 120002910, 120004270",
+        "missing billing signals: 一般名処方加算",
+        "missing review topics: 精神科専門療法未対応"
+      ],
+      "chartHash": "07d13d52e3369229c58dcb4648d7b2b94b44d8227eb0990a7598235998d9920a",
+      "feeSessionId": "fee_e6edb3eaa4c048f8b1d157ffb6",
+      "historySeed": {
+        "required": false,
+        "reason": "none",
+        "created": false,
+        "failed": false,
+        "feeSessionId": null,
+        "patientId": null,
+        "serviceDate": null
+      },
+      "facilityFixture": {
+        "mode": "stg_existing_facility",
+        "fixtureKey": "default",
+        "facilityId": "fac_48e3768bdf33786b56bda39b60",
+        "seededFacilityStandards": [],
+        "expectedFacilityStandards": [],
+        "collisions": [],
+        "seedStatus": "cleared",
+        "seedError": ""
+      },
+      "http": {
+        "createSession": {
+          "statusCode": 201,
+          "error": null
+        },
+        "calculate": {
+          "statusCode": 201,
+          "error": null
+        },
+        "detail": {
+          "statusCode": 200,
+          "error": null
+        }
+      },
+      "durationMs": {
+        "total": 11571,
+        "seedVisitHistory": 0,
+        "createSession": 273,
+        "calculateRequest": 10954,
+        "detail": 198,
+        "prepare": 0,
+        "savePreparedSession": 0,
+        "pythonCalculator": 0,
+        "saveCalculation": 0,
+        "audit": 0,
+        "clinicalStructuring": 10305,
+        "openAiProvider": 10138,
+        "firstOutputText": null,
+        "ruleBasedInference": 1,
+        "masterLookup": 163,
+        "masterLookupCount": 6,
+        "model": "gpt-5.4-nano",
+        "reasoningEffort": "low",
+        "clinicalStructuringSource": "openai"
+      },
+      "accuracy": {
+        "diagnosisRecall": 1,
+        "billingSignalRecall": 0.5,
+        "candidateCodeRecall": 0.333,
+        "candidateCodePrecision": 1,
+        "reviewTopicRecall": 0,
+        "forbiddenViolationCount": 0,
+        "totalPointDelta": -70
+      },
+      "expected": {
+        "totalPoints": 361,
+        "candidateCodes": [
+          "111000110",
+          "120002910",
+          "120004270"
+        ],
+        "engineStatus": "completed"
+      },
+      "actual": {
+        "totalPoints": 291,
+        "candidateCodes": [
+          "111000110"
+        ],
+        "engineStatus": "needs_review",
+        "status": "needs_review",
+        "lineItems": [
+          {
+            "code": "111000110",
+            "name": "初診料",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 291
+          }
+        ],
+        "reviewItems": [
+          {
+            "title": "対象疾患確認",
+            "message": "対象疾患確認: 睡眠衛生指導（寝酒の中止、就床時刻を遅らせる、起床時刻の固定）は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "在宅医療未対応",
+            "message": "在宅医療未対応: 2週間後の再診は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "訪問診療確認",
+            "message": "訪問診療確認: 在宅医療の判定には訪問診療/往診の実施区分、訪問日、同月履歴、施設基準が必要です。未確認のため自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "マスター候補確認",
+            "message": "心理検査（経過をみて必要なら検討）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "院内外処方確認",
+            "message": "院内外処方確認: visit_factsは院外処方を示していますが、根拠引用が院外処方箋交付として確認できません。 院外処方箋交付の根拠が確認できないため、院外処方箋料を自動追加しません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "施設基準確認",
+            "message": "施設基準がないため検体検査管理加算は自動追加しない",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "レンボレキサントの確認",
+            "message": "薬剤「レンボレキサント」をマスターコードへ解決できませんでした。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "初診料",
+            "message": "Outpatient basic fee candidate for initial",
+            "status": "needs_review",
+            "severity": "review"
+          }
+        ],
+        "candidateProposals": [],
+        "diagnoses": [
+          "不眠症（入眠障害+中途覚醒）"
+        ],
+        "calculationOptionsSource": "clinical_auto",
+        "calculationOptionsAutoKeys": [
+          "outpatient_basic"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "yes",
+          "generic_name_prescription": "yes",
+          "prescription_evidence": "「院外処方箋を交付(一般名処方)」"
+        },
+        "checklistFindingStatusCounts": null,
+        "masterSearchTrace": [],
+        "clinicalEvents": [
+          {
+            "id": "ce_1_counseling_睡眠衛生指導_寝酒の中止_就床時刻を遅らせる_起床時刻の固定___睡眠衛生",
+            "name": "睡眠衛生指導（寝酒の中止、就床時刻を遅らせる、起床時刻の固定）",
+            "type": "counseling",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「睡眠衛生指導: 寝酒の中止、就床時刻を遅らせる、起床時刻の固定。」"
+          },
+          {
+            "id": "ce_2_medication_レンボレキサント錠5mg__レンボレキサント錠5mg_1T_就寝前_14日",
+            "name": "レンボレキサント錠5mg",
+            "type": "medication",
+            "actionStatus": "prescribed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_medication",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「レンボレキサント錠5mg 1T 就寝前 14日分」"
+          },
+          {
+            "id": "ce_3_follow_up_2週間後の再診__2週間後に再診_2週間後の再診",
+            "name": "2週間後の再診",
+            "type": "follow_up",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "home_care",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「2週間後に再診。」"
+          },
+          {
+            "id": "ce_4_management_日中の強い眠気時の運転回避と連絡の説明__日中の強い眠気が出た場合は運転を",
+            "name": "日中の強い眠気時の運転回避と連絡の説明",
+            "type": "management",
+            "actionStatus": "instruction_only",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "「日中の強い眠気が出た場合は運転を控え、連絡するよう説明。」"
+          },
+          {
+            "id": "ce_5_lab_心理検査_経過をみて必要なら検討___心理検査は経過をみて必要なら検討_心理検査_経過を",
+            "name": "心理検査（経過をみて必要なら検討）",
+            "type": "lab",
+            "actionStatus": "considered",
+            "temporalRelation": "future",
+            "billingDomain": "standard_lab",
+            "certainty": "ambiguous",
+            "source": "",
+            "evidence": "「心理検査は経過をみて必要なら検討。」"
+          }
+        ],
+        "reviewText": [
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "薬剤「レンボレキサント」をマスターコードへ解決できませんでした。",
+          "在宅医療未対応: 2週間後の再診は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "心理検査（経過をみて必要なら検討）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "院内外処方確認: visit_factsは院外処方を示していますが、根拠引用が院外処方箋交付として確認できません。 院外処方箋交付の根拠が確認できないため、院外処方箋料を自動追加しません。",
+          "対象疾患確認",
+          "対象疾患確認: 睡眠衛生指導（寝酒の中止、就床時刻を遅らせる、起床時刻の固定）は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+          "在宅医療未対応",
+          "在宅医療未対応: 2週間後の再診は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "訪問診療確認",
+          "訪問診療確認: 在宅医療の判定には訪問診療/往診の実施区分、訪問日、同月履歴、施設基準が必要です。未確認のため自動算定には入れていません。",
+          "マスター候補確認",
+          "心理検査（経過をみて必要なら検討）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "院内外処方確認",
+          "院内外処方確認: visit_factsは院外処方を示していますが、根拠引用が院外処方箋交付として確認できません。 院外処方箋交付の根拠が確認できないため、院外処方箋料を自動追加しません。",
+          "施設基準確認",
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "レンボレキサントの確認",
+          "薬剤「レンボレキサント」をマスターコードへ解決できませんでした。",
+          "初診料",
+          "Outpatient basic fee candidate for initial"
+        ],
+        "progress": {
+          "phase": "complete",
+          "label": "完了",
+          "message": "算定候補の作成が完了しました。",
+          "percent": 100,
+          "updatedAt": "2026-06-12T10:07:24.249Z",
+          "metrics": {
+            "clinicalStructuring": {
+              "source": "openai",
+              "durationMs": 10305,
+              "openAiProviderDurationMs": 10138,
+              "firstOutputTextMs": null,
+              "clinicalFactsConvertDurationMs": 166,
+              "extractedDiagnosisCount": 2,
+              "extractedClinicalEventCount": 5,
+              "extractedChecklistFindingCount": 0,
+              "checklistMenuCount": 0,
+              "extractedBillingEventCount": 0,
+              "extractedExcludedEventCount": 0,
+              "convertedDiagnosisCount": 1,
+              "convertedOptionKeys": [
+                "outpatient_basic"
+              ],
+              "convertedReviewWarningCount": 5,
+              "convertedMasterCandidateCount": 0,
+              "convertedBillingCandidateCount": 0,
+              "convertedReviewIssueCount": 5,
+              "convertedClinicalTraceCount": 3,
+              "masterLookupCount": 6,
+              "masterLookupDurationMs": 163,
+              "model": "gpt-5.4-nano",
+              "reasoningEffort": "low",
+              "promptVersion": "fee-clinical-events-v9",
+              "ruleSetVersion": "fee-clinical-rules-v9",
+              "masterVersion": "runtime-master-current",
+              "timeoutMs": 0,
+              "responseId": "resp_05d406230bdec4a1016a2bda51e500819b8d4897b218ea419f",
+              "usage": {
+                "input_tokens": 3682,
+                "input_tokens_details": {
+                  "cached_tokens": 2816
+                },
+                "output_tokens": 1401,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 5083
+              }
+            },
+            "ruleBasedClinicalInference": {
+              "durationMs": 1,
+              "source": "objective_supplement",
+              "masterLookupCount": 0,
+              "masterLookupDurationMs": 0
+            },
+            "facilityProfile": {
+              "source": "platform_facility",
+              "facilityId": "fac_48e3768bdf33786b56bda39b60",
+              "facilityStandardKeyCount": 0
+            },
+            "patientHistory": {
+              "priorSessionCount": 0
+            },
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 1
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 21
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 78
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 10306
+              }
+            ]
+          },
+          "diagnoses": [
+            "不眠症（入眠障害+中途覚醒）"
+          ],
+          "extractedOrders": [
+            "初診料候補"
+          ],
+          "lineItems": [
+            "初診料"
+          ],
+          "totalPoints": 291,
+          "lineItemCount": 1,
+          "warningCount": 1
+        }
+      },
+      "missing": {
+        "diagnoses": [],
+        "billingSignals": [
+          "一般名処方加算"
+        ],
+        "candidateCodes": [
+          "120002910",
+          "120004270"
+        ],
+        "reviewTopics": [
+          "精神科専門療法未対応"
+        ]
+      },
+      "unexpected": {
+        "forbiddenCandidateViolations": [],
+        "confirmedForbiddenCandidates": [],
+        "unexpectedCandidateCodes": []
+      }
+    }
+  ]
+}

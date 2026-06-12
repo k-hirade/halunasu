@@ -46,7 +46,10 @@ const datasetArgIndex = process.argv.indexOf("--dataset");
 const datasetPath = datasetArgIndex >= 0 && process.argv[datasetArgIndex + 1]
   ? path.resolve(repoRoot, process.argv[datasetArgIndex + 1])
   : path.join(repoRoot, "data/tests/fee-soap-e2e/fee-soap-e2e-cases.json");
-const reportDir = path.join(repoRoot, "data/tests/fee-soap-e2e/reports");
+const reportDirArgIndex = process.argv.indexOf("--report-dir");
+const reportDir = reportDirArgIndex >= 0 && process.argv[reportDirArgIndex + 1]
+  ? path.resolve(repoRoot, process.argv[reportDirArgIndex + 1])
+  : path.join(repoRoot, "data/tests/fee-soap-e2e/reports");
 const defaultNow = new Date("2026-06-07T00:00:00.000Z");
 const localSessionSecret = "fee-soap-e2e-local-session-secret";
 const args = parseArgs(process.argv.slice(2));
@@ -1286,6 +1289,7 @@ function parseArgs(argv) {
     caseTimeoutMs: 60000,
     slowMs: 30000,
     masterDbPath: "",
+    reportDir: "",
     help: false
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -1308,6 +1312,7 @@ function parseArgs(argv) {
     else if (arg === "--slow-ms") parsed.slowMs = Number(next());
     else if (arg === "--master-db-path") parsed.masterDbPath = next();
     else if (arg === "--dataset") next();
+    else if (arg === "--report-dir") parsed.reportDir = next();
     else throw new Error(`Unknown argument: ${arg}`);
   }
   if (!["local", "stg"].includes(parsed.mode)) {
@@ -1328,7 +1333,8 @@ Options:
   --limit N                        Run the first N matching cases
   --case CASE_ID                   Run one case
   --assertion LEVEL                Filter by assertionLevel
-  --output-prefix NAME             Report prefix under data/tests/fee-soap-e2e/reports
+  --output-prefix NAME             Report prefix under the report directory
+  --report-dir PATH                Report directory. Default: data/tests/fee-soap-e2e/reports
   --strict                         Exit non-zero when any case fails
   --verbose                        Print every case result
   --openai                         Local mode only: use OPENAI_API_KEY for clinical structuring

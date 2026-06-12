@@ -1,0 +1,579 @@
+{
+  "schemaVersion": "fee-soap-e2e-evaluation.v1",
+  "generatedAt": "2026-06-12T10:07:43.054Z",
+  "datasetId": "fee-soap-e2e-v2",
+  "datasetVersion": "2026-06-12.batches.3",
+  "datasetPath": "data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json",
+  "mode": "stg",
+  "filters": {
+    "caseId": "V2-NEPH-022",
+    "assertionLevel": null,
+    "limit": null
+  },
+  "security": {
+    "syntheticDataOnly": true,
+    "soapTextIncluded": false,
+    "credentialsIncluded": false,
+    "reportContainsSecrets": false
+  },
+  "summary": {
+    "mode": "stg",
+    "strict": false,
+    "selected": 1,
+    "totalDatasetCases": 51,
+    "durationMs": 18245,
+    "passed": 1,
+    "failed": 0,
+    "passRate": 1,
+    "byAssertion": {
+      "unsupported_expected": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0
+      }
+    },
+    "failureByStage": {},
+    "avgDurationMs": 17743,
+    "slowest": [
+      {
+        "caseId": "V2-NEPH-022",
+        "assertionLevel": "unsupported_expected",
+        "durationMs": 17743,
+        "failedStage": null
+      }
+    ],
+    "worstBillingSignalRecall": [
+      {
+        "caseId": "V2-NEPH-022",
+        "assertionLevel": "unsupported_expected",
+        "billingSignalRecall": 0,
+        "missingBillingSignals": [
+          "人工腎臓"
+        ]
+      }
+    ]
+  },
+  "facilityFixtureAudit": {
+    "fixtureKey": "default",
+    "seededFacilityStandardKeys": [],
+    "fixtures": [
+      {
+        "fixtureKey": "default",
+        "seededFacilityStandardKeys": [],
+        "caseIds": [
+          "V2-NEPH-022"
+        ]
+      }
+    ],
+    "exactRequiredFacilityStandardKeys": [],
+    "facilityUnknownExpectedKeys": [],
+    "facilityUnknownCaseIds": [],
+    "collisions": [],
+    "collisionPolicy": "single_fixture_ok",
+    "runnerMode": "stg_existing_facility",
+    "seededFacilityStandards": [],
+    "seedStatus": "cleared",
+    "seedError": ""
+  },
+  "results": [
+    {
+      "caseId": "V2-NEPH-022",
+      "assertionLevel": "unsupported_expected",
+      "difficultyLevel": "L3",
+      "status": "passed",
+      "failedStage": null,
+      "failureMessages": [],
+      "chartHash": "a7765a1779da500ff281a9a04947e480bb84311a2681d53f2a2521f9ba9cdb27",
+      "feeSessionId": "fee_b405bb5410e049448abb250b07",
+      "historySeed": {
+        "required": true,
+        "reason": "encounter.visitType=revisit",
+        "created": true,
+        "failed": false,
+        "feeSessionId": "fee_db756f3e9a7e4e0eb63a7cd63a",
+        "patientId": "pat_33ebacc795cb43e799f730531e",
+        "serviceDate": "2026-07-07"
+      },
+      "facilityFixture": {
+        "mode": "stg_existing_facility",
+        "fixtureKey": "default",
+        "facilityId": "fac_48e3768bdf33786b56bda39b60",
+        "seededFacilityStandards": [],
+        "expectedFacilityStandards": [],
+        "collisions": [],
+        "seedStatus": "cleared",
+        "seedError": ""
+      },
+      "http": {
+        "seedVisitHistory": {
+          "statusCode": 201,
+          "error": null
+        },
+        "createSession": {
+          "statusCode": 201,
+          "error": null
+        },
+        "calculate": {
+          "statusCode": 201,
+          "error": null
+        },
+        "detail": {
+          "statusCode": 200,
+          "error": null
+        }
+      },
+      "durationMs": {
+        "total": 17743,
+        "seedVisitHistory": 286,
+        "createSession": 222,
+        "calculateRequest": 16845,
+        "detail": 174,
+        "prepare": 0,
+        "savePreparedSession": 0,
+        "pythonCalculator": 0,
+        "saveCalculation": 0,
+        "audit": 0,
+        "clinicalStructuring": 16334,
+        "openAiProvider": 16330,
+        "firstOutputText": null,
+        "ruleBasedInference": 0,
+        "masterLookup": 0,
+        "masterLookupCount": 0,
+        "model": "gpt-5.4-nano",
+        "reasoningEffort": "low",
+        "clinicalStructuringSource": "openai"
+      },
+      "accuracy": {
+        "diagnosisRecall": 0,
+        "billingSignalRecall": 0,
+        "candidateCodeRecall": null,
+        "candidateCodePrecision": null,
+        "reviewTopicRecall": 1,
+        "forbiddenViolationCount": 0,
+        "totalPointDelta": null
+      },
+      "expected": {
+        "totalPoints": null,
+        "candidateCodes": [],
+        "engineStatus": "needs_review"
+      },
+      "actual": {
+        "totalPoints": 75,
+        "candidateCodes": [
+          "112007410"
+        ],
+        "engineStatus": "needs_review",
+        "status": "needs_review",
+        "lineItems": [
+          {
+            "code": "112007410",
+            "name": "再診料",
+            "status": "candidate",
+            "supportLevel": "candidate",
+            "reviewRequired": true,
+            "totalPoints": 75
+          }
+        ],
+        "reviewItems": [
+          {
+            "title": "初診/再診確認",
+            "message": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "透析未対応",
+            "message": "透析未対応: 血液透析（維持透析）は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "過去値・持参情報",
+            "message": "血清カリウム（K）は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "過去値・持参情報",
+            "message": "ヘモグロビン（Hb）は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "過去値・持参情報",
+            "message": "リン（P）は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "マスター候補確認",
+            "message": "次回採血（来週の透析時）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "透析未対応",
+            "message": "透析未対応: 除水計画の微調整は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "マスター候補確認",
+            "message": "リンの食事指導（栄養士と相談）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "対象疾患確認",
+            "message": "対象疾患確認: フットケア自己観察の継続説明は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "透析未対応",
+            "message": "透析未対応: 下肢のつりへの除水速度調整（透析後半）は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "マスター候補確認",
+            "message": "次回診察（次週の透析日に合わせる）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "輸血未対応",
+            "message": "輸血未対応: 輸血（不要/選択肢の言及）は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "過去値・持参情報",
+            "message": "ESAは過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "施設基準確認",
+            "message": "施設基準がないため検体検査管理加算は自動追加しない",
+            "status": "needs_review",
+            "severity": "warning"
+          },
+          {
+            "title": "再診料",
+            "message": "Outpatient basic fee candidate for revisit",
+            "status": "needs_review",
+            "severity": "review"
+          }
+        ],
+        "candidateProposals": [],
+        "diagnoses": [
+          "維持血液透析（安定）",
+          "貧血",
+          "下肢のつり",
+          "透析関連の皮膚掻痒（軽度）"
+        ],
+        "calculationOptionsSource": "clinical_auto",
+        "calculationOptionsAutoKeys": [
+          "outpatient_basic"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": ""
+        },
+        "checklistFindingStatusCounts": {
+          "performed_today": 1,
+          "mentioned_not_performed": 1
+        },
+        "masterSearchTrace": [],
+        "clinicalEvents": [
+          {
+            "id": "ce_1_management_血液透析_維持透析__本日_血液透析を4時間実施_血液透析_維持透析",
+            "name": "血液透析（維持透析）",
+            "type": "management",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "dialysis",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "本日、血液透析を4時間実施。"
+          },
+          {
+            "id": "ce_2_lab_血清カリウム_K__前回採血_K_4_8_血清カリウム_K",
+            "name": "血清カリウム（K）",
+            "type": "lab",
+            "actionStatus": "performed",
+            "temporalRelation": "past",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "前回採血: K 4.8、"
+          },
+          {
+            "id": "ce_3_lab_ヘモグロビン_Hb__前回採血_K_4_8_Hb_10_2_ヘモグロビン_Hb",
+            "name": "ヘモグロビン（Hb）",
+            "type": "lab",
+            "actionStatus": "performed",
+            "temporalRelation": "past",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "前回採血: K 4.8、Hb 10.2、"
+          },
+          {
+            "id": "ce_4_lab_リン_P__前回採血_K_4_8_Hb_10_2_P_5_1_リン_P",
+            "name": "リン（P）",
+            "type": "lab",
+            "actionStatus": "performed",
+            "temporalRelation": "past",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "前回採血: K 4.8、Hb 10.2、P 5.1。"
+          },
+          {
+            "id": "ce_5_lab_次回採血_来週の透析時__次回採血は来週の透析時に予定_次回採血_来週の透析時_採血項目",
+            "name": "次回採血（来週の透析時）",
+            "type": "lab",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "standard_lab",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "次回採血は来週の透析時に予定。"
+          },
+          {
+            "id": "ce_6_management_除水計画の微調整_透析条件は除水計画を微調整_除水計画の微調整",
+            "name": "除水計画の微調整",
+            "type": "management",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "dialysis",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "透析条件は除水計画を微調整。"
+          },
+          {
+            "id": "ce_7_counseling_リンの食事指導_栄養士と相談__リンの食事指導を栄養士と相談する_リンの食",
+            "name": "リンの食事指導（栄養士と相談）",
+            "type": "counseling",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "リンの食事指導を栄養士と相談する。"
+          },
+          {
+            "id": "ce_8_counseling_フットケア自己観察の継続説明_フットケアの自己観察を継続するよう説明_フッ",
+            "name": "フットケア自己観察の継続説明",
+            "type": "counseling",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "standard_counseling",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "フットケアの自己観察を継続するよう説明。"
+          },
+          {
+            "id": "ce_9_management_下肢のつりへの除水速度調整_透析後半__下肢のつりには透析後半の除水速度を",
+            "name": "下肢のつりへの除水速度調整（透析後半）",
+            "type": "management",
+            "actionStatus": "performed",
+            "temporalRelation": "current_visit",
+            "billingDomain": "dialysis",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "下肢のつりには透析後半の除水速度を緩める設定とした。"
+          },
+          {
+            "id": "ce_10_follow_up_次回診察_次週の透析日に合わせる__次回診察は次週の透析日に合わせる_次回診",
+            "name": "次回診察（次週の透析日に合わせる）",
+            "type": "follow_up",
+            "actionStatus": "planned",
+            "temporalRelation": "future",
+            "billingDomain": "standard_management",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "次回診察は次週の透析日に合わせる。"
+          },
+          {
+            "id": "ce_11_management_輸血_不要_選択肢の言及__進行時は輸血も選択肢になるが現時点では不要_輸",
+            "name": "輸血（不要/選択肢の言及）",
+            "type": "management",
+            "actionStatus": "considered",
+            "temporalRelation": "unknown",
+            "billingDomain": "transfusion",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "進行時は輸血も選択肢になるが現時点では不要。"
+          },
+          {
+            "id": "ce_12_medication_ESA_貧血はESA継続で経過観察_ESA_投与開始_処方の明確な記載はな",
+            "name": "ESA",
+            "type": "medication",
+            "actionStatus": "considered",
+            "temporalRelation": "past",
+            "billingDomain": "standard_medication",
+            "certainty": "explicit",
+            "source": "",
+            "evidence": "貧血はESA継続で経過観察"
+          }
+        ],
+        "reviewText": [
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+          "透析未対応: 血液透析（維持透析）は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "次回採血（来週の透析時）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "透析未対応: 除水計画の微調整は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "リンの食事指導（栄養士と相談）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "透析未対応: 下肢のつりへの除水速度調整（透析後半）は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "次回診察（次週の透析日に合わせる）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "輸血未対応: 輸血（不要/選択肢の言及）は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "初診/再診確認",
+          "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+          "透析未対応",
+          "透析未対応: 血液透析（維持透析）は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "過去値・持参情報",
+          "血清カリウム（K）は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+          "過去値・持参情報",
+          "ヘモグロビン（Hb）は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+          "過去値・持参情報",
+          "リン（P）は過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+          "マスター候補確認",
+          "次回採血（来週の透析時）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "透析未対応",
+          "透析未対応: 除水計画の微調整は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "マスター候補確認",
+          "リンの食事指導（栄養士と相談）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "対象疾患確認",
+          "対象疾患確認: フットケア自己観察の継続説明は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+          "透析未対応",
+          "透析未対応: 下肢のつりへの除水速度調整（透析後半）は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "マスター候補確認",
+          "次回診察（次週の透析日に合わせる）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "輸血未対応",
+          "輸血未対応: 輸血（不要/選択肢の言及）は未対応または高リスク領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+          "過去値・持参情報",
+          "ESAは過去値・持参情報として抽出されたため、当日実施分としては算定候補に入れていません。",
+          "施設基準確認",
+          "施設基準がないため検体検査管理加算は自動追加しない",
+          "再診料",
+          "Outpatient basic fee candidate for revisit"
+        ],
+        "progress": {
+          "phase": "complete",
+          "label": "完了",
+          "message": "算定候補の作成が完了しました。",
+          "percent": 100,
+          "updatedAt": "2026-06-12T10:07:42.720Z",
+          "metrics": {
+            "clinicalStructuring": {
+              "source": "openai",
+              "durationMs": 16334,
+              "openAiProviderDurationMs": 16330,
+              "firstOutputTextMs": null,
+              "clinicalFactsConvertDurationMs": 3,
+              "extractedDiagnosisCount": 4,
+              "extractedClinicalEventCount": 12,
+              "extractedChecklistFindingCount": 2,
+              "checklistMenuCount": 2,
+              "extractedBillingEventCount": 0,
+              "extractedExcludedEventCount": 0,
+              "convertedDiagnosisCount": 4,
+              "convertedOptionKeys": [],
+              "convertedReviewWarningCount": 9,
+              "convertedMasterCandidateCount": 0,
+              "convertedBillingCandidateCount": 0,
+              "convertedReviewIssueCount": 13,
+              "convertedClinicalTraceCount": 6,
+              "masterLookupCount": 0,
+              "masterLookupDurationMs": 0,
+              "model": "gpt-5.4-nano",
+              "reasoningEffort": "low",
+              "promptVersion": "fee-clinical-events-v9",
+              "ruleSetVersion": "fee-clinical-rules-v9",
+              "masterVersion": "runtime-master-current",
+              "timeoutMs": 0,
+              "responseId": "resp_09fc85a1fc405c7a016a2bda5e595881998b1ff061f04b8535",
+              "usage": {
+                "input_tokens": 3867,
+                "input_tokens_details": {
+                  "cached_tokens": 2816
+                },
+                "output_tokens": 2992,
+                "output_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "total_tokens": 6859
+              }
+            },
+            "ruleBasedClinicalInference": {
+              "durationMs": 0,
+              "source": "objective_supplement",
+              "masterLookupCount": 0,
+              "masterLookupDurationMs": 0
+            },
+            "facilityProfile": {
+              "source": "platform_facility",
+              "facilityId": "fac_48e3768bdf33786b56bda39b60",
+              "facilityStandardKeyCount": 0
+            },
+            "patientHistory": {
+              "priorSessionCount": 1
+            },
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 24
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 88
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 16336
+              }
+            ]
+          },
+          "diagnoses": [
+            "維持血液透析（安定）",
+            "貧血",
+            "下肢のつり",
+            "透析関連の皮膚掻痒（軽度）"
+          ],
+          "extractedOrders": [
+            "再診料候補"
+          ],
+          "lineItems": [
+            "再診料"
+          ],
+          "totalPoints": 75,
+          "lineItemCount": 1,
+          "warningCount": 1
+        }
+      },
+      "missing": {
+        "diagnoses": [
+          "慢性腎不全"
+        ],
+        "billingSignals": [
+          "人工腎臓"
+        ],
+        "candidateCodes": [],
+        "reviewTopics": []
+      },
+      "unexpected": {
+        "forbiddenCandidateViolations": [],
+        "confirmedForbiddenCandidates": [],
+        "unexpectedCandidateCodes": []
+      }
+    }
+  ]
+}
