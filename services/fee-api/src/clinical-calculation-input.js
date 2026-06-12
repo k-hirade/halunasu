@@ -2580,7 +2580,7 @@ function medicationDispensingKindFromText(text = "", name = "") {
 }
 
 function inferMedicationDeliveryKind(text) {
-  if (/(院外|処方箋|院外処方)/u.test(text)) {
+  if (isOutsidePrescriptionEvidence(text)) {
     return "outside_prescription";
   }
   return "in_house";
@@ -4807,13 +4807,15 @@ function isHighConfidenceProcedureMasterItem(item = {}, { query = "", name = "",
 }
 
 function procedureMasterCandidateAssessment(item = {}, { query = "", name = "", categoryLabel = "" } = {}) {
-  const itemText = normalizeProcedureMatchText([
+  const rawItemText = [
     item.name,
     item.baseName,
     item.displayName,
     item.shortName
-  ].filter(Boolean).join(" "));
-  const contextText = normalizeProcedureMatchText([query, name, categoryLabel].filter(Boolean).join(" "));
+  ].filter(Boolean).join(" ");
+  const rawContextText = [query, name, categoryLabel].filter(Boolean).join(" ");
+  const itemText = normalizeProcedureMatchText(rawItemText);
+  const contextText = normalizeProcedureMatchText(rawContextText);
   if (!itemText || !contextText) {
     return {
       highConfidence: false,
@@ -4827,8 +4829,8 @@ function procedureMasterCandidateAssessment(item = {}, { query = "", name = "", 
   const queryTokens = procedureMatchTokens(query);
   const nameTokens = procedureMatchTokens(name);
   const itemNameKeys = procedureCandidateNameKeys(item);
-  const contextModifiers = procedureModifierSet(contextText);
-  const itemModifiers = procedureModifierSet(itemText);
+  const contextModifiers = procedureModifierSet(rawContextText);
+  const itemModifiers = procedureModifierSet(rawItemText);
   const unmatchedModifiers = [...itemModifiers].filter((modifier) => !contextModifiers.has(modifier));
   let score = 0;
   if (queryKey && itemNameKeys.has(queryKey)) score += 110;
@@ -4840,7 +4842,7 @@ function procedureMasterCandidateAssessment(item = {}, { query = "", name = "", 
   if (unmatchedModifiers.length && !contextModifiers.size) score -= 45;
   if (unmatchedModifiers.length && contextModifiers.size) score -= 15;
   return {
-    highConfidence: score >= 40,
+    highConfidence: score >= PROCEDURE_MASTER_HIGH_CONFIDENCE_SCORE,
     score,
     unmatchedModifiers,
     matchedModifiers: [...itemModifiers].filter((modifier) => contextModifiers.has(modifier))
@@ -4855,6 +4857,9 @@ function normalizeProcedureMatchText(value) {
     .toLowerCase();
 }
 
+const PROCEDURE_MASTER_HIGH_CONFIDENCE_SCORE = 40;
+const PROCEDURE_MASTER_AMBIGUOUS_SCORE_MARGIN = 8;
+
 const PROCEDURE_MODIFIER_TERMS = Object.freeze([
   "定性",
   "定量",
@@ -4868,7 +4873,28 @@ const PROCEDURE_MODIFIER_TERMS = Object.freeze([
 
 function procedureModifierSet(value = "") {
   const text = normalizeProcedureMatchText(value);
-  return new Set(PROCEDURE_MODIFIER_TERMS.filter((term) => text.includes(normalizeProcedureMatchText(term))));
+  return new Set([
+    ...PROCEDURE_MODIFIER_TERMS.filter((term) => text.includes(normalizeProcedureMatchText(term))),
+    ...procedureParentheticalMethodModifiers(value)
+  ].map((term) => normalizeProcedureMatchText(term)).filter(Boolean));
+}
+
+function procedureParentheticalMethodModifiers(value = "") {
+  const modifiers = [];
+  const source = String(value || "");
+  const parentheticalMatches = source.matchAll(/[（(]([^（）()]{1,32})[）)]/gu);
+  for (const match of parentheticalMatches) {
+    const content = String(match?.[1] || "").trim();
+    if (!content) {
+      continue;
+    }
+    for (const segment of content.split(/[、,，・/／]/u).map((part) => part.trim()).filter(Boolean)) {
+      if (/(?:法|型|方式|モード|撮影法)$/u.test(segment)) {
+        modifiers.push(segment);
+      }
+    }
+  }
+  return modifiers;
 }
 
 function procedureCandidateNameKeys(item = {}) {
@@ -4886,7 +4912,10 @@ function selectProcedureMasterCandidate(candidates = [], context = {}) {
   }
   const sorted = [...candidates].sort((a, b) => b.score - a.score);
   const top = sorted[0];
-  const tied = sorted.filter((candidate) => Math.abs(candidate.score - top.score) <= 8);
+  // The scorer gives exact name matches 110 points, substring matches 70, and weak token
+  // matches 35. Require more than a token-only match for auto-selection, and treat near
+  // ties as review-required because code-order fallback is unsafe for sibling masters.
+  const tied = sorted.filter((candidate) => Math.abs(candidate.score - top.score) <= PROCEDURE_MASTER_AMBIGUOUS_SCORE_MARGIN);
   if (tied.length > 1) {
     return {
       ambiguous: true,

@@ -1620,6 +1620,176 @@ test("prefers exact master name over modifier siblings when modifier is not in t
   assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160054710"]);
 });
 
+test("does not auto-select parenthetical method masters without chart support", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.searchMaster = async (input) => {
+    if (input.type === "procedure" && input.query === "超音波") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [
+          {
+            kind: "procedure",
+            code: "160072110",
+            name: "超音波検査（Ａモード法）",
+            points: 150,
+            feeCategory: "procedure_basic",
+            itemRole: "base",
+            directRetrievalAllowed: true
+          },
+          {
+            kind: "procedure",
+            code: "160072210",
+            name: "超音波検査（断層撮影法）（胸腹部）",
+            points: 530,
+            feeCategory: "procedure_basic",
+            itemRole: "base",
+            directRetrievalAllowed: true
+          }
+        ]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "腹痛", status: "confirmed", evidence: "腹痛" }],
+    clinical_events: [{
+      type: "imaging",
+      billing_domain: "standard_imaging",
+      name: "超音波",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "normal",
+      certainty: "explicit",
+      section: "O",
+      evidence: "腹部超音波を実施し、明らかな異常なし",
+      search_queries: ["超音波"]
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Ultrasound Ambiguous Method Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 腹部超音波を実施し、明らかな異常なし。",
+    diagnoses: [{ name: "腹痛" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => (
+    String(issue.messageForStaff || issue.title || "").includes("マスター候補確認")
+  )));
+});
+
+test("selects parenthetical method masters when the method is chart-supported", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.searchMaster = async (input) => {
+    if (input.type === "procedure" && input.query === "超音波検査（Ａモード法）") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160072110",
+          name: "超音波検査（Ａモード法）",
+          points: 150,
+          feeCategory: "procedure_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "眼科検査", status: "confirmed", evidence: "眼科検査" }],
+    clinical_events: [{
+      type: "exam",
+      billing_domain: "standard_procedure",
+      name: "超音波検査（Ａモード法）",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "normal",
+      certainty: "explicit",
+      section: "O",
+      evidence: "超音波検査（Ａモード法）を実施",
+      search_queries: ["超音波検査（Ａモード法）"]
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Ultrasound A Mode Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 超音波検査（Ａモード法）を実施。",
+    diagnoses: [{ name: "眼科検査" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160072110"]);
+});
+
 test("recovers named performed lab events from checklist findings before master search", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -3098,6 +3268,90 @@ test("derives outside prescription fee options from structured visit facts witho
     delivery_kind: "outside_prescription",
     prescription_category: "other",
     generic_name_prescription_add_on: "generic_name_add_on_1"
+  });
+});
+
+test("does not infer outside prescription from negated prescription slip text", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.searchMaster = async (input) => {
+    if (input.type === "drug" && String(input.query || "").includes("ゲーベン")) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "drug",
+          code: "620008991",
+          name: "ゲーベンクリーム1%",
+          points: 0
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "熱傷", status: "confirmed", evidence: "熱傷" }],
+    clinical_events: [{
+      type: "medication",
+      name: "ゲーベンクリーム1%",
+      action_status: "prescribed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "not_applicable",
+      certainty: "explicit",
+      section: "P",
+      evidence: "処方箋は発行せず、ゲーベンクリーム1%を10g院内で外用薬として処方",
+      search_queries: ["ゲーベンクリーム1%"],
+      total_quantity: "10"
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Negated Prescription Slip Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "P: 処方箋は発行せず、ゲーベンクリーム1%を10g院内で外用薬として処方。",
+    diagnoses: [{ name: "熱傷" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.medication_orders, [{
+    drug_code: "620008991",
+    total_quantity: "10",
+    dispensing_kind: "external"
+  }]);
+  assert.deepEqual(receivedInput.calculationOptions.medication, {
+    delivery_kind: "in_house",
+    prescription_category: "other"
   });
 });
 
