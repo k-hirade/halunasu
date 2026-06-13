@@ -1106,6 +1106,76 @@ test("keeps conflicting same-kind imaging orders separate", async () => {
   );
 });
 
+test("emits contrast review when chart-level contrast uncertainty is separate from CT event evidence", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "腹痛", status: "suspected", evidence: "腹痛" }],
+    clinical_events: [{
+      type: "imaging",
+      billing_domain: "standard_imaging",
+      name: "腹部CT",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "normal",
+      certainty: "explicit",
+      section: "O",
+      evidence: "本日、腹部CTを施行。虫垂腫大は明らかでない。",
+      search_queries: ["腹部CT"],
+      modality: "ct",
+      body_site: "腹部"
+    }],
+    checklist_findings: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Chart Level Contrast Review Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: [
+      "O: 本日、腹部CTを施行。虫垂腫大は明らかでない。",
+      "造影の有無は撮影実施記録で見直す。"
+    ].join("\n"),
+    diagnoses: [{ name: "腹痛" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.imaging_orders[0].contrast, false);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => (
+    issue.topicCode === "contrast_check"
+    && /造影/u.test(issue.messageForStaff)
+  )));
+});
+
 test("uses structured clinical facts for calculation input when available", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -2026,6 +2096,74 @@ test("does not recover checklist findings without a quoted evidence span", async
   )));
 });
 
+test("does not recover performed checklist findings from negated evidence", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [],
+    clinical_events: [],
+    checklist_findings: [{
+      menu_id: "imaging:simple_radiography",
+      status: "performed_today",
+      evidence: "胸部X線は本日は行っていない",
+      reason: "LLMが実施済みと誤分類した"
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Checklist Negated Evidence Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 呼吸状態は安定。胸部X線は本日は行っていない。",
+    diagnoses: [{ name: "発熱" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(masterSearches.length, 0);
+  assert.equal(receivedInput.calculationOptions?.imaging_orders, undefined);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => (
+    issue.topicCode === "clinical_event_conflict_check"
+    && /胸部X線/u.test(issue.messageForStaff)
+  )));
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => (
+    item.stage === "checklist_recall"
+    && item.outcome === "blocked"
+    && item.message === "checklist_performed_evidence_negated_or_not_current"
+  )));
+});
+
 test("recovers standard treatment events from checklist findings without direct word billing", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -2106,6 +2244,169 @@ test("recovers standard treatment events from checklist findings without direct 
   assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
     event.name === "熱傷処置"
     && event.source === "checklist_recall"
+  )));
+});
+
+test("recovers composite covid flu antigen checklist as an independent lab event", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    if (input.type === "procedure" && input.query === "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160230050",
+          name: "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          points: 420,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    if (input.type === "procedure" && input.query === "インフルエンザウイルス抗原定性") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160169450",
+          name: "インフルエンザウイルス抗原定性",
+          points: 132,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async ({ checklistMenu }) => {
+    assert.ok(checklistMenu.some((item) => item.menuId === "lab:covid_flu_antigen" && item.compositeConcept === true));
+    return {
+      visit_type: { kind: "initial", evidence: "初診", confidence: "medium" },
+      diagnoses: [],
+      clinical_events: [{
+        clinical_event_id: "ce_flu_component",
+        type: "lab",
+        name: "インフルB抗原検査",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        provider_ownership: "own_clinic",
+        source_origin: "own_clinic_record",
+        evidence: "院内でコロナ・インフル同時抗原を実施。インフルB陽性、コロナ陰性。",
+        search_queries: ["インフルエンザウイルス抗原定性"]
+      }],
+      checklist_findings: [{
+        menu_id: "lab:covid_flu_antigen",
+        status: "performed_today",
+        evidence: "院内でコロナ・インフル同時抗原を実施",
+        reason: "同時検査の実施記載"
+      }],
+      excluded_events: [],
+      missing_information: [],
+      review_flags: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Composite Checklist Lab Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 院内でコロナ・インフル同時抗原を実施。インフルB陽性、コロナ陰性。",
+    diagnoses: [{ name: "発熱" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160230050"]);
+  assert.equal(masterSearches.some((input) => input.query === "インフルエンザウイルス抗原定性"), false);
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => (
+    item.stage === "checklist_composite_normalization"
+    && item.outcome === "superseded"
+  )));
+});
+
+test("recovers surgery review domain from excision wording in checklist menu", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let extractorChecklistMenu = [];
+  stores.feeCalculator.calculate = async () => ({
+    provider: "test_fee_engine",
+    source: "test",
+    status: "completed",
+    totalPoints: 0,
+    lineItems: [],
+    warnings: []
+  });
+  const clinicalFactsExtractor = async ({ checklistMenu }) => {
+    extractorChecklistMenu = checklistMenu;
+    return {
+      visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+      diagnoses: [{ name: "皮下腫瘤", status: "suspected", evidence: "皮下腫瘤" }],
+      clinical_events: [],
+      checklist_findings: [{
+        menu_id: "domain:surgery",
+        status: "performed_today",
+        evidence: "背部皮下腫瘤を局所麻酔下に摘出",
+        reason: "切除・摘出を含む手術領域の記載"
+      }],
+      excluded_events: [],
+      missing_information: [],
+      review_flags: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Surgery Domain Checklist Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 背部皮下腫瘤を局所麻酔下に摘出。検体は病理へ提出。",
+    diagnoses: [{ name: "皮下腫瘤" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.ok(extractorChecklistMenu.some((item) => item.menuId === "domain:surgery"));
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => (
+    issue.topicCode === "surgery_unsupported"
+    && /手術未対応/u.test(issue.messageForStaff)
   )));
 });
 

@@ -1068,6 +1068,29 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     clinicalText: text,
     existingEvents: clinicalEvents
   });
+  if (checklistRecovery.reviewIssues?.length) {
+    reviewIssues.push(...checklistRecovery.reviewIssues);
+    reviewWarnings.push(...checklistRecovery.reviewIssues.map((issue) => issue.messageForStaff));
+  }
+  const compositeSupersededEventIds = supersededClinicalEventIdsFromCompositeChecklistRecovery({
+    existingEvents: clinicalEvents,
+    recoveredEvents: checklistRecovery.events
+  });
+  if (compositeSupersededEventIds.size) {
+    clinicalEvents = clinicalEvents.filter((event) => {
+      const keep = !compositeSupersededEventIds.has(clinicalEventIdentity(event));
+      if (!keep) {
+        clinicalTrace.push(clinicalTraceEvent({
+          stage: "checklist_composite_normalization",
+          event,
+          categoryLabel: "複合検査",
+          outcome: "superseded",
+          message: "component_event_superseded_by_composite_checklist"
+        }));
+      }
+      return keep;
+    });
+  }
   if (checklistRecovery.events.length) {
     clinicalEvents = [...clinicalEvents, ...checklistRecovery.events];
   }
@@ -2463,7 +2486,10 @@ function inferImagingOrders(text) {
         reviewWarnings.push("MRI検査は予定・依頼として記載されているため、今回算定候補には入れていません。実施済みの場合は撮影内容を確認してください。");
       } else if (isPerformedImagingContext(sentence, "mri")) {
         const equipmentKind = mriEquipmentKindFromText(sentence);
-        const contrastState = localContrastState(sentence, "mri");
+        const localState = localContrastState(sentence, "mri");
+        const contrastState = localState === "absent" && chartLevelUnknownContrastStateForKind(text, "mri") === "unknown"
+          ? "unknown"
+          : localState;
         const electronicState = localElectronicImageManagementState(sentence);
         const order = {
           kind: "mri",
@@ -2491,7 +2517,10 @@ function inferImagingOrders(text) {
         reviewWarnings.push("CT検査は予定・依頼として記載されているため、今回算定候補には入れていません。実施済みの場合は撮影内容を確認してください。");
       } else if (isPerformedImagingContext(sentence, "ct")) {
         const equipmentKind = ctEquipmentKindFromText(sentence);
-        const contrastState = localContrastState(sentence, "ct");
+        const localState = localContrastState(sentence, "ct");
+        const contrastState = localState === "absent" && chartLevelUnknownContrastStateForKind(text, "ct") === "unknown"
+          ? "unknown"
+          : localState;
         const electronicState = localElectronicImageManagementState(sentence);
         const order = {
           kind: "ct",
@@ -2916,6 +2945,7 @@ function clinicalEventsFromChecklistFindings({
   const menuById = new Map(asArray(checklistMenu).map((item) => [String(item.menuId || item.menu_id || ""), item]));
   const existing = asArray(existingEvents);
   const events = [];
+  const reviewIssues = [];
   const traceEvents = [];
   for (const [index, finding] of asArray(facts?.checklist_findings).entries()) {
     const menuId = String(finding?.menu_id || finding?.menuId || "").trim();
@@ -2933,6 +2963,21 @@ function clinicalEventsFromChecklistFindings({
         status,
         label: menu?.label || "",
         message: "checklist_evidence_missing_or_not_in_text"
+      });
+      continue;
+    }
+    if (
+      status === "performed_today"
+      && !checklistPerformedEvidenceSupportsCurrentService(evidence)
+    ) {
+      reviewIssues.push(reviewIssueFromUnsafeChecklistRecovery({ menu, finding }));
+      traceEvents.push({
+        stage: "checklist_recall",
+        outcome: "blocked",
+        menuId,
+        status,
+        label: menu?.label || "",
+        message: "checklist_performed_evidence_negated_or_not_current"
       });
       continue;
     }
@@ -2972,6 +3017,7 @@ function clinicalEventsFromChecklistFindings({
   }
   return {
     events,
+    reviewIssues: dedupeObjects(reviewIssues, (issue) => issue.reviewIssueId),
     traceEvents
   };
 }
@@ -3106,19 +3152,87 @@ function checklistFindingEvidenceIsUsable({ status = "", evidence = "", clinical
   return normalizedText.includes(normalizedEvidence);
 }
 
+function checklistPerformedEvidenceSupportsCurrentService(evidence = "") {
+  const text = normalizeClinicalText(evidence);
+  if (!text) {
+    return false;
+  }
+  return splitClinicalSentences(text).some((sentence) => {
+    const normalized = normalizeClinicalText(sentence);
+    if (!normalized || isClinicalMetaSentence(normalized)) {
+      return false;
+    }
+    return !(
+      isNegatedClinicalServiceContext(normalized)
+      || isFutureOrOrderOnlyContext(normalized)
+      || isPastOrExternalClinicalServiceContext(normalized)
+    );
+  });
+}
+
+function reviewIssueFromUnsafeChecklistRecovery({ menu = {}, finding = {} } = {}) {
+  const name = String(menu.label || menu.name || "確認項目").trim();
+  const evidence = String(finding?.evidence || "").trim();
+  const evidencePart = evidence ? ` 根拠引用: ${evidence}` : "";
+  const messageForStaff = `抽出結果確認: ${name}はチェックリストでは今回実施として返されましたが、根拠引用に未実施・予定・過去・他院を示す文脈があります。自動算定には入れず、カルテ上の実施事実を確認してください。${evidencePart}`;
+  return withReviewTopic({
+    reviewIssueId: `issue_${candidateIdPart(["unsafe_checklist_recovery", menu.menuId || menu.menu_id, evidence].join("_"))}`,
+    issueCode: "clinical_event_conflict",
+    severity: "warning",
+    title: "抽出結果確認",
+    messageForStaff,
+    evidence,
+    source: "checklist_recall"
+  }, "clinical_event_conflict_check");
+}
+
+function supersededClinicalEventIdsFromCompositeChecklistRecovery({
+  existingEvents = [],
+  recoveredEvents = []
+} = {}) {
+  const compositeMenuIds = new Set();
+  for (const event of asArray(recoveredEvents)) {
+    for (const menuId of [
+      ...asArray(event?.checklistMenuIds),
+      ...asArray(event?.checklist_menu_ids)
+    ]) {
+      if (String(menuId || "") === "lab:covid_flu_antigen") {
+        compositeMenuIds.add("lab:covid_flu_antigen");
+      }
+    }
+  }
+  if (!compositeMenuIds.size) {
+    return new Set();
+  }
+  const result = new Set();
+  for (const event of asArray(existingEvents)) {
+    if (compositeMenuIds.has("lab:covid_flu_antigen") && isCovidOrInfluenzaComponentLabEvent(event)) {
+      result.add(clinicalEventIdentity(event));
+    }
+  }
+  return result;
+}
+
+function isCovidOrInfluenzaComponentLabEvent(event = {}) {
+  if (!["lab", "exam"].includes(normalizeClinicalEventType(event))) {
+    return false;
+  }
+  const text = normalizeClinicalText([
+    clinicalEventName(event),
+    clinicalEventEvidence(event),
+    ...asArray(event?.search_queries),
+    ...asArray(event?.searchQueries)
+  ].join(" "));
+  const hasViralTarget = /(COVID|SARS|コロナ|新型コロナ|インフル|influenza|flu)/iu.test(text);
+  const hasTestContext = /(抗原|迅速|検査|陽性|陰性|判定)/u.test(text);
+  return hasViralTarget && hasTestContext;
+}
+
 function clinicalEventMatchesChecklistMenu(event = {}, menu = {}) {
   const menuType = String(menu.eventType || menu.type || menu.kind || "").trim();
   const menuDomain = String(menu.billingDomain || menu.billing_domain || "").trim();
   const eventType = normalizeClinicalEventType(event);
   const eventDomain = normalizeClinicalEventBillingDomain(event);
-  if (menuDomain && menuDomain === eventDomain) {
-    if (menu.kind === "domain") {
-      return true;
-    }
-    if (menuType && !clinicalChecklistEventTypesEquivalent(menuType, eventType)) {
-      return false;
-    }
-  }
   const eventName = normalizeClinicalText(clinicalEventName(event));
   const eventText = normalizeClinicalText([
     clinicalEventName(event),
@@ -3127,6 +3241,23 @@ function clinicalEventMatchesChecklistMenu(event = {}, menu = {}) {
     ...asArray(event?.searchQueries)
   ].join(" "));
   const label = normalizeClinicalText(menu.label || menu.name || "");
+  const query = normalizeClinicalText(menu.query || "");
+  if (menu.compositeConcept) {
+    return Boolean(
+      (label && eventName.includes(label))
+      || (query && eventText.includes(query))
+      || asArray(event.checklistMenuIds).includes(menu.menuId || menu.menu_id)
+      || asArray(event.checklist_menu_ids).includes(menu.menuId || menu.menu_id)
+    );
+  }
+  if (menuDomain && menuDomain === eventDomain) {
+    if (menu.kind === "domain") {
+      return true;
+    }
+    if (menuType && !clinicalChecklistEventTypesEquivalent(menuType, eventType)) {
+      return false;
+    }
+  }
   if (label && eventName.includes(label)) {
     return true;
   }
@@ -3196,6 +3327,7 @@ function enrichClinicalEventWithChecklistMenu(event = {}, menu = {}) {
 
 function checklistFindingToClinicalEvent({ finding = {}, menu = {}, index = 0 } = {}) {
   const status = normalizeChecklistFindingStatus(finding.status);
+  const checklistMenuIds = uniqueStrings([menu.menuId || menu.menu_id]).filter(Boolean);
   const statusMapping = {
     performed_today: {
       action_status: menu.eventType === "medication" ? "prescribed" : "performed",
@@ -3259,6 +3391,8 @@ function checklistFindingToClinicalEvent({ finding = {}, menu = {}, index = 0 } 
     total_quantity: "",
     area_size_cm2: "",
     review_reason: String(finding.reason || "チェックリスト検証で回収").trim(),
+    checklistMenuIds,
+    checklist_menu_ids: checklistMenuIds,
     source: "checklist_recall"
   };
 }
@@ -4432,7 +4566,10 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator, options 
   }
   if (kind === "mri") {
     const equipmentKind = clinicalEventEquipmentKind(event, "mri", options.clinicalText);
-    const contrastState = localContrastState(evidence, "mri");
+    const contrastState = clinicalEventContrastState(event, {
+      clinicalText: options.clinicalText,
+      imagingKind: "mri"
+    });
     const electronicState = clinicalEventElectronicImageManagementState(event, {
       clinicalText: options.clinicalText,
       imagingKind: "mri"
@@ -4445,6 +4582,9 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator, options 
       order.electronic_image_management = true;
     } else if (electronicState === "unknown") {
       reviewWarnings.push("電子保存確認: MRI検査の電子保存・電子画像管理の有無がカルテ本文から確定できません。算定条件を確認してください。");
+    }
+    if (contrastState === "unknown") {
+      reviewWarnings.push("造影確認: MRI検査の造影有無がカルテ本文から確定できません。造影剤を使用したか確認してください。");
     }
     if (equipmentKind) {
       order.mri_equipment_kind = equipmentKind;
@@ -4462,7 +4602,10 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator, options 
   }
   if (kind === "ct") {
     const equipmentKind = clinicalEventEquipmentKind(event, "ct", options.clinicalText);
-    const contrastState = localContrastState(evidence, "ct");
+    const contrastState = clinicalEventContrastState(event, {
+      clinicalText: options.clinicalText,
+      imagingKind: "ct"
+    });
     const electronicState = clinicalEventElectronicImageManagementState(event, {
       clinicalText: options.clinicalText,
       imagingKind: "ct"
@@ -4475,6 +4618,9 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator, options 
       order.electronic_image_management = true;
     } else if (electronicState === "unknown") {
       reviewWarnings.push("電子保存確認: CT検査の電子保存・電子画像管理の有無がカルテ本文から確定できません。算定条件を確認してください。");
+    }
+    if (contrastState === "unknown") {
+      reviewWarnings.push("造影確認: CT検査の造影有無がカルテ本文から確定できません。造影剤を使用したか確認してください。");
     }
     if (equipmentKind) {
       order.ct_equipment_kind = equipmentKind;
@@ -5427,7 +5573,8 @@ export function buildClinicalChecklistMenu(text = "") {
       searchQueries: uniqueStrings(asArray(item.searchQueries)),
       modality: item.modality || "none",
       conceptKey: item.conceptKey || "",
-      matchTerms: uniqueStrings(asArray(item.matchTerms))
+      matchTerms: uniqueStrings(asArray(item.matchTerms)),
+      compositeConcept: Boolean(item.compositeConcept)
     });
   };
 
@@ -5597,7 +5744,8 @@ function rapidLabChecklistItems(text = "") {
   const hasCovid = /COVID|SARS|コロナ|新型コロナ/u.test(text);
   const hasInfluenza = /インフル|influenza|flu/u.test(text);
   const hasRapidOrAntigen = /迅速|抗原|定性|Ag/u.test(text);
-  if (hasCovid && hasInfluenza && hasRapidOrAntigen) {
+  const hasSimultaneousContext = /同時|同時検出|同一キット|一括|まとめて/u.test(text);
+  if (hasCovid && hasInfluenza && hasRapidOrAntigen && hasSimultaneousContext) {
     items.push({
       menuId: "lab:covid_flu_antigen",
       label: "新型コロナ・インフル抗原同時検査",
@@ -5606,7 +5754,8 @@ function rapidLabChecklistItems(text = "") {
       billingDomain: "standard_lab",
       name: "新型コロナ・インフル抗原同時検査",
       query: "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
-      searchQueries: ["ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性"]
+      searchQueries: ["ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性"],
+      compositeConcept: true
     });
   } else if (hasCovid && hasRapidOrAntigen) {
     items.push({
@@ -5648,7 +5797,7 @@ function rapidLabChecklistItems(text = "") {
 
 function reviewOnlyDomainChecklistItems(text = "") {
   const definitions = [
-    { domain: "surgery", label: "手術", pattern: /手術|術式|切除術|縫合術|手術同意|手術説明/u },
+    { domain: "surgery", label: "手術", pattern: /手術|術式|切除術|縫合術|手術同意|手術説明|(?:腫瘤|粉瘤|脂肪腫|皮下腫瘤|病変|皮膚病変).{0,12}(?:切除|摘出)|(?:切除|摘出).{0,12}(?:施行|実施|予定|相談|希望|未実施|行っていない)/u },
     { domain: "anesthesia", label: "麻酔", pattern: /麻酔|術前診察|麻酔科|全身麻酔|局所麻酔/u },
     { domain: "pathology", label: "病理診断・細胞診", pattern: /病理|細胞診|組織診|標本|生検/u },
     { domain: "rehabilitation", label: "リハビリテーション", pattern: /リハビリ|運動器リハ|脳血管リハ|廃用症候群リハ|実施単位/u },
@@ -5843,6 +5992,11 @@ function isPastOrExternalLabReferenceContext(sentence = "") {
   return /(前回|先月|以前|過去|過去値|既知値|持参|他院|前医|他科|紹介元|かかりつけ|健診|検診|外部資料|院外|内科で|外来で確認済み)/u.test(text);
 }
 
+function isPastOrExternalClinicalServiceContext(sentence = "") {
+  const text = normalizeClinicalText(sentence);
+  return /(前回|先月|以前|過去|過去値|既知値|持参|他院|前医|他科|紹介元|かかりつけ|健診|検診|外部資料|院外|外部|前に|過去に)/u.test(text);
+}
+
 function hasPerformedLabContext(sentence = "") {
   const text = normalizeClinicalText(sentence);
   return /(実施|施行|行った|行い|検査した|測定した|測定|採取した|提出した|検体提出|検査結果|結果)/u.test(text);
@@ -5985,11 +6139,46 @@ function isNegatedContext(sentence) {
 }
 
 function isNegatedClinicalServiceContext(sentence) {
-  return /(未実施|行わず|施行せず|撮影せず|検査せず|撮影なし|検査なし|中止)/u.test(sentence);
+  return /(未実施|未施行|行わず|行っていない|行っていません|施行せず|施行していない|実施していない|撮影せず|撮影していない|検査せず|検査していない|撮影なし|検査なし|中止)/u.test(sentence);
 }
 
 function hasLocalContrastContext(sentence, kind) {
   return localContrastState(sentence, kind) === "present";
+}
+
+function clinicalEventContrastState(event = {}, options = {}) {
+  const imagingKind = String(options.imagingKind || "").trim();
+  const localState = localContrastState(clinicalEventEvidence(event), imagingKind);
+  if (localState !== "absent") {
+    return localState;
+  }
+  const chartState = chartLevelUnknownContrastStateForKind(options.clinicalText, imagingKind);
+  return chartState === "unknown" ? "unknown" : localState;
+}
+
+function chartLevelUnknownContrastStateForKind(text = "", imagingKind = "") {
+  if (!text || !["ct", "mri"].includes(String(imagingKind || "").trim())) {
+    return "";
+  }
+  const texts = uniqueStrings([
+    objectiveClinicalText(text),
+    text
+  ]).filter(Boolean);
+  for (const sourceText of texts) {
+    for (const sentence of splitClinicalSentences(sourceText)) {
+      const normalized = normalizeClinicalText(sentence);
+      if (!normalized || isClinicalMetaSentence(normalized)) {
+        continue;
+      }
+      if (isNegatedClinicalServiceContext(normalized) || isFutureOrOrderOnlyContext(normalized)) {
+        continue;
+      }
+      if (localContrastState(normalized, imagingKind) === "unknown") {
+        return "unknown";
+      }
+    }
+  }
+  return "";
 }
 
 function localContrastState(sentence, kind) {
