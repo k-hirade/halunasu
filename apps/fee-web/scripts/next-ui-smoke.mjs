@@ -68,7 +68,7 @@ try {
     await page.getByRole("heading", { name: "算定条件", level: 2 }).waitFor();
     await page.getByText("カルテの内容").waitFor();
 
-    const detailColumns = await page.locator(".fee-detail-grid").evaluate((element) => getComputedStyle(element).gridTemplateColumns);
+    const detailColumns = await page.locator(".fee-session-workspace").evaluate((element) => getComputedStyle(element).gridTemplateColumns);
     assert.ok(detailColumns.trim().split(/\s+/).length >= 2, "desktop fee detail view must use two robust columns");
 
     await page.getByRole("button", { name: "オーダーを確認" }).click();
@@ -79,14 +79,16 @@ try {
     await orderDialog.locator(".fee-modal-footer").getByRole("button", { name: "閉じる" }).click();
     assert.equal(await page.getByText("詳細条件 JSON").count(), 0, "claimContext JSON editor must be removed from the UI");
     assert.equal(await page.getByText("算定オプション JSON").count(), 0, "calculationOptions JSON editor must be removed from the UI");
-    assert.equal(await page.locator(".fee-action-bar").isVisible(), true, "detail actions must be available in the action bar");
-    assert.equal(await page.getByRole("button", { name: "レセプト案をコピー" }).isVisible(), true, "receipt draft copy must be available as a terminal action");
+    assert.equal(await page.locator(".source-action-panel").isVisible(), true, "detail actions must be available in the source pane");
+    await page.getByRole("tab", { name: "レセプト案" }).click();
+    assert.equal(await page.getByRole("button", { name: "コピー" }).isVisible(), true, "receipt draft copy must be available in the receipt tab");
+    await page.getByRole("tab", { name: "算定作業" }).click();
 
     const hasDetailHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     assert.equal(hasDetailHorizontalOverflow, false);
 
     await page.setViewportSize({ width: 390, height: 900 });
-    const mobileColumns = await page.locator(".fee-detail-grid").evaluate((element) => getComputedStyle(element).gridTemplateColumns);
+    const mobileColumns = await page.locator(".fee-session-workspace").evaluate((element) => getComputedStyle(element).gridTemplateColumns);
     assert.equal(mobileColumns.trim().split(/\s+/).length, 1, "mobile fee detail view must stack into one column");
     const hasMobileHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     assert.equal(hasMobileHorizontalOverflow, false);

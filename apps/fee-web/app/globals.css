@@ -62,6 +62,116 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(15, 143, 127, 0.14);
 }
 
+.admin-select-trigger {
+  width: 100%;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #cbd7e6;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  padding: 9px 10px 9px 12px;
+  text-align: left;
+}
+
+.admin-select-trigger:hover {
+  border-color: #96d5ca;
+}
+
+.admin-select-trigger:focus-visible,
+.admin-select-trigger[data-state="open"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 143, 127, 0.14);
+  outline: none;
+}
+
+.admin-select-value {
+  min-width: 0;
+}
+
+.admin-select-trigger-value {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-select-affordance {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+}
+
+.admin-select-chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #52637a;
+  border-bottom: 2px solid #52637a;
+  transform: rotate(45deg) translateY(-2px);
+}
+
+.admin-select-content {
+  z-index: 80;
+  width: max(var(--radix-select-trigger-width, 240px), 240px);
+  max-height: min(320px, var(--radix-select-content-available-height, 320px));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 45px rgba(24, 39, 75, 0.16);
+}
+
+.admin-select-viewport {
+  padding: 6px;
+}
+
+.admin-select-item {
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  border-radius: 8px;
+  padding: 8px 10px;
+  outline: none;
+}
+
+.admin-select-item[data-highlighted] {
+  background: #f4fbf9;
+}
+
+.admin-select-item[data-state="checked"] {
+  color: var(--accent-dark);
+  font-weight: 900;
+}
+
+.admin-select-item-indicator {
+  color: var(--accent-dark);
+  font-size: 12px;
+}
+
+.admin-select-item-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.admin-select-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-select-item-description {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 button,
 .btn {
   border: 0;
@@ -96,6 +206,15 @@ button:disabled,
 .btn--ghost {
   color: var(--ink);
   background: #e8eef6;
+}
+
+button.admin-select-trigger {
+  min-height: 42px;
+  border: 1px solid #cbd7e6;
+  background: #fff;
+  color: var(--ink);
+  padding: 9px 10px 9px 12px;
+  font-weight: 800;
 }
 
 .btn--lg {
@@ -310,9 +429,15 @@ body {
 .fee-shell--detail {
   width: 100%;
   max-width: none;
-  margin: 16px 0 0;
+  height: calc(100dvh - var(--site-nav-h, 72px));
+  min-height: 0;
+  margin: 0;
   padding-inline: 20px;
-  padding-bottom: 96px;
+  padding-block: 12px 20px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
 }
 
 /* 詳細画面のときだけトップバーも全幅(左右20px)に揃える。
@@ -327,6 +452,10 @@ body:has(.fee-shell--detail) .site-nav-wrap .site-nav {
 /* 詳細画面では全幅ナビのハンバーガーにメニュー(ドロワー)も左揃え。 */
 body:has(.fee-shell--detail) .admin-nav-drawer {
   left: 20px;
+}
+
+body:has(.fee-shell--detail) {
+  overflow: hidden;
 }
 
 .fee-page-head {
@@ -354,6 +483,66 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.fee-session-sticky-head {
+  position: sticky;
+  z-index: 12;
+  top: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 28px rgba(24, 39, 75, 0.08);
+  padding: 12px 14px;
+  backdrop-filter: blur(10px);
+}
+
+.fee-session-title {
+  min-width: 0;
+}
+
+.fee-session-title h1 {
+  margin: 2px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 1.2rem;
+}
+
+.fee-session-title p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.fee-session-head-status {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.fee-session-head-status span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.fee-session-head-status strong {
+  font-size: 1.35rem;
+}
+
+.fee-session-head-status i {
+  font-style: normal;
 }
 
 .fee-card {
@@ -525,6 +714,217 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
   gap: 22px;
   align-items: start;
+}
+
+.fee-session-workspace {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(360px, 0.92fr) minmax(520px, 1.08fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.fee-source-pane,
+.fee-work-pane {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.fee-source-pane {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.fee-source-form {
+  min-height: 0;
+  display: grid;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.source-section {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 14px;
+}
+
+.source-section--chart {
+  min-height: 420px;
+}
+
+.source-section .clinical-text-field {
+  min-height: 0;
+}
+
+.source-section .clinical-textarea {
+  min-height: 520px;
+  resize: vertical;
+}
+
+.source-section .diagnosis-textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.source-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.source-section-head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.source-section-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.fee-source-condition-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.fee-source-condition-grid label,
+.source-section label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #26364f;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.source-static-field {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid #dbe5ef;
+  border-radius: 8px;
+  background: #fff;
+  padding: 9px 10px;
+}
+
+.source-static-field span,
+.source-order-summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.source-static-field strong,
+.source-order-summary strong {
+  overflow-wrap: anywhere;
+}
+
+.source-order-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.source-action-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.96);
+  padding: 12px 14px;
+}
+
+.source-action-panel strong,
+.source-action-panel small {
+  display: block;
+}
+
+.source-action-panel small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.source-action-buttons,
+.receipt-pane-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fee-work-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.fee-main-tabs,
+.fee-sub-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.fee-sub-tabs {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+
+.fee-tab-button {
+  min-height: 36px;
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  border: 1px solid #d5e0ec;
+  border-radius: 999px;
+  background: #fff;
+  color: #34445c;
+  padding: 7px 11px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.fee-tab-button.is-active {
+  border-color: var(--accent);
+  background: var(--soft-accent);
+  color: var(--accent-dark);
+}
+
+.fee-tab-button strong {
+  min-width: 22px;
+  border-radius: 999px;
+  background: #e8eef6;
+  padding: 2px 6px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.fee-work-pane-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
 }
 
 .fee-detail-grid > * {
@@ -1113,7 +1513,7 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
 
 .candidate-line-row {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 136px minmax(0, 1fr) auto auto auto;
   gap: 10px;
   align-items: center;
 }
@@ -1127,9 +1527,9 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   text-decoration: line-through;
 }
 
-.candidate-line-action select {
+.candidate-decision-select {
   min-height: 38px;
-  padding-block: 7px;
+  font-size: 13px;
   font-weight: 900;
 }
 
@@ -1200,16 +1600,49 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
 
 .issue-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
   background: #fbfdff;
   border-left-width: 5px;
+  padding-block: 10px;
 }
 
 .issue-card strong {
   display: block;
   margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.issue-tone-dot {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 1000;
+}
+
+.issue-tone-dot--danger {
+  background: #dc2626;
+}
+
+.issue-tone-dot--warning {
+  background: #f97316;
+}
+
+.issue-tone-dot--notice {
+  background: #0f766e;
+}
+
+.issue-tone-dot--info {
+  background: #2563eb;
+}
+
+.issue-tone-dot--neutral {
+  background: #64748b;
 }
 
 .issue-card--facility {
@@ -1510,6 +1943,34 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   padding: 14px;
 }
 
+.receipt-draft-pane {
+  display: grid;
+  gap: 12px;
+}
+
+.receipt-pane-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 14px;
+}
+
+.receipt-pane-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.receipt-pane-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .receipt-line header {
   display: flex;
   align-items: flex-start;
@@ -1774,10 +2235,50 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
 }
 
 @media (max-width: 1023px) {
+  body:has(.fee-shell--detail) {
+    overflow: auto;
+  }
+
   .fee-shell,
   .fee-admin-shell {
     width: min(100% - 24px, 1480px);
     margin-top: 28px;
+  }
+
+  .fee-shell--detail {
+    width: 100%;
+    height: auto;
+    min-height: 100dvh;
+    margin-top: 0;
+    padding-inline: 12px;
+    overflow: visible;
+  }
+
+  .fee-session-sticky-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fee-session-head-status {
+    justify-content: start;
+  }
+
+  .fee-session-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .fee-work-pane {
+    order: 1;
+    min-height: 70dvh;
+  }
+
+  .fee-source-pane {
+    order: 2;
+    min-height: 70dvh;
+  }
+
+  .fee-source-form,
+  .fee-work-pane-body {
+    overflow: visible;
   }
 
   .fee-page-head,
@@ -1800,7 +2301,9 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
 
   .fee-toolbar,
   .fee-form-grid,
+  .fee-source-condition-grid,
   .fee-detail-grid,
+  .fee-session-workspace,
   .fee-form-grid--conditions,
   .fee-form-grid--two,
   .fee-input-summary-grid,
@@ -1816,7 +2319,9 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   }
 
   .patient-picker-row,
-  .fee-action-bar {
+  .fee-action-bar,
+  .source-action-panel,
+  .receipt-pane-head {
     grid-template-columns: 1fr;
   }
 
