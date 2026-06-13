@@ -3045,6 +3045,179 @@ test("does not support lab coding from past values or necessity confirmation onl
   assert.equal(masterSearches.some((search) => search.query === "HbA1c"), false);
 });
 
+test("routes non-billable lab review contexts to specific review topics without coding", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const masterSearches = [];
+  let receivedInput = null;
+  let clinicalEvents = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "発熱", status: "suspected", evidence: "発熱" }],
+    clinical_events: clinicalEvents,
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Non Billable Lab Review Patient"
+  }, headers);
+
+  clinicalEvents = [{
+    type: "lab",
+    billing_domain: "standard_lab",
+    name: "追加検査の要否判断",
+    action_status: "considered",
+    temporal_relation: "current_visit",
+    source_origin: "own_clinic_record",
+    provider_ownership: "own_clinic",
+    result_assertion: "not_applicable",
+    certainty: "ambiguous",
+    section: "A",
+    evidence: "同じ月に当院で行った検査があるか院内履歴の照合が必要。",
+    search_queries: ["追加検査", "院内履歴 照合"]
+  }];
+  let session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-12",
+    clinicalText: "再診。同じ月に当院で行った検査があるか院内履歴の照合が必要。",
+    diagnoses: [{ name: "発熱" }]
+  }, headers);
+  let calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
+  assert.equal(masterSearches.length, 0);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "同月内検査確認"));
+
+  masterSearches.length = 0;
+  receivedInput = null;
+  clinicalEvents = [{
+    type: "lab",
+    billing_domain: "standard_lab",
+    name: "CRP",
+    action_status: "planned",
+    temporal_relation: "future",
+    source_origin: "own_clinic_record",
+    provider_ownership: "own_clinic",
+    result_assertion: "not_applicable",
+    certainty: "ambiguous",
+    section: "O",
+    evidence: "CRPについて院内で確認する方針を立てたが、測定条件や検査区分は本文だけでは追えない。",
+    search_queries: ["CRP", "検査区分"]
+  }];
+  session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-13",
+    clinicalText: "再診。CRPについて院内で確認する方針を立てたが、測定条件や検査区分は本文だけでは追えない。",
+    diagnoses: [{ name: "発熱" }]
+  }, headers);
+  calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
+  assert.equal(masterSearches.length, 0);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "検査コード確認"));
+
+  masterSearches.length = 0;
+  receivedInput = null;
+  clinicalEvents = [{
+    type: "lab",
+    billing_domain: "standard_lab",
+    name: "追加検査の要否判断",
+    action_status: "considered",
+    temporal_relation: "current_visit",
+    source_origin: "own_clinic_record",
+    provider_ownership: "own_clinic",
+    result_assertion: "not_applicable",
+    certainty: "ambiguous",
+    section: "A",
+    evidence: "同月に検査は行っていないため、経過観察とした。",
+    search_queries: ["追加検査"]
+  }];
+  session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-14",
+    clinicalText: "再診。同月に検査は行っていないため、経過観察とした。",
+    diagnoses: [{ name: "発熱" }]
+  }, headers);
+  calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
+  assert.equal(masterSearches.length, 0);
+  assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "同月内検査確認"), false);
+
+  clinicalEvents = [{
+    type: "lab",
+    billing_domain: "standard_lab",
+    name: "CRP",
+    action_status: "considered",
+    temporal_relation: "past",
+    source_origin: "patient_reported",
+    provider_ownership: "own_clinic",
+    result_assertion: "negative",
+    certainty: "ambiguous",
+    section: "S",
+    evidence: "先月CRP陰性と本人が話した。",
+    search_queries: ["CRP"]
+  }];
+  session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-15",
+    clinicalText: "再診。先月CRP陰性と本人が話した。",
+    diagnoses: [{ name: "発熱" }]
+  }, headers);
+  calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "同月内検査確認"), false);
+  assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "検査コード確認"), false);
+});
+
 test("does not infer specimen collection fee review from throat findings alone", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);

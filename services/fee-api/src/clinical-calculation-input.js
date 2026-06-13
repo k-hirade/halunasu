@@ -75,6 +75,10 @@ const REVIEW_TOPIC_TAXONOMY = Object.freeze({
     label: "同月履歴確認",
     issueCode: "same_month_unknown"
   }),
+  monthly_lab_duplicate_check: Object.freeze({
+    label: "同月内検査確認",
+    issueCode: "same_month_lab_unknown"
+  }),
   admission_days_check: Object.freeze({
     label: "入院日数確認",
     issueCode: "missing_inpatient_days"
@@ -233,7 +237,8 @@ const SINGLETON_REVIEW_TOPIC_CODES = new Set([
   "target_disease_check",
   "care_plan_check",
   "visit_type_check",
-  "same_day_duplicate_check"
+  "same_day_duplicate_check",
+  "monthly_lab_duplicate_check"
 ]);
 
 const DIRECT_RETRIEVAL_FEE_CATEGORIES_BY_EVENT_TYPE = Object.freeze({
@@ -329,6 +334,9 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   }
   if (/対象疾患/u.test(text)) {
     return "target_disease_check";
+  }
+  if (/(?:同月内検査|同じ月に当院で行った検査|院内履歴.{0,12}(?:照合|確認)|検査.{0,18}(?:同月|同じ月|月内|重複)|(?:同月|同じ月|月内).{0,18}(?:検査|検体|採血|重複))/u.test(text)) {
+    return "monthly_lab_duplicate_check";
   }
   if (/同月履歴|同月算定|同月/u.test(text)) {
     return "same_month_check";
@@ -1156,6 +1164,19 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
           categoryLabel: reviewOnlyDomainLabel(reviewOnlyDomain),
           outcome: "review_required",
           message: "review_only_domain_non_billable_review_required"
+        }));
+        continue;
+      }
+      const nonBillableLabIssues = reviewIssuesFromNonBillableLabClinicalEvent(event);
+      if (nonBillableLabIssues.length) {
+        reviewIssues.push(...nonBillableLabIssues);
+        reviewWarnings.push(...nonBillableLabIssues.map((issue) => issue.messageForStaff));
+        clinicalTrace.push(clinicalTraceEvent({
+          stage: "non_billable_lab_review_gate",
+          event,
+          categoryLabel: "検体検査",
+          outcome: "review_required",
+          message: "non_billable_lab_event_review_required"
         }));
         continue;
       }
@@ -4252,6 +4273,97 @@ function unsupportedClinicalEventWarning(event = {}) {
     return `${name}は${clinicalEventTypeLabel(type)}として抽出しましたが、現在の自動算定では直接候補化できないため、要確認です。`;
   }
   return "";
+}
+
+function reviewIssuesFromNonBillableLabClinicalEvent(event = {}) {
+  if (!isReviewableNonBillableLabClinicalEvent(event)) {
+    return [];
+  }
+  const text = nonBillableLabReviewText(event);
+  if (!text || isNegatedClinicalServiceContext(text)) {
+    return [];
+  }
+  const issues = [];
+  if (hasMonthlyLabDuplicateReviewContext(text)) {
+    issues.push(reviewIssueFromNonBillableLabClinicalEvent(event, "monthly_lab_duplicate_check", {
+      message: "同月内検査確認: 同月内の院内検査履歴や重複の有無を確認してください。実施済み検査としては扱わず、自動算定には入れていません。",
+      requiredInput: "同月内の検査履歴、重複の有無、当日実施する検査項目"
+    }));
+  }
+  if (hasLabCodeReviewContext(event, text)) {
+    issues.push(reviewIssueFromNonBillableLabClinicalEvent(event, "lab_code_check", {
+      message: "検査コード確認: 検査名または検査区分が記載されていますが、今回実施済みとしては確定できません。実施する場合は標準コード、検査区分、検体、測定条件を確認してください。",
+      requiredInput: "標準コード、検査区分、検体、測定条件、実施有無"
+    }));
+  }
+  return dedupeObjects(issues.filter(Boolean), (issue) => issue.topicCode || issue.issueCode);
+}
+
+function isReviewableNonBillableLabClinicalEvent(event = {}) {
+  const type = normalizeClinicalEventType(event);
+  if (!["lab", "exam"].includes(type)) {
+    return false;
+  }
+  const status = normalizeClinicalEventStatus(event);
+  if (!["planned", "ordered", "considered", "unclear"].includes(status)) {
+    return false;
+  }
+  const dateRelation = normalizeClinicalEventDateRelation(event);
+  if (["past", "other_provider"].includes(dateRelation)) {
+    return false;
+  }
+  const providerOwnership = normalizeClinicalEventProviderOwnership(event);
+  if (["same_institution_other_department", "other_department", "other_provider"].includes(providerOwnership)) {
+    return false;
+  }
+  return !isNegatedClinicalEvent(event);
+}
+
+function nonBillableLabReviewText(event = {}) {
+  return normalizeClinicalText([
+    clinicalEventName(event),
+    clinicalEventEvidence(event),
+    event?.review_reason,
+    event?.reviewReason,
+    ...asArray(event?.search_queries),
+    ...asArray(event?.searchQueries)
+  ].join(" "));
+}
+
+function hasMonthlyLabDuplicateReviewContext(text = "") {
+  if (/(?:同月|同じ月|月内).{0,20}(?:検査|検体|採血|院内履歴|履歴|重複).{0,12}(?:なし|ない|無い|未実施|行っていない)|(?:検査|検体|採血|院内履歴|履歴|重複).{0,20}(?:同月|同じ月|月内).{0,12}(?:なし|ない|無い|未実施|行っていない)/u.test(text)) {
+    return false;
+  }
+  const hasMonthOrHistory = /同月|同じ月|月内|院内履歴|履歴照合|履歴の照合|重複の有無|重複/u.test(text);
+  const hasLabContext = /検査|検体|採血|追加検査|検査履歴|院内履歴/u.test(text);
+  return hasMonthOrHistory && hasLabContext;
+}
+
+function hasLabCodeReviewContext(event = {}, text = "") {
+  const hasSpecificLabConcept = labConceptsFromClinicalEventName(event).length > 0 || labConceptsFromText(text).length > 0;
+  const hasCodeUncertainty = /検査コード|標準コード|検査項目|検査区分|測定条件|測定方法|検体|方法|依頼先|どれに対応|確定|不明|追えない|分からない|わからない|不足/u.test(text);
+  const hasGenericLabReviewContext = /検査|検体|測定|採血/u.test(text) && hasCodeUncertainty;
+  return hasSpecificLabConcept || hasGenericLabReviewContext;
+}
+
+function reviewIssueFromNonBillableLabClinicalEvent(event = {}, topicCode = "", { message = "", requiredInput = "" } = {}) {
+  const topic = reviewTopicDefinition(topicCode);
+  if (!topic) {
+    return null;
+  }
+  const name = clinicalEventName(event) || topic.label;
+  return withReviewTopic({
+    reviewIssueId: `issue_${candidateIdPart([event?.clinicalEventId, topicCode, name, message].join("_"))}`,
+    issueCode: topic.issueCode,
+    severity: "warning",
+    title: topic.label,
+    messageForStaff: message,
+    requiredInput,
+    relatedClinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    evidence: clinicalEventEvidence(event),
+    source: "non_billable_lab_review_gate",
+    policy: { riskGate: "review_only", eventType: normalizeClinicalEventType(event) }
+  }, topicCode);
 }
 
 function reviewIssueFromExcludedClinicalEvent(event = {}) {
