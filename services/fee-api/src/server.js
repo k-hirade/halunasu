@@ -1032,7 +1032,9 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     priorSessions,
     clinicalFactsExtractor: input.clinicalFactsExtractor
   }));
-  const prepared = applyFacilityProfileToPreparation(legacy, facilityProfile);
+  const prepared = applyFacilityProfileToPreparation(legacy, facilityProfile, {
+    clinicalText: baseSession.clinicalText || calculationInput.clinicalText || ""
+  });
   const patch = {};
 
   if (enriched.changed) {
@@ -1100,14 +1102,16 @@ async function loadFacilityProfileForCalculation({ platformStore, orgId, session
   };
 }
 
-function applyFacilityProfileToPreparation(prepared = {}, facilityProfile = {}) {
+function applyFacilityProfileToPreparation(prepared = {}, facilityProfile = {}, context = {}) {
   const facilityKeys = uniqueStrings(facilityProfile.facilityStandardKeys || []);
+  const imagingProfile = facilityImagingProfileFromKeys(facilityKeys);
   const metrics = {
     ...(prepared.metrics || {}),
     facilityProfile: {
       source: facilityProfile.source || "none",
       facilityId: facilityProfile.facilityId || "",
-      facilityStandardKeyCount: facilityKeys.length
+      facilityStandardKeyCount: facilityKeys.length,
+      imagingProfile
     }
   };
   if (!facilityKeys.length) {
@@ -1122,19 +1126,96 @@ function applyFacilityProfileToPreparation(prepared = {}, facilityProfile = {}) 
     ...(Array.isArray(currentOptions.facility_standard_keys) ? currentOptions.facility_standard_keys : []),
     ...facilityKeys
   ]);
+  const optionsWithFacilityKeys = {
+    ...currentOptions,
+    facility_standard_keys: mergedKeys
+  };
+  const calculationOptions = applyFacilityImagingProfileToOptions(optionsWithFacilityKeys, imagingProfile, context);
+  const imagingProfileApplied = calculationOptions !== optionsWithFacilityKeys;
   return {
     ...prepared,
-    calculationOptions: {
-      ...currentOptions,
-      facility_standard_keys: mergedKeys
-    },
+    calculationOptions,
     calculationOptionsAutoKeys: uniqueStrings([
       ...(Array.isArray(prepared.calculationOptionsAutoKeys) ? prepared.calculationOptionsAutoKeys : []),
-      "facility_standard_keys"
+      "facility_standard_keys",
+      ...(imagingProfileApplied ? ["imaging_orders"] : [])
     ]),
     calculationOptionsSource: mergedCalculationOptionsSource(prepared.calculationOptionsSource),
     metrics
   };
+}
+
+function facilityImagingProfileFromKeys(keys = []) {
+  const normalized = uniqueStrings(keys);
+  const profile = {
+    electronicImageManagement: normalized.some((key) => /^(画像電子管理|電子画像管理|imaging_electronic_management)$/iu.test(String(key || "").trim())),
+    ctEquipmentKind: "",
+    mriEquipmentKind: ""
+  };
+  for (const key of normalized) {
+    const text = String(key || "").trim();
+    const ctMatch = text.match(/^(?:CT機器区分|ct_equipment_kind)[:：](.+)$/iu);
+    if (ctMatch?.[1]) {
+      profile.ctEquipmentKind = ctMatch[1].trim();
+    }
+    const mriMatch = text.match(/^(?:MRI機器区分|mri_equipment_kind)[:：](.+)$/iu);
+    if (mriMatch?.[1]) {
+      profile.mriEquipmentKind = mriMatch[1].trim();
+    }
+  }
+  return profile;
+}
+
+function applyFacilityImagingProfileToOptions(options = {}, imagingProfile = {}, context = {}) {
+  const orders = Array.isArray(options.imaging_orders) ? options.imaging_orders : [];
+  if (!orders.length) {
+    return options;
+  }
+  let changed = false;
+  const enrichedOrders = orders.map((order) => {
+    if (!order || typeof order !== "object") {
+      return order;
+    }
+    const kind = String(order.kind || "").trim();
+    const enriched = { ...order };
+    if (
+      imagingProfile.electronicImageManagement
+      && ["simple_radiography", "ct", "mri"].includes(kind)
+      && !hasOwn(enriched, "electronic_image_management")
+      && !hasOwn(enriched, "electronicImageManagement")
+      && !hasExplicitElectronicImageManagementAbsence(context.clinicalText, kind)
+    ) {
+      enriched.electronic_image_management = true;
+      changed = true;
+    }
+    if (kind === "ct" && imagingProfile.ctEquipmentKind && !enriched.ct_equipment_kind && !enriched.ctEquipmentKind) {
+      enriched.ct_equipment_kind = imagingProfile.ctEquipmentKind;
+      changed = true;
+    }
+    if (kind === "mri" && imagingProfile.mriEquipmentKind && !enriched.mri_equipment_kind && !enriched.mriEquipmentKind) {
+      enriched.mri_equipment_kind = imagingProfile.mriEquipmentKind;
+      changed = true;
+    }
+    return enriched;
+  });
+  return changed ? { ...options, imaging_orders: enrichedOrders } : options;
+}
+
+function hasExplicitElectronicImageManagementAbsence(text = "", imagingKind = "") {
+  const raw = String(text || "");
+  if (!raw || !imagingKind) {
+    return false;
+  }
+  const modality = imagingKind === "ct"
+    ? /(?:^|[^A-Za-z])CT(?:$|[^A-Za-z])|ＣＴ/u
+    : imagingKind === "mri"
+      ? /(?:^|[^A-Za-z])MRI(?:$|[^A-Za-z])|ＭＲＩ/u
+      : /(X線|Ｘ線|レントゲン|単純撮影)/u;
+  return raw.split(/[。\n]/u).some((sentence) => (
+    modality.test(sentence)
+    && /(?:電子画像管理|電子保存|電子的保存|電子.*管理|フィルム|紙焼き)/u.test(sentence)
+    && /(?:なし|無し|行わず|未実施|フィルム|紙焼き)/u.test(sentence)
+  ));
 }
 
 function mergedCalculationOptionsSource(source = "") {

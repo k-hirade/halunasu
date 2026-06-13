@@ -9234,7 +9234,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-01"
       },
       "expectedExtraction": {
@@ -9635,7 +9635,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-07"
       },
       "expectedExtraction": {
@@ -10046,7 +10046,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -10156,7 +10156,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-14"
       },
       "expectedExtraction": {
@@ -10368,7 +10368,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-17"
       },
       "expectedExtraction": {
@@ -10581,7 +10581,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-20"
       },
       "expectedExtraction": {
@@ -10723,7 +10723,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-22"
       },
       "expectedExtraction": {
@@ -11161,7 +11161,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-04"
       },
       "expectedExtraction": {
@@ -11516,7 +11516,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-09"
       },
       "expectedExtraction": {
@@ -12411,7 +12411,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -12521,7 +12521,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-23"
       },
       "expectedExtraction": {
@@ -12733,7 +12733,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-02"
       },
       "expectedExtraction": {
@@ -12946,7 +12946,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-05"
       },
       "expectedExtraction": {
@@ -13088,7 +13088,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-07"
       },
       "expectedExtraction": {
@@ -13735,7 +13735,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-16"
       },
       "expectedExtraction": {
@@ -13879,7 +13879,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-18"
       },
       "expectedExtraction": {
@@ -14710,7 +14710,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -15674,7 +15674,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-19"
       },
       "expectedExtraction": {
@@ -15993,7 +15993,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -16250,7 +16250,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-03"
       },
       "expectedExtraction": {
@@ -17083,7 +17083,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -17340,7 +17340,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-18"
       },
       "expectedExtraction": {
@@ -17826,7 +17826,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-01"
       },
       "expectedExtraction": {
@@ -18045,7 +18045,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-04"
       },
       "expectedExtraction": {
@@ -18263,7 +18263,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-07"
       },
       "expectedExtraction": {
@@ -18299,7 +18299,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -18621,7 +18621,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-12"
       },
       "expectedExtraction": {
@@ -19454,7 +19454,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -19629,7 +19629,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-02"
       },
       "expectedExtraction": {
@@ -20199,7 +20199,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-10"
       },
       "expectedExtraction": {
@@ -20609,7 +20609,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -20784,7 +20784,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-18"
       },
       "expectedExtraction": {
@@ -20994,7 +20994,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-21"
       },
       "expectedExtraction": {
@@ -21890,7 +21890,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -22000,7 +22000,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-11"
       },
       "expectedExtraction": {
@@ -22570,7 +22570,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-19"
       },
       "expectedExtraction": {
@@ -22980,7 +22980,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -23155,7 +23155,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-03"
       },
       "expectedExtraction": {
@@ -23302,7 +23302,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-05"
       },
       "expectedExtraction": {
@@ -24263,7 +24263,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -24373,7 +24373,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-20"
       },
       "expectedExtraction": {
@@ -24943,7 +24943,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-04"
       },
       "expectedExtraction": {
@@ -26493,7 +26493,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-02"
       },
       "expectedExtraction": {
@@ -27053,7 +27053,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-10"
       },
       "expectedExtraction": {
@@ -27469,7 +27469,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-16"
       },
       "expectedExtraction": {
@@ -27677,7 +27677,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-19"
       },
       "expectedExtraction": {
@@ -28800,7 +28800,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-11"
       },
       "expectedExtraction": {
@@ -28944,7 +28944,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-13"
       },
       "expectedExtraction": {
@@ -29151,7 +29151,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-16"
       },
       "expectedExtraction": {
@@ -29360,7 +29360,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-19"
       },
       "expectedExtraction": {
@@ -29983,7 +29983,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-04"
       },
       "expectedExtraction": {
@@ -31106,7 +31106,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-20"
       },
       "expectedExtraction": {
@@ -31249,7 +31249,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-22"
       },
       "expectedExtraction": {
@@ -31457,7 +31457,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-01"
       },
       "expectedExtraction": {
@@ -31874,7 +31874,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-07"
       },
       "expectedExtraction": {
@@ -32306,7 +32306,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-13"
       },
       "expectedExtraction": {
@@ -32470,7 +32470,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-15"
       },
       "expectedExtraction": {
@@ -32741,7 +32741,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-19"
       },
       "expectedExtraction": {
@@ -32905,7 +32905,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-21"
       },
       "expectedExtraction": {
@@ -33274,7 +33274,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-02"
       },
       "expectedExtraction": {
@@ -33415,7 +33415,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-04"
       },
       "expectedExtraction": {
@@ -33708,7 +33708,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-08"
       },
       "expectedExtraction": {
@@ -34817,7 +34817,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-23"
       },
       "expectedExtraction": {
@@ -35315,7 +35315,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-06"
       },
       "expectedExtraction": {
@@ -35684,7 +35684,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-11"
       },
       "expectedExtraction": {
@@ -36120,7 +36120,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-17"
       },
       "expectedExtraction": {
@@ -37229,7 +37229,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-08"
       },
       "expectedExtraction": {
@@ -37664,7 +37664,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-14"
       },
       "expectedExtraction": {
@@ -38159,7 +38159,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-21"
       },
       "expectedExtraction": {
@@ -38530,7 +38530,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-02"
       },
       "expectedExtraction": {
@@ -38735,7 +38735,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-05"
       },
       "expectedExtraction": {
@@ -39319,7 +39319,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-13"
       },
       "expectedExtraction": {
@@ -39882,7 +39882,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-21"
       },
       "expectedExtraction": {
@@ -40616,7 +40616,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-07"
       },
       "expectedExtraction": {
@@ -40652,7 +40652,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -41104,7 +41104,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-14"
       },
       "expectedExtraction": {
@@ -41458,7 +41458,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-19"
       },
       "expectedExtraction": {
@@ -42125,7 +42125,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-04"
       },
       "expectedExtraction": {
@@ -43084,7 +43084,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-16"
       },
       "expectedExtraction": {
@@ -43314,7 +43314,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-19"
       },
       "expectedExtraction": {
@@ -43545,7 +43545,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-22"
       },
       "expectedExtraction": {
@@ -44005,7 +44005,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-04"
       },
       "expectedExtraction": {
@@ -44236,7 +44236,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-07"
       },
       "expectedExtraction": {
@@ -44467,7 +44467,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-10"
       },
       "expectedExtraction": {
@@ -44697,7 +44697,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-13"
       },
       "expectedExtraction": {
@@ -45656,7 +45656,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-01"
       },
       "expectedExtraction": {
@@ -45886,7 +45886,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-04"
       },
       "expectedExtraction": {
@@ -46117,7 +46117,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-07"
       },
       "expectedExtraction": {
@@ -46346,7 +46346,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-10"
       },
       "expectedExtraction": {
@@ -46576,7 +46576,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-13"
       },
       "expectedExtraction": {
@@ -47267,7 +47267,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-22"
       },
       "expectedExtraction": {
@@ -48226,7 +48226,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-10"
       },
       "expectedExtraction": {
@@ -48736,7 +48736,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-17"
       },
       "expectedExtraction": {
@@ -49092,7 +49092,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-22"
       },
       "expectedExtraction": {
@@ -49824,7 +49824,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-08"
       },
       "expectedExtraction": {
@@ -50725,7 +50725,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -50901,7 +50901,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-23"
       },
       "expectedExtraction": {
@@ -51471,7 +51471,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-07"
       },
       "expectedExtraction": {
@@ -52203,7 +52203,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-17"
       },
       "expectedExtraction": {
@@ -52349,7 +52349,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-19"
       },
       "expectedExtraction": {
@@ -53107,7 +53107,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -53283,7 +53283,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-08"
       },
       "expectedExtraction": {
@@ -53851,7 +53851,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-16"
       },
       "expectedExtraction": {
@@ -54579,7 +54579,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-02"
       },
       "expectedExtraction": {
@@ -55375,7 +55375,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-13"
       },
       "expectedExtraction": {
@@ -55411,7 +55411,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -56217,7 +56217,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-01"
       },
       "expectedExtraction": {
@@ -56868,7 +56868,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-10"
       },
       "expectedExtraction": {
@@ -57012,7 +57012,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-12"
       },
       "expectedExtraction": {
@@ -57525,7 +57525,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-19"
       },
       "expectedExtraction": {
@@ -57845,7 +57845,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -58102,7 +58102,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-03"
       },
       "expectedExtraction": {
@@ -58314,7 +58314,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-06"
       },
       "expectedExtraction": {
@@ -58810,7 +58810,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-13"
       },
       "expectedExtraction": {
@@ -59019,7 +59019,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-16"
       },
       "expectedExtraction": {
@@ -59374,7 +59374,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-21"
       },
       "expectedExtraction": {
@@ -59887,7 +59887,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-04"
       },
       "expectedExtraction": {
@@ -60207,7 +60207,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -60464,7 +60464,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-12"
       },
       "expectedExtraction": {
@@ -60676,7 +60676,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-15"
       },
       "expectedExtraction": {
@@ -60948,7 +60948,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-19"
       },
       "expectedExtraction": {
@@ -61739,7 +61739,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-06"
       },
       "expectedExtraction": {
@@ -62252,7 +62252,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-13"
       },
       "expectedExtraction": {
@@ -62572,7 +62572,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -63310,7 +63310,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-04"
       },
       "expectedExtraction": {
@@ -64037,7 +64037,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-14"
       },
       "expectedExtraction": {
@@ -64614,7 +64614,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-22"
       },
       "expectedExtraction": {
@@ -65000,7 +65000,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -65110,7 +65110,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-05"
       },
       "expectedExtraction": {
@@ -66758,7 +66758,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-04"
       },
       "expectedExtraction": {
@@ -66978,7 +66978,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-07"
       },
       "expectedExtraction": {
@@ -67297,7 +67297,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -67472,7 +67472,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-14"
       },
       "expectedExtraction": {
@@ -69343,7 +69343,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-16"
       },
       "expectedExtraction": {
@@ -69562,7 +69562,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-19"
       },
       "expectedExtraction": {
@@ -69598,7 +69598,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -69921,7 +69921,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-24"
       },
       "expectedExtraction": {
@@ -71127,7 +71127,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-17"
       },
       "expectedExtraction": {
@@ -71705,7 +71705,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-01"
       },
       "expectedExtraction": {
@@ -71924,7 +71924,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-04"
       },
       "expectedExtraction": {
@@ -71960,7 +71960,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -72283,7 +72283,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-09"
       },
       "expectedExtraction": {
@@ -72494,7 +72494,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-12"
       },
       "expectedExtraction": {

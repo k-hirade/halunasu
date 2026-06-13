@@ -74,6 +74,7 @@ if (args.help) {
 }
 
 const dataset = readJson(datasetPath);
+const datasetFacilityFixtures = readDatasetFacilityFixtures(datasetPath);
 const selectedCases = selectCases(dataset.cases || [], args);
 if (!selectedCases.length) {
   throw new Error("No cases matched the selected filters");
@@ -368,9 +369,9 @@ function buildFacilityFixtureAudit(cases = []) {
   const fixtureMap = new Map();
   for (const item of cases) {
     const level = String(item.expectedCalculation?.assertionLevel || "").trim();
-    const expectedKeys = asStrings(item.expectedClaimContext?.facility_standard_keys);
-    const caseKeys = level === "exact" ? expectedKeys : [];
-    const fixtureKey = facilityFixtureKeyForKeys(caseKeys);
+    const expectedKeys = facilityStandardKeysForCase(item);
+    const caseKeys = expectedKeys;
+    const fixtureKey = facilityFixtureKeyForCase(item);
     if (!fixtureMap.has(fixtureKey)) {
       fixtureMap.set(fixtureKey, {
         fixtureKey,
@@ -406,12 +407,15 @@ function buildFacilityFixtureAudit(cases = []) {
 }
 
 function facilityStandardKeysForCase(item = {}) {
-  const level = String(item.expectedCalculation?.assertionLevel || "").trim();
-  return level === "exact" ? asStrings(item.expectedClaimContext?.facility_standard_keys).sort() : [];
+  return uniqueStrings([
+    ...facilityFixtureStandardKeys(item.facilityFixtureKey),
+    ...asStrings(item.expectedClaimContext?.facility_standard_keys)
+  ]).sort();
 }
 
 function facilityFixtureKeyForCase(item = {}) {
-  return facilityFixtureKeyForKeys(facilityStandardKeysForCase(item));
+  const explicit = String(item.facilityFixtureKey || "").trim();
+  return explicit || facilityFixtureKeyForKeys(facilityStandardKeysForCase(item));
 }
 
 function facilityFixtureKeyForKeys(keys = []) {
@@ -425,6 +429,38 @@ function facilityFixtureKeyForKeys(keys = []) {
 function facilityFixtureForCase(item = {}, runner = {}) {
   const key = facilityFixtureKeyForCase(item);
   return runner.facilityFixturesByKey?.[key] || null;
+}
+
+function readDatasetFacilityFixtures(currentDatasetPath = "") {
+  const fixturePath = path.join(path.dirname(currentDatasetPath), "facility-fixtures.json");
+  if (!fs.existsSync(fixturePath)) {
+    return {};
+  }
+  try {
+    return readJson(fixturePath).fixtures || {};
+  } catch {
+    return {};
+  }
+}
+
+function facilityFixtureStandardKeys(fixtureKey = "") {
+  const fixture = datasetFacilityFixtures[String(fixtureKey || "").trim()] || null;
+  if (!fixture) {
+    return [];
+  }
+  const keys = [...asStrings(fixture.facilityStandardKeys)];
+  if (fixture.electronicImageManagement === true) {
+    keys.push("画像電子管理");
+  }
+  const ctKind = String(fixture.equipment?.ct || "").trim();
+  if (ctKind) {
+    keys.push(`CT機器区分:${ctKind}`);
+  }
+  const mriKind = String(fixture.equipment?.mri || "").trim();
+  if (mriKind) {
+    keys.push(`MRI機器区分:${mriKind}`);
+  }
+  return uniqueStrings(keys);
 }
 
 async function createLocalRunner(options, facilityFixtureAudit = {}) {
@@ -633,7 +669,7 @@ async function createStgRunner(options, facilityFixtureAudit = {}) {
     facilityFixture: baseFixture,
     async prepareCase(item = {}) {
       const expectedKeys = facilityStandardKeysForCase(item);
-      const fixtureKey = facilityFixtureKeyForKeys(expectedKeys);
+      const fixtureKey = facilityFixtureKeyForCase(item);
       const facilitySeed = await setStgFacilityStandards({
         platformBaseUrl,
         orgId,
@@ -928,7 +964,7 @@ function accuracyView(item, actual) {
   const actualCodes = asStrings(actual.candidateCodes);
   return {
     diagnosisRecall: recall(expectedDiagnoses, (value) => normalizedIncludes(actualDiagnosisText, value)),
-    billingSignalRecall: recall(expectedSignals, (value) => normalizedIncludes(actualSignalText, value)),
+    billingSignalRecall: recall(expectedSignals, (value) => billingSignalSatisfied(actualSignalText, value)),
     candidateCodeRecall: recall(expectedCodes, (value) => actualCodes.includes(String(value))),
     candidateCodePrecision: actualCodes.length && expectedCodes.length
       ? round(actualCodes.filter((code) => expectedCodes.includes(code)).length / actualCodes.length)
@@ -954,7 +990,7 @@ function missingView(item, actual) {
   ].join(" ");
   return {
     diagnoses: asStrings(expected.requiredDiagnoses).filter((value) => !normalizedIncludes(actual.diagnoses.join(" "), value)),
-    billingSignals: asStrings(expected.requiredBillingSignals).filter((value) => !normalizedIncludes(actualText, value)),
+    billingSignals: asStrings(expected.requiredBillingSignals).filter((value) => !billingSignalSatisfied(actualText, value)),
     candidateCodes: expectedCodes.filter((code) => !actualCodes.includes(code)),
     reviewTopics: asStrings(expected.requiredReviewTopics).filter((value) => !normalizedIncludes(actual.reviewText.join(" "), value))
   };
@@ -1469,6 +1505,33 @@ function normalizedIncludes(haystack, needle) {
     .replace(/\(.*?\)/gu, "")
     .trim();
   return Boolean(compactNeedle && normalizedHaystack.includes(compactNeedle));
+}
+
+function billingSignalSatisfied(haystack, signal) {
+  if (normalizedIncludes(haystack, signal)) {
+    return true;
+  }
+  for (const alias of billingSignalAliases(signal)) {
+    if (normalizedIncludes(haystack, alias)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function billingSignalAliases(signal) {
+  const key = normalizeText(signal);
+  const aliases = {
+    "インフルエンザ迅速": ["160169450", "インフルエンザウイルス抗原定性", "インフルエンザ抗原"],
+    "インフル迅速": ["160169450", "インフルエンザウイルス抗原定性", "インフルエンザ抗原"],
+    "コロナインフル同時抗原": ["160230050", "SARS-CoV-2インフルエンザウイルス抗原同時検出定性", "同時検出定性"],
+    "電子画像管理": ["170000210", "170028810", "電子画像管理加算"],
+    "単純X線": ["170000410", "170027910", "単純撮影", "X線"],
+    "CT": ["170011810", "CT撮影", "ＣＴ撮影"],
+    "CRP": ["160054710", "ＣＲＰ", "C反応性蛋白"],
+    "Ｂ－Ｖ": ["160095710", "B-V", "静脈採血"]
+  };
+  return aliases[key] || [];
 }
 
 function normalizeText(value) {

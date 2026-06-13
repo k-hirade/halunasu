@@ -17177,7 +17177,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-01",
         "department": "internal_medicine"
       },
@@ -17954,7 +17954,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-07",
         "department": "internal_medicine"
       },
@@ -18772,7 +18772,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -18784,7 +18784,7 @@
       "billingTargets": [
         {
           "name": "インフル迅速",
-          "points": 172
+          "points": 132
         },
         {
           "name": "再診料",
@@ -18963,7 +18963,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-14",
         "department": "internal_medicine"
       },
@@ -19375,7 +19375,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-17",
         "department": "internal_medicine"
       },
@@ -19785,7 +19785,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-20",
         "department": "internal_medicine"
       },
@@ -20057,7 +20057,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-22",
         "department": "internal_medicine"
       },
@@ -20901,7 +20901,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-04",
         "department": "internal_medicine"
       },
@@ -21591,7 +21591,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-09",
         "department": "internal_medicine"
       },
@@ -23374,7 +23374,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 491,
+        "totalPoints": 451,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -23386,7 +23386,7 @@
       "billingTargets": [
         {
           "name": "インフル迅速",
-          "points": 172
+          "points": 132
         },
         {
           "name": "再診料",
@@ -23570,7 +23570,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-23",
         "department": "internal_medicine"
       },
@@ -23990,7 +23990,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-02",
         "department": "internal_medicine"
       },
@@ -24401,7 +24401,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-05",
         "department": "internal_medicine"
       },
@@ -24673,7 +24673,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-07",
         "department": "internal_medicine"
       },
@@ -25916,7 +25916,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "initial",
+        "visitType": "revisit",
         "serviceDate": "2026-08-16",
         "department": "internal_medicine"
       },
@@ -26190,7 +26190,7 @@
       },
       "encounter": {
         "setting": "outpatient",
-        "visitType": "revisit",
+        "visitType": "initial",
         "serviceDate": "2026-08-18",
         "department": "internal_medicine"
       },

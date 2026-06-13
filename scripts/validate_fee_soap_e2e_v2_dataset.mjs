@@ -93,6 +93,32 @@ for (const item of dataset.cases || []) {
   // 3) exactアンカー
   if (item.expectedCalculation?.assertionLevel === "exact") {
     if (typeof item.expectedCalculation.totalPoints !== "number") fail("exact case missing totalPoints");
+    const expectedCodes = new Set((item.expectedCalculation.candidateCodes || []).map(String));
+    const visitType = String(item.encounter?.visitType || "").trim();
+    const expectedFeeKind = String(item.expectedClaimContext?.outpatient_basic?.fee_kind || "").trim();
+    if (expectedCodes.has("111000110") && visitType && visitType !== "initial") {
+      fail(`initial fee code 111000110 conflicts with encounter.visitType=${visitType}`);
+    }
+    if (expectedCodes.has("112007410") && visitType && visitType !== "revisit") {
+      fail(`revisit fee code 112007410 conflicts with encounter.visitType=${visitType}`);
+    }
+    if (expectedCodes.has("111000110") && expectedFeeKind && expectedFeeKind !== "initial") {
+      fail(`initial fee code 111000110 conflicts with expectedClaimContext.outpatient_basic.fee_kind=${expectedFeeKind}`);
+    }
+    if (expectedCodes.has("112007410") && expectedFeeKind && expectedFeeKind !== "revisit") {
+      fail(`revisit fee code 112007410 conflicts with expectedClaimContext.outpatient_basic.fee_kind=${expectedFeeKind}`);
+    }
+    const billingTargetTotal = (item.billingTargets || []).reduce((sum, target) => sum + Number(target?.totalPoints ?? target?.points ?? 0), 0);
+    if (item.billingTargets?.length && Number(billingTargetTotal) !== Number(item.expectedCalculation.totalPoints)) {
+      fail(`billingTargets total ${billingTargetTotal} != expectedCalculation.totalPoints ${item.expectedCalculation.totalPoints}`);
+    }
+    const fixture = fixtures[item.facilityFixtureKey] || {};
+    if ((expectedCodes.has("170000210") || expectedCodes.has("170028810")) && fixture.electronicImageManagement !== true) {
+      fail(`electronic image management code expected but fixture ${item.facilityFixtureKey} has electronicImageManagement=false`);
+    }
+    if (expectedCodes.has("170011810") && !fixture.equipment?.ct) {
+      fail(`CT code 170011810 expected but fixture ${item.facilityFixtureKey} has no CT equipment kind`);
+    }
     for (const code of item.expectedCalculation.candidateCodes || []) {
       const rule = EXACT_CODE_ANCHOR_RULES[code];
       if (!rule) continue; // 基本料・判断料・派生コードはアンカー不要(導出される)
