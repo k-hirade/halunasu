@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePlatformAuth } from "./platform-auth";
 
 const FEE_SESSION_PAGE_SIZE = 20;
+const CALCULATION_POLL_DELAYS_MS = [2500, 3500, 5000, 8000, 12000];
+const CALCULATION_POLL_SLOW_NOTICE_MS = 30000;
+const CALCULATION_POLL_TIMEOUT_MS = 90000;
 const ORDER_TYPE_OPTIONS = [
   ["procedure", "処置・手技"],
   ["lab", "検査"],
@@ -39,6 +42,23 @@ const CLINICAL_AUTO_CALCULATION_OPTION_KEYS = new Set([
   "medication",
   "material_inputs"
 ]);
+
+function isMasterSearchAvailable(masterStatus) {
+  if (!masterStatus || typeof masterStatus !== "object") {
+    return false;
+  }
+  if (typeof masterStatus.available === "boolean") {
+    return masterStatus.available;
+  }
+  if (masterStatus.provider === "custom") {
+    return true;
+  }
+  if (masterStatus.masterDbConfigured === false) {
+    return false;
+  }
+  return masterStatus.masterDbPathExists === true;
+}
+
 export function FeeWorkspace({ mode = "list", sessionId = "" }) {
   if (mode === "detail") {
     return <FeeSessionDetailView sessionId={sessionId} />;
@@ -203,8 +223,9 @@ function FeeSessionDetailView({ sessionId }) {
   const suppressAutoSaveRef = useRef(false);
   const autoSaveTimerRef = useRef(null);
   const pendingAutoSaveRef = useRef(null);
+  const bootstrapLoadedRef = useRef(false);
 
-  const masterSearchAvailable = Boolean(masterStatus);
+  const masterSearchAvailable = isMasterSearchAvailable(masterStatus);
   const filteredPatients = useMemo(() => {
     const keyword = normalizeSearch(patientFilter);
     if (!keyword) {
@@ -245,25 +266,34 @@ function FeeSessionDetailView({ sessionId }) {
     setSelectedMasterIndex(0);
   }, [masterItems, masterQuery, masterType]);
 
-  const loadAll = useCallback(async () => {
+  const loadBootstrap = useCallback(async ({ force = false } = {}) => {
+    if (bootstrapLoadedRef.current && !force) {
+      return null;
+    }
+    const bootstrap = await feeApi(`/v1/fee/bootstrap${sessionListQuery({ page: 1 })}`);
+    setPatients(bootstrap.patients || []);
+    setFacilities(bootstrap.facilities || []);
+    setDepartments(bootstrap.departments || []);
+    setMasterStatus(bootstrap.masterStatus || null);
+    bootstrapLoadedRef.current = true;
+    return bootstrap;
+  }, [feeApi]);
+
+  const loadAll = useCallback(async ({ forceBootstrap = false } = {}) => {
     setLoading(true);
     setMessage(null);
     try {
-      const [bootstrap, detail] = await Promise.all([
-        feeApi(`/v1/fee/bootstrap${sessionListQuery({ page: 1 })}`),
+      const [, detail] = await Promise.all([
+        loadBootstrap({ force: forceBootstrap }),
         feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/detail`)
       ]);
-      setPatients(bootstrap.patients || []);
-      setFacilities(bootstrap.facilities || []);
-      setDepartments(bootstrap.departments || []);
-      setMasterStatus(bootstrap.masterStatus || null);
       applyDetail(detail);
     } catch (error) {
       setMessage({ type: "error", text: toUserFacingErrorMessage(error, "算定詳細を読み込めませんでした。") });
     } finally {
       setLoading(false);
     }
-  }, [applyDetail, feeApi, sessionId]);
+  }, [applyDetail, feeApi, loadBootstrap, sessionId]);
 
   useEffect(() => {
     loadAll();
@@ -280,7 +310,16 @@ function FeeSessionDetailView({ sessionId }) {
       return undefined;
     }
     let cancelled = false;
-    const timer = window.setInterval(async () => {
+    let timeoutId = null;
+    let attempt = 0;
+    const startedAt = Date.now();
+
+    const schedule = () => {
+      const delay = CALCULATION_POLL_DELAYS_MS[Math.min(attempt, CALCULATION_POLL_DELAYS_MS.length - 1)];
+      timeoutId = window.setTimeout(poll, delay);
+    };
+
+    const poll = async () => {
       try {
         const detail = await refreshDetail();
         if (cancelled) {
@@ -288,23 +327,44 @@ function FeeSessionDetailView({ sessionId }) {
         }
         const status = detail.feeSession?.status;
         if (status && status !== "calculating") {
-          window.clearInterval(timer);
           setMessage({
             type: status === "failed" ? "error" : "success",
             text: status === "failed"
               ? "算定候補の作成に失敗しました。入力内容を確認してもう一度お試しください。"
               : "算定が完了しました。"
           });
+          return;
         }
+        const elapsed = Date.now() - startedAt;
+        if (elapsed >= CALCULATION_POLL_TIMEOUT_MS) {
+          setMessage({
+            type: "error",
+            text: "算定候補の作成に時間がかかっています。しばらくしてから最新の状態に更新するか、再度お試しください。"
+          });
+          return;
+        }
+        if (elapsed >= CALCULATION_POLL_SLOW_NOTICE_MS) {
+          setMessage({
+            type: "success",
+            text: "算定候補の作成に時間がかかっています。完了まで画面を更新しながら待機しています。"
+          });
+        }
+        attempt += 1;
+        schedule();
       } catch (error) {
         if (!cancelled) {
-          setMessage({ type: "error", text: toUserFacingErrorMessage(error, "算定結果を更新できませんでした。") });
+          const fallback = Number(error?.status) === 504
+            ? "算定候補の作成がタイムアウトしました。最新の状態に更新するか、入力内容を確認して再試行してください。"
+            : "算定結果を更新できませんでした。";
+          setMessage({ type: "error", text: toUserFacingErrorMessage(error, fallback) });
         }
       }
-    }, 2500);
+    };
+
+    schedule();
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      window.clearTimeout(timeoutId);
     };
   }, [feeSession?.status, refreshDetail]);
 
@@ -723,7 +783,7 @@ function FeeSessionDetailView({ sessionId }) {
           <button className="btn btn--ghost" disabled={busy || !receiptDraft} onClick={copyReceiptDraft} type="button">
             レセプト案をコピー
           </button>
-          <button className="btn btn--ghost btn--icon" disabled={busy} onClick={loadAll} type="button" aria-label="最新の状態に更新">↻</button>
+          <button className="btn btn--ghost btn--icon" disabled={busy} onClick={() => loadAll({ forceBootstrap: true })} type="button" aria-label="最新の状態に更新">↻</button>
         </div>
       </div>
       <FeeSettingsModal
@@ -1265,12 +1325,13 @@ function ProposalCard({ disabled, item, onDecision, onOpenDetail }) {
 }
 
 function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
+  const canApprove = canApproveReviewItem(item);
   return (
     <article className={`candidate-line-row candidate-line-row--${item.inclusionStatus}`}>
       <div className="candidate-line-action">
         <select
           aria-label={`${item.name}の採否`}
-          disabled={disabled}
+          disabled={disabled || !canApprove}
           value={item.decisionStatus}
           onChange={(event) => onDecision(item.reviewItemId, event.target.value)}
         >
@@ -1298,6 +1359,8 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
 }
 
 function IssueCard({ disabled, item, onDecision, onOpenDetail }) {
+  const requiredInput = reviewRequiredInput(item);
+  const actionLabel = reviewActionLabel(item);
   return (
     <article className={`issue-card issue-card--${item.issueCategory || "rule"}`}>
       <div>
@@ -1305,9 +1368,16 @@ function IssueCard({ disabled, item, onDecision, onOpenDetail }) {
         <strong>{item.displayTitle}</strong>
         <p>{item.displayReason}</p>
         {item.conditionText ? <small>{item.conditionText}</small> : null}
+        {requiredInput ? (
+          <div className="issue-required-input">
+            <span>確認する情報</span>
+            <strong>{requiredInput}</strong>
+          </div>
+        ) : null}
       </div>
       <div className="issue-card-actions">
-        <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">確認する</button>
+        <span className="issue-action-label">{actionLabel}</span>
+        <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">詳細</button>
         <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">保留</button>
       </div>
     </article>
@@ -1342,9 +1412,21 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision }) {
             <h3>条件</h3>
             <p>{item.conditionText || "カルテ内容、実施状況、施設基準を確認してください。"}</p>
           </section>
+          {reviewRequiredInput(item) ? (
+            <section>
+              <h3>確認する情報</h3>
+              <p>{reviewRequiredInput(item)}</p>
+            </section>
+          ) : null}
+          {item.reviewOnly || item.actionType === "not_billable_now" ? (
+            <section>
+              <h3>操作方針</h3>
+              <p>この項目は自動採用できません。人手で内容を確認し、必要ならカルテまたは手入力オーダーを修正してください。</p>
+            </section>
+          ) : null}
         </div>
         <footer className="fee-modal-footer">
-          {canDecide && item.kind === "line" ? (
+          {canDecide && item.kind === "line" && canApproveReviewItem(item) ? (
             <>
               <button className="btn btn--primary" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">算定する</button>
               <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">保留</button>
@@ -1362,6 +1444,37 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision }) {
       </section>
     </div>
   );
+}
+
+function reviewRequiredInput(item = {}) {
+  return String(
+    item.requiredInput
+    || item.required_input
+    || item.reviewIssue?.requiredInput
+    || item.reviewIssue?.required_input
+    || item.sourceItem?.reviewIssue?.requiredInput
+    || item.sourceItem?.reviewIssue?.required_input
+    || ""
+  ).trim();
+}
+
+function reviewActionLabel(item = {}) {
+  if (item.reviewOnly || item.actionType === "not_billable_now") {
+    return "人手確認";
+  }
+  if (item.actionType === "select_required") {
+    return "候補選択";
+  }
+  if (item.canAdopt) {
+    return "採用可能";
+  }
+  return "確認";
+}
+
+function canApproveReviewItem(item = {}) {
+  return item.reviewOnly !== true
+    && item.actionType !== "not_billable_now"
+    && item.canAdopt !== false;
 }
 
 function CalculationProgress({ progress }) {

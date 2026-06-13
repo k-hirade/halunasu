@@ -1096,6 +1096,15 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   align-items: center;
 }
 
+.issue-action-label {
+  border-radius: 999px;
+  background: #eef4f8;
+  color: #344054;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .proposal-points {
   color: var(--accent-dark);
   font-size: 1rem;
@@ -1152,6 +1161,27 @@ body:has(.fee-shell--detail) .admin-nav-drawer {
   color: #7a4b00;
   font-size: 12px;
   font-weight: 800;
+  line-height: 1.45;
+}
+
+.issue-required-input {
+  display: grid;
+  gap: 3px;
+  margin-top: 8px;
+  border-radius: 8px;
+  background: #fff7ed;
+  padding: 8px;
+}
+
+.issue-required-input span {
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.issue-required-input strong {
+  color: #7c2d12;
+  font-size: 12px;
   line-height: 1.45;
 }
 
