@@ -6,7 +6,6 @@ import { usePlatformAuth } from "./platform-auth";
 
 const FEE_SESSION_PAGE_SIZE = 20;
 const CALCULATION_POLL_DELAYS_MS = [2500, 3500, 5000, 8000, 12000];
-const CALCULATION_POLL_SLOW_NOTICE_MS = 30000;
 const CALCULATION_POLL_TIMEOUT_MS = 90000;
 const EMPTY_SELECT_VALUE = "__fee_empty__";
 const ORDER_TYPE_OPTIONS = [
@@ -223,7 +222,7 @@ function FeeSessionDetailView({ sessionId }) {
   const [candidateDetail, setCandidateDetail] = useState(null);
   const [settingsModalMode, setSettingsModalMode] = useState(null);
   const [activeMainTab, setActiveMainTab] = useState("work");
-  const [activeWorkTab, setActiveWorkTab] = useState("issues");
+  const [activeWorkTab, setActiveWorkTab] = useState("lines");
   const suppressAutoSaveRef = useRef(false);
   const autoSaveTimerRef = useRef(null);
   const pendingAutoSaveRef = useRef(null);
@@ -331,12 +330,12 @@ function FeeSessionDetailView({ sessionId }) {
         }
         const status = detail.feeSession?.status;
         if (status && status !== "calculating") {
-          setMessage({
-            type: status === "failed" ? "error" : "success",
-            text: status === "failed"
-              ? "算定候補の作成に失敗しました。入力内容を確認してもう一度お試しください。"
-              : "算定が完了しました。"
-          });
+          setMessage(status === "failed"
+            ? {
+              type: "error",
+              text: "算定候補の作成に失敗しました。入力内容を確認してもう一度お試しください。"
+            }
+            : null);
           return;
         }
         const elapsed = Date.now() - startedAt;
@@ -346,12 +345,6 @@ function FeeSessionDetailView({ sessionId }) {
             text: "算定候補の作成に時間がかかっています。しばらくしてから最新の状態に更新するか、再度お試しください。"
           });
           return;
-        }
-        if (elapsed >= CALCULATION_POLL_SLOW_NOTICE_MS) {
-          setMessage({
-            type: "success",
-            text: "算定候補の作成に時間がかかっています。完了まで画面を更新しながら待機しています。"
-          });
         }
         attempt += 1;
         schedule();
@@ -543,19 +536,19 @@ function FeeSessionDetailView({ sessionId }) {
           message: "カルテ本文から算定に必要な情報を抽出しています。"
         })
       }));
-      setMessage({ type: "success", text: "算定候補を作成しています。" });
+      setMessage(null);
       const response = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/calculate`, {
         method: "POST",
         csrf: true,
         body: {}
       });
       applyDetail(response);
-      setMessage({
-        type: "success",
-        text: response.feeSession?.status === "calculating"
-          ? "算定候補を作成しています。"
-          : "算定が完了しました。"
-      });
+      setMessage(response.feeSession?.status === "failed"
+        ? {
+          type: "error",
+          text: "算定候補の作成に失敗しました。入力内容を確認してもう一度お試しください。"
+        }
+        : null);
     });
   }
 
@@ -921,6 +914,25 @@ function SourcePane({
           <ScopeNotice setting={form.setting} />
         </section>
 
+        <section className="source-section source-section--chart">
+          <div className="source-section-head">
+            <div>
+              <h2>カルテ本文</h2>
+              <p>全文を表示します。折り畳みは使いません。</p>
+            </div>
+          </div>
+          <label className="clinical-text-field">
+            <span>カルテの内容</span>
+            <textarea
+              className="clinical-textarea"
+              placeholder={"S/O/A/Pや診療メモをそのまま貼り付けてください。"}
+              value={form.clinicalText}
+              onChange={(event) => onUpdateClinicalText(event.target.value)}
+            />
+            <small>本文から病名・オーダー候補を自動補完します。</small>
+          </label>
+        </section>
+
         <section className="source-section">
           <div className="source-section-head">
             <div>
@@ -945,25 +957,6 @@ function SourcePane({
             <span>手入力オーダー</span>
             <strong>{orderCount.toLocaleString()}件</strong>
           </div>
-        </section>
-
-        <section className="source-section source-section--chart">
-          <div className="source-section-head">
-            <div>
-              <h2>カルテ本文</h2>
-              <p>全文を表示します。折り畳みは使いません。</p>
-            </div>
-          </div>
-          <label className="clinical-text-field">
-            <span>カルテの内容</span>
-            <textarea
-              className="clinical-textarea"
-              placeholder={"S/O/A/Pや診療メモをそのまま貼り付けてください。"}
-              value={form.clinicalText}
-              onChange={(event) => onUpdateClinicalText(event.target.value)}
-            />
-            <small>本文から病名・オーダー候補を自動補完します。</small>
-          </label>
         </section>
       </form>
 
@@ -1285,55 +1278,86 @@ function PatientPicker({ filteredPatients, isOpen, onFilterChange, onOpenChange,
 }
 
 function PatientCreateForm({ disabled, onSubmit, patient, setPatient }) {
+  const [isOpen, setIsOpen] = useState(false);
+  async function handleSubmit(event) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    if (!formElement.checkValidity()) {
+      formElement.reportValidity();
+      return;
+    }
+    await onSubmit(event);
+    setIsOpen(false);
+  }
+
   return (
-    <details className="patient-inline-create">
-      <summary>＋ 患者追加</summary>
-      <form className="patient-create-form" onSubmit={onSubmit}>
-        <label>
-          <span>氏名</span>
-          <input
-            required
-            value={patient.displayName}
-            onChange={(event) => setPatient((current) => ({ ...current, displayName: event.target.value }))}
-          />
-        </label>
-        <div className="fee-form-grid fee-form-grid--two">
-          <label>
-            <span>生年月日</span>
-            <input
-              type="date"
-              value={patient.birthDate}
-              onChange={(event) => setPatient((current) => ({ ...current, birthDate: event.target.value }))}
-            />
-          </label>
-          <label>
-            <span>性別</span>
-            <AdminSelect
-              ariaLabel="性別"
-              options={[
-                { value: "unknown", label: "不明" },
-                { value: "male", label: "男性" },
-                { value: "female", label: "女性" },
-                { value: "other", label: "その他" }
-              ]}
-              value={patient.sex}
-              onValueChange={(value) => setPatient((current) => ({ ...current, sex: value }))}
-            />
-          </label>
+    <div className="patient-inline-create">
+      <button className="btn btn--ghost" disabled={disabled} onClick={() => setIsOpen(true)} type="button">
+        ＋ 患者追加
+      </button>
+      {isOpen ? (
+        <div className="fee-modal-overlay" role="presentation" onMouseDown={() => setIsOpen(false)}>
+          <section className="fee-modal-card patient-create-modal" role="dialog" aria-modal="true" aria-label="患者追加" onMouseDown={(event) => event.stopPropagation()}>
+            <header className="fee-modal-head">
+              <div>
+                <span className="label">患者</span>
+                <h2>患者を追加</h2>
+              </div>
+              <button className="btn btn--ghost btn--icon" onClick={() => setIsOpen(false)} type="button" aria-label="閉じる">×</button>
+            </header>
+            <form className="patient-create-form" onSubmit={handleSubmit}>
+              <label>
+                <span>氏名</span>
+                <input
+                  required
+                  value={patient.displayName}
+                  onChange={(event) => setPatient((current) => ({ ...current, displayName: event.target.value }))}
+                />
+              </label>
+              <div className="fee-form-grid fee-form-grid--two">
+                <label>
+                  <span>生年月日</span>
+                  <input
+                    type="date"
+                    value={patient.birthDate}
+                    onChange={(event) => setPatient((current) => ({ ...current, birthDate: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>性別</span>
+                  <AdminSelect
+                    ariaLabel="性別"
+                    options={[
+                      { value: "unknown", label: "不明" },
+                      { value: "male", label: "男性" },
+                      { value: "female", label: "女性" },
+                      { value: "other", label: "その他" }
+                    ]}
+                    value={patient.sex}
+                    onValueChange={(value) => setPatient((current) => ({ ...current, sex: value }))}
+                  />
+                </label>
+              </div>
+              <label>
+                <span>患者番号</span>
+                <input
+                  placeholder="例: legacy-001"
+                  value={patient.patientRef}
+                  onChange={(event) => setPatient((current) => ({ ...current, patientRef: event.target.value }))}
+                />
+              </label>
+              <footer className="fee-modal-footer">
+                <button className="btn btn--ghost" onClick={() => setIsOpen(false)} type="button">閉じる</button>
+                <button className="btn btn--primary" disabled={disabled} type="submit">患者を追加</button>
+              </footer>
+            </form>
+          </section>
         </div>
-        <label>
-          <span>患者番号</span>
-          <input
-            placeholder="例: legacy-001"
-            value={patient.patientRef}
-            onChange={(event) => setPatient((current) => ({ ...current, patientRef: event.target.value }))}
-          />
-        </label>
-        <button className="btn btn--ghost" disabled={disabled} type="submit">患者を追加</button>
-      </form>
-    </details>
+      ) : null}
+    </div>
   );
 }
+
 function MasterStatus({ available }) {
   if (available) {
     return null;
@@ -1421,12 +1445,15 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
   if (feeSession?.status === "calculating") {
     return (
       <div className="result result-empty">
-        <div className="notice-card">
-          <strong>算定候補を作成中です</strong>
-          <p>{feeSession?.patientSnapshot?.displayName || feeSession?.patientId || "患者未選択"} / {feeSession?.serviceDate || "診療日未設定"} / 計算中</p>
+        <div className="calculation-waiting-card" role="status" aria-live="polite">
+          <strong>カルテ本文を読み取り算定中</strong>
+          <p>候補化が完了すると、算定中・要確認・提案を更新します。</p>
+          <div className="calculation-waiting-lines" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
         </div>
-        <CalculationProgress progress={feeSession?.calculationProgress} />
-        <p className="field-note">完了すると算定候補、確認項目、レセプト案が自動で更新されます。</p>
       </div>
     );
   }
@@ -1480,8 +1507,8 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
       ) : null}
 
       <div className="fee-sub-tabs" role="tablist" aria-label="算定作業">
-        <TabButton active={activeTab === "issues"} count={needsReviewCount} onClick={() => onTabChange("issues")}>要確認</TabButton>
         <TabButton active={activeTab === "lines"} count={includedCount} onClick={() => onTabChange("lines")}>算定中</TabButton>
+        <TabButton active={activeTab === "issues"} count={needsReviewCount} onClick={() => onTabChange("issues")}>要確認</TabButton>
         <TabButton active={activeTab === "proposals"} count={proposalCount} onClick={() => onTabChange("proposals")}>提案</TabButton>
       </div>
 

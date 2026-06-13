@@ -1069,19 +1069,17 @@ body:has(.fee-shell--detail) {
 }
 
 .patient-inline-create {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fbfdff;
-  padding: 12px 14px;
+  display: flex;
+  justify-content: flex-end;
 }
 
-.patient-inline-create summary {
-  cursor: pointer;
-  font-weight: 900;
+.patient-create-modal {
+  width: min(520px, calc(100vw - 24px));
 }
 
-.patient-inline-create form {
-  margin-top: 14px;
+.patient-create-modal .patient-create-form {
+  margin: 0;
+  padding: 0 18px 18px;
 }
 
 .patient-picker-row {
@@ -1907,6 +1905,50 @@ body:has(.fee-shell--detail) {
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.calculation-waiting-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 18px;
+}
+
+.calculation-waiting-card strong {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.calculation-waiting-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.calculation-waiting-lines {
+  display: grid;
+  gap: 9px;
+}
+
+.calculation-waiting-lines span {
+  display: block;
+  height: 11px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e8f3f1 0%, #f7fbfa 45%, #e8f3f1 90%);
+  background-size: 220% 100%;
+  animation: session-shimmer 1.4s linear infinite;
+}
+
+.calculation-waiting-lines span:nth-child(2) {
+  width: 84%;
+}
+
+.calculation-waiting-lines span:nth-child(3) {
+  width: 62%;
 }
 
 .fee-table-wrap {
