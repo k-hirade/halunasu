@@ -3045,6 +3045,124 @@ test("does not support lab coding from past values or necessity confirmation onl
   assert.equal(masterSearches.some((search) => search.query === "HbA1c"), false);
 });
 
+test("does not promote past or external numeric lab result assertions into performed lab coding", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const masterSearches = [];
+  let receivedInput = null;
+  let clinicalEvents = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    if (input.type === "procedure" && ["CRP", "HbA1c"].includes(String(input.query || ""))) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: input.query === "CRP" ? "160054710" : "160010010",
+          name: input.query === "CRP" ? "ＣＲＰ" : "ＨｂＡ１ｃ",
+          points: input.query === "CRP" ? 16 : 49,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "糖尿病疑い", status: "suspected", evidence: "糖尿病疑い" }],
+    clinical_events: clinicalEvents,
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Past External Numeric Lab Guard Patient"
+  }, headers);
+
+  clinicalEvents = [{
+    type: "lab",
+    billing_domain: "standard_lab",
+    name: "CRP",
+    action_status: "performed",
+    temporal_relation: "current_visit",
+    source_origin: "own_clinic_record",
+    provider_ownership: "own_clinic",
+    result_assertion: "numeric",
+    certainty: "ambiguous",
+    section: "O",
+    evidence: "前回CRP 2.4mg/dLであったため、今日は症状経過のみ確認した。",
+    search_queries: ["CRP"]
+  }];
+  let session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-12",
+    clinicalText: "再診。前回CRP 2.4mg/dLであったため、今日は症状経過のみ確認した。",
+    diagnoses: [{ name: "糖尿病疑い" }]
+  }, headers);
+  let calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
+  assert.equal(masterSearches.some((search) => search.query === "CRP"), false);
+
+  masterSearches.length = 0;
+  receivedInput = null;
+  clinicalEvents = [{
+    type: "lab",
+    billing_domain: "standard_lab",
+    name: "HbA1c",
+    action_status: "performed",
+    temporal_relation: "current_visit",
+    source_origin: "own_clinic_record",
+    provider_ownership: "own_clinic",
+    result_assertion: "numeric",
+    certainty: "ambiguous",
+    section: "O",
+    evidence: "他院HbA1c 7.2%の結果を持参。自院では本日採血していない。",
+    search_queries: ["HbA1c"]
+  }];
+  session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-13",
+    clinicalText: "再診。他院HbA1c 7.2%の結果を持参。自院では本日採血していない。",
+    diagnoses: [{ name: "糖尿病疑い" }]
+  }, headers);
+  calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
+  assert.equal(masterSearches.some((search) => search.query === "HbA1c"), false);
+});
+
 test("routes non-billable lab review contexts to specific review topics without coding", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -4170,7 +4288,7 @@ test("structured no outside prescription visit fact overrides negated outside pr
     patientId: patient.body.patient.patientId,
     facilityId: "fac_001",
     serviceDate: "2026-06-10",
-    clinicalText: "P: 院外処方箋は交付していない。ゲーベンクリーム1%を10g院内で外用薬として処方。",
+    clinicalText: "S: 前医では処方箋を交付されたと本人が話した。P: 本日は院外処方箋は交付していない。ゲーベンクリーム1%を10g院内で外用薬として処方。",
     diagnoses: [{ name: "熱傷" }]
   }, headers);
   const calculation = await request(

@@ -642,6 +642,22 @@ BUCKET_MISMATCH
 - 複数日記録、病理、リハビリ、在宅、精神科専門療法、麻酔、手術、透析、輸血、内視鏡、放射線治療などは、構造化された `billing_domain` を入力にしたreview-only判定へ寄せる。自由文正規表現でドメインを再分類しない。
 - デバッグ性を上げるため、E2Eレポートには抽出された `clinicalEvents` の概要を含める。失敗がLLM抽出なのか、マスター照合なのか、ルール派生なのかを分けて見る。
 
+### Structured Facts First
+
+自由文正規表現は、候補生成、review topic生成、否定・時制・帰属のガードに限定する。算定確定に直結する事実は、原則として構造化フィールドと決定論ルールから決める。
+
+- `visit_facts`、`clinical_event.action_status`、`temporal_relation`、`provider_ownership`、`billing_domain`、`specimen`、`collection_method` などに明示値がある場合、自由文fallbackより優先する。
+- 構造化フィールドが `yes` / `no` / `present` / `absent` のように明示されている場合は、それを確定事実として扱う。自由文fallbackで上書きしない。
+- 構造化フィールドが `unknown`、空、未出力の場合だけ自由文fallbackを使う。
+- 自由文fallbackを使う場合も、否定、予定、過去、他院・持参、第三者文脈の共通ガードを通す。
+- 自由文fallbackで迷う場合は、自動算定せず `review_issue` へ落とす。
+
+例:
+
+- `visit_facts.outside_prescription_issued = no` の場合、本文中に過去の「処方箋を交付」言及があっても、当日院外処方箋料へは進めない。
+- `result_assertion = numeric` であっても、根拠が「前回CRP」「他院HbA1c」なら、今回自院実施検査には昇格しない。
+- 造影、電子保存、機器区分は、明示値がなければ `unknown` として確認topicに落とし、安いコードや加算なしへ勝手に確定しない。
+
 ### P0
 
 1. category gateを実装する。

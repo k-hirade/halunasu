@@ -1366,7 +1366,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   if (medicationOrders.length) {
     inferred.medication_orders = dedupeObjects(medicationOrders, (item) => item.drug_code);
     inferred.medication = {
-      delivery_kind: visitMedication?.delivery_kind || inferMedicationDeliveryKind(text),
+      delivery_kind: medicationDeliveryKindFromStructuredOrText(visitMedication, text),
       prescription_category: "other",
       ...(visitMedication?.generic_name_prescription_add_on ? {
         generic_name_prescription_add_on: visitMedication.generic_name_prescription_add_on
@@ -2734,6 +2734,14 @@ function inferMedicationDeliveryKind(text) {
     return "outside_prescription";
   }
   return "in_house";
+}
+
+function medicationDeliveryKindFromStructuredOrText(visitMedication = null, text = "") {
+  const structured = String(visitMedication?.delivery_kind || "").trim();
+  if (["in_house", "outside_prescription"].includes(structured)) {
+    return structured;
+  }
+  return inferMedicationDeliveryKind(text);
 }
 
 function medicationOptionsFromVisitFacts(visitFacts = {}) {
