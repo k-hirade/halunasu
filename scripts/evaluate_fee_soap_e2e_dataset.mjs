@@ -90,10 +90,17 @@ if (args.warmup !== false) {
 const results = [];
 
 for (const item of selectedCases) {
-  const result = await evaluateCase(item, runner, args);
-  results.push(result);
-  if (args.verbose || result.status !== "passed") {
-    console.log(`${result.status.toUpperCase()} ${result.caseId} stage=${result.failedStage || "-"} total=${result.actual.totalPoints ?? "-"}ms=${result.durationMs.total}`);
+  for (let repeatIndex = 0; repeatIndex < args.repeat; repeatIndex += 1) {
+    const result = await evaluateCase(item, runner, args);
+    result.repeat = {
+      index: repeatIndex + 1,
+      count: args.repeat
+    };
+    results.push(result);
+    if (args.verbose || result.status !== "passed") {
+      const repeatLabel = args.repeat > 1 ? ` repeat=${repeatIndex + 1}/${args.repeat}` : "";
+      console.log(`${result.status.toUpperCase()} ${result.caseId}${repeatLabel} stage=${result.failedStage || "-"} total=${result.actual.totalPoints ?? "-"}ms=${result.durationMs.total}`);
+    }
   }
 }
 
@@ -103,6 +110,8 @@ const summary = buildSummary(results, {
   mode: args.mode,
   strict: args.strict,
   selected: selectedCases.length,
+  repeat: args.repeat,
+  totalRuns: results.length,
   totalDatasetCases: dataset.cases?.length || 0,
   durationMs: Date.now() - startedAt
 });
@@ -116,7 +125,8 @@ const report = {
   filters: {
     caseId: args.caseId || null,
     assertionLevel: args.assertionLevel || null,
-    limit: args.limit || null
+    limit: args.limit || null,
+    repeat: args.repeat
   },
   security: {
     syntheticDataOnly: true,
@@ -1128,6 +1138,7 @@ function buildSummary(results, meta) {
   const failedKnownGapResults = failed.filter((item) => item.hasKnownProductGap);
   const failedWithoutKnownGaps = failed.filter((item) => !item.hasKnownProductGap);
   const passed = results.length - failed.length;
+  const stability = buildStabilitySummary(results, meta.repeat || 1);
   const clinicalStructuringSources = countBy(results, (item) => (
     item.durationMs?.clinicalStructuringSource
     || item.actual?.clinicalExtractionVersion?.source
@@ -1139,7 +1150,9 @@ function buildSummary(results, meta) {
       passed,
       failed: failedWithoutKnownGaps.length,
       knownGap: failedKnownGapResults.length,
-      stabilityEscalationThreshold: STABILITY_CASE_PASS_THRESHOLD
+      stabilityEscalationThreshold: STABILITY_CASE_PASS_THRESHOLD,
+      unstableCases: stability.unstableCases,
+      p2EscalationRecommended: stability.shouldConsiderP2
     },
     passed,
     failed: failed.length,
@@ -1148,6 +1161,7 @@ function buildSummary(results, meta) {
     effectivePassRateExcludingKnownProductGaps: round(passed / Math.max(1, results.length - failedKnownGapResults.length)),
     clinicalStructuringSources,
     clinicalStructuringFallbackRate: round(Number(clinicalStructuringSources.rules_fallback || 0) / Math.max(1, results.length)),
+    stability,
     knownProductGaps: {
       totalCases: knownGapResults.length,
       passed: knownGapResults.filter((item) => item.status === "passed").length,
@@ -1197,6 +1211,70 @@ function buildSummary(results, meta) {
   };
 }
 
+function buildStabilitySummary(results = [], repeat = 1) {
+  const groups = new Map();
+  for (const result of results) {
+    if (!groups.has(result.caseId)) groups.set(result.caseId, []);
+    groups.get(result.caseId).push(result);
+  }
+  const caseSummaries = [...groups.entries()]
+    .filter(([, items]) => repeat > 1 || items.length > 1)
+    .map(([caseId, items]) => {
+      const signatureGroups = countGroups(
+        items.map((item) => ({
+          signature: stabilitySignature(item),
+          result: item
+        })),
+        (item) => item.signature,
+        (group) => ({
+          count: group.length,
+          repeatIndexes: group.map((item) => item.result.repeat?.index || null).filter(Boolean),
+          status: group[0]?.result?.status || "unknown",
+          failedStage: group[0]?.result?.failedStage || null,
+          totalPoints: group[0]?.result?.actual?.totalPoints ?? null,
+          candidateCodes: asStrings(group[0]?.result?.actual?.candidateCodes).sort(),
+          missingReviewTopics: asStrings(group[0]?.result?.missing?.reviewTopics).sort()
+        })
+      );
+      const signatures = Object.entries(signatureGroups)
+        .map(([signature, value]) => ({ signature, ...value }))
+        .sort((a, b) => b.count - a.count);
+      return {
+        caseId,
+        runs: items.length,
+        stable: signatures.length <= 1,
+        signatures
+      };
+    });
+  const unstable = caseSummaries.filter((item) => !item.stable);
+  const caseStabilityRate = caseSummaries.length
+    ? round((caseSummaries.length - unstable.length) / caseSummaries.length)
+    : null;
+  return {
+    enabled: repeat > 1,
+    repeat,
+    threshold: STABILITY_CASE_PASS_THRESHOLD,
+    evaluatedCases: caseSummaries.length,
+    stableCases: caseSummaries.length - unstable.length,
+    unstableCases: unstable.length,
+    caseStabilityRate,
+    shouldConsiderP2: Boolean(repeat > 1 && caseStabilityRate !== null && caseStabilityRate < STABILITY_CASE_PASS_THRESHOLD),
+    unstableCaseDetails: unstable.slice(0, 20)
+  };
+}
+
+function stabilitySignature(result = {}) {
+  return JSON.stringify({
+    status: result.status || "unknown",
+    failedStage: result.failedStage || null,
+    totalPoints: result.actual?.totalPoints ?? null,
+    candidateCodes: asStrings(result.actual?.candidateCodes).sort(),
+    missingCandidateCodes: asStrings(result.missing?.candidateCodes).sort(),
+    missingBillingSignals: asStrings(result.missing?.billingSignals).sort(),
+    missingReviewTopics: asStrings(result.missing?.reviewTopics).sort()
+  });
+}
+
 function writeReports(report, options) {
   fs.mkdirSync(reportDir, { recursive: true });
   const prefix = options.outputPrefix || "latest";
@@ -1231,6 +1309,12 @@ function markdownReport(report) {
   lines.push(`- Clinical structuring sources: ${Object.entries(report.summary.clinicalStructuringSources || {}).map(([source, count]) => `${source}=${count}`).join(", ") || "-"}`);
   lines.push(`- Rules fallback rate: ${Math.round((report.summary.clinicalStructuringFallbackRate || 0) * 100)}%`);
   lines.push(`- P2 verifier/self-consistency trigger: case stability < ${Math.round((report.summary.headline?.stabilityEscalationThreshold || STABILITY_CASE_PASS_THRESHOLD) * 100)}%`);
+  if (report.summary.stability?.enabled) {
+    lines.push(`- Case stability: ${Math.round((report.summary.stability.caseStabilityRate || 0) * 100)}% (${report.summary.stability.stableCases}/${report.summary.stability.evaluatedCases} stable, unstable=${report.summary.stability.unstableCases})`);
+    lines.push(`- P2 escalation recommended: ${report.summary.stability.shouldConsiderP2 ? "yes" : "no"}`);
+  } else {
+    lines.push("- Case stability: not measured (use --repeat N)");
+  }
   if (report.summary.knownProductGaps?.totalCases) {
     lines.push(`- Known product gap cases: ${report.summary.knownProductGaps.totalCases} (failed: ${report.summary.knownProductGaps.failed})`);
   }
@@ -1245,6 +1329,29 @@ function markdownReport(report) {
     }
   } else {
     lines.push("- none");
+  }
+  lines.push("");
+  lines.push("## Stability");
+  lines.push("");
+  if (report.summary.stability?.enabled) {
+    lines.push(`- Repeat: ${report.summary.stability.repeat}`);
+    lines.push(`- Threshold: ${Math.round(report.summary.stability.threshold * 100)}%`);
+    lines.push(`- Case stability: ${Math.round((report.summary.stability.caseStabilityRate || 0) * 100)}%`);
+    if (report.summary.stability.unstableCaseDetails?.length) {
+      lines.push("");
+      lines.push("| case | runs | signatures |");
+      lines.push("| --- | ---: | --- |");
+      for (const item of report.summary.stability.unstableCaseDetails) {
+        const signatureSummary = item.signatures
+          .map((signature) => `${signature.count}x ${signature.status}/${signature.failedStage || "-"} ${signature.totalPoints ?? "-"}pt [${signature.candidateCodes.join(",") || "-"}]`)
+          .join("<br>");
+        lines.push(`| ${item.caseId} | ${item.runs} | ${escapeTable(signatureSummary)} |`);
+      }
+    } else {
+      lines.push("- all repeated cases stable");
+    }
+  } else {
+    lines.push("- not measured");
   }
   lines.push("");
   lines.push("## Failure By Stage");
@@ -1425,6 +1532,7 @@ function parseArgs(argv) {
     caseId: "",
     assertionLevel: "",
     outputPrefix: "latest",
+    repeat: 1,
     strict: false,
     verbose: false,
     openai: false,
@@ -1448,6 +1556,7 @@ function parseArgs(argv) {
     else if (arg === "--case") parsed.caseId = next();
     else if (arg === "--assertion") parsed.assertionLevel = next();
     else if (arg === "--output-prefix") parsed.outputPrefix = next();
+    else if (arg === "--repeat") parsed.repeat = Number(next());
     else if (arg === "--strict") parsed.strict = true;
     else if (arg === "--verbose") parsed.verbose = true;
     else if (arg === "--openai") parsed.openai = true;
@@ -1469,6 +1578,9 @@ function parseArgs(argv) {
   if (parsed.limit !== null && (!Number.isInteger(parsed.limit) || parsed.limit <= 0)) {
     throw new Error("--limit must be a positive integer");
   }
+  if (!Number.isInteger(parsed.repeat) || parsed.repeat <= 0) {
+    throw new Error("--repeat must be a positive integer");
+  }
   return parsed;
 }
 
@@ -1482,6 +1594,7 @@ Options:
   --case CASE_ID                   Run one case
   --assertion LEVEL                Filter by assertionLevel
   --output-prefix NAME             Report prefix under the report directory
+  --repeat N                       Run each selected case N times and report case stability. Default: 1
   --report-dir PATH                Report directory. Default: data/tests/fee-soap-e2e/reports
   --strict                         Exit non-zero when any case fails
   --verbose                        Print every case result
@@ -1516,6 +1629,7 @@ function printSummary(summary) {
     effectivePassRateExcludingKnownProductGaps: summary.effectivePassRateExcludingKnownProductGaps,
     clinicalStructuringSources: summary.clinicalStructuringSources,
     clinicalStructuringFallbackRate: summary.clinicalStructuringFallbackRate,
+    stability: summary.stability,
     failureByStage: summary.failureByStage,
     avgDurationMs: summary.avgDurationMs,
     reportDir: path.relative(repoRoot, reportDir)

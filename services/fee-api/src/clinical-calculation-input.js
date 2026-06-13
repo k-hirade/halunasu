@@ -2938,10 +2938,13 @@ function clinicalEventsFromChecklistFindings({
     }
     const matchedExisting = existing.find((event) => clinicalEventMatchesChecklistMenu(event, menu));
     if (matchedExisting) {
-      const enriched = enrichClinicalEventWithChecklistMenu(matchedExisting, menu);
+      const shouldEnrich = status === "performed_today";
+      const enriched = shouldEnrich ? enrichClinicalEventWithChecklistMenu(matchedExisting, menu) : false;
       traceEvents.push({
         stage: "checklist_recall",
-        outcome: enriched ? "enriched_existing" : "already_extracted",
+        outcome: enriched
+          ? "enriched_existing"
+          : (shouldEnrich ? "already_extracted" : "matched_existing_without_enrichment"),
         menuId,
         status,
         label: menu.label || "",

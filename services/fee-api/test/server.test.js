@@ -2201,6 +2201,95 @@ test("blocks billable free extraction when checklist contradicts the event", asy
   )));
 });
 
+test("does not enrich existing events from non-performed checklist findings", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    if (input.type === "procedure" && input.query === "創傷処置") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "140000610",
+          name: "創傷処置（１００ｃｍ２未満）",
+          points: 52,
+          feeCategory: "treatment_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [],
+    clinical_events: [{
+      clinical_event_id: "ce_wound_observation",
+      type: "exam",
+      name: "創傷部位の観察",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      provider_ownership: "own_clinic",
+      source_origin: "own_clinic_record",
+      evidence: "創傷部位を観察。発赤なし。",
+      search_queries: ["創傷部位の観察"]
+    }],
+    checklist_findings: [{
+      menu_id: "procedure:wound_treatment",
+      status: "unclear",
+      evidence: "創傷部位を観察。発赤なし。",
+      reason: "処置実施か観察のみかは不明"
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Checklist Non Performed Enrichment Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 創傷部位を観察。発赤なし。処置は本日行わず。",
+    diagnoses: [{ name: "創傷" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(masterSearches.some((input) => input.query === "創傷処置"), false);
+  assert.equal(receivedInput.calculationOptions?.procedure_codes, undefined);
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => (
+    item.stage === "checklist_recall"
+    && item.outcome === "matched_existing_without_enrichment"
+    && item.status === "unclear"
+  )));
+});
+
 test("routes non-blood specimen collection fees to review instead of auto collection input", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
