@@ -2247,6 +2247,108 @@ test("recovers standard treatment events from checklist findings without direct 
   )));
 });
 
+test("uses procedure area band evidence to select among burn treatment sibling masters", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  const masterSearches = [];
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterSearches.push(input);
+    if (input.type === "procedure" && input.query === "熱傷処置") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [
+          {
+            kind: "procedure",
+            code: "140032110",
+            name: "熱傷処置（１００ｃｍ２以上５００ｃｍ２未満）",
+            points: 60,
+            feeCategory: "treatment_basic",
+            itemRole: "base",
+            directRetrievalAllowed: true
+          },
+          {
+            kind: "procedure",
+            code: "140032010",
+            name: "熱傷処置（１００ｃｍ２未満）",
+            points: 52,
+            feeCategory: "treatment_basic",
+            itemRole: "base",
+            directRetrievalAllowed: true
+          },
+          {
+            kind: "procedure",
+            code: "140032210",
+            name: "熱傷処置（５００ｃｍ２以上３０００ｃｍ２未満）",
+            points: 90,
+            feeCategory: "treatment_basic",
+            itemRole: "base",
+            directRetrievalAllowed: true
+          }
+        ]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "熱傷", status: "confirmed", evidence: "熱傷" }],
+    clinical_events: [{
+      type: "procedure",
+      billing_domain: "standard_procedure",
+      name: "熱傷処置",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "not_applicable",
+      certainty: "explicit",
+      section: "O",
+      evidence: "当院で100cm2未満の熱傷処置を実施。創部を洗浄し、保護して被覆した。",
+      search_queries: ["熱傷処置"],
+      area_size_cm2: ""
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Burn Area Band Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 当院で100cm2未満の熱傷処置を実施。創部を洗浄し、保護して被覆した。",
+    diagnoses: [{ name: "熱傷" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.ok(masterSearches.some((input) => input.type === "procedure" && input.query === "熱傷処置"));
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["140032010"]);
+});
+
 test("recovers composite covid flu antigen checklist as an independent lab event", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -3831,6 +3933,98 @@ test("does not infer outside prescription from negated prescription slip text", 
   });
 });
 
+test("structured no outside prescription visit fact overrides negated outside prescription words", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.searchMaster = async (input) => {
+    if (input.type === "drug" && String(input.query || "").includes("ゲーベン")) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "drug",
+          code: "620008991",
+          name: "ゲーベンクリーム1%",
+          points: 0
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    visit_facts: {
+      outside_prescription_issued: "no",
+      generic_name_prescription: "no",
+      prescription_evidence: "院外処方箋は交付していない"
+    },
+    diagnoses: [{ name: "熱傷", status: "confirmed", evidence: "熱傷" }],
+    clinical_events: [{
+      type: "medication",
+      name: "ゲーベンクリーム1%",
+      action_status: "prescribed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "not_applicable",
+      certainty: "explicit",
+      section: "P",
+      evidence: "ゲーベンクリーム1%を10g院内で外用薬として処方",
+      search_queries: ["ゲーベンクリーム1%"],
+      total_quantity: "10"
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Structured No Outside Prescription Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "P: 院外処方箋は交付していない。ゲーベンクリーム1%を10g院内で外用薬として処方。",
+    diagnoses: [{ name: "熱傷" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.medication_orders, [{
+    drug_code: "620008991",
+    total_quantity: "10",
+    dispensing_kind: "external"
+  }]);
+  assert.deepEqual(receivedInput.calculationOptions.medication, {
+    delivery_kind: "in_house",
+    prescription_category: "other"
+  });
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => (
+    item.stage === "visit_facts_consistency"
+    && item.message === "outside_prescription_visit_fact_no_in_house"
+  )));
+});
+
 test("blocks outside prescription visit facts when quoted evidence conflicts with in-house medication", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -3920,6 +4114,66 @@ test("blocks outside prescription visit facts when quoted evidence conflicts wit
   assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => (
     issue.topicCode === "medication_delivery_check"
     && issue.topicLabel === "院内外処方確認"
+  )));
+});
+
+test("emits notification check for management events tied to facility registration context", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.searchMaster = async (input) => ({ query: input.query, type: input.type, items: [] });
+  stores.feeCalculator.calculate = async () => ({
+    provider: "test_fee_engine",
+    source: "test",
+    status: "completed",
+    totalPoints: 75,
+    lineItems: [],
+    warnings: []
+  });
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "COPD", status: "confirmed", evidence: "COPD" }],
+    clinical_events: [{
+      type: "management",
+      billing_domain: "management_fee",
+      name: "呼吸訓練と管理内容の確認",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "not_applicable",
+      certainty: "explicit",
+      section: "O",
+      evidence: "呼吸訓練や管理の扱いは、当院で実施できる内容と院内の登録情報を照合する必要がある。",
+      search_queries: ["呼吸訓練 管理"]
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Facility Registration Management Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 呼吸訓練や管理の扱いは、当院で実施できる内容と院内の登録情報を照合する必要がある。",
+    diagnoses: [{ name: "COPD" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => (
+    issue.topicCode === "notification_check"
+    && issue.topicLabel === "届出確認"
   )));
 });
 

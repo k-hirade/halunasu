@@ -339,7 +339,7 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   if (/病棟|入院料の種別/u.test(text)) {
     return "ward_type_check";
   }
-  if (/届出|届け出|地方厚生局/u.test(text)) {
+  if (/(?:届出|届け出|地方厚生局|院内(?:の)?登録情報|院内登録|登録情報.{0,12}(?:照合|確認|不明|必要)|(?:実施|提供|対応|扱える).{0,18}(?:院内|当院).{0,18}(?:登録|届出|施設))/u.test(text)) {
     return "notification_check";
   }
   if (/施設基準/u.test(text)) {
@@ -2719,7 +2719,14 @@ function medicationOptionsFromVisitFacts(visitFacts = {}) {
   if (!isPlainObject(visitFacts)) {
     return null;
   }
-  if (String(visitFacts.outside_prescription_issued || "").trim() !== "yes") {
+  const outsidePrescriptionIssued = String(visitFacts.outside_prescription_issued || "").trim();
+  if (outsidePrescriptionIssued === "no") {
+    return {
+      delivery_kind: "in_house",
+      prescription_category: "other"
+    };
+  }
+  if (outsidePrescriptionIssued !== "yes") {
     return null;
   }
   return {
@@ -2739,6 +2746,18 @@ function medicationOptionsDecisionFromVisitFacts(visitFacts = {}, {
   const options = medicationOptionsFromVisitFacts(visitFacts);
   if (!options) {
     return { options: null, reviewIssue: null, trace: null };
+  }
+  if (options.delivery_kind === "in_house") {
+    return {
+      options,
+      reviewIssue: null,
+      trace: {
+        stage: "visit_facts_consistency",
+        outcome: "accepted",
+        message: "outside_prescription_visit_fact_no_in_house",
+        visitFacts: compactVisitFactsForTrace(visitFacts)
+      }
+    };
   }
   const evidence = String(visitFacts?.prescription_evidence || "").trim();
   const evidenceQuoted = evidence
@@ -2817,7 +2836,20 @@ function reviewIssueFromMedicationDeliveryConflict({
 }
 
 function isOutsidePrescriptionEvidence(text = "") {
-  return /(院外処方|院外処方箋|処方箋(?:を)?(?:交付|発行)|処方せん(?:を)?(?:交付|発行))/u.test(String(text || ""));
+  const value = String(text || "");
+  if (isNegatedOutsidePrescriptionEvidence(value)) {
+    return false;
+  }
+  if (/(?:院外処方(?:箋)?|処方箋|処方せん).{0,12}(?:検討|予定|次回|希望のみ|相談のみ)/u.test(value)) {
+    return false;
+  }
+  return /(?:院外処方(?:箋)?|院外処方(?:箋)?.{0,8}(?:交付|発行|あり|有り|行う|行った|交付した|発行した)|処方箋(?:を)?(?:交付|発行)|処方せん(?:を)?(?:交付|発行))/u.test(value);
+}
+
+function isNegatedOutsidePrescriptionEvidence(text = "") {
+  const value = String(text || "");
+  return /(?:院外処方(?:箋)?|処方箋|処方せん).{0,12}(?:交付していない|交付せず|交付なし|交付無し|発行していない|発行せず|発行なし|発行無し|出していない|出さず|なし|無し|ない|無い)/u.test(value)
+    || /(?:交付|発行).{0,8}(?:していない|せず|なし|無し|ない|無い).{0,8}(?:院外処方(?:箋)?|処方箋|処方せん)/u.test(value);
 }
 
 function isInHousePrescriptionEvidence(text = "") {
@@ -4370,6 +4402,21 @@ function reviewIssuesFromManagementClinicalEvent(event = {}, { categoryLabel = "
     policy
   }, "target_disease_check");
   const issues = [targetDiseaseIssue];
+  if (facilityNotificationReviewNeededForClinicalEvent(event)) {
+    const notificationMessage = `届出確認: ${name || categoryLabel}は院内の登録情報・届出状況に関係する記載として抽出しました。対象の届出、施設基準、同月履歴を人手で確認してください。自動算定には入れていません。`;
+    issues.push(withReviewTopic({
+      reviewIssueId: `issue_${candidateIdPart([event?.clinicalEventId, "notification_check", notificationMessage].join("_"))}`,
+      issueCode: "facility_notification_unknown",
+      severity: "warning",
+      title: "届出確認",
+      messageForStaff: notificationMessage,
+      requiredInput: "届出状況、施設基準、同月算定履歴",
+      relatedClinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+      evidence: clinicalEventEvidence(event),
+      source: "management_review_gate",
+      policy
+    }, "notification_check"));
+  }
   if (!carePlanReviewNeededForManagementClinicalEvent(event)) {
     return issues;
   }
@@ -4388,6 +4435,18 @@ function reviewIssuesFromManagementClinicalEvent(event = {}, { categoryLabel = "
   }, "care_plan_check");
   issues.push(carePlanIssue);
   return issues;
+}
+
+function facilityNotificationReviewNeededForClinicalEvent(event = {}) {
+  const text = normalizeClinicalText([
+    clinicalEventName(event),
+    clinicalEventEvidence(event),
+    event?.review_reason,
+    event?.reviewReason,
+    ...asArray(event?.search_queries),
+    ...asArray(event?.searchQueries)
+  ].join(" "));
+  return /(?:届出|届け出|地方厚生局|院内(?:の)?登録情報|院内登録|登録情報.{0,12}(?:照合|確認|不明|必要)|(?:当院|院内).{0,18}(?:実施|提供|対応|扱える).{0,18}(?:登録|届出|施設)|(?:実施|提供|対応|扱える).{0,18}(?:当院|院内).{0,18}(?:登録|届出|施設))/u.test(text);
 }
 
 function carePlanReviewNeededForManagementClinicalEvent(event = {}) {
@@ -5104,6 +5163,7 @@ async function searchPerformedProcedureCode(feeCalculator, {
   let ambiguousSearch = null;
   for (const query of normalizedQueries) {
     const search = await searchProcedureMasterItem(feeCalculator, query, {
+      event,
       name,
       categoryLabel,
       allowedFeeCategories
@@ -5239,14 +5299,21 @@ function isHighConfidenceProcedureMasterItem(item = {}, { query = "", name = "",
   return procedureMasterCandidateAssessment(item, { query, name, categoryLabel }).highConfidence;
 }
 
-function procedureMasterCandidateAssessment(item = {}, { query = "", name = "", categoryLabel = "" } = {}) {
+function procedureMasterCandidateAssessment(item = {}, { query = "", name = "", categoryLabel = "", event = {} } = {}) {
   const rawItemText = [
     item.name,
     item.baseName,
     item.displayName,
     item.shortName
   ].filter(Boolean).join(" ");
-  const rawContextText = [query, name, categoryLabel].filter(Boolean).join(" ");
+  const rawContextText = [
+    query,
+    name,
+    categoryLabel,
+    event?.area_size_cm2,
+    event?.areaSizeCm2,
+    clinicalEventEvidence(event)
+  ].filter(Boolean).join(" ");
   const itemText = normalizeProcedureMatchText(rawItemText);
   const contextText = normalizeProcedureMatchText(rawContextText);
   if (!itemText || !contextText) {
@@ -5265,6 +5332,8 @@ function procedureMasterCandidateAssessment(item = {}, { query = "", name = "", 
   const contextModifiers = procedureModifierSet(rawContextText);
   const itemModifiers = procedureModifierSet(rawItemText);
   const unmatchedModifiers = [...itemModifiers].filter((modifier) => !contextModifiers.has(modifier));
+  const contextAreaBand = procedureAreaBandKey(rawContextText);
+  const itemAreaBand = procedureAreaBandKey(rawItemText);
   let score = 0;
   if (queryKey && itemNameKeys.has(queryKey)) score += 110;
   if (nameKey && itemNameKeys.has(nameKey)) score += 110;
@@ -5272,14 +5341,63 @@ function procedureMasterCandidateAssessment(item = {}, { query = "", name = "", 
   if (nameKey && itemText.includes(nameKey)) score += 70;
   if (queryTokens.some((token) => token.length >= 3 && itemText.includes(token))) score += 35;
   if (nameTokens.some((token) => token.length >= 3 && itemText.includes(token))) score += 35;
+  if (contextAreaBand && itemAreaBand === contextAreaBand) score += 95;
+  if (contextAreaBand && itemAreaBand && itemAreaBand !== contextAreaBand) score -= 65;
   if (unmatchedModifiers.length && !contextModifiers.size) score -= 45;
   if (unmatchedModifiers.length && contextModifiers.size) score -= 15;
   return {
     highConfidence: score >= PROCEDURE_MASTER_HIGH_CONFIDENCE_SCORE,
     score,
     unmatchedModifiers,
-    matchedModifiers: [...itemModifiers].filter((modifier) => contextModifiers.has(modifier))
+    matchedModifiers: [...itemModifiers].filter((modifier) => contextModifiers.has(modifier)),
+    contextAreaBand,
+    itemAreaBand
   };
+}
+
+function procedureAreaBandKey(value = "") {
+  const source = String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\s+/gu, "")
+    .replace(/平方(?:センチメートル|センチ|cm)/gu, "cm2")
+    .replace(/㎠/gu, "cm2")
+    .replace(/cm²/gu, "cm2")
+    .replace(/ｃｍ２/gu, "cm2");
+  if (/^[0-9]+(?:\.[0-9]+)?$/u.test(source)) {
+    return areaBandFromNumber(Number(source));
+  }
+  if (/100(?:cm2)?未満/u.test(source)) return "lt100";
+  if (/100(?:cm2)?以上.*500(?:cm2)?未満/u.test(source)) return "100_500";
+  if (/500(?:cm2)?以上.*3000(?:cm2)?未満/u.test(source)) return "500_3000";
+  if (/3000(?:cm2)?以上.*6000(?:cm2)?未満/u.test(source)) return "3000_6000";
+  if (/6000(?:cm2)?以上/u.test(source)) return "gte6000";
+  const numeric = numericAreaSizeCm2(source);
+  if (numeric != null) {
+    return areaBandFromNumber(numeric);
+  }
+  return "";
+}
+
+function numericAreaSizeCm2(source = "") {
+  const exact = String(source || "").match(/(?:^|[^0-9])([0-9]+(?:\.[0-9]+)?)(?:cm2|平方センチ|平方cm)(?:未満|以上)?/u);
+  if (exact) {
+    return Number(exact[1]);
+  }
+  const rectangle = String(source || "").match(/([0-9]+(?:\.[0-9]+)?)\s*[x×]\s*([0-9]+(?:\.[0-9]+)?)(?:cm)?/u);
+  if (rectangle) {
+    return Number(rectangle[1]) * Number(rectangle[2]);
+  }
+  return null;
+}
+
+function areaBandFromNumber(area) {
+  if (!Number.isFinite(area)) return "";
+  if (area < 100) return "lt100";
+  if (area < 500) return "100_500";
+  if (area < 3000) return "500_3000";
+  if (area < 6000) return "3000_6000";
+  return "gte6000";
 }
 
 function normalizeProcedureMatchText(value) {
@@ -5396,7 +5514,9 @@ function ambiguousCandidateTrace(candidate = {}) {
     feeCategory: item.feeCategory || "",
     itemRole: item.itemRole || "",
     score: Number(candidate.score || 0),
-    unmatchedModifiers: asArray(candidate.unmatchedModifiers)
+    unmatchedModifiers: asArray(candidate.unmatchedModifiers),
+    contextAreaBand: candidate.contextAreaBand || "",
+    itemAreaBand: candidate.itemAreaBand || ""
   };
 }
 
