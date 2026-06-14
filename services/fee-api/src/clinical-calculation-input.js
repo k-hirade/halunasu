@@ -1451,6 +1451,27 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   let hasCaseLevelBloodCollectionEvidence = hasCaseLevelBloodCollectionEvidenceFromText(text);
   clinicalTrace.push(...checklistRecovery.traceEvents);
 
+  const visitMedicationDecision = medicationOptionsDecisionFromVisitFacts(facts?.visit_facts, {
+    clinicalText: text,
+    clinicalEvents: clinicalEventsForCalculation,
+    medicationOrders: []
+  });
+  if (visitMedicationDecision.reviewIssue) {
+    reviewIssues.push(visitMedicationDecision.reviewIssue);
+    reviewWarnings.push(visitMedicationDecision.reviewIssue.messageForStaff);
+    clinicalTrace.push({
+      stage: "visit_facts_consistency",
+      outcome: "blocked",
+      topicCode: visitMedicationDecision.reviewIssue.topicCode,
+      message: "outside_prescription_visit_fact_conflicted_or_unverified",
+      visitFacts: compactVisitFactsForTrace(facts?.visit_facts)
+    });
+  } else if (visitMedicationDecision.trace) {
+    clinicalTrace.push(visitMedicationDecision.trace);
+  }
+  const visitMedication = visitMedicationDecision.options;
+  const verifiedOutsidePrescription = visitMedication?.delivery_kind === "outside_prescription";
+
   if (isInpatientEncounter(session, text)) {
     const inpatientBasic = inferInpatientBasicOptions(text, session);
     Object.assign(inferred, inpatientBasic.inferred);
@@ -1687,6 +1708,20 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     }
 
     if (type === "medication") {
+      if (verifiedOutsidePrescription) {
+        clinicalTrace.push(clinicalTraceEvent({
+          stage: "medication_delivery_invariant",
+          event,
+          categoryLabel: "投薬",
+          outcome: "excluded",
+          selected: {
+            delivery_kind: "outside_prescription",
+            policy: "outside_prescription_excludes_institution_drug_charges"
+          },
+          message: "outside_prescription_medication_event_skipped_before_drug_master_lookup"
+        }));
+        continue;
+      }
       const medication = await medicationOrderFromClinicalEvent(event, feeCalculator);
       if (medication.order) {
         medicationOrders.push(medication.order);
@@ -1794,25 +1829,6 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       warning: suppressed.warning
     });
   }
-  const visitMedicationDecision = medicationOptionsDecisionFromVisitFacts(facts?.visit_facts, {
-    clinicalText: text,
-    clinicalEvents: clinicalEventsForCalculation,
-    medicationOrders
-  });
-  if (visitMedicationDecision.reviewIssue) {
-    reviewIssues.push(visitMedicationDecision.reviewIssue);
-    reviewWarnings.push(visitMedicationDecision.reviewIssue.messageForStaff);
-    clinicalTrace.push({
-      stage: "visit_facts_consistency",
-      outcome: "blocked",
-      topicCode: visitMedicationDecision.reviewIssue.topicCode,
-      message: "outside_prescription_visit_fact_conflicted_or_unverified",
-      visitFacts: compactVisitFactsForTrace(facts?.visit_facts)
-    });
-  } else if (visitMedicationDecision.trace) {
-    clinicalTrace.push(visitMedicationDecision.trace);
-  }
-  const visitMedication = visitMedicationDecision.options;
   const medicationDeliveryKind = medicationDeliveryKindFromStructuredOrText(visitMedication, text);
   if (medicationOrders.length) {
     if (medicationDeliveryKind !== "outside_prescription") {
@@ -3264,11 +3280,13 @@ function medicationOptionsDecisionFromVisitFacts(visitFacts = {}, {
     };
   }
   const evidence = String(visitFacts?.prescription_evidence || "").trim();
-  const evidenceQuoted = evidence
-    ? normalizeClinicalText(clinicalText).includes(normalizeClinicalText(evidence))
-    : false;
-  const evidenceSupportsOutside = evidenceQuoted && isOutsidePrescriptionEvidence(evidence);
-  const evidenceConflictsWithOutside = evidenceQuoted && isInHousePrescriptionEvidence(evidence);
+  const support = outsidePrescriptionEvidenceSupportFromClinicalText({
+    evidence,
+    clinicalText
+  });
+  const evidenceQuoted = support.quoted;
+  const evidenceSupportsOutside = support.supported;
+  const evidenceConflictsWithOutside = support.conflictsWithOutside;
   const hasInHouseMedication = asArray(clinicalEvents).some((event) => (
     normalizeClinicalEventType(event) === "medication"
     && isInHousePrescriptionEvidence(clinicalEventEvidence(event))
@@ -3289,7 +3307,7 @@ function medicationOptionsDecisionFromVisitFacts(visitFacts = {}, {
     };
   }
 
-  if (hasInHouseMedication && asArray(medicationOrders).length) {
+  if (hasInHouseMedication) {
     return {
       options: null,
       reviewIssue: reviewIssueFromMedicationDeliveryConflict({
@@ -3309,9 +3327,116 @@ function medicationOptionsDecisionFromVisitFacts(visitFacts = {}, {
       stage: "visit_facts_consistency",
       outcome: "accepted",
       message: "outside_prescription_visit_fact_verified",
+      evidenceSupport: support.reason,
       visitFacts: compactVisitFactsForTrace(visitFacts)
     }
   };
+}
+
+function outsidePrescriptionEvidenceSupportFromClinicalText({
+  evidence = "",
+  clinicalText = ""
+} = {}) {
+  const rawEvidence = String(evidence || "").trim();
+  if (!rawEvidence) {
+    return {
+      supported: false,
+      quoted: false,
+      conflictsWithOutside: false,
+      reason: "missing_prescription_evidence"
+    };
+  }
+  const normalizedText = normalizeClinicalText(clinicalText);
+  const candidates = clinicalEventEvidenceQuoteCandidates(rawEvidence);
+  for (const candidate of candidates) {
+    const normalizedCandidate = normalizeClinicalText(candidate);
+    if (!normalizedCandidate) {
+      continue;
+    }
+    const quoted = normalizedText.includes(normalizedCandidate);
+    if (!quoted) {
+      continue;
+    }
+    const unsafeContext = isUnsafePrescriptionEvidenceContext(candidate);
+    return {
+      supported: isOutsidePrescriptionEvidence(candidate) && !unsafeContext,
+      quoted: true,
+      conflictsWithOutside: isInHousePrescriptionEvidence(candidate),
+      reason: unsafeContext ? "unsafe_prescription_evidence_context" : "exact_prescription_evidence_quote"
+    };
+  }
+
+  const evidenceLooksOutside = candidates.some((candidate) => isOutsidePrescriptionEvidence(candidate));
+  const evidenceLooksInHouse = candidates.some((candidate) => isInHousePrescriptionEvidence(candidate));
+  if (!evidenceLooksOutside || evidenceLooksInHouse) {
+    return {
+      supported: false,
+      quoted: false,
+      conflictsWithOutside: evidenceLooksInHouse,
+      reason: evidenceLooksInHouse ? "evidence_conflicts_with_outside_prescription" : "evidence_not_outside_prescription"
+    };
+  }
+
+  for (const sentence of splitClinicalSentences(clinicalText)) {
+    if (!isOutsidePrescriptionEvidence(sentence) || isInHousePrescriptionEvidence(sentence)) {
+      continue;
+    }
+    if (isUnsafePrescriptionEvidenceContext(sentence)) {
+      continue;
+    }
+    const normalizedSentence = normalizeClinicalText(sentence);
+    const overlaps = candidates.some((candidate) => {
+      const normalizedCandidate = normalizeClinicalText(candidate);
+      if (!normalizedCandidate || !normalizedSentence) {
+        return false;
+      }
+      return normalizedSentence.includes(normalizedCandidate)
+        || normalizedCandidate.includes(normalizedSentence)
+        || outsidePrescriptionCoreEvidenceMatches(normalizedCandidate, normalizedSentence)
+        || prescriptionEvidenceTokenOverlap(normalizedCandidate, normalizedSentence) >= 2;
+    });
+    if (overlaps) {
+      return {
+        supported: true,
+        quoted: true,
+        conflictsWithOutside: false,
+        reason: "approximate_prescription_evidence_sentence"
+      };
+    }
+  }
+
+  return {
+    supported: false,
+    quoted: false,
+    conflictsWithOutside: false,
+    reason: "prescription_evidence_not_found_in_clinical_text"
+  };
+}
+
+function outsidePrescriptionCoreEvidenceMatches(left = "", right = "") {
+  const hasPrescriptionSubject = (text) => /(?:院外処方(?:箋)?|処方箋|処方せん)/u.test(text);
+  const hasPrescriptionAction = (text) => /(?:交付|発行|出した|発行した|交付した)/u.test(text);
+  return hasPrescriptionSubject(left)
+    && hasPrescriptionSubject(right)
+    && hasPrescriptionAction(left)
+    && hasPrescriptionAction(right);
+}
+
+function isUnsafePrescriptionEvidenceContext(text = "") {
+  const normalized = normalizeClinicalText(text)
+    // "院外処方" is the target structured fact, not other-provider context.
+    .replace(/院外処方(?:箋)?/gu, "処方箋");
+  return isFutureOrOrderOnlyContext(normalized) || isPastOrExternalClinicalServiceContext(normalized);
+}
+
+function prescriptionEvidenceTokenOverlap(left = "", right = "") {
+  const rightText = String(right || "");
+  return uniqueStrings(String(left || "")
+    .split(/[、。，．\s（）()【】「」:：/]+/u)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2)
+    .slice(0, 16))
+    .reduce((count, token) => count + (rightText.includes(token) ? 1 : 0), 0);
 }
 
 function reviewIssueFromMedicationDeliveryConflict({

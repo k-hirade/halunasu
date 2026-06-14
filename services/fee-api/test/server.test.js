@@ -4413,6 +4413,144 @@ test("derives outside prescription fee options from structured visit facts witho
   });
 });
 
+test("verified outside prescription visit facts suppress institution drug charge lookup", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  let drugLookupCount = 0;
+  stores.feeCalculator.searchMaster = async (input) => {
+    if (input.type === "drug") {
+      drugLookupCount += 1;
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 60,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    visit_facts: {
+      outside_prescription_issued: "yes",
+      generic_name_prescription: "no",
+      prescription_evidence: "院外処方箋を発行し、ブデソニド/ホルモテロール吸入を56日分処方"
+    },
+    diagnoses: [{ name: "気管支喘息", status: "confirmed", evidence: "気管支喘息" }],
+    clinical_events: [{
+      type: "medication",
+      name: "ブデソニド/ホルモテロール吸入",
+      action_status: "prescribed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "not_applicable",
+      certainty: "explicit",
+      section: "P",
+      evidence: "院外処方箋を発行。ブデソニド/ホルモテロール吸入 1回1吸入 1日2回 56日分",
+      search_queries: ["ブデソニド/ホルモテロール吸入"],
+      days: "56"
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Verified Outside Prescription Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "P: 院外処方箋を発行。ブデソニド/ホルモテロール吸入 1回1吸入 1日2回 56日分。",
+    diagnoses: [{ name: "気管支喘息" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(drugLookupCount, 0);
+  assert.equal(receivedInput.calculationOptions.medication_orders, undefined);
+  assert.deepEqual(receivedInput.calculationOptions.medication, {
+    delivery_kind: "outside_prescription",
+    prescription_category: "other"
+  });
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => (
+    item.stage === "medication_delivery_invariant"
+    && item.message === "outside_prescription_medication_event_skipped_before_drug_master_lookup"
+  )));
+});
+
+test("blocks outside prescription visit facts when evidence is past or external", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    visit_facts: {
+      outside_prescription_issued: "yes",
+      generic_name_prescription: "no",
+      prescription_evidence: "前医で先月、院外処方箋を発行された"
+    },
+    diagnoses: [{ name: "気管支喘息", status: "confirmed", evidence: "気管支喘息" }],
+    clinical_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Past Outside Prescription Evidence Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "S: 前医で先月、院外処方箋を発行されたと本人が話した。本日は処方なし。",
+    diagnoses: [{ name: "気管支喘息" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions?.medication, undefined);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => (
+    issue.topicCode === "medication_delivery_check"
+  )));
+});
+
 test("does not infer outside prescription from negated prescription slip text", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
