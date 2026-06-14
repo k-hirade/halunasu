@@ -3079,7 +3079,7 @@ test("uses clinical text performed lab sentence as support but ignores template-
       result_assertion: "unknown",
       certainty: "explicit",
       section: "O",
-      evidence: "検体検査を実施。",
+      evidence: "尿一般を実施。",
       search_queries: ["尿一般"],
       modality: "none",
       body_site: "",
@@ -6485,6 +6485,215 @@ test("persists detailed calculation input and passes it to calculator", async ()
   assert.equal(calculation.body.calculationResult.inputSnapshot.clinicalText, "O: テスト特定器材を使用した。");
   assert.equal(calculation.body.calculationResult.inputSnapshot.versions.registryVersion, "fee-concept-registry-v1");
   assert.ok(Array.isArray(calculation.body.calculationResult.canonicalClinicalFacts));
+});
+
+test("records line-bound verified evidence on canonical clinical facts", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "high" },
+    diagnoses: [{ name: "炎症反応高値", status: "active", evidence: "炎症反応高値" }],
+    clinical_events: [{
+      type: "lab",
+      name: "CRP",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "numeric",
+      certainty: "explicit",
+      section: "O",
+      evidence: "O: CRP 1.2 を測定。",
+      search_queries: ["CRP"]
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "根拠 行子" },
+    facilityId: "fac_001",
+    serviceDate: "2026-06-14",
+    clinicalText: [
+      "S: 咽頭痛。",
+      "O: CRP 1.2 を測定。",
+      "A: 炎症反応高値。"
+    ].join("\n")
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  const facts = calculation.body.calculationResult.canonicalClinicalFacts || [];
+  const crpFact = facts.find((fact) => fact.clinicalName === "CRP");
+
+  assert.equal(calculation.statusCode, 201);
+  assert.ok(crpFact);
+  assert.equal(crpFact.verification.status, "verified");
+  assert.equal(crpFact.evidenceRefs[0].lineId, "O-001");
+  assert.equal(crpFact.evidenceRefs[0].section, "O");
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => item.stage === "evidence_verifier"));
+});
+
+test("blocks performed clinical events when evidence is only future or planned", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let masterLookupCount = 0;
+  stores.feeCalculator.searchMaster = async () => {
+    masterLookupCount += 1;
+    return { items: [{ kind: "procedure", code: "160054710", name: "ＣＲＰ", points: 16 }] };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "high" },
+    diagnoses: [{ name: "咽頭炎", status: "active", evidence: "咽頭炎" }],
+    clinical_events: [{
+      type: "lab",
+      name: "CRP",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "unknown",
+      certainty: "ambiguous",
+      section: "P",
+      evidence: "P: CRPは次回必要時に検討。",
+      search_queries: ["CRP"]
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "予定 検太" },
+    facilityId: "fac_001",
+    serviceDate: "2026-06-14",
+    clinicalText: "P: CRPは次回必要時に検討。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  const facts = calculation.body.calculationResult.canonicalClinicalFacts || [];
+  const crpFact = facts.find((fact) => fact.clinicalName === "CRP");
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(masterLookupCount, 0);
+  assert.equal(crpFact.verification.status, "blocked");
+  assert.ok(calculation.body.reviewItems.some((item) => item.title === "根拠確認"));
+});
+
+test("does not let unrelated past or future context on the same line block exact evidence", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let masterLookupCount = 0;
+  stores.feeCalculator.searchMaster = async () => {
+    masterLookupCount += 1;
+    return { items: [{ kind: "procedure", code: "160054710", name: "ＣＲＰ", points: 16 }] };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "high" },
+    diagnoses: [{ name: "炎症反応高値", status: "active", evidence: "炎症反応高値" }],
+    clinical_events: [{
+      type: "lab",
+      name: "CRP",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "numeric",
+      certainty: "explicit",
+      section: "O",
+      evidence: "今回CRP 1.2を測定。",
+      search_queries: ["CRP"]
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "根拠 文子" },
+    facilityId: "fac_001",
+    serviceDate: "2026-06-14",
+    clinicalText: "O: 前回HbA1c 7.2。今回CRP 1.2を測定。次回HbA1c再検を検討。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  const facts = calculation.body.calculationResult.canonicalClinicalFacts || [];
+  const crpFact = facts.find((fact) => fact.clinicalName === "CRP");
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(crpFact.verification.status, "verified");
+  assert.equal(crpFact.evidenceRefs[0].lineId, "O-001");
+  assert.equal(crpFact.evidenceRefs[0].approximate, undefined);
+  assert.equal(crpFact.verification.reasons.includes("past_or_external_context"), false);
+  assert.equal(crpFact.verification.reasons.includes("future_or_order_only_context"), false);
+});
+
+test("requires review instead of auto-coding when evidence only approximately matches the chart", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let masterLookupCount = 0;
+  stores.feeCalculator.searchMaster = async () => {
+    masterLookupCount += 1;
+    return { items: [{ kind: "procedure", code: "160054710", name: "ＣＲＰ", points: 16 }] };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "high" },
+    diagnoses: [{ name: "炎症反応高値", status: "active", evidence: "炎症反応高値" }],
+    clinical_events: [{
+      type: "lab",
+      name: "CRP",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "numeric",
+      certainty: "explicit",
+      section: "O",
+      evidence: "CRP 高値を測定",
+      search_queries: ["CRP"]
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "近似 根子" },
+    facilityId: "fac_001",
+    serviceDate: "2026-06-14",
+    clinicalText: "O: CRP高値を確認。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  const facts = calculation.body.calculationResult.canonicalClinicalFacts || [];
+  const crpFact = facts.find((fact) => fact.clinicalName === "CRP");
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(masterLookupCount, 0);
+  assert.equal(crpFact.verification.status, "review_required");
+  assert.ok(crpFact.verification.reasons.includes("evidence_quote_approximate"));
+  assert.equal(crpFact.evidenceRefs[0].approximate, true);
+  assert.ok(calculation.body.reviewItems.some((item) => item.title === "根拠確認"));
 });
 
 test("creates calculation jobs with input snapshots without marking sessions calculating when queue is unavailable", async () => {

@@ -130,6 +130,10 @@ const REVIEW_TOPIC_TAXONOMY = Object.freeze({
     label: "抽出結果確認",
     issueCode: "clinical_event_conflict"
   }),
+  evidence_verification_check: Object.freeze({
+    label: "根拠確認",
+    issueCode: "evidence_verification_required"
+  }),
   pathology_unsupported: Object.freeze({
     label: "病理未対応",
     issueCode: "pathology_unsupported"
@@ -706,6 +710,220 @@ export function normalizeClinicalText(value) {
     .trim();
 }
 
+function buildClinicalTextPreprocessing(text = "") {
+  const rawText = String(text || "").replace(/\r\n?/gu, "\n");
+  const sectionCounts = {};
+  const lines = [];
+  let currentSection = "unknown";
+  let offset = 0;
+  for (const [index, line] of rawText.split("\n").entries()) {
+    const trimmed = line.trim();
+    const detectedSection = clinicalSectionFromLine(trimmed);
+    if (detectedSection) {
+      currentSection = detectedSection;
+    }
+    const sectionKey = currentSection === "unknown" ? "L" : currentSection.toUpperCase();
+    sectionCounts[sectionKey] = Number(sectionCounts[sectionKey] || 0) + 1;
+    lines.push({
+      lineId: `${sectionKey}-${String(sectionCounts[sectionKey]).padStart(3, "0")}`,
+      index: index + 1,
+      section: currentSection,
+      charStart: offset,
+      charEnd: offset + line.length,
+      text: line,
+      normalizedText: normalizeClinicalText(line),
+      cues: clinicalLineCues(line)
+    });
+    offset += line.length + 1;
+  }
+  return {
+    text: rawText,
+    normalizedText: normalizeClinicalText(rawText),
+    lines,
+    lineCount: lines.length,
+    sectionCounts: Object.fromEntries(Object.entries(sectionCounts).map(([key, value]) => [key, Number(value || 0)]))
+  };
+}
+
+function clinicalSectionFromLine(line = "") {
+  const text = String(line || "").trim();
+  if (/^(?:S|Subjective)\b|^S[（(:：]|主観的情報/u.test(text)) return "S";
+  if (/^(?:O|Objective)\b|^O[（(:：]|客観的情報/u.test(text)) return "O";
+  if (/^(?:A|Assessment)\b|^A[（(:：]|評価/u.test(text)) return "A";
+  if (/^(?:P|Plan)\b|^P[（(:：]|計画/u.test(text)) return "P";
+  return "";
+}
+
+function clinicalLineCues(line = "") {
+  const text = String(line || "");
+  return {
+    futureOrOrderOnly: isFutureOrOrderOnlyContext(text),
+    negatedService: isNegatedClinicalServiceContext(text),
+    pastOrExternal: isPastOrExternalClinicalServiceContext(text),
+    currentVisit: isCurrentVisitEvidence(text),
+    syntheticMeta: isClinicalMetaSentence(text)
+  };
+}
+
+function evidenceRefsForClinicalEvent(event = {}, preprocessing = null) {
+  const quote = clinicalEventEvidenceQuote(event);
+  const section = normalizeClinicalSection(event?.section);
+  if (!quote || !preprocessing?.lines?.length) {
+    return quote ? [{
+      source: "clinical_text",
+      section,
+      quote
+    }] : [];
+  }
+  const normalizedQuote = normalizeClinicalText(quote);
+  const refs = [];
+  for (const line of preprocessing.lines) {
+    const lineText = String(line.text || "");
+    const normalizedLine = String(line.normalizedText || "");
+    const rawIndex = lineText.indexOf(quote);
+    const normalizedHit = normalizedQuote && normalizedLine.includes(normalizedQuote);
+    if (rawIndex < 0 && !normalizedHit) {
+      continue;
+    }
+    refs.push({
+      source: "clinical_text",
+      lineId: line.lineId,
+      lineIndex: line.index,
+      section: line.section || section || "unknown",
+      quote,
+      lineText,
+      verificationContext: rawIndex >= 0 ? sentenceContainingRange(lineText, rawIndex, rawIndex + quote.length) : quote,
+      charStart: rawIndex >= 0 ? line.charStart + rawIndex : line.charStart,
+      charEnd: rawIndex >= 0 ? line.charStart + rawIndex + quote.length : line.charEnd,
+      cues: line.cues || {},
+      exact: rawIndex >= 0,
+      normalizedOnly: rawIndex < 0 && Boolean(normalizedHit)
+    });
+  }
+  if (refs.length) {
+    return refs.slice(0, 4);
+  }
+  const bestLine = bestEvidenceLineByTokenOverlap(quote, preprocessing.lines);
+  return bestLine ? [{
+    source: "clinical_text",
+    lineId: bestLine.lineId,
+    lineIndex: bestLine.index,
+    section: bestLine.section || section || "unknown",
+    quote,
+    lineText: bestLine.text,
+    verificationContext: quote,
+    charStart: bestLine.charStart,
+    charEnd: bestLine.charEnd,
+    cues: bestLine.cues || {},
+    approximate: true
+  }] : [{
+    source: "clinical_text",
+    section,
+    quote,
+    notFoundInText: true
+  }];
+}
+
+function sentenceContainingRange(text = "", start = 0, end = 0) {
+  const value = String(text || "");
+  if (!value) {
+    return "";
+  }
+  const safeStart = Math.max(0, Math.min(Number(start) || 0, value.length));
+  const safeEnd = Math.max(safeStart, Math.min(Number(end) || safeStart, value.length));
+  const boundaryPattern = /[。．.!！?？\n\r]/u;
+  let left = safeStart;
+  while (left > 0 && !boundaryPattern.test(value[left - 1])) {
+    left -= 1;
+  }
+  let right = safeEnd;
+  if (right > 0 && boundaryPattern.test(value[right - 1])) {
+    // The evidence quote itself already includes the sentence terminator.
+  } else {
+    while (right < value.length && !boundaryPattern.test(value[right])) {
+      right += 1;
+    }
+    if (right < value.length && boundaryPattern.test(value[right])) {
+      right += 1;
+    }
+  }
+  return value.slice(left, right).trim() || value.slice(safeStart, safeEnd).trim() || value.trim();
+}
+
+function bestEvidenceLineByTokenOverlap(quote = "", lines = []) {
+  const tokens = normalizeClinicalText(quote)
+    .split(/[、。，．\s（）()【】「」:：/]+/u)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2)
+    .slice(0, 12);
+  if (!tokens.length) {
+    return null;
+  }
+  let best = null;
+  let bestScore = 0;
+  for (const line of lines) {
+    const normalizedLine = String(line.normalizedText || "");
+    const score = tokens.reduce((sum, token) => sum + (normalizedLine.includes(token) ? 1 : 0), 0);
+    if (score > bestScore) {
+      best = line;
+      bestScore = score;
+    }
+  }
+  return bestScore >= Math.max(1, Math.ceil(tokens.length / 3)) ? best : null;
+}
+
+function verifyClinicalEventEvidence(event = {}, preprocessing = null) {
+  const evidenceRefs = evidenceRefsForClinicalEvent(event, preprocessing);
+  const quote = clinicalEventEvidenceQuote(event);
+  const reasons = [];
+  if (!quote) {
+    reasons.push("missing_evidence_quote");
+  }
+  if (evidenceRefs.some((ref) => ref.notFoundInText)) {
+    reasons.push("evidence_quote_not_found");
+  }
+  if (evidenceRefs.some((ref) => ref.approximate)) {
+    reasons.push("evidence_quote_approximate");
+  }
+  const contexts = uniqueStrings([
+    quote,
+    ...evidenceRefs
+      .filter((ref) => !ref.approximate)
+      .map((ref) => ref.verificationContext || ref.quote || "")
+  ]).join("\n");
+  const billable = isBillableClinicalEvent(event);
+  const type = normalizeClinicalEventType(event);
+  const reviewOnlyDomain = reviewOnlyClinicalEventDomain(event);
+  const appliesToAutoBillingGuard = billable
+    && !reviewOnlyDomain
+    && !["medication", "management", "counseling"].includes(type);
+  if (contexts && isNegatedClinicalServiceContext(contexts)) {
+    reasons.push("negated_service_context");
+  }
+  if (contexts && isFutureOrOrderOnlyContext(contexts)) {
+    reasons.push("future_or_order_only_context");
+  }
+  if (contexts && type !== "medication" && isPastOrExternalClinicalServiceContext(contexts)) {
+    reasons.push("past_or_external_context");
+  }
+  const blockingReasons = reasons.filter((reason) => [
+    "negated_service_context",
+    "future_or_order_only_context",
+    "past_or_external_context"
+  ].includes(reason));
+  const status = appliesToAutoBillingGuard && blockingReasons.length
+    ? "blocked"
+    : reasons.includes("evidence_quote_not_found") || reasons.includes("evidence_quote_approximate") || reasons.includes("missing_evidence_quote")
+      ? "review_required"
+      : "verified";
+  return {
+    status,
+    reasons,
+    evidenceRefs,
+    checkedAtRuleSetVersion: FEE_CLINICAL_RULE_SET_VERSION
+  };
+}
+
 async function inferStructuredClinicalCalculationOptions({
   text,
   session = {},
@@ -1086,6 +1304,14 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const billingCandidates = [];
   const reviewIssues = [];
   const clinicalTrace = [];
+  const clinicalTextPreprocessing = buildClinicalTextPreprocessing(text);
+  clinicalTrace.push({
+    stage: "clinical_text_preprocess",
+    outcome: "prepared",
+    lineCount: clinicalTextPreprocessing.lineCount,
+    sectionCounts: clinicalTextPreprocessing.sectionCounts,
+    message: "clinical_text_lines_and_cues_prepared"
+  });
   let clinicalEvents = clinicalEventsFromClinicalFacts(facts);
   const checklistContradictions = clinicalEventContradictionsFromChecklistFindings({
     facts,
@@ -1134,12 +1360,20 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     clinicalEvents = [...clinicalEvents, ...checklistRecovery.events];
   }
   const canonicalClinicalFactsForCalculation = normalizeCanonicalClinicalFacts(
-    canonicalClinicalFactsFromEvents(clinicalEvents)
+    canonicalClinicalFactsFromEvents(clinicalEvents, {
+      preprocessing: clinicalTextPreprocessing
+    })
   );
   const clinicalEventsForCalculation = clinicalEventsFromCanonicalClinicalFacts(
     canonicalClinicalFactsForCalculation,
     clinicalEvents
   );
+  clinicalTrace.push({
+    stage: "evidence_verifier",
+    outcome: "prepared",
+    summary: evidenceVerificationSummary(canonicalClinicalFactsForCalculation),
+    message: "clinical_event_evidence_verified_before_calculation"
+  });
   clinicalTrace.push({
     stage: "canonical_fact_ledger",
     outcome: "prepared",
@@ -1201,6 +1435,89 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
 
   for (const event of clinicalEventsForCalculation) {
     const type = normalizeClinicalEventType(event);
+    if (event.evidenceVerificationStatus === "blocked") {
+      const issue = reviewIssueFromEvidenceVerificationBlocked(event);
+      if (issue) {
+        reviewIssues.push(issue);
+        reviewWarnings.push(issue.messageForStaff);
+      }
+      const reasons = asArray(event.evidenceVerificationReasons);
+      if (["lab", "exam"].includes(type) && reasons.includes("past_or_external_context")) {
+        const labIssue = reviewIssueFromNonBillableLabClinicalEvent(event, "lab_code_check", {
+          message: `検査コード確認: ${clinicalEventName(event) || "検査"}は検査名として抽出されましたが、根拠文が過去・他院・持参情報の文脈です。今回自院で実施済みの場合は標準コード、検査区分、検体、測定条件を確認してください。`,
+          requiredInput: "標準コード、検査区分、検体、測定条件、当日自院実施の根拠"
+        });
+        if (labIssue) {
+          reviewIssues.push(labIssue);
+          reviewWarnings.push(labIssue.messageForStaff);
+        }
+      }
+      clinicalTrace.push(clinicalTraceEvent({
+        stage: "evidence_verifier",
+        event,
+        categoryLabel: "根拠確認",
+        outcome: "blocked",
+        selected: {
+          reasons: asArray(event.evidenceVerificationReasons),
+          evidenceRefs: asArray(event.evidenceRefs).map((ref) => ({
+            lineId: ref.lineId,
+            section: ref.section,
+            approximate: Boolean(ref.approximate)
+          }))
+        },
+        message: "clinical_event_blocked_by_evidence_verifier"
+      }));
+      continue;
+    }
+    if (event.evidenceVerificationStatus === "review_required" && ["lab", "exam"].includes(type)) {
+      const evidenceIssue = reviewIssueFromEvidenceVerificationBlocked(event);
+      if (evidenceIssue) {
+        reviewIssues.push(evidenceIssue);
+        reviewWarnings.push(evidenceIssue.messageForStaff);
+      }
+      const issue = reviewIssueFromNonBillableLabClinicalEvent(event, "lab_code_check", {
+        message: `検査コード確認: ${clinicalEventName(event) || "検査"}は検査名として抽出されましたが、カルテ本文の根拠引用を確認できません。実施済みの場合は標準コード、検査区分、検体、測定条件を確認してください。`,
+        requiredInput: "標準コード、検査区分、検体、測定条件、当日実施の根拠"
+      });
+      if (issue) {
+        reviewIssues.push(issue);
+        reviewWarnings.push(issue.messageForStaff);
+      }
+      clinicalTrace.push(clinicalTraceEvent({
+        stage: "evidence_verifier",
+        event,
+        categoryLabel: "検体検査",
+        outcome: "review_required",
+        selected: {
+          reasons: asArray(event.evidenceVerificationReasons)
+        },
+        message: "lab_event_requires_review_due_to_unverified_evidence"
+      }));
+      continue;
+    }
+    if (event.evidenceVerificationStatus === "review_required" && isBillableClinicalEvent(event) && !reviewOnlyClinicalEventDomain(event)) {
+      const issue = reviewIssueFromEvidenceVerificationBlocked(event);
+      if (issue) {
+        reviewIssues.push(issue);
+        reviewWarnings.push(issue.messageForStaff);
+      }
+      clinicalTrace.push(clinicalTraceEvent({
+        stage: "evidence_verifier",
+        event,
+        categoryLabel: "根拠確認",
+        outcome: "review_required",
+        selected: {
+          reasons: asArray(event.evidenceVerificationReasons),
+          evidenceRefs: asArray(event.evidenceRefs).map((ref) => ({
+            lineId: ref.lineId,
+            section: ref.section,
+            approximate: Boolean(ref.approximate)
+          }))
+        },
+        message: "clinical_event_requires_review_due_to_unverified_evidence"
+      }));
+      continue;
+    }
     if (!isBillableClinicalEvent(event)) {
       const reviewOnlyDomain = reviewOnlyClinicalEventDomain(event);
       if (reviewOnlyDomain && !isNegatedClinicalEvent(event)) {
@@ -1461,7 +1778,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     canonicalClinicalFacts: normalizeCanonicalClinicalFacts(canonicalClinicalFactsFromEvents(clinicalEventsForCalculation, {
       billingCandidates,
       reviewIssues,
-      masterCandidates
+      masterCandidates,
+      preprocessing: clinicalTextPreprocessing
     })),
     masterCandidates: normalizeMasterCandidates(masterCandidates),
     billingCandidates: normalizeBillingCandidates(billingCandidates),
@@ -3619,7 +3937,8 @@ function normalizeClinicalEventsForResult(values = []) {
 function canonicalClinicalFactsFromEvents(events = [], {
   billingCandidates = [],
   reviewIssues = [],
-  masterCandidates = []
+  masterCandidates = [],
+  preprocessing = null
 } = {}) {
   const billableEventIds = new Set(asArray(billingCandidates)
     .map((candidate) => String(candidate?.clinicalEventId || candidate?.clinical_event_id || "").trim())
@@ -3648,13 +3967,18 @@ function canonicalClinicalFactsFromEvents(events = [], {
     .map((event) => {
       const eventId = clinicalEventIdentity(event);
       const eligible = isBillableClinicalEvent(event) && !reviewOnlyClinicalEventDomain(event);
+      const verification = verifyClinicalEventEvidence(event, preprocessing);
       const status = billableEventIds.has(eventId)
         ? "eligible_for_billing"
         : reviewEventIds.has(eventId)
           ? "review_required"
-          : eligible
-            ? "eligible_for_master_search"
-            : "excluded";
+          : verification.status === "blocked"
+            ? "excluded"
+            : eligible
+              ? "eligible_for_master_search"
+              : verification.status === "review_required"
+                ? "review_required"
+                : "excluded";
       return {
         factId: `fact_${candidateIdPart(eventId || [event.type, event.name, event.evidence].join("_"))}`,
         clinicalEventId: eventId,
@@ -3669,11 +3993,7 @@ function canonicalClinicalFactsFromEvents(events = [], {
         providerOwnership: event.providerOwnership,
         resultAssertion: event.resultAssertion,
         certainty: event.certainty,
-        evidenceRefs: [{
-          source: "clinical_text",
-          section: event.section || "unknown",
-          quote: event.evidence || ""
-        }],
+        evidenceRefs: verification.evidenceRefs,
         normalization: {
           modality: event.modality || "none",
           bodySite: event.body_site || "",
@@ -3688,9 +4008,23 @@ function canonicalClinicalFactsFromEvents(events = [], {
           source: event.source || event.extractionSource || "llm_clinical_event",
           registryVersion: FEE_CONCEPT_REGISTRY_VERSION,
           masterCandidateAvailable: masterEventIds.has(eventId)
+        },
+        verification: {
+          status: verification.status,
+          reasons: verification.reasons,
+          checkedAtRuleSetVersion: verification.checkedAtRuleSetVersion
         }
       };
     });
+}
+
+function evidenceVerificationSummary(facts = []) {
+  const counts = {};
+  for (const fact of asArray(facts)) {
+    const status = String(fact?.verification?.status || "unknown");
+    counts[status] = Number(counts[status] || 0) + 1;
+  }
+  return counts;
 }
 
 function canonicalClinicalFactConceptId(event = {}) {
@@ -3722,7 +4056,10 @@ function clinicalEventsFromCanonicalClinicalFacts(facts = [], events = []) {
           ...original,
           canonicalFactId: fact.factId || fact.fact_id || "",
           canonicalFactStatus: fact.status || "unknown",
-          conceptId: fact.conceptId || fact.concept_id || original.conceptId || null
+          conceptId: fact.conceptId || fact.concept_id || original.conceptId || null,
+          evidenceRefs: asArray(fact.evidenceRefs || fact.evidence_refs),
+          evidenceVerificationStatus: fact?.verification?.status || "unknown",
+          evidenceVerificationReasons: asArray(fact?.verification?.reasons)
         };
       }
       const evidenceRef = asArray(fact?.evidenceRefs || fact?.evidence_refs)[0] || {};
@@ -3757,7 +4094,10 @@ function clinicalEventsFromCanonicalClinicalFacts(facts = [], events = []) {
         ...reconstructed,
         canonicalFactId: fact.factId || fact.fact_id || "",
         canonicalFactStatus: fact.status || "unknown",
-        conceptId: fact.conceptId || fact.concept_id || null
+        conceptId: fact.conceptId || fact.concept_id || null,
+        evidenceRefs: asArray(fact.evidenceRefs || fact.evidence_refs),
+        evidenceVerificationStatus: fact?.verification?.status || "unknown",
+        evidenceVerificationReasons: asArray(fact?.verification?.reasons)
       };
     })
     .filter(Boolean);
@@ -4178,6 +4518,10 @@ function clinicalEventEvidence(event = {}) {
     .map((value) => String(value || "").trim())
     .filter(Boolean)
     .join(" ");
+}
+
+function clinicalEventEvidenceQuote(event = {}) {
+  return String(event?.evidence || "").trim();
 }
 
 function excludedClinicalEventWarning(event = {}) {
@@ -4658,6 +5002,40 @@ function reviewIssueFromExcludedClinicalEvent(event = {}) {
     evidence: clinicalEventEvidence(event),
     source: "clinical_event_rule"
   }, topicCode);
+}
+
+function reviewIssueFromEvidenceVerificationBlocked(event = {}) {
+  const name = clinicalEventName(event) || "抽出結果";
+  const reasons = asArray(event.evidenceVerificationReasons);
+  const reasonText = reasons.includes("negated_service_context")
+    ? "根拠文に未実施・中止・否定の文脈があります。"
+    : reasons.includes("future_or_order_only_context")
+      ? "根拠文が予定・依頼・検討の文脈です。"
+	    : reasons.includes("past_or_external_context")
+	      ? "根拠文が過去・他院・持参情報の文脈です。"
+	      : reasons.includes("missing_evidence_quote")
+	        ? "根拠引用がありません。"
+	        : reasons.includes("evidence_quote_not_found")
+	          ? "根拠引用をカルテ本文から確認できません。"
+	          : reasons.includes("evidence_quote_approximate")
+	            ? "根拠引用がカルテ本文と完全一致せず、近い記載への対応づけに留まっています。"
+	            : "根拠文と実施扱いに不整合があります。";
+  const messageForStaff = `根拠確認: ${name}は実施済み候補として抽出されましたが、${reasonText}自動算定には入れず、カルテ上の当日・自院・実施済みの根拠を確認してください。`;
+  return withReviewTopic({
+    reviewIssueId: `issue_${candidateIdPart([event?.clinicalEventId, name, "evidence_verifier"].join("_"))}`,
+    issueCode: "evidence_verification_required",
+    severity: "warning",
+    title: "根拠確認",
+    messageForStaff,
+    relatedClinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    evidence: clinicalEventEvidence(event),
+    requiredInput: "当日実施、自院実施、予定・過去・他院情報ではないこと",
+    source: "evidence_verifier",
+    policy: {
+      riskGate: "review_only",
+      reasons
+    }
+  }, "evidence_verification_check");
 }
 
 function reviewIssuesFromUnsupportedClinicalEvent(event = {}) {

@@ -785,7 +785,8 @@ function normalizeCanonicalClinicalFacts(items) {
           ? (item.evidenceRefs || item.evidence_refs).slice(0, 4)
           : [],
         normalization: isPlainObject(item.normalization) ? item.normalization : null,
-        extraction: isPlainObject(item.extraction) ? item.extraction : null
+        extraction: isPlainObject(item.extraction) ? item.extraction : null,
+        verification: isPlainObject(item.verification) ? item.verification : null
       });
     })
     .filter((item) => item && (item.clinicalName || item.evidenceRefs.length))
