@@ -118,6 +118,9 @@ deploy_service() {
   if [[ "${service}" == fee-api-* ]] && secret_exists "${project}" "OPENAI_API_KEY"; then
     secret_vars="${secret_vars},OPENAI_API_KEY=OPENAI_API_KEY:latest"
   fi
+  if [[ "${service}" == fee-api-* ]] && secret_exists "${project}" "fee-calculation-worker-token"; then
+    secret_vars="${secret_vars},FEE_CALCULATION_WORKER_TOKEN=fee-calculation-worker-token:latest"
+  fi
 
   echo "== ${project}/${service} =="
   billing_state="$(billing_enabled "${project}" | tr '[:upper:]' '[:lower:]')"
@@ -259,6 +262,26 @@ deploy_env() {
   fi
 
   if should_deploy "${env}" "fee-api"; then
+    fee_calculation_queue_path=""
+    fee_calculation_worker_url=""
+    if secret_exists "${fee_project}" "fee-calculation-worker-token"; then
+      fee_calculation_queue_path="${FEE_CALCULATION_CLOUD_TASKS_QUEUE:-projects/${fee_project}/locations/${REGION}/queues/fee-calculation-${env}}"
+      fee_calculation_worker_url="${FEE_CALCULATION_WORKER_URL:-}"
+      if [[ -z "${fee_calculation_worker_url}" ]] && [[ "${APPLY}" == "true" ]]; then
+        fee_service_url="$(gcloud run services describe "fee-api-${env}" --project "${fee_project}" --region "${REGION}" --format="value(status.url)" --quiet 2>/dev/null || true)"
+        if [[ -n "${fee_service_url}" ]]; then
+          fee_calculation_worker_url="${fee_service_url}/v1/fee/internal/calculation-jobs/run"
+        fi
+      fi
+      if [[ -z "${fee_calculation_worker_url}" ]] && [[ "${APPLY}" != "true" ]]; then
+        fee_calculation_worker_url="https://fee-api-${env}-set-after-first-deploy/v1/fee/internal/calculation-jobs/run"
+      elif [[ -z "${fee_calculation_worker_url}" ]]; then
+        echo "fee-api-${env}: existing service URL not found; async calculation queue env will not be set on this deploy."
+        fee_calculation_queue_path=""
+      fi
+    else
+      echo "fee-api-${env}: fee-calculation-worker-token secret is missing; async calculation queue env will not be set."
+    fi
     deploy_service "${fee_project}" "fee-api-${env}" "services/fee-api" "halunasu-fee-api" "public" \
     "HALUNASU_ENV=${env}" \
     "GOOGLE_CLOUD_PROJECT=${fee_project}" \
@@ -272,6 +295,8 @@ deploy_env() {
     "OPENAI_FEE_CLINICAL_MODEL=${OPENAI_FEE_CLINICAL_MODEL:-gpt-5.4-nano}" \
     "OPENAI_FEE_CLINICAL_REASONING_EFFORT=${OPENAI_FEE_CLINICAL_REASONING_EFFORT:-low}" \
     "OPENAI_FEE_CLINICAL_TIMEOUT_MS=${OPENAI_FEE_CLINICAL_TIMEOUT_MS:-60000}" \
+    "FEE_CALCULATION_CLOUD_TASKS_QUEUE=${fee_calculation_queue_path}" \
+    "FEE_CALCULATION_WORKER_URL=${fee_calculation_worker_url}" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
   fi
