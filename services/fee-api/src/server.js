@@ -330,6 +330,36 @@ async function routeFeeApiRequest(input = {}) {
     });
   }
 
+  if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "calculation-jobs") {
+    requireMutationCsrf(input, context.session);
+    const current = await feeStore.getSession(context.session.orgId, parts[3]);
+    if (!current) {
+      return notFound("fee session not found");
+    }
+    assertFeeSessionReadyForCalculation(current);
+    const calculationInput = validateCreateFeeCalculationInput(input.body || {});
+    const result = await createFeeCalculationJob({
+      context,
+      feeStore,
+      platformStore,
+      input,
+      feeSessionId: parts[3],
+      current,
+      calculationInput
+    });
+    return accepted(result);
+  }
+
+  if (method === "GET" && parts.length === 6 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "calculation-jobs") {
+    const calculationJob = typeof feeStore.getCalculationJob === "function"
+      ? await feeStore.getCalculationJob(context.session.orgId, parts[3], decodeURIComponent(parts[5]))
+      : null;
+    if (!calculationJob) {
+      return notFound("fee calculation job not found");
+    }
+    return ok({ calculationJob });
+  }
+
   if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "calculate") {
     requireMutationCsrf(input, context.session);
     const current = await feeStore.getSession(context.session.orgId, parts[3]);
@@ -387,6 +417,103 @@ async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now) {
     receiptDraft: buildReceiptDraft(feeSession, { now }),
     reviewItems: buildReviewItems(feeSession),
     candidateWorkbench: buildCandidateWorkbench(feeSession, { now })
+  };
+}
+
+async function createFeeCalculationJob({
+  context,
+  feeStore,
+  platformStore,
+  input,
+  feeSessionId,
+  current,
+  calculationInput
+}) {
+  if (typeof feeStore.createCalculationJob !== "function") {
+    const error = new Error("fee calculation jobs are not supported by this store");
+    error.name = "NotImplementedError";
+    error.statusCode = 501;
+    throw error;
+  }
+  const inputSnapshot = buildFeeCalculationInputSnapshot({
+    session: current,
+    calculationInput,
+    calculationInputForSession: buildCalculationInputForSession(current, calculationInput, {}),
+    prepared: {},
+    capturedAt: input.now || new Date()
+  });
+  const createdJob = await feeStore.createCalculationJob(context.session.orgId, feeSessionId, {
+    status: "queued",
+    phase: "queued",
+    calculationInput,
+    inputSnapshot,
+    createdByMemberId: context.session.memberId
+  });
+  const enqueue = await enqueueFeeCalculationJob({
+    input,
+    context,
+    calculationJob: createdJob.calculationJob
+  });
+  const updatedJob = typeof feeStore.updateCalculationJob === "function"
+    ? await feeStore.updateCalculationJob(context.session.orgId, feeSessionId, createdJob.calculationJob.calculationJobId, {
+      status: enqueue.status || createdJob.calculationJob.status,
+      phase: enqueue.phase || createdJob.calculationJob.phase,
+      enqueueStatus: enqueue.enqueueStatus,
+      enqueueProvider: enqueue.enqueueProvider,
+      enqueueMessage: enqueue.enqueueMessage
+    })
+    : createdJob;
+  const jobWasQueued = ["queued", "waiting_for_worker"].includes(updatedJob.calculationJob.status);
+  await feeStore.updateSession(context.session.orgId, feeSessionId, {
+    ...(jobWasQueued ? { status: "calculating" } : {}),
+    calculationProgress: feeCalculationProgress({
+      phase: jobWasQueued ? "queued" : "failed",
+      percent: jobWasQueued ? 1 : 0,
+      message: jobWasQueued
+        ? "算定ジョブを受け付けました。"
+        : "算定ジョブをキューに投入できませんでした。Cloud Tasks または Pub/Sub の設定を確認してください。",
+      session: current,
+      now: input.now || new Date()
+    })
+  });
+  await platformStore.createAuditEvent(context.session.orgId, {
+    eventType: "fee.calculation_job_created",
+    actorMemberId: context.session.memberId,
+    actorLoginId: context.session.loginId,
+    targetType: "fee_calculation_job",
+    targetId: updatedJob.calculationJob.calculationJobId,
+    productId: PRODUCT_ID,
+    safePayload: {
+      feeSessionId,
+      calculationJobId: updatedJob.calculationJob.calculationJobId,
+      enqueueStatus: updatedJob.calculationJob.enqueueStatus || null
+    }
+  });
+  return {
+    calculationJob: updatedJob.calculationJob
+  };
+}
+
+async function enqueueFeeCalculationJob({ input = {}, calculationJob = {} } = {}) {
+  const env = input.processEnv || process.env;
+  const cloudTasksQueue = String(env.FEE_CALCULATION_CLOUD_TASKS_QUEUE || env.FEE_CALCULATION_TASK_QUEUE || "").trim();
+  const pubsubTopic = String(env.FEE_CALCULATION_PUBSUB_TOPIC || "").trim();
+  if (!cloudTasksQueue && !pubsubTopic) {
+    return {
+      status: "enqueue_failed",
+      phase: "enqueue",
+      enqueueStatus: "not_configured",
+      enqueueProvider: null,
+      enqueueMessage: "Set FEE_CALCULATION_CLOUD_TASKS_QUEUE or FEE_CALCULATION_PUBSUB_TOPIC to enqueue asynchronous fee calculations."
+    };
+  }
+  return {
+    status: "enqueue_failed",
+    phase: "enqueue",
+    enqueueStatus: "adapter_not_installed",
+    enqueueProvider: cloudTasksQueue ? "cloud_tasks" : "pubsub",
+    enqueueMessage: "Async queue configuration is present, but the Cloud Tasks/PubSub enqueue adapter is not installed in this runtime.",
+    calculationJobId: calculationJob.calculationJobId || null
   };
 }
 
@@ -514,6 +641,13 @@ async function calculatePreparedFeeSessionNow({
 }) {
   const stageTimings = [...initialStageTimings];
   const calculationInputForSession = buildCalculationInputForSession(calculationSession, calculationInput, prepared);
+  const inputSnapshot = buildFeeCalculationInputSnapshot({
+    session: calculationSession,
+    calculationInput,
+    calculationInputForSession,
+    prepared,
+    capturedAt: input.now || new Date()
+  });
   const calculationResult = await timedCalculationStage({
     stage: "pythonCalculator",
     orgId: context.session.orgId,
@@ -557,10 +691,12 @@ async function calculatePreparedFeeSessionNow({
           ...(Array.isArray(prepared.candidateProposals) ? prepared.candidateProposals : [])
         ]),
         clinicalEvents: Array.isArray(prepared.clinicalEvents) ? prepared.clinicalEvents : [],
+        canonicalClinicalFacts: Array.isArray(prepared.canonicalClinicalFacts) ? prepared.canonicalClinicalFacts : [],
         masterCandidates: Array.isArray(prepared.masterCandidates) ? prepared.masterCandidates : [],
         billingCandidates: Array.isArray(prepared.billingCandidates) ? prepared.billingCandidates : [],
         reviewIssues: Array.isArray(prepared.reviewIssues) ? prepared.reviewIssues : [],
         clinicalExtraction: prepared.clinicalExtraction || null,
+        inputSnapshot,
         calculationProgress: feeCalculationProgress({
           phase: "complete",
           percent: 100,
@@ -1064,6 +1200,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     calculationOptions: prepared.calculationOptions,
     candidateProposals: Array.isArray(prepared.candidateProposals) ? prepared.candidateProposals : [],
     clinicalEvents: Array.isArray(prepared.clinicalEvents) ? prepared.clinicalEvents : [],
+    canonicalClinicalFacts: Array.isArray(prepared.canonicalClinicalFacts) ? prepared.canonicalClinicalFacts : [],
     masterCandidates: Array.isArray(prepared.masterCandidates) ? prepared.masterCandidates : [],
     billingCandidates: Array.isArray(prepared.billingCandidates) ? prepared.billingCandidates : [],
     reviewIssues: Array.isArray(prepared.reviewIssues) ? prepared.reviewIssues : [],
@@ -1249,6 +1386,86 @@ function buildCalculationInputForSession(session = {}, input = {}, prepared = {}
   }
 
   return calculationInput;
+}
+
+function buildFeeCalculationInputSnapshot({
+  session = {},
+  calculationInput = {},
+  calculationInputForSession = {},
+  prepared = {},
+  capturedAt = new Date()
+} = {}) {
+  const clinicalText = String(calculationInput.clinicalText || session.clinicalText || "");
+  const options = isPlainObject(calculationInputForSession.calculationOptions)
+    ? calculationInputForSession.calculationOptions
+    : {};
+  const clinicalExtraction = prepared.clinicalExtraction || {};
+  const clinicalStructuring = prepared.metrics?.clinicalStructuring || {};
+  return compactSnapshotObject({
+    snapshotVersion: 1,
+    capturedAt: timestampForSnapshot(capturedAt),
+    feeSessionId: session.feeSessionId || "",
+    orgId: session.orgId || "",
+    patientId: session.patientId || null,
+    patientSnapshot: session.patientSnapshot || null,
+    facilityId: session.facilityId || null,
+    facilitySnapshot: session.facilitySnapshot || null,
+    departmentId: session.departmentId || null,
+    departmentSnapshot: session.departmentSnapshot || null,
+    serviceDate: session.serviceDate || "",
+    claimMonth: session.claimMonth || "",
+    setting: session.setting || "outpatient",
+    admissionDate: session.admissionDate || null,
+    inpatientBasicDays: session.inpatientBasicDays || null,
+    clinicalText,
+    clinicalTextHash: clinicalTextHash(clinicalText),
+    orders: Array.isArray(session.orders) ? session.orders : [],
+    diagnoses: Array.isArray(session.diagnoses) ? session.diagnoses : [],
+    insurance: session.insurance || null,
+    claimContext: isPlainObject(calculationInputForSession.claimContext) ? calculationInputForSession.claimContext : null,
+    calculationOptions: options,
+    calculationOptionsSource: session.calculationOptionsSource || prepared.calculationOptionsSource || null,
+    calculationOptionsAutoKeys: Array.isArray(session.calculationOptionsAutoKeys)
+      ? session.calculationOptionsAutoKeys
+      : Array.isArray(prepared.calculationOptionsAutoKeys) ? prepared.calculationOptionsAutoKeys : [],
+    facilityStandardKeys: uniqueStrings(options.facility_standard_keys || []),
+    versions: {
+      promptVersion: clinicalExtraction.promptVersion || clinicalStructuring.promptVersion || null,
+      ruleSetVersion: clinicalExtraction.ruleSetVersion || clinicalStructuring.ruleSetVersion || null,
+      registryVersion: clinicalExtraction.registryVersion || clinicalStructuring.registryVersion || null,
+      masterVersion: clinicalExtraction.masterVersion || clinicalStructuring.masterVersion || null
+    },
+    clinicalExtraction: {
+      runId: clinicalExtraction.runId || null,
+      source: clinicalExtraction.source || clinicalStructuring.source || null,
+      inputHash: clinicalExtraction.inputHash || null,
+      model: clinicalExtraction.model || clinicalStructuring.model || null,
+      reasoningEffort: clinicalExtraction.reasoningEffort || clinicalStructuring.reasoningEffort || null,
+      timeoutMs: Number(clinicalExtraction.timeoutMs || clinicalStructuring.timeoutMs || 0)
+    }
+  });
+}
+
+function compactSnapshotObject(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => compactSnapshotObject(item));
+  }
+  if (!isPlainObject(value)) {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => [key, compactSnapshotObject(item)])
+  );
+}
+
+function timestampForSnapshot(value) {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  const date = new Date(value || Date.now());
+  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
 }
 
 async function enrichSessionOrdersForCalculation(session = {}, feeCalculator) {
@@ -1699,6 +1916,10 @@ function ok(body, headers = {}) {
 
 function created(body, headers = {}) {
   return { statusCode: 201, body, headers };
+}
+
+function accepted(body, headers = {}) {
+  return { statusCode: 202, body, headers };
 }
 
 function noContent(headers = {}) {

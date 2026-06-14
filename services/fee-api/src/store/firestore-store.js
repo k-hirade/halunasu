@@ -264,12 +264,64 @@ export class FirestoreFeeStore {
     };
   }
 
+  async createCalculationJob(orgId, feeSessionId, input = {}) {
+    const current = await this.getSession(orgId, feeSessionId);
+    if (!current) {
+      throw notFoundError("fee session not found");
+    }
+    const now = this.timestamp();
+    const calculationJobId = this.idFactory("fee_calc_job");
+    const job = sanitizeForFirestore({
+      calculationJobId,
+      jobId: calculationJobId,
+      orgId,
+      feeSessionId,
+      status: input.status || "queued",
+      phase: input.phase || "queued",
+      calculationInput: input.calculationInput || {},
+      inputSnapshot: input.inputSnapshot || null,
+      enqueueStatus: input.enqueueStatus || "pending",
+      enqueueProvider: input.enqueueProvider || null,
+      enqueueMessage: input.enqueueMessage || null,
+      createdByMemberId: input.createdByMemberId || null,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    });
+    await this.calculationJobDoc(orgId, feeSessionId, calculationJobId).set(job);
+    return { calculationJob: job };
+  }
+
+  async getCalculationJob(orgId, feeSessionId, calculationJobId) {
+    return docDataOrNull(await this.calculationJobDoc(orgId, feeSessionId, calculationJobId).get());
+  }
+
+  async updateCalculationJob(orgId, feeSessionId, calculationJobId, patch = {}) {
+    const current = await this.getCalculationJob(orgId, feeSessionId, calculationJobId);
+    if (!current) {
+      throw notFoundError("fee calculation job not found");
+    }
+    const updated = sanitizeForFirestore({
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    });
+    await this.calculationJobDoc(orgId, feeSessionId, calculationJobId).set(updated);
+    return { calculationJob: updated };
+  }
+
   doc(path) {
     return this.db.doc(path);
   }
 
   orgCollection(orgId, collectionName) {
     return this.doc(organizationPath(orgId)).collection(collectionName);
+  }
+
+  calculationJobDoc(orgId, feeSessionId, calculationJobId) {
+    return this.doc(feeSessionPath(orgId, feeSessionId))
+      .collection("calculationJobs")
+      .doc(calculationJobId);
   }
 
   timestamp() {

@@ -13,6 +13,7 @@ export class MemoryFeeStore {
     this.now = options.now || (() => new Date());
     this.idFactory = options.idFactory || createId;
     this.sessionsByOrg = new Map();
+    this.calculationJobsByOrg = new Map();
   }
 
   createSession(input) {
@@ -150,6 +151,52 @@ export class MemoryFeeStore {
     };
   }
 
+  createCalculationJob(orgId, feeSessionId, input = {}) {
+    const current = this.getSession(orgId, feeSessionId);
+    if (!current) {
+      throw notFoundError("fee session not found");
+    }
+    const now = this.timestamp();
+    const calculationJobId = this.idFactory("fee_calc_job");
+    const job = {
+      calculationJobId,
+      jobId: calculationJobId,
+      orgId,
+      feeSessionId,
+      status: input.status || "queued",
+      phase: input.phase || "queued",
+      calculationInput: input.calculationInput || {},
+      inputSnapshot: input.inputSnapshot || null,
+      enqueueStatus: input.enqueueStatus || "pending",
+      enqueueProvider: input.enqueueProvider || null,
+      enqueueMessage: input.enqueueMessage || null,
+      createdByMemberId: input.createdByMemberId || null,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    };
+    this.calculationJobsForOrg(orgId).set(calculationJobKey(feeSessionId, calculationJobId), job);
+    return { calculationJob: job };
+  }
+
+  getCalculationJob(orgId, feeSessionId, calculationJobId) {
+    return this.calculationJobsForOrg(orgId).get(calculationJobKey(feeSessionId, calculationJobId)) || null;
+  }
+
+  updateCalculationJob(orgId, feeSessionId, calculationJobId, patch = {}) {
+    const current = this.getCalculationJob(orgId, feeSessionId, calculationJobId);
+    if (!current) {
+      throw notFoundError("fee calculation job not found");
+    }
+    const updated = {
+      ...current,
+      ...patch,
+      updatedAt: this.timestamp()
+    };
+    this.calculationJobsForOrg(orgId).set(calculationJobKey(feeSessionId, calculationJobId), updated);
+    return { calculationJob: updated };
+  }
+
   sessionsForOrg(orgId) {
     if (!this.sessionsByOrg.has(orgId)) {
       this.sessionsByOrg.set(orgId, new Map());
@@ -158,9 +205,21 @@ export class MemoryFeeStore {
     return this.sessionsByOrg.get(orgId);
   }
 
+  calculationJobsForOrg(orgId) {
+    if (!this.calculationJobsByOrg.has(orgId)) {
+      this.calculationJobsByOrg.set(orgId, new Map());
+    }
+
+    return this.calculationJobsByOrg.get(orgId);
+  }
+
   timestamp() {
     return this.now().toISOString();
   }
+}
+
+function calculationJobKey(feeSessionId, calculationJobId) {
+  return `${feeSessionId}::${calculationJobId}`;
 }
 
 export function notFoundError(message) {

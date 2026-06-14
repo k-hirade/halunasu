@@ -174,6 +174,9 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
     calculation.candidateProposals || calculation.candidate_proposals || calculation.proposals || []
   );
   const clinicalEvents = normalizeClinicalEvents(calculation.clinicalEvents || calculation.clinical_events || []);
+  const canonicalClinicalFacts = normalizeCanonicalClinicalFacts(
+    calculation.canonicalClinicalFacts || calculation.canonical_clinical_facts || []
+  );
   const masterCandidates = normalizeMasterCandidates(calculation.masterCandidates || calculation.master_candidates || []);
   const billingCandidates = normalizeBillingCandidates(calculation.billingCandidates || calculation.billing_candidates || []);
   const reviewIssues = normalizeReviewIssues(calculation.reviewIssues || calculation.review_issues || []);
@@ -202,11 +205,15 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
     lineItems,
     candidateProposals,
     clinicalEvents,
+    canonicalClinicalFacts,
     masterCandidates,
     billingCandidates,
     reviewIssues,
     clinicalExtraction: isPlainObject(calculation.clinicalExtraction || calculation.clinical_extraction)
       ? calculation.clinicalExtraction || calculation.clinical_extraction
+      : undefined,
+    inputSnapshot: isPlainObject(calculation.inputSnapshot || calculation.input_snapshot)
+      ? calculation.inputSnapshot || calculation.input_snapshot
       : undefined,
     warnings,
     coverage,
@@ -749,6 +756,40 @@ function normalizeClinicalEvents(items) {
     })
     .filter((item) => item && (item.name || item.evidence))
     .slice(0, 120);
+}
+
+function normalizeCanonicalClinicalFacts(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items
+    .map((item, index) => {
+      if (!isPlainObject(item)) {
+        return null;
+      }
+      return compactObject({
+        factId: item.factId || item.fact_id || `fact_${index + 1}`,
+        clinicalEventId: item.clinicalEventId || item.clinical_event_id || null,
+        conceptId: item.conceptId || item.concept_id || null,
+        eventType: item.eventType || item.event_type || item.type || "other",
+        billingDomain: item.billingDomain || item.billing_domain || item.domain || null,
+        clinicalName: item.clinicalName || item.clinical_name || item.name || "",
+        status: item.status || "unknown",
+        actionStatus: item.actionStatus || item.action_status || null,
+        temporalRelation: item.temporalRelation || item.temporal_relation || null,
+        sourceOrigin: item.sourceOrigin || item.source_origin || null,
+        providerOwnership: item.providerOwnership || item.provider_ownership || null,
+        resultAssertion: item.resultAssertion || item.result_assertion || null,
+        certainty: item.certainty || null,
+        evidenceRefs: Array.isArray(item.evidenceRefs || item.evidence_refs)
+          ? (item.evidenceRefs || item.evidence_refs).slice(0, 4)
+          : [],
+        normalization: isPlainObject(item.normalization) ? item.normalization : null,
+        extraction: isPlainObject(item.extraction) ? item.extraction : null
+      });
+    })
+    .filter((item) => item && (item.clinicalName || item.evidenceRefs.length))
+    .slice(0, 160);
 }
 
 function normalizeMasterCandidates(items) {

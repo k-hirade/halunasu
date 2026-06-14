@@ -7,6 +7,12 @@ import {
   hasPerformedBloodCollectionEvidenceInText,
   isClinicalDateRatioFalsePositiveContext
 } from "../../../packages/fee-contracts/src/index.js";
+import {
+  FEE_CONCEPT_REGISTRY_VERSION,
+  LAB_CONCEPT_DEFINITIONS,
+  PROCEDURE_CHECKLIST_DEFINITIONS,
+  REVIEW_ONLY_DOMAIN_CHECKLIST_DEFINITIONS
+} from "./clinical-concept-registry.js";
 
 export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "処置・手技",
@@ -514,6 +520,7 @@ export async function buildClinicalCalculationPreparation({
           reasoningEffort: openAiReasoningEffort,
           promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
           ruleSetVersion: FEE_CLINICAL_RULE_SET_VERSION,
+          registryVersion: FEE_CONCEPT_REGISTRY_VERSION,
           masterVersion: feeMasterVersion(feeCalculator)
         }
       }
@@ -526,6 +533,7 @@ export async function buildClinicalCalculationPreparation({
   const candidateProposals = [];
   const reviewWarnings = [];
   const clinicalEvents = [];
+  const canonicalClinicalFacts = [];
   const masterCandidates = [];
   const billingCandidates = [];
   const reviewIssues = [];
@@ -538,6 +546,7 @@ export async function buildClinicalCalculationPreparation({
       reasoningEffort: openAiReasoningEffort,
       promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
       ruleSetVersion: FEE_CLINICAL_RULE_SET_VERSION,
+      registryVersion: FEE_CONCEPT_REGISTRY_VERSION,
       masterVersion: feeMasterVersion(feeCalculator),
       timeoutMs: Number(openAiTimeoutMs || 0)
     },
@@ -591,6 +600,7 @@ export async function buildClinicalCalculationPreparation({
       candidateProposals.push(...asArray(structured.candidateProposals), ...asArray(ruleBased.candidateProposals));
       reviewWarnings.push(...structured.reviewWarnings, ...ruleBased.reviewWarnings);
       clinicalEvents.push(...asArray(structured.clinicalEvents));
+      canonicalClinicalFacts.push(...asArray(structured.canonicalClinicalFacts));
       masterCandidates.push(...asArray(structured.masterCandidates));
       billingCandidates.push(...asArray(structured.billingCandidates));
       reviewIssues.push(...asArray(structured.reviewIssues));
@@ -642,6 +652,7 @@ export async function buildClinicalCalculationPreparation({
     candidateProposals: normalizeCandidateProposals(candidateProposals),
     reviewWarnings: normalizeReviewWarnings(reviewWarnings),
     clinicalEvents: normalizeClinicalEventsForResult(clinicalEvents),
+    canonicalClinicalFacts: normalizeCanonicalClinicalFacts(canonicalClinicalFacts),
     masterCandidates: normalizeMasterCandidates(masterCandidates),
     billingCandidates: normalizeBillingCandidates(billingCandidates),
     reviewIssues: normalizeReviewIssues(reviewIssues),
@@ -786,6 +797,7 @@ async function inferStructuredClinicalCalculationOptions({
         reasoningEffort: openAiReasoningEffort,
         promptVersion: factsResult?.promptVersion || FEE_CLINICAL_FACTS_PROMPT_VERSION,
         ruleSetVersion: FEE_CLINICAL_RULE_SET_VERSION,
+        registryVersion: FEE_CONCEPT_REGISTRY_VERSION,
         masterVersion: feeMasterVersion(feeCalculator),
         timeoutMs: Number(openAiTimeoutMs || 0),
         responseId: factsResult?.responseId || null,
@@ -817,6 +829,7 @@ async function inferStructuredClinicalCalculationOptions({
         reasoningEffort: openAiReasoningEffort,
         promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
         ruleSetVersion: FEE_CLINICAL_RULE_SET_VERSION,
+        registryVersion: FEE_CONCEPT_REGISTRY_VERSION,
         masterVersion: feeMasterVersion(feeCalculator),
         timeoutMs: Number(openAiTimeoutMs || 0),
         fallbackReason: safeClinicalStructuringError(error)
@@ -944,6 +957,7 @@ function clinicalExtractionMetadata({
     timeoutMs: Number(openAiTimeoutMs || 0),
     promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
     ruleSetVersion: FEE_CLINICAL_RULE_SET_VERSION,
+    registryVersion: FEE_CONCEPT_REGISTRY_VERSION,
     masterVersion: feeMasterVersion(feeCalculator),
     responseId,
     usage: usage || null,
@@ -1385,6 +1399,11 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     candidateProposals: normalizeCandidateProposals(candidateProposals),
     reviewWarnings: normalizeReviewWarnings(reviewWarnings),
     clinicalEvents,
+    canonicalClinicalFacts: normalizeCanonicalClinicalFacts(canonicalClinicalFactsFromEvents(clinicalEvents, {
+      billingCandidates,
+      reviewIssues,
+      masterCandidates
+    })),
     masterCandidates: normalizeMasterCandidates(masterCandidates),
     billingCandidates: normalizeBillingCandidates(billingCandidates),
     reviewIssues: normalizeReviewIssues(reviewIssues),
@@ -3531,6 +3550,116 @@ function normalizeClinicalEventsForResult(values = []) {
     });
   }
   return result.slice(0, 120);
+}
+
+function canonicalClinicalFactsFromEvents(events = [], {
+  billingCandidates = [],
+  reviewIssues = [],
+  masterCandidates = []
+} = {}) {
+  const billableEventIds = new Set(asArray(billingCandidates)
+    .map((candidate) => String(candidate?.clinicalEventId || candidate?.clinical_event_id || "").trim())
+    .filter(Boolean));
+  const reviewEventIds = new Set();
+  for (const issue of asArray(reviewIssues)) {
+    for (const id of [
+      issue?.relatedClinicalEventId,
+      issue?.clinicalEventId,
+      ...asArray(issue?.relatedClinicalEventIds),
+      ...asArray(issue?.relatedEventIds)
+    ]) {
+      const normalized = String(id || "").trim();
+      if (normalized) {
+        reviewEventIds.add(normalized);
+      }
+    }
+  }
+  const masterEventIds = new Set(asArray(masterCandidates)
+    .map((candidate) => String(candidate?.clinicalEventId || candidate?.clinical_event_id || "").trim())
+    .filter(Boolean));
+
+  return asArray(events)
+    .map((event, index) => normalizeClinicalEvent(event, index))
+    .filter(Boolean)
+    .map((event) => {
+      const eventId = clinicalEventIdentity(event);
+      const eligible = isBillableClinicalEvent(event) && !reviewOnlyClinicalEventDomain(event);
+      const status = billableEventIds.has(eventId)
+        ? "eligible_for_billing"
+        : reviewEventIds.has(eventId)
+          ? "review_required"
+          : eligible
+            ? "eligible_for_master_search"
+            : "excluded";
+      return {
+        factId: `fact_${candidateIdPart(eventId || [event.type, event.name, event.evidence].join("_"))}`,
+        clinicalEventId: eventId,
+        conceptId: canonicalClinicalFactConceptId(event),
+        eventType: normalizeClinicalEventType(event),
+        billingDomain: normalizeClinicalEventBillingDomain(event),
+        clinicalName: clinicalEventName(event),
+        status,
+        actionStatus: event.actionStatus,
+        temporalRelation: event.temporalRelation,
+        sourceOrigin: event.sourceOrigin,
+        providerOwnership: event.providerOwnership,
+        resultAssertion: event.resultAssertion,
+        certainty: event.certainty,
+        evidenceRefs: [{
+          source: "clinical_text",
+          section: event.section || "unknown",
+          quote: event.evidence || ""
+        }],
+        normalization: {
+          modality: event.modality || "none",
+          bodySite: event.body_site || "",
+          specimen: event.specimen || "",
+          collectionMethod: event.collection_method || "",
+          areaSizeCm2: event.area_size_cm2 || "",
+          quantityPerDay: event.quantity_per_day || "",
+          days: event.days || "",
+          totalQuantity: event.total_quantity || ""
+        },
+        extraction: {
+          source: event.source || event.extractionSource || "llm_clinical_event",
+          registryVersion: FEE_CONCEPT_REGISTRY_VERSION,
+          masterCandidateAvailable: masterEventIds.has(eventId)
+        }
+      };
+    });
+}
+
+function canonicalClinicalFactConceptId(event = {}) {
+  const type = normalizeClinicalEventType(event);
+  const labConcept = labConceptsFromClinicalEventName(event)[0];
+  if (labConcept?.key) {
+    return `lab:${labConcept.key}`;
+  }
+  const billingDomain = normalizeClinicalEventBillingDomain(event, { type });
+  const name = candidateIdPart(clinicalEventName(event) || billingDomain || type || "unknown");
+  return `${billingDomain || type || "unknown"}:${name}`;
+}
+
+function normalizeCanonicalClinicalFacts(values = []) {
+  const seen = new Set();
+  const result = [];
+  for (const fact of asArray(values)) {
+    if (!fact || typeof fact !== "object") {
+      continue;
+    }
+    const key = [
+      fact.factId,
+      fact.clinicalEventId,
+      fact.status,
+      fact.clinicalName
+    ].join("|");
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(fact);
+  }
+  return result.slice(0, 160);
 }
 
 function excludedClinicalEventsFromClinicalFacts(facts = {}) {
@@ -5912,57 +6041,6 @@ export function buildClinicalChecklistMenu(text = "") {
   return menu.slice(0, 30);
 }
 
-const PROCEDURE_CHECKLIST_DEFINITIONS = Object.freeze([
-  Object.freeze({
-    key: "burn_treatment",
-    label: "熱傷処置",
-    query: "熱傷処置",
-    aliases: ["熱傷処置（１００ｃｍ２未満）", "熱傷処置"],
-    pattern: /熱傷|火傷|やけど|熱傷処置/u,
-    matchTerms: ["熱傷", "火傷", "やけど"]
-  }),
-  Object.freeze({
-    key: "wound_treatment",
-    label: "創傷処置",
-    query: "創傷処置",
-    aliases: ["創傷処置（１００ｃｍ２未満）", "創傷処置"],
-    pattern: /創傷|創部(?:洗浄|消毒|処置|保護)|創傷処置|縫合後処置/u,
-    matchTerms: ["創傷", "創部", "切創", "裂創"]
-  }),
-  Object.freeze({
-    key: "suture_or_wound_closure",
-    label: "創傷処理・縫合",
-    query: "創傷処理",
-    aliases: ["創傷処理", "縫合処置"],
-    pattern: /(?:創|裂創|切創|挫創).{0,16}(?:縫合|閉鎖)|縫合処置|創傷処理/u,
-    matchTerms: ["縫合", "創傷処理", "裂創", "切創"]
-  }),
-  Object.freeze({
-    key: "incision_drainage",
-    label: "切開排膿処置",
-    query: "切開排膿",
-    aliases: ["皮膚切開術", "切開排膿"],
-    pattern: /(?:膿瘍|感染粉瘤|化膿).{0,16}(?:切開|排膿)|切開排膿/u,
-    matchTerms: ["膿瘍", "切開", "排膿"]
-  }),
-  Object.freeze({
-    key: "cerumen_removal",
-    label: "耳垢栓塞除去",
-    query: "耳垢栓塞除去",
-    aliases: ["耳垢栓塞除去", "耳処置"],
-    pattern: /耳垢|耳垢栓塞|耳処置/u,
-    matchTerms: ["耳垢", "耳処置"]
-  }),
-  Object.freeze({
-    key: "nasal_treatment",
-    label: "鼻処置",
-    query: "鼻処置",
-    aliases: ["鼻処置", "鼻腔処置"],
-    pattern: /鼻処置|鼻腔処置|鼻洗浄/u,
-    matchTerms: ["鼻処置", "鼻腔処置", "鼻洗浄"]
-  })
-]);
-
 function procedureChecklistItems(text = "") {
   return PROCEDURE_CHECKLIST_DEFINITIONS
     .filter((definition) => definition.pattern.test(text))
@@ -6036,21 +6114,7 @@ function rapidLabChecklistItems(text = "") {
 }
 
 function reviewOnlyDomainChecklistItems(text = "") {
-  const definitions = [
-    { domain: "surgery", label: "手術", pattern: /手術|術式|切除術|縫合術|手術同意|手術説明|(?:腫瘤|粉瘤|脂肪腫|皮下腫瘤|病変|皮膚病変).{0,12}(?:切除|摘出)|(?:切除|摘出).{0,12}(?:施行|実施|予定|相談|希望|未実施|行っていない)/u },
-    { domain: "anesthesia", label: "麻酔", pattern: /麻酔|術前診察|麻酔科|全身麻酔|局所麻酔/u },
-    { domain: "pathology", label: "病理診断・細胞診", pattern: /病理|細胞診|組織診|標本|生検/u },
-    { domain: "rehabilitation", label: "リハビリテーション", pattern: /リハビリ|運動器リハ|脳血管リハ|廃用症候群リハ|実施単位/u },
-    { domain: "home_care", label: "在宅医療", pattern: /在宅医療|訪問診療|往診|在宅自己注射|在宅酸素/u },
-    { domain: "psychiatry_special", label: "精神科専門療法", pattern: /精神科専門療法|通院精神療法|精神療法|認知行動療法/u },
-    { domain: "endoscopy", label: "内視鏡", pattern: /内視鏡|胃カメラ|大腸カメラ|上部消化管内視鏡|下部消化管内視鏡/u },
-    { domain: "dialysis", label: "透析", pattern: /透析|血液透析|腹膜透析/u },
-    { domain: "transfusion", label: "輸血", pattern: /輸血|赤血球液|血小板製剤|血漿/u },
-    { domain: "radiation_therapy", label: "放射線治療", pattern: /放射線治療|照射|線量/u },
-    { domain: "injection_review_only", label: "注射", pattern: /注射|皮下注|筋注|静注|点滴|投与経路/u },
-    { domain: "emergency_time_addon", label: "救急・時間外加算", pattern: /救急加算|時間外加算|休日加算|深夜加算|受付時刻/u }
-  ];
-  return definitions
+  return REVIEW_ONLY_DOMAIN_CHECKLIST_DEFINITIONS
     .filter((definition) => definition.pattern.test(text))
     .map((definition) => ({
       menuId: `domain:${definition.domain}`,
@@ -6093,79 +6157,6 @@ function labAliasQueries(event = {}) {
   }
   return uniqueStrings(queries);
 }
-
-const LAB_CONCEPT_DEFINITIONS = Object.freeze([
-  Object.freeze({
-    key: "urine_general",
-    name: "尿一般",
-    query: "尿一般",
-    aliases: ["尿中一般物質定性半定量検査", "尿定性"],
-    pattern: /尿一般|尿定性|尿中一般物質|尿検査/u
-  }),
-  Object.freeze({
-    key: "urine_protein",
-    name: "尿蛋白",
-    query: "尿蛋白",
-    aliases: ["蛋白尿"],
-    pattern: /尿蛋白|蛋白尿|尿.*蛋白/u
-  }),
-  Object.freeze({
-    key: "crp",
-    name: "ＣＲＰ",
-    query: "ＣＲＰ",
-    aliases: ["C反応性蛋白", "Ｃ反応性蛋白"],
-    pattern: /\bCRP\b|ＣＲＰ|C反応性蛋白|Ｃ反応性蛋白/u
-  }),
-  Object.freeze({
-    key: "cbc",
-    name: "末梢血液一般検査",
-    query: "末梢血液一般検査",
-    aliases: ["血算", "ＣＢＣ"],
-    pattern: /CBC|ＣＢＣ|血算|末梢血液一般|血球計算|白血球|赤血球|血小板/u
-  }),
-  Object.freeze({
-    key: "glucose",
-    name: "グルコース",
-    query: "グルコース",
-    aliases: ["血糖"],
-    pattern: /グルコース|血糖/u
-  }),
-  Object.freeze({
-    key: "hba1c",
-    name: "ＨｂＡ１ｃ",
-    query: "ＨｂＡ１ｃ",
-    aliases: ["HbA1c"],
-    pattern: /HbA1c|ＨｂＡ１ｃ/u
-  }),
-  Object.freeze({
-    key: "tcho",
-    name: "Ｔｃｈｏ",
-    query: "Ｔｃｈｏ",
-    aliases: ["総コレステロール"],
-    pattern: /Tcho|Ｔｃｈｏ|総コレステロール|総コレステ/u
-  }),
-  Object.freeze({
-    key: "ldl",
-    name: "ＬＤＬ－コレステロール",
-    query: "ＬＤＬ－コレステロール",
-    aliases: ["LDL"],
-    pattern: /\bLDL\b|ＬＤＬ/u
-  }),
-  Object.freeze({
-    key: "tg",
-    name: "ＴＧ",
-    query: "ＴＧ",
-    aliases: ["中性脂肪"],
-    pattern: /\bTG\b|ＴＧ|中性脂肪/u
-  }),
-  Object.freeze({
-    key: "creatinine",
-    name: "クレアチニン",
-    query: "クレアチニン",
-    aliases: ["Cr"],
-    pattern: /クレアチニン|(?:^|[^\p{L}])Cr(?:$|[^\p{L}])/u
-  })
-]);
 
 function labConceptsFromClinicalEventName(event = {}) {
   const text = normalizeClinicalText(clinicalEventName(event));

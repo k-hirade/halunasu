@@ -6188,6 +6188,7 @@ test("persists detailed calculation input and passes it to calculator", async ()
     patient: { displayName: "材料 太郎" },
     facilityId: "fac_001",
     serviceDate: "2026-05-28",
+    clinicalText: "O: テスト特定器材を使用した。",
     orders: [{
       orderType: "material",
       localName: "テスト特定器材",
@@ -6217,6 +6218,50 @@ test("persists detailed calculation input and passes it to calculator", async ()
   assert.equal(calculation.statusCode, 201);
   assert.deepEqual(receivedInput.claimContext.material_inputs, [{ code: "710000001", quantity: 1 }]);
   assert.deepEqual(receivedInput.calculationOptions.comment_inputs, [{ code: "840000001", text: "コメント" }]);
+  assert.equal(calculation.body.calculationResult.inputSnapshot.clinicalText, "O: テスト特定器材を使用した。");
+  assert.equal(calculation.body.calculationResult.inputSnapshot.versions.registryVersion, "fee-concept-registry-v1");
+  assert.ok(Array.isArray(calculation.body.calculationResult.canonicalClinicalFacts));
+});
+
+test("creates calculation jobs with input snapshots without marking sessions calculating when queue is unavailable", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "非同期 太郎" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "S: 咳嗽。O: インフル迅速陰性。"
+  }, headers);
+  const job = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculation-jobs`,
+    {},
+    headers,
+    { processEnv: {} }
+  );
+  const fetched = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculation-jobs/${job.body.calculationJob.calculationJobId}`,
+    undefined,
+    headers
+  );
+  const detail = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/detail`,
+    undefined,
+    headers
+  );
+
+  assert.equal(job.statusCode, 202);
+  assert.equal(job.body.calculationJob.status, "enqueue_failed");
+  assert.equal(job.body.calculationJob.enqueueStatus, "not_configured");
+  assert.equal(job.body.calculationJob.inputSnapshot.clinicalText, "S: 咳嗽。O: インフル迅速陰性。");
+  assert.equal(fetched.statusCode, 200);
+  assert.equal(fetched.body.calculationJob.calculationJobId, job.body.calculationJob.calculationJobId);
+  assert.notEqual(detail.body.feeSession.status, "calculating");
 });
 
 test("rejects fee access without product entitlement", async () => {
@@ -6412,6 +6457,7 @@ function request(stores, method, path, body, headers = {}, overrides = {}) {
     openAiFeeClinicalReasoningEffort: overrides.openAiFeeClinicalReasoningEffort,
     projectId: "medical-core-stg",
     region: "asia-northeast1",
+    processEnv: overrides.processEnv,
     startedAt: new Date("2026-05-28T00:00:00.000Z"),
     now: new Date("2026-05-28T00:00:00.000Z"),
     sessionSecret: "test-session-secret"
