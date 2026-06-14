@@ -27,6 +27,19 @@ export const feeOrderTypes = Object.freeze([
   "unknown"
 ]);
 export const feeReviewDecisionStatuses = Object.freeze(["approved", "rejected", "edited"]);
+export const clinicalAutoCalculationOptionKeys = Object.freeze([
+  "procedure_codes",
+  "outpatient_basic",
+  "inpatient_basic",
+  "facility_standard_keys",
+  "imaging_orders",
+  "treatment_orders",
+  "medication_orders",
+  "medication",
+  "material_inputs",
+  "comment_inputs",
+  "lab_options"
+]);
 
 export function validateCreateFeePatientInput(input = {}) {
   return {

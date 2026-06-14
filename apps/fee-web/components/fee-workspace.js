@@ -1,5 +1,6 @@
 "use client";
 
+import { clinicalAutoCalculationOptionKeys } from "@halunasu/fee-contracts";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePlatformAuth } from "./platform-auth";
@@ -35,14 +36,7 @@ const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "注射",
   "カルテ記載内容から算定候補を確認"
 ]);
-const CLINICAL_AUTO_CALCULATION_OPTION_KEYS = new Set([
-  "outpatient_basic",
-  "imaging_orders",
-  "treatment_orders",
-  "medication_orders",
-  "medication",
-  "material_inputs"
-]);
+const CLINICAL_AUTO_CALCULATION_OPTION_KEYS = new Set(clinicalAutoCalculationOptionKeys);
 
 function isMasterSearchAvailable(masterStatus) {
   if (!masterStatus || typeof masterStatus !== "object") {
@@ -537,18 +531,26 @@ function FeeSessionDetailView({ sessionId }) {
         })
       }));
       setMessage(null);
-      const response = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/calculate`, {
-        method: "POST",
-        csrf: true,
-        body: {}
-      });
-      applyDetail(response);
-      setMessage(response.feeSession?.status === "failed"
-        ? {
+      let response;
+      try {
+        response = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/calculation-jobs`, {
+          method: "POST",
+          csrf: true,
+          body: {}
+        });
+      } catch (error) {
+        await refreshDetail().catch(() => null);
+        throw error;
+      }
+      const jobStatus = String(response.calculationJob?.status || "").trim();
+      const jobQueued = ["queued", "waiting_for_worker", "running"].includes(jobStatus);
+      await refreshDetail();
+      setMessage(jobQueued
+        ? null
+        : {
           type: "error",
-          text: "算定候補の作成に失敗しました。入力内容を確認してもう一度お試しください。"
-        }
-        : null);
+          text: "算定ジョブを開始できませんでした。Cloud Tasks または Pub/Sub の設定を確認して再度お試しください。"
+        });
     });
   }
 
@@ -818,6 +820,7 @@ function SourcePane({
   setPatientFilter,
   setPatientPickerOpen
 }) {
+  const clinicalTextRef = useRef(null);
   const diagnosisCount = form.diagnosesText.split(/\n+/u).map((item) => item.trim()).filter(Boolean).length;
   const departmentOptions = [
     { value: "", label: "未指定" },
@@ -835,6 +838,15 @@ function SourcePane({
     }))
   ];
   const selectedFacility = facilities.find((facility) => facility.facilityId === (form.facilityId || defaultFacilityId));
+
+  useEffect(() => {
+    const textarea = clinicalTextRef.current;
+    if (!textarea) {
+      return;
+    }
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.max(textarea.scrollHeight, 360)}px`;
+  }, [form.clinicalText]);
 
   return (
     <section className="fee-source-pane" aria-label="算定条件とカルテ">
@@ -926,6 +938,7 @@ function SourcePane({
             <textarea
               className="clinical-textarea"
               placeholder={"S/O/A/Pや診療メモをそのまま貼り付けてください。"}
+              ref={clinicalTextRef}
               value={form.clinicalText}
               onChange={(event) => onUpdateClinicalText(event.target.value)}
             />

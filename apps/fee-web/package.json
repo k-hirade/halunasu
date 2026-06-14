@@ -11,6 +11,7 @@
     "test:next-ui": "node scripts/next-ui-smoke.mjs"
   },
   "dependencies": {
+    "@halunasu/fee-contracts": "file:../../packages/fee-contracts",
     "@halunasu/web-ui": "file:../../packages/web-ui",
     "@radix-ui/react-select": "^2.2.6",
     "next": "15.5.15",

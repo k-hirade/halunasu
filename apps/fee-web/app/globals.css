@@ -761,12 +761,19 @@ body:has(.fee-shell--detail) {
 }
 
 .source-section .clinical-text-field {
-  min-height: 0;
+  min-height: auto;
+}
+
+.source-section textarea {
+  font-weight: 500;
+  line-height: 1.55;
 }
 
 .source-section .clinical-textarea {
-  min-height: 520px;
-  resize: vertical;
+  min-height: 360px;
+  overflow: hidden;
+  resize: none;
+  white-space: pre-wrap;
 }
 
 .source-section .diagnosis-textarea {

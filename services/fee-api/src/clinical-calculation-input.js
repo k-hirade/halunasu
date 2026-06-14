@@ -3,6 +3,7 @@ import {
   extractFeeClinicalFactsWithOpenAi
 } from "../../../packages/medical-core/src/fee/openai-fee-clinical-facts.js";
 import {
+  clinicalAutoCalculationOptionKeys,
   hasPerformedBloodCollectionEvidence,
   hasPerformedBloodCollectionEvidenceInText,
   isClinicalDateRatioFalsePositiveContext
@@ -25,19 +26,7 @@ export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "カルテ記載内容から算定候補を確認"
 ]);
 
-const CLINICAL_AUTO_OPTION_KEYS = new Set([
-  "procedure_codes",
-  "outpatient_basic",
-  "inpatient_basic",
-  "facility_standard_keys",
-  "imaging_orders",
-  "treatment_orders",
-  "medication_orders",
-  "medication",
-  "material_inputs",
-  "comment_inputs",
-  "lab_options"
-]);
+const CLINICAL_AUTO_OPTION_KEYS = new Set(clinicalAutoCalculationOptionKeys);
 
 const ACUTE_GENERAL_INPATIENT_BASIC_CODES = Object.freeze({
   "1": "190117710",
