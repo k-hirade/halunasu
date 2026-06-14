@@ -770,9 +770,10 @@ body:has(.fee-shell--detail) {
 }
 
 .source-section .clinical-textarea {
-  min-height: 360px;
-  overflow: hidden;
-  resize: none;
+  min-height: 220px;
+  max-height: min(52dvh, 520px);
+  overflow: auto;
+  resize: vertical;
   white-space: pre-wrap;
 }
 

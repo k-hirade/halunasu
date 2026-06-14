@@ -820,7 +820,6 @@ function SourcePane({
   setPatientFilter,
   setPatientPickerOpen
 }) {
-  const clinicalTextRef = useRef(null);
   const diagnosisCount = form.diagnosesText.split(/\n+/u).map((item) => item.trim()).filter(Boolean).length;
   const departmentOptions = [
     { value: "", label: "未指定" },
@@ -838,15 +837,6 @@ function SourcePane({
     }))
   ];
   const selectedFacility = facilities.find((facility) => facility.facilityId === (form.facilityId || defaultFacilityId));
-
-  useEffect(() => {
-    const textarea = clinicalTextRef.current;
-    if (!textarea) {
-      return;
-    }
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.max(textarea.scrollHeight, 360)}px`;
-  }, [form.clinicalText]);
 
   return (
     <section className="fee-source-pane" aria-label="算定条件とカルテ">
@@ -938,7 +928,6 @@ function SourcePane({
             <textarea
               className="clinical-textarea"
               placeholder={"S/O/A/Pや診療メモをそのまま貼り付けてください。"}
-              ref={clinicalTextRef}
               value={form.clinicalText}
               onChange={(event) => onUpdateClinicalText(event.target.value)}
             />
