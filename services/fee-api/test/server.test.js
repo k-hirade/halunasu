@@ -1015,6 +1015,54 @@ test("does not treat absent or unknown electronic image management as present", 
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.imaging_orders[0].electronic_image_management, undefined);
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("電子保存確認")));
+
+  receivedInput = null;
+  const chartLevelUnknown = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-12",
+    clinicalText: [
+      "O（Objective：客観的情報）",
+      "頭部CT撮影を実施。16列以上64列未満マルチスライス型機器。",
+      "画像データの保存状況は診療録本文には残っていない。"
+    ].join("\n"),
+    diagnoses: [{ name: "頭部外傷" }]
+  }, headers);
+  calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${chartLevelUnknown.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor: clinicalFactsExtractor("頭部CT撮影を実施。16列以上64列未満マルチスライス型機器。") }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.imaging_orders[0].electronic_image_management, undefined);
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("電子保存確認")));
+
+  receivedInput = null;
+  const externalStorage = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-13",
+    clinicalText: [
+      "O（Objective：客観的情報）",
+      "頭部CT撮影を実施。16列以上64列未満マルチスライス型機器。",
+      "過去の他院画像は本人の説明のみで、画像データは持参されていない。"
+    ].join("\n"),
+    diagnoses: [{ name: "頭部外傷" }]
+  }, headers);
+  calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${externalStorage.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor: clinicalFactsExtractor("頭部CT撮影を実施。16列以上64列未満マルチスライス型機器。") }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.imaging_orders[0].electronic_image_management, undefined);
+  assert.ok(!calculation.body.calculationResult.warnings.some((warning) => warning.includes("電子保存確認")));
 });
 
 test("keeps conflicting same-kind imaging orders separate", async () => {
@@ -1403,6 +1451,89 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.masterCandidates.some((candidate) => candidate.masterCode === "620001001"));
   assert.ok(calculation.body.calculationResult.billingCandidates.some((candidate) => candidate.code === "620001001"));
   assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.messageForStaff.includes("コルセット")));
+});
+
+test("prioritizes medication total quantity review only in medication context", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.calculate = async () => ({
+    provider: "test_fee_engine",
+    source: "test",
+    status: "completed",
+    totalPoints: 75,
+    lineItems: [],
+    warnings: []
+  });
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "皮膚炎", status: "suspected", evidence: "皮膚炎" }],
+    clinical_events: [
+      {
+        type: "management",
+        billing_domain: "standard_management",
+        name: "外用薬総量確認",
+        action_status: "planned",
+        temporal_relation: "future",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "explicit",
+        section: "P",
+        evidence: "外用ステロイドを1日1回で短期使用する方針を説明したが、本文にはチューブ本数やg数が残っていない。処方内容の総量は薬剤記録と照合してから確定する。",
+        search_queries: [],
+        review_reason: "処方総量の確認が必要"
+      },
+      {
+        type: "counseling",
+        billing_domain: "standard_management",
+        name: "チューブ訓練",
+        action_status: "instruction_only",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "explicit",
+        section: "P",
+        evidence: "肩関節の可動域維持として自宅でのチューブ訓練を紹介した。",
+        search_queries: [],
+        review_reason: "セルフケア指導"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Medication Total Quantity Review Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: [
+      "P: 外用ステロイドを1日1回で短期使用する方針を説明したが、本文にはチューブ本数やg数が残っていない。",
+      "処方内容の総量は薬剤記録と照合してから確定する。",
+      "肩関節の可動域維持として自宅でのチューブ訓練を紹介した。"
+    ].join("\n"),
+    diagnoses: [{ name: "皮膚炎" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  const totalQuantityIssues = calculation.body.calculationResult.reviewIssues
+    .filter((issue) => issue.topicLabel === "総量不足");
+  assert.ok(totalQuantityIssues.length >= 1);
+  assert.ok(totalQuantityIssues.some((issue) => /外用薬|外用ステロイド|総量/u.test(issue.messageForStaff)));
+  assert.ok(!totalQuantityIssues.some((issue) => /チューブ訓練/u.test(issue.messageForStaff)));
 });
 
 test("gates lab master search to direct lab test items and records trace", async () => {

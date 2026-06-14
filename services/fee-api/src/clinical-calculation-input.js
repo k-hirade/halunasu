@@ -318,8 +318,36 @@ function reviewTopicCodeFromTaxonomyLabel(text = "") {
   return "";
 }
 
+function medicationReviewContextText(message = "", event = {}) {
+  return normalizeClinicalText([
+    message,
+    clinicalEventName(event),
+    event?.review_reason,
+    event?.reviewReason,
+    clinicalEventEvidence(event)
+  ].filter(Boolean).join(" "));
+}
+
+function hasMedicationContextForQuantityReview(text = "") {
+  return /(薬剤|処方|投薬|外用|内服|頓服|点眼|点鼻|貼付|塗布|軟膏|クリーム|ローション|ゲル|ステロイド|抗菌薬|保湿剤|錠|カプセル|散|液|シロップ|注射薬)/u.test(normalizeClinicalText(text));
+}
+
+function hasMedicationTotalQuantityReviewContext(text = "") {
+  const normalized = normalizeClinicalText(text);
+  if (!normalized || !hasMedicationContextForQuantityReview(normalized)) {
+    return false;
+  }
+  if (/総量不足/u.test(normalized)) {
+    return true;
+  }
+  const hasTotalQuantityCue = /(?:総量|全量|本数|枚数|包数|瓶数|チューブ本数|g数|グラム数|mL|ml|ML)/u.test(normalized);
+  const hasMissingCue = /(?:不足|不明|未記載|記載なし|記録なし|残っていない|未確定|確定でき|照合|確認|不十分)/u.test(normalized);
+  return hasTotalQuantityCue && hasMissingCue;
+}
+
 function reviewTopicCodeFromWarning(message = "", event = {}) {
   const text = String(message || "");
+  const medicationContextText = medicationReviewContextText(text, event);
   const taxonomyTopicCode = reviewTopicCodeFromTaxonomyLabel([
     text,
     clinicalEventName(event),
@@ -437,6 +465,9 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   if (/受付時刻/u.test(text)) {
     return "reception_time_check";
   }
+  if (hasMedicationTotalQuantityReviewContext(medicationContextText)) {
+    return "missing_total_quantity";
+  }
   if (/薬剤日数不足|処方日数|服用日数|使用日数/u.test(text)) {
     return "missing_medication_days";
   }
@@ -449,10 +480,7 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   if (/面接時間|術前(?:診察|面接|評価)|麻酔.*(?:面接|診察|評価)/u.test(text)) {
     return "anesthesia_interview_time_check";
   }
-  if (/総量不足|総量|全量|本数|枚数/u.test(text) && /不足|不明|未記載|明記/u.test(text)) {
-    return "missing_total_quantity";
-  }
-  if (/薬剤/u.test(text) && /数量|日数|総量|回数/u.test(text)) {
+  if (/薬剤/u.test(text) && /数量|日数|回数/u.test(text)) {
     return "missing_medication_days";
   }
   if (/マスター|標準コード|候補/u.test(text) && /確定でき|複数|確認/u.test(text)) {
@@ -2496,7 +2524,11 @@ function imagingEquipmentKindForKindInText(text = "", imagingKind = "") {
   }
   const objectiveText = objectiveClinicalText(text) || text;
   for (const sentence of splitClinicalSentences(objectiveText)) {
-    if (isFutureOrOrderOnlyContext(sentence) || isNegatedClinicalServiceContext(sentence)) {
+    if (
+      isFutureOrOrderOnlyContext(sentence)
+      || isNegatedClinicalServiceContext(sentence)
+      || isPastOrExternalClinicalServiceContext(sentence)
+    ) {
       continue;
     }
     if (!sentenceMatchesImagingKind(sentence, imagingKind)) {
@@ -6539,7 +6571,11 @@ function electronicImageManagementStateForKindInText(text = "", imagingKind = ""
   }
   const objectiveText = objectiveClinicalText(text) || text;
   for (const sentence of splitClinicalSentences(objectiveText)) {
-    if (isFutureOrOrderOnlyContext(sentence) || isNegatedClinicalServiceContext(sentence)) {
+    if (
+      isFutureOrOrderOnlyContext(sentence)
+      || isNegatedClinicalServiceContext(sentence)
+      || isPastOrExternalClinicalServiceContext(sentence)
+    ) {
       continue;
     }
     if (!sentenceMatchesImagingKind(sentence, imagingKind)) {
@@ -6553,13 +6589,62 @@ function electronicImageManagementStateForKindInText(text = "", imagingKind = ""
       return state;
     }
   }
-  if (sentenceMatchesImagingKind(objectiveText, imagingKind) && /(電子|フィルム|紙焼き)/u.test(objectiveText)) {
+  const chartLevelStorageState = chartLevelUnknownImageStorageStateForKind(text, imagingKind);
+  if (chartLevelStorageState === "unknown") {
+    return "unknown";
+  }
+  if (
+    sentenceMatchesImagingKind(objectiveText, imagingKind)
+    && /(電子|フィルム|紙焼き)/u.test(objectiveText)
+    && !isFutureOrOrderOnlyContext(objectiveText)
+    && !isPastOrExternalClinicalServiceContext(objectiveText)
+  ) {
     const state = localElectronicImageManagementState(objectiveText);
     if (state === "present" || state === "unknown" || state === "absent") {
       return state;
     }
   }
   return "";
+}
+
+function chartLevelUnknownImageStorageStateForKind(text = "", imagingKind = "") {
+  if (!text || !imagingKind) {
+    return "";
+  }
+  const texts = uniqueStrings([
+    objectiveClinicalText(text),
+    text
+  ]).filter(Boolean);
+  for (const sourceText of texts) {
+    if (!sentenceMatchesImagingKind(sourceText, imagingKind)) {
+      continue;
+    }
+    for (const sentence of splitClinicalSentences(sourceText)) {
+      const normalized = normalizeClinicalText(sentence);
+      if (!normalized || isClinicalMetaSentence(normalized)) {
+        continue;
+      }
+      if (
+        isFutureOrOrderOnlyContext(normalized)
+        || isNegatedClinicalServiceContext(normalized)
+        || isPastOrExternalClinicalServiceContext(normalized)
+      ) {
+        continue;
+      }
+      if (hasChartLevelUnknownImageStorageContext(normalized)) {
+        return "unknown";
+      }
+    }
+  }
+  return "";
+}
+
+function hasChartLevelUnknownImageStorageContext(sentence = "") {
+  const text = normalizeClinicalText(sentence);
+  if (!/(画像データ|画像情報|画像記録|撮影データ|画像.{0,8}保存|保存状況|保存.{0,8}状況)/u.test(text)) {
+    return false;
+  }
+  return /(不明|未確定|確認|要確認|必要|残っていない|記録.{0,8}ない|記載.{0,8}ない|読み取れない|分からない|わからない|照合)/u.test(text);
 }
 
 function sentenceMatchesImagingKind(sentence = "", imagingKind = "") {
