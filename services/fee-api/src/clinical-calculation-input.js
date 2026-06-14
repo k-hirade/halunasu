@@ -1116,6 +1116,24 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   if (checklistRecovery.events.length) {
     clinicalEvents = [...clinicalEvents, ...checklistRecovery.events];
   }
+  const canonicalClinicalFactsForCalculation = normalizeCanonicalClinicalFacts(
+    canonicalClinicalFactsFromEvents(clinicalEvents)
+  );
+  const clinicalEventsForCalculation = clinicalEventsFromCanonicalClinicalFacts(
+    canonicalClinicalFactsForCalculation,
+    clinicalEvents
+  );
+  clinicalTrace.push({
+    stage: "canonical_fact_ledger",
+    outcome: "prepared",
+    source: "clinical_events",
+    factCount: canonicalClinicalFactsForCalculation.length,
+    eligibleFactCount: canonicalClinicalFactsForCalculation.filter((fact) => (
+      ["eligible_for_master_search", "eligible_for_billing"].includes(fact.status)
+    )).length,
+    reviewFactCount: canonicalClinicalFactsForCalculation.filter((fact) => fact.status === "review_required").length,
+    excludedFactCount: canonicalClinicalFactsForCalculation.filter((fact) => fact.status === "excluded").length
+  });
   const suppressedClinicalFactWarnings = [];
   let hasCaseLevelLabProcedureCode = false;
   let hasCaseLevelBloodCollectionEvidence = hasCaseLevelBloodCollectionEvidenceFromText(text);
@@ -1164,7 +1182,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     reviewWarnings.push(splitMultiDayIssue.messageForStaff);
   }
 
-  for (const event of clinicalEvents) {
+  for (const event of clinicalEventsForCalculation) {
     const type = normalizeClinicalEventType(event);
     if (!isBillableClinicalEvent(event)) {
       const reviewOnlyDomain = reviewOnlyClinicalEventDomain(event);
@@ -1360,7 +1378,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   }
   const visitMedicationDecision = medicationOptionsDecisionFromVisitFacts(facts?.visit_facts, {
     clinicalText: text,
-    clinicalEvents,
+    clinicalEvents: clinicalEventsForCalculation,
     medicationOrders
   });
   if (visitMedicationDecision.reviewIssue) {
@@ -1399,7 +1417,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     candidateProposals: normalizeCandidateProposals(candidateProposals),
     reviewWarnings: normalizeReviewWarnings(reviewWarnings),
     clinicalEvents,
-    canonicalClinicalFacts: normalizeCanonicalClinicalFacts(canonicalClinicalFactsFromEvents(clinicalEvents, {
+    canonicalClinicalFacts: normalizeCanonicalClinicalFacts(canonicalClinicalFactsFromEvents(clinicalEventsForCalculation, {
       billingCandidates,
       reviewIssues,
       masterCandidates
@@ -3638,6 +3656,65 @@ function canonicalClinicalFactConceptId(event = {}) {
   const billingDomain = normalizeClinicalEventBillingDomain(event, { type });
   const name = candidateIdPart(clinicalEventName(event) || billingDomain || type || "unknown");
   return `${billingDomain || type || "unknown"}:${name}`;
+}
+
+function clinicalEventsFromCanonicalClinicalFacts(facts = [], events = []) {
+  const eventsById = new Map();
+  for (const [index, event] of asArray(events).entries()) {
+    const normalized = normalizeClinicalEvent(event, index);
+    const eventId = normalized ? clinicalEventIdentity(normalized) : "";
+    if (eventId) {
+      eventsById.set(eventId, normalized);
+    }
+  }
+  return asArray(facts)
+    .map((fact, index) => {
+      const eventId = String(fact?.clinicalEventId || fact?.clinical_event_id || "").trim();
+      const original = eventId ? eventsById.get(eventId) : null;
+      if (original) {
+        return {
+          ...original,
+          canonicalFactId: fact.factId || fact.fact_id || "",
+          canonicalFactStatus: fact.status || "unknown",
+          conceptId: fact.conceptId || fact.concept_id || original.conceptId || null
+        };
+      }
+      const evidenceRef = asArray(fact?.evidenceRefs || fact?.evidence_refs)[0] || {};
+      const normalization = isPlainObject(fact?.normalization) ? fact.normalization : {};
+      const reconstructed = normalizeClinicalEvent({
+        clinical_event_id: eventId || `canonical_fact_${index + 1}`,
+        type: fact?.eventType || fact?.event_type || "other",
+        billing_domain: fact?.billingDomain || fact?.billing_domain || "unknown",
+        name: fact?.clinicalName || fact?.clinical_name || "",
+        action_status: fact?.actionStatus || fact?.action_status || "unknown",
+        temporal_relation: fact?.temporalRelation || fact?.temporal_relation || "unknown",
+        source_origin: fact?.sourceOrigin || fact?.source_origin || "unknown",
+        provider_ownership: fact?.providerOwnership || fact?.provider_ownership || "unknown",
+        result_assertion: fact?.resultAssertion || fact?.result_assertion || "unknown",
+        certainty: fact?.certainty || "ambiguous",
+        section: evidenceRef.section || "unknown",
+        evidence: evidenceRef.quote || "",
+        modality: normalization.modality || "none",
+        body_site: normalization.bodySite || normalization.body_site || "",
+        specimen: normalization.specimen || "",
+        collection_method: normalization.collectionMethod || normalization.collection_method || "",
+        area_size_cm2: normalization.areaSizeCm2 || normalization.area_size_cm2 || "",
+        quantity_per_day: normalization.quantityPerDay || normalization.quantity_per_day || "",
+        days: normalization.days || "",
+        total_quantity: normalization.totalQuantity || normalization.total_quantity || "",
+        source: fact?.extraction?.source || "canonical_clinical_fact"
+      }, index);
+      if (!reconstructed) {
+        return null;
+      }
+      return {
+        ...reconstructed,
+        canonicalFactId: fact.factId || fact.fact_id || "",
+        canonicalFactStatus: fact.status || "unknown",
+        conceptId: fact.conceptId || fact.concept_id || null
+      };
+    })
+    .filter(Boolean);
 }
 
 function normalizeCanonicalClinicalFacts(values = []) {

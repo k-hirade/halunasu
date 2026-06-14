@@ -6264,6 +6264,220 @@ test("creates calculation jobs with input snapshots without marking sessions cal
   assert.notEqual(detail.body.feeSession.status, "calculating");
 });
 
+test("enqueues calculation jobs to Cloud Tasks when configured", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "非同期 花子" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "O: 胸部X線を実施。"
+  }, headers);
+  let taskRequest = null;
+  const job = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculation-jobs`,
+    {},
+    headers,
+    {
+      processEnv: {
+        FEE_CALCULATION_CLOUD_TASKS_QUEUE: "fee-calculation",
+        FEE_CALCULATION_WORKER_URL: "https://fee-api.test/v1/fee/internal/calculation-jobs/run",
+        FEE_CALCULATION_WORKER_TOKEN: "worker-secret"
+      },
+      cloudTasksClient: {
+        async createTask(requestBody) {
+          taskRequest = requestBody;
+          return { name: "task_fee_001" };
+        }
+      }
+    }
+  );
+  const detail = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/detail`,
+    undefined,
+    headers
+  );
+
+  assert.equal(job.statusCode, 202);
+  assert.equal(job.body.calculationJob.status, "queued");
+  assert.equal(job.body.calculationJob.enqueueStatus, "queued");
+  assert.equal(job.body.calculationJob.enqueueProvider, "cloud_tasks");
+  assert.equal(detail.body.feeSession.status, "calculating");
+  assert.equal(taskRequest.parent, "projects/medical-core-stg/locations/asia-northeast1/queues/fee-calculation");
+  assert.equal(taskRequest.task.httpRequest.url, "https://fee-api.test/v1/fee/internal/calculation-jobs/run");
+  assert.equal(taskRequest.task.httpRequest.headers["x-fee-worker-token"], "worker-secret");
+  const payload = JSON.parse(Buffer.from(taskRequest.task.httpRequest.body, "base64").toString("utf8"));
+  assert.equal(payload.orgId, "org_001");
+  assert.equal(payload.feeSessionId, session.body.feeSession.feeSessionId);
+  assert.equal(payload.calculationJobId, job.body.calculationJob.calculationJobId);
+});
+
+test("enqueues calculation jobs to Pub/Sub when configured", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "非同期 三郎" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "O: 尿定性を実施。"
+  }, headers);
+  let publishRequest = null;
+  const job = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculation-jobs`,
+    {},
+    headers,
+    {
+      processEnv: {
+        FEE_CALCULATION_PUBSUB_TOPIC: "fee-calculation-topic"
+      },
+      pubSubClient: {
+        async publishMessage(requestBody) {
+          publishRequest = requestBody;
+          return { messageId: "msg_fee_001" };
+        }
+      }
+    }
+  );
+
+  assert.equal(job.statusCode, 202);
+  assert.equal(job.body.calculationJob.status, "queued");
+  assert.equal(job.body.calculationJob.enqueueProvider, "pubsub");
+  assert.equal(publishRequest.topic, "projects/medical-core-stg/topics/fee-calculation-topic");
+  assert.equal(publishRequest.message.attributes.type, "fee_calculation_job");
+  const payload = JSON.parse(Buffer.from(publishRequest.message.data, "base64").toString("utf8"));
+  assert.equal(payload.orgId, "org_001");
+  assert.equal(payload.feeSessionId, session.body.feeSession.feeSessionId);
+  assert.equal(payload.calculationJobId, job.body.calculationJob.calculationJobId);
+});
+
+test("runs queued calculation jobs through the internal worker route", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "非同期 次郎" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "O: CRPを実施。"
+  }, headers);
+  const job = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculation-jobs`,
+    {},
+    headers,
+    {
+      processEnv: {
+        FEE_CALCULATION_CLOUD_TASKS_QUEUE: "fee-calculation",
+        FEE_CALCULATION_WORKER_URL: "https://fee-api.test/v1/fee/internal/calculation-jobs/run",
+        FEE_CALCULATION_WORKER_TOKEN: "worker-secret"
+      },
+      cloudTasksClient: {
+        async createTask() {
+          return { name: "task_fee_002" };
+        }
+      }
+    }
+  );
+  const worker = await request(
+    stores,
+    "POST",
+    "/v1/fee/internal/calculation-jobs/run",
+    {
+      orgId: "org_001",
+      feeSessionId: session.body.feeSession.feeSessionId,
+      calculationJobId: job.body.calculationJob.calculationJobId
+    },
+    { "x-fee-worker-token": "worker-secret" },
+    {
+      processEnv: {
+        FEE_CALCULATION_WORKER_TOKEN: "worker-secret"
+      }
+    }
+  );
+  const fetched = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculation-jobs/${job.body.calculationJob.calculationJobId}`,
+    undefined,
+    headers
+  );
+  const detail = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/detail`,
+    undefined,
+    headers
+  );
+
+  assert.equal(worker.statusCode, 200);
+  assert.equal(worker.body.calculationJob.status, "succeeded");
+  assert.equal(worker.body.calculationJob.resultSummary.totalPoints, 137);
+  assert.equal(fetched.body.calculationJob.status, "succeeded");
+  assert.equal(detail.body.feeSession.calculationSummary.totalPoints, 137);
+  assert.equal(detail.body.receiptDraft.totalPoints, 137);
+  assert.notEqual(detail.body.feeSession.status, "calculating");
+});
+
+test("runs Pub/Sub push calculation job payloads through the internal worker route", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "非同期 四郎" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "O: インフル迅速を実施。"
+  }, headers);
+  const job = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculation-jobs`,
+    {},
+    headers,
+    {
+      processEnv: {
+        FEE_CALCULATION_PUBSUB_TOPIC: "fee-calculation-topic"
+      },
+      pubSubClient: {
+        async publishMessage() {
+          return { messageId: "msg_fee_002" };
+        }
+      }
+    }
+  );
+  const payload = {
+    orgId: "org_001",
+    feeSessionId: session.body.feeSession.feeSessionId,
+    calculationJobId: job.body.calculationJob.calculationJobId
+  };
+  const worker = await request(
+    stores,
+    "POST",
+    "/v1/fee/internal/calculation-jobs/run",
+    {
+      message: {
+        data: Buffer.from(JSON.stringify(payload), "utf8").toString("base64")
+      }
+    },
+    {},
+    {
+      env: "prod",
+      processEnv: {
+        FEE_CALCULATION_WORKER_AUTH_MODE: "iam"
+      }
+    }
+  );
+
+  assert.equal(worker.statusCode, 200);
+  assert.equal(worker.body.calculationJob.status, "succeeded");
+  assert.equal(worker.body.calculationJob.resultSummary.totalPoints, 137);
+});
+
 test("rejects fee access without product entitlement", async () => {
   const stores = createStores({ entitlement: false });
   const headers = await signedHeaders(stores.platformStore);
@@ -6452,6 +6666,8 @@ function request(stores, method, path, body, headers = {}, overrides = {}) {
     feeCalculator: stores.feeCalculator,
     env: overrides.env || "test",
     clinicalFactsExtractor: overrides.clinicalFactsExtractor,
+    cloudTasksClient: overrides.cloudTasksClient,
+    pubSubClient: overrides.pubSubClient,
     openAiApiKey: overrides.openAiApiKey,
     openAiFeeClinicalModel: overrides.openAiFeeClinicalModel,
     openAiFeeClinicalReasoningEffort: overrides.openAiFeeClinicalReasoningEffort,

@@ -122,6 +122,18 @@ async function routeFeeApiRequest(input = {}) {
     return notFound("Route not found");
   }
 
+  if (method === "POST" && matches(parts, ["v1", "fee", "internal", "calculation-jobs", "run"])) {
+    requireCalculationWorkerAuth(input);
+    const payload = decodeCalculationJobWorkerPayload(input.body || {});
+    return ok(await runFeeCalculationJob({
+      input,
+      platformStore,
+      feeStore,
+      feeCalculator,
+      payload
+    }));
+  }
+
   const context = await requireFeeContext(input, platformStore);
 
   if (method === "GET" && matches(parts, ["v1", "fee", "context"])) {
@@ -498,6 +510,12 @@ async function enqueueFeeCalculationJob({ input = {}, calculationJob = {} } = {}
   const env = input.processEnv || process.env;
   const cloudTasksQueue = String(env.FEE_CALCULATION_CLOUD_TASKS_QUEUE || env.FEE_CALCULATION_TASK_QUEUE || "").trim();
   const pubsubTopic = String(env.FEE_CALCULATION_PUBSUB_TOPIC || "").trim();
+  const workerUrl = String(env.FEE_CALCULATION_WORKER_URL || "").trim();
+  const workerToken = String(env.FEE_CALCULATION_WORKER_TOKEN || "").trim();
+  const oidcServiceAccountEmail = String(env.FEE_CALCULATION_WORKER_OIDC_SERVICE_ACCOUNT_EMAIL || "").trim();
+  const oidcAudience = String(env.FEE_CALCULATION_WORKER_OIDC_AUDIENCE || workerUrl || "").trim();
+  const workerAuthMode = String(env.FEE_CALCULATION_WORKER_AUTH_MODE || "").trim().toLowerCase();
+  const payload = calculationJobWorkerPayload(calculationJob);
   if (!cloudTasksQueue && !pubsubTopic) {
     return {
       status: "enqueue_failed",
@@ -507,14 +525,295 @@ async function enqueueFeeCalculationJob({ input = {}, calculationJob = {} } = {}
       enqueueMessage: "Set FEE_CALCULATION_CLOUD_TASKS_QUEUE or FEE_CALCULATION_PUBSUB_TOPIC to enqueue asynchronous fee calculations."
     };
   }
+  try {
+    if (cloudTasksQueue) {
+      if (!workerUrl) {
+        return enqueueFailure("cloud_tasks", "missing_worker_url", "Set FEE_CALCULATION_WORKER_URL when using Cloud Tasks.");
+      }
+      if (!workerToken && !oidcServiceAccountEmail && !isTestEnvironment(input.env)) {
+        return enqueueFailure(
+          "cloud_tasks",
+          "missing_worker_auth",
+          "Set FEE_CALCULATION_WORKER_TOKEN or FEE_CALCULATION_WORKER_OIDC_SERVICE_ACCOUNT_EMAIL for Cloud Tasks worker authentication."
+        );
+      }
+      if (!workerToken && oidcServiceAccountEmail && workerAuthMode !== "iam" && !isTestEnvironment(input.env)) {
+        return enqueueFailure(
+          "cloud_tasks",
+          "missing_worker_auth_mode",
+          "Set FEE_CALCULATION_WORKER_AUTH_MODE=iam when Cloud Tasks uses OIDC authentication."
+        );
+      }
+      const queuePath = cloudTasksQueuePath(cloudTasksQueue, input.projectId, input.region);
+      const task = {
+        httpRequest: {
+          httpMethod: "POST",
+          url: workerUrl,
+          headers: {
+            "content-type": "application/json",
+            ...(workerToken ? { "x-fee-worker-token": workerToken } : {})
+          },
+          body: base64Json(payload),
+          ...(oidcServiceAccountEmail ? {
+            oidcToken: {
+              serviceAccountEmail: oidcServiceAccountEmail,
+              ...(oidcAudience ? { audience: oidcAudience } : {})
+            }
+          } : {})
+        }
+      };
+      const response = typeof input.cloudTasksClient?.createTask === "function"
+        ? await input.cloudTasksClient.createTask({ parent: queuePath, task })
+        : await createCloudTaskViaRest({
+          env,
+          queuePath,
+          task
+        });
+      return enqueueSuccess("cloud_tasks", response?.name || response?.taskName || null);
+    }
+    const topicPath = pubsubTopicPath(pubsubTopic, input.projectId);
+    const message = {
+      data: base64Json(payload),
+      attributes: {
+        type: "fee_calculation_job",
+        orgId: String(payload.orgId || ""),
+        feeSessionId: String(payload.feeSessionId || ""),
+        calculationJobId: String(payload.calculationJobId || "")
+      }
+    };
+    const response = typeof input.pubSubClient?.publishMessage === "function"
+      ? await input.pubSubClient.publishMessage({ topic: topicPath, message })
+      : await publishPubSubMessageViaRest({
+        env,
+        topicPath,
+        message
+      });
+    return enqueueSuccess("pubsub", response?.messageId || response?.messageIds?.[0] || null);
+  } catch (error) {
+    return enqueueFailure(
+      cloudTasksQueue ? "cloud_tasks" : "pubsub",
+      "enqueue_error",
+      safeLogError(error)
+    );
+  }
+}
+
+function calculationJobWorkerPayload(calculationJob = {}) {
+  return {
+    type: "fee_calculation_job",
+    orgId: calculationJob.orgId || "",
+    feeSessionId: calculationJob.feeSessionId || "",
+    calculationJobId: calculationJob.calculationJobId || calculationJob.jobId || ""
+  };
+}
+
+function enqueueSuccess(provider, providerMessageId = null) {
+  return {
+    status: "queued",
+    phase: "queued",
+    enqueueStatus: "queued",
+    enqueueProvider: provider,
+    enqueueMessage: providerMessageId ? `queued:${providerMessageId}` : "queued"
+  };
+}
+
+function enqueueFailure(provider, status, message) {
   return {
     status: "enqueue_failed",
     phase: "enqueue",
-    enqueueStatus: "adapter_not_installed",
-    enqueueProvider: cloudTasksQueue ? "cloud_tasks" : "pubsub",
-    enqueueMessage: "Async queue configuration is present, but the Cloud Tasks/PubSub enqueue adapter is not installed in this runtime.",
-    calculationJobId: calculationJob.calculationJobId || null
+    enqueueStatus: status,
+    enqueueProvider: provider,
+    enqueueMessage: message
   };
+}
+
+function cloudTasksQueuePath(queue, projectId, region) {
+  if (/^projects\/[^/]+\/locations\/[^/]+\/queues\/[^/]+$/u.test(queue)) {
+    return queue;
+  }
+  return `projects/${encodeURIComponent(projectId || "medical-core-stg")}/locations/${encodeURIComponent(region || "asia-northeast1")}/queues/${encodeURIComponent(queue)}`;
+}
+
+function pubsubTopicPath(topic, projectId) {
+  if (/^projects\/[^/]+\/topics\/[^/]+$/u.test(topic)) {
+    return topic;
+  }
+  return `projects/${encodeURIComponent(projectId || "medical-core-stg")}/topics/${encodeURIComponent(topic)}`;
+}
+
+async function createCloudTaskViaRest({ env, queuePath, task }) {
+  const accessToken = await googleAccessToken(env);
+  const response = await fetch(`https://cloudtasks.googleapis.com/v2/${queuePath}/tasks`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ task })
+  });
+  return parseGoogleApiJsonResponse(response, "Cloud Tasks enqueue failed");
+}
+
+async function publishPubSubMessageViaRest({ env, topicPath, message }) {
+  const accessToken = await googleAccessToken(env);
+  const response = await fetch(`https://pubsub.googleapis.com/v1/${topicPath}:publish`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ messages: [message] })
+  });
+  return parseGoogleApiJsonResponse(response, "Pub/Sub publish failed");
+}
+
+async function googleAccessToken(env = {}) {
+  const configured = String(env.GOOGLE_OAUTH_ACCESS_TOKEN || env.GOOGLE_ACCESS_TOKEN || "").trim();
+  if (configured) {
+    return configured;
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1500);
+  try {
+    const response = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token", {
+      headers: { "metadata-flavor": "Google" },
+      signal: controller.signal
+    });
+    const body = await parseGoogleApiJsonResponse(response, "Metadata token request failed");
+    if (!body?.access_token) {
+      throw new Error("Metadata token response did not include access_token");
+    }
+    return body.access_token;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function parseGoogleApiJsonResponse(response, fallbackMessage) {
+  const text = await response.text();
+  let body = {};
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { raw: text };
+    }
+  }
+  if (!response.ok) {
+    const error = new Error(body?.error?.message || fallbackMessage);
+    error.statusCode = response.status;
+    error.safeProviderMessage = body?.error?.status || body?.error?.message || fallbackMessage;
+    throw error;
+  }
+  return body;
+}
+
+function base64Json(value) {
+  return Buffer.from(JSON.stringify(value || {}), "utf8").toString("base64");
+}
+
+async function runFeeCalculationJob({
+  input = {},
+  platformStore,
+  feeStore,
+  feeCalculator,
+  payload = {}
+}) {
+  const orgId = String(payload.orgId || "").trim();
+  const feeSessionId = String(payload.feeSessionId || "").trim();
+  const calculationJobId = String(payload.calculationJobId || payload.jobId || "").trim();
+  if (!orgId || !feeSessionId || !calculationJobId) {
+    const error = new Error("calculation job payload requires orgId, feeSessionId, and calculationJobId");
+    error.name = "BadRequestError";
+    error.statusCode = 400;
+    throw error;
+  }
+  const job = typeof feeStore.getCalculationJob === "function"
+    ? await feeStore.getCalculationJob(orgId, feeSessionId, calculationJobId)
+    : null;
+  if (!job) {
+    const error = new Error("fee calculation job not found");
+    error.name = "NotFoundError";
+    error.statusCode = 404;
+    throw error;
+  }
+  if (job.status === "succeeded") {
+    return { calculationJob: job, alreadyCompleted: true };
+  }
+  const now = input.now || new Date();
+  const runningJob = typeof feeStore.updateCalculationJob === "function"
+    ? (await feeStore.updateCalculationJob(orgId, feeSessionId, calculationJobId, {
+      status: "running",
+      phase: "extract",
+      attemptCount: Number(job.attemptCount || 0) + 1,
+      startedAt: job.startedAt || timestampForSnapshot(now),
+      lastAttemptAt: timestampForSnapshot(now)
+    })).calculationJob
+    : job;
+  const current = await feeStore.getSession(orgId, feeSessionId);
+  if (!current) {
+    const error = new Error("fee session not found");
+    error.name = "NotFoundError";
+    error.statusCode = 404;
+    throw error;
+  }
+  const context = {
+    session: {
+      orgId,
+      memberId: runningJob.createdByMemberId || "fee-worker",
+      loginId: "fee-worker"
+    }
+  };
+  try {
+    const result = await calculateFeeSessionNow({
+      context,
+      feeCalculator,
+      feeStore,
+      platformStore,
+      input,
+      feeSessionId,
+      current,
+      calculationInput: isPlainObject(runningJob.calculationInput) ? runningJob.calculationInput : {}
+    });
+    const completedJob = typeof feeStore.updateCalculationJob === "function"
+      ? (await feeStore.updateCalculationJob(orgId, feeSessionId, calculationJobId, {
+        status: "succeeded",
+        phase: "complete",
+        completedAt: timestampForSnapshot(input.now || new Date()),
+        resultSummary: {
+          calculationId: result.calculationResult?.calculationId || null,
+          totalPoints: Number(result.calculationResult?.totalPoints || 0),
+          feeSessionStatus: result.feeSession?.status || null
+        }
+      })).calculationJob
+      : runningJob;
+    return {
+      calculationJob: completedJob,
+      feeSession: result.feeSession,
+      receiptDraft: result.receiptDraft,
+      candidateWorkbench: result.candidateWorkbench
+    };
+  } catch (error) {
+    if (typeof feeStore.updateCalculationJob === "function") {
+      await feeStore.updateCalculationJob(orgId, feeSessionId, calculationJobId, {
+        status: "failed",
+        phase: "failed",
+        completedAt: timestampForSnapshot(input.now || new Date()),
+        error: {
+          name: error.name || "Error",
+          message: safeLogError(error)
+        }
+      });
+    }
+    await markFeeCalculationFailed({
+      context,
+      feeStore,
+      feeSessionId,
+      error,
+      now: input.now || new Date()
+    });
+    throw error;
+  }
 }
 
 async function calculateFeeSessionNow({
@@ -2056,6 +2355,68 @@ function requireMutationCsrf(input, session) {
   requirePlatformCsrf(input.headers || {}, session);
 }
 
+function requireCalculationWorkerAuth(input = {}) {
+  const env = input.processEnv || process.env;
+  const expected = String(env.FEE_CALCULATION_WORKER_TOKEN || "").trim();
+  const authMode = String(env.FEE_CALCULATION_WORKER_AUTH_MODE || "").trim().toLowerCase();
+  if (!expected && isTestEnvironment(input.env)) {
+    return;
+  }
+  if (!expected && authMode === "iam") {
+    return;
+  }
+  if (!expected) {
+    const error = new Error("fee calculation worker token is not configured");
+    error.name = "ServiceUnavailableError";
+    error.statusCode = 503;
+    throw error;
+  }
+  const provided = workerTokenFromHeaders(input.headers || {});
+  if (!provided || !timingSafeEqualString(provided, expected)) {
+    const error = new Error("invalid fee calculation worker token");
+    error.name = "UnauthorizedError";
+    error.statusCode = 401;
+    throw error;
+  }
+}
+
+function workerTokenFromHeaders(headers = {}) {
+  const direct = String(headerValue(headers, "x-fee-worker-token") || "").trim();
+  if (direct) {
+    return direct;
+  }
+  const authorization = String(headerValue(headers, "authorization") || "").trim();
+  const match = /^Bearer\s+(.+)$/iu.exec(authorization);
+  return match ? match[1].trim() : "";
+}
+
+function timingSafeEqualString(a, b) {
+  const left = Buffer.from(String(a || ""), "utf8");
+  const right = Buffer.from(String(b || ""), "utf8");
+  if (left.length !== right.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(left, right);
+}
+
+function decodeCalculationJobWorkerPayload(body = {}) {
+  const pubsubData = body?.message?.data;
+  if (pubsubData) {
+    try {
+      return JSON.parse(Buffer.from(String(pubsubData), "base64").toString("utf8"));
+    } catch {
+      const error = new Error("Pub/Sub message data must be base64 encoded JSON");
+      error.name = "BadRequestError";
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+  if (isPlainObject(body?.payload)) {
+    return body.payload;
+  }
+  return body;
+}
+
 function hasBearerAuth(headers = {}) {
   return /^Bearer\s+\S+/iu.test(String(headerValue(headers, "authorization") || ""));
 }
@@ -2144,6 +2505,10 @@ function isPlainObject(value) {
 
 function isStgEnvironment(env) {
   return String(env || "").trim().toLowerCase() === "stg";
+}
+
+function isTestEnvironment(env) {
+  return String(env || "").trim().toLowerCase() === "test";
 }
 
 function toErrorCode(name) {
