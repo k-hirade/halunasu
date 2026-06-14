@@ -8,6 +8,7 @@
   --accent-dark: #0a665d;
   --soft-accent: #e8f5f2;
   --warn: #a15c07;
+  --site-nav-h: 61px;
   --site-nav-shell-max: 1480px;
 }
 
@@ -662,6 +663,7 @@ body:has(.fee-shell--detail) {
 
 .fee-session-workspace {
   min-height: 0;
+  overflow: hidden;
   display: grid;
   grid-template-columns: minmax(360px, 0.92fr) minmax(520px, 1.08fr);
   gap: 14px;
