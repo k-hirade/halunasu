@@ -680,43 +680,27 @@ function FeeSessionDetailView({ sessionId }) {
   }
 
   const calculation = feeSession?.calculationResult || null;
-  const patientName = feeSession?.patientSnapshot?.displayName || feeSession?.patientRef || feeSession?.patientId || "患者未選択";
   const isCalculating = feeSession?.status === "calculating";
   const saveStatusLabel = autoSaveLabel(autoSaveStatus, autoSaveError);
 
   return (
     <main className="fee-shell fee-shell--detail">
-      <SessionStickyHeader
-        claimMonth={feeSession?.claimMonth}
-        patientName={patientName}
-        receiptDraft={receiptDraft}
-        serviceDate={feeSession?.serviceDate}
-        status={feeSession?.status}
-      />
-
-      {message ? <div className={`fee-message fee-message--${message.type}`} role="status">{message.text}</div> : null}
+      <div className="fee-message-slot">
+        {message ? <div className={`fee-message fee-message--${message.type}`} role="status">{message.text}</div> : null}
+      </div>
 
       <div className="fee-session-workspace">
         <SourcePane
-          autoSaveError={autoSaveError}
-          autoSaveLabelText={saveStatusLabel}
-          autoSaveStatus={autoSaveStatus}
           busy={busy}
-          calculate={calculate}
-          defaultFacilityId={defaultFacilityId}
-          departments={departments}
-          facilities={facilities}
           filteredPatients={filteredPatients}
           form={form}
-          isCalculating={isCalculating}
           newPatient={newPatient}
           onCreatePatient={createPatient}
+          onOpenConditions={() => setSettingsModalMode("conditions")}
           onOpenOrders={() => setSettingsModalMode("orders")}
-          onRefresh={() => loadAll({ forceBootstrap: true })}
           onSelectPatient={selectPatient}
           onUpdateClinicalText={updateClinicalText}
           onUpdateDiagnosesText={updateDiagnosesText}
-          onUpdateForm={updateForm}
           orderCount={parseOrdersFromRows(orderRows).length}
           patientFilter={patientFilter}
           patientPickerOpen={patientPickerOpen}
@@ -741,6 +725,15 @@ function FeeSessionDetailView({ sessionId }) {
           selected={Boolean(sessionId)}
         />
       </div>
+      <SessionActionFooter
+        autoSaveError={autoSaveError}
+        autoSaveLabelText={saveStatusLabel}
+        autoSaveStatus={autoSaveStatus}
+        busy={busy}
+        calculate={calculate}
+        isCalculating={isCalculating}
+        onRefresh={() => loadAll({ forceBootstrap: true })}
+      />
       <FeeSettingsModal
         available={masterSearchAvailable}
         defaultFacilityId={defaultFacilityId}
@@ -759,7 +752,6 @@ function FeeSessionDetailView({ sessionId }) {
         onMasterTypeChange={setMasterType}
         onRemoveOrderRow={removeOrderRow}
         onUpdateForm={updateForm}
-        onUpdateDiagnosesText={updateDiagnosesText}
         onUpdateOrderRow={updateOrderRow}
         orderRows={orderRows}
         orderCount={parseOrdersFromRows(orderRows).length}
@@ -770,48 +762,34 @@ function FeeSessionDetailView({ sessionId }) {
   );
 }
 
-function SessionStickyHeader({ claimMonth, patientName, receiptDraft, serviceDate, status }) {
-  const totalPoints = Number(receiptDraft?.totalPoints || 0);
+function SessionActionFooter({ autoSaveError, autoSaveLabelText, autoSaveStatus, busy, calculate, isCalculating, onRefresh }) {
   return (
-    <header className="fee-session-sticky-head">
-      <div className="fee-session-title">
-        <span className="label">算定記録</span>
-        <h1>{patientName}</h1>
-        <p>
-          <span>{serviceDate || "診療日未設定"}</span>
-          <span>請求月 {claimMonth || "未設定"}</span>
-        </p>
+    <footer className="fee-session-action-footer">
+      <div>
+        <strong>{autoSaveLabelText}</strong>
+        <small>{autoSaveStatus === "error" ? autoSaveError || "通信状態を確認してください。" : "入力と採否は自動保存されます。"}</small>
       </div>
-      <div className="fee-session-head-status">
-        <span>合計</span>
-        <strong>{totalPoints.toLocaleString()}点</strong>
-        <i className={badgeClass(status)}>{statusLabel(status)}</i>
+      <div className="source-action-buttons">
+        <button className="btn btn--primary" disabled={busy || isCalculating} onClick={calculate} type="button">
+          {isCalculating ? "算定候補を作成中" : "カルテから算定候補を作成"}
+        </button>
+        <button className="btn btn--ghost btn--icon" disabled={busy} onClick={onRefresh} type="button" aria-label="最新の状態に更新">↻</button>
       </div>
-      <a className="btn btn--ghost" href="/sessions">一覧へ戻る</a>
-    </header>
+    </footer>
   );
 }
 
 function SourcePane({
-  autoSaveError,
-  autoSaveLabelText,
-  autoSaveStatus,
   busy,
-  calculate,
-  defaultFacilityId,
-  departments,
-  facilities,
   filteredPatients,
   form,
-  isCalculating,
   newPatient,
   onCreatePatient,
+  onOpenConditions,
   onOpenOrders,
-  onRefresh,
   onSelectPatient,
   onUpdateClinicalText,
   onUpdateDiagnosesText,
-  onUpdateForm,
   orderCount,
   patientFilter,
   patientPickerOpen,
@@ -821,22 +799,6 @@ function SourcePane({
   setPatientPickerOpen
 }) {
   const diagnosisCount = form.diagnosesText.split(/\n+/u).map((item) => item.trim()).filter(Boolean).length;
-  const departmentOptions = [
-    { value: "", label: "未指定" },
-    ...departments.map((department) => ({
-      value: department.departmentId,
-      label: department.displayName || "名称未設定"
-    }))
-  ];
-  const facilityOptions = [
-    { value: "", label: "施設を選択" },
-    ...facilities.map((facility) => ({
-      value: facility.facilityId,
-      label: facility.displayName || "施設名未設定",
-      description: facility.medicalInstitutionCode || "医療機関コード未設定"
-    }))
-  ];
-  const selectedFacility = facilities.find((facility) => facility.facilityId === (form.facilityId || defaultFacilityId));
 
   return (
     <section className="fee-source-pane" aria-label="算定条件とカルテ">
@@ -844,10 +806,9 @@ function SourcePane({
         <section className="source-section">
           <div className="source-section-head">
             <div>
-              <h2>算定条件</h2>
-              <p>カルテ読解に使う患者・診療条件です。</p>
+              <h2>患者</h2>
             </div>
-            <span className="badge review">要レビュー前提</span>
+            <button className="btn btn--ghost btn--sm" onClick={onOpenConditions} type="button">算定条件</button>
           </div>
           <div className="patient-picker-row">
             <PatientPicker
@@ -866,61 +827,12 @@ function SourcePane({
               onSubmit={onCreatePatient}
             />
           </div>
-          <div className="fee-source-condition-grid">
-            {facilities.length > 1 ? (
-              <label>
-                <span>施設</span>
-                <AdminSelect
-                  ariaLabel="施設"
-                  options={facilityOptions}
-                  value={form.facilityId || defaultFacilityId || ""}
-                  onValueChange={(value) => onUpdateForm("facilityId", value)}
-                />
-              </label>
-            ) : (
-              <div className="source-static-field">
-                <span>施設</span>
-                <strong>{selectedFacility?.displayName || "未設定"}</strong>
-              </div>
-            )}
-            <label>
-              <span>診療科</span>
-              <AdminSelect
-                ariaLabel="診療科"
-                options={departmentOptions}
-                value={form.departmentId}
-                onValueChange={(value) => onUpdateForm("departmentId", value)}
-              />
-            </label>
-            <label>
-              <span>区分</span>
-              <AdminSelect
-                ariaLabel="区分"
-                options={[
-                  { value: "outpatient", label: "外来" },
-                  { value: "inpatient", label: "入院（限定対応）" }
-                ]}
-                value={form.setting}
-                onValueChange={(value) => onUpdateForm("setting", value)}
-              />
-            </label>
-            <label>
-              <span>診療日</span>
-              <input type="date" value={form.serviceDate} onChange={(event) => onUpdateForm("serviceDate", event.target.value)} />
-            </label>
-            <label>
-              <span>請求月</span>
-              <input type="month" value={form.claimMonth} onChange={(event) => onUpdateForm("claimMonth", event.target.value)} />
-            </label>
-          </div>
-          <ScopeNotice setting={form.setting} />
         </section>
 
         <section className="source-section source-section--chart">
           <div className="source-section-head">
             <div>
               <h2>カルテ本文</h2>
-              <p>全文を表示します。折り畳みは使いません。</p>
             </div>
           </div>
           <label className="clinical-text-field">
@@ -931,7 +843,6 @@ function SourcePane({
               value={form.clinicalText}
               onChange={(event) => onUpdateClinicalText(event.target.value)}
             />
-            <small>本文から病名・オーダー候補を自動補完します。</small>
           </label>
         </section>
 
@@ -961,19 +872,6 @@ function SourcePane({
           </div>
         </section>
       </form>
-
-      <div className="source-action-panel">
-        <div>
-          <strong>{autoSaveLabelText}</strong>
-          <small>{autoSaveStatus === "error" ? autoSaveError || "通信状態を確認してください。" : "入力と採否は自動保存されます。"}</small>
-        </div>
-        <div className="source-action-buttons">
-          <button className="btn btn--primary" disabled={busy || isCalculating} onClick={calculate} type="button">
-            {isCalculating ? "算定候補を作成中" : "カルテから算定候補を作成"}
-          </button>
-          <button className="btn btn--ghost btn--icon" disabled={busy} onClick={onRefresh} type="button" aria-label="最新の状態に更新">↻</button>
-        </div>
-      </div>
     </section>
   );
 }
@@ -1095,7 +993,6 @@ function FeeSettingsModal({
   onMasterQueryChange,
   onMasterTypeChange,
   onRemoveOrderRow,
-  onUpdateDiagnosesText,
   onUpdateForm,
   onUpdateOrderRow,
   orderCount,
@@ -1106,6 +1003,7 @@ function FeeSettingsModal({
     return null;
   }
   const showConditions = mode === "conditions";
+  const selectedFacility = facilities.find((facility) => facility.facilityId === (form.facilityId || defaultFacilityId));
   return (
     <div className="fee-modal-overlay" role="presentation" onMouseDown={onClose}>
       <section className="fee-modal-card fee-settings-modal" role="dialog" aria-modal="true" aria-label={showConditions ? "算定条件の確認" : "オーダーの確認"} onMouseDown={(event) => event.stopPropagation()}>
@@ -1138,7 +1036,12 @@ function FeeSettingsModal({
                       onValueChange={(value) => onUpdateForm("facilityId", value)}
                     />
                   </label>
-                ) : null}
+                ) : (
+                  <div className="source-static-field">
+                    <span>施設</span>
+                    <strong>{selectedFacility?.displayName || "未設定"}</strong>
+                  </div>
+                )}
                 <label>
                   <span>診療科</span>
                   <AdminSelect
@@ -1175,17 +1078,6 @@ function FeeSettingsModal({
                   <input type="month" value={form.claimMonth} onChange={(event) => onUpdateForm("claimMonth", event.target.value)} />
                 </label>
               </div>
-              <label>
-                <span>病名</span>
-                <textarea
-                  className="diagnosis-textarea"
-                  placeholder={"必要に応じて病名を1行ずつ入力してください"}
-                  value={form.diagnosesText}
-                  onChange={(event) => onUpdateDiagnosesText(event.target.value)}
-                />
-                <small>未入力の場合はカルテ本文から候補を補完し、不足時はレビューに出します。</small>
-              </label>
-              <ScopeNotice setting={form.setting} />
             </div>
           ) : (
             <div className="fee-settings-section">
@@ -1367,18 +1259,6 @@ function MasterStatus({ available }) {
   return <div className="master-status">マスター検索APIの反映待ちです。通常の算定入力は利用できます。</div>;
 }
 
-function ScopeNotice({ setting }) {
-  const inpatientText = setting === "inpatient"
-    ? "入院/DPCは限定対応です。入院基本料候補とDPCレビューに留まり、確定算定ではありません。"
-    : "外来検体検査を中心に候補を作成します。未対応章はマスター参照のみ、または要レビューとして扱います。";
-  return (
-    <div className="notice-card scope-notice">
-      <strong>対応範囲</strong>
-      <p>{inpatientText} 手術、麻酔、在宅、リハビリ、精神科専門療法、病理診断などは確定算定として扱わないでください。</p>
-    </div>
-  );
-}
-
 function MasterSearchResults({ available, items, onAdd, query, selectedIndex = 0 }) {
   if (!available) {
     return <div className="master-search-results">API反映後にマスター検索を利用できます。</div>;
@@ -1492,7 +1372,6 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
         <div className="candidate-total">
           <span>{coverageSummary.title || "候補化済み部分合計"}</span>
           <strong>{Number(model.includedTotalPoints || 0).toLocaleString()}点</strong>
-          <small>{coverageSummary.description || "確定請求ではありません。採否を変えると合計も変わります。"}</small>
         </div>
         <div className="candidate-summary-grid">
           <div><span>算定中</span><strong>{includedCount.toLocaleString()}件</strong></div>
@@ -1500,13 +1379,6 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
           <div><span>増点余地</span><strong>{potentialPointsTotal > 0 ? `+${potentialPointsTotal.toLocaleString()}点` : `${proposalCount.toLocaleString()}件`}</strong></div>
         </div>
       </div>
-      {Array.isArray(coverageSummary.badges) && coverageSummary.badges.length ? (
-        <div className="candidate-coverage-badges" aria-label="候補化範囲">
-          {coverageSummary.badges.map((badge) => (
-            <span key={badge}>{badge}</span>
-          ))}
-        </div>
-      ) : null}
 
       <div className="fee-sub-tabs" role="tablist" aria-label="算定作業">
         <TabButton active={activeTab === "lines"} count={includedCount} onClick={() => onTabChange("lines")}>算定中</TabButton>
@@ -1520,7 +1392,7 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
           {model.issues.length ? (
             <div className="issue-list">
               {model.issues.map((item) => (
-                <IssueCard disabled={disabled} item={item} key={item.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
+                <IssueCard item={item} key={item.reviewItemId} onOpenDetail={onOpenDetail} />
               ))}
             </div>
           ) : null}
@@ -1631,9 +1503,8 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
   );
 }
 
-function IssueCard({ disabled, item, onDecision, onOpenDetail }) {
+function IssueCard({ item, onOpenDetail }) {
   const requiredInput = reviewRequiredInput(item);
-  const actionLabel = reviewActionLabel(item);
   const tone = issueTone(item);
   return (
     <article className={`issue-card issue-card--${item.issueCategory || "rule"}`}>
@@ -1653,9 +1524,7 @@ function IssueCard({ disabled, item, onDecision, onOpenDetail }) {
         ) : null}
       </div>
       <div className="issue-card-actions">
-        <span className="issue-action-label">{actionLabel}</span>
         <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">詳細</button>
-        <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">保留</button>
       </div>
     </article>
   );
@@ -1733,19 +1602,6 @@ function reviewRequiredInput(item = {}) {
     || item.sourceItem?.reviewIssue?.required_input
     || ""
   ).trim();
-}
-
-function reviewActionLabel(item = {}) {
-  if (item.reviewOnly || item.actionType === "not_billable_now") {
-    return "人手確認";
-  }
-  if (item.actionType === "select_required") {
-    return "候補選択";
-  }
-  if (item.canAdopt) {
-    return "採用可能";
-  }
-  return "確認";
 }
 
 function issueTone(item = {}) {

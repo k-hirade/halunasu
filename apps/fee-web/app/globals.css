@@ -435,7 +435,7 @@ body {
   padding-inline: 20px;
   padding-block: 12px 20px;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 12px;
   overflow: hidden;
 }
@@ -483,66 +483,6 @@ body:has(.fee-shell--detail) {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-}
-
-.fee-session-sticky-head {
-  position: sticky;
-  z-index: 12;
-  top: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 16px;
-  align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 10px 28px rgba(24, 39, 75, 0.08);
-  padding: 12px 14px;
-  backdrop-filter: blur(10px);
-}
-
-.fee-session-title {
-  min-width: 0;
-}
-
-.fee-session-title h1 {
-  margin: 2px 0 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 1.2rem;
-}
-
-.fee-session-title p {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.fee-session-head-status {
-  display: grid;
-  grid-template-columns: auto auto auto;
-  gap: 8px;
-  align-items: center;
-  white-space: nowrap;
-}
-
-.fee-session-head-status span {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.fee-session-head-status strong {
-  font-size: 1.35rem;
-}
-
-.fee-session-head-status i {
-  font-style: normal;
 }
 
 .fee-card {
@@ -621,6 +561,10 @@ body:has(.fee-shell--detail) {
   border-radius: 8px;
   padding: 12px 14px;
   font-weight: 800;
+}
+
+.fee-message-slot:empty {
+  display: none;
 }
 
 .fee-message--success {
@@ -736,7 +680,7 @@ body:has(.fee-shell--detail) {
 
 .fee-source-pane {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .fee-source-form {
@@ -754,10 +698,6 @@ body:has(.fee-shell--detail) {
   border-radius: 8px;
   background: #fbfdff;
   padding: 14px;
-}
-
-.source-section--chart {
-  min-height: 420px;
 }
 
 .source-section .clinical-text-field {
@@ -848,22 +788,24 @@ body:has(.fee-shell--detail) {
   padding: 10px 12px;
 }
 
-.source-action-panel {
+.fee-session-action-footer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
-  border-top: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 -10px 26px rgba(24, 39, 75, 0.06);
   padding: 12px 14px;
 }
 
-.source-action-panel strong,
-.source-action-panel small {
+.fee-session-action-footer strong,
+.fee-session-action-footer small {
   display: block;
 }
 
-.source-action-panel small {
+.fee-session-action-footer small {
   margin-top: 3px;
   color: var(--muted);
   font-size: 12px;
@@ -1079,6 +1021,11 @@ body:has(.fee-shell--detail) {
 .patient-inline-create {
   display: flex;
   justify-content: flex-end;
+  align-self: end;
+}
+
+.patient-inline-create .btn {
+  min-height: 56px;
 }
 
 .patient-create-modal {
@@ -1095,7 +1042,7 @@ body:has(.fee-shell--detail) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
-  align-items: start;
+  align-items: end;
 }
 
 .patient-picker-field {
@@ -1171,26 +1118,36 @@ body:has(.fee-shell--detail) {
 
 .patient-result {
   width: 100%;
-  min-height: 48px;
+  min-height: 58px;
+  box-sizing: border-box;
   display: grid;
   gap: 2px;
   justify-items: start;
+  align-content: center;
   border: 1px solid transparent;
   border-radius: 8px;
   background: #fff;
   color: var(--ink);
-  padding: 9px 10px;
+  padding: 10px 12px;
   text-align: left;
+  line-height: 1.25;
 }
 
-.patient-result:hover {
+.patient-result:hover,
+.patient-result:focus-visible {
   border-color: #cfe0ef;
   background: #f7fafc;
+  outline: none;
+}
+
+.patient-result strong {
+  line-height: 1.25;
 }
 
 .patient-result small {
   color: var(--muted);
   font-size: 12px;
+  line-height: 1.25;
 }
 
 .order-editor-field {
@@ -1388,22 +1345,6 @@ body:has(.fee-shell--detail) {
   font-size: 1.2rem;
 }
 
-.candidate-coverage-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.candidate-coverage-badges span {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: #ffffff;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  padding: 6px 10px;
-}
-
 .candidate-bucket {
   border-top: 1px solid var(--line);
   padding-top: 14px;
@@ -1500,15 +1441,6 @@ body:has(.fee-shell--detail) {
   justify-content: flex-end;
   gap: 8px;
   align-items: center;
-}
-
-.issue-action-label {
-  border-radius: 999px;
-  background: #eef4f8;
-  color: #344054;
-  padding: 5px 8px;
-  font-size: 12px;
-  font-weight: 900;
 }
 
 .proposal-points {
@@ -2304,14 +2236,6 @@ body:has(.fee-shell--detail) {
     overflow: visible;
   }
 
-  .fee-session-sticky-head {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .fee-session-head-status {
-    justify-content: start;
-  }
-
   .fee-session-workspace {
     grid-template-columns: 1fr;
   }
@@ -2370,7 +2294,7 @@ body:has(.fee-shell--detail) {
 
   .patient-picker-row,
   .fee-action-bar,
-  .source-action-panel,
+  .fee-session-action-footer,
   .receipt-pane-head {
     grid-template-columns: 1fr;
   }

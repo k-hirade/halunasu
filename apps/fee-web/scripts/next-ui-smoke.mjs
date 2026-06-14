@@ -65,7 +65,7 @@ try {
     assert.equal(hasHorizontalOverflow, false);
 
     await page.goto(`${baseUrl}/sessions/fee_test_1`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "算定条件", level: 2 }).waitFor();
+    await page.getByRole("heading", { name: "患者", level: 2 }).waitFor();
     await page.getByText("カルテの内容").waitFor();
 
     const detailColumns = await page.locator(".fee-session-workspace").evaluate((element) => getComputedStyle(element).gridTemplateColumns);
@@ -79,7 +79,7 @@ try {
     await orderDialog.locator(".fee-modal-footer").getByRole("button", { name: "閉じる" }).click();
     assert.equal(await page.getByText("詳細条件 JSON").count(), 0, "claimContext JSON editor must be removed from the UI");
     assert.equal(await page.getByText("算定オプション JSON").count(), 0, "calculationOptions JSON editor must be removed from the UI");
-    assert.equal(await page.locator(".source-action-panel").isVisible(), true, "detail actions must be available in the source pane");
+    assert.equal(await page.locator(".fee-session-action-footer").isVisible(), true, "detail actions must be available in the session footer");
     await page.getByRole("tab", { name: "レセプト案" }).click();
     assert.equal(await page.getByRole("button", { name: "コピー" }).isVisible(), true, "receipt draft copy must be available in the receipt tab");
     await page.getByRole("tab", { name: "算定作業" }).click();
