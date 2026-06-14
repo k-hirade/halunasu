@@ -64,6 +64,7 @@ export function FeeWorkspace({ mode = "list", sessionId = "" }) {
 
 function FeeSessionListView() {
   const feeApi = useFeeApi();
+  const sessionSearchInputRef = useRef(null);
   const [sessions, setSessions] = useState([]);
   const [pageInfo, setPageInfo] = useState({
     page: 1,
@@ -72,12 +73,21 @@ function FeeSessionListView() {
     totalPages: 0,
     totalCountApproximate: false
   });
+  const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const query = useMemo(() => ({ search, status }), [search, status]);
+
+  useEffect(() => {
+    const nextSearch = searchDraft.trim();
+    const timeoutId = window.setTimeout(() => {
+      setSearch((current) => (current === nextSearch ? current : nextSearch));
+    }, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [searchDraft]);
 
   const loadSessions = useCallback(async (page = 1) => {
     setLoading(true);
@@ -106,6 +116,19 @@ function FeeSessionListView() {
     return () => window.clearTimeout(timer);
   }, [loadSessions]);
 
+  useEffect(() => {
+    function handleKeyDown(event) {
+      const target = event.target;
+      const isTyping = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (!isTyping && event.key === "/") {
+        event.preventDefault();
+        sessionSearchInputRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   async function createSession() {
     setCreating(true);
     setErrorMessage("");
@@ -126,44 +149,54 @@ function FeeSessionListView() {
     }
   }
 
-  return (
-    <main className="fee-shell">
-      <header className="fee-page-head">
-        <div>
-          <h1>算定一覧</h1>
-        </div>
-      </header>
+  const groupedSessions = groupFeeSessionsByDay(sessions);
+  const pageItems = buildPageItems(pageInfo.page, pageInfo.totalPages);
+  const rangeStart = pageInfo.totalCount > 0 ? (pageInfo.page - 1) * pageInfo.pageSize + 1 : 0;
+  const rangeEnd = pageInfo.totalCount > 0 ? rangeStart + sessions.length - 1 : 0;
+  const isFiltered = Boolean(search) || status !== "all";
 
-      <section className="fee-card fee-quick-start">
-        <div>
+  return (
+    <main className="dashboard fee-session-dashboard">
+      <div className="dashboard-header">
+        <h1>算定一覧</h1>
+      </div>
+
+      <section className="card quick-start-panel">
+        <div className="quick-start-copy">
           <span className="label">新しい算定</span>
-          <h2>算定記録を作成します</h2>
-          <p>患者とカルテ本文を入力して算定候補を作成します。</p>
+          <h2>新しい算定記録を作成します</h2>
+          <p>患者とカルテ本文を入力して、算定候補を作成できます。</p>
         </div>
-        <button className="btn btn--primary" disabled={creating} onClick={createSession} type="button">
-          算定を開始
-        </button>
+        <div className="quick-start-actions">
+          <button className="btn btn--primary btn--lg" disabled={creating} onClick={createSession} type="button">
+            <span>算定記録を作成</span>
+          </button>
+        </div>
       </section>
 
-      <section className="fee-card">
-        <div className="fee-section-head">
+      <section className="session-history">
+        <div className="session-history-head">
           <div>
             <span className="label">履歴</span>
             <h2>過去の算定</h2>
           </div>
-          <span className="fee-count">{pageInfo.totalCountApproximate ? "直近" : ""}{Number(pageInfo.totalCount).toLocaleString()}件</span>
+          <span className="session-history-count">
+            {isFiltered ? `検索結果 ${Number(pageInfo.totalCount).toLocaleString()} 件` : `${pageInfo.totalCountApproximate ? "直近 " : ""}${Number(pageInfo.totalCount).toLocaleString()} 件`}
+          </span>
         </div>
-        <div className="fee-toolbar">
-          <label>
+
+        <div className="session-history-toolbar" role="search">
+          <label className="session-history-search">
             <span>検索</span>
             <input
+              ref={sessionSearchInputRef}
               type="search"
               placeholder="患者名・患者IDで検索"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              value={searchDraft}
+              onChange={(event) => setSearchDraft(event.target.value)}
             />
           </label>
-          <label>
+          <label className="session-history-filter">
             <span>状態</span>
             <select value={status} onChange={(event) => setStatus(event.target.value)}>
               <option value="all">すべて</option>
@@ -174,12 +207,31 @@ function FeeSessionListView() {
             </select>
           </label>
         </div>
-        {errorMessage ? <div className="fee-error-state" role="status">{errorMessage}</div> : null}
-        {loading ? <SessionSkeleton /> : (
-          <>
-            <SessionList sessions={sessions} />
-            <Pagination pageInfo={pageInfo} onPageChange={loadSessions} />
-          </>
+
+        {errorMessage ? <div className="inline-error" role="status">{errorMessage}</div> : null}
+        {loading ? (
+          <SessionSkeleton />
+        ) : groupedSessions.length > 0 ? (
+          <div className="session-history-results">
+            <div className="session-history-page-summary">
+              {rangeStart > 0 ? `${rangeStart}-${rangeEnd} 件を表示` : "0 件"}
+            </div>
+            <div className="session-history-groups">
+              {groupedSessions.map((group) => (
+                <section className="session-history-group" key={group.dayKey}>
+                  <div className="session-history-date">{group.label}</div>
+                  <SessionList sessions={group.sessions} />
+                </section>
+              ))}
+            </div>
+            <Pagination pageInfo={pageInfo} pageItems={pageItems} onPageChange={loadSessions} />
+          </div>
+        ) : (
+          <div className="session-list">
+            <div className="session-list-empty">
+              {isFiltered ? "条件に一致する算定履歴はありません。検索条件を変更してください。" : "まだ算定履歴はありません。上のボタンから新しい算定記録を作成できます。"}
+            </div>
+          </div>
         )}
       </section>
     </main>
@@ -238,8 +290,9 @@ function FeeSessionDetailView({ sessionId }) {
 
   const defaultFacilityId = facilities.length === 1 ? facilities[0].facilityId : "";
   const selectedPatient = useMemo(
-    () => patients.find((patient) => patient.patientId === form.patientId) || null,
-    [form.patientId, patients]
+    () => patients.find((patient) => patient.patientId === form.patientId)
+      || patientFromSessionSnapshot(feeSession, form.patientId),
+    [feeSession, form.patientId, patients]
   );
 
   const applyDetail = useCallback((detail) => {
@@ -267,8 +320,7 @@ function FeeSessionDetailView({ sessionId }) {
     if (bootstrapLoadedRef.current && !force) {
       return null;
     }
-    const bootstrap = await feeApi(`/v1/fee/bootstrap${sessionListQuery({ page: 1 })}`);
-    setPatients(bootstrap.patients || []);
+    const bootstrap = await feeApi("/v1/fee/bootstrap?include=facilities,departments,masterStatus");
     setFacilities(bootstrap.facilities || []);
     setDepartments(bootstrap.departments || []);
     setMasterStatus(bootstrap.masterStatus || null);
@@ -282,7 +334,7 @@ function FeeSessionDetailView({ sessionId }) {
     try {
       const [, detail] = await Promise.all([
         loadBootstrap({ force: forceBootstrap }),
-        feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/detail`)
+        feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/detail?includeReviewItems=false`)
       ]);
       applyDetail(detail);
     } catch (error) {
@@ -297,10 +349,44 @@ function FeeSessionDetailView({ sessionId }) {
   }, [loadAll]);
 
   const refreshDetail = useCallback(async () => {
-    const detail = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/detail`);
+    const detail = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/detail?includeReviewItems=false`);
     applyDetail(detail);
     return detail;
   }, [applyDetail, feeApi, sessionId]);
+
+  const refreshCalculationStatus = useCallback(async () => {
+    const detail = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/detail-lite`);
+    setFeeSession((current) => ({
+      ...(current || {}),
+      ...(detail.feeSession || {})
+    }));
+    return detail;
+  }, [feeApi, sessionId]);
+
+  useEffect(() => {
+    if (!patientPickerOpen) {
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ limit: "50" });
+        if (patientFilter.trim()) {
+          params.set("q", patientFilter.trim());
+        }
+        const response = await feeApi(`/v1/fee/patients?${params.toString()}`);
+        if (!cancelled) {
+          setPatients(mergeSelectedPatient(response.patients || [], patientFromSessionSnapshot(feeSession, form.patientId)));
+        }
+      } catch {
+        // Patient search is advisory; keep the current list if the request fails.
+      }
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [feeApi, feeSession, form.patientId, patientFilter, patientPickerOpen]);
 
   useEffect(() => {
     if (feeSession?.status !== "calculating") {
@@ -318,12 +404,13 @@ function FeeSessionDetailView({ sessionId }) {
 
     const poll = async () => {
       try {
-        const detail = await refreshDetail();
+        const detail = await refreshCalculationStatus();
         if (cancelled) {
           return;
         }
         const status = detail.feeSession?.status;
         if (status && status !== "calculating") {
+          await refreshDetail();
           setMessage(status === "failed"
             ? {
               type: "error",
@@ -357,7 +444,7 @@ function FeeSessionDetailView({ sessionId }) {
       cancelled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [feeSession?.status, refreshDetail]);
+  }, [feeSession?.status, refreshCalculationStatus, refreshDetail]);
 
   useEffect(() => {
     if (!masterSearchAvailable) {
@@ -539,12 +626,12 @@ function FeeSessionDetailView({ sessionId }) {
           body: {}
         });
       } catch (error) {
-        await refreshDetail().catch(() => null);
+        await refreshCalculationStatus().catch(() => refreshDetail().catch(() => null));
         throw error;
       }
       const jobStatus = String(response.calculationJob?.status || "").trim();
       const jobQueued = ["queued", "waiting_for_worker", "running"].includes(jobStatus);
-      await refreshDetail();
+      await refreshCalculationStatus();
       setMessage(jobQueued
         ? null
         : {
@@ -1918,10 +2005,21 @@ async function writeClipboardText(text) {
 
 function SessionSkeleton() {
   return (
-    <div className="fee-session-list">
-      <div className="session-card--loading" />
-      <div className="session-card--loading" />
-      <div className="session-card--loading" />
+    <div className="session-list">
+      <div className="card session-card session-card--loading">
+        <div className="session-card-info">
+          <div className="skeleton skeleton-heading" style={{ width: 220, marginBottom: 0 }} />
+          <div className="skeleton" style={{ width: 180, height: 14 }} />
+        </div>
+        <div className="skeleton" style={{ width: 86, height: 30, borderRadius: 999 }} />
+      </div>
+      <div className="card session-card session-card--loading">
+        <div className="session-card-info">
+          <div className="skeleton skeleton-heading" style={{ width: 180, marginBottom: 0 }} />
+          <div className="skeleton" style={{ width: 220, height: 14 }} />
+        </div>
+        <div className="skeleton" style={{ width: 92, height: 30, borderRadius: 999 }} />
+      </div>
     </div>
   );
 }
@@ -1932,11 +2030,11 @@ function SessionList({ sessions }) {
   }
 
   return (
-    <div className="fee-session-list">
+    <div className="session-list">
       {sessions.map((session) => (
-        <article className="fee-session-card" key={session.feeSessionId}>
-          <a className="fee-session-card-link" href={`/sessions/${encodeURIComponent(session.feeSessionId)}`}>
-            <div className="fee-session-card-info">
+        <article className="card session-card" key={session.feeSessionId}>
+          <a className="session-card-link" href={`/sessions/${encodeURIComponent(session.feeSessionId)}`}>
+            <div className="session-card-info">
               <strong>{session.patientSnapshot?.displayName || session.patientRef || session.patientId || "患者名未入力"}</strong>
               <span>{session.serviceDate || "診療日未設定"} ・ {session.facilitySnapshot?.displayName || "施設未設定"} ・ {session.departmentSnapshot?.displayName || "診療科未指定"}</span>
               <span>作成 {formatDateTime(session.createdAt)} ・ {totalPointsLabel(session)} ・ {reviewLabel(session)}</span>
@@ -1951,20 +2049,21 @@ function SessionList({ sessions }) {
   );
 }
 
-function Pagination({ onPageChange, pageInfo }) {
+function Pagination({ onPageChange, pageInfo, pageItems = [] }) {
   if (pageInfo.totalPages <= 1) {
     return null;
   }
   return (
-    <nav className="fee-pagination" aria-label="算定履歴ページ移動">
-      <button className="btn btn--ghost btn--sm" disabled={pageInfo.page <= 1} onClick={() => onPageChange(pageInfo.page - 1)} type="button">前へ</button>
-      <div className="fee-page-list">
-        {buildPageItems(pageInfo.page, pageInfo.totalPages).map((item, index) => (
+    <nav className="session-history-pagination" aria-label="算定履歴ページ移動">
+      <button className="btn btn--ghost session-history-page-button" disabled={pageInfo.page <= 1} onClick={() => onPageChange(pageInfo.page - 1)} type="button">前へ</button>
+      <div className="session-history-page-list">
+        {pageItems.map((item, index) => (
           item === "ellipsis"
-            ? <span className="fee-page-ellipsis" key={`ellipsis-${index}`}>...</span>
+            ? <span className="session-history-page-ellipsis" key={`ellipsis-${index}`} aria-hidden="true">…</span>
             : (
               <button
-                className={`fee-page-chip ${item === pageInfo.page ? "is-active" : ""}`}
+                className={`session-history-page-chip ${item === pageInfo.page ? "is-active" : ""}`}
+                aria-current={item === pageInfo.page ? "page" : undefined}
                 disabled={item === pageInfo.page}
                 key={item}
                 onClick={() => onPageChange(item)}
@@ -1972,10 +2071,10 @@ function Pagination({ onPageChange, pageInfo }) {
               >
                 {item}
               </button>
-            )
+          )
         ))}
       </div>
-      <button className="btn btn--ghost btn--sm" disabled={pageInfo.page >= pageInfo.totalPages} onClick={() => onPageChange(pageInfo.page + 1)} type="button">次へ</button>
+      <button className="btn btn--ghost session-history-page-button" disabled={pageInfo.page >= pageInfo.totalPages} onClick={() => onPageChange(pageInfo.page + 1)} type="button">次へ</button>
     </nav>
   );
 }
@@ -2554,6 +2653,54 @@ function buildPageItems(current, total) {
   return items;
 }
 
+function groupFeeSessionsByDay(sessions = []) {
+  const groups = new Map();
+  for (const session of sessions) {
+    const dayKey = getTokyoDayKey(session.createdAt || session.serviceDate) || "日付未設定";
+    if (!groups.has(dayKey)) {
+      groups.set(dayKey, []);
+    }
+    groups.get(dayKey).push(session);
+  }
+  return Array.from(groups.entries()).map(([dayKey, items]) => ({
+    dayKey,
+    label: formatSessionGroupLabel(dayKey),
+    sessions: items
+  }));
+}
+
+function getTokyoDayKey(value) {
+  return formatTokyoDate(value, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+}
+
+function formatSessionGroupLabel(dayKey) {
+  const todayKey = getTokyoDayKey(new Date().toISOString());
+  const yesterdayDate = new Date();
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterdayKey = getTokyoDayKey(yesterdayDate.toISOString());
+  if (dayKey === todayKey) return "今日";
+  if (dayKey === yesterdayKey) return "昨日";
+  return dayKey;
+}
+
+function formatTokyoDate(value, options = {}) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    ...options
+  }).format(date);
+}
+
 function formatDateTime(value) {
   if (!value) {
     return "-";
@@ -2569,6 +2716,30 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);
+}
+
+function patientFromSessionSnapshot(feeSession = {}, patientId = "") {
+  const snapshot = feeSession?.patientSnapshot;
+  const id = patientId || feeSession?.patientId || snapshot?.patientId || "";
+  if (!snapshot || !id) {
+    return null;
+  }
+  return {
+    ...snapshot,
+    patientId: id,
+    displayName: snapshot.displayName || snapshot.name || "患者名未入力",
+    patientCode: snapshot.patientCode || snapshot.primaryPatientNumber || snapshot.patientRef || "",
+    primaryPatientNumber: snapshot.primaryPatientNumber || snapshot.patientCode || snapshot.patientRef || "",
+    externalPatientIds: Array.isArray(snapshot.externalPatientIds) ? snapshot.externalPatientIds : []
+  };
+}
+
+function mergeSelectedPatient(patients = [], selectedPatient = null) {
+  const list = Array.isArray(patients) ? patients : [];
+  if (!selectedPatient?.patientId || list.some((patient) => patient.patientId === selectedPatient.patientId)) {
+    return list;
+  }
+  return [selectedPatient, ...list];
 }
 
 function toUserFacingErrorMessage(error, fallbackMessage) {

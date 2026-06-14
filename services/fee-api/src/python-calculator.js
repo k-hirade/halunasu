@@ -11,8 +11,8 @@ const MASTER_SEARCH_MODULE_NAME = "medical_fee_calculation.master_search";
 const MASTER_BROWSER_MODULE_NAME = "medical_fee_calculation.master_browser";
 const WORKER_MODULE_NAME = "medical_fee_calculation.worker";
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const DEFAULT_MASTER_SEARCH_CACHE_MAX_ENTRIES = 250;
-const DEFAULT_MASTER_SEARCH_CACHE_TTL_MS = 60_000;
+const DEFAULT_MASTER_SEARCH_CACHE_MAX_ENTRIES = 2000;
+const DEFAULT_MASTER_SEARCH_CACHE_TTL_MS = 600_000;
 
 export function createFeeCalculatorFromEnv(env = process.env) {
   const gzipPath = env.FEE_MASTER_DB_GZIP_PATH || env.MEDICAL_FEE_MASTER_DB_GZIP_PATH || "";
@@ -103,6 +103,11 @@ export class PythonFeeCalculator {
       });
     this.setPendingMasterSearch(cacheKey, promise);
     return promise;
+  }
+
+  async searchMasterMany(inputs = []) {
+    const entries = Array.isArray(inputs) ? inputs : [];
+    return Promise.all(entries.map((input) => this.searchMaster(input).catch((error) => ({ error }))));
   }
 
   async browseMaster(input = {}) {

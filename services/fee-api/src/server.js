@@ -31,6 +31,11 @@ import { createFeeStoreFromEnv } from "./store/create-store.js";
 const PRODUCT_ID = "fee";
 const FEE_PRODUCT_ROLES = ["admin", "doctor", "nurse", "medical_clerk", "viewer"];
 const DEFAULT_OPENAI_FEE_CLINICAL_TIMEOUT_MS = 60000;
+const DEFAULT_FACILITY_PROFILE_CACHE_TTL_MS = 60_000;
+const DEFAULT_ORDER_ENRICH_CONCURRENCY = 4;
+const facilityProfileCache = new Map();
+const facilityProfileStoreIds = new WeakMap();
+let facilityProfileStoreIdCounter = 0;
 
 export function createFeeApiServer(options = {}) {
   const startedAt = new Date();
@@ -141,18 +146,19 @@ async function routeFeeApiRequest(input = {}) {
   }
 
   if (method === "GET" && matches(parts, ["v1", "fee", "bootstrap"])) {
+    const include = bootstrapIncludeOptionsFromUrl(url);
     const [patients, facilities, departments, sessionList] = await Promise.all([
-      platformStore.listPatients(context.session.orgId),
-      platformStore.listFacilities(context.session.orgId),
-      platformStore.listDepartments(context.session.orgId),
-      feeStore.listSessions(context.session.orgId, feeSessionListOptionsFromUrl(url))
+      include.patients ? platformStore.listPatients(context.session.orgId) : Promise.resolve(null),
+      include.facilities ? platformStore.listFacilities(context.session.orgId) : Promise.resolve(null),
+      include.departments ? platformStore.listDepartments(context.session.orgId) : Promise.resolve(null),
+      include.sessions ? feeStore.listSessions(context.session.orgId, feeSessionListOptionsFromUrl(url)) : Promise.resolve(null)
     ]);
     return ok({
-      patients,
-      facilities,
-      departments,
-      masterStatus: feeMasterStatus(feeCalculator),
-      ...sessionList
+      ...(include.patients ? { patients } : {}),
+      ...(include.facilities ? { facilities } : {}),
+      ...(include.departments ? { departments } : {}),
+      ...(include.masterStatus ? { masterStatus: feeMasterStatus(feeCalculator) } : {}),
+      ...(sessionList || {})
     });
   }
 
@@ -192,7 +198,8 @@ async function routeFeeApiRequest(input = {}) {
   }
 
   if (method === "GET" && matches(parts, ["v1", "fee", "patients"])) {
-    return ok({ patients: await platformStore.listPatients(context.session.orgId) });
+    const patients = await platformStore.listPatients(context.session.orgId);
+    return ok({ patients: filterPatientsForFeeSearch(patients, patientListOptionsFromUrl(url)) });
   }
 
   if (method === "POST" && matches(parts, ["v1", "fee", "patients"])) {
@@ -275,7 +282,15 @@ async function routeFeeApiRequest(input = {}) {
   }
 
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "detail") {
-    return ok(await buildFeeSessionDetail(feeStore, context.session.orgId, parts[3], input.now || new Date()));
+    return ok(await buildFeeSessionDetail(feeStore, context.session.orgId, parts[3], input.now || new Date(), feeSessionDetailOptionsFromUrl(url)));
+  }
+
+  if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "detail-lite") {
+    const session = await feeStore.getSession(context.session.orgId, parts[3]);
+    if (!session) {
+      return notFound("fee session not found");
+    }
+    return ok({ feeSession: feeSessionStatusView(session) });
   }
 
   if (method === "PATCH" && isFeeSessionDocument(parts)) {
@@ -303,11 +318,7 @@ async function routeFeeApiRequest(input = {}) {
       }
     });
 
-    return ok({
-      ...result,
-      receiptDraft: buildReceiptDraft(result.feeSession, { now: input.now || new Date() }),
-      candidateWorkbench: buildCandidateWorkbench(result.feeSession, { now: input.now || new Date() })
-    });
+    return ok(feeSessionMutationResponse(result, input.now || new Date()));
   }
 
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "receipt-draft") {
@@ -335,11 +346,7 @@ async function routeFeeApiRequest(input = {}) {
       }
     });
 
-    return ok({
-      ...result,
-      receiptDraft: buildReceiptDraft(result.feeSession, { now: input.now || new Date() }),
-      candidateWorkbench: buildCandidateWorkbench(result.feeSession, { now: input.now || new Date() })
-    });
+    return ok(feeSessionMutationResponse(result, input.now || new Date()));
   }
 
   if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "calculation-jobs") {
@@ -415,7 +422,7 @@ async function requireFeeContext(input, platformStore) {
   });
 }
 
-async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now) {
+async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now, options = {}) {
   const feeSession = await feeStore.getSession(orgId, feeSessionId);
   if (!feeSession) {
     const error = new Error("fee session not found");
@@ -424,11 +431,28 @@ async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now) {
     throw error;
   }
 
+  const receiptDraft = buildReceiptDraft(feeSession, { now });
+  const reviewItems = buildReviewItems(feeSession);
+  const candidateWorkbench = buildCandidateWorkbench(feeSession, { now, receiptDraft, reviewItems });
   return {
     feeSession,
-    receiptDraft: buildReceiptDraft(feeSession, { now }),
-    reviewItems: buildReviewItems(feeSession),
-    candidateWorkbench: buildCandidateWorkbench(feeSession, { now })
+    receiptDraft,
+    ...(options.includeReviewItems === false ? {} : { reviewItems }),
+    candidateWorkbench
+  };
+}
+
+function feeSessionMutationResponse(result = {}, now = new Date()) {
+  const receiptDraft = buildReceiptDraft(result.feeSession, { now });
+  const reviewItems = buildReviewItems(result.feeSession);
+  return {
+    ...result,
+    receiptDraft,
+    candidateWorkbench: buildCandidateWorkbench(result.feeSession, {
+      now,
+      receiptDraft,
+      reviewItems
+    })
   };
 }
 
@@ -1043,11 +1067,17 @@ async function calculatePreparedFeeSessionNow({
     shadowCalculations: shadowCalculationLogSummary(prepared.shadowCalculations || [])
   }));
 
+  const receiptDraft = buildReceiptDraft(result.feeSession, { now: input.now || new Date() });
+  const reviewItems = buildReviewItems(result.feeSession);
   return {
     ...result,
-    receiptDraft: buildReceiptDraft(result.feeSession, { now: input.now || new Date() }),
-    reviewItems: buildReviewItems(result.feeSession),
-    candidateWorkbench: buildCandidateWorkbench(result.feeSession, { now: input.now || new Date() })
+    receiptDraft,
+    reviewItems,
+    candidateWorkbench: buildCandidateWorkbench(result.feeSession, {
+      now: input.now || new Date(),
+      receiptDraft,
+      reviewItems
+    })
   };
 }
 
@@ -1805,15 +1835,31 @@ async function loadFacilityProfileForCalculation({ platformStore, orgId, session
       facilityStandardKeys: []
     };
   }
+  const cacheKey = `${facilityProfileStoreCacheId(platformStore)}:${orgId || ""}:${facilityId}`;
+  const cacheTtlMs = parsePositiveInteger(process.env.FEE_FACILITY_PROFILE_CACHE_TTL_MS, DEFAULT_FACILITY_PROFILE_CACHE_TTL_MS, 86_400_000);
+  if (cacheTtlMs > 0) {
+    const cached = facilityProfileCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.profile;
+    }
+  }
   const fromStore = platformStore?.getFacility
     ? await platformStore.getFacility(orgId, facilityId)
     : null;
   const facility = fromStore || session.facilitySnapshot || {};
-  return {
+  const profile = {
     source: fromStore ? "platform_facility" : "session_snapshot",
     facilityId,
     facilityStandardKeys: uniqueStrings(facility.facilityStandardKeys || facility.facility_standard_keys || [])
   };
+  if (cacheTtlMs > 0) {
+    facilityProfileCache.set(cacheKey, {
+      profile,
+      expiresAt: Date.now() + cacheTtlMs
+    });
+    pruneFacilityProfileCache();
+  }
+  return profile;
 }
 
 function applyFacilityProfileToPreparation(prepared = {}, facilityProfile = {}, context = {}) {
@@ -2106,15 +2152,15 @@ async function enrichSessionOrdersForCalculation(session = {}, feeCalculator) {
   }
 
   let changed = false;
-  const enrichedOrders = [];
-  for (const order of orders) {
+  const concurrency = parsePositiveInteger(process.env.FEE_ORDER_ENRICH_CONCURRENCY, DEFAULT_ORDER_ENRICH_CONCURRENCY, 16);
+  const enrichedOrders = await mapWithConcurrency(orders, concurrency, async (order) => {
     const sanitized = sanitizeOrderForCalculation(order);
     const enriched = await enrichOrderForCalculation(sanitized, feeCalculator);
     if (enriched !== order) {
       changed = true;
     }
-    enrichedOrders.push(enriched);
-  }
+    return enriched;
+  });
   return { changed, orders: enrichedOrders };
 }
 
@@ -2485,6 +2531,52 @@ function uniqueStrings(values = []) {
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
+function pruneFacilityProfileCache() {
+  const now = Date.now();
+  for (const [cacheKey, entry] of facilityProfileCache.entries()) {
+    if (!entry || entry.expiresAt <= now) {
+      facilityProfileCache.delete(cacheKey);
+    }
+  }
+  while (facilityProfileCache.size > 500) {
+    const oldestKey = facilityProfileCache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    facilityProfileCache.delete(oldestKey);
+  }
+}
+
+function facilityProfileStoreCacheId(store) {
+  if (!store || (typeof store !== "object" && typeof store !== "function")) {
+    return "default";
+  }
+  const existing = facilityProfileStoreIds.get(store);
+  if (existing) {
+    return existing;
+  }
+  facilityProfileStoreIdCounter += 1;
+  const storeId = `store_${facilityProfileStoreIdCounter}`;
+  facilityProfileStoreIds.set(store, storeId);
+  return storeId;
+}
+
+async function mapWithConcurrency(items = [], concurrency = 4, mapper = async (item) => item) {
+  const list = Array.isArray(items) ? items : [];
+  const limit = Math.max(1, Math.min(Number(concurrency) || 1, 32));
+  const results = new Array(list.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < list.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(list[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, list.length) }, () => worker()));
+  return results;
+}
+
 function feeMasterStatus(feeCalculator) {
   return typeof feeCalculator.readiness === "function"
     ? feeCalculator.readiness()
@@ -2768,6 +2860,75 @@ function feeSessionListOptionsFromUrl(url) {
     pageSize: parsePositiveInteger(url.searchParams.get("pageSize"), 20, 50),
     search: String(url.searchParams.get("q") || url.searchParams.get("search") || "").trim(),
     statuses: feeStatusesFromQuery(url.searchParams)
+  };
+}
+
+function bootstrapIncludeOptionsFromUrl(url) {
+  const raw = String(url.searchParams.get("include") || "").trim();
+  if (!raw) {
+    return {
+      patients: true,
+      facilities: true,
+      departments: true,
+      masterStatus: true,
+      sessions: true
+    };
+  }
+  const include = new Set(raw.split(",").map((item) => item.trim()).filter(Boolean));
+  return {
+    patients: include.has("patients"),
+    facilities: include.has("facilities"),
+    departments: include.has("departments"),
+    masterStatus: include.has("masterStatus") || include.has("master_status"),
+    sessions: include.has("sessions")
+  };
+}
+
+function patientListOptionsFromUrl(url) {
+  return {
+    search: String(url.searchParams.get("q") || url.searchParams.get("search") || "").trim(),
+    limit: parsePositiveInteger(url.searchParams.get("limit"), 50, 200)
+  };
+}
+
+function filterPatientsForFeeSearch(patients = [], options = {}) {
+  const list = Array.isArray(patients) ? patients : [];
+  const keyword = normalizeFeeSearchText(options.search || "");
+  const filtered = keyword
+    ? list.filter((patient) => normalizeFeeSearchText([
+      patient.displayName,
+      patient.patientId,
+      patient.patientCode,
+      patient.primaryPatientNumber,
+      ...(Array.isArray(patient.externalPatientIds) ? patient.externalPatientIds : [])
+    ].join(" ")).includes(keyword))
+    : list;
+  return filtered.slice(0, parsePositiveInteger(options.limit, 50, 200));
+}
+
+function normalizeFeeSearchText(value = "") {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\s+/gu, "")
+    .trim();
+}
+
+function feeSessionDetailOptionsFromUrl(url) {
+  return {
+    includeReviewItems: String(url.searchParams.get("includeReviewItems") || "true").trim().toLowerCase() !== "false"
+  };
+}
+
+function feeSessionStatusView(session = {}) {
+  return {
+    feeSessionId: session.feeSessionId || session.sessionId || "",
+    sessionId: session.sessionId || session.feeSessionId || "",
+    status: session.status || "draft",
+    calculationProgress: session.calculationProgress || null,
+    calculationSummary: session.calculationSummary || null,
+    latestCalculationId: session.latestCalculationId || null,
+    updatedAt: session.updatedAt || null
   };
 }
 

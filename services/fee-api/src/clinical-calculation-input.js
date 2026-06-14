@@ -2001,9 +2001,17 @@ async function searchProcedureCandidateItem(feeCalculator, queries = [], preferr
     return null;
   }
   const allowedFeeCategories = options.allowedFeeCategories || null;
-  for (const query of uniqueStrings(queries).filter((value) => value.length >= 2)) {
+  const normalizedQueries = uniqueStrings(queries).filter((value) => value.length >= 2);
+  const searchInputs = normalizedQueries.map((query) => ({ type: "procedure", query, limit: 20 }));
+  const searchResults = typeof feeCalculator.searchMasterMany === "function"
+    ? await feeCalculator.searchMasterMany(searchInputs)
+    : await Promise.all(searchInputs.map((input) => feeCalculator.searchMaster(input).catch(() => null)));
+  for (const [index, query] of normalizedQueries.entries()) {
     try {
-      const result = await feeCalculator.searchMaster({ type: "procedure", query, limit: 20 });
+      const result = searchResults[index];
+      if (!result || result.error) {
+        continue;
+      }
       const items = asArray(result?.items).filter((item) => item?.code && (
         item.kind === "procedure"
         || item.sourceType === "medical_procedure_master"
