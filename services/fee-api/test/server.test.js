@@ -3434,6 +3434,78 @@ test("routes non-billable lab review contexts to specific review topics without 
   masterSearches.length = 0;
   receivedInput = null;
   clinicalEvents = [{
+    type: "management",
+    billing_domain: "standard_management",
+    name: "院内履歴照合を行った上で追加検査の要否を判断する方針",
+    action_status: "considered",
+    temporal_relation: "current_visit",
+    source_origin: "own_clinic_record",
+    provider_ownership: "own_clinic",
+    result_assertion: "not_applicable",
+    certainty: "ambiguous",
+    section: "A",
+    evidence: "検査を検討したが、同じ月に当院で行った検査があるか院内履歴の照合が必要。",
+    search_queries: ["追加検査", "院内履歴 照合"]
+  }];
+  session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-12",
+    clinicalText: "再診。検査を検討したが、同じ月に当院で行った検査があるか院内履歴の照合が必要。",
+    diagnoses: [{ name: "発熱" }]
+  }, headers);
+  calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
+  assert.equal(masterSearches.length, 0);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "同月内検査確認"));
+
+  masterSearches.length = 0;
+  receivedInput = null;
+  clinicalEvents = [{
+    type: "management",
+    billing_domain: "standard_management",
+    name: "生活指導の方針確認",
+    action_status: "considered",
+    temporal_relation: "current_visit",
+    source_origin: "own_clinic_record",
+    provider_ownership: "own_clinic",
+    result_assertion: "not_applicable",
+    certainty: "ambiguous",
+    section: "A",
+    evidence: "現時点では生活指導と経過観察も選択肢。",
+    search_queries: ["生活指導", "経過観察"]
+  }];
+  session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-12",
+    clinicalText: "再診。現時点では生活指導と経過観察も選択肢。",
+    diagnoses: [{ name: "発熱" }]
+  }, headers);
+  calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
+  assert.equal(masterSearches.length, 0);
+  assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "同月内検査確認"), false);
+
+  masterSearches.length = 0;
+  receivedInput = null;
+  clinicalEvents = [{
     type: "lab",
     billing_domain: "standard_lab",
     name: "CRP",
@@ -6694,6 +6766,101 @@ test("requires review instead of auto-coding when evidence only approximately ma
   assert.ok(crpFact.verification.reasons.includes("evidence_quote_approximate"));
   assert.equal(crpFact.evidenceRefs[0].approximate, true);
   assert.ok(calculation.body.reviewItems.some((item) => item.title === "根拠確認"));
+});
+
+test("accepts evidence quotes wrapped by LLM quotation marks without weakening approximate matching", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let masterLookupCount = 0;
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterLookupCount += 1;
+    const query = String(input.query || "");
+    if (/CRP|ＣＲＰ|C反応性蛋白/u.test(query)) {
+      return {
+        items: [{
+          kind: "procedure",
+          code: "160054710",
+          name: "ＣＲＰ",
+          points: 16,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    if (/血算|末梢血液一般|CBC/u.test(query)) {
+      return {
+        items: [{
+          kind: "procedure",
+          code: "160008010",
+          name: "末梢血液一般検査",
+          points: 21,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { items: [] };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "high" },
+    diagnoses: [{ name: "炎症反応高値", status: "active", evidence: "炎症反応高値" }],
+    clinical_events: [{
+      type: "lab",
+      name: "CRP",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "numeric",
+      certainty: "explicit",
+      section: "O",
+      evidence: "「院内で血算とCRPを測定。」",
+      search_queries: ["CRP"]
+    }, {
+      type: "lab",
+      name: "末梢血液一般検査（血算）",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "numeric",
+      certainty: "explicit",
+      section: "O",
+      evidence: "「院内で血算とCRPを測定。」「同日に静脈採血を実施し、血液検体を提出した。」",
+      search_queries: ["末梢血液一般検査", "血算"]
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "引用 根子" },
+    facilityId: "fac_001",
+    serviceDate: "2026-06-14",
+    clinicalText: "O: 院内で血算とCRPを測定。同日に静脈採血を実施し、血液検体を提出した。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  const facts = calculation.body.calculationResult.canonicalClinicalFacts || [];
+  const crpFact = facts.find((fact) => fact.clinicalName === "CRP");
+  const cbcFact = facts.find((fact) => fact.clinicalName === "末梢血液一般検査（血算）");
+
+  assert.equal(calculation.statusCode, 201);
+  assert.ok(masterLookupCount > 0);
+  assert.equal(crpFact.verification.status, "verified");
+  assert.equal(cbcFact.verification.status, "verified");
+  assert.equal(crpFact.verification.reasons.includes("evidence_quote_approximate"), false);
+  assert.equal(cbcFact.verification.reasons.includes("evidence_quote_approximate"), false);
+  assert.ok(crpFact.evidenceRefs.some((ref) => ref.quote === "院内で血算とCRPを測定。"));
+  assert.ok(cbcFact.evidenceRefs.some((ref) => ref.quote === "同日に静脈採血を実施し、血液検体を提出した。"));
 });
 
 test("creates calculation jobs with input snapshots without marking sessions calculating when queue is unavailable", async () => {

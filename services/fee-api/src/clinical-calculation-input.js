@@ -775,46 +775,61 @@ function evidenceRefsForClinicalEvent(event = {}, preprocessing = null) {
       quote
     }] : [];
   }
-  const normalizedQuote = normalizeClinicalText(quote);
+  const quoteCandidates = clinicalEventEvidenceQuoteCandidates(quote);
   const refs = [];
-  for (const line of preprocessing.lines) {
-    const lineText = String(line.text || "");
-    const normalizedLine = String(line.normalizedText || "");
-    const rawIndex = lineText.indexOf(quote);
-    const normalizedHit = normalizedQuote && normalizedLine.includes(normalizedQuote);
-    if (rawIndex < 0 && !normalizedHit) {
-      continue;
+  const seenRefs = new Set();
+  for (const quoteCandidate of quoteCandidates) {
+    const normalizedQuote = normalizeClinicalText(quoteCandidate);
+    for (const line of preprocessing.lines) {
+      const lineText = String(line.text || "");
+      const normalizedLine = String(line.normalizedText || "");
+      const rawIndex = lineText.indexOf(quoteCandidate);
+      const normalizedHit = normalizedQuote && normalizedLine.includes(normalizedQuote);
+      if (rawIndex < 0 && !normalizedHit) {
+        continue;
+      }
+      const key = `${line.lineId || line.index}:${quoteCandidate}:${rawIndex >= 0 ? rawIndex : "normalized"}`;
+      if (seenRefs.has(key)) {
+        continue;
+      }
+      seenRefs.add(key);
+      refs.push({
+        source: "clinical_text",
+        lineId: line.lineId,
+        lineIndex: line.index,
+        section: line.section || section || "unknown",
+        quote: quoteCandidate,
+        originalQuote: quoteCandidate === quote ? undefined : quote,
+        quoteNormalization: quoteCandidate === quote ? undefined : "quote_wrapper_stripped",
+        lineText,
+        verificationContext: rawIndex >= 0 ? sentenceContainingRange(lineText, rawIndex, rawIndex + quoteCandidate.length) : quoteCandidate,
+        charStart: rawIndex >= 0 ? line.charStart + rawIndex : line.charStart,
+        charEnd: rawIndex >= 0 ? line.charStart + rawIndex + quoteCandidate.length : line.charEnd,
+        cues: line.cues || {},
+        exact: rawIndex >= 0,
+        normalizedOnly: rawIndex < 0 && Boolean(normalizedHit)
+      });
     }
-    refs.push({
-      source: "clinical_text",
-      lineId: line.lineId,
-      lineIndex: line.index,
-      section: line.section || section || "unknown",
-      quote,
-      lineText,
-      verificationContext: rawIndex >= 0 ? sentenceContainingRange(lineText, rawIndex, rawIndex + quote.length) : quote,
-      charStart: rawIndex >= 0 ? line.charStart + rawIndex : line.charStart,
-      charEnd: rawIndex >= 0 ? line.charStart + rawIndex + quote.length : line.charEnd,
-      cues: line.cues || {},
-      exact: rawIndex >= 0,
-      normalizedOnly: rawIndex < 0 && Boolean(normalizedHit)
-    });
   }
   if (refs.length) {
     return refs.slice(0, 4);
   }
-  const bestLine = bestEvidenceLineByTokenOverlap(quote, preprocessing.lines);
+  const bestLine = quoteCandidates
+    .map((candidate) => ({ candidate, line: bestEvidenceLineByTokenOverlap(candidate, preprocessing.lines) }))
+    .find((result) => result.line);
   return bestLine ? [{
     source: "clinical_text",
-    lineId: bestLine.lineId,
-    lineIndex: bestLine.index,
-    section: bestLine.section || section || "unknown",
-    quote,
-    lineText: bestLine.text,
-    verificationContext: quote,
-    charStart: bestLine.charStart,
-    charEnd: bestLine.charEnd,
-    cues: bestLine.cues || {},
+    lineId: bestLine.line.lineId,
+    lineIndex: bestLine.line.index,
+    section: bestLine.line.section || section || "unknown",
+    quote: bestLine.candidate,
+    originalQuote: bestLine.candidate === quote ? undefined : quote,
+    quoteNormalization: bestLine.candidate === quote ? undefined : "quote_wrapper_stripped",
+    lineText: bestLine.line.text,
+    verificationContext: bestLine.candidate,
+    charStart: bestLine.line.charStart,
+    charEnd: bestLine.line.charEnd,
+    cues: bestLine.line.cues || {},
     approximate: true
   }] : [{
     source: "clinical_text",
@@ -822,6 +837,52 @@ function evidenceRefsForClinicalEvent(event = {}, preprocessing = null) {
     quote,
     notFoundInText: true
   }];
+}
+
+function clinicalEventEvidenceQuoteCandidates(quote = "") {
+  const raw = String(quote || "").trim();
+  if (!raw) {
+    return [];
+  }
+  const candidates = [raw];
+  const stripped = stripClinicalQuoteWrapper(raw);
+  if (stripped && stripped !== raw) {
+    candidates.push(stripped);
+  }
+  const quotedSegmentPattern = /[「『“"']([^「」『』“”"']{1,500})[」』”"']/gu;
+  for (const match of raw.matchAll(quotedSegmentPattern)) {
+    const segment = stripClinicalQuoteWrapper(match[1]);
+    if (segment) {
+      candidates.push(segment);
+    }
+  }
+  return uniqueStrings(candidates)
+    .map((candidate) => String(candidate || "").trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function stripClinicalQuoteWrapper(value = "") {
+  let text = String(value || "").trim();
+  const pairs = [
+    ["「", "」"],
+    ["『", "』"],
+    ["“", "”"],
+    ["\"", "\""],
+    ["'", "'"]
+  ];
+  let changed = true;
+  while (changed && text.length >= 2) {
+    changed = false;
+    for (const [left, right] of pairs) {
+      if (text.startsWith(left) && text.endsWith(right)) {
+        text = text.slice(left.length, text.length - right.length).trim();
+        changed = true;
+        break;
+      }
+    }
+  }
+  return text;
 }
 
 function sentenceContainingRange(text = "", start = 0, end = 0) {
@@ -1543,6 +1604,19 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
           categoryLabel: "検体検査",
           outcome: "review_required",
           message: "non_billable_lab_event_review_required"
+        }));
+        continue;
+      }
+      const labRelatedPlanningIssues = reviewIssuesFromNonBillableLabRelatedClinicalEvent(event);
+      if (labRelatedPlanningIssues.length) {
+        reviewIssues.push(...labRelatedPlanningIssues);
+        reviewWarnings.push(...labRelatedPlanningIssues.map((issue) => issue.messageForStaff));
+        clinicalTrace.push(clinicalTraceEvent({
+          stage: "non_billable_lab_review_gate",
+          event,
+          categoryLabel: "検体検査",
+          outcome: "review_required",
+          message: "non_billable_lab_related_event_review_required"
         }));
         continue;
       }
@@ -4919,6 +4993,21 @@ function reviewIssuesFromNonBillableLabClinicalEvent(event = {}) {
   return dedupeObjects(issues.filter(Boolean), (issue) => issue.topicCode || issue.issueCode);
 }
 
+function reviewIssuesFromNonBillableLabRelatedClinicalEvent(event = {}) {
+  if (!isReviewableNonBillableLabRelatedClinicalEvent(event)) {
+    return [];
+  }
+  const text = nonBillableLabReviewText(event);
+  if (!text || isNegatedClinicalServiceContext(text) || !hasMonthlyLabDuplicateReviewContext(text)) {
+    return [];
+  }
+  const issue = reviewIssueFromNonBillableLabClinicalEvent(event, "monthly_lab_duplicate_check", {
+    message: "同月内検査確認: 同月内の院内検査履歴や重複の有無を確認してください。実施済み検査としては扱わず、自動算定には入れていません。",
+    requiredInput: "同月内の検査履歴、重複の有無、当日実施する検査項目"
+  });
+  return issue ? [issue] : [];
+}
+
 function isReviewableNonBillableLabClinicalEvent(event = {}) {
   const type = normalizeClinicalEventType(event);
   if (!["lab", "exam"].includes(type)) {
@@ -4926,6 +5015,26 @@ function isReviewableNonBillableLabClinicalEvent(event = {}) {
   }
   const status = normalizeClinicalEventStatus(event);
   if (!["planned", "ordered", "considered", "unclear"].includes(status)) {
+    return false;
+  }
+  const dateRelation = normalizeClinicalEventDateRelation(event);
+  if (["past", "other_provider"].includes(dateRelation)) {
+    return false;
+  }
+  const providerOwnership = normalizeClinicalEventProviderOwnership(event);
+  if (["same_institution_other_department", "other_department", "other_provider"].includes(providerOwnership)) {
+    return false;
+  }
+  return !isNegatedClinicalEvent(event);
+}
+
+function isReviewableNonBillableLabRelatedClinicalEvent(event = {}) {
+  const type = normalizeClinicalEventType(event);
+  if (!["management", "counseling", "follow_up"].includes(type)) {
+    return false;
+  }
+  const status = normalizeClinicalEventStatus(event);
+  if (!["planned", "ordered", "considered", "unclear", "instruction_only"].includes(status)) {
     return false;
   }
   const dateRelation = normalizeClinicalEventDateRelation(event);
