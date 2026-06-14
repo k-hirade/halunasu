@@ -434,9 +434,9 @@ body {
   min-height: 0;
   margin: 0;
   padding-inline: 20px;
-  padding-block: 12px 20px;
+  padding-block: 12px 76px;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   overflow: hidden;
 }
@@ -712,7 +712,7 @@ body:has(.fee-shell--detail) {
 }
 
 .source-section .clinical-textarea {
-  min-height: 220px;
+  min-height: 330px;
   max-height: min(52dvh, 520px);
   overflow: auto;
   resize: vertical;
@@ -791,15 +791,18 @@ body:has(.fee-shell--detail) {
 }
 
 .fee-session-action-footer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  position: fixed;
+  z-index: 15;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  justify-content: space-between;
   gap: 12px;
   align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 -10px 26px rgba(24, 39, 75, 0.06);
-  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  padding: 12px 20px;
 }
 
 .fee-session-action-footer strong,
@@ -2296,9 +2299,28 @@ body:has(.fee-shell--detail) {
 
   .patient-picker-row,
   .fee-action-bar,
-  .fee-session-action-footer,
   .receipt-pane-head {
     grid-template-columns: 1fr;
+  }
+
+  .fee-session-action-footer {
+    padding: 10px 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .fee-session-action-footer > div {
+    width: 100%;
+  }
+
+  .fee-session-action-footer .source-action-buttons {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    justify-content: stretch;
+  }
+
+  .fee-session-action-footer .source-action-buttons .btn--primary {
+    min-height: 48px;
   }
 
   .patient-popover {
