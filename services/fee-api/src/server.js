@@ -995,6 +995,7 @@ async function calculatePreparedFeeSessionNow({
         billingCandidates: Array.isArray(prepared.billingCandidates) ? prepared.billingCandidates : [],
         reviewIssues: Array.isArray(prepared.reviewIssues) ? prepared.reviewIssues : [],
         clinicalExtraction: prepared.clinicalExtraction || null,
+        shadowCalculations: Array.isArray(prepared.shadowCalculations) ? prepared.shadowCalculations : [],
         inputSnapshot,
         calculationProgress: feeCalculationProgress({
           phase: "complete",
@@ -1038,7 +1039,8 @@ async function calculatePreparedFeeSessionNow({
     calculatorDurationMs: stageDuration(stageTimings, "pythonCalculator"),
     stageTimings,
     clinicalStructuring: prepared.metrics?.clinicalStructuring || null,
-    ruleBasedClinicalInference: prepared.metrics?.ruleBasedClinicalInference || null
+    ruleBasedClinicalInference: prepared.metrics?.ruleBasedClinicalInference || null,
+    shadowCalculations: shadowCalculationLogSummary(prepared.shadowCalculations || [])
   }));
 
   return {
@@ -1467,9 +1469,20 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     priorSessions,
     clinicalFactsExtractor: input.clinicalFactsExtractor
   }));
-  const prepared = applyFacilityProfileToPreparation(legacy, facilityProfile, {
+  const primaryPrepared = applyFacilityProfileToPreparation(legacy, facilityProfile, {
     clinicalText: baseSession.clinicalText || calculationInput.clinicalText || ""
   });
+  const shadowCalculations = await measureStage(stageTimings, "shadowCalculationPreparation", () => buildFeeCalculationShadowCalculations({
+    input,
+    primaryPrepared,
+    session: baseSession,
+    calculationInput,
+    feeCalculator,
+    facilityProfile,
+    priorSessions,
+    clinicalText: baseSession.clinicalText || calculationInput.clinicalText || ""
+  }));
+  const prepared = attachShadowCalculationsToPreparation(primaryPrepared, shadowCalculations);
   const patch = {};
 
   if (enriched.changed) {
@@ -1504,6 +1517,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     billingCandidates: Array.isArray(prepared.billingCandidates) ? prepared.billingCandidates : [],
     reviewIssues: Array.isArray(prepared.reviewIssues) ? prepared.reviewIssues : [],
     clinicalExtraction: prepared.clinicalExtraction || null,
+    shadowCalculations: Array.isArray(prepared.shadowCalculations) ? prepared.shadowCalculations : [],
     metrics: {
       ...(prepared.metrics || {}),
       patientHistory: {
@@ -1516,6 +1530,270 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       ...unresolvedOrderWarnings(enriched.orders || baseSession.orders || [], prepared.calculationOptions || {})
     ])
   };
+}
+
+function feeCalculationShadowModeEnabled(input = {}) {
+  const env = input.processEnv || process.env;
+  const raw = String(
+    input.feeCalculationShadowMode
+    || env.FEE_CALCULATION_SHADOW_MODE
+    || "on"
+  ).trim().toLowerCase();
+  return !["0", "false", "off", "disabled", "none", "no"].includes(raw);
+}
+
+async function buildFeeCalculationShadowCalculations({
+  input = {},
+  primaryPrepared = {},
+  session = {},
+  calculationInput = {},
+  feeCalculator,
+  facilityProfile = {},
+  priorSessions = [],
+  clinicalText = ""
+} = {}) {
+  if (!feeCalculationShadowModeEnabled(input)) {
+    return [];
+  }
+  const startedAt = Date.now();
+  try {
+    const shadowBase = await buildClinicalCalculationPreparation({
+      session,
+      calculationInput,
+      feeCalculator,
+      openAiApiKey: "",
+      openAiModel: "deterministic-rules",
+      openAiReasoningEffort: "none",
+      openAiTimeoutMs: 0,
+      priorSessions,
+      clinicalFactsExtractor: null
+    });
+    const shadowPrepared = applyFacilityProfileToPreparation(shadowBase, facilityProfile, { clinicalText });
+    return [buildFeeCalculationShadowRecord({
+      primaryPrepared,
+      shadowPrepared,
+      durationMs: Date.now() - startedAt
+    })];
+  } catch (error) {
+    return [{
+      mode: "shadow",
+      pipeline: "deterministic_rules",
+      enabled: true,
+      status: "failed",
+      durationMs: Date.now() - startedAt,
+      error: safeLogError(error),
+      createdAt: new Date().toISOString()
+    }];
+  }
+}
+
+function attachShadowCalculationsToPreparation(prepared = {}, shadowCalculations = []) {
+  const shadows = Array.isArray(shadowCalculations) ? shadowCalculations.filter(Boolean) : [];
+  if (!shadows.length) {
+    return prepared;
+  }
+  return {
+    ...prepared,
+    shadowCalculations: shadows,
+    clinicalExtraction: appendClinicalExtractionTrace(prepared.clinicalExtraction, shadowTraceEvents(shadows)),
+    metrics: {
+      ...(prepared.metrics || {}),
+      shadowCalculations: shadowCalculationLogSummary(shadows)
+    }
+  };
+}
+
+function buildFeeCalculationShadowRecord({ primaryPrepared = {}, shadowPrepared = {}, durationMs = 0 } = {}) {
+  return {
+    mode: "shadow",
+    pipeline: "deterministic_rules",
+    enabled: true,
+    status: "completed",
+    durationMs,
+    createdAt: new Date().toISOString(),
+    source: shadowPrepared.metrics?.clinicalStructuring?.source
+      || shadowPrepared.clinicalExtraction?.source
+      || "rules_no_openai",
+    versions: {
+      promptVersion: shadowPrepared.clinicalExtraction?.promptVersion || null,
+      ruleSetVersion: shadowPrepared.clinicalExtraction?.ruleSetVersion || null,
+      registryVersion: shadowPrepared.clinicalExtraction?.registryVersion || null
+    },
+    result: compactShadowPreparation(shadowPrepared),
+    diff: diffShadowPreparation(primaryPrepared, shadowPrepared)
+  };
+}
+
+function compactShadowPreparation(prepared = {}) {
+  return {
+    calculationOptions: isPlainObject(prepared.calculationOptions) ? prepared.calculationOptions : {},
+    calculationOptionsAutoKeys: Array.isArray(prepared.calculationOptionsAutoKeys)
+      ? prepared.calculationOptionsAutoKeys.slice(0, 80)
+      : [],
+    calculationOptionsSource: prepared.calculationOptionsSource || null,
+    reviewWarnings: Array.isArray(prepared.reviewWarnings) ? prepared.reviewWarnings.slice(0, 40) : [],
+    clinicalEvents: compactClinicalEventsForShadow(prepared.clinicalEvents),
+    canonicalClinicalFacts: compactCanonicalFactsForShadow(prepared.canonicalClinicalFacts),
+    masterCandidates: compactMasterCandidatesForShadow(prepared.masterCandidates),
+    billingCandidates: compactBillingCandidatesForShadow(prepared.billingCandidates),
+    reviewIssues: compactReviewIssuesForShadow(prepared.reviewIssues),
+    metrics: {
+      clinicalStructuring: prepared.metrics?.clinicalStructuring || null,
+      ruleBasedClinicalInference: prepared.metrics?.ruleBasedClinicalInference || null,
+      facilityProfile: prepared.metrics?.facilityProfile || null
+    }
+  };
+}
+
+function compactClinicalEventsForShadow(events = []) {
+  return (Array.isArray(events) ? events : []).slice(0, 80).map((event) => ({
+    type: event?.type || event?.eventType || null,
+    billingDomain: event?.billingDomain || event?.billing_domain || null,
+    name: event?.name || event?.clinicalName || null,
+    actionStatus: event?.actionStatus || event?.action_status || null,
+    temporalRelation: event?.temporalRelation || event?.temporal_relation || null,
+    source: event?.source || null
+  }));
+}
+
+function compactCanonicalFactsForShadow(facts = []) {
+  return (Array.isArray(facts) ? facts : []).slice(0, 80).map((fact) => ({
+    factId: fact?.factId || fact?.fact_id || null,
+    conceptId: fact?.conceptId || fact?.concept_id || null,
+    eventType: fact?.eventType || fact?.event_type || null,
+    clinicalName: fact?.clinicalName || fact?.clinical_name || null,
+    status: fact?.status || null,
+    verificationStatus: fact?.verification?.status || null,
+    reasonCode: fact?.reasonCode || fact?.reason_code || null
+  }));
+}
+
+function compactMasterCandidatesForShadow(candidates = []) {
+  return (Array.isArray(candidates) ? candidates : []).slice(0, 80).map((candidate) => ({
+    eventName: candidate?.eventName || candidate?.clinicalName || null,
+    eventType: candidate?.eventType || null,
+    masterCode: candidate?.masterCode || candidate?.code || null,
+    masterName: candidate?.masterName || candidate?.name || null,
+    status: candidate?.status || candidate?.outcome || null,
+    reason: candidate?.reason || candidate?.filterReason || null
+  }));
+}
+
+function compactBillingCandidatesForShadow(candidates = []) {
+  return (Array.isArray(candidates) ? candidates : []).slice(0, 80).map((candidate) => ({
+    code: candidate?.code || candidate?.masterCode || null,
+    name: candidate?.name || candidate?.masterName || null,
+    eventName: candidate?.eventName || candidate?.clinicalName || null,
+    status: candidate?.status || null,
+    source: candidate?.source || null
+  }));
+}
+
+function compactReviewIssuesForShadow(issues = []) {
+  return (Array.isArray(issues) ? issues : []).slice(0, 80).map((issue) => ({
+    issueCode: issue?.issueCode || issue?.code || null,
+    topicCode: issue?.topicCode || null,
+    topicLabel: issue?.topicLabel || null,
+    category: issue?.category || null,
+    title: issue?.title || null,
+    requiredInput: issue?.requiredInput || null
+  }));
+}
+
+function diffShadowPreparation(primaryPrepared = {}, shadowPrepared = {}) {
+  return {
+    calculationOptionKeys: diffStringSets(
+      Object.keys(isPlainObject(primaryPrepared.calculationOptions) ? primaryPrepared.calculationOptions : {}),
+      Object.keys(isPlainObject(shadowPrepared.calculationOptions) ? shadowPrepared.calculationOptions : {})
+    ),
+    optionSummary: {
+      primary: calculationOptionSummaryForShadow(primaryPrepared.calculationOptions),
+      shadow: calculationOptionSummaryForShadow(shadowPrepared.calculationOptions)
+    },
+    reviewWarnings: diffStringSets(primaryPrepared.reviewWarnings, shadowPrepared.reviewWarnings, 20),
+    canonicalConceptIds: diffStringSets(
+      canonicalFactDiffKeys(primaryPrepared.canonicalClinicalFacts),
+      canonicalFactDiffKeys(shadowPrepared.canonicalClinicalFacts),
+      40
+    ),
+    billingCandidateCodes: diffStringSets(
+      billingCandidateDiffKeys(primaryPrepared.billingCandidates),
+      billingCandidateDiffKeys(shadowPrepared.billingCandidates),
+      40
+    )
+  };
+}
+
+function calculationOptionSummaryForShadow(options = {}) {
+  const value = isPlainObject(options) ? options : {};
+  return {
+    keys: Object.keys(value).sort(),
+    labOptionCount: Array.isArray(value.lab_options) ? value.lab_options.length : 0,
+    medicationOrderCount: Array.isArray(value.medication_orders) ? value.medication_orders.length : 0,
+    imagingOrderCount: Array.isArray(value.imaging_orders) ? value.imaging_orders.length : 0,
+    treatmentOrderCount: Array.isArray(value.treatment_orders) ? value.treatment_orders.length : 0,
+    materialInputCount: Array.isArray(value.material_inputs) ? value.material_inputs.length : 0,
+    facilityStandardKeyCount: Array.isArray(value.facility_standard_keys) ? value.facility_standard_keys.length : 0
+  };
+}
+
+function canonicalFactDiffKeys(facts = []) {
+  return uniqueStrings((Array.isArray(facts) ? facts : []).map((fact) => [
+    fact?.conceptId || fact?.concept_id || "",
+    fact?.eventType || fact?.event_type || "",
+    fact?.clinicalName || fact?.clinical_name || "",
+    fact?.status || ""
+  ].filter(Boolean).join(":")));
+}
+
+function billingCandidateDiffKeys(candidates = []) {
+  return uniqueStrings((Array.isArray(candidates) ? candidates : []).map((candidate) => [
+    candidate?.code || candidate?.masterCode || "",
+    candidate?.name || candidate?.masterName || ""
+  ].filter(Boolean).join(":")));
+}
+
+function diffStringSets(primaryValues = [], shadowValues = [], limit = 50) {
+  const primary = uniqueStrings(Array.isArray(primaryValues) ? primaryValues : []).sort();
+  const shadow = uniqueStrings(Array.isArray(shadowValues) ? shadowValues : []).sort();
+  const primarySet = new Set(primary);
+  const shadowSet = new Set(shadow);
+  return {
+    onlyInPrimary: primary.filter((value) => !shadowSet.has(value)).slice(0, limit),
+    onlyInShadow: shadow.filter((value) => !primarySet.has(value)).slice(0, limit),
+    sharedCount: primary.filter((value) => shadowSet.has(value)).length,
+    primaryCount: primary.length,
+    shadowCount: shadow.length
+  };
+}
+
+function shadowTraceEvents(shadowCalculations = []) {
+  return (Array.isArray(shadowCalculations) ? shadowCalculations : []).map((shadow, index) => ({
+    traceId: `trace_shadow_calculation_${index + 1}`,
+    stage: "shadow_calculation",
+    outcome: shadow.status || "unknown",
+    selected: {
+      mode: shadow.mode || "shadow",
+      pipeline: shadow.pipeline || "unknown",
+      source: shadow.source || null,
+      durationMs: Number(shadow.durationMs || 0),
+      calculationOptionDiff: shadow.diff?.calculationOptionKeys || null
+    },
+    message: shadow.status === "failed"
+      ? `shadow calculation failed: ${shadow.error || "unknown error"}`
+      : "deterministic shadow calculation recorded without affecting the primary result"
+  }));
+}
+
+function shadowCalculationLogSummary(shadowCalculations = []) {
+  return (Array.isArray(shadowCalculations) ? shadowCalculations : []).map((shadow) => ({
+    mode: shadow.mode || "shadow",
+    pipeline: shadow.pipeline || "unknown",
+    status: shadow.status || "unknown",
+    durationMs: Number(shadow.durationMs || 0),
+    source: shadow.source || null,
+    optionDiff: shadow.diff?.calculationOptionKeys || null
+  }));
 }
 
 async function loadFacilityProfileForCalculation({ platformStore, orgId, session = {} } = {}) {

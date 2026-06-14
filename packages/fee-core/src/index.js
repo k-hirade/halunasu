@@ -212,6 +212,9 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
     clinicalExtraction: isPlainObject(calculation.clinicalExtraction || calculation.clinical_extraction)
       ? calculation.clinicalExtraction || calculation.clinical_extraction
       : undefined,
+    shadowCalculations: Array.isArray(calculation.shadowCalculations || calculation.shadow_calculations)
+      ? calculation.shadowCalculations || calculation.shadow_calculations
+      : undefined,
     inputSnapshot: isPlainObject(calculation.inputSnapshot || calculation.input_snapshot)
       ? calculation.inputSnapshot || calculation.input_snapshot
       : undefined,

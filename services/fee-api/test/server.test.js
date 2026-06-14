@@ -6749,6 +6749,79 @@ test("records line-bound verified evidence on canonical clinical facts", async (
   assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => item.stage === "evidence_verifier"));
 });
 
+test("records deterministic rules calculation in shadow mode without changing primary input", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 75,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "high" },
+    diagnoses: [],
+    clinical_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "影算 太郎" },
+    facilityId: "fac_001",
+    serviceDate: "2026-06-14",
+    clinicalText: "胸部X線：異常なし。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  const shadows = calculation.body.calculationResult.shadowCalculations || [];
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.imaging_orders, undefined);
+  assert.equal(shadows.length, 1);
+  assert.equal(shadows[0].mode, "shadow");
+  assert.equal(shadows[0].pipeline, "deterministic_rules");
+  assert.equal(shadows[0].status, "completed");
+  assert.ok(shadows[0].diff.calculationOptionKeys.onlyInShadow.includes("imaging_orders"));
+  assert.ok(Array.isArray(shadows[0].result.calculationOptions.imaging_orders));
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => item.stage === "shadow_calculation"));
+});
+
+test("can disable deterministic shadow calculation with environment flag", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "影算 花子" },
+    facilityId: "fac_001",
+    serviceDate: "2026-06-14",
+    clinicalText: "胸部X線：異常なし。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { processEnv: { FEE_CALCULATION_SHADOW_MODE: "off" } }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(calculation.body.calculationResult.shadowCalculations, []);
+});
+
 test("blocks performed clinical events when evidence is only future or planned", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
