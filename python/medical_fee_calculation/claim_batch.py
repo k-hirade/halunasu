@@ -2214,6 +2214,10 @@ def _parse_imaging_orders(value: Any) -> tuple[ImagingOrder, ...]:
                     item.get("radiography_diagnostic_kind"),
                     "imaging_orders[].radiography_diagnostic_kind",
                 ),
+                projection_count=max(
+                    1,
+                    _int_value(item.get("projection_count", item.get("view_count")), default=1),
+                ),
                 ct_equipment_kind=_enum_value(
                     CTEquipmentKind,
                     item.get("ct_equipment_kind"),

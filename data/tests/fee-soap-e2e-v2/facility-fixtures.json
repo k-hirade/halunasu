@@ -3,7 +3,7 @@
   "notes": [
     "ケースは facilityFixtureKey でいずれかを参照する。施設属性はカルテ本文に書かない。",
     "equipment / electronicImageManagement は現行製品が未参照の施設属性。製品側の施設プロファイル拡張で読むようになるまで、抽出経路ではこの属性に依存するexactは落ちる(正しい計測)。",
-    "facilityStandardKeys は評価ハーネスがPlatform施設にseedする。"
+    "facilityStandardKeys は評価ハーネスまたは seed:core-account がPlatform施設にseedし、fee-apiが算定時に施設プロファイルから読む。"
   ],
   "fixtures": {
     "clinic_basic": {

@@ -41,6 +41,7 @@ const loginIds = csv(args.get("login-ids") || args.get("login-id")).map(normaliz
 const organizationName = args.get("organization-name") || `${organizationCode} organization`;
 const emailDomain = args.get("email-domain") || "";
 const products = csv(args.get("products") || "charting,fee,referral");
+const facilityStandardKeys = csv(args.get("facility-standard-keys") || args.get("facilityStandardKeys"));
 const facilityName = args.get("facility-name") || organizationName;
 const departmentName = args.get("department-name") || "General";
 const seedDemoPatient = args.get("skip-demo-patient") !== "true";
@@ -73,6 +74,7 @@ for (const env of envs) {
     loginIds,
     emailDomain,
     products,
+    facilityStandardKeys,
     facilityName,
     departmentName,
     seedDemoPatient
@@ -297,6 +299,20 @@ async function ensureFacility({ input, organization, actions }) {
   const facilities = await listDocs(input.projectId, organizationPath(organization.orgId), "facilities");
   const existing = facilities.find((facility) => facility.status === "active") || facilities[0] || null;
   if (existing) {
+    const desiredKeys = Array.isArray(input.facilityStandardKeys) ? input.facilityStandardKeys : [];
+    const currentKeys = Array.isArray(existing.facilityStandardKeys) ? existing.facilityStandardKeys : [];
+    if (desiredKeys.length && !sameStringSet(currentKeys, desiredKeys)) {
+      actions.push(`update facility standards ${input.facilityName}: ${desiredKeys.join(",")}`);
+      const patched = {
+        ...existing,
+        facilityStandardKeys: desiredKeys,
+        updatedAt: timestamp()
+      };
+      if (input.apply) {
+        await setDoc(input.projectId, facilityPath(organization.orgId, existing.facilityId), patched);
+      }
+      return patched;
+    }
     return existing;
   }
 
@@ -307,7 +323,7 @@ async function ensureFacility({ input, organization, actions }) {
     orgId: organization.orgId,
     displayName: input.facilityName,
     facilityType: "clinic",
-    facilityStandardKeys: [],
+    facilityStandardKeys: Array.isArray(input.facilityStandardKeys) ? input.facilityStandardKeys : [],
     status: "active",
     createdAt: now,
     updatedAt: now,
@@ -644,7 +660,14 @@ function csv(value) {
     .filter(Boolean);
 }
 
+function sameStringSet(left = [], right = []) {
+  const normalize = (items) => [...new Set((Array.isArray(items) ? items : []).map((item) => String(item || "").trim()).filter(Boolean))].sort();
+  const a = normalize(left);
+  const b = normalize(right);
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
 function printUsage() {
-  console.log("Usage: npm run seed:core-account -- --env stg|prod|all --organization-code CODE --login-ids ID1,ID2 [--apply]");
+  console.log("Usage: npm run seed:core-account -- --env stg|prod|all --organization-code CODE --login-ids ID1,ID2 [--facility-standard-keys KEY1,KEY2] [--apply]");
   console.log("Set HALUNASU_SEED_PASSWORD, --password-file, or --generate-password-file for --apply.");
 }

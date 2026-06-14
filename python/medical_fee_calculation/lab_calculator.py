@@ -11,6 +11,7 @@ from medical_fee_calculation.claim_models import (
     ClaimContext,
     ClaimItemStatus,
     CommentInput,
+    MedicationDeliveryKind,
 )
 from medical_fee_calculation.electronic_rules import (
     ElectronicRuleContext,
@@ -136,18 +137,34 @@ def calculate_lab_claim_standardized(
         hospital_profile=hospital_profile,
     )
     medication_order_resolution = resolve_medication_order_inputs(claim_context.medication_orders)
+    medication_direct_charge_inputs = claim_context.drug_inputs
+    medication_order_charge_inputs = medication_order_resolution.charge_inputs
+    medication_order_messages = medication_order_resolution.messages
+    medication_context = claim_context.medication
+    if medication_context.delivery_kind == MedicationDeliveryKind.OUTSIDE_PRESCRIPTION:
+        if medication_direct_charge_inputs or medication_order_charge_inputs:
+            medication_order_messages = (
+                *medication_order_messages,
+                CalculationMessage(
+                    status=ClaimItemStatus.BLOCKED,
+                    code=None,
+                    message="Drug charges skipped: outside prescription does not bill institution medication charges",
+                    source="medication_order",
+                ),
+            )
+        medication_direct_charge_inputs = ()
+        medication_order_charge_inputs = ()
     injection_order_resolution = resolve_injection_order_inputs(claim_context.injection_orders)
     resolved_drug_inputs = (
-        *claim_context.drug_inputs,
-        *medication_order_resolution.charge_inputs,
+        *medication_direct_charge_inputs,
+        *medication_order_charge_inputs,
         *claim_context.injection_drug_inputs,
         *injection_order_resolution.charge_inputs,
     )
     resolved_medication_drug_inputs = (
-        *claim_context.drug_inputs,
-        *medication_order_resolution.charge_inputs,
+        *medication_direct_charge_inputs,
+        *medication_order_charge_inputs,
     )
-    medication_context = claim_context.medication
     if not medication_context.dispensing_kinds and medication_order_resolution.dispensing_kinds:
         medication_context = replace(
             medication_context,
@@ -249,7 +266,7 @@ def calculate_lab_claim_standardized(
         ),
         messages=(
             *input_resolution.messages,
-            *medication_order_resolution.messages,
+            *medication_order_messages,
             *injection_order_resolution.messages,
             *drug_resolution.messages,
             *material_resolution.messages,

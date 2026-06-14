@@ -1568,6 +1568,7 @@ function applyFacilityProfileToPreparation(prepared = {}, facilityProfile = {}, 
   };
   const calculationOptions = applyFacilityImagingProfileToOptions(optionsWithFacilityKeys, imagingProfile, context);
   const imagingProfileApplied = calculationOptions !== optionsWithFacilityKeys;
+  const facilityTraceEvents = facilityImagingProfileTraceEvents(calculationOptions, imagingProfile, facilityProfile);
   return {
     ...prepared,
     calculationOptions,
@@ -1577,6 +1578,7 @@ function applyFacilityProfileToPreparation(prepared = {}, facilityProfile = {}, 
       ...(imagingProfileApplied ? ["imaging_orders"] : [])
     ]),
     calculationOptionsSource: mergedCalculationOptionsSource(prepared.calculationOptionsSource),
+    clinicalExtraction: appendClinicalExtractionTrace(prepared.clinicalExtraction, facilityTraceEvents),
     metrics
   };
 }
@@ -1635,6 +1637,56 @@ function applyFacilityImagingProfileToOptions(options = {}, imagingProfile = {},
     return enriched;
   });
   return changed ? { ...options, imaging_orders: enrichedOrders } : options;
+}
+
+function appendClinicalExtractionTrace(clinicalExtraction = null, traceEvents = []) {
+  const events = Array.isArray(traceEvents) ? traceEvents.filter(Boolean) : [];
+  if (!events.length) {
+    return clinicalExtraction || null;
+  }
+  const base = clinicalExtraction && typeof clinicalExtraction === "object" ? clinicalExtraction : {};
+  return {
+    ...base,
+    trace: [
+      ...(Array.isArray(base.trace) ? base.trace : []),
+      ...events
+    ]
+  };
+}
+
+function facilityImagingProfileTraceEvents(options = {}, imagingProfile = {}, facilityProfile = {}) {
+  const orders = Array.isArray(options.imaging_orders) ? options.imaging_orders : [];
+  if (!orders.length) {
+    return [];
+  }
+  return orders.map((order, index) => ({
+    traceId: `trace_facility_imaging_${index + 1}`,
+    stage: "facility_imaging_profile",
+    outcome: imagingProfile?.electronicImageManagement || imagingProfile?.ctEquipmentKind || imagingProfile?.mriEquipmentKind
+      ? "applied"
+      : "not_configured",
+    selected: {
+      facilityId: facilityProfile.facilityId || "",
+      source: facilityProfile.source || "none",
+      facilityElectronicImageManagement: imagingProfile?.electronicImageManagement === true,
+      facilityCtEquipmentKind: imagingProfile?.ctEquipmentKind || null,
+      facilityMriEquipmentKind: imagingProfile?.mriEquipmentKind || null,
+      orderKind: order?.kind || null,
+      orderElectronicImageManagement: order?.electronic_image_management === true,
+      orderCtEquipmentKind: order?.ct_equipment_kind || order?.ctEquipmentKind || null,
+      orderMriEquipmentKind: order?.mri_equipment_kind || order?.mriEquipmentKind || null,
+      orderProjectionCount: positiveIntegerOrOne(order?.projection_count || order?.view_count)
+    },
+    message: "facility_imaging_attributes_prepared"
+  }));
+}
+
+function positiveIntegerOrOne(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 1) {
+    return 1;
+  }
+  return Math.max(1, Math.trunc(numeric));
 }
 
 function hasExplicitElectronicImageManagementAbsence(text = "", imagingKind = "") {

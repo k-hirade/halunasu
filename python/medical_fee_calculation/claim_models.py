@@ -180,6 +180,7 @@ class ImagingOrder:
     kind: ImagingKind
     acquisition_kind: ImagingAcquisitionKind | None = None
     radiography_diagnostic_kind: RadiographyDiagnosticKind | None = None
+    projection_count: int = 1
     ct_equipment_kind: CTEquipmentKind | None = None
     mri_equipment_kind: MRIEquipmentKind | None = None
     head: bool = False

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from datetime import date
+from math import ceil
 
 from medical_fee_calculation.claim_models import (
     CTEquipmentKind,
@@ -233,15 +234,26 @@ def calculate_imaging_fees(
                 )
                 continue
 
+            projection_count = _radiography_projection_count_for_line(order, code)
+            calculated_total_points = None
+            reason_suffix = ""
+            if projection_count > 1:
+                calculated_total_points = _radiography_projection_total_points(
+                    float(row["points"]),
+                    projection_count,
+                )
+                reason_suffix = f" ({projection_count} projections)"
+
             lines.append(
                 CalculationLine(
                     code=str(row["code"]),
                     name=str(row["short_name"]),
                     points=float(row["points"]),
-                    quantity=1,
+                    quantity=float(projection_count),
                     status=ClaimItemStatus.CANDIDATE,
-                    reason=f"Imaging fee candidate for {order.kind.value}",
+                    reason=f"Imaging fee candidate for {order.kind.value}{reason_suffix}",
                     source="imaging_fee",
+                    calculated_total_points=calculated_total_points,
                 )
             )
 
@@ -406,6 +418,24 @@ def _simple_radiography_codes(order: ImagingOrder) -> tuple[tuple[str, ...], tup
         codes.append(SIMPLE_RADIOGRAPHY_ELECTRONIC_IMAGE_MANAGEMENT_CODE)
 
     return _unique_codes(tuple(codes)), tuple(messages)
+
+
+def _radiography_projection_count_for_line(order: ImagingOrder, code: str) -> int:
+    if order.kind != ImagingKind.SIMPLE_RADIOGRAPHY:
+        return 1
+    if code not in {
+        *SIMPLE_RADIOGRAPHY_DIAGNOSIS_CODES.values(),
+        *SIMPLE_RADIOGRAPHY_ACQUISITION_CODES.values(),
+    }:
+        return 1
+    return max(1, int(order.projection_count or 1))
+
+
+def _radiography_projection_total_points(base_points: float, projection_count: int) -> float:
+    count = max(1, int(projection_count or 1))
+    if count <= 1:
+        return base_points
+    return float(base_points + (count - 1) * ceil(base_points / 2))
 
 
 def _contrast_radiography_codes(order: ImagingOrder) -> tuple[tuple[str, ...], tuple[CalculationMessage, ...]]:

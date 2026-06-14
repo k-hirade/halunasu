@@ -1357,7 +1357,17 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   }
 
   if (imagingOrders.length) {
-    inferred.imaging_orders = dedupeObjects(imagingOrders);
+    const preparedImagingOrders = dedupeObjects(imagingOrders);
+    inferred.imaging_orders = preparedImagingOrders;
+    for (const order of preparedImagingOrders) {
+      clinicalTrace.push({
+        traceId: `trace_${candidateIdPart(["imaging_order_prepared", JSON.stringify(imagingOrderTraceSelected(order))].join("_"))}`,
+        stage: "imaging_order_prepared",
+        outcome: "prepared",
+        selected: imagingOrderTraceSelected(order),
+        message: "imaging_order_attributes_prepared"
+      });
+    }
   }
   if (procedureCodes.length) {
     inferred.procedure_codes = uniqueStrings(procedureCodes);
@@ -1412,10 +1422,24 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     clinicalTrace.push(visitMedicationDecision.trace);
   }
   const visitMedication = visitMedicationDecision.options;
+  const medicationDeliveryKind = medicationDeliveryKindFromStructuredOrText(visitMedication, text);
   if (medicationOrders.length) {
-    inferred.medication_orders = dedupeObjects(medicationOrders, (item) => item.drug_code);
+    if (medicationDeliveryKind !== "outside_prescription") {
+      inferred.medication_orders = dedupeObjects(medicationOrders, (item) => item.drug_code);
+    } else {
+      clinicalTrace.push({
+        traceId: `trace_${candidateIdPart(["outside_prescription_medication_orders_excluded", medicationOrders.length].join("_"))}`,
+        stage: "medication_delivery_invariant",
+        outcome: "excluded",
+        selected: {
+          delivery_kind: medicationDeliveryKind,
+          medication_order_count: medicationOrders.length
+        },
+        message: "outside_prescription_excludes_institution_drug_charges"
+      });
+    }
     inferred.medication = {
-      delivery_kind: medicationDeliveryKindFromStructuredOrText(visitMedication, text),
+      delivery_kind: medicationDeliveryKind,
       prescription_category: "other",
       ...(visitMedication?.generic_name_prescription_add_on ? {
         generic_name_prescription_add_on: visitMedication.generic_name_prescription_add_on
@@ -2631,7 +2655,8 @@ function inferImagingOrders(text) {
         const order = {
           kind: "simple_radiography",
           acquisition_kind: "digital",
-          radiography_diagnostic_kind: "simple_i"
+          radiography_diagnostic_kind: "simple_i",
+          projection_count: simpleRadiographyProjectionCount(sentence)
         };
         if (electronicState === "present") {
           order.electronic_image_management = true;
@@ -4259,6 +4284,9 @@ function hasActionableClinicalReviewTarget(text = "") {
 
 function reviewOnlyClinicalEventDomain(event = {}) {
   const domain = normalizeClinicalEventBillingDomain(event);
+  if (domain === "home_care" && !hasExplicitHomeCareContext(event)) {
+    return "";
+  }
   return [
     "pathology",
     "emergency_time_addon",
@@ -4274,6 +4302,19 @@ function reviewOnlyClinicalEventDomain(event = {}) {
     "injection_review_only",
     "split_multi_day"
   ].includes(domain) ? domain : "";
+}
+
+function hasExplicitHomeCareContext(event = {}) {
+  const text = normalizeClinicalText([
+    clinicalEventName(event),
+    clinicalEventEvidence(event),
+    event?.review_reason,
+    event?.reviewReason
+  ].filter(Boolean).join(" "));
+  if (!text) {
+    return false;
+  }
+  return /(在宅医療|在宅患者|在宅療養|訪問診療|往診|訪問看護|自宅訪問|居宅訪問|在宅酸素|在宅自己注射|在宅自己導尿)/u.test(text);
 }
 
 function isNegatedClinicalEvent(event = {}) {
@@ -5058,7 +5099,8 @@ async function imagingOrderFromClinicalEvent(event = {}, feeCalculator, options 
     const order = {
       kind: "simple_radiography",
       acquisition_kind: "digital",
-      radiography_diagnostic_kind: "simple_i"
+      radiography_diagnostic_kind: "simple_i",
+      projection_count: simpleRadiographyProjectionCount(evidence)
     };
     if (electronicState === "present") {
       order.electronic_image_management = true;
@@ -6757,6 +6799,13 @@ function mergeImagingOrders(orders = []) {
       if (value === undefined || value === null || value === "") {
         continue;
       }
+      if (field === "projection_count" || field === "view_count") {
+        existing.projection_count = Math.max(
+          positiveIntegerOrOne(existing.projection_count || existing.view_count),
+          positiveIntegerOrOne(value)
+        );
+        continue;
+      }
       if (!hasOwn(existing, field) || existing[field] === undefined || existing[field] === null || existing[field] === "") {
         existing[field] = value;
         continue;
@@ -6786,6 +6835,43 @@ function imagingOrdersConflict(left = {}, right = {}) {
     }
     return leftValue !== rightValue;
   });
+}
+
+function positiveIntegerOrOne(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 1) {
+    return 1;
+  }
+  return Math.max(1, Math.trunc(numeric));
+}
+
+function simpleRadiographyProjectionCount(text = "") {
+  const normalized = normalizeClinicalText(text);
+  if (!normalized) {
+    return 1;
+  }
+  if (/(正面.{0,12}側面|側面.{0,12}正面|正側|2方向|２方向|二方向|2面|２面|二面|AP.{0,12}側面|PA.{0,12}側面|側面.{0,12}AP|側面.{0,12}PA)/iu.test(normalized)) {
+    return 2;
+  }
+  if (/(3方向|３方向|三方向|3面|３面|三面)/u.test(normalized)) {
+    return 3;
+  }
+  return 1;
+}
+
+function imagingOrderTraceSelected(order = {}) {
+  return {
+    kind: order.kind || null,
+    acquisition_kind: order.acquisition_kind || null,
+    radiography_diagnostic_kind: order.radiography_diagnostic_kind || null,
+    projection_count: positiveIntegerOrOne(order.projection_count || order.view_count),
+    ct_equipment_kind: order.ct_equipment_kind || null,
+    mri_equipment_kind: order.mri_equipment_kind || null,
+    contrast: order.contrast === true,
+    electronic_image_management: order.electronic_image_management === true,
+    diagnostic_management_add_on: order.diagnostic_management_add_on === true,
+    remote_diagnostic_management_add_on: order.remote_diagnostic_management_add_on === true
+  };
 }
 
 function manualCalculationOptions(session = {}, calculationInput = {}) {

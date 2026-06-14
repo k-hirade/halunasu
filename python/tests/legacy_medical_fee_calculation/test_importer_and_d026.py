@@ -1477,6 +1477,28 @@ class ImporterAndD026Test(unittest.TestCase):
         self.assertEqual([line.total_points for line in result.lines], [85.0, 68.0, 57.0])
         self.assertEqual(result.messages, ())
 
+    def test_calculate_imaging_fees_applies_simple_radiography_projection_decrement(self) -> None:
+        result = calculate_imaging_fees(
+            self.conn,
+            (),
+            (
+                ImagingOrder(
+                    kind=ImagingKind.SIMPLE_RADIOGRAPHY,
+                    acquisition_kind=ImagingAcquisitionKind.DIGITAL,
+                    radiography_diagnostic_kind=RadiographyDiagnosticKind.SIMPLE_I,
+                    projection_count=2,
+                    electronic_image_management=True,
+                ),
+            ),
+            date(2026, 6, 3),
+            source_id=self.source_id,
+        )
+
+        self.assertEqual([line.code for line in result.lines], ["170000410", "170027910", "170000210"])
+        self.assertEqual([line.quantity for line in result.lines], [2.0, 2.0, 1.0])
+        self.assertEqual([line.total_points for line in result.lines], [128.0, 102.0, 57.0])
+        self.assertEqual(result.messages, ())
+
     def test_calculate_imaging_fees_adds_ct_with_contrast(self) -> None:
         result = calculate_imaging_fees(
             self.conn,
@@ -2370,6 +2392,44 @@ class ImporterAndD026Test(unittest.TestCase):
         self.assertEqual(standardized.total_confirmed_points, 173.0)
         self.assertEqual(standardized.total_points, 1033.0)
         self.assertEqual(standardized.messages, ())
+
+    def test_standardized_claim_skips_medication_drug_charges_for_outside_prescription(self) -> None:
+        claim_context = ClaimContext(
+            patient=PatientContext(patient_id="patient-1"),
+            encounter=EncounterContext(
+                service_date=date(2026, 6, 3),
+                medical_institution_code="0112489",
+                is_outpatient=True,
+            ),
+            procedure_codes=(),
+            drug_inputs=(ChargeInput(code="620000001", quantity=1),),
+            medication_orders=(
+                MedicationOrder(
+                    drug_code="620000002",
+                    quantity_per_day=1,
+                    days=2,
+                    dispensing_kind=MedicationDispensingKind.INTERNAL_OR_PRN,
+                ),
+            ),
+            master_sources=MasterSourceContext(
+                medical_procedure_source_id=self.source_id,
+                drug_source_id=self.drug_source_id,
+                material_source_id=self.material_source_id,
+            ),
+            medication=MedicationOptionContext(delivery_kind=MedicationDeliveryKind.OUTSIDE_PRESCRIPTION),
+        )
+
+        standardized = calculate_lab_claim_standardized(self.conn, claim_context)
+        line_codes = [line.code for line in standardized.lines]
+
+        self.assertIn("120002910", line_codes)
+        self.assertNotIn("620000001", line_codes)
+        self.assertNotIn("620000002", line_codes)
+        self.assertTrue(any(
+            message.source == "medication_order"
+            and "outside prescription" in message.message
+            for message in standardized.messages
+        ))
 
     def test_claim_batch_runs_outpatient_lab_context_jsonl(self) -> None:
         input_path = Path(self.tmp.name) / "claim_batch.jsonl"

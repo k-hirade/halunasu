@@ -250,6 +250,73 @@ test("loads facility standards from Platform facility profile during calculation
   assert.ok(calculation.body.feeSession.calculationOptionsAutoKeys.includes("facility_standard_keys"));
 });
 
+test("traces facility imaging attributes applied to imaging orders", async () => {
+  const stores = createStores({
+    facilityStandardKeys: ["画像電子管理", "CT機器区分:multislice_16_to_64"]
+  });
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "initial", evidence: "初診", confidence: "medium" },
+    diagnoses: [{ name: "頭部打撲", status: "confirmed", evidence: "頭部打撲" }],
+    clinical_events: [{
+      type: "imaging",
+      name: "頭部CT",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "normal",
+      certainty: "explicit",
+      section: "O",
+      evidence: "頭部CTを実施し、急性期出血なし。",
+      search_queries: ["頭部CT"],
+      modality: "ct"
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Facility Imaging Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 頭部CTを実施し、急性期出血なし。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.imaging_orders[0].electronic_image_management, true);
+  assert.equal(receivedInput.calculationOptions.imaging_orders[0].ct_equipment_kind, "multislice_16_to_64");
+  const facilityTrace = calculation.body.calculationResult.clinicalExtraction.trace.find((item) => item.stage === "facility_imaging_profile");
+  assert.equal(facilityTrace.selected.facilityElectronicImageManagement, true);
+  assert.equal(facilityTrace.selected.orderElectronicImageManagement, true);
+  assert.equal(facilityTrace.selected.orderCtEquipmentKind, "multislice_16_to_64");
+});
+
 test("resolves name-only orders against master before calculation", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -413,6 +480,7 @@ test("reconnects clinical text to legacy outpatient calculation input", async ()
     receivedInput.calculationOptions.imaging_orders.map((order) => order.kind).sort(),
     ["simple_radiography"]
   );
+  assert.equal(receivedInput.calculationOptions.imaging_orders[0].projection_count, 2);
   assert.equal(receivedInput.calculationOptions.medication_orders, undefined);
   assert.equal(receivedInput.calculationOptions.material_inputs, undefined);
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI")));
@@ -424,6 +492,7 @@ test("reconnects clinical text to legacy outpatient calculation input", async ()
   assert.equal(calculation.body.calculationResult.warnings.some((warning) => warning.includes("オーダー「画像診断」")), false);
   assert.equal(detail.body.feeSession.calculationOptions.outpatient_basic.fee_kind, "initial");
   assert.equal(detail.body.feeSession.calculationOptions.imaging_orders.length, 1);
+  assert.equal(detail.body.feeSession.calculationOptions.imaging_orders[0].projection_count, 2);
 });
 
 test("structured inpatient sessions suppress outpatient basic and infer inpatient basic fee", async () => {
@@ -1433,6 +1502,7 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "initial");
   assert.deepEqual(receivedInput.calculationOptions.imaging_orders.map((order) => order.kind), ["simple_radiography"]);
+  assert.equal(receivedInput.calculationOptions.imaging_orders[0].projection_count, 2);
   assert.deepEqual(
     receivedInput.calculationOptions.medication_orders.map((order) => order.drug_code).sort(),
     ["620001001", "620001002"]
@@ -4979,6 +5049,68 @@ test("routes pathology and emergency time addon events into review-only domain t
   assert.equal(calculation.body.candidateWorkbench.proposals.length, 0);
 });
 
+test("does not treat a next outpatient revisit plan as home care", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.calculate = async () => ({
+    provider: "test_fee_engine",
+    source: "test",
+    status: "completed",
+    totalPoints: 75,
+    lineItems: [],
+    warnings: []
+  });
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "腰痛", status: "confirmed", evidence: "腰痛" }],
+    clinical_events: [
+      {
+        type: "management",
+        billing_domain: "home_care",
+        name: "次回再診予定",
+        action_status: "considered",
+        temporal_relation: "future",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "not_applicable",
+        certainty: "ambiguous",
+        section: "P",
+        evidence: "1週間後に外来で再診予定。",
+        search_queries: ["次回再診"],
+        review_reason: "次回フォロー"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Next Revisit Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    setting: "outpatient",
+    clinicalText: "P: 1週間後に外来で再診予定。",
+    diagnoses: [{ name: "腰痛" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "在宅医療未対応"), false);
+  assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "訪問診療確認"), false);
+});
+
 test("does not divert ordinary lab specimen submission or symptom timing into review-only domains", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -5762,6 +5894,7 @@ test("merges deterministic performed imaging when structured facts miss it", asy
     receivedInput.calculationOptions.imaging_orders.map((order) => order.kind),
     ["simple_radiography"]
   );
+  assert.equal(receivedInput.calculationOptions.imaging_orders[0].projection_count, 2);
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
 });
 
