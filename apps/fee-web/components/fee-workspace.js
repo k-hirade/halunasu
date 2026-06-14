@@ -1449,6 +1449,8 @@ function BucketHeader({ count, note, title }) {
 }
 
 function ProposalCard({ disabled, item, onDecision, onOpenDetail }) {
+  const requiredInput = reviewRequiredInput(item);
+  const resolutionOptions = reviewResolutionOptions(item);
   return (
     <article className="proposal-card">
       <div className="proposal-card-main">
@@ -1456,6 +1458,19 @@ function ProposalCard({ disabled, item, onDecision, onOpenDetail }) {
         <h4>{item.displayTitle}</h4>
         <p>{item.displayReason}</p>
         <small>{item.conditionText}</small>
+        {requiredInput ? (
+          <div className="issue-required-input">
+            <span>確認する情報</span>
+            <strong>{requiredInput}</strong>
+          </div>
+        ) : null}
+        {resolutionOptions.length ? (
+          <div className="issue-resolution-options" aria-label="確認の選択肢">
+            {resolutionOptions.slice(0, 4).map((option) => (
+              <span key={option.value || option.label}>{option.label || option.value}</span>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div className="proposal-card-actions">
         <span className="proposal-points">{item.pointsLabel || "点数確認"}</span>
@@ -1505,6 +1520,7 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
 
 function IssueCard({ item, onOpenDetail }) {
   const requiredInput = reviewRequiredInput(item);
+  const resolutionOptions = reviewResolutionOptions(item);
   const tone = issueTone(item);
   return (
     <article className={`issue-card issue-card--${item.issueCategory || "rule"}`}>
@@ -1520,6 +1536,13 @@ function IssueCard({ item, onOpenDetail }) {
           <div className="issue-required-input">
             <span>確認する情報</span>
             <strong>{requiredInput}</strong>
+          </div>
+        ) : null}
+        {resolutionOptions.length ? (
+          <div className="issue-resolution-options" aria-label="確認の選択肢">
+            {resolutionOptions.slice(0, 4).map((option) => (
+              <span key={option.value || option.label}>{option.label || option.value}</span>
+            ))}
           </div>
         ) : null}
       </div>
@@ -1564,6 +1587,16 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision }) {
               <p>{reviewRequiredInput(item)}</p>
             </section>
           ) : null}
+          {reviewResolutionOptions(item).length ? (
+            <section>
+              <h3>確認の選択肢</h3>
+              <ul className="fee-modal-option-list">
+                {reviewResolutionOptions(item).map((option) => (
+                  <li key={option.value || option.label}>{option.label || option.value}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           {item.reviewOnly || item.actionType === "not_billable_now" ? (
             <section>
               <h3>操作方針</h3>
@@ -1598,10 +1631,43 @@ function reviewRequiredInput(item = {}) {
     || item.required_input
     || item.reviewIssue?.requiredInput
     || item.reviewIssue?.required_input
+    || item.candidateProposal?.policy?.requiredInput
+    || item.candidateProposal?.policy?.required_input
+    || item.candidateProposal?.requiredInput
+    || item.candidateProposal?.required_input
     || item.sourceItem?.reviewIssue?.requiredInput
     || item.sourceItem?.reviewIssue?.required_input
+    || item.sourceItem?.candidateProposal?.policy?.requiredInput
+    || item.sourceItem?.candidateProposal?.policy?.required_input
+    || item.sourceItem?.candidateProposal?.requiredInput
+    || item.sourceItem?.candidateProposal?.required_input
     || ""
   ).trim();
+}
+
+function reviewResolutionOptions(item = {}) {
+  const raw = item.resolutionOptions
+    || item.resolution_options
+    || item.reviewIssue?.resolutionOptions
+    || item.reviewIssue?.resolution_options
+    || item.candidateProposal?.resolutionOptions
+    || item.candidateProposal?.resolution_options
+    || item.sourceItem?.resolutionOptions
+    || item.sourceItem?.reviewIssue?.resolutionOptions
+    || item.sourceItem?.candidateProposal?.resolutionOptions
+    || [];
+  return Array.isArray(raw)
+    ? raw
+      .map((option) => {
+        if (typeof option === "string") return { value: option, label: option };
+        if (!option || typeof option !== "object") return null;
+        return {
+          value: String(option.value || option.key || option.label || ""),
+          label: String(option.label || option.value || option.key || "")
+        };
+      })
+      .filter((option) => option && option.label)
+    : [];
 }
 
 function issueTone(item = {}) {

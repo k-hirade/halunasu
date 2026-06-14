@@ -489,12 +489,15 @@ export function buildCandidateWorkbench(session = {}, options = {}) {
         ? "条件を確認して算定する場合は、合計点数に追加できます。"
         : "この提案は条件確認やコード確定が必要なため、現時点では自動で点数に追加しません。"
     };
-    if (normalized.canAdopt) {
+    const visibleIncreaseOpportunity = Number(normalized.potentialPoints || 0) > 0
+      && (normalized.reviewOnly || normalized.actionType === "not_billable_now" || normalized.actionType === "confirm_required");
+    if (normalized.canAdopt || visibleIncreaseOpportunity) {
       proposals.push({
         ...actionItem,
         kind: "proposal",
         kindLabel: "増点提案",
-        bucket: "proposal"
+        bucket: "proposal",
+        canAdopt: normalized.canAdopt
       });
     } else {
       issues.push({
@@ -717,6 +720,9 @@ function normalizeCandidateProposal(item = {}, index = 0) {
     orderType: item.orderType || item.order_type || candidateLine?.orderType || null,
     source: item.source || "candidate_proposal",
     policy: isPlainObject(item.policy) ? item.policy : null,
+    resolutionOptions: Array.isArray(item.resolutionOptions || item.resolution_options)
+      ? item.resolutionOptions || item.resolution_options
+      : [],
     candidateLine,
     sortOrder: Number(item.sortOrder ?? item.sort_order ?? index + 1)
   });
@@ -1082,6 +1088,14 @@ function reviewItem(input) {
     topicLabel: input.topicLabel || reviewIssue?.topicLabel || reviewIssue?.topic_label || null,
     source: input.source || reviewIssue?.source || candidateProposal?.source || null,
     policy: input.policy || reviewIssue?.policy || candidateProposal?.policy || null,
+    requiredInput: input.requiredInput || reviewIssue?.requiredInput || reviewIssue?.required_input || candidateProposal?.policy?.requiredInput || null,
+    resolutionOptions: Array.isArray(input.resolutionOptions)
+      ? input.resolutionOptions
+      : Array.isArray(reviewIssue?.resolutionOptions)
+        ? reviewIssue.resolutionOptions
+        : Array.isArray(candidateProposal?.resolutionOptions)
+          ? candidateProposal.resolutionOptions
+          : [],
     decision,
     lineItem: input.lineItem,
     candidateProposal: input.candidateProposal,
@@ -1197,6 +1211,14 @@ function normalizeCandidateActionItem(item = {}) {
   const displayTitle = item.title || proposal?.title || reviewWarningTitle(item.reason || "");
   const displayReason = humanizeReviewMessage(item.reason || proposal?.reason || "");
   const conditionText = proposal?.conditionText || structuredReviewConditionText({ issueCode, policy, reviewIssue }) || proposalConditionText(displayTitle, displayReason);
+  const requiredInput = item.requiredInput || item.required_input || reviewIssue?.requiredInput || reviewIssue?.required_input || proposal?.policy?.requiredInput || proposal?.requiredInput || null;
+  const resolutionOptions = Array.isArray(item.resolutionOptions)
+    ? item.resolutionOptions
+    : Array.isArray(reviewIssue?.resolutionOptions)
+      ? reviewIssue.resolutionOptions
+      : Array.isArray(proposal?.resolutionOptions)
+        ? proposal.resolutionOptions
+        : [];
   const potentialPoints = proposal?.potentialPoints || proposalPotentialPoints(item, displayTitle, displayReason);
   const hasCandidateLine = isPlainObject(proposal?.candidateLine) || isPlainObject(item.lineItem);
   const reviewOnly = isReviewOnlyPolicy({ issueCode, policy });
@@ -1212,6 +1234,8 @@ function normalizeCandidateActionItem(item = {}) {
     displayTitle,
     displayReason,
     conditionText,
+    requiredInput,
+    resolutionOptions,
     reasonText: displayReason,
     pointsLabel: pointsLabelForPotential(potentialPoints),
     potentialPoints,

@@ -278,6 +278,63 @@ const DERIVED_BILLING_ITEM_POLICIES = Object.freeze({
   })
 });
 
+const REVIEW_TOPIC_RESOLUTION_OPTIONS = Object.freeze({
+  medication_delivery_check: Object.freeze([
+    { value: "outside_prescription", label: "院外処方箋を交付した" },
+    { value: "in_house", label: "院内処方として扱う" },
+    { value: "not_prescribed", label: "今回は処方していない" }
+  ]),
+  contrast_check: Object.freeze([
+    { value: "with_contrast", label: "造影あり" },
+    { value: "without_contrast", label: "造影なし" },
+    { value: "unknown", label: "カルテだけでは不明" }
+  ]),
+  electronic_image_management_check: Object.freeze([
+    { value: "electronic_storage", label: "電子保存あり" },
+    { value: "no_electronic_storage", label: "電子保存なし" },
+    { value: "facility_profile", label: "施設設定で確認" }
+  ]),
+  equipment_kind_check: Object.freeze([
+    { value: "facility_profile", label: "施設の機器区分で確認" },
+    { value: "order_attribute", label: "オーダー属性で確認" },
+    { value: "unknown", label: "区分不明として保留" }
+  ]),
+  target_disease_check: Object.freeze([
+    { value: "target_disease_confirmed", label: "対象疾患に該当する" },
+    { value: "target_disease_not_confirmed", label: "対象疾患に該当しない" },
+    { value: "needs_chart_update", label: "病名・管理記録を追記して再計算" }
+  ]),
+  care_plan_check: Object.freeze([
+    { value: "care_plan_documented", label: "療養計画・指導記録あり" },
+    { value: "care_plan_missing", label: "記録不足" },
+    { value: "same_month_history_needed", label: "同月履歴を確認" }
+  ]),
+  same_month_check: Object.freeze([
+    { value: "not_billed_this_month", label: "同月未算定" },
+    { value: "already_billed_this_month", label: "同月算定済み" },
+    { value: "unknown", label: "履歴不明" }
+  ]),
+  monthly_lab_duplicate_check: Object.freeze([
+    { value: "not_duplicate", label: "同月重複なし" },
+    { value: "duplicate_or_recent", label: "同月重複の可能性あり" },
+    { value: "unknown", label: "検査履歴不明" }
+  ]),
+  lab_code_check: Object.freeze([
+    { value: "performed_and_code_known", label: "当日実施・標準コード確定" },
+    { value: "performed_code_unknown", label: "当日実施だがコード未確定" },
+    { value: "not_performed", label: "当日実施ではない" }
+  ]),
+  judgement_fee_check: Object.freeze([
+    { value: "judgement_fee_applicable", label: "判断料の対象" },
+    { value: "judgement_fee_not_applicable", label: "判断料の対象外" },
+    { value: "same_month_history_needed", label: "同月判断料履歴を確認" }
+  ])
+});
+
+const SPECIFIC_DISEASE_TARGET_PATTERNS = Object.freeze([
+  /気管支喘息|喘息/u
+]);
+
 function reviewTopicDefinition(topicCode = "") {
   return REVIEW_TOPIC_TAXONOMY[String(topicCode || "")] || null;
 }
@@ -292,7 +349,10 @@ function withReviewTopic(issue = {}, topicCode = "") {
     issueCode: issue.issueCode || topic.issueCode,
     topicCode,
     topicLabel: topic.label,
-    title: issue.title || topic.label
+    title: issue.title || topic.label,
+    resolutionOptions: Array.isArray(issue.resolutionOptions) && issue.resolutionOptions.length
+      ? issue.resolutionOptions
+      : asArray(REVIEW_TOPIC_RESOLUTION_OPTIONS[topicCode])
   };
 }
 
@@ -1782,6 +1842,22 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     reviewWarnings.push(...issues.map((issue) => issue.messageForStaff));
   }
 
+  const specificDiseaseProposals = candidateProposalsFromSpecificDiseaseOpportunities({
+    diagnoses,
+    clinicalEvents: clinicalEventsForCalculation,
+    visitMedication,
+    clinicalText: text
+  });
+  if (specificDiseaseProposals.length) {
+    candidateProposals.push(...specificDiseaseProposals);
+    clinicalTrace.push({
+      stage: "increase_proposal_rule",
+      outcome: "proposed",
+      proposalIds: specificDiseaseProposals.map((proposal) => proposal.proposalId),
+      message: "specific_disease_management_opportunities_proposed"
+    });
+  }
+
   if (imagingOrders.length) {
     const preparedImagingOrders = dedupeObjects(imagingOrders);
     inferred.imaging_orders = preparedImagingOrders;
@@ -2086,6 +2162,175 @@ function candidateProposalFromProcedureItem({
       supportLevel: "review_required",
       reviewRequired: true
     }
+  };
+}
+
+function candidateProposalsFromSpecificDiseaseOpportunities({
+  diagnoses = [],
+  clinicalEvents = [],
+  visitMedication = null,
+  clinicalText = ""
+} = {}) {
+  const target = specificDiseaseTargetFromDiagnoses(diagnoses);
+  if (!target) {
+    return [];
+  }
+  const managementEvidence = currentSpecificDiseaseManagementEvidence(clinicalEvents);
+  const proposals = [];
+  if (managementEvidence) {
+    proposals.push(reviewOnlyIncreaseProposal({
+      proposalId: `specific_disease_management_${candidateIdPart([target.name, managementEvidence.name, managementEvidence.evidence].join("_"))}`,
+      title: "特定疾患療養管理料の確認",
+      reason: `${target.name}を主病として管理・指導した可能性があります。対象疾患、管理主体、療養計画、同月履歴を確認してください。`,
+      conditionText: "対象疾患に該当し、療養上の管理・指導を診療録に記録し、同月算定条件を満たす場合に算定候補になります。自動では点数に入れていません。",
+      evidence: managementEvidence.evidence,
+      potentialPoints: 225,
+      orderType: "procedure",
+      source: "specific_disease_management_opportunity",
+      topicCode: "target_disease_check",
+      requiredInput: "対象疾患、主病管理、療養計画・指導記録、同月算定履歴",
+      resolutionOptions: REVIEW_TOPIC_RESOLUTION_OPTIONS.target_disease_check
+    }));
+  }
+  const longPrescriptionEvidence = longTermSpecificDiseasePrescriptionEvidence({
+    clinicalEvents,
+    visitMedication,
+    clinicalText
+  });
+  if (longPrescriptionEvidence) {
+    proposals.push(reviewOnlyIncreaseProposal({
+      proposalId: `specific_disease_prescription_management_${candidateIdPart([target.name, longPrescriptionEvidence.evidence].join("_"))}`,
+      title: "特定疾患処方管理加算の確認",
+      reason: `${target.name}の患者に長期処方がある可能性があります。処方日数、主病、同月履歴を確認してください。`,
+      conditionText: "特定疾患を主病として管理しており、処方日数などの要件を満たす場合に算定候補になります。自動では点数に入れていません。",
+      evidence: longPrescriptionEvidence.evidence,
+      potentialPoints: 56,
+      orderType: "medication",
+      source: "specific_disease_prescription_opportunity",
+      topicCode: "same_month_check",
+      requiredInput: "対象疾患、処方日数、同月算定履歴、院内/院外処方の区分",
+      resolutionOptions: REVIEW_TOPIC_RESOLUTION_OPTIONS.same_month_check
+    }));
+  }
+  return normalizeCandidateProposals(proposals);
+}
+
+function specificDiseaseTargetFromDiagnoses(diagnoses = []) {
+  for (const diagnosis of asArray(diagnoses)) {
+    const name = normalizeClinicalText(diagnosis?.name || diagnosis?.diagnosisName || diagnosis);
+    const status = normalizeClinicalText(diagnosis?.status || "");
+    if (!name || /既往|家族歴|疑い/u.test(status)) {
+      continue;
+    }
+    if (SPECIFIC_DISEASE_TARGET_PATTERNS.some((pattern) => pattern.test(name))) {
+      return { name };
+    }
+  }
+  return null;
+}
+
+function currentSpecificDiseaseManagementEvidence(clinicalEvents = []) {
+  const events = asArray(clinicalEvents).filter((event) => (
+    ["management", "counseling"].includes(normalizeClinicalEventType(event))
+    && isBillableClinicalEvent(event)
+    && !isNegatedClinicalEvent(event)
+  ));
+  for (const event of events) {
+    const evidence = clinicalEventEvidence(event);
+    const text = normalizeClinicalText([
+      clinicalEventName(event),
+      evidence,
+      event?.review_reason,
+      event?.reviewReason
+    ].join(" "));
+    if (!text || isPastOrExternalClinicalServiceContext(text) || isFutureOrOrderOnlyContext(text)) {
+      continue;
+    }
+    if (/(療養計画|管理|指導|説明|服薬|増悪時|生活指導|継続管理|方針)/u.test(text)) {
+      return {
+        name: clinicalEventName(event),
+        evidence
+      };
+    }
+  }
+  return null;
+}
+
+function longTermSpecificDiseasePrescriptionEvidence({
+  clinicalEvents = [],
+  visitMedication = null,
+  clinicalText = ""
+} = {}) {
+  const medicationEvents = asArray(clinicalEvents).filter((event) => (
+    normalizeClinicalEventType(event) === "medication"
+    && isBillableClinicalEvent(event)
+    && !isNegatedClinicalEvent(event)
+  ));
+  for (const event of medicationEvents) {
+    const days = Number(event?.days || event?.durationDays || event?.quantity?.days || 0);
+    const evidence = clinicalEventEvidence(event);
+    if (Number.isFinite(days) && days >= 28) {
+      return { evidence };
+    }
+    const inferredDays = prescriptionDaysFromText(evidence);
+    if (inferredDays >= 28) {
+      return { evidence };
+    }
+  }
+  const deliveryKind = String(visitMedication?.delivery_kind || "").trim();
+  if (deliveryKind && deliveryKind !== "outside_prescription" && deliveryKind !== "in_house") {
+    return null;
+  }
+  for (const sentence of splitClinicalSentences(clinicalText)) {
+    if (!/(処方|処方箋|院外|院内|投薬)/u.test(sentence)) {
+      continue;
+    }
+    if (isPastOrExternalClinicalServiceContext(sentence) || isFutureOrOrderOnlyContext(sentence) || isNegatedClinicalServiceContext(sentence)) {
+      continue;
+    }
+    if (prescriptionDaysFromText(sentence) >= 28) {
+      return { evidence: sentence };
+    }
+  }
+  return null;
+}
+
+function prescriptionDaysFromText(text = "") {
+  const match = normalizeClinicalText(text).match(/(\d{1,3})\s*日分/u);
+  const days = Number(match?.[1] || 0);
+  return Number.isFinite(days) ? days : 0;
+}
+
+function reviewOnlyIncreaseProposal({
+  proposalId,
+  title,
+  reason,
+  conditionText,
+  evidence = "",
+  potentialPoints = 0,
+  orderType = "procedure",
+  source = "increase_opportunity",
+  topicCode = "",
+  requiredInput = "",
+  resolutionOptions = []
+} = {}) {
+  return {
+    proposalId,
+    title,
+    reason,
+    conditionText,
+    basis: "カルテ本文と病名から、算定漏れの可能性として抽出しました。条件確認が必要なため自動算定には入れていません。",
+    evidence,
+    actionType: "not_billable_now",
+    potentialPoints: Number(potentialPoints || 0),
+    orderType,
+    source,
+    policy: {
+      generationSource: "conditional_independent",
+      riskGate: "review_only",
+      requiredInput
+    },
+    resolutionOptions: asArray(resolutionOptions)
   };
 }
 

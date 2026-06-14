@@ -1528,6 +1528,22 @@ body:has(.fee-shell--detail) {
   line-height: 1.45;
 }
 
+.issue-resolution-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.issue-resolution-options span {
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #344054;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .candidate-line-status {
   border-radius: 999px;
   background: #eef4ff;
@@ -1708,6 +1724,15 @@ body:has(.fee-shell--detail) {
   color: #34445c;
   line-height: 1.6;
   white-space: pre-line;
+}
+
+.fee-modal-option-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: #34445c;
+  font-weight: 800;
 }
 
 .modal-point-summary {

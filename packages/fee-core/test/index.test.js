@@ -503,7 +503,7 @@ test("adopts structured increase proposals into receipt totals", () => {
   assert.equal(workbench.includedTotalPoints, 115);
 });
 
-test("keeps review-only proposals out of proposals and receipt totals", () => {
+test("shows review-only increase proposals without adding them to receipt totals", () => {
   const session = buildFeeSession({
     orgId: "org_123",
     createdByMemberId: "member_1",
@@ -567,9 +567,10 @@ test("keeps review-only proposals out of proposals and receipt totals", () => {
     now: "2026-06-07T00:04:00.000Z"
   });
 
-  assert.equal(initialWorkbench.proposals.length, 0);
-  assert.equal(initialWorkbench.issues.length, 1);
-  assert.equal(initialWorkbench.issues[0].reviewOnly, true);
+  assert.equal(initialWorkbench.proposals.length, 1);
+  assert.equal(initialWorkbench.proposals[0].reviewOnly, true);
+  assert.equal(initialWorkbench.proposals[0].canAdopt, false);
+  assert.equal(initialWorkbench.issues.length, 0);
   assert.equal(receiptDraft.totalPoints, 75);
   assert.equal(receiptDraft.lines.some((line) => line.sourceProposalId === "management_review_only"), false);
   assert.equal(workbench.proposals.length, 0);

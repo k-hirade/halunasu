@@ -1175,6 +1175,7 @@ function buildSummary(results, meta) {
   const failedWithoutKnownGaps = failed.filter((item) => !item.hasKnownProductGap);
   const passed = results.length - failed.length;
   const stability = buildStabilitySummary(results, meta.repeat || 1);
+  const safety = buildSafetySummary(results);
   const clinicalStructuringSources = countBy(results, (item) => (
     item.durationMs?.clinicalStructuringSource
     || item.actual?.clinicalExtractionVersion?.source
@@ -1197,6 +1198,7 @@ function buildSummary(results, meta) {
     effectivePassRateExcludingKnownProductGaps: round(passed / Math.max(1, results.length - failedKnownGapResults.length)),
     clinicalStructuringSources,
     clinicalStructuringFallbackRate: round(Number(clinicalStructuringSources.rules_fallback || 0) / Math.max(1, results.length)),
+    safety,
     stability,
     knownProductGaps: {
       totalCases: knownGapResults.length,
@@ -1245,6 +1247,41 @@ function buildSummary(results, meta) {
         missingBillingSignals: item.missing.billingSignals || []
       }))
   };
+}
+
+function buildSafetySummary(results = []) {
+  const total = results.length;
+  const forbiddenCandidateCases = results.filter((item) => (item.unexpected?.forbiddenCandidateViolations || []).length > 0);
+  const confirmedForbiddenCases = results.filter((item) => (item.unexpected?.confirmedForbiddenCandidates || []).length > 0);
+  const unexpectedCodeCases = results.filter((item) => (item.unexpected?.unexpectedCandidateCodes || []).length > 0);
+  const missingReviewTopicCases = results.filter((item) => (item.missing?.reviewTopics || []).length > 0);
+  const missingCandidateCodeCases = results.filter((item) => (item.missing?.candidateCodes || []).length > 0);
+  return {
+    evaluatedCases: total,
+    forbiddenCandidateViolationCases: forbiddenCandidateCases.length,
+    forbiddenCandidateViolationCount: forbiddenCandidateCases.reduce((sum, item) => sum + (item.unexpected?.forbiddenCandidateViolations || []).length, 0),
+    confirmedForbiddenCases: confirmedForbiddenCases.length,
+    confirmedForbiddenCount: confirmedForbiddenCases.reduce((sum, item) => sum + (item.unexpected?.confirmedForbiddenCandidates || []).length, 0),
+    unsafeAutoBillingRate: round(confirmedForbiddenCases.length / Math.max(1, total)),
+    unexpectedCandidateCodeCases: unexpectedCodeCases.length,
+    unexpectedCandidateCodeCount: unexpectedCodeCases.reduce((sum, item) => sum + (item.unexpected?.unexpectedCandidateCodes || []).length, 0),
+    missingReviewTopicCases: missingReviewTopicCases.length,
+    missingReviewTopicCount: missingReviewTopicCases.reduce((sum, item) => sum + (item.missing?.reviewTopics || []).length, 0),
+    missingCandidateCodeCases: missingCandidateCodeCases.length,
+    missingCandidateCodeCount: missingCandidateCodeCases.reduce((sum, item) => sum + (item.missing?.candidateCodes || []).length, 0),
+    avgCandidateCodePrecision: averageMetric(results, (item) => item.accuracy?.candidateCodePrecision),
+    avgCandidateCodeRecall: averageMetric(results, (item) => item.accuracy?.candidateCodeRecall),
+    avgBillingSignalRecall: averageMetric(results, (item) => item.accuracy?.billingSignalRecall),
+    avgReviewTopicRecall: averageMetric(results, (item) => item.accuracy?.reviewTopicRecall)
+  };
+}
+
+function averageMetric(items = [], picker = () => null) {
+  const values = items
+    .map((item) => picker(item))
+    .filter((value) => typeof value === "number" && Number.isFinite(value));
+  if (!values.length) return null;
+  return round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
 
 function buildStabilitySummary(results = [], repeat = 1) {
@@ -1353,6 +1390,23 @@ function markdownReport(report) {
   }
   if (report.summary.knownProductGaps?.totalCases) {
     lines.push(`- Known product gap cases: ${report.summary.knownProductGaps.totalCases} (failed: ${report.summary.knownProductGaps.failed})`);
+  }
+  lines.push("");
+  lines.push("## Safety Metrics");
+  lines.push("");
+  if (report.summary.safety) {
+    const safety = report.summary.safety;
+    lines.push(`- Unsafe auto-billing rate: ${Math.round((safety.unsafeAutoBillingRate || 0) * 100)}% (${safety.confirmedForbiddenCases}/${safety.evaluatedCases} cases)`);
+    lines.push(`- Forbidden candidate violations: ${safety.forbiddenCandidateViolationCount} in ${safety.forbiddenCandidateViolationCases} cases`);
+    lines.push(`- Unexpected candidate codes: ${safety.unexpectedCandidateCodeCount} in ${safety.unexpectedCandidateCodeCases} cases`);
+    lines.push(`- Missing review topics: ${safety.missingReviewTopicCount} in ${safety.missingReviewTopicCases} cases`);
+    lines.push(`- Missing candidate codes: ${safety.missingCandidateCodeCount} in ${safety.missingCandidateCodeCases} cases`);
+    lines.push(`- Avg candidate code precision: ${safety.avgCandidateCodePrecision === null ? "-" : `${Math.round(safety.avgCandidateCodePrecision * 100)}%`}`);
+    lines.push(`- Avg candidate code recall: ${safety.avgCandidateCodeRecall === null ? "-" : `${Math.round(safety.avgCandidateCodeRecall * 100)}%`}`);
+    lines.push(`- Avg billing signal recall: ${safety.avgBillingSignalRecall === null ? "-" : `${Math.round(safety.avgBillingSignalRecall * 100)}%`}`);
+    lines.push(`- Avg review topic recall: ${safety.avgReviewTopicRecall === null ? "-" : `${Math.round(safety.avgReviewTopicRecall * 100)}%`}`);
+  } else {
+    lines.push("- not available");
   }
   lines.push("");
   lines.push("## Known Product Gaps");
