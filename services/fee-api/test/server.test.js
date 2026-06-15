@@ -7323,6 +7323,20 @@ test("accepts evidence quotes wrapped by LLM quotation marks without weakening a
   assert.equal(cbcFact.verification.status, "verified");
   assert.ok(masterCandidates.some((candidate) => candidate.sourceFactId === crpFact.factId && candidate.masterCode === "160054710"));
   assert.ok(billingCandidates.some((candidate) => candidate.sourceFactId === crpFact.factId && candidate.code === "160054710"));
+  assert.ok((calculation.body.calculationResult.clinicalExtraction.billingIntentCount || 0) >= 2);
+  assert.ok(billingCandidates.some((candidate) => (
+    candidate.sourceFactId === crpFact.factId
+    && String(candidate.sourceBillingIntentId || "").startsWith("intent_")
+  )));
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => (
+    item.stage === "billing_intent_builder"
+    && Number(item.intentCount || 0) >= 2
+  )));
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => (
+    item.stage === "master_linker"
+    && item.sourceFactId === crpFact.factId
+    && String(item.sourceBillingIntentId || "").startsWith("intent_")
+  )));
   assert.equal(crpFact.verification.reasons.includes("evidence_quote_approximate"), false);
   assert.equal(cbcFact.verification.reasons.includes("evidence_quote_approximate"), false);
   assert.ok(crpFact.evidenceRefs.some((ref) => ref.quote === "院内で血算とCRPを測定。"));

@@ -617,6 +617,7 @@ export async function buildClinicalCalculationPreparation({
   const canonicalClinicalFacts = [];
   const masterCandidates = [];
   const billingCandidates = [];
+  const billingIntents = [];
   const reviewIssues = [];
   const clinicalTrace = [];
   const metrics = {
@@ -684,6 +685,7 @@ export async function buildClinicalCalculationPreparation({
       canonicalClinicalFacts.push(...asArray(structured.canonicalClinicalFacts));
       masterCandidates.push(...asArray(structured.masterCandidates));
       billingCandidates.push(...asArray(structured.billingCandidates));
+      billingIntents.push(...asArray(structured.billingIntents));
       reviewIssues.push(...asArray(structured.reviewIssues));
       clinicalTrace.push(...asArray(structured.clinicalTrace));
     } else {
@@ -748,6 +750,7 @@ export async function buildClinicalCalculationPreparation({
       clinicalEventCount: clinicalEvents.length,
       masterCandidateCount: masterCandidates.length,
       billingCandidateCount: billingCandidates.length,
+      billingIntentCount: billingIntents.length,
       reviewIssueCount: reviewIssues.length,
       clinicalTrace,
       visitFacts: extractedVisitFacts,
@@ -1193,12 +1196,7 @@ function verifyClinicalEventEvidence(event = {}, preprocessing = null) {
   if (evidenceRefs.some((ref) => ref.approximate)) {
     reasons.push("evidence_quote_approximate");
   }
-  const contexts = uniqueStrings([
-    quote,
-    ...evidenceRefs
-      .filter((ref) => !ref.approximate)
-      .map((ref) => ref.verificationContext || ref.quote || "")
-  ]).join("\n");
+  const contexts = verificationContextsForClinicalEvent(event, evidenceRefs, quote).join("\n");
   const billable = isBillableClinicalEvent(event);
   const type = normalizeClinicalEventType(event);
   const reviewOnlyDomain = reviewOnlyClinicalEventDomain(event);
@@ -1230,6 +1228,103 @@ function verifyClinicalEventEvidence(event = {}, preprocessing = null) {
     evidenceRefs,
     checkedAtRuleSetVersion: FEE_CLINICAL_RULE_SET_VERSION
   };
+}
+
+function verificationContextsForClinicalEvent(event = {}, evidenceRefs = [], quote = "") {
+  const contexts = [];
+  const rawQuote = String(quote || "").trim();
+  if (rawQuote) {
+    contexts.push(rawQuote);
+  }
+  for (const ref of asArray(evidenceRefs)) {
+    if (ref?.approximate || ref?.notFoundInText) {
+      continue;
+    }
+    const context = scopedVerificationContextForClinicalEvent(event, ref);
+    if (context) {
+      contexts.push(context);
+    }
+  }
+  return uniqueStrings(contexts).filter(Boolean);
+}
+
+function scopedVerificationContextForClinicalEvent(event = {}, evidenceRef = {}) {
+  const context = String(evidenceRef.verificationContext || evidenceRef.quote || "").trim();
+  if (!context) {
+    return "";
+  }
+  const tokens = clinicalEventScopeTokens(event);
+  if (!tokens.length) {
+    return context;
+  }
+  const clauses = splitClinicalClauses(context);
+  const matchedClauses = clauses.filter((clause) => tokens.some((token) => clause.includes(token)));
+  if (!matchedClauses.length) {
+    return context;
+  }
+
+  // Ownership cues such as "前医で" at the beginning of a sentence often scope
+  // over every following comma-separated clause. Keep the whole sentence so we
+  // do not accidentally turn outside/past references into current in-house facts.
+  if (leadingOwnershipOrPastCueScopesOverContext(context, matchedClauses[0])) {
+    return context;
+  }
+  return uniqueStrings(matchedClauses).join("。");
+}
+
+function splitClinicalClauses(text = "") {
+  return String(text || "")
+    .split(/[。．.!！?？\n\r、，；;]+/u)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function leadingOwnershipOrPastCueScopesOverContext(context = "", firstMatchedClause = "") {
+  const value = String(context || "");
+  const clause = String(firstMatchedClause || "");
+  if (!value || !clause) {
+    return false;
+  }
+  const firstMatchIndex = value.indexOf(clause);
+  const prefix = firstMatchIndex > 0 ? value.slice(0, firstMatchIndex) : "";
+  const sameSentencePrefix = prefix.split(/[。．.!！?？\n\r]/u).pop() || "";
+  if (!/(前医|他院|紹介状|持参|健診|先月|前回|以前|過去)/u.test(sameSentencePrefix)) {
+    return false;
+  }
+  const cueIndex = Math.max(
+    sameSentencePrefix.lastIndexOf("前医"),
+    sameSentencePrefix.lastIndexOf("他院"),
+    sameSentencePrefix.lastIndexOf("紹介状"),
+    sameSentencePrefix.lastIndexOf("持参"),
+    sameSentencePrefix.lastIndexOf("健診"),
+    sameSentencePrefix.lastIndexOf("先月"),
+    sameSentencePrefix.lastIndexOf("前回"),
+    sameSentencePrefix.lastIndexOf("以前"),
+    sameSentencePrefix.lastIndexOf("過去")
+  );
+  const afterCue = cueIndex >= 0 ? sameSentencePrefix.slice(cueIndex) : sameSentencePrefix;
+  return !/(本日|今回|当院|院内|自院|当日)/u.test(afterCue);
+}
+
+function clinicalEventScopeTokens(event = {}) {
+  const tokens = [
+    clinicalEventName(event),
+    event?.body_site,
+    event?.bodySite,
+    event?.modality,
+    event?.specimen,
+    event?.collection_method,
+    ...labConceptsFromClinicalEventName(event).flatMap((concept) => [
+      concept.name,
+      concept.query,
+      ...asArray(concept.aliases)
+    ])
+  ];
+  return uniqueStrings(tokens
+    .map((token) => normalizeClinicalText(token))
+    .filter((token) => token && token.length >= 2)
+  ).slice(0, 12);
 }
 
 async function inferStructuredClinicalCalculationOptions({
@@ -1479,6 +1574,7 @@ function clinicalExtractionMetadata({
   clinicalEventCount = 0,
   masterCandidateCount = 0,
   billingCandidateCount = 0,
+  billingIntentCount = 0,
   reviewIssueCount = 0,
   clinicalTrace = [],
   visitFacts = null,
@@ -1510,6 +1606,7 @@ function clinicalExtractionMetadata({
     clinicalEventCount: Number(clinicalEventCount || 0),
     masterCandidateCount: Number(masterCandidateCount || 0),
     billingCandidateCount: Number(billingCandidateCount || 0),
+    billingIntentCount: Number(billingIntentCount || 0),
     reviewIssueCount: Number(reviewIssueCount || 0),
     visitFacts: normalizeVisitFactsForTrace(visitFacts),
     checklistFindingStatusCounts: checklistFindingStatusCounts || null,
@@ -1687,7 +1784,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   }
   const {
     canonicalClinicalFactsForCalculation,
-    clinicalEventsForCalculation
+    clinicalEventsForCalculation,
+    billingIntentsForCalculation
   } = buildCanonicalFactCalculationLedger(clinicalEvents, {
     preprocessing: clinicalTextPreprocessing
   });
@@ -1707,6 +1805,20 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     )).length,
     reviewFactCount: canonicalClinicalFactsForCalculation.filter((fact) => fact.status === "review_required").length,
     excludedFactCount: canonicalClinicalFactsForCalculation.filter((fact) => fact.status === "excluded").length
+  });
+  clinicalTrace.push({
+    stage: "billing_intent_builder",
+    outcome: "prepared",
+    source: "canonical_clinical_facts",
+    intentCount: billingIntentsForCalculation.length,
+    intents: billingIntentsForCalculation.slice(0, 24).map((intent) => ({
+      billingIntentId: intent.billingIntentId,
+      sourceFactId: intent.sourceFactId,
+      intentType: intent.intentType,
+      conceptId: intent.conceptId,
+      clinicalName: intent.clinicalName
+    })),
+    message: "verified_canonical_facts_converted_to_billing_intents"
   });
   const suppressedClinicalFactWarnings = [];
   let hasCaseLevelLabProcedureCode = false;
@@ -2170,6 +2282,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       masterCandidates,
       preprocessing: clinicalTextPreprocessing
     })),
+    billingIntents: normalizeBillingIntents(billingIntentsForCalculation),
     masterCandidates: normalizeMasterCandidates(masterCandidates),
     billingCandidates: normalizeBillingCandidates(billingCandidates),
     reviewIssues: normalizeReviewIssues(reviewIssuesWithFactLineage),
@@ -2207,11 +2320,16 @@ function buildCanonicalFactCalculationLedger(clinicalEvents = [], { preprocessin
   const canonicalClinicalFactsForCalculation = normalizeCanonicalClinicalFacts(
     canonicalClinicalFactsFromEvents(clinicalEvents, { preprocessing })
   );
-  const clinicalEventsForCalculation = clinicalEventsFromCanonicalClinicalFacts(
+  const billingIntentsForCalculation = billingIntentsFromCanonicalClinicalFacts(canonicalClinicalFactsForCalculation);
+  const clinicalEventsForCalculation = attachBillingIntentsToClinicalEvents(clinicalEventsFromCanonicalClinicalFacts(
     canonicalClinicalFactsForCalculation,
     clinicalEvents
-  );
-  return { canonicalClinicalFactsForCalculation, clinicalEventsForCalculation };
+  ), billingIntentsForCalculation);
+  return {
+    canonicalClinicalFactsForCalculation,
+    clinicalEventsForCalculation,
+    billingIntentsForCalculation
+  };
 }
 
 const CANONICAL_FACT_AUTOMATIC_BILLING_STATUSES = Object.freeze([
@@ -2219,8 +2337,91 @@ const CANONICAL_FACT_AUTOMATIC_BILLING_STATUSES = Object.freeze([
   "eligible_for_billing"
 ]);
 
+function billingIntentsFromCanonicalClinicalFacts(facts = []) {
+  return normalizeBillingIntents(asArray(facts)
+    .filter((fact) => canonicalFactCanProceedToAutomaticBillingFact(fact))
+    .map((fact) => {
+      const sourceFactId = String(fact?.factId || fact?.fact_id || "").trim();
+      const intentType = billingIntentTypeFromFact(fact);
+      return {
+        billingIntentId: `intent_${candidateIdPart([sourceFactId, intentType].join("_"))}`,
+        sourceFactId,
+        intentType,
+        conceptId: String(fact?.conceptId || fact?.concept_id || "").trim(),
+        eventType: String(fact?.eventType || fact?.event_type || "").trim(),
+        billingDomain: String(fact?.billingDomain || fact?.billing_domain || "").trim(),
+        clinicalName: String(fact?.clinicalName || fact?.clinical_name || "").trim(),
+        evidenceRefs: asArray(fact?.evidenceRefs || fact?.evidence_refs),
+        status: "ready_for_master_linking",
+        source: "canonical_clinical_fact"
+      };
+    }));
+}
+
+function normalizeBillingIntents(values = []) {
+  const seen = new Set();
+  const result = [];
+  for (const intent of asArray(values)) {
+    if (!intent || typeof intent !== "object") {
+      continue;
+    }
+    const key = [
+      intent.billingIntentId,
+      intent.sourceFactId,
+      intent.intentType
+    ].join("|");
+    if (!intent.sourceFactId || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(intent);
+  }
+  return result.slice(0, 120);
+}
+
+function billingIntentTypeFromFact(fact = {}) {
+  const type = String(fact?.eventType || fact?.event_type || "").trim();
+  if (type === "lab" || type === "exam") return "lab_test";
+  if (type === "imaging") return "imaging_order";
+  if (type === "medication") return "medication_order";
+  if (type === "material") return "material_input";
+  if (type === "procedure" || type === "treatment") return "procedure_code";
+  if (type === "management" || type === "counseling") return "management_review";
+  return "clinical_event";
+}
+
+function canonicalFactCanProceedToAutomaticBillingFact(fact = {}) {
+  const status = String(fact?.status || "").trim();
+  const verificationStatus = String(fact?.verification?.status || fact?.verificationStatus || fact?.verification_status || "").trim();
+  return CANONICAL_FACT_AUTOMATIC_BILLING_STATUSES.includes(status)
+    && verificationStatus === "verified";
+}
+
+function attachBillingIntentsToClinicalEvents(events = [], billingIntents = []) {
+  const intentByFactId = new Map(asArray(billingIntents)
+    .map((intent) => [String(intent.sourceFactId || "").trim(), intent])
+    .filter(([factId]) => factId));
+  return asArray(events).map((event) => {
+    const factId = sourceFactIdFromClinicalEvent(event);
+    const intent = factId ? intentByFactId.get(factId) : null;
+    if (!intent) {
+      return event;
+    }
+    return {
+      ...event,
+      billingIntentId: intent.billingIntentId,
+      sourceBillingIntentId: intent.billingIntentId,
+      billingIntentType: intent.intentType
+    };
+  });
+}
+
 function sourceFactIdFromClinicalEvent(event = {}) {
   return String(event?.canonicalFactId || event?.sourceFactId || event?.source_fact_id || "").trim();
+}
+
+function sourceBillingIntentIdFromClinicalEvent(event = {}) {
+  return String(event?.billingIntentId || event?.sourceBillingIntentId || event?.source_billing_intent_id || "").trim();
 }
 
 function canonicalFactStatusFromClinicalEvent(event = {}) {
@@ -2668,6 +2869,7 @@ function masterCandidateFromItem(item = {}, event = {}, {
     masterCandidateId: `mc_${candidateIdPart([event?.clinicalEventId, code, searchQuery].join("_"))}`,
     clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
     sourceFactId: sourceFactIdFromClinicalEvent(event),
+    sourceBillingIntentId: sourceBillingIntentIdFromClinicalEvent(event),
     masterType,
     masterCode: code,
     masterName: name,
@@ -2895,6 +3097,7 @@ function clinicalTraceEvent({
     stage,
     clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
     sourceFactId: sourceFactIdFromClinicalEvent(event),
+    sourceBillingIntentId: sourceBillingIntentIdFromClinicalEvent(event),
     canonicalFactStatus: canonicalFactStatusFromClinicalEvent(event) || "",
     evidenceVerificationStatus: event?.evidenceVerificationStatus || "",
     eventType: normalizeClinicalEventType(event),
@@ -2936,7 +3139,8 @@ function billingCandidatesFromProcedureResult(event = {}, result = {}) {
     .map((candidate) => ({
       billingCandidateId: `bc_${candidateIdPart([event?.clinicalEventId, candidate.masterCode].join("_"))}`,
       clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
-      sourceFactId: sourceFactIdFromClinicalEvent(event),
+      sourceFactId: sourceFactIdFromClinicalEvent(event) || candidate.sourceFactId || "",
+      sourceBillingIntentId: sourceBillingIntentIdFromClinicalEvent(event) || candidate.sourceBillingIntentId || "",
       masterCandidateId: candidate.masterCandidateId,
       candidateKind: "procedure",
       eligibilityStatus: "billable",
@@ -2960,6 +3164,7 @@ function billingCandidatesFromMedicationResult(event = {}, result = {}) {
     billingCandidateId: `bc_${candidateIdPart([event?.clinicalEventId, result.order.drug_code].join("_"))}`,
     clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
     sourceFactId: sourceFactIdFromClinicalEvent(event),
+    sourceBillingIntentId: sourceBillingIntentIdFromClinicalEvent(event),
     masterCandidateId: candidate?.masterCandidateId || "",
     candidateKind: "drug",
     eligibilityStatus: "billable",
@@ -2980,6 +3185,7 @@ function billingCandidatesFromMaterialResult(event = {}, result = {}) {
     billingCandidateId: `bc_${candidateIdPart([event?.clinicalEventId, result.input.code].join("_"))}`,
     clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
     sourceFactId: sourceFactIdFromClinicalEvent(event),
+    sourceBillingIntentId: sourceBillingIntentIdFromClinicalEvent(event),
     masterCandidateId: candidate?.masterCandidateId || "",
     candidateKind: "material",
     eligibilityStatus: "billable",
@@ -2999,6 +3205,7 @@ function billingCandidateFromProposal(event = {}, proposal = {}) {
     billingCandidateId: `bc_${candidateIdPart([event?.clinicalEventId, proposal.proposalId].join("_"))}`,
     clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
     sourceFactId: sourceFactIdFromClinicalEvent(event),
+    sourceBillingIntentId: sourceBillingIntentIdFromClinicalEvent(event),
     masterCandidateId: "",
     candidateKind: "proposal",
     eligibilityStatus: "proposal",
@@ -6740,7 +6947,7 @@ async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculato
     categoryLabel,
     extraQueries: options.queries
   });
-  return searchPerformedProcedureCode(feeCalculator, {
+  return linkProcedureBillingIntentToMaster(feeCalculator, {
     event,
     name,
     categoryLabel,
@@ -6749,6 +6956,36 @@ async function procedureCodesFromPerformedClinicalEvent(event = {}, feeCalculato
     resolvedMessage: options.resolvedMessage || `${name || categoryLabel}を実施済みの${categoryLabel}としてマスター候補に反映しました。算定条件を確認してください。`,
     unresolvedMessage: options.unresolvedMessage || `${name || categoryLabel}は実施済みの${categoryLabel}として抽出しましたが、標準コードを自動確定できませんでした。マスター検索で確認してください。`
   });
+}
+
+async function linkProcedureBillingIntentToMaster(feeCalculator, options = {}) {
+  const result = await searchPerformedProcedureCode(feeCalculator, options);
+  const event = options.event || {};
+  const traceEvents = [
+    clinicalTraceEvent({
+      stage: "master_linker",
+      event,
+      categoryLabel: options.categoryLabel || "診療行為",
+      outcome: asArray(result?.procedureCodes).length
+        ? "linked"
+        : asArray(result?.reviewWarnings).length
+          ? "review_required"
+          : "unresolved",
+      allowedFeeCategories: options.allowedFeeCategories,
+      selected: {
+        billingIntentId: sourceBillingIntentIdFromClinicalEvent(event),
+        sourceFactId: sourceFactIdFromClinicalEvent(event),
+        queryCount: uniqueStrings(options.queries || []).length,
+        linkedCodes: asArray(result?.procedureCodes)
+      },
+      message: "master_linker_resolved_verified_fact_intent"
+    }),
+    ...asArray(result?.traceEvents)
+  ];
+  return {
+    ...result,
+    traceEvents
+  };
 }
 
 async function searchPerformedProcedureCode(feeCalculator, {
