@@ -1031,6 +1031,7 @@ body:has(.fee-shell--detail) {
   display: grid;
   gap: 12px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 14px;
 }
 
@@ -1220,6 +1221,7 @@ body:has(.fee-shell--detail) {
 .fee-work-pane-body {
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 14px;
 }
 
