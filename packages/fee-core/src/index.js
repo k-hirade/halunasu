@@ -474,7 +474,7 @@ export function buildCandidateWorkbench(session = {}, options = {}) {
   const seen = new Set();
 
   for (const item of proposalItems) {
-    if (item.status === "approved" || item.status === "rejected") {
+    if (item.status === "approved") {
       continue;
     }
     const normalized = normalizeCandidateActionItem(item);
@@ -542,7 +542,9 @@ export function buildCandidateWorkbench(session = {}, options = {}) {
   const pendingLines = lines.filter((line) => line.inclusionStatus === "pending");
   const excludedLines = lines.filter((line) => line.inclusionStatus === "excluded");
   const reviewLineCount = includedLines.filter((line) => line.reviewRequired === true).length + pendingLines.length;
-  const potentialPointsTotal = proposals.reduce((sum, item) => sum + Number(item.potentialPoints || 0), 0);
+  const potentialPointsTotal = proposals
+    .filter((item) => item.decisionStatus !== "rejected")
+    .reduce((sum, item) => sum + Number(item.potentialPoints || 0), 0);
   const coverageSummary = buildCoverageSummary({
     calculation: session.calculationResult || {},
     includedLines,

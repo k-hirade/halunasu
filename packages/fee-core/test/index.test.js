@@ -642,6 +642,74 @@ test("adopts review-only proposals with candidate lines after manual confirmatio
   assert.equal(workbench.includedLines.length, 2);
 });
 
+test("keeps rejected candidate proposals visible so they can be approved later", () => {
+  const session = buildFeeSession({
+    orgId: "org_123",
+    createdByMemberId: "member_1",
+    patientId: "patient_1",
+    facilityId: "facility_1",
+    serviceDate: "2026-06-07"
+  }, {
+    feeSessionId: "fee_rejected_proposal",
+    now: "2026-06-07T00:00:00.000Z"
+  });
+  const calculated = applyCalculationResult(session, {
+    lineItems: [{
+      lineId: "line_1",
+      code: "112007410",
+      name: "再診料",
+      orderType: "basic",
+      points: 75,
+      totalPoints: 75,
+      status: "candidate",
+      source: "outpatient_basic_fee"
+    }],
+    candidateProposals: [{
+      proposalId: "reversible_addon",
+      title: "後から採用できる加算",
+      reason: "条件を満たす場合に算定できます。",
+      conditionText: "内容を確認して採用してください。",
+      potentialPoints: 40,
+      candidateLine: {
+        code: "160000002",
+        name: "後から採用できる加算",
+        orderType: "lab",
+        points: 40,
+        totalPoints: 40,
+        status: "candidate",
+        source: "reversible_addon"
+      }
+    }]
+  }, {
+    calculationId: "calc_rejected_proposal",
+    now: "2026-06-07T00:01:00.000Z"
+  });
+  const proposal = buildCandidateWorkbench(calculated).proposals[0];
+  const rejected = applyReviewDecision(calculated, proposal.reviewItemId, {
+    status: "rejected"
+  }, {
+    now: "2026-06-07T00:02:00.000Z"
+  });
+  const rejectedWorkbench = buildCandidateWorkbench(rejected, {
+    now: "2026-06-07T00:03:00.000Z"
+  });
+  const approved = applyReviewDecision(rejected, proposal.reviewItemId, {
+    status: "approved"
+  }, {
+    now: "2026-06-07T00:04:00.000Z"
+  });
+  const receiptDraft = buildReceiptDraft(approved, {
+    now: "2026-06-07T00:05:00.000Z"
+  });
+
+  assert.equal(rejectedWorkbench.proposals.length, 1);
+  assert.equal(rejectedWorkbench.proposals[0].decisionStatus, "rejected");
+  assert.equal(rejectedWorkbench.potentialPointsTotal, 0);
+  assert.equal(buildReceiptDraft(rejected).totalPoints, 75);
+  assert.equal(receiptDraft.totalPoints, 115);
+  assert.equal(receiptDraft.lines.some((line) => line.sourceProposalId === "reversible_addon"), true);
+});
+
 test("preserves clinical event specimen and review issue policy metadata", () => {
   const session = buildFeeSession({
     orgId: "org_123",
