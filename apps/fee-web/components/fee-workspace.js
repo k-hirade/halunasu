@@ -1573,17 +1573,14 @@ function BucketHeader({ count, note, title }) {
 
 function ProposalLineRow({ disabled, item, onDecision, onOpenDetail }) {
   const canApprove = canApproveReviewItem(item);
-  const decisionStatus = ["approved", "edited", "rejected"].includes(item.decisionStatus)
-    ? item.decisionStatus
-    : "needs_review";
+  const decisionStatus = decisionSelectValue(item.decisionStatus);
   const options = canApprove
     ? [
-      { value: "needs_review", label: "提案", disabled: true },
+      { value: "needs_review", label: "確認中", disabled: true },
       { value: "approved", label: "算定する" },
-      { value: "edited", label: "保留" },
       { value: "rejected", label: "算定しない" }
     ]
-    : [{ value: "needs_review", label: item.nextActionLabel || "条件確認" }];
+    : [{ value: "needs_review", label: confirmableProposalForAdoption(item) ? "詳細で確認" : item.nextActionLabel || "条件確認" }];
   const metaLabel = [
     item.code,
     orderTypeLabel(item.orderType || item.candidateLine?.orderType),
@@ -1619,6 +1616,7 @@ function ProposalLineRow({ disabled, item, onDecision, onOpenDetail }) {
 
 function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
   const canApprove = canApproveReviewItem(item);
+  const decisionStatus = decisionSelectValue(item.decisionStatus);
   return (
     <article className={`candidate-line-row candidate-line-row--${item.inclusionStatus}`}>
       <div className="candidate-line-action">
@@ -1627,12 +1625,16 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
           disabled={disabled || !canApprove}
           className="candidate-decision-select"
           options={[
+            { value: "needs_review", label: "確認中", disabled: true },
             { value: "approved", label: "算定する" },
-            { value: "edited", label: "保留" },
             { value: "rejected", label: "算定しない" }
           ]}
-          value={item.decisionStatus}
-          onValueChange={(value) => onDecision(item.reviewItemId, value)}
+          value={decisionStatus}
+          onValueChange={(value) => {
+            if (value && value !== "needs_review") {
+              onDecision(item.reviewItemId, value);
+            }
+          }}
         />
       </div>
       <div className="candidate-line-main">
@@ -1689,10 +1691,21 @@ function IssueCard({ item, onOpenDetail }) {
 }
 
 function CandidateDetailModal({ disabled, item, onClose, onDecision }) {
+  const [confirmAdoptionChecked, setConfirmAdoptionChecked] = useState(false);
+  useEffect(() => {
+    setConfirmAdoptionChecked(false);
+  }, [item?.reviewItemId]);
   if (!item) {
     return null;
   }
   const canDecide = Boolean(item.reviewItemId);
+  const canDirectAdopt = canDecide && (
+    item.kind === "line"
+      ? canApproveReviewItem(item)
+      : item.kind === "proposal" && item.canAdopt === true
+  );
+  const canConfirmAdopt = canDecide && confirmableProposalForAdoption(item);
+  const canReject = canDecide && item.reviewOnly !== true;
   return (
     <div className="fee-modal-overlay" role="presentation" onMouseDown={onClose}>
       <section className="fee-modal-card" role="dialog" aria-modal="true" aria-label={item.displayTitle || item.name || "算定候補の説明"} onMouseDown={(event) => event.stopPropagation()}>
@@ -1738,21 +1751,36 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision }) {
               <p>この項目は自動採用できません。人手で内容を確認し、必要ならカルテまたは手入力オーダーを修正してください。</p>
             </section>
           ) : null}
+          {canConfirmAdopt ? (
+            <section className="fee-modal-confirm-adoption">
+              <label>
+                <input
+                  checked={confirmAdoptionChecked}
+                  disabled={disabled}
+                  onChange={(event) => setConfirmAdoptionChecked(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>条件を確認したので算定に含める</span>
+              </label>
+              <p>この提案は自動採用にはしていませんが、候補コードと点数はあります。内容を確認した場合のみ算定中へ移します。</p>
+            </section>
+          ) : null}
         </div>
         <footer className="fee-modal-footer">
-          {canDecide && item.kind === "line" && canApproveReviewItem(item) ? (
+          {canDirectAdopt ? (
             <>
-              <button className="btn btn--primary" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">算定する</button>
-              <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">保留</button>
+              <button className="btn btn--primary" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">
+                {item.kind === "proposal" ? item.nextActionLabel || `算定する ${item.pointsLabel || ""}`.trim() : "算定する"}
+              </button>
+              {canReject ? (
+                <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected")} type="button">算定しない</button>
+              ) : null}
+            </>
+          ) : canConfirmAdopt ? (
+            <>
+              <button className="btn btn--primary" disabled={disabled || !confirmAdoptionChecked} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">算定する</button>
               <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected")} type="button">算定しない</button>
             </>
-          ) : canDecide && item.kind === "proposal" && item.canAdopt ? (
-            <>
-              <button className="btn btn--primary" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">{item.nextActionLabel || `算定する ${item.pointsLabel || ""}`.trim()}</button>
-              <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">保留</button>
-            </>
-          ) : canDecide ? (
-            <button className="btn btn--primary" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "edited")} type="button">保留にする</button>
           ) : null}
         </footer>
       </section>
@@ -1829,6 +1857,22 @@ function canApproveReviewItem(item = {}) {
   return item.reviewOnly !== true
     && item.actionType !== "not_billable_now"
     && item.canAdopt !== false;
+}
+
+function decisionSelectValue(value = "") {
+  return ["approved", "rejected"].includes(value) ? value : "needs_review";
+}
+
+function confirmableProposalForAdoption(item = {}) {
+  const candidateLine = item.candidateLine || item.candidateProposal?.candidateLine || null;
+  const hasCandidateLine = candidateLine && typeof candidateLine === "object" && !Array.isArray(candidateLine);
+  const points = Number(item.potentialPoints || candidateLine?.totalPoints || candidateLine?.points || 0);
+  return item.kind === "proposal"
+    && item.canAdopt !== true
+    && item.reviewOnly !== true
+    && item.actionType !== "not_billable_now"
+    && hasCandidateLine
+    && points > 0;
 }
 
 function ReceiptDraftPane({ disabled, onCopyReceipt, receiptDraft, selected }) {
@@ -2615,7 +2659,7 @@ function statusLabel(value) {
     confirmed: "確認済み",
     approved: "算定する",
     rejected: "算定しない",
-    edited: "保留",
+    edited: "確認中",
     not_calculated: "未算定"
   })[value] || value || "-";
 }

@@ -2026,6 +2026,33 @@ body:has(.fee-shell--detail) {
   font-weight: 800;
 }
 
+.fee-modal-confirm-adoption {
+  border: 1px solid #bfe7db;
+  border-radius: 8px;
+  background: #f7fcfa;
+  padding: 12px;
+}
+
+.fee-modal-confirm-adoption label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: #26364f;
+  font-weight: 900;
+}
+
+.fee-modal-confirm-adoption input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand);
+}
+
+.fee-modal-confirm-adoption p {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .modal-point-summary {
   border: 1px solid #bfe7db;
   border-radius: 8px;

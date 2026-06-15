@@ -1384,7 +1384,7 @@ function inclusionStatusLabel(status) {
   return {
     included: "算定中",
     excluded: "算定しない",
-    pending: "保留"
+    pending: "確認中"
   }[status] || "算定中";
 }
 
@@ -1400,7 +1400,7 @@ function proposalConditionText(title = "", reason = "") {
     return "施設基準を地方厚生局に届け出済みなら、該当する加算を算定できます。";
   }
   if (/MRI|CT|画像|撮影/u.test(text)) {
-    return "実際に当日実施した検査なら算定できます。予定や依頼だけの場合は保留にしてください。";
+    return "実際に当日実施した検査なら算定できます。予定や依頼だけの場合は算定しないに変更してください。";
   }
   if (/薬剤|処方|数量|日数/u.test(text)) {
     return "必要な情報: 1回量、1日回数、日数または総量。例: 60mg 1日2回 7日分。入力後に薬剤料などを再計算できます。";
@@ -1408,7 +1408,7 @@ function proposalConditionText(title = "", reason = "") {
   if (/病名|コメント/u.test(text)) {
     return "必要な病名またはレセプトコメントを確認・追記できれば算定できます。";
   }
-  return "条件を満たす場合は算定できます。満たさない場合は保留にしてください。";
+  return "条件を満たす場合は算定できます。満たさない場合は算定しないに変更してください。";
 }
 
 function proposalPotentialPoints(item = {}, title = "", reason = "") {

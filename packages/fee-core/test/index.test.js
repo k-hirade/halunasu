@@ -503,6 +503,71 @@ test("adopts structured increase proposals into receipt totals", () => {
   assert.equal(workbench.includedTotalPoints, 115);
 });
 
+test("adopts confirm-required proposals with candidate lines after manual confirmation", () => {
+  const session = buildFeeSession({
+    orgId: "org_123",
+    createdByMemberId: "member_1",
+    patientId: "patient_1",
+    facilityId: "facility_1",
+    serviceDate: "2026-06-07"
+  }, {
+    feeSessionId: "fee_confirm_required_proposal",
+    now: "2026-06-07T00:00:00.000Z"
+  });
+  const calculated = applyCalculationResult(session, {
+    lineItems: [{
+      lineId: "line_1",
+      code: "112007410",
+      name: "再診料",
+      orderType: "basic",
+      points: 75,
+      totalPoints: 75,
+      status: "candidate",
+      source: "outpatient_basic_fee"
+    }],
+    candidateProposals: [{
+      proposalId: "manual_confirm_addon",
+      title: "確認後に算定できる加算",
+      reason: "条件確認が必要です。",
+      conditionText: "条件を確認した場合のみ算定してください。",
+      potentialPoints: 20,
+      actionType: "confirm_required",
+      candidateLine: {
+        code: "160000001",
+        name: "確認後加算",
+        orderType: "lab",
+        points: 20,
+        totalPoints: 20,
+        status: "candidate",
+        source: "manual_confirm"
+      }
+    }]
+  }, {
+    calculationId: "calc_confirm_required_proposal",
+    now: "2026-06-07T00:01:00.000Z"
+  });
+  const proposal = buildCandidateWorkbench(calculated).proposals[0];
+  const adopted = applyReviewDecision(calculated, proposal.reviewItemId, {
+    status: "approved"
+  }, {
+    now: "2026-06-07T00:02:00.000Z"
+  });
+  const receiptDraft = buildReceiptDraft(adopted, {
+    now: "2026-06-07T00:03:00.000Z"
+  });
+  const workbench = buildCandidateWorkbench(adopted, {
+    receiptDraft,
+    now: "2026-06-07T00:04:00.000Z"
+  });
+
+  assert.equal(proposal.canAdopt, false);
+  assert.equal(proposal.actionType, "confirm_required");
+  assert.equal(receiptDraft.totalPoints, 95);
+  assert.equal(receiptDraft.lines.some((line) => line.sourceProposalId === "manual_confirm_addon"), true);
+  assert.equal(workbench.proposals.length, 0);
+  assert.equal(workbench.includedLines.length, 2);
+});
+
 test("shows review-only increase proposals without adding them to receipt totals", () => {
   const session = buildFeeSession({
     orgId: "org_123",
