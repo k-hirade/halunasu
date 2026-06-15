@@ -1301,7 +1301,7 @@ function FeeSettingsModal({
 
 function PatientPicker({ filteredPatients, isOpen, onFilterChange, onOpenChange, onSelect, patientFilter, selectedPatient }) {
   const selectedLabel = selectedPatient
-    ? `${selectedPatient.displayName || "患者名未入力"} (${selectedPatient.patientCode || selectedPatient.primaryPatientNumber || selectedPatient.externalPatientIds?.[0] || selectedPatient.patientId})`
+    ? selectedPatient.displayName || "患者名未入力"
     : "患者を選択";
   return (
     <div className="patient-picker-field">
