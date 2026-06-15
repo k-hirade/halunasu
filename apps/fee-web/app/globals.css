@@ -1747,6 +1747,16 @@ body:has(.fee-shell--detail) {
   color: #667085;
 }
 
+.candidate-line-row--proposal {
+  border-color: #bfe7db;
+  background: #f7fcfa;
+}
+
+.candidate-line-row--confirm-required {
+  border-color: var(--line);
+  background: #fbfdff;
+}
+
 .candidate-line-row--excluded .candidate-line-main strong {
   text-decoration: line-through;
 }

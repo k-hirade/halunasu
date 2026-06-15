@@ -152,7 +152,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -165,28 +165,40 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         },
         {
-          "name": "Ｂ－Ｖ",
-          "points": 40
-        },
-        {
+          "code": "160182770",
           "name": "検体検査管理加算（２）",
-          "points": 100
+          "points": 100,
+          "source": "lab_management"
+        },
+        {
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -330,7 +342,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 472,
+        "totalPoints": 473,
         "candidateCodes": [
           "160169450",
           "160044110",
@@ -341,20 +353,28 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160169450",
           "name": "インフルエンザウイルス抗原定性",
-          "points": 132
+          "points": 132,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160044110",
           "name": "Ａ群β溶連菌迅速試験定性",
-          "points": 121
+          "points": 121,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "d026"
         }
       ],
       "evidence": [
@@ -493,7 +513,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
           "620008991",
           "112007410",
@@ -505,24 +525,36 @@
       },
       "billingTargets": [
         {
+          "code": "620008991",
+          "name": "ゲーベンクリーム１％",
+          "points": 1.28,
+          "quantity": 10,
+          "totalPoints": 13,
+          "source": "drug_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
+          "points": 76,
+          "source": "outpatient_basic_fee"
         },
         {
-          "name": "熱傷処置（１００ｃｍ２未満）",
-          "points": 135
-        },
-        {
-          "name": "ゲーベンクリーム１％ 10g",
-          "points": 13
-        },
-        {
+          "code": "120001010",
           "name": "調剤料（外用薬）",
-          "points": 8
+          "points": 8,
+          "source": "medication_fee"
         },
         {
+          "code": "120001210",
           "name": "処方料（その他）",
-          "points": 42
+          "points": 42,
+          "source": "medication_fee"
+        },
+        {
+          "code": "140032010",
+          "name": "熱傷処置（１００ｃｍ２未満）",
+          "points": 135,
+          "source": "treatment_fee"
         }
       ],
       "evidence": [
@@ -646,7 +678,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 359,
         "candidateCodes": [
           "111000110",
           "120002910",
@@ -656,16 +688,22 @@
       },
       "billingTargets": [
         {
+          "code": "111000110",
           "name": "初診料",
-          "points": 291
+          "points": 291,
+          "source": "outpatient_basic_fee"
         },
         {
+          "code": "120002910",
           "name": "処方箋料（リフィル以外・その他）",
-          "points": 60
+          "points": 60,
+          "source": "medication_fee"
         },
         {
+          "code": "120004270",
           "name": "一般名処方加算１（処方箋料）",
-          "points": 10
+          "points": 8,
+          "source": "medication_fee"
         }
       ],
       "evidence": [
@@ -800,7 +838,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
           "112007410",
           "170011810",
@@ -810,16 +848,22 @@
       },
       "billingTargets": [
         {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
+          "points": 76,
+          "source": "outpatient_basic_fee"
         },
         {
+          "code": "170011810",
           "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
-          "points": 900
+          "points": 900,
+          "source": "imaging_fee"
         },
         {
+          "code": "170028810",
           "name": "電子画像管理加算（コンピューター断層診断料）",
-          "points": 120
+          "points": 120,
+          "source": "imaging_fee"
         }
       ],
       "evidence": [
@@ -964,16 +1008,22 @@
       },
       "billingTargets": [
         {
+          "code": "111000110",
           "name": "初診料",
-          "points": 291
+          "points": 291,
+          "source": "outpatient_basic_fee"
         },
         {
+          "code": "170000410",
           "name": "単純撮影（イ）の写真診断",
-          "points": 85
+          "points": 85,
+          "source": "imaging_fee"
         },
         {
+          "code": "170027910",
           "name": "単純撮影（デジタル撮影）",
-          "points": 68
+          "points": 68,
+          "source": "imaging_fee"
         }
       ],
       "evidence": [
@@ -1645,7 +1695,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 351,
+        "totalPoints": 352,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -1655,16 +1705,22 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160169450",
           "name": "インフルエンザウイルス抗原定性",
-          "points": 132
+          "points": 132,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "d026"
         }
       ],
       "evidence": [
@@ -1775,7 +1831,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 359,
         "candidateCodes": [
           "111000110",
           "120002910",
@@ -1785,16 +1841,22 @@
       },
       "billingTargets": [
         {
+          "code": "111000110",
           "name": "初診料",
-          "points": 291
+          "points": 291,
+          "source": "outpatient_basic_fee"
         },
         {
+          "code": "120002910",
           "name": "処方箋料（リフィル以外・その他）",
-          "points": 60
+          "points": 60,
+          "source": "medication_fee"
         },
         {
+          "code": "120004270",
           "name": "一般名処方加算１（処方箋料）",
-          "points": 10
+          "points": 8,
+          "source": "medication_fee"
         }
       ],
       "evidence": [
@@ -1920,7 +1982,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -1931,20 +1993,28 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         }
       ],
       "evidence": [
@@ -2077,7 +2147,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -2090,28 +2160,40 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160054710",
           "name": "ＣＲＰ",
-          "points": 16
+          "points": 16,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160008010",
           "name": "末梢血液一般検査",
-          "points": 21
+          "points": 21,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "d026"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "d026"
         },
         {
+          "code": "160095710",
           "name": "Ｂ－Ｖ",
-          "points": 40
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -2251,20 +2333,28 @@
       },
       "billingTargets": [
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160230050",
           "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
-          "points": 225
+          "points": 225,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "d026"
         },
         {
+          "code": "160095710",
           "name": "Ｂ－Ｖ",
-          "points": 40
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -2398,16 +2488,22 @@
       },
       "billingTargets": [
         {
+          "code": "111000110",
           "name": "初診料",
-          "points": 291
+          "points": 291,
+          "source": "outpatient_basic_fee"
         },
         {
+          "code": "170011810",
           "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
-          "points": 900
+          "points": 900,
+          "source": "imaging_fee"
         },
         {
+          "code": "170028810",
           "name": "電子画像管理加算（コンピューター断層診断料）",
-          "points": 120
+          "points": 120,
+          "source": "imaging_fee"
         }
       ],
       "evidence": [
@@ -2530,7 +2626,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
           "112007410",
           "170000410",
@@ -2541,20 +2637,28 @@
       },
       "billingTargets": [
         {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
+          "points": 76,
+          "source": "outpatient_basic_fee"
         },
         {
+          "code": "170000410",
           "name": "単純撮影（イ）の写真診断",
-          "points": 85
+          "points": 85,
+          "source": "imaging_fee"
         },
         {
+          "code": "170027910",
           "name": "単純撮影（デジタル撮影）",
-          "points": 68
+          "points": 68,
+          "source": "imaging_fee"
         },
         {
+          "code": "170000210",
           "name": "電子画像管理加算（単純撮影）",
-          "points": 57
+          "points": 57,
+          "source": "imaging_fee"
         }
       ],
       "evidence": [
@@ -2694,24 +2798,34 @@
       },
       "billingTargets": [
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         },
         {
+          "code": "160095710",
           "name": "Ｂ－Ｖ",
-          "points": 40
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -4245,7 +4359,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 135,
+        "totalPoints": 136,
         "candidateCodes": [
           "112007410",
           "120002910"
@@ -4254,12 +4368,16 @@
       },
       "billingTargets": [
         {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
+          "points": 76,
+          "source": "outpatient_basic_fee"
         },
         {
+          "code": "120002910",
           "name": "処方箋料（リフィル以外・その他）",
-          "points": 60
+          "points": 60,
+          "source": "medication_fee"
         }
       ],
       "evidence": [
@@ -4383,7 +4501,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
           "112007410",
           "170000410",
@@ -4393,16 +4511,22 @@
       },
       "billingTargets": [
         {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
+          "points": 76,
+          "source": "outpatient_basic_fee"
         },
         {
+          "code": "170000410",
           "name": "単純撮影（イ）の写真診断",
-          "points": 85
+          "points": 85,
+          "source": "imaging_fee"
         },
         {
+          "code": "170027910",
           "name": "単純撮影（デジタル撮影）",
-          "points": 68
+          "points": 68,
+          "source": "imaging_fee"
         }
       ],
       "evidence": [
@@ -4542,20 +4666,28 @@
       },
       "billingTargets": [
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160044110",
           "name": "Ａ群β溶連菌迅速試験定性",
-          "points": 121
+          "points": 121,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "d026"
         },
         {
+          "code": "160095710",
           "name": "Ｂ－Ｖ",
-          "points": 40
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -4684,7 +4816,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 484,
+        "totalPoints": 485,
         "candidateCodes": [
           "160230050",
           "112007410",
@@ -4695,20 +4827,28 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160230050",
           "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
-          "points": 225
+          "points": 225,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "d026"
         },
         {
+          "code": "160095710",
           "name": "Ｂ－Ｖ",
-          "points": 40
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -4835,7 +4975,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 359,
         "candidateCodes": [
           "111000110",
           "120002910",
@@ -4845,16 +4985,22 @@
       },
       "billingTargets": [
         {
+          "code": "111000110",
           "name": "初診料",
-          "points": 291
+          "points": 291,
+          "source": "outpatient_basic_fee"
         },
         {
+          "code": "120002910",
           "name": "処方箋料（リフィル以外・その他）",
-          "points": 60
+          "points": 60,
+          "source": "medication_fee"
         },
         {
+          "code": "120004270",
           "name": "一般名処方加算１（処方箋料）",
-          "points": 10
+          "points": 8,
+          "source": "medication_fee"
         }
       ],
       "evidence": [
@@ -6928,7 +7074,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -6939,20 +7085,28 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         }
       ],
       "evidence": [
@@ -7773,7 +7927,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -7786,28 +7940,40 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         },
         {
-          "name": "Ｂ－Ｖ",
-          "points": 40
-        },
-        {
+          "code": "160182770",
           "name": "検体検査管理加算（２）",
-          "points": 100
+          "points": 100,
+          "source": "lab_management"
+        },
+        {
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -8084,7 +8250,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -8097,28 +8263,40 @@
       },
       "billingTargets": [
         {
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
+          "points": 76,
+          "source": "outpatient_basic_fee"
         },
         {
-          "name": "CRP",
-          "points": 16
-        },
-        {
-          "name": "末梢血液一般",
-          "points": 21
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "d026"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "d026"
         },
         {
+          "code": "160095710",
           "name": "Ｂ－Ｖ",
-          "points": 40
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -8389,7 +8567,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -8400,20 +8578,28 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         }
       ],
       "evidence": [
@@ -9234,7 +9420,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -9247,28 +9433,40 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         },
         {
-          "name": "Ｂ－Ｖ",
-          "points": 40
-        },
-        {
+          "code": "160182770",
           "name": "検体検査管理加算（２）",
-          "points": 100
+          "points": 100,
+          "source": "lab_management"
+        },
+        {
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -9546,7 +9744,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -9559,28 +9757,40 @@
       },
       "billingTargets": [
         {
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
+          "points": 76,
+          "source": "outpatient_basic_fee"
         },
         {
-          "name": "CRP",
-          "points": 16
-        },
-        {
-          "name": "末梢血液一般",
-          "points": 21
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "d026"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "d026"
         },
         {
+          "code": "160095710",
           "name": "Ｂ－Ｖ",
-          "points": 40
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -9857,7 +10067,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -9868,20 +10078,28 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         }
       ],
       "evidence": [
@@ -10713,7 +10931,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -10726,28 +10944,40 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         },
         {
-          "name": "Ｂ－Ｖ",
-          "points": 40
-        },
-        {
+          "code": "160182770",
           "name": "検体検査管理加算（２）",
-          "points": 100
+          "points": 100,
+          "source": "lab_management"
+        },
+        {
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -11027,7 +11257,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -11040,28 +11270,40 @@
       },
       "billingTargets": [
         {
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
+          "points": 76,
+          "source": "outpatient_basic_fee"
         },
         {
-          "name": "CRP",
-          "points": 16
-        },
-        {
-          "name": "末梢血液一般",
-          "points": 21
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "d026"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "d026"
         },
         {
+          "code": "160095710",
           "name": "Ｂ－Ｖ",
-          "points": 40
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -11336,7 +11578,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -11347,20 +11589,28 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         }
       ],
       "evidence": [
@@ -12190,7 +12440,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -12203,28 +12453,40 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         },
         {
-          "name": "Ｂ－Ｖ",
-          "points": 40
-        },
-        {
+          "code": "160182770",
           "name": "検体検査管理加算（２）",
-          "points": 100
+          "points": 100,
+          "source": "lab_management"
+        },
+        {
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -12506,7 +12768,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -12519,28 +12781,40 @@
       },
       "billingTargets": [
         {
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
+          "points": 76,
+          "source": "outpatient_basic_fee"
         },
         {
-          "name": "CRP",
-          "points": 16
-        },
-        {
-          "name": "末梢血液一般",
-          "points": 21
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "d026"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "d026"
         },
         {
+          "code": "160095710",
           "name": "Ｂ－Ｖ",
-          "points": 40
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -12817,7 +13091,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -12828,20 +13102,28 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         }
       ],
       "evidence": [
@@ -13679,7 +13961,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -13692,28 +13974,40 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         },
         {
-          "name": "Ｂ－Ｖ",
-          "points": 40
-        },
-        {
+          "code": "160182770",
           "name": "検体検査管理加算（２）",
-          "points": 100
+          "points": 100,
+          "source": "lab_management"
+        },
+        {
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -13997,7 +14291,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -14010,28 +14304,40 @@
       },
       "billingTargets": [
         {
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
+          "points": 76,
+          "source": "outpatient_basic_fee"
         },
         {
-          "name": "CRP",
-          "points": 16
-        },
-        {
-          "name": "末梢血液一般",
-          "points": 21
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "d026"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "d026"
         },
         {
+          "code": "160095710",
           "name": "Ｂ－Ｖ",
-          "points": 40
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -14306,7 +14612,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -14317,20 +14623,28 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         }
       ],
       "evidence": [
@@ -15167,7 +15481,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -15180,28 +15494,40 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         },
         {
-          "name": "Ｂ－Ｖ",
-          "points": 40
-        },
-        {
+          "code": "160182770",
           "name": "検体検査管理加算（２）",
-          "points": 100
+          "points": 100,
+          "source": "lab_management"
+        },
+        {
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -15485,7 +15811,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -15498,28 +15824,40 @@
       },
       "billingTargets": [
         {
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
+          "points": 76,
+          "source": "outpatient_basic_fee"
         },
         {
-          "name": "CRP",
-          "points": 16
-        },
-        {
-          "name": "末梢血液一般",
-          "points": 21
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "d026"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "d026"
         },
         {
+          "code": "160095710",
           "name": "Ｂ－Ｖ",
-          "points": 40
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -15795,7 +16133,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -15806,20 +16144,28 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         }
       ],
       "evidence": [
@@ -16650,7 +16996,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -16663,28 +17009,40 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "d026"
         },
         {
+          "code": "160182770",
           "name": "検体検査管理加算（２）",
-          "points": 100
+          "points": 100,
+          "source": "lab_management"
         },
         {
+          "code": "160095710",
           "name": "Ｂ－Ｖ",
-          "points": 40
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -16965,7 +17323,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160008010",
           "160054710",
@@ -16978,28 +17336,40 @@
       },
       "billingTargets": [
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160008010",
           "name": "末梢血液一般検査",
-          "points": 21
+          "points": 21,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160054710",
           "name": "ＣＲＰ",
-          "points": 16
+          "points": 16,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "d026"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "d026"
         },
         {
+          "code": "160095710",
           "name": "Ｂ－Ｖ",
-          "points": 40
+          "points": 40,
+          "source": "collection_fee"
         }
       ],
       "evidence": [
@@ -17268,31 +17638,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -18058,41 +18436,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -18359,41 +18749,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "CRP",
-          "points": 16
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "血算",
-          "points": 21
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -18774,31 +19176,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "インフル迅速",
-          "points": 132
+          "code": "160169450",
+          "name": "インフルエンザウイルス抗原定性",
+          "points": 132,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -19060,28 +19470,36 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "溶連菌迅速",
-          "points": 121
+          "code": "160044110",
+          "name": "Ａ群β溶連菌迅速試験定性",
+          "points": 121,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -19472,28 +19890,36 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "コロナ・インフル同時抗原",
-          "points": 225
+          "code": "160230050",
+          "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "points": 225,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -19872,26 +20298,18 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "111000110",
           "name": "初診料",
-          "points": 291
-        },
-        {
-          "name": "処方箋料",
-          "points": 60
-        },
-        {
-          "name": "一般名処方加算",
-          "points": 10
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -20169,36 +20587,48 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "ゲーベンクリーム",
-          "points": 13
+          "code": "140032010",
+          "name": "熱傷処置（１００ｃｍ２未満）",
+          "points": 135,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "620008991",
+          "name": "ゲーベンクリーム１％",
+          "points": 1.28,
+          "quantity": 10,
+          "totalPoints": 13,
+          "source": "drug_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
+          "points": 76,
+          "source": "outpatient_basic_fee"
         },
         {
-          "name": "調剤料(外用薬)",
-          "points": 8
+          "code": "120001010",
+          "name": "調剤料（外用薬）",
+          "points": 8,
+          "source": "medication_fee"
         },
         {
-          "name": "処方料",
-          "points": 42
-        },
-        {
-          "name": "熱傷処置",
-          "points": 135
+          "code": "120001210",
+          "name": "処方料（その他）",
+          "points": 42,
+          "source": "medication_fee"
         }
       ],
       "evidence": [
@@ -20454,26 +20884,32 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -20993,31 +21429,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170000210",
+          "name": "電子画像管理加算（単純撮影）",
+          "points": 57,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
-        },
-        {
-          "name": "電子画像管理加算",
-          "points": 57
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -21274,26 +21718,32 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170011810",
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170028810",
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "CT撮影",
-          "points": 900
-        },
-        {
-          "name": "CT電子画像管理",
-          "points": 120
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -21683,24 +22133,30 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170011810",
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170028810",
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
           "name": "初診料",
-          "points": 291
-        },
-        {
-          "name": "CT撮影",
-          "points": 900
-        },
-        {
-          "name": "CT電子画像管理",
-          "points": 120
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -22091,31 +22547,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -22515,41 +22979,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -22820,41 +23296,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "CRP",
-          "points": 16
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "血算",
-          "points": 21
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -23376,31 +23864,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "インフル迅速",
-          "points": 132
+          "code": "160169450",
+          "name": "インフルエンザウイルス抗原定性",
+          "points": 132,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -23667,28 +24163,36 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "溶連菌迅速",
-          "points": 121
+          "code": "160044110",
+          "name": "Ａ群β溶連菌迅速試験定性",
+          "points": 121,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -24087,28 +24591,36 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "コロナ・インフル同時抗原",
-          "points": 225
+          "code": "160230050",
+          "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "points": 225,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -24489,26 +25001,18 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "111000110",
           "name": "初診料",
-          "points": 291
-        },
-        {
-          "name": "処方箋料",
-          "points": 60
-        },
-        {
-          "name": "一般名処方加算",
-          "points": 10
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -24785,36 +25289,48 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "ゲーベンクリーム",
-          "points": 13
+          "code": "140032010",
+          "name": "熱傷処置（１００ｃｍ２未満）",
+          "points": 135,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "620008991",
+          "name": "ゲーベンクリーム１％",
+          "points": 1.28,
+          "quantity": 10,
+          "totalPoints": 13,
+          "source": "drug_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
+          "points": 76,
+          "source": "outpatient_basic_fee"
         },
         {
-          "name": "調剤料(外用薬)",
-          "points": 8
+          "code": "120001010",
+          "name": "調剤料（外用薬）",
+          "points": 8,
+          "source": "medication_fee"
         },
         {
-          "name": "処方料",
-          "points": 42
-        },
-        {
-          "name": "熱傷処置",
-          "points": 135
+          "code": "120001210",
+          "name": "処方料（その他）",
+          "points": 42,
+          "source": "medication_fee"
         }
       ],
       "evidence": [
@@ -25071,26 +25587,32 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -25728,31 +26250,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170000210",
+          "name": "電子画像管理加算（単純撮影）",
+          "points": 57,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
-        },
-        {
-          "name": "電子画像管理加算",
-          "points": 57
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -26006,26 +26536,32 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170011810",
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170028810",
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "CT撮影",
-          "points": 900
-        },
-        {
-          "name": "CT電子画像管理",
-          "points": 120
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -26282,24 +26818,30 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170011810",
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170028810",
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
           "name": "初診料",
-          "points": 291
-        },
-        {
-          "name": "CT撮影",
-          "points": 900
-        },
-        {
-          "name": "CT電子画像管理",
-          "points": 120
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -26686,31 +27228,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -27098,41 +27648,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -27389,41 +27951,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "CRP",
-          "points": 16
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "血算",
-          "points": 21
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -27795,31 +28369,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "インフル迅速",
-          "points": 132
+          "code": "160169450",
+          "name": "インフルエンザウイルス抗原定性",
+          "points": 132,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -28073,28 +28655,36 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "溶連菌迅速",
-          "points": 121
+          "code": "160044110",
+          "name": "Ａ群β溶連菌迅速試験定性",
+          "points": 121,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -28469,28 +29059,36 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "コロナ・インフル同時抗原",
-          "points": 225
+          "code": "160230050",
+          "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "points": 225,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -28979,31 +29577,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -29390,41 +29996,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -29681,41 +30299,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "CRP",
-          "points": 16
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "血算",
-          "points": 21
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -30207,31 +30837,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "インフル迅速",
-          "points": 132
+          "code": "160169450",
+          "name": "インフルエンザウイルス抗原定性",
+          "points": 132,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -30484,28 +31122,36 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "溶連菌迅速",
-          "points": 121
+          "code": "160044110",
+          "name": "Ａ群β溶連菌迅速試験定性",
+          "points": 121,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -30758,28 +31404,36 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "コロナ・インフル同時抗原",
-          "points": 225
+          "code": "160230050",
+          "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "points": 225,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -31148,31 +31802,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -31555,41 +32217,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -31846,41 +32520,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "CRP",
-          "points": 16
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "血算",
-          "points": 21
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -32250,31 +32936,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "インフル迅速",
-          "points": 132
+          "code": "160169450",
+          "name": "インフルエンザウイルス抗原定性",
+          "points": 132,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -32527,28 +33221,36 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "溶連菌迅速",
-          "points": 121
+          "code": "160044110",
+          "name": "Ａ群β溶連菌迅速試験定性",
+          "points": 121,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -32801,28 +33503,36 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "コロナ・インフル同時抗原",
-          "points": 225
+          "code": "160230050",
+          "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "points": 225,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -33438,31 +34148,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -33723,41 +34441,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -34134,41 +34864,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "CRP",
-          "points": 16
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "血算",
-          "points": 21
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -34538,31 +35280,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "インフル迅速",
-          "points": 132
+          "code": "160169450",
+          "name": "インフルエンザウイルス抗原定性",
+          "points": 132,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -34937,28 +35687,36 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "溶連菌迅速",
-          "points": 121
+          "code": "160044110",
+          "name": "Ａ群β溶連菌迅速試験定性",
+          "points": 121,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -35211,28 +35969,36 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "コロナ・インフル同時抗原",
-          "points": 225
+          "code": "160230050",
+          "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "points": 225,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -35601,31 +36367,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -35886,41 +36660,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -36299,41 +37085,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "CRP",
-          "points": 16
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "血算",
-          "points": 21
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -36703,31 +37501,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "インフル迅速",
-          "points": 132
+          "code": "160169450",
+          "name": "インフルエンザウイルス抗原定性",
+          "points": 132,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -37106,28 +37912,36 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "溶連菌迅速",
-          "points": 121
+          "code": "160044110",
+          "name": "Ａ群β溶連菌迅速試験定性",
+          "points": 121,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -37380,28 +38194,36 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "コロナ・インフル同時抗原",
-          "points": 225
+          "code": "160230050",
+          "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "points": 225,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -37892,31 +38714,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -38177,41 +39007,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -38468,41 +39310,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "CRP",
-          "points": 16
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "血算",
-          "points": 21
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -38872,31 +39726,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "インフル迅速",
-          "points": 132
+          "code": "160169450",
+          "name": "インフルエンザウイルス抗原定性",
+          "points": 132,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -39271,28 +40133,36 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "溶連菌迅速",
-          "points": 121
+          "code": "160044110",
+          "name": "Ａ群β溶連菌迅速試験定性",
+          "points": 121,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -39665,28 +40535,36 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "コロナ・インフル同時抗原",
-          "points": 225
+          "code": "160230050",
+          "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "points": 225,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -40055,31 +40933,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -40340,41 +41226,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -40865,41 +41763,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "CRP",
-          "points": 16
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "血算",
-          "points": 21
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -41260,31 +42170,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "インフル迅速",
-          "points": 132
+          "code": "160169450",
+          "name": "インフルエンザウイルス抗原定性",
+          "points": 132,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -41531,28 +42449,36 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "溶連菌迅速",
-          "points": 121
+          "code": "160044110",
+          "name": "Ａ群β溶連菌迅速試験定性",
+          "points": 121,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -41799,28 +42725,36 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "コロナ・インフル同時抗原",
-          "points": 225
+          "code": "160230050",
+          "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "points": 225,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -42302,31 +43236,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -42580,41 +43522,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -42865,41 +43819,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "CRP",
-          "points": 16
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "血算",
-          "points": 21
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -43260,31 +44226,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "インフル迅速",
-          "points": 132
+          "code": "160169450",
+          "name": "インフルエンザウイルス抗原定性",
+          "points": 132,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -43653,28 +44627,36 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "溶連菌迅速",
-          "points": 121
+          "code": "160044110",
+          "name": "Ａ群β溶連菌迅速試験定性",
+          "points": 121,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -43921,28 +44903,36 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "コロナ・インフル同時抗原",
-          "points": 225
+          "code": "160230050",
+          "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "points": 225,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -44302,31 +45292,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -44818,41 +45816,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -45225,41 +46235,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "CRP",
-          "points": 16
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "血算",
-          "points": 21
+          "code": "160008010",
+          "name": "末梢血液一般検査",
+          "points": 21,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061810",
           "name": "血液学的検査判断料",
-          "points": 125
+          "points": 125,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -45620,31 +46642,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "インフル迅速",
-          "points": 132
+          "code": "160169450",
+          "name": "インフルエンザウイルス抗原定性",
+          "points": 132,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -45891,28 +46921,36 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "溶連菌迅速",
-          "points": 121
+          "code": "160044110",
+          "name": "Ａ群β溶連菌迅速試験定性",
+          "points": 121,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -46159,28 +47197,36 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
-          "name": "コロナ・インフル同時抗原",
-          "points": 225
+          "code": "160230050",
+          "name": "ＳＡＲＳ－ＣｏＶ－２・インフルエンザウイルス抗原同時検出定性",
+          "points": 225,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "初診料",
-          "points": 291
-        },
-        {
+          "code": "160062110",
           "name": "免疫学的検査判断料",
-          "points": 144
+          "points": 144,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -46662,31 +47708,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -46940,41 +47994,53 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "160000310",
           "name": "尿一般",
-          "points": 26
+          "points": 26,
+          "source": "medical_procedure_master"
         },
         {
+          "code": "160000410",
           "name": "尿蛋白",
-          "points": 7
+          "points": 7,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "再診料",
-          "points": 75
-        },
-        {
+          "code": "160061710",
           "name": "尿・糞便等検査判断料",
-          "points": 34
+          "points": 34,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "検体検査管理加算",
-          "points": 100
+          "code": "160182770",
+          "name": "検体検査管理加算（２）",
+          "points": 100,
+          "source": "medical_procedure_master"
         },
         {
-          "name": "静脈採血",
-          "points": 40
+          "code": "160095710",
+          "name": "Ｂ－Ｖ",
+          "points": 40,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -47219,26 +48285,32 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -47606,31 +48678,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170000210",
+          "name": "電子画像管理加算（単純撮影）",
+          "points": 57,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
-        },
-        {
-          "name": "電子画像管理加算",
-          "points": 57
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -47876,26 +48956,32 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170011810",
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170028810",
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "CT撮影",
-          "points": 900
-        },
-        {
-          "name": "CT電子画像管理",
-          "points": 120
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -48502,24 +49588,30 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170011810",
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170028810",
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
           "name": "初診料",
-          "points": 291
-        },
-        {
-          "name": "CT撮影",
-          "points": 900
-        },
-        {
-          "name": "CT電子画像管理",
-          "points": 120
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -48765,26 +49857,32 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -49033,31 +50131,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170000210",
+          "name": "電子画像管理加算（単純撮影）",
+          "points": 57,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
-        },
-        {
-          "name": "電子画像管理加算",
-          "points": 57
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -49422,26 +50528,32 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170011810",
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170028810",
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "CT撮影",
-          "points": 900
-        },
-        {
-          "name": "CT電子画像管理",
-          "points": 120
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -49812,24 +50924,30 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170011810",
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170028810",
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
           "name": "初診料",
-          "points": 291
-        },
-        {
-          "name": "CT撮影",
-          "points": 900
-        },
-        {
-          "name": "CT電子画像管理",
-          "points": 120
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -50196,26 +51314,32 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -50582,31 +51706,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170000210",
+          "name": "電子画像管理加算（単純撮影）",
+          "points": 57,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
-        },
-        {
-          "name": "電子画像管理加算",
-          "points": 57
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -50853,26 +51985,32 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170011810",
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170028810",
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "CT撮影",
-          "points": 900
-        },
-        {
-          "name": "CT電子画像管理",
-          "points": 120
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -51242,24 +52380,30 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170011810",
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170028810",
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
           "name": "初診料",
-          "points": 291
-        },
-        {
-          "name": "CT撮影",
-          "points": 900
-        },
-        {
-          "name": "CT電子画像管理",
-          "points": 120
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -51625,26 +52769,32 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -52010,31 +53160,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170000210",
+          "name": "電子画像管理加算（単純撮影）",
+          "points": 57,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
-        },
-        {
-          "name": "電子画像管理加算",
-          "points": 57
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -52281,26 +53439,32 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170011810",
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170028810",
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "CT撮影",
-          "points": 900
-        },
-        {
-          "name": "CT電子画像管理",
-          "points": 120
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -52789,24 +53953,30 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170011810",
+          "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）",
+          "points": 900,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170028810",
+          "name": "電子画像管理加算（コンピューター断層診断料）",
+          "points": 120,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "111000110",
           "name": "初診料",
-          "points": 291
-        },
-        {
-          "name": "CT撮影",
-          "points": 900
-        },
-        {
-          "name": "CT電子画像管理",
-          "points": 120
+          "points": 291,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -53053,26 +54223,32 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [
@@ -53320,31 +54496,39 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
       "billingTargets": [
         {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "170000210",
+          "name": "電子画像管理加算（単純撮影）",
+          "points": 57,
+          "source": "medical_procedure_master"
+        },
+        {
+          "code": "112007410",
           "name": "再診料",
-          "points": 75
-        },
-        {
-          "name": "単純X線撮影",
-          "points": 68
-        },
-        {
-          "name": "写真診断",
-          "points": 85
-        },
-        {
-          "name": "電子画像管理加算",
-          "points": 57
+          "points": 76,
+          "source": "outpatient_basic_fee"
         }
       ],
       "evidence": [

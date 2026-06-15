@@ -1449,7 +1449,7 @@ function attachWarningsToLines(lines = [], warningItems = []) {
   }
   for (const item of warningItems) {
     const text = `${item.title || ""} ${item.reason || ""}`;
-    if (!isVisitFeeReviewText(text)) {
+    if (!shouldAttachWarningToBasicFeeLine(text)) {
       continue;
     }
     const note = humanizeReviewMessage(item.reason || "");
@@ -1458,6 +1458,14 @@ function attachWarningsToLines(lines = [], warningItems = []) {
       basicLine.displayReason = note;
     }
   }
+}
+
+function shouldAttachWarningToBasicFeeLine(text = "") {
+  const normalized = String(text || "");
+  if (/施設基準|facility_standard|hospital_profile|今後の予定|予定|次回|訪問診療|往診|在宅医療/u.test(normalized)) {
+    return false;
+  }
+  return isVisitFeeReviewText(normalized);
 }
 
 function isVisitFeeReviewText(text = "") {

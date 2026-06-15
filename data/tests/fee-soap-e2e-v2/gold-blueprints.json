@@ -85,7 +85,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -173,7 +173,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 472,
+        "totalPoints": 473,
         "candidateCodes": [
           "160169450",
           "160044110",
@@ -273,7 +273,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
           "620008991",
           "112007410",
@@ -355,7 +355,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 359,
         "candidateCodes": [
           "111000110",
           "120002910",
@@ -435,7 +435,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
           "112007410",
           "170011810",
@@ -882,7 +882,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 351,
+        "totalPoints": 352,
         "candidateCodes": [
           "160169450",
           "112007410",
@@ -959,7 +959,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 359,
         "candidateCodes": [
           "111000110",
           "120002910",
@@ -1037,7 +1037,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -1126,7 +1126,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -1377,7 +1377,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
           "112007410",
           "170000410",
@@ -2366,7 +2366,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 135,
+        "totalPoints": 136,
         "candidateCodes": [
           "112007410",
           "120002910"
@@ -2444,7 +2444,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
           "112007410",
           "170000410",
@@ -2614,7 +2614,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 484,
+        "totalPoints": 485,
         "candidateCodes": [
           "160230050",
           "112007410",
@@ -2697,7 +2697,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 359,
         "candidateCodes": [
           "111000110",
           "120002910",
@@ -3879,7 +3879,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -4326,7 +4326,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -4491,7 +4491,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -4648,7 +4648,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -5095,7 +5095,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -5261,7 +5261,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -5419,7 +5419,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -5868,7 +5868,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -6033,7 +6033,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -6191,7 +6191,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -6640,7 +6640,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -6806,7 +6806,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -6964,7 +6964,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -7411,7 +7411,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -7576,7 +7576,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -7734,7 +7734,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -8181,7 +8181,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -8346,7 +8346,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
@@ -8504,7 +8504,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -8950,7 +8950,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
@@ -9117,7 +9117,7 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160008010",
           "160054710",
@@ -9269,12 +9269,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -9679,14 +9679,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -9834,14 +9834,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -10046,12 +10046,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -10197,9 +10197,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -10409,9 +10409,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -10612,11 +10612,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -10776,13 +10774,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -10922,11 +10920,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -11197,12 +11195,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -11341,11 +11339,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -11552,9 +11550,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -11760,12 +11758,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -11981,14 +11979,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -12135,14 +12133,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -12411,12 +12409,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -12562,9 +12560,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -12774,9 +12772,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -12977,11 +12975,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -13141,13 +13137,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -13287,11 +13283,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -13625,12 +13621,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -13769,11 +13765,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -13915,9 +13911,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -14123,12 +14119,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -14343,14 +14339,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -14497,14 +14493,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -14710,12 +14706,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -14861,9 +14857,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -15073,9 +15069,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -15342,12 +15338,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -15562,14 +15558,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -15716,14 +15712,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -15993,12 +15989,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -16144,9 +16140,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -16291,9 +16287,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -16497,12 +16493,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -16717,14 +16713,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -16871,14 +16867,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -17083,12 +17079,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -17234,9 +17230,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -17381,9 +17377,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -17715,12 +17711,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -17870,14 +17866,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -18087,14 +18083,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -18299,12 +18295,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -18515,9 +18511,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -18662,9 +18658,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -18868,12 +18864,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -19023,14 +19019,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -19242,14 +19238,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -19454,12 +19450,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -19670,9 +19666,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -19817,9 +19813,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -20088,12 +20084,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -20243,14 +20239,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -20397,14 +20393,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -20609,12 +20605,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -20825,9 +20821,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -21035,9 +21031,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -21241,12 +21237,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -21396,14 +21392,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -21678,14 +21674,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -21890,12 +21886,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -22041,9 +22037,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -22188,9 +22184,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -22459,12 +22455,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -22614,14 +22610,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -22768,14 +22764,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -22980,12 +22976,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -23196,9 +23192,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -23343,9 +23339,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -23549,12 +23545,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -23832,14 +23828,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -24051,14 +24047,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -24263,12 +24259,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -24414,9 +24410,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -24561,9 +24557,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -24832,12 +24828,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -24987,14 +24983,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -25133,11 +25129,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -25343,12 +25339,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -25486,11 +25482,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -25824,9 +25820,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -25965,11 +25961,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -26111,12 +26107,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -26318,11 +26314,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -26529,9 +26525,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -26734,11 +26730,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -26943,12 +26939,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -27087,11 +27083,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -27297,9 +27293,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -27503,11 +27499,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -27713,12 +27709,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -27857,11 +27853,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -28131,9 +28127,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -28273,11 +28269,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -28418,12 +28414,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -28626,11 +28622,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -28836,9 +28832,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -28978,11 +28974,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -29187,12 +29183,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -29394,11 +29390,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -29605,9 +29601,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -29873,11 +29869,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -30019,12 +30015,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -30162,11 +30158,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -30437,9 +30433,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -30578,11 +30574,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -30724,12 +30720,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -30931,11 +30927,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -31142,9 +31138,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -31283,11 +31279,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -31493,12 +31489,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -31698,11 +31694,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -31927,13 +31921,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -32133,11 +32127,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -32359,13 +32351,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -32501,11 +32493,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -32794,13 +32784,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -32936,11 +32926,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -33099,13 +33087,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -33305,11 +33293,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -33468,13 +33454,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -33739,11 +33725,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -33966,13 +33950,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -34108,11 +34092,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -34271,13 +34253,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -34543,11 +34525,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -34706,13 +34686,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -34848,11 +34828,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -35138,13 +35116,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -35346,11 +35324,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -35509,13 +35485,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -35715,11 +35691,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -35943,13 +35917,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -36151,11 +36125,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -36378,13 +36350,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -36520,11 +36492,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -36683,13 +36653,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -36955,11 +36925,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -37118,13 +37086,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -37260,11 +37228,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -37487,13 +37453,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -37695,11 +37661,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -37921,13 +37885,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -38190,11 +38154,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -38353,13 +38315,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -38561,11 +38523,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -38776,9 +38736,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -38914,11 +38874,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -39078,13 +39036,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -39353,11 +39311,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -39499,12 +39457,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -39643,11 +39601,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -39918,9 +39876,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -40128,12 +40086,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -40284,14 +40242,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -40503,14 +40461,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -40652,12 +40610,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -40868,9 +40826,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -41145,9 +41103,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -41283,11 +41241,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -41511,13 +41467,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -41657,11 +41613,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -41885,13 +41841,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -42178,13 +42134,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -42344,13 +42300,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -42510,13 +42466,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -42805,13 +42761,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -42971,13 +42927,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -43137,13 +43093,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -43367,13 +43323,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -43598,13 +43554,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -43764,13 +43720,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -44058,13 +44014,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -44289,13 +44245,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -44520,13 +44476,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -44750,13 +44706,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -44916,13 +44872,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -45082,13 +45038,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -45377,13 +45333,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -45543,13 +45499,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -45709,13 +45665,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -45939,13 +45895,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -46170,13 +46126,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -46399,13 +46355,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -46629,13 +46585,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -46795,13 +46751,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -47026,13 +46982,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -47320,13 +47276,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -47486,13 +47442,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -47652,13 +47608,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -47947,13 +47903,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -48113,13 +48069,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -48279,13 +48235,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -48497,9 +48453,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -48777,9 +48733,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -48916,11 +48872,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -49145,13 +49099,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -49292,11 +49246,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -49439,12 +49393,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -49713,11 +49667,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -49860,9 +49814,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -50070,12 +50024,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -50291,14 +50245,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -50512,14 +50466,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -50725,12 +50679,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -50942,9 +50896,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -51091,9 +51045,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -51295,11 +51249,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -51524,13 +51476,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -51671,11 +51623,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -51818,12 +51770,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -52092,11 +52044,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -52239,9 +52191,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -52384,12 +52336,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -52670,14 +52622,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -52892,14 +52844,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -53107,12 +53059,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -53324,9 +53276,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -53473,9 +53425,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -53676,11 +53628,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -53904,13 +53854,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -54050,11 +54000,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -54196,12 +54146,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -54469,11 +54419,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -54615,9 +54565,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -54822,12 +54772,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -55042,14 +54992,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -55262,14 +55212,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -55411,12 +55361,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -55627,9 +55577,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -55839,9 +55789,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -56042,11 +55992,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -56270,13 +56218,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -56416,11 +56364,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -56563,12 +56511,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -56902,11 +56850,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -57048,9 +56996,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -57192,12 +57140,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -57412,14 +57360,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -57567,14 +57515,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -57845,12 +57793,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -57996,9 +57944,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -58143,9 +58091,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -58345,11 +58293,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -58573,13 +58519,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -58844,11 +58790,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -59055,12 +59001,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -59199,11 +59145,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -59410,9 +59356,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -59618,12 +59564,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -59774,14 +59720,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -59929,14 +59875,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -60207,12 +60153,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -60358,9 +60304,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -60505,9 +60451,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -60707,11 +60653,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -61001,13 +60945,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -61146,11 +61090,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -61355,12 +61299,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -61564,11 +61508,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -61775,9 +61719,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -61983,12 +61927,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -62139,14 +62083,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -62294,14 +62238,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -62572,12 +62516,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -62723,9 +62667,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -62933,9 +62877,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -63135,11 +63079,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -63363,13 +63305,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -63508,11 +63450,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -63717,12 +63659,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -63862,11 +63804,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -64073,9 +64015,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -64281,12 +64223,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -64501,14 +64443,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -64656,14 +64598,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -65000,12 +64942,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -65151,9 +65093,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -65298,9 +65240,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -65500,11 +65442,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -65663,13 +65603,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -65873,11 +65813,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -66082,12 +66022,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -66227,11 +66167,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -66373,9 +66313,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -66646,12 +66586,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -66802,14 +66742,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -67020,14 +66960,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -67297,12 +67237,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -67513,9 +67453,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -67660,9 +67600,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -67862,11 +67802,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -68025,13 +67963,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -68235,11 +68173,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -68444,12 +68382,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -68589,11 +68527,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -68735,9 +68673,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -69074,12 +69012,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -69230,14 +69168,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -69385,14 +69323,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -69598,12 +69536,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -69815,9 +69753,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -69962,9 +69900,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -70227,11 +70165,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -70390,13 +70326,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },
@@ -70600,11 +70536,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 228,
+        "totalPoints": 229,
         "candidateCodes": [
-          "112007410",
           "170000410",
-          "170027910"
+          "170027910",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -70809,12 +70745,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 285,
+        "totalPoints": 286,
         "candidateCodes": [
-          "112007410",
           "170000410",
           "170027910",
-          "170000210"
+          "170000210",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -71017,11 +70953,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1095,
+        "totalPoints": 1096,
         "candidateCodes": [
-          "112007410",
           "170011810",
-          "170028810"
+          "170028810",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -71163,9 +71099,9 @@
         "assertionLevel": "exact",
         "totalPoints": 1311,
         "candidateCodes": [
-          "111000110",
           "170011810",
-          "170028810"
+          "170028810",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -71436,12 +71372,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 142,
+        "totalPoints": 143,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
-          "160061710"
+          "160061710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -71592,14 +71528,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 282,
+        "totalPoints": 283,
         "candidateCodes": [
           "160000310",
           "160000410",
-          "112007410",
           "160061710",
           "160182770",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -71747,14 +71683,14 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 421,
+        "totalPoints": 422,
         "candidateCodes": [
           "160054710",
           "160008010",
-          "112007410",
           "160061810",
           "160062110",
-          "160095710"
+          "160095710",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -71960,12 +71896,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 451,
+        "totalPoints": 452,
         "candidateCodes": [
           "160169450",
-          "112007410",
           "160062110",
-          "160182770"
+          "160182770",
+          "112007410"
         ],
         "engineStatus": "completed"
       },
@@ -72177,9 +72113,9 @@
         "totalPoints": 596,
         "candidateCodes": [
           "160044110",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -72324,9 +72260,9 @@
         "totalPoints": 700,
         "candidateCodes": [
           "160230050",
-          "111000110",
           "160062110",
-          "160095710"
+          "160095710",
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -72525,11 +72461,9 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 361,
+        "totalPoints": 291,
         "candidateCodes": [
-          "111000110",
-          "120002910",
-          "120004270"
+          "111000110"
         ],
         "engineStatus": "completed"
       },
@@ -72689,13 +72623,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 273,
+        "totalPoints": 274,
         "candidateCodes": [
+          "140032010",
           "620008991",
           "112007410",
           "120001010",
-          "120001210",
-          "140032010"
+          "120001210"
         ],
         "engineStatus": "completed"
       },

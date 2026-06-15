@@ -750,6 +750,30 @@ function FeeSessionDetailView({ sessionId }) {
     setMessage({ type: "success", text: "マスターからオーダーを追加しました。" });
   }
 
+  function updateOutpatientBasicKind(value) {
+    try {
+      const options = parseJsonObjectField(form.calculationOptionsText, "算定オプション JSON") || {};
+      if (!value) {
+        delete options.outpatient_basic;
+      } else {
+        const currentBasic = options.outpatient_basic && typeof options.outpatient_basic === "object" && !Array.isArray(options.outpatient_basic)
+          ? options.outpatient_basic
+          : {};
+        options.outpatient_basic = {
+          ...currentBasic,
+          fee_kind: value
+        };
+      }
+      updateForm("calculationOptionsText", formatJsonObject(options));
+      setMessage({
+        type: "info",
+        text: value ? "初診/再診の手動指定を更新しました。再計算すると反映されます。" : "初診/再診を自動判定に戻しました。再計算すると反映されます。"
+      });
+    } catch (error) {
+      setMessage({ type: "error", text: toUserFacingErrorMessage(error, "算定オプション JSONを確認してください。") });
+    }
+  }
+
   if (loading) {
     return (
       <main className="fee-shell">
@@ -838,6 +862,7 @@ function FeeSessionDetailView({ sessionId }) {
         onMasterQueryChange={setMasterQuery}
         onMasterTypeChange={setMasterType}
         onRemoveOrderRow={removeOrderRow}
+        onUpdateOutpatientBasicKind={updateOutpatientBasicKind}
         onUpdateForm={updateForm}
         onUpdateOrderRow={updateOrderRow}
         orderRows={orderRows}
@@ -1080,6 +1105,7 @@ function FeeSettingsModal({
   onMasterQueryChange,
   onMasterTypeChange,
   onRemoveOrderRow,
+  onUpdateOutpatientBasicKind,
   onUpdateForm,
   onUpdateOrderRow,
   orderCount,
@@ -1091,6 +1117,7 @@ function FeeSettingsModal({
   }
   const showConditions = mode === "conditions";
   const selectedFacility = facilities.find((facility) => facility.facilityId === (form.facilityId || defaultFacilityId));
+  const outpatientBasicKind = outpatientBasicKindFromOptionsText(form.calculationOptionsText);
   return (
     <div className="fee-modal-overlay" role="presentation" onMouseDown={onClose}>
       <section className="fee-modal-card fee-settings-modal" role="dialog" aria-modal="true" aria-label={showConditions ? "算定条件の確認" : "オーダーの確認"} onMouseDown={(event) => event.stopPropagation()}>
@@ -1154,6 +1181,19 @@ function FeeSettingsModal({
                     ]}
                     value={form.setting}
                     onValueChange={(value) => onUpdateForm("setting", value)}
+                  />
+                </label>
+                <label>
+                  <span>初診/再診</span>
+                  <AdminSelect
+                    ariaLabel="初診/再診"
+                    options={[
+                      { value: "", label: "自動判定" },
+                      { value: "initial", label: "初診料" },
+                      { value: "revisit", label: "再診料" }
+                    ]}
+                    value={outpatientBasicKind}
+                    onValueChange={onUpdateOutpatientBasicKind}
                   />
                 </label>
                 <label>
@@ -1451,7 +1491,7 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
   const includedCount = Number(model.counts.included || 0);
   const proposalCount = Number(model.counts.proposals || 0);
   const candidateCount = includedCount + proposalCount;
-  const needsReviewCount = Number(model.counts.needsReview || 0);
+  const needsReviewCount = model.issues.length + adjustmentLines.length;
   const potentialPointsTotal = Number(model.potentialPointsTotal || 0);
   const coverageSummary = model.coverageSummary || {};
   const selectedWorkTab = activeTab === "lines" || activeTab === "proposals" ? "candidates" : activeTab;
@@ -1508,7 +1548,7 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
           {model.proposals.length ? (
             <div className="proposal-list">
               {model.proposals.map((item) => (
-                <ProposalCard disabled={disabled} item={item} key={item.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
+                <ProposalLineRow disabled={disabled} item={item} key={item.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
               ))}
             </div>
           ) : null}
@@ -1531,36 +1571,48 @@ function BucketHeader({ count, note, title }) {
   );
 }
 
-function ProposalCard({ disabled, item, onDecision, onOpenDetail }) {
-  const requiredInput = reviewRequiredInput(item);
-  const resolutionOptions = reviewResolutionOptions(item);
+function ProposalLineRow({ disabled, item, onDecision, onOpenDetail }) {
+  const canApprove = canApproveReviewItem(item);
+  const decisionStatus = ["approved", "edited", "rejected"].includes(item.decisionStatus)
+    ? item.decisionStatus
+    : "needs_review";
+  const options = canApprove
+    ? [
+      { value: "needs_review", label: "提案", disabled: true },
+      { value: "approved", label: "算定する" },
+      { value: "edited", label: "保留" },
+      { value: "rejected", label: "算定しない" }
+    ]
+    : [{ value: "needs_review", label: item.nextActionLabel || "条件確認" }];
+  const metaLabel = [
+    item.code,
+    orderTypeLabel(item.orderType || item.candidateLine?.orderType),
+    item.issueCategoryLabel
+  ].filter(Boolean).join(" / ") || "提案";
+  const pointsLabel = item.pointsLabel || (Number(item.potentialPoints || 0) > 0 ? `+${Number(item.potentialPoints || 0).toLocaleString()}点` : "点数確認");
   return (
-    <article className="proposal-card">
-      <div className="proposal-card-main">
-        <span className="proposal-kicker">条件を満たせば算定できます</span>
-        <h4>{item.displayTitle}</h4>
-        <p>{item.displayReason}</p>
-        <small>{item.conditionText}</small>
-        {requiredInput ? (
-          <div className="issue-required-input">
-            <span>確認する情報</span>
-            <strong>{requiredInput}</strong>
-          </div>
-        ) : null}
-        {resolutionOptions.length ? (
-          <div className="issue-resolution-options" aria-label="確認の選択肢">
-            {resolutionOptions.slice(0, 4).map((option) => (
-              <span key={option.value || option.label}>{option.label || option.value}</span>
-            ))}
-          </div>
-        ) : null}
+    <article className={`candidate-line-row candidate-line-row--proposal ${canApprove ? "" : "candidate-line-row--confirm-required"}`}>
+      <div className="candidate-line-action">
+        <AdminSelect
+          ariaLabel={`${item.displayTitle || "提案"}の採否`}
+          disabled={disabled || !canApprove}
+          className="candidate-decision-select"
+          options={options}
+          value={decisionStatus}
+          onValueChange={(value) => {
+            if (value && value !== "needs_review") {
+              onDecision(item.reviewItemId, value);
+            }
+          }}
+        />
       </div>
-      <div className="proposal-card-actions">
-        <span className="proposal-points">{item.pointsLabel || "点数確認"}</span>
-        <button className="btn btn--primary btn--sm" disabled={disabled} onClick={() => onOpenDetail(item)} type="button">
-          条件を確認
-        </button>
+      <div className="candidate-line-main">
+        <strong>{item.displayTitle}</strong>
+        <small>{metaLabel}</small>
       </div>
+      <span className="candidate-line-status">{canApprove ? "提案" : "確認必要"}</span>
+      <strong className="candidate-line-points">{pointsLabel}</strong>
+      <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">詳細</button>
     </article>
   );
 }
@@ -2364,6 +2416,16 @@ function formatJsonObject(value) {
   return JSON.stringify(value, null, 2);
 }
 
+function outpatientBasicKindFromOptionsText(value = "") {
+  try {
+    const options = parseJsonObjectField(value, "算定オプション JSON") || {};
+    const kind = String(options.outpatient_basic?.fee_kind || "").trim();
+    return ["initial", "revisit"].includes(kind) ? kind : "";
+  } catch {
+    return "";
+  }
+}
+
 function userEditableCalculationOptions(session = {}) {
   if (!session.calculationOptions || typeof session.calculationOptions !== "object" || Array.isArray(session.calculationOptions)) {
     return null;
@@ -2556,6 +2618,10 @@ function statusLabel(value) {
     edited: "保留",
     not_calculated: "未算定"
   })[value] || value || "-";
+}
+
+function orderTypeLabel(value = "") {
+  return ORDER_TYPE_OPTIONS.find(([key]) => key === value)?.[1] || "";
 }
 
 function autoSaveLabel(status, error = "") {
