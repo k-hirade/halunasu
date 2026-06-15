@@ -6717,6 +6717,24 @@ test("does not propose chronic management fee from past history only", async () 
 test("proposes review-only specific disease management opportunities from active management facts", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.searchMaster = async (input) => {
+    const query = String(input.query || "");
+    if (query.includes("特定疾患療養管理料")) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{ kind: "procedure", code: "113000001", name: "特定疾患療養管理料（診療所）", points: 225 }]
+      };
+    }
+    if (query.includes("特定疾患処方管理加算")) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{ kind: "procedure", code: "120001001", name: "特定疾患処方管理加算２", points: 56 }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
   const clinicalFactsExtractor = async () => ({
     visit_type: { kind: "revisit", evidence: "定期再診", confidence: "medium" },
     diagnoses: [
@@ -6783,8 +6801,10 @@ test("proposes review-only specific disease management opportunities from active
   assert.ok(prescription);
   assert.equal(management.actionType, "not_billable_now");
   assert.equal(prescription.actionType, "not_billable_now");
-  assert.equal(management.candidateLine, null);
-  assert.equal(prescription.candidateLine, null);
+  assert.equal(management.candidateLine?.code, "113000001");
+  assert.equal(management.candidateLine?.totalPoints, 225);
+  assert.equal(prescription.candidateLine?.code, "120001001");
+  assert.equal(prescription.candidateLine?.totalPoints, 56);
   assert.equal(management.potentialPoints, 225);
   assert.equal(prescription.potentialPoints, 56);
   assert.equal(management.policy?.riskGate, "review_only");

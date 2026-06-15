@@ -2187,11 +2187,12 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     reviewWarnings.push(...issues.map((issue) => issue.messageForStaff));
   }
 
-  const specificDiseaseProposals = candidateProposalsFromSpecificDiseaseOpportunities({
+  const specificDiseaseProposals = await candidateProposalsFromSpecificDiseaseOpportunities({
     diagnoses,
     clinicalEvents: clinicalEventsForCalculation,
     visitMedication,
-    clinicalText: text
+    clinicalText: text,
+    feeCalculator
   });
   if (specificDiseaseProposals.length) {
     candidateProposals.push(...specificDiseaseProposals);
@@ -2647,6 +2648,35 @@ function unrelatedBodySitePenalty(query = "", candidateName = "") {
   return candidateGroups.some((index) => queryGroups.includes(index)) ? 0 : 90;
 }
 
+function candidateLineFromProcedureCandidate({
+  proposalId,
+  reason,
+  item = {},
+  title = ""
+} = {}) {
+  const points = Number(item.points || item.totalPoints || 0);
+  return {
+    lineId: `proposal_line_${String(proposalId || item.code || "").replace(/[^\w-]/gu, "_")}`,
+    code: String(item.code || ""),
+    name: item.name || item.displayName || item.baseName || title,
+    orderType: "procedure",
+    points,
+    quantity: 1,
+    totalPoints: points,
+    status: "candidate",
+    reason,
+    source: "medical_procedure_master",
+    coverage: {
+      scope: "master_lookup_only",
+      chapter: "procedure_code_master",
+      supportLevel: "review_required",
+      reviewRequired: true
+    },
+    supportLevel: "review_required",
+    reviewRequired: true
+  };
+}
+
 function candidateProposalFromProcedureItem({
   proposalId,
   title,
@@ -2671,34 +2701,16 @@ function candidateProposalFromProcedureItem({
     orderType: "procedure",
     source: "clinical_billing_opportunity",
     sortOrder,
-    candidateLine: {
-      lineId: `proposal_line_${String(proposalId || item.code || "").replace(/[^\w-]/gu, "_")}`,
-      code: String(item.code || ""),
-      name: item.name || item.displayName || item.baseName || title,
-      orderType: "procedure",
-      points,
-      quantity: 1,
-      totalPoints: points,
-      status: "candidate",
-      reason,
-      source: "medical_procedure_master",
-      coverage: {
-        scope: "master_lookup_only",
-        chapter: "procedure_code_master",
-        supportLevel: "review_required",
-        reviewRequired: true
-      },
-      supportLevel: "review_required",
-      reviewRequired: true
-    }
+    candidateLine: candidateLineFromProcedureCandidate({ proposalId, reason, item, title })
   };
 }
 
-function candidateProposalsFromSpecificDiseaseOpportunities({
+async function candidateProposalsFromSpecificDiseaseOpportunities({
   diagnoses = [],
   clinicalEvents = [],
   visitMedication = null,
-  clinicalText = ""
+  clinicalText = "",
+  feeCalculator = null
 } = {}) {
   const target = specificDiseaseTargetFromDiagnoses(diagnoses);
   if (!target) {
@@ -2707,8 +2719,16 @@ function candidateProposalsFromSpecificDiseaseOpportunities({
   const managementEvidence = currentSpecificDiseaseManagementEvidence(clinicalEvents);
   const proposals = [];
   if (managementEvidence) {
+    const managementProposalId = `specific_disease_management_${candidateIdPart([target.name, managementEvidence.name, managementEvidence.evidence].join("_"))}`;
+    const managementMasterItem = await searchProcedureCandidateItem(feeCalculator, [
+      "特定疾患療養管理料（診療所）",
+      "特定疾患療養管理料"
+    ], [
+      /特定疾患療養管理料/u,
+      /診療所/u
+    ]);
     proposals.push(reviewOnlyIncreaseProposal({
-      proposalId: `specific_disease_management_${candidateIdPart([target.name, managementEvidence.name, managementEvidence.evidence].join("_"))}`,
+      proposalId: managementProposalId,
       title: "特定疾患療養管理料の確認",
       reason: `${target.name}を主病として管理・指導した可能性があります。対象疾患、管理主体、療養計画、同月履歴を確認してください。`,
       conditionText: "対象疾患に該当し、療養上の管理・指導を診療録に記録し、同月算定条件を満たす場合に算定候補になります。自動では点数に入れていません。",
@@ -2718,7 +2738,15 @@ function candidateProposalsFromSpecificDiseaseOpportunities({
       source: "specific_disease_management_opportunity",
       topicCode: "target_disease_check",
       requiredInput: "対象疾患、主病管理、療養計画・指導記録、同月算定履歴",
-      resolutionOptions: REVIEW_TOPIC_RESOLUTION_OPTIONS.target_disease_check
+      resolutionOptions: REVIEW_TOPIC_RESOLUTION_OPTIONS.target_disease_check,
+      candidateLine: managementMasterItem?.code
+        ? candidateLineFromProcedureCandidate({
+          proposalId: managementProposalId,
+          reason: "特定疾患療養管理料は条件確認後に算定候補へ移せます。",
+          item: managementMasterItem,
+          title: "特定疾患療養管理料"
+        })
+        : null
     }));
   }
   const longPrescriptionEvidence = longTermSpecificDiseasePrescriptionEvidence({
@@ -2727,8 +2755,16 @@ function candidateProposalsFromSpecificDiseaseOpportunities({
     clinicalText
   });
   if (longPrescriptionEvidence) {
+    const prescriptionProposalId = `specific_disease_prescription_management_${candidateIdPart([target.name, longPrescriptionEvidence.evidence].join("_"))}`;
+    const prescriptionMasterItem = await searchProcedureCandidateItem(feeCalculator, [
+      "特定疾患処方管理加算",
+      "特定疾患処方管理加算２",
+      "特定疾患処方管理加算2"
+    ], [
+      /特定疾患処方管理加算/u
+    ]);
     proposals.push(reviewOnlyIncreaseProposal({
-      proposalId: `specific_disease_prescription_management_${candidateIdPart([target.name, longPrescriptionEvidence.evidence].join("_"))}`,
+      proposalId: prescriptionProposalId,
       title: "特定疾患処方管理加算の確認",
       reason: `${target.name}の患者に長期処方がある可能性があります。処方日数、主病、同月履歴を確認してください。`,
       conditionText: "特定疾患を主病として管理しており、処方日数などの要件を満たす場合に算定候補になります。自動では点数に入れていません。",
@@ -2738,7 +2774,15 @@ function candidateProposalsFromSpecificDiseaseOpportunities({
       source: "specific_disease_prescription_opportunity",
       topicCode: "same_month_check",
       requiredInput: "対象疾患、処方日数、同月算定履歴、院内/院外処方の区分",
-      resolutionOptions: REVIEW_TOPIC_RESOLUTION_OPTIONS.same_month_check
+      resolutionOptions: REVIEW_TOPIC_RESOLUTION_OPTIONS.same_month_check,
+      candidateLine: prescriptionMasterItem?.code
+        ? candidateLineFromProcedureCandidate({
+          proposalId: prescriptionProposalId,
+          reason: "特定疾患処方管理加算は条件確認後に算定候補へ移せます。",
+          item: prescriptionMasterItem,
+          title: "特定疾患処方管理加算"
+        })
+        : null
     }));
   }
   return normalizeCandidateProposals(proposals);
@@ -2841,7 +2885,8 @@ function reviewOnlyIncreaseProposal({
   source = "increase_opportunity",
   topicCode = "",
   requiredInput = "",
-  resolutionOptions = []
+  resolutionOptions = [],
+  candidateLine = null
 } = {}) {
   return {
     proposalId,
@@ -2854,6 +2899,7 @@ function reviewOnlyIncreaseProposal({
     potentialPoints: Number(potentialPoints || 0),
     orderType,
     source,
+    candidateLine,
     policy: {
       generationSource: "conditional_independent",
       riskGate: "review_only",
