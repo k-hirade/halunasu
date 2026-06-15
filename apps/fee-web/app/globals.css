@@ -839,26 +839,86 @@ body:has(.fee-shell--detail) {
   color: var(--ink);
 }
 
-.fee-message {
+.fee-toast-container {
+  position: fixed;
+  right: 16px;
+  bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  z-index: 200;
+  display: grid;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.fee-toast {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 320px;
+  max-width: 420px;
+  padding: 12px 12px 12px 16px;
   border-radius: 8px;
-  padding: 12px 14px;
-  font-weight: 800;
+  background: var(--ink);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  animation: fee-toast-in 280ms ease both;
 }
 
-.fee-message-slot:empty {
-  display: none;
+.fee-toast--success {
+  background: #065f46;
 }
 
-.fee-message--success {
-  color: #087443;
-  background: #ecfdf3;
-  border: 1px solid #abefc6;
+.fee-toast--error {
+  background: #991b1b;
 }
 
-.fee-message--error {
-  color: #b42318;
-  background: #fff1f0;
-  border: 1px solid #ffd2cf;
+.fee-toast--leaving {
+  animation: fee-toast-out 200ms ease both;
+}
+
+.fee-toast-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.fee-toast-message {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fee-toast-close-button {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  cursor: pointer;
+  transition: background 160ms;
+}
+
+.fee-toast-close-button:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+@keyframes fee-toast-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fee-toast-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(20px); }
 }
 
 .fee-session-list {
@@ -2602,6 +2662,17 @@ body:has(.fee-shell--detail) {
   .fee-source-form,
   .fee-work-pane-body {
     overflow: visible;
+  }
+
+  .fee-toast-container {
+    left: 16px;
+    right: 16px;
+  }
+
+  .fee-toast {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
   }
 
   .fee-page-head,

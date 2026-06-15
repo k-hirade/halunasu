@@ -262,7 +262,7 @@ function FeeSessionDetailView({ sessionId }) {
   const [selectedMasterIndex, setSelectedMasterIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState(null);
+  const [toasts, setToasts] = useState([]);
   const [autoSaveStatus, setAutoSaveStatus] = useState("saved");
   const [autoSaveError, setAutoSaveError] = useState("");
   const [candidateDetail, setCandidateDetail] = useState(null);
@@ -273,6 +273,52 @@ function FeeSessionDetailView({ sessionId }) {
   const autoSaveTimerRef = useRef(null);
   const pendingAutoSaveRef = useRef(null);
   const bootstrapLoadedRef = useRef(false);
+  const toastTimersRef = useRef(new Map());
+  const toastExitTimersRef = useRef(new Map());
+
+  const dismissToast = useCallback((id) => {
+    const timer = toastTimersRef.current.get(id);
+    if (timer) {
+      window.clearTimeout(timer);
+      toastTimersRef.current.delete(id);
+    }
+
+    const exitTimer = toastExitTimersRef.current.get(id);
+    if (exitTimer) {
+      window.clearTimeout(exitTimer);
+    }
+
+    setToasts((current) => current.map((toast) => (toast.id === id ? { ...toast, leaving: true } : toast)));
+    const nextExitTimer = window.setTimeout(() => {
+      toastExitTimersRef.current.delete(id);
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 220);
+    toastExitTimersRef.current.set(id, nextExitTimer);
+  }, []);
+
+  const addToast = useCallback((text, variant = "default") => {
+    if (!text) {
+      return;
+    }
+    const id = Date.now() + Math.random();
+    setToasts((current) => [...current, { id, text, variant }]);
+    const timer = window.setTimeout(() => {
+      toastTimersRef.current.delete(id);
+      dismissToast(id);
+    }, 2800);
+    toastTimersRef.current.set(id, timer);
+  }, [dismissToast]);
+
+  useEffect(() => () => {
+    for (const timer of toastTimersRef.current.values()) {
+      window.clearTimeout(timer);
+    }
+    for (const timer of toastExitTimersRef.current.values()) {
+      window.clearTimeout(timer);
+    }
+    toastTimersRef.current.clear();
+    toastExitTimersRef.current.clear();
+  }, []);
 
   const masterSearchAvailable = isMasterSearchAvailable(masterStatus);
   const filteredPatients = useMemo(() => {
@@ -330,7 +376,6 @@ function FeeSessionDetailView({ sessionId }) {
 
   const loadAll = useCallback(async ({ forceBootstrap = false } = {}) => {
     setLoading(true);
-    setMessage(null);
     try {
       const [, detail] = await Promise.all([
         loadBootstrap({ force: forceBootstrap }),
@@ -338,11 +383,11 @@ function FeeSessionDetailView({ sessionId }) {
       ]);
       applyDetail(detail);
     } catch (error) {
-      setMessage({ type: "error", text: toUserFacingErrorMessage(error, "算定詳細を読み込めませんでした。") });
+      addToast(toUserFacingErrorMessage(error, "算定詳細を読み込めませんでした。"), "error");
     } finally {
       setLoading(false);
     }
-  }, [applyDetail, feeApi, loadBootstrap, sessionId]);
+  }, [addToast, applyDetail, feeApi, loadBootstrap, sessionId]);
 
   useEffect(() => {
     loadAll();
@@ -411,20 +456,14 @@ function FeeSessionDetailView({ sessionId }) {
         const status = detail.feeSession?.status;
         if (status && status !== "calculating") {
           await refreshDetail();
-          setMessage(status === "failed"
-            ? {
-              type: "error",
-              text: "算定候補の作成に失敗しました。入力内容を確認してもう一度お試しください。"
-            }
-            : null);
+          if (status === "failed") {
+            addToast("算定候補の作成に失敗しました。入力内容を確認してもう一度お試しください。", "error");
+          }
           return;
         }
         const elapsed = Date.now() - startedAt;
         if (elapsed >= CALCULATION_POLL_TIMEOUT_MS) {
-          setMessage({
-            type: "error",
-            text: "算定候補の作成に時間がかかっています。しばらくしてから最新の状態に更新するか、再度お試しください。"
-          });
+          addToast("算定候補の作成に時間がかかっています。しばらくしてから最新の状態に更新するか、再度お試しください。", "error");
           return;
         }
         attempt += 1;
@@ -434,7 +473,7 @@ function FeeSessionDetailView({ sessionId }) {
           const fallback = Number(error?.status) === 504
             ? "算定候補の作成がタイムアウトしました。最新の状態に更新するか、入力内容を確認して再試行してください。"
             : "算定結果を更新できませんでした。";
-          setMessage({ type: "error", text: toUserFacingErrorMessage(error, fallback) });
+          addToast(toUserFacingErrorMessage(error, fallback), "error");
         }
       }
     };
@@ -444,7 +483,7 @@ function FeeSessionDetailView({ sessionId }) {
       cancelled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [feeSession?.status, refreshCalculationStatus, refreshDetail]);
+  }, [addToast, feeSession?.status, refreshCalculationStatus, refreshDetail]);
 
   useEffect(() => {
     if (!masterSearchAvailable) {
@@ -467,11 +506,11 @@ function FeeSessionDetailView({ sessionId }) {
         setMasterItems(response.items || []);
         setMasterStatus(response.masterStatus || masterStatus);
       } catch (error) {
-        setMessage({ type: "error", text: toUserFacingErrorMessage(error, "マスター検索に失敗しました。") });
+        addToast(toUserFacingErrorMessage(error, "マスター検索に失敗しました。"), "error");
       }
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [feeApi, masterQuery, masterSearchAvailable, masterStatus, masterType]);
+  }, [addToast, feeApi, masterQuery, masterSearchAvailable, masterStatus, masterType]);
 
   function updateForm(field, value) {
     setForm((current) => ({
@@ -546,10 +585,11 @@ function FeeSessionDetailView({ sessionId }) {
     });
     applyDetail(response);
     if (!options.silent) {
-      setMessage({ type: "success", text: "入力を保存しました。" });
+      addToast("入力を保存しました。", "success");
     }
     return response;
   }, [
+    addToast,
     applyDetail,
     clinicalTextBaselineHash,
     defaultFacilityId,
@@ -600,7 +640,7 @@ function FeeSessionDetailView({ sessionId }) {
   ]);
 
   async function calculate() {
-    await runBusy(setBusy, setMessage, async () => {
+    await runBusy(setBusy, addToast, async () => {
       window.clearTimeout(autoSaveTimerRef.current);
       if (pendingAutoSaveRef.current) {
         await pendingAutoSaveRef.current;
@@ -617,7 +657,6 @@ function FeeSessionDetailView({ sessionId }) {
           message: "カルテ本文から算定に必要な情報を抽出しています。"
         })
       }));
-      setMessage(null);
       let response;
       try {
         response = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/calculation-jobs`, {
@@ -632,18 +671,15 @@ function FeeSessionDetailView({ sessionId }) {
       const jobStatus = String(response.calculationJob?.status || "").trim();
       const jobQueued = ["queued", "waiting_for_worker", "running"].includes(jobStatus);
       await refreshCalculationStatus();
-      setMessage(jobQueued
-        ? null
-        : {
-          type: "error",
-          text: "算定ジョブを開始できませんでした。Cloud Tasks または Pub/Sub の設定を確認して再度お試しください。"
-        });
+      if (!jobQueued) {
+        addToast("算定ジョブを開始できませんでした。Cloud Tasks または Pub/Sub の設定を確認して再度お試しください。", "error");
+      }
     });
   }
 
   async function createPatient(event) {
     event.preventDefault();
-    await runBusy(setBusy, setMessage, async () => {
+    await runBusy(setBusy, addToast, async () => {
       const externalPatientIds = newPatient.patientRef.trim() ? [newPatient.patientRef.trim()] : [];
       const response = await feeApi("/v1/fee/patients", {
         method: "POST",
@@ -662,12 +698,12 @@ function FeeSessionDetailView({ sessionId }) {
         patientId: patient?.patientId || current.patientId
       }));
       setNewPatient(defaultPatientForm());
-      setMessage({ type: "success", text: "患者を作成しました。" });
+      addToast("患者を作成しました。", "success");
     });
   }
 
   async function decideReviewItem(reviewItemId, status) {
-    await runBusy(setBusy, setMessage, async () => {
+    await runBusy(setBusy, addToast, async () => {
       const response = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/review-items/${encodeURIComponent(reviewItemId)}`, {
         method: "PATCH",
         csrf: true,
@@ -678,19 +714,19 @@ function FeeSessionDetailView({ sessionId }) {
       setCandidateWorkbench(response.candidateWorkbench || null);
       setAutoSaveStatus("saved");
       setAutoSaveError("");
-      setMessage({ type: "success", text: "採否を更新しました。" });
+      addToast("採否を更新しました。", "success");
     });
   }
 
   async function copyReceiptDraft() {
     if (!receiptDraft) {
-      setMessage({ type: "error", text: "コピーできるレセプト案がまだありません。" });
+      addToast("コピーできるレセプト案がまだありません。", "error");
       return;
     }
-    await runBusy(setBusy, setMessage, async () => {
+    await runBusy(setBusy, addToast, async () => {
       const text = formatReceiptDraftForClipboard({ feeSession, receiptDraft });
       await writeClipboardText(text);
-      setMessage({ type: "success", text: "レセプト案をコピーしました。" });
+      addToast("レセプト案をコピーしました。", "success");
     });
   }
 
@@ -729,9 +765,9 @@ function FeeSessionDetailView({ sessionId }) {
           ];
         }
         updateForm("calculationOptionsText", formatJsonObject(options));
-        setMessage({ type: "success", text: "コメントを算定オプションに追加しました。" });
+        addToast("コメントを算定オプションに追加しました。", "success");
       } catch (error) {
-        setMessage({ type: "error", text: toUserFacingErrorMessage(error, "算定オプション JSONを確認してください。") });
+        addToast(toUserFacingErrorMessage(error, "算定オプション JSONを確認してください。"), "error");
       }
       return;
     }
@@ -747,7 +783,7 @@ function FeeSessionDetailView({ sessionId }) {
         quantity: "1"
       }
     ]);
-    setMessage({ type: "success", text: "マスターからオーダーを追加しました。" });
+    addToast("マスターからオーダーを追加しました。", "success");
   }
 
   function updateOutpatientBasicKind(value) {
@@ -765,12 +801,9 @@ function FeeSessionDetailView({ sessionId }) {
         };
       }
       updateForm("calculationOptionsText", formatJsonObject(options));
-      setMessage({
-        type: "info",
-        text: value ? "初診/再診の手動指定を更新しました。再計算すると反映されます。" : "初診/再診を自動判定に戻しました。再計算すると反映されます。"
-      });
+      addToast(value ? "初診/再診の手動指定を更新しました。再計算すると反映されます。" : "初診/再診を自動判定に戻しました。再計算すると反映されます。", "default");
     } catch (error) {
-      setMessage({ type: "error", text: toUserFacingErrorMessage(error, "算定オプション JSONを確認してください。") });
+      addToast(toUserFacingErrorMessage(error, "算定オプション JSONを確認してください。"), "error");
     }
   }
 
@@ -796,8 +829,21 @@ function FeeSessionDetailView({ sessionId }) {
 
   return (
     <main className="fee-shell fee-shell--detail">
-      <div className="fee-message-slot">
-        {message ? <div className={`fee-message fee-message--${message.type}`} role="status">{message.text}</div> : null}
+      <div className="fee-toast-container" aria-live="polite">
+        {toasts.map((toast) => (
+          <div
+            className={`fee-toast ${toast.variant === "success" ? "fee-toast--success" : toast.variant === "error" ? "fee-toast--error" : ""} ${toast.leaving ? "fee-toast--leaving" : ""}`}
+            key={toast.id}
+            role="status"
+          >
+            {toast.variant === "success" ? <span aria-hidden="true" className="fee-toast-icon">✓</span> : null}
+            {toast.variant === "error" ? <span aria-hidden="true" className="fee-toast-icon">!</span> : null}
+            <span className="fee-toast-message">{toast.text}</span>
+            <button className="fee-toast-close-button" onClick={() => dismissToast(toast.id)} type="button" aria-label="通知を閉じる">
+              ×
+            </button>
+          </div>
+        ))}
       </div>
 
       <div className="fee-session-workspace">
@@ -1574,13 +1620,10 @@ function BucketHeader({ count, note, title }) {
 function ProposalLineRow({ disabled, item, onDecision, onOpenDetail }) {
   const canApprove = canApproveReviewItem(item);
   const decisionStatus = decisionSelectValue(item.decisionStatus);
-  const options = canApprove
-    ? [
-      { value: "needs_review", label: "確認中", disabled: true },
-      { value: "approved", label: "算定する" },
-      { value: "rejected", label: "算定しない" }
-    ]
-    : [{ value: "needs_review", label: confirmableProposalForAdoption(item) ? "詳細で確認" : item.nextActionLabel || "条件確認" }];
+  const options = [
+    { value: "approved", label: "算定する" },
+    { value: "rejected", label: "算定しない" }
+  ];
   const metaLabel = [
     item.code,
     orderTypeLabel(item.orderType || item.candidateLine?.orderType),
@@ -1595,9 +1638,10 @@ function ProposalLineRow({ disabled, item, onDecision, onOpenDetail }) {
           disabled={disabled || !canApprove}
           className="candidate-decision-select"
           options={options}
+          placeholder={canApprove ? "確認中" : confirmableProposalForAdoption(item) ? "詳細で確認" : item.nextActionLabel || "条件確認"}
           value={decisionStatus}
           onValueChange={(value) => {
-            if (value && value !== "needs_review") {
+            if (value) {
               onDecision(item.reviewItemId, value);
             }
           }}
@@ -1625,13 +1669,13 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
           disabled={disabled || !canApprove}
           className="candidate-decision-select"
           options={[
-            { value: "needs_review", label: "確認中", disabled: true },
             { value: "approved", label: "算定する" },
             { value: "rejected", label: "算定しない" }
           ]}
+          placeholder="確認中"
           value={decisionStatus}
           onValueChange={(value) => {
-            if (value && value !== "needs_review") {
+            if (value) {
               onDecision(item.reviewItemId, value);
             }
           }}
@@ -1872,7 +1916,7 @@ function canApproveReviewItem(item = {}) {
 }
 
 function decisionSelectValue(value = "") {
-  return ["approved", "rejected"].includes(value) ? value : "needs_review";
+  return ["approved", "rejected"].includes(value) ? value : "";
 }
 
 function confirmableProposalForAdoption(item = {}) {
@@ -2210,13 +2254,12 @@ function useFeeApi() {
   }, [auth.accessToken, auth.csrfToken]);
 }
 
-async function runBusy(setBusy, setMessage, task) {
+async function runBusy(setBusy, addToast, task) {
   setBusy(true);
-  setMessage(null);
   try {
     await task();
   } catch (error) {
-    setMessage({ type: "error", text: toUserFacingErrorMessage(error, "処理に失敗しました。") });
+    addToast(toUserFacingErrorMessage(error, "処理に失敗しました。"), "error");
   } finally {
     setBusy(false);
   }
