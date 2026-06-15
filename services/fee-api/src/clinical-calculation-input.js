@@ -792,14 +792,29 @@ function buildClinicalTextPreprocessing(text = "") {
       charEnd: offset + line.length,
       text: line,
       normalizedText: normalizeClinicalText(line),
-      cues: clinicalLineCues(line)
+      cues: clinicalLineCues(line),
+      candidateConcepts: []
     });
     offset += line.length + 1;
+  }
+  const deterministicCandidates = deterministicClinicalCandidatesFromLines(lines);
+  const conceptsByLineId = new Map();
+  for (const candidate of deterministicCandidates) {
+    if (!candidate.lineId || !candidate.conceptId) {
+      continue;
+    }
+    const current = conceptsByLineId.get(candidate.lineId) || [];
+    current.push(candidate.conceptId);
+    conceptsByLineId.set(candidate.lineId, uniqueStrings(current).slice(0, 12));
+  }
+  for (const line of lines) {
+    line.candidateConcepts = conceptsByLineId.get(line.lineId) || [];
   }
   return {
     text: rawText,
     normalizedText: normalizeClinicalText(rawText),
     lines,
+    deterministicCandidates,
     lineCount: lines.length,
     sectionCounts: Object.fromEntries(Object.entries(sectionCounts).map(([key, value]) => [key, Number(value || 0)]))
   };
@@ -825,6 +840,103 @@ function clinicalLineCues(line = "") {
   };
 }
 
+function deterministicClinicalCandidatesFromLines(lines = []) {
+  const candidates = [];
+  for (const line of Array.isArray(lines) ? lines : []) {
+    const text = String(line?.text || "");
+    const normalizedText = String(line?.normalizedText || normalizeClinicalText(text));
+    if (!normalizedText.trim() || line?.cues?.syntheticMeta) {
+      continue;
+    }
+    for (const concept of labConceptsFromText(normalizedText)) {
+      candidates.push(preprocessingCandidate({
+        kind: "lab",
+        conceptId: `lab:${concept.key}`,
+        label: concept.name || concept.key,
+        line,
+        evidence: text,
+        confidence: hasLabResultContext(text, concept) || hasPerformedLabContext(text) ? "medium" : "low"
+      }));
+    }
+    for (const imaging of imagingConceptsFromPreprocessedLine(normalizedText)) {
+      candidates.push(preprocessingCandidate({
+        kind: "imaging",
+        conceptId: `imaging:${imaging.key}`,
+        label: imaging.label,
+        line,
+        evidence: text,
+        confidence: line?.cues?.futureOrOrderOnly || line?.cues?.pastOrExternal || line?.cues?.negatedService ? "low" : "medium"
+      }));
+    }
+    for (const procedure of PROCEDURE_CHECKLIST_DEFINITIONS) {
+      if (procedure.pattern?.test?.(normalizedText)) {
+        candidates.push(preprocessingCandidate({
+          kind: "procedure",
+          conceptId: `procedure:${procedure.key}`,
+          label: procedure.label || procedure.query || procedure.key,
+          line,
+          evidence: text,
+          confidence: line?.cues?.futureOrOrderOnly || line?.cues?.pastOrExternal || line?.cues?.negatedService ? "low" : "medium"
+        }));
+      }
+    }
+    for (const domain of REVIEW_ONLY_DOMAIN_CHECKLIST_DEFINITIONS) {
+      if (domain.pattern?.test?.(normalizedText)) {
+        candidates.push(preprocessingCandidate({
+          kind: "review_domain",
+          conceptId: `domain:${domain.domain}`,
+          label: domain.label || domain.domain,
+          line,
+          evidence: text,
+          confidence: "review"
+        }));
+      }
+    }
+  }
+  const seen = new Set();
+  return candidates.filter((candidate) => {
+    const key = `${candidate.conceptId}:${candidate.lineId}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  }).slice(0, 80);
+}
+
+function preprocessingCandidate({ kind, conceptId, label, line, evidence, confidence }) {
+  return {
+    candidateId: candidateIdPart([kind, conceptId, line?.lineId || ""].join("_")),
+    kind,
+    conceptId,
+    label,
+    lineId: line?.lineId || "",
+    lineIndex: line?.index || null,
+    section: line?.section || "unknown",
+    evidence: String(evidence || "").slice(0, 180),
+    cues: line?.cues || {},
+    confidence: confidence || "low"
+  };
+}
+
+function imagingConceptsFromPreprocessedLine(text = "") {
+  const value = String(text || "");
+  const concepts = [];
+  if (/CT|ＣＴ|コンピュータ断層|断層撮影/u.test(value)) {
+    concepts.push({ key: "ct", label: "CT" });
+  }
+  if (/MRI|ＭＲＩ|磁気共鳴/u.test(value)) {
+    concepts.push({ key: "mri", label: "MRI" });
+  }
+  if (/X線|Ｘ線|レントゲン|胸写|XP|ＸＰ/u.test(value)) {
+    concepts.push({ key: "simple_radiography", label: "単純X線" });
+  }
+  if (/超音波|エコー/u.test(value)) {
+    concepts.push({ key: "ultrasound", label: "超音波" });
+  }
+  return concepts;
+}
+
 function evidenceRefsForClinicalEvent(event = {}, preprocessing = null) {
   const quote = clinicalEventEvidenceQuote(event);
   const section = normalizeClinicalSection(event?.section);
@@ -834,6 +946,81 @@ function evidenceRefsForClinicalEvent(event = {}, preprocessing = null) {
       section,
       quote
     }] : [];
+  }
+  const explicitLineIds = clinicalEventEvidenceLineIds(event);
+  if (explicitLineIds.length) {
+    const lineById = new Map(preprocessing.lines.map((line) => [line.lineId, line]));
+    const quoteCandidates = clinicalEventEvidenceQuoteCandidates(quote);
+    const explicitSpan = clinicalEventEvidenceSpan(event);
+    const refs = [];
+    for (const lineId of explicitLineIds) {
+      const line = lineById.get(lineId);
+      if (!line) {
+        refs.push({
+          source: "clinical_text",
+          lineId,
+          section,
+          quote,
+          notFoundInText: true,
+          reason: "evidence_line_id_not_found",
+          lineIdProvided: true
+        });
+        continue;
+      }
+      const lineText = String(line.text || "");
+      const normalizedLine = String(line.normalizedText || "");
+      let matchedQuote = "";
+      let rawIndex = -1;
+      let normalizedOnly = false;
+      for (const quoteCandidate of quoteCandidates) {
+        rawIndex = lineText.indexOf(quoteCandidate);
+        if (rawIndex >= 0) {
+          matchedQuote = quoteCandidate;
+          break;
+        }
+        const normalizedQuote = normalizeClinicalText(quoteCandidate);
+        if (normalizedQuote && normalizedLine.includes(normalizedQuote)) {
+          matchedQuote = quoteCandidate;
+          normalizedOnly = true;
+          break;
+        }
+      }
+      const hasExplicitSpan = explicitSpan
+        && explicitSpan.charStart >= line.charStart
+        && explicitSpan.charEnd <= line.charEnd;
+      const charStart = hasExplicitSpan
+        ? explicitSpan.charStart
+        : rawIndex >= 0
+          ? line.charStart + rawIndex
+          : line.charStart;
+      const charEnd = hasExplicitSpan
+        ? explicitSpan.charEnd
+        : rawIndex >= 0
+          ? line.charStart + rawIndex + matchedQuote.length
+          : line.charEnd;
+      refs.push({
+        source: "clinical_text",
+        lineId: line.lineId,
+        lineIndex: line.index,
+        section: line.section || section || "unknown",
+        quote: matchedQuote || quote,
+        originalQuote: matchedQuote && matchedQuote !== quote ? quote : undefined,
+        lineText,
+        verificationContext: rawIndex >= 0
+          ? sentenceContainingRange(lineText, rawIndex, rawIndex + matchedQuote.length)
+          : lineText,
+        charStart,
+        charEnd,
+        cues: line.cues || {},
+        exact: rawIndex >= 0 || hasExplicitSpan,
+        normalizedOnly,
+        lineIdProvided: true,
+        quoteNotOnLine: !matchedQuote && Boolean(quote)
+      });
+    }
+    if (refs.length) {
+      return refs.slice(0, 4);
+    }
   }
   const quoteCandidates = clinicalEventEvidenceQuoteCandidates(quote);
   const refs = [];
@@ -1084,6 +1271,7 @@ async function inferStructuredClinicalCalculationOptions({
 
   const startedAt = Date.now();
   const conversionSearch = createMasterSearchMetrics(feeCalculator);
+  const clinicalTextPreprocessing = buildClinicalTextPreprocessing(text);
   const checklistMenu = buildClinicalChecklistMenu(text);
   let openAiProviderDurationMs = 0;
   let firstOutputTextMs = null;
@@ -1095,6 +1283,7 @@ async function inferStructuredClinicalCalculationOptions({
         clinicalText: text,
         session,
         sessionContext: buildFeeSessionContext(session),
+        preprocessedLines: clinicalTextPreprocessing.lines,
         checklistMenu,
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
@@ -1104,6 +1293,7 @@ async function inferStructuredClinicalCalculationOptions({
         apiKey: openAiApiKey,
         clinicalText: text,
         sessionContext: buildFeeSessionContext(session),
+        preprocessedLines: clinicalTextPreprocessing.lines,
         checklistMenu,
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
@@ -1432,6 +1622,21 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     lineCount: clinicalTextPreprocessing.lineCount,
     sectionCounts: clinicalTextPreprocessing.sectionCounts,
     message: "clinical_text_lines_and_cues_prepared"
+  });
+  clinicalTrace.push({
+    stage: "deterministic_preprocessing",
+    outcome: "prepared",
+    candidateCount: clinicalTextPreprocessing.deterministicCandidates.length,
+    candidates: clinicalTextPreprocessing.deterministicCandidates.slice(0, 24).map((candidate) => ({
+      kind: candidate.kind,
+      conceptId: candidate.conceptId,
+      label: candidate.label,
+      lineId: candidate.lineId,
+      section: candidate.section,
+      confidence: candidate.confidence,
+      cues: candidate.cues
+    })),
+    message: "deterministic_candidates_prepared_for_observability_only"
   });
   let clinicalEvents = clinicalEventsFromClinicalFacts(facts);
   const checklistContradictions = clinicalEventContradictionsFromChecklistFindings({
@@ -4978,6 +5183,54 @@ function isUsableClinicalDiagnosisStatus(status) {
 
 function normalizeClinicalEventType(event = {}) {
   return String(event?.type || "other").trim();
+}
+
+function clinicalEventEvidenceLineIds(event = {}) {
+  const candidates = [
+    event?.evidence_line_ids,
+    event?.evidenceLineIds,
+    event?.evidence?.line_ids,
+    event?.evidence?.lineIds
+  ];
+  const result = [];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      result.push(...candidate);
+    } else if (candidate) {
+      result.push(candidate);
+    }
+  }
+  return uniqueStrings(result
+    .map((value) => String(value || "").trim())
+    .filter(Boolean))
+    .slice(0, 4);
+}
+
+function clinicalEventEvidenceSpan(event = {}) {
+  const start = integerLikeValue(event?.char_start)
+    ?? integerLikeValue(event?.charStart)
+    ?? integerLikeValue(event?.evidence_char_start);
+  const end = integerLikeValue(event?.char_end)
+    ?? integerLikeValue(event?.charEnd)
+    ?? integerLikeValue(event?.evidence_char_end);
+  if (start === null || end === null || start < 0 || end <= start) {
+    return null;
+  }
+  return {
+    charStart: start,
+    charEnd: end
+  };
+}
+
+function integerLikeValue(value) {
+  if (Number.isInteger(value)) {
+    return value;
+  }
+  const text = String(value ?? "").trim();
+  if (!/^\d+$/u.test(text)) {
+    return null;
+  }
+  return Number(text);
 }
 
 function normalizeClinicalEventBillingDomain(event = {}, { type = "" } = {}) {

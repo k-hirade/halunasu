@@ -1,6 +1,6 @@
 import { createStructuredOpenAiResponse } from "../openai/responses-structured.js";
 
-export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v10";
+export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v11";
 
 const LEGACY_EVENT_STATUSES = [
   "performed",
@@ -204,6 +204,9 @@ const feeClinicalFactsSchema = {
           "certainty",
           "section",
           "evidence",
+          "evidence_line_ids",
+          "char_start",
+          "char_end",
           "search_queries",
           "modality",
           "body_site",
@@ -291,6 +294,19 @@ function eventProperties() {
       enum: ["S", "O", "A", "P", "unknown"]
     },
     evidence: shortString(90),
+    evidence_line_ids: {
+      type: "array",
+      maxItems: 3,
+      items: shortString(20)
+    },
+    char_start: {
+      type: "string",
+      maxLength: 12
+    },
+    char_end: {
+      type: "string",
+      maxLength: 12
+    },
     search_queries: {
       type: "array",
       maxItems: 5,
@@ -315,6 +331,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
   apiKey,
   clinicalText,
   sessionContext = {},
+  preprocessedLines = [],
   checklistMenu = [],
   model = "gpt-5.4-nano",
   reasoningEffort = "low",
@@ -327,6 +344,9 @@ export async function extractFeeClinicalFactsWithOpenAi({
     "",
     "Session context:",
     JSON.stringify(safeSessionContext(sessionContext), null, 2),
+    "",
+    "Preprocessed clinical lines:",
+    JSON.stringify(safePreprocessedClinicalLines(preprocessedLines), null, 2),
     "",
     "Checklist menu:",
     JSON.stringify(safeClinicalChecklistMenu(checklistMenu), null, 2),
@@ -346,6 +366,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "In addition to free clinical_events extraction, answer checklist_findings for every item in the Checklist menu. This checklist is only a recall aid: it does not make an item billable by itself. Downstream rules will still verify evidence, timing, ownership, master mapping, and policy gates.",
       "For each checklist menu item, return exactly one checklist_finding with the same menu_id. Use status=performed_today only when the note supports that the item happened in this clinic during this encounter. Use planned for future/order/予定/依頼/予約/次回. Use past_or_external for 前回/以前/他院/前医/持参/健診/他科/主治医. Use mentioned_not_performed when the note says the act was not done. Use not_in_text when the menu item is not actually supported by the note. Use unclear when named but timing/ownership/performance cannot be determined.",
       "For checklist_findings evidence, quote a short exact excerpt from the clinical text when status is not_in_text leave evidence empty. Do not invent evidence.",
+      "For every clinical_event, when a matching item exists in Preprocessed clinical lines, set evidence_line_ids to the relevant line_id values; use an empty array only when no line can be identified. evidence must still be a short quote from the original clinical text. Set char_start/char_end to decimal character offsets only when you can identify the original span exactly; otherwise set them to empty strings.",
       "For each clinical_event, set billing_domain as a structured meaning label. Use standard_lab for ordinary specimen tests including blood/urine/rapid tests and ordinary specimen submission; pathology only for pathology diagnosis, cytology, histology, tissue specimen pathology submission, or specimen preparation in a pathology-diagnosis context; emergency_time_addon only for emergency/time-after-hours/holiday/night billing add-on context such as 救急加算, 時間外加算, 休日加算, 深夜加算, or受付時刻確認 for those add-ons. Do not mark symptom timing such as 夜間頻尿 or 夜間咳嗽 as emergency_time_addon.",
       "Separate action_status, temporal_relation, source_origin, provider_ownership, result_assertion, and certainty. Do not compress them into one status.",
       "Use action_status=performed/prescribed/administered only for actions that happened during the current encounter or are clearly prescribed/administered by this clinic today.",
@@ -410,6 +431,26 @@ function safeSessionContext(context = {}) {
     visitType: context.visitType || "",
     diagnoses: Array.isArray(context.diagnoses) ? context.diagnoses.slice(0, 20) : []
   };
+}
+
+function safePreprocessedClinicalLines(lines = []) {
+  return Array.isArray(lines)
+    ? lines.slice(0, 80).map((line) => ({
+      line_id: String(line?.lineId || line?.line_id || "").slice(0, 20),
+      section: String(line?.section || "unknown").slice(0, 10),
+      text: String(line?.text || "").slice(0, 220),
+      cues: {
+        future_or_order_only: Boolean(line?.cues?.futureOrOrderOnly),
+        negated_service: Boolean(line?.cues?.negatedService),
+        past_or_external: Boolean(line?.cues?.pastOrExternal),
+        current_visit: Boolean(line?.cues?.currentVisit),
+        synthetic_meta: Boolean(line?.cues?.syntheticMeta)
+      },
+      candidate_concepts: Array.isArray(line?.candidateConcepts)
+        ? line.candidateConcepts.slice(0, 8).map((item) => String(item || "").slice(0, 60))
+        : []
+    })).filter((line) => line.line_id && line.text)
+    : [];
 }
 
 function safeClinicalChecklistMenu(menu = []) {

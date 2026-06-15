@@ -1511,7 +1511,7 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v10");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v11");
   assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v10");
   assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
     event.name === "腰椎X線"
@@ -1975,6 +1975,171 @@ test("prefers exact master name over modifier siblings when modifier is not in t
 
   assert.equal(calculation.statusCode, 201);
   assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160054710"]);
+});
+
+test("uses evidence line ids to verify supported clinical facts", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  let extractorPreprocessedLines = null;
+  stores.feeCalculator.searchMaster = async (input) => {
+    if (input.type === "procedure" && input.query === "ＣＲＰ") {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{
+          kind: "procedure",
+          code: "160054710",
+          name: "ＣＲＰ",
+          points: 16,
+          feeCategory: "lab_test_basic",
+          itemRole: "base",
+          directRetrievalAllowed: true
+        }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async ({ preprocessedLines }) => {
+    extractorPreprocessedLines = preprocessedLines;
+    return {
+      visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+      diagnoses: [{ name: "発熱", status: "confirmed", evidence: "発熱" }],
+      clinical_events: [{
+        type: "lab",
+        billing_domain: "standard_lab",
+        name: "ＣＲＰ",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "numeric",
+        certainty: "explicit",
+        section: "O",
+        evidence: "CRP値を確認",
+        evidence_line_ids: ["O-001"],
+        search_queries: ["ＣＲＰ"],
+        specimen: "血液",
+        collection_method: "静脈採血"
+      }],
+      checklist_findings: [],
+      excluded_events: [],
+      missing_information: [],
+      review_flags: []
+    };
+  };
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Evidence Line Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 静脈採血を行い、ＣＲＰ 0.3mg/dLを確認。",
+    diagnoses: [{ name: "発熱" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(extractorPreprocessedLines?.[0]?.lineId, "O-001");
+  assert.ok(extractorPreprocessedLines?.[0]?.candidateConcepts?.includes("lab:crp"));
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes, ["160054710"]);
+  const fact = calculation.body.calculationResult.canonicalClinicalFacts.find((item) => item.conceptId === "lab:crp");
+  assert.equal(fact.verification.status, "verified");
+  assert.equal(fact.evidenceRefs[0].lineId, "O-001");
+  assert.equal(fact.evidenceRefs[0].lineIdProvided, true);
+});
+
+test("blocks automatic billing when evidence line id is not found", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  let masterLookupCount = 0;
+  stores.feeCalculator.searchMaster = async (input) => {
+    masterLookupCount += 1;
+    return { query: input.query, type: input.type, items: [] };
+  };
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [{ name: "発熱", status: "confirmed", evidence: "発熱" }],
+    clinical_events: [{
+      type: "lab",
+      billing_domain: "standard_lab",
+      name: "ＣＲＰ",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "numeric",
+      certainty: "explicit",
+      section: "O",
+      evidence: "ＣＲＰ 0.3mg/dL",
+      evidence_line_ids: ["O-999"],
+      search_queries: ["ＣＲＰ"],
+      specimen: "血液",
+      collection_method: "静脈採血"
+    }],
+    checklist_findings: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Missing Evidence Line Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "O: 静脈採血を行い、ＣＲＰ 0.3mg/dLを確認。",
+    diagnoses: [{ name: "発熱" }]
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(masterLookupCount, 0);
+  assert.equal(receivedInput.calculationOptions.procedure_codes, undefined);
+  const fact = calculation.body.calculationResult.canonicalClinicalFacts.find((item) => item.conceptId === "lab:crp");
+  assert.equal(fact.verification.status, "review_required");
+  assert.deepEqual(fact.verification.reasons, ["evidence_quote_not_found"]);
 });
 
 test("does not auto-select parenthetical method masters without chart support", async () => {
