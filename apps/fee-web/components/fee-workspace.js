@@ -268,7 +268,7 @@ function FeeSessionDetailView({ sessionId }) {
   const [candidateDetail, setCandidateDetail] = useState(null);
   const [settingsModalMode, setSettingsModalMode] = useState(null);
   const [activeMainTab, setActiveMainTab] = useState("work");
-  const [activeWorkTab, setActiveWorkTab] = useState("lines");
+  const [activeWorkTab, setActiveWorkTab] = useState("candidates");
   const suppressAutoSaveRef = useRef(false);
   const autoSaveTimerRef = useRef(null);
   const pendingAutoSaveRef = useRef(null);
@@ -1416,7 +1416,7 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
       <div className="result result-empty">
         <div className="calculation-waiting-card" role="status" aria-live="polite">
           <strong>カルテ本文を読み取り算定中</strong>
-          <p>候補化が完了すると、算定中・要確認・提案を更新します。</p>
+          <p>候補化が完了すると、算定候補と要確認を更新します。</p>
           <div className="calculation-waiting-lines" aria-hidden="true">
             <span />
             <span />
@@ -1450,9 +1450,11 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
   const adjustmentLines = [...model.pendingLines, ...model.excludedLines];
   const includedCount = Number(model.counts.included || 0);
   const proposalCount = Number(model.counts.proposals || 0);
+  const candidateCount = includedCount + proposalCount;
   const needsReviewCount = Number(model.counts.needsReview || 0);
   const potentialPointsTotal = Number(model.potentialPointsTotal || 0);
   const coverageSummary = model.coverageSummary || {};
+  const selectedWorkTab = activeTab === "lines" || activeTab === "proposals" ? "candidates" : activeTab;
   return (
     <div className="candidate-workbench">
       <div className="candidate-summary">
@@ -1461,19 +1463,18 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
           <strong>{Number(model.includedTotalPoints || 0).toLocaleString()}点</strong>
         </div>
         <div className="candidate-summary-grid">
-          <div><span>算定中</span><strong>{includedCount.toLocaleString()}件</strong></div>
+          <div><span>算定候補</span><strong>{candidateCount.toLocaleString()}件</strong></div>
           <div><span>要確認</span><strong>{needsReviewCount.toLocaleString()}件</strong></div>
           <div><span>増点余地</span><strong>{potentialPointsTotal > 0 ? `+${potentialPointsTotal.toLocaleString()}点` : `${proposalCount.toLocaleString()}件`}</strong></div>
         </div>
       </div>
 
       <div className="fee-sub-tabs" role="tablist" aria-label="算定作業">
-        <TabButton active={activeTab === "lines"} count={includedCount} onClick={() => onTabChange("lines")}>算定中</TabButton>
-        <TabButton active={activeTab === "issues"} count={needsReviewCount} onClick={() => onTabChange("issues")}>要確認</TabButton>
-        <TabButton active={activeTab === "proposals"} count={proposalCount} onClick={() => onTabChange("proposals")}>提案</TabButton>
+        <TabButton active={selectedWorkTab === "candidates"} count={candidateCount} onClick={() => onTabChange("candidates")}>算定候補</TabButton>
+        <TabButton active={selectedWorkTab === "issues"} count={needsReviewCount} onClick={() => onTabChange("issues")}>要確認</TabButton>
       </div>
 
-      {activeTab === "issues" ? (
+      {selectedWorkTab === "issues" ? (
         <section className="candidate-bucket">
           <BucketHeader title="確認・修正が必要" count={needsReviewCount} note="このままだと算定しづらい項目です。内容を確認してください。" />
           {model.issues.length ? (
@@ -1494,29 +1495,24 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
         </section>
       ) : null}
 
-      {activeTab === "lines" ? (
+      {selectedWorkTab === "candidates" ? (
         <section className="candidate-bucket">
-          <BucketHeader title="算定中" count={includedCount} note="いま合計点数に入っている明細です。必要に応じて外せます。" />
+          <BucketHeader title="算定候補" count={candidateCount} note="合計点数に入っている明細と、条件を満たすと採用できる提案です。" />
           {model.includedLines.length ? (
             <div className="candidate-line-list">
               {model.includedLines.map((line) => (
                 <CandidateLineRow disabled={disabled} item={line} key={line.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
               ))}
             </div>
-          ) : <p className="field-note">算定中の明細はまだありません。</p>}
-        </section>
-      ) : null}
-
-      {activeTab === "proposals" ? (
-        <section className="candidate-bucket candidate-bucket--proposal">
-          <BucketHeader title="増点できる（提案）" count={proposalCount} note="条件を満たすなら点数にできる可能性がある項目です。" />
+          ) : null}
           {model.proposals.length ? (
             <div className="proposal-list">
               {model.proposals.map((item) => (
                 <ProposalCard disabled={disabled} item={item} key={item.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
               ))}
             </div>
-          ) : <p className="field-note">今の入力から追加で提案できる項目はありません。</p>}
+          ) : null}
+          {!model.includedLines.length && !model.proposals.length ? <p className="field-note">算定候補はまだありません。</p> : null}
         </section>
       ) : null}
     </div>
