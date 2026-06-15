@@ -1029,6 +1029,8 @@ body:has(.fee-shell--detail) {
 .fee-source-form {
   min-height: 0;
   display: grid;
+  align-content: start;
+  grid-auto-rows: max-content;
   gap: 12px;
   overflow-y: auto;
   scrollbar-gutter: stable;
