@@ -1149,9 +1149,6 @@ function proposalDecision(proposal = {}, decisions = {}) {
 }
 
 function proposalIncludedInTotal(proposal = {}, decisions = {}) {
-  if (proposalIsReviewOnly(proposal)) {
-    return false;
-  }
   return proposalDecision(proposal, decisions)?.status === "approved"
     && isPlainObject(proposal.candidateLine)
     && Number(proposal.potentialPoints || proposal.candidateLine?.totalPoints || 0) > 0;

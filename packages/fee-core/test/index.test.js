@@ -568,7 +568,7 @@ test("adopts confirm-required proposals with candidate lines after manual confir
   assert.equal(workbench.includedLines.length, 2);
 });
 
-test("shows review-only increase proposals without adding them to receipt totals", () => {
+test("adopts review-only proposals with candidate lines after manual confirmation", () => {
   const session = buildFeeSession({
     orgId: "org_123",
     createdByMemberId: "member_1",
@@ -636,9 +636,10 @@ test("shows review-only increase proposals without adding them to receipt totals
   assert.equal(initialWorkbench.proposals[0].reviewOnly, true);
   assert.equal(initialWorkbench.proposals[0].canAdopt, false);
   assert.equal(initialWorkbench.issues.length, 0);
-  assert.equal(receiptDraft.totalPoints, 75);
-  assert.equal(receiptDraft.lines.some((line) => line.sourceProposalId === "management_review_only"), false);
+  assert.equal(receiptDraft.totalPoints, 300);
+  assert.equal(receiptDraft.lines.some((line) => line.sourceProposalId === "management_review_only"), true);
   assert.equal(workbench.proposals.length, 0);
+  assert.equal(workbench.includedLines.length, 2);
 });
 
 test("preserves clinical event specimen and review issue policy metadata", () => {

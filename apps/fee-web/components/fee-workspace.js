@@ -1869,8 +1869,6 @@ function confirmableProposalForAdoption(item = {}) {
   const points = Number(item.potentialPoints || candidateLine?.totalPoints || candidateLine?.points || 0);
   return item.kind === "proposal"
     && item.canAdopt !== true
-    && item.reviewOnly !== true
-    && item.actionType !== "not_billable_now"
     && hasCandidateLine
     && points > 0;
 }
