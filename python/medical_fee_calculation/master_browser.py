@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-MASTER_TYPES = frozenset({"procedure", "drug", "material", "comment"})
+MASTER_TYPES = frozenset({"procedure", "drug", "material", "comment", "sources"})
 
 SOURCE_TYPES = {
     "procedure": "medical_procedure_master",
@@ -21,6 +21,7 @@ SOURCE_LABELS = {
     "drug_master": "drug",
     "specific_material_master": "specific material",
     "comment_master": "comment",
+    "comment_related_table": "comment related table",
     "medical_electronic_fee_table": "electronic fee table",
 }
 
@@ -32,7 +33,7 @@ def browse_master(payload: dict[str, Any]) -> dict[str, Any]:
 
     master_type = str(payload.get("type") or "procedure").strip().lower()
     if master_type not in MASTER_TYPES:
-        raise ValueError("type must be one of procedure, drug, material, comment")
+        raise ValueError("type must be one of procedure, drug, material, comment, sources")
 
     query = str(payload.get("query") or payload.get("q") or "").strip()
     page = _positive_int(payload.get("page"), 1, 10_000)
@@ -42,6 +43,17 @@ def browse_master(payload: dict[str, Any]) -> dict[str, Any]:
     db = sqlite3.connect(Path(db_path))
     db.row_factory = sqlite3.Row
     try:
+        if master_type == "sources":
+            sources = _source_summaries(db)
+            return {
+                "type": master_type,
+                "sources": sources,
+                "medicalElectronicFeeTableVersion": _source_version_for(
+                    sources,
+                    "medical_electronic_fee_table",
+                ),
+                "dpcStatus": _dpc_status(db),
+            }
         source_id = _latest_source_id(db, SOURCE_TYPES[master_type])
         total_count = _count_items(db, master_type, source_id, query)
         items = _browse_items(db, master_type, source_id, query, page_size, offset)
@@ -81,7 +93,7 @@ def _source_summaries(db: sqlite3.Connection) -> list[dict[str, Any]]:
     rows = db.execute(
         """
         SELECT source_type, source_version, published_at, raw_path, checksum_sha256,
-               encoding, row_count, retrieved_at, imported_at
+               url, encoding, row_count, retrieved_at, imported_at
         FROM master_sources
         WHERE id IN (
           SELECT MAX(id)
@@ -91,6 +103,7 @@ def _source_summaries(db: sqlite3.Connection) -> list[dict[str, Any]]:
             'drug_master',
             'specific_material_master',
             'comment_master',
+            'comment_related_table',
             'medical_electronic_fee_table'
           )
           GROUP BY source_type
@@ -107,6 +120,7 @@ def _source_summaries(db: sqlite3.Connection) -> list[dict[str, Any]]:
                 "publishedAt": row["published_at"],
                 "rawPath": row["raw_path"],
                 "checksumSha256": row["checksum_sha256"],
+                "sourceUrl": row["url"],
                 "encoding": row["encoding"],
                 "rowCount": row["row_count"],
                 "retrievedAt": row["retrieved_at"],
@@ -115,6 +129,42 @@ def _source_summaries(db: sqlite3.Connection) -> list[dict[str, Any]]:
         )
         for row in rows
     ]
+
+
+def _source_version_for(sources: list[dict[str, Any]], source_type: str) -> str | None:
+    for source in sources:
+        if source.get("sourceType") == source_type:
+            return str(source.get("sourceVersion") or "") or None
+    return None
+
+
+def _dpc_status(db: sqlite3.Connection) -> dict[str, Any]:
+    tables = {
+        "dpc_electronic_table_rows": "electronicTableRows",
+        "dpc_point_table": "pointTable",
+        "dpc_conversion_table": "conversionTable",
+        "dpc_icd_table": "icdTable",
+        "dpc_surgery_table": "surgeryTable",
+        "dpc_piecework_surgery_codes": "pieceworkSurgeryCodes",
+        "dpc_hospital_coefficients": "hospitalCoefficients",
+    }
+    existing = {
+        row["name"]
+        for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+        ).fetchall()
+    }
+    counts: dict[str, int] = {}
+    for table, key in tables.items():
+        if table not in existing:
+            counts[key] = 0
+            continue
+        row = db.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()
+        counts[key] = int(row["count"] if row is not None else 0)
+    return {
+        "mode": "review_only" if not any(counts.values()) else "partially_loaded",
+        "counts": counts,
+    }
 
 
 def _count_items(db: sqlite3.Connection, master_type: str, source_id: int, query: str) -> int:

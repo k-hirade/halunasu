@@ -1,0 +1,90 @@
+{
+  "entries": [
+    {
+      "kind": "medical_procedure_master",
+      "path": "data/raw/ssk/medical_procedure_master/2026-06-15/s_ALL20260605/s_ALL20260605.csv",
+      "source_version": "2026-06-15",
+      "retrieved_at": "2026-06-15T10:05:00+00:00",
+      "encoding": "cp932",
+      "published_at": "2026-06-05",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_01.files/s_ALL20260605.zip",
+      "source_page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_01.html",
+      "archive_path": "data/raw/ssk/medical_procedure_master/2026-06-15/s_ALL20260605.zip",
+      "archive_checksum_sha256": "4821242ecea677f93dbed7617a73ffc85a12799c494c03fcdb82113d753d0477"
+    },
+    {
+      "kind": "drug_master",
+      "path": "data/raw/ssk/drug_master/2026-06-15/y_ALL20260611/y_ALL20260611.csv",
+      "source_version": "2026-06-15",
+      "retrieved_at": "2026-06-15T10:05:00+00:00",
+      "encoding": "cp932",
+      "published_at": "2026-06-11",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_04.files/y_ALL20260611.zip",
+      "source_page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_04.html",
+      "archive_path": "data/raw/ssk/drug_master/2026-06-15/y_ALL20260611.zip",
+      "archive_checksum_sha256": "9f10e8d0e46dd4aa8cbebee6cda1c0ddb378d38d27220aa783c2894c72166ddb"
+    },
+    {
+      "kind": "specific_material_master",
+      "path": "data/raw/ssk/specific_material_master/2026-06-15/t_ALL20260529/t_ALL20260529.csv",
+      "source_version": "2026-06-15",
+      "retrieved_at": "2026-06-15T10:05:00+00:00",
+      "encoding": "cp932",
+      "published_at": "2026-05-29",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_05.files/t_ALL20260529.zip",
+      "source_page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_05.html",
+      "archive_path": "data/raw/ssk/specific_material_master/2026-06-15/t_ALL20260529.zip",
+      "archive_checksum_sha256": "1df7d085abb61c11c7e7e746e130e0a7edfcb4418beea6dcc7cc9c9dffc24b74"
+    },
+    {
+      "kind": "comment_master",
+      "path": "data/raw/ssk/comment_master/2026-06-15/c_ALL20260605/c_ALL20260605.csv",
+      "source_version": "2026-06-15",
+      "retrieved_at": "2026-06-15T10:05:00+00:00",
+      "encoding": "cp932",
+      "published_at": "2026-06-05",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_06.files/c_ALL20260605.zip",
+      "source_page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_06.html",
+      "archive_path": "data/raw/ssk/comment_master/2026-06-15/c_ALL20260605.zip",
+      "archive_checksum_sha256": "d888b4297b3f40e9059c21ebaf3fc820b5077f5a149920e89bfa95068064da5a"
+    },
+    {
+      "kind": "comment_related_table",
+      "path": "data/raw/ssk/comment_related_table/2026-06-15/ck_ALL_20260605/ck_ALL_20260605.csv",
+      "source_version": "2026-06-15",
+      "retrieved_at": "2026-06-15T10:05:00+00:00",
+      "encoding": "cp932",
+      "published_at": "2026-06-05",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_06.files/ck_ALL_20260605.zip",
+      "source_page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_06.html",
+      "archive_path": "data/raw/ssk/comment_related_table/2026-06-15/ck_ALL_20260605.zip",
+      "archive_checksum_sha256": "198ae83a74b79af14fb6fd5c4893f1f10464bb3cb426c95a7e8d46a6c58a7a8c"
+    },
+    {
+      "kind": "medical_electronic_fee_table",
+      "source_version": "2026-06-15",
+      "retrieved_at": "2026-06-15T10:05:00+00:00",
+      "encoding": "cp932",
+      "csv_paths": {
+        "aux_master": "data/raw/ssk/medical_electronic_fee_table/2026-06-15/tensuhyo_02/01 補助マスターテーブル.csv",
+        "bundles": "data/raw/ssk/medical_electronic_fee_table/2026-06-15/tensuhyo_02/02 包括テーブル.csv",
+        "exclusions_day": "data/raw/ssk/medical_electronic_fee_table/2026-06-15/tensuhyo_02/03-1 背反テーブル1.csv",
+        "exclusions_month": "data/raw/ssk/medical_electronic_fee_table/2026-06-15/tensuhyo_02/03-2 背反テーブル2.csv",
+        "exclusions_simultaneous": "data/raw/ssk/medical_electronic_fee_table/2026-06-15/tensuhyo_02/03-3 背反テーブル3.csv",
+        "exclusions_week": "data/raw/ssk/medical_electronic_fee_table/2026-06-15/tensuhyo_02/03-4 背反テーブル4.csv",
+        "frequency_limits": "data/raw/ssk/medical_electronic_fee_table/2026-06-15/tensuhyo_02/05 算定回数テーブル.csv",
+        "inpatient_basic": "data/raw/ssk/medical_electronic_fee_table/2026-06-15/tensuhyo_02/04 入院基本料テーブル.csv"
+      },
+      "published_at": "2026-06-01",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/ikashika/index.files/tensuhyo_02.zip",
+      "source_page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/ikashika/index.html",
+      "archive_path": "data/raw/ssk/medical_electronic_fee_table/2026-06-15/tensuhyo_02.zip",
+      "archive_checksum_sha256": "a3c6a0cff967996c33c2907738cd7f5382ee3116fd1ae471297f81b539a279e2"
+    },
+    {
+      "kind": "regional_manifest",
+      "path": "configs/regional-master/2026-05-01/regional_manifest.json",
+      "retrieved_at": "2026-06-15T10:05:00+00:00"
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync } from "node:fs";
 import { rename, unlink } from "node:fs/promises";
@@ -13,6 +14,7 @@ const WORKER_MODULE_NAME = "medical_fee_calculation.worker";
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const DEFAULT_MASTER_SEARCH_CACHE_MAX_ENTRIES = 2000;
 const DEFAULT_MASTER_SEARCH_CACHE_TTL_MS = 600_000;
+const DEFAULT_MASTER_METADATA_CACHE_TTL_MS = 60_000;
 
 export function createFeeCalculatorFromEnv(env = process.env) {
   const gzipPath = env.FEE_MASTER_DB_GZIP_PATH || env.MEDICAL_FEE_MASTER_DB_GZIP_PATH || "";
@@ -53,6 +55,11 @@ export class PythonFeeCalculator {
     this.masterSearchCache = new Map();
     this.masterSearchCacheMaxEntries = options.masterSearchCacheMaxEntries ?? DEFAULT_MASTER_SEARCH_CACHE_MAX_ENTRIES;
     this.masterSearchCacheTtlMs = options.masterSearchCacheTtlMs ?? DEFAULT_MASTER_SEARCH_CACHE_TTL_MS;
+    this.masterMetadataCache = {
+      expiresAt: 0,
+      result: null
+    };
+    this.fileChecksumCache = new Map();
   }
 
   async calculate(session, input = {}) {
@@ -147,6 +154,57 @@ export class PythonFeeCalculator {
       masterSearchCacheMaxEntries: this.masterSearchCacheMaxEntries,
       masterSearchCacheTtlMs: this.masterSearchCacheTtlMs
     };
+  }
+
+  async readinessDetailed() {
+    const base = this.readiness();
+    const detailed = { ...base };
+    if (base.masterDbPathExists) {
+      detailed.masterDbChecksumSha256 = await this.fileSha256(this.masterDbPath);
+    }
+    if (base.masterDbGzipPathExists) {
+      detailed.masterDbGzipChecksumSha256 = await this.fileSha256(this.masterDbGzipPath);
+    }
+    if (base.masterDbConfigured) {
+      const metadata = await this.masterMetadata().catch((error) => ({
+        error: error.name || "MasterMetadataError",
+        message: error.message || String(error)
+      }));
+      if (metadata.error) {
+        detailed.masterMetadataError = metadata;
+      } else {
+        detailed.masterSources = metadata.sources || [];
+        detailed.medicalElectronicFeeTableVersion = metadata.medicalElectronicFeeTableVersion || null;
+        detailed.dpcStatus = metadata.dpcStatus || null;
+      }
+    }
+    return detailed;
+  }
+
+  async masterMetadata() {
+    const now = Date.now();
+    if (this.masterMetadataCache.result && this.masterMetadataCache.expiresAt > now) {
+      return this.masterMetadataCache.result;
+    }
+    const result = await this.browseMaster({ type: "sources" });
+    this.masterMetadataCache = {
+      result,
+      expiresAt: now + DEFAULT_MASTER_METADATA_CACHE_TTL_MS
+    };
+    return result;
+  }
+
+  async fileSha256(filePath) {
+    const stat = statSync(filePath);
+    const cacheKey = `${filePath}:${stat.size}:${stat.mtimeMs}`;
+    const cached = this.fileChecksumCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const digest = await hashFileSha256(filePath);
+    this.fileChecksumCache.clear();
+    this.fileChecksumCache.set(cacheKey, digest);
+    return digest;
   }
 
   async ensureMasterDbReady() {
@@ -458,5 +516,19 @@ function runPythonJson(options) {
     });
 
     child.stdin.end(JSON.stringify(options.payload));
+  });
+}
+
+function hashFileSha256(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = createHash("sha256");
+    const stream = createReadStream(filePath);
+    stream.on("error", reject);
+    stream.on("data", (chunk) => {
+      hash.update(chunk);
+    });
+    stream.on("end", () => {
+      resolve(hash.digest("hex"));
+    });
   });
 }

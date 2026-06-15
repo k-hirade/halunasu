@@ -1480,15 +1480,12 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   if (checklistRecovery.events.length) {
     clinicalEvents = [...clinicalEvents, ...checklistRecovery.events];
   }
-  const canonicalClinicalFactsForCalculation = normalizeCanonicalClinicalFacts(
-    canonicalClinicalFactsFromEvents(clinicalEvents, {
-      preprocessing: clinicalTextPreprocessing
-    })
-  );
-  const clinicalEventsForCalculation = clinicalEventsFromCanonicalClinicalFacts(
+  const {
     canonicalClinicalFactsForCalculation,
-    clinicalEvents
-  );
+    clinicalEventsForCalculation
+  } = buildCanonicalFactCalculationLedger(clinicalEvents, {
+    preprocessing: clinicalTextPreprocessing
+  });
   clinicalTrace.push({
     stage: "evidence_verifier",
     outcome: "prepared",
@@ -1657,6 +1654,26 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
           }))
         },
         message: "clinical_event_requires_review_due_to_unverified_evidence"
+      }));
+      continue;
+    }
+    if (canonicalFactBlocksAutomaticBilling(event)) {
+      const issue = reviewIssueFromCanonicalFactGate(event);
+      if (issue) {
+        reviewIssues.push(issue);
+        reviewWarnings.push(issue.messageForStaff);
+      }
+      clinicalTrace.push(clinicalTraceEvent({
+        stage: "canonical_fact_gate",
+        event,
+        categoryLabel: "検証済み臨床事実",
+        outcome: "blocked",
+        selected: {
+          canonicalFactId: sourceFactIdFromClinicalEvent(event),
+          canonicalFactStatus: event.canonicalFactStatus || "unknown",
+          evidenceVerificationStatus: event.evidenceVerificationStatus || "unknown"
+        },
+        message: "clinical_event_not_eligible_from_canonical_fact"
       }));
       continue;
     }
@@ -1935,6 +1952,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     inferred.material_inputs = dedupeObjects(materialInputs, (item) => item.code);
   }
 
+  const reviewIssuesWithFactLineage = attachSourceFactIdsToReviewIssues(reviewIssues, clinicalEventsForCalculation);
   return {
     inferred,
     diagnoses,
@@ -1943,15 +1961,101 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     clinicalEvents,
     canonicalClinicalFacts: normalizeCanonicalClinicalFacts(canonicalClinicalFactsFromEvents(clinicalEventsForCalculation, {
       billingCandidates,
-      reviewIssues,
+      reviewIssues: reviewIssuesWithFactLineage,
       masterCandidates,
       preprocessing: clinicalTextPreprocessing
     })),
     masterCandidates: normalizeMasterCandidates(masterCandidates),
     billingCandidates: normalizeBillingCandidates(billingCandidates),
-    reviewIssues: normalizeReviewIssues(reviewIssues),
+    reviewIssues: normalizeReviewIssues(reviewIssuesWithFactLineage),
     clinicalTrace: normalizeClinicalTrace(clinicalTrace)
   };
+}
+
+function attachSourceFactIdsToReviewIssues(reviewIssues = [], clinicalEvents = []) {
+  const factIdByEventId = new Map();
+  for (const event of asArray(clinicalEvents)) {
+    const eventId = clinicalEventIdentity(event);
+    const factId = sourceFactIdFromClinicalEvent(event);
+    if (eventId && factId) {
+      factIdByEventId.set(eventId, factId);
+    }
+  }
+  return asArray(reviewIssues).map((issue) => {
+    if (!issue || typeof issue !== "object" || issue.sourceFactId || issue.source_fact_id) {
+      return issue;
+    }
+    const relatedIds = [
+      issue.relatedClinicalEventId,
+      issue.related_clinical_event_id,
+      issue.relatedEventId,
+      issue.related_event_id,
+      ...asArray(issue.relatedClinicalEventIds),
+      ...asArray(issue.related_event_ids)
+    ].map((value) => String(value || "").trim()).filter(Boolean);
+    const factId = relatedIds.map((id) => factIdByEventId.get(id)).find(Boolean);
+    return factId ? { ...issue, sourceFactId: factId } : issue;
+  });
+}
+
+function buildCanonicalFactCalculationLedger(clinicalEvents = [], { preprocessing = null } = {}) {
+  const canonicalClinicalFactsForCalculation = normalizeCanonicalClinicalFacts(
+    canonicalClinicalFactsFromEvents(clinicalEvents, { preprocessing })
+  );
+  const clinicalEventsForCalculation = clinicalEventsFromCanonicalClinicalFacts(
+    canonicalClinicalFactsForCalculation,
+    clinicalEvents
+  );
+  return { canonicalClinicalFactsForCalculation, clinicalEventsForCalculation };
+}
+
+const CANONICAL_FACT_AUTOMATIC_BILLING_STATUSES = Object.freeze([
+  "eligible_for_master_search",
+  "eligible_for_billing"
+]);
+
+function sourceFactIdFromClinicalEvent(event = {}) {
+  return String(event?.canonicalFactId || event?.sourceFactId || event?.source_fact_id || "").trim();
+}
+
+function canonicalFactStatusFromClinicalEvent(event = {}) {
+  return String(event?.canonicalFactStatus || event?.canonical_fact_status || "").trim();
+}
+
+function canonicalFactCanProceedToAutomaticBilling(event = {}) {
+  const status = canonicalFactStatusFromClinicalEvent(event);
+  return CANONICAL_FACT_AUTOMATIC_BILLING_STATUSES.includes(status)
+    && String(event?.evidenceVerificationStatus || "").trim() === "verified";
+}
+
+function canonicalFactBlocksAutomaticBilling(event = {}) {
+  if (!isBillableClinicalEvent(event) || reviewOnlyClinicalEventDomain(event)) {
+    return false;
+  }
+  return !canonicalFactCanProceedToAutomaticBilling(event);
+}
+
+function reviewIssueFromCanonicalFactGate(event = {}) {
+  const name = clinicalEventName(event) || "抽出結果";
+  const status = canonicalFactStatusFromClinicalEvent(event) || "unknown";
+  const verificationStatus = String(event?.evidenceVerificationStatus || "unknown").trim();
+  return withReviewTopic({
+    reviewIssueId: `issue_${candidateIdPart([event?.clinicalEventId, sourceFactIdFromClinicalEvent(event), "canonical_fact_gate"].join("_"))}`,
+    issueCode: "canonical_fact_verification_required",
+    severity: "warning",
+    title: "根拠確認",
+    messageForStaff: `根拠確認: ${name}は検証済み臨床事実として自動算定条件を満たしていません。自動算定には入れず、当日・自院・実施済みの根拠と算定条件を確認してください。`,
+    relatedClinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    sourceFactId: sourceFactIdFromClinicalEvent(event),
+    evidence: clinicalEventEvidence(event),
+    requiredInput: "当日実施、自院実施、予定・過去・他院情報ではないこと、マスター候補",
+    source: "canonical_fact_gate",
+    policy: {
+      riskGate: "review_only",
+      canonicalFactStatus: status,
+      evidenceVerificationStatus: verificationStatus
+    }
+  }, "evidence_verification_check");
 }
 
 async function clinicalEventCandidateProposal(event = {}, feeCalculator, {
@@ -2358,6 +2462,7 @@ function masterCandidateFromItem(item = {}, event = {}, {
   return {
     masterCandidateId: `mc_${candidateIdPart([event?.clinicalEventId, code, searchQuery].join("_"))}`,
     clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    sourceFactId: sourceFactIdFromClinicalEvent(event),
     masterType,
     masterCode: code,
     masterName: name,
@@ -2584,6 +2689,9 @@ function clinicalTraceEvent({
     traceId: `trace_${candidateIdPart([stage, event?.clinicalEventId || event?.clinical_event_id, outcome, query].join("_"))}`,
     stage,
     clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    sourceFactId: sourceFactIdFromClinicalEvent(event),
+    canonicalFactStatus: canonicalFactStatusFromClinicalEvent(event) || "",
+    evidenceVerificationStatus: event?.evidenceVerificationStatus || "",
     eventType: normalizeClinicalEventType(event),
     eventName: clinicalEventName(event),
     categoryLabel,
@@ -2623,6 +2731,7 @@ function billingCandidatesFromProcedureResult(event = {}, result = {}) {
     .map((candidate) => ({
       billingCandidateId: `bc_${candidateIdPart([event?.clinicalEventId, candidate.masterCode].join("_"))}`,
       clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+      sourceFactId: sourceFactIdFromClinicalEvent(event),
       masterCandidateId: candidate.masterCandidateId,
       candidateKind: "procedure",
       eligibilityStatus: "billable",
@@ -2645,6 +2754,7 @@ function billingCandidatesFromMedicationResult(event = {}, result = {}) {
   return [{
     billingCandidateId: `bc_${candidateIdPart([event?.clinicalEventId, result.order.drug_code].join("_"))}`,
     clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    sourceFactId: sourceFactIdFromClinicalEvent(event),
     masterCandidateId: candidate?.masterCandidateId || "",
     candidateKind: "drug",
     eligibilityStatus: "billable",
@@ -2664,6 +2774,7 @@ function billingCandidatesFromMaterialResult(event = {}, result = {}) {
   return [{
     billingCandidateId: `bc_${candidateIdPart([event?.clinicalEventId, result.input.code].join("_"))}`,
     clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    sourceFactId: sourceFactIdFromClinicalEvent(event),
     masterCandidateId: candidate?.masterCandidateId || "",
     candidateKind: "material",
     eligibilityStatus: "billable",
@@ -2682,6 +2793,7 @@ function billingCandidateFromProposal(event = {}, proposal = {}) {
   return {
     billingCandidateId: `bc_${candidateIdPart([event?.clinicalEventId, proposal.proposalId].join("_"))}`,
     clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    sourceFactId: sourceFactIdFromClinicalEvent(event),
     masterCandidateId: "",
     candidateKind: "proposal",
     eligibilityStatus: "proposal",
@@ -4420,16 +4532,16 @@ function canonicalClinicalFactsFromEvents(events = [], {
       const eventId = clinicalEventIdentity(event);
       const eligible = isBillableClinicalEvent(event) && !reviewOnlyClinicalEventDomain(event);
       const verification = verifyClinicalEventEvidence(event, preprocessing);
-      const status = billableEventIds.has(eventId)
-        ? "eligible_for_billing"
-        : reviewEventIds.has(eventId)
+      const status = verification.status === "blocked"
+        ? "excluded"
+        : verification.status === "review_required"
           ? "review_required"
-          : verification.status === "blocked"
-            ? "excluded"
-            : eligible
-              ? "eligible_for_master_search"
-              : verification.status === "review_required"
-                ? "review_required"
+          : reviewEventIds.has(eventId)
+            ? "review_required"
+            : billableEventIds.has(eventId)
+              ? "eligible_for_billing"
+              : eligible
+                ? "eligible_for_master_search"
                 : "excluded";
       return {
         factId: `fact_${candidateIdPart(eventId || [event.type, event.name, event.evidence].join("_"))}`,
@@ -4507,6 +4619,7 @@ function clinicalEventsFromCanonicalClinicalFacts(facts = [], events = []) {
         return {
           ...original,
           canonicalFactId: fact.factId || fact.fact_id || "",
+          sourceFactId: fact.factId || fact.fact_id || "",
           canonicalFactStatus: fact.status || "unknown",
           conceptId: fact.conceptId || fact.concept_id || original.conceptId || null,
           evidenceRefs: asArray(fact.evidenceRefs || fact.evidence_refs),
@@ -4545,6 +4658,7 @@ function clinicalEventsFromCanonicalClinicalFacts(facts = [], events = []) {
       return {
         ...reconstructed,
         canonicalFactId: fact.factId || fact.fact_id || "",
+        sourceFactId: fact.factId || fact.fact_id || "",
         canonicalFactStatus: fact.status || "unknown",
         conceptId: fact.conceptId || fact.concept_id || null,
         evidenceRefs: asArray(fact.evidenceRefs || fact.evidence_refs),

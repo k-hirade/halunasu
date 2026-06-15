@@ -110,9 +110,7 @@ async function routeFeeApiRequest(input = {}) {
       env: input.env || "local",
       projectId: input.projectId || "medical-core-stg",
       region: input.region || "asia-northeast1",
-      feeCalculator: typeof feeCalculator.readiness === "function"
-        ? feeCalculator.readiness()
-        : { provider: "custom", masterDbConfigured: null, masterDbPathExists: null },
+      feeCalculator: await feeCalculatorReadiness(feeCalculator),
       startedAt: input.startedAt instanceof Date
         ? input.startedAt.toISOString()
         : new Date().toISOString()
@@ -2581,6 +2579,13 @@ function feeMasterStatus(feeCalculator) {
   return typeof feeCalculator.readiness === "function"
     ? feeCalculator.readiness()
     : { provider: "custom", masterDbConfigured: null, masterDbPathExists: null };
+}
+
+async function feeCalculatorReadiness(feeCalculator) {
+  if (typeof feeCalculator.readinessDetailed === "function") {
+    return feeCalculator.readinessDetailed();
+  }
+  return feeMasterStatus(feeCalculator);
 }
 
 function contextView(context) {

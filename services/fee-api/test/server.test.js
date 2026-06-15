@@ -6822,6 +6822,7 @@ test("records line-bound verified evidence on canonical clinical facts", async (
 
   assert.equal(calculation.statusCode, 201);
   assert.ok(crpFact);
+  assert.notEqual(crpFact.status, "excluded");
   assert.equal(crpFact.verification.status, "verified");
   assert.equal(crpFact.evidenceRefs[0].lineId, "O-001");
   assert.equal(crpFact.evidenceRefs[0].section, "O");
@@ -7052,10 +7053,14 @@ test("requires review instead of auto-coding when evidence only approximately ma
 
   assert.equal(calculation.statusCode, 201);
   assert.equal(masterLookupCount, 0);
+  assert.equal(crpFact.status, "review_required");
   assert.equal(crpFact.verification.status, "review_required");
   assert.ok(crpFact.verification.reasons.includes("evidence_quote_approximate"));
   assert.equal(crpFact.evidenceRefs[0].approximate, true);
   assert.ok(calculation.body.reviewItems.some((item) => item.title === "根拠確認"));
+  assert.ok((calculation.body.calculationResult.reviewIssues || []).some((issue) => (
+    issue.sourceFactId === crpFact.factId
+  )));
 });
 
 test("accepts evidence quotes wrapped by LLM quotation marks without weakening approximate matching", async () => {
@@ -7142,11 +7147,17 @@ test("accepts evidence quotes wrapped by LLM quotation marks without weakening a
   const facts = calculation.body.calculationResult.canonicalClinicalFacts || [];
   const crpFact = facts.find((fact) => fact.clinicalName === "CRP");
   const cbcFact = facts.find((fact) => fact.clinicalName === "末梢血液一般検査（血算）");
+  const masterCandidates = calculation.body.calculationResult.masterCandidates || [];
+  const billingCandidates = calculation.body.calculationResult.billingCandidates || [];
 
   assert.equal(calculation.statusCode, 201);
   assert.ok(masterLookupCount > 0);
+  assert.equal(crpFact.status, "eligible_for_billing");
+  assert.equal(cbcFact.status, "eligible_for_billing");
   assert.equal(crpFact.verification.status, "verified");
   assert.equal(cbcFact.verification.status, "verified");
+  assert.ok(masterCandidates.some((candidate) => candidate.sourceFactId === crpFact.factId && candidate.masterCode === "160054710"));
+  assert.ok(billingCandidates.some((candidate) => candidate.sourceFactId === crpFact.factId && candidate.code === "160054710"));
   assert.equal(crpFact.verification.reasons.includes("evidence_quote_approximate"), false);
   assert.equal(cbcFact.verification.reasons.includes("evidence_quote_approximate"), false);
   assert.ok(crpFact.evidenceRefs.some((ref) => ref.quote === "院内で血算とCRPを測定。"));

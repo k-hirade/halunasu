@@ -814,6 +814,7 @@ function normalizeMasterCandidates(items) {
       return compactObject({
         masterCandidateId: item.masterCandidateId || item.master_candidate_id || `master_candidate_${index + 1}`,
         clinicalEventId: item.clinicalEventId || item.clinical_event_id || null,
+        sourceFactId: item.sourceFactId || item.source_fact_id || null,
         masterType: item.masterType || item.master_type || null,
         masterCode: item.masterCode || item.master_code || item.code || null,
         masterName: item.masterName || item.master_name || item.name || null,
@@ -863,6 +864,7 @@ function normalizeBillingCandidates(items) {
       return compactObject({
         billingCandidateId: item.billingCandidateId || item.billing_candidate_id || `billing_candidate_${index + 1}`,
         clinicalEventId: item.clinicalEventId || item.clinical_event_id || null,
+        sourceFactId: item.sourceFactId || item.source_fact_id || null,
         masterCandidateId: item.masterCandidateId || item.master_candidate_id || null,
         candidateKind: item.candidateKind || item.candidate_kind || null,
         eligibilityStatus: item.eligibilityStatus || item.eligibility_status || null,
@@ -900,6 +902,7 @@ function normalizeReviewIssues(items) {
         requiredInput: item.requiredInput || item.required_input || null,
         relatedEventId: item.relatedEventId || item.related_event_id || item.relatedClinicalEventId || item.related_clinical_event_id || null,
         relatedClinicalEventId: item.relatedClinicalEventId || item.related_clinical_event_id || item.relatedEventId || item.related_event_id || null,
+        sourceFactId: item.sourceFactId || item.source_fact_id || null,
         relatedCandidateId: item.relatedCandidateId || item.related_candidate_id || null,
         evidence: item.evidence || null,
         source: item.source || null,

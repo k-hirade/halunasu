@@ -32,33 +32,33 @@ SSK_DOWNLOAD_KINDS = frozenset(
 SSK_MASTER_SOURCE_PAGES = (
     {
         "kind": "medical_procedure_master",
-        "page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/r06/kihonmasta_01.html",
+        "page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_01.html",
         "section_heading": "医科診療行為の全件マスター",
-        "link_text_contains": "全件分ファイル",
+        "link_text_contains": ("全件ファイル", "全件分ファイル"),
     },
     {
         "kind": "drug_master",
-        "page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/r06/kihonmasta_04.html",
+        "page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_04.html",
         "section_heading": "医薬品の全件マスター",
-        "link_text_contains": "全件分ファイル",
+        "link_text_contains": ("全件ファイル", "全件分ファイル"),
     },
     {
         "kind": "specific_material_master",
-        "page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/r06/kihonmasta_05.html",
+        "page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_05.html",
         "section_heading": "特定器材の全件マスター",
-        "link_text_contains": "全件分ファイル",
+        "link_text_contains": ("全件ファイル", "全件分ファイル"),
     },
     {
         "kind": "comment_master",
-        "page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/r06/kihonmasta_06.html",
+        "page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_06.html",
         "section_heading": "コメントマスターの全件マスター",
-        "link_text_contains": "全件分ファイル",
+        "link_text_contains": ("全件ファイル", "全件分ファイル"),
     },
     {
         "kind": "comment_related_table",
-        "page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/r06/kihonmasta_06.html",
+        "page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_06.html",
         "section_heading": "コメント関連テーブル",
-        "link_text_contains": "全件分ファイル",
+        "link_text_contains": ("全件ファイル", "全件分ファイル"),
     },
     {
         "kind": "medical_electronic_fee_table",
@@ -193,7 +193,7 @@ def discover_ssk_master_catalog(
                 kind=str(source_page["kind"]),
                 page_url=page_url,
                 section_heading=str(source_page["section_heading"]),
-                link_text_contains=str(source_page["link_text_contains"]),
+                link_text_contains=source_page["link_text_contains"],
                 source_version_override=source_version,
             )
             entries.append(discovered)
@@ -316,6 +316,18 @@ def download_ssk_master_catalog(
             retrieved_at=retrieved_at,
             regional_manifest=regional_manifest,
             extract_archives=True,
+        )
+        enriched_manifest = _enrich_standard_build_manifest(
+            preparation.manifest,
+            catalog_entries=catalog_entries,
+            items=items,
+            retrieved_at=retrieved_at,
+        )
+        preparation = StandardBuildManifestPreparation(
+            manifest=enriched_manifest,
+            extracted_files=preparation.extracted_files,
+            missing_kinds=preparation.missing_kinds,
+            warnings=preparation.warnings,
         )
 
     return SskMasterCatalogDownloadResult(
@@ -478,20 +490,25 @@ def _discover_source_page_entry(
     kind: str,
     page_url: str,
     section_heading: str,
-    link_text_contains: str,
+    link_text_contains: str | tuple[str, ...],
     source_version_override: str | None,
 ) -> dict[str, Any]:
     anchors = _html_anchors(html)
     matching_anchor: tuple[str, str, str] | None = None
+    link_text_patterns = (
+        (link_text_contains,)
+        if isinstance(link_text_contains, str)
+        else tuple(link_text_contains)
+    )
     for href, text, context in anchors:
-        if link_text_contains not in text:
+        if not any(pattern in text for pattern in link_text_patterns):
             continue
         if section_heading not in _plain_text(context):
             continue
         matching_anchor = (href, text, context)
         break
     if matching_anchor is None:
-        raise ValueError(f"link not found: {link_text_contains}")
+        raise ValueError(f"link not found: {' or '.join(link_text_patterns)}")
 
     href, text, context = matching_anchor
     published_at = _latest_date_text(f"{context} {text}")
@@ -559,6 +576,50 @@ def _catalog_entries_by_kind(entries: list[dict[str, Any]]) -> dict[str, dict[st
     return by_kind
 
 
+def _enrich_standard_build_manifest(
+    manifest: dict[str, Any],
+    *,
+    catalog_entries: list[dict[str, Any]],
+    items: list[SskMasterDownloadItem],
+    retrieved_at: str | None,
+) -> dict[str, Any]:
+    catalog_by_kind = _catalog_entries_by_kind(catalog_entries)
+    downloaded_by_kind = {
+        item.kind: item.file
+        for item in items
+        if item.file is not None
+    }
+    entries = manifest.get("entries")
+    if not isinstance(entries, list):
+        return dict(manifest)
+
+    enriched_entries: list[dict[str, Any]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            enriched_entries.append(entry)
+            continue
+
+        enriched = dict(entry)
+        kind = str(enriched.get("kind") or "")
+        catalog_entry = catalog_by_kind.get(kind)
+        downloaded = downloaded_by_kind.get(kind)
+        if catalog_entry is not None:
+            enriched.setdefault("published_at", catalog_entry.get("published_at"))
+            enriched.setdefault("url", catalog_entry.get("url"))
+            enriched.setdefault("source_page_url", catalog_entry.get("source_page_url"))
+        if retrieved_at:
+            enriched.setdefault("retrieved_at", retrieved_at)
+        if downloaded is not None:
+            enriched.setdefault("archive_path", str(downloaded.path))
+            enriched.setdefault("archive_checksum_sha256", downloaded.checksum_sha256)
+        enriched_entries.append(_compact_entry(enriched))
+
+    return {
+        **manifest,
+        "entries": enriched_entries,
+    }
+
+
 def _changed_catalog_fields(old_entry: dict[str, Any], new_entry: dict[str, Any]) -> list[str]:
     changed_fields: list[str] = []
     for field in ("url", "filename", "source_version", "published_at", "source_page_url"):
@@ -574,6 +635,10 @@ def _catalog_compare_value(entry: dict[str, Any], field: str) -> str:
         if isinstance(url, str) and url.strip():
             return _filename_from_url(url.strip())
     return value.strip() if isinstance(value, str) else ""
+
+
+def _compact_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in entry.items() if value is not None}
 
 
 def _catalog_source_version(entries: list[dict[str, Any]]) -> str:

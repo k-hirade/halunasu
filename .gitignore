@@ -1,22 +1,37 @@
+# OS / editor
 .DS_Store
+
+# Dependencies
 node_modules/
+
+# Build outputs
 .next/
 .netlify/
-apps/charting-web/apps/
 dist/
 build/
+apps/*/.next/
+apps/*/.netlify/
+apps/charting-web/apps/
+
+# Python local state
 .venv/
 __pycache__/
 .pytest_cache/
+
+# Local env / secrets
 .env
 .env.*
 !.env.example
+
+# Test / coverage / logs
 coverage/
 *.log
+data/tests/**/reports/
+
+# Downloaded official sources and generated master DBs.
+# Versioned catalogs/manifests under configs/ and build reports under docs/ are tracked.
 data/raw/
+data/work/fee-master-*/
 python/data/master/*.sqlite
 python/data/master/*.sqlite-*
 python/data/master/*.sqlite.gz
-data/tests/fee-soap-e2e/reports/
-data/tests/fee-soap-e2e-v2/reports/
-data/tests/fee-soap-e2e-v2/

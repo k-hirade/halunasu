@@ -65,7 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--catalog",
         type=Path,
-        default=Path("configs/official-master/2026-05-01/ssk-master-catalog.json"),
+        default=Path("configs/official-master/2026-06-15/ssk-master-catalog.json"),
     )
     parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
     parser.add_argument("--output", type=Path)

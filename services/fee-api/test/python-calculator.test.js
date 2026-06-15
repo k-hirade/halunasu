@@ -59,3 +59,39 @@ test("routes master search through persistent worker and caches identical querie
   assert.deepEqual(second, first);
   assert.equal(calculator.readiness().masterSearchCacheEntries, 1);
 });
+
+test("reports detailed master readiness with checksums and source metadata", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "fee-master-readyz-"));
+  const dbPath = path.join(root, "standard-master.sqlite");
+  const gzipPath = path.join(root, "standard-master.sqlite.gz");
+  writeFileSync(dbPath, "sqlite fixture");
+  writeFileSync(gzipPath, gzipSync(Buffer.from("sqlite fixture", "utf8")));
+
+  const calculator = new PythonFeeCalculator({
+    masterDbPath: dbPath,
+    masterDbGzipPath: gzipPath
+  });
+  calculator.browseMaster = async (input) => {
+    assert.equal(input.type, "sources");
+    return {
+      sources: [{
+        sourceType: "medical_procedure_master",
+        sourceVersion: "2026-06-15",
+        publishedAt: "2026-06-05",
+        rowCount: 11746,
+        checksumSha256: "procedure-checksum",
+        sourceUrl: "https://www.ssk.or.jp/example.zip"
+      }],
+      medicalElectronicFeeTableVersion: "2026-06-15",
+      dpcStatus: { mode: "review_only", counts: { electronicTableRows: 0 } }
+    };
+  };
+
+  const detailed = await calculator.readinessDetailed();
+
+  assert.equal(detailed.masterDbChecksumSha256.length, 64);
+  assert.equal(detailed.masterDbGzipChecksumSha256.length, 64);
+  assert.equal(detailed.masterSources[0].sourceVersion, "2026-06-15");
+  assert.equal(detailed.medicalElectronicFeeTableVersion, "2026-06-15");
+  assert.equal(detailed.dpcStatus.mode, "review_only");
+});

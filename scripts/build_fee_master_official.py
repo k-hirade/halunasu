@@ -5,6 +5,7 @@ import argparse
 import gzip
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from shutil import copyfileobj
 from urllib.request import Request, urlopen
@@ -18,7 +19,7 @@ from medical_fee_calculation.standard_build import (
 from medical_fee_calculation.ssk_download import download_ssk_master_catalog
 
 
-DEFAULT_SOURCE_VERSION = "2026-05-01"
+DEFAULT_SOURCE_VERSION = "2026-06-15"
 
 
 def main() -> int:
@@ -29,12 +30,12 @@ def main() -> int:
     parser.add_argument(
         "--catalog",
         type=Path,
-        default=Path("configs/official-master/2026-05-01/ssk-master-catalog.json"),
+        default=Path("configs/official-master/2026-06-15/ssk-master-catalog.json"),
     )
     parser.add_argument(
         "--manifest",
         type=Path,
-        default=Path("configs/official-master/2026-05-01/standard-master-build.json"),
+        default=Path("configs/official-master/2026-06-15/standard-master-build.json"),
     )
     parser.add_argument(
         "--regional-manifest",
@@ -96,14 +97,23 @@ def main() -> int:
 
 
 def download_ssk_sources(args: argparse.Namespace) -> None:
+    retrieved_at = datetime.now(UTC).isoformat(timespec="seconds")
     result = download_ssk_master_catalog(
         args.catalog,
         raw_root=args.ssk_raw_root,
         source_version=args.source_version,
+        retrieved_at=retrieved_at,
         regional_manifest=args.regional_manifest,
         prepare_manifest=True,
         overwrite=args.overwrite,
         timeout=args.timeout,
+    )
+    if result.standard_build_manifest is None:
+        raise RuntimeError("SSK master download did not prepare a standard build manifest")
+    args.manifest.parent.mkdir(parents=True, exist_ok=True)
+    args.manifest.write_text(
+        json.dumps(result.standard_build_manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
     )
     failed = [item for item in result.items if item.status != "ok"]
     if failed or result.missing_kinds:

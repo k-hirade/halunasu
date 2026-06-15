@@ -76,6 +76,7 @@ class SskDownloadTest(unittest.TestCase):
             raw_root=raw_root,
             source_version="2026-06-01",
             published_at="2026-06-01",
+            retrieved_at="2026-06-15T00:00:00+00:00",
             regional_manifest=regional_manifest,
             fetch_bytes=fetch,
         )
@@ -103,36 +104,47 @@ class SskDownloadTest(unittest.TestCase):
         self.assertIn("comment_master", result.missing_kinds)
         self.assertIn("Downloaded: 5", report)
         self.assertIn("Manifest entries: 6", report)
+        procedure_entry = next(
+            entry for entry in entries if entry["kind"] == "medical_procedure_master"
+        )
+        self.assertEqual(procedure_entry["url"], "https://example.test/s_ALL20260601.zip")
+        self.assertEqual(procedure_entry["published_at"], "2026-06-01")
+        self.assertEqual(procedure_entry["retrieved_at"], "2026-06-15T00:00:00+00:00")
+        self.assertEqual(procedure_entry["archive_path"], str(raw_root / "medical_procedure_master" / "2026-06-01" / "s_ALL20260601.zip"))
+        self.assertEqual(
+            procedure_entry["archive_checksum_sha256"],
+            result.items[0].file.checksum_sha256,
+        )
 
     def test_discovers_catalog_from_official_page_like_html(self) -> None:
         pages = {
-            "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/r06/kihonmasta_01.html": """
+            "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_01.html": """
                 <h2>医科診療行為の全件マスター</h2>
-                <p>2026年5月1日</p>
-                <a href="kihonmasta_01.files/s_ALL20260501.zip">全件分ファイル</a>
+                <p>2026年6月5日</p>
+                <a href="kihonmasta_01.files/s_ALL20260605.zip">全件ファイル</a>
             """,
-            "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/r06/kihonmasta_04.html": """
+            "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_04.html": """
                 <h2>医薬品の全件マスター</h2>
-                <p>2026年3月17日</p>
-                <a href="kihonmasta_04.files/y_r07_ALL20260317.zip">全件分ファイル</a>
+                <p>2026年6月11日</p>
+                <a href="kihonmasta_04.files/y_r08_ALL20260611.zip">全件ファイル</a>
             """,
-            "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/r06/kihonmasta_05.html": """
+            "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_05.html": """
                 <h2>特定器材の全件マスター</h2>
-                <p>2026年2月27日</p>
-                <a href="kihonmasta_05.files/t_ALL20260227.zip">全件分ファイル</a>
+                <p>2026年5月29日</p>
+                <a href="kihonmasta_05.files/t_ALL20260529.zip">全件分ファイル</a>
             """,
-            "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/r06/kihonmasta_06.html": """
+            "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_06.html": """
                 <h2>コメントマスターの全件マスター</h2>
-                <p>2026年5月7日</p>
-                <a href="kihonmasta_06.files/c_ALL20260507.zip">全件分ファイル</a>
+                <p>2026年6月5日</p>
+                <a href="kihonmasta_06.files/c_ALL20260605.zip">全件ファイル</a>
                 <h2>コメント関連テーブル</h2>
-                <p>2026年5月15日</p>
-                <a href="kihonmasta_06.files/ck_ALL_20260515.zip">全件分ファイル</a>
+                <p>2026年6月5日</p>
+                <a href="kihonmasta_06.files/ck_ALL_20260605.zip">全件ファイル</a>
             """,
             "https://www.ssk.or.jp/seikyushiharai/tensuhyo/ikashika/index.html": """
                 <h2>医科電子点数表</h2>
-                <p>令和8年5月1日</p>
-                <a href="index.files/tensuhyo_03.zip">医科電子点数表テーブル（令和8年度版）</a>
+                <p>令和8年6月1日</p>
+                <a href="index.files/tensuhyo_20260601.zip">医科電子点数表テーブル（令和8年度版）</a>
             """,
         }
 
@@ -144,26 +156,27 @@ class SskDownloadTest(unittest.TestCase):
 
         self.assertEqual(result.page_count, 5)
         self.assertEqual(result.warnings, ())
-        self.assertEqual(entries["medical_procedure_master"]["source_version"], "2026-05-01")
-        self.assertEqual(entries["drug_master"]["source_version"], "2026-03-17")
-        self.assertEqual(entries["specific_material_master"]["source_version"], "2026-02-27")
-        self.assertEqual(entries["comment_master"]["source_version"], "2026-05-07")
-        self.assertEqual(entries["comment_related_table"]["source_version"], "2026-05-15")
-        self.assertEqual(entries["medical_electronic_fee_table"]["source_version"], "2026-05-01")
+        self.assertTrue(all("/r06/" not in url for url in result.source_pages))
+        self.assertEqual(entries["medical_procedure_master"]["source_version"], "2026-06-05")
+        self.assertEqual(entries["drug_master"]["source_version"], "2026-06-11")
+        self.assertEqual(entries["specific_material_master"]["source_version"], "2026-05-29")
+        self.assertEqual(entries["comment_master"]["source_version"], "2026-06-05")
+        self.assertEqual(entries["comment_related_table"]["source_version"], "2026-06-05")
+        self.assertEqual(entries["medical_electronic_fee_table"]["source_version"], "2026-06-01")
         self.assertEqual(
             entries["medical_procedure_master"]["url"],
-            "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/r06/kihonmasta_01.files/s_ALL20260501.zip",
+            "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_01.files/s_ALL20260605.zip",
         )
-        self.assertEqual(entries["comment_related_table"]["filename"], "ck_ALL_20260515.zip")
+        self.assertEqual(entries["comment_related_table"]["filename"], "ck_ALL_20260605.zip")
         self.assertIn("Pages fetched: 5", report)
 
         overridden = discover_ssk_master_catalog(
-            source_version="2026-06-01",
+            source_version="2026-06-15",
             fetch_bytes=lambda url: pages[url].encode("utf-8"),
         )
         overridden_entries = {entry["kind"]: entry for entry in overridden.catalog["entries"]}
-        self.assertEqual(overridden_entries["drug_master"]["source_version"], "2026-06-01")
-        self.assertEqual(overridden_entries["drug_master"]["published_at"], "2026-03-17")
+        self.assertEqual(overridden_entries["drug_master"]["source_version"], "2026-06-15")
+        self.assertEqual(overridden_entries["drug_master"]["published_at"], "2026-06-11")
 
     def test_diffs_catalogs_by_kind(self) -> None:
         root = Path(self.tmp.name)

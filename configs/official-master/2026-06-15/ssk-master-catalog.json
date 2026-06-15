@@ -1,0 +1,52 @@
+{
+  "entries": [
+    {
+      "kind": "medical_procedure_master",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_01.files/s_ALL20260605.zip",
+      "source_page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_01.html",
+      "filename": "s_ALL20260605.zip",
+      "source_version": "2026-06-15",
+      "published_at": "2026-06-05"
+    },
+    {
+      "kind": "drug_master",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_04.files/y_ALL20260611.zip",
+      "source_page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_04.html",
+      "filename": "y_ALL20260611.zip",
+      "source_version": "2026-06-15",
+      "published_at": "2026-06-11"
+    },
+    {
+      "kind": "specific_material_master",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_05.files/t_ALL20260529.zip",
+      "source_page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_05.html",
+      "filename": "t_ALL20260529.zip",
+      "source_version": "2026-06-15",
+      "published_at": "2026-05-29"
+    },
+    {
+      "kind": "comment_master",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_06.files/c_ALL20260605.zip",
+      "source_page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_06.html",
+      "filename": "c_ALL20260605.zip",
+      "source_version": "2026-06-15",
+      "published_at": "2026-06-05"
+    },
+    {
+      "kind": "comment_related_table",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_06.files/ck_ALL_20260605.zip",
+      "source_page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_06.html",
+      "filename": "ck_ALL_20260605.zip",
+      "source_version": "2026-06-15",
+      "published_at": "2026-06-05"
+    },
+    {
+      "kind": "medical_electronic_fee_table",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/ikashika/index.files/tensuhyo_02.zip",
+      "source_page_url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/ikashika/index.html",
+      "filename": "tensuhyo_02.zip",
+      "source_version": "2026-06-15",
+      "published_at": "2026-06-01"
+    }
+  ]
+}
