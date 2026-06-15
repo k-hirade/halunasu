@@ -7,6 +7,7 @@ import {
 } from "../../../packages/auth-client/src/index.js";
 import { createSignedSession } from "../../platform-api/src/auth/session.js";
 import { MemoryPlatformStore } from "../../platform-api/src/store/memory-store.js";
+import { buildClinicalChecklistMenu } from "../src/clinical-calculation-input.js";
 import { handleFeeApiRequest } from "../src/server.js";
 import { MemoryFeeStore } from "../src/store/memory-store.js";
 
@@ -3702,6 +3703,48 @@ test("routes non-billable lab review contexts to specific review topics without 
   assert.equal(calculation.statusCode, 201);
   assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
   assert.equal(masterSearches.length, 0);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "検査コード確認"));
+
+  masterSearches.length = 0;
+  receivedInput = null;
+  const glycemicMenu = buildClinicalChecklistMenu("2型糖尿病で通院中。血糖管理検査について、直近検査から日が浅いため再検査の要否を相談。");
+  const glycemicGroup = glycemicMenu.find((item) => item.menuId === "lab_group:glycemic_monitoring");
+  assert.equal(glycemicGroup?.label, "血糖管理検査");
+  assert.equal(glycemicGroup?.query, "");
+
+  clinicalEvents = [{
+    type: "lab",
+    billing_domain: "standard_lab",
+    name: "血糖管理検査",
+    action_status: "considered",
+    temporal_relation: "current_visit",
+    source_origin: "own_clinic_record",
+    provider_ownership: "own_clinic",
+    result_assertion: "not_applicable",
+    certainty: "ambiguous",
+    section: "A",
+    evidence: "血糖管理検査について、直近検査から日が浅いため再検査の要否を相談。",
+    search_queries: ["血糖管理検査"]
+  }];
+  session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-13",
+    clinicalText: "再診。2型糖尿病で通院中。血糖管理検査について、直近検査から日が浅いため再検査の要否を相談。",
+    diagnoses: [{ name: "2型糖尿病" }]
+  }, headers);
+  calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
+  assert.equal(masterSearches.length, 0);
+  assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "同月内検査確認"));
   assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "検査コード確認"));
 
   masterSearches.length = 0;

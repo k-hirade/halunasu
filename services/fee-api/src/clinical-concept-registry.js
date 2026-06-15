@@ -6,6 +6,8 @@ export const FEE_CONCEPT_REGISTRY_VERSION = String(registry.version || "fee-conc
 
 export const LAB_CONCEPT_DEFINITIONS = freezeDefinitions(registry.labConcepts);
 
+export const LAB_CONCEPT_GROUP_DEFINITIONS = freezeDefinitions(registry.labConceptGroups);
+
 export const PROCEDURE_CHECKLIST_DEFINITIONS = freezeDefinitions(registry.procedureChecklist);
 
 export const REVIEW_ONLY_DOMAIN_CHECKLIST_DEFINITIONS = freezeDefinitions(registry.reviewOnlyDomains);

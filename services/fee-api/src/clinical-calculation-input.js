@@ -11,6 +11,7 @@ import {
 import {
   FEE_CONCEPT_REGISTRY_VERSION,
   LAB_CONCEPT_DEFINITIONS,
+  LAB_CONCEPT_GROUP_DEFINITIONS,
   PROCEDURE_CHECKLIST_DEFINITIONS,
   REVIEW_ONLY_DOMAIN_CHECKLIST_DEFINITIONS
 } from "./clinical-concept-registry.js";
@@ -422,7 +423,7 @@ function reviewTopicCodeFromWarning(message = "", event = {}) {
   if (/対象疾患/u.test(text)) {
     return "target_disease_check";
   }
-  if (/(?:同月内検査|同じ月に当院で行った検査|院内履歴.{0,12}(?:照合|確認)|検査.{0,18}(?:同月|同じ月|月内|重複)|(?:同月|同じ月|月内).{0,18}(?:検査|検体|採血|重複))/u.test(text)) {
+  if (/(?:同月内検査|同じ月に当院で行った検査|院内履歴.{0,12}(?:照合|確認)|検査.{0,18}(?:同月|同じ月|月内|重複|前回|直近|再検|検査間隔)|(?:同月|同じ月|月内|前回|直近|再検|検査間隔).{0,18}(?:検査|検体|採血|重複))/u.test(text)) {
     return "monthly_lab_duplicate_check";
   }
   if (/同月履歴|同月算定|同月/u.test(text)) {
@@ -859,6 +860,16 @@ function deterministicClinicalCandidatesFromLines(lines = []) {
         line,
         evidence: text,
         confidence: hasLabResultContext(text, concept) || hasPerformedLabContext(text) ? "medium" : "low"
+      }));
+    }
+    for (const group of labConceptGroupsFromText(normalizedText)) {
+      candidates.push(preprocessingCandidate({
+        kind: "lab_group",
+        conceptId: `lab_group:${group.key}`,
+        label: group.name || group.key,
+        line,
+        evidence: text,
+        confidence: "low"
       }));
     }
     for (const imaging of imagingConceptsFromPreprocessedLine(normalizedText)) {
@@ -4731,6 +4742,9 @@ function enrichClinicalEventWithChecklistMenu(event = {}, menu = {}) {
   if (!event || typeof event !== "object") {
     return false;
   }
+  if (menu.kind === "lab_group") {
+    return false;
+  }
   const additions = uniqueStrings([
     menu.query,
     menu.name,
@@ -6015,16 +6029,18 @@ function hasMonthlyLabDuplicateReviewContext(text = "") {
   if (/(?:同月|同じ月|月内).{0,20}(?:検査|検体|採血|院内履歴|履歴|重複).{0,12}(?:なし|ない|無い|未実施|行っていない)|(?:検査|検体|採血|院内履歴|履歴|重複).{0,20}(?:同月|同じ月|月内).{0,12}(?:なし|ない|無い|未実施|行っていない)/u.test(text)) {
     return false;
   }
-  const hasMonthOrHistory = /同月|同じ月|月内|院内履歴|履歴照合|履歴の照合|重複の有無|重複/u.test(text);
-  const hasLabContext = /検査|検体|採血|追加検査|検査履歴|院内履歴/u.test(text);
-  return hasMonthOrHistory && hasLabContext;
+  const hasExplicitMonthOrHistory = /同月|同じ月|月内|院内履歴|履歴照合|履歴の照合|重複の有無|重複/u.test(text);
+  const hasIntervalOrRepeatContext = /前回検査|直近検査|前回採血|直近採血|再検|再検査|検査間隔|短期間での検査|前回分|前回値|最近の検査|検査履歴/u.test(text);
+  const hasLabContext = /検査|検体|採血|追加検査|検査履歴|院内履歴|HbA1c|ＨｂＡ１ｃ|血糖|グルコース|CRP|ＣＲＰ/u.test(text);
+  return (hasExplicitMonthOrHistory || hasIntervalOrRepeatContext) && hasLabContext;
 }
 
 function hasLabCodeReviewContext(event = {}, text = "") {
   const hasSpecificLabConcept = labConceptsFromClinicalEventName(event).length > 0 || labConceptsFromText(text).length > 0;
+  const hasSpecificLabGroup = labConceptGroupsFromClinicalEventName(event).length > 0 || labConceptGroupsFromText(text).length > 0;
   const hasCodeUncertainty = /検査コード|標準コード|検査項目|検査区分|測定条件|測定方法|検体|方法|依頼先|どれに対応|確定|不明|追えない|分からない|わからない|不足/u.test(text);
   const hasGenericLabReviewContext = /検査|検体|測定|採血/u.test(text) && hasCodeUncertainty;
-  return hasSpecificLabConcept || hasGenericLabReviewContext;
+  return hasSpecificLabConcept || hasSpecificLabGroup || hasGenericLabReviewContext;
 }
 
 function reviewIssueFromNonBillableLabClinicalEvent(event = {}, topicCode = "", { message = "", requiredInput = "" } = {}) {
@@ -7547,7 +7563,7 @@ export function buildClinicalChecklistMenu(text = "") {
       eventType: item.eventType || item.kind || "other",
       billingDomain: item.billingDomain || "unknown",
       name: item.name || label,
-      query: item.query || item.name || label,
+      query: Object.prototype.hasOwnProperty.call(item, "query") ? item.query : (item.name || label),
       searchQueries: uniqueStrings(asArray(item.searchQueries)),
       modality: item.modality || "none",
       conceptKey: item.conceptKey || "",
@@ -7567,6 +7583,21 @@ export function buildClinicalChecklistMenu(text = "") {
       query: concept.query,
       searchQueries: [concept.query, ...concept.aliases],
       conceptKey: concept.key
+    });
+  }
+
+  for (const group of labConceptGroupsFromText(normalized)) {
+    addMenu({
+      menuId: `lab_group:${group.key}`,
+      label: group.name,
+      kind: "lab_group",
+      eventType: "lab",
+      billingDomain: "standard_lab",
+      name: group.name,
+      query: "",
+      searchQueries: [],
+      conceptKey: group.key,
+      matchTerms: [group.name, ...asArray(group.aliases)]
     });
   }
 
@@ -7772,10 +7803,26 @@ function labConceptsFromClinicalEventName(event = {}) {
   return labConceptsFromText(text);
 }
 
+function labConceptGroupsFromClinicalEventName(event = {}) {
+  const text = normalizeClinicalText(clinicalEventName(event));
+  return labConceptGroupsFromText(text);
+}
+
 function labConceptsFromText(text = "") {
   const normalized = normalizeClinicalText(text);
   const concepts = [];
   for (const concept of LAB_CONCEPT_DEFINITIONS) {
+    if (concept.pattern.test(normalized)) {
+      concepts.push(concept);
+    }
+  }
+  return concepts;
+}
+
+function labConceptGroupsFromText(text = "") {
+  const normalized = normalizeClinicalText(text);
+  const concepts = [];
+  for (const concept of LAB_CONCEPT_GROUP_DEFINITIONS) {
     if (concept.pattern.test(normalized)) {
       concepts.push(concept);
     }
