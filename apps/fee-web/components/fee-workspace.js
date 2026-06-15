@@ -1702,10 +1702,16 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision }) {
   const canDirectAdopt = canDecide && (
     item.kind === "line"
       ? canApproveReviewItem(item)
-      : item.kind === "proposal" && item.canAdopt === true
+      : item.kind === "proposal" && canApproveReviewItem(item)
   );
   const canConfirmAdopt = canDecide && confirmableProposalForAdoption(item);
-  const canReject = canDecide && item.reviewOnly !== true;
+  const canReject = canDecide && (item.reviewOnly !== true || canDirectAdopt || canConfirmAdopt);
+  const canManualAdopt = canDirectAdopt || canConfirmAdopt;
+  const directAdoptLabel = item.kind === "proposal"
+    ? item.canAdopt === true
+      ? item.nextActionLabel || `算定する ${item.pointsLabel || ""}`.trim()
+      : `算定する ${item.pointsLabel || ""}`.trim()
+    : "算定する";
   return (
     <div className="fee-modal-overlay" role="presentation" onMouseDown={onClose}>
       <section className="fee-modal-card" role="dialog" aria-modal="true" aria-label={item.displayTitle || item.name || "算定候補の説明"} onMouseDown={(event) => event.stopPropagation()}>
@@ -1745,7 +1751,7 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision }) {
               </ul>
             </section>
           ) : null}
-          {item.reviewOnly || item.actionType === "not_billable_now" ? (
+          {(item.reviewOnly || item.actionType === "not_billable_now") && !canManualAdopt ? (
             <section>
               <h3>操作方針</h3>
               <p>この項目は自動採用できません。人手で内容を確認し、必要ならカルテまたは手入力オーダーを修正してください。</p>
@@ -1770,7 +1776,7 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision }) {
           {canDirectAdopt ? (
             <>
               <button className="btn btn--primary" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">
-                {item.kind === "proposal" ? item.nextActionLabel || `算定する ${item.pointsLabel || ""}`.trim() : "算定する"}
+                {directAdoptLabel}
               </button>
               {canReject ? (
                 <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected")} type="button">算定しない</button>
@@ -1854,6 +1860,12 @@ function issueToneIcon(tone) {
 }
 
 function canApproveReviewItem(item = {}) {
+  if (confirmableProposalForAdoption(item)) {
+    return true;
+  }
+  if (item.kind === "proposal" && item.canAdopt === true) {
+    return true;
+  }
   return item.reviewOnly !== true
     && item.actionType !== "not_billable_now"
     && item.canAdopt !== false;

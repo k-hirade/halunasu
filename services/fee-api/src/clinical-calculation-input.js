@@ -2677,6 +2677,39 @@ function candidateLineFromProcedureCandidate({
   };
 }
 
+const SPECIFIC_DISEASE_MANAGEMENT_MASTER_CANDIDATES = {
+  clinic: {
+    code: "113001810",
+    name: "特定疾患療養管理料（診療所）",
+    points: 225
+  }
+};
+
+const SPECIFIC_DISEASE_PRESCRIPTION_MANAGEMENT_MASTER_CANDIDATES = {
+  in_house: {
+    code: "120005610",
+    name: "特定疾患処方管理加算（処方料）",
+    points: 56
+  },
+  outside_prescription: {
+    code: "120005710",
+    name: "特定疾患処方管理加算（処方箋料）",
+    points: 56
+  }
+};
+
+function fallbackSpecificDiseaseManagementMasterItem() {
+  return SPECIFIC_DISEASE_MANAGEMENT_MASTER_CANDIDATES.clinic;
+}
+
+function fallbackSpecificDiseasePrescriptionManagementMasterItem(deliveryKind = "") {
+  const normalized = String(deliveryKind || "").trim();
+  if (normalized === "outside_prescription") {
+    return SPECIFIC_DISEASE_PRESCRIPTION_MANAGEMENT_MASTER_CANDIDATES.outside_prescription;
+  }
+  return SPECIFIC_DISEASE_PRESCRIPTION_MANAGEMENT_MASTER_CANDIDATES.in_house;
+}
+
 function candidateProposalFromProcedureItem({
   proposalId,
   title,
@@ -2726,7 +2759,7 @@ async function candidateProposalsFromSpecificDiseaseOpportunities({
     ], [
       /特定疾患療養管理料/u,
       /診療所/u
-    ]);
+    ]) || fallbackSpecificDiseaseManagementMasterItem();
     proposals.push(reviewOnlyIncreaseProposal({
       proposalId: managementProposalId,
       title: "特定疾患療養管理料の確認",
@@ -2762,7 +2795,9 @@ async function candidateProposalsFromSpecificDiseaseOpportunities({
       "特定疾患処方管理加算2"
     ], [
       /特定疾患処方管理加算/u
-    ]);
+    ]) || fallbackSpecificDiseasePrescriptionManagementMasterItem(
+      medicationDeliveryKindFromStructuredOrText(visitMedication, clinicalText)
+    );
     proposals.push(reviewOnlyIncreaseProposal({
       proposalId: prescriptionProposalId,
       title: "特定疾患処方管理加算の確認",

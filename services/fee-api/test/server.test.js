@@ -6813,6 +6813,86 @@ test("proposes review-only specific disease management opportunities from active
   assert.equal(Array.isArray(prescription.resolutionOptions), true);
 });
 
+test("specific disease increase proposals keep billable candidate lines when advisory master search misses", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.searchMaster = async (input) => ({
+    query: input.query,
+    type: input.type,
+    items: []
+  });
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "定期再診", confidence: "medium" },
+    visit_facts: {
+      outside_prescription_issued: "yes",
+      outside_prescription_evidence: "院外処方箋を発行"
+    },
+    diagnoses: [
+      { name: "気管支喘息", status: "active", evidence: "気管支喘息（主病）" }
+    ],
+    clinical_events: [
+      {
+        type: "management",
+        billing_domain: "standard_management",
+        name: "喘息管理",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        certainty: "explicit",
+        evidence: "療養計画に基づき吸入手技・増悪時対応を説明（要点を診療録に記載）。"
+      },
+      {
+        type: "medication",
+        billing_domain: "standard_medication",
+        name: "ブデソニド/ホルモテロール吸入",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        certainty: "explicit",
+        evidence: "院外処方箋を発行。ブデソニド/ホルモテロール吸入 1回1吸入 1日2回 56日分。"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Asthma Fallback Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-07",
+    clinicalText: [
+      "S: 気管支喘息で当院通院中の定期再診。",
+      "O: 療養計画に基づき吸入手技・増悪時対応を説明（要点を診療録に記載）。",
+      "A: 気管支喘息（主病）。",
+      "P: 院外処方箋を発行。ブデソニド/ホルモテロール吸入 1回1吸入 1日2回 56日分。"
+    ].join("\n")
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  const proposals = calculation.body.calculationResult.candidateProposals || [];
+  const management = proposals.find((proposal) => String(proposal.title || "").includes("特定疾患療養管理料"));
+  const prescription = proposals.find((proposal) => String(proposal.title || "").includes("特定疾患処方管理加算"));
+
+  assert.equal(management?.candidateLine?.code, "113001810");
+  assert.equal(management?.candidateLine?.totalPoints, 225);
+  assert.equal(prescription?.candidateLine?.code, "120005710");
+  assert.equal(prescription?.candidateLine?.totalPoints, 56);
+});
+
 test("patient history overrides structured initial visit inference", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
