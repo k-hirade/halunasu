@@ -1914,7 +1914,6 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
           </div>
         ) : null}
       </div>
-      <span className="candidate-line-status">{item.statusLabel}</span>
       <strong className="candidate-line-points">{Number(item.totalPoints || 0).toLocaleString()}点</strong>
       <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">詳細</button>
     </article>
@@ -1934,7 +1933,6 @@ function IssueCard({ item, onOpenDetail }) {
         {issueToneIcon(tone)}
       </span>
       <div>
-        <span className="issue-category-badge">{item.issueCategoryLabel || "確認事項"}</span>
         <strong>{item.displayTitle}</strong>
         <p>{item.displayReason}</p>
         {item.conditionText && item.conditionText !== GENERIC_ISSUE_CONDITION_TEXT ? <small>{item.conditionText}</small> : null}
