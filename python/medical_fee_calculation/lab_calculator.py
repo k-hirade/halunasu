@@ -45,6 +45,7 @@ from medical_fee_calculation.medication_fees import calculate_medication_fees
 from medical_fee_calculation.medication_orders import resolve_medication_order_inputs
 from medical_fee_calculation.outpatient_basic import (
     calculate_outpatient_basic_fee,
+    calculate_outpatient_basic_derived_add_ons,
     calculate_outpatient_management_add_on,
 )
 from medical_fee_calculation.procedure_resolver import (
@@ -200,6 +201,18 @@ def calculate_lab_claim_standardized(
         is_outpatient=claim_context.encounter.is_outpatient,
         source_id=claim_context.master_sources.medical_procedure_source_id,
     )
+    outpatient_basic_derived_add_ons = calculate_outpatient_basic_derived_add_ons(
+        conn,
+        claim_context.procedure_codes,
+        claim_context.encounter.service_date,
+        is_outpatient=claim_context.encounter.is_outpatient,
+        existing_lines=(
+            *input_resolution.lines,
+            *outpatient_basic.lines,
+        ),
+        facility_standard_keys=facility_standard_keys,
+        source_id=claim_context.master_sources.medical_procedure_source_id,
+    )
     medication_fees = calculate_medication_fees(
         conn,
         claim_context.procedure_codes,
@@ -251,6 +264,7 @@ def calculate_lab_claim_standardized(
         *drug_resolution.lines,
         *material_resolution.lines,
         *outpatient_basic.lines,
+        *outpatient_basic_derived_add_ons.lines,
         *medication_fees.lines,
         *injection_fees.lines,
         *treatment_fees.lines,
@@ -288,6 +302,7 @@ def calculate_lab_claim_standardized(
             *drug_resolution.lines,
             *material_resolution.lines,
             *outpatient_basic.lines,
+            *outpatient_basic_derived_add_ons.lines,
             *outpatient_management_add_on.lines,
             *medication_fees.lines,
             *injection_fees.lines,
@@ -303,6 +318,7 @@ def calculate_lab_claim_standardized(
             *drug_resolution.messages,
             *material_resolution.messages,
             *outpatient_basic.messages,
+            *outpatient_basic_derived_add_ons.messages,
             *outpatient_management_add_on.messages,
             *medication_fees.messages,
             *injection_fees.messages,

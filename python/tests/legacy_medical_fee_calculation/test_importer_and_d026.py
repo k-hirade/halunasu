@@ -147,6 +147,7 @@ from medical_fee_calculation.medication_fees import calculate_medication_fees
 from medical_fee_calculation.medication_orders import resolve_medication_order_inputs
 from medical_fee_calculation.outpatient_basic import (
     calculate_outpatient_basic_fee,
+    calculate_outpatient_basic_derived_add_ons,
     calculate_outpatient_management_add_on,
 )
 from medical_fee_calculation.procedure_resolver import (
@@ -392,6 +393,28 @@ class ImporterAndD026Test(unittest.TestCase):
                 part="01",
                 section="001",
                 item="001",
+                judgement_kind="0",
+                judgement_group="0",
+            ),
+            procedure_row(
+                code="180819910",
+                name="物価対応料１（外来・在宅物価対応料）（初診時）イ",
+                points="2.00",
+                chapter="1",
+                part="01",
+                section="000",
+                item="000",
+                judgement_kind="0",
+                judgement_group="0",
+            ),
+            procedure_row(
+                code="180820010",
+                name="物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+                points="2.00",
+                chapter="1",
+                part="01",
+                section="000",
+                item="000",
                 judgement_kind="0",
                 judgement_group="0",
             ),
@@ -1181,6 +1204,110 @@ class ImporterAndD026Test(unittest.TestCase):
         self.assertEqual(len(result.messages), 1)
         self.assertEqual(result.messages[0].status, ClaimItemStatus.BLOCKED)
         self.assertEqual(result.messages[0].code, "111000110")
+
+    def test_calculate_outpatient_basic_derived_add_ons_adds_initial_price_support(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            (),
+            date(2026, 6, 3),
+            is_outpatient=True,
+            existing_lines=(
+                CalculationLine(
+                    code="111000110",
+                    name="初診料",
+                    points=291.0,
+                    quantity=1,
+                    status=ClaimItemStatus.CANDIDATE,
+                    reason="initial",
+                    source="outpatient_basic_fee",
+                ),
+            ),
+            source_id=self.source_id,
+        )
+
+        self.assertEqual([line.code for line in result.lines], ["180819910"])
+        self.assertEqual(result.lines[0].source, "outpatient_price_support_add_on")
+        self.assertEqual(result.lines[0].total_points, 2.0)
+        self.assertEqual(result.messages, ())
+
+    def test_calculate_outpatient_basic_derived_add_ons_adds_revisit_price_support(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            (),
+            date(2026, 6, 3),
+            is_outpatient=True,
+            existing_lines=(
+                CalculationLine(
+                    code="112007410",
+                    name="再診料",
+                    points=76.0,
+                    quantity=1,
+                    status=ClaimItemStatus.CANDIDATE,
+                    reason="revisit",
+                    source="outpatient_basic_fee",
+                ),
+            ),
+            source_id=self.source_id,
+        )
+
+        self.assertEqual([line.code for line in result.lines], ["180820010"])
+        self.assertEqual(result.lines[0].total_points, 2.0)
+        self.assertEqual(result.messages, ())
+
+    def test_calculate_outpatient_basic_derived_add_ons_skips_before_effective_date(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            (),
+            date(2026, 5, 31),
+            is_outpatient=True,
+            existing_lines=(
+                CalculationLine(
+                    code="112007410",
+                    name="再診料",
+                    points=75.0,
+                    quantity=1,
+                    status=ClaimItemStatus.CANDIDATE,
+                    reason="revisit",
+                    source="outpatient_basic_fee",
+                ),
+            ),
+            source_id=self.source_id,
+        )
+
+        self.assertEqual(result.lines, ())
+        self.assertEqual(result.messages, ())
+
+    def test_calculate_outpatient_basic_derived_add_ons_skips_duplicate_manual_code(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            ("180820010",),
+            date(2026, 6, 3),
+            is_outpatient=True,
+            existing_lines=(
+                CalculationLine(
+                    code="112007410",
+                    name="再診料",
+                    points=76.0,
+                    quantity=1,
+                    status=ClaimItemStatus.CANDIDATE,
+                    reason="revisit",
+                    source="outpatient_basic_fee",
+                ),
+                CalculationLine(
+                    code="180820010",
+                    name="物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+                    points=2.0,
+                    quantity=1,
+                    status=ClaimItemStatus.CANDIDATE,
+                    reason="manual",
+                    source="medical_procedure_master",
+                ),
+            ),
+            source_id=self.source_id,
+        )
+
+        self.assertEqual(result.lines, ())
+        self.assertEqual(result.messages, ())
 
     def test_calculate_outpatient_management_add_on_for_revisit_management_explanation(self) -> None:
         result = calculate_outpatient_management_add_on(
@@ -2408,6 +2535,7 @@ class ImporterAndD026Test(unittest.TestCase):
                 "620000003",
                 "710000001",
                 "111000110",
+                "180819910",
                 "120000710",
                 "120001210",
                 "130003510",
@@ -2441,6 +2569,7 @@ class ImporterAndD026Test(unittest.TestCase):
                 ClaimItemStatus.CANDIDATE,
                 ClaimItemStatus.CANDIDATE,
                 ClaimItemStatus.CANDIDATE,
+                ClaimItemStatus.CANDIDATE,
             ],
         )
         self.assertEqual(
@@ -2452,6 +2581,7 @@ class ImporterAndD026Test(unittest.TestCase):
                 "620000003",
                 "710000001",
                 "111000110",
+                "180819910",
                 "120000710",
                 "120001210",
                 "130003510",
@@ -2465,9 +2595,9 @@ class ImporterAndD026Test(unittest.TestCase):
                 "160177770",
             ),
         )
-        self.assertEqual(standardized.total_candidate_points, 827.0)
+        self.assertEqual(standardized.total_candidate_points, 829.0)
         self.assertEqual(standardized.total_confirmed_points, 173.0)
-        self.assertEqual(standardized.total_points, 1033.0)
+        self.assertEqual(standardized.total_points, 1035.0)
         self.assertEqual(standardized.messages, ())
 
     def test_standardized_claim_skips_medication_drug_charges_for_outside_prescription(self) -> None:
@@ -2689,6 +2819,7 @@ class ImporterAndD026Test(unittest.TestCase):
             "620000003",
             "710000001",
             "111000110",
+            "180819910",
             "120000710",
             "120001210",
             "130003510",
@@ -2747,7 +2878,7 @@ class ImporterAndD026Test(unittest.TestCase):
                     "injection": {"route_kind": "intravenous"},
                     "expected": {
                         "status": "ok",
-                        "total_points": 1033,
+                        "total_points": 1035,
                         "candidate_codes": expected_codes,
                     },
                 },
@@ -2760,7 +2891,7 @@ class ImporterAndD026Test(unittest.TestCase):
         results = run_gold_outpatient_lab_claim_evaluation(self.conn, input_path)
 
         self.assertEqual(results[0].overall_verdict, "match")
-        self.assertEqual(results[0].actual_total_points, 1033.0)
+        self.assertEqual(results[0].actual_total_points, 1035.0)
         self.assertEqual(results[0].actual_candidate_codes, tuple(expected_codes))
 
     def test_gold_difference_classification_covers_outpatient_domain_sources(self) -> None:

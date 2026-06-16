@@ -990,6 +990,7 @@ function defaultLineCoverageScope(status, source) {
 function defaultLineCoverageChapter(source) {
   return {
     outpatient_basic_fee: "A_basic_fee",
+    outpatient_price_support_add_on: "A_basic_fee",
     inpatient_basic_fee: "A_inpatient_fee",
     drug_master: "F_drug",
     medication_fee: "F_drug",
