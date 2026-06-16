@@ -649,14 +649,40 @@ function FeeSessionDetailView({ sessionId }) {
       if (pendingAutoSaveRef.current) {
         await pendingAutoSaveRef.current;
       }
-      const saved = await saveDetails({
-        silent: true,
-        formOverride: options.formOverride,
-        orderRowsOverride: options.orderRowsOverride,
-        orderRowsTouchedOverride: options.orderRowsOverride ? true : undefined
-      });
+      let saved = null;
+      let calculationBody = {};
+      if (options.skipSaveDetails) {
+        const payload = buildFeeSessionPayload({
+          defaultFacilityId,
+          form: options.formOverride || form,
+          orderRows: Array.isArray(options.orderRowsOverride) ? options.orderRowsOverride : orderRows,
+          patients,
+          diagnosesTouched,
+          orderRowsTouched: options.orderRowsOverride ? true : orderRowsTouched,
+          clinicalTextBaselineHash
+        });
+        if (options.calculationMode) {
+          calculationBody.calculationMode = options.calculationMode;
+        }
+        if (options.includeOrdersForCalculation) {
+          calculationBody.orders = payload.orders || [];
+        }
+        if (options.includeCalculationOptionsForCalculation) {
+          calculationBody.calculationOptions = payload.calculationOptions || null;
+        }
+      } else {
+        saved = await saveDetails({
+          silent: true,
+          formOverride: options.formOverride,
+          orderRowsOverride: options.orderRowsOverride,
+          orderRowsTouchedOverride: options.orderRowsOverride ? true : undefined
+        });
+        if (options.calculationMode) {
+          calculationBody.calculationMode = options.calculationMode;
+        }
+      }
       setFeeSession((current) => ({
-        ...(saved.feeSession || current || {}),
+        ...(saved?.feeSession || current || {}),
         status: "calculating",
         calculationResult: null,
         calculationSummary: null,
@@ -671,7 +697,7 @@ function FeeSessionDetailView({ sessionId }) {
         response = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/calculation-jobs`, {
           method: "POST",
           csrf: true,
-          body: {}
+          body: calculationBody
         });
       } catch (error) {
         await refreshCalculationStatus().catch(() => refreshDetail().catch(() => null));
@@ -849,9 +875,20 @@ function FeeSessionDetailView({ sessionId }) {
     }
     setManualItemDraft(defaultManualBillingItemDraft());
     setManualItemModalOpen(false);
+    const canReuseClinical = canReuseClinicalCalculationForManualChange({
+      feeSession,
+      form,
+      nextForm,
+      defaultFacilityId,
+      clinicalTextBaselineHash
+    });
     await calculate({
       formOverride: nextForm !== form ? nextForm : undefined,
-      orderRowsOverride: orderEntries.length ? nextRows : undefined
+      orderRowsOverride: orderEntries.length ? nextRows : undefined,
+      skipSaveDetails: canReuseClinical,
+      calculationMode: canReuseClinical ? "reuse_clinical" : undefined,
+      includeOrdersForCalculation: canReuseClinical && orderEntries.length > 0,
+      includeCalculationOptionsForCalculation: canReuseClinical && nextForm !== form
     });
   }
 
@@ -860,7 +897,19 @@ function FeeSessionDetailView({ sessionId }) {
     const normalizedRows = nextRows.length ? nextRows : [createEmptyOrderRow()];
     setOrderRowsTouched(true);
     setOrderRows(normalizedRows);
-    await calculate({ orderRowsOverride: normalizedRows });
+    const canReuseClinical = canReuseClinicalCalculationForManualChange({
+      feeSession,
+      form,
+      nextForm: form,
+      defaultFacilityId,
+      clinicalTextBaselineHash
+    });
+    await calculate({
+      orderRowsOverride: normalizedRows,
+      skipSaveDetails: canReuseClinical,
+      calculationMode: canReuseClinical ? "reuse_clinical" : undefined,
+      includeOrdersForCalculation: canReuseClinical
+    });
   }
 
   function updateOutpatientBasicKind(value) {
@@ -2218,7 +2267,7 @@ function ManualBillingItemModal({
             </div>
           </section>
 
-          <section className="manual-billing-section">
+          <section className="manual-billing-section manual-billing-selected-section">
             <h3>追加内容</h3>
             {selectedItems.length ? (
               <div className="manual-billing-selected-list">
@@ -2785,6 +2834,33 @@ function clinicalTextHash(value) {
     hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
   }
   return text ? `ui_${Math.abs(hash).toString(36)}` : "";
+}
+
+function canReuseClinicalCalculationForManualChange({
+  feeSession = null,
+  form = {},
+  nextForm = form,
+  defaultFacilityId = null,
+  clinicalTextBaselineHash = ""
+} = {}) {
+  if (!feeSession?.calculationResult || !feeSession?.calculationOptions) {
+    return false;
+  }
+  const formForCalculation = nextForm || form || {};
+  const currentClinicalHash = clinicalTextHash(formForCalculation.clinicalText || "");
+  if (!clinicalTextBaselineHash || currentClinicalHash !== clinicalTextBaselineHash) {
+    return false;
+  }
+  const expectedFacilityId = formForCalculation.facilityId || defaultFacilityId || null;
+  const comparisons = [
+    [formForCalculation.patientId || null, feeSession.patientId || null],
+    [expectedFacilityId, feeSession.facilityId || null],
+    [formForCalculation.departmentId || null, feeSession.departmentId || null],
+    [formForCalculation.serviceDate || null, feeSession.serviceDate || null],
+    [formForCalculation.claimMonth || null, feeSession.claimMonth || null],
+    [formForCalculation.setting || "outpatient", feeSession.setting || "outpatient"]
+  ];
+  return comparisons.every(([left, right]) => String(left || "") === String(right || ""));
 }
 
 function parseDiagnoses(value) {

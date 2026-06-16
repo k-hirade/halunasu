@@ -7152,6 +7152,109 @@ test("persists detailed calculation input and passes it to calculator", async ()
   assert.ok(Array.isArray(calculation.body.calculationResult.canonicalClinicalFacts));
 });
 
+test("reuses previous clinical extraction when repricing manual order changes", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let extractorCalls = 0;
+  const clinicalFactsExtractor = async () => {
+    extractorCalls += 1;
+    return {
+      visit_type: { kind: "revisit", evidence: "再診", confidence: "high" },
+      diagnoses: [{ name: "気管支炎", status: "active", evidence: "気管支炎" }],
+      clinical_events: [{
+        type: "lab",
+        name: "CRP",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        result_assertion: "numeric",
+        certainty: "explicit",
+        section: "O",
+        evidence: "O: CRP 1.2 を測定。",
+        search_queries: ["CRP"]
+      }],
+      excluded_events: [],
+      missing_information: [],
+      review_flags: []
+    };
+  };
+  let lastCalculationInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    lastCalculationInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: (feeSession.orders || []).length ? 200 : 100,
+      lineItems: (feeSession.orders || []).map((order, index) => ({
+        lineId: `line_${index + 1}`,
+        code: order.standardCode || order.localCode || `manual_${index + 1}`,
+        name: order.standardName || order.localName || "手入力明細",
+        orderType: order.orderType || "other",
+        points: 100,
+        quantity: 1,
+        totalPoints: 100,
+        status: "candidate",
+        source: "test"
+      })),
+      warnings: []
+    };
+  };
+
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "再計算 太郎" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "O: CRP 1.2 を測定。"
+  }, headers);
+  const first = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  const second = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {
+      calculationMode: "reuse_clinical",
+      orders: [{
+        orderType: "other",
+        localName: "手入力明細",
+        standardCode: "999000001",
+        standardName: "手入力明細",
+        quantity: 1,
+        sourceSystem: "fee_web_user_added"
+      }]
+    },
+    headers,
+    {
+      clinicalFactsExtractor: async () => {
+        throw new Error("clinical extractor should not run during reuse_clinical");
+      }
+    }
+  );
+  const detail = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/detail`,
+    undefined,
+    headers
+  );
+
+  assert.equal(first.statusCode, 201);
+  assert.equal(extractorCalls, 1);
+  assert.equal(second.statusCode, 201);
+  assert.equal(second.body.calculationResult.clinicalExtraction.source, "reuse_clinical");
+  assert.equal(lastCalculationInput.orders[0].standardCode, "999000001");
+  assert.equal(detail.body.feeSession.orders[0].standardCode, "999000001");
+  assert.equal(detail.body.feeSession.calculationResult.inputSnapshot.orders[0].standardCode, "999000001");
+});
+
 test("records line-bound verified evidence on canonical clinical facts", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);

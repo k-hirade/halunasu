@@ -850,6 +850,7 @@ async function calculateFeeSessionNow({
 }) {
   const overallStartedAt = Date.now();
   const stageTimings = [];
+  const previousCalculationResult = isPlainObject(current.calculationResult) ? current.calculationResult : null;
   const calculating = await feeStore.updateSession(context.session.orgId, feeSessionId, {
     status: "calculating",
     calculationProgress: feeCalculationProgress({
@@ -869,6 +870,7 @@ async function calculateFeeSessionNow({
     feeSessionId,
     session: calculating.feeSession,
     calculationInput,
+    previousCalculationResult,
     stageTimings
   });
   const progressed = await feeStore.updateSession(context.session.orgId, feeSessionId, {
@@ -906,6 +908,7 @@ async function prepareFeeSessionForCalculation({
   feeSessionId,
   session,
   calculationInput,
+  previousCalculationResult = null,
   stageTimings,
   status = null
 }) {
@@ -919,7 +922,8 @@ async function prepareFeeSessionForCalculation({
       feeStore,
       platformStore,
       orgId: context.session.orgId,
-      feeSessionId
+      feeSessionId,
+      previousCalculationResult
     }),
     detail: (result) => ({
       clinicalStructuring: result?.metrics?.clinicalStructuring || null,
@@ -1457,8 +1461,9 @@ function assertFeeSessionReadyForCalculation(session = {}) {
 
 async function prepareSessionForCalculation(session = {}, calculationInput = {}, feeCalculator, input = {}) {
   const stageTimings = [];
-  const enriched = await measureStage(stageTimings, "enrichOrders", () => enrichSessionOrdersForCalculation(session, feeCalculator));
-  const baseSession = enriched.changed ? { ...session, orders: enriched.orders } : session;
+  const inputSession = sessionWithCalculationInputOverrides(session, calculationInput);
+  const enriched = await measureStage(stageTimings, "enrichOrders", () => enrichSessionOrdersForCalculation(inputSession, feeCalculator));
+  const baseSession = enriched.changed ? { ...inputSession, orders: enriched.orders } : inputSession;
   const facilityProfile = await measureStage(stageTimings, "facilityProfile", () => loadFacilityProfileForCalculation({
     platformStore: input.platformStore,
     orgId: input.orgId || baseSession.orgId,
@@ -1470,33 +1475,40 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     session: baseSession,
     feeSessionId: input.feeSessionId || baseSession.feeSessionId
   }));
-  const legacy = await measureStage(stageTimings, "clinicalCalculationPreparation", () => buildClinicalCalculationPreparation({
+  const reusableClinicalPreparation = reusableClinicalCalculationPreparation({
     session: baseSession,
     calculationInput,
-    feeCalculator,
-    openAiApiKey: input.openAiApiKey || process.env.OPENAI_API_KEY || "",
-    openAiModel: (
-      input.openAiFeeClinicalModel
-      || process.env.OPENAI_FEE_CLINICAL_MODEL
-      || process.env.OPENAI_FACT_MODEL
-      || process.env.OPENAI_SOAP_MODEL
-      || "gpt-5.4-nano"
-    ),
-    openAiReasoningEffort: (
-      input.openAiFeeClinicalReasoningEffort
-      || process.env.OPENAI_FEE_CLINICAL_REASONING_EFFORT
-      || process.env.OPENAI_FACT_REASONING_EFFORT
-      || process.env.OPENAI_SOAP_REASONING_EFFORT
-      || "low"
-    ),
-    openAiTimeoutMs: Number(
-      input.openAiFeeClinicalTimeoutMs
-      || process.env.OPENAI_FEE_CLINICAL_TIMEOUT_MS
-      || DEFAULT_OPENAI_FEE_CLINICAL_TIMEOUT_MS
-    ),
-    priorSessions,
-    clinicalFactsExtractor: input.clinicalFactsExtractor
-  }));
+    previousCalculationResult: input.previousCalculationResult || null
+  });
+  const legacy = reusableClinicalPreparation
+    ? await measureStage(stageTimings, "clinicalCalculationPreparation", () => reusableClinicalPreparation)
+    : await measureStage(stageTimings, "clinicalCalculationPreparation", () => buildClinicalCalculationPreparation({
+      session: baseSession,
+      calculationInput,
+      feeCalculator,
+      openAiApiKey: input.openAiApiKey || process.env.OPENAI_API_KEY || "",
+      openAiModel: (
+        input.openAiFeeClinicalModel
+        || process.env.OPENAI_FEE_CLINICAL_MODEL
+        || process.env.OPENAI_FACT_MODEL
+        || process.env.OPENAI_SOAP_MODEL
+        || "gpt-5.4-nano"
+      ),
+      openAiReasoningEffort: (
+        input.openAiFeeClinicalReasoningEffort
+        || process.env.OPENAI_FEE_CLINICAL_REASONING_EFFORT
+        || process.env.OPENAI_FACT_REASONING_EFFORT
+        || process.env.OPENAI_SOAP_REASONING_EFFORT
+        || "low"
+      ),
+      openAiTimeoutMs: Number(
+        input.openAiFeeClinicalTimeoutMs
+        || process.env.OPENAI_FEE_CLINICAL_TIMEOUT_MS
+        || DEFAULT_OPENAI_FEE_CLINICAL_TIMEOUT_MS
+      ),
+      priorSessions,
+      clinicalFactsExtractor: input.clinicalFactsExtractor
+    }));
   const primaryPrepared = applyFacilityProfileToPreparation(legacy, facilityProfile, {
     clinicalText: baseSession.clinicalText || calculationInput.clinicalText || ""
   });
@@ -1513,7 +1525,13 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
   const prepared = attachShadowCalculationsToPreparation(primaryPrepared, shadowCalculations);
   const patch = {};
 
-  if (enriched.changed) {
+  if (
+    enriched.changed
+    || (
+      hasOwn(calculationInput, "orders")
+      && !hasEquivalentJson(session.orders || [], baseSession.orders || [])
+    )
+  ) {
     patch.orders = enriched.orders;
   }
   if (!hasEquivalentJson(session.calculationOptions || null, prepared.calculationOptions || null)) {
@@ -1557,6 +1575,101 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       ...(Array.isArray(prepared.reviewWarnings) ? prepared.reviewWarnings : []),
       ...unresolvedOrderWarnings(enriched.orders || baseSession.orders || [], prepared.calculationOptions || {})
     ])
+  };
+}
+
+function sessionWithCalculationInputOverrides(session = {}, calculationInput = {}) {
+  const next = { ...session };
+  if (hasOwn(calculationInput, "orders")) {
+    next.orders = Array.isArray(calculationInput.orders) ? calculationInput.orders : [];
+  }
+  if (hasOwn(calculationInput, "clinicalText")) {
+    next.clinicalText = String(calculationInput.clinicalText || "");
+  }
+  return next;
+}
+
+function reusableClinicalCalculationPreparation({
+  session = {},
+  calculationInput = {},
+  previousCalculationResult = null
+} = {}) {
+  if (String(calculationInput.calculationMode || "") !== "reuse_clinical") {
+    return null;
+  }
+  if (!isPlainObject(previousCalculationResult)) {
+    return null;
+  }
+
+  const currentClinicalText = String(calculationInput.clinicalText || session.clinicalText || "");
+  const previousClinicalTextHash = String(previousCalculationResult.inputSnapshot?.clinicalTextHash || "");
+  if (!previousClinicalTextHash || previousClinicalTextHash !== clinicalTextHash(currentClinicalText)) {
+    return null;
+  }
+
+  const calculationOptions = isPlainObject(calculationInput.calculationOptions)
+    ? calculationInput.calculationOptions
+    : isPlainObject(session.calculationOptions)
+      ? session.calculationOptions
+      : isPlainObject(previousCalculationResult.inputSnapshot?.calculationOptions)
+        ? previousCalculationResult.inputSnapshot.calculationOptions
+        : null;
+  if (!isPlainObject(calculationOptions)) {
+    return null;
+  }
+
+  const previousExtraction = isPlainObject(previousCalculationResult.clinicalExtraction)
+    ? previousCalculationResult.clinicalExtraction
+    : {};
+  const inputSnapshot = isPlainObject(previousCalculationResult.inputSnapshot)
+    ? previousCalculationResult.inputSnapshot
+    : {};
+  const previousVersions = isPlainObject(inputSnapshot.versions) ? inputSnapshot.versions : {};
+  const clinicalExtraction = {
+    ...previousExtraction,
+    source: "reuse_clinical",
+    reusedFromCalculationId: previousCalculationResult.calculationId || null
+  };
+  const calculationOptionsAutoKeys = Array.isArray(session.calculationOptionsAutoKeys)
+    ? session.calculationOptionsAutoKeys
+    : Array.isArray(inputSnapshot.calculationOptionsAutoKeys)
+      ? inputSnapshot.calculationOptionsAutoKeys
+      : [];
+
+  return {
+    calculationOptions,
+    calculationOptionsAutoKeys,
+    calculationOptionsSource: session.calculationOptionsSource || inputSnapshot.calculationOptionsSource || "reuse_clinical",
+    diagnoses: [],
+    candidateProposals: Array.isArray(previousCalculationResult.candidateProposals) ? previousCalculationResult.candidateProposals : [],
+    reviewWarnings: [],
+    clinicalEvents: Array.isArray(previousCalculationResult.clinicalEvents) ? previousCalculationResult.clinicalEvents : [],
+    canonicalClinicalFacts: Array.isArray(previousCalculationResult.canonicalClinicalFacts) ? previousCalculationResult.canonicalClinicalFacts : [],
+    masterCandidates: Array.isArray(previousCalculationResult.masterCandidates) ? previousCalculationResult.masterCandidates : [],
+    billingCandidates: Array.isArray(previousCalculationResult.billingCandidates) ? previousCalculationResult.billingCandidates : [],
+    reviewIssues: Array.isArray(previousCalculationResult.reviewIssues) ? previousCalculationResult.reviewIssues : [],
+    shadowCalculations: Array.isArray(previousCalculationResult.shadowCalculations) ? previousCalculationResult.shadowCalculations : [],
+    clinicalExtraction,
+    metrics: {
+      clinicalStructuring: {
+        source: "reuse_clinical",
+        durationMs: 0,
+        model: clinicalExtraction.model || null,
+        reasoningEffort: clinicalExtraction.reasoningEffort || null,
+        promptVersion: clinicalExtraction.promptVersion || previousVersions.promptVersion || null,
+        ruleSetVersion: clinicalExtraction.ruleSetVersion || previousVersions.ruleSetVersion || null,
+        registryVersion: clinicalExtraction.registryVersion || previousVersions.registryVersion || null,
+        masterVersion: clinicalExtraction.masterVersion || previousVersions.masterVersion || null,
+        timeoutMs: Number(clinicalExtraction.timeoutMs || 0),
+        reusedFromCalculationId: previousCalculationResult.calculationId || null
+      },
+      ruleBasedClinicalInference: {
+        source: "reuse_clinical",
+        durationMs: 0,
+        masterLookupCount: 0,
+        masterLookupDurationMs: 0
+      }
+    }
   };
 }
 
@@ -2041,6 +2154,9 @@ function mergedCalculationOptionsSource(source = "") {
 
 function buildCalculationInputForSession(session = {}, input = {}, prepared = {}) {
   const calculationInput = { ...input };
+  if (hasOwn(input, "orders")) {
+    calculationInput.orders = Array.isArray(input.orders) ? input.orders : [];
+  }
   if (!hasOwn(calculationInput, "claimContext") && isPlainObject(session.claimContext)) {
     calculationInput.claimContext = session.claimContext;
   }
@@ -2092,7 +2208,9 @@ function buildFeeCalculationInputSnapshot({
     inpatientBasicDays: session.inpatientBasicDays || null,
     clinicalText,
     clinicalTextHash: clinicalTextHash(clinicalText),
-    orders: Array.isArray(session.orders) ? session.orders : [],
+    orders: Array.isArray(calculationInputForSession.orders)
+      ? calculationInputForSession.orders
+      : Array.isArray(session.orders) ? session.orders : [],
     diagnoses: Array.isArray(session.diagnoses) ? session.diagnoses : [],
     insurance: session.insurance || null,
     claimContext: isPlainObject(calculationInputForSession.claimContext) ? calculationInputForSession.claimContext : null,

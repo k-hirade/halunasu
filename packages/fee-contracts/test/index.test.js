@@ -130,12 +130,14 @@ test("normalizes calculation override input", () => {
     },
     calculationOptions: {
       comment_inputs: [{ code: "840000001", text: "コメント" }]
-    }
+    },
+    calculationMode: "reuse_clinical"
   });
 
   assert.equal(input.orders[0].orderType, "lab");
   assert.deepEqual(input.claimContext.procedure_codes, ["160000410"]);
   assert.deepEqual(input.calculationOptions.comment_inputs[0], { code: "840000001", text: "コメント" });
+  assert.equal(input.calculationMode, "reuse_clinical");
 });
 
 test("detects performed blood collection using the shared strict predicate", () => {

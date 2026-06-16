@@ -27,6 +27,7 @@ export const feeOrderTypes = Object.freeze([
   "unknown"
 ]);
 export const feeReviewDecisionStatuses = Object.freeze(["approved", "rejected", "edited"]);
+export const feeCalculationModes = Object.freeze(["full", "reuse_clinical"]);
 export const clinicalAutoCalculationOptionKeys = Object.freeze([
   "procedure_codes",
   "outpatient_basic",
@@ -147,6 +148,7 @@ export function validateUpdateFeeSessionInput(input = {}) {
 
 export function validateCreateFeeCalculationInput(input = {}) {
   return compactObject({
+    calculationMode: optionalEnum(input.calculationMode ?? input.calculation_mode, feeCalculationModes, "calculationMode"),
     clinicalText: hasOwn(input, "clinicalText") || hasOwn(input, "clinical_text")
       ? optionalMultilineString(input.clinicalText ?? input.clinical_text, 100000)
       : undefined,
