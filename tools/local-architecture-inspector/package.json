@@ -1,0 +1,11 @@
+{
+  "name": "halunasu-local-architecture-inspector",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "scan": "node server.js --scan-once"
+  }
+}

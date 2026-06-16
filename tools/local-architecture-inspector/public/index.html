@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>Halunasu Local Architecture Inspector</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Local Architecture Inspector</p>
+        <h1>カルテ自動作成 × 診療報酬算定</h1>
+        <p>ローカルだけで動く、2アプリ統合の構造検証アプリ</p>
+      </div>
+      <div class="actions">
+        <input id="searchInput" class="text-input" type="search" placeholder="/api/ や ファイル名で絞り込み" />
+        <select id="serviceFilter" class="select-input">
+          <option value="all">すべての遷移</option>
+          <option value="charting-gateway">charting-gateway</option>
+          <option value="fee-api">fee-api</option>
+          <option value="platform-api">platform-api</option>
+          <option value="billing-api-legacy">billing-api-legacy</option>
+          <option value="referral-api">referral-api</option>
+          <option value="external-or-unknown">未解決</option>
+        </select>
+        <select id="confidenceFilter" class="select-input">
+          <option value="all">信頼度: すべて</option>
+          <option value="pattern">pattern</option>
+          <option value="heuristic">heuristic</option>
+          <option value="unresolved">unresolved</option>
+        </select>
+        <button id="scanBtn" class="button button-primary">再スキャン</button>
+        <button id="copyMermaidBtn" class="button button-secondary">Mermaidコピー</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="grid">
+        <article class="card stat" id="stat-apps" title="対象: charting-web, fee-web">
+          <p class="card-title">対象アプリ</p>
+          <strong>2</strong>
+        </article>
+        <article class="card stat" id="stat-services">
+          <p class="card-title">対象サービス</p>
+          <strong>5</strong>
+        </article>
+        <article class="card stat" id="stat-flows">
+          <p class="card-title">検出APIフロー</p>
+          <strong>0</strong>
+        </article>
+        <article class="card stat" id="stat-unresolved">
+          <p class="card-title">未解決</p>
+          <strong>0</strong>
+        </article>
+        <article class="card stat" id="stat-scan-time">
+          <p class="card-title">最終スキャン</p>
+          <strong>-</strong>
+        </article>
+      </section>
+
+      <section class="panel">
+        <header class="panel-header">
+          <h2>フロー図（Mermaid）</h2>
+          <small id="generatedAt"></small>
+        </header>
+        <div class="diagram-wrap">
+          <div class="mermaid" id="mermaidDiagram"></div>
+        </div>
+      </section>
+
+      <section class="panel two-col">
+        <div class="panel">
+          <h2>アプリ画面/APIルート</h2>
+          <div id="appList" class="list"></div>
+        </div>
+        <div class="panel">
+          <h2>サービスルート（主要）</h2>
+          <div id="serviceList" class="list"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>API呼び出しマッピング</h2>
+        <p class="small">行をクリックすると、右のソース表示に飛びます。</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>アプリ</th>
+                <th>ソース</th>
+                <th>メソッド</th>
+                <th>パス</th>
+                <th>遷移先</th>
+                <th>信頼度</th>
+              </tr>
+            </thead>
+            <tbody id="flowTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>サービス別件数</h2>
+        <div id="serviceBars" class="bars"></div>
+      </section>
+
+      <section class="panel">
+        <h2>未解決API呼び出し</h2>
+        <div id="unresolvedPanel" class="notice">未解決なし</div>
+      </section>
+
+      <section class="panel">
+        <h2>ソース参照 / 詳細</h2>
+        <p>行をクリックすると関連ファイルを確認できます。</p>
+        <p id="selectedCall" class="small">未選択</p>
+        <pre id="sourceViewer"></pre>
+      </section>
+    </main>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
