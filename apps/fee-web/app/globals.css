@@ -1387,7 +1387,7 @@ body:has(.fee-shell--detail) {
   padding: 0 18px 18px;
 }
 
-.manual-billing-modal {
+.fee-modal-card.manual-billing-modal {
   width: min(1120px, calc(100vw - 32px));
   height: min(780px, calc(100dvh - 24px));
   max-height: calc(100dvh - 24px);
@@ -2971,7 +2971,7 @@ body:has(.fee-shell--detail) {
     max-height: 82dvh;
   }
 
-  .manual-billing-modal {
+  .fee-modal-card.manual-billing-modal {
     width: min(100%, calc(100vw - 24px));
     height: min(900px, 82dvh);
   }
