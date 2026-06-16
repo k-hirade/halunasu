@@ -6948,6 +6948,74 @@ test("patient history overrides structured initial visit inference", async () =>
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("再診料候補を優先")));
 });
 
+test("passes documented management explanation to outpatient revisit options", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 128,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "initial", evidence: "初診として来院", confidence: "high" },
+    diagnoses: [{ name: "気管支喘息", status: "confirmed", evidence: "気管支喘息" }],
+    clinical_events: [{
+      type: "management",
+      billing_domain: "standard_management",
+      name: "気管支喘息の療養管理",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "not_applicable",
+      certainty: "explicit",
+      section: "O",
+      evidence: "療養計画に基づき吸入手技・増悪時対応を説明し、要点を診療録に記載した。",
+      review_reason: "療養計画に基づく説明"
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Outpatient Management Patient"
+  }, headers);
+  await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-05-01",
+    diagnoses: [{ name: "気管支喘息" }]
+  }, headers);
+  const current = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-06",
+    clinicalText: "初診として来院。気管支喘息。療養計画に基づき吸入手技・増悪時対応を説明し、要点を診療録に記載した。",
+    diagnoses: [{ name: "気管支喘息" }]
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${current.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.management_explanation_performed, true);
+});
+
 test("can create inline Platform patient when creating fee session", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);

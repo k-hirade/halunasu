@@ -1712,7 +1712,7 @@ def _source_based_gold_review_classification(
             recommended_action="import missing master rows or adjust hospital order code mapping",
             reason="master lookup message remains in review",
         )
-    if "outpatient_basic_fee" in sources:
+    if sources & {"outpatient_basic_fee", "outpatient_management_add_on"}:
         return _GoldDifferenceClassification(
             classification="outpatient_basic_input",
             feedback_target="input_contract",
@@ -2337,6 +2337,10 @@ def _parse_outpatient_basic(payload: dict[str, Any]) -> OutpatientBasicFeeOption
         same_day_second_department=_bool_value(payload.get("same_day_second_department"), default=False),
         same_day_revisit=_bool_value(payload.get("same_day_revisit"), default=False),
         large_hospital_no_referral=_bool_value(payload.get("large_hospital_no_referral"), default=False),
+        management_explanation_performed=_bool_value(
+            payload.get("management_explanation_performed"),
+            default=False,
+        ),
     )
 
 
@@ -2580,6 +2584,7 @@ def _default_line_coverage_scope(line: CalculationLine) -> str:
 def _default_line_coverage_chapter(line: CalculationLine) -> str:
     return {
         "outpatient_basic_fee": "A_basic_fee",
+        "outpatient_management_add_on": "A_basic_fee",
         "inpatient_basic_fee": "A_inpatient_fee",
         "drug_master": "F_drug",
         "medication_fee": "F_drug",

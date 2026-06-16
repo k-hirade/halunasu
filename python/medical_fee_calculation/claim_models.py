@@ -222,6 +222,7 @@ class OutpatientBasicFeeOptionContext:
     same_day_second_department: bool = False
     same_day_revisit: bool = False
     large_hospital_no_referral: bool = False
+    management_explanation_performed: bool = False
 
 
 @dataclass(frozen=True)

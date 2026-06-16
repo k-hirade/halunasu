@@ -49,6 +49,22 @@ OUTPATIENT_BASIC_FEE_CODES = {
 }
 
 OUTPATIENT_BASIC_FEE_CODE_SET = frozenset(OUTPATIENT_BASIC_FEE_CODES.values())
+OUTPATIENT_MANAGEMENT_ADD_ON_CODE = "112011010"
+OUTPATIENT_MANAGEMENT_BLOCKING_LINE_SOURCES = frozenset(
+    {
+        "d026",
+        "lab_management",
+        "collection_fee",
+        "outpatient_rapid_lab",
+        "injection_fee",
+        "treatment_fee",
+        "imaging_fee",
+        "inpatient_basic_fee",
+        "dpc_estimate",
+        "dpc_claim",
+    }
+)
+OUTPATIENT_MANAGEMENT_BLOCKING_CODE_PREFIXES = ("13", "14", "15", "16", "17")
 
 
 def calculate_outpatient_basic_fee(
@@ -138,6 +154,71 @@ def calculate_outpatient_basic_fee(
     )
 
 
+def calculate_outpatient_management_add_on(
+    conn: sqlite3.Connection,
+    procedure_codes: tuple[str, ...] | list[str],
+    service_date: date,
+    context: OutpatientBasicFeeOptionContext,
+    *,
+    is_outpatient: bool,
+    existing_lines: tuple[CalculationLine, ...] = (),
+    same_day_blocking_service_present: bool = False,
+    source_id: int | None = None,
+) -> OutpatientBasicFeeResult:
+    """Return the outpatient management add-on when same-day structure allows it."""
+
+    if (
+        not is_outpatient
+        or context.fee_kind != OutpatientBasicFeeKind.REVISIT
+        or not context.management_explanation_performed
+    ):
+        return OutpatientBasicFeeResult(lines=(), messages=())
+
+    if any(line.code == OUTPATIENT_MANAGEMENT_ADD_ON_CODE for line in existing_lines):
+        return OutpatientBasicFeeResult(lines=(), messages=())
+
+    if OUTPATIENT_MANAGEMENT_ADD_ON_CODE in _unique_codes(tuple(procedure_codes)):
+        return OutpatientBasicFeeResult(lines=(), messages=())
+
+    if same_day_blocking_service_present or _has_same_day_management_blocking_service(
+        conn,
+        procedure_codes,
+        service_date,
+        existing_lines=existing_lines,
+        source_id=source_id,
+    ):
+        return OutpatientBasicFeeResult(lines=(), messages=())
+
+    row = _find_medical_procedure(conn, OUTPATIENT_MANAGEMENT_ADD_ON_CODE, service_date, source_id)
+    if row is None:
+        return OutpatientBasicFeeResult(
+            lines=(),
+            messages=(
+                CalculationMessage(
+                    status=ClaimItemStatus.NEEDS_REVIEW,
+                    code=OUTPATIENT_MANAGEMENT_ADD_ON_CODE,
+                    message=f"Outpatient management add-on code not found for service date: {OUTPATIENT_MANAGEMENT_ADD_ON_CODE}",
+                    source="outpatient_management_add_on",
+                ),
+            ),
+        )
+
+    return OutpatientBasicFeeResult(
+        lines=(
+            CalculationLine(
+                code=str(row["code"]),
+                name=str(row["short_name"]),
+                points=float(row["points"]),
+                quantity=1,
+                status=ClaimItemStatus.CANDIDATE,
+                reason="Outpatient management add-on candidate for revisit with documented management explanation",
+                source="outpatient_management_add_on",
+            ),
+        ),
+        messages=(),
+    )
+
+
 def _select_outpatient_basic_fee_code(context: OutpatientBasicFeeOptionContext) -> str | None:
     if context.fee_kind is None:
         return None
@@ -153,6 +234,49 @@ def _select_outpatient_basic_fee_code(context: OutpatientBasicFeeOptionContext) 
         context.large_hospital_no_referral,
     )
     return OUTPATIENT_BASIC_FEE_CODES.get(key)
+
+
+def _has_same_day_management_blocking_service(
+    conn: sqlite3.Connection,
+    procedure_codes: tuple[str, ...] | list[str],
+    service_date: date,
+    *,
+    existing_lines: tuple[CalculationLine, ...],
+    source_id: int | None,
+) -> bool:
+    for line in existing_lines:
+        if line.source in OUTPATIENT_MANAGEMENT_BLOCKING_LINE_SOURCES:
+            return True
+        if (
+            line.source == "medical_procedure_master"
+            and _procedure_code_blocks_outpatient_management_add_on(
+                conn,
+                line.code,
+                service_date,
+                source_id,
+            )
+        ):
+            return True
+
+    for code in _unique_codes(tuple(procedure_codes)):
+        if _procedure_code_blocks_outpatient_management_add_on(conn, code, service_date, source_id):
+            return True
+    return False
+
+
+def _procedure_code_blocks_outpatient_management_add_on(
+    conn: sqlite3.Connection,
+    procedure_code: str,
+    service_date: date,
+    source_id: int | None,
+) -> bool:
+    code = str(procedure_code or "").strip()
+    if not code or code in OUTPATIENT_BASIC_FEE_CODE_SET or code == OUTPATIENT_MANAGEMENT_ADD_ON_CODE:
+        return False
+    row = _find_medical_procedure(conn, code, service_date, source_id)
+    if row is None:
+        return False
+    return code.startswith(OUTPATIENT_MANAGEMENT_BLOCKING_CODE_PREFIXES)
 
 
 def _find_medical_procedure(

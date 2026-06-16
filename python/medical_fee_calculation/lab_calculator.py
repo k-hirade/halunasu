@@ -43,7 +43,10 @@ from medical_fee_calculation.lab_rules import (
 )
 from medical_fee_calculation.medication_fees import calculate_medication_fees
 from medical_fee_calculation.medication_orders import resolve_medication_order_inputs
-from medical_fee_calculation.outpatient_basic import calculate_outpatient_basic_fee
+from medical_fee_calculation.outpatient_basic import (
+    calculate_outpatient_basic_fee,
+    calculate_outpatient_management_add_on,
+)
 from medical_fee_calculation.procedure_resolver import (
     resolve_drug_lines,
     resolve_medical_procedure_lines,
@@ -243,6 +246,34 @@ def calculate_lab_claim_standardized(
         dpc_electronic_table_source_id=claim_context.master_sources.dpc_electronic_table_source_id,
         hospital_profile=hospital_profile,
     )
+    lines_before_outpatient_management = (
+        *input_resolution.lines,
+        *drug_resolution.lines,
+        *material_resolution.lines,
+        *outpatient_basic.lines,
+        *medication_fees.lines,
+        *injection_fees.lines,
+        *treatment_fees.lines,
+        *imaging_fees.lines,
+        *inpatient_fees.lines,
+        *lab_result.lines,
+    )
+    outpatient_management_add_on = calculate_outpatient_management_add_on(
+        conn,
+        claim_context.procedure_codes,
+        claim_context.encounter.service_date,
+        claim_context.outpatient_basic,
+        is_outpatient=claim_context.encounter.is_outpatient,
+        existing_lines=lines_before_outpatient_management,
+        same_day_blocking_service_present=bool(
+            claim_context.imaging_orders
+            or claim_context.treatment_orders
+            or claim_context.injection_orders
+            or claim_context.injection_drug_inputs
+            or claim_context.lab_options.collection_fee_inputs
+        ),
+        source_id=claim_context.master_sources.medical_procedure_source_id,
+    )
 
     return CalculationResult(
         input_codes=_unique_codes(
@@ -257,6 +288,7 @@ def calculate_lab_claim_standardized(
             *drug_resolution.lines,
             *material_resolution.lines,
             *outpatient_basic.lines,
+            *outpatient_management_add_on.lines,
             *medication_fees.lines,
             *injection_fees.lines,
             *treatment_fees.lines,
@@ -271,6 +303,7 @@ def calculate_lab_claim_standardized(
             *drug_resolution.messages,
             *material_resolution.messages,
             *outpatient_basic.messages,
+            *outpatient_management_add_on.messages,
             *medication_fees.messages,
             *injection_fees.messages,
             *treatment_fees.messages,

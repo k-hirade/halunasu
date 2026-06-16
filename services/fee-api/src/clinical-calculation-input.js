@@ -621,6 +621,7 @@ export async function buildClinicalCalculationPreparation({
   const billingIntents = [];
   const reviewIssues = [];
   const clinicalTrace = [];
+  let verifiedOutpatientManagementEvidence = null;
   const metrics = {
     clinicalStructuring: {
       source: text ? "not_run" : "no_clinical_text",
@@ -689,6 +690,7 @@ export async function buildClinicalCalculationPreparation({
       billingIntents.push(...asArray(structured.billingIntents));
       reviewIssues.push(...asArray(structured.reviewIssues));
       clinicalTrace.push(...asArray(structured.clinicalTrace));
+      verifiedOutpatientManagementEvidence = structured.outpatientManagementEvidence || null;
     } else {
       Object.assign(inferred, ruleBased.inferred);
       candidateProposals.push(...asArray(ruleBased.candidateProposals));
@@ -697,6 +699,7 @@ export async function buildClinicalCalculationPreparation({
   }
 
   const normalizedInferred = normalizeClinicalInferredOptions(inferred);
+  const outpatientManagementEvidence = verifiedOutpatientManagementEvidence;
   if (isInpatientEncounter(session, text) && !hasOwn(manualOptions, "outpatient_basic")) {
     delete normalizedInferred.outpatient_basic;
   }
@@ -715,6 +718,12 @@ export async function buildClinicalCalculationPreparation({
       && historyBasic.outpatientBasic
     ) {
       normalizedInferred.outpatient_basic = historyBasic.outpatientBasic;
+    }
+    if (!hasOwn(manualOptions, "outpatient_basic")) {
+      normalizedInferred.outpatient_basic = withOutpatientManagementExplanation(
+        normalizedInferred.outpatient_basic,
+        outpatientManagementEvidence
+      );
     }
     reviewWarnings.push(...historyBasic.reviewWarnings);
     reviewWarnings.push(...inferPediatricAddOnReviewWarnings({
@@ -760,6 +769,20 @@ export async function buildClinicalCalculationPreparation({
       usage: metrics.clinicalStructuring?.usage || null
     }),
     metrics
+  };
+}
+
+function withOutpatientManagementExplanation(outpatientBasic, managementEvidence = null) {
+  if (
+    !isPlainObject(outpatientBasic)
+    || !managementEvidence
+    || String(outpatientBasic.fee_kind || "") !== "revisit"
+  ) {
+    return outpatientBasic;
+  }
+  return {
+    ...outpatientBasic,
+    management_explanation_performed: true
   };
 }
 
@@ -1871,7 +1894,10 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     } else {
       const outpatientBasic = outpatientBasicFromStructuredVisit(facts?.visit_type, text);
       if (outpatientBasic) {
-        inferred.outpatient_basic = outpatientBasic;
+        inferred.outpatient_basic = withOutpatientManagementExplanation(
+          outpatientBasic,
+          currentSpecificDiseaseManagementEvidence(clinicalEventsForCalculation)
+        );
       }
     }
   }
@@ -2288,6 +2314,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     candidateProposals: normalizeCandidateProposals(candidateProposals),
     reviewWarnings: normalizeReviewWarnings(reviewWarnings),
     clinicalEvents,
+    outpatientManagementEvidence: currentSpecificDiseaseManagementEvidence(clinicalEventsForCalculation),
     canonicalClinicalFacts: normalizeCanonicalClinicalFacts(canonicalClinicalFactsFromEvents(clinicalEventsForCalculation, {
       billingCandidates,
       reviewIssues: reviewIssuesWithFactLineage,

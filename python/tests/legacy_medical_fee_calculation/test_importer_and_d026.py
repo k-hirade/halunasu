@@ -15,6 +15,7 @@ from medical_fee_calculation.claim_models import (
     CTEquipmentKind,
     ClaimContext,
     ClaimItemStatus,
+    CalculationLine,
     CommentInput,
     DpcOptionContext,
     EncounterContext,
@@ -144,7 +145,10 @@ from medical_fee_calculation.lab_rules import (
 from medical_fee_calculation.lab_rules import LabManagementContext, add_lab_management_fee
 from medical_fee_calculation.medication_fees import calculate_medication_fees
 from medical_fee_calculation.medication_orders import resolve_medication_order_inputs
-from medical_fee_calculation.outpatient_basic import calculate_outpatient_basic_fee
+from medical_fee_calculation.outpatient_basic import (
+    calculate_outpatient_basic_fee,
+    calculate_outpatient_management_add_on,
+)
 from medical_fee_calculation.procedure_resolver import (
     resolve_drug_lines,
     resolve_medical_procedure_lines,
@@ -377,6 +381,17 @@ class ImporterAndD026Test(unittest.TestCase):
                 part="01",
                 section="001",
                 item="000",
+                judgement_kind="0",
+                judgement_group="0",
+            ),
+            procedure_row(
+                code="112011010",
+                name="外来管理加算",
+                points="52.00",
+                chapter="1",
+                part="01",
+                section="001",
+                item="001",
                 judgement_kind="0",
                 judgement_group="0",
             ),
@@ -1166,6 +1181,68 @@ class ImporterAndD026Test(unittest.TestCase):
         self.assertEqual(len(result.messages), 1)
         self.assertEqual(result.messages[0].status, ClaimItemStatus.BLOCKED)
         self.assertEqual(result.messages[0].code, "111000110")
+
+    def test_calculate_outpatient_management_add_on_for_revisit_management_explanation(self) -> None:
+        result = calculate_outpatient_management_add_on(
+            self.conn,
+            (),
+            date(2026, 6, 3),
+            OutpatientBasicFeeOptionContext(
+                fee_kind=OutpatientBasicFeeKind.REVISIT,
+                management_explanation_performed=True,
+            ),
+            is_outpatient=True,
+            existing_lines=(
+                CalculationLine(
+                    code="112007410",
+                    name="再診料",
+                    points=76.0,
+                    quantity=1,
+                    status=ClaimItemStatus.CANDIDATE,
+                    reason="revisit",
+                    source="outpatient_basic_fee",
+                ),
+            ),
+            source_id=self.source_id,
+        )
+
+        self.assertEqual([line.code for line in result.lines], ["112011010"])
+        self.assertEqual(result.lines[0].total_points, 52.0)
+
+    def test_calculate_outpatient_management_add_on_skips_when_lab_is_present(self) -> None:
+        result = calculate_outpatient_management_add_on(
+            self.conn,
+            (),
+            date(2026, 6, 3),
+            OutpatientBasicFeeOptionContext(
+                fee_kind=OutpatientBasicFeeKind.REVISIT,
+                management_explanation_performed=True,
+            ),
+            is_outpatient=True,
+            existing_lines=(
+                CalculationLine(
+                    code="112007410",
+                    name="再診料",
+                    points=76.0,
+                    quantity=1,
+                    status=ClaimItemStatus.CANDIDATE,
+                    reason="revisit",
+                    source="outpatient_basic_fee",
+                ),
+                CalculationLine(
+                    code="160000410",
+                    name="検査",
+                    points=10.0,
+                    quantity=1,
+                    status=ClaimItemStatus.CANDIDATE,
+                    reason="lab",
+                    source="d026",
+                ),
+            ),
+            source_id=self.source_id,
+        )
+
+        self.assertEqual(result.lines, ())
 
     def test_calculate_medication_fees_adds_in_house_dispensing_and_prescription_fee(self) -> None:
         result = calculate_medication_fees(
