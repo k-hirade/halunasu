@@ -636,30 +636,107 @@ function collectApiCallsForApp(appName, pages) {
   return uniqBy(calls, (item) => `${item.sourceFile}|${item.method}|${item.path}`);
 }
 
-function buildMermaidDiagram(snapshot) {
-  const lines = ["flowchart LR", "  direction LR", "", "  subgraph Apps[フロントアプリ]", "    C[charting-web]", "    F[fee-web]", "  end", "  subgraph Services[Backend]", "    GW[charting-gateway]", "    FE[fee-api]", "    PA[platform-api]", "    BI[billing-api-legacy]", "    RF[referral-api]", "    EX[external-api]", "  end", ""];
-  const edgeSet = new Set();
-  for (const flow of snapshot.appFlows) {
-    const from = flow.sourceApp === "charting-web" ? "C" : "F";
-    const toMap = {
-      "charting-gateway": "GW",
-      "fee-api": "FE",
-      "platform-api": "PA",
-      "billing-api-legacy": "BI",
-      "referral-api": "RF",
-      "external-or-unknown": "EX",
-    };
-    const to = toMap[flow.service] || "EX";
-    const label = `${flow.method} ${flow.path}`;
-    const edgeKey = `${from}-${to}-${label}`;
-    if (edgeSet.has(edgeKey)) continue;
-    edgeSet.add(edgeKey);
-    lines.push(`  ${from} -->|${label}| ${to}`);
+// サービスごとの Data / 外部依存(レーン3)。スキャンの精度より図の可読性を優先した既定マップ。
+const SERVICE_DATA_DEPENDENCIES = {
+  "fee-api": [
+    { id: "master_db", label: "算定マスタ(SQLite)", kind: "db", via: "masterLookup" },
+    { id: "openai", label: "OpenAI", kind: "external", via: "clinical抽出" },
+    { id: "firestore", label: "Firestore", kind: "db", via: "session保存" },
+  ],
+  "charting-gateway": [
+    { id: "firestore", label: "Firestore", kind: "db", via: "pairing/audio" },
+    { id: "openai", label: "OpenAI", kind: "external", via: "SOAP生成" },
+  ],
+  "platform-api": [{ id: "firestore", label: "Firestore", kind: "db", via: "org/member" }],
+  "referral-api": [{ id: "firestore", label: "Firestore", kind: "db", via: "referral" }],
+  "billing-api-legacy": [{ id: "firestore", label: "Firestore", kind: "db", via: "billing" }],
+};
+
+const NODE_LABELS = {
+  "charting-web": "カルテ自動作成 (charting-web)",
+  "fee-web": "診療報酬算定 (fee-web)",
+  "charting-gateway": "charting-gateway",
+  "fee-api": "fee-api",
+  "platform-api": "platform-api",
+  "billing-api-legacy": "billing-api-legacy",
+  "referral-api": "referral-api",
+  "external-or-unknown": "未解決 / 外部",
+};
+
+// Frontend → Backend → Data の3レーン構造化グラフ。app→service は本数を集約。
+function buildArchitectureGraph(flows) {
+  const frontendNodes = TARGET_APPS.map((name) => ({ id: name, label: NODE_LABELS[name] || name }));
+  const backendNodes = TARGET_SERVICES.map((name) => ({ id: name, label: NODE_LABELS[name] || name }));
+  const dataNodes = new Map();
+  const edges = new Map();
+
+  for (const flow of flows) {
+    const to = flow.service === "external-or-unknown" ? "external-or-unknown" : flow.service;
+    const key = `${flow.sourceApp}=>${to}`;
+    if (!edges.has(key)) {
+      edges.set(key, { from: flow.sourceApp, to, count: 0, unresolved: 0, samples: [] });
+    }
+    const e = edges.get(key);
+    e.count += 1;
+    if (flow.confidence === "unresolved") e.unresolved += 1;
+    if (e.samples.length < 6) e.samples.push(`${flow.method} ${flow.path}`);
+  }
+
+  // 未解決は仮想ノードとして可視化
+  const hasUnresolved = flows.some((f) => f.confidence === "unresolved");
+  if (hasUnresolved) backendNodes.push({ id: "external-or-unknown", label: NODE_LABELS["external-or-unknown"] });
+
+  const dataEdges = [];
+  for (const service of TARGET_SERVICES) {
+    const used = flows.some((f) => f.service === service);
+    if (!used) continue;
+    for (const dep of SERVICE_DATA_DEPENDENCIES[service] || []) {
+      if (!dataNodes.has(dep.id)) dataNodes.set(dep.id, { id: dep.id, label: dep.label, kind: dep.kind });
+      dataEdges.push({ from: service, to: dep.id, via: dep.via });
+    }
+  }
+
+  return {
+    layers: [
+      { id: "frontend", label: "Frontend", nodes: frontendNodes },
+      { id: "backend", label: "Backend / API", nodes: backendNodes },
+      { id: "data", label: "Data / External", nodes: [...dataNodes.values()] },
+    ],
+    appEdges: [...edges.values()],
+    dataEdges,
+  };
+}
+
+// 集約版 Mermaid(LR・3レーン・本数ラベル・未解決は赤点線)。
+function buildMermaidDiagram(graph) {
+  const safe = (s) => String(s).replace(/[^A-Za-z0-9_]/g, "_");
+  const lines = ["flowchart LR"];
+  for (const layer of graph.layers) {
+    if (!layer.nodes.length) continue;
+    lines.push(`  subgraph ${safe(layer.id)}["${String(layer.label).replace(/"/g, "'")}"]`);
+    lines.push("    direction TB");
+    for (const node of layer.nodes) {
+      const safeLabel = String(node.label).replace(/"/g, "'");
+      const shape = node.kind === "db" ? `[("${safeLabel}")]` : node.kind === "external" ? `{{"${safeLabel}"}}` : `["${safeLabel}"]`;
+      lines.push(`    ${safe(node.id)}${shape}`);
+    }
+    lines.push("  end");
   }
   lines.push("");
-  lines.push("  FE -->|masterLookup| R1[(SQLite/CSV)]");
-  lines.push("  FE -->|OpenAI| R2[(OpenAI)]");
-  lines.push("  GW -->|pairing/audio| R3[(Firestore)]");
+  for (const e of graph.appEdges) {
+    if (e.to === "external-or-unknown") {
+      lines.push(`  ${safe(e.from)} -. "未解決 ${e.unresolved}" .-> ${safe(e.to)}`);
+    } else {
+      lines.push(`  ${safe(e.from)} -- "${e.count}本" --> ${safe(e.to)}`);
+    }
+  }
+  for (const e of graph.dataEdges) {
+    lines.push(`  ${safe(e.from)} -- "${e.via}" --> ${safe(e.to)}`);
+  }
+  lines.push("  classDef warn fill:#fde8e8,stroke:#d33,color:#900;");
+  if (graph.layers.some((l) => l.nodes.some((n) => n.id === "external-or-unknown"))) {
+    lines.push("  class external_or_unknown warn;");
+  }
   return lines.join("\n");
 }
 
@@ -726,6 +803,8 @@ function buildSnapshot() {
 
   scannedFiles += walkFiles(path.join(repoRoot, "services")).length;
 
+  const graph = buildArchitectureGraph(flows);
+
   return {
     generatedAt: new Date().toISOString(),
     repo: repoRoot,
@@ -750,9 +829,8 @@ function buildSnapshot() {
       }, {}),
       unresolvedTopExamples: unresolved.slice(0, 30),
     },
-    mermaid: buildMermaidDiagram({
-      appFlows: flows,
-    }),
+    graph,
+    mermaid: buildMermaidDiagram(graph),
   };
 }
 

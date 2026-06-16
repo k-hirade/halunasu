@@ -3,119 +3,110 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>Halunasu Local Architecture Inspector</title>
+  <title>Halunasu Architecture Inspector</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="page">
-    <header class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">Local Architecture Inspector</p>
-        <h1>カルテ自動作成 × 診療報酬算定</h1>
-        <p>ローカルだけで動く、2アプリ統合の構造検証アプリ</p>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">⟐</span>
+        <div>
+          <strong>Architecture</strong>
+          <span>Inspector</span>
+        </div>
       </div>
-      <div class="actions">
-        <input id="searchInput" class="text-input" type="search" placeholder="/api/ や ファイル名で絞り込み" />
-        <select id="serviceFilter" class="select-input">
-          <option value="all">すべての遷移</option>
-          <option value="charting-gateway">charting-gateway</option>
-          <option value="fee-api">fee-api</option>
-          <option value="platform-api">platform-api</option>
-          <option value="billing-api-legacy">billing-api-legacy</option>
-          <option value="referral-api">referral-api</option>
-          <option value="external-or-unknown">未解決</option>
-        </select>
-        <select id="confidenceFilter" class="select-input">
-          <option value="all">信頼度: すべて</option>
-          <option value="pattern">pattern</option>
-          <option value="heuristic">heuristic</option>
-          <option value="unresolved">unresolved</option>
-        </select>
-        <button id="scanBtn" class="button button-primary">再スキャン</button>
-        <button id="copyMermaidBtn" class="button button-secondary">Mermaidコピー</button>
+      <nav class="nav" id="nav">
+        <a href="#/overview" data-view="overview" class="nav-item">概要</a>
+        <a href="#/flow" data-view="flow" class="nav-item">フロー図</a>
+        <a href="#/mapping" data-view="mapping" class="nav-item">API呼び出し</a>
+        <a href="#/routes" data-view="routes" class="nav-item">ルート一覧</a>
+        <a href="#/drift" data-view="drift" class="nav-item">未解決 / ドリフト<span class="nav-badge" id="navUnresolved"></span></a>
+      </nav>
+      <div class="sidebar-foot">
+        <button id="scanBtn" class="btn btn-primary">再スキャン</button>
+        <p class="muted" id="scanMeta">—</p>
       </div>
-    </header>
+    </aside>
 
-    <main class="layout">
-      <section class="grid">
-        <article class="card stat" id="stat-apps" title="対象: charting-web, fee-web">
-          <p class="card-title">対象アプリ</p>
-          <strong>2</strong>
-        </article>
-        <article class="card stat" id="stat-services">
-          <p class="card-title">対象サービス</p>
-          <strong>5</strong>
-        </article>
-        <article class="card stat" id="stat-flows">
-          <p class="card-title">検出APIフロー</p>
-          <strong>0</strong>
-        </article>
-        <article class="card stat" id="stat-unresolved">
-          <p class="card-title">未解決</p>
-          <strong>0</strong>
-        </article>
-        <article class="card stat" id="stat-scan-time">
-          <p class="card-title">最終スキャン</p>
-          <strong>-</strong>
-        </article>
-      </section>
+    <main class="main">
+      <header class="topbar">
+        <h1 id="viewTitle">概要</h1>
+        <div class="topbar-actions">
+          <input id="searchInput" class="input" type="search" placeholder="/v1/ や ファイル名で絞り込み" />
+          <select id="serviceFilter" class="input"></select>
+        </div>
+      </header>
 
-      <section class="panel">
-        <header class="panel-header">
-          <h2>フロー図（Mermaid）</h2>
-          <small id="generatedAt"></small>
-        </header>
-        <div class="diagram-wrap">
-          <div class="mermaid" id="mermaidDiagram"></div>
+      <!-- 概要 -->
+      <section class="view" data-view="overview">
+        <div class="kpis">
+          <div class="kpi"><span>フロントアプリ</span><strong id="kpiApps">—</strong></div>
+          <div class="kpi"><span>バックエンドサービス</span><strong id="kpiServices">—</strong></div>
+          <div class="kpi"><span>APIフロー</span><strong id="kpiFlows">—</strong></div>
+          <div class="kpi kpi-warn"><span>未解決</span><strong id="kpiUnresolved">—</strong></div>
+        </div>
+        <div class="overview-grid">
+          <div class="card">
+            <h2>サービス別 呼び出し件数</h2>
+            <div id="serviceBars" class="bars"></div>
+          </div>
+          <div class="card">
+            <h2>レーン構成</h2>
+            <div id="laneSummary" class="lane-summary"></div>
+          </div>
         </div>
       </section>
 
-      <section class="panel two-col">
-        <div class="panel">
-          <h2>アプリ画面/APIルート</h2>
-          <div id="appList" class="list"></div>
-        </div>
-        <div class="panel">
-          <h2>サービスルート（主要）</h2>
-          <div id="serviceList" class="list"></div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h2>API呼び出しマッピング</h2>
-        <p class="small">行をクリックすると、右のソース表示に飛びます。</p>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>アプリ</th>
-                <th>ソース</th>
-                <th>メソッド</th>
-                <th>パス</th>
-                <th>遷移先</th>
-                <th>信頼度</th>
-              </tr>
-            </thead>
-            <tbody id="flowTable"></tbody>
-          </table>
+      <!-- フロー図 -->
+      <section class="view" data-view="flow">
+        <div class="card flow-card">
+          <div class="flow-toolbar">
+            <span class="legend"><i class="dot dot-fe"></i>Frontend</span>
+            <span class="legend"><i class="dot dot-be"></i>Backend</span>
+            <span class="legend"><i class="dot dot-data"></i>Data / External</span>
+            <span class="spacer"></span>
+            <button id="copyMermaidBtn" class="btn btn-ghost">Mermaidコピー</button>
+          </div>
+          <div class="diagram-scroll"><div class="mermaid" id="mermaidDiagram"></div></div>
         </div>
       </section>
 
-      <section class="panel">
-        <h2>サービス別件数</h2>
-        <div id="serviceBars" class="bars"></div>
+      <!-- API呼び出しマッピング -->
+      <section class="view" data-view="mapping">
+        <div class="split">
+          <div class="card">
+            <h2>API呼び出しマッピング</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>アプリ</th><th>メソッド</th><th>パス</th><th>遷移先</th><th>信頼度</th></tr></thead>
+                <tbody id="flowTable"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card source-card">
+            <h2>ソース</h2>
+            <p class="muted" id="selectedCall">行を選択してください</p>
+            <pre id="sourceViewer" class="source"></pre>
+          </div>
+        </div>
       </section>
 
-      <section class="panel">
-        <h2>未解決API呼び出し</h2>
-        <div id="unresolvedPanel" class="notice">未解決なし</div>
+      <!-- ルート一覧 -->
+      <section class="view" data-view="routes">
+        <div class="split">
+          <div class="card"><h2>アプリ画面 / APIルート</h2><div id="appList" class="list"></div></div>
+          <div class="card"><h2>サービスルート</h2><div id="serviceList" class="list"></div></div>
+        </div>
       </section>
 
-      <section class="panel">
-        <h2>ソース参照 / 詳細</h2>
-        <p>行をクリックすると関連ファイルを確認できます。</p>
-        <p id="selectedCall" class="small">未選択</p>
-        <pre id="sourceViewer"></pre>
+      <!-- ドリフト -->
+      <section class="view" data-view="drift">
+        <div class="card">
+          <h2>未解決API呼び出し(フロント↔バックエンドのずれ)</h2>
+          <p class="muted">どのサービスルートにも紐づかなかったフロント呼び出し。実装ドリフトの候補です。</p>
+          <div id="driftList" class="drift-list"></div>
+        </div>
       </section>
     </main>
   </div>

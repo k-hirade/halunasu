@@ -1,383 +1,292 @@
-const scanButton = document.getElementById("scanBtn");
-const copyMermaidButton = document.getElementById("copyMermaidBtn");
-const searchInput = document.getElementById("searchInput");
-const serviceFilter = document.getElementById("serviceFilter");
-const confidenceFilter = document.getElementById("confidenceFilter");
-const generatedAtEl = document.getElementById("generatedAt");
-const mermaidEl = document.getElementById("mermaidDiagram");
-const flowTable = document.getElementById("flowTable");
-const appList = document.getElementById("appList");
-const serviceList = document.getElementById("serviceList");
-const unresolvedPanel = document.getElementById("unresolvedPanel");
-const sourceViewer = document.getElementById("sourceViewer");
-const selectedCall = document.getElementById("selectedCall");
-const statApps = document.querySelector("#stat-apps strong");
-const statServices = document.querySelector("#stat-services strong");
-const statFlows = document.querySelector("#stat-flows strong");
-const statUnresolved = document.querySelector("#stat-unresolved strong");
-const statScanTime = document.querySelector("#stat-scan-time strong");
-const serviceBars = document.getElementById("serviceBars");
-
-const labelMap = {
-  "charting-web": "カルテ自動作成",
-  "fee-web": "診療報酬算定",
-  "charting-gateway": "charting-gateway",
-  "fee-api": "fee-api",
-  "platform-api": "platform-api",
-  "billing-api-legacy": "billing-api-legacy",
-  "referral-api": "referral-api",
-  "external-or-unknown": "外部/未分類",
+const VIEW_TITLES = {
+  overview: "概要",
+  flow: "フロー図",
+  mapping: "API呼び出し",
+  routes: "ルート一覧",
+  drift: "未解決 / ドリフト",
 };
 
+const el = (id) => document.getElementById(id);
 const state = {
   snapshot: null,
-  flows: [],
+  view: "overview",
+  search: "",
+  serviceFilter: "",
   selectedFlowId: null,
 };
 
-function toLabel(value) {
-  return labelMap[value] || value;
-}
-
-function setText(node, text) {
-  if (node) node.textContent = text;
-}
-
-function confidenceChip(value) {
-  const el = document.createElement("span");
-  const level = value || "unresolved";
-  el.className = `badge ${level}`;
-  el.textContent = level;
-  return el;
-}
-
-function routeMethodChip(method) {
-  const el = document.createElement("span");
-  el.className = "badge";
-  el.textContent = method;
-  return el;
-}
-
-function createFlowRow(flow) {
-  const tr = document.createElement("tr");
-  tr.dataset.id = flow.id;
-  if (flow.id === state.selectedFlowId) {
-    tr.classList.add("active");
-  }
-
-  const app = document.createElement("td");
-  app.textContent = toLabel(flow.sourceApp);
-
-  const src = document.createElement("td");
-  const openSource = document.createElement("button");
-  openSource.className = "link-button";
-  openSource.textContent = flow.sourceFile;
-  openSource.addEventListener("click", async (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    await openSourceViewer(flow);
+let mermaidReady = false;
+function ensureMermaid() {
+  if (mermaidReady || !window.mermaid) return;
+  window.mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "loose",
+    theme: "base",
+    themeVariables: {
+      darkMode: true,
+      background: "#0b1220",
+      primaryColor: "#1e293b",
+      primaryBorderColor: "#475569",
+      primaryTextColor: "#e2e8f0",
+      lineColor: "#64748b",
+      tertiaryColor: "#0f172a",
+      clusterBkg: "#0f172a",
+      clusterBorder: "#334155",
+      fontFamily: "var(--sans)",
+      fontSize: "14px",
+    },
   });
-  src.appendChild(openSource);
-
-  const method = document.createElement("td");
-  method.appendChild(routeMethodChip(flow.method));
-
-  const path = document.createElement("td");
-  const pathCode = document.createElement("code");
-  pathCode.textContent = flow.path;
-  path.appendChild(pathCode);
-
-  const service = document.createElement("td");
-  service.textContent = toLabel(flow.service);
-
-  const confidence = document.createElement("td");
-  confidence.appendChild(confidenceChip(flow.confidence));
-
-  tr.appendChild(app);
-  tr.appendChild(src);
-  tr.appendChild(method);
-  tr.appendChild(path);
-  tr.appendChild(service);
-  tr.appendChild(confidence);
-
-  tr.addEventListener("click", () => openSourceViewer(flow));
-  return tr;
+  mermaidReady = true;
 }
 
-function renderApps(apps) {
-  appList.innerHTML = "";
-  for (const app of apps) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "entity-card";
-
-    const title = document.createElement("h3");
-    title.textContent = app.label;
-
-    const detail = document.createElement("p");
-    detail.textContent = `pages: ${app.pageCount}, api: ${app.apiRouteCount}`;
-
-    const routePreview = document.createElement("ul");
-    const preview = app.pages.slice(0, 8);
-    for (const page of preview) {
-      const li = document.createElement("li");
-      li.textContent = `${page.route} (${page.label})`;
-      routePreview.appendChild(li);
-    }
-
-    const remain = app.pages.length - preview.length;
-    if (remain > 0) {
-      const more = document.createElement("li");
-      more.textContent = `ほか ${remain} ページ...`;
-      routePreview.appendChild(more);
-    }
-
-    wrapper.append(title, detail, routePreview);
-    appList.appendChild(wrapper);
-  }
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
 }
 
-function renderServices(serviceMeta) {
-  serviceList.innerHTML = "";
-  for (const meta of serviceMeta) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "entity-card";
-
-    const title = document.createElement("h3");
-    title.textContent = meta.label || meta.name;
-
-    const detail = document.createElement("p");
-    detail.textContent = `routes: ${meta.routeCount}`;
-
-    const prefixTitle = document.createElement("div");
-    prefixTitle.className = "small";
-    prefixTitle.textContent = "主要プレフィックス";
-
-    const prefixes = document.createElement("ul");
-    for (const item of meta.routePrefixes || []) {
-      const li = document.createElement("li");
-      li.textContent = `${item.prefix}: ${item.count}件`;
-      prefixes.appendChild(li);
-    }
-
-    wrapper.append(title, detail, prefixTitle, prefixes);
-    serviceList.appendChild(wrapper);
-  }
+function confidenceTag(confidence) {
+  const map = { exact: "一致", prefix: "前方一致", unresolved: "未解決" };
+  return `<span class="tag tag-${confidence}">${map[confidence] || confidence}</span>`;
 }
 
-function renderUnresolved(unresolvedFlows) {
-  if (!unresolvedFlows.length) {
-    unresolvedPanel.textContent = "未解決API呼び出しはありません。";
-    unresolvedPanel.className = "notice";
-    return;
-  }
+async function fetchSnapshot(refresh = false) {
+  const res = await fetch(`/api/architecture${refresh ? "?refresh=1" : ""}`);
+  if (!res.ok) throw new Error(`architecture ${res.status}`);
+  return res.json();
+}
 
-  unresolvedPanel.className = "chips";
-  unresolvedPanel.innerHTML = "";
-  unresolvedFlows.forEach((flow) => {
-    const chip = document.createElement("code");
-    chip.className = "chip";
-    chip.textContent = `${flow.sourceApp} ${flow.method} ${flow.path}`;
-    unresolvedPanel.appendChild(chip);
+function serviceLabel(name) {
+  const meta = state.snapshot?.serviceMeta?.find((s) => s.name === name);
+  return meta?.label || name;
+}
+
+/* ---------- routing ---------- */
+function currentView() {
+  const hash = location.hash.replace(/^#\//, "");
+  return VIEW_TITLES[hash] ? hash : "overview";
+}
+
+function syncView() {
+  state.view = currentView();
+  el("viewTitle").textContent = VIEW_TITLES[state.view];
+  document.querySelectorAll(".view").forEach((v) => {
+    v.classList.toggle("is-active", v.dataset.view === state.view);
   });
+  document.querySelectorAll(".nav-item").forEach((n) => {
+    n.classList.toggle("is-active", n.dataset.view === state.view);
+  });
+  const showSearch = state.view === "mapping" || state.view === "routes" || state.view === "drift";
+  el("searchInput").style.display = showSearch ? "" : "none";
+  el("serviceFilter").style.display = state.view === "mapping" ? "" : "none";
+  renderActiveView();
 }
 
-function renderServiceBars(snapshot) {
-  serviceBars.innerHTML = "";
-  const total = snapshot.routeCoverage.total || 1;
-  const byService = snapshot.routeCoverage.byService || {};
+/* ---------- renderers ---------- */
+function renderActiveView() {
+  if (!state.snapshot) return;
+  if (state.view === "overview") renderOverview();
+  else if (state.view === "flow") renderFlow();
+  else if (state.view === "mapping") renderMapping();
+  else if (state.view === "routes") renderRoutes();
+  else if (state.view === "drift") renderDrift();
+}
+
+function renderSidebar() {
+  const snap = state.snapshot;
+  const unresolved = snap.routeCoverage.unresolved;
+  const badge = el("navUnresolved");
+  badge.textContent = unresolved ? String(unresolved) : "";
+  badge.style.display = unresolved ? "" : "none";
+  const ts = new Date(snap.generatedAt);
+  el("scanMeta").textContent = `更新 ${ts.toLocaleTimeString("ja-JP")} ・ ${snap.scanDetails.scannedFiles} files`;
+}
+
+function renderServiceFilter() {
+  const sel = el("serviceFilter");
+  const current = state.serviceFilter;
+  const services = state.snapshot.graph.layers.find((l) => l.id === "backend").nodes;
+  sel.innerHTML = `<option value="">全サービス</option>` +
+    services.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`).join("");
+  sel.value = current;
+}
+
+function renderOverview() {
+  const snap = state.snapshot;
+  el("kpiApps").textContent = snap.apps.length;
+  el("kpiServices").textContent = snap.serviceMeta.length;
+  el("kpiFlows").textContent = snap.routeCoverage.total;
+  el("kpiUnresolved").textContent = snap.routeCoverage.unresolved;
+
+  const byService = snap.routeCoverage.byService || {};
   const entries = Object.entries(byService).sort((a, b) => b[1] - a[1]);
+  const max = Math.max(1, ...entries.map(([, n]) => n));
+  el("serviceBars").innerHTML = entries.map(([name, n]) => {
+    const isUnresolved = name === "external-or-unknown";
+    return `<div class="bar-row">
+      <span class="bar-label">${escapeHtml(serviceLabel(name))}</span>
+      <span class="bar-track"><span class="bar-fill ${isUnresolved ? "bar-warn" : ""}" style="width:${(n / max) * 100}%"></span></span>
+      <span class="bar-value">${n}</span>
+    </div>`;
+  }).join("") || `<p class="muted">データなし</p>`;
 
-  for (const [service, count] of entries) {
-    const row = document.createElement("div");
-    row.className = "service-bar";
+  el("laneSummary").innerHTML = snap.graph.layers.map((layer) => `
+    <div class="lane">
+      <h3>${escapeHtml(layer.label)} <span class="muted">${layer.nodes.length}</span></h3>
+      <ul>${layer.nodes.map((n) => `<li>${escapeHtml(n.label)}</li>`).join("")}</ul>
+    </div>`).join("");
+}
 
-    const header = document.createElement("div");
-    header.className = "label";
-    const name = document.createElement("span");
-    name.textContent = toLabel(service);
-    const cnt = document.createElement("span");
-    cnt.className = "muted";
-    cnt.textContent = `${count} / ${total}`;
-    header.append(name, cnt);
-
-    const track = document.createElement("div");
-    track.className = "bar-track";
-
-    const fill = document.createElement("div");
-    fill.className = "bar-fill";
-    fill.style.width = `${Math.max(3, (count / total) * 100)}%`;
-    track.appendChild(fill);
-
-    row.append(header, track);
-    serviceBars.appendChild(row);
+async function renderFlow() {
+  ensureMermaid();
+  const target = el("mermaidDiagram");
+  const code = state.snapshot.mermaid;
+  target.removeAttribute("data-processed");
+  try {
+    const { svg } = await window.mermaid.render("archGraph", code);
+    target.innerHTML = svg;
+  } catch (err) {
+    target.innerHTML = `<pre class="source">${escapeHtml(code)}</pre>`;
+    console.error("mermaid render failed", err);
   }
 }
 
-function applyFilters(flows) {
-  const q = (searchInput.value || "").trim().toLowerCase();
-  const service = serviceFilter.value;
-  const confidence = confidenceFilter.value;
-
-  return flows.filter((flow) => {
-    if (service !== "all" && flow.service !== service) return false;
-    if (confidence !== "all" && flow.confidence !== confidence) return false;
+function filteredFlows() {
+  const q = state.search.trim().toLowerCase();
+  return state.snapshot.appFlows.filter((f) => {
+    if (state.serviceFilter && f.service !== state.serviceFilter) return false;
     if (!q) return true;
-    const joined = [flow.sourceFile, flow.path, flow.method, flow.sourceApp, flow.service, flow.sourceRoute]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    return joined.includes(q);
+    return `${f.method} ${f.path} ${f.sourceFile} ${f.sourceApp}`.toLowerCase().includes(q);
   });
 }
 
-function renderFlows(flows) {
-  flowTable.innerHTML = "";
-  if (!flows.length) {
-    const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.colSpan = 6;
-    td.className = "small";
-    td.textContent = "条件に一致するフローがありません。";
-    tr.appendChild(td);
-    flowTable.appendChild(tr);
-    selectedCall.textContent = "未選択";
-    sourceViewer.textContent = "";
-    return;
-  }
+function renderMapping() {
+  renderServiceFilter();
+  const flows = filteredFlows();
+  const body = el("flowTable");
+  body.innerHTML = flows.map((f) => `
+    <tr data-flow="${escapeHtml(f.id)}" class="${f.id === state.selectedFlowId ? "is-selected" : ""}">
+      <td>${escapeHtml(serviceLabel(f.sourceApp))}</td>
+      <td><span class="method method-${f.method}">${escapeHtml(f.method)}</span></td>
+      <td class="mono">${escapeHtml(f.path)}</td>
+      <td>${escapeHtml(serviceLabel(f.service))}</td>
+      <td>${confidenceTag(f.confidence)}</td>
+    </tr>`).join("") || `<tr><td colspan="5" class="muted">該当なし</td></tr>`;
 
-  for (const flow of flows) {
-    flowTable.appendChild(createFlowRow(flow));
-  }
-
-  if (!flows.find((flow) => flow.id === state.selectedFlowId)) {
-    openSourceViewer(flows[0]);
-  }
+  body.querySelectorAll("tr[data-flow]").forEach((tr) => {
+    tr.addEventListener("click", () => selectFlow(tr.dataset.flow));
+  });
 }
 
-async function openSourceViewer(flow) {
-  if (!flow) {
-    selectedCall.textContent = "未選択";
-    sourceViewer.textContent = "";
-    return;
-  }
-
-  state.selectedFlowId = flow.id;
-
-  for (const row of flowTable.querySelectorAll("tr")) {
-    if (!row.dataset.id) continue;
-    row.classList.toggle("active", row.dataset.id === flow.id);
-  }
-
-  selectedCall.textContent = `${flow.sourceApp} / ${flow.method} ${flow.path} (${flow.sourceFile})`;
-
+async function selectFlow(flowId) {
+  state.selectedFlowId = flowId;
+  const flow = state.snapshot.appFlows.find((f) => f.id === flowId);
+  document.querySelectorAll("#flowTable tr").forEach((tr) =>
+    tr.classList.toggle("is-selected", tr.dataset.flow === flowId));
+  if (!flow) return;
+  el("selectedCall").innerHTML =
+    `<span class="method method-${flow.method}">${flow.method}</span> <span class="mono">${escapeHtml(flow.path)}</span><br><span class="muted">${escapeHtml(flow.sourceFile)}</span>`;
+  const viewer = el("sourceViewer");
+  viewer.textContent = "読み込み中…";
   try {
-    const source = await fetch(`/api/source?path=${encodeURIComponent(flow.sourceFile)}`).then((r) => r.json());
-    sourceViewer.textContent = source.text || `No source found: ${flow.sourceFile}`;
+    const res = await fetch(`/api/source?path=${encodeURIComponent(flow.sourceFile)}`);
+    if (!res.ok) throw new Error(String(res.status));
+    const { text } = await res.json();
+    viewer.innerHTML = highlightSource(text, flow.path);
   } catch {
-    sourceViewer.textContent = `Failed to load source: ${flow.sourceFile}`;
+    viewer.textContent = "ソースを取得できませんでした";
   }
 }
 
-async function updateMermaid() {
-  const mermaidText = await fetch("/api/mermaid").then((r) => r.text());
-  mermaidEl.textContent = mermaidText;
-  if (window.mermaid) {
-    window.mermaid.initialize({ startOnLoad: false, securityLevel: "loose" });
-    window.mermaid.run({ nodes: [mermaidEl] });
-  }
+function highlightSource(text, needlePath) {
+  const lines = text.split("\n");
+  const token = needlePath.split("/").filter(Boolean).slice(-1)[0] || needlePath;
+  return lines.map((line, i) => {
+    const hit = needlePath && line.includes(token);
+    return `<span class="src-line ${hit ? "src-hit" : ""}"><span class="src-no">${i + 1}</span>${escapeHtml(line)}</span>`;
+  }).join("\n");
 }
 
-function formatTime(dateValue) {
-  if (!dateValue) return "-";
-  const date = new Date(dateValue);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("ja-JP", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
+function renderRoutes() {
+  const q = state.search.trim().toLowerCase();
+  const match = (s) => !q || s.toLowerCase().includes(q);
+  const snap = state.snapshot;
+
+  el("appList").innerHTML = snap.apps.map((app) => {
+    const pages = app.pages.filter((p) => match(`${p.route} ${p.file}`));
+    const apis = app.apiRoutes.filter((r) => match(`${r.route} ${r.file}`));
+    if (!pages.length && !apis.length) return "";
+    return `<div class="list-group">
+      <h3>${escapeHtml(app.label)} <span class="muted">${app.pageCount}画面 / ${app.apiRouteCount}API</span></h3>
+      ${pages.map((p) => `<div class="list-item"><span class="chip chip-page">画面</span><span class="mono">${escapeHtml(p.route)}</span></div>`).join("")}
+      ${apis.map((r) => `<div class="list-item"><span class="chip chip-api">API</span><span class="mono">${escapeHtml(r.route)}</span><span class="muted">${escapeHtml(r.methods.join(", "))}</span></div>`).join("")}
+    </div>`;
+  }).join("") || `<p class="muted">該当なし</p>`;
+
+  el("serviceList").innerHTML = snap.serviceMeta.map((svc) => {
+    const routes = svc.routes.filter((r) => match(`${r.method} ${r.path}`));
+    if (!routes.length) return "";
+    return `<div class="list-group">
+      <h3>${escapeHtml(svc.label)} <span class="muted">${svc.routeCount}ルート</span></h3>
+      ${routes.map((r) => `<div class="list-item"><span class="method method-${r.method}">${escapeHtml(r.method)}</span><span class="mono">${escapeHtml(r.path)}</span></div>`).join("")}
+      ${svc.moreRoutes > 0 ? `<p class="muted">他 ${svc.moreRoutes} ルート</p>` : ""}
+    </div>`;
+  }).join("") || `<p class="muted">該当なし</p>`;
+}
+
+function renderDrift() {
+  const q = state.search.trim().toLowerCase();
+  const items = state.snapshot.appFlows
+    .filter((f) => f.confidence === "unresolved")
+    .filter((f) => !q || `${f.method} ${f.path} ${f.sourceFile}`.toLowerCase().includes(q));
+  el("driftList").innerHTML = items.length
+    ? items.map((f) => `<div class="drift-item">
+        <div><span class="method method-${f.method}">${escapeHtml(f.method)}</span> <span class="mono">${escapeHtml(f.path)}</span></div>
+        <div class="muted">${escapeHtml(serviceLabel(f.sourceApp))} ← ${escapeHtml(f.sourceFile)}</div>
+      </div>`).join("")
+    : `<p class="muted">未解決の呼び出しはありません 🎉</p>`;
+}
+
+/* ---------- events ---------- */
+async function loadAndRender(refresh = false) {
+  state.snapshot = await fetchSnapshot(refresh);
+  renderSidebar();
+  syncView();
+}
+
+function init() {
+  window.addEventListener("hashchange", syncView);
+  el("searchInput").addEventListener("input", (e) => {
+    state.search = e.target.value;
+    renderActiveView();
+  });
+  el("serviceFilter").addEventListener("change", (e) => {
+    state.serviceFilter = e.target.value;
+    renderMapping();
+  });
+  el("scanBtn").addEventListener("click", async () => {
+    const btn = el("scanBtn");
+    btn.disabled = true;
+    btn.textContent = "スキャン中…";
+    try {
+      await loadAndRender(true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "再スキャン";
+    }
+  });
+  el("copyMermaidBtn").addEventListener("click", async () => {
+    await navigator.clipboard.writeText(state.snapshot.mermaid);
+    const btn = el("copyMermaidBtn");
+    const prev = btn.textContent;
+    btn.textContent = "コピーしました";
+    setTimeout(() => (btn.textContent = prev), 1200);
+  });
+  if (!location.hash) location.hash = "#/overview";
+  loadAndRender().catch((err) => {
+    el("viewTitle").textContent = "読み込み失敗";
+    console.error(err);
   });
 }
 
-function render(snapshot) {
-  setText(statApps, String(snapshot.targetApps?.length || 0));
-  setText(statServices, String(snapshot.targetServices?.length || 0));
-  setText(statFlows, String(snapshot.routeCoverage?.total || 0));
-  setText(statUnresolved, String(snapshot.routeCoverage?.unresolved || 0));
-  setText(statScanTime, formatTime(snapshot.generatedAt));
-  setText(generatedAtEl, `更新: ${formatTime(snapshot.generatedAt)}`);
-
-  state.snapshot = snapshot;
-  state.flows = snapshot.appFlows || [];
-
-  renderApps(snapshot.apps || []);
-  renderServices(snapshot.serviceMeta || []);
-  renderServiceBars(snapshot);
-  renderUnresolved((snapshot.appFlows || []).filter((flow) => flow.confidence === "unresolved"));
-
-  const filteredFlows = applyFilters(snapshot.appFlows || []);
-  renderFlows(filteredFlows);
-  updateMermaid();
-}
-
-async function loadData(refresh = false) {
-  setLoading(true);
-  try {
-    const endpoint = `/api/architecture${refresh ? "?refresh=1" : ""}`;
-    const res = await fetch(endpoint);
-    if (!res.ok) {
-      throw new Error(`architecture API failed (${res.status})`);
-    }
-    const snapshot = await res.json();
-    render(snapshot);
-  } catch (error) {
-    alert(`読み込みエラー: ${error.message}`);
-    console.error(error);
-  } finally {
-    setLoading(false);
-  }
-}
-
-function setLoading(isLoading) {
-  scanButton.disabled = isLoading;
-  scanButton.textContent = isLoading ? "スキャン中..." : "再スキャン";
-}
-
-copyMermaidButton.addEventListener("click", async () => {
-  try {
-    const text = await fetch("/api/mermaid").then((r) => r.text());
-    await navigator.clipboard.writeText(text);
-    copyMermaidButton.textContent = "コピー完了";
-    setTimeout(() => {
-      copyMermaidButton.textContent = "Mermaidコピー";
-    }, 1100);
-  } catch (error) {
-    console.error(error);
-    copyMermaidButton.textContent = "コピー失敗";
-    setTimeout(() => {
-      copyMermaidButton.textContent = "Mermaidコピー";
-    }, 1200);
-  }
-});
-
-scanButton.addEventListener("click", () => loadData(true));
-
-searchInput.addEventListener("input", () => {
-  if (!state.snapshot) return;
-  render(state.snapshot);
-});
-serviceFilter.addEventListener("change", () => {
-  if (!state.snapshot) return;
-  render(state.snapshot);
-});
-confidenceFilter.addEventListener("change", () => {
-  if (!state.snapshot) return;
-  render(state.snapshot);
-});
-
-loadData(true).catch((error) => {
-  console.error(error);
-  alert(`起動時の読み込みに失敗しました: ${error.message}`);
-});
+init();
