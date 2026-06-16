@@ -110,6 +110,19 @@
       </section>
     </main>
   </div>
+
+  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+  <aside class="drawer" id="drawer" hidden aria-hidden="true">
+    <header class="drawer-head">
+      <div>
+        <span class="drawer-kind" id="drawerKind"></span>
+        <h2 id="drawerTitle">—</h2>
+      </div>
+      <button class="drawer-close" id="drawerClose" aria-label="閉じる">×</button>
+    </header>
+    <div class="drawer-body" id="drawerBody"></div>
+  </aside>
+
   <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
   <script type="module" src="/app.js"></script>
 </body>

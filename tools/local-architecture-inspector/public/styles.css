@@ -222,6 +222,55 @@ tbody tr.is-selected { background: var(--brand-soft); box-shadow: inset 3px 0 0 
   background: var(--warn-soft);
 }
 
+/* clickable mermaid nodes */
+.mermaid .node.clickable { cursor: pointer; }
+.mermaid .node.clickable:hover * { filter: brightness(1.25); }
+.mermaid .node.clickable rect,
+.mermaid .node.clickable polygon,
+.mermaid .node.clickable circle,
+.mermaid .node.clickable path { transition: filter .12s; }
+
+/* ---------- node drawer ---------- */
+.drawer-backdrop {
+  position: fixed; inset: 0; background: rgba(2, 6, 16, .55);
+  backdrop-filter: blur(2px); opacity: 0; transition: opacity .2s; z-index: 40;
+}
+.drawer-backdrop.is-open { opacity: 1; }
+.drawer {
+  position: fixed; top: 0; right: 0; height: 100vh; width: 440px; max-width: 92vw;
+  background: var(--panel); border-left: 1px solid var(--line);
+  box-shadow: -16px 0 48px rgba(0, 0, 0, .45); z-index: 41;
+  display: flex; flex-direction: column;
+  transform: translateX(100%); transition: transform .22s ease;
+}
+.drawer.is-open { transform: none; }
+.drawer-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 20px 22px; border-bottom: 1px solid var(--line);
+}
+.drawer-kind {
+  display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--brand); margin-bottom: 4px;
+}
+.drawer-head h2 { margin: 0; font-size: 18px; color: #f8fafc; }
+.drawer-close {
+  background: var(--panel-3); border: 1px solid var(--line); color: var(--ink-soft);
+  width: 32px; height: 32px; border-radius: 8px; font-size: 18px; line-height: 1; cursor: pointer;
+}
+.drawer-close:hover { color: #fff; background: var(--line); }
+.drawer-body { overflow-y: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 22px; }
+
+.drawer-sec h3 { margin: 0 0 10px; font-size: 13px; color: #e2e8f0; }
+.drawer-group { margin-bottom: 12px; }
+.drawer-group-head { font-size: 12px; font-weight: 600; color: var(--ink-soft); margin: 0 0 6px; }
+.call-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: 8px; font-size: 12px; background: var(--panel-2);
+  border: 1px solid var(--line-soft); margin-bottom: 4px;
+}
+.call-row .mono { color: var(--ink); word-break: break-all; }
+.chip-data { background: rgba(52, 211, 153, .16); color: #6ee7b7; }
+
 /* scrollbars */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #243450; border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
