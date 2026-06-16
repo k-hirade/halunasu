@@ -2908,7 +2908,25 @@ function filterPatientsForFeeSearch(patients = [], options = {}) {
       ...(Array.isArray(patient.externalPatientIds) ? patient.externalPatientIds : [])
     ].join(" ")).includes(keyword))
     : list;
-  return filtered.slice(0, parsePositiveInteger(options.limit, 50, 200));
+  return filtered
+    .slice()
+    .sort(comparePatientsByRecentUpdate)
+    .slice(0, parsePositiveInteger(options.limit, 50, 200));
+}
+
+function comparePatientsByRecentUpdate(a = {}, b = {}) {
+  const timestampA = patientSortTimestamp(a);
+  const timestampB = patientSortTimestamp(b);
+  if (timestampA !== timestampB) {
+    return timestampB - timestampA;
+  }
+  return String(a.displayName || a.patientId || "").localeCompare(String(b.displayName || b.patientId || ""), "ja");
+}
+
+function patientSortTimestamp(patient = {}) {
+  const raw = patient.updatedAt || patient.createdAt || "";
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function normalizeFeeSearchText(value = "") {

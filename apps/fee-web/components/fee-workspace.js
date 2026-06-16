@@ -692,7 +692,7 @@ function FeeSessionDetailView({ sessionId }) {
         }
       });
       const patient = response.patient;
-      setPatients((current) => [...current, patient]);
+      setPatients((current) => mergeSelectedPatient(current, patient));
       setForm((current) => ({
         ...current,
         patientId: patient?.patientId || current.patientId
@@ -960,7 +960,7 @@ function SourcePane({
 
   return (
     <section className="fee-source-pane" aria-label="算定条件とカルテ">
-      <form className="fee-source-form" id="fee-session-detail-form">
+      <div className="fee-source-form" id="fee-session-detail-form">
         <section className="source-section">
           <div className="source-section-head">
             <div>
@@ -1029,7 +1029,7 @@ function SourcePane({
             <strong>{orderCount.toLocaleString()}件</strong>
           </div>
         </section>
-      </form>
+      </div>
     </section>
   );
 }
