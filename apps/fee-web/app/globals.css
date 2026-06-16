@@ -489,7 +489,7 @@ body:has(.fee-shell--detail) {
 
 .quick-start-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 1fr;
   align-items: center;
   gap: 18px;
   padding: 24px;
@@ -516,7 +516,11 @@ body:has(.fee-shell--detail) {
 .quick-start-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
+}
+
+.quick-start-actions .btn {
+  justify-content: flex-start;
 }
 
 .session-history {
