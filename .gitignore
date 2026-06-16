@@ -1,32 +1,93 @@
 # OS / editor
 .DS_Store
+*.swp
+*.swo
+*.tmp
+*~
+
+# IDE / editors
+.idea/
+.vscode/
+.fleet/
 
 # Dependencies
 node_modules/
+**/node_modules/
 
 # Build outputs
 .next/
+.nuxt/
 .netlify/
+.vercel/
+.output/
 dist/
 build/
 apps/*/.next/
 apps/*/.netlify/
+apps/*/.turbo/
 apps/charting-web/apps/
+/.next/
+/.out/
+/.turbo/
+**/.next/
+**/.turbo/
+**/.cache/
 
 # Python local state
 .venv/
+venv/
+env/
 __pycache__/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.python-version
 
 # Local env / secrets
 .env
 .env.*
 !.env.example
+.secret
+*.pem
+*.key
+*.p12
+*.pfx
+*_local.*
+service-account*.json
 
 # Test / coverage / logs
 coverage/
+**/coverage/
 *.log
+*.log.*
+logs/
+**/test-results/
+playwright-report/
+.nyc_output/
+**/.nyc_output/
+*coverage/
+artifacts/
 data/tests/**/reports/
+data/tests/**/tmp/
+
+# Database/runtime generated data
+dist/
+**/*.sqlite
+**/*.sqlite-shm
+**/*.sqlite-wal
+**/*.db
+**/*.db-journal
+tmp/
+tmp/**
+temp/
+temp/**
+tmpfs/
+
+# Local runtime/deploy artifacts (environment-specific)
+.firebase/
+functions/.runtimeconfig.json
 
 # Downloaded official sources and generated master DBs.
 # Versioned catalogs/manifests under configs/ and build reports under docs/ are tracked.
@@ -35,3 +96,4 @@ data/work/fee-master-*/
 python/data/master/*.sqlite
 python/data/master/*.sqlite-*
 python/data/master/*.sqlite.gz
+
