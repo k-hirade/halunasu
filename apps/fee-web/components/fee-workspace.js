@@ -1773,7 +1773,7 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
 
       {selectedWorkTab === "issues" ? (
         <section className="candidate-bucket">
-          <BucketHeader title="確認・修正が必要" count={needsReviewCount} note="このままだと算定しづらい項目です。内容を確認してください。" />
+          <BucketHeader title="確認・修正が必要" count={needsReviewCount} note="このままだと算定しづらい項目です。各項目の内容を確認し、算定する／算定しない／保留 を選んでください。" />
           {model.issues.length ? (
             <div className="issue-list">
               {model.issues.map((item) => (
@@ -1921,6 +1921,9 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
   );
 }
 
+// セクション見出しに集約済みの汎用文言。各カードでの繰り返し表示はノイズになるため抑制する。
+const GENERIC_ISSUE_CONDITION_TEXT = "条件を満たす場合は算定できます。満たさない場合は算定しないに変更してください。";
+
 function IssueCard({ item, onOpenDetail }) {
   const requiredInput = reviewRequiredInput(item);
   const resolutionOptions = reviewResolutionOptions(item);
@@ -1934,7 +1937,7 @@ function IssueCard({ item, onOpenDetail }) {
         <span className="issue-category-badge">{item.issueCategoryLabel || "確認事項"}</span>
         <strong>{item.displayTitle}</strong>
         <p>{item.displayReason}</p>
-        {item.conditionText ? <small>{item.conditionText}</small> : null}
+        {item.conditionText && item.conditionText !== GENERIC_ISSUE_CONDITION_TEXT ? <small>{item.conditionText}</small> : null}
         {requiredInput ? (
           <div className="issue-required-input">
             <span>確認する情報</span>
