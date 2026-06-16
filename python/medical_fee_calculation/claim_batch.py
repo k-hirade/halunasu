@@ -1712,7 +1712,12 @@ def _source_based_gold_review_classification(
             recommended_action="import missing master rows or adjust hospital order code mapping",
             reason="master lookup message remains in review",
         )
-    if sources & {"outpatient_basic_fee", "outpatient_price_support_add_on", "outpatient_management_add_on"}:
+    if sources & {
+        "outpatient_basic_fee",
+        "outpatient_price_support_add_on",
+        "outpatient_pediatric_add_on",
+        "outpatient_management_add_on",
+    }:
         return _GoldDifferenceClassification(
             classification="outpatient_basic_input",
             feedback_target="input_contract",
@@ -2371,6 +2376,7 @@ def _parse_medication_options(payload: dict[str, Any]) -> MedicationOptionContex
             )
             if kind is not None
         ),
+        infant=_bool_value(payload.get("infant"), default=False),
         refill_prescription=_bool_value(payload.get("refill_prescription"), default=False),
         special_pharmacy_relationship=_bool_value(
             payload.get("special_pharmacy_relationship"),
@@ -2585,6 +2591,7 @@ def _default_line_coverage_chapter(line: CalculationLine) -> str:
     return {
         "outpatient_basic_fee": "A_basic_fee",
         "outpatient_price_support_add_on": "A_basic_fee",
+        "outpatient_pediatric_add_on": "A_basic_fee",
         "outpatient_management_add_on": "A_basic_fee",
         "inpatient_basic_fee": "A_inpatient_fee",
         "drug_master": "F_drug",

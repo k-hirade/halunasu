@@ -28,6 +28,7 @@ class BasicFeeDerivedAddOnRule:
     effective_from: date
     reason: str
     required_facility_standard_key: str | None = None
+    required_patient_age_lt: int | None = None
 
 
 OUTPATIENT_BASIC_FEE_CODES = {
@@ -68,10 +69,21 @@ OUTPATIENT_REVISIT_OR_CLINIC_BASIC_FEE_CODES = frozenset(
     for (kind, *_), code in OUTPATIENT_BASIC_FEE_CODES.items()
     if kind in {OutpatientBasicFeeKind.REVISIT, OutpatientBasicFeeKind.OUTPATIENT_CLINIC}
 )
+OUTPATIENT_REVISIT_BASIC_FEE_CODES = frozenset(
+    code for (kind, *_), code in OUTPATIENT_BASIC_FEE_CODES.items() if kind == OutpatientBasicFeeKind.REVISIT
+)
+OUTPATIENT_CLINIC_BASIC_FEE_CODES = frozenset(
+    code
+    for (kind, *_), code in OUTPATIENT_BASIC_FEE_CODES.items()
+    if kind == OutpatientBasicFeeKind.OUTPATIENT_CLINIC
+)
 OUTPATIENT_MANAGEMENT_ADD_ON_CODE = "112011010"
 OUTPATIENT_PRICE_SUPPORT_ADD_ON_INITIAL_CODE = "180819910"
 OUTPATIENT_PRICE_SUPPORT_ADD_ON_REVISIT_CODE = "180820010"
 OUTPATIENT_PRICE_SUPPORT_ADD_ON_VISIT_HOME_CODE = "180820110"
+OUTPATIENT_INFANT_ADD_ON_INITIAL_CODE = "111000370"
+OUTPATIENT_INFANT_ADD_ON_REVISIT_CODE = "112000970"
+OUTPATIENT_INFANT_ADD_ON_CLINIC_CODE = "112006270"
 OUTPATIENT_BASIC_DERIVED_ADD_ON_RULES = (
     BasicFeeDerivedAddOnRule(
         rule_id="outpatient_price_support_initial",
@@ -88,6 +100,33 @@ OUTPATIENT_BASIC_DERIVED_ADD_ON_RULES = (
         source="outpatient_price_support_add_on",
         effective_from=date(2026, 6, 1),
         reason="Outpatient/home price support add-on derived from a revisit or outpatient clinic basic fee",
+    ),
+    BasicFeeDerivedAddOnRule(
+        rule_id="outpatient_infant_initial",
+        add_on_code=OUTPATIENT_INFANT_ADD_ON_INITIAL_CODE,
+        trigger_codes=OUTPATIENT_INITIAL_BASIC_FEE_CODES,
+        source="outpatient_pediatric_add_on",
+        effective_from=date(2026, 6, 1),
+        reason="Infant outpatient basic add-on derived from patient age and initial visit basic fee",
+        required_patient_age_lt=6,
+    ),
+    BasicFeeDerivedAddOnRule(
+        rule_id="outpatient_infant_revisit",
+        add_on_code=OUTPATIENT_INFANT_ADD_ON_REVISIT_CODE,
+        trigger_codes=OUTPATIENT_REVISIT_BASIC_FEE_CODES,
+        source="outpatient_pediatric_add_on",
+        effective_from=date(2026, 6, 1),
+        reason="Infant outpatient basic add-on derived from patient age and revisit basic fee",
+        required_patient_age_lt=6,
+    ),
+    BasicFeeDerivedAddOnRule(
+        rule_id="outpatient_infant_clinic",
+        add_on_code=OUTPATIENT_INFANT_ADD_ON_CLINIC_CODE,
+        trigger_codes=OUTPATIENT_CLINIC_BASIC_FEE_CODES,
+        source="outpatient_pediatric_add_on",
+        effective_from=date(2026, 6, 1),
+        reason="Infant outpatient basic add-on derived from patient age and outpatient clinic basic fee",
+        required_patient_age_lt=6,
     ),
 )
 OUTPATIENT_MANAGEMENT_BLOCKING_LINE_SOURCES = frozenset(
@@ -202,6 +241,7 @@ def calculate_outpatient_basic_derived_add_ons(
     is_outpatient: bool,
     existing_lines: tuple[CalculationLine, ...] = (),
     facility_standard_keys: frozenset[str] | tuple[str, ...] | list[str] = frozenset(),
+    patient_age_years: int | None = None,
     source_id: int | None = None,
 ) -> OutpatientBasicFeeResult:
     """Return deterministic add-ons that are derived from already selected basic visit fees.
@@ -230,6 +270,10 @@ def calculate_outpatient_basic_derived_add_ons(
         if service_date < rule.effective_from:
             continue
         if not existing_codes.intersection(rule.trigger_codes):
+            continue
+        if rule.required_patient_age_lt is not None and (
+            patient_age_years is None or patient_age_years >= rule.required_patient_age_lt
+        ):
             continue
         if rule.add_on_code in existing_codes or any(line.code == rule.add_on_code for line in lines):
             continue

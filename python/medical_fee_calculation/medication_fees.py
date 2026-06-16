@@ -69,6 +69,9 @@ GENERIC_NAME_PRESCRIPTION_ADD_ON_CODES = {
     GenericNamePrescriptionAddOnKind.ADD_ON_2: "120003570",
 }
 
+INFANT_PRESCRIPTION_FEE_ADD_ON_CODE = "120002170"
+INFANT_PRESCRIPTION_SLIP_FEE_ADD_ON_CODE = "120002470"
+
 MEDICATION_FEE_CODE_SET = frozenset(
     (
         *DISPENSING_FEE_CODES.values(),
@@ -77,6 +80,8 @@ MEDICATION_FEE_CODE_SET = frozenset(
         *SPECIFIC_DISEASE_PRESCRIPTION_MANAGEMENT_CODES.values(),
         *ANTI_MALIGNANT_TUMOR_PRESCRIPTION_MANAGEMENT_CODES.values(),
         *GENERIC_NAME_PRESCRIPTION_ADD_ON_CODES.values(),
+        INFANT_PRESCRIPTION_FEE_ADD_ON_CODE,
+        INFANT_PRESCRIPTION_SLIP_FEE_ADD_ON_CODE,
     )
 )
 
@@ -203,6 +208,8 @@ def _candidate_medication_fee_codes(
             *(DISPENSING_FEE_CODES[kind] for kind in context.dispensing_kinds if kind in DISPENSING_FEE_CODES),
             PRESCRIPTION_FEE_CODES[context.prescription_category],
         ]
+        if context.infant:
+            codes.append(INFANT_PRESCRIPTION_FEE_ADD_ON_CODE)
         _append_management_add_on_codes(codes, messages, context)
         if context.generic_name_prescription_add_on is not None:
             messages.append(
@@ -225,6 +232,8 @@ def _candidate_medication_fee_codes(
                 )
             ]
         ]
+        if context.infant:
+            codes.append(INFANT_PRESCRIPTION_SLIP_FEE_ADD_ON_CODE)
         _append_management_add_on_codes(codes, messages, context)
         if context.generic_name_prescription_add_on is not None:
             codes.append(

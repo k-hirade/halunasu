@@ -230,6 +230,7 @@ class MedicationOptionContext:
     delivery_kind: MedicationDeliveryKind | None = None
     prescription_category: MedicationPrescriptionCategory = MedicationPrescriptionCategory.OTHER
     dispensing_kinds: tuple[MedicationDispensingKind, ...] = ()
+    infant: bool = False
     refill_prescription: bool = False
     special_pharmacy_relationship: bool = False
     gargle_only: bool = False

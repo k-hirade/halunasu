@@ -274,6 +274,7 @@ def _default_line_coverage_chapter(source: str) -> str:
     return {
         "outpatient_basic_fee": "A_basic_fee",
         "outpatient_price_support_add_on": "A_basic_fee",
+        "outpatient_pediatric_add_on": "A_basic_fee",
         "outpatient_management_add_on": "A_basic_fee",
         "inpatient_basic_fee": "A_inpatient_fee",
         "drug_master": "F_drug",
@@ -315,6 +316,7 @@ def _order_type_for_source(source: object) -> str:
         "specific_material_master": "material",
         "outpatient_basic_fee": "basic",
         "outpatient_price_support_add_on": "basic",
+        "outpatient_pediatric_add_on": "basic",
         "outpatient_management_add_on": "basic",
         "inpatient_basic_fee": "basic",
         "injection_fee": "injection",

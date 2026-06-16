@@ -397,6 +397,39 @@ class ImporterAndD026Test(unittest.TestCase):
                 judgement_group="0",
             ),
             procedure_row(
+                code="111000370",
+                name="乳幼児加算（初診）",
+                points="75.00",
+                chapter="1",
+                part="01",
+                section="000",
+                item="000",
+                judgement_kind="0",
+                judgement_group="0",
+            ),
+            procedure_row(
+                code="112000970",
+                name="乳幼児加算（再診）",
+                points="38.00",
+                chapter="1",
+                part="01",
+                section="001",
+                item="000",
+                judgement_kind="0",
+                judgement_group="0",
+            ),
+            procedure_row(
+                code="112006270",
+                name="乳幼児加算（外来診療料）",
+                points="38.00",
+                chapter="1",
+                part="01",
+                section="002",
+                item="000",
+                judgement_kind="0",
+                judgement_group="0",
+            ),
+            procedure_row(
                 code="180819910",
                 name="物価対応料１（外来・在宅物価対応料）（初診時）イ",
                 points="2.00",
@@ -468,6 +501,28 @@ class ImporterAndD026Test(unittest.TestCase):
                 points="42.00",
                 section="100",
                 item="003",
+                judgement_kind="0",
+                judgement_group="0",
+                chapter="2",
+                part="05",
+            ),
+            procedure_row(
+                code="120002170",
+                name="乳幼児加算（処方料）",
+                points="3.00",
+                section="100",
+                item="000",
+                judgement_kind="0",
+                judgement_group="0",
+                chapter="2",
+                part="05",
+            ),
+            procedure_row(
+                code="120002470",
+                name="乳幼児加算（処方箋料）",
+                points="3.00",
+                section="400",
+                item="000",
                 judgement_kind="0",
                 judgement_group="0",
                 chapter="2",
@@ -1254,6 +1309,106 @@ class ImporterAndD026Test(unittest.TestCase):
         self.assertEqual(result.lines[0].total_points, 2.0)
         self.assertEqual(result.messages, ())
 
+    def test_calculate_outpatient_basic_derived_add_ons_adds_initial_infant_add_on_from_age(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            (),
+            date(2026, 6, 3),
+            is_outpatient=True,
+            existing_lines=(
+                CalculationLine(
+                    code="111000110",
+                    name="初診料",
+                    points=291.0,
+                    quantity=1,
+                    status=ClaimItemStatus.CANDIDATE,
+                    reason="initial",
+                    source="outpatient_basic_fee",
+                ),
+            ),
+            patient_age_years=5,
+            source_id=self.source_id,
+        )
+
+        self.assertEqual([line.code for line in result.lines], ["180819910", "111000370"])
+        self.assertEqual([line.total_points for line in result.lines], [2.0, 75.0])
+        self.assertEqual(result.lines[1].source, "outpatient_pediatric_add_on")
+        self.assertEqual(result.messages, ())
+
+    def test_calculate_outpatient_basic_derived_add_ons_adds_revisit_infant_add_on_from_age(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            (),
+            date(2026, 6, 3),
+            is_outpatient=True,
+            existing_lines=(
+                CalculationLine(
+                    code="112007410",
+                    name="再診料",
+                    points=76.0,
+                    quantity=1,
+                    status=ClaimItemStatus.CANDIDATE,
+                    reason="revisit",
+                    source="outpatient_basic_fee",
+                ),
+            ),
+            patient_age_years=5,
+            source_id=self.source_id,
+        )
+
+        self.assertEqual([line.code for line in result.lines], ["180820010", "112000970"])
+        self.assertEqual([line.total_points for line in result.lines], [2.0, 38.0])
+        self.assertEqual(result.messages, ())
+
+    def test_calculate_outpatient_basic_derived_add_ons_skips_infant_add_on_at_age_six(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            (),
+            date(2026, 6, 3),
+            is_outpatient=True,
+            existing_lines=(
+                CalculationLine(
+                    code="112007410",
+                    name="再診料",
+                    points=76.0,
+                    quantity=1,
+                    status=ClaimItemStatus.CANDIDATE,
+                    reason="revisit",
+                    source="outpatient_basic_fee",
+                ),
+            ),
+            patient_age_years=6,
+            source_id=self.source_id,
+        )
+
+        self.assertEqual([line.code for line in result.lines], ["180820010"])
+        self.assertEqual(result.messages, ())
+
+    def test_calculate_outpatient_basic_derived_add_ons_adds_outpatient_clinic_infant_add_on_from_age(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            (),
+            date(2026, 6, 3),
+            is_outpatient=True,
+            existing_lines=(
+                CalculationLine(
+                    code="112011310",
+                    name="外来診療料",
+                    points=77.0,
+                    quantity=1,
+                    status=ClaimItemStatus.CANDIDATE,
+                    reason="outpatient clinic",
+                    source="outpatient_basic_fee",
+                ),
+            ),
+            patient_age_years=5,
+            source_id=self.source_id,
+        )
+
+        self.assertEqual([line.code for line in result.lines], ["180820010", "112006270"])
+        self.assertEqual([line.total_points for line in result.lines], [2.0, 38.0])
+        self.assertEqual(result.messages, ())
+
     def test_calculate_outpatient_basic_derived_add_ons_skips_before_effective_date(self) -> None:
         result = calculate_outpatient_basic_derived_add_ons(
             self.conn,
@@ -1389,6 +1544,25 @@ class ImporterAndD026Test(unittest.TestCase):
         self.assertEqual([line.total_points for line in result.lines], [11.0, 42.0])
         self.assertEqual(result.messages, ())
 
+    def test_calculate_medication_fees_adds_in_house_infant_prescription_add_on(self) -> None:
+        result = calculate_medication_fees(
+            self.conn,
+            (),
+            (ChargeInput(code="620000001", quantity=2),),
+            date(2026, 6, 3),
+            MedicationOptionContext(
+                delivery_kind=MedicationDeliveryKind.IN_HOUSE,
+                dispensing_kinds=(MedicationDispensingKind.INTERNAL_OR_PRN,),
+                infant=True,
+            ),
+            is_outpatient=True,
+            source_id=self.source_id,
+        )
+
+        self.assertEqual([line.code for line in result.lines], ["120000710", "120001210", "120002170"])
+        self.assertEqual([line.total_points for line in result.lines], [11.0, 42.0, 3.0])
+        self.assertEqual(result.messages, ())
+
     def test_calculate_medication_fees_adds_outside_prescription_fee_variant(self) -> None:
         result = calculate_medication_fees(
             self.conn,
@@ -1405,6 +1579,24 @@ class ImporterAndD026Test(unittest.TestCase):
         )
 
         self.assertEqual([line.code for line in result.lines], ["120006510"])
+
+    def test_calculate_medication_fees_adds_outside_infant_prescription_slip_add_on(self) -> None:
+        result = calculate_medication_fees(
+            self.conn,
+            (),
+            (),
+            date(2026, 6, 3),
+            MedicationOptionContext(
+                delivery_kind=MedicationDeliveryKind.OUTSIDE_PRESCRIPTION,
+                infant=True,
+            ),
+            is_outpatient=True,
+            source_id=self.source_id,
+        )
+
+        self.assertEqual([line.code for line in result.lines], ["120002910", "120002470"])
+        self.assertEqual([line.total_points for line in result.lines], [60.0, 3.0])
+        self.assertEqual(result.messages, ())
 
     def test_calculate_medication_fees_adds_in_house_management_add_ons(self) -> None:
         result = calculate_medication_fees(
@@ -2637,6 +2829,32 @@ class ImporterAndD026Test(unittest.TestCase):
             and "outside prescription" in message.message
             for message in standardized.messages
         ))
+
+    def test_standardized_claim_adds_infant_basic_and_medication_add_ons_from_birth_date(self) -> None:
+        claim_context = ClaimContext(
+            patient=PatientContext(patient_id="patient-1", birth_date=date(2021, 6, 4)),
+            encounter=EncounterContext(
+                service_date=date(2026, 6, 3),
+                medical_institution_code="0112489",
+                is_outpatient=True,
+            ),
+            procedure_codes=(),
+            master_sources=MasterSourceContext(
+                medical_procedure_source_id=self.source_id,
+                drug_source_id=self.drug_source_id,
+                material_source_id=self.material_source_id,
+            ),
+            outpatient_basic=OutpatientBasicFeeOptionContext(fee_kind=OutpatientBasicFeeKind.INITIAL),
+            medication=MedicationOptionContext(delivery_kind=MedicationDeliveryKind.OUTSIDE_PRESCRIPTION),
+        )
+
+        standardized = calculate_lab_claim_standardized(self.conn, claim_context)
+
+        self.assertEqual(
+            [line.code for line in standardized.lines],
+            ["111000110", "180819910", "111000370", "120002910", "120002470"],
+        )
+        self.assertEqual([line.total_points for line in standardized.lines], [291.0, 2.0, 75.0, 60.0, 3.0])
 
     def test_claim_batch_runs_outpatient_lab_context_jsonl(self) -> None:
         input_path = Path(self.tmp.name) / "claim_batch.jsonl"

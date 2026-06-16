@@ -109,6 +109,15 @@ class LabCalculationResult:
         return lab_calculation_to_result(self)
 
 
+def _patient_age_years_on_service_date(birth_date: date | None, service_date: date) -> int | None:
+    if birth_date is None or birth_date > service_date:
+        return None
+    years = service_date.year - birth_date.year
+    if (service_date.month, service_date.day) < (birth_date.month, birth_date.day):
+        years -= 1
+    return years
+
+
 def calculate_lab_claim_for_context(
     conn: sqlite3.Connection,
     claim_context: ClaimContext,
@@ -140,6 +149,11 @@ def calculate_lab_claim_standardized(
         claim_context,
         hospital_profile=hospital_profile,
     )
+    patient_age_years = _patient_age_years_on_service_date(
+        claim_context.patient.birth_date,
+        claim_context.encounter.service_date,
+    )
+    is_infant_patient = patient_age_years is not None and patient_age_years < 6
     medication_order_resolution = resolve_medication_order_inputs(claim_context.medication_orders)
     medication_direct_charge_inputs = claim_context.drug_inputs
     medication_order_charge_inputs = medication_order_resolution.charge_inputs
@@ -174,6 +188,8 @@ def calculate_lab_claim_standardized(
             medication_context,
             dispensing_kinds=medication_order_resolution.dispensing_kinds,
         )
+    if is_infant_patient and not medication_context.infant:
+        medication_context = replace(medication_context, infant=True)
 
     input_resolution = resolve_medical_procedure_lines(
         conn,
@@ -211,6 +227,7 @@ def calculate_lab_claim_standardized(
             *outpatient_basic.lines,
         ),
         facility_standard_keys=facility_standard_keys,
+        patient_age_years=patient_age_years,
         source_id=claim_context.master_sources.medical_procedure_source_id,
     )
     medication_fees = calculate_medication_fees(
