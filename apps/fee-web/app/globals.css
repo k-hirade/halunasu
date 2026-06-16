@@ -1387,6 +1387,100 @@ body:has(.fee-shell--detail) {
   padding: 0 18px 18px;
 }
 
+.manual-billing-modal {
+  width: min(760px, calc(100vw - 24px));
+}
+
+.manual-billing-section,
+.manual-billing-list {
+  display: grid;
+  gap: 12px;
+}
+
+.manual-billing-section h3,
+.manual-billing-list h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.manual-billing-section p,
+.manual-billing-list p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.manual-billing-selected,
+.manual-billing-row {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 12px;
+}
+
+.manual-billing-selected small,
+.manual-billing-row small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.manual-billing-fields {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.manual-billing-fields label {
+  display: grid;
+  gap: 6px;
+  color: #26364f;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.manual-billing-fields textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.manual-billing-list {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.manual-billing-list-head,
+.manual-billing-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.manual-billing-list-head > span,
+.manual-billing-row > span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #e8eef6;
+  color: #34445c;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.manual-billing-row > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
 .patient-picker-row {
   position: relative;
   display: grid;

@@ -44,8 +44,32 @@ test("normalizes fee session input to Platform identifiers", () => {
   assert.equal(normalized.claimMonth, "2026-05");
   assert.equal(normalized.orders[0].orderType, "material");
   assert.equal(normalized.orders[0].quantity, 3);
+  assert.equal(normalized.orders[0].sourceSystem, undefined);
   assert.deepEqual(normalized.claimContext.material_inputs, [{ code: "710000001", quantity: 3 }]);
   assert.deepEqual(normalized.calculationOptions.facility_standard_keys, ["検体検査管理加算1"]);
+});
+
+test("preserves user-added fee order audit metadata", () => {
+  const normalized = validateUpdateFeeSessionInput({
+    orders: [{
+      orderType: "procedure",
+      localName: "外来管理加算",
+      standardCode: "112011010",
+      standardName: "外来管理加算",
+      quantity: 1,
+      sourceSystem: "fee_web_user_added",
+      sourceLabel: "ユーザー追加",
+      note: "医事確認により追加",
+      createdAt: "2026-06-16T00:00:00.000Z",
+      createdBy: "user_1"
+    }]
+  });
+
+  assert.equal(normalized.orders[0].sourceSystem, "fee_web_user_added");
+  assert.equal(normalized.orders[0].sourceLabel, "ユーザー追加");
+  assert.equal(normalized.orders[0].note, "医事確認により追加");
+  assert.equal(normalized.orders[0].createdAt, "2026-06-16T00:00:00.000Z");
+  assert.equal(normalized.orders[0].createdBy, "user_1");
 });
 
 test("allows draft fee session input before patient and facility are selected", () => {

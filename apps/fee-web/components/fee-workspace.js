@@ -267,6 +267,8 @@ function FeeSessionDetailView({ sessionId }) {
   const [autoSaveError, setAutoSaveError] = useState("");
   const [candidateDetail, setCandidateDetail] = useState(null);
   const [settingsModalMode, setSettingsModalMode] = useState(null);
+  const [manualItemModalOpen, setManualItemModalOpen] = useState(false);
+  const [manualItemDraft, setManualItemDraft] = useState(defaultManualBillingItemDraft);
   const [activeMainTab, setActiveMainTab] = useState("work");
   const [activeWorkTab, setActiveWorkTab] = useState("candidates");
   const suppressAutoSaveRef = useRef(false);
@@ -569,13 +571,15 @@ function FeeSessionDetailView({ sessionId }) {
   }
 
   const saveDetails = useCallback(async (options = {}) => {
+    const rowsForPayload = Array.isArray(options.orderRowsOverride) ? options.orderRowsOverride : orderRows;
+    const formForPayload = options.formOverride || form;
     const body = buildFeeSessionPayload({
       defaultFacilityId,
-      form,
-      orderRows,
+      form: formForPayload,
+      orderRows: rowsForPayload,
       patients,
       diagnosesTouched,
-      orderRowsTouched,
+      orderRowsTouched: options.orderRowsTouchedOverride ?? orderRowsTouched,
       clinicalTextBaselineHash
     });
     const response = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}`, {
@@ -639,13 +643,18 @@ function FeeSessionDetailView({ sessionId }) {
     saveDetails
   ]);
 
-  async function calculate() {
+  async function calculate(options = {}) {
     await runBusy(setBusy, addToast, async () => {
       window.clearTimeout(autoSaveTimerRef.current);
       if (pendingAutoSaveRef.current) {
         await pendingAutoSaveRef.current;
       }
-      const saved = await saveDetails({ silent: true });
+      const saved = await saveDetails({
+        silent: true,
+        formOverride: options.formOverride,
+        orderRowsOverride: options.orderRowsOverride,
+        orderRowsTouchedOverride: options.orderRowsOverride ? true : undefined
+      });
       setFeeSession((current) => ({
         ...(saved.feeSession || current || {}),
         status: "calculating",
@@ -751,21 +760,16 @@ function FeeSessionDetailView({ sessionId }) {
   }
 
   function addMasterSearchItem(item = {}) {
+    addOrderFromMasterItem(item);
+  }
+
+  function addOrderFromMasterItem(item = {}, options = {}) {
     if (item.kind === "comment") {
       try {
-        const options = parseJsonObjectField(form.calculationOptionsText, "算定オプション JSON") || {};
-        const commentInputs = Array.isArray(options.comment_inputs) ? options.comment_inputs : [];
-        if (!commentInputs.some((comment) => String(comment.code || "") === String(item.code || ""))) {
-          options.comment_inputs = [
-            ...commentInputs,
-            {
-              code: item.code,
-              text: item.name || ""
-            }
-          ];
+        updateForm("calculationOptionsText", calculationOptionsTextWithComment(form.calculationOptionsText, item));
+        if (!options.silent) {
+          addToast("コメントを算定オプションに追加しました。", "success");
         }
-        updateForm("calculationOptionsText", formatJsonObject(options));
-        addToast("コメントを算定オプションに追加しました。", "success");
       } catch (error) {
         addToast(toUserFacingErrorMessage(error, "算定オプション JSONを確認してください。"), "error");
       }
@@ -780,10 +784,72 @@ function FeeSessionDetailView({ sessionId }) {
         localName: item.name || "",
         standardCode: item.code || "",
         standardName: item.name || "",
-        quantity: "1"
+        quantity: String(options.quantity || "1"),
+        sourceSystem: "fee_web_user_added",
+        sourceLabel: "ユーザー追加",
+        note: options.note || "",
+        createdAt: new Date().toISOString()
       }
     ]);
-    addToast("マスターからオーダーを追加しました。", "success");
+    if (!options.silent) {
+      addToast("マスターからオーダーを追加しました。", "success");
+    }
+  }
+
+  async function applyManualOrdersAndCalculate() {
+    setSettingsModalMode(null);
+    await calculate();
+  }
+
+  async function addManualBillingItemAndCalculate() {
+    const item = manualItemDraft.masterItem;
+    if (!item?.code && !item?.name) {
+      addToast("追加するマスターを選択してください。", "error");
+      return;
+    }
+    const duplicate = manualBillingDuplicateReason({ item, orderRows, receiptDraft });
+    if (duplicate) {
+      addToast(duplicate, "error");
+      return;
+    }
+    if (item.kind === "comment") {
+      const nextForm = {
+        ...form,
+        calculationOptionsText: calculationOptionsTextWithComment(form.calculationOptionsText, item)
+      };
+      setForm(nextForm);
+      setManualItemDraft(defaultManualBillingItemDraft());
+      setManualItemModalOpen(false);
+      await calculate({ formOverride: nextForm });
+      return;
+    }
+    const nextRows = [
+      ...orderRows.filter((row) => row.localName || row.standardCode),
+      {
+        orderType: orderTypeFromMasterKind(item.kind),
+        localName: item.name || "",
+        standardCode: item.code || "",
+        standardName: item.name || "",
+        quantity: String(manualItemDraft.quantity || "1"),
+        sourceSystem: "fee_web_user_added",
+        sourceLabel: "ユーザー追加",
+        note: manualItemDraft.note || "",
+        createdAt: new Date().toISOString()
+      }
+    ];
+    setOrderRowsTouched(true);
+    setOrderRows(nextRows);
+    setManualItemDraft(defaultManualBillingItemDraft());
+    setManualItemModalOpen(false);
+    await calculate({ orderRowsOverride: nextRows });
+  }
+
+  async function removeManualOrderAndCalculate(rowIndex) {
+    const nextRows = orderRows.filter((_, index) => index !== rowIndex);
+    const normalizedRows = nextRows.length ? nextRows : [createEmptyOrderRow()];
+    setOrderRowsTouched(true);
+    setOrderRows(normalizedRows);
+    await calculate({ orderRowsOverride: normalizedRows });
   }
 
   function updateOutpatientBasicKind(value) {
@@ -876,8 +942,15 @@ function FeeSessionDetailView({ sessionId }) {
           onCopyReceipt={copyReceiptDraft}
           onDecision={decideReviewItem}
           onOpenDetail={setCandidateDetail}
+          onOpenManualItem={() => {
+            setManualItemDraft(defaultManualBillingItemDraft());
+            setManualItemModalOpen(true);
+            setActiveMainTab("receipt");
+          }}
           onSetMainTab={setActiveMainTab}
           onSetWorkTab={setActiveWorkTab}
+          onRemoveManualOrder={removeManualOrderAndCalculate}
+          orderRows={orderRows}
           receiptDraft={receiptDraft}
           selected={Boolean(sessionId)}
         />
@@ -893,6 +966,7 @@ function FeeSessionDetailView({ sessionId }) {
       />
       <FeeSettingsModal
         available={masterSearchAvailable}
+        busy={busy}
         defaultFacilityId={defaultFacilityId}
         departments={departments}
         facilities={facilities}
@@ -904,6 +978,7 @@ function FeeSessionDetailView({ sessionId }) {
         mode={settingsModalMode}
         onAddMaster={addMasterSearchItem}
         onAddOrderRow={addOrderRow}
+        onApplyOrders={applyManualOrdersAndCalculate}
         onClose={() => setSettingsModalMode(null)}
         onMasterQueryChange={setMasterQuery}
         onMasterTypeChange={setMasterType}
@@ -916,6 +991,28 @@ function FeeSessionDetailView({ sessionId }) {
         selectedMasterIndex={selectedMasterIndex}
       />
       <CandidateDetailModal item={candidateDetail} disabled={busy} onClose={() => setCandidateDetail(null)} onDecision={decideReviewItem} />
+      <ManualBillingItemModal
+        available={masterSearchAvailable}
+        disabled={busy}
+        draft={manualItemDraft}
+        items={masterItems}
+        masterQuery={masterQuery}
+        masterType={masterType}
+        onAdd={addManualBillingItemAndCalculate}
+        onClose={() => setManualItemModalOpen(false)}
+        onDraftChange={setManualItemDraft}
+        onMasterQueryChange={setMasterQuery}
+        onMasterTypeChange={setMasterType}
+        onSelectMaster={(item) => setManualItemDraft((current) => ({
+          ...current,
+          masterItem: item,
+          quantity: current.quantity || "1"
+        }))}
+        open={manualItemModalOpen}
+        orderRows={orderRows}
+        receiptDraft={receiptDraft}
+        selectedMasterIndex={selectedMasterIndex}
+      />
     </main>
   );
 }
@@ -1044,8 +1141,11 @@ function WorkPane({
   onCopyReceipt,
   onDecision,
   onOpenDetail,
+  onOpenManualItem,
+  onRemoveManualOrder,
   onSetMainTab,
   onSetWorkTab,
+  orderRows = [],
   receiptDraft,
   selected
 }) {
@@ -1071,6 +1171,9 @@ function WorkPane({
           <ReceiptDraftPane
             disabled={disabled}
             onCopyReceipt={onCopyReceipt}
+            onOpenManualItem={onOpenManualItem}
+            onRemoveManualOrder={onRemoveManualOrder}
+            orderRows={orderRows}
             receiptDraft={receiptDraft}
             selected={selected}
           />
@@ -1136,6 +1239,7 @@ function FeeInputSummary({ departments, form, onOpenConditions, onOpenOrders, or
 
 function FeeSettingsModal({
   available,
+  busy = false,
   defaultFacilityId,
   departments,
   facilities,
@@ -1147,6 +1251,7 @@ function FeeSettingsModal({
   mode,
   onAddMaster,
   onAddOrderRow,
+  onApplyOrders,
   onClose,
   onMasterQueryChange,
   onMasterTypeChange,
@@ -1292,7 +1397,14 @@ function FeeSettingsModal({
           )}
         </div>
         <footer className="fee-modal-footer">
-          <button className="btn btn--primary" onClick={onClose} type="button">閉じる</button>
+          {showConditions ? (
+            <button className="btn btn--primary" onClick={onClose} type="button">閉じる</button>
+          ) : (
+            <>
+              <button className="btn btn--ghost" disabled={busy} onClick={onClose} type="button">閉じる</button>
+              <button className="btn btn--primary" disabled={busy} onClick={onApplyOrders} type="button">保存して再計算</button>
+            </>
+          )}
         </footer>
       </section>
     </div>
@@ -1461,7 +1573,7 @@ function MasterStatus({ available }) {
   return <div className="master-status">マスター検索APIの反映待ちです。通常の算定入力は利用できます。</div>;
 }
 
-function MasterSearchResults({ available, items, onAdd, query, selectedIndex = 0 }) {
+function MasterSearchResults({ actionLabel = "", available, items, onAdd, query, selectedIndex = 0 }) {
   if (!available) {
     return <div className="master-search-results">API反映後にマスター検索を利用できます。</div>;
   }
@@ -1481,7 +1593,7 @@ function MasterSearchResults({ available, items, onAdd, query, selectedIndex = 0
             <small>{masterSourceLabel(item)}</small>
           </div>
           <button className="btn btn--ghost btn--sm" onClick={() => onAdd(item)} type="button">
-            {item.kind === "comment" ? "コメントに追加" : "オーダーに追加"}
+            {actionLabel || (item.kind === "comment" ? "コメントに追加" : "オーダーに追加")}
           </button>
         </article>
       ))}
@@ -1958,7 +2070,8 @@ function confirmableProposalForAdoption(item = {}) {
     && points > 0;
 }
 
-function ReceiptDraftPane({ disabled, onCopyReceipt, receiptDraft, selected }) {
+function ReceiptDraftPane({ disabled, onCopyReceipt, onOpenManualItem, onRemoveManualOrder, orderRows = [], receiptDraft, selected }) {
+  const manualOrders = manualBillingOrderEntries(orderRows);
   return (
     <div className="receipt-draft-pane">
       <div className="receipt-pane-head">
@@ -1967,6 +2080,9 @@ function ReceiptDraftPane({ disabled, onCopyReceipt, receiptDraft, selected }) {
           <p>区分別合計と明細です。確認後にコピーできます。</p>
         </div>
         <div className="receipt-pane-actions">
+          <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={onOpenManualItem} type="button">
+            明細を追加
+          </button>
           <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={onCopyReceipt} type="button">
             コピー
           </button>
@@ -1975,7 +2091,144 @@ function ReceiptDraftPane({ disabled, onCopyReceipt, receiptDraft, selected }) {
           </button>
         </div>
       </div>
+      {manualOrders.length ? (
+        <section className="manual-billing-list" aria-label="ユーザー追加明細">
+          <div className="manual-billing-list-head">
+            <div>
+              <h3>ユーザー追加明細</h3>
+              <p>カルテ自動抽出ではなく、人手で追加した算定入力です。削除すると再計算します。</p>
+            </div>
+            <span>{manualOrders.length.toLocaleString()}件</span>
+          </div>
+          {manualOrders.map(({ row, rowIndex }) => (
+            <article className="manual-billing-row" key={`${row.standardCode || row.localName || "manual"}-${rowIndex}`}>
+              <div>
+                <strong>{row.standardName || row.localName || row.standardCode || "名称未設定"}</strong>
+                <small>{orderTypeLabel(row.orderType)} / {row.standardCode || "コード未設定"} / 数量 {row.quantity || "1"}</small>
+                {row.note ? <small>{row.note}</small> : null}
+              </div>
+              <span>手入力</span>
+              <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onRemoveManualOrder(rowIndex)} type="button">
+                削除して再計算
+              </button>
+            </article>
+          ))}
+        </section>
+      ) : null}
       <ReceiptDraft receiptDraft={receiptDraft} selected={selected} />
+    </div>
+  );
+}
+
+function ManualBillingItemModal({
+  available,
+  disabled,
+  draft,
+  items,
+  masterQuery,
+  masterType,
+  onAdd,
+  onClose,
+  onDraftChange,
+  onMasterQueryChange,
+  onMasterTypeChange,
+  onSelectMaster,
+  open,
+  orderRows = [],
+  receiptDraft,
+  selectedMasterIndex = 0
+}) {
+  if (!open) {
+    return null;
+  }
+  const duplicateReason = draft.masterItem
+    ? manualBillingDuplicateReason({ item: draft.masterItem, orderRows, receiptDraft })
+    : "";
+  const selected = draft.masterItem || null;
+  return (
+    <div className="fee-modal-overlay" role="presentation" onMouseDown={onClose}>
+      <section className="fee-modal-card manual-billing-modal" role="dialog" aria-modal="true" aria-label="明細を追加" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="fee-modal-head">
+          <div>
+            <span className="label">ユーザー追加</span>
+            <h2>明細を追加</h2>
+          </div>
+          <button className="btn btn--ghost btn--icon" onClick={onClose} type="button" aria-label="閉じる">×</button>
+        </header>
+        <div className="fee-modal-body">
+          <section className="manual-billing-section">
+            <h3>マスター検索</h3>
+            <p>追加したい診療行為・薬剤・材料・コメントを検索してください。点数は保存後に算定エンジンで再計算します。</p>
+            <div className="master-search-panel">
+              <div className="master-search-controls">
+                <AdminSelect
+                  ariaLabel="マスター種別"
+                  disabled={!available || disabled}
+                  options={MASTER_TYPES.map(([value, label]) => ({ value, label }))}
+                  value={masterType}
+                  onValueChange={onMasterTypeChange}
+                />
+                <input
+                  disabled={!available || disabled}
+                  onChange={(event) => onMasterQueryChange(event.target.value)}
+                  placeholder={available ? "名称またはコードで検索" : "マスター検索APIの反映待ちです"}
+                  type="search"
+                  value={masterQuery}
+                />
+              </div>
+              <MasterSearchResults
+                available={available}
+                items={items}
+                query={masterQuery}
+                selectedIndex={selectedMasterIndex}
+                onAdd={onSelectMaster}
+                actionLabel="選択"
+              />
+            </div>
+          </section>
+
+          <section className="manual-billing-section">
+            <h3>追加内容</h3>
+            {selected ? (
+              <div className="manual-billing-selected">
+                <strong>{selected.name || selected.code || "名称未設定"}</strong>
+                <small>{masterKindLabel(selected.kind)} / {selected.code || "コード未設定"}{selected.points !== undefined ? ` / ${Number(selected.points).toLocaleString()}点` : ""}</small>
+              </div>
+            ) : (
+              <div className="fee-empty-state">上の検索結果から追加する項目を選択してください。</div>
+            )}
+            <div className="manual-billing-fields">
+              <label>
+                <span>数量</span>
+                <input
+                  disabled={disabled || selected?.kind === "comment"}
+                  inputMode="decimal"
+                  min="0.01"
+                  onChange={(event) => onDraftChange((current) => ({ ...current, quantity: event.target.value }))}
+                  type="number"
+                  value={draft.quantity}
+                />
+              </label>
+              <label>
+                <span>追加理由・メモ</span>
+                <textarea
+                  disabled={disabled}
+                  onChange={(event) => onDraftChange((current) => ({ ...current, note: event.target.value }))}
+                  placeholder="例: 医事確認により追加"
+                  value={draft.note}
+                />
+              </label>
+            </div>
+            {duplicateReason ? <div className="inline-error" role="status">{duplicateReason}</div> : null}
+          </section>
+        </div>
+        <footer className="fee-modal-footer">
+          <button className="btn btn--ghost" disabled={disabled} onClick={onClose} type="button">閉じる</button>
+          <button className="btn btn--primary" disabled={disabled || !selected || Boolean(duplicateReason)} onClick={onAdd} type="button">
+            追加して再計算
+          </button>
+        </footer>
+      </section>
     </div>
   );
 }
@@ -2363,6 +2616,14 @@ function defaultPatientForm() {
   };
 }
 
+function defaultManualBillingItemDraft() {
+  return {
+    masterItem: null,
+    quantity: "1",
+    note: ""
+  };
+}
+
 function formFromFeeSession(session = {}) {
   const fallback = defaultFeeForm();
   const editableCalculationOptions = userEditableCalculationOptions(session);
@@ -2481,7 +2742,12 @@ function parseOrdersFromRows(rows) {
       localName: String(row.localName || "").trim(),
       standardCode: String(row.standardCode || "").trim(),
       standardName: String(row.standardName || "").trim(),
-      quantity: String(row.quantity || "1").trim() || "1"
+      quantity: String(row.quantity || "1").trim() || "1",
+      sourceSystem: String(row.sourceSystem || "").trim(),
+      sourceLabel: String(row.sourceLabel || "").trim(),
+      note: String(row.note || "").trim(),
+      createdAt: String(row.createdAt || "").trim(),
+      createdBy: String(row.createdBy || "").trim()
     }))
     .filter((row) => !isAutoPlaceholderOrderRow(row))
     .filter((row) => row.localName || row.standardCode)
@@ -2491,7 +2757,12 @@ function parseOrdersFromRows(rows) {
       localName: row.localName || row.standardCode,
       standardCode: row.standardCode || undefined,
       standardName: row.standardName || undefined,
-      quantity: Number(row.quantity || 1)
+      quantity: Number(row.quantity || 1),
+      sourceSystem: row.sourceSystem || undefined,
+      sourceLabel: row.sourceLabel || undefined,
+      note: row.note || undefined,
+      createdAt: row.createdAt || undefined,
+      createdBy: row.createdBy || undefined
     }));
 }
 
@@ -2504,7 +2775,12 @@ function orderRowsFromOrders(orders) {
     localName: order.localName || order.standardName || order.content || "",
     standardCode: order.standardCode || order.localCode || "",
     standardName: order.standardName || "",
-    quantity: String(order.quantity || "1")
+    quantity: String(order.quantity || "1"),
+    sourceSystem: order.sourceSystem || order.source_system || "",
+    sourceLabel: order.sourceLabel || order.source_label || "",
+    note: order.note || "",
+    createdAt: order.createdAt || order.created_at || "",
+    createdBy: order.createdBy || order.created_by || ""
   }));
 }
 
@@ -2514,8 +2790,70 @@ function createEmptyOrderRow() {
     localName: "",
     standardCode: "",
     standardName: "",
-    quantity: "1"
+    quantity: "1",
+    sourceSystem: "",
+    sourceLabel: "",
+    note: "",
+    createdAt: "",
+    createdBy: ""
   };
+}
+
+function calculationOptionsTextWithComment(value, item = {}) {
+  const options = parseJsonObjectField(value, "算定オプション JSON") || {};
+  const commentInputs = Array.isArray(options.comment_inputs) ? options.comment_inputs : [];
+  if (!commentInputs.some((comment) => String(comment.code || "") === String(item.code || ""))) {
+    options.comment_inputs = [
+      ...commentInputs,
+      {
+        code: item.code,
+        text: item.name || ""
+      }
+    ];
+  }
+  return formatJsonObject(options);
+}
+
+function manualBillingOrderEntries(rows = []) {
+  return rows
+    .map((row, rowIndex) => ({ row, rowIndex }))
+    .filter(({ row }) => String(row?.sourceSystem || row?.source_system || "") === "fee_web_user_added");
+}
+
+function manualBillingDuplicateReason({ item = {}, orderRows = [], receiptDraft = null } = {}) {
+  const code = String(item.code || "").trim();
+  if (!code || item.kind === "comment") {
+    return "";
+  }
+  const existingManual = orderRows.some((row) => String(row.standardCode || row.standard_code || "").trim() === code);
+  if (existingManual) {
+    return "同じコードが手入力明細に既に追加されています。数量を変更するか、既存の明細を削除してください。";
+  }
+  if (receiptDraftLineCodes(receiptDraft).has(code)) {
+    return "同じコードが現在のレセプト案に既に含まれています。二重算定を避けるため追加できません。";
+  }
+  return "";
+}
+
+function receiptDraftLineCodes(receiptDraft = null) {
+  const codes = new Set();
+  const collect = (line = {}) => {
+    const code = String(line.code || line.masterCode || line.master_code || line.standardCode || line.standard_code || "").trim();
+    if (code) {
+      codes.add(code);
+    }
+  };
+  if (Array.isArray(receiptDraft?.lines)) {
+    receiptDraft.lines.forEach(collect);
+  }
+  if (Array.isArray(receiptDraft?.lineGroups)) {
+    for (const group of receiptDraft.lineGroups) {
+      if (Array.isArray(group?.lines)) {
+        group.lines.forEach(collect);
+      }
+    }
+  }
+  return codes;
 }
 
 function parseJsonObjectField(value, label) {

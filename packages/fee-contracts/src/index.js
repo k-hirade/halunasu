@@ -214,7 +214,11 @@ function normalizeFeeOrder(input = {}, index = 0) {
     quantity: optionalPositiveNumber(input.quantity, `orders[${index}].quantity`),
     unit: optionalString(input.unit),
     status: optionalString(input.status) || "ordered",
-    sourceSystem: optionalString(input.sourceSystem ?? input.source_system)
+    sourceSystem: optionalString(input.sourceSystem ?? input.source_system),
+    sourceLabel: optionalString(input.sourceLabel ?? input.source_label),
+    note: optionalMultilineString(input.note, 5000),
+    createdAt: optionalString(input.createdAt ?? input.created_at),
+    createdBy: optionalString(input.createdBy ?? input.created_by)
   });
 }
 
