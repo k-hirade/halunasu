@@ -1773,7 +1773,7 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
 
       {selectedWorkTab === "issues" ? (
         <section className="candidate-bucket">
-          <BucketHeader title="確認・修正が必要" count={needsReviewCount} note="このままだと算定しづらい項目です。各項目の内容を確認し、算定する／算定しない／保留 を選んでください。" />
+          <BucketHeader title="確認・修正が必要" count={needsReviewCount} note="このままだと算定しづらい項目です。各項目の内容を確認し、算定する／算定しない を選んでください。" />
           {model.issues.length ? (
             <div className="issue-list">
               {model.issues.map((item) => (
