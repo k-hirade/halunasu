@@ -802,46 +802,57 @@ function FeeSessionDetailView({ sessionId }) {
   }
 
   async function addManualBillingItemAndCalculate() {
-    const item = manualItemDraft.masterItem;
-    if (!item?.code && !item?.name) {
+    const selectedItems = manualDraftSelectedItems(manualItemDraft);
+    if (!selectedItems.length) {
       addToast("追加するマスターを選択してください。", "error");
       return;
     }
-    const duplicate = manualBillingDuplicateReason({ item, orderRows, receiptDraft });
+    const duplicate = manualBillingBatchDuplicateReason({ entries: selectedItems, orderRows, receiptDraft });
     if (duplicate) {
       addToast(duplicate, "error");
       return;
     }
-    if (item.kind === "comment") {
-      const nextForm = {
-        ...form,
-        calculationOptionsText: calculationOptionsTextWithComment(form.calculationOptionsText, item)
-      };
-      setForm(nextForm);
-      setManualItemDraft(defaultManualBillingItemDraft());
-      setManualItemModalOpen(false);
-      await calculate({ formOverride: nextForm });
-      return;
-    }
-    const nextRows = [
-      ...orderRows.filter((row) => row.localName || row.standardCode),
-      {
+
+    let nextForm = form;
+    const orderEntries = [];
+    for (const entry of selectedItems) {
+      const item = entry.item || {};
+      if (item.kind === "comment") {
+        nextForm = {
+          ...nextForm,
+          calculationOptionsText: calculationOptionsTextWithComment(nextForm.calculationOptionsText, item)
+        };
+        continue;
+      }
+      orderEntries.push({
         orderType: orderTypeFromMasterKind(item.kind),
         localName: item.name || "",
         standardCode: item.code || "",
         standardName: item.name || "",
-        quantity: String(manualItemDraft.quantity || "1"),
+        quantity: String(entry.quantity || "1"),
         sourceSystem: "fee_web_user_added",
         sourceLabel: "ユーザー追加",
         note: manualItemDraft.note || "",
         createdAt: new Date().toISOString()
-      }
-    ];
-    setOrderRowsTouched(true);
-    setOrderRows(nextRows);
+      });
+    }
+
+    const nextRows = orderEntries.length
+      ? [...orderRows.filter((row) => row.localName || row.standardCode), ...orderEntries]
+      : orderRows;
+    if (nextForm !== form) {
+      setForm(nextForm);
+    }
+    if (orderEntries.length) {
+      setOrderRowsTouched(true);
+      setOrderRows(nextRows);
+    }
     setManualItemDraft(defaultManualBillingItemDraft());
     setManualItemModalOpen(false);
-    await calculate({ orderRowsOverride: nextRows });
+    await calculate({
+      formOverride: nextForm !== form ? nextForm : undefined,
+      orderRowsOverride: orderEntries.length ? nextRows : undefined
+    });
   }
 
   async function removeManualOrderAndCalculate(rowIndex) {
@@ -945,7 +956,8 @@ function FeeSessionDetailView({ sessionId }) {
           onOpenManualItem={() => {
             setManualItemDraft(defaultManualBillingItemDraft());
             setManualItemModalOpen(true);
-            setActiveMainTab("receipt");
+            setActiveMainTab("work");
+            setActiveWorkTab("candidates");
           }}
           onSetMainTab={setActiveMainTab}
           onSetWorkTab={setActiveWorkTab}
@@ -1005,8 +1017,17 @@ function FeeSessionDetailView({ sessionId }) {
         onMasterTypeChange={setMasterType}
         onSelectMaster={(item) => setManualItemDraft((current) => ({
           ...current,
-          masterItem: item,
-          quantity: current.quantity || "1"
+          selectedItems: appendManualBillingDraftItem(current, item)
+        }))}
+        onRemoveSelected={(index) => setManualItemDraft((current) => ({
+          ...current,
+          selectedItems: manualDraftSelectedItems(current).filter((_, itemIndex) => itemIndex !== index)
+        }))}
+        onUpdateSelectedQuantity={(index, quantity) => setManualItemDraft((current) => ({
+          ...current,
+          selectedItems: manualDraftSelectedItems(current).map((entry, itemIndex) => (
+            itemIndex === index ? { ...entry, quantity } : entry
+          ))
         }))}
         open={manualItemModalOpen}
         orderRows={orderRows}
@@ -1163,6 +1184,7 @@ function WorkPane({
             disabled={disabled}
             feeSession={feeSession}
             onDecision={onDecision}
+            onOpenManualItem={onOpenManualItem}
             onOpenDetail={onOpenDetail}
             onTabChange={onSetWorkTab}
             candidateWorkbench={candidateWorkbench}
@@ -1171,7 +1193,6 @@ function WorkPane({
           <ReceiptDraftPane
             disabled={disabled}
             onCopyReceipt={onCopyReceipt}
-            onOpenManualItem={onOpenManualItem}
             onRemoveManualOrder={onRemoveManualOrder}
             orderRows={orderRows}
             receiptDraft={receiptDraft}
@@ -1637,7 +1658,7 @@ function OrderEditor({ onAdd, onRemove, onUpdate, rows }) {
   );
 }
 
-function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbench, disabled, feeSession, onDecision, onOpenDetail, onTabChange }) {
+function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbench, disabled, feeSession, onDecision, onOpenManualItem, onOpenDetail, onTabChange }) {
   if (feeSession?.status === "calculating") {
     return (
       <div className="result result-empty">
@@ -1675,8 +1696,8 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
     candidateWorkbench || emptyCandidateWorkbenchModel({ calculation })
   );
   const adjustmentLines = [...model.pendingLines, ...model.excludedLines];
-  const includedCount = Number(model.counts.included || 0);
-  const proposalCount = Number(model.counts.proposals || 0);
+  const includedCount = model.includedLines.length;
+  const proposalCount = model.proposals.length;
   const candidateCount = includedCount + proposalCount;
   const needsReviewCount = model.issues.length + adjustmentLines.length;
   const potentialPointsTotal = Number(model.potentialPointsTotal || 0);
@@ -1724,7 +1745,15 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
 
       {selectedWorkTab === "candidates" ? (
         <section className="candidate-bucket">
-          <BucketHeader title="算定候補" count={candidateCount} note="合計点数に入っている明細と、条件を満たすと採用できる提案です。" />
+          <BucketHeader
+            action={(
+              <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={onOpenManualItem} type="button">
+                明細を追加
+              </button>
+            )}
+            title="算定候補"
+            note="合計点数に入っている明細と、条件を満たすと採用できる提案です。"
+          />
           {model.includedLines.length ? (
             <div className="candidate-line-list">
               {model.includedLines.map((line) => (
@@ -1746,14 +1775,17 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
   );
 }
 
-function BucketHeader({ count, note, title }) {
+function BucketHeader({ action = null, count, note, title }) {
   return (
     <header className="candidate-bucket-head">
       <div>
         <h3>{title}</h3>
         <p>{note}</p>
       </div>
-      <span>{count.toLocaleString()}件</span>
+      <div className="candidate-bucket-head-actions">
+        {typeof count === "number" ? <span>{count.toLocaleString()}件</span> : null}
+        {action}
+      </div>
     </header>
   );
 }
@@ -2070,7 +2102,7 @@ function confirmableProposalForAdoption(item = {}) {
     && points > 0;
 }
 
-function ReceiptDraftPane({ disabled, onCopyReceipt, onOpenManualItem, onRemoveManualOrder, orderRows = [], receiptDraft, selected }) {
+function ReceiptDraftPane({ disabled, onCopyReceipt, onRemoveManualOrder, orderRows = [], receiptDraft, selected }) {
   const manualOrders = manualBillingOrderEntries(orderRows);
   return (
     <div className="receipt-draft-pane">
@@ -2080,9 +2112,6 @@ function ReceiptDraftPane({ disabled, onCopyReceipt, onOpenManualItem, onRemoveM
           <p>区分別合計と明細です。確認後にコピーできます。</p>
         </div>
         <div className="receipt-pane-actions">
-          <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={onOpenManualItem} type="button">
-            明細を追加
-          </button>
           <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={onCopyReceipt} type="button">
             コピー
           </button>
@@ -2132,7 +2161,9 @@ function ManualBillingItemModal({
   onDraftChange,
   onMasterQueryChange,
   onMasterTypeChange,
+  onRemoveSelected,
   onSelectMaster,
+  onUpdateSelectedQuantity,
   open,
   orderRows = [],
   receiptDraft,
@@ -2141,10 +2172,8 @@ function ManualBillingItemModal({
   if (!open) {
     return null;
   }
-  const duplicateReason = draft.masterItem
-    ? manualBillingDuplicateReason({ item: draft.masterItem, orderRows, receiptDraft })
-    : "";
-  const selected = draft.masterItem || null;
+  const selectedItems = manualDraftSelectedItems(draft);
+  const duplicateReason = manualBillingBatchDuplicateReason({ entries: selectedItems, orderRows, receiptDraft });
   return (
     <div className="fee-modal-overlay" role="presentation" onMouseDown={onClose}>
       <section className="fee-modal-card manual-billing-modal" role="dialog" aria-modal="true" aria-label="明細を追加" onMouseDown={(event) => event.stopPropagation()}>
@@ -2156,9 +2185,9 @@ function ManualBillingItemModal({
           <button className="btn btn--ghost btn--icon" onClick={onClose} type="button" aria-label="閉じる">×</button>
         </header>
         <div className="fee-modal-body">
-          <section className="manual-billing-section">
+          <section className="manual-billing-section manual-billing-search-section">
             <h3>マスター検索</h3>
-            <p>追加したい診療行為・薬剤・材料・コメントを検索してください。点数は保存後に算定エンジンで再計算します。</p>
+            <p>追加したい診療行為・薬剤・材料・コメントを複数選択できます。点数は保存後に算定エンジンで再計算します。</p>
             <div className="master-search-panel">
               <div className="master-search-controls">
                 <AdminSelect
@@ -2176,39 +2205,53 @@ function ManualBillingItemModal({
                   value={masterQuery}
                 />
               </div>
-              <MasterSearchResults
-                available={available}
-                items={items}
-                query={masterQuery}
-                selectedIndex={selectedMasterIndex}
-                onAdd={onSelectMaster}
-                actionLabel="選択"
-              />
+              <div className="manual-billing-scroll-region">
+                <MasterSearchResults
+                  available={available}
+                  items={items}
+                  query={masterQuery}
+                  selectedIndex={selectedMasterIndex}
+                  onAdd={onSelectMaster}
+                  actionLabel="選択"
+                />
+              </div>
             </div>
           </section>
 
           <section className="manual-billing-section">
             <h3>追加内容</h3>
-            {selected ? (
-              <div className="manual-billing-selected">
-                <strong>{selected.name || selected.code || "名称未設定"}</strong>
-                <small>{masterKindLabel(selected.kind)} / {selected.code || "コード未設定"}{selected.points !== undefined ? ` / ${Number(selected.points).toLocaleString()}点` : ""}</small>
+            {selectedItems.length ? (
+              <div className="manual-billing-selected-list">
+                {selectedItems.map((entry, index) => {
+                  const selected = entry.item || {};
+                  return (
+                    <div className="manual-billing-selected" key={`${manualBillingItemKey(selected)}-${index}`}>
+                      <div>
+                        <strong>{selected.name || selected.code || "名称未設定"}</strong>
+                        <small>{masterKindLabel(selected.kind)} / {selected.code || "コード未設定"}{selected.points !== undefined ? ` / ${Number(selected.points).toLocaleString()}点` : ""}</small>
+                      </div>
+                      <label>
+                        <span>数量</span>
+                        <input
+                          disabled={disabled || selected.kind === "comment"}
+                          inputMode="decimal"
+                          min="0.01"
+                          onChange={(event) => onUpdateSelectedQuantity(index, event.target.value)}
+                          type="number"
+                          value={entry.quantity || "1"}
+                        />
+                      </label>
+                      <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onRemoveSelected(index)} type="button">
+                        解除
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="fee-empty-state">上の検索結果から追加する項目を選択してください。</div>
             )}
             <div className="manual-billing-fields">
-              <label>
-                <span>数量</span>
-                <input
-                  disabled={disabled || selected?.kind === "comment"}
-                  inputMode="decimal"
-                  min="0.01"
-                  onChange={(event) => onDraftChange((current) => ({ ...current, quantity: event.target.value }))}
-                  type="number"
-                  value={draft.quantity}
-                />
-              </label>
               <label>
                 <span>追加理由・メモ</span>
                 <textarea
@@ -2224,8 +2267,8 @@ function ManualBillingItemModal({
         </div>
         <footer className="fee-modal-footer">
           <button className="btn btn--ghost" disabled={disabled} onClick={onClose} type="button">閉じる</button>
-          <button className="btn btn--primary" disabled={disabled || !selected || Boolean(duplicateReason)} onClick={onAdd} type="button">
-            追加して再計算
+          <button className="btn btn--primary" disabled={disabled || !selectedItems.length || Boolean(duplicateReason)} onClick={onAdd} type="button">
+            {selectedItems.length > 1 ? `${selectedItems.length.toLocaleString()}件を追加して再計算` : "追加して再計算"}
           </button>
         </footer>
       </section>
@@ -2618,10 +2661,46 @@ function defaultPatientForm() {
 
 function defaultManualBillingItemDraft() {
   return {
-    masterItem: null,
-    quantity: "1",
+    selectedItems: [],
     note: ""
   };
+}
+
+function manualBillingItemKey(item = {}) {
+  return `${item.kind || "master"}:${item.code || item.name || ""}`;
+}
+
+function manualDraftSelectedItems(draft = {}) {
+  if (Array.isArray(draft.selectedItems)) {
+    return draft.selectedItems
+      .map((entry) => {
+        const item = entry?.item || entry?.masterItem || entry;
+        if (!item || typeof item !== "object") {
+          return null;
+        }
+        return {
+          item,
+          quantity: String(entry?.quantity || draft.quantity || "1")
+        };
+      })
+      .filter((entry) => entry?.item && (entry.item.code || entry.item.name));
+  }
+  if (draft.masterItem) {
+    return [{ item: draft.masterItem, quantity: String(draft.quantity || "1") }];
+  }
+  return [];
+}
+
+function appendManualBillingDraftItem(draft = {}, item = {}) {
+  if (!item?.code && !item?.name) {
+    return manualDraftSelectedItems(draft);
+  }
+  const current = manualDraftSelectedItems(draft);
+  const itemKey = manualBillingItemKey(item);
+  if (current.some((entry) => manualBillingItemKey(entry.item) === itemKey)) {
+    return current;
+  }
+  return [...current, { item, quantity: "1" }];
 }
 
 function formFromFeeSession(session = {}) {
@@ -2835,6 +2914,25 @@ function manualBillingDuplicateReason({ item = {}, orderRows = [], receiptDraft 
   return "";
 }
 
+function manualBillingBatchDuplicateReason({ entries = [], orderRows = [], receiptDraft = null } = {}) {
+  const seen = new Set();
+  for (const entry of entries) {
+    const item = entry?.item || {};
+    const code = String(item.code || "").trim();
+    if (code && item.kind !== "comment") {
+      if (seen.has(code)) {
+        return "同じコードが追加内容に複数含まれています。数量を調整するか、重複した選択を解除してください。";
+      }
+      seen.add(code);
+    }
+    const duplicate = manualBillingDuplicateReason({ item, orderRows, receiptDraft });
+    if (duplicate) {
+      return duplicate;
+    }
+  }
+  return "";
+}
+
 function receiptDraftLineCodes(receiptDraft = null) {
   const codes = new Set();
   const collect = (line = {}) => {
@@ -2991,24 +3089,32 @@ function asStringList(value) {
 
 function normalizeCandidateWorkbenchModel(model = {}) {
   const lines = Array.isArray(model.lines) ? model.lines : [];
-  const includedLines = Array.isArray(model.includedLines)
+  const rawIncludedLines = Array.isArray(model.includedLines)
     ? model.includedLines
     : lines.filter((line) => line.inclusionStatus !== "pending" && line.inclusionStatus !== "excluded");
-  const pendingLines = Array.isArray(model.pendingLines)
+  const rawPendingLines = Array.isArray(model.pendingLines)
     ? model.pendingLines
     : lines.filter((line) => line.inclusionStatus === "pending");
-  const excludedLines = Array.isArray(model.excludedLines)
+  const rawExcludedLines = Array.isArray(model.excludedLines)
     ? model.excludedLines
     : lines.filter((line) => line.inclusionStatus === "excluded");
+  const rejectedLines = uniqueCandidateLines([
+    ...rawPendingLines,
+    ...rawExcludedLines,
+    ...lines
+  ].filter((line) => decisionSelectValue(line?.decisionStatus) === "rejected"));
+  const includedLines = uniqueCandidateLines([...rawIncludedLines, ...rejectedLines]);
+  const pendingLines = rawPendingLines.filter((line) => decisionSelectValue(line?.decisionStatus) !== "rejected");
+  const excludedLines = rawExcludedLines.filter((line) => decisionSelectValue(line?.decisionStatus) !== "rejected");
   const proposals = Array.isArray(model.proposals) ? model.proposals : [];
   const issues = Array.isArray(model.issues) ? model.issues : [];
   const rawCounts = model.counts && typeof model.counts === "object" ? model.counts : {};
-  const includedCount = Number(rawCounts.included ?? 0);
-  const pendingCount = Number(rawCounts.pending ?? 0);
-  const excludedCount = Number(rawCounts.excluded ?? 0);
-  const proposalCount = Number(rawCounts.proposals ?? 0);
-  const issueCount = Number(rawCounts.issues ?? 0);
-  const needsReview = Number(rawCounts.needsReview ?? 0);
+  const includedCount = includedLines.length;
+  const pendingCount = pendingLines.length;
+  const excludedCount = excludedLines.length;
+  const proposalCount = proposals.length;
+  const issueCount = issues.length;
+  const needsReview = issueCount + pendingCount + excludedCount;
   const potentialPointsTotal = Number(model.potentialPointsTotal ?? 0);
   return {
     ...model,
@@ -3034,6 +3140,20 @@ function normalizeCandidateWorkbenchModel(model = {}) {
     coverageSummary: model.coverageSummary || null,
     includedTotalPoints: Number(model.includedTotalPoints ?? model.totalPoints ?? 0)
   };
+}
+
+function uniqueCandidateLines(lines = []) {
+  const seen = new Set();
+  const result = [];
+  for (const line of lines) {
+    const key = String(line?.reviewItemId || line?.receiptLineId || line?.sourceLineId || line?.code || line?.name || result.length);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(line);
+  }
+  return result;
 }
 
 function emptyCandidateWorkbenchModel({ calculation } = {}) {

@@ -1389,12 +1389,48 @@ body:has(.fee-shell--detail) {
 
 .manual-billing-modal {
   width: min(760px, calc(100vw - 24px));
+  max-height: min(860px, calc(100vh - 24px));
+  display: flex;
+  flex-direction: column;
+}
+
+.manual-billing-modal .fee-modal-body {
+  min-height: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .manual-billing-section,
 .manual-billing-list {
   display: grid;
   gap: 12px;
+}
+
+.manual-billing-search-section {
+  min-height: 0;
+}
+
+.manual-billing-search-section .master-search-panel {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.manual-billing-scroll-region {
+  min-height: 160px;
+  max-height: min(330px, 38vh);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.manual-billing-scroll-region .master-search-results {
+  border: 0;
+  border-radius: 0;
+  max-height: none;
 }
 
 .manual-billing-section h3,
@@ -1412,6 +1448,14 @@ body:has(.fee-shell--detail) {
   line-height: 1.55;
 }
 
+.manual-billing-selected-list {
+  display: grid;
+  gap: 8px;
+  max-height: 172px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
 .manual-billing-selected,
 .manual-billing-row {
   display: grid;
@@ -1420,6 +1464,24 @@ body:has(.fee-shell--detail) {
   border-radius: 8px;
   background: #fbfdff;
   padding: 12px;
+}
+
+.manual-billing-selected {
+  grid-template-columns: minmax(0, 1fr) 96px auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.manual-billing-selected label {
+  display: grid;
+  gap: 4px;
+  color: #26364f;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.manual-billing-selected input {
+  min-width: 0;
 }
 
 .manual-billing-selected small,
@@ -1432,7 +1494,6 @@ body:has(.fee-shell--detail) {
 
 .manual-billing-fields {
   display: grid;
-  grid-template-columns: 140px minmax(0, 1fr);
   gap: 12px;
 }
 
