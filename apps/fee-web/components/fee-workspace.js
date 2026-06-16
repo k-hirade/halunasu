@@ -1300,11 +1300,40 @@ function FeeSettingsModal({
 }
 
 function PatientPicker({ filteredPatients, isOpen, onFilterChange, onOpenChange, onSelect, patientFilter, selectedPatient }) {
+  const pickerRef = useRef(null);
   const selectedLabel = selectedPatient
     ? selectedPatient.displayName || "患者名未入力"
     : "患者を選択";
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    function handlePointerDown(event) {
+      const root = pickerRef.current;
+      if (!root || root.contains(event.target)) {
+        return;
+      }
+      onOpenChange(false);
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        onOpenChange(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onOpenChange]);
+
   return (
-    <div className="patient-picker-field">
+    <div className="patient-picker-field" ref={pickerRef}>
       <span className="field-label">患者</span>
       <button
         className={`patient-chip ${selectedPatient ? "is-selected" : ""}`}
