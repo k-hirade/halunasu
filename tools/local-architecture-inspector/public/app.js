@@ -1,5 +1,8 @@
+import { CORE_FLOWS, KIND_META } from "/core-flows.js";
+
 const VIEW_TITLES = {
   overview: "概要",
+  core: "コア機能",
   flow: "フロー図",
   mapping: "API呼び出し",
   routes: "ルート一覧",
@@ -13,6 +16,8 @@ const state = {
   search: "",
   serviceFilter: "",
   selectedFlowId: null,
+  coreFeature: "fee",
+  coreStep: 1,
 };
 
 let mermaidReady = false;
@@ -79,17 +84,109 @@ function syncView() {
   const showSearch = state.view === "mapping" || state.view === "routes" || state.view === "drift";
   el("searchInput").style.display = showSearch ? "" : "none";
   el("serviceFilter").style.display = state.view === "mapping" ? "" : "none";
+  el("featureSelect").style.display = state.view === "core" ? "" : "none";
   renderActiveView();
 }
 
 /* ---------- renderers ---------- */
 function renderActiveView() {
+  if (state.view === "core") { renderCore(); return; } // 静的データなのでsnapshot不要
   if (!state.snapshot) return;
   if (state.view === "overview") renderOverview();
   else if (state.view === "flow") renderFlow();
   else if (state.view === "mapping") renderMapping();
   else if (state.view === "routes") renderRoutes();
   else if (state.view === "drift") renderDrift();
+}
+
+/* ---------- core feature flows ---------- */
+function renderCore() {
+  const sel = el("featureSelect");
+  if (!sel.options.length) {
+    sel.innerHTML = Object.values(CORE_FLOWS)
+      .map((f) => `<option value="${f.id}">${escapeHtml(f.title)}</option>`)
+      .join("");
+  }
+  sel.value = state.coreFeature;
+
+  const flow = CORE_FLOWS[state.coreFeature];
+  if (!flow) return;
+
+  el("coreTitle").textContent = flow.title;
+  el("coreTagline").textContent = flow.tagline;
+  el("coreSummary").textContent = flow.summary;
+  el("corePrinciple").innerHTML =
+    `<span class="core-principle-label">設計思想</span> ${escapeHtml(flow.principle)}`;
+
+  if (!flow.steps.some((s) => s.no === state.coreStep)) state.coreStep = flow.steps[0].no;
+
+  el("coreStepper").innerHTML = flow.steps.map((s) => {
+    const meta = KIND_META[s.kind] || { label: s.kind, color: "#64748b" };
+    const active = s.no === state.coreStep ? "is-active" : "";
+    return `<li class="step ${active}" data-step="${s.no}" style="--kind:${meta.color}">
+      <span class="step-no">${s.no}</span>
+      <span class="step-main">
+        <span class="step-title">${escapeHtml(s.title)}</span>
+        <span class="step-meta"><span class="step-kind" style="--kind:${meta.color}">${escapeHtml(meta.label)}</span><span class="step-actor">${escapeHtml(s.actor)}</span></span>
+      </span>
+    </li>`;
+  }).join("");
+
+  el("coreStepper").querySelectorAll(".step").forEach((li) => {
+    li.addEventListener("click", () => {
+      state.coreStep = Number(li.dataset.step);
+      renderCore();
+    });
+  });
+
+  renderCoreDetail(flow.steps.find((s) => s.no === state.coreStep));
+}
+
+function renderCoreDetail(step) {
+  const card = el("coreDetailCard");
+  if (!step) { card.innerHTML = `<p class="muted">ステップを選択してください</p>`; return; }
+  const meta = KIND_META[step.kind] || { label: step.kind, color: "#64748b" };
+  const paras = step.detail.map((p) => `<p>${escapeHtml(p)}</p>`).join("");
+  card.innerHTML = `
+    <div class="detail-head">
+      <span class="step-kind" style="--kind:${meta.color}">${escapeHtml(meta.label)}</span>
+      <h2>Step ${step.no} ・ ${escapeHtml(step.title)}</h2>
+    </div>
+    <p class="detail-oneliner">${escapeHtml(step.oneLiner)}</p>
+    <div class="detail-io">
+      <div class="io-box"><span class="io-label">担当</span><span>${escapeHtml(step.actor)}</span></div>
+      <div class="io-box"><span class="io-label">入力</span><span>${escapeHtml(step.input)}</span></div>
+      <div class="io-box io-arrow">→</div>
+      <div class="io-box"><span class="io-label">出力</span><span>${escapeHtml(step.output)}</span></div>
+    </div>
+    <div class="detail-body">${paras}</div>
+    ${Array.isArray(step.branches) && step.branches.length ? `
+      <div class="detail-branches">
+        <h3>分岐</h3>
+        ${step.branches.map((b) => `<div class="branch-row"><span class="branch-cond">${escapeHtml(b.cond)}</span><span class="branch-arrow">→</span><span class="branch-path">${escapeHtml(b.path)}</span></div>`).join("")}
+      </div>` : ""}
+    ${step.sourceFile ? `<button class="btn btn-ghost detail-src-btn" data-src="${escapeHtml(step.sourceFile)}">該当コードを表示 · ${escapeHtml(step.sourceFile)}</button><pre class="source" id="coreSource" hidden></pre>` : ""}`;
+
+  const btn = card.querySelector(".detail-src-btn");
+  if (btn) btn.addEventListener("click", () => loadCoreSource(btn.dataset.src));
+}
+
+async function loadCoreSource(srcPath) {
+  const pre = el("coreSource");
+  if (!pre) return;
+  if (!pre.hidden) { pre.hidden = true; return; }
+  pre.hidden = false;
+  pre.textContent = "読み込み中…";
+  try {
+    const res = await fetch(`/api/source?path=${encodeURIComponent(srcPath)}`);
+    if (!res.ok) throw new Error(String(res.status));
+    const { text } = await res.json();
+    const lines = text.split("\n").slice(0, 400);
+    pre.innerHTML = lines.map((line, i) =>
+      `<span class="src-line"><span class="src-no">${i + 1}</span>${escapeHtml(line)}</span>`).join("\n");
+  } catch {
+    pre.textContent = "ソースを取得できませんでした(ディレクトリ指定の場合は表示できません)";
+  }
 }
 
 function renderSidebar() {
@@ -387,6 +484,11 @@ function init() {
     state.serviceFilter = e.target.value;
     renderMapping();
   });
+  el("featureSelect").addEventListener("change", (e) => {
+    state.coreFeature = e.target.value;
+    state.coreStep = 1;
+    renderCore();
+  });
   el("scanBtn").addEventListener("click", async () => {
     const btn = el("scanBtn");
     btn.disabled = true;
@@ -411,6 +513,7 @@ function init() {
     if (e.key === "Escape") closeDrawer();
   });
   if (!location.hash) location.hash = "#/overview";
+  syncView(); // コア機能は静的データなのでsnapshot前に即描画
   loadAndRender().catch((err) => {
     el("viewTitle").textContent = "読み込み失敗";
     console.error(err);

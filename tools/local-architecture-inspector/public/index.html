@@ -18,6 +18,7 @@
       </div>
       <nav class="nav" id="nav">
         <a href="#/overview" data-view="overview" class="nav-item">概要</a>
+        <a href="#/core" data-view="core" class="nav-item">コア機能</a>
         <a href="#/flow" data-view="flow" class="nav-item">フロー図</a>
         <a href="#/mapping" data-view="mapping" class="nav-item">API呼び出し</a>
         <a href="#/routes" data-view="routes" class="nav-item">ルート一覧</a>
@@ -33,6 +34,7 @@
       <header class="topbar">
         <h1 id="viewTitle">概要</h1>
         <div class="topbar-actions">
+          <select id="featureSelect" class="input"></select>
           <input id="searchInput" class="input" type="search" placeholder="/v1/ や ファイル名で絞り込み" />
           <select id="serviceFilter" class="input"></select>
         </div>
@@ -54,6 +56,25 @@
           <div class="card">
             <h2>レーン構成</h2>
             <div id="laneSummary" class="lane-summary"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- コア機能フロー -->
+      <section class="view" data-view="core">
+        <div class="core-head card">
+          <h2 id="coreTitle">—</h2>
+          <p class="core-tagline" id="coreTagline"></p>
+          <p class="core-summary" id="coreSummary"></p>
+          <div class="core-principle" id="corePrinciple"></div>
+        </div>
+        <div class="core-split">
+          <div class="card core-stepper-card">
+            <h2>処理ステップ</h2>
+            <ol class="stepper" id="coreStepper"></ol>
+          </div>
+          <div class="card core-detail-card" id="coreDetailCard">
+            <p class="muted">左のステップを選択すると詳細を表示します</p>
           </div>
         </div>
       </section>

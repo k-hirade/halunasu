@@ -142,6 +142,78 @@ body {
 .lane h3 { margin: 0 0 8px; font-size: 13px; color: #e2e8f0; }
 .lane ul { margin: 0; padding-left: 18px; color: var(--ink-soft); font-size: 12px; line-height: 1.7; }
 
+/* core feature flow */
+.core-head { margin-bottom: 16px; }
+.core-head h2 { margin: 0 0 4px; font-size: 20px; }
+.core-tagline { margin: 0 0 12px; color: var(--brand); font-size: 13px; font-weight: 600; }
+.core-summary { margin: 0 0 14px; color: var(--ink-soft); line-height: 1.75; }
+.core-principle {
+  background: rgba(52, 211, 153, .08); border: 1px solid rgba(52, 211, 153, .25);
+  border-radius: 10px; padding: 12px 14px; color: #d1fae5; font-size: 13px; line-height: 1.7;
+}
+.core-principle-label {
+  display: inline-block; font-weight: 700; color: var(--ok); margin-right: 6px;
+}
+
+.core-split { display: grid; grid-template-columns: 360px 1fr; gap: 16px; align-items: start; }
+
+.stepper { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.step {
+  position: relative; display: flex; gap: 12px; align-items: flex-start;
+  padding: 12px 10px 12px 0; cursor: pointer; border-radius: 10px;
+  transition: background .12s;
+}
+.step:hover { background: var(--panel-2); }
+.step.is-active { background: var(--brand-soft); }
+/* connector line */
+.step::before {
+  content: ""; position: absolute; left: 17px; top: 38px; bottom: -6px; width: 2px;
+  background: var(--line);
+}
+.step:last-child::before { display: none; }
+.step-no {
+  flex: none; width: 28px; height: 28px; border-radius: 50%; z-index: 1;
+  display: grid; place-items: center; font-size: 12px; font-weight: 700;
+  background: var(--panel-3); color: var(--ink-soft); border: 2px solid var(--kind, var(--line));
+}
+.step.is-active .step-no { background: var(--kind); color: #06121f; }
+.step-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.step-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.step-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.step-kind {
+  font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--kind) 22%, transparent); color: var(--kind);
+}
+.step-actor { font-size: 11px; color: var(--muted); }
+
+.core-detail-card { min-height: 320px; }
+.detail-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.detail-head h2 { margin: 0; font-size: 16px; }
+.detail-oneliner { margin: 0 0 16px; font-size: 14px; color: var(--ink); font-weight: 500; }
+.detail-io {
+  display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; margin-bottom: 18px;
+}
+.io-box {
+  flex: 1; min-width: 120px; background: var(--panel-2); border: 1px solid var(--line-soft);
+  border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;
+  font-size: 12px; color: var(--ink);
+}
+.io-label { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.io-arrow { flex: 0; min-width: 0; align-items: center; justify-content: center; background: transparent; border: none; color: var(--muted); font-size: 18px; padding: 0 4px; }
+.detail-body p { margin: 0 0 12px; line-height: 1.8; color: var(--ink-soft); font-size: 13px; }
+.detail-branches {
+  margin: 4px 0 16px; padding: 14px; border-radius: 10px;
+  background: rgba(244, 114, 182, .07); border: 1px solid rgba(244, 114, 182, .22);
+}
+.detail-branches h3 { margin: 0 0 10px; font-size: 12px; color: #f9a8d4; }
+.branch-row { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; font-size: 12px; }
+.branch-row + .branch-row { border-top: 1px dashed var(--line); }
+.branch-cond { flex: 0 0 38%; font-weight: 600; color: var(--ink); }
+.branch-arrow { color: var(--muted); }
+.branch-path { flex: 1; color: var(--ink-soft); line-height: 1.5; }
+.detail-src-btn { margin-top: 8px; font-family: var(--mono); font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#coreSource { margin-top: 12px; max-height: 420px; }
+
 /* flow */
 .flow-card { padding: 0; overflow: hidden; }
 .flow-toolbar {
@@ -282,5 +354,5 @@ tbody tr.is-selected { background: var(--brand-soft); box-shadow: inset 3px 0 0 
   .sidebar { flex-direction: row; flex-wrap: wrap; height: auto; }
   .nav { flex-direction: row; flex-wrap: wrap; }
   .sidebar-foot { margin: 0; }
-  .kpis, .overview-grid, .split { grid-template-columns: 1fr; }
+  .kpis, .overview-grid, .split, .core-split { grid-template-columns: 1fr; }
 }
