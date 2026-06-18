@@ -240,6 +240,7 @@ function FeeSessionListView() {
 
 function FeeSessionDetailView({ sessionId }) {
   const feeApi = useFeeApi();
+  const downloadReceiptCsvFile = useFeeReceiptCsvDownload();
   const [patients, setPatients] = useState([]);
   const [facilities, setFacilities] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -765,6 +766,17 @@ function FeeSessionDetailView({ sessionId }) {
     });
   }
 
+  async function downloadReceiptCsv() {
+    if (!sessionId) {
+      addToast("CSVを出力できるセッションがありません。", "error");
+      return;
+    }
+    await runBusy(setBusy, addToast, async () => {
+      await downloadReceiptCsvFile(sessionId);
+      addToast("レセプト取込用CSVをダウンロードしました。", "success");
+    });
+  }
+
   function addOrderRow() {
     setOrderRowsTouched(true);
     setOrderRows((current) => [...current.filter((row) => row.localName || row.standardCode), createEmptyOrderRow()]);
@@ -1000,6 +1012,7 @@ function FeeSessionDetailView({ sessionId }) {
           disabled={busy}
           feeSession={feeSession}
           onCopyReceipt={copyReceiptDraft}
+          onDownloadCsv={downloadReceiptCsv}
           onDecision={decideReviewItem}
           onOpenDetail={setCandidateDetail}
           onOpenManualItem={() => {
@@ -1209,6 +1222,7 @@ function WorkPane({
   disabled,
   feeSession,
   onCopyReceipt,
+  onDownloadCsv,
   onDecision,
   onOpenDetail,
   onOpenManualItem,
@@ -1242,6 +1256,7 @@ function WorkPane({
           <ReceiptDraftPane
             disabled={disabled}
             onCopyReceipt={onCopyReceipt}
+            onDownloadCsv={onDownloadCsv}
             onRemoveManualOrder={onRemoveManualOrder}
             orderRows={orderRows}
             receiptDraft={receiptDraft}
@@ -2152,24 +2167,28 @@ function confirmableProposalForAdoption(item = {}) {
     && points > 0;
 }
 
-function ReceiptDraftPane({ disabled, onCopyReceipt, onRemoveManualOrder, orderRows = [], receiptDraft, selected }) {
+function ReceiptDraftPane({ disabled, onCopyReceipt, onDownloadCsv, onRemoveManualOrder, orderRows = [], receiptDraft, selected }) {
   const manualOrders = manualBillingOrderEntries(orderRows);
   return (
     <div className="receipt-draft-pane">
       <div className="receipt-pane-head">
         <div>
           <h2>レセプト案</h2>
-          <p>区分別合計と明細です。確認後にコピーできます。</p>
+          <p>区分別合計と明細です。確認後にコピー・CSV出力できます。</p>
         </div>
         <div className="receipt-pane-actions">
           <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={onCopyReceipt} type="button">
             コピー
+          </button>
+          <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={onDownloadCsv} type="button">
+            CSV出力
           </button>
           <button className="btn btn--primary btn--sm" disabled title="確定APIが未実装です" type="button">
             確定
           </button>
         </div>
       </div>
+      <BillingSummary billing={receiptDraft?.billing} />
       {manualOrders.length ? (
         <section className="manual-billing-list" aria-label="ユーザー追加明細">
           <div className="manual-billing-list-head">
@@ -2196,6 +2215,50 @@ function ReceiptDraftPane({ disabled, onCopyReceipt, onRemoveManualOrder, orderR
       ) : null}
       <ReceiptDraft receiptDraft={receiptDraft} selected={selected} />
     </div>
+  );
+}
+
+const BURDEN_RATIO_SOURCE_LABEL = {
+  explicit: "保険情報の指定",
+  age: "年齢から自動判定",
+  public: "公費による上書き",
+  default_unknown: "不明(要確認・暫定3割)"
+};
+
+function BillingSummary({ billing }) {
+  if (!billing) {
+    return null;
+  }
+  const yen = (value) => `¥${Number(value || 0).toLocaleString()}`;
+  const ratioPercent = Math.round(Number(billing.burdenRatio || 0) * 100);
+  const needsReview = billing.burdenRatioSource === "default_unknown";
+  return (
+    <section className={`billing-summary ${needsReview ? "billing-summary--review" : ""}`} aria-label="会計(窓口負担)">
+      <div className="billing-summary-grid">
+        <div className="billing-metric">
+          <span>総医療費</span>
+          <strong>{yen(billing.totalFee)}</strong>
+          <small>{Number(billing.totalPoints || 0).toLocaleString()}点</small>
+        </div>
+        <div className="billing-metric">
+          <span>負担割合</span>
+          <strong>{ratioPercent}%</strong>
+          <small>{BURDEN_RATIO_SOURCE_LABEL[billing.burdenRatioSource] || billing.burdenRatioSource}</small>
+        </div>
+        <div className="billing-metric billing-metric--accent">
+          <span>窓口負担</span>
+          <strong>{yen(billing.copay)}</strong>
+          <small>保険者負担 {yen(billing.insurerPay)}</small>
+        </div>
+      </div>
+      {Array.isArray(billing.notes) && billing.notes.length ? (
+        <ul className="billing-notes">
+          {billing.notes.map((note, index) => (
+            <li key={index}>{note}</li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 
@@ -2627,6 +2690,35 @@ function useFeeApi() {
     }
     return payload;
   }, [auth.accessToken, auth.csrfToken]);
+}
+
+// レセコン取込用CSVのダウンロード(JSONではなくテキスト応答を扱う)
+function useFeeReceiptCsvDownload() {
+  const auth = usePlatformAuth();
+  return useCallback(async (sessionId) => {
+    const config = typeof window !== "undefined" ? window.__HALUNASU_FEE_CONFIG__ || {} : {};
+    const baseUrl = config.feeBaseUrl || "/api/fee";
+    const headers = {};
+    if (auth.accessToken) {
+      headers.authorization = `Bearer ${auth.accessToken}`;
+    }
+    const response = await fetch(
+      `${baseUrl}/v1/fee/sessions/${encodeURIComponent(sessionId)}/receipt.csv`,
+      { method: "GET", headers, credentials: "include" }
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `receipt_${sessionId}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [auth.accessToken]);
 }
 
 async function runBusy(setBusy, addToast, task) {

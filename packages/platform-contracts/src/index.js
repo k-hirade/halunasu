@@ -25,6 +25,8 @@ export const signupApplicationStatuses = Object.freeze(["submitted", "email_veri
 export const dataRequestTypes = Object.freeze(["access", "export", "deletion", "correction"]);
 export const dataRequestStatuses = Object.freeze(["submitted", "reviewing", "completed", "rejected", "cancelled"]);
 export const recordingSources = Object.freeze(["linked_mobile", "local_browser"]);
+// 保険種別: 社保 / 国保 / 後期高齢 / 自費 / その他
+export const insurerTypes = Object.freeze(["shaho", "kokuho", "kouki", "jihi", "other"]);
 
 export function normalizeOrganizationCode(value) {
   return requiredString(value, "organizationCode")
@@ -225,8 +227,8 @@ export function validateCreatePatientInput(input = {}) {
     patientIdentifiers: normalizePatientIdentifiers(input.patientIdentifiers),
     externalPatientIds: normalizeStringArray(input.externalPatientIds),
     contact: isPlainObject(input.contact) ? input.contact : {},
-    insurance: isPlainObject(input.insurance) ? input.insurance : {},
-    publicInsurance: isPlainObject(input.publicInsurance) ? input.publicInsurance : {},
+    insurance: validateInsurance(input.insurance),
+    publicInsurance: validatePublicInsurance(input.publicInsurance),
     consent: isPlainObject(input.consent) ? input.consent : {},
     duplicateCandidateIds: normalizeStringArray(input.duplicateCandidateIds),
     status: optionalEnum(input.status, patientStatuses, "status") || "active",
@@ -248,10 +250,8 @@ export function validatePatchPatientInput(input = {}) {
       : undefined,
     externalPatientIds: hasOwn(input, "externalPatientIds") ? normalizeStringArray(input.externalPatientIds) : undefined,
     contact: hasOwn(input, "contact") && isPlainObject(input.contact) ? input.contact : undefined,
-    insurance: hasOwn(input, "insurance") && isPlainObject(input.insurance) ? input.insurance : undefined,
-    publicInsurance: hasOwn(input, "publicInsurance") && isPlainObject(input.publicInsurance)
-      ? input.publicInsurance
-      : undefined,
+    insurance: hasOwn(input, "insurance") ? validateInsurance(input.insurance) : undefined,
+    publicInsurance: hasOwn(input, "publicInsurance") ? validatePublicInsurance(input.publicInsurance) : undefined,
     consent: hasOwn(input, "consent") && isPlainObject(input.consent) ? input.consent : undefined,
     duplicateCandidateIds: hasOwn(input, "duplicateCandidateIds")
       ? normalizeStringArray(input.duplicateCandidateIds)
@@ -394,6 +394,68 @@ export function patientSnapshot(patient, snapshotAt = new Date()) {
   });
 }
 
+// 患者の保険情報を構造化する。既知フィールドは検証し、未知キーは後方互換のため保持する。
+export function validateInsurance(input = {}) {
+  if (!isPlainObject(input)) {
+    return {};
+  }
+  const known = compactObject({
+    insurerType: optionalEnum(input.insurerType, insurerTypes, "insurance.insurerType"),
+    insurerNumber: optionalString(input.insurerNumber),
+    insuredSymbol: optionalString(input.insuredSymbol),
+    insuredNumber: optionalString(input.insuredNumber),
+    branchNumber: optionalString(input.branchNumber),
+    burdenRatio: optionalBurdenRatio(input.burdenRatio, "insurance.burdenRatio"),
+    validFrom: optionalDate(input.validFrom, "insurance.validFrom"),
+    validTo: optionalDate(input.validTo, "insurance.validTo")
+  });
+  const KNOWN_KEYS = new Set([
+    "insurerType", "insurerNumber", "insuredSymbol", "insuredNumber",
+    "branchNumber", "burdenRatio", "validFrom", "validTo"
+  ]);
+  const preserved = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (!KNOWN_KEYS.has(key)) {
+      preserved[key] = value;
+    }
+  }
+  return { ...preserved, ...known };
+}
+
+// 公費は併用ありのため配列。各エントリの既知フィールドを検証する。
+export function validatePublicInsurance(value) {
+  if (isPlainObject(value)) {
+    // 後方互換: 旧データが単一オブジェクトの場合は1要素配列として扱う
+    value = [value];
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter(isPlainObject)
+    .map((entry, index) => compactObject({
+      payerNumber: optionalString(entry.payerNumber),
+      recipientNumber: optionalString(entry.recipientNumber),
+      burdenRatioOverride: optionalBurdenRatio(entry.burdenRatioOverride, `publicInsurance[${index}].burdenRatioOverride`),
+      priority: optionalNonNegativeInteger(entry.priority, `publicInsurance[${index}].priority`)
+    }))
+    .filter((entry) => Object.keys(entry).length > 0);
+}
+
+// 受診日時点の保険・公費をセッションに固定するためのスナップショット。
+export function insuranceSnapshot(patient = {}, serviceDate, snapshotAt = new Date()) {
+  const insurance = validateInsurance(patient.insurance);
+  const publicInsurance = validatePublicInsurance(patient.publicInsurance);
+  return compactObject({
+    insurance: Object.keys(insurance).length ? insurance : undefined,
+    publicInsurance: publicInsurance.length ? publicInsurance : undefined,
+    serviceDate: optionalDate(serviceDate, "serviceDate"),
+    snapshotAt: snapshotAt instanceof Date
+      ? snapshotAt.toISOString()
+      : requiredString(snapshotAt, "snapshotAt")
+  });
+}
+
 export function facilitySnapshot(facility, snapshotAt = new Date()) {
   return compactObject({
     facilityId: requiredString(facility.facilityId, "facilityId"),
@@ -501,6 +563,32 @@ function optionalBirthDate(value) {
   }
 
   return normalized;
+}
+
+function optionalDate(value, field) {
+  const normalized = optionalString(value);
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw validationError(`${field} must use YYYY-MM-DD`, field);
+  }
+
+  return normalized;
+}
+
+function optionalBurdenRatio(value, field) {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    throw validationError(`${field} must be a ratio between 0 and 1 (e.g. 0.3)`, field);
+  }
+
+  return parsed;
 }
 
 function optionalDateTime(value, field) {

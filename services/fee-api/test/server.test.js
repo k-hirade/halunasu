@@ -8113,3 +8113,49 @@ function request(stores, method, path, body, headers = {}, overrides = {}) {
     sessionSecret: "test-session-secret"
   });
 }
+
+test("exports a receipt CSV with billing summary", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "山田 太郎",
+    birthDate: "1970-01-01",
+    sex: "male",
+    insurance: { insurerType: "shaho", insurerNumber: "01130012", insuredSymbol: "12", insuredNumber: "3456" }
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "咳嗽。処方あり。",
+    orders: [{ orderId: "ord_1", orderType: "drug", localName: "カルボシステイン錠", quantity: 2 }]
+  }, headers);
+  await request(
+    stores, "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {}, headers
+  );
+  const csv = await request(
+    stores, "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/receipt.csv`,
+    undefined, headers
+  );
+
+  assert.equal(csv.statusCode, 200);
+  assert.equal(csv.raw, true);
+  assert.match(csv.headers["content-type"], /text\/csv/);
+  assert.match(csv.headers["content-disposition"], /receipt_.*\.csv/);
+  assert.equal(typeof csv.body, "string");
+  assert.equal(csv.body.charCodeAt(0), 0xFEFF, "starts with UTF-8 BOM");
+  assert.match(csv.body, /claimMonth,patientId,serviceDate/);
+  assert.match(csv.body, /summary,totalPoints,totalFee,burdenRatio,copay,insurerPay/);
+  assert.match(csv.body, /01130012/); // insurer number from snapshot
+});
+
+test("receipt CSV returns 404 for unknown session", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const missing = await request(stores, "GET", "/v1/fee/sessions/fee_missing/receipt.csv", undefined, headers);
+  assert.equal(missing.statusCode, 404);
+});

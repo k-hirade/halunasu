@@ -12,12 +12,14 @@ import {
 } from "../../../packages/fee-contracts/src/index.js";
 import {
   buildCandidateWorkbench,
+  buildReceiptCsv,
   buildReceiptDraft,
   buildReviewItems
 } from "../../../packages/fee-core/src/index.js";
 import {
   departmentSnapshot,
   facilitySnapshot,
+  insuranceSnapshot,
   patientSnapshot
 } from "../../../packages/platform-contracts/src/index.js";
 import {
@@ -65,7 +67,7 @@ export function createFeeApiServer(options = {}) {
         sessionSecret: options.sessionSecret
       });
 
-      sendJson(res, response.statusCode, response.body, response.headers);
+      writeResponse(res, response);
     } catch (error) {
       logFeeApiError(error, {
         stage: "http_server",
@@ -73,7 +75,7 @@ export function createFeeApiServer(options = {}) {
         path: req.url
       });
       const response = errorResponse(error);
-      sendJson(res, response.statusCode, response.body, response.headers);
+      writeResponse(res, response);
     }
   });
 }
@@ -230,6 +232,14 @@ async function routeFeeApiRequest(input = {}) {
     return ok(await feeStore.listSessions(context.session.orgId, feeSessionListOptionsFromUrl(url)));
   }
 
+  // #4段階A: 患者×月でセッションを名寄せした月次サマリ
+  if (method === "GET" && matches(parts, ["v1", "fee", "monthly-summary"])) {
+    const claimMonth = url.searchParams.get("claimMonth") || "";
+    const sessions = await feeStore.listSessions(context.session.orgId);
+    const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+    return ok(buildMonthlyClaimSummary(sessionList, { claimMonth }));
+  }
+
   if (method === "POST" && matches(parts, ["v1", "fee", "sessions"])) {
     requireMutationCsrf(input, context.session);
     const normalized = validateCreateFeeSessionInput(input.body || {});
@@ -247,6 +257,9 @@ async function routeFeeApiRequest(input = {}) {
       orgId: context.session.orgId,
       patientId: patient?.patientId,
       patientSnapshot: patient ? patientSnapshot(patient, input.now || new Date()) : null,
+      insuranceSnapshot: patient
+        ? insuranceSnapshot(patient, normalized.serviceDate || null, input.now || new Date())
+        : null,
       facilitySnapshot: facility ? facilitySnapshot(facility, input.now || new Date()) : null,
       departmentSnapshot: department ? departmentSnapshot(department, input.now || new Date()) : null,
       createdByMemberId: context.session.memberId
@@ -321,6 +334,25 @@ async function routeFeeApiRequest(input = {}) {
 
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "receipt-draft") {
     return ok({ receiptDraft: await feeStore.getReceiptDraft(context.session.orgId, parts[3]) });
+  }
+
+  // レセコン取込用CSV(段階A): セッションから最新の receiptDraft を生成してCSV化
+  if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "receipt.csv") {
+    const session = await feeStore.getSession(context.session.orgId, parts[3]);
+    if (!session) {
+      return notFound("fee session not found");
+    }
+    const receiptDraft = buildReceiptDraft(session, { now: input.now || new Date() });
+    const csv = buildReceiptCsv(receiptDraft);
+    return {
+      statusCode: 200,
+      raw: true,
+      body: csv,
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": `attachment; filename="receipt_${parts[3]}.csv"`
+      }
+    };
   }
 
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "review-items") {
@@ -1297,6 +1329,138 @@ async function loadPriorFeeSessionsForPatient({
   }
 }
 
+// #4段階A: セッションを患者×月で名寄せし、月次サマリ(患者別の受診一覧・合計点数)を作る。
+export function buildMonthlyClaimSummary(sessions = [], { claimMonth = "" } = {}) {
+  const month = String(claimMonth || "").trim();
+  const sessionMonthOf = (session) => String(session.claimMonth || String(session.serviceDate || "").slice(0, 7));
+  const groups = new Map();
+
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    if (month && sessionMonthOf(session) !== month) {
+      continue;
+    }
+    const patientKey = String(session.patientId || "").trim() || "__unassigned__";
+    if (!groups.has(patientKey)) {
+      groups.set(patientKey, {
+        patientId: patientKey === "__unassigned__" ? null : patientKey,
+        patientName: null,
+        sessionCount: 0,
+        totalPoints: 0,
+        sessions: []
+      });
+    }
+    const group = groups.get(patientKey);
+    const points = Number(session.calculationSummary?.totalPoints || 0) || 0;
+    group.sessionCount += 1;
+    group.totalPoints += points;
+    if (!group.patientName && session.patientSnapshot?.displayName) {
+      group.patientName = session.patientSnapshot.displayName;
+    }
+    group.sessions.push({
+      feeSessionId: session.feeSessionId,
+      serviceDate: session.serviceDate || null,
+      claimMonth: sessionMonthOf(session) || null,
+      status: session.status || null,
+      totalPoints: points
+    });
+  }
+
+  const patients = [...groups.values()]
+    .map((group) => ({
+      ...group,
+      sessions: group.sessions.sort((a, b) => String(a.serviceDate || "").localeCompare(String(b.serviceDate || "")))
+    }))
+    .sort((a, b) => b.totalPoints - a.totalPoints);
+
+  return {
+    claimMonth: month || null,
+    patientCount: patients.length,
+    sessionCount: patients.reduce((sum, patient) => sum + patient.sessionCount, 0),
+    totalPoints: patients.reduce((sum, patient) => sum + patient.totalPoints, 0),
+    patients
+  };
+}
+
+// #8: 受診履歴(priorSessions)から、算定エンジンが同月制限・回数制限の判定に使う
+// history(same_month_history_codes / procedure_history_events 等)を組み立てる。
+export function buildPriorHistoryOptions(priorSessions = [], { serviceDate = "" } = {}) {
+  if (!Array.isArray(priorSessions) || !priorSessions.length) {
+    return null;
+  }
+  const currentMonth = String(serviceDate || "").slice(0, 7);
+  const sameMonthCodes = new Set();
+  const sameDayCodes = new Set();
+  const events = [];
+  const seenEvents = new Set();
+
+  for (const prior of priorSessions) {
+    const priorDate = String(prior?.serviceDate || "");
+    if (!priorDate) {
+      continue;
+    }
+    const lineItems = Array.isArray(prior?.calculationResult?.lineItems)
+      ? prior.calculationResult.lineItems
+      : [];
+    for (const line of lineItems) {
+      const code = String(line?.code || "").trim();
+      if (!code || !isHistoryCountableLine(line)) {
+        continue;
+      }
+      const eventKey = `${code}|${priorDate}`;
+      if (!seenEvents.has(eventKey)) {
+        seenEvents.add(eventKey);
+        events.push({ procedure_code: code, service_date: priorDate });
+      }
+      if (currentMonth && priorDate.slice(0, 7) === currentMonth) {
+        sameMonthCodes.add(code);
+      }
+      if (serviceDate && priorDate === serviceDate) {
+        sameDayCodes.add(code);
+      }
+    }
+  }
+
+  if (!events.length && !sameMonthCodes.size && !sameDayCodes.size) {
+    return null;
+  }
+  return {
+    same_month_history_codes: [...sameMonthCodes],
+    same_day_history_codes: [...sameDayCodes],
+    procedure_history_events: events
+  };
+}
+
+// 明確に算定しないと判断された行は履歴に含めない(過大な制限検知を避ける)
+function isHistoryCountableLine(line = {}) {
+  const status = String(line?.status || "").toLowerCase();
+  if (status === "rejected" || status === "blocked") {
+    return false;
+  }
+  if (line?.includedInTotal === false) {
+    return false;
+  }
+  return true;
+}
+
+// 履歴を calculationOptions.history へマージする。明示指定(gold等)があればそれを優先。
+export function mergePriorHistoryIntoOptions(options = {}, priorHistory = {}) {
+  const existing = isPlainObject(options.history) ? options.history : {};
+  const merged = { ...existing };
+  for (const key of ["same_month_history_codes", "same_day_history_codes"]) {
+    if ((!Array.isArray(existing[key]) || !existing[key].length) && Array.isArray(priorHistory[key]) && priorHistory[key].length) {
+      merged[key] = priorHistory[key];
+    }
+  }
+  if (
+    (!Array.isArray(existing.procedure_history_events) || !existing.procedure_history_events.length)
+    && Array.isArray(priorHistory.procedure_history_events)
+    && priorHistory.procedure_history_events.length
+  ) {
+    merged.procedure_history_events = priorHistory.procedure_history_events;
+  }
+  return { ...options, history: merged };
+}
+
 function stageDuration(stageTimings, stage) {
   const entry = stageTimings.find((candidate) => candidate.stage === stage);
   return entry ? entry.durationMs : null;
@@ -1366,6 +1530,9 @@ async function resolveFeeSessionPatch(context, platformStore, normalized, now, c
     const patient = await resolveFeePatient(context, platformStore, normalized);
     patch.patientId = patient.patientId;
     patch.patientSnapshot = patientSnapshot(patient, now);
+    // 受診日時点の保険・公費を固定(会計・負担金計算の前提)
+    const serviceDateForSnapshot = normalized.serviceDate || current.serviceDate || null;
+    patch.insuranceSnapshot = insuranceSnapshot(patient, serviceDateForSnapshot, now);
   }
 
   if (hasOwn(normalized, "facilityId")) {
@@ -1523,6 +1690,17 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     clinicalText: baseSession.clinicalText || calculationInput.clinicalText || ""
   }));
   const prepared = attachShadowCalculationsToPreparation(primaryPrepared, shadowCalculations);
+
+  // #8: claimContext(リプレイ/契約)指定が無い通常算定では、受診履歴から
+  // 同月・回数制限の判定材料を calculationOptions.history へ自動注入する。
+  const hasExplicitClaimContext = isPlainObject(session.claimContext) || isPlainObject(calculationInput.claimContext);
+  if (!hasExplicitClaimContext && isPlainObject(prepared.calculationOptions)) {
+    const priorHistory = buildPriorHistoryOptions(priorSessions, { serviceDate: baseSession.serviceDate });
+    if (priorHistory) {
+      prepared.calculationOptions = mergePriorHistoryIntoOptions(prepared.calculationOptions, priorHistory);
+    }
+  }
+
   const patch = {};
 
   if (
@@ -2213,6 +2391,7 @@ function buildFeeCalculationInputSnapshot({
       : Array.isArray(session.orders) ? session.orders : [],
     diagnoses: Array.isArray(session.diagnoses) ? session.diagnoses : [],
     insurance: session.insurance || null,
+    insuranceSnapshot: session.insuranceSnapshot || null,
     claimContext: isPlainObject(calculationInputForSession.claimContext) ? calculationInputForSession.claimContext : null,
     calculationOptions: options,
     calculationOptionsSource: session.calculationOptionsSource || prepared.calculationOptionsSource || null,
@@ -2741,6 +2920,20 @@ async function readJsonBody(req) {
     error.statusCode = 400;
     throw error;
   }
+}
+
+function writeResponse(res, response) {
+  // raw応答(CSV等)はそのまま、それ以外はJSONとして返す
+  if (response && response.raw) {
+    res.writeHead(response.statusCode, {
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      ...response.headers
+    });
+    res.end(response.body);
+    return;
+  }
+  sendJson(res, response.statusCode, response.body, response.headers);
 }
 
 function sendJson(res, statusCode, body, headers = {}) {

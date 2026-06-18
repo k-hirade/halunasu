@@ -10,6 +10,9 @@ import {
   validateCreateDepartmentInput,
   validateCreateFacilityInput,
   patientSnapshot,
+  insuranceSnapshot,
+  validateInsurance,
+  validatePublicInsurance,
   validateCreateMemberInput,
   validateCreateOrganizationInput,
   validateCreatePatientInput,
@@ -267,4 +270,45 @@ test("rejects invalid patient birth date", () => {
     () => validateCreatePatientInput({ displayName: "Yamada Taro", birthDate: "19700101" }),
     /birthDate/
   );
+});
+
+test("validates and structures insurance, preserving unknown keys", () => {
+  const insurance = validateInsurance({
+    insurerType: "shaho",
+    insurerNumber: "01130012",
+    insuredSymbol: "12",
+    insuredNumber: "3456",
+    burdenRatio: 0.3,
+    legacyField: "keep-me"
+  });
+  assert.equal(insurance.insurerType, "shaho");
+  assert.equal(insurance.burdenRatio, 0.3);
+  assert.equal(insurance.legacyField, "keep-me", "unknown keys preserved for backward compatibility");
+
+  assert.deepEqual(validateInsurance({}), {});
+  assert.deepEqual(validateInsurance(undefined), {});
+  assert.throws(() => validateInsurance({ insurerType: "invalid" }), /insurerType/);
+  assert.throws(() => validateInsurance({ burdenRatio: 2 }), /burdenRatio/);
+});
+
+test("validates public insurance as an array and accepts legacy single object", () => {
+  const list = validatePublicInsurance([{ payerNumber: "54136015", recipientNumber: "0000001", priority: 1 }]);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].payerNumber, "54136015");
+
+  const legacy = validatePublicInsurance({ payerNumber: "54136015" });
+  assert.equal(legacy.length, 1, "legacy single object becomes one-element array");
+  assert.deepEqual(validatePublicInsurance(undefined), []);
+});
+
+test("creates insurance snapshot fixed at the service date", () => {
+  const snapshot = insuranceSnapshot(
+    { insurance: { insurerType: "kokuho", burdenRatio: 0.3 }, publicInsurance: [{ payerNumber: "1" }] },
+    "2026-06-01",
+    new Date("2026-06-01T00:00:00.000Z")
+  );
+  assert.equal(snapshot.insurance.insurerType, "kokuho");
+  assert.equal(snapshot.publicInsurance.length, 1);
+  assert.equal(snapshot.serviceDate, "2026-06-01");
+  assert.equal(snapshot.snapshotAt, "2026-06-01T00:00:00.000Z");
 });

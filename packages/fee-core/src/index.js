@@ -18,6 +18,7 @@ export function buildFeeSession(input = {}, options = {}) {
     patientId: patientId || null,
     patientRef: input.patientRef || patientId || null,
     patientSnapshot: input.patientSnapshot || null,
+    insuranceSnapshot: input.insuranceSnapshot || null,
     facilityId: facilityId || null,
     facilitySnapshot: input.facilitySnapshot || null,
     departmentId: input.departmentId || null,
@@ -59,6 +60,7 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
       patientId: hasOwn(patch, "patientId") ? patch.patientId || null : undefined,
       patientRef: hasOwn(patch, "patientRef") ? patch.patientRef || patch.patientId || null : undefined,
       patientSnapshot: hasOwn(patch, "patientSnapshot") ? patch.patientSnapshot || null : undefined,
+      insuranceSnapshot: hasOwn(patch, "insuranceSnapshot") ? patch.insuranceSnapshot || null : undefined,
       facilityId: hasOwn(patch, "facilityId") ? patch.facilityId || null : undefined,
       facilitySnapshot: hasOwn(patch, "facilitySnapshot") ? patch.facilitySnapshot || null : undefined,
       departmentId: hasOwn(patch, "departmentId") ? patch.departmentId || null : undefined,
@@ -274,6 +276,7 @@ export function buildReceiptDraft(session = {}, options = {}) {
     });
   const lines = [...baseLines, ...adoptedProposalLines];
   const includedLines = lines.filter((line) => line.includedInTotal !== false);
+  const totalPoints = Number(includedLines.reduce((sum, line) => sum + line.totalPoints, 0));
 
   return {
     receiptDraftId: `receipt_${requiredString(session.feeSessionId, "feeSessionId")}`,
@@ -281,6 +284,8 @@ export function buildReceiptDraft(session = {}, options = {}) {
     orgId: requiredString(session.orgId, "orgId"),
     patientId: session.patientId || null,
     patientRef: session.patientRef || session.patientId,
+    patientSnapshot: session.patientSnapshot || null,
+    insuranceSnapshot: session.insuranceSnapshot || null,
     facilitySnapshot: session.facilitySnapshot || null,
     departmentSnapshot: session.departmentSnapshot || null,
     serviceDate: requiredString(session.serviceDate, "serviceDate"),
@@ -288,7 +293,8 @@ export function buildReceiptDraft(session = {}, options = {}) {
     setting: session.setting || "outpatient",
     status: calculation.status ? "ready" : "not_calculated",
     exportStatus: "draft",
-    totalPoints: Number(includedLines.reduce((sum, line) => sum + line.totalPoints, 0)),
+    totalPoints,
+    billing: buildBillingSummary(session, { totalPoints }),
     lines,
     lineGroups: groupReceiptLines(includedLines),
     validationIssues: warnings.map((message, index) => ({
@@ -300,6 +306,183 @@ export function buildReceiptDraft(session = {}, options = {}) {
     generatedAt: timestamp(options.now || calculation.generatedAt),
     schemaVersion: 1
   };
+}
+
+// 窓口一部負担金(会計)を決定論で算出する純関数。
+// 入力: セッション(calculationResult.totalPoints / insuranceSnapshot / patientSnapshot.birthDate / serviceDate)
+// 高額療養費の自己負担限度額は範囲外(notesに明記)。
+export function buildBillingSummary(session = {}, options = {}) {
+  const totalPoints = Number(
+    options.totalPoints
+    ?? session.calculationResult?.totalPoints
+    ?? 0
+  ) || 0;
+  const snapshot = isPlainObject(session.insuranceSnapshot) ? session.insuranceSnapshot : {};
+  const insurance = isPlainObject(snapshot.insurance)
+    ? snapshot.insurance
+    : (isPlainObject(session.insurance) ? session.insurance : {});
+  const publicInsurance = Array.isArray(snapshot.publicInsurance) ? snapshot.publicInsurance : [];
+  const birthDate = session.patientSnapshot?.birthDate || options.birthDate || null;
+  const serviceDate = session.serviceDate || options.serviceDate || snapshot.serviceDate || null;
+
+  const ratio = resolveBurdenRatio({ birthDate, serviceDate, insurance, publicInsurance });
+  const totalFee = totalPoints * 10;
+  // 現物給付の端数処理: 10円未満四捨五入
+  const copay = Math.round((totalFee * ratio.value) / 10) * 10;
+  const insurerPay = totalFee - copay;
+
+  const notes = [...ratio.notes, "高額療養費の自己負担限度額は未適用です。"];
+
+  return compactObject({
+    totalPoints,
+    totalFee,
+    burdenRatio: ratio.value,
+    burdenRatioSource: ratio.source,
+    copay,
+    insurerPay,
+    publicApplied: ratio.publicApplied,
+    notes,
+    schemaVersion: 1
+  });
+}
+
+function resolveBurdenRatio({ birthDate, serviceDate, insurance = {}, publicInsurance = [] } = {}) {
+  const notes = [];
+
+  // 1. 公費の負担割合上書きが最優先(priority昇順で最初の override)
+  const publicOverride = publicInsurance
+    .filter((entry) => isPlainObject(entry) && typeof entry.burdenRatioOverride === "number")
+    .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))[0];
+  if (publicOverride) {
+    notes.push("公費の負担割合上書きを適用しました。");
+    return { value: publicOverride.burdenRatioOverride, source: "public", publicApplied: true, notes };
+  }
+
+  // 2. 明示の負担割合
+  if (typeof insurance.burdenRatio === "number") {
+    return { value: insurance.burdenRatio, source: "explicit", publicApplied: false, notes };
+  }
+
+  // 3. 自費は全額自己負担
+  if (insurance.insurerType === "jihi") {
+    return { value: 1, source: "explicit", publicApplied: false, notes };
+  }
+
+  // 4. 年齢から既定割合
+  const age = ageAt(birthDate, serviceDate);
+  if (age == null) {
+    notes.push("生年月日が不明なため負担割合を確定できません。確認してください。");
+    return { value: 0.3, source: "default_unknown", publicApplied: false, notes };
+  }
+  if (isPreschool(birthDate, serviceDate)) {
+    return { value: 0.2, source: "age", publicApplied: false, notes }; // 義務教育就学前
+  }
+  if (age < 70) {
+    return { value: 0.3, source: "age", publicApplied: false, notes };
+  }
+  if (age < 75) {
+    notes.push("70〜74歳は原則2割ですが、現役並み所得は3割です。所得区分を確認してください。");
+    return { value: 0.2, source: "age", publicApplied: false, notes };
+  }
+  notes.push("75歳以上は原則1割ですが、一定以上所得は2割・現役並み所得は3割です。所得区分を確認してください。");
+  return { value: 0.1, source: "age", publicApplied: false, notes };
+}
+
+// YYYY-MM-DD を比較しやすい整数(YYYYMMDD)へ。失敗時 null。
+function ymdInt(value) {
+  const matched = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ""));
+  if (!matched) {
+    return null;
+  }
+  return Number(matched[1]) * 10000 + Number(matched[2]) * 100 + Number(matched[3]);
+}
+
+function ageAt(birthDate, serviceDate) {
+  const birth = ymdInt(birthDate);
+  const service = ymdInt(serviceDate);
+  if (!birth || !service) {
+    return null;
+  }
+  let age = Math.floor(service / 10000) - Math.floor(birth / 10000);
+  if ((service % 10000) < (birth % 10000)) {
+    age -= 1;
+  }
+  return age;
+}
+
+// 義務教育就学前: 6歳に達する日以後の最初の3月31日まで。
+function isPreschool(birthDate, serviceDate) {
+  const birth = ymdInt(birthDate);
+  const service = ymdInt(serviceDate);
+  if (!birth || !service) {
+    return false;
+  }
+  const birthYear = Math.floor(birth / 10000);
+  const birthMonthDay = birth % 10000;
+  const sixthBirthday = (birthYear + 6) * 10000 + birthMonthDay;
+  const march31SameYear = (birthYear + 6) * 10000 + 331;
+  const threshold = sixthBirthday <= march31SameYear
+    ? march31SameYear
+    : (birthYear + 7) * 10000 + 331;
+  return service <= threshold;
+}
+
+// レセコン取込用CSV(段階A)。1行=1明細。UTF-8 BOM付き・CRLF。末尾にサマリ。
+export function buildReceiptCsv(receiptDraft = {}, context = {}) {
+  const insuranceSnapshot = isPlainObject(context.insuranceSnapshot)
+    ? context.insuranceSnapshot
+    : (isPlainObject(receiptDraft.insuranceSnapshot) ? receiptDraft.insuranceSnapshot : {});
+  const insurance = isPlainObject(insuranceSnapshot.insurance) ? insuranceSnapshot.insurance : {};
+  const billing = isPlainObject(context.billing)
+    ? context.billing
+    : (isPlainObject(receiptDraft.billing) ? receiptDraft.billing : {});
+
+  const claimMonth = receiptDraft.claimMonth || "";
+  const patientId = receiptDraft.patientId || "";
+  const serviceDate = receiptDraft.serviceDate || "";
+  const insurerNumber = insurance.insurerNumber || "";
+  const insuredSymbol = insurance.insuredSymbol || "";
+  const insuredNumber = insurance.insuredNumber || "";
+  const burdenRatio = billing.burdenRatio ?? "";
+
+  const header = [
+    "claimMonth", "patientId", "serviceDate", "insurerNumber", "insuredSymbol",
+    "insuredNumber", "burdenRatio", "receiptCategory", "code", "name", "points", "quantity", "totalPoints"
+  ];
+  const rows = [header];
+  for (const group of Array.isArray(receiptDraft.lineGroups) ? receiptDraft.lineGroups : []) {
+    for (const line of Array.isArray(group.lines) ? group.lines : []) {
+      rows.push([
+        claimMonth, patientId, serviceDate, insurerNumber, insuredSymbol, insuredNumber, burdenRatio,
+        group.label || "", line.code || "", line.name || "",
+        line.points ?? "", line.quantity ?? "", line.totalPoints ?? ""
+      ]);
+    }
+  }
+
+  const detail = rows.map((row) => row.map(csvField).join(",")).join("\r\n");
+  const summary = [
+    "",
+    ["summary", "totalPoints", "totalFee", "burdenRatio", "copay", "insurerPay"].map(csvField).join(","),
+    [
+      "",
+      billing.totalPoints ?? receiptDraft.totalPoints ?? "",
+      billing.totalFee ?? "",
+      burdenRatio,
+      billing.copay ?? "",
+      billing.insurerPay ?? ""
+    ].map(csvField).join(",")
+  ].join("\r\n");
+
+  return `﻿${detail}\r\n${summary}\r\n`;
+}
+
+function csvField(value) {
+  const text = value === null || value === undefined ? "" : String(value);
+  if (/[",\r\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
 }
 
 function receiptLineFromCalculationLine(line = {}, index = 0, calculation = {}, decisions = {}) {

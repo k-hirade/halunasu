@@ -4,6 +4,7 @@ import {
   applyCalculationResult,
   applyFeeSessionPatch,
   applyReviewDecision,
+  buildBillingSummary,
   buildCandidateWorkbench,
   buildReceiptDraft,
   buildFeeSession,
@@ -778,3 +779,78 @@ function assertNoUndefined(value) {
     assertNoUndefined(item);
   }
 }
+
+test("buildBillingSummary computes copay from age-derived burden ratio", () => {
+  const billing = buildBillingSummary({
+    insuranceSnapshot: { insurance: {}, publicInsurance: [] },
+    patientSnapshot: { birthDate: "1980-05-01" },
+    serviceDate: "2026-06-01",
+    calculationResult: { totalPoints: 1234 }
+  });
+  assert.equal(billing.totalFee, 12340);
+  assert.equal(billing.burdenRatio, 0.3);
+  assert.equal(billing.burdenRatioSource, "age");
+  assert.equal(billing.copay, 3700); // 12340*0.3=3702 -> 10円四捨五入
+  assert.equal(billing.insurerPay, 8640);
+});
+
+test("buildBillingSummary applies preschool 2-wari and elderly defaults", () => {
+  const preschool = buildBillingSummary({
+    patientSnapshot: { birthDate: "2021-05-01" },
+    serviceDate: "2026-06-01",
+    calculationResult: { totalPoints: 1000 }
+  });
+  assert.equal(preschool.burdenRatio, 0.2);
+
+  const elderly = buildBillingSummary({
+    patientSnapshot: { birthDate: "1949-05-01" },
+    serviceDate: "2026-06-01",
+    calculationResult: { totalPoints: 1000 }
+  });
+  assert.equal(elderly.burdenRatio, 0.1);
+  assert.ok(elderly.notes.some((n) => n.includes("所得区分")));
+});
+
+test("buildBillingSummary prefers explicit ratio and public override", () => {
+  const explicit = buildBillingSummary({
+    insuranceSnapshot: { insurance: { burdenRatio: 0.1 } },
+    patientSnapshot: { birthDate: "1980-05-01" },
+    serviceDate: "2026-06-01",
+    calculationResult: { totalPoints: 555 }
+  });
+  assert.equal(explicit.burdenRatioSource, "explicit");
+  assert.equal(explicit.copay, 560); // 5550*0.1=555 -> 四捨五入 560
+
+  const withPublic = buildBillingSummary({
+    insuranceSnapshot: { insurance: { burdenRatio: 0.3 }, publicInsurance: [{ burdenRatioOverride: 0, priority: 1 }] },
+    patientSnapshot: { birthDate: "1980-05-01" },
+    serviceDate: "2026-06-01",
+    calculationResult: { totalPoints: 1000 }
+  });
+  assert.equal(withPublic.burdenRatioSource, "public");
+  assert.equal(withPublic.copay, 0);
+  assert.equal(withPublic.publicApplied, true);
+});
+
+test("buildBillingSummary degrades safely when birthDate is unknown", () => {
+  const billing = buildBillingSummary({
+    patientSnapshot: {},
+    serviceDate: "2026-06-01",
+    calculationResult: { totalPoints: 1234 }
+  });
+  assert.equal(billing.burdenRatioSource, "default_unknown");
+  assert.ok(billing.notes.some((n) => n.includes("生年月日")));
+});
+
+test("buildReceiptDraft embeds a billing summary", () => {
+  const draft = buildReceiptDraft({
+    feeSessionId: "fee_1",
+    orgId: "org_1",
+    serviceDate: "2026-06-01",
+    patientSnapshot: { birthDate: "1980-05-01" },
+    insuranceSnapshot: { insurance: {} },
+    calculationResult: { status: "ready", totalPoints: 100, lineItems: [{ lineId: "l1", name: "再診料", orderType: "basic", points: 100, quantity: 1, totalPoints: 100 }] }
+  });
+  assert.ok(draft.billing);
+  assert.equal(draft.billing.totalFee, draft.totalPoints * 10);
+});

@@ -49,6 +49,9 @@ export function validateCreateFeePatientInput(input = {}) {
     birthDate: optionalBirthDate(input.birthDate ?? input.birth_date),
     sex: optionalEnum(input.sex, ["male", "female", "other", "unknown"], "sex") || "unknown",
     externalPatientIds: normalizeStringArray(input.externalPatientIds ?? input.external_patient_ids),
+    // 保険・公費は platform-contracts 側の validateInsurance/validatePublicInsurance で構造化される
+    insurance: isPlainObject(input.insurance) ? input.insurance : undefined,
+    publicInsurance: input.publicInsurance ?? input.public_insurance ?? undefined,
     notes: optionalString(input.notes)
   };
 }

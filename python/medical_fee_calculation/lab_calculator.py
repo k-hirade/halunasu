@@ -306,6 +306,46 @@ def calculate_lab_claim_standardized(
         source_id=claim_context.master_sources.medical_procedure_source_id,
     )
 
+    all_lines = (
+        *input_resolution.lines,
+        *drug_resolution.lines,
+        *material_resolution.lines,
+        *outpatient_basic.lines,
+        *outpatient_basic_derived_add_ons.lines,
+        *outpatient_management_add_on.lines,
+        *medication_fees.lines,
+        *injection_fees.lines,
+        *treatment_fees.lines,
+        *imaging_fees.lines,
+        *inpatient_fees.lines,
+        *lab_result.lines,
+    )
+    base_messages = (
+        *input_resolution.messages,
+        *medication_order_messages,
+        *injection_order_resolution.messages,
+        *drug_resolution.messages,
+        *material_resolution.messages,
+        *outpatient_basic.messages,
+        *outpatient_basic_derived_add_ons.messages,
+        *outpatient_management_add_on.messages,
+        *medication_fees.messages,
+        *injection_fees.messages,
+        *treatment_fees.messages,
+        *imaging_fees.messages,
+        *inpatient_fees.messages,
+        *lab_result.messages,
+    )
+    # #6: 検査(lab)単位だけでなく、クレーム全体の算定コードに対して
+    # 併算定不可・算定回数制限・必須コメントを横断適用する。
+    claim_level_messages = _claim_level_electronic_messages(
+        conn,
+        claim_context,
+        all_lines,
+        base_messages,
+        hospital_profile=hospital_profile,
+    )
+
     return CalculationResult(
         input_codes=_unique_codes(
             (
@@ -314,37 +354,112 @@ def calculate_lab_claim_standardized(
                 *(charge_input.code for charge_input in claim_context.material_inputs),
             )
         ),
-        lines=(
-            *input_resolution.lines,
-            *drug_resolution.lines,
-            *material_resolution.lines,
-            *outpatient_basic.lines,
-            *outpatient_basic_derived_add_ons.lines,
-            *outpatient_management_add_on.lines,
-            *medication_fees.lines,
-            *injection_fees.lines,
-            *treatment_fees.lines,
-            *imaging_fees.lines,
-            *inpatient_fees.lines,
-            *lab_result.lines,
-        ),
-        messages=(
-            *input_resolution.messages,
-            *medication_order_messages,
-            *injection_order_resolution.messages,
-            *drug_resolution.messages,
-            *material_resolution.messages,
-            *outpatient_basic.messages,
-            *outpatient_basic_derived_add_ons.messages,
-            *outpatient_management_add_on.messages,
-            *medication_fees.messages,
-            *injection_fees.messages,
-            *treatment_fees.messages,
-            *imaging_fees.messages,
-            *inpatient_fees.messages,
-            *lab_result.messages,
+        lines=all_lines,
+        messages=(*base_messages, *claim_level_messages),
+    )
+
+
+def _claim_level_electronic_messages(
+    conn: sqlite3.Connection,
+    claim_context: ClaimContext,
+    all_lines: tuple[CalculationLine, ...],
+    existing_messages: tuple[CalculationMessage, ...],
+    *,
+    hospital_profile: HospitalProfile | None = None,
+) -> tuple[CalculationMessage, ...]:
+    """クレーム全体の算定コードに併算定不可・回数制限を横断適用する(#6/#8)。
+
+    検査(lab)単位の検知だけでは処置・画像・処方・手技の併算定不可/回数制限を
+    取りこぼすため、確定した全ラインのコードを集約して再判定する。検知結果は
+    advisory(NEEDS_REVIEW)で、ラインの削除や書き換えは行わない。
+    """
+
+    codes = _unique_codes(
+        (
+            *claim_context.procedure_codes,
+            *(line.code for line in all_lines if line.code),
+        )
+    )
+    if not codes:
+        return ()
+
+    history = claim_context.history
+    electronic_rules = check_electronic_rules(
+        conn,
+        list(codes),
+        ElectronicRuleContext(
+            service_date=claim_context.encounter.service_date,
+            source_id=claim_context.master_sources.electronic_fee_source_id,
+            comment_source_id=claim_context.master_sources.comment_source_id,
+            same_day_history_codes=history.same_day_history_codes,
+            same_week_history_codes=history.same_week_history_codes,
+            same_month_history_codes=history.same_month_history_codes,
+            procedure_history_events=history.procedure_history_events,
         ),
     )
+
+    # 既出メッセージ(検査単位等)との重複を本文で除外する
+    seen_messages = {message.message for message in existing_messages}
+    messages: list[CalculationMessage] = []
+
+    def _add(message: CalculationMessage) -> None:
+        if message.message in seen_messages:
+            return
+        seen_messages.add(message.message)
+        messages.append(message)
+
+    for exclusion in electronic_rules.exclusions:
+        _add(
+            CalculationMessage(
+                status=ClaimItemStatus.NEEDS_REVIEW,
+                code=exclusion.excluded_code,
+                message=(
+                    f"Exclusion candidate: {exclusion.base_code} {exclusion.base_name} "
+                    f"and {exclusion.excluded_code} {exclusion.excluded_name} "
+                    f"matched from {exclusion.matched_from}"
+                ),
+                source="electronic_exclusion",
+            )
+        )
+
+    for breach in electronic_rules.frequency_limit_breaches:
+        _add(
+            CalculationMessage(
+                status=ClaimItemStatus.NEEDS_REVIEW,
+                code=breach.procedure_code,
+                message=(
+                    f"frequency_limit_breach: {breach.procedure_code} {breach.procedure_name} "
+                    f"は{breach.limit_name}単位の算定回数制限があり、"
+                    f"{_format_frequency_breach_match(breach.matched_from, breach.matched_service_date)}に同一コードがある"
+                ),
+                source="electronic_frequency_limit",
+            )
+        )
+
+    # #7: 必須レセプトコメントをクレーム全体で検知し、入力済みコメントで満たされない
+    # ものだけを要確認として提示する。
+    comment_inputs = getattr(claim_context, "comment_inputs", ()) or ()
+    for required_comment in electronic_rules.required_comments:
+        if _required_comment_fulfilled_by_any_alternative(
+            required_comment,
+            electronic_rules.required_comments,
+            comment_inputs,
+        ):
+            continue
+        _add(
+            CalculationMessage(
+                status=ClaimItemStatus.NEEDS_REVIEW,
+                code=required_comment.procedure_code,
+                message=(
+                    f"Required comment candidate: {required_comment.procedure_code} "
+                    f"{required_comment.procedure_name} needs {required_comment.comment_code} "
+                    f"{required_comment.comment_text}"
+                ),
+                source="comment",
+            )
+        )
+
+    return tuple(messages)
 
 
 def lab_context_from_claim_context(

@@ -124,22 +124,52 @@ test("service runtime logs do not print request or clinical payloads", () => {
   const serviceFiles = walkFiles(join(root, "services"))
     .filter((file) => file.endsWith(".js"))
     .filter((file) => !isMigrationLegacyPath(relative(root, file)));
-  const consoleLines = [];
 
+  // 生のリクエスト/カルテ本文の出力につながるトークン。これらを含む console は不可。
+  const unsafePayloadTokens = [
+    ...phiFieldTokens,
+    "clinicalText",
+    "clinical_text",
+    "clinicalSummary",
+    "soap",
+    "requestBody",
+    "req.body",
+    "request.body",
+    "input.body",
+    "payload",
+    "rawResult",
+    "rawRow",
+    "orders",
+    "diagnoses"
+  ];
+
+  const unsafe = [];
   for (const file of serviceFiles) {
-    const lines = readText(file).split("\n");
-    lines.forEach((line, index) => {
-      if (line.includes("console.")) {
-        consoleLines.push({
-          file: relative(root, file),
-          line: index + 1,
-          text: line.trim()
-        });
+    const text = readText(file);
+    for (const statement of extractConsoleStatements(text)) {
+      // 起動ログ(listening on)は許可
+      if (/listening on/.test(statement.text)) {
+        continue;
       }
-    });
+      // 許可する安全な構造化運用ログ:
+      //  - console.info / console.error で JSON.stringify({ ... }) を出力
+      //  - event フィールドを持つ運用イベントログ
+      //  - PHI / 生ペイロードを示すトークンを含まない
+      const isStructuredEventLog =
+        /console\.(info|error)\s*\(\s*JSON\.stringify\(/.test(statement.text)
+        && /\bevent\s*:/.test(statement.text);
+      const referencesUnsafePayload = unsafePayloadTokens.some((token) => statement.text.includes(token));
+      if (isStructuredEventLog && !referencesUnsafePayload) {
+        continue;
+      }
+      unsafe.push({
+        file: relative(root, file),
+        line: statement.line,
+        text: statement.firstLine
+      });
+    }
   }
 
-  const unsafe = consoleLines.filter((line) => !/listening on/.test(line.text));
   assert.deepEqual(unsafe, []);
 });
 
@@ -336,6 +366,37 @@ function readDirectoryText(path, pattern) {
     .filter((file) => pattern.test(file))
     .map(readText)
     .join("\n");
+}
+
+// console.<method>(...) の完全な呼び出し(複数行)を、括弧の対応で抽出する。
+function extractConsoleStatements(text) {
+  const statements = [];
+  const opener = /console\.\w+\s*\(/g;
+  let match;
+  while ((match = opener.exec(text)) !== null) {
+    const start = match.index;
+    let depth = 0;
+    let end = start;
+    for (let i = start + match[0].length - 1; i < text.length; i += 1) {
+      const char = text[i];
+      if (char === "(") {
+        depth += 1;
+      } else if (char === ")") {
+        depth -= 1;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    const statementText = text.slice(start, end + 1);
+    statements.push({
+      text: statementText,
+      line: text.slice(0, start).split("\n").length,
+      firstLine: statementText.split("\n")[0].trim()
+    });
+  }
+  return statements;
 }
 
 function walkFiles(path) {
