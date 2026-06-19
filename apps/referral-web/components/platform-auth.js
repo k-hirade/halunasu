@@ -15,7 +15,7 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
 
   const api = useCallback(async (path, options = {}) => {
     const headers = { "content-type": "application/json" };
-    const bearer = options.accessToken || accessToken;
+    const bearer = options.accessToken || accessToken || getStoredPlatformAccessToken();
     if (bearer) headers.authorization = `Bearer ${bearer}`;
     const token = options.csrfToken || csrfToken;
     if (options.csrf && token) headers["x-csrf-token"] = token;
@@ -225,9 +225,13 @@ export function usePlatformAuth() {
   return context;
 }
 
-function readAccessToken() {
+export function getStoredPlatformAccessToken() {
   if (typeof window === "undefined") return "";
   return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) || "";
+}
+
+function readAccessToken() {
+  return getStoredPlatformAccessToken();
 }
 
 function writeAccessToken(token) {

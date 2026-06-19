@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePlatformAuth } from "./platform-auth";
+import { getStoredPlatformAccessToken, usePlatformAuth } from "./platform-auth";
 
 const DEFAULT_RECIPIENT = {
   institutionName: "",
@@ -29,7 +29,14 @@ export function ReferralWorkspace({ mode = "list", referralId = "" }) {
 
   const api = useCallback(async (path, options = {}) => {
     const headers = { "content-type": "application/json" };
-    if (auth.accessToken) headers.authorization = `Bearer ${auth.accessToken}`;
+    const accessToken = auth.accessToken || getStoredPlatformAccessToken();
+    if (accessToken) {
+      headers.authorization = `Bearer ${accessToken}`;
+    } else {
+      const error = new Error("Invalid session");
+      error.status = 401;
+      throw error;
+    }
     if (options.csrf && auth.csrfToken) headers["x-csrf-token"] = auth.csrfToken;
     const response = await fetch(`${referralBaseUrl}${path}`, {
       method: options.method || "GET",

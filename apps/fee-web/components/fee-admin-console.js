@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAdminNav } from "./admin-nav-context";
-import { usePlatformAuth } from "./platform-auth";
+import { getStoredPlatformAccessToken, usePlatformAuth } from "./platform-auth";
 
 const ADMIN_SECTIONS = [
   {
@@ -484,9 +484,18 @@ function DataTable({ columns, empty, rows }) {
 async function feeApi(path, options = {}) {
   const config = typeof window !== "undefined" ? window.__HALUNASU_FEE_CONFIG__ || {} : {};
   const baseUrl = config.feeBaseUrl || "/api/fee";
+  const accessToken = getStoredPlatformAccessToken();
+  if (!accessToken) {
+    const error = new Error("Invalid session");
+    error.status = 401;
+    throw error;
+  }
   const response = await fetch(`${baseUrl}${path}`, {
     method: options.method || "GET",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${accessToken}`
+    },
     credentials: "include",
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
   });

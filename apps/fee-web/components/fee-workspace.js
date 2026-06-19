@@ -3,7 +3,7 @@
 import { clinicalAutoCalculationOptionKeys } from "@halunasu/fee-contracts";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePlatformAuth } from "./platform-auth";
+import { getStoredPlatformAccessToken, usePlatformAuth } from "./platform-auth";
 
 const FEE_SESSION_PAGE_SIZE = 20;
 const CALCULATION_POLL_DELAYS_MS = [2500, 3500, 5000, 8000, 12000];
@@ -2732,8 +2732,13 @@ function useFeeApi() {
     const config = typeof window !== "undefined" ? window.__HALUNASU_FEE_CONFIG__ || {} : {};
     const baseUrl = config.feeBaseUrl || "/api/fee";
     const headers = { "content-type": "application/json" };
-    if (auth.accessToken) {
-      headers.authorization = `Bearer ${auth.accessToken}`;
+    const accessToken = auth.accessToken || getStoredPlatformAccessToken();
+    if (accessToken) {
+      headers.authorization = `Bearer ${accessToken}`;
+    } else {
+      const error = new Error("Invalid session");
+      error.status = 401;
+      throw error;
     }
     if (options.csrf && auth.csrfToken) {
       headers["x-csrf-token"] = auth.csrfToken;
@@ -2762,8 +2767,13 @@ function useFeeReceiptCsvDownload() {
     const config = typeof window !== "undefined" ? window.__HALUNASU_FEE_CONFIG__ || {} : {};
     const baseUrl = config.feeBaseUrl || "/api/fee";
     const headers = {};
-    if (auth.accessToken) {
-      headers.authorization = `Bearer ${auth.accessToken}`;
+    const accessToken = auth.accessToken || getStoredPlatformAccessToken();
+    if (accessToken) {
+      headers.authorization = `Bearer ${accessToken}`;
+    } else {
+      const error = new Error("Invalid session");
+      error.status = 401;
+      throw error;
     }
     const response = await fetch(
       `${baseUrl}/v1/fee/sessions/${encodeURIComponent(sessionId)}/receipt.csv`,
@@ -2791,8 +2801,13 @@ function useFeeReceiptUkeDownload() {
     const config = typeof window !== "undefined" ? window.__HALUNASU_FEE_CONFIG__ || {} : {};
     const baseUrl = config.feeBaseUrl || "/api/fee";
     const headers = {};
-    if (auth.accessToken) {
-      headers.authorization = `Bearer ${auth.accessToken}`;
+    const accessToken = auth.accessToken || getStoredPlatformAccessToken();
+    if (accessToken) {
+      headers.authorization = `Bearer ${accessToken}`;
+    } else {
+      const error = new Error("Invalid session");
+      error.status = 401;
+      throw error;
     }
     const response = await fetch(
       `${baseUrl}/v1/fee/sessions/${encodeURIComponent(sessionId)}/receipt.uke?encoding=${encodeURIComponent(encoding)}`,
