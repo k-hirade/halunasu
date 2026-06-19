@@ -1529,6 +1529,7 @@ function createMasterSearchMetrics(feeCalculator) {
     masterLookupCount: 0,
     masterLookupDurationMs: 0
   };
+  const localCache = new Map();
   if (typeof feeCalculator?.searchMaster !== "function") {
     return {
       calculator: feeCalculator,
@@ -1540,17 +1541,39 @@ function createMasterSearchMetrics(feeCalculator) {
     calculator: {
       ...feeCalculator,
       async searchMaster(input) {
+        const cacheKey = masterSearchInputCacheKey(input);
+        if (localCache.has(cacheKey)) {
+          return localCache.get(cacheKey);
+        }
         const startedAt = Date.now();
         metrics.masterLookupCount += 1;
-        try {
-          return await feeCalculator.searchMaster(input);
-        } finally {
-          metrics.masterLookupDurationMs += Date.now() - startedAt;
-        }
+        const promise = Promise.resolve()
+          .then(() => feeCalculator.searchMaster(input))
+          .catch((error) => {
+            localCache.delete(cacheKey);
+            throw error;
+          })
+          .finally(() => {
+            metrics.masterLookupDurationMs += Date.now() - startedAt;
+          });
+        localCache.set(cacheKey, promise);
+        return promise;
+      },
+      async searchMasterMany(inputs = []) {
+        const entries = Array.isArray(inputs) ? inputs : [];
+        return Promise.all(entries.map((input) => this.searchMaster(input).catch((error) => ({ error }))));
       }
     },
     snapshot: () => ({ ...metrics })
   };
+}
+
+function masterSearchInputCacheKey(input = {}) {
+  return JSON.stringify({
+    type: String(input.type || "all").trim().toLowerCase(),
+    query: String(input.query || input.q || "").trim(),
+    limit: Number(input.limit || 10)
+  });
 }
 
 function feeMasterVersion(feeCalculator) {

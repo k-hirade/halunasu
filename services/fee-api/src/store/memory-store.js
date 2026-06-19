@@ -80,6 +80,18 @@ export class MemoryFeeStore {
     return this.sessionsForOrg(orgId).get(feeSessionId) || null;
   }
 
+  getSessionStatus(orgId, feeSessionId) {
+    const session = this.getSession(orgId, feeSessionId);
+    if (!session) {
+      return null;
+    }
+    const activeCalculationJobId = session.activeCalculationJobId || null;
+    const activeJob = activeCalculationJobId
+      ? this.getCalculationJob(orgId, feeSessionId, activeCalculationJobId)
+      : null;
+    return sessionStatusView(session, activeJob);
+  }
+
   updateSession(orgId, feeSessionId, patch) {
     const current = this.getSession(orgId, feeSessionId);
     if (!current) {
@@ -220,6 +232,19 @@ export class MemoryFeeStore {
 
 function calculationJobKey(feeSessionId, calculationJobId) {
   return `${feeSessionId}::${calculationJobId}`;
+}
+
+function sessionStatusView(session = {}, activeJob = null) {
+  return {
+    feeSessionId: session.feeSessionId || session.sessionId || "",
+    sessionId: session.sessionId || session.feeSessionId || "",
+    status: session.status || "draft",
+    calculationProgress: activeJob?.progress || session.calculationProgress || null,
+    calculationSummary: session.calculationSummary || null,
+    latestCalculationId: session.latestCalculationId || null,
+    activeCalculationJobId: session.activeCalculationJobId || null,
+    updatedAt: session.updatedAt || null
+  };
 }
 
 export function notFoundError(message) {

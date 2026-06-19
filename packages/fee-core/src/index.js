@@ -41,6 +41,7 @@ export function buildFeeSession(input = {}, options = {}) {
     calculationOptionsSource: input.calculationOptionsSource || null,
     calculationOptionsAutoKeys: Array.isArray(input.calculationOptionsAutoKeys) ? input.calculationOptionsAutoKeys : [],
     calculationProgress: isPlainObject(input.calculationProgress) ? input.calculationProgress : null,
+    activeCalculationJobId: input.activeCalculationJobId || null,
     sourceSystem: input.sourceSystem || null,
     calculationResult: input.calculationResult || null,
     calculationSummary: input.calculationSummary || null,
@@ -89,6 +90,9 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
         : undefined,
       calculationProgress: hasOwn(patch, "calculationProgress")
         ? isPlainObject(patch.calculationProgress) ? patch.calculationProgress : null
+        : undefined,
+      activeCalculationJobId: hasOwn(patch, "activeCalculationJobId")
+        ? patch.activeCalculationJobId || null
         : undefined,
       sourceSystem: patch.sourceSystem
     }),
@@ -159,6 +163,7 @@ export function applyCalculationResult(current = {}, calculationResult = {}, opt
         totalPoints: normalizedResult.totalPoints,
         lineItemCount: normalizedResult.lineItems.length
       },
+    activeCalculationJobId: null,
     updatedAt: now
   };
 }
@@ -478,6 +483,262 @@ export function buildReceiptCsv(receiptDraft = {}, context = {}) {
 }
 
 function csvField(value) {
+  const text = value === null || value === undefined ? "" : String(value);
+  if (/[",\r\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+/* ===========================================================================
+ * レセプト電算(UKE)出力 — #1段階B
+ *
+ * レセ電は「カンマ区切り・可変長レコード(改行区切り)」のテキスト。レコード先頭の
+ * 2文字識別でレコード種別を表す(IR/RE/HO/KO/SN/SI/IY/TO/CO/SJ ...)。
+ *
+ * ⚠ 重要: 本実装は「レセプト電算処理システム 記録条件仕様(医科)令和8年6月版」に
+ *   準拠することを志向した構造実装。診療識別・負担区分・レセプト種別・各レコードの
+ *   項目順/桁は近似を含むため、実請求前に必ず同仕様でフィールド単位の検証を行うこと。
+ *   文字コード変換(Shift_JIS)は呼び出し側(fee-api)で行い、ここでは UTF-8 文字列を返す。
+ * ========================================================================= */
+
+function ukePad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+// 元号区分: 令和=5 / 平成=4 / 昭和=3 / 大正=2 / 明治=1
+const UKE_ERA_TABLE = [
+  { from: 20190501, code: 5, base: 2018 },
+  { from: 19890108, code: 4, base: 1988 },
+  { from: 19261225, code: 3, base: 1925 },
+  { from: 19120730, code: 2, base: 1911 },
+  { from: 0, code: 1, base: 1867 }
+];
+
+function ukeWarekiParts(ymd) {
+  const matched = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ymd || ""));
+  if (!matched) {
+    return null;
+  }
+  const year = Number(matched[1]);
+  const month = Number(matched[2]);
+  const day = Number(matched[3]);
+  const numeric = year * 10000 + month * 100 + day;
+  const era = UKE_ERA_TABLE.find((entry) => numeric >= entry.from) || UKE_ERA_TABLE[UKE_ERA_TABLE.length - 1];
+  return { gengo: era.code, yy: ukePad2(year - era.base), mm: ukePad2(month), dd: ukePad2(day) };
+}
+
+// 請求年月/診療年月: 元号区分 + YYMM(5桁)
+function ukeWarekiYearMonth(yearMonth) {
+  const parts = ukeWarekiParts(`${String(yearMonth || "").slice(0, 7)}-01`);
+  return parts ? `${parts.gengo}${parts.yy}${parts.mm}` : "";
+}
+
+// 生年月日: 元号区分 + YYMMDD(7桁)
+function ukeWarekiDate(ymd) {
+  const parts = ukeWarekiParts(ymd);
+  return parts ? `${parts.gengo}${parts.yy}${parts.mm}${parts.dd}` : "";
+}
+
+function ukeSexCode(sex) {
+  if (sex === "male") return "1";
+  if (sex === "female") return "2";
+  return "";
+}
+
+// 審査支払機関: 国保/後期高齢→2(国保連)、それ以外→1(社保基金)
+function ukeReviewAgency(insurance = {}) {
+  return (insurance.insurerType === "kokuho" || insurance.insurerType === "kouki") ? "2" : "1";
+}
+
+// 診療識別(2桁) — orderType ベースの近似。基本料は初診/再診をコード/名称で補正。
+const UKE_SHINRYO_ID_BY_ORDER_TYPE = {
+  basic: "12",
+  imaging: "70",
+  lab: "60",
+  drug: "21",
+  injection: "33",
+  treatment: "40",
+  procedure: "40",
+  material: "80",
+  other: "80",
+  unknown: "80"
+};
+
+function ukeShinryoIdentification(line = {}) {
+  const orderType = line.orderType || "unknown";
+  if (orderType === "basic") {
+    if (String(line.code || "").startsWith("1110") || /初診/.test(line.name || "")) {
+      return "11";
+    }
+    return "12";
+  }
+  return UKE_SHINRYO_ID_BY_ORDER_TYPE[orderType] || "80";
+}
+
+// 負担区分(近似): 医保単独=1。公費併用時は仕様で要精緻化。
+function ukeBurdenClass(publicInsurance = []) {
+  return Array.isArray(publicInsurance) && publicInsurance.length ? "1" : "1";
+}
+
+// レセプト種別(4桁・近似): [点数表=1医科][単独1/2併2/3併3][本人/家族(既定1本人)][入院1/入院外2]
+// ※本人/家族・高齢区分は情報不足のため既定値。要・仕様検証。
+function ukeReceiptType(receiptDraft = {}, publicInsurance = []) {
+  const combination = publicInsurance.length >= 2 ? "3" : publicInsurance.length === 1 ? "2" : "1";
+  const inpatient = receiptDraft.setting === "inpatient" ? "1" : "2";
+  return `1${combination}1${inpatient}`;
+}
+
+function ukeLineRecordId(orderType) {
+  if (orderType === "drug") return "IY";
+  if (orderType === "material") return "TO";
+  return "SI";
+}
+
+// receiptDraft + context から UKE レコード配列({ record, fields }) を生成する。
+export function buildReceiptDenshin(receiptDraft = {}, context = {}) {
+  const insuranceSnapshot = isPlainObject(context.insuranceSnapshot)
+    ? context.insuranceSnapshot
+    : (isPlainObject(receiptDraft.insuranceSnapshot) ? receiptDraft.insuranceSnapshot : {});
+  const insurance = isPlainObject(insuranceSnapshot.insurance) ? insuranceSnapshot.insurance : {};
+  const publicInsurance = Array.isArray(insuranceSnapshot.publicInsurance) ? insuranceSnapshot.publicInsurance : [];
+  const billing = isPlainObject(context.billing)
+    ? context.billing
+    : (isPlainObject(receiptDraft.billing) ? receiptDraft.billing : {});
+  const patient = isPlainObject(receiptDraft.patientSnapshot) ? receiptDraft.patientSnapshot : {};
+  const facility = isPlainObject(receiptDraft.facilitySnapshot) ? receiptDraft.facilitySnapshot : {};
+
+  const claimMonth = receiptDraft.claimMonth || String(receiptDraft.serviceDate || "").slice(0, 7);
+  const burdenClass = ukeBurdenClass(publicInsurance);
+  const records = [];
+
+  // IR: 医療機関情報
+  records.push({
+    record: "IR",
+    fields: [
+      ukeReviewAgency(insurance),
+      facility.prefectureCode || "",
+      "1", // 点数表: 医科
+      facility.medicalInstitutionCode || "",
+      "",
+      facility.displayName || "",
+      ukeWarekiYearMonth(claimMonth)
+    ]
+  });
+
+  // RE: レセプト共通
+  records.push({
+    record: "RE",
+    fields: [
+      "1", // レセプト番号(単票=1)
+      ukeReceiptType(receiptDraft, publicInsurance),
+      ukeWarekiYearMonth(receiptDraft.serviceDate || claimMonth),
+      patient.displayName || "",
+      ukeSexCode(patient.sex),
+      ukeWarekiDate(patient.birthDate),
+      typeof billing.burdenRatio === "number" ? String(Math.round((1 - billing.burdenRatio) * 100)) : ""
+    ]
+  });
+
+  // HO: 保険者(医保)
+  records.push({
+    record: "HO",
+    fields: [
+      insurance.insurerNumber || "",
+      insurance.insuredSymbol || "",
+      insurance.insuredNumber || "",
+      insurance.branchNumber || "",
+      String(context.actualDays || 1),
+      String(Number(receiptDraft.totalPoints || billing.totalPoints || 0) || 0),
+      String(Number(billing.copay || 0) || 0)
+    ]
+  });
+
+  // KO: 公費(併用分)
+  for (const publicEntry of publicInsurance) {
+    records.push({
+      record: "KO",
+      fields: [
+        publicEntry.payerNumber || "",
+        publicEntry.recipientNumber || "",
+        String(context.actualDays || 1),
+        String(Number(receiptDraft.totalPoints || 0) || 0),
+        ""
+      ]
+    });
+  }
+
+  // SN: 資格確認(任意・context指定時)
+  if (isPlainObject(context.eligibility)) {
+    records.push({
+      record: "SN",
+      fields: [
+        context.eligibility.verificationType || "",
+        context.eligibility.referenceNumber || ""
+      ]
+    });
+  }
+
+  // SI / IY / TO: 診療行為・医薬品・特定器材
+  for (const group of Array.isArray(receiptDraft.lineGroups) ? receiptDraft.lineGroups : []) {
+    for (const line of Array.isArray(group.lines) ? group.lines : []) {
+      records.push({
+        record: ukeLineRecordId(line.orderType),
+        fields: [
+          ukeShinryoIdentification(line),
+          burdenClass,
+          line.code || "",
+          "",
+          String(Number(line.points || 0) || 0),
+          String(Number(line.quantity || 1) || 1)
+        ]
+      });
+    }
+  }
+
+  // CO: コメント(context.comments 指定時)
+  for (const comment of Array.isArray(context.comments) ? context.comments : []) {
+    records.push({
+      record: "CO",
+      fields: [
+        comment.shinryoIdentification || "",
+        burdenClass,
+        comment.code || "",
+        comment.text || ""
+      ]
+    });
+  }
+
+  // SJ: 症状詳記(context.symptomDetails 指定時)
+  for (const detail of Array.isArray(context.symptomDetails) ? context.symptomDetails : []) {
+    records.push({
+      record: "SJ",
+      fields: [
+        detail.kubun || "",
+        detail.text || ""
+      ]
+    });
+  }
+
+  return records;
+}
+
+// UKE レコード配列を UTF-8 テキスト化する。各レコードは「識別,項目...」、行区切りは CRLF。
+// 末尾の空項目はレセ電の可変長仕様にあわせて省略する。
+export function serializeUke(records = []) {
+  const lines = [];
+  for (const entry of Array.isArray(records) ? records : []) {
+    const fields = Array.isArray(entry.fields) ? [...entry.fields] : [];
+    while (fields.length && (fields[fields.length - 1] === "" || fields[fields.length - 1] === null || fields[fields.length - 1] === undefined)) {
+      fields.pop();
+    }
+    const cells = [entry.record, ...fields].map(ukeField);
+    lines.push(cells.join(","));
+  }
+  return `${lines.join("\r\n")}\r\n`;
+}
+
+function ukeField(value) {
   const text = value === null || value === undefined ? "" : String(value);
   if (/[",\r\n]/.test(text)) {
     return `"${text.replace(/"/g, '""')}"`;

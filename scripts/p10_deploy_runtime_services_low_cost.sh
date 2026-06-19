@@ -75,11 +75,13 @@ deploy_service() {
   local image="${REGION}-docker.pkg.dev/${project}/${REPOSITORY}/${service}:${TAG}"
   local service_memory="${MEMORY}"
   local service_timeout="${TIMEOUT}"
+  local service_max_instances="${MAX_INSTANCES}"
   local build_ignore_file=".gcloudignore"
   if [[ "${service}" == fee-api-* ]]; then
     build_ignore_file=".gcloudignore.fee-api"
     service_memory="${FEE_MEMORY:-2Gi}"
     service_timeout="${FEE_TIMEOUT:-180}"
+    service_max_instances="${FEE_MAX_INSTANCES:-3}"
   fi
   local secret_vars="APP_SESSION_SIGNING_SECRET=APP_SESSION_SIGNING_SECRET:latest"
   if [[ "${service}" == platform-api-* ]] && secret_exists "${project}" "STRIPE_SECRET_KEY"; then
@@ -156,7 +158,7 @@ deploy_service() {
     --platform managed
     --service-account "${service_account}@${project}.iam.gserviceaccount.com"
     --min-instances "${MIN_INSTANCES}"
-    --max-instances "${MAX_INSTANCES}"
+    --max-instances "${service_max_instances}"
     --cpu "${CPU}"
     --memory "${service_memory}"
     --timeout "${service_timeout}"
@@ -264,8 +266,35 @@ deploy_env() {
   if should_deploy "${env}" "fee-api"; then
     fee_calculation_queue_path=""
     fee_calculation_worker_url=""
+    fee_queue_max_concurrent="${FEE_CALCULATION_QUEUE_MAX_CONCURRENT_DISPATCHES:-3}"
+    fee_queue_max_rate="${FEE_CALCULATION_QUEUE_MAX_DISPATCHES_PER_SECOND:-2}"
     if secret_exists "${fee_project}" "fee-calculation-worker-token"; then
       fee_calculation_queue_path="${FEE_CALCULATION_CLOUD_TASKS_QUEUE:-projects/${fee_project}/locations/${REGION}/queues/fee-calculation-${env}}"
+      fee_calculation_queue_id="fee-calculation-${env}"
+      if [[ "${APPLY}" == "true" ]]; then
+        if gcloud tasks queues describe "${fee_calculation_queue_id}" --project "${fee_project}" --location "${REGION}" --quiet >/dev/null 2>&1; then
+          run_or_print gcloud tasks queues update "${fee_calculation_queue_id}" \
+            --project "${fee_project}" \
+            --location "${REGION}" \
+            --max-concurrent-dispatches "${fee_queue_max_concurrent}" \
+            --max-dispatches-per-second "${fee_queue_max_rate}" \
+            --quiet
+        else
+          run_or_print gcloud tasks queues create "${fee_calculation_queue_id}" \
+            --project "${fee_project}" \
+            --location "${REGION}" \
+            --max-concurrent-dispatches "${fee_queue_max_concurrent}" \
+            --max-dispatches-per-second "${fee_queue_max_rate}" \
+            --quiet
+        fi
+      else
+        run_or_print gcloud tasks queues update "${fee_calculation_queue_id}" \
+          --project "${fee_project}" \
+          --location "${REGION}" \
+          --max-concurrent-dispatches "${fee_queue_max_concurrent}" \
+          --max-dispatches-per-second "${fee_queue_max_rate}" \
+          --quiet
+      fi
       fee_calculation_worker_url="${FEE_CALCULATION_WORKER_URL:-}"
       if [[ -z "${fee_calculation_worker_url}" ]] && [[ "${APPLY}" == "true" ]]; then
         fee_service_url="$(gcloud run services describe "fee-api-${env}" --project "${fee_project}" --region "${REGION}" --format="value(status.url)" --quiet 2>/dev/null || true)"
@@ -292,6 +321,7 @@ deploy_env() {
     "PLATFORM_STORE_BACKEND=firestore" \
     "FEE_MASTER_DB_PATH=/tmp/halunasu-fee-master/standard-master.sqlite" \
     "FEE_MASTER_DB_GZIP_PATH=/app/python/data/master/standard-master.sqlite.gz" \
+    "FEE_MASTER_DB_PREPARE_ON_START=true" \
     "OPENAI_FEE_CLINICAL_MODEL=${OPENAI_FEE_CLINICAL_MODEL:-gpt-5.4-nano}" \
     "OPENAI_FEE_CLINICAL_REASONING_EFFORT=${OPENAI_FEE_CLINICAL_REASONING_EFFORT:-low}" \
     "OPENAI_FEE_CLINICAL_TIMEOUT_MS=${OPENAI_FEE_CLINICAL_TIMEOUT_MS:-60000}" \

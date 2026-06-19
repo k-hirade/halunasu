@@ -241,6 +241,7 @@ function FeeSessionListView() {
 function FeeSessionDetailView({ sessionId }) {
   const feeApi = useFeeApi();
   const downloadReceiptCsvFile = useFeeReceiptCsvDownload();
+  const downloadReceiptUkeFile = useFeeReceiptUkeDownload();
   const [patients, setPatients] = useState([]);
   const [facilities, setFacilities] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -278,6 +279,8 @@ function FeeSessionDetailView({ sessionId }) {
   const bootstrapLoadedRef = useRef(false);
   const toastTimersRef = useRef(new Map());
   const toastExitTimersRef = useRef(new Map());
+  const masterSearchCacheRef = useRef(new Map());
+  const masterSearchRequestSeqRef = useRef(0);
 
   const dismissToast = useCallback((id) => {
     const timer = toastTimersRef.current.get(id);
@@ -490,15 +493,31 @@ function FeeSessionDetailView({ sessionId }) {
 
   useEffect(() => {
     if (!masterSearchAvailable) {
+      masterSearchRequestSeqRef.current += 1;
       setMasterItems([]);
       return undefined;
     }
     const query = masterQuery.trim();
     if (query.length < 2) {
+      masterSearchRequestSeqRef.current += 1;
       setMasterItems([]);
       return undefined;
     }
     const timer = window.setTimeout(async () => {
+      const requestSeq = ++masterSearchRequestSeqRef.current;
+      const cacheKey = JSON.stringify({
+        type: masterType || "all",
+        query,
+        limit: 10
+      });
+      const cached = masterSearchCacheRef.current.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        setMasterItems(cached.items || []);
+        if (cached.masterStatus) {
+          setMasterStatus(cached.masterStatus);
+        }
+        return;
+      }
       try {
         const params = new URLSearchParams({
           type: masterType || "all",
@@ -506,14 +525,28 @@ function FeeSessionDetailView({ sessionId }) {
           limit: "10"
         });
         const response = await feeApi(`/v1/fee/master/search?${params.toString()}`);
+        if (requestSeq !== masterSearchRequestSeqRef.current) {
+          return;
+        }
+        masterSearchCacheRef.current.set(cacheKey, {
+          items: response.items || [],
+          masterStatus: response.masterStatus || null,
+          expiresAt: Date.now() + 5 * 60 * 1000
+        });
+        pruneMasterSearchCache(masterSearchCacheRef.current);
         setMasterItems(response.items || []);
-        setMasterStatus(response.masterStatus || masterStatus);
+        if (response.masterStatus) {
+          setMasterStatus(response.masterStatus);
+        }
       } catch (error) {
+        if (requestSeq !== masterSearchRequestSeqRef.current) {
+          return;
+        }
         addToast(toUserFacingErrorMessage(error, "マスター検索に失敗しました。"), "error");
       }
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [addToast, feeApi, masterQuery, masterSearchAvailable, masterStatus, masterType]);
+  }, [addToast, feeApi, masterQuery, masterSearchAvailable, masterType]);
 
   function updateForm(field, value) {
     setForm((current) => ({
@@ -777,6 +810,17 @@ function FeeSessionDetailView({ sessionId }) {
     });
   }
 
+  async function downloadReceiptUke(encoding = "shift_jis") {
+    if (!sessionId) {
+      addToast("レセ電を出力できるセッションがありません。", "error");
+      return;
+    }
+    await runBusy(setBusy, addToast, async () => {
+      await downloadReceiptUkeFile(sessionId, encoding);
+      addToast("レセプト電算(UKE)をダウンロードしました。", "success");
+    });
+  }
+
   function addOrderRow() {
     setOrderRowsTouched(true);
     setOrderRows((current) => [...current.filter((row) => row.localName || row.standardCode), createEmptyOrderRow()]);
@@ -1013,6 +1057,7 @@ function FeeSessionDetailView({ sessionId }) {
           feeSession={feeSession}
           onCopyReceipt={copyReceiptDraft}
           onDownloadCsv={downloadReceiptCsv}
+          onDownloadUke={downloadReceiptUke}
           onDecision={decideReviewItem}
           onOpenDetail={setCandidateDetail}
           onOpenManualItem={() => {
@@ -1223,6 +1268,7 @@ function WorkPane({
   feeSession,
   onCopyReceipt,
   onDownloadCsv,
+  onDownloadUke,
   onDecision,
   onOpenDetail,
   onOpenManualItem,
@@ -1257,6 +1303,7 @@ function WorkPane({
             disabled={disabled}
             onCopyReceipt={onCopyReceipt}
             onDownloadCsv={onDownloadCsv}
+            onDownloadUke={onDownloadUke}
             onRemoveManualOrder={onRemoveManualOrder}
             orderRows={orderRows}
             receiptDraft={receiptDraft}
@@ -2167,14 +2214,15 @@ function confirmableProposalForAdoption(item = {}) {
     && points > 0;
 }
 
-function ReceiptDraftPane({ disabled, onCopyReceipt, onDownloadCsv, onRemoveManualOrder, orderRows = [], receiptDraft, selected }) {
+function ReceiptDraftPane({ disabled, onCopyReceipt, onDownloadCsv, onDownloadUke, onRemoveManualOrder, orderRows = [], receiptDraft, selected }) {
   const manualOrders = manualBillingOrderEntries(orderRows);
+  const [ukeEncoding, setUkeEncoding] = useState("shift_jis");
   return (
     <div className="receipt-draft-pane">
       <div className="receipt-pane-head">
         <div>
           <h2>レセプト案</h2>
-          <p>区分別合計と明細です。確認後にコピー・CSV出力できます。</p>
+          <p>区分別合計と明細です。確認後にコピー・CSV・レセ電(UKE)出力できます。</p>
         </div>
         <div className="receipt-pane-actions">
           <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={onCopyReceipt} type="button">
@@ -2183,6 +2231,21 @@ function ReceiptDraftPane({ disabled, onCopyReceipt, onDownloadCsv, onRemoveManu
           <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={onDownloadCsv} type="button">
             CSV出力
           </button>
+          <span className="receipt-uke-group">
+            <select
+              className="receipt-uke-encoding"
+              aria-label="レセ電の文字コード"
+              disabled={disabled || !receiptDraft}
+              value={ukeEncoding}
+              onChange={(event) => setUkeEncoding(event.target.value)}
+            >
+              <option value="shift_jis">Shift_JIS</option>
+              <option value="utf-8">UTF-8</option>
+            </select>
+            <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={() => onDownloadUke(ukeEncoding)} type="button">
+              レセ電(UKE)出力
+            </button>
+          </span>
           <button className="btn btn--primary btn--sm" disabled title="確定APIが未実装です" type="button">
             確定
           </button>
@@ -2714,6 +2777,35 @@ function useFeeReceiptCsvDownload() {
     const link = document.createElement("a");
     link.href = url;
     link.download = `receipt_${sessionId}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [auth.accessToken]);
+}
+
+// レセプト電算(UKE)のダウンロード。文字コードを選択(既定 Shift_JIS)。
+function useFeeReceiptUkeDownload() {
+  const auth = usePlatformAuth();
+  return useCallback(async (sessionId, encoding = "shift_jis") => {
+    const config = typeof window !== "undefined" ? window.__HALUNASU_FEE_CONFIG__ || {} : {};
+    const baseUrl = config.feeBaseUrl || "/api/fee";
+    const headers = {};
+    if (auth.accessToken) {
+      headers.authorization = `Bearer ${auth.accessToken}`;
+    }
+    const response = await fetch(
+      `${baseUrl}/v1/fee/sessions/${encodeURIComponent(sessionId)}/receipt.uke?encoding=${encodeURIComponent(encoding)}`,
+      { method: "GET", headers, credentials: "include" }
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `receipt_${sessionId}.UKE`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -3555,6 +3647,22 @@ function mergeSelectedPatient(patients = [], selectedPatient = null) {
     return list;
   }
   return [selectedPatient, ...list];
+}
+
+function pruneMasterSearchCache(cache) {
+  if (!cache || cache.size <= 50) {
+    return;
+  }
+  const now = Date.now();
+  for (const [key, value] of cache.entries()) {
+    if (!value || value.expiresAt <= now) {
+      cache.delete(key);
+    }
+  }
+  while (cache.size > 50) {
+    const oldestKey = cache.keys().next().value;
+    cache.delete(oldestKey);
+  }
 }
 
 function toUserFacingErrorMessage(error, fallbackMessage) {

@@ -7,6 +7,8 @@ import {
   buildBillingSummary,
   buildCandidateWorkbench,
   buildReceiptDraft,
+  buildReceiptDenshin,
+  serializeUke,
   buildFeeSession,
   normalizeCalculationResult,
   buildReviewItems
@@ -853,4 +855,69 @@ test("buildReceiptDraft embeds a billing summary", () => {
   });
   assert.ok(draft.billing);
   assert.equal(draft.billing.totalFee, draft.totalPoints * 10);
+});
+
+function ukeFixtureDraft() {
+  return buildReceiptDraft({
+    feeSessionId: "fee_1",
+    orgId: "org_1",
+    serviceDate: "2026-06-01",
+    claimMonth: "2026-06",
+    patientId: "pat_1",
+    patientSnapshot: { displayName: "山田 太郎", sex: "male", birthDate: "1970-01-02" },
+    facilitySnapshot: { medicalInstitutionCode: "1312345", displayName: "春ナス内科", prefectureCode: "13" },
+    insuranceSnapshot: {
+      insurance: { insurerType: "shaho", insurerNumber: "01130012", insuredSymbol: "12", insuredNumber: "3456" },
+      publicInsurance: [{ payerNumber: "54136015", recipientNumber: "0000001" }]
+    },
+    calculationResult: {
+      status: "ready",
+      totalPoints: 288,
+      lineItems: [
+        { lineId: "l1", code: "112007410", name: "再診料", orderType: "basic", points: 75, quantity: 1, totalPoints: 75 },
+        { lineId: "l2", code: "620000123", name: "内服薬", orderType: "drug", points: 13, quantity: 1, totalPoints: 13 }
+      ]
+    }
+  });
+}
+
+test("buildReceiptDenshin builds the standard UKE record set with wareki conversion", () => {
+  const records = buildReceiptDenshin(ukeFixtureDraft());
+  const byType = records.map((r) => r.record);
+  assert.deepEqual(byType, ["IR", "RE", "HO", "KO", "SI", "IY"]);
+
+  const ir = records.find((r) => r.record === "IR");
+  assert.equal(ir.fields[6], "50806", "請求年月 = 令和8年6月");
+
+  const re = records.find((r) => r.record === "RE");
+  assert.equal(re.fields[5], "3450102", "生年月日 = 昭和45年1月2日");
+  assert.equal(re.fields[4], "1", "性別=男");
+
+  const ho = records.find((r) => r.record === "HO");
+  assert.equal(ho.fields[0], "01130012");
+  assert.equal(ho.fields[5], "88", "合計点数 = 75 + 13");
+
+  // 医薬品は IY、再診は SI で診療識別12
+  const si = records.find((r) => r.record === "SI");
+  assert.equal(si.fields[0], "12");
+  const iy = records.find((r) => r.record === "IY");
+  assert.equal(iy.fields[2], "620000123");
+});
+
+test("serializeUke emits comma-separated CRLF records and trims trailing empties", () => {
+  const text = serializeUke(buildReceiptDenshin(ukeFixtureDraft()));
+  assert.ok(text.endsWith("\r\n"));
+  const lines = text.trimEnd().split("\r\n");
+  assert.ok(lines[0].startsWith("IR,"));
+  // IR の末尾空項目(マルチボリューム等)は省略される
+  assert.equal(lines[0], "IR,1,13,1,1312345,,春ナス内科,50806");
+});
+
+test("buildReceiptDenshin appends comment and symptom-detail records when provided", () => {
+  const records = buildReceiptDenshin(ukeFixtureDraft(), {
+    comments: [{ shinryoIdentification: "60", code: "830000001", text: "症状詳記コメント" }],
+    symptomDetails: [{ kubun: "01", text: "経過良好" }]
+  });
+  assert.ok(records.some((r) => r.record === "CO" && r.fields[2] === "830000001"));
+  assert.ok(records.some((r) => r.record === "SJ" && r.fields[1] === "経過良好"));
 });

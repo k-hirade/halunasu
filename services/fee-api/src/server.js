@@ -10,11 +10,14 @@ import {
   validateCreateFeeSessionInput,
   validateUpdateFeeSessionInput
 } from "../../../packages/fee-contracts/src/index.js";
+import iconv from "iconv-lite";
 import {
   buildCandidateWorkbench,
   buildReceiptCsv,
+  buildReceiptDenshin,
   buildReceiptDraft,
-  buildReviewItems
+  buildReviewItems,
+  serializeUke
 } from "../../../packages/fee-core/src/index.js";
 import {
   departmentSnapshot,
@@ -296,7 +299,20 @@ async function routeFeeApiRequest(input = {}) {
     return ok(await buildFeeSessionDetail(feeStore, context.session.orgId, parts[3], input.now || new Date(), feeSessionDetailOptionsFromUrl(url)));
   }
 
+  if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "debug-detail") {
+    return ok(await buildFeeSessionDetail(feeStore, context.session.orgId, parts[3], input.now || new Date(), {
+      ...feeSessionDetailOptionsFromUrl(url),
+      includeDebug: true
+    }));
+  }
+
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "detail-lite") {
+    const statusView = typeof feeStore.getSessionStatus === "function"
+      ? await feeStore.getSessionStatus(context.session.orgId, parts[3])
+      : null;
+    if (statusView) {
+      return ok({ feeSession: statusView });
+    }
     const session = await feeStore.getSession(context.session.orgId, parts[3]);
     if (!session) {
       return notFound("fee session not found");
@@ -351,6 +367,28 @@ async function routeFeeApiRequest(input = {}) {
       headers: {
         "content-type": "text/csv; charset=utf-8",
         "content-disposition": `attachment; filename="receipt_${parts[3]}.csv"`
+      }
+    };
+  }
+
+  // レセプト電算(UKE)出力(段階B): encoding で文字コードを選択(既定 Shift_JIS)
+  if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "receipt.uke") {
+    const session = await feeStore.getSession(context.session.orgId, parts[3]);
+    if (!session) {
+      return notFound("fee session not found");
+    }
+    const receiptDraft = buildReceiptDraft(session, { now: input.now || new Date() });
+    const uke = serializeUke(buildReceiptDenshin(receiptDraft));
+    const encoding = normalizeUkeEncoding(url.searchParams.get("encoding"));
+    const body = encoding === "shift_jis" ? iconv.encode(uke, "Shift_JIS") : Buffer.from(uke, "utf-8");
+    const charset = encoding === "shift_jis" ? "shift_jis" : "utf-8";
+    return {
+      statusCode: 200,
+      raw: true,
+      body,
+      headers: {
+        "content-type": `text/plain; charset=${charset}`,
+        "content-disposition": `attachment; filename="receipt_${parts[3]}.UKE"`
       }
     };
   }
@@ -465,7 +503,7 @@ async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now, options
   const reviewItems = buildReviewItems(feeSession);
   const candidateWorkbench = buildCandidateWorkbench(feeSession, { now, receiptDraft, reviewItems });
   return {
-    feeSession,
+    feeSession: shouldIncludeFeeSessionDebug(options) ? feeSession : compactFeeSessionForWorkbench(feeSession),
     receiptDraft,
     ...(options.includeReviewItems === false ? {} : { reviewItems }),
     candidateWorkbench
@@ -526,20 +564,30 @@ async function createFeeCalculationJob({
       phase: enqueue.phase || createdJob.calculationJob.phase,
       enqueueStatus: enqueue.enqueueStatus,
       enqueueProvider: enqueue.enqueueProvider,
-      enqueueMessage: enqueue.enqueueMessage
+      enqueueMessage: enqueue.enqueueMessage,
+      progress: feeCalculationProgress({
+        phase: ["queued", "waiting_for_worker"].includes(enqueue.status || createdJob.calculationJob.status) ? "queued" : "failed",
+        percent: ["queued", "waiting_for_worker"].includes(enqueue.status || createdJob.calculationJob.status) ? 1 : 0,
+        message: ["queued", "waiting_for_worker"].includes(enqueue.status || createdJob.calculationJob.status)
+          ? "算定ジョブを受け付けました。"
+          : "算定ジョブをキューに投入できませんでした。Cloud Tasks または Pub/Sub の設定を確認してください。",
+        session: current,
+        now: input.now || new Date()
+      })
     })
     : createdJob;
   const jobWasQueued = ["queued", "waiting_for_worker"].includes(updatedJob.calculationJob.status);
   await feeStore.updateSession(context.session.orgId, feeSessionId, {
     ...(jobWasQueued ? { status: "calculating" } : {}),
-    calculationProgress: feeCalculationProgress({
-      phase: jobWasQueued ? "queued" : "failed",
-      percent: jobWasQueued ? 1 : 0,
-      message: jobWasQueued
-        ? "算定ジョブを受け付けました。"
-        : "算定ジョブをキューに投入できませんでした。Cloud Tasks または Pub/Sub の設定を確認してください。",
-      session: current,
-      now: input.now || new Date()
+    activeCalculationJobId: jobWasQueued ? updatedJob.calculationJob.calculationJobId : null,
+    ...(jobWasQueued ? {} : {
+      calculationProgress: updatedJob.calculationJob.progress || feeCalculationProgress({
+        phase: "failed",
+        percent: 0,
+        message: "算定ジョブをキューに投入できませんでした。Cloud Tasks または Pub/Sub の設定を確認してください。",
+        session: current,
+        now: input.now || new Date()
+      })
     })
   });
   await platformStore.createAuditEvent(context.session.orgId, {
@@ -827,13 +875,15 @@ async function runFeeCalculationJob({
       input,
       feeSessionId,
       current,
-      calculationInput: isPlainObject(runningJob.calculationInput) ? runningJob.calculationInput : {}
+      calculationInput: isPlainObject(runningJob.calculationInput) ? runningJob.calculationInput : {},
+      calculationJobId
     });
     const completedJob = typeof feeStore.updateCalculationJob === "function"
       ? (await feeStore.updateCalculationJob(orgId, feeSessionId, calculationJobId, {
         status: "succeeded",
         phase: "complete",
         completedAt: timestampForSnapshot(input.now || new Date()),
+        progress: result.feeSession?.calculationProgress || null,
         resultSummary: {
           calculationId: result.calculationResult?.calculationId || null,
           totalPoints: Number(result.calculationResult?.totalPoints || 0),
@@ -870,6 +920,33 @@ async function runFeeCalculationJob({
   }
 }
 
+async function updateFeeCalculationProgress({
+  feeStore,
+  orgId,
+  feeSessionId,
+  calculationJobId = null,
+  session = {},
+  sessionPatch = null,
+  progress
+}) {
+  if (calculationJobId && typeof feeStore.updateCalculationJob === "function") {
+    await feeStore.updateCalculationJob(orgId, feeSessionId, calculationJobId, {
+      phase: progress?.phase || "running",
+      progress
+    });
+    if (sessionPatch && Object.keys(sessionPatch).length) {
+      const result = await feeStore.updateSession(orgId, feeSessionId, sessionPatch);
+      return { feeSession: result.feeSession };
+    }
+    return { feeSession: session };
+  }
+
+  return feeStore.updateSession(orgId, feeSessionId, {
+    ...(sessionPatch || {}),
+    calculationProgress: progress
+  });
+}
+
 async function calculateFeeSessionNow({
   context,
   feeCalculator,
@@ -878,14 +955,20 @@ async function calculateFeeSessionNow({
   input,
   feeSessionId,
   current,
-  calculationInput
+  calculationInput,
+  calculationJobId = null
 }) {
   const overallStartedAt = Date.now();
   const stageTimings = [];
   const previousCalculationResult = isPlainObject(current.calculationResult) ? current.calculationResult : null;
-  const calculating = await feeStore.updateSession(context.session.orgId, feeSessionId, {
-    status: "calculating",
-    calculationProgress: feeCalculationProgress({
+  const calculating = await updateFeeCalculationProgress({
+    feeStore,
+    orgId: context.session.orgId,
+    feeSessionId,
+    calculationJobId,
+    session: current,
+    sessionPatch: { status: "calculating" },
+    progress: feeCalculationProgress({
       phase: "extract",
       percent: 10,
       message: "カルテ本文から算定に必要な情報を抽出しています。",
@@ -905,8 +988,13 @@ async function calculateFeeSessionNow({
     previousCalculationResult,
     stageTimings
   });
-  const progressed = await feeStore.updateSession(context.session.orgId, feeSessionId, {
-    calculationProgress: feeCalculationProgress({
+  const progressed = await updateFeeCalculationProgress({
+    feeStore,
+    orgId: context.session.orgId,
+    feeSessionId,
+    calculationJobId,
+    session: calculationSession,
+    progress: feeCalculationProgress({
       phase: "calculate",
       percent: 55,
       message: "抽出した内容をマスターと照合し、算定候補を作成しています。",
@@ -927,7 +1015,8 @@ async function calculateFeeSessionNow({
     calculationInput,
     prepared,
     initialStageTimings: stageTimings,
-    overallStartedAt
+    overallStartedAt,
+    calculationJobId
   });
 }
 
@@ -994,7 +1083,8 @@ async function calculatePreparedFeeSessionNow({
   calculationInput,
   prepared,
   initialStageTimings = [],
-  overallStartedAt = Date.now()
+  overallStartedAt = Date.now(),
+  calculationJobId = null
 }) {
   const stageTimings = [...initialStageTimings];
   const calculationInputForSession = buildCalculationInputForSession(calculationSession, calculationInput, prepared);
@@ -1022,8 +1112,13 @@ async function calculatePreparedFeeSessionNow({
       warningCount: Array.isArray(result?.warnings) ? result.warnings.length : 0
     })
   });
-  await feeStore.updateSession(context.session.orgId, feeSessionId, {
-    calculationProgress: feeCalculationProgress({
+  await updateFeeCalculationProgress({
+    feeStore,
+    orgId: context.session.orgId,
+    feeSessionId,
+    calculationJobId,
+    session: calculationSession,
+    progress: feeCalculationProgress({
       phase: "aggregate",
       percent: 85,
       message: "算定結果を集計し、レビュー項目を準備しています。",
@@ -1125,6 +1220,7 @@ async function markFeeCalculationFailed({
   try {
     await feeStore.updateSession(context.session.orgId, feeSessionId, {
       status: "failed",
+      activeCalculationJobId: null,
       calculationProgress: feeCalculationProgress({
         phase: "failed",
         percent: 100,
@@ -2922,6 +3018,15 @@ async function readJsonBody(req) {
   }
 }
 
+// レセ電の文字コード指定を正規化。既定は Shift_JIS(レセ電の標準)。
+function normalizeUkeEncoding(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[-_]/g, "");
+  if (normalized === "utf8" || normalized === "utf") {
+    return "utf-8";
+  }
+  return "shift_jis";
+}
+
 function writeResponse(res, response) {
   // raw応答(CSV等)はそのまま、それ以外はJSONとして返す
   if (response && response.raw) {
@@ -3250,7 +3355,45 @@ function normalizeFeeSearchText(value = "") {
 
 function feeSessionDetailOptionsFromUrl(url) {
   return {
-    includeReviewItems: String(url.searchParams.get("includeReviewItems") || "true").trim().toLowerCase() !== "false"
+    includeReviewItems: String(url.searchParams.get("includeReviewItems") || "true").trim().toLowerCase() !== "false",
+    includeDebug: ["true", "1", "yes"].includes(String(
+      url.searchParams.get("includeDebug") || url.searchParams.get("debug") || ""
+    ).trim().toLowerCase())
+  };
+}
+
+function shouldIncludeFeeSessionDebug(options = {}) {
+  return options.includeDebug === true || options.includeReviewItems !== false;
+}
+
+function compactFeeSessionForWorkbench(session = {}) {
+  if (!session.calculationResult || typeof session.calculationResult !== "object") {
+    return session;
+  }
+  const {
+    clinicalEvents,
+    canonicalClinicalFacts,
+    masterCandidates,
+    billingCandidates,
+    reviewIssues,
+    clinicalExtraction,
+    shadowCalculations,
+    inputSnapshot,
+    rawResult,
+    ...calculationResult
+  } = session.calculationResult;
+  void clinicalEvents;
+  void canonicalClinicalFacts;
+  void masterCandidates;
+  void billingCandidates;
+  void reviewIssues;
+  void clinicalExtraction;
+  void shadowCalculations;
+  void inputSnapshot;
+  void rawResult;
+  return {
+    ...session,
+    calculationResult
   };
 }
 

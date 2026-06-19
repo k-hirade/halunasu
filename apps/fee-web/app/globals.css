@@ -1173,6 +1173,21 @@ body:has(.fee-shell--detail) {
   gap: 8px;
 }
 
+.receipt-uke-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.receipt-uke-encoding {
+  height: 28px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12px;
+  padding: 0 6px;
+}
+
 .billing-summary {
   margin: 12px 0;
   padding: 14px 16px;

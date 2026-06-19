@@ -43,6 +43,10 @@ export class LazyFirestoreFeeStore {
     return this.call("getSession", orgId, feeSessionId);
   }
 
+  async getSessionStatus(orgId, feeSessionId) {
+    return this.call("getSessionStatus", orgId, feeSessionId);
+  }
+
   async updateSession(orgId, feeSessionId, patch) {
     return this.call("updateSession", orgId, feeSessionId, patch);
   }

@@ -8159,3 +8159,39 @@ test("receipt CSV returns 404 for unknown session", async () => {
   const missing = await request(stores, "GET", "/v1/fee/sessions/fee_missing/receipt.csv", undefined, headers);
   assert.equal(missing.statusCode, 404);
 });
+
+test("exports a receipt UKE in Shift_JIS by default and UTF-8 on request", async () => {
+  const { decode } = (await import("iconv-lite")).default;
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "山田 太郎",
+    birthDate: "1970-01-02",
+    sex: "male",
+    insurance: { insurerType: "shaho", insurerNumber: "01130012", insuredSymbol: "12", insuredNumber: "3456" }
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "咳嗽。処方あり。",
+    orders: [{ orderId: "ord_1", orderType: "drug", localName: "カルボシステイン錠", quantity: 2 }]
+  }, headers);
+  await request(stores, "POST", `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`, {}, headers);
+
+  const sjis = await request(stores, "GET", `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/receipt.uke`, undefined, headers);
+  assert.equal(sjis.statusCode, 200);
+  assert.equal(sjis.raw, true);
+  assert.match(sjis.headers["content-type"], /charset=shift_jis/);
+  assert.match(sjis.headers["content-disposition"], /receipt_.*\.UKE/);
+  assert.ok(Buffer.isBuffer(sjis.body));
+  const decoded = decode(sjis.body, "Shift_JIS");
+  assert.match(decoded, /^IR,/);
+  assert.match(decoded, /\r\nRE,/);
+  assert.match(decoded, /山田 太郎/);
+
+  const utf8 = await request(stores, "GET", `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/receipt.uke?encoding=utf-8`, undefined, headers);
+  assert.match(utf8.headers["content-type"], /charset=utf-8/);
+  assert.match(utf8.body.toString("utf-8"), /^IR,/);
+});

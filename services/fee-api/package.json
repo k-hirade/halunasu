@@ -17,6 +17,7 @@
     "@halunasu/fee-core": "file:../../packages/fee-core",
     "@halunasu/firestore-schema": "file:../../packages/firestore-schema",
     "@halunasu/platform-contracts": "file:../../packages/platform-contracts",
-    "firebase-admin": "^13.0.0"
+    "firebase-admin": "^13.0.0",
+    "iconv-lite": "^0.7.0"
   }
 }

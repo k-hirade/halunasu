@@ -38,6 +38,7 @@ const SESSION_SUMMARY_FIELDS = [
   "setting",
   "sourceSystem",
   "latestCalculationId",
+  "activeCalculationJobId",
   "calculationSummary",
   "createdAt",
   "updatedAt",
@@ -69,6 +70,7 @@ export class FirestoreFeeStore {
     }));
 
     await this.doc(feeSessionPath(session.orgId, session.feeSessionId)).set(session);
+    await this.writeSessionStatusView(session.orgId, session.feeSessionId, session);
     return session;
   }
 
@@ -193,6 +195,33 @@ export class FirestoreFeeStore {
     return docDataOrNull(await this.doc(feeSessionPath(orgId, feeSessionId)).get());
   }
 
+  async getSessionStatus(orgId, feeSessionId) {
+    const snapshot = await this.sessionStatusViewDoc(orgId, feeSessionId).get();
+    let statusView = docDataOrNull(snapshot);
+    if (!statusView) {
+      const session = await this.getSession(orgId, feeSessionId);
+      if (!session) {
+        return null;
+      }
+      statusView = sessionStatusView(session);
+      await this.writeSessionStatusView(orgId, feeSessionId, session);
+    }
+
+    const activeCalculationJobId = statusView.activeCalculationJobId || null;
+    if (activeCalculationJobId) {
+      const activeJob = await this.getCalculationJob(orgId, feeSessionId, activeCalculationJobId).catch(() => null);
+      if (activeJob?.progress) {
+        return {
+          ...statusView,
+          calculationProgress: activeJob.progress,
+          updatedAt: activeJob.updatedAt || statusView.updatedAt || null
+        };
+      }
+    }
+
+    return statusView;
+  }
+
   async updateSession(orgId, feeSessionId, patch) {
     const current = await this.getSession(orgId, feeSessionId);
     if (!current) {
@@ -202,7 +231,8 @@ export class FirestoreFeeStore {
     const updated = sanitizeForFirestore(applyFeeSessionPatch(current, patch, {
       now: this.timestamp()
     }));
-    await this.doc(feeSessionPath(orgId, feeSessionId)).set(updated);
+    await this.writeSessionPatch(orgId, feeSessionId, current, updated);
+    await this.writeSessionStatusView(orgId, feeSessionId, updated);
 
     return {
       feeSession: updated
@@ -219,7 +249,8 @@ export class FirestoreFeeStore {
       calculationId: this.idFactory("calc"),
       now: this.timestamp()
     }));
-    await this.doc(feeSessionPath(orgId, feeSessionId)).set(updated);
+    await this.writeSessionPatch(orgId, feeSessionId, current, updated);
+    await this.writeSessionStatusView(orgId, feeSessionId, updated);
 
     return {
       feeSession: updated,
@@ -256,7 +287,8 @@ export class FirestoreFeeStore {
     const updated = sanitizeForFirestore(applyReviewDecision(current, reviewItemId, input, {
       now: this.timestamp()
     }));
-    await this.doc(feeSessionPath(orgId, feeSessionId)).set(updated);
+    await this.writeSessionPatch(orgId, feeSessionId, current, updated);
+    await this.writeSessionStatusView(orgId, feeSessionId, updated);
 
     return {
       feeSession: updated,
@@ -324,6 +356,24 @@ export class FirestoreFeeStore {
       .doc(calculationJobId);
   }
 
+  sessionStatusViewDoc(orgId, feeSessionId) {
+    return this.doc(feeSessionPath(orgId, feeSessionId))
+      .collection("views")
+      .doc("status");
+  }
+
+  async writeSessionPatch(orgId, feeSessionId, current, updated) {
+    const patch = changedTopLevelFields(current, updated);
+    if (!Object.keys(patch).length) {
+      return;
+    }
+    await this.doc(feeSessionPath(orgId, feeSessionId)).update(sanitizeForFirestore(patch));
+  }
+
+  async writeSessionStatusView(orgId, feeSessionId, session) {
+    await this.sessionStatusViewDoc(orgId, feeSessionId).set(sanitizeForFirestore(sessionStatusView(session)));
+  }
+
   timestamp() {
     return this.now().toISOString();
   }
@@ -379,4 +429,31 @@ async function countQuery(query) {
 
 function docDataOrNull(snapshot) {
   return snapshot.exists ? snapshot.data() : null;
+}
+
+function sessionStatusView(session = {}) {
+  return {
+    feeSessionId: session.feeSessionId || session.sessionId || "",
+    sessionId: session.sessionId || session.feeSessionId || "",
+    status: session.status || "draft",
+    calculationProgress: session.calculationProgress || null,
+    calculationSummary: session.calculationSummary || null,
+    latestCalculationId: session.latestCalculationId || null,
+    activeCalculationJobId: session.activeCalculationJobId || null,
+    updatedAt: session.updatedAt || null
+  };
+}
+
+function changedTopLevelFields(current = {}, updated = {}) {
+  const patch = {};
+  const keys = new Set([
+    ...Object.keys(current || {}),
+    ...Object.keys(updated || {})
+  ]);
+  for (const key of keys) {
+    if (JSON.stringify(current?.[key]) !== JSON.stringify(updated?.[key])) {
+      patch[key] = updated?.[key] ?? null;
+    }
+  }
+  return patch;
 }
