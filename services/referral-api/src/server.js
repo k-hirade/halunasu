@@ -6,8 +6,15 @@ import {
   requireProductContext
 } from "../../../packages/auth-client/src/index.js";
 import {
+  validateDraftAiInput,
+  validateFeeLinkageInput,
+  validateReferralAttachmentInput,
   validateCreateReferralDraftInput,
-  validateCreateReferralPatientInput
+  validateCreateReferralPatientInput,
+  validateReferralImportInput,
+  validateReplyLetterInput,
+  validateUpsertRecipientDirectoryInput,
+  validateUpsertReferralTemplateInput
 } from "../../../packages/referral-contracts/src/index.js";
 import {
   departmentSnapshot,
@@ -103,17 +110,21 @@ async function routeReferralApiRequest(input = {}) {
   }
 
   if (method === "GET" && matches(parts, ["v1", "referral", "bootstrap"])) {
-    const [patients, facilities, departments, referrals] = await Promise.all([
+    const [patients, facilities, departments, referrals, recipients, templates] = await Promise.all([
       platformStore.listPatients(context.session.orgId),
       platformStore.listFacilities(context.session.orgId),
       platformStore.listDepartments(context.session.orgId),
-      referralStore.listReferrals(context.session.orgId)
+      referralStore.listReferrals(context.session.orgId),
+      referralStore.listRecipientDirectory(context.session.orgId),
+      referralStore.listReferralTemplates(context.session.orgId)
     ]);
     return ok({
       patients,
       facilities,
       departments,
-      referrals
+      referrals,
+      recipients,
+      templates
     });
   }
 
@@ -152,6 +163,96 @@ async function routeReferralApiRequest(input = {}) {
     return ok({ referrals: await referralStore.listReferrals(context.session.orgId) });
   }
 
+  if (method === "GET" && matches(parts, ["v1", "referral", "recipient-directory"])) {
+    return ok({ recipients: await referralStore.listRecipientDirectory(context.session.orgId) });
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "referral", "recipient-directory"])) {
+    requireWriteAccess(context);
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const recipient = await referralStore.upsertRecipientDirectory(
+      context.session.orgId,
+      validateUpsertRecipientDirectoryInput(input.body || {})
+    );
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "referral.recipient_upserted",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "recipient",
+      targetId: recipient.recipientId,
+      productId: PRODUCT_ID,
+      safePayload: { recipientId: recipient.recipientId }
+    });
+    return created({ recipient });
+  }
+
+  if (method === "PATCH" && parts.length === 4 && matches(parts.slice(0, 3), ["v1", "referral", "recipient-directory"])) {
+    requireWriteAccess(context);
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const recipient = await referralStore.upsertRecipientDirectory(
+      context.session.orgId,
+      validateUpsertRecipientDirectoryInput({
+        ...(input.body || {}),
+        recipientId: parts[3]
+      })
+    );
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "referral.recipient_updated",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "recipient",
+      targetId: recipient.recipientId,
+      productId: PRODUCT_ID,
+      safePayload: { recipientId: recipient.recipientId }
+    });
+    return ok({ recipient });
+  }
+
+  if (method === "GET" && matches(parts, ["v1", "referral", "templates"])) {
+    return ok({ templates: await referralStore.listReferralTemplates(context.session.orgId) });
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "referral", "templates"])) {
+    requireWriteAccess(context);
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const template = await referralStore.upsertReferralTemplate(
+      context.session.orgId,
+      validateUpsertReferralTemplateInput(input.body || {})
+    );
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "referral.template_upserted",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "referral_template",
+      targetId: template.templateId,
+      productId: PRODUCT_ID,
+      safePayload: { templateId: template.templateId }
+    });
+    return created({ template });
+  }
+
+  if (method === "PATCH" && parts.length === 4 && matches(parts.slice(0, 3), ["v1", "referral", "templates"])) {
+    requireWriteAccess(context);
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const template = await referralStore.upsertReferralTemplate(
+      context.session.orgId,
+      validateUpsertReferralTemplateInput({
+        ...(input.body || {}),
+        templateId: parts[3]
+      })
+    );
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "referral.template_updated",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "referral_template",
+      targetId: template.templateId,
+      productId: PRODUCT_ID,
+      safePayload: { templateId: template.templateId }
+    });
+    return ok({ template });
+  }
+
   if (method === "POST" && matches(parts, ["v1", "referral", "referrals"])) {
     requireWriteAccess(context);
     requirePlatformCsrf(input.headers || {}, context.session);
@@ -179,6 +280,143 @@ async function routeReferralApiRequest(input = {}) {
     });
 
     return created({ referral });
+  }
+
+  if (method === "POST" && isReferralAction(parts, "imports")) {
+    requireWriteAccess(context);
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const referral = await referralStore.createReferralImport(
+      context.session.orgId,
+      parts[3],
+      validateReferralImportInput(input.body || {}),
+      { memberId: context.session.memberId }
+    );
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "referral.import_created",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "referral",
+      targetId: referral.referralId,
+      productId: PRODUCT_ID,
+      safePayload: {
+        referralId: referral.referralId,
+        sourceProduct: input.body?.sourceProduct || input.body?.source_product,
+        sourceType: input.body?.sourceType || input.body?.source_type,
+        sourceId: input.body?.sourceId || input.body?.source_id
+      }
+    });
+    return created({ referral });
+  }
+
+  if (method === "POST" && isReferralAction(parts, "draft-ai")) {
+    requireWriteAccess(context);
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const result = await referralStore.draftReferralWithAssistant(
+      context.session.orgId,
+      parts[3],
+      validateDraftAiInput(input.body || {})
+    );
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "referral.draft_assistant_applied",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "referral",
+      targetId: result.referral.referralId,
+      productId: PRODUCT_ID,
+      safePayload: { referralId: result.referral.referralId, provider: result.suggestion.provider }
+    });
+    return ok(result);
+  }
+
+  if (method === "POST" && isReferralAction(parts, "validate")) {
+    requireWriteAccess(context);
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const referral = await referralStore.validateReferral(context.session.orgId, parts[3]);
+    return ok({ referral, reviewChecklist: referral.reviewChecklist || [] });
+  }
+
+  if (method === "POST" && isReferralAction(parts, "attachments")) {
+    requireWriteAccess(context);
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const referral = await referralStore.addReferralAttachment(
+      context.session.orgId,
+      parts[3],
+      validateReferralAttachmentInput(input.body || {}),
+      { memberId: context.session.memberId }
+    );
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "referral.attachment_added",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "referral",
+      targetId: referral.referralId,
+      productId: PRODUCT_ID,
+      safePayload: { referralId: referral.referralId }
+    });
+    return created({ referral });
+  }
+
+  if (method === "POST" && isReferralAction(parts, "replies")) {
+    requireWriteAccess(context);
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const referral = await referralStore.addReplyLetter(
+      context.session.orgId,
+      parts[3],
+      validateReplyLetterInput(input.body || {}),
+      { memberId: context.session.memberId }
+    );
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "referral.reply_added",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "referral",
+      targetId: referral.referralId,
+      productId: PRODUCT_ID,
+      safePayload: { referralId: referral.referralId }
+    });
+    return created({ referral });
+  }
+
+  if (method === "POST" && isReferralAction(parts, "fee-linkage")) {
+    requireWriteAccess(context);
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const referral = await referralStore.updateFeeLinkage(
+      context.session.orgId,
+      parts[3],
+      validateFeeLinkageInput(input.body || {}),
+      { memberId: context.session.memberId }
+    );
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "referral.fee_linkage_updated",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "referral",
+      targetId: referral.referralId,
+      productId: PRODUCT_ID,
+      safePayload: { referralId: referral.referralId, status: referral.feeLinkage?.status }
+    });
+    return ok({ referral });
+  }
+
+  if (method === "POST" && isReferralAction(parts, "finalize")) {
+    requireWriteAccess(context);
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const referral = await referralStore.finalizeReferral(
+      context.session.orgId,
+      parts[3],
+      input.body || {},
+      { memberId: context.session.memberId }
+    );
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "referral.finalized",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "referral",
+      targetId: referral.referralId,
+      productId: PRODUCT_ID,
+      safePayload: { referralId: referral.referralId, status: referral.status }
+    });
+    return ok({ referral });
   }
 
   if (method === "GET" && isReferralDocument(parts)) {
@@ -494,6 +732,10 @@ function headerValue(headers, name) {
 
 function isReferralDocument(parts) {
   return parts.length === 4 && matches(parts.slice(0, 3), ["v1", "referral", "referrals"]);
+}
+
+function isReferralAction(parts, action) {
+  return parts.length === 5 && matches(parts.slice(0, 3), ["v1", "referral", "referrals"]) && parts[4] === action;
 }
 
 function matches(parts, expected) {

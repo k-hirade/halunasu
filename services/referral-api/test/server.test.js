@@ -99,6 +99,74 @@ test("patches referral drafts with validated product-owned fields", async () => 
   assert.deepEqual(patched.body.referral.medications, ["内服薬A"]);
 });
 
+test("supports recipient directory, templates, imports, draft assistance, attachments, replies, and fee linkage", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const patient = stores.platformStore.createPatient("org_001", { displayName: "田中 一郎" });
+  const recipient = await request(stores, "POST", "/v1/referral/recipient-directory", {
+    institutionName: "紹介先総合病院",
+    departmentName: "消化器内科",
+    doctorName: "紹介 先生",
+    fax: "03-0000-0000"
+  }, headers);
+  const template = await request(stores, "POST", "/v1/referral/templates", {
+    templateType: "test_request",
+    displayName: "内視鏡検査依頼"
+  }, headers);
+  const draft = await request(stores, "POST", "/v1/referral/referrals", {
+    patientId: patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    recipientInstitution: {
+      displayName: recipient.body.recipient.institutionName,
+      departmentName: recipient.body.recipient.departmentName
+    },
+    recipientDoctor: {
+      displayName: recipient.body.recipient.doctorName
+    },
+    purpose: "精査依頼",
+    clinicalSummary: "腹痛が続いています。"
+  }, headers);
+  const imported = await request(stores, "POST", `/v1/referral/referrals/${draft.body.referral.referralId}/imports`, {
+    sourceProduct: "charting",
+    sourceType: "encounter",
+    sourceId: "enc_001",
+    sourceSnapshot: {
+      clinicalText: "S：腹痛。\nO：腹部圧痛あり。\nA：腹痛症。\nP：内視鏡検査を相談。"
+    }
+  }, headers);
+  const assisted = await request(stores, "POST", `/v1/referral/referrals/${draft.body.referral.referralId}/draft-ai`, {
+    sourceText: "S：腹痛。\nO：腹部圧痛あり。\nA：腹痛症。\nP：内視鏡検査を相談。"
+  }, headers);
+  const attachment = await request(stores, "POST", `/v1/referral/referrals/${draft.body.referral.referralId}/attachments`, {
+    displayName: "採血結果",
+    attachmentType: "lab_result"
+  }, headers);
+  const reply = await request(stores, "POST", `/v1/referral/referrals/${draft.body.referral.referralId}/replies`, {
+    summary: "精査予定の返書を受領。"
+  }, headers);
+  const fee = await request(stores, "POST", `/v1/referral/referrals/${draft.body.referral.referralId}/fee-linkage`, {
+    status: "suggested"
+  }, headers);
+  const validated = await request(stores, "POST", `/v1/referral/referrals/${draft.body.referral.referralId}/validate`, {}, headers);
+  const finalized = await request(stores, "POST", `/v1/referral/referrals/${draft.body.referral.referralId}/finalize`, {
+    status: "ready"
+  }, headers);
+  const bootstrap = await request(stores, "GET", "/v1/referral/bootstrap", undefined, headers);
+
+  assert.equal(recipient.statusCode, 201);
+  assert.equal(template.statusCode, 201);
+  assert.equal(imported.statusCode, 201);
+  assert.equal(assisted.body.suggestion.provider, "halunasu_draft_assistant");
+  assert.equal(attachment.body.referral.attachments.length, 1);
+  assert.equal(reply.body.referral.replyStatus, "received");
+  assert.equal(fee.body.referral.feeLinkage.status, "suggested");
+  assert.ok(validated.body.reviewChecklist.length > 0);
+  assert.equal(finalized.body.referral.status, "ready");
+  assert.equal(bootstrap.body.recipients.length, 1);
+  assert.equal(bootstrap.body.templates.length, 1);
+});
+
 test("rejects referral access without product entitlement", async () => {
   const stores = createStores({ entitlement: false });
   const headers = await signedHeaders(stores.platformStore);

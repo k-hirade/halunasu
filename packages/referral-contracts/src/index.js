@@ -1,9 +1,26 @@
 export const referralStatuses = Object.freeze([
   "draft",
+  "needs_review",
   "ready",
   "document_ready",
   "sent",
-  "archived"
+  "archived",
+  "cancelled"
+]);
+
+export const referralDocumentTypes = Object.freeze([
+  "clinical_information",
+  "specialist_referral",
+  "test_request",
+  "admission_request",
+  "reverse_referral",
+  "reply"
+]);
+
+export const referralUrgencies = Object.freeze([
+  "routine",
+  "soon",
+  "urgent"
 ]);
 
 export function validateCreateReferralPatientInput(input = {}) {
@@ -25,6 +42,8 @@ export function validateCreateReferralDraftInput(input = {}) {
     authorMemberId: optionalString(input.authorMemberId ?? input.author_member_id),
     recipientInstitution: validateRecipientInstitution(input.recipientInstitution ?? input.recipient_institution ?? {}),
     recipientDoctor: validateRecipientDoctor(input.recipientDoctor ?? input.recipient_doctor ?? {}),
+    documentType: optionalEnum(input.documentType ?? input.document_type, referralDocumentTypes, "documentType") || "clinical_information",
+    urgency: optionalEnum(input.urgency, referralUrgencies, "urgency") || "routine",
     title: optionalString(input.title) || "診療情報提供書",
     purpose: requiredMultilineString(input.purpose, "purpose", 2000),
     clinicalSummary: requiredMultilineString(input.clinicalSummary ?? input.clinical_summary, "clinicalSummary", 20000),
@@ -32,7 +51,9 @@ export function validateCreateReferralDraftInput(input = {}) {
     medications: normalizeTextLines(input.medications, 100, "medications"),
     allergies: normalizeTextLines(input.allergies, 50, "allergies"),
     requestedAction: optionalMultilineString(input.requestedAction ?? input.requested_action, 5000),
-    notes: optionalMultilineString(input.notes, 5000)
+    notes: optionalMultilineString(input.notes, 5000),
+    attachments: normalizeReferralAttachments(input.attachments),
+    sourceImports: normalizeReferralSourceImports(input.sourceImports ?? input.source_imports)
   };
 }
 
@@ -53,6 +74,12 @@ export function validatePatchReferralDraftInput(input = {}) {
     recipientDoctor: hasOwn(input, "recipientDoctor") || hasOwn(input, "recipient_doctor")
       ? validateRecipientDoctor(input.recipientDoctor ?? input.recipient_doctor ?? {})
       : undefined,
+    documentType: hasOwn(input, "documentType") || hasOwn(input, "document_type")
+      ? optionalEnum(input.documentType ?? input.document_type, referralDocumentTypes, "documentType")
+      : undefined,
+    urgency: hasOwn(input, "urgency")
+      ? optionalEnum(input.urgency, referralUrgencies, "urgency")
+      : undefined,
     title: hasOwn(input, "title") ? optionalString(input.title) : undefined,
     purpose: hasOwn(input, "purpose") ? optionalMultilineString(input.purpose, 2000) : undefined,
     clinicalSummary: hasOwn(input, "clinicalSummary") || hasOwn(input, "clinical_summary")
@@ -65,6 +92,16 @@ export function validatePatchReferralDraftInput(input = {}) {
       ? optionalMultilineString(input.requestedAction ?? input.requested_action, 5000)
       : undefined,
     notes: hasOwn(input, "notes") ? optionalMultilineString(input.notes, 5000) : undefined,
+    attachments: hasOwn(input, "attachments") ? normalizeReferralAttachments(input.attachments) : undefined,
+    sourceImports: hasOwn(input, "sourceImports") || hasOwn(input, "source_imports")
+      ? normalizeReferralSourceImports(input.sourceImports ?? input.source_imports)
+      : undefined,
+    reviewChecklist: hasOwn(input, "reviewChecklist") || hasOwn(input, "review_checklist")
+      ? normalizeReviewChecklist(input.reviewChecklist ?? input.review_checklist)
+      : undefined,
+    feeLinkage: hasOwn(input, "feeLinkage") || hasOwn(input, "fee_linkage")
+      ? validateFeeLinkageInput(input.feeLinkage ?? input.fee_linkage ?? {})
+      : undefined,
     status: hasOwn(input, "status") ? optionalEnum(input.status, referralStatuses, "status") : undefined
   });
 }
@@ -73,6 +110,90 @@ export function validateRenderReferralDocumentInput(input = {}) {
   return compactObject({
     fileName: optionalString(input.fileName ?? input.file_name),
     requestedAt: optionalDateTime(input.requestedAt ?? input.requested_at, "requestedAt")
+  });
+}
+
+export function validateUpsertRecipientDirectoryInput(input = {}) {
+  return compactObject({
+    recipientId: optionalString(input.recipientId ?? input.recipient_id),
+    institutionName: requiredString(input.institutionName ?? input.institution_name ?? input.displayName ?? input.display_name, "institutionName"),
+    departmentName: optionalString(input.departmentName ?? input.department_name),
+    doctorName: optionalString(input.doctorName ?? input.doctor_name),
+    doctorTitle: optionalString(input.doctorTitle ?? input.doctor_title),
+    medicalInstitutionCode: optionalString(input.medicalInstitutionCode ?? input.medical_institution_code),
+    postalCode: optionalString(input.postalCode ?? input.postal_code),
+    address: optionalString(input.address),
+    phone: optionalString(input.phone),
+    fax: optionalString(input.fax),
+    notes: optionalMultilineString(input.notes, 5000),
+    status: optionalEnum(input.status, ["active", "archived"], "status") || "active"
+  });
+}
+
+export function validateUpsertReferralTemplateInput(input = {}) {
+  return compactObject({
+    templateId: optionalString(input.templateId ?? input.template_id),
+    templateType: optionalEnum(input.templateType ?? input.template_type, referralDocumentTypes, "templateType") || "clinical_information",
+    displayName: requiredString(input.displayName ?? input.display_name, "displayName"),
+    purposeTemplate: optionalMultilineString(input.purposeTemplate ?? input.purpose_template, 2000),
+    clinicalSummaryTemplate: optionalMultilineString(input.clinicalSummaryTemplate ?? input.clinical_summary_template, 20000),
+    requestedActionTemplate: optionalMultilineString(input.requestedActionTemplate ?? input.requested_action_template, 5000),
+    requiredFields: normalizeStringArray(input.requiredFields ?? input.required_fields),
+    status: optionalEnum(input.status, ["active", "archived"], "status") || "active"
+  });
+}
+
+export function validateReferralImportInput(input = {}) {
+  return compactObject({
+    sourceProduct: requiredString(input.sourceProduct ?? input.source_product, "sourceProduct"),
+    sourceType: requiredString(input.sourceType ?? input.source_type, "sourceType"),
+    sourceId: requiredString(input.sourceId ?? input.source_id, "sourceId"),
+    sourceSnapshot: input.sourceSnapshot ?? input.source_snapshot ?? {},
+    selectedSections: normalizeStringArray(input.selectedSections ?? input.selected_sections),
+    idempotencyKey: optionalString(input.idempotencyKey ?? input.idempotency_key),
+    importedBy: optionalString(input.importedBy ?? input.imported_by)
+  });
+}
+
+export function validateDraftAiInput(input = {}) {
+  return compactObject({
+    sourceText: optionalMultilineString(input.sourceText ?? input.source_text, 50000),
+    sourceSnapshot: input.sourceSnapshot ?? input.source_snapshot ?? {},
+    documentType: optionalEnum(input.documentType ?? input.document_type, referralDocumentTypes, "documentType"),
+    templateId: optionalString(input.templateId ?? input.template_id)
+  });
+}
+
+export function validateReferralAttachmentInput(input = {}) {
+  return compactObject({
+    attachmentId: optionalString(input.attachmentId ?? input.attachment_id),
+    attachmentType: optionalEnum(input.attachmentType ?? input.attachment_type, ["lab_result", "image", "medication", "document", "other"], "attachmentType") || "other",
+    displayName: requiredString(input.displayName ?? input.display_name, "displayName"),
+    description: optionalMultilineString(input.description, 5000),
+    sourceProduct: optionalString(input.sourceProduct ?? input.source_product),
+    sourceId: optionalString(input.sourceId ?? input.source_id),
+    artifactId: optionalString(input.artifactId ?? input.artifact_id),
+    status: optionalEnum(input.status, ["attached", "removed"], "status") || "attached"
+  });
+}
+
+export function validateReplyLetterInput(input = {}) {
+  return compactObject({
+    replyId: optionalString(input.replyId ?? input.reply_id),
+    receivedAt: optionalDateTime(input.receivedAt ?? input.received_at, "receivedAt"),
+    senderInstitution: optionalString(input.senderInstitution ?? input.sender_institution),
+    senderDoctor: optionalString(input.senderDoctor ?? input.sender_doctor),
+    summary: requiredMultilineString(input.summary, "summary", 20000),
+    documentArtifact: input.documentArtifact ?? input.document_artifact
+  });
+}
+
+export function validateFeeLinkageInput(input = {}) {
+  return compactObject({
+    feeSessionId: optionalString(input.feeSessionId ?? input.fee_session_id),
+    suggestedBillingConcept: optionalString(input.suggestedBillingConcept ?? input.suggested_billing_concept) || "診療情報提供料",
+    status: optionalEnum(input.status, ["not_linked", "suggested", "linked", "dismissed"], "status") || "suggested",
+    notes: optionalMultilineString(input.notes, 5000)
   });
 }
 
@@ -229,6 +350,36 @@ function normalizeStringArray(value) {
   }
 
   return [...new Set(value.map(optionalString).filter(Boolean))];
+}
+
+function normalizeReferralAttachments(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.slice(0, 100).map(validateReferralAttachmentInput);
+}
+
+function normalizeReferralSourceImports(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.slice(0, 50).map(validateReferralImportInput);
+}
+
+function normalizeReviewChecklist(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.slice(0, 100).map((item) => compactObject({
+    key: requiredString(item.key, "reviewChecklist.key"),
+    label: requiredString(item.label, "reviewChecklist.label"),
+    status: optionalEnum(item.status, ["passed", "missing", "warning"], "reviewChecklist.status") || "missing",
+    message: optionalString(item.message),
+    required: item.required === undefined ? true : Boolean(item.required)
+  }));
 }
 
 function isPlainObject(value) {
