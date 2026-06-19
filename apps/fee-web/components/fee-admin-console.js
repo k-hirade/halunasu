@@ -485,17 +485,13 @@ async function feeApi(path, options = {}) {
   const config = typeof window !== "undefined" ? window.__HALUNASU_FEE_CONFIG__ || {} : {};
   const baseUrl = config.feeBaseUrl || "/api/fee";
   const accessToken = getStoredPlatformAccessToken();
-  if (!accessToken) {
-    const error = new Error("Invalid session");
-    error.status = 401;
-    throw error;
+  const headers = { "content-type": "application/json" };
+  if (accessToken) {
+    headers.authorization = `Bearer ${accessToken}`;
   }
   const response = await fetch(`${baseUrl}${path}`, {
     method: options.method || "GET",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${accessToken}`
-    },
+    headers,
     credentials: "include",
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
   });

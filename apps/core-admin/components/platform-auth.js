@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { BRAND_NAME, PRODUCT_NAME } from "../lib/brand";
 
 const PlatformAuthContext = createContext(null);
@@ -14,10 +14,11 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
   const [pendingLogin, setPendingLogin] = useState(null);
   const [mfa, setMfa] = useState({ mode: "", challenge: null });
   const [errorMessage, setErrorMessage] = useState("");
+  const authMutationRef = useRef(0);
 
   const api = useCallback(async (path, options = {}) => {
     const headers = { "content-type": "application/json" };
-    const bearer = options.accessToken || accessToken;
+    const bearer = options.accessToken || accessToken || getStoredPlatformAccessToken();
     if (bearer) {
       headers.authorization = `Bearer ${bearer}`;
     }
@@ -43,7 +44,8 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
   }, [accessToken, csrfToken, platformBaseUrl]);
 
   const finishLogin = useCallback((payload) => {
-    const token = payload.accessToken || accessToken;
+    authMutationRef.current += 1;
+    const token = payload.accessToken || accessToken || readAccessToken();
     setSession(payload.session || null);
     setCsrfToken(payload.csrfToken || readPlatformCsrfCookie());
     setAccessToken(token || "");
@@ -82,6 +84,7 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
   }, [beginMfaEnrollment, finishLogin]);
 
   const refreshSession = useCallback(async () => {
+    authMutationRef.current += 1;
     setStatus("checking");
     setErrorMessage("");
     try {
@@ -116,6 +119,7 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
     let cancelled = false;
 
     async function hydrateSession() {
+      const hydrateGeneration = authMutationRef.current;
       setStatus("checking");
       setErrorMessage("");
       try {
@@ -132,6 +136,9 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
           credentials: "include"
         });
         const payload = await response.json().catch(() => ({}));
+        if (hydrateGeneration !== authMutationRef.current) {
+          return;
+        }
         if (cancelled) {
           return;
         }
@@ -150,6 +157,9 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
         writeAccessToken(payload.accessToken || storedAccessToken || "");
         setStatus("authenticated");
       } catch {
+        if (hydrateGeneration !== authMutationRef.current) {
+          return;
+        }
         if (cancelled) {
           return;
         }
@@ -170,6 +180,7 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
   }, [platformBaseUrl]);
 
   const login = useCallback(async (credentials) => {
+    authMutationRef.current += 1;
     setErrorMessage("");
     setPendingLogin(credentials);
     try {
@@ -228,6 +239,7 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
   }, [api, finishLogin, mfa.mode, pendingLogin]);
 
   const cancelMfa = useCallback(async () => {
+    authMutationRef.current += 1;
     if (session || csrfToken) {
       await api("/v1/auth/logout", {
         method: "POST",
@@ -245,6 +257,7 @@ export function PlatformAuthProvider({ children, platformBaseUrl }) {
   }, [api, csrfToken, session]);
 
   const logout = useCallback(async () => {
+    authMutationRef.current += 1;
     if (session || csrfToken) {
       await api("/v1/auth/logout", {
         method: "POST",
@@ -495,6 +508,10 @@ export function usePlatformAuth() {
     throw new Error("usePlatformAuth must be used within PlatformAuthProvider");
   }
   return context;
+}
+
+export function getStoredPlatformAccessToken() {
+  return readAccessToken();
 }
 
 function readAccessToken() {

@@ -2735,10 +2735,6 @@ function useFeeApi() {
     const accessToken = auth.accessToken || getStoredPlatformAccessToken();
     if (accessToken) {
       headers.authorization = `Bearer ${accessToken}`;
-    } else {
-      const error = new Error("Invalid session");
-      error.status = 401;
-      throw error;
     }
     if (options.csrf && auth.csrfToken) {
       headers["x-csrf-token"] = auth.csrfToken;
@@ -2770,10 +2766,6 @@ function useFeeReceiptCsvDownload() {
     const accessToken = auth.accessToken || getStoredPlatformAccessToken();
     if (accessToken) {
       headers.authorization = `Bearer ${accessToken}`;
-    } else {
-      const error = new Error("Invalid session");
-      error.status = 401;
-      throw error;
     }
     const response = await fetch(
       `${baseUrl}/v1/fee/sessions/${encodeURIComponent(sessionId)}/receipt.csv`,
@@ -2804,10 +2796,6 @@ function useFeeReceiptUkeDownload() {
     const accessToken = auth.accessToken || getStoredPlatformAccessToken();
     if (accessToken) {
       headers.authorization = `Bearer ${accessToken}`;
-    } else {
-      const error = new Error("Invalid session");
-      error.status = 401;
-      throw error;
     }
     const response = await fetch(
       `${baseUrl}/v1/fee/sessions/${encodeURIComponent(sessionId)}/receipt.uke?encoding=${encodeURIComponent(encoding)}`,

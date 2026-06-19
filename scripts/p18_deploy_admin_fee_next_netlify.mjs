@@ -20,7 +20,7 @@ const appConfigs = {
         NEXT_PUBLIC_HALUNASU_ENV: env,
         PLATFORM_PROXY_TARGET: targets.platform,
         PLATFORM_BASE_URL: targets.platform,
-        NEXT_PUBLIC_PLATFORM_BASE_URL: targets.platform
+        NEXT_PUBLIC_PLATFORM_BASE_URL: "/api/platform"
       };
     }
   },
@@ -35,9 +35,9 @@ const appConfigs = {
         PLATFORM_PROXY_TARGET: targets.platform,
         FEE_PROXY_TARGET: targets.fee,
         PLATFORM_BASE_URL: targets.platform,
-        NEXT_PUBLIC_PLATFORM_BASE_URL: targets.platform,
+        NEXT_PUBLIC_PLATFORM_BASE_URL: "/api/platform",
         FEE_BASE_URL: targets.fee,
-        NEXT_PUBLIC_FEE_BASE_URL: targets.fee,
+        NEXT_PUBLIC_FEE_BASE_URL: "/api/fee",
         CORE_ADMIN_BASE_URL: env === "stg" ? "https://admin.stg.halunasu.com" : "https://admin.halunasu.com",
         NEXT_PUBLIC_CORE_ADMIN_BASE_URL: env === "stg" ? "https://admin.stg.halunasu.com" : "https://admin.halunasu.com"
       };
