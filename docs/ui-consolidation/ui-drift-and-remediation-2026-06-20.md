@@ -110,6 +110,13 @@
 - [x] **ステップ6: ドリフト検出テスト**
   - `packages/web-ui/test/consolidation-guard.test.js` を追加。①platform-auth が各アプリで再定義されず共有を再エクスポート、②proxy-utils が共有由来(canonical未再定義)、③`toUserFacingErrorMessage` をアプリで再定義していない、を検査。web-ui テスト計8件パス。
 
+## 6.5 追加: charting も共有ログインUIへ統一(2026-06-20)
+- ログイン画面の**プレゼンテーション**を `@halunasu/web-ui/login-views`(`LoginFormView`/`MfaFormView`/`AuthBrandPanel`/`PasswordToggleIcon`)に抽出。
+- `platform-auth`(fee/referral/core)も charting も**同じ login-views を描画**。`platform-auth` の LoginGate/MfaGate は薄いラッパに。
+- charting は **認証は charting-gateway のまま**(operator-access)、UIだけ共有に差し替え。これでプレースホルダ有無・ボタン形・見出し体裁の差が解消(見出し文言はcaller指定を許容)。
+- ドリフト検出ガードに「charting が login-views を使用・旧プレースホルダ非保持」を追加。web-ui テスト9件パス、4アプリ build成功。
+- 注意: 既存の見え方の差(referral 等)は**未デプロイのため**。再デプロイで一致する。
+
 ## 7. 完了サマリ
 共有化(`@halunasu/web-ui`):`user-facing-error` / `proxy-utils` / `platform-auth`(+CSS)。
 4アプリ build 成功、web-ui テスト8件パス、ドリフト検出テストで再発防止。

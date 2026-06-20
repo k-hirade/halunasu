@@ -10,7 +10,8 @@
     "./styles/halunasu-ui.css": "./styles/halunasu-ui.css",
     "./user-facing-error": "./src/user-facing-error.js",
     "./proxy-utils": "./src/proxy-utils.js",
-    "./platform-auth": "./src/platform-auth.js"
+    "./platform-auth": "./src/platform-auth.js",
+    "./login-views": "./src/login-views.js"
   },
   "files": [
     "styles",

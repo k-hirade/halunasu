@@ -7,6 +7,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { toUserFacingErrorMessage } from "./user-facing-error.js";
+import { LoginFormView, MfaFormView } from "./login-views.js";
 
 const PlatformAuthContext = createContext(null);
 const ACCESS_TOKEN_STORAGE_KEY = "halunasu_platform_access_token";
@@ -366,72 +367,23 @@ function AuthChecking() {
 
 function LoginGate() {
   const { brand, errorMessage, login } = usePlatformAuth();
-  const [passwordVisible, setPasswordVisible] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
+  async function handleSubmit(credentials) {
     setBusy(true);
-    await login({
-      organizationCode: form.get("organizationCode"),
-      loginId: form.get("loginId"),
-      password: form.get("password")
-    });
+    await login(credentials);
     setBusy(false);
   }
 
   return (
-    <div className="operator-gate">
-      <div className="operator-gate-shell">
-        <AuthBrandPanel
-          brand={brand}
-          title={brand.login.title}
-          copy={brand.login.copy}
-          features={brand.login.features}
-        />
-        <section className="operator-gate-form-area">
-          <form className="operator-gate-card" onSubmit={handleSubmit}>
-            <div>
-              <h1>ログイン</h1>
-              <p>病院コード、個人ID、ログイン用パスワードでログインしてください。</p>
-            </div>
-            <div className="field">
-              <label htmlFor="organizationCode">病院コード</label>
-              <input id="organizationCode" name="organizationCode" autoComplete="organization" required />
-            </div>
-            <div className="field">
-              <label htmlFor="loginId">個人ID</label>
-              <input id="loginId" name="loginId" autoComplete="username" required />
-            </div>
-            <div className="field">
-              <label htmlFor="password">ログイン用パスワード</label>
-              <div className="field-password">
-                <input
-                  id="password"
-                  name="password"
-                  type={passwordVisible ? "text" : "password"}
-                  autoComplete="current-password"
-                  required
-                />
-                <button
-                  aria-label={passwordVisible ? "ログイン用パスワードを隠す" : "ログイン用パスワードを表示"}
-                  className="password-toggle"
-                  onClick={() => setPasswordVisible((current) => !current)}
-                  type="button"
-                >
-                  <PasswordToggleIcon visible={passwordVisible} />
-                </button>
-              </div>
-            </div>
-            {errorMessage ? <div className="inline-error" role="status">{errorMessage}</div> : null}
-            <div className="operator-gate-actions">
-              <button className="btn btn--primary btn--lg" disabled={busy} type="submit">ログイン</button>
-            </div>
-          </form>
-        </section>
-      </div>
-    </div>
+    <LoginFormView
+      brandName={brand.name}
+      productName={brand.product}
+      pitch={brand.login}
+      errorMessage={errorMessage}
+      busy={busy}
+      onSubmit={handleSubmit}
+    />
   );
 }
 
@@ -439,110 +391,27 @@ function MfaGate() {
   const { brand, cancelMfa, errorMessage, mfa, verifyMfa } = usePlatformAuth();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
-  const isEnroll = mfa.mode === "enroll";
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  async function handleSubmit() {
     setBusy(true);
     await verifyMfa(code);
     setBusy(false);
   }
 
   return (
-    <div className="operator-gate">
-      <div className="operator-gate-shell">
-        <AuthBrandPanel
-          brand={brand}
-          title={isEnroll ? "2段階認証を登録" : "本人確認"}
-          copy={isEnroll ? "認証アプリにシークレットを登録し、表示された6桁コードを入力してください。" : "認証アプリの6桁コードを入力してください。"}
-          features={["病院データを安全に扱うため、管理操作では本人確認を行います。"]}
-        />
-        <section className="operator-gate-form-area">
-          <form className="operator-gate-card" onSubmit={handleSubmit}>
-            <div>
-              <h1>{isEnroll ? "認証アプリを登録" : "確認コード"}</h1>
-              <p>{isEnroll ? "認証アプリに登録してから、6桁コードを入力してください。" : "認証アプリに表示された6桁コードを入力してください。"}</p>
-            </div>
-            {isEnroll && mfa.challenge?.qrCodeDataUrl ? (
-              <div className="operator-mfa-qr">
-                <img alt="認証アプリ登録用QRコード" src={mfa.challenge.qrCodeDataUrl} />
-                <span>認証アプリでQRコードを読み取ってください。</span>
-              </div>
-            ) : null}
-            {isEnroll && mfa.challenge?.secret ? (
-              <div className="field">
-                <label htmlFor="mfaSecret">シークレット</label>
-                <input id="mfaSecret" readOnly type="text" value={mfa.challenge.secret} />
-              </div>
-            ) : null}
-            <div className="field">
-              <label htmlFor="mfaCode">6桁コード</label>
-              <input
-                id="mfaCode"
-                name="mfaCode"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={6}
-                pattern="[0-9]{6}"
-                placeholder="123456"
-                value={code}
-                onChange={(event) => setCode(event.target.value.replace(/\D+/g, "").slice(0, 6))}
-              />
-            </div>
-            {errorMessage ? <div className="inline-error" role="status">{errorMessage}</div> : null}
-            <div className="operator-gate-actions">
-              <button className="btn btn--primary btn--lg" disabled={busy || code.length !== 6} type="submit">確認</button>
-              <button className="btn btn--ghost btn--lg" disabled={busy} onClick={cancelMfa} type="button">戻る</button>
-            </div>
-          </form>
-        </section>
-      </div>
-    </div>
-  );
-}
-
-// パスワード表示トグルのアイコン(目)。表示トグルの正をアイコン+aria-labelに統一(ステップ3)。
-function PasswordToggleIcon({ visible }) {
-  if (visible) {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-        <line x1="1" y1="1" x2="23" y2="23" />
-      </svg>
-    );
-  }
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
-function AuthBrandPanel({ brand, copy, features, title }) {
-  return (
-    <aside className="operator-gate-brand">
-      <div className="operator-gate-brand-top">
-        <img alt={brand.name} className="operator-gate-mark" height="56" src="/brand/harunas-mark.png" width="56" />
-        <span className="operator-gate-wordmark">{brand.name}</span>
-      </div>
-      <div className="operator-gate-pitch">
-        <h2>{title}</h2>
-        {copy ? <p>{copy}</p> : null}
-        <div className="operator-gate-features">
-          {features.map((feature) => (
-            <div className="operator-gate-feature" key={feature}>
-              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
-              <span>{feature}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="operator-gate-foot">
-        <span>© {brand.name}</span>
-        <span>{brand.product}</span>
-      </div>
-    </aside>
+    <MfaFormView
+      brandName={brand.name}
+      productName={brand.product}
+      isEnroll={mfa.mode === "enroll"}
+      qrCodeDataUrl={mfa.challenge?.qrCodeDataUrl || ""}
+      secret={mfa.challenge?.secret || ""}
+      code={code}
+      onCodeChange={setCode}
+      onSubmit={handleSubmit}
+      onBack={cancelMfa}
+      errorMessage={errorMessage}
+      busy={busy}
+    />
   );
 }
 

@@ -44,6 +44,20 @@ test("proxy-utils is sourced from @halunasu/web-ui (not re-defined per app)", ()
   }
 });
 
+test("charting login uses the shared login views (not an inline copy)", () => {
+  const source = read("apps/charting-web/components/operator-login-panel.js");
+  assert.match(
+    source,
+    /@halunasu\/web-ui\/login-views/,
+    "charting operator-login-panel must render the shared LoginFormView/MfaFormView"
+  );
+  assert.doesNotMatch(
+    source,
+    /placeholder="例:/,
+    "charting must not keep per-app placeholders (use the shared login form)"
+  );
+});
+
 test("no app re-defines toUserFacingErrorMessage (must import the shared helper)", () => {
   const files = [
     "apps/fee-web/components/platform-auth.js",
