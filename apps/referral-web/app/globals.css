@@ -390,6 +390,19 @@ p {
   color: var(--muted);
 }
 
+.finalize-panel {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-top: 18px;
+  padding: 16px;
+}
+
+.finalize-panel p {
+  color: var(--muted);
+  margin: 6px 0 12px;
+}
+
 .fee-linkage {
   background: #f8fafc;
   border: 1px solid var(--line);

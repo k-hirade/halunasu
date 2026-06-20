@@ -28,6 +28,8 @@ import { createReferralStoreFromEnv } from "./store/create-store.js";
 const PRODUCT_ID = "referral";
 const READ_ROLES = ["admin", "doctor", "nurse", "medical_clerk", "viewer"];
 const WRITE_ROLES = ["admin", "doctor", "nurse", "medical_clerk"];
+const FINALIZE_ROLES = ["admin", "doctor"];
+const FINAL_REFERRAL_STATUSES = new Set(["ready", "document_ready", "sent"]);
 
 export function createReferralApiServer(options = {}) {
   const startedAt = new Date();
@@ -399,13 +401,17 @@ async function routeReferralApiRequest(input = {}) {
   }
 
   if (method === "POST" && isReferralAction(parts, "finalize")) {
-    requireWriteAccess(context);
+    requireFinalizeAccess(context);
     requirePlatformCsrf(input.headers || {}, context.session);
+    const authorMember = await requireMember(context, platformStore, context.session.memberId);
     const referral = await referralStore.finalizeReferral(
       context.session.orgId,
       parts[3],
       input.body || {},
-      { memberId: context.session.memberId }
+      {
+        memberId: context.session.memberId,
+        memberSnapshot: memberSnapshot(authorMember, input.now || new Date())
+      }
     );
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "referral.finalized",
@@ -431,6 +437,7 @@ async function routeReferralApiRequest(input = {}) {
   if (method === "PATCH" && isReferralDocument(parts)) {
     requireWriteAccess(context);
     requirePlatformCsrf(input.headers || {}, context.session);
+    assertNonFinalStatusPatch(input.body || {});
     const patch = await resolvePatchReferences(context, platformStore, input.body || {}, input.now);
     const referral = await referralStore.updateReferral(context.session.orgId, parts[3], patch);
     await platformStore.createAuditEvent(context.session.orgId, {
@@ -483,6 +490,23 @@ function requireWriteAccess(context) {
   const allowed = hasProductAccess(context.session, PRODUCT_ID, WRITE_ROLES);
   if (!allowed) {
     throw forbiddenError("Referral write access is required");
+  }
+}
+
+function requireFinalizeAccess(context) {
+  const allowed = hasProductAccess(context.session, PRODUCT_ID, FINALIZE_ROLES);
+  if (!allowed) {
+    throw forbiddenError("Referral doctor finalize access is required");
+  }
+}
+
+function assertNonFinalStatusPatch(input = {}) {
+  if (FINAL_REFERRAL_STATUSES.has(input.status)) {
+    const error = new Error("Use the finalize endpoint to set a final referral status");
+    error.name = "BadRequestError";
+    error.statusCode = 400;
+    error.field = "status";
+    throw error;
   }
 }
 
@@ -647,7 +671,8 @@ function errorResponse(error) {
     body: {
       error: statusCode === 500 ? "internal_error" : toErrorCode(error.name),
       message: statusCode === 500 ? "Internal server error" : error.message,
-      field: error.field
+      field: error.field,
+      reviewChecklist: error.reviewChecklist
     }
   };
 }

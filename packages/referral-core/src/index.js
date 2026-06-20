@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import {
   validateDraftAiInput,
   validateFeeLinkageInput,
+  validateReferralAssistantSuggestion,
   validateReferralAttachmentInput,
   validateReferralImportInput,
   validateReplyLetterInput,
@@ -39,6 +40,9 @@ export function buildReferralDraft(input = {}, options = {}) {
     allergies: Array.isArray(input.allergies) ? input.allergies : [],
     requestedAction: input.requestedAction || "",
     notes: input.notes || "",
+    referralFormSections: normalizeReferralFormSectionsForCore(input.referralFormSections, input),
+    sourceEvidenceRefs: Array.isArray(input.sourceEvidenceRefs) ? input.sourceEvidenceRefs : [],
+    sectionEvidence: input.sectionEvidence || {},
     sourceImports: Array.isArray(input.sourceImports) ? input.sourceImports : [],
     attachments: Array.isArray(input.attachments) ? input.attachments : [],
     replies: Array.isArray(input.replies) ? input.replies : [],
@@ -83,6 +87,11 @@ export function patchReferralDraft(current = {}, input = {}, options = {}) {
     allergies: hasOwn(patch, "allergies") ? patch.allergies : current.allergies,
     requestedAction: hasOwn(patch, "requestedAction") ? patch.requestedAction || "" : current.requestedAction,
     notes: hasOwn(patch, "notes") ? patch.notes || "" : current.notes,
+    referralFormSections: hasOwn(patch, "referralFormSections")
+      ? normalizeReferralFormSectionsForCore(patch.referralFormSections, { ...current, ...patch })
+      : normalizeReferralFormSectionsForCore(current.referralFormSections, current),
+    sourceEvidenceRefs: hasOwn(patch, "sourceEvidenceRefs") ? patch.sourceEvidenceRefs : current.sourceEvidenceRefs || [],
+    sectionEvidence: hasOwn(patch, "sectionEvidence") ? patch.sectionEvidence : current.sectionEvidence || {},
     attachments: hasOwn(patch, "attachments") ? patch.attachments : current.attachments || [],
     sourceImports: hasOwn(patch, "sourceImports") ? patch.sourceImports : current.sourceImports || [],
     reviewChecklist: hasOwn(patch, "reviewChecklist") ? patch.reviewChecklist : buildReferralReviewChecklist({ ...current, ...patch }),
@@ -101,6 +110,7 @@ export function attachReferralDocument(current = {}, input = {}, options = {}) {
     status: "document_ready",
     reviewChecklist: buildReferralReviewChecklist(current),
     documentArtifact,
+    documentArtifacts: [...(current.documentArtifacts || []), documentArtifact],
     updatedAt: now
   };
 }
@@ -117,7 +127,9 @@ export function buildReferralDocument(referral = {}, input = {}, options = {}) {
     referralId: requiredString(referral.referralId, "referralId"),
     orgId: requiredString(referral.orgId, "orgId"),
     provider: "halunasu_html",
+    artifactType: input.artifactType || options.artifactType || "draft",
     status: "ready",
+    version: Number(options.version || (Array.isArray(referral.documentArtifacts) ? referral.documentArtifacts.length + 1 : 1)),
     fileName,
     contentType: "text/html; charset=utf-8",
     storage: "inline",
@@ -190,23 +202,44 @@ export function addReferralImport(current = {}, input = {}, options = {}) {
   const normalized = validateReferralImportInput(input);
   const now = timestamp(options.now);
   const importId = options.importId || createId("imp");
+  const evidenceId = `evidence_${importId}`;
   const sourceImport = {
     importId,
     ...normalized,
     importedAt: now,
     importedBy: normalized.importedBy || options.memberId || ""
   };
+  const evidenceRef = sourceEvidenceFromImport(sourceImport, evidenceId);
+  const nextSourceEvidenceRefs = dedupeEvidenceRefs([...(current.sourceEvidenceRefs || []), evidenceRef]);
+  const draftText = draftTextFromSource(normalized);
+  const nextReferralFormSections = normalizeReferralFormSectionsForCore(current.referralFormSections, {
+    ...current,
+    purpose: current.purpose || draftText.purpose,
+    clinicalSummary: current.clinicalSummary || draftText.clinicalSummary,
+    diagnoses: current.diagnoses?.length ? current.diagnoses : draftText.diagnoses,
+    medications: current.medications?.length ? current.medications : draftText.medications
+  });
 
   return {
     ...current,
     sourceImports: dedupeImports([...(current.sourceImports || []), sourceImport]),
-    purpose: current.purpose || draftTextFromSource(normalized).purpose,
-    clinicalSummary: current.clinicalSummary || draftTextFromSource(normalized).clinicalSummary,
-    diagnoses: current.diagnoses?.length ? current.diagnoses : draftTextFromSource(normalized).diagnoses,
-    medications: current.medications?.length ? current.medications : draftTextFromSource(normalized).medications,
+    sourceEvidenceRefs: nextSourceEvidenceRefs,
+    sectionEvidence: mergeSectionEvidence(current.sectionEvidence, {
+      referralPurpose: [evidenceRef.evidenceId],
+      clinicalCourseAndFindings: [evidenceRef.evidenceId],
+      diagnoses: [evidenceRef.evidenceId],
+      currentMedications: [evidenceRef.evidenceId]
+    }),
+    purpose: current.purpose || draftText.purpose,
+    clinicalSummary: current.clinicalSummary || draftText.clinicalSummary,
+    diagnoses: current.diagnoses?.length ? current.diagnoses : draftText.diagnoses,
+    medications: current.medications?.length ? current.medications : draftText.medications,
+    referralFormSections: nextReferralFormSections,
     reviewChecklist: buildReferralReviewChecklist({
       ...current,
-      sourceImports: [...(current.sourceImports || []), sourceImport]
+      sourceImports: [...(current.sourceImports || []), sourceImport],
+      sourceEvidenceRefs: nextSourceEvidenceRefs,
+      referralFormSections: nextReferralFormSections
     }),
     updatedAt: now
   };
@@ -272,14 +305,26 @@ export function updateFeeLinkage(current = {}, input = {}, options = {}) {
 export function finalizeReferral(current = {}, input = {}, options = {}) {
   const now = timestamp(options.now);
   const status = input.status || "ready";
+  const reviewChecklist = buildReferralReviewChecklist(current);
+  const blockingItems = reviewChecklist.filter((item) => item.required !== false && item.status !== "passed");
+  if (isFinalStatus(status) && blockingItems.length) {
+    const error = new Error(`Referral has unresolved required review items: ${blockingItems.map((item) => item.key).join(", ")}`);
+    error.name = "ValidationError";
+    error.statusCode = 400;
+    error.reviewChecklist = reviewChecklist;
+    throw error;
+  }
 
   return {
     ...current,
     status,
+    reviewChecklist,
     finalizedAt: status === "ready" || status === "document_ready" || status === "sent" ? current.finalizedAt || now : current.finalizedAt || null,
+    finalizedByMemberId: isFinalStatus(status) ? options.memberId || current.finalizedByMemberId || "" : current.finalizedByMemberId || "",
+    finalizedByMemberSnapshot: isFinalStatus(status) ? options.memberSnapshot || current.finalizedByMemberSnapshot || null : current.finalizedByMemberSnapshot || null,
+    finalDocumentVersion: isFinalStatus(status) ? Number(current.finalDocumentVersion || 1) : current.finalDocumentVersion || null,
     sentAt: status === "sent" ? input.sentAt || now : current.sentAt || null,
     sentMethod: status === "sent" ? input.sentMethod || current.sentMethod || "manual" : current.sentMethod || "",
-    reviewChecklist: buildReferralReviewChecklist(current),
     updatedAt: now
   };
 }
@@ -301,11 +346,28 @@ export function buildDraftSuggestion(input = {}) {
   ].filter(Boolean).join("\n");
   const requestedAction = inferRequestedAction(source, normalized.documentType);
 
-  return {
+  return validateReferralAssistantSuggestion({
     provider: "halunasu_draft_assistant",
     generatedAt: new Date().toISOString(),
     purpose,
     clinicalSummary: clinicalSummary || source.slice(0, 2000),
+    sections: {
+      referralPurpose: {
+        text: purpose,
+        evidenceIds: normalized.evidenceRefs.map((item) => item.evidenceId),
+        needsReview: normalized.evidenceRefs.length === 0
+      },
+      clinicalCourseAndFindings: {
+        text: clinicalSummary || source.slice(0, 2000),
+        evidenceIds: normalized.evidenceRefs.map((item) => item.evidenceId),
+        needsReview: normalized.evidenceRefs.length === 0
+      },
+      requestedAction: {
+        text: requestedAction,
+        evidenceIds: normalized.evidenceRefs.map((item) => item.evidenceId),
+        needsReview: normalized.evidenceRefs.length === 0
+      }
+    },
     diagnoses,
     medications,
     allergies: extractAllergyLines(source),
@@ -314,21 +376,25 @@ export function buildDraftSuggestion(input = {}) {
       "下書きはカルテ本文からの整形候補です。医師が内容を確認してから発行してください。",
       "本文にない検査結果・処方・依頼事項は補完していません。"
     ]
-  };
+  });
 }
 
 export function buildReferralReviewChecklist(referral = {}) {
   const recipientInstitution = referral.recipientInstitutionSnapshot || referral.recipientInstitution || {};
   const recipientDoctor = referral.recipientDoctorSnapshot || referral.recipientDoctor || {};
+  const sections = normalizeReferralFormSectionsForCore(referral.referralFormSections, referral);
+  const evidenceRefs = referral.sourceEvidenceRefs || [];
   const items = [
     checklistItem("patient", "患者", Boolean(referral.patientId || referral.patientSnapshot?.displayName), "患者が選択されていません。"),
     checklistItem("recipient_institution", "宛先医療機関", Boolean(recipientInstitution.displayName), "宛先医療機関が未入力です。"),
     checklistItem("recipient_person", "宛先診療科・医師", Boolean(recipientDoctor.displayName || recipientInstitution.departmentName), "宛先医師または診療科が未入力です。"),
-    checklistItem("purpose", "紹介目的", Boolean(String(referral.purpose || "").trim()), "紹介目的が未入力です。"),
-    checklistItem("clinical_summary", "経過", Boolean(String(referral.clinicalSummary || "").trim()), "診療経過が未入力です。"),
-    checklistItem("diagnoses", "傷病名", Array.isArray(referral.diagnoses) && referral.diagnoses.length > 0, "傷病名が未入力です。"),
-    checklistItem("requested_action", "依頼事項", Boolean(String(referral.requestedAction || "").trim()), "依頼事項が未入力です。"),
-    checklistItem("author", "作成医師", Boolean(referral.authorMemberId || referral.authorMemberSnapshot?.displayName), "作成者が確認できません。")
+    checklistItem("purpose", "紹介目的", Boolean(String(sections.referralPurpose || referral.purpose || "").trim()), "紹介目的が未入力です。"),
+    checklistItem("clinical_summary", "経過", Boolean(String(sections.clinicalCourseAndFindings || referral.clinicalSummary || "").trim()), "診療経過が未入力です。"),
+    checklistItem("diagnoses", "傷病名", Array.isArray(sections.diagnoses) && sections.diagnoses.length > 0, "傷病名が未入力です。"),
+    checklistItem("medications_reviewed", "現在処方", Array.isArray(sections.currentMedications), "現在処方の確認状態が不明です。"),
+    checklistItem("requested_action", "依頼事項", Boolean(String(sections.requestedAction || referral.requestedAction || "").trim()), "依頼事項が未入力です。"),
+    checklistItem("author", "作成医師", Boolean(referral.authorMemberId || referral.authorMemberSnapshot?.displayName), "作成者が確認できません。"),
+    checklistItem("source_evidence", "根拠", evidenceRefs.length > 0 || (referral.sourceImports || []).length > 0, "下書きの元データが未登録です。", { required: false })
   ];
 
   return items;
@@ -347,21 +413,25 @@ export function createId(prefix) {
 }
 
 function renderReferralText(referral) {
+  const sections = normalizeReferralFormSectionsForCore(referral.referralFormSections, referral);
   return [
     referral.title || "診療情報提供書",
     "",
     `患者: ${referral.patientSnapshot?.displayName || referral.patientId}`,
     `紹介先: ${referral.recipientInstitutionSnapshot?.displayName || ""} ${referral.recipientDoctorSnapshot?.displayName || ""}`,
-    `目的: ${referral.purpose || ""}`,
+    `目的: ${sections.referralPurpose || referral.purpose || ""}`,
     referral.urgency && referral.urgency !== "routine" ? `緊急度: ${referral.urgency}` : "",
-    referral.diagnoses?.length ? `傷病名: ${referral.diagnoses.join("、")}` : "",
+    sections.diagnoses?.length ? `傷病名: ${sections.diagnoses.join("、")}` : "",
     "",
-    referral.clinicalSummary || "",
-    referral.medications?.length ? `\n処方:\n${referral.medications.join("\n")}` : "",
-    referral.allergies?.length ? `\nアレルギー:\n${referral.allergies.join("\n")}` : "",
+    sections.pastHistory ? `既往歴:\n${sections.pastHistory}` : "",
+    sections.familyHistory ? `家族歴:\n${sections.familyHistory}` : "",
+    sections.clinicalCourseAndFindings || referral.clinicalSummary || "",
+    sections.treatmentCourse ? `\n治療経過:\n${sections.treatmentCourse}` : "",
+    sections.currentMedications?.length ? `\n処方:\n${sections.currentMedications.join("\n")}` : "",
+    sections.allergies?.length ? `\nアレルギー:\n${sections.allergies.join("\n")}` : "",
     "",
-    referral.requestedAction || "",
-    referral.notes ? `\n備考:\n${referral.notes}` : ""
+    sections.requestedAction || referral.requestedAction || "",
+    sections.notes || referral.notes ? `\n備考:\n${sections.notes || referral.notes}` : ""
   ].join("\n").trim();
 }
 
@@ -394,13 +464,13 @@ function renderReferralHtml(referral, renderedText) {
   ].join("");
 }
 
-function checklistItem(key, label, passed, missingMessage) {
+function checklistItem(key, label, passed, missingMessage, options = {}) {
   return {
     key,
     label,
     status: passed ? "passed" : "missing",
     message: passed ? "" : missingMessage,
-    required: true
+    required: options.required === undefined ? true : Boolean(options.required)
   };
 }
 
@@ -428,6 +498,74 @@ function draftTextFromSource(sourceImport) {
     diagnoses: suggestion.diagnoses,
     medications: suggestion.medications
   };
+}
+
+function normalizeReferralFormSectionsForCore(value, fallback = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return compactObject({
+    referralPurpose: source.referralPurpose || fallback.purpose || "",
+    pastHistory: source.pastHistory || "",
+    familyHistory: source.familyHistory || "",
+    clinicalCourseAndFindings: source.clinicalCourseAndFindings || fallback.clinicalSummary || "",
+    treatmentCourse: source.treatmentCourse || "",
+    currentMedications: nonEmptyArray(source.currentMedications)
+      ? source.currentMedications
+      : Array.isArray(fallback.medications) ? fallback.medications : [],
+    allergies: nonEmptyArray(source.allergies)
+      ? source.allergies
+      : Array.isArray(fallback.allergies) ? fallback.allergies : [],
+    diagnoses: nonEmptyArray(source.diagnoses)
+      ? source.diagnoses
+      : Array.isArray(fallback.diagnoses) ? fallback.diagnoses : [],
+    requestedAction: source.requestedAction || fallback.requestedAction || "",
+    notes: source.notes || fallback.notes || "",
+    attachments: Array.isArray(source.attachments) ? source.attachments : []
+  });
+}
+
+function sourceEvidenceFromImport(sourceImport, evidenceId) {
+  const snapshot = sourceImport.sourceSnapshot || {};
+  const excerpt = snapshot.clinicalText || snapshot.soapDraft || snapshot.text || snapshot.summary || "";
+  return compactObject({
+    evidenceId,
+    sourceProduct: sourceImport.sourceProduct || "manual",
+    sourceType: sourceImport.sourceType || "clinical_text",
+    sourceId: sourceImport.sourceId || sourceImport.importId,
+    sourceDate: snapshot.serviceDate || snapshot.date,
+    label: sourceImport.sourceType || sourceImport.sourceProduct || "取り込み情報",
+    excerpt: String(excerpt || "").slice(0, 5000),
+    snapshotHash: stableHash(JSON.stringify(sourceImport.sourceSnapshot || {}))
+  });
+}
+
+function mergeSectionEvidence(current = {}, next = {}) {
+  const merged = { ...(current || {}) };
+  for (const [section, evidenceIds] of Object.entries(next)) {
+    merged[section] = [...new Set([...(merged[section] || []), ...(evidenceIds || [])])];
+  }
+  return merged;
+}
+
+function dedupeEvidenceRefs(evidenceRefs) {
+  const seen = new Set();
+  return evidenceRefs.filter((item) => {
+    const key = item.evidenceId || `${item.sourceProduct}:${item.sourceType}:${item.sourceId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function stableHash(value) {
+  return crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, 16);
+}
+
+function isFinalStatus(status) {
+  return ["ready", "document_ready", "sent"].includes(status);
+}
+
+function nonEmptyArray(value) {
+  return Array.isArray(value) && value.length > 0;
 }
 
 function sourceTextFromDraftInput(input) {
@@ -471,7 +609,7 @@ function extractLineItems(text, labels) {
   for (const line of lines) {
     const withoutLabel = line.replace(new RegExp(`^(${labels.join("|")})\\s*[:：]?\\s*`, "iu"), "").trim();
     for (const item of withoutLabel.split(/[、,]/u)) {
-      const normalized = item.trim();
+      const normalized = item.trim().replace(/[。．.]+$/u, "");
       if (normalized && normalized.length <= 80 && !items.includes(normalized)) {
         items.push(normalized);
       }

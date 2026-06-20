@@ -205,7 +205,8 @@ function NewReferralView({ bootstrap, busy, mutate }) {
       clinicalSummary: form.get("clinicalSummary") || "診療経過を入力してください。",
       diagnoses: lines(form.get("diagnoses")),
       medications: lines(form.get("medications")),
-      requestedAction: form.get("requestedAction") || "ご高診のほどよろしくお願いいたします。"
+      requestedAction: form.get("requestedAction") || "ご高診のほどよろしくお願いいたします。",
+      referralFormSections: referralFormSectionsFromForm(form)
     }, { toast: "紹介状下書きを作成しました。" });
     if (payload?.referral?.referralId) {
       window.location.href = `/referrals/${payload.referral.referralId}`;
@@ -296,7 +297,8 @@ function ReferralDetailView({ bootstrap, busy, mutate, referral, setSelectedRefe
       allergies: lines(form.get("allergies")),
       requestedAction: form.get("requestedAction"),
       notes: form.get("notes"),
-      status: form.get("status")
+      status: form.get("status"),
+      referralFormSections: referralFormSectionsFromForm(form)
     }, { method: "PATCH", toast: "下書きを保存しました。" });
   }
 
@@ -306,6 +308,12 @@ function ReferralDetailView({ bootstrap, busy, mutate, referral, setSelectedRefe
 
   async function validateReferral() {
     await mutate(`/v1/referral/referrals/${referral.referralId}/validate`, {}, { toast: "確認項目を更新しました。" });
+  }
+
+  async function finalizeReferral() {
+    await mutate(`/v1/referral/referrals/${referral.referralId}/finalize`, {
+      status: "ready"
+    }, { toast: "紹介状を確定しました。" });
   }
 
   async function applyDraftAssistant() {
@@ -409,9 +417,6 @@ function ReferralDetailView({ bootstrap, busy, mutate, referral, setSelectedRefe
               <SelectField label="状態" name="status" defaultValue={referral.status || "draft"} items={[
                 ["draft", "下書き"],
                 ["needs_review", "確認待ち"],
-                ["ready", "発行可能"],
-                ["document_ready", "文書作成済み"],
-                ["sent", "送付済み"],
                 ["archived", "保管"]
               ]} />
             </div>
@@ -433,7 +438,7 @@ function ReferralDetailView({ bootstrap, busy, mutate, referral, setSelectedRefe
           <PreviewPanel busy={busy} createDocument={createDocument} referral={referral} />
         ) : null}
         {tab === "check" ? (
-          <CheckPanel linkFee={linkFee} referral={referral} />
+          <CheckPanel busy={busy} finalizeReferral={finalizeReferral} linkFee={linkFee} referral={referral} />
         ) : null}
       </section>
     </div>
@@ -466,9 +471,10 @@ function PreviewPanel({ busy, createDocument, referral }) {
   );
 }
 
-function CheckPanel({ linkFee, referral }) {
+function CheckPanel({ busy, finalizeReferral, linkFee, referral }) {
   const checklist = referral.reviewChecklist || [];
   const missingCount = checklist.filter((item) => item.status !== "passed").length;
+  const canFinalize = missingCount === 0;
   return (
     <div className="check-panel">
       <div className="summary-cards">
@@ -483,6 +489,13 @@ function CheckPanel({ linkFee, referral }) {
             <span>{item.status === "passed" ? "確認済み" : item.message}</span>
           </div>
         ))}
+      </div>
+      <div className="finalize-panel">
+        <h3>医師確認・確定</h3>
+        <p>未確認項目がないことを確認してから、医師操作として紹介状を確定します。</p>
+        <button className="btn btn--primary" disabled={busy || !canFinalize} onClick={finalizeReferral} type="button">
+          紹介状を確定
+        </button>
       </div>
       <div className="fee-linkage">
         <h3>診療情報提供料の算定連携</h3>
@@ -634,6 +647,18 @@ function recipientDoctorFromDirectory(recipient = DEFAULT_RECIPIENT) {
 
 function lines(value) {
   return String(value || "").split(/\n+/).map((line) => line.trim()).filter(Boolean);
+}
+
+function referralFormSectionsFromForm(form) {
+  return {
+    referralPurpose: form.get("purpose") || "",
+    clinicalCourseAndFindings: form.get("clinicalSummary") || "",
+    diagnoses: lines(form.get("diagnoses")),
+    currentMedications: lines(form.get("medications")),
+    allergies: lines(form.get("allergies")),
+    requestedAction: form.get("requestedAction") || "",
+    remarks: form.get("notes") || ""
+  };
 }
 
 function formatDate(value) {

@@ -90,13 +90,18 @@ test("patches referral drafts with validated product-owned fields", async () => 
     clinicalSummary: "頭痛が続いています。"
   }, headers);
   const patched = await request(stores, "PATCH", `/v1/referral/referrals/${draft.body.referral.referralId}`, {
-    status: "ready",
+    status: "needs_review",
     medications: ["内服薬A"]
+  }, headers);
+  const rejectedFinalPatch = await request(stores, "PATCH", `/v1/referral/referrals/${draft.body.referral.referralId}`, {
+    status: "ready"
   }, headers);
 
   assert.equal(patched.statusCode, 200);
-  assert.equal(patched.body.referral.status, "ready");
+  assert.equal(patched.body.referral.status, "needs_review");
   assert.deepEqual(patched.body.referral.medications, ["内服薬A"]);
+  assert.equal(rejectedFinalPatch.statusCode, 400);
+  assert.equal(rejectedFinalPatch.body.field, "status");
 });
 
 test("supports recipient directory, templates, imports, draft assistance, attachments, replies, and fee linkage", async () => {
@@ -163,6 +168,8 @@ test("supports recipient directory, templates, imports, draft assistance, attach
   assert.equal(fee.body.referral.feeLinkage.status, "suggested");
   assert.ok(validated.body.reviewChecklist.length > 0);
   assert.equal(finalized.body.referral.status, "ready");
+  assert.equal(finalized.body.referral.finalizedByMemberId, "mem_001");
+  assert.equal(finalized.body.referral.finalizedByMemberSnapshot.displayName, "Admin");
   assert.equal(bootstrap.body.recipients.length, 1);
   assert.equal(bootstrap.body.templates.length, 1);
 });
@@ -186,6 +193,36 @@ test("rejects referral writes for viewer-only product role", async () => {
   }, headers);
 
   assert.equal(response.statusCode, 403);
+});
+
+test("allows clerks to draft but requires doctor/admin role to finalize", async () => {
+  const stores = createStores({ globalRoles: [], productRoles: { referral: ["medical_clerk"] } });
+  const headers = await signedHeaders(stores.platformStore, {
+    globalRoles: [],
+    productRoles: { referral: ["medical_clerk"] }
+  });
+  const patient = stores.platformStore.createPatient("org_001", { displayName: "鈴木 一郎" });
+  const draft = await request(stores, "POST", "/v1/referral/referrals", {
+    patientId: patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    recipientInstitution: {
+      displayName: "紹介先病院"
+    },
+    recipientDoctor: {
+      displayName: "紹介 先生"
+    },
+    purpose: "精査依頼",
+    clinicalSummary: "咳嗽が持続しています。",
+    diagnoses: ["咳嗽"],
+    requestedAction: "ご高診をお願いします。"
+  }, headers);
+  const finalized = await request(stores, "POST", `/v1/referral/referrals/${draft.body.referral.referralId}/finalize`, {
+    status: "ready"
+  }, headers);
+
+  assert.equal(draft.statusCode, 201);
+  assert.equal(finalized.statusCode, 403);
 });
 
 test("referral-api does not import sibling product services", () => {

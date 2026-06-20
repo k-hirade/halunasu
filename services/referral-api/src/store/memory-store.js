@@ -163,7 +163,16 @@ export class MemoryReferralStore {
       diagnoses: current.diagnoses?.length ? current.diagnoses : suggestion.diagnoses,
       medications: current.medications?.length ? current.medications : suggestion.medications,
       allergies: current.allergies?.length ? current.allergies : suggestion.allergies,
-      requestedAction: current.requestedAction || suggestion.requestedAction
+      requestedAction: current.requestedAction || suggestion.requestedAction,
+      referralFormSections: {
+        ...(current.referralFormSections || {}),
+        referralPurpose: suggestion.sections?.referralPurpose?.text || suggestion.purpose,
+        clinicalCourseAndFindings: suggestion.sections?.clinicalCourseAndFindings?.text || suggestion.clinicalSummary,
+        diagnoses: suggestion.diagnoses,
+        currentMedications: suggestion.medications,
+        allergies: suggestion.allergies,
+        requestedAction: suggestion.sections?.requestedAction?.text || suggestion.requestedAction
+      }
     }, {
       now: this.timestamp()
     }));
@@ -174,6 +183,7 @@ export class MemoryReferralStore {
   finalizeReferral(orgId, referralId, input = {}, options = {}) {
     return this.updateReferralWithTransform(orgId, referralId, (current) => finalizeReferral(current, input, {
       memberId: options.memberId,
+      memberSnapshot: options.memberSnapshot,
       now: this.timestamp()
     }));
   }

@@ -52,6 +52,9 @@ export function validateCreateReferralDraftInput(input = {}) {
     allergies: normalizeTextLines(input.allergies, 50, "allergies"),
     requestedAction: optionalMultilineString(input.requestedAction ?? input.requested_action, 5000),
     notes: optionalMultilineString(input.notes, 5000),
+    referralFormSections: normalizeReferralFormSections(input.referralFormSections ?? input.referral_form_sections),
+    sourceEvidenceRefs: normalizeSourceEvidenceRefs(input.sourceEvidenceRefs ?? input.source_evidence_refs),
+    sectionEvidence: normalizeSectionEvidence(input.sectionEvidence ?? input.section_evidence),
     attachments: normalizeReferralAttachments(input.attachments),
     sourceImports: normalizeReferralSourceImports(input.sourceImports ?? input.source_imports)
   };
@@ -92,6 +95,15 @@ export function validatePatchReferralDraftInput(input = {}) {
       ? optionalMultilineString(input.requestedAction ?? input.requested_action, 5000)
       : undefined,
     notes: hasOwn(input, "notes") ? optionalMultilineString(input.notes, 5000) : undefined,
+    referralFormSections: hasOwn(input, "referralFormSections") || hasOwn(input, "referral_form_sections")
+      ? normalizeReferralFormSections(input.referralFormSections ?? input.referral_form_sections)
+      : undefined,
+    sourceEvidenceRefs: hasOwn(input, "sourceEvidenceRefs") || hasOwn(input, "source_evidence_refs")
+      ? normalizeSourceEvidenceRefs(input.sourceEvidenceRefs ?? input.source_evidence_refs)
+      : undefined,
+    sectionEvidence: hasOwn(input, "sectionEvidence") || hasOwn(input, "section_evidence")
+      ? normalizeSectionEvidence(input.sectionEvidence ?? input.section_evidence)
+      : undefined,
     attachments: hasOwn(input, "attachments") ? normalizeReferralAttachments(input.attachments) : undefined,
     sourceImports: hasOwn(input, "sourceImports") || hasOwn(input, "source_imports")
       ? normalizeReferralSourceImports(input.sourceImports ?? input.source_imports)
@@ -160,7 +172,29 @@ export function validateDraftAiInput(input = {}) {
     sourceText: optionalMultilineString(input.sourceText ?? input.source_text, 50000),
     sourceSnapshot: input.sourceSnapshot ?? input.source_snapshot ?? {},
     documentType: optionalEnum(input.documentType ?? input.document_type, referralDocumentTypes, "documentType"),
-    templateId: optionalString(input.templateId ?? input.template_id)
+    templateId: optionalString(input.templateId ?? input.template_id),
+    evidenceRefs: normalizeSourceEvidenceRefs(input.evidenceRefs ?? input.evidence_refs)
+  });
+}
+
+export function validateReferralAssistantSuggestion(input = {}) {
+  if (!isPlainObject(input)) {
+    throw validationError("suggestion must be an object", "suggestion");
+  }
+
+  return compactObject({
+    provider: optionalString(input.provider) || "unknown",
+    generatedAt: optionalDateTime(input.generatedAt ?? input.generated_at, "generatedAt"),
+    model: optionalString(input.model),
+    promptVersion: optionalString(input.promptVersion ?? input.prompt_version),
+    purpose: optionalMultilineString(input.purpose, 2000),
+    clinicalSummary: optionalMultilineString(input.clinicalSummary ?? input.clinical_summary, 20000),
+    diagnoses: normalizeTextLines(input.diagnoses, 50, "suggestion.diagnoses"),
+    medications: normalizeTextLines(input.medications, 100, "suggestion.medications"),
+    allergies: normalizeTextLines(input.allergies, 50, "suggestion.allergies"),
+    requestedAction: optionalMultilineString(input.requestedAction ?? input.requested_action, 5000),
+    sections: normalizeAssistantSections(input.sections),
+    warnings: normalizeStringArray(input.warnings)
   });
 }
 
@@ -366,6 +400,79 @@ function normalizeReferralSourceImports(value) {
   }
 
   return value.slice(0, 50).map(validateReferralImportInput);
+}
+
+function normalizeReferralFormSections(value) {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+
+  const currentMedications = value.currentMedications ?? value.current_medications;
+  const attachments = value.attachments;
+  return compactObject({
+    referralPurpose: optionalMultilineString(value.referralPurpose ?? value.referral_purpose, 2000),
+    pastHistory: optionalMultilineString(value.pastHistory ?? value.past_history, 5000),
+    familyHistory: optionalMultilineString(value.familyHistory ?? value.family_history, 5000),
+    clinicalCourseAndFindings: optionalMultilineString(value.clinicalCourseAndFindings ?? value.clinical_course_and_findings, 20000),
+    treatmentCourse: optionalMultilineString(value.treatmentCourse ?? value.treatment_course, 20000),
+    currentMedications: normalizeTextLines(currentMedications, 100, "referralFormSections.currentMedications"),
+    allergies: normalizeTextLines(value.allergies, 50, "referralFormSections.allergies"),
+    diagnoses: normalizeTextLines(value.diagnoses, 50, "referralFormSections.diagnoses"),
+    requestedAction: optionalMultilineString(value.requestedAction ?? value.requested_action, 5000),
+    notes: optionalMultilineString(value.notes, 5000),
+    attachments: normalizeStringArray(attachments)
+  });
+}
+
+function normalizeSourceEvidenceRefs(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.slice(0, 200).map((item, index) => {
+    if (!isPlainObject(item)) {
+      throw validationError("sourceEvidenceRefs item must be an object", `sourceEvidenceRefs.${index}`);
+    }
+    return compactObject({
+      evidenceId: optionalString(item.evidenceId ?? item.evidence_id) || `evidence_${String(index + 1).padStart(3, "0")}`,
+      sourceProduct: requiredString(item.sourceProduct ?? item.source_product ?? "manual", "sourceEvidenceRefs.sourceProduct"),
+      sourceType: requiredString(item.sourceType ?? item.source_type ?? "clinical_text", "sourceEvidenceRefs.sourceType"),
+      sourceId: optionalString(item.sourceId ?? item.source_id),
+      sourceDate: optionalString(item.sourceDate ?? item.source_date),
+      label: optionalString(item.label),
+      excerpt: optionalMultilineString(item.excerpt, 5000),
+      snapshotHash: optionalString(item.snapshotHash ?? item.snapshot_hash)
+    });
+  });
+}
+
+function normalizeSectionEvidence(value) {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(Object.entries(value).map(([section, evidenceIds]) => [
+    section,
+    normalizeStringArray(evidenceIds).slice(0, 50)
+  ]));
+}
+
+function normalizeAssistantSections(value) {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(Object.entries(value).map(([section, item]) => {
+    if (!isPlainObject(item)) {
+      return [section, { text: optionalMultilineString(item, 20000) || "", evidenceIds: [], needsReview: true }];
+    }
+    return [section, compactObject({
+      text: optionalMultilineString(item.text, 20000) || "",
+      evidenceIds: normalizeStringArray(item.evidenceIds ?? item.evidence_ids),
+      needsReview: Boolean(item.needsReview ?? item.needs_review),
+      reviewReason: optionalString(item.reviewReason ?? item.review_reason)
+    })];
+  }));
 }
 
 function normalizeReviewChecklist(value) {
