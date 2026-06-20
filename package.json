@@ -47,6 +47,7 @@
     "audit:fee-checklist-recall": "node scripts/audit_fee_checklist_menu_recall.mjs",
     "audit:fee-checklist-recall:v2": "node scripts/audit_fee_checklist_menu_recall.mjs --dataset data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json",
     "audit:fee-checklist-recall:v2:strict": "node scripts/audit_fee_checklist_menu_recall.mjs --dataset data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json --strict",
+    "validate:fee-concept-registry": "node scripts/validate_fee_concept_registry.mjs",
     "audit:fee-soap-coverage": "node scripts/audit_fee_soap_e2e_coverage.mjs",
     "build:fee-master": "PYTHONPATH=python python3 scripts/build_fee_master_official.py",
     "audit:fee-master": "PYTHONPATH=python python3 scripts/audit_fee_master_coverage.py",

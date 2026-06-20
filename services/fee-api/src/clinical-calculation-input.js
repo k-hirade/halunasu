@@ -1287,23 +1287,44 @@ function scopedVerificationContextForClinicalEvent(event = {}, evidenceRef = {})
   if (!context) {
     return "";
   }
+  return resolveClinicalCueScopeForEvent(event, context).scopedContext;
+}
+
+function resolveClinicalCueScopeForEvent(event = {}, context = "") {
+  const value = String(context || "").trim();
   const tokens = clinicalEventScopeTokens(event);
-  if (!tokens.length) {
-    return context;
+  if (!value || !tokens.length) {
+    return {
+      scopedContext: value,
+      strategy: tokens.length ? "empty_context" : "no_scope_tokens",
+      matchedClauses: []
+    };
   }
-  const clauses = splitClinicalClauses(context);
+  const clauses = splitClinicalClauses(value);
   const matchedClauses = clauses.filter((clause) => tokens.some((token) => clause.includes(token)));
   if (!matchedClauses.length) {
-    return context;
+    return {
+      scopedContext: value,
+      strategy: "fallback_full_context_no_matched_clause",
+      matchedClauses: []
+    };
   }
 
   // Ownership cues such as "前医で" at the beginning of a sentence often scope
   // over every following comma-separated clause. Keep the whole sentence so we
   // do not accidentally turn outside/past references into current in-house facts.
-  if (leadingOwnershipOrPastCueScopesOverContext(context, matchedClauses[0])) {
-    return context;
+  if (leadingOwnershipOrPastCueScopesOverContext(value, matchedClauses[0])) {
+    return {
+      scopedContext: value,
+      strategy: "full_context_due_to_leading_ownership_or_past_cue",
+      matchedClauses
+    };
   }
-  return uniqueStrings(matchedClauses).join("。");
+  return {
+    scopedContext: uniqueStrings(matchedClauses).join("。"),
+    strategy: "matched_clauses",
+    matchedClauses
+  };
 }
 
 function splitClinicalClauses(text = "") {
@@ -1402,6 +1423,7 @@ async function inferStructuredClinicalCalculationOptions({
   const conversionSearch = createMasterSearchMetrics(feeCalculator);
   const clinicalTextPreprocessing = buildClinicalTextPreprocessing(text);
   const checklistMenu = buildClinicalChecklistMenu(text);
+  const checklistVerificationMode = feeChecklistVerificationMode();
   let openAiProviderDurationMs = 0;
   let firstOutputTextMs = null;
   let firstSnapshotSeen = false;
@@ -1414,6 +1436,7 @@ async function inferStructuredClinicalCalculationOptions({
         sessionContext: buildFeeSessionContext(session),
         preprocessedLines: clinicalTextPreprocessing.lines,
         checklistMenu,
+        checklistVerificationMode,
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
         timeoutMs: openAiTimeoutMs
@@ -1424,6 +1447,7 @@ async function inferStructuredClinicalCalculationOptions({
         sessionContext: buildFeeSessionContext(session),
         preprocessedLines: clinicalTextPreprocessing.lines,
         checklistMenu,
+        checklistVerificationMode,
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
         timeoutMs: openAiTimeoutMs,
@@ -1458,6 +1482,7 @@ async function inferStructuredClinicalCalculationOptions({
         extractedClinicalEventCount: clinicalEventsFromClinicalFacts(facts).length,
         extractedChecklistFindingCount: Array.isArray(facts?.checklist_findings) ? facts.checklist_findings.length : 0,
         checklistMenuCount: checklistMenu.length,
+        checklistVerificationMode,
         extractedBillingEventCount: Array.isArray(facts?.billing_events) ? facts.billing_events.length : 0,
         extractedExcludedEventCount: Array.isArray(facts?.excluded_events) ? facts.excluded_events.length : 0,
         convertedDiagnosisCount: Array.isArray(converted.diagnoses) ? converted.diagnoses.length : 0,
@@ -1507,10 +1532,19 @@ async function inferStructuredClinicalCalculationOptions({
         registryVersion: FEE_CONCEPT_REGISTRY_VERSION,
         masterVersion: feeMasterVersion(feeCalculator),
         timeoutMs: Number(openAiTimeoutMs || 0),
+        checklistVerificationMode,
         fallbackReason: safeClinicalStructuringError(error)
       }
     };
   }
+}
+
+function feeChecklistVerificationMode() {
+  const value = String(process.env.FEE_CHECKLIST_VERIFICATION_MODE || "inline").trim().toLowerCase();
+  if (["inline", "split", "disabled"].includes(value)) {
+    return value;
+  }
+  return "inline";
 }
 
 function safeClinicalStructuringError(error) {
@@ -1770,117 +1804,32 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const reviewIssues = [];
   const clinicalTrace = [];
   const clinicalTextPreprocessing = buildClinicalTextPreprocessing(text);
-  clinicalTrace.push({
-    stage: "clinical_text_preprocess",
-    outcome: "prepared",
-    lineCount: clinicalTextPreprocessing.lineCount,
-    sectionCounts: clinicalTextPreprocessing.sectionCounts,
-    message: "clinical_text_lines_and_cues_prepared"
-  });
-  clinicalTrace.push({
-    stage: "deterministic_preprocessing",
-    outcome: "prepared",
-    candidateCount: clinicalTextPreprocessing.deterministicCandidates.length,
-    candidates: clinicalTextPreprocessing.deterministicCandidates.slice(0, 24).map((candidate) => ({
-      kind: candidate.kind,
-      conceptId: candidate.conceptId,
-      label: candidate.label,
-      lineId: candidate.lineId,
-      section: candidate.section,
-      confidence: candidate.confidence,
-      cues: candidate.cues
-    })),
-    message: "deterministic_candidates_prepared_for_observability_only"
-  });
-  let clinicalEvents = clinicalEventsFromClinicalFacts(facts);
-  const checklistContradictions = clinicalEventContradictionsFromChecklistFindings({
+  clinicalTrace.push(...clinicalPreprocessingTraceEvents(clinicalTextPreprocessing));
+  const reconciledExtraction = reconcileClinicalFactsForCalculation({
     facts,
     checklistMenu,
-    clinicalText: text,
-    existingEvents: clinicalEvents
+    clinicalText: text
   });
-  if (checklistContradictions.blockedEventIds.size) {
-    clinicalEvents = clinicalEvents.filter((event) => !checklistContradictions.blockedEventIds.has(clinicalEventIdentity(event)));
-  }
-  if (checklistContradictions.reviewIssues.length) {
-    reviewIssues.push(...checklistContradictions.reviewIssues);
-    reviewWarnings.push(...checklistContradictions.reviewIssues.map((issue) => issue.messageForStaff));
-  }
-  clinicalTrace.push(...checklistContradictions.traceEvents);
-  const checklistRecovery = clinicalEventsFromChecklistFindings({
-    facts,
-    checklistMenu,
-    clinicalText: text,
-    existingEvents: clinicalEvents
-  });
-  if (checklistRecovery.reviewIssues?.length) {
-    reviewIssues.push(...checklistRecovery.reviewIssues);
-    reviewWarnings.push(...checklistRecovery.reviewIssues.map((issue) => issue.messageForStaff));
-  }
-  const compositeSupersededEventIds = supersededClinicalEventIdsFromCompositeChecklistRecovery({
-    existingEvents: clinicalEvents,
-    recoveredEvents: checklistRecovery.events
-  });
-  if (compositeSupersededEventIds.size) {
-    clinicalEvents = clinicalEvents.filter((event) => {
-      const keep = !compositeSupersededEventIds.has(clinicalEventIdentity(event));
-      if (!keep) {
-        clinicalTrace.push(clinicalTraceEvent({
-          stage: "checklist_composite_normalization",
-          event,
-          categoryLabel: "複合検査",
-          outcome: "superseded",
-          message: "component_event_superseded_by_composite_checklist"
-        }));
-      }
-      return keep;
-    });
-  }
-  if (checklistRecovery.events.length) {
-    clinicalEvents = [...clinicalEvents, ...checklistRecovery.events];
-  }
+  let clinicalEvents = reconciledExtraction.clinicalEvents;
+  reviewIssues.push(...reconciledExtraction.reviewIssues);
+  reviewWarnings.push(...reconciledExtraction.reviewWarnings);
+  clinicalTrace.push(...reconciledExtraction.traceEvents);
   const {
     canonicalClinicalFactsForCalculation,
     clinicalEventsForCalculation,
-    billingIntentsForCalculation
-  } = buildCanonicalFactCalculationLedger(clinicalEvents, {
+    billingIntentsForCalculation,
+    sourceFactCoverage
+  } = prepareCanonicalCalculationPipeline(clinicalEvents, {
     preprocessing: clinicalTextPreprocessing
   });
-  clinicalTrace.push({
-    stage: "evidence_verifier",
-    outcome: "prepared",
-    summary: evidenceVerificationSummary(canonicalClinicalFactsForCalculation),
-    message: "clinical_event_evidence_verified_before_calculation"
-  });
-  clinicalTrace.push({
-    stage: "canonical_fact_ledger",
-    outcome: "prepared",
-    source: "clinical_events",
-    factCount: canonicalClinicalFactsForCalculation.length,
-    eligibleFactCount: canonicalClinicalFactsForCalculation.filter((fact) => (
-      ["eligible_for_master_search", "eligible_for_billing"].includes(fact.status)
-    )).length,
-    reviewFactCount: canonicalClinicalFactsForCalculation.filter((fact) => fact.status === "review_required").length,
-    excludedFactCount: canonicalClinicalFactsForCalculation.filter((fact) => fact.status === "excluded").length
-  });
-  clinicalTrace.push({
-    stage: "billing_intent_builder",
-    outcome: "prepared",
-    source: "canonical_clinical_facts",
-    intentCount: billingIntentsForCalculation.length,
-    intents: billingIntentsForCalculation.slice(0, 24).map((intent) => ({
-      billingIntentId: intent.billingIntentId,
-      sourceFactId: intent.sourceFactId,
-      intentType: intent.intentType,
-      conceptId: intent.conceptId,
-      clinicalName: intent.clinicalName
-    })),
-    message: "verified_canonical_facts_converted_to_billing_intents"
-  });
+  clinicalTrace.push(...canonicalCalculationPipelineTraceEvents({
+    canonicalClinicalFactsForCalculation,
+    billingIntentsForCalculation,
+    sourceFactCoverage
+  }));
   const suppressedClinicalFactWarnings = [];
   let hasCaseLevelLabProcedureCode = false;
   let hasCaseLevelBloodCollectionEvidence = hasCaseLevelBloodCollectionEvidenceFromText(text);
-  clinicalTrace.push(...checklistRecovery.traceEvents);
 
   const visitMedicationDecision = medicationOptionsDecisionFromVisitFacts(facts?.visit_facts, {
     clinicalText: text,
@@ -2349,6 +2298,189 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     billingCandidates: normalizeBillingCandidates(billingCandidates),
     reviewIssues: normalizeReviewIssues(reviewIssuesWithFactLineage),
     clinicalTrace: normalizeClinicalTrace(clinicalTrace)
+  };
+}
+
+function clinicalPreprocessingTraceEvents(clinicalTextPreprocessing = {}) {
+  const deterministicCandidates = asArray(clinicalTextPreprocessing.deterministicCandidates);
+  return [{
+    stage: "clinical_text_preprocess",
+    outcome: "prepared",
+    lineCount: clinicalTextPreprocessing.lineCount,
+    sectionCounts: clinicalTextPreprocessing.sectionCounts,
+    message: "clinical_text_lines_and_cues_prepared"
+  }, {
+    stage: "deterministic_preprocessing",
+    outcome: "prepared",
+    candidateCount: deterministicCandidates.length,
+    candidates: deterministicCandidates.slice(0, 24).map((candidate) => ({
+      kind: candidate.kind,
+      conceptId: candidate.conceptId,
+      label: candidate.label,
+      lineId: candidate.lineId,
+      section: candidate.section,
+      confidence: candidate.confidence,
+      cues: candidate.cues
+    })),
+    message: "deterministic_candidates_prepared_for_observability_only"
+  }];
+}
+
+function reconcileClinicalFactsForCalculation({ facts = {}, checklistMenu = [], clinicalText = "" } = {}) {
+  const reviewIssues = [];
+  const reviewWarnings = [];
+  const traceEvents = [];
+  let clinicalEvents = clinicalEventsFromClinicalFacts(facts);
+  const checklistContradictions = clinicalEventContradictionsFromChecklistFindings({
+    facts,
+    checklistMenu,
+    clinicalText,
+    existingEvents: clinicalEvents
+  });
+  if (checklistContradictions.blockedEventIds.size) {
+    clinicalEvents = clinicalEvents.filter((event) => !checklistContradictions.blockedEventIds.has(clinicalEventIdentity(event)));
+  }
+  if (checklistContradictions.reviewIssues.length) {
+    reviewIssues.push(...checklistContradictions.reviewIssues);
+    reviewWarnings.push(...checklistContradictions.reviewIssues.map((issue) => issue.messageForStaff));
+  }
+  traceEvents.push(...checklistContradictions.traceEvents);
+
+  const checklistRecovery = clinicalEventsFromChecklistFindings({
+    facts,
+    checklistMenu,
+    clinicalText,
+    existingEvents: clinicalEvents
+  });
+  if (checklistRecovery.reviewIssues?.length) {
+    reviewIssues.push(...checklistRecovery.reviewIssues);
+    reviewWarnings.push(...checklistRecovery.reviewIssues.map((issue) => issue.messageForStaff));
+  }
+  const compositeSupersededEventIds = supersededClinicalEventIdsFromCompositeChecklistRecovery({
+    existingEvents: clinicalEvents,
+    recoveredEvents: checklistRecovery.events
+  });
+  if (compositeSupersededEventIds.size) {
+    clinicalEvents = clinicalEvents.filter((event) => {
+      const keep = !compositeSupersededEventIds.has(clinicalEventIdentity(event));
+      if (!keep) {
+        traceEvents.push(clinicalTraceEvent({
+          stage: "checklist_composite_normalization",
+          event,
+          categoryLabel: "複合検査",
+          outcome: "superseded",
+          message: "component_event_superseded_by_composite_checklist"
+        }));
+      }
+      return keep;
+    });
+  }
+  if (checklistRecovery.events.length) {
+    clinicalEvents = [...clinicalEvents, ...checklistRecovery.events];
+  }
+  traceEvents.push(...asArray(checklistRecovery.traceEvents));
+  return {
+    clinicalEvents,
+    reviewIssues,
+    reviewWarnings,
+    traceEvents
+  };
+}
+
+function prepareCanonicalCalculationPipeline(clinicalEvents = [], { preprocessing = null } = {}) {
+  const ledger = buildCanonicalFactCalculationLedger(clinicalEvents, { preprocessing });
+  return {
+    ...ledger,
+    sourceFactCoverage: sourceFactCoverageFromClinicalEvents(
+      ledger.clinicalEventsForCalculation,
+      ledger.billingIntentsForCalculation
+    )
+  };
+}
+
+function canonicalCalculationPipelineTraceEvents({
+  canonicalClinicalFactsForCalculation = [],
+  billingIntentsForCalculation = [],
+  sourceFactCoverage = {}
+} = {}) {
+  return [{
+    stage: "evidence_verifier",
+    outcome: "prepared",
+    summary: evidenceVerificationSummary(canonicalClinicalFactsForCalculation),
+    message: "clinical_event_evidence_verified_before_calculation"
+  }, {
+    stage: "canonical_fact_ledger",
+    outcome: "prepared",
+    source: "canonical_clinical_facts",
+    bridge: "legacy_clinical_event_adapter_active",
+    factCount: canonicalClinicalFactsForCalculation.length,
+    eligibleFactCount: canonicalClinicalFactsForCalculation.filter((fact) => (
+      ["eligible_for_master_search", "eligible_for_billing"].includes(fact.status)
+    )).length,
+    reviewFactCount: canonicalClinicalFactsForCalculation.filter((fact) => fact.status === "review_required").length,
+    excludedFactCount: canonicalClinicalFactsForCalculation.filter((fact) => fact.status === "excluded").length,
+    message: "canonical_facts_are_the_preferred_calculation_lineage"
+  }, {
+    stage: "billing_intent_builder",
+    outcome: "prepared",
+    source: "canonical_clinical_facts",
+    intentCount: billingIntentsForCalculation.length,
+    intents: billingIntentsForCalculation.slice(0, 24).map((intent) => ({
+      billingIntentId: intent.billingIntentId,
+      sourceFactId: intent.sourceFactId,
+      intentType: intent.intentType,
+      conceptId: intent.conceptId,
+      clinicalName: intent.clinicalName
+    })),
+    message: "verified_canonical_facts_converted_to_billing_intents"
+  }, {
+    stage: "source_fact_lineage",
+    outcome: sourceFactCoverage.missingSourceFactIdCount || sourceFactCoverage.missingBillingIntentCount ? "partial" : "complete",
+    ...sourceFactCoverage,
+    message: "auto_billing_lineage_coverage_from_source_fact_ids"
+  }];
+}
+
+function sourceFactCoverageFromClinicalEvents(clinicalEvents = [], billingIntents = []) {
+  const intentByFactId = new Set(asArray(billingIntents)
+    .map((intent) => String(intent.sourceFactId || "").trim())
+    .filter(Boolean));
+  const billableEvents = asArray(clinicalEvents).filter((event) => (
+    isBillableClinicalEvent(event)
+    && !reviewOnlyClinicalEventDomain(event)
+    && !canonicalFactBlocksAutomaticBilling(event)
+  ));
+  const missingSourceFactId = [];
+  const missingBillingIntent = [];
+  for (const event of billableEvents) {
+    const sourceFactId = sourceFactIdFromClinicalEvent(event);
+    if (!sourceFactId) {
+      missingSourceFactId.push(summarizeClinicalEventForLineageTrace(event));
+    } else if (!intentByFactId.has(sourceFactId)) {
+      missingBillingIntent.push({
+        ...summarizeClinicalEventForLineageTrace(event),
+        sourceFactId
+      });
+    }
+  }
+  return {
+    autoBillableEventCount: billableEvents.length,
+    withSourceFactIdCount: billableEvents.length - missingSourceFactId.length,
+    missingSourceFactIdCount: missingSourceFactId.length,
+    missingBillingIntentCount: missingBillingIntent.length,
+    missingSourceFactId: missingSourceFactId.slice(0, 12),
+    missingBillingIntent: missingBillingIntent.slice(0, 12)
+  };
+}
+
+function summarizeClinicalEventForLineageTrace(event = {}) {
+  return {
+    clinicalEventId: clinicalEventIdentity(event),
+    type: normalizeClinicalEventType(event),
+    name: clinicalEventName(event),
+    actionStatus: event?.action_status || event?.actionStatus || "",
+    evidenceVerificationStatus: event?.evidenceVerificationStatus || "",
+    canonicalFactStatus: event?.canonicalFactStatus || ""
   };
 }
 

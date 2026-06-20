@@ -7647,6 +7647,11 @@ test("accepts evidence quotes wrapped by LLM quotation marks without weakening a
     && Number(item.intentCount || 0) >= 2
   )));
   assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => (
+    item.stage === "source_fact_lineage"
+    && Number(item.missingSourceFactIdCount || 0) === 0
+    && Number(item.autoBillableEventCount || 0) >= 2
+  )));
+  assert.ok(calculation.body.calculationResult.clinicalExtraction.trace.some((item) => (
     item.stage === "master_linker"
     && item.sourceFactId === crpFact.factId
     && String(item.sourceBillingIntentId || "").startsWith("intent_")
