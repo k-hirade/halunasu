@@ -32,9 +32,9 @@ export const CORE_FLOWS = {
       "最後に医療事務が要確認項目をレビューして確定します。",
     principle:
       "「事実はLLM・判定は決定論」は設計思想です。ただし実態の事実抽出はLLM単独ではありません。" +
-      "LLMの前段に決定論的なNLP前処理(セクション分割・否定/時制の手がかり抽出・概念候補・チェックリスト生成)が走ってLLMを補助し、" +
+      "OpenAI抽出経路では、決定論的なNLP前処理(セクション分割・否定/時制の手がかり抽出・概念候補・チェックリスト生成)がLLMを補助し、" +
       "LLMが使えない/失敗したときは正規表現ベースのルール抽出に全面フォールバックします。" +
-      "一方で点数を算定して良いか・いくらかの判断(Step5以降)はAIに任せず、再現性のあるロジックで決めます。",
+      "一方で点数を算定して良いか・いくらかの判断はAIに任せず、検証済み臨床事実、マスタ、Python算定エンジンで再現性のある形に寄せています。",
     steps: [
       {
         no: 1,
@@ -55,12 +55,12 @@ export const CORE_FLOWS = {
         title: "NLP前処理(決定論)",
         kind: "deterministic",
         actor: "fee-api(buildClinicalTextPreprocessing)",
-        oneLiner: "LLMに渡す前に、カルテ本文を正規表現ベースで構造化・注釈づけする。",
+        oneLiner: "OpenAI抽出経路では、カルテ本文を正規表現ベースで構造化・注釈づけする。",
         input: "SOAPカルテ本文(正規化済みテキスト)",
         output: "行単位の前処理結果(preprocessedLines)・チェックリストメニュー",
         detail: [
-          "LLMを呼ぶ前に決定論的なNLP前処理が必ず走ります。具体的には ①S/O/A/Pのセクション分割、②行ごとの手がかり抽出(clinicalLineCues:否定『未実施/施行せず/中止』、未来・予定のみ、過去・院外、現在受診の根拠、メタ文の判定)、③概念候補の抽出、④チェックリストメニュー生成 です。",
-          "これらの前処理結果(preprocessedLines / checklistMenu)はそのままLLMのプロンプトに渡され、抽出精度を底上げします。つまりLLMは“素のカルテ”ではなく“前処理済みの構造”を見ます。",
+          "OpenAI抽出を使う場合、LLMに渡す前に決定論的なNLP前処理が走ります。具体的には ①S/O/A/Pのセクション分割、②行ごとの手がかり抽出(clinicalLineCues:否定『未実施/施行せず/中止』、未来・予定のみ、過去・院外、現在受診の根拠、メタ文の判定)、③概念候補の抽出、④チェックリストメニュー生成 です。",
+          "これらの前処理結果(preprocessedLines / checklistMenu)はLLMのプロンプトに渡され、抽出精度を底上げします。APIキー無しやLLM失敗時は、別のルールベース抽出経路へフォールバックします。",
         ],
         sourceFile: "services/fee-api/src/clinical-calculation-input.js",
       },
@@ -75,10 +75,10 @@ export const CORE_FLOWS = {
         detail: [
           "事実抽出はLLM単独ではなく、状況に応じて経路が分岐します(buildClinicalCalculationPreparation)。",
           "LLMが取り出すのは「何を実施したか(clinical_events)」「受診の属性(visit_facts)」「チェック観点の所見(checklist_findings)」という事実で、点数や算定可否は判断させません。",
-          "LLMが成功した場合でも、客観(O)所見に対する決定論的な補完抽出(画像・入院基本料)が併走し、LLM結果とマージされます(objective_supplement)。",
+          "LLMが成功した場合でも、客観(O)所見に対する決定論的な補完抽出(主に画像など)が併走し、LLM結果とマージされます(objective_supplement)。",
         ],
         branches: [
-          { cond: "claimContext / 手動指定あり", path: "抽出をスキップし手動オプションを使用(source: manual)" },
+          { cond: "claimContext指定あり", path: "抽出をスキップし、指定された算定条件を使用(source: manual)" },
           { cond: "LLM成功", path: "LLM構造化抽出 + 客観所見の決定論補完をマージ(source: openai + objective_supplement)" },
           { cond: "APIキー無し", path: "LLMを呼ばず、正規表現ベースのルール抽出に全面フォールバック(source: rules_no_openai)" },
           { cond: "LLM呼び出しが失敗", path: "ルール抽出にフォールバックし、警告を残す(source: fallback_rules)" },
@@ -87,15 +87,16 @@ export const CORE_FLOWS = {
       },
       {
         no: 4,
-        title: "決定論変換(事実 → 算定オプション)",
+        title: "根拠検証と算定意図化",
         kind: "deterministic",
         actor: "fee-api(clinicalFactsToCalculationOptions)",
-        oneLiner: "抽出された事実を、再現性のあるルールで算定の入力条件へ変換する。",
+        oneLiner: "抽出された事実を検証済み臨床事実にし、算定前の意図へ変換する。",
         input: "clinical_events / visit_facts / checklist_findings(+ ルール抽出結果)",
-        output: "calculationOptions(算定エンジンへの入力条件)",
+        output: "canonicalClinicalFacts / billingIntents / calculationOptions",
         detail: [
-          "clinicalFactsToCalculationOptions が、抽出された事実を「算定エンジンに渡す条件」へ機械的に変換します。ここからはAIを使わず、同じ入力なら必ず同じ出力になります。",
-          "visit_facts の整合チェック(例:投薬の有無)や、受診履歴(priorSessions)からの初診/再診推定(inferOutpatientBasicFromPatientHistory)もこの層で行います。矛盾はトレースに残します。",
+          "clinicalFactsToCalculationOptions が、自由抽出とチェックリスト所見を突き合わせ、根拠引用・時制・他院/過去・未実施などを検証します。検証結果は canonicalClinicalFacts として残します。",
+          "検証済みで自動算定へ進められる事実だけを billingIntents に変換し、既存イベント処理へ戻して calculationOptions を組み立てます。まだ完全に canonicalClinicalFacts だけで計算しているわけではありませんが、canonical fact gate で未検証事実の自動算定を止めます。",
+          "visit_facts の整合チェック(例:院内/院外処方)や、受診履歴(priorSessions)からの初診/再診推定(inferOutpatientBasicFromPatientHistory)もこの層で行います。矛盾はトレースと要確認に残します。",
         ],
         sourceFile: "services/fee-api/src/clinical-calculation-input.js",
       },
@@ -104,12 +105,12 @@ export const CORE_FLOWS = {
         title: "算定マスタ検索",
         kind: "master",
         actor: "算定マスタ(SQLite)",
-        oneLiner: "実施内容を、公的な算定マスタの正式コード・点数に引き当てる。",
-        input: "算定オプション(実施内容)",
-        output: "解決済みの診療行為コード・点数・算定ルール",
+        oneLiner: "実施内容や候補を、公的な算定マスタの正式コード・点数に引き当てる。",
+        input: "検証済み事実、算定意図、算定オプション",
+        output: "マスター候補、解決済みコード、点数、算定ルール",
         detail: [
-          "診療行為・医薬品・特定器材を、令和8(2026年)改定対応の算定マスタから正式コードと点数に引き当てます。マスタ検索は前処理/変換の段でも行われます。",
-          "併算定不可(electronic_exclusions)・算定回数制限(frequency_limits)などのルールもマスタ側に持ち、後段の計算で参照します。",
+          "診療行為・医薬品・特定器材を、令和8(2026年)改定対応の算定マスタから正式コードと点数に引き当てます。マスタ検索はPython計算エンジンだけでなく、JS側の変換段階でも候補検索・曖昧候補確認に使われます。",
+          "併算定不可(electronic_exclusions)・算定回数制限(frequency_limits)・必須コメントなどの電子点数表系ルールもマスタ側に持ち、後段の計算と警告生成で参照します。",
         ],
         sourceFile: "python/medical_fee_calculation/master_browser.py",
       },
@@ -122,8 +123,8 @@ export const CORE_FLOWS = {
         input: "解決済みコード・点数・算定ルール・受診条件",
         output: "計算結果(明細・合計点数・警告)",
         detail: [
-          "引き当てたコードに、初再診・各種加算・併算定不可・同月回数制限などのルールを適用して点数を確定します。",
-          "判断に必要な事実が足りない/競合する場合は、無理に確定せず警告(後段の要確認)として残し、過小・過大請求を断定しないように縮退します。",
+          "引き当てたコードに、初再診、物価対応料・乳幼児加算などの基本料連動加算、外来管理加算、投薬・検査・画像・処置などのルールを適用して点数を計算します。",
+          "併算定不可・同月回数制限・必須コメントなどはクレーム全体で検知します。多くは自動で明細を削除するのではなく、警告(後段の要確認)として残し、過小・過大請求を断定しないように縮退します。",
         ],
         sourceFile: "python/medical_fee_calculation/worker.py",
       },

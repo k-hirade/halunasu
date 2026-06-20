@@ -259,7 +259,94 @@ function parseServiceRoutes(serviceName) {
       key: `${method} ${route}`,
     });
   }
+  routes.push(...parseMethodMatchesRoutes(serviceName, serverFile, text));
   return uniqBy(routes, (r) => r.key).sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
+}
+
+function parseMethodMatchesRoutes(serviceName, serverFile, text) {
+  const routes = [];
+  const relFile = path.relative(repoRoot, serverFile);
+  const lines = String(text || "").split("\n");
+
+  for (const line of lines) {
+    const methodMatch = line.match(/method\s*===\s*["'`](GET|POST|PUT|PATCH|DELETE|OPTIONS)["'`]/i);
+    if (!methodMatch) continue;
+    const method = methodMatch[1].toUpperCase();
+
+    const literalPath = line.match(/url\.pathname\s*===\s*["'`]([^"'`]+)["'`]/);
+    if (literalPath) {
+      routes.push(serviceRoute(serviceName, method, literalPath[1], relFile));
+      continue;
+    }
+
+    if (/isFeeSessionDocument\(\s*parts\s*\)/.test(line)) {
+      routes.push(serviceRoute(serviceName, method, "/v1/fee/sessions/:sessionId", relFile));
+      continue;
+    }
+
+    const matchesRoute = routeFromPartsMatchesLine(line);
+    if (matchesRoute) {
+      routes.push(serviceRoute(serviceName, method, matchesRoute, relFile));
+    }
+  }
+
+  return routes;
+}
+
+function serviceRoute(serviceName, method, route, relFile) {
+  const pathValue = canonicalizeRoute(route);
+  return {
+    id: `${serviceName}:${method} ${pathValue}`,
+    service: serviceName,
+    method,
+    path: pathValue,
+    file: relFile,
+    key: `${method} ${pathValue}`,
+  };
+}
+
+function routeFromPartsMatchesLine(line) {
+  const match = line.match(/matches\(\s*parts(?:\.slice\(\s*0\s*,\s*(\d+)\s*\))?\s*,\s*\[([^\]]+)\]\s*\)/);
+  if (!match) return null;
+
+  const sliceEnd = match[1] ? Number.parseInt(match[1], 10) : null;
+  const baseParts = parseStringArrayLiteralItems(match[2]);
+  if (!baseParts.length) return null;
+
+  if (!sliceEnd) {
+    return `/${baseParts.join("/")}`;
+  }
+
+  const explicitParts = new Map();
+  for (const partMatch of line.matchAll(/parts\[(\d+)\]\s*===\s*["'`]([^"'`]+)["'`]/g)) {
+    explicitParts.set(Number.parseInt(partMatch[1], 10), partMatch[2]);
+  }
+  const lengthMatch = line.match(/parts\.length\s*===\s*(\d+)/);
+  const explicitLength = lengthMatch ? Number.parseInt(lengthMatch[1], 10) : null;
+  const highestExplicitIndex = explicitParts.size ? Math.max(...explicitParts.keys()) + 1 : 0;
+  const targetLength = Math.max(sliceEnd, explicitLength || 0, highestExplicitIndex);
+  const routeParts = [...baseParts];
+
+  for (let index = baseParts.length; index < targetLength; index += 1) {
+    routeParts[index] = explicitParts.get(index) || routeParamName(routeParts, index);
+  }
+
+  return `/${routeParts.filter(Boolean).join("/")}`;
+}
+
+function routeParamName(parts, index) {
+  if (parts[0] === "v1" && parts[1] === "fee" && parts[2] === "sessions") {
+    if (index === 3) return ":sessionId";
+    if (index === 5 && parts[4] === "calculation-jobs") return ":calculationJobId";
+    if (index === 5 && parts[4] === "review-items") return ":reviewItemId";
+  }
+  return `:param${index}`;
+}
+
+function parseStringArrayLiteralItems(value) {
+  return [...String(value || "").matchAll(/["'`]([^"'`]+)["'`]/g)]
+    .map((match) => match[1].trim())
+    .filter(Boolean);
 }
 
 function canonicalizeRoute(input) {
@@ -779,7 +866,7 @@ function buildSnapshot() {
       routeCount: routes.length,
       routePrefixes: summarizePrefixes(routes),
       routes: routes.slice(0, 50),
-      moreRoutes: routes.length - 50,
+      moreRoutes: Math.max(0, routes.length - 50),
     });
   }
 
