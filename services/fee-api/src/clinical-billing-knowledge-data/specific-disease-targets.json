@@ -1,0 +1,159 @@
+{
+  "version": "specific-disease-targets-2026-06-20-p1",
+  "source": "initial-internal-specific-disease-targets; align with official disease master and notices when disease target flags are imported",
+  "targets": [
+    {
+      "targetId": "malignant_neoplasm",
+      "label": "悪性新生物",
+      "matchTerms": ["悪性新生物", "癌", "がん", "癌術後", "がん術後", "悪性腫瘍"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "thyroid_disorder",
+      "label": "甲状腺障害",
+      "matchTerms": ["甲状腺障害", "甲状腺機能亢進症", "甲状腺機能低下症", "バセドウ病", "橋本病", "処置後甲状腺機能低下症"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "familial_hypercholesterolemia",
+      "label": "遺伝性脂質異常症",
+      "matchTerms": ["家族性高コレステロール血症", "遺伝性高脂血症", "リポ蛋白代謝障害", "リポジストロフィー"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "ischemic_heart_disease",
+      "label": "虚血性心疾患",
+      "matchTerms": ["虚血性心疾患", "狭心症", "心筋梗塞", "陳旧性心筋梗塞", "冠動脈疾患", "IHD"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "arrhythmia",
+      "label": "不整脈",
+      "matchTerms": ["不整脈", "心房細動", "発作性心房細動", "心房粗動", "上室性頻拍", "心室性期外収縮"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "heart_failure",
+      "label": "心不全",
+      "matchTerms": ["心不全", "慢性心不全", "うっ血性心不全"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "cerebrovascular_disease",
+      "label": "脳血管疾患",
+      "matchTerms": ["脳血管疾患", "脳梗塞", "脳出血", "くも膜下出血", "一過性脳虚血発作", "TIA", "脳卒中後"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "chronic_bronchitis",
+      "label": "慢性気管支炎",
+      "matchTerms": ["慢性気管支炎", "単純性慢性気管支炎", "粘液膿性慢性気管支炎"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "copd",
+      "label": "慢性閉塞性肺疾患",
+      "matchTerms": ["慢性閉塞性肺疾患", "COPD", "肺気腫"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "asthma",
+      "label": "喘息",
+      "matchTerms": ["喘息", "気管支喘息", "喘息発作重積状態"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "bronchiectasis",
+      "label": "気管支拡張症",
+      "matchTerms": ["気管支拡張症"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "peptic_ulcer",
+      "label": "胃潰瘍・十二指腸潰瘍",
+      "matchTerms": ["胃潰瘍", "十二指腸潰瘍", "消化性潰瘍"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "",
+      "exclusionNotes": ["消化性潰瘍患者への投与が禁忌であるNSAIDs投与を受けている場合は対象外として扱う"]
+    },
+    {
+      "targetId": "gastritis_duodenitis",
+      "label": "胃炎・十二指腸炎",
+      "matchTerms": ["胃炎", "十二指腸炎"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "chronic_liver_disease",
+      "label": "慢性肝疾患",
+      "matchTerms": ["慢性肝疾患", "慢性肝炎", "慢性ウイルス肝炎", "肝硬変", "アルコール性肝疾患"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "chronic_pancreatitis",
+      "label": "慢性膵炎",
+      "matchTerms": ["慢性膵炎", "アルコール性慢性膵炎"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "precocious_puberty",
+      "label": "思春期早発症",
+      "matchTerms": ["思春期早発症"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "sex_chromosome_abnormality",
+      "label": "性染色体異常",
+      "matchTerms": ["性染色体異常", "ターナー症候群", "クラインフェルター症候群"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "anaphylaxis",
+      "label": "アナフィラキシー",
+      "matchTerms": ["アナフィラキシー"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    },
+    {
+      "targetId": "guillain_barre",
+      "label": "ギラン・バレー症候群",
+      "matchTerms": ["ギラン・バレー症候群", "ギランバレー症候群"],
+      "billingFamilies": ["specific_disease_management", "specific_disease_prescription_management"],
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": ""
+    }
+  ]
+}

@@ -1156,6 +1156,7 @@ function normalizeCandidateProposal(item = {}, index = 0) {
   return compactObject({
     proposalId: String(proposalId),
     title,
+    ruleId: item.ruleId || item.rule_id || null,
     reason,
     conditionText,
     basis: item.basis || item.basisText || item.basis_text || null,
@@ -1169,6 +1170,7 @@ function normalizeCandidateProposal(item = {}, index = 0) {
       ? item.monthlyLimit || item.monthly_limit
       : null,
     policy: isPlainObject(item.policy) ? item.policy : null,
+    knowledge: isPlainObject(item.knowledge) ? item.knowledge : null,
     resolutionOptions: Array.isArray(item.resolutionOptions || item.resolution_options)
       ? item.resolutionOptions || item.resolution_options
       : [],

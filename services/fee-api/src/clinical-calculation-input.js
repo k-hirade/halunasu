@@ -21,6 +21,13 @@ import {
   calculationEventsFromCanonicalFacts,
   normalizeBillingIntents
 } from "./clinical-calculation-pipeline.js";
+import {
+  CLINICAL_BILLING_KNOWLEDGE_VERSION,
+  MANAGEMENT_SIGNAL_RULES_VERSION,
+  SPECIFIC_DISEASE_TARGETS_VERSION,
+  candidateProposalsFromClinicalBillingKnowledge,
+  currentSpecificDiseaseManagementEvidence
+} from "./clinical-billing-knowledge.js";
 
 export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "処置・手技",
@@ -337,10 +344,6 @@ const REVIEW_TOPIC_RESOLUTION_OPTIONS = Object.freeze({
     { value: "same_month_history_needed", label: "同月判断料履歴を確認" }
   ])
 });
-
-const SPECIFIC_DISEASE_TARGET_PATTERNS = Object.freeze([
-  /気管支喘息|喘息/u
-]);
 
 function reviewTopicDefinition(topicCode = "") {
   return REVIEW_TOPIC_TAXONOMY[String(topicCode || "")] || null;
@@ -2041,21 +2044,30 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   hasCaseLevelBloodCollectionEvidence = hasCaseLevelBloodCollectionEvidence
     || eventConversion.hasCaseLevelBloodCollectionEvidence;
 
-  const specificDiseaseProposals = await candidateProposalsFromSpecificDiseaseOpportunities({
+  const specificDiseaseProposals = await candidateProposalsFromClinicalBillingKnowledge({
     diagnoses,
-    clinicalEvents: clinicalEventsForCalculation,
+    clinicalEvents,
     visitMedication,
     clinicalText: text,
-    feeCalculator,
     priorSessions,
-    serviceDate: session.serviceDate || ""
+    serviceDate: session.serviceDate || "",
+    medicationDeliveryKind: medicationDeliveryKindFromStructuredOrText(visitMedication, text),
+    searchProcedureCandidateItem: (queries, preferredPatterns) => searchProcedureCandidateItem(feeCalculator, queries, preferredPatterns),
+    candidateLineFromProcedureCandidate,
+    resolutionOptions: {
+      targetDiseaseCheck: REVIEW_TOPIC_RESOLUTION_OPTIONS.target_disease_check,
+      sameMonthCheck: REVIEW_TOPIC_RESOLUTION_OPTIONS.same_month_check
+    }
   });
   if (specificDiseaseProposals.length) {
     candidateProposals.push(...specificDiseaseProposals);
     clinicalTrace.push({
-      stage: "increase_proposal_rule",
+      stage: "clinical_billing_knowledge",
       outcome: "proposed",
       proposalIds: specificDiseaseProposals.map((proposal) => proposal.proposalId),
+      knowledgeVersion: CLINICAL_BILLING_KNOWLEDGE_VERSION,
+      targetVersion: SPECIFIC_DISEASE_TARGETS_VERSION,
+      managementSignalRulesVersion: MANAGEMENT_SIGNAL_RULES_VERSION,
       message: "specific_disease_management_opportunities_proposed"
     });
   }
@@ -3039,128 +3051,6 @@ function candidateLineFromProcedureCandidate({
   };
 }
 
-const SPECIFIC_DISEASE_MANAGEMENT_MASTER_CANDIDATES = {
-  clinic: {
-    code: "113001810",
-    name: "特定疾患療養管理料（診療所）",
-    points: 225
-  }
-};
-
-const SPECIFIC_DISEASE_PRESCRIPTION_MANAGEMENT_MASTER_CANDIDATES = {
-  in_house: {
-    code: "120005610",
-    name: "特定疾患処方管理加算（処方料）",
-    points: 56
-  },
-  outside_prescription: {
-    code: "120005710",
-    name: "特定疾患処方管理加算（処方箋料）",
-    points: 56
-  }
-};
-
-function fallbackSpecificDiseaseManagementMasterItem() {
-  return SPECIFIC_DISEASE_MANAGEMENT_MASTER_CANDIDATES.clinic;
-}
-
-function isSpecificDiseaseManagementFeeLine(line = {}) {
-  const code = String(line?.code || line?.procedure_code || line?.procedureCode || "").trim();
-  const name = normalizeClinicalText(line?.name || line?.procedure_name || line?.procedureName || "");
-  if (code === "113001810") {
-    return true;
-  }
-  return /特定疾患療養管理料/u.test(name);
-}
-
-function isHistoryCountableCalculationLine(line = {}) {
-  const status = String(line?.status || "").trim().toLowerCase();
-  if (status === "rejected" || status === "blocked" || status === "excluded") {
-    return false;
-  }
-  if (line?.includedInTotal === false) {
-    return false;
-  }
-  return true;
-}
-
-function specificDiseaseManagementMonthlyLimit({
-  priorSessions = [],
-  serviceDate = "",
-  currentCode = ""
-} = {}) {
-  const currentMonth = String(serviceDate || "").slice(0, 7);
-  const events = [];
-  const seen = new Set();
-  for (const prior of asArray(priorSessions)) {
-    const priorDate = String(prior?.serviceDate || "").trim();
-    if (!priorDate || !currentMonth || priorDate.slice(0, 7) !== currentMonth) {
-      continue;
-    }
-    const lineItems = asArray(prior?.calculationResult?.lineItems);
-    for (const line of lineItems) {
-      if (!isHistoryCountableCalculationLine(line) || !isSpecificDiseaseManagementFeeLine(line)) {
-        continue;
-      }
-      const code = String(line?.code || currentCode || "").trim();
-      const key = `${priorDate}|${code || normalizeClinicalText(line?.name || "")}`;
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      events.push({
-        serviceDate: priorDate,
-        code,
-        name: String(line?.name || "").trim(),
-        points: Number(line?.points || line?.totalPoints || 0) || null
-      });
-    }
-  }
-  events.sort((left, right) => String(left.serviceDate || "").localeCompare(String(right.serviceDate || "")));
-  const priorCount = events.length;
-  const maxPerMonth = 2;
-  return {
-    family: "specific_disease_management",
-    maxPerMonth,
-    priorCount,
-    currentOrdinal: priorCount + 1,
-    previousDates: uniqueStrings(events.map((event) => event.serviceDate)).slice(0, 8),
-    previousEvents: events.slice(0, 8),
-    status: priorCount >= maxPerMonth
-      ? "limit_reached"
-      : priorCount === maxPerMonth - 1
-        ? "within_limit_exactly"
-        : "within_limit"
-  };
-}
-
-function specificDiseaseManagementMonthlyLimitText(monthlyLimit = {}) {
-  if (!monthlyLimit || typeof monthlyLimit !== "object") {
-    return "";
-  }
-  const maxPerMonth = Number(monthlyLimit.maxPerMonth || 2);
-  const priorCount = Number(monthlyLimit.priorCount || 0);
-  const ordinal = Number(monthlyLimit.currentOrdinal || priorCount + 1);
-  const previousDates = asArray(monthlyLimit.previousDates).map((date) => String(date || "").trim()).filter(Boolean);
-  if (monthlyLimit.status === "limit_reached") {
-    const datesText = previousDates.length ? `前回: ${previousDates.join("、")}。` : "";
-    return `同月${maxPerMonth}回までの候補です。すでに同月${priorCount}回の履歴があります。${datesText}算定する場合は同月履歴を確認してください。`;
-  }
-  if (monthlyLimit.status === "within_limit_exactly") {
-    const datesText = previousDates.length ? `前回: ${previousDates.join("、")}。` : "";
-    return `同月${maxPerMonth}回までの候補です。本日は当月${ordinal}回目で上限ちょうどです。${datesText}`;
-  }
-  return `同月${maxPerMonth}回までの候補です。本日は当月${ordinal}回目として扱える可能性があります。`;
-}
-
-function fallbackSpecificDiseasePrescriptionManagementMasterItem(deliveryKind = "") {
-  const normalized = String(deliveryKind || "").trim();
-  if (normalized === "outside_prescription") {
-    return SPECIFIC_DISEASE_PRESCRIPTION_MANAGEMENT_MASTER_CANDIDATES.outside_prescription;
-  }
-  return SPECIFIC_DISEASE_PRESCRIPTION_MANAGEMENT_MASTER_CANDIDATES.in_house;
-}
-
 function candidateProposalFromProcedureItem({
   proposalId,
   title,
@@ -3186,235 +3076,6 @@ function candidateProposalFromProcedureItem({
     source: "clinical_billing_opportunity",
     sortOrder,
     candidateLine: candidateLineFromProcedureCandidate({ proposalId, reason, item, title })
-  };
-}
-
-async function candidateProposalsFromSpecificDiseaseOpportunities({
-  diagnoses = [],
-  clinicalEvents = [],
-  visitMedication = null,
-  clinicalText = "",
-  feeCalculator = null,
-  priorSessions = [],
-  serviceDate = ""
-} = {}) {
-  const target = specificDiseaseTargetFromDiagnoses(diagnoses);
-  if (!target) {
-    return [];
-  }
-  const managementEvidence = currentSpecificDiseaseManagementEvidence(clinicalEvents);
-  const proposals = [];
-  if (managementEvidence) {
-    const managementProposalId = `specific_disease_management_${candidateIdPart([target.name, managementEvidence.name, managementEvidence.evidence].join("_"))}`;
-    const managementMasterItem = await searchProcedureCandidateItem(feeCalculator, [
-      "特定疾患療養管理料（診療所）",
-      "特定疾患療養管理料"
-    ], [
-      /特定疾患療養管理料/u,
-      /診療所/u
-    ]) || fallbackSpecificDiseaseManagementMasterItem();
-    const monthlyLimit = specificDiseaseManagementMonthlyLimit({
-      priorSessions,
-      serviceDate,
-      currentCode: managementMasterItem?.code || fallbackSpecificDiseaseManagementMasterItem().code
-    });
-    const monthlyLimitText = specificDiseaseManagementMonthlyLimitText(monthlyLimit);
-    const managementPotentialPoints = Number(managementMasterItem?.points || managementMasterItem?.totalPoints || 225);
-    proposals.push(reviewOnlyIncreaseProposal({
-      proposalId: managementProposalId,
-      title: "特定疾患療養管理料の確認",
-      reason: [
-        `${target.name}を主病として管理・指導した可能性があります。`,
-        monthlyLimitText,
-        "対象疾患、管理主体、療養計画、同月履歴を確認してください。"
-      ].filter(Boolean).join(""),
-      conditionText: [
-        "対象疾患に該当し、療養上の管理・指導を診療録に記録し、同月算定条件を満たす場合に算定候補になります。",
-        monthlyLimitText,
-        "自動では点数に入れていません。"
-      ].filter(Boolean).join(""),
-      evidence: managementEvidence.evidence,
-      potentialPoints: managementPotentialPoints,
-      orderType: "procedure",
-      source: "specific_disease_management_opportunity",
-      topicCode: "target_disease_check",
-      requiredInput: "対象疾患、主病管理、療養計画・指導記録、同月算定履歴",
-      resolutionOptions: REVIEW_TOPIC_RESOLUTION_OPTIONS.target_disease_check,
-      monthlyLimit,
-      candidateLine: managementMasterItem?.code
-        ? candidateLineFromProcedureCandidate({
-          proposalId: managementProposalId,
-          reason: [
-            "特定疾患療養管理料は条件確認後に算定候補へ移せます。",
-            monthlyLimitText
-          ].filter(Boolean).join(""),
-          item: managementMasterItem,
-          title: "特定疾患療養管理料"
-        })
-        : null
-    }));
-  }
-  const longPrescriptionEvidence = longTermSpecificDiseasePrescriptionEvidence({
-    clinicalEvents,
-    visitMedication,
-    clinicalText
-  });
-  if (longPrescriptionEvidence) {
-    const prescriptionProposalId = `specific_disease_prescription_management_${candidateIdPart([target.name, longPrescriptionEvidence.evidence].join("_"))}`;
-    const prescriptionMasterItem = await searchProcedureCandidateItem(feeCalculator, [
-      "特定疾患処方管理加算",
-      "特定疾患処方管理加算２",
-      "特定疾患処方管理加算2"
-    ], [
-      /特定疾患処方管理加算/u
-    ]) || fallbackSpecificDiseasePrescriptionManagementMasterItem(
-      medicationDeliveryKindFromStructuredOrText(visitMedication, clinicalText)
-    );
-    proposals.push(reviewOnlyIncreaseProposal({
-      proposalId: prescriptionProposalId,
-      title: "特定疾患処方管理加算の確認",
-      reason: `${target.name}の患者に長期処方がある可能性があります。処方日数、主病、同月履歴を確認してください。`,
-      conditionText: "特定疾患を主病として管理しており、処方日数などの要件を満たす場合に算定候補になります。自動では点数に入れていません。",
-      evidence: longPrescriptionEvidence.evidence,
-      potentialPoints: 56,
-      orderType: "medication",
-      source: "specific_disease_prescription_opportunity",
-      topicCode: "same_month_check",
-      requiredInput: "対象疾患、処方日数、同月算定履歴、院内/院外処方の区分",
-      resolutionOptions: REVIEW_TOPIC_RESOLUTION_OPTIONS.same_month_check,
-      candidateLine: prescriptionMasterItem?.code
-        ? candidateLineFromProcedureCandidate({
-          proposalId: prescriptionProposalId,
-          reason: "特定疾患処方管理加算は条件確認後に算定候補へ移せます。",
-          item: prescriptionMasterItem,
-          title: "特定疾患処方管理加算"
-        })
-        : null
-    }));
-  }
-  return normalizeCandidateProposals(proposals);
-}
-
-function specificDiseaseTargetFromDiagnoses(diagnoses = []) {
-  for (const diagnosis of asArray(diagnoses)) {
-    const name = normalizeClinicalText(diagnosis?.name || diagnosis?.diagnosisName || diagnosis);
-    const status = normalizeClinicalText(diagnosis?.status || "");
-    if (!name || /既往|家族歴|疑い/u.test(status)) {
-      continue;
-    }
-    if (SPECIFIC_DISEASE_TARGET_PATTERNS.some((pattern) => pattern.test(name))) {
-      return { name };
-    }
-  }
-  return null;
-}
-
-function currentSpecificDiseaseManagementEvidence(clinicalEvents = []) {
-  const events = asArray(clinicalEvents).filter((event) => (
-    ["management", "counseling"].includes(normalizeClinicalEventType(event))
-    && isBillableClinicalEvent(event)
-    && !isNegatedClinicalEvent(event)
-  ));
-  for (const event of events) {
-    const evidence = clinicalEventEvidence(event);
-    const text = normalizeClinicalText([
-      clinicalEventName(event),
-      evidence,
-      event?.review_reason,
-      event?.reviewReason
-    ].join(" "));
-    if (!text || isPastOrExternalClinicalServiceContext(text) || isFutureOrOrderOnlyContext(text)) {
-      continue;
-    }
-    if (/(療養計画|管理|指導|説明|服薬|増悪時|生活指導|継続管理|方針)/u.test(text)) {
-      return {
-        name: clinicalEventName(event),
-        evidence
-      };
-    }
-  }
-  return null;
-}
-
-function longTermSpecificDiseasePrescriptionEvidence({
-  clinicalEvents = [],
-  visitMedication = null,
-  clinicalText = ""
-} = {}) {
-  const medicationEvents = asArray(clinicalEvents).filter((event) => (
-    normalizeClinicalEventType(event) === "medication"
-    && isBillableClinicalEvent(event)
-    && !isNegatedClinicalEvent(event)
-  ));
-  for (const event of medicationEvents) {
-    const days = Number(event?.days || event?.durationDays || event?.quantity?.days || 0);
-    const evidence = clinicalEventEvidence(event);
-    if (Number.isFinite(days) && days >= 28) {
-      return { evidence };
-    }
-    const inferredDays = prescriptionDaysFromText(evidence);
-    if (inferredDays >= 28) {
-      return { evidence };
-    }
-  }
-  const deliveryKind = String(visitMedication?.delivery_kind || "").trim();
-  if (deliveryKind && deliveryKind !== "outside_prescription" && deliveryKind !== "in_house") {
-    return null;
-  }
-  for (const sentence of splitClinicalSentences(clinicalText)) {
-    if (!/(処方|処方箋|院外|院内|投薬)/u.test(sentence)) {
-      continue;
-    }
-    if (isPastOrExternalClinicalServiceContext(sentence) || isFutureOrOrderOnlyContext(sentence) || isNegatedClinicalServiceContext(sentence)) {
-      continue;
-    }
-    if (prescriptionDaysFromText(sentence) >= 28) {
-      return { evidence: sentence };
-    }
-  }
-  return null;
-}
-
-function prescriptionDaysFromText(text = "") {
-  const match = normalizeClinicalText(text).match(/(\d{1,3})\s*日分/u);
-  const days = Number(match?.[1] || 0);
-  return Number.isFinite(days) ? days : 0;
-}
-
-function reviewOnlyIncreaseProposal({
-  proposalId,
-  title,
-  reason,
-  conditionText,
-  evidence = "",
-  potentialPoints = 0,
-  orderType = "procedure",
-  source = "increase_opportunity",
-  topicCode = "",
-  requiredInput = "",
-  resolutionOptions = [],
-  monthlyLimit = null,
-  candidateLine = null
-} = {}) {
-  return {
-    proposalId,
-    title,
-    reason,
-    conditionText,
-    basis: "カルテ本文と病名から、算定漏れの可能性として抽出しました。条件確認が必要なため自動算定には入れていません。",
-    evidence,
-    actionType: "not_billable_now",
-    potentialPoints: Number(potentialPoints || 0),
-    orderType,
-    source,
-    monthlyLimit,
-    candidateLine,
-    policy: {
-      generationSource: "conditional_independent",
-      riskGate: "review_only",
-      requiredInput
-    },
-    resolutionOptions: asArray(resolutionOptions)
   };
 }
 

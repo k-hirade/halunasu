@@ -6996,6 +6996,167 @@ test("specific disease management proposal includes same-month ordinal and prior
   assert.match(management.reason, /2026-06-14/u);
 });
 
+test("specific disease management targets include official-list chronic disease families", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.searchMaster = async (input) => {
+    const query = String(input.query || "");
+    if (query.includes("特定疾患療養管理料")) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{ kind: "procedure", code: "113001810", name: "特定疾患療養管理料（診療所）", points: 225 }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "定期再診", confidence: "medium" },
+    diagnoses: [
+      { name: "虚血性心疾患", status: "active", evidence: "虚血性心疾患（主病）" }
+    ],
+    clinical_events: [
+      {
+        type: "management",
+        billing_domain: "standard_management",
+        name: "虚血性心疾患管理",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        certainty: "explicit",
+        evidence: "内服継続と増悪時対応について説明し、療養方針を診療録に記載。"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "IHD Management Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-20",
+    clinicalText: [
+      "S: 虚血性心疾患で当院通院中の定期再診。",
+      "O: 内服継続と増悪時対応について説明し、療養方針を診療録に記載。",
+      "A: 虚血性心疾患（主病）。"
+    ].join("\n")
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  const proposals = calculation.body.calculationResult.candidateProposals || [];
+  const management = proposals.find((proposal) => String(proposal.title || "").includes("特定疾患療養管理料"));
+
+  assert.ok(management);
+  assert.equal(management.source, "clinical_billing_knowledge:specific_disease_management");
+  assert.equal(management.knowledge?.target?.targetId, "ischemic_heart_disease");
+  assert.equal(management.candidateLine?.code, "113001810");
+});
+
+test("clinical billing knowledge proposes management, home care, and mind-body signals from structured facts", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.searchMaster = async (input) => {
+    const query = String(input.query || "");
+    if (query.includes("在宅持続陽圧呼吸療法指導管理料")) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{ kind: "procedure", code: "114010810", name: "在宅持続陽圧呼吸療法指導管理料", points: 250 }]
+      };
+    }
+    if (query.includes("心身医学療法")) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{ kind: "procedure", code: "180009010", name: "心身医学療法", points: 110 }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [
+      { name: "睡眠時無呼吸症候群", status: "active", evidence: "睡眠時無呼吸症候群" },
+      { name: "心身症", status: "active", evidence: "心身症" }
+    ],
+    clinical_events: [
+      {
+        type: "management",
+        billing_domain: "standard_management",
+        name: "CPAP使用状況確認",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        certainty: "explicit",
+        evidence: "CPAPの使用状況を確認し、機器設定と装着継続について説明。"
+      },
+      {
+        type: "counseling",
+        billing_domain: "standard_management",
+        name: "心身医学療法",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        certainty: "explicit",
+        evidence: "心身医学療法としてストレス関連症状への面接を実施。"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Management Signal Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-20",
+    clinicalText: [
+      "S: 睡眠時無呼吸症候群と心身症で通院中。",
+      "O: CPAPの使用状況を確認。心身医学療法として面接を実施。",
+      "A: 睡眠時無呼吸症候群、心身症。"
+    ].join("\n")
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  const proposals = calculation.body.calculationResult.candidateProposals || [];
+  const cpap = proposals.find((proposal) => proposal.ruleId === "C107_2_home_cpap_signal");
+  const mindBody = proposals.find((proposal) => proposal.ruleId === "I004_mind_body_psychotherapy_signal");
+
+  assert.ok(cpap);
+  assert.ok(mindBody);
+  assert.equal(cpap.source, "clinical_billing_knowledge:management_signal");
+  assert.equal(mindBody.source, "clinical_billing_knowledge:management_signal");
+  assert.equal(cpap.candidateLine?.code, "114010810");
+  assert.equal(mindBody.candidateLine?.code, "180009010");
+  assert.equal(cpap.knowledge?.signalRulesVersion, "management-signal-rules-2026-06-20-p1");
+});
+
 test("patient history overrides structured initial visit inference", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
