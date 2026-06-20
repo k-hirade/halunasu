@@ -6893,6 +6893,109 @@ test("specific disease increase proposals keep billable candidate lines when adv
   assert.equal(prescription?.candidateLine?.totalPoints, 56);
 });
 
+test("specific disease management proposal includes same-month ordinal and prior dates", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeCalculator.searchMaster = async (input) => {
+    const query = String(input.query || "");
+    if (query.includes("特定疾患療養管理料")) {
+      return {
+        query: input.query,
+        type: input.type,
+        items: [{ kind: "procedure", code: "113001810", name: "特定疾患療養管理料（診療所）", points: 225 }]
+      };
+    }
+    return { query: input.query, type: input.type, items: [] };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "定期再診", confidence: "medium" },
+    diagnoses: [
+      { name: "気管支喘息", status: "active", evidence: "気管支喘息（主病）" }
+    ],
+    clinical_events: [
+      {
+        type: "management",
+        billing_domain: "standard_management",
+        name: "喘息管理",
+        action_status: "performed",
+        temporal_relation: "current_visit",
+        source_origin: "own_clinic_record",
+        provider_ownership: "own_clinic",
+        certainty: "explicit",
+        evidence: "療養計画に基づき吸入手技・増悪時対応を説明（要点を診療録に記載）。"
+      }
+    ],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "Asthma Same Month Patient"
+  }, headers);
+  const priorSession = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-14",
+    clinicalText: "気管支喘息で再診。療養指導を実施。"
+  }, headers);
+  stores.feeStore.saveCalculation(
+    priorSession.body.feeSession.orgId,
+    priorSession.body.feeSession.feeSessionId,
+    {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 225,
+      lineItems: [{
+        lineId: "line_specific_disease_management",
+        code: "113001810",
+        name: "特定疾患療養管理料（診療所）",
+        orderType: "procedure",
+        points: 225,
+        quantity: 1,
+        totalPoints: 225,
+        status: "candidate",
+        includedInTotal: true
+      }],
+      warnings: []
+    }
+  );
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-20",
+    clinicalText: [
+      "S: 気管支喘息で当院通院中の定期再診。",
+      "O: 療養計画に基づき吸入手技・増悪時対応を説明（要点を診療録に記載）。",
+      "A: 気管支喘息（主病）。"
+    ].join("\n")
+  }, headers);
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  const proposals = calculation.body.calculationResult.candidateProposals || [];
+  const management = proposals.find((proposal) => String(proposal.title || "").includes("特定疾患療養管理料"));
+
+  assert.ok(management);
+  assert.equal(management.candidateLine?.code, "113001810");
+  assert.equal(management.monthlyLimit?.family, "specific_disease_management");
+  assert.equal(management.monthlyLimit?.maxPerMonth, 2);
+  assert.equal(management.monthlyLimit?.priorCount, 1);
+  assert.equal(management.monthlyLimit?.currentOrdinal, 2);
+  assert.equal(management.monthlyLimit?.status, "within_limit_exactly");
+  assert.deepEqual(management.monthlyLimit?.previousDates, ["2026-06-14"]);
+  assert.match(management.reason, /当月2回目/u);
+  assert.match(management.reason, /2026-06-14/u);
+});
+
 test("patient history overrides structured initial visit inference", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);

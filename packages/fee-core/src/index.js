@@ -1165,6 +1165,9 @@ function normalizeCandidateProposal(item = {}, index = 0) {
     code: item.code || candidateLine?.code || null,
     orderType: item.orderType || item.order_type || candidateLine?.orderType || null,
     source: item.source || "candidate_proposal",
+    monthlyLimit: isPlainObject(item.monthlyLimit || item.monthly_limit)
+      ? item.monthlyLimit || item.monthly_limit
+      : null,
     policy: isPlainObject(item.policy) ? item.policy : null,
     resolutionOptions: Array.isArray(item.resolutionOptions || item.resolution_options)
       ? item.resolutionOptions || item.resolution_options

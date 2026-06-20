@@ -658,6 +658,7 @@ export async function buildClinicalCalculationPreparation({
       openAiModel,
       openAiReasoningEffort,
       openAiTimeoutMs,
+      priorSessions,
       clinicalFactsExtractor
     });
     metrics.clinicalStructuring = structured.metrics;
@@ -1415,6 +1416,7 @@ async function inferStructuredClinicalCalculationOptions({
   openAiModel = "gpt-5.4-nano",
   openAiReasoningEffort = "low",
   openAiTimeoutMs = 0,
+  priorSessions = [],
   clinicalFactsExtractor = null
 } = {}) {
   const extractor = typeof clinicalFactsExtractor === "function" ? clinicalFactsExtractor : null;
@@ -1480,7 +1482,8 @@ async function inferStructuredClinicalCalculationOptions({
       text,
       session,
       feeCalculator: conversionSearch.calculator,
-      checklistMenu
+      checklistMenu,
+      priorSessions
     });
     const convertedOptionKeys = Object.keys(converted.inferred || {});
     return {
@@ -1907,7 +1910,7 @@ async function inferDeterministicSupplementalClinicalCalculationOptions({ text =
   };
 }
 
-async function clinicalFactsToCalculationOptions(facts = {}, { text = "", session = {}, feeCalculator, checklistMenu = [] } = {}) {
+async function clinicalFactsToCalculationOptions(facts = {}, { text = "", session = {}, feeCalculator, checklistMenu = [], priorSessions = [] } = {}) {
   const inferred = {};
   const diagnoses = diagnosesFromClinicalFacts(facts);
   const reviewWarnings = [];
@@ -2043,7 +2046,9 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     clinicalEvents: clinicalEventsForCalculation,
     visitMedication,
     clinicalText: text,
-    feeCalculator
+    feeCalculator,
+    priorSessions,
+    serviceDate: session.serviceDate || ""
   });
   if (specificDiseaseProposals.length) {
     candidateProposals.push(...specificDiseaseProposals);
@@ -3059,6 +3064,95 @@ function fallbackSpecificDiseaseManagementMasterItem() {
   return SPECIFIC_DISEASE_MANAGEMENT_MASTER_CANDIDATES.clinic;
 }
 
+function isSpecificDiseaseManagementFeeLine(line = {}) {
+  const code = String(line?.code || line?.procedure_code || line?.procedureCode || "").trim();
+  const name = normalizeClinicalText(line?.name || line?.procedure_name || line?.procedureName || "");
+  if (code === "113001810") {
+    return true;
+  }
+  return /特定疾患療養管理料/u.test(name);
+}
+
+function isHistoryCountableCalculationLine(line = {}) {
+  const status = String(line?.status || "").trim().toLowerCase();
+  if (status === "rejected" || status === "blocked" || status === "excluded") {
+    return false;
+  }
+  if (line?.includedInTotal === false) {
+    return false;
+  }
+  return true;
+}
+
+function specificDiseaseManagementMonthlyLimit({
+  priorSessions = [],
+  serviceDate = "",
+  currentCode = ""
+} = {}) {
+  const currentMonth = String(serviceDate || "").slice(0, 7);
+  const events = [];
+  const seen = new Set();
+  for (const prior of asArray(priorSessions)) {
+    const priorDate = String(prior?.serviceDate || "").trim();
+    if (!priorDate || !currentMonth || priorDate.slice(0, 7) !== currentMonth) {
+      continue;
+    }
+    const lineItems = asArray(prior?.calculationResult?.lineItems);
+    for (const line of lineItems) {
+      if (!isHistoryCountableCalculationLine(line) || !isSpecificDiseaseManagementFeeLine(line)) {
+        continue;
+      }
+      const code = String(line?.code || currentCode || "").trim();
+      const key = `${priorDate}|${code || normalizeClinicalText(line?.name || "")}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      events.push({
+        serviceDate: priorDate,
+        code,
+        name: String(line?.name || "").trim(),
+        points: Number(line?.points || line?.totalPoints || 0) || null
+      });
+    }
+  }
+  events.sort((left, right) => String(left.serviceDate || "").localeCompare(String(right.serviceDate || "")));
+  const priorCount = events.length;
+  const maxPerMonth = 2;
+  return {
+    family: "specific_disease_management",
+    maxPerMonth,
+    priorCount,
+    currentOrdinal: priorCount + 1,
+    previousDates: uniqueStrings(events.map((event) => event.serviceDate)).slice(0, 8),
+    previousEvents: events.slice(0, 8),
+    status: priorCount >= maxPerMonth
+      ? "limit_reached"
+      : priorCount === maxPerMonth - 1
+        ? "within_limit_exactly"
+        : "within_limit"
+  };
+}
+
+function specificDiseaseManagementMonthlyLimitText(monthlyLimit = {}) {
+  if (!monthlyLimit || typeof monthlyLimit !== "object") {
+    return "";
+  }
+  const maxPerMonth = Number(monthlyLimit.maxPerMonth || 2);
+  const priorCount = Number(monthlyLimit.priorCount || 0);
+  const ordinal = Number(monthlyLimit.currentOrdinal || priorCount + 1);
+  const previousDates = asArray(monthlyLimit.previousDates).map((date) => String(date || "").trim()).filter(Boolean);
+  if (monthlyLimit.status === "limit_reached") {
+    const datesText = previousDates.length ? `前回: ${previousDates.join("、")}。` : "";
+    return `同月${maxPerMonth}回までの候補です。すでに同月${priorCount}回の履歴があります。${datesText}算定する場合は同月履歴を確認してください。`;
+  }
+  if (monthlyLimit.status === "within_limit_exactly") {
+    const datesText = previousDates.length ? `前回: ${previousDates.join("、")}。` : "";
+    return `同月${maxPerMonth}回までの候補です。本日は当月${ordinal}回目で上限ちょうどです。${datesText}`;
+  }
+  return `同月${maxPerMonth}回までの候補です。本日は当月${ordinal}回目として扱える可能性があります。`;
+}
+
 function fallbackSpecificDiseasePrescriptionManagementMasterItem(deliveryKind = "") {
   const normalized = String(deliveryKind || "").trim();
   if (normalized === "outside_prescription") {
@@ -3100,7 +3194,9 @@ async function candidateProposalsFromSpecificDiseaseOpportunities({
   clinicalEvents = [],
   visitMedication = null,
   clinicalText = "",
-  feeCalculator = null
+  feeCalculator = null,
+  priorSessions = [],
+  serviceDate = ""
 } = {}) {
   const target = specificDiseaseTargetFromDiagnoses(diagnoses);
   if (!target) {
@@ -3117,22 +3213,41 @@ async function candidateProposalsFromSpecificDiseaseOpportunities({
       /特定疾患療養管理料/u,
       /診療所/u
     ]) || fallbackSpecificDiseaseManagementMasterItem();
+    const monthlyLimit = specificDiseaseManagementMonthlyLimit({
+      priorSessions,
+      serviceDate,
+      currentCode: managementMasterItem?.code || fallbackSpecificDiseaseManagementMasterItem().code
+    });
+    const monthlyLimitText = specificDiseaseManagementMonthlyLimitText(monthlyLimit);
+    const managementPotentialPoints = Number(managementMasterItem?.points || managementMasterItem?.totalPoints || 225);
     proposals.push(reviewOnlyIncreaseProposal({
       proposalId: managementProposalId,
       title: "特定疾患療養管理料の確認",
-      reason: `${target.name}を主病として管理・指導した可能性があります。対象疾患、管理主体、療養計画、同月履歴を確認してください。`,
-      conditionText: "対象疾患に該当し、療養上の管理・指導を診療録に記録し、同月算定条件を満たす場合に算定候補になります。自動では点数に入れていません。",
+      reason: [
+        `${target.name}を主病として管理・指導した可能性があります。`,
+        monthlyLimitText,
+        "対象疾患、管理主体、療養計画、同月履歴を確認してください。"
+      ].filter(Boolean).join(""),
+      conditionText: [
+        "対象疾患に該当し、療養上の管理・指導を診療録に記録し、同月算定条件を満たす場合に算定候補になります。",
+        monthlyLimitText,
+        "自動では点数に入れていません。"
+      ].filter(Boolean).join(""),
       evidence: managementEvidence.evidence,
-      potentialPoints: 225,
+      potentialPoints: managementPotentialPoints,
       orderType: "procedure",
       source: "specific_disease_management_opportunity",
       topicCode: "target_disease_check",
       requiredInput: "対象疾患、主病管理、療養計画・指導記録、同月算定履歴",
       resolutionOptions: REVIEW_TOPIC_RESOLUTION_OPTIONS.target_disease_check,
+      monthlyLimit,
       candidateLine: managementMasterItem?.code
         ? candidateLineFromProcedureCandidate({
           proposalId: managementProposalId,
-          reason: "特定疾患療養管理料は条件確認後に算定候補へ移せます。",
+          reason: [
+            "特定疾患療養管理料は条件確認後に算定候補へ移せます。",
+            monthlyLimitText
+          ].filter(Boolean).join(""),
           item: managementMasterItem,
           title: "特定疾患療養管理料"
         })
@@ -3278,6 +3393,7 @@ function reviewOnlyIncreaseProposal({
   topicCode = "",
   requiredInput = "",
   resolutionOptions = [],
+  monthlyLimit = null,
   candidateLine = null
 } = {}) {
   return {
@@ -3291,6 +3407,7 @@ function reviewOnlyIncreaseProposal({
     potentialPoints: Number(potentialPoints || 0),
     orderType,
     source,
+    monthlyLimit,
     candidateLine,
     policy: {
       generationSource: "conditional_independent",
