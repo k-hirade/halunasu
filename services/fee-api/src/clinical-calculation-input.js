@@ -1218,7 +1218,7 @@ function bestEvidenceLineByTokenOverlap(quote = "", lines = []) {
 }
 
 function verifyClinicalEventEvidence(event = {}, preprocessing = null) {
-  const evidenceRefs = evidenceRefsForClinicalEvent(event, preprocessing);
+  const evidenceRefs = evidenceRefsForClinicalEvent(event, preprocessing).map((ref) => withScopeResolution(ref, event));
   const quote = clinicalEventEvidenceQuote(event);
   const reasons = [];
   if (!quote) {
@@ -1287,7 +1287,26 @@ function scopedVerificationContextForClinicalEvent(event = {}, evidenceRef = {})
   if (!context) {
     return "";
   }
-  return resolveClinicalCueScopeForEvent(event, context).scopedContext;
+  return (evidenceRef.scopeResolution || resolveClinicalCueScopeForEvent(event, context)).scopedContext;
+}
+
+function withScopeResolution(evidenceRef = {}, event = {}) {
+  if (!evidenceRef || typeof evidenceRef !== "object") {
+    return evidenceRef;
+  }
+  const context = String(evidenceRef.verificationContext || evidenceRef.quote || "").trim();
+  if (!context || evidenceRef.notFoundInText) {
+    return evidenceRef;
+  }
+  const resolution = resolveClinicalCueScopeForEvent(event, context);
+  return {
+    ...evidenceRef,
+    scopeResolution: {
+      strategy: resolution.strategy,
+      scopedContext: resolution.scopedContext,
+      matchedClauseCount: resolution.matchedClauses.length
+    }
+  };
 }
 
 function resolveClinicalCueScopeForEvent(event = {}, context = "") {
@@ -1429,36 +1448,25 @@ async function inferStructuredClinicalCalculationOptions({
   let firstSnapshotSeen = false;
   try {
     const providerStartedAt = Date.now();
-    const factsResult = extractor
-      ? await extractor({
-        clinicalText: text,
-        session,
-        sessionContext: buildFeeSessionContext(session),
-        preprocessedLines: clinicalTextPreprocessing.lines,
-        checklistMenu,
-        checklistVerificationMode,
-        model: openAiModel,
-        reasoningEffort: openAiReasoningEffort,
-        timeoutMs: openAiTimeoutMs
-      })
-      : await extractFeeClinicalFactsWithOpenAi({
-        apiKey: openAiApiKey,
-        clinicalText: text,
-        sessionContext: buildFeeSessionContext(session),
-        preprocessedLines: clinicalTextPreprocessing.lines,
-        checklistMenu,
-        checklistVerificationMode,
-        model: openAiModel,
-        reasoningEffort: openAiReasoningEffort,
-        timeoutMs: openAiTimeoutMs,
-        stream: true,
-        onOutputTextSnapshot: () => {
-          if (!firstSnapshotSeen) {
-            firstSnapshotSeen = true;
-            firstOutputTextMs = Date.now() - providerStartedAt;
-          }
+    const factsResult = await extractClinicalFactsWithChecklistMode({
+      extractor,
+      apiKey: openAiApiKey,
+      clinicalText: text,
+      session,
+      sessionContext: buildFeeSessionContext(session),
+      preprocessedLines: clinicalTextPreprocessing.lines,
+      checklistMenu,
+      checklistVerificationMode,
+      model: openAiModel,
+      reasoningEffort: openAiReasoningEffort,
+      timeoutMs: openAiTimeoutMs,
+      onOutputTextSnapshot: () => {
+        if (!firstSnapshotSeen) {
+          firstSnapshotSeen = true;
+          firstOutputTextMs = Date.now() - providerStartedAt;
         }
-      });
+      }
+    });
     openAiProviderDurationMs = Date.now() - providerStartedAt;
     const facts = factsResult?.parsed || factsResult || {};
     const conversionStartedAt = Date.now();
@@ -1545,6 +1553,111 @@ function feeChecklistVerificationMode() {
     return value;
   }
   return "inline";
+}
+
+async function extractClinicalFactsWithChecklistMode({
+  extractor = null,
+  apiKey = "",
+  clinicalText = "",
+  session = {},
+  sessionContext = {},
+  preprocessedLines = [],
+  checklistMenu = [],
+  checklistVerificationMode = "inline",
+  model = "gpt-5.4-nano",
+  reasoningEffort = "low",
+  timeoutMs = 0,
+  onOutputTextSnapshot = null
+} = {}) {
+  if (extractor) {
+    return extractor({
+      clinicalText,
+      session,
+      sessionContext,
+      preprocessedLines,
+      checklistMenu,
+      checklistVerificationMode,
+      model,
+      reasoningEffort,
+      timeoutMs
+    });
+  }
+
+  if (checklistVerificationMode !== "split") {
+    return extractFeeClinicalFactsWithOpenAi({
+      apiKey,
+      clinicalText,
+      sessionContext,
+      preprocessedLines,
+      checklistMenu,
+      checklistVerificationMode,
+      model,
+      reasoningEffort,
+      timeoutMs,
+      stream: true,
+      onOutputTextSnapshot
+    });
+  }
+
+  const freeResult = await extractFeeClinicalFactsWithOpenAi({
+    apiKey,
+    clinicalText,
+    sessionContext,
+    preprocessedLines,
+    checklistMenu: [],
+    checklistVerificationMode: "disabled",
+    model,
+    reasoningEffort,
+    timeoutMs,
+    stream: true,
+    onOutputTextSnapshot
+  });
+  const checklistResult = await extractFeeClinicalFactsWithOpenAi({
+    apiKey,
+    clinicalText,
+    sessionContext,
+    preprocessedLines,
+    checklistMenu,
+    checklistVerificationMode: "checklist_only",
+    model,
+    reasoningEffort,
+    timeoutMs,
+    stream: false
+  });
+  return mergeSplitChecklistClinicalFactsResults(freeResult, checklistResult);
+}
+
+function mergeSplitChecklistClinicalFactsResults(freeResult = {}, checklistResult = {}) {
+  const freeParsed = freeResult?.parsed || freeResult || {};
+  const checklistParsed = checklistResult?.parsed || checklistResult || {};
+  return {
+    ...freeParsed,
+    checklist_findings: asArray(checklistParsed?.checklist_findings),
+    provider: freeResult?.provider || checklistResult?.provider || "openai",
+    model: freeResult?.model || checklistResult?.model || "",
+    promptVersion: freeResult?.promptVersion || checklistResult?.promptVersion || FEE_CLINICAL_FACTS_PROMPT_VERSION,
+    responseId: [freeResult?.responseId, checklistResult?.responseId].filter(Boolean).join(",") || null,
+    usage: mergeOpenAiUsage(freeResult?.usage, checklistResult?.usage),
+    checklistVerificationMode: "split"
+  };
+}
+
+function mergeOpenAiUsage(...usages) {
+  const filtered = usages.filter((usage) => usage && typeof usage === "object");
+  if (!filtered.length) {
+    return null;
+  }
+  const merged = {};
+  for (const usage of filtered) {
+    for (const [key, value] of Object.entries(usage)) {
+      if (typeof value === "number") {
+        merged[key] = Number(merged[key] || 0) + value;
+      } else if (merged[key] == null) {
+        merged[key] = value;
+      }
+    }
+  }
+  return merged;
 }
 
 function safeClinicalStructuringError(error) {
@@ -2217,6 +2330,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   }
   if (procedureCodes.length) {
     inferred.procedure_codes = uniqueStrings(procedureCodes);
+    inferred.procedure_code_sources = procedureCodeSourcesFromBillingCandidates(billingCandidates);
   }
   if (commentInputs.length) {
     inferred.comment_inputs = dedupeObjects(commentInputs, (item) => item?.code || item?.text || JSON.stringify(item));
@@ -2278,6 +2392,9 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   if (materialInputs.length) {
     inferred.material_inputs = dedupeObjects(materialInputs, (item) => item.code);
   }
+  if (billingIntentsForCalculation.length) {
+    inferred.billing_intents = normalizeBillingIntents(billingIntentsForCalculation);
+  }
 
   const reviewIssuesWithFactLineage = attachSourceFactIdsToReviewIssues(reviewIssues, clinicalEventsForCalculation);
   return {
@@ -2299,6 +2416,25 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     reviewIssues: normalizeReviewIssues(reviewIssuesWithFactLineage),
     clinicalTrace: normalizeClinicalTrace(clinicalTrace)
   };
+}
+
+function procedureCodeSourcesFromBillingCandidates(billingCandidates = []) {
+  const sources = {};
+  for (const candidate of asArray(billingCandidates)) {
+    if (candidate?.candidateKind !== "procedure" || !candidate?.code) {
+      continue;
+    }
+    const code = String(candidate.code || "").trim();
+    if (!code || sources[code]) {
+      continue;
+    }
+    sources[code] = {
+      sourceFactId: String(candidate.sourceFactId || "").trim(),
+      sourceBillingIntentId: String(candidate.sourceBillingIntentId || "").trim(),
+      clinicalEventId: String(candidate.clinicalEventId || "").trim()
+    };
+  }
+  return sources;
 }
 
 function clinicalPreprocessingTraceEvents(clinicalTextPreprocessing = {}) {
@@ -2515,15 +2651,25 @@ function buildCanonicalFactCalculationLedger(clinicalEvents = [], { preprocessin
     canonicalClinicalFactsFromEvents(clinicalEvents, { preprocessing })
   );
   const billingIntentsForCalculation = billingIntentsFromCanonicalClinicalFacts(canonicalClinicalFactsForCalculation);
-  const clinicalEventsForCalculation = attachBillingIntentsToClinicalEvents(clinicalEventsFromCanonicalClinicalFacts(
-    canonicalClinicalFactsForCalculation,
-    clinicalEvents
-  ), billingIntentsForCalculation);
+  const clinicalEventsForCalculation = clinicalEventsFromBillingIntentsForCalculation({
+    facts: canonicalClinicalFactsForCalculation,
+    billingIntents: billingIntentsForCalculation,
+    originalEvents: clinicalEvents
+  });
   return {
     canonicalClinicalFactsForCalculation,
     clinicalEventsForCalculation,
     billingIntentsForCalculation
   };
+}
+
+function clinicalEventsFromBillingIntentsForCalculation({
+  facts = [],
+  billingIntents = [],
+  originalEvents = []
+} = {}) {
+  const eventsFromFacts = clinicalEventsFromCanonicalClinicalFacts(facts, originalEvents);
+  return attachBillingIntentsToClinicalEvents(eventsFromFacts, billingIntents);
 }
 
 const CANONICAL_FACT_AUTOMATIC_BILLING_STATUSES = Object.freeze([

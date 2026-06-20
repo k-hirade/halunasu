@@ -63,10 +63,17 @@ function validateDefinitions(section, items, requiredFields = []) {
         errors.push(`${label}.${field} is required`);
       }
     }
-    validatePattern(`${label}.pattern`, item.pattern);
+    const compiledPattern = validatePattern(`${label}.pattern`, item.pattern);
     validateStringArray(`${label}.aliases`, item.aliases, { optional: true });
     validateStringArray(`${label}.matchTerms`, item.matchTerms, { optional: true });
     validateNoBillingSystemPhrases(label, [
+      item.name,
+      item.label,
+      item.query,
+      ...asArray(item.aliases),
+      ...asArray(item.matchTerms)
+    ]);
+    validatePatternFixture(label, compiledPattern, [
       item.name,
       item.label,
       item.query,
@@ -79,12 +86,29 @@ function validateDefinitions(section, items, requiredFields = []) {
 function validatePattern(label, pattern) {
   const source = String(pattern || "").trim();
   if (!source) {
-    return;
+    return null;
   }
   try {
-    new RegExp(source, "u");
+    return new RegExp(source, "u");
   } catch (error) {
     errors.push(`${label} is invalid RegExp: ${error.message}`);
+    return null;
+  }
+}
+
+function validatePatternFixture(label, pattern, examples = []) {
+  if (!pattern) {
+    return;
+  }
+  const candidates = asArray(examples)
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  if (!candidates.length) {
+    warnings.push(`${label} has no fixture words for pattern smoke test`);
+    return;
+  }
+  if (!candidates.some((candidate) => pattern.test(candidate))) {
+    errors.push(`${label}.pattern does not match any representative word: ${candidates.slice(0, 6).join(", ")}`);
   }
 }
 

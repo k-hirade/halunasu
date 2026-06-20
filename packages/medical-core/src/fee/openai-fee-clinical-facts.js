@@ -327,12 +327,27 @@ function eventProperties() {
   };
 }
 
+function checklistInstructionForMode(mode = "inline") {
+  const value = String(mode || "inline").trim();
+  if (value === "disabled") {
+    return "Checklist verification is disabled for this pass. Return checklist_findings as an empty array and do not let the Checklist menu influence clinical_events.";
+  }
+  if (value === "checklist_only") {
+    return "This is the checklist verification pass. Focus on answering checklist_findings for every item in the Checklist menu. Return clinical_events as an empty array unless a schema field requires otherwise. The checklist is only a recall aid and does not make an item billable by itself.";
+  }
+  if (value === "split") {
+    return "This pass may be used as part of split extraction. In addition to free clinical_events extraction, answer checklist_findings for every item in the Checklist menu. The checklist is only a recall aid and does not make an item billable by itself.";
+  }
+  return "In addition to free clinical_events extraction, answer checklist_findings for every item in the Checklist menu. This checklist is only a recall aid: it does not make an item billable by itself. Downstream rules will still verify evidence, timing, ownership, master mapping, and policy gates.";
+}
+
 export async function extractFeeClinicalFactsWithOpenAi({
   apiKey,
   clinicalText,
   sessionContext = {},
   preprocessedLines = [],
   checklistMenu = [],
+  checklistVerificationMode = "inline",
   model = "gpt-5.4-nano",
   reasoningEffort = "low",
   timeoutMs = 0,
@@ -348,8 +363,11 @@ export async function extractFeeClinicalFactsWithOpenAi({
     "Preprocessed clinical lines:",
     JSON.stringify(safePreprocessedClinicalLines(preprocessedLines), null, 2),
     "",
+    "Checklist verification mode:",
+    String(checklistVerificationMode || "inline"),
+    "",
     "Checklist menu:",
-    JSON.stringify(safeClinicalChecklistMenu(checklistMenu), null, 2),
+    JSON.stringify(checklistVerificationMode === "disabled" ? [] : safeClinicalChecklistMenu(checklistMenu), null, 2),
     "",
     "Clinical text:",
     String(clinicalText || "").trim()
@@ -363,7 +381,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "You are a Japanese medical billing clinical-structure extraction engine.",
       "Return only facts supported by the provided clinical text and session context.",
       "Your output is clinical_events, not billing candidates. Do not calculate points. Do not choose billing codes. Do not decide billable/proposal/review eligibility. Downstream master search and rules will decide those.",
-      "In addition to free clinical_events extraction, answer checklist_findings for every item in the Checklist menu. This checklist is only a recall aid: it does not make an item billable by itself. Downstream rules will still verify evidence, timing, ownership, master mapping, and policy gates.",
+      checklistInstructionForMode(checklistVerificationMode),
       "For each checklist menu item, return exactly one checklist_finding with the same menu_id. Use status=performed_today only when the note supports that the item happened in this clinic during this encounter. Use planned for future/order/予定/依頼/予約/次回. Use past_or_external for 前回/以前/他院/前医/持参/健診/他科/主治医. Use mentioned_not_performed when the note says the act was not done. Use not_in_text when the menu item is not actually supported by the note. Use unclear when named but timing/ownership/performance cannot be determined.",
       "For checklist_findings evidence, quote a short exact excerpt from the clinical text when status is not_in_text leave evidence empty. Do not invent evidence.",
       "For every clinical_event, when a matching item exists in Preprocessed clinical lines, set evidence_line_ids to the relevant line_id values; use an empty array only when no line can be identified. evidence must still be a short quote from the original clinical text. Set char_start/char_end to decimal character offsets only when you can identify the original span exactly; otherwise set them to empty strings.",
