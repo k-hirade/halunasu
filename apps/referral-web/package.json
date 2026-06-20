@@ -7,7 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "npm run build"
+    "test": "npm run test:next-ui && npm run build",
+    "test:next-ui": "node scripts/next-ui-smoke.mjs"
   },
   "dependencies": {
     "@halunasu/web-ui": "file:../../packages/web-ui",

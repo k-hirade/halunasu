@@ -11,6 +11,9 @@
     "start": "node src/server.js",
     "test": "node --test \"test/**/*.test.js\""
   },
+  "exports": {
+    "./store/create-store": "./src/store/create-store.js"
+  },
   "dependencies": {
     "@halunasu/auth-client": "file:../../packages/auth-client",
     "@halunasu/charting-contracts": "file:../../packages/charting-contracts",

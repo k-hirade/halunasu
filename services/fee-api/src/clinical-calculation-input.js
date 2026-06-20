@@ -15,6 +15,12 @@ import {
   PROCEDURE_CHECKLIST_DEFINITIONS,
   REVIEW_ONLY_DOMAIN_CHECKLIST_DEFINITIONS
 } from "./clinical-concept-registry.js";
+import {
+  CANONICAL_FACT_AUTOMATIC_BILLING_STATUSES,
+  billingIntentsFromCanonicalClinicalFacts,
+  calculationEventsFromCanonicalFacts,
+  normalizeBillingIntents
+} from "./clinical-calculation-pipeline.js";
 
 export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "処置・手技",
@@ -2011,292 +2017,26 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     reviewWarnings.push(splitMultiDayIssue.messageForStaff);
   }
 
-  for (const event of clinicalEventsForCalculation) {
-    const type = normalizeClinicalEventType(event);
-    if (event.evidenceVerificationStatus === "blocked") {
-      const issue = reviewIssueFromEvidenceVerificationBlocked(event);
-      if (issue) {
-        reviewIssues.push(issue);
-        reviewWarnings.push(issue.messageForStaff);
-      }
-      const reasons = asArray(event.evidenceVerificationReasons);
-      if (["lab", "exam"].includes(type) && reasons.includes("past_or_external_context")) {
-        const labIssue = reviewIssueFromNonBillableLabClinicalEvent(event, "lab_code_check", {
-          message: `検査コード確認: ${clinicalEventName(event) || "検査"}は検査名として抽出されましたが、根拠文が過去・他院・持参情報の文脈です。今回自院で実施済みの場合は標準コード、検査区分、検体、測定条件を確認してください。`,
-          requiredInput: "標準コード、検査区分、検体、測定条件、当日自院実施の根拠"
-        });
-        if (labIssue) {
-          reviewIssues.push(labIssue);
-          reviewWarnings.push(labIssue.messageForStaff);
-        }
-      }
-      clinicalTrace.push(clinicalTraceEvent({
-        stage: "evidence_verifier",
-        event,
-        categoryLabel: "根拠確認",
-        outcome: "blocked",
-        selected: {
-          reasons: asArray(event.evidenceVerificationReasons),
-          evidenceRefs: asArray(event.evidenceRefs).map((ref) => ({
-            lineId: ref.lineId,
-            section: ref.section,
-            approximate: Boolean(ref.approximate)
-          }))
-        },
-        message: "clinical_event_blocked_by_evidence_verifier"
-      }));
-      continue;
-    }
-    if (event.evidenceVerificationStatus === "review_required" && ["lab", "exam"].includes(type)) {
-      const evidenceIssue = reviewIssueFromEvidenceVerificationBlocked(event);
-      if (evidenceIssue) {
-        reviewIssues.push(evidenceIssue);
-        reviewWarnings.push(evidenceIssue.messageForStaff);
-      }
-      const issue = reviewIssueFromNonBillableLabClinicalEvent(event, "lab_code_check", {
-        message: `検査コード確認: ${clinicalEventName(event) || "検査"}は検査名として抽出されましたが、カルテ本文の根拠引用を確認できません。実施済みの場合は標準コード、検査区分、検体、測定条件を確認してください。`,
-        requiredInput: "標準コード、検査区分、検体、測定条件、当日実施の根拠"
-      });
-      if (issue) {
-        reviewIssues.push(issue);
-        reviewWarnings.push(issue.messageForStaff);
-      }
-      clinicalTrace.push(clinicalTraceEvent({
-        stage: "evidence_verifier",
-        event,
-        categoryLabel: "検体検査",
-        outcome: "review_required",
-        selected: {
-          reasons: asArray(event.evidenceVerificationReasons)
-        },
-        message: "lab_event_requires_review_due_to_unverified_evidence"
-      }));
-      continue;
-    }
-    if (event.evidenceVerificationStatus === "review_required" && isBillableClinicalEvent(event) && !reviewOnlyClinicalEventDomain(event)) {
-      const issue = reviewIssueFromEvidenceVerificationBlocked(event);
-      if (issue) {
-        reviewIssues.push(issue);
-        reviewWarnings.push(issue.messageForStaff);
-      }
-      clinicalTrace.push(clinicalTraceEvent({
-        stage: "evidence_verifier",
-        event,
-        categoryLabel: "根拠確認",
-        outcome: "review_required",
-        selected: {
-          reasons: asArray(event.evidenceVerificationReasons),
-          evidenceRefs: asArray(event.evidenceRefs).map((ref) => ({
-            lineId: ref.lineId,
-            section: ref.section,
-            approximate: Boolean(ref.approximate)
-          }))
-        },
-        message: "clinical_event_requires_review_due_to_unverified_evidence"
-      }));
-      continue;
-    }
-    if (canonicalFactBlocksAutomaticBilling(event)) {
-      const issue = reviewIssueFromCanonicalFactGate(event);
-      if (issue) {
-        reviewIssues.push(issue);
-        reviewWarnings.push(issue.messageForStaff);
-      }
-      clinicalTrace.push(clinicalTraceEvent({
-        stage: "canonical_fact_gate",
-        event,
-        categoryLabel: "検証済み臨床事実",
-        outcome: "blocked",
-        selected: {
-          canonicalFactId: sourceFactIdFromClinicalEvent(event),
-          canonicalFactStatus: event.canonicalFactStatus || "unknown",
-          evidenceVerificationStatus: event.evidenceVerificationStatus || "unknown"
-        },
-        message: "clinical_event_not_eligible_from_canonical_fact"
-      }));
-      continue;
-    }
-    if (!isBillableClinicalEvent(event)) {
-      const reviewOnlyDomain = reviewOnlyClinicalEventDomain(event);
-      if (reviewOnlyDomain && !isNegatedClinicalEvent(event)) {
-        const domainIssues = reviewIssuesFromReviewOnlyDomainClinicalEvent(event);
-        reviewIssues.push(...domainIssues);
-        reviewWarnings.push(...domainIssues.map((issue) => issue.messageForStaff));
-        clinicalTrace.push(clinicalTraceEvent({
-          stage: "review_only_domain_gate",
-          event,
-          categoryLabel: reviewOnlyDomainLabel(reviewOnlyDomain),
-          outcome: "review_required",
-          message: "review_only_domain_non_billable_review_required"
-        }));
-        continue;
-      }
-      const nonBillableLabIssues = reviewIssuesFromNonBillableLabClinicalEvent(event);
-      if (nonBillableLabIssues.length) {
-        reviewIssues.push(...nonBillableLabIssues);
-        reviewWarnings.push(...nonBillableLabIssues.map((issue) => issue.messageForStaff));
-        clinicalTrace.push(clinicalTraceEvent({
-          stage: "non_billable_lab_review_gate",
-          event,
-          categoryLabel: "検体検査",
-          outcome: "review_required",
-          message: "non_billable_lab_event_review_required"
-        }));
-        continue;
-      }
-      const labRelatedPlanningIssues = reviewIssuesFromNonBillableLabRelatedClinicalEvent(event);
-      if (labRelatedPlanningIssues.length) {
-        reviewIssues.push(...labRelatedPlanningIssues);
-        reviewWarnings.push(...labRelatedPlanningIssues.map((issue) => issue.messageForStaff));
-        clinicalTrace.push(clinicalTraceEvent({
-          stage: "non_billable_lab_review_gate",
-          event,
-          categoryLabel: "検体検査",
-          outcome: "review_required",
-          message: "non_billable_lab_related_event_review_required"
-        }));
-        continue;
-      }
-      const issue = reviewIssueFromExcludedClinicalEvent(event);
-      if (issue) {
-        reviewIssues.push(issue);
-        reviewWarnings.push(issue.messageForStaff);
-      }
-      continue;
-    }
-    if (hasExplicitBloodCollectionEvidence(event)) {
-      hasCaseLevelBloodCollectionEvidence = true;
-    }
-    const reviewOnlyDomain = reviewOnlyClinicalEventDomain(event);
-    const domainIssues = reviewIssuesFromReviewOnlyDomainClinicalEvent(event);
-    if (domainIssues.length) {
-      reviewIssues.push(...domainIssues);
-      reviewWarnings.push(...domainIssues.map((issue) => issue.messageForStaff));
-      clinicalTrace.push(clinicalTraceEvent({
-        stage: "review_only_domain_gate",
-        event,
-        categoryLabel: reviewOnlyDomainLabel(reviewOnlyDomain),
-        outcome: "review_required",
-        message: "review_only_domain_direct_retrieval_disabled"
-      }));
-      continue;
-    }
-
-    if (type === "imaging") {
-      const imaging = await imagingOrderFromClinicalEvent(event, feeCalculator, { clinicalText: text });
-      if (imaging.order) imagingOrders.push(imaging.order);
-      procedureCodes.push(...imaging.procedureCodes);
-      commentInputs.push(...imaging.commentInputs);
-      collectionFeeInputs.push(...imaging.collectionFeeInputs);
-      masterCandidates.push(...asArray(imaging.masterCandidates));
-      billingCandidates.push(...billingCandidatesFromProcedureResult(event, imaging));
-      reviewIssues.push(...reviewIssuesFromClinicalWarnings(event, imaging.reviewWarnings, {
-        source: "clinical_imaging_rule"
-      }));
-      reviewWarnings.push(...imaging.reviewWarnings);
-      clinicalTrace.push(...asArray(imaging.traceEvents));
-      continue;
-    }
-
-    if (type === "lab") {
-      const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
-        categoryLabel: "検体検査",
-        allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event),
-        clinicalText: text
-      });
-      const collectionFeeReviewIssues = labCollectionFeeReviewIssuesFromClinicalEvent(event, procedure);
-      procedureCodes.push(...procedure.procedureCodes);
-      if (asArray(procedure.procedureCodes).length) {
-        hasCaseLevelLabProcedureCode = true;
-      }
-      commentInputs.push(...procedure.commentInputs);
-      collectionFeeInputs.push(...procedure.collectionFeeInputs, ...labCollectionFeeInputsFromClinicalEvent(event, procedure));
-      reviewIssues.push(...collectionFeeReviewIssues);
-      reviewIssues.push(...reviewIssuesFromClinicalWarnings(event, procedure.reviewWarnings, {
-        source: "clinical_event_lab_guard"
-      }));
-      masterCandidates.push(...asArray(procedure.masterCandidates));
-      billingCandidates.push(...billingCandidatesFromProcedureResult(event, procedure));
-      reviewWarnings.push(...procedure.reviewWarnings);
-      reviewWarnings.push(...collectionFeeReviewIssues.map((issue) => issue.messageForStaff));
-      clinicalTrace.push(...asArray(procedure.traceEvents), ...labRuleTraceEvents(event, procedure));
-      continue;
-    }
-
-    if (type === "medication") {
-      if (verifiedOutsidePrescription) {
-        clinicalTrace.push(clinicalTraceEvent({
-          stage: "medication_delivery_invariant",
-          event,
-          categoryLabel: "投薬",
-          outcome: "excluded",
-          selected: {
-            delivery_kind: "outside_prescription",
-            policy: "outside_prescription_excludes_institution_drug_charges"
-          },
-          message: "outside_prescription_medication_event_skipped_before_drug_master_lookup"
-        }));
-        continue;
-      }
-      const medication = await medicationOrderFromClinicalEvent(event, feeCalculator);
-      if (medication.order) {
-        medicationOrders.push(medication.order);
-      }
-      masterCandidates.push(...asArray(medication.masterCandidates));
-      billingCandidates.push(...billingCandidatesFromMedicationResult(event, medication));
-      reviewWarnings.push(...medication.reviewWarnings);
-      continue;
-    }
-
-    if (type === "material") {
-      const material = await materialInputFromClinicalEvent(event, feeCalculator);
-      if (material.input) {
-        materialInputs.push(material.input);
-      }
-      masterCandidates.push(...asArray(material.masterCandidates));
-      billingCandidates.push(...billingCandidatesFromMaterialResult(event, material));
-      reviewWarnings.push(...material.reviewWarnings);
-      continue;
-    }
-
-    if (["procedure", "exam", "treatment"].includes(type)) {
-      const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
-        categoryLabel: type === "exam" ? "検査・処置" : type === "treatment" ? "処置・手技" : "診療行為",
-        allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event)
-      });
-      procedureCodes.push(...procedure.procedureCodes);
-      commentInputs.push(...procedure.commentInputs);
-      collectionFeeInputs.push(...procedure.collectionFeeInputs);
-      masterCandidates.push(...asArray(procedure.masterCandidates));
-      billingCandidates.push(...billingCandidatesFromProcedureResult(event, procedure));
-      reviewIssues.push(...reviewIssuesFromClinicalWarnings(event, procedure.reviewWarnings, {
-        source: "clinical_procedure_rule"
-      }));
-      reviewWarnings.push(...procedure.reviewWarnings);
-      clinicalTrace.push(...asArray(procedure.traceEvents));
-      continue;
-    }
-
-    if (["management", "counseling"].includes(type)) {
-      const categoryLabel = type === "management" ? "医学管理等" : "指導料";
-      const issues = reviewIssuesFromManagementClinicalEvent(event, { categoryLabel });
-      reviewIssues.push(...issues);
-      reviewWarnings.push(...issues.map((issue) => issue.messageForStaff));
-      clinicalTrace.push(clinicalTraceEvent({
-        stage: "management_review_gate",
-        event,
-        categoryLabel,
-        outcome: "review_required",
-        allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event),
-        message: "management_fee_direct_retrieval_disabled"
-      }));
-      continue;
-    }
-
-    const issues = reviewIssuesFromUnsupportedClinicalEvent(event);
-    reviewIssues.push(...issues);
-    reviewWarnings.push(...issues.map((issue) => issue.messageForStaff));
-  }
+  const eventConversion = await convertClinicalCalculationEvents({
+    clinicalEvents: clinicalEventsForCalculation,
+    feeCalculator,
+    clinicalText: text,
+    verifiedOutsidePrescription
+  });
+  procedureCodes.push(...eventConversion.procedureCodes);
+  imagingOrders.push(...eventConversion.imagingOrders);
+  medicationOrders.push(...eventConversion.medicationOrders);
+  materialInputs.push(...eventConversion.materialInputs);
+  commentInputs.push(...eventConversion.commentInputs);
+  collectionFeeInputs.push(...eventConversion.collectionFeeInputs);
+  masterCandidates.push(...eventConversion.masterCandidates);
+  billingCandidates.push(...eventConversion.billingCandidates);
+  reviewIssues.push(...eventConversion.reviewIssues);
+  reviewWarnings.push(...eventConversion.reviewWarnings);
+  clinicalTrace.push(...eventConversion.clinicalTrace);
+  hasCaseLevelLabProcedureCode = eventConversion.hasCaseLevelLabProcedureCode;
+  hasCaseLevelBloodCollectionEvidence = hasCaseLevelBloodCollectionEvidence
+    || eventConversion.hasCaseLevelBloodCollectionEvidence;
 
   const specificDiseaseProposals = await candidateProposalsFromSpecificDiseaseOpportunities({
     diagnoses,
@@ -2418,6 +2158,389 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   };
 }
 
+async function convertClinicalCalculationEvents({
+  clinicalEvents = [],
+  feeCalculator,
+  clinicalText = "",
+  verifiedOutsidePrescription = false
+} = {}) {
+  const result = {
+    procedureCodes: [],
+    imagingOrders: [],
+    medicationOrders: [],
+    materialInputs: [],
+    commentInputs: [],
+    collectionFeeInputs: [],
+    masterCandidates: [],
+    billingCandidates: [],
+    reviewIssues: [],
+    reviewWarnings: [],
+    clinicalTrace: [],
+    hasCaseLevelLabProcedureCode: false,
+    hasCaseLevelBloodCollectionEvidence: false
+  };
+
+  for (const event of asArray(clinicalEvents)) {
+    const converted = await convertSingleClinicalCalculationEvent({
+      event,
+      feeCalculator,
+      clinicalText,
+      verifiedOutsidePrescription
+    });
+    mergeClinicalEventConversionResult(result, converted);
+  }
+  return result;
+}
+
+async function convertSingleClinicalCalculationEvent({
+  event = {},
+  feeCalculator,
+  clinicalText = "",
+  verifiedOutsidePrescription = false
+} = {}) {
+  const result = emptyClinicalEventConversionResult();
+  const type = normalizeClinicalEventType(event);
+
+  const gateResult = reviewConversionResultFromClinicalEventGate(event, { type });
+  if (gateResult) {
+    return gateResult;
+  }
+
+  if (hasExplicitBloodCollectionEvidence(event)) {
+    result.hasCaseLevelBloodCollectionEvidence = true;
+  }
+
+  const directReviewOnlyDomainIssues = reviewIssuesFromReviewOnlyDomainClinicalEvent(event);
+  if (directReviewOnlyDomainIssues.length) {
+    result.reviewIssues.push(...directReviewOnlyDomainIssues);
+    result.reviewWarnings.push(...directReviewOnlyDomainIssues.map((issue) => issue.messageForStaff));
+    result.clinicalTrace.push(clinicalTraceEvent({
+      stage: "review_only_domain_gate",
+      event,
+      categoryLabel: reviewOnlyDomainLabel(reviewOnlyClinicalEventDomain(event)),
+      outcome: "review_required",
+      message: "review_only_domain_direct_retrieval_disabled"
+    }));
+    return result;
+  }
+
+  if (type === "imaging") {
+    const imaging = await imagingOrderFromClinicalEvent(event, feeCalculator, { clinicalText });
+    if (imaging.order) result.imagingOrders.push(imaging.order);
+    result.procedureCodes.push(...imaging.procedureCodes);
+    result.commentInputs.push(...imaging.commentInputs);
+    result.collectionFeeInputs.push(...imaging.collectionFeeInputs);
+    result.masterCandidates.push(...asArray(imaging.masterCandidates));
+    result.billingCandidates.push(...billingCandidatesFromProcedureResult(event, imaging));
+    result.reviewIssues.push(...reviewIssuesFromClinicalWarnings(event, imaging.reviewWarnings, {
+      source: "clinical_imaging_rule"
+    }));
+    result.reviewWarnings.push(...imaging.reviewWarnings);
+    result.clinicalTrace.push(...asArray(imaging.traceEvents));
+    return result;
+  }
+
+  if (type === "lab") {
+    const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
+      categoryLabel: "検体検査",
+      allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event),
+      clinicalText
+    });
+    const collectionFeeReviewIssues = labCollectionFeeReviewIssuesFromClinicalEvent(event, procedure);
+    result.procedureCodes.push(...procedure.procedureCodes);
+    if (asArray(procedure.procedureCodes).length) {
+      result.hasCaseLevelLabProcedureCode = true;
+    }
+    result.commentInputs.push(...procedure.commentInputs);
+    result.collectionFeeInputs.push(...procedure.collectionFeeInputs, ...labCollectionFeeInputsFromClinicalEvent(event, procedure));
+    result.reviewIssues.push(...collectionFeeReviewIssues);
+    result.reviewIssues.push(...reviewIssuesFromClinicalWarnings(event, procedure.reviewWarnings, {
+      source: "clinical_event_lab_guard"
+    }));
+    result.masterCandidates.push(...asArray(procedure.masterCandidates));
+    result.billingCandidates.push(...billingCandidatesFromProcedureResult(event, procedure));
+    result.reviewWarnings.push(...procedure.reviewWarnings);
+    result.reviewWarnings.push(...collectionFeeReviewIssues.map((issue) => issue.messageForStaff));
+    result.clinicalTrace.push(...asArray(procedure.traceEvents), ...labRuleTraceEvents(event, procedure));
+    return result;
+  }
+
+  if (type === "medication") {
+    if (verifiedOutsidePrescription) {
+      result.clinicalTrace.push(clinicalTraceEvent({
+        stage: "medication_delivery_invariant",
+        event,
+        categoryLabel: "投薬",
+        outcome: "excluded",
+        selected: {
+          delivery_kind: "outside_prescription",
+          policy: "outside_prescription_excludes_institution_drug_charges"
+        },
+        message: "outside_prescription_medication_event_skipped_before_drug_master_lookup"
+      }));
+      return result;
+    }
+    const medication = await medicationOrderFromClinicalEvent(event, feeCalculator);
+    if (medication.order) {
+      result.medicationOrders.push(medication.order);
+    }
+    result.masterCandidates.push(...asArray(medication.masterCandidates));
+    result.billingCandidates.push(...billingCandidatesFromMedicationResult(event, medication));
+    result.reviewWarnings.push(...medication.reviewWarnings);
+    return result;
+  }
+
+  if (type === "material") {
+    const material = await materialInputFromClinicalEvent(event, feeCalculator);
+    if (material.input) {
+      result.materialInputs.push(material.input);
+    }
+    result.masterCandidates.push(...asArray(material.masterCandidates));
+    result.billingCandidates.push(...billingCandidatesFromMaterialResult(event, material));
+    result.reviewWarnings.push(...material.reviewWarnings);
+    return result;
+  }
+
+  if (["procedure", "exam", "treatment"].includes(type)) {
+    const procedure = await procedureCodesFromPerformedClinicalEvent(event, feeCalculator, {
+      categoryLabel: type === "exam" ? "検査・処置" : type === "treatment" ? "処置・手技" : "診療行為",
+      allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event)
+    });
+    result.procedureCodes.push(...procedure.procedureCodes);
+    result.commentInputs.push(...procedure.commentInputs);
+    result.collectionFeeInputs.push(...procedure.collectionFeeInputs);
+    result.masterCandidates.push(...asArray(procedure.masterCandidates));
+    result.billingCandidates.push(...billingCandidatesFromProcedureResult(event, procedure));
+    result.reviewIssues.push(...reviewIssuesFromClinicalWarnings(event, procedure.reviewWarnings, {
+      source: "clinical_procedure_rule"
+    }));
+    result.reviewWarnings.push(...procedure.reviewWarnings);
+    result.clinicalTrace.push(...asArray(procedure.traceEvents));
+    return result;
+  }
+
+  if (["management", "counseling"].includes(type)) {
+    const categoryLabel = type === "management" ? "医学管理等" : "指導料";
+    const issues = reviewIssuesFromManagementClinicalEvent(event, { categoryLabel });
+    result.reviewIssues.push(...issues);
+    result.reviewWarnings.push(...issues.map((issue) => issue.messageForStaff));
+    result.clinicalTrace.push(clinicalTraceEvent({
+      stage: "management_review_gate",
+      event,
+      categoryLabel,
+      outcome: "review_required",
+      allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event),
+      message: "management_fee_direct_retrieval_disabled"
+    }));
+    return result;
+  }
+
+  const unsupportedIssues = reviewIssuesFromUnsupportedClinicalEvent(event);
+  result.reviewIssues.push(...unsupportedIssues);
+  result.reviewWarnings.push(...unsupportedIssues.map((issue) => issue.messageForStaff));
+  return result;
+}
+
+function reviewConversionResultFromClinicalEventGate(event = {}, { type = normalizeClinicalEventType(event) } = {}) {
+  const result = emptyClinicalEventConversionResult();
+  if (event.evidenceVerificationStatus === "blocked") {
+    const issue = reviewIssueFromEvidenceVerificationBlocked(event);
+    if (issue) {
+      result.reviewIssues.push(issue);
+      result.reviewWarnings.push(issue.messageForStaff);
+    }
+    const reasons = asArray(event.evidenceVerificationReasons);
+    if (["lab", "exam"].includes(type) && reasons.includes("past_or_external_context")) {
+      const labIssue = reviewIssueFromNonBillableLabClinicalEvent(event, "lab_code_check", {
+        message: `検査コード確認: ${clinicalEventName(event) || "検査"}は検査名として抽出されましたが、根拠文が過去・他院・持参情報の文脈です。今回自院で実施済みの場合は標準コード、検査区分、検体、測定条件を確認してください。`,
+        requiredInput: "標準コード、検査区分、検体、測定条件、当日自院実施の根拠"
+      });
+      if (labIssue) {
+        result.reviewIssues.push(labIssue);
+        result.reviewWarnings.push(labIssue.messageForStaff);
+      }
+    }
+    result.clinicalTrace.push(clinicalTraceEvent({
+      stage: "evidence_verifier",
+      event,
+      categoryLabel: "根拠確認",
+      outcome: "blocked",
+      selected: evidenceVerificationTraceSelection(event),
+      message: "clinical_event_blocked_by_evidence_verifier"
+    }));
+    return result;
+  }
+
+  if (event.evidenceVerificationStatus === "review_required" && ["lab", "exam"].includes(type)) {
+    const evidenceIssue = reviewIssueFromEvidenceVerificationBlocked(event);
+    if (evidenceIssue) {
+      result.reviewIssues.push(evidenceIssue);
+      result.reviewWarnings.push(evidenceIssue.messageForStaff);
+    }
+    const issue = reviewIssueFromNonBillableLabClinicalEvent(event, "lab_code_check", {
+      message: `検査コード確認: ${clinicalEventName(event) || "検査"}は検査名として抽出されましたが、カルテ本文の根拠引用を確認できません。実施済みの場合は標準コード、検査区分、検体、測定条件を確認してください。`,
+      requiredInput: "標準コード、検査区分、検体、測定条件、当日実施の根拠"
+    });
+    if (issue) {
+      result.reviewIssues.push(issue);
+      result.reviewWarnings.push(issue.messageForStaff);
+    }
+    result.clinicalTrace.push(clinicalTraceEvent({
+      stage: "evidence_verifier",
+      event,
+      categoryLabel: "検体検査",
+      outcome: "review_required",
+      selected: {
+        reasons: asArray(event.evidenceVerificationReasons)
+      },
+      message: "lab_event_requires_review_due_to_unverified_evidence"
+    }));
+    return result;
+  }
+
+  if (event.evidenceVerificationStatus === "review_required" && isBillableClinicalEvent(event) && !reviewOnlyClinicalEventDomain(event)) {
+    const issue = reviewIssueFromEvidenceVerificationBlocked(event);
+    if (issue) {
+      result.reviewIssues.push(issue);
+      result.reviewWarnings.push(issue.messageForStaff);
+    }
+    result.clinicalTrace.push(clinicalTraceEvent({
+      stage: "evidence_verifier",
+      event,
+      categoryLabel: "根拠確認",
+      outcome: "review_required",
+      selected: evidenceVerificationTraceSelection(event),
+      message: "clinical_event_requires_review_due_to_unverified_evidence"
+    }));
+    return result;
+  }
+
+  if (canonicalFactBlocksAutomaticBilling(event)) {
+    const issue = reviewIssueFromCanonicalFactGate(event);
+    if (issue) {
+      result.reviewIssues.push(issue);
+      result.reviewWarnings.push(issue.messageForStaff);
+    }
+    result.clinicalTrace.push(clinicalTraceEvent({
+      stage: "canonical_fact_gate",
+      event,
+      categoryLabel: "検証済み臨床事実",
+      outcome: "blocked",
+      selected: {
+        canonicalFactId: sourceFactIdFromClinicalEvent(event),
+        canonicalFactStatus: event.canonicalFactStatus || "unknown",
+        evidenceVerificationStatus: event.evidenceVerificationStatus || "unknown"
+      },
+      message: "clinical_event_not_eligible_from_canonical_fact"
+    }));
+    return result;
+  }
+
+  if (!isBillableClinicalEvent(event)) {
+    return reviewConversionResultFromNonBillableClinicalEvent(event);
+  }
+
+  return null;
+}
+
+function reviewConversionResultFromNonBillableClinicalEvent(event = {}) {
+  const result = emptyClinicalEventConversionResult();
+  const reviewOnlyDomain = reviewOnlyClinicalEventDomain(event);
+  if (reviewOnlyDomain && !isNegatedClinicalEvent(event)) {
+    const domainIssues = reviewIssuesFromReviewOnlyDomainClinicalEvent(event);
+    result.reviewIssues.push(...domainIssues);
+    result.reviewWarnings.push(...domainIssues.map((issue) => issue.messageForStaff));
+    result.clinicalTrace.push(clinicalTraceEvent({
+      stage: "review_only_domain_gate",
+      event,
+      categoryLabel: reviewOnlyDomainLabel(reviewOnlyDomain),
+      outcome: "review_required",
+      message: "review_only_domain_non_billable_review_required"
+    }));
+    return result;
+  }
+  const nonBillableLabIssues = reviewIssuesFromNonBillableLabClinicalEvent(event);
+  if (nonBillableLabIssues.length) {
+    result.reviewIssues.push(...nonBillableLabIssues);
+    result.reviewWarnings.push(...nonBillableLabIssues.map((issue) => issue.messageForStaff));
+    result.clinicalTrace.push(clinicalTraceEvent({
+      stage: "non_billable_lab_review_gate",
+      event,
+      categoryLabel: "検体検査",
+      outcome: "review_required",
+      message: "non_billable_lab_event_review_required"
+    }));
+    return result;
+  }
+  const labRelatedPlanningIssues = reviewIssuesFromNonBillableLabRelatedClinicalEvent(event);
+  if (labRelatedPlanningIssues.length) {
+    result.reviewIssues.push(...labRelatedPlanningIssues);
+    result.reviewWarnings.push(...labRelatedPlanningIssues.map((issue) => issue.messageForStaff));
+    result.clinicalTrace.push(clinicalTraceEvent({
+      stage: "non_billable_lab_review_gate",
+      event,
+      categoryLabel: "検体検査",
+      outcome: "review_required",
+      message: "non_billable_lab_related_event_review_required"
+    }));
+    return result;
+  }
+  const issue = reviewIssueFromExcludedClinicalEvent(event);
+  if (issue) {
+    result.reviewIssues.push(issue);
+    result.reviewWarnings.push(issue.messageForStaff);
+  }
+  return result;
+}
+
+function evidenceVerificationTraceSelection(event = {}) {
+  return {
+    reasons: asArray(event.evidenceVerificationReasons),
+    evidenceRefs: asArray(event.evidenceRefs).map((ref) => ({
+      lineId: ref.lineId,
+      section: ref.section,
+      approximate: Boolean(ref.approximate)
+    }))
+  };
+}
+
+function emptyClinicalEventConversionResult() {
+  return {
+    procedureCodes: [],
+    imagingOrders: [],
+    medicationOrders: [],
+    materialInputs: [],
+    commentInputs: [],
+    collectionFeeInputs: [],
+    masterCandidates: [],
+    billingCandidates: [],
+    reviewIssues: [],
+    reviewWarnings: [],
+    clinicalTrace: [],
+    hasCaseLevelLabProcedureCode: false,
+    hasCaseLevelBloodCollectionEvidence: false
+  };
+}
+
+function mergeClinicalEventConversionResult(target, source = {}) {
+  target.procedureCodes.push(...asArray(source.procedureCodes));
+  target.imagingOrders.push(...asArray(source.imagingOrders));
+  target.medicationOrders.push(...asArray(source.medicationOrders));
+  target.materialInputs.push(...asArray(source.materialInputs));
+  target.commentInputs.push(...asArray(source.commentInputs));
+  target.collectionFeeInputs.push(...asArray(source.collectionFeeInputs));
+  target.masterCandidates.push(...asArray(source.masterCandidates));
+  target.billingCandidates.push(...asArray(source.billingCandidates));
+  target.reviewIssues.push(...asArray(source.reviewIssues));
+  target.reviewWarnings.push(...asArray(source.reviewWarnings));
+  target.clinicalTrace.push(...asArray(source.clinicalTrace));
+  target.hasCaseLevelLabProcedureCode = Boolean(target.hasCaseLevelLabProcedureCode || source.hasCaseLevelLabProcedureCode);
+  target.hasCaseLevelBloodCollectionEvidence = Boolean(
+    target.hasCaseLevelBloodCollectionEvidence || source.hasCaseLevelBloodCollectionEvidence
+  );
+  return target;
+}
+
 function procedureCodeSourcesFromBillingCandidates(billingCandidates = []) {
   const sources = {};
   for (const candidate of asArray(billingCandidates)) {
@@ -2527,7 +2650,7 @@ function prepareCanonicalCalculationPipeline(clinicalEvents = [], { preprocessin
   const ledger = buildCanonicalFactCalculationLedger(clinicalEvents, { preprocessing });
   return {
     ...ledger,
-    sourceFactCoverage: sourceFactCoverageFromClinicalEvents(
+    sourceFactCoverage: sourceFactCoverageFromCalculationEvents(
       ledger.clinicalEventsForCalculation,
       ledger.billingIntentsForCalculation
     )
@@ -2548,14 +2671,14 @@ function canonicalCalculationPipelineTraceEvents({
     stage: "canonical_fact_ledger",
     outcome: "prepared",
     source: "canonical_clinical_facts",
-    bridge: "legacy_clinical_event_adapter_active",
+    bridge: "removed",
     factCount: canonicalClinicalFactsForCalculation.length,
     eligibleFactCount: canonicalClinicalFactsForCalculation.filter((fact) => (
       ["eligible_for_master_search", "eligible_for_billing"].includes(fact.status)
     )).length,
     reviewFactCount: canonicalClinicalFactsForCalculation.filter((fact) => fact.status === "review_required").length,
     excludedFactCount: canonicalClinicalFactsForCalculation.filter((fact) => fact.status === "excluded").length,
-    message: "canonical_facts_are_the_preferred_calculation_lineage"
+    message: "canonical_facts_are_the_calculation_lineage"
   }, {
     stage: "billing_intent_builder",
     outcome: "prepared",
@@ -2577,7 +2700,7 @@ function canonicalCalculationPipelineTraceEvents({
   }];
 }
 
-function sourceFactCoverageFromClinicalEvents(clinicalEvents = [], billingIntents = []) {
+function sourceFactCoverageFromCalculationEvents(clinicalEvents = [], billingIntents = []) {
   const intentByFactId = new Set(asArray(billingIntents)
     .map((intent) => String(intent.sourceFactId || "").trim())
     .filter(Boolean));
@@ -2651,109 +2774,15 @@ function buildCanonicalFactCalculationLedger(clinicalEvents = [], { preprocessin
     canonicalClinicalFactsFromEvents(clinicalEvents, { preprocessing })
   );
   const billingIntentsForCalculation = billingIntentsFromCanonicalClinicalFacts(canonicalClinicalFactsForCalculation);
-  const clinicalEventsForCalculation = clinicalEventsFromBillingIntentsForCalculation({
+  const clinicalEventsForCalculation = calculationEventsFromCanonicalFacts({
     facts: canonicalClinicalFactsForCalculation,
-    billingIntents: billingIntentsForCalculation,
-    originalEvents: clinicalEvents
+    billingIntents: billingIntentsForCalculation
   });
   return {
     canonicalClinicalFactsForCalculation,
     clinicalEventsForCalculation,
     billingIntentsForCalculation
   };
-}
-
-function clinicalEventsFromBillingIntentsForCalculation({
-  facts = [],
-  billingIntents = [],
-  originalEvents = []
-} = {}) {
-  const eventsFromFacts = clinicalEventsFromCanonicalClinicalFacts(facts, originalEvents);
-  return attachBillingIntentsToClinicalEvents(eventsFromFacts, billingIntents);
-}
-
-const CANONICAL_FACT_AUTOMATIC_BILLING_STATUSES = Object.freeze([
-  "eligible_for_master_search",
-  "eligible_for_billing"
-]);
-
-function billingIntentsFromCanonicalClinicalFacts(facts = []) {
-  return normalizeBillingIntents(asArray(facts)
-    .filter((fact) => canonicalFactCanProceedToAutomaticBillingFact(fact))
-    .map((fact) => {
-      const sourceFactId = String(fact?.factId || fact?.fact_id || "").trim();
-      const intentType = billingIntentTypeFromFact(fact);
-      return {
-        billingIntentId: `intent_${candidateIdPart([sourceFactId, intentType].join("_"))}`,
-        sourceFactId,
-        intentType,
-        conceptId: String(fact?.conceptId || fact?.concept_id || "").trim(),
-        eventType: String(fact?.eventType || fact?.event_type || "").trim(),
-        billingDomain: String(fact?.billingDomain || fact?.billing_domain || "").trim(),
-        clinicalName: String(fact?.clinicalName || fact?.clinical_name || "").trim(),
-        evidenceRefs: asArray(fact?.evidenceRefs || fact?.evidence_refs),
-        status: "ready_for_master_linking",
-        source: "canonical_clinical_fact"
-      };
-    }));
-}
-
-function normalizeBillingIntents(values = []) {
-  const seen = new Set();
-  const result = [];
-  for (const intent of asArray(values)) {
-    if (!intent || typeof intent !== "object") {
-      continue;
-    }
-    const key = [
-      intent.billingIntentId,
-      intent.sourceFactId,
-      intent.intentType
-    ].join("|");
-    if (!intent.sourceFactId || seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    result.push(intent);
-  }
-  return result.slice(0, 120);
-}
-
-function billingIntentTypeFromFact(fact = {}) {
-  const type = String(fact?.eventType || fact?.event_type || "").trim();
-  if (type === "lab" || type === "exam") return "lab_test";
-  if (type === "imaging") return "imaging_order";
-  if (type === "medication") return "medication_order";
-  if (type === "material") return "material_input";
-  if (type === "procedure" || type === "treatment") return "procedure_code";
-  if (type === "management" || type === "counseling") return "management_review";
-  return "clinical_event";
-}
-
-function canonicalFactCanProceedToAutomaticBillingFact(fact = {}) {
-  const status = String(fact?.status || "").trim();
-  const verificationStatus = String(fact?.verification?.status || fact?.verificationStatus || fact?.verification_status || "").trim();
-  return CANONICAL_FACT_AUTOMATIC_BILLING_STATUSES.includes(status)
-    && verificationStatus === "verified";
-}
-
-function attachBillingIntentsToClinicalEvents(events = [], billingIntents = []) {
-  const intentByFactId = new Map(asArray(billingIntents)
-    .map((intent) => [String(intent.sourceFactId || "").trim(), intent])
-    .filter(([factId]) => factId));
-  return asArray(events).map((event) => {
-    const factId = sourceFactIdFromClinicalEvent(event);
-    const intent = factId ? intentByFactId.get(factId) : null;
-    if (!intent) {
-      return event;
-    }
-    return {
-      ...event,
-      billingIntentId: intent.billingIntentId,
-      sourceBillingIntentId: intent.billingIntentId,
-      billingIntentType: intent.intentType
-    };
-  });
 }
 
 function sourceFactIdFromClinicalEvent(event = {}) {
@@ -5364,6 +5393,14 @@ function canonicalClinicalFactsFromEvents(events = [], {
     .map((event, index) => normalizeClinicalEvent(event, index))
     .filter(Boolean)
     .map((event) => {
+      if (event?.canonicalFactId || event?.sourceFactId || event?.source_fact_id) {
+        return canonicalClinicalFactFromCalculationEvent(event, {
+          billableEventIds,
+          billingCandidates,
+          reviewEventIds,
+          masterEventIds
+        });
+      }
       const eventId = clinicalEventIdentity(event);
       const eligible = isBillableClinicalEvent(event) && !reviewOnlyClinicalEventDomain(event);
       const verification = verifyClinicalEventEvidence(event, preprocessing);
@@ -5393,6 +5430,8 @@ function canonicalClinicalFactsFromEvents(events = [], {
         resultAssertion: event.resultAssertion,
         certainty: event.certainty,
         evidenceRefs: verification.evidenceRefs,
+        searchQueries: clinicalEventSearchQueries(event),
+        reviewReason: event.review_reason || "",
         normalization: {
           modality: event.modality || "none",
           bodySite: event.body_site || "",
@@ -5406,7 +5445,9 @@ function canonicalClinicalFactsFromEvents(events = [], {
         extraction: {
           source: event.source || event.extractionSource || "llm_clinical_event",
           registryVersion: FEE_CONCEPT_REGISTRY_VERSION,
-          masterCandidateAvailable: masterEventIds.has(eventId)
+          masterCandidateAvailable: masterEventIds.has(eventId),
+          searchQueries: clinicalEventSearchQueries(event),
+          reviewReason: event.review_reason || ""
         },
         verification: {
           status: verification.status,
@@ -5415,6 +5456,72 @@ function canonicalClinicalFactsFromEvents(events = [], {
         }
       };
     });
+}
+
+function canonicalClinicalFactFromCalculationEvent(event = {}, {
+  billableEventIds = new Set(),
+  reviewEventIds = new Set(),
+  masterEventIds = new Set()
+} = {}) {
+  const eventId = clinicalEventIdentity(event);
+  const factId = sourceFactIdFromClinicalEvent(event) || `fact_${candidateIdPart(eventId || [event.type, event.name, event.evidence].join("_"))}`;
+  const verificationStatus = String(event?.evidenceVerificationStatus || event?.evidence_verification_status || "unknown").trim() || "unknown";
+  const baseStatus = String(event?.canonicalFactStatus || event?.canonical_fact_status || "").trim();
+  const status = verificationStatus === "blocked"
+    ? "excluded"
+    : verificationStatus === "review_required"
+      ? "review_required"
+      : reviewEventIds.has(eventId)
+        ? "review_required"
+        : billableEventIds.has(eventId)
+          ? "eligible_for_billing"
+          : baseStatus || (isBillableClinicalEvent(event) && !reviewOnlyClinicalEventDomain(event) ? "eligible_for_master_search" : "excluded");
+  const evidenceRefs = asArray(event?.evidenceRefs || event?.evidence_refs);
+  const searchQueries = uniqueStrings([
+    ...asArray(event?.searchQueries),
+    ...asArray(event?.search_queries)
+  ]);
+  const reviewReason = String(event?.reviewReason || event?.review_reason || "").trim();
+  return {
+    factId,
+    clinicalEventId: eventId,
+    conceptId: event?.conceptId || event?.concept_id || canonicalClinicalFactConceptId(event),
+    eventType: normalizeClinicalEventType(event),
+    billingDomain: normalizeClinicalEventBillingDomain(event),
+    clinicalName: clinicalEventName(event),
+    status,
+    actionStatus: event.actionStatus,
+    temporalRelation: event.temporalRelation,
+    sourceOrigin: event.sourceOrigin,
+    providerOwnership: event.providerOwnership,
+    resultAssertion: event.resultAssertion,
+    certainty: event.certainty,
+    evidenceRefs,
+    searchQueries,
+    reviewReason,
+    normalization: {
+      modality: event.modality || "none",
+      bodySite: event.body_site || "",
+      specimen: event.specimen || "",
+      collectionMethod: event.collection_method || "",
+      areaSizeCm2: event.area_size_cm2 || "",
+      quantityPerDay: event.quantity_per_day || "",
+      days: event.days || "",
+      totalQuantity: event.total_quantity || ""
+    },
+    extraction: {
+      source: event.source || event.extractionSource || "canonical_clinical_fact",
+      registryVersion: FEE_CONCEPT_REGISTRY_VERSION,
+      masterCandidateAvailable: masterEventIds.has(eventId),
+      searchQueries,
+      reviewReason
+    },
+    verification: {
+      status: verificationStatus,
+      reasons: asArray(event?.evidenceVerificationReasons || event?.evidence_verification_reasons),
+      checkedAtRuleSetVersion: FEE_CLINICAL_RULE_SET_VERSION
+    }
+  };
 }
 
 function evidenceVerificationSummary(facts = []) {
@@ -5435,73 +5542,6 @@ function canonicalClinicalFactConceptId(event = {}) {
   const billingDomain = normalizeClinicalEventBillingDomain(event, { type });
   const name = candidateIdPart(clinicalEventName(event) || billingDomain || type || "unknown");
   return `${billingDomain || type || "unknown"}:${name}`;
-}
-
-function clinicalEventsFromCanonicalClinicalFacts(facts = [], events = []) {
-  const eventsById = new Map();
-  for (const [index, event] of asArray(events).entries()) {
-    const normalized = normalizeClinicalEvent(event, index);
-    const eventId = normalized ? clinicalEventIdentity(normalized) : "";
-    if (eventId) {
-      eventsById.set(eventId, normalized);
-    }
-  }
-  return asArray(facts)
-    .map((fact, index) => {
-      const eventId = String(fact?.clinicalEventId || fact?.clinical_event_id || "").trim();
-      const original = eventId ? eventsById.get(eventId) : null;
-      if (original) {
-        return {
-          ...original,
-          canonicalFactId: fact.factId || fact.fact_id || "",
-          sourceFactId: fact.factId || fact.fact_id || "",
-          canonicalFactStatus: fact.status || "unknown",
-          conceptId: fact.conceptId || fact.concept_id || original.conceptId || null,
-          evidenceRefs: asArray(fact.evidenceRefs || fact.evidence_refs),
-          evidenceVerificationStatus: fact?.verification?.status || "unknown",
-          evidenceVerificationReasons: asArray(fact?.verification?.reasons)
-        };
-      }
-      const evidenceRef = asArray(fact?.evidenceRefs || fact?.evidence_refs)[0] || {};
-      const normalization = isPlainObject(fact?.normalization) ? fact.normalization : {};
-      const reconstructed = normalizeClinicalEvent({
-        clinical_event_id: eventId || `canonical_fact_${index + 1}`,
-        type: fact?.eventType || fact?.event_type || "other",
-        billing_domain: fact?.billingDomain || fact?.billing_domain || "unknown",
-        name: fact?.clinicalName || fact?.clinical_name || "",
-        action_status: fact?.actionStatus || fact?.action_status || "unknown",
-        temporal_relation: fact?.temporalRelation || fact?.temporal_relation || "unknown",
-        source_origin: fact?.sourceOrigin || fact?.source_origin || "unknown",
-        provider_ownership: fact?.providerOwnership || fact?.provider_ownership || "unknown",
-        result_assertion: fact?.resultAssertion || fact?.result_assertion || "unknown",
-        certainty: fact?.certainty || "ambiguous",
-        section: evidenceRef.section || "unknown",
-        evidence: evidenceRef.quote || "",
-        modality: normalization.modality || "none",
-        body_site: normalization.bodySite || normalization.body_site || "",
-        specimen: normalization.specimen || "",
-        collection_method: normalization.collectionMethod || normalization.collection_method || "",
-        area_size_cm2: normalization.areaSizeCm2 || normalization.area_size_cm2 || "",
-        quantity_per_day: normalization.quantityPerDay || normalization.quantity_per_day || "",
-        days: normalization.days || "",
-        total_quantity: normalization.totalQuantity || normalization.total_quantity || "",
-        source: fact?.extraction?.source || "canonical_clinical_fact"
-      }, index);
-      if (!reconstructed) {
-        return null;
-      }
-      return {
-        ...reconstructed,
-        canonicalFactId: fact.factId || fact.fact_id || "",
-        sourceFactId: fact.factId || fact.fact_id || "",
-        canonicalFactStatus: fact.status || "unknown",
-        conceptId: fact.conceptId || fact.concept_id || null,
-        evidenceRefs: asArray(fact.evidenceRefs || fact.evidence_refs),
-        evidenceVerificationStatus: fact?.verification?.status || "unknown",
-        evidenceVerificationReasons: asArray(fact?.verification?.reasons)
-      };
-    })
-    .filter(Boolean);
 }
 
 function normalizeCanonicalClinicalFacts(values = []) {

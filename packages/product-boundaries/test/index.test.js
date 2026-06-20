@@ -58,6 +58,23 @@ test("product apps do not call sibling product API routes directly", () => {
   }
 });
 
+test("runtime services do not import sibling service source files directly", () => {
+  const source = readDirectoryText(join(root, "services"));
+  const productServiceNames = Object.values(products).map((product) => product.service);
+  const forbiddenPatterns = productServiceNames.map((service) => (
+    new RegExp(`from\\s+["'][.]{2}\\/[.]{2}\\/${escapeRegExp(service)}\\/src\\/`, "u")
+  ));
+  const runtimeSource = stripTestFiles(source);
+
+  for (const pattern of forbiddenPatterns) {
+    assert.equal(
+      pattern.test(runtimeSource),
+      false,
+      "runtime service code must import product service APIs through package exports, not ../../*-api/src paths"
+    );
+  }
+});
+
 function siblingProductTokens(productId) {
   return Object.entries(products)
     .filter(([candidateId]) => candidateId !== productId)
@@ -70,7 +87,7 @@ function siblingProductTokens(productId) {
 function readDirectoryText(path) {
   return walkFiles(path)
     .filter((file) => /\.(js|mjs|html|md)$/.test(file))
-    .map(readText)
+    .map((file) => `\n// FILE: ${file}\n${readText(file)}`)
     .join("\n");
 }
 
@@ -88,4 +105,15 @@ function walkFiles(path) {
 
 function readText(path) {
   return readFileSync(path, "utf8");
+}
+
+function stripTestFiles(source) {
+  return String(source || "")
+    .split(/\n\/\/ FILE: /u)
+    .filter((block) => !/\/test\//u.test(block))
+    .join("\n");
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

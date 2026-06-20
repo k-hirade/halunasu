@@ -1,5 +1,5 @@
 import http from "node:http";
-import { createChartingStoreFromEnv } from "../../charting-api/src/store/create-store.js";
+import { createChartingStoreFromEnv } from "@halunasu/charting-api/store/create-store";
 
 export function createChartingFinalizeServer(options = {}) {
   const startedAt = new Date();
