@@ -3,10 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  },
   "exports": {
-    "./styles/halunasu-ui.css": "./styles/halunasu-ui.css"
+    "./styles/halunasu-ui.css": "./styles/halunasu-ui.css",
+    "./user-facing-error": "./src/user-facing-error.js",
+    "./proxy-utils": "./src/proxy-utils.js",
+    "./platform-auth": "./src/platform-auth.js"
   },
   "files": [
-    "styles"
+    "styles",
+    "src"
   ]
 }

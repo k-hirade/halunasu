@@ -3,7 +3,7 @@ import "./globals.css";
 import Script from "next/script";
 import { AuthGate, PlatformAuthProvider } from "../components/platform-auth";
 import { SiteNav } from "../components/site-nav";
-import { BRAND_DESCRIPTION, BRAND_TITLE } from "../lib/brand";
+import { BRAND_DESCRIPTION, BRAND_LOGIN, BRAND_NAME, BRAND_TITLE, PRODUCT_NAME } from "../lib/brand";
 import { referralRuntimeConfigFromEnv } from "../lib/runtime-config";
 
 export const metadata = {
@@ -28,7 +28,10 @@ export default function RootLayout({ children }) {
             __html: `window.__HALUNASU_REFERRAL_CONFIG__ = ${JSON.stringify(runtimeConfig)};`
           }}
         />
-        <PlatformAuthProvider platformBaseUrl={runtimeConfig.platformBaseUrl}>
+        <PlatformAuthProvider
+          platformBaseUrl={runtimeConfig.platformBaseUrl}
+          brand={{ name: BRAND_NAME, product: PRODUCT_NAME, login: BRAND_LOGIN }}
+        >
           <AuthGate>
             <SiteNav />
             {children}

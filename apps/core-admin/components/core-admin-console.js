@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { toUserFacingErrorMessage } from "@halunasu/web-ui/user-facing-error";
 import { usePlatformAuth } from "./platform-auth";
 
 const ADMIN_SECTIONS = [
@@ -1363,15 +1364,4 @@ function canManageBilling(session) {
   );
 }
 
-function toUserFacingErrorMessage(error, fallbackMessage) {
-  const rawMessage = typeof error === "string" ? error : error?.message;
-  const status = typeof error === "object" && error ? Number(error.status || error.statusCode || 0) : 0;
-  const text = String(rawMessage || "").trim();
-  const lower = text.toLowerCase();
-  if (lower.includes("csrf")) return "画面を再読み込みして、もう一度お試しください。";
-  if (lower.includes("invalid session") || lower.includes("session expired") || lower.includes("session revoked") || lower === "unauthorized") return "ログイン状態を確認できません。もう一度ログインしてください。";
-  if (lower.includes("role is required") || lower.includes("access is required") || lower === "forbidden" || status === 403) return "この操作を行う権限がありません。";
-  if (lower.includes("failed to fetch") || lower.includes("networkerror") || lower === "load failed") return "通信に失敗しました。接続を確認して、もう一度お試しください。";
-  if (status >= 500) return "処理中に問題が発生しました。時間を置いてもう一度お試しください。";
-  return /[ぁ-んァ-ヶ一-龠]/u.test(text) ? text : fallbackMessage;
-}
+// toUserFacingErrorMessage は @halunasu/web-ui に一本化(ステップ1)。
