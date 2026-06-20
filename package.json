@@ -63,6 +63,8 @@
     "ops:billing-maintenance": "node scripts/run_platform_billing_maintenance.mjs",
     "ops:retention:dry-run": "node scripts/run_retention_cleanup.mjs",
     "ops:retention:apply": "node scripts/run_retention_cleanup.mjs --apply",
+    "ops:runtime-artifacts:dry-run": "bash scripts/p19_cleanup_runtime_artifacts.sh",
+    "ops:runtime-artifacts:apply": "bash scripts/p19_cleanup_runtime_artifacts.sh --apply",
     "ops:mfa-reset": "node scripts/reset_member_mfa.mjs",
     "start:platform-api": "npm run start --workspace @halunasu/platform-api",
     "dev:platform-api": "npm run dev --workspace @halunasu/platform-api",
