@@ -329,10 +329,6 @@ deploy_env() {
     "FEE_CALCULATION_WORKER_URL=${fee_calculation_worker_url}" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
-    if [[ "${env}" == "stg" ]]; then
-      run_or_print env TARGET_ENV=stg TARGET_SERVICE=fee-api REGION="${REGION}" REPOSITORY="${REPOSITORY}" \
-        bash scripts/p19_cleanup_runtime_artifacts.sh --apply
-    fi
   fi
 
   if should_deploy "${env}" "referral-api"; then
@@ -346,6 +342,11 @@ deploy_env() {
     "PLATFORM_STORE_BACKEND=firestore" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
+  fi
+
+  if [[ "${TARGET_SERVICE}" == "all" || "${TARGET_SERVICE}" == "platform-api" || "${TARGET_SERVICE}" == charting-* || "${TARGET_SERVICE}" == "fee-api" || "${TARGET_SERVICE}" == "referral-api" ]]; then
+    run_or_print env TARGET_ENV="${env}" TARGET_SERVICE="${TARGET_SERVICE}" REGION="${REGION}" REPOSITORY="${REPOSITORY}" \
+      bash scripts/p19_cleanup_runtime_artifacts.sh --apply
   fi
 }
 
