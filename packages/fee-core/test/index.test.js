@@ -8,6 +8,7 @@ import {
   buildCandidateWorkbench,
   buildReceiptDraft,
   buildReceiptDenshin,
+  buildReceiptExportValidation,
   serializeUke,
   buildFeeSession,
   normalizeCalculationResult,
@@ -93,6 +94,78 @@ test("builds draft fee sessions and promotes them when calculation context is sa
   assert.equal(updated.patientId, "pat_123");
   assert.equal(updated.claimMonth, "2026-05");
   assert.deepEqual(updated.calculationOptions.history.same_month_history_codes, ["160000410"]);
+});
+
+test("updates monthly claim work without clearing calculation results", () => {
+  const calculated = applyCalculationResult(buildFeeSession({
+    orgId: "org_123",
+    patientId: "pat_123",
+    facilityId: "fac_123",
+    createdByMemberId: "mem_123",
+    serviceDate: "2026-06-03",
+    diagnoses: [{ name: "急性上気道炎" }]
+  }, {
+    feeSessionId: "fee_monthly_work",
+    now: new Date("2026-06-03T00:00:00.000Z")
+  }), {
+    provider: "test",
+    status: "completed",
+    totalPoints: 137,
+    lineItems: [{ code: "111", name: "再診料", totalPoints: 73 }],
+    warnings: []
+  }, {
+    calculationId: "calc_001",
+    now: new Date("2026-06-03T00:01:00.000Z")
+  });
+  const updated = applyFeeSessionPatch(calculated, {
+    monthlyClaimWork: {
+      status: "doctor_confirming",
+      note: "医師確認中",
+      updatedByMemberId: "mem_123",
+      updatedAt: "2026-06-03T00:02:00.000Z"
+    }
+  }, {
+    now: new Date("2026-06-03T00:02:00.000Z")
+  });
+
+  assert.equal(updated.status, calculated.status);
+  assert.equal(updated.calculationSummary.totalPoints, 137);
+  assert.equal(updated.monthlyClaimWork.status, "doctor_confirming");
+});
+
+test("updates receipt annotations without clearing calculation results", () => {
+  const calculated = applyCalculationResult(buildFeeSession({
+    orgId: "org_123",
+    patientId: "pat_123",
+    facilityId: "fac_123",
+    createdByMemberId: "mem_123",
+    serviceDate: "2026-06-03"
+  }, {
+    feeSessionId: "fee_receipt_annotations",
+    now: new Date("2026-06-03T00:00:00.000Z")
+  }), {
+    provider: "test",
+    status: "completed",
+    totalPoints: 137,
+    lineItems: [{ code: "111", name: "再診料", totalPoints: 73 }],
+    warnings: []
+  }, {
+    calculationId: "calc_receipt_annotations",
+    now: new Date("2026-06-03T00:01:00.000Z")
+  });
+  const updated = applyFeeSessionPatch(calculated, {
+    receiptAnnotations: {
+      comments: [{ status: "confirmed", shinryoIdentification: "60", code: "830000001", text: "コメント本文" }],
+      symptomDetails: [{ status: "draft", kubun: "01", text: "症状詳記本文" }]
+    }
+  }, {
+    now: new Date("2026-06-03T00:02:00.000Z")
+  });
+
+  assert.equal(updated.status, calculated.status);
+  assert.equal(updated.calculationResult.calculationId, "calc_receipt_annotations");
+  assert.equal(updated.receiptAnnotations.comments[0].text, "コメント本文");
+  assert.equal(updated.receiptAnnotations.symptomDetails[0].status, "draft");
 });
 
 test("normalizes external calculation results", () => {
@@ -743,6 +816,17 @@ test("preserves clinical event specimen and review issue policy metadata", () =>
       messageForStaff: "検体採取料は人手確認が必要です。",
       relatedClinicalEventId: "event_swab",
       source: "derived_item_policy",
+      assessmentRisk: {
+        riskCategory: "body_laterality",
+        denialType: "A/B査定",
+        reason: "疾患部位と画像・処置部位の相違",
+        checkPoints: ["病名部位", "処置部位", "左右"]
+      },
+      bodyLateralityCheck: {
+        mismatchType: "laterality",
+        diagnosisLaterality: ["right"],
+        targetLaterality: ["left"]
+      },
       policy: {
         generationSource: "derived_from_parent",
         riskGate: "review"
@@ -762,8 +846,11 @@ test("preserves clinical event specimen and review issue policy metadata", () =>
   assert.equal(event.collectionMethod, "スワブ採取");
   assert.equal(event.billingDomain, "standard_lab");
   assert.equal(issue.source, "derived_item_policy");
+  assert.equal(issue.assessmentRisk.denialType, "A/B査定");
+  assert.equal(issue.bodyLateralityCheck.mismatchType, "laterality");
   assert.equal(issue.policy.riskGate, "review");
   assert.equal(workbench.issues[0].issueCategory, "specimen");
+  assert.equal(workbench.issues[0].assessmentRisk.riskCategory, "body_laterality");
 });
 
 function assertNoUndefined(value) {
@@ -920,4 +1007,25 @@ test("buildReceiptDenshin appends comment and symptom-detail records when provid
   });
   assert.ok(records.some((r) => r.record === "CO" && r.fields[2] === "830000001"));
   assert.ok(records.some((r) => r.record === "SJ" && r.fields[1] === "経過良好"));
+});
+
+test("buildReceiptExportValidation reports required UKE draft fields", () => {
+  const draft = ukeFixtureDraft();
+  const validation = buildReceiptExportValidation(draft, {
+    comments: [{ shinryoIdentification: "60", code: "830000001", text: "コメント" }],
+    symptomDetails: [{ kubun: "01", text: "詳記" }]
+  });
+  assert.equal(validation.exportStatus, "ready_for_review");
+  assert.equal(validation.blockingIssueCount, 0);
+
+  const invalid = buildReceiptExportValidation({
+    ...draft,
+    patientSnapshot: {},
+    facilitySnapshot: {},
+    insuranceSnapshot: { insurance: {} }
+  });
+  assert.equal(invalid.exportStatus, "draft");
+  assert.ok(invalid.issues.some((issue) => issue.field === "facility.medicalInstitutionCode" && issue.severity === "error"));
+  assert.ok(invalid.issues.some((issue) => issue.field === "patient.displayName" && issue.severity === "error"));
+  assert.ok(invalid.issues.some((issue) => issue.field === "insurance.insurerNumber" && issue.severity === "error"));
 });

@@ -27,6 +27,23 @@ const MASTER_TYPES = [
   ["comment", "コメント"],
   ["all", "すべて"]
 ];
+const MONTHLY_FILTERS = [
+  ["all", "すべて"],
+  ["diagnosis", "病名出し"],
+  ["doctor", "医師確認"],
+  ["annotation", "詳記未対応"],
+  ["blocked", "要対応"],
+  ["ready", "提出候補"],
+  ["uncalculated", "未算定"]
+];
+const MONTHLY_WORK_STATUS_OPTIONS = [
+  ["not_started", "未着手"],
+  ["diagnosis_requested", "病名依頼中"],
+  ["doctor_confirming", "医師確認中"],
+  ["collected", "回収済み"],
+  ["ready_for_claim", "提出可"],
+  ["excluded", "請求対象外"]
+];
 const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "処置・手技",
   "薬剤処方",
@@ -59,8 +76,629 @@ export function FeeWorkspace({ mode = "list", sessionId = "" }) {
   if (mode === "detail") {
     return <FeeSessionDetailView sessionId={sessionId} />;
   }
+  if (mode === "monthly") {
+    return <MonthlyClaimDashboard />;
+  }
 
   return <FeeSessionListView />;
+}
+
+function MonthlyClaimDashboard() {
+  const feeApi = useFeeApi();
+  const [claimMonth, setClaimMonth] = useState(defaultClaimMonth());
+  const [filter, setFilter] = useState("all");
+  const [summary, setSummary] = useState(null);
+  const [bulkPlan, setBulkPlan] = useState(null);
+  const [bulkJob, setBulkJob] = useState(null);
+  const [expandedPatientId, setExpandedPatientId] = useState("");
+  const [savingSessionId, setSavingSessionId] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const loadSummary = useCallback(async () => {
+    setLoading(true);
+    setErrorMessage("");
+    try {
+      const params = new URLSearchParams();
+      if (claimMonth) {
+        params.set("claimMonth", claimMonth);
+      }
+      const [summaryResponse, bulkPlanResponse] = await Promise.all([
+        feeApi(`/v1/fee/monthly-summary?${params.toString()}`),
+        feeApi(`/v1/fee/monthly-bulk-candidates?${params.toString()}`)
+      ]);
+      setSummary(summaryResponse);
+      setBulkPlan(bulkPlanResponse);
+    } catch (error) {
+      setErrorMessage(toUserFacingErrorMessage(error, "月次レセ点検を読み込めませんでした。"));
+    } finally {
+      setLoading(false);
+    }
+  }, [claimMonth, feeApi]);
+
+  useEffect(() => {
+    loadSummary();
+  }, [loadSummary]);
+
+  const patients = summary?.patients || [];
+  const filteredPatients = patients.filter((patient) => monthlyPatientMatchesFilter(patient, filter));
+  const blockedPatientCount = patients.filter((patient) => patient.blocked).length;
+  const readyPatientCount = patients.filter((patient) => patient.readyForClaim).length;
+  const preClaimBlockedCount = Number(summary?.blockedCount || 0);
+  const preClaimUncalculatedCount = Number(summary?.uncalculatedCount || 0);
+  const preClaimReadyCount = Number(summary?.readyForClaimCount || 0);
+
+  async function updateMonthlyWork(session, patch) {
+    if (!session?.feeSessionId) {
+      return;
+    }
+    setSavingSessionId(session.feeSessionId);
+    setErrorMessage("");
+    try {
+      const currentWork = session.monthlyClaimWork || {};
+      const nextWork = {
+        ...currentWork,
+        ...(typeof patch === "string" ? { status: patch } : patch)
+      };
+      await feeApi(`/v1/fee/sessions/${encodeURIComponent(session.feeSessionId)}`, {
+        method: "PATCH",
+        csrf: true,
+        body: {
+          monthlyClaimWork: nextWork
+        }
+      });
+      await loadSummary();
+    } catch (error) {
+      setErrorMessage(toUserFacingErrorMessage(error, "作業ステータスを保存できませんでした。"));
+    } finally {
+      setSavingSessionId("");
+    }
+  }
+
+  async function applyMonthlyDiagnoses(session, collectedResult, workPatch = {}) {
+    if (!session?.feeSessionId) {
+      return;
+    }
+    const diagnoses = parseDiagnoses(collectedResult);
+    if (!diagnoses.length) {
+      setErrorMessage("反映する病名がありません。回収結果に病名を1行ずつ入力してください。");
+      return;
+    }
+    setSavingSessionId(session.feeSessionId);
+    setErrorMessage("");
+    try {
+      await feeApi(`/v1/fee/sessions/${encodeURIComponent(session.feeSessionId)}`, {
+        method: "PATCH",
+        csrf: true,
+        body: {
+          diagnoses,
+          diagnosesSource: "manual",
+          monthlyClaimWork: {
+            ...(session.monthlyClaimWork || {}),
+            ...workPatch,
+            status: "collected",
+            collectedResult,
+            appliedDiagnosisNames: diagnoses.map((diagnosis) => diagnosis.name).filter(Boolean)
+          }
+        }
+      });
+      await loadSummary();
+    } catch (error) {
+      setErrorMessage(toUserFacingErrorMessage(error, "回収した病名を反映できませんでした。"));
+    } finally {
+      setSavingSessionId("");
+    }
+  }
+
+  async function updateMonthlyReceiptAnnotations(session, receiptAnnotations) {
+    if (!session?.feeSessionId) {
+      return;
+    }
+    setSavingSessionId(session.feeSessionId);
+    setErrorMessage("");
+    try {
+      await feeApi(`/v1/fee/sessions/${encodeURIComponent(session.feeSessionId)}`, {
+        method: "PATCH",
+        csrf: true,
+        body: {
+          receiptAnnotations
+        }
+      });
+      await loadSummary();
+    } catch (error) {
+      setErrorMessage(toUserFacingErrorMessage(error, "コメント・詳記を保存できませんでした。"));
+    } finally {
+      setSavingSessionId("");
+    }
+  }
+
+  async function createMonthlyBulkJob() {
+    setBulkBusy(true);
+    setErrorMessage("");
+    try {
+      const response = await feeApi("/v1/fee/monthly-bulk-jobs", {
+        method: "POST",
+        csrf: true,
+        body: {
+          claimMonth,
+          autoRun: true
+        }
+      });
+      setBulkJob(response.monthlyBulkJob || null);
+      await loadSummary();
+    } catch (error) {
+      setErrorMessage(toUserFacingErrorMessage(error, "一括候補化ジョブを作成できませんでした。"));
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function updateMonthlyBulkJob(action) {
+    if (!bulkJob?.monthlyBulkJobId) {
+      return;
+    }
+    setBulkBusy(true);
+    setErrorMessage("");
+    try {
+      const response = await feeApi(`/v1/fee/monthly-bulk-jobs/${encodeURIComponent(bulkJob.monthlyBulkJobId)}`, {
+        method: "PATCH",
+        csrf: true,
+        body: { action }
+      });
+      setBulkJob(response.monthlyBulkJob || null);
+      await loadSummary();
+    } catch (error) {
+      setErrorMessage(toUserFacingErrorMessage(error, "一括候補化ジョブを更新できませんでした。"));
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  return (
+    <main className="dashboard fee-monthly-dashboard">
+      <div className="dashboard-header fee-monthly-header">
+        <div>
+          <span className="label">月次レセ点検</span>
+          <h1>請求月ごとの確認状況</h1>
+        </div>
+        <div className="fee-monthly-header-actions">
+          <label className="fee-monthly-month-field">
+            <span>請求月</span>
+            <input type="month" value={claimMonth} onChange={(event) => setClaimMonth(event.target.value)} />
+          </label>
+          <a className="btn btn--ghost" href="/sessions">算定一覧</a>
+        </div>
+      </div>
+
+      {errorMessage ? <div className="inline-error" role="status">{errorMessage}</div> : null}
+
+      <section className="fee-monthly-summary-grid" aria-label="月次サマリ">
+        <MonthlyMetric label="患者" value={summary?.patientCount || 0} suffix="人" />
+        <MonthlyMetric label="受診分" value={summary?.sessionCount || 0} suffix="件" />
+        <MonthlyMetric label="合計点数" value={summary?.totalPoints || 0} suffix="点" />
+        <MonthlyMetric label="要対応患者" value={blockedPatientCount} suffix="人" tone={blockedPatientCount ? "review" : "supported"} />
+        <MonthlyMetric label="提出候補" value={readyPatientCount} suffix="人" tone="supported" />
+      </section>
+
+      <section className="card fee-monthly-precheck" aria-label="提出前チェック">
+        <div>
+          <span className="label">提出前チェック</span>
+          <strong>{preClaimBlockedCount || preClaimUncalculatedCount ? "未完了の確認があります" : "提出候補のみです"}</strong>
+        </div>
+        <dl>
+          <div>
+            <dt>提出候補</dt>
+            <dd>{preClaimReadyCount.toLocaleString()}件</dd>
+          </div>
+          <div>
+            <dt>要対応</dt>
+            <dd>{preClaimBlockedCount.toLocaleString()}件</dd>
+          </div>
+          <div>
+            <dt>未算定</dt>
+            <dd>{preClaimUncalculatedCount.toLocaleString()}件</dd>
+          </div>
+        </dl>
+      </section>
+
+      <MonthlyBulkPanel
+        busy={bulkBusy}
+        job={bulkJob}
+        onCancel={() => updateMonthlyBulkJob("cancel")}
+        onConfirmSafe={() => updateMonthlyBulkJob("confirm_safe")}
+        onCreate={createMonthlyBulkJob}
+        onRetryFailed={() => updateMonthlyBulkJob("retry_failed")}
+        plan={bulkPlan}
+      />
+
+      <section className="card fee-monthly-worklist">
+        <div className="fee-monthly-worklist-head">
+          <div>
+            <h2>患者別点検リスト</h2>
+            <p>病名不足、要確認、詳記候補、未算定がある患者を優先して表示します。</p>
+          </div>
+          <span>{loading ? "読み込み中" : `${filteredPatients.length.toLocaleString()}人`}</span>
+        </div>
+        <div className="fee-monthly-filterbar" role="group" aria-label="月次点検フィルタ">
+          {MONTHLY_FILTERS.map(([value, label]) => (
+            <button
+              className={`fee-segment-button ${filter === value ? "is-active" : ""}`}
+              key={value}
+              onClick={() => setFilter(value)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <MonthlySkeleton />
+        ) : filteredPatients.length ? (
+          <div className="fee-monthly-table-wrap">
+            <table className="fee-monthly-table">
+              <thead>
+                <tr>
+                  <th>患者</th>
+                  <th>受診</th>
+                  <th>点数</th>
+                  <th>状態</th>
+                  <th>確認</th>
+                  <th>詳細</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPatients.map((patient) => (
+                  <MonthlyPatientRow
+                    expanded={expandedPatientId === monthlyPatientKey(patient)}
+                    key={monthlyPatientKey(patient)}
+                    onToggle={() => setExpandedPatientId((current) => current === monthlyPatientKey(patient) ? "" : monthlyPatientKey(patient))}
+                    onApplyDiagnoses={applyMonthlyDiagnoses}
+                    onUpdateReceiptAnnotations={updateMonthlyReceiptAnnotations}
+                    onUpdateWork={updateMonthlyWork}
+                    patient={patient}
+                    savingSessionId={savingSessionId}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="session-list-empty">この条件に一致する算定記録はありません。</div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function MonthlyMetric({ label, suffix = "", tone = "neutral", value }) {
+  return (
+    <article className={`card fee-monthly-metric fee-monthly-metric--${tone}`}>
+      <span>{label}</span>
+      <strong>{Number(value || 0).toLocaleString()}{suffix}</strong>
+    </article>
+  );
+}
+
+function MonthlyBulkPanel({ busy, job, onCancel, onConfirmSafe, onCreate, onRetryFailed, plan }) {
+  const progress = job?.progress || {};
+  const targetCount = Number(plan?.targetCount || 0);
+  const failedCount = Number(progress.failedCount || 0);
+  const queuedCount = Number(progress.queuedCount || 0);
+  const skippedCount = Number(progress.skippedCount || 0);
+  return (
+    <section className="card fee-monthly-bulk-panel" aria-label="一括候補化">
+      <div className="fee-monthly-bulk-head">
+        <div>
+          <span className="label">一括候補化</span>
+          <h2>未算定・再計算対象</h2>
+          <p>請求月内の対象を抽出し、既存の単票算定ジョブへ順に投入します。</p>
+        </div>
+        <button className="btn btn--primary btn--sm" disabled={busy || targetCount === 0} onClick={onCreate} type="button">
+          候補化ジョブ作成
+        </button>
+      </div>
+      <dl className="fee-monthly-bulk-metrics">
+        <div>
+          <dt>対象</dt>
+          <dd>{targetCount.toLocaleString()}件</dd>
+        </div>
+        <div>
+          <dt>実行可能</dt>
+          <dd>{Number(plan?.runnableCount || 0).toLocaleString()}件</dd>
+        </div>
+        <div>
+          <dt>投入済み</dt>
+          <dd>{queuedCount.toLocaleString()}件</dd>
+        </div>
+        <div>
+          <dt>失敗</dt>
+          <dd>{failedCount.toLocaleString()}件</dd>
+        </div>
+        <div>
+          <dt>除外</dt>
+          <dd>{skippedCount.toLocaleString()}件</dd>
+        </div>
+      </dl>
+      {job ? (
+        <div className="fee-monthly-bulk-status">
+          <div>
+            <strong>{monthlyBulkStatusLabel(job.status)}</strong>
+            <small>{Number(progress.percent || 0).toLocaleString()}% / {Number(progress.processedCount || 0).toLocaleString()}件処理</small>
+          </div>
+          <div className="fee-monthly-bulk-actions">
+            <button className="btn btn--ghost btn--sm" disabled={busy || failedCount === 0} onClick={onRetryFailed} type="button">
+              失敗のみ再実行
+            </button>
+            <button className="btn btn--ghost btn--sm" disabled={busy || job.status === "canceled"} onClick={onCancel} type="button">
+              キャンセル
+            </button>
+            <button className="btn btn--primary btn--sm" disabled={busy} onClick={onConfirmSafe} type="button">
+              リスクなしを提出候補へ
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="fee-monthly-bulk-empty">未算定または再計算が必要な受診分だけを対象にします。</p>
+      )}
+      {Array.isArray(job?.items) && job.items.length ? (
+        <div className="fee-monthly-bulk-items">
+          {job.items.slice(0, 6).map((item) => (
+            <div key={item.itemId || item.feeSessionId}>
+              <span className={badgeClass(item.status === "failed" ? "needs_review" : item.status === "queued" ? "ready" : "partial")}>{monthlyBulkItemStatusLabel(item.status)}</span>
+              <strong>{item.patientName || item.patientId || "患者未設定"}</strong>
+              <small>{item.serviceDate || "受診日未設定"} / {item.reasonLabel || item.reason}{item.errorMessage ? ` / ${item.errorMessage}` : ""}</small>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function MonthlyPatientRow({ expanded, onApplyDiagnoses, onToggle, onUpdateReceiptAnnotations, onUpdateWork, patient, savingSessionId }) {
+  const firstSession = Array.isArray(patient.sessions) ? patient.sessions[0] : null;
+  const status = patient.readyForClaim ? "ready" : patient.blocked ? "needs_review" : "partial";
+  const issues = [
+    Number(patient.missingDiagnosisCount || 0) ? `病名不足 ${Number(patient.missingDiagnosisCount).toLocaleString()}件` : "",
+    Number(patient.needsReviewCount || 0) ? `要確認 ${Number(patient.needsReviewCount).toLocaleString()}件` : "",
+    Number(patient.symptomDetailCandidateCount || 0) ? `詳記候補 ${Number(patient.symptomDetailCandidateCount).toLocaleString()}件` : "",
+    Number(patient.pendingReceiptAnnotationCount || 0) ? `詳記未対応 ${Number(patient.pendingReceiptAnnotationCount).toLocaleString()}件` : "",
+    Number(patient.uncalculatedCount || 0) ? `未算定 ${Number(patient.uncalculatedCount).toLocaleString()}件` : ""
+  ].filter(Boolean);
+
+  return (
+    <>
+      <tr>
+        <td>
+          <button className="fee-monthly-patient-button" onClick={onToggle} type="button" aria-expanded={expanded}>
+            <strong>{patient.patientName || patient.patientId || "患者未設定"}</strong>
+            <small>{patient.patientId || "患者ID未設定"}</small>
+          </button>
+        </td>
+        <td>{Number(patient.sessionCount || 0).toLocaleString()}件</td>
+        <td>{Number(patient.totalPoints || 0).toLocaleString()}点</td>
+        <td><span className={badgeClass(status)}>{patient.readyForClaim ? "提出候補" : patient.blocked ? "要対応" : "確認中"}</span></td>
+        <td>{issues.length ? issues.join(" / ") : "追加確認なし"}</td>
+        <td>
+          {firstSession?.feeSessionId ? (
+            <a className="btn btn--ghost btn--sm" href={`/sessions/${encodeURIComponent(firstSession.feeSessionId)}`}>開く</a>
+          ) : "-"}
+        </td>
+      </tr>
+      {expanded ? (
+        <tr className="fee-monthly-detail-row">
+          <td colSpan={6}>
+            <div className="fee-monthly-session-list">
+              {(patient.sessions || []).map((session) => (
+                <MonthlySessionReview
+                  key={session.feeSessionId || session.serviceDate}
+                  onApplyDiagnoses={onApplyDiagnoses}
+                  onUpdateReceiptAnnotations={onUpdateReceiptAnnotations}
+                  onUpdateWork={onUpdateWork}
+                  saving={savingSessionId === session.feeSessionId}
+                  session={session}
+                />
+              ))}
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
+
+function MonthlySessionReview({ onApplyDiagnoses, onUpdateReceiptAnnotations, onUpdateWork, saving, session }) {
+  const issues = Array.isArray(session.readiness?.issues) ? session.readiness.issues : [];
+  const workStatus = session.monthlyClaimWork?.status || "not_started";
+  const firstAnnotation = firstReceiptAnnotation(session.receiptAnnotations);
+  const [doctorName, setDoctorName] = useState(session.monthlyClaimWork?.doctorName || "");
+  const [candidatesText, setCandidatesText] = useState(formatDiagnoses(session.monthlyClaimWork?.diagnosisCandidates || []));
+  const [reason, setReason] = useState(session.monthlyClaimWork?.diagnosisRequestReason || defaultDiagnosisRequestReason(session));
+  const [collectedResult, setCollectedResult] = useState(session.monthlyClaimWork?.collectedResult || "");
+  const [annotationKind, setAnnotationKind] = useState(firstAnnotation.kind || "symptom_detail");
+  const [annotationStatus, setAnnotationStatus] = useState(firstAnnotation.status || "draft");
+  const [annotationCode, setAnnotationCode] = useState(firstAnnotation.code || "");
+  const [annotationText, setAnnotationText] = useState(firstAnnotation.text || defaultReceiptAnnotationText(session));
+
+  useEffect(() => {
+    const nextAnnotation = firstReceiptAnnotation(session.receiptAnnotations);
+    setDoctorName(session.monthlyClaimWork?.doctorName || "");
+    setCandidatesText(formatDiagnoses(session.monthlyClaimWork?.diagnosisCandidates || []));
+    setReason(session.monthlyClaimWork?.diagnosisRequestReason || defaultDiagnosisRequestReason(session));
+    setCollectedResult(session.monthlyClaimWork?.collectedResult || "");
+    setAnnotationKind(nextAnnotation.kind || "symptom_detail");
+    setAnnotationStatus(nextAnnotation.status || "draft");
+    setAnnotationCode(nextAnnotation.code || "");
+    setAnnotationText(nextAnnotation.text || defaultReceiptAnnotationText(session));
+  }, [session]);
+
+  const diagnosisTarget = Boolean(session.readiness?.diagnosisRequestCandidate || session.monthlyClaimWork?.diagnosisRequestReason || session.monthlyClaimWork?.collectedResult);
+  const annotationTarget = Boolean(
+    session.readiness?.pendingReceiptAnnotationCount
+    || session.readiness?.symptomDetailCandidateCount
+    || firstAnnotation.text
+  );
+
+  function saveDiagnosisWork(nextStatus = workStatus) {
+    onUpdateWork(session, {
+      status: nextStatus,
+      doctorName,
+      diagnosisCandidates: parseDiagnoses(candidatesText),
+      diagnosisRequestReason: reason,
+      collectedResult
+    });
+  }
+
+  function saveReceiptAnnotation(nextStatus = annotationStatus) {
+    const nextAnnotations = upsertReceiptAnnotation(session.receiptAnnotations, {
+      kind: annotationKind,
+      status: nextStatus,
+      code: annotationCode,
+      text: annotationText,
+      sourceReviewItemId: monthlyReceiptAnnotationSourceId(session),
+      sourceLabel: "月次点検"
+    });
+    onUpdateReceiptAnnotations(session, nextAnnotations);
+  }
+
+  return (
+    <article className="fee-monthly-session-review">
+      <div className="fee-monthly-session-review-head">
+        <div>
+          <strong>{session.serviceDate || "受診日未設定"}</strong>
+          <small>{Number(session.totalPoints || 0).toLocaleString()}点 / {monthlySessionStatusLabel(session)}</small>
+        </div>
+        <label>
+          <span>作業状態</span>
+          <select
+            disabled={saving}
+            onChange={(event) => onUpdateWork(session, { status: event.target.value })}
+            value={workStatus}
+          >
+            {MONTHLY_WORK_STATUS_OPTIONS.map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {issues.length ? (
+        <ul>
+          {issues.map((issue, index) => (
+            <li key={`${issue.type || "issue"}-${index}`}>
+              <span>{issue.label || "要確認"}</span>
+              <p>{issue.detail || "確認内容の詳細を確認してください。"}</p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>この受診分に追加確認はありません。</p>
+      )}
+      {diagnosisTarget ? (
+        <div className="fee-monthly-diagnosis-task">
+          <div className="fee-monthly-diagnosis-grid">
+            <label>
+              <span>依頼先医師</span>
+              <input disabled={saving} onChange={(event) => setDoctorName(event.target.value)} value={doctorName} />
+            </label>
+            <label>
+              <span>候補病名</span>
+              <textarea disabled={saving} onChange={(event) => setCandidatesText(event.target.value)} rows={3} value={candidatesText} />
+            </label>
+            <label>
+              <span>確認理由</span>
+              <textarea disabled={saving} onChange={(event) => setReason(event.target.value)} rows={3} value={reason} />
+            </label>
+            <label>
+              <span>回収結果</span>
+              <textarea disabled={saving} onChange={(event) => setCollectedResult(event.target.value)} rows={3} value={collectedResult} />
+            </label>
+          </div>
+          <div className="fee-monthly-diagnosis-actions">
+            <button className="btn btn--ghost btn--sm" disabled={saving} onClick={() => saveDiagnosisWork("diagnosis_requested")} type="button">
+              病名依頼として保存
+            </button>
+            <button className="btn btn--ghost btn--sm" disabled={saving} onClick={() => saveDiagnosisWork("doctor_confirming")} type="button">
+              医師確認中にする
+            </button>
+            <button className="btn btn--ghost btn--sm" disabled={saving} onClick={() => saveDiagnosisWork("collected")} type="button">
+              回収済みにする
+            </button>
+            <button
+              className="btn btn--primary btn--sm"
+              disabled={saving}
+              onClick={() => onApplyDiagnoses(session, collectedResult, {
+                doctorName,
+                diagnosisCandidates: parseDiagnoses(candidatesText),
+                diagnosisRequestReason: reason
+              })}
+              type="button"
+            >
+              病名へ反映
+            </button>
+          </div>
+          <div className="fee-monthly-diagnosis-history">
+            {session.monthlyClaimWork?.requestedAt ? <span>依頼 {formatDateTime(session.monthlyClaimWork.requestedAt)}</span> : null}
+            {session.monthlyClaimWork?.collectedAt ? <span>回収 {formatDateTime(session.monthlyClaimWork.collectedAt)}</span> : null}
+            {session.monthlyClaimWork?.appliedDiagnosisNames?.length ? <span>反映済み {session.monthlyClaimWork.appliedDiagnosisNames.join("、")}</span> : null}
+          </div>
+        </div>
+      ) : null}
+      {annotationTarget ? (
+        <div className="fee-monthly-annotation-task">
+          <div className="fee-monthly-diagnosis-grid">
+            <label>
+              <span>種別</span>
+              <select disabled={saving} onChange={(event) => setAnnotationKind(event.target.value)} value={annotationKind}>
+                <option value="symptom_detail">症状詳記</option>
+                <option value="comment">コメント</option>
+              </select>
+            </label>
+            <label>
+              <span>状態</span>
+              <select disabled={saving} onChange={(event) => setAnnotationStatus(event.target.value)} value={annotationStatus}>
+                <option value="draft">下書き</option>
+                <option value="confirmed">確定</option>
+                <option value="rejected">不要</option>
+              </select>
+            </label>
+            {annotationKind === "comment" ? (
+              <label>
+                <span>コメントコード</span>
+                <input disabled={saving} onChange={(event) => setAnnotationCode(event.target.value)} value={annotationCode} />
+              </label>
+            ) : null}
+            <label className="fee-monthly-annotation-text">
+              <span>{annotationKind === "comment" ? "コメント本文" : "症状詳記本文"}</span>
+              <textarea disabled={saving} onChange={(event) => setAnnotationText(event.target.value)} rows={4} value={annotationText} />
+            </label>
+          </div>
+          <div className="fee-monthly-diagnosis-actions">
+            <button className="btn btn--ghost btn--sm" disabled={saving || !annotationText.trim()} onClick={() => saveReceiptAnnotation("draft")} type="button">
+              下書き保存
+            </button>
+            <button className="btn btn--primary btn--sm" disabled={saving || !annotationText.trim()} onClick={() => saveReceiptAnnotation("confirmed")} type="button">
+              確定して出力対象
+            </button>
+            <button className="btn btn--ghost btn--sm" disabled={saving} onClick={() => saveReceiptAnnotation("rejected")} type="button">
+              不要にする
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function MonthlySkeleton() {
+  return (
+    <div className="fee-monthly-skeleton">
+      <div className="skeleton skeleton-block" />
+      <div className="skeleton skeleton-block" />
+      <div className="skeleton skeleton-block" />
+    </div>
+  );
 }
 
 function FeeSessionListView() {
@@ -172,6 +810,9 @@ function FeeSessionListView() {
           <button className="btn btn--primary btn--lg" disabled={creating} onClick={createSession} type="button">
             <span>算定記録を作成</span>
           </button>
+          <a className="btn btn--ghost btn--lg" href="/monthly">
+            月次レセ点検
+          </a>
         </div>
       </section>
 
@@ -788,6 +1429,28 @@ function FeeSessionDetailView({ sessionId }) {
     });
   }
 
+  async function saveReceiptAnnotationFromItem(item, draft) {
+    await runBusy(setBusy, addToast, async () => {
+      const response = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}`, {
+        method: "PATCH",
+        csrf: true,
+        body: {
+          receiptAnnotations: upsertReceiptAnnotation(feeSession?.receiptAnnotations, {
+            ...draft,
+            sourceReviewItemId: item?.reviewItemId || draft.sourceReviewItemId,
+            sourceLabel: item?.displayTitle || item?.name || "要確認項目"
+          })
+        }
+      });
+      setFeeSession(response.feeSession || feeSession);
+      setReceiptDraft(response.receiptDraft || receiptDraft);
+      setCandidateWorkbench(response.candidateWorkbench || null);
+      setAutoSaveStatus("saved");
+      setAutoSaveError("");
+      addToast("コメント・詳記を保存しました。", "success");
+    });
+  }
+
   async function copyReceiptDraft() {
     if (!receiptDraft) {
       addToast("コピーできるレセプト案がまだありません。", "error");
@@ -1110,7 +1773,13 @@ function FeeSessionDetailView({ sessionId }) {
         orderCount={parseOrdersFromRows(orderRows).length}
         selectedMasterIndex={selectedMasterIndex}
       />
-      <CandidateDetailModal item={candidateDetail} disabled={busy} onClose={() => setCandidateDetail(null)} onDecision={decideReviewItem} />
+      <CandidateDetailModal
+        disabled={busy}
+        item={candidateDetail}
+        onClose={() => setCandidateDetail(null)}
+        onDecision={decideReviewItem}
+        onSaveReceiptAnnotation={saveReceiptAnnotationFromItem}
+      />
       <ManualBillingItemModal
         available={masterSearchAvailable}
         disabled={busy}
@@ -1989,6 +2658,7 @@ const GENERIC_ISSUE_CONDITION_TEXT = "条件を満たす場合は算定できま
 function IssueCard({ item, onOpenDetail }) {
   const requiredInput = reviewRequiredInput(item);
   const resolutionOptions = reviewResolutionOptions(item);
+  const risk = assessmentRiskForItem(item);
   const tone = issueTone(item);
   return (
     <article className={`issue-card issue-card--${item.issueCategory || "rule"}`}>
@@ -1999,6 +2669,15 @@ function IssueCard({ item, onOpenDetail }) {
         <strong>{item.displayTitle}</strong>
         <p>{item.displayReason}</p>
         {item.conditionText && item.conditionText !== GENERIC_ISSUE_CONDITION_TEXT ? <small>{item.conditionText}</small> : null}
+        {risk ? (
+          <div className="issue-assessment-risk">
+            <span>{risk.denialType || "査定リスク"}</span>
+            <p>{risk.reason || "査定・返戻につながる可能性があります。"}</p>
+            {Array.isArray(risk.checkPoints) && risk.checkPoints.length ? (
+              <small>{risk.checkPoints.join(" / ")}</small>
+            ) : null}
+          </div>
+        ) : null}
         {requiredInput ? (
           <div className="issue-required-input">
             <span>確認する情報</span>
@@ -2020,10 +2699,18 @@ function IssueCard({ item, onOpenDetail }) {
   );
 }
 
-function CandidateDetailModal({ disabled, item, onClose, onDecision }) {
+function CandidateDetailModal({ disabled, item, onClose, onDecision, onSaveReceiptAnnotation }) {
   const [confirmAdoptionChecked, setConfirmAdoptionChecked] = useState(false);
+  const [annotationKind, setAnnotationKind] = useState("symptom_detail");
+  const [annotationStatus, setAnnotationStatus] = useState("draft");
+  const [annotationCode, setAnnotationCode] = useState("");
+  const [annotationText, setAnnotationText] = useState("");
   useEffect(() => {
     setConfirmAdoptionChecked(false);
+    setAnnotationKind("symptom_detail");
+    setAnnotationStatus("draft");
+    setAnnotationCode("");
+    setAnnotationText(defaultReceiptAnnotationTextForItem(item));
   }, [item?.reviewItemId]);
   if (!item) {
     return null;
@@ -2101,6 +2788,66 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision }) {
               <p>この提案は自動採用にはしていませんが、候補コードと点数はあります。内容を確認した場合のみ算定中へ移します。</p>
             </section>
           ) : null}
+          {onSaveReceiptAnnotation && canCreateReceiptAnnotationFromItem(item) ? (
+            <section className="fee-modal-receipt-annotation">
+              <h3>コメント・詳記</h3>
+              <div className="fee-modal-annotation-grid">
+                <label>
+                  <span>種別</span>
+                  <select disabled={disabled} onChange={(event) => setAnnotationKind(event.target.value)} value={annotationKind}>
+                    <option value="symptom_detail">症状詳記</option>
+                    <option value="comment">コメント</option>
+                  </select>
+                </label>
+                <label>
+                  <span>状態</span>
+                  <select disabled={disabled} onChange={(event) => setAnnotationStatus(event.target.value)} value={annotationStatus}>
+                    <option value="draft">下書き</option>
+                    <option value="confirmed">確定</option>
+                    <option value="rejected">不要</option>
+                  </select>
+                </label>
+                {annotationKind === "comment" ? (
+                  <label>
+                    <span>コメントコード</span>
+                    <input disabled={disabled} onChange={(event) => setAnnotationCode(event.target.value)} value={annotationCode} />
+                  </label>
+                ) : null}
+                <label className="fee-modal-annotation-text">
+                  <span>{annotationKind === "comment" ? "コメント本文" : "症状詳記本文"}</span>
+                  <textarea disabled={disabled} onChange={(event) => setAnnotationText(event.target.value)} rows={5} value={annotationText} />
+                </label>
+              </div>
+              <div className="fee-modal-annotation-actions">
+                <button
+                  className="btn btn--ghost btn--sm"
+                  disabled={disabled || !annotationText.trim()}
+                  onClick={() => onSaveReceiptAnnotation(item, {
+                    kind: annotationKind,
+                    status: "draft",
+                    code: annotationCode,
+                    text: annotationText
+                  })}
+                  type="button"
+                >
+                  下書き保存
+                </button>
+                <button
+                  className="btn btn--primary btn--sm"
+                  disabled={disabled || !annotationText.trim()}
+                  onClick={() => onSaveReceiptAnnotation(item, {
+                    kind: annotationKind,
+                    status: annotationStatus === "rejected" ? "rejected" : "confirmed",
+                    code: annotationCode,
+                    text: annotationText
+                  })}
+                  type="button"
+                >
+                  確定して出力対象
+                </button>
+              </div>
+            </section>
+          ) : null}
         </div>
         <footer className="fee-modal-footer">
           {canDirectAdopt ? (
@@ -2144,6 +2891,16 @@ function reviewRequiredInput(item = {}) {
   ).trim();
 }
 
+function assessmentRiskForItem(item = {}) {
+  return item.assessmentRisk
+    || item.assessment_risk
+    || item.reviewIssue?.assessmentRisk
+    || item.reviewIssue?.assessment_risk
+    || item.sourceItem?.assessmentRisk
+    || item.sourceItem?.reviewIssue?.assessmentRisk
+    || null;
+}
+
 function reviewResolutionOptions(item = {}) {
   const raw = item.resolutionOptions
     || item.resolution_options
@@ -2176,6 +2933,7 @@ function issueTone(item = {}) {
   if (category === "facility") return "notice";
   if (category === "master") return "info";
   if (category === "evidence") return "warning";
+  if (category === "claim-risk") return "warning";
   return "neutral";
 }
 
@@ -2217,13 +2975,14 @@ function confirmableProposalForAdoption(item = {}) {
 
 function ReceiptDraftPane({ disabled, onCopyReceipt, onDownloadCsv, onDownloadUke, onRemoveManualOrder, orderRows = [], receiptDraft, selected }) {
   const manualOrders = manualBillingOrderEntries(orderRows);
+  const exportValidation = receiptDraft?.exportValidation || null;
   const [ukeEncoding, setUkeEncoding] = useState("shift_jis");
   return (
     <div className="receipt-draft-pane">
       <div className="receipt-pane-head">
         <div>
           <h2>レセプト案</h2>
-          <p>区分別合計と明細です。確認後にコピー・CSV・レセ電(UKE)出力できます。</p>
+          <p>区分別合計と明細です。CSV・レセ電(UKE)は仕様確認用の下書きとして出力します。</p>
         </div>
         <div className="receipt-pane-actions">
           <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={onCopyReceipt} type="button">
@@ -2252,6 +3011,7 @@ function ReceiptDraftPane({ disabled, onCopyReceipt, onDownloadCsv, onDownloadUk
           </button>
         </div>
       </div>
+      <ReceiptExportValidation validation={exportValidation} />
       <BillingSummary billing={receiptDraft?.billing} />
       {manualOrders.length ? (
         <section className="manual-billing-list" aria-label="ユーザー追加明細">
@@ -2279,6 +3039,32 @@ function ReceiptDraftPane({ disabled, onCopyReceipt, onDownloadCsv, onDownloadUk
       ) : null}
       <ReceiptDraft receiptDraft={receiptDraft} selected={selected} />
     </div>
+  );
+}
+
+function ReceiptExportValidation({ validation }) {
+  if (!validation) {
+    return null;
+  }
+  const issues = Array.isArray(validation.issues) ? validation.issues : [];
+  return (
+    <section className={`receipt-export-validation receipt-export-validation--${validation.exportStatus || "draft"}`} aria-label="出力前検証">
+      <div>
+        <span>{validation.label || "レセ電下書き"}</span>
+        <strong>{Number(validation.blockingIssueCount || 0) ? "必須項目の不足があります" : "下書き出力の基本項目は揃っています"}</strong>
+        <small>必須 {Number(validation.blockingIssueCount || 0).toLocaleString()}件 / 警告 {Number(validation.warningIssueCount || 0).toLocaleString()}件</small>
+      </div>
+      {issues.length ? (
+        <ul>
+          {issues.slice(0, 5).map((issue) => (
+            <li key={`${issue.field}-${issue.message}`}>
+              <span>{issue.severity === "error" ? "必須" : "警告"}</span>
+              <p>{issue.message}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 
@@ -2886,6 +3672,180 @@ function defaultFeeForm() {
     diagnosesText: "",
     calculationOptionsText: ""
   };
+}
+
+function defaultClaimMonth() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function monthlyPatientKey(patient = {}) {
+  return patient.patientId || "unassigned";
+}
+
+function monthlyPatientMatchesFilter(patient = {}, filter = "all") {
+  if (filter === "diagnosis") {
+    return Boolean(patient.diagnosisRequestCandidate);
+  }
+  if (filter === "doctor") {
+    return Boolean(patient.doctorConfirmationCandidate);
+  }
+  if (filter === "annotation") {
+    return Number(patient.pendingReceiptAnnotationCount || 0) > 0;
+  }
+  if (filter === "blocked") {
+    return Boolean(patient.blocked);
+  }
+  if (filter === "ready") {
+    return Boolean(patient.readyForClaim);
+  }
+  if (filter === "uncalculated") {
+    return Number(patient.uncalculatedCount || 0) > 0;
+  }
+  return true;
+}
+
+function monthlySessionStatusLabel(session = {}) {
+  if (session.readiness?.readyForClaim) {
+    return "提出候補";
+  }
+  if (session.readiness?.blocked) {
+    return "要対応";
+  }
+  return statusLabel(session.status || "partial");
+}
+
+function monthlyBulkStatusLabel(status = "") {
+  return {
+    planned: "作成済み",
+    running: "実行中",
+    completed: "完了",
+    completed_with_errors: "失敗あり",
+    canceled: "キャンセル済み"
+  }[status] || "未作成";
+}
+
+function monthlyBulkItemStatusLabel(status = "") {
+  return {
+    pending: "待機",
+    queued: "投入済み",
+    succeeded: "完了",
+    failed: "失敗",
+    skipped: "除外",
+    canceled: "取消"
+  }[status] || "未処理";
+}
+
+function defaultDiagnosisRequestReason(session = {}) {
+  const issues = Array.isArray(session.readiness?.issues) ? session.readiness.issues : [];
+  const missing = issues.find((issue) => issue.type === "missing_diagnosis");
+  if (missing?.detail) {
+    return missing.detail;
+  }
+  if (session.readiness?.missingDiagnosis) {
+    return "算定根拠として使う病名が未入力です。";
+  }
+  return "";
+}
+
+function normalizeReceiptAnnotationsForClient(value = null) {
+  return {
+    comments: Array.isArray(value?.comments) ? value.comments : [],
+    symptomDetails: Array.isArray(value?.symptomDetails) ? value.symptomDetails : []
+  };
+}
+
+function upsertReceiptAnnotation(currentAnnotations = null, draft = {}) {
+  const next = normalizeReceiptAnnotationsForClient(currentAnnotations);
+  const kind = draft.kind === "comment" ? "comment" : "symptom_detail";
+  const sourceReviewItemId = String(draft.sourceReviewItemId || "").trim();
+  const listKey = kind === "comment" ? "comments" : "symptomDetails";
+  const existing = [...next.comments, ...next.symptomDetails].find((entry) => (
+    (draft.annotationId && entry.annotationId === draft.annotationId)
+    || (sourceReviewItemId && entry.sourceReviewItemId === sourceReviewItemId)
+  ));
+  const annotationId = draft.annotationId || existing?.annotationId || `receipt_annotation_${Date.now()}`;
+  const base = {
+    annotationId,
+    status: ["draft", "confirmed", "rejected"].includes(draft.status) ? draft.status : "draft",
+    text: String(draft.text || "").trim(),
+    sourceReviewItemId: sourceReviewItemId || undefined,
+    sourceLabel: String(draft.sourceLabel || existing?.sourceLabel || "").trim() || undefined
+  };
+  const entry = kind === "comment"
+    ? {
+      ...base,
+      shinryoIdentification: String(draft.shinryoIdentification || existing?.shinryoIdentification || "").trim(),
+      code: String(draft.code || existing?.code || "").trim()
+    }
+    : {
+      ...base,
+      kubun: String(draft.kubun || existing?.kubun || "01").trim()
+    };
+
+  return {
+    comments: (listKey === "comments" ? [...next.comments.filter((item) => item.annotationId !== annotationId && item.sourceReviewItemId !== sourceReviewItemId), entry] : next.comments.filter((item) => item.annotationId !== annotationId && item.sourceReviewItemId !== sourceReviewItemId)),
+    symptomDetails: (listKey === "symptomDetails" ? [...next.symptomDetails.filter((item) => item.annotationId !== annotationId && item.sourceReviewItemId !== sourceReviewItemId), entry] : next.symptomDetails.filter((item) => item.annotationId !== annotationId && item.sourceReviewItemId !== sourceReviewItemId))
+  };
+}
+
+function firstReceiptAnnotation(value = null) {
+  const annotations = normalizeReceiptAnnotationsForClient(value);
+  const comment = annotations.comments[0];
+  if (comment) {
+    return {
+      kind: "comment",
+      status: comment.status || "draft",
+      code: comment.code || "",
+      text: comment.text || ""
+    };
+  }
+  const detail = annotations.symptomDetails[0];
+  if (detail) {
+    return {
+      kind: "symptom_detail",
+      status: detail.status || "draft",
+      code: "",
+      text: detail.text || ""
+    };
+  }
+  return {};
+}
+
+function defaultReceiptAnnotationText(session = {}) {
+  const issues = Array.isArray(session.readiness?.issues) ? session.readiness.issues : [];
+  const target = issues.find((issue) => ["symptom_detail", "receipt_annotation", "review"].includes(issue.type));
+  return target?.detail || "";
+}
+
+function monthlyReceiptAnnotationSourceId(session = {}) {
+  return `monthly_${session.feeSessionId || session.serviceDate || "session"}`;
+}
+
+function defaultReceiptAnnotationTextForItem(item = {}) {
+  item = item || {};
+  return [
+    item.displayReason,
+    item.reasonText,
+    item.reviewIssue?.messageForStaff,
+    item.candidateProposal?.reason,
+    reviewRequiredInput(item)
+  ].map((value) => String(value || "").trim()).filter(Boolean)[0] || "";
+}
+
+function canCreateReceiptAnnotationFromItem(item = {}) {
+  item = item || {};
+  if (!item.reviewItemId) {
+    return false;
+  }
+  const text = [
+    item.displayTitle,
+    item.displayReason,
+    item.reasonText,
+    item.reviewIssue?.messageForStaff,
+    item.candidateProposal?.reason,
+    reviewRequiredInput(item)
+  ].join(" ");
+  return item.kind === "issue" || /詳記|症状詳記|コメント|照会|返戻|査定/u.test(text);
 }
 
 function defaultPatientForm() {

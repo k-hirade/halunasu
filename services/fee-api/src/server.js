@@ -16,6 +16,7 @@ import {
   buildReceiptCsv,
   buildReceiptDenshin,
   buildReceiptDraft,
+  buildReceiptExportValidation,
   buildReviewItems,
   serializeUke
 } from "../../../packages/fee-core/src/index.js";
@@ -29,6 +30,7 @@ import {
   buildClinicalCalculationPreparation,
   isAutoPlaceholderOrderName
 } from "./clinical-calculation-input.js";
+import { buildClaimRiskReviewIssues } from "./claim-risk-knowledge.js";
 import { createPlatformStoreFromEnv } from "../../platform-api/src/store/create-store.js";
 import { createFeeCalculatorFromEnv } from "./python-calculator.js";
 import { createFeeStoreFromEnv } from "./store/create-store.js";
@@ -243,6 +245,95 @@ async function routeFeeApiRequest(input = {}) {
     return ok(buildMonthlyClaimSummary(sessionList, { claimMonth }));
   }
 
+  if (method === "GET" && matches(parts, ["v1", "fee", "monthly-bulk-candidates"])) {
+    const claimMonth = url.searchParams.get("claimMonth") || "";
+    const sessions = await feeStore.listSessions(context.session.orgId);
+    const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+    return ok(buildMonthlyBulkCandidatePlan(sessionList, { claimMonth }));
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "fee", "monthly-bulk-jobs"])) {
+    requireMutationCsrf(input, context.session);
+    const claimMonth = String(input.body?.claimMonth ?? input.body?.claim_month ?? "").trim();
+    const sessions = await feeStore.listSessions(context.session.orgId);
+    const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+    const plan = buildMonthlyBulkCandidatePlan(sessionList, { claimMonth });
+    const createdBulkJob = await feeStore.createMonthlyBulkJob(context.session.orgId, {
+      claimMonth: plan.claimMonth,
+      status: "planned",
+      phase: "planned",
+      items: plan.targets.map((target, index) => ({
+        itemId: `bulk_item_${index + 1}`,
+        feeSessionId: target.feeSessionId,
+        patientId: target.patientId || null,
+        patientName: target.patientName || "",
+        serviceDate: target.serviceDate || null,
+        status: target.canRun ? "pending" : "skipped",
+        reason: target.reason,
+        reasonLabel: target.reasonLabel,
+        canRun: target.canRun,
+        blockedReason: target.blockedReason || null
+      })),
+      createdByMemberId: context.session.memberId
+    });
+    let monthlyBulkJob = createdBulkJob.monthlyBulkJob;
+    if (input.body?.autoRun !== false) {
+      monthlyBulkJob = (await runMonthlyBulkJob({
+        context,
+        input,
+        feeStore,
+        platformStore,
+        feeCalculator,
+        monthlyBulkJobId: monthlyBulkJob.monthlyBulkJobId,
+        retryFailed: false
+      })).monthlyBulkJob;
+    }
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.monthly_bulk_job_created",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "fee_monthly_bulk_job",
+      targetId: monthlyBulkJob.monthlyBulkJobId,
+      productId: PRODUCT_ID,
+      safePayload: {
+        claimMonth: monthlyBulkJob.claimMonth,
+        totalCount: monthlyBulkJob.progress?.totalCount || 0
+      }
+    });
+    return accepted({ monthlyBulkJob, plan });
+  }
+
+  if (method === "GET" && parts.length === 4 && matches(parts.slice(0, 3), ["v1", "fee", "monthly-bulk-jobs"])) {
+    const monthlyBulkJob = typeof feeStore.getMonthlyBulkJob === "function"
+      ? await feeStore.getMonthlyBulkJob(context.session.orgId, parts[3])
+      : null;
+    if (!monthlyBulkJob) {
+      return notFound("monthly bulk job not found");
+    }
+    return ok({ monthlyBulkJob });
+  }
+
+  if (method === "PATCH" && parts.length === 4 && matches(parts.slice(0, 3), ["v1", "fee", "monthly-bulk-jobs"])) {
+    requireMutationCsrf(input, context.session);
+    const action = String(input.body?.action || "").trim();
+    if (action === "cancel") {
+      return ok(await cancelMonthlyBulkJob({ context, feeStore, monthlyBulkJobId: parts[3] }));
+    }
+    if (action === "retry_failed") {
+      return ok(await runMonthlyBulkJob({ context, input, feeStore, platformStore, feeCalculator, monthlyBulkJobId: parts[3], retryFailed: true }));
+    }
+    if (action === "run") {
+      return ok(await runMonthlyBulkJob({ context, input, feeStore, platformStore, feeCalculator, monthlyBulkJobId: parts[3], retryFailed: false }));
+    }
+    if (action === "confirm_safe") {
+      return ok(await confirmSafeMonthlyBulkJobSessions({ context, feeStore, monthlyBulkJobId: parts[3], now: input.now || new Date() }));
+    }
+    const error = new Error("unsupported monthly bulk job action");
+    error.name = "ValidationError";
+    error.statusCode = 400;
+    throw error;
+  }
+
   if (method === "POST" && matches(parts, ["v1", "fee", "sessions"])) {
     requireMutationCsrf(input, context.session);
     const normalized = validateCreateFeeSessionInput(input.body || {});
@@ -349,7 +440,21 @@ async function routeFeeApiRequest(input = {}) {
   }
 
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "receipt-draft") {
-    return ok({ receiptDraft: await feeStore.getReceiptDraft(context.session.orgId, parts[3]) });
+    const session = await feeStore.getSession(context.session.orgId, parts[3]);
+    if (!session) {
+      return notFound("fee session not found");
+    }
+    const receiptDraft = withReceiptExportValidation(buildReceiptDraft(session, { now: input.now || new Date() }), session);
+    return ok({ receiptDraft, receiptExportValidation: receiptDraft.exportValidation });
+  }
+
+  if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "receipt-validation") {
+    const session = await feeStore.getSession(context.session.orgId, parts[3]);
+    if (!session) {
+      return notFound("fee session not found");
+    }
+    const receiptDraft = buildReceiptDraft(session, { now: input.now || new Date() });
+    return ok({ receiptExportValidation: buildReceiptExportValidation(receiptDraft, receiptExportContext(session)) });
   }
 
   // レセコン取込用CSV(段階A): セッションから最新の receiptDraft を生成してCSV化
@@ -360,12 +465,15 @@ async function routeFeeApiRequest(input = {}) {
     }
     const receiptDraft = buildReceiptDraft(session, { now: input.now || new Date() });
     const csv = buildReceiptCsv(receiptDraft);
+    const validation = buildReceiptExportValidation(receiptDraft, receiptExportContext(session));
     return {
       statusCode: 200,
       raw: true,
       body: csv,
       headers: {
         "content-type": "text/csv; charset=utf-8",
+        "x-halunasu-export-status": validation.exportStatus,
+        "x-halunasu-connector-status": "spec-unverified",
         "content-disposition": `attachment; filename="receipt_${parts[3]}.csv"`
       }
     };
@@ -378,7 +486,19 @@ async function routeFeeApiRequest(input = {}) {
       return notFound("fee session not found");
     }
     const receiptDraft = buildReceiptDraft(session, { now: input.now || new Date() });
-    const uke = serializeUke(buildReceiptDenshin(receiptDraft));
+    const exportContext = receiptExportContext(session);
+    const validation = buildReceiptExportValidation(receiptDraft, exportContext);
+    if (url.searchParams.get("validate") === "true" && validation.blockingIssueCount > 0) {
+      return {
+        statusCode: 409,
+        body: {
+          error: "receipt_validation_failed",
+          message: "レセ電出力前の必須項目が不足しています。",
+          receiptExportValidation: validation
+        }
+      };
+    }
+    const uke = serializeUke(buildReceiptDenshin(receiptDraft, exportContext));
     const encoding = normalizeUkeEncoding(url.searchParams.get("encoding"));
     const body = encoding === "shift_jis" ? iconv.encode(uke, "Shift_JIS") : Buffer.from(uke, "utf-8");
     const charset = encoding === "shift_jis" ? "shift_jis" : "utf-8";
@@ -388,6 +508,8 @@ async function routeFeeApiRequest(input = {}) {
       body,
       headers: {
         "content-type": `text/plain; charset=${charset}`,
+        "x-halunasu-export-status": validation.exportStatus,
+        "x-halunasu-connector-status": "spec-unverified",
         "content-disposition": `attachment; filename="receipt_${parts[3]}.UKE"`
       }
     };
@@ -499,23 +621,25 @@ async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now, options
     throw error;
   }
 
-  const receiptDraft = buildReceiptDraft(feeSession, { now });
+  const receiptDraft = withReceiptExportValidation(buildReceiptDraft(feeSession, { now }), feeSession);
   const reviewItems = buildReviewItems(feeSession);
   const candidateWorkbench = buildCandidateWorkbench(feeSession, { now, receiptDraft, reviewItems });
   return {
     feeSession: shouldIncludeFeeSessionDebug(options) ? feeSession : compactFeeSessionForWorkbench(feeSession),
     receiptDraft,
+    receiptExportValidation: receiptDraft.exportValidation,
     ...(options.includeReviewItems === false ? {} : { reviewItems }),
     candidateWorkbench
   };
 }
 
 function feeSessionMutationResponse(result = {}, now = new Date()) {
-  const receiptDraft = buildReceiptDraft(result.feeSession, { now });
+  const receiptDraft = withReceiptExportValidation(buildReceiptDraft(result.feeSession, { now }), result.feeSession);
   const reviewItems = buildReviewItems(result.feeSession);
   return {
     ...result,
     receiptDraft,
+    receiptExportValidation: receiptDraft.exportValidation,
     candidateWorkbench: buildCandidateWorkbench(result.feeSession, {
       now,
       receiptDraft,
@@ -606,6 +730,195 @@ async function createFeeCalculationJob({
   return {
     calculationJob: updatedJob.calculationJob
   };
+}
+
+async function runMonthlyBulkJob({
+  context,
+  input,
+  feeStore,
+  platformStore,
+  monthlyBulkJobId,
+  retryFailed = false
+}) {
+  if (typeof feeStore.getMonthlyBulkJob !== "function" || typeof feeStore.updateMonthlyBulkJob !== "function") {
+    const error = new Error("monthly bulk jobs are not supported by this store");
+    error.name = "NotImplementedError";
+    error.statusCode = 501;
+    throw error;
+  }
+  const currentJob = await feeStore.getMonthlyBulkJob(context.session.orgId, monthlyBulkJobId);
+  if (!currentJob) {
+    const error = new Error("monthly bulk job not found");
+    error.name = "NotFoundError";
+    error.statusCode = 404;
+    throw error;
+  }
+  if (currentJob.status === "canceled") {
+    return { monthlyBulkJob: currentJob };
+  }
+  let job = (await feeStore.updateMonthlyBulkJob(context.session.orgId, monthlyBulkJobId, {
+    status: "running",
+    phase: retryFailed ? "retry_failed" : "running",
+    items: (currentJob.items || []).map((item) => (
+      retryFailed && item.status === "failed" ? { ...item, status: "pending", errorMessage: null } : item
+    ))
+  })).monthlyBulkJob;
+  const items = [...(job.items || [])];
+
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (item.status !== "pending") {
+      continue;
+    }
+    const latest = await feeStore.getMonthlyBulkJob(context.session.orgId, monthlyBulkJobId);
+    if (latest?.status === "canceled") {
+      items[index] = { ...item, status: "canceled", errorMessage: "ジョブがキャンセルされました。" };
+      continue;
+    }
+    if (item.canRun === false) {
+      items[index] = { ...item, status: "skipped", errorMessage: item.blockedReason || "算定に必要な入力が不足しています。" };
+      job = (await feeStore.updateMonthlyBulkJob(context.session.orgId, monthlyBulkJobId, { items, progress: monthlyBulkProgress(items) })).monthlyBulkJob;
+      continue;
+    }
+    try {
+      const session = await feeStore.getSession(context.session.orgId, item.feeSessionId);
+      if (!session) {
+        throw bulkJobError("fee session not found", "NotFoundError", 404);
+      }
+      assertFeeSessionReadyForCalculation(session);
+      const result = await createFeeCalculationJob({
+        context,
+        feeStore,
+        platformStore,
+        input,
+        feeSessionId: item.feeSessionId,
+        current: session,
+        calculationInput: validateCreateFeeCalculationInput({})
+      });
+      const queued = ["queued", "waiting_for_worker", "running"].includes(result.calculationJob?.status);
+      items[index] = {
+        ...item,
+        status: queued ? "queued" : "failed",
+        calculationJobId: result.calculationJob?.calculationJobId || null,
+        enqueueStatus: result.calculationJob?.enqueueStatus || null,
+        errorMessage: queued ? null : (result.calculationJob?.enqueueMessage || result.calculationJob?.enqueueStatus || "算定ジョブを投入できませんでした。")
+      };
+    } catch (error) {
+      items[index] = {
+        ...item,
+        status: "failed",
+        errorMessage: error.message || "算定ジョブを投入できませんでした。"
+      };
+    }
+    job = (await feeStore.updateMonthlyBulkJob(context.session.orgId, monthlyBulkJobId, { items, progress: monthlyBulkProgress(items) })).monthlyBulkJob;
+  }
+
+  const progress = monthlyBulkProgress(items);
+  job = (await feeStore.updateMonthlyBulkJob(context.session.orgId, monthlyBulkJobId, {
+    status: progress.failedCount > 0 ? "completed_with_errors" : "completed",
+    phase: "complete",
+    items,
+    progress,
+    resultSummary: {
+      queuedCount: progress.queuedCount,
+      failedCount: progress.failedCount,
+      skippedCount: progress.skippedCount,
+      canceledCount: progress.canceledCount
+    }
+  })).monthlyBulkJob;
+  return { monthlyBulkJob: job };
+}
+
+async function cancelMonthlyBulkJob({ context, feeStore, monthlyBulkJobId }) {
+  const currentJob = await feeStore.getMonthlyBulkJob(context.session.orgId, monthlyBulkJobId);
+  if (!currentJob) {
+    const error = new Error("monthly bulk job not found");
+    error.name = "NotFoundError";
+    error.statusCode = 404;
+    throw error;
+  }
+  const items = (currentJob.items || []).map((item) => (
+    item.status === "pending" ? { ...item, status: "canceled", errorMessage: "ジョブがキャンセルされました。" } : item
+  ));
+  const monthlyBulkJob = (await feeStore.updateMonthlyBulkJob(context.session.orgId, monthlyBulkJobId, {
+    status: "canceled",
+    phase: "canceled",
+    items,
+    progress: monthlyBulkProgress(items)
+  })).monthlyBulkJob;
+  return { monthlyBulkJob };
+}
+
+async function confirmSafeMonthlyBulkJobSessions({ context, feeStore, monthlyBulkJobId, now }) {
+  const currentJob = await feeStore.getMonthlyBulkJob(context.session.orgId, monthlyBulkJobId);
+  if (!currentJob) {
+    const error = new Error("monthly bulk job not found");
+    error.name = "NotFoundError";
+    error.statusCode = 404;
+    throw error;
+  }
+  let confirmedCount = 0;
+  const items = [];
+  for (const item of currentJob.items || []) {
+    const session = await feeStore.getSession(context.session.orgId, item.feeSessionId);
+    if (!session) {
+      items.push({ ...item, safeConfirmStatus: "failed", safeConfirmMessage: "fee session not found" });
+      continue;
+    }
+    const readiness = feeMonthlySessionReadiness(session);
+    if (!readiness.readyForClaim) {
+      items.push({ ...item, safeConfirmStatus: "blocked", safeConfirmMessage: "要確認、病名不足、詳記未対応、未算定のいずれかがあります。" });
+      continue;
+    }
+    await feeStore.updateSession(context.session.orgId, item.feeSessionId, {
+      monthlyClaimWork: monthlyClaimWorkPatch({
+        ...(session.monthlyClaimWork || {}),
+        status: "ready_for_claim",
+        note: session.monthlyClaimWork?.note || "一括候補化でリスクなしとして確認"
+      }, {
+        memberId: context.session.memberId,
+        now
+      })
+    });
+    confirmedCount += 1;
+    items.push({ ...item, safeConfirmStatus: "confirmed", safeConfirmMessage: null });
+  }
+  const monthlyBulkJob = (await feeStore.updateMonthlyBulkJob(context.session.orgId, monthlyBulkJobId, {
+    items,
+    resultSummary: {
+      ...(currentJob.resultSummary || {}),
+      safeConfirmedCount: confirmedCount
+    }
+  })).monthlyBulkJob;
+  return { monthlyBulkJob, confirmedCount };
+}
+
+function monthlyBulkProgress(items = []) {
+  const counts = {};
+  for (const item of Array.isArray(items) ? items : []) {
+    const status = String(item.status || "pending");
+    counts[status] = Number(counts[status] || 0) + 1;
+  }
+  const totalCount = Array.isArray(items) ? items.length : 0;
+  const processedCount = ["queued", "succeeded", "failed", "skipped", "canceled"].reduce((sum, status) => sum + Number(counts[status] || 0), 0);
+  return {
+    totalCount,
+    processedCount,
+    pendingCount: Number(counts.pending || 0),
+    queuedCount: Number(counts.queued || 0),
+    succeededCount: Number(counts.succeeded || 0),
+    failedCount: Number(counts.failed || 0),
+    skippedCount: Number(counts.skipped || 0),
+    canceledCount: Number(counts.canceled || 0),
+    percent: totalCount ? Math.round((processedCount / totalCount) * 100) : 100
+  };
+}
+
+function bulkJobError(message, name = "Error", statusCode = 500) {
+  const error = new Error(message);
+  error.name = name;
+  error.statusCode = statusCode;
+  return error;
 }
 
 async function enqueueFeeCalculationJob({ input = {}, calculationJob = {} } = {}) {
@@ -1146,7 +1459,13 @@ async function calculatePreparedFeeSessionNow({
         canonicalClinicalFacts: Array.isArray(prepared.canonicalClinicalFacts) ? prepared.canonicalClinicalFacts : [],
         masterCandidates: Array.isArray(prepared.masterCandidates) ? prepared.masterCandidates : [],
         billingCandidates: Array.isArray(prepared.billingCandidates) ? prepared.billingCandidates : [],
-        reviewIssues: Array.isArray(prepared.reviewIssues) ? prepared.reviewIssues : [],
+        reviewIssues: [
+          ...(Array.isArray(prepared.reviewIssues) ? prepared.reviewIssues : []),
+          ...buildClaimRiskReviewIssues(calculationSession, {
+            ...calculationResult,
+            clinicalEvents: Array.isArray(prepared.clinicalEvents) ? prepared.clinicalEvents : []
+          })
+        ],
         clinicalExtraction: prepared.clinicalExtraction || null,
         shadowCalculations: Array.isArray(prepared.shadowCalculations) ? prepared.shadowCalculations : [],
         inputSnapshot,
@@ -1430,6 +1749,20 @@ export function buildMonthlyClaimSummary(sessions = [], { claimMonth = "" } = {}
   const month = String(claimMonth || "").trim();
   const sessionMonthOf = (session) => String(session.claimMonth || String(session.serviceDate || "").slice(0, 7));
   const groups = new Map();
+  const totals = {
+    calculatedCount: 0,
+    needsReviewCount: 0,
+    missingDiagnosisCount: 0,
+    symptomDetailCandidateCount: 0,
+    pendingReceiptAnnotationCount: 0,
+    confirmedReceiptAnnotationCount: 0,
+    readyForClaimCount: 0,
+    blockedCount: 0,
+    uncalculatedCount: 0,
+    diagnosisRequestCandidateCount: 0,
+    doctorConfirmationCandidateCount: 0,
+    workStatusCounts: emptyMonthlyWorkStatusCounts()
+  };
 
   for (const session of Array.isArray(sessions) ? sessions : []) {
     if (month && sessionMonthOf(session) !== month) {
@@ -1442,13 +1775,28 @@ export function buildMonthlyClaimSummary(sessions = [], { claimMonth = "" } = {}
         patientName: null,
         sessionCount: 0,
         totalPoints: 0,
+        workStatusCounts: emptyMonthlyWorkStatusCounts(),
         sessions: []
       });
     }
     const group = groups.get(patientKey);
+    const readiness = feeMonthlySessionReadiness(session);
+    const work = monthlyClaimWorkView(session.monthlyClaimWork);
     const points = Number(session.calculationSummary?.totalPoints || 0) || 0;
     group.sessionCount += 1;
     group.totalPoints += points;
+    group.calculatedCount = Number(group.calculatedCount || 0) + (readiness.isCalculated ? 1 : 0);
+    group.needsReviewCount = Number(group.needsReviewCount || 0) + readiness.needsReviewCount;
+    group.missingDiagnosisCount = Number(group.missingDiagnosisCount || 0) + (readiness.missingDiagnosis ? 1 : 0);
+    group.symptomDetailCandidateCount = Number(group.symptomDetailCandidateCount || 0) + readiness.symptomDetailCandidateCount;
+    group.pendingReceiptAnnotationCount = Number(group.pendingReceiptAnnotationCount || 0) + readiness.pendingReceiptAnnotationCount;
+    group.confirmedReceiptAnnotationCount = Number(group.confirmedReceiptAnnotationCount || 0) + readiness.confirmedReceiptAnnotationCount;
+    group.readyForClaimCount = Number(group.readyForClaimCount || 0) + (readiness.readyForClaim ? 1 : 0);
+    group.blockedCount = Number(group.blockedCount || 0) + (readiness.blocked ? 1 : 0);
+    group.uncalculatedCount = Number(group.uncalculatedCount || 0) + (readiness.uncalculated ? 1 : 0);
+    group.diagnosisRequestCandidateCount = Number(group.diagnosisRequestCandidateCount || 0) + (readiness.diagnosisRequestCandidate ? 1 : 0);
+    group.doctorConfirmationCandidateCount = Number(group.doctorConfirmationCandidateCount || 0) + (readiness.doctorConfirmationCandidate ? 1 : 0);
+    group.workStatusCounts[work.status] = Number(group.workStatusCounts[work.status] || 0) + 1;
     if (!group.patientName && session.patientSnapshot?.displayName) {
       group.patientName = session.patientSnapshot.displayName;
     }
@@ -1457,24 +1805,298 @@ export function buildMonthlyClaimSummary(sessions = [], { claimMonth = "" } = {}
       serviceDate: session.serviceDate || null,
       claimMonth: sessionMonthOf(session) || null,
       status: session.status || null,
-      totalPoints: points
+      totalPoints: points,
+      monthlyClaimWork: work,
+      receiptAnnotations: receiptAnnotationView(session.receiptAnnotations),
+      readiness
     });
+    totals.calculatedCount += readiness.isCalculated ? 1 : 0;
+    totals.needsReviewCount += readiness.needsReviewCount;
+    totals.missingDiagnosisCount += readiness.missingDiagnosis ? 1 : 0;
+    totals.symptomDetailCandidateCount += readiness.symptomDetailCandidateCount;
+    totals.pendingReceiptAnnotationCount += readiness.pendingReceiptAnnotationCount;
+    totals.confirmedReceiptAnnotationCount += readiness.confirmedReceiptAnnotationCount;
+    totals.readyForClaimCount += readiness.readyForClaim ? 1 : 0;
+    totals.blockedCount += readiness.blocked ? 1 : 0;
+    totals.uncalculatedCount += readiness.uncalculated ? 1 : 0;
+    totals.diagnosisRequestCandidateCount += readiness.diagnosisRequestCandidate ? 1 : 0;
+    totals.doctorConfirmationCandidateCount += readiness.doctorConfirmationCandidate ? 1 : 0;
+    totals.workStatusCounts[work.status] = Number(totals.workStatusCounts[work.status] || 0) + 1;
   }
 
   const patients = [...groups.values()]
     .map((group) => ({
       ...group,
+      readyForClaim: Number(group.readyForClaimCount || 0) === Number(group.sessionCount || 0) && Number(group.sessionCount || 0) > 0,
+      blocked: Number(group.blockedCount || 0) > 0,
+      diagnosisRequestCandidate: Number(group.diagnosisRequestCandidateCount || 0) > 0,
+      doctorConfirmationCandidate: Number(group.doctorConfirmationCandidateCount || 0) > 0,
+      primaryWorkStatus: primaryMonthlyWorkStatus(group.workStatusCounts),
       sessions: group.sessions.sort((a, b) => String(a.serviceDate || "").localeCompare(String(b.serviceDate || "")))
     }))
-    .sort((a, b) => b.totalPoints - a.totalPoints);
+    .sort((a, b) => (
+      Number(b.blockedCount || 0) - Number(a.blockedCount || 0)
+      || Number(b.needsReviewCount || 0) - Number(a.needsReviewCount || 0)
+      || Number(b.missingDiagnosisCount || 0) - Number(a.missingDiagnosisCount || 0)
+      || b.totalPoints - a.totalPoints
+    ));
 
   return {
     claimMonth: month || null,
     patientCount: patients.length,
     sessionCount: patients.reduce((sum, patient) => sum + patient.sessionCount, 0),
     totalPoints: patients.reduce((sum, patient) => sum + patient.totalPoints, 0),
+    ...totals,
     patients
   };
+}
+
+export function buildMonthlyBulkCandidatePlan(sessions = [], { claimMonth = "" } = {}) {
+  const month = String(claimMonth || "").trim();
+  const sessionMonthOf = (session) => String(session.claimMonth || String(session.serviceDate || "").slice(0, 7));
+  const targets = [];
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    if (month && sessionMonthOf(session) !== month) {
+      continue;
+    }
+    const target = monthlyBulkCandidateTarget(session);
+    if (!target) {
+      continue;
+    }
+    targets.push(target);
+  }
+  const runnableCount = targets.filter((target) => target.canRun).length;
+  const blockedCount = targets.length - runnableCount;
+  return {
+    claimMonth: month || null,
+    targetCount: targets.length,
+    runnableCount,
+    blockedCount,
+    reasonCounts: targets.reduce((counts, target) => {
+      counts[target.reason] = Number(counts[target.reason] || 0) + 1;
+      return counts;
+    }, {}),
+    targets: targets.sort((left, right) => (
+      Number(left.canRun === true ? 1 : 0) - Number(right.canRun === true ? 1 : 0)
+      || String(left.serviceDate || "").localeCompare(String(right.serviceDate || ""))
+    ))
+  };
+}
+
+function monthlyBulkCandidateTarget(session = {}) {
+  const status = String(session.status || "").trim();
+  const calculated = Boolean(session.calculationResult || session.calculationSummary?.calculationId || ["calculated", "needs_review"].includes(status));
+  const inputSnapshot = session.calculationResult?.inputSnapshot || {};
+  const clinicalTextChanged = calculated
+    && typeof inputSnapshot.clinicalText === "string"
+    && clinicalTextHash(inputSnapshot.clinicalText || "") !== clinicalTextHash(session.clinicalText || "");
+  let reason = "";
+  let reasonLabel = "";
+  if (status === "failed") {
+    reason = "failed";
+    reasonLabel = "算定失敗";
+  } else if (!calculated || ["draft", "ready"].includes(status)) {
+    reason = "uncalculated";
+    reasonLabel = "未算定";
+  } else if (clinicalTextChanged) {
+    reason = "clinical_text_changed";
+    reasonLabel = "カルテ変更";
+  }
+  if (!reason || status === "calculating") {
+    return null;
+  }
+  const missing = [];
+  if (!session.patientId) missing.push("患者");
+  if (!session.facilityId) missing.push("医療機関");
+  if (!String(session.clinicalText || "").trim() && !(Array.isArray(session.orders) && session.orders.length)) missing.push("カルテまたはオーダー");
+  return {
+    feeSessionId: session.feeSessionId || session.sessionId || "",
+    patientId: session.patientId || null,
+    patientName: session.patientSnapshot?.displayName || "",
+    serviceDate: session.serviceDate || null,
+    status: status || null,
+    reason,
+    reasonLabel,
+    canRun: missing.length === 0,
+    blockedReason: missing.length ? `${missing.join("、")}が不足しています。` : null
+  };
+}
+
+function feeMonthlySessionReadiness(session = {}) {
+  const status = String(session.status || "").trim();
+  const calculationSummary = session.calculationSummary || {};
+  const isCalculated = Boolean(session.calculationResult || calculationSummary.calculationId || ["calculated", "needs_review"].includes(status));
+  const reviewItems = isCalculated ? buildReviewItems(session) : [];
+  const openReviewItems = reviewItems.filter((item) => item.status === "needs_review");
+  const fallbackReviewCount = status === "needs_review"
+    ? Math.max(1, Number(calculationSummary.reviewLineCount || 0) || 0)
+    : Number(calculationSummary.reviewLineCount || 0) || 0;
+  const warnings = Array.isArray(session.calculationResult?.warnings) ? session.calculationResult.warnings : [];
+  const missingDiagnosis = !hasDiagnosisInput(session);
+  const symptomDetailCandidateCount = countSymptomDetailCandidates({ reviewItems, warnings });
+  const receiptAnnotationStats = receiptAnnotationStatsForSession(session.receiptAnnotations);
+  const pendingReceiptAnnotationCount = Math.max(symptomDetailCandidateCount, receiptAnnotationStats.draftCount);
+  const uncalculated = !isCalculated || ["draft", "ready", "failed", "calculating"].includes(status);
+  const needsReviewCount = openReviewItems.length || fallbackReviewCount;
+  const blocked = status === "failed" || uncalculated || missingDiagnosis || needsReviewCount > 0 || pendingReceiptAnnotationCount > 0;
+  const readyForClaim = isCalculated && !blocked && symptomDetailCandidateCount === 0 && pendingReceiptAnnotationCount === 0;
+  const diagnosisRequestCandidate = missingDiagnosis;
+  const doctorConfirmationCandidate = needsReviewCount > 0 || symptomDetailCandidateCount > 0 || uncalculated || status === "failed";
+
+  return {
+    isCalculated,
+    uncalculated,
+    missingDiagnosis,
+    needsReviewCount,
+    symptomDetailCandidateCount,
+    pendingReceiptAnnotationCount,
+    confirmedReceiptAnnotationCount: receiptAnnotationStats.confirmedCount,
+    diagnosisRequestCandidate,
+    doctorConfirmationCandidate,
+    readyForClaim,
+    blocked,
+    issues: monthlyReadinessIssues({
+      missingDiagnosis,
+      needsReviewCount,
+      openReviewItems,
+      fallbackReviewCount,
+      symptomDetailCandidateCount,
+      pendingReceiptAnnotationCount,
+      uncalculated,
+      status
+    }),
+    status
+  };
+}
+
+function monthlyReadinessIssues({
+  missingDiagnosis = false,
+  needsReviewCount = 0,
+  openReviewItems = [],
+  fallbackReviewCount = 0,
+  symptomDetailCandidateCount = 0,
+  pendingReceiptAnnotationCount = 0,
+  uncalculated = false,
+  status = ""
+} = {}) {
+  const issues = [];
+  if (missingDiagnosis) {
+    issues.push({
+      type: "missing_diagnosis",
+      label: "病名不足",
+      detail: "算定根拠として使う病名が未入力です。"
+    });
+  }
+  if (uncalculated) {
+    issues.push({
+      type: "uncalculated",
+      label: "未算定",
+      detail: status === "failed" ? "算定処理が失敗しています。" : "算定結果がまだ作成されていません。"
+    });
+  }
+  const reviewDetails = openReviewItems.slice(0, 5).map((item) => ({
+    type: "review",
+    label: item.title || "要確認",
+    detail: item.reason || item.reviewIssue?.messageForStaff || item.candidateProposal?.reason || ""
+  }));
+  issues.push(...reviewDetails);
+  const remainingReviewCount = Math.max(0, Number(needsReviewCount || 0) - reviewDetails.length);
+  if (remainingReviewCount > 0 || (!reviewDetails.length && Number(fallbackReviewCount || 0) > 0)) {
+    issues.push({
+      type: "review",
+      label: "要確認",
+      detail: `${Number(remainingReviewCount || fallbackReviewCount || needsReviewCount).toLocaleString()}件の確認事項があります。`
+    });
+  }
+  if (symptomDetailCandidateCount > 0) {
+    issues.push({
+      type: "symptom_detail",
+      label: "詳記候補",
+      detail: "詳記、コメント、照会、返戻、査定に関連する確認候補があります。"
+    });
+  }
+  if (pendingReceiptAnnotationCount > 0) {
+    issues.push({
+      type: "receipt_annotation",
+      label: "詳記未対応",
+      detail: "コメントまたは症状詳記の下書き確認、確定が必要です。"
+    });
+  }
+  return issues;
+}
+
+function emptyMonthlyWorkStatusCounts() {
+  return {
+    not_started: 0,
+    diagnosis_requested: 0,
+    doctor_confirming: 0,
+    collected: 0,
+    ready_for_claim: 0,
+    excluded: 0
+  };
+}
+
+function monthlyClaimWorkView(value = null) {
+  const status = String(value?.status || "not_started").trim();
+  const allowed = new Set(Object.keys(emptyMonthlyWorkStatusCounts()));
+  return {
+    status: allowed.has(status) ? status : "not_started",
+    note: String(value?.note || ""),
+    diagnosisCandidates: Array.isArray(value?.diagnosisCandidates) ? value.diagnosisCandidates : [],
+    diagnosisRequestReason: String(value?.diagnosisRequestReason || ""),
+    doctorName: String(value?.doctorName || ""),
+    requestedAt: value?.requestedAt || null,
+    collectedAt: value?.collectedAt || null,
+    collectedResult: String(value?.collectedResult || ""),
+    appliedDiagnosisNames: Array.isArray(value?.appliedDiagnosisNames) ? value.appliedDiagnosisNames : [],
+    updatedByMemberId: value?.updatedByMemberId || null,
+    updatedAt: value?.updatedAt || null
+  };
+}
+
+function receiptAnnotationView(value = null) {
+  return {
+    comments: Array.isArray(value?.comments) ? value.comments : [],
+    symptomDetails: Array.isArray(value?.symptomDetails) ? value.symptomDetails : [],
+    updatedByMemberId: value?.updatedByMemberId || null,
+    updatedAt: value?.updatedAt || null
+  };
+}
+
+function receiptAnnotationStatsForSession(value = null) {
+  const annotations = [
+    ...(Array.isArray(value?.comments) ? value.comments : []),
+    ...(Array.isArray(value?.symptomDetails) ? value.symptomDetails : [])
+  ];
+  return annotations.reduce((stats, annotation) => {
+    const status = String(annotation?.status || "draft").trim();
+    if (status === "confirmed") {
+      stats.confirmedCount += 1;
+    } else if (status !== "rejected") {
+      stats.draftCount += 1;
+    }
+    return stats;
+  }, { draftCount: 0, confirmedCount: 0 });
+}
+
+function primaryMonthlyWorkStatus(counts = {}) {
+  const priority = ["diagnosis_requested", "doctor_confirming", "collected", "ready_for_claim", "excluded"];
+  return priority.find((status) => Number(counts[status] || 0) > 0) || "not_started";
+}
+
+function countSymptomDetailCandidates({ reviewItems = [], warnings = [] } = {}) {
+  const texts = [
+    ...reviewItems.flatMap((item) => [
+      item.title,
+      item.reason,
+      item.reviewIssue?.messageForStaff,
+      item.candidateProposal?.reason,
+      item.candidateProposal?.conditionText
+    ]),
+    ...warnings
+  ].map((value) => String(value || "")).filter(Boolean);
+
+  return texts.filter((text) => /詳記|症状詳記|コメント|照会|返戻|査定/u.test(text)).length;
 }
 
 // #8: 受診履歴(priorSessions)から、算定エンジンが同月制限・回数制限の判定に使う
@@ -1621,6 +2243,18 @@ async function resolveFeeSessionPatch(context, platformStore, normalized, now, c
     ...calculationOptionsProvenanceForClientInput(normalized),
     ...diagnosesProvenanceForClientInput(normalized)
   };
+  if (hasOwn(normalized, "monthlyClaimWork")) {
+    patch.monthlyClaimWork = monthlyClaimWorkPatch(normalized.monthlyClaimWork, {
+      memberId: context.session.memberId,
+      now
+    });
+  }
+  if (hasOwn(normalized, "receiptAnnotations")) {
+    patch.receiptAnnotations = receiptAnnotationsPatch(normalized.receiptAnnotations, {
+      memberId: context.session.memberId,
+      now
+    });
+  }
   applyClinicalTextChangeGuards(patch, normalized, current);
   if (normalized.patientId || normalized.patient) {
     const patient = await resolveFeePatient(context, platformStore, normalized);
@@ -1685,6 +2319,80 @@ function applyClinicalTextChangeGuards(patch, normalized, current = {}) {
     patch.calculationOptionsSource = null;
     patch.calculationOptionsAutoKeys = [];
   }
+}
+
+function monthlyClaimWorkPatch(value, { memberId = "", now = new Date() } = {}) {
+  if (!value) {
+    return null;
+  }
+  const timestamp = now.toISOString();
+  const status = String(value.status || "").trim();
+  return {
+    ...value,
+    requestedAt: status === "diagnosis_requested" && !value.requestedAt ? timestamp : value.requestedAt,
+    collectedAt: status === "collected" && !value.collectedAt ? timestamp : value.collectedAt,
+    updatedByMemberId: memberId || value.updatedByMemberId || null,
+    updatedAt: timestamp
+  };
+}
+
+function receiptAnnotationsPatch(value, { memberId = "", now = new Date() } = {}) {
+  if (!value) {
+    return null;
+  }
+  const timestamp = now.toISOString();
+  return {
+    ...value,
+    comments: stampReceiptAnnotationList(value.comments, { memberId, timestamp }),
+    symptomDetails: stampReceiptAnnotationList(value.symptomDetails, { memberId, timestamp }),
+    updatedByMemberId: memberId || value.updatedByMemberId || null,
+    updatedAt: timestamp
+  };
+}
+
+function stampReceiptAnnotationList(items = [], { memberId = "", timestamp = "" } = {}) {
+  return (Array.isArray(items) ? items : []).map((item, index) => ({
+    ...item,
+    annotationId: item.annotationId || `receipt_annotation_${index + 1}`,
+    createdAt: item.createdAt || timestamp,
+    createdByMemberId: item.createdByMemberId || memberId || null,
+    updatedAt: timestamp,
+    updatedByMemberId: memberId || item.updatedByMemberId || null
+  }));
+}
+
+export function receiptAnnotationContext(session = {}) {
+  const annotations = session.receiptAnnotations || {};
+  const comments = (Array.isArray(annotations.comments) ? annotations.comments : [])
+    .filter((comment) => comment?.status === "confirmed" && String(comment.text || "").trim())
+    .map((comment) => ({
+      shinryoIdentification: comment.shinryoIdentification || "",
+      code: comment.code || "",
+      text: comment.text || ""
+    }));
+  const symptomDetails = (Array.isArray(annotations.symptomDetails) ? annotations.symptomDetails : [])
+    .filter((detail) => detail?.status === "confirmed" && String(detail.text || "").trim())
+    .map((detail) => ({
+      kubun: detail.kubun || "",
+      text: detail.text || ""
+    }));
+  return { comments, symptomDetails };
+}
+
+function receiptExportContext(session = {}) {
+  return {
+    insuranceSnapshot: session.insuranceSnapshot || null,
+    ...receiptAnnotationContext(session)
+  };
+}
+
+function withReceiptExportValidation(receiptDraft = {}, session = {}) {
+  const exportValidation = buildReceiptExportValidation(receiptDraft, receiptExportContext(session));
+  return {
+    ...receiptDraft,
+    exportStatus: exportValidation.exportStatus,
+    exportValidation
+  };
 }
 
 function calculationOptionsProvenanceForClientInput(input = {}) {

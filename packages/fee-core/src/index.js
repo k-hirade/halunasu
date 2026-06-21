@@ -42,6 +42,8 @@ export function buildFeeSession(input = {}, options = {}) {
     calculationOptionsAutoKeys: Array.isArray(input.calculationOptionsAutoKeys) ? input.calculationOptionsAutoKeys : [],
     calculationProgress: isPlainObject(input.calculationProgress) ? input.calculationProgress : null,
     activeCalculationJobId: input.activeCalculationJobId || null,
+    monthlyClaimWork: isPlainObject(input.monthlyClaimWork) ? input.monthlyClaimWork : null,
+    receiptAnnotations: isPlainObject(input.receiptAnnotations) ? input.receiptAnnotations : null,
     sourceSystem: input.sourceSystem || null,
     calculationResult: input.calculationResult || null,
     calculationSummary: input.calculationSummary || null,
@@ -94,6 +96,12 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
       activeCalculationJobId: hasOwn(patch, "activeCalculationJobId")
         ? patch.activeCalculationJobId || null
         : undefined,
+      monthlyClaimWork: hasOwn(patch, "monthlyClaimWork")
+        ? isPlainObject(patch.monthlyClaimWork) ? patch.monthlyClaimWork : null
+        : undefined,
+      receiptAnnotations: hasOwn(patch, "receiptAnnotations")
+        ? isPlainObject(patch.receiptAnnotations) ? patch.receiptAnnotations : null
+        : undefined,
       sourceSystem: patch.sourceSystem
     }),
     updatedAt: now
@@ -134,7 +142,7 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
     next.latestCalculationId = null;
   }
 
-  if (!hasOwn(patch, "status") && ["draft", "ready", "failed", "calculated", "needs_review"].includes(current.status || "")) {
+  if (changedCalculationInput && !hasOwn(patch, "status") && ["draft", "ready", "failed", "calculated", "needs_review"].includes(current.status || "")) {
     next.status = feeSessionHasRequiredCalculationContext(next) ? "ready" : "draft";
   }
 
@@ -311,6 +319,72 @@ export function buildReceiptDraft(session = {}, options = {}) {
     generatedAt: timestamp(options.now || calculation.generatedAt),
     schemaVersion: 1
   };
+}
+
+export function buildReceiptExportValidation(receiptDraft = {}, context = {}) {
+  const insuranceSnapshot = isPlainObject(context.insuranceSnapshot)
+    ? context.insuranceSnapshot
+    : (isPlainObject(receiptDraft.insuranceSnapshot) ? receiptDraft.insuranceSnapshot : {});
+  const insurance = isPlainObject(insuranceSnapshot.insurance) ? insuranceSnapshot.insurance : {};
+  const publicInsurance = Array.isArray(insuranceSnapshot.publicInsurance) ? insuranceSnapshot.publicInsurance : [];
+  const patient = isPlainObject(receiptDraft.patientSnapshot) ? receiptDraft.patientSnapshot : {};
+  const facility = isPlainObject(receiptDraft.facilitySnapshot) ? receiptDraft.facilitySnapshot : {};
+  const issues = [];
+
+  addReceiptValidationIssue(issues, !facility.medicalInstitutionCode, "facility.medicalInstitutionCode", "error", "医療機関コードが未設定です。");
+  addReceiptValidationIssue(issues, !facility.prefectureCode, "facility.prefectureCode", "warning", "都道府県コードが未設定です。");
+  addReceiptValidationIssue(issues, !patient.displayName, "patient.displayName", "error", "患者氏名が未設定です。");
+  addReceiptValidationIssue(issues, !patient.sex, "patient.sex", "warning", "患者性別が未設定です。");
+  addReceiptValidationIssue(issues, !patient.birthDate, "patient.birthDate", "warning", "患者生年月日が未設定です。");
+  addReceiptValidationIssue(issues, !receiptDraft.serviceDate, "receiptDraft.serviceDate", "error", "診療日が未設定です。");
+  addReceiptValidationIssue(issues, !receiptDraft.claimMonth, "receiptDraft.claimMonth", "error", "請求月が未設定です。");
+  addReceiptValidationIssue(issues, !insurance.insurerNumber, "insurance.insurerNumber", "error", "保険者番号が未設定です。");
+  addReceiptValidationIssue(issues, !insurance.insuredSymbol, "insurance.insuredSymbol", "warning", "被保険者記号が未設定です。");
+  addReceiptValidationIssue(issues, !insurance.insuredNumber, "insurance.insuredNumber", "warning", "被保険者番号が未設定です。");
+  addReceiptValidationIssue(issues, !context.connectorSpecVerified, "connector.targetSpec", "warning", "接続先レセコンのCSV/UKE/API仕様が未設定です。実請求前に接続先仕様を確認してください。");
+
+  for (const [index, publicEntry] of publicInsurance.entries()) {
+    addReceiptValidationIssue(issues, !publicEntry.payerNumber, `publicInsurance[${index}].payerNumber`, "error", "公費負担者番号が未設定です。");
+    addReceiptValidationIssue(issues, !publicEntry.recipientNumber, `publicInsurance[${index}].recipientNumber`, "error", "公費受給者番号が未設定です。");
+  }
+
+  const lines = Array.isArray(receiptDraft.lineGroups)
+    ? receiptDraft.lineGroups.flatMap((group) => Array.isArray(group.lines) ? group.lines : [])
+    : [];
+  addReceiptValidationIssue(issues, receiptDraft.status !== "ready", "receiptDraft.status", "warning", "レセプト案が未算定状態です。");
+  for (const [index, line] of lines.entries()) {
+    addReceiptValidationIssue(issues, !line.code, `lines[${index}].code`, "warning", "診療行為・薬剤・材料コードが未設定の明細があります。");
+    addReceiptValidationIssue(issues, Number(line.points || 0) <= 0, `lines[${index}].points`, "warning", "点数が0以下の明細があります。");
+    addReceiptValidationIssue(issues, !ukeLineRecordId(line.orderType), `lines[${index}].orderType`, "warning", "レセ電レコード種別を確認してください。");
+  }
+
+  for (const [index, comment] of (Array.isArray(context.comments) ? context.comments : []).entries()) {
+    addReceiptValidationIssue(issues, !comment.text, `comments[${index}].text`, "error", "コメント本文が未設定です。");
+    addReceiptValidationIssue(issues, !comment.code, `comments[${index}].code`, "warning", "コメントコードが未設定です。");
+    addReceiptValidationIssue(issues, !comment.shinryoIdentification, `comments[${index}].shinryoIdentification`, "warning", "コメントの診療識別が未設定です。");
+  }
+
+  for (const [index, detail] of (Array.isArray(context.symptomDetails) ? context.symptomDetails : []).entries()) {
+    addReceiptValidationIssue(issues, !detail.text, `symptomDetails[${index}].text`, "error", "症状詳記本文が未設定です。");
+    addReceiptValidationIssue(issues, !detail.kubun, `symptomDetails[${index}].kubun`, "warning", "症状詳記区分が未設定です。");
+  }
+
+  const blockingIssueCount = issues.filter((issue) => issue.severity === "error").length;
+  const warningIssueCount = issues.filter((issue) => issue.severity === "warning").length;
+  return {
+    exportStatus: blockingIssueCount ? "draft" : "ready_for_review",
+    label: blockingIssueCount ? "レセ電下書き" : "出力前確認済み",
+    blockingIssueCount,
+    warningIssueCount,
+    issues
+  };
+}
+
+function addReceiptValidationIssue(issues, condition, field, severity, message) {
+  if (!condition) {
+    return;
+  }
+  issues.push({ field, severity, message });
 }
 
 // 窓口一部負担金(会計)を決定論で算出する純関数。
@@ -1359,6 +1433,8 @@ function normalizeReviewIssues(items) {
         relatedCandidateId: item.relatedCandidateId || item.related_candidate_id || null,
         evidence: item.evidence || null,
         source: item.source || null,
+        assessmentRisk: isPlainObject(item.assessmentRisk || item.assessment_risk) ? item.assessmentRisk || item.assessment_risk : null,
+        bodyLateralityCheck: isPlainObject(item.bodyLateralityCheck || item.body_laterality_check) ? item.bodyLateralityCheck || item.body_laterality_check : null,
         policy: isPlainObject(item.policy) ? item.policy : null,
         resolutionOptions: Array.isArray(item.resolutionOptions) ? item.resolutionOptions : []
       });
@@ -1711,6 +1787,8 @@ function normalizeCandidateActionItem(item = {}) {
     sourceType: item.sourceType || "warning",
     source,
     policy,
+    assessmentRisk: reviewIssue?.assessmentRisk || reviewIssue?.assessment_risk || null,
+    bodyLateralityCheck: reviewIssue?.bodyLateralityCheck || reviewIssue?.body_laterality_check || null,
     candidateLine: proposal?.candidateLine || item.lineItem || null,
     candidateProposal: proposal,
     reviewIssue,
@@ -1769,6 +1847,9 @@ function issueCategoryForCode(issueCode = "") {
     master_not_found: { key: "master", label: "マスター確認" },
     missing_quantity: { key: "medication", label: "数量・日数" },
     missing_body_site: { key: "input", label: "部位・範囲" },
+    claim_risk_body_site_mismatch: { key: "claim-risk", label: "査定リスク" },
+    claim_risk_laterality_mismatch: { key: "claim-risk", label: "査定リスク" },
+    claim_risk_indication_check: { key: "claim-risk", label: "査定リスク" },
     missing_equipment_kind: { key: "input", label: "機器区分" },
     missing_inpatient_days: { key: "input", label: "入院日数" },
     missing_ward_type: { key: "input", label: "病棟区分" },

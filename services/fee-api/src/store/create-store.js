@@ -79,6 +79,18 @@ export class LazyFirestoreFeeStore {
     return this.call("updateCalculationJob", orgId, feeSessionId, calculationJobId, patch);
   }
 
+  async createMonthlyBulkJob(orgId, input) {
+    return this.call("createMonthlyBulkJob", orgId, input);
+  }
+
+  async getMonthlyBulkJob(orgId, monthlyBulkJobId) {
+    return this.call("getMonthlyBulkJob", orgId, monthlyBulkJobId);
+  }
+
+  async updateMonthlyBulkJob(orgId, monthlyBulkJobId, patch) {
+    return this.call("updateMonthlyBulkJob", orgId, monthlyBulkJobId, patch);
+  }
+
   async call(methodName, ...args) {
     const store = await this.store();
     return store[methodName](...args);

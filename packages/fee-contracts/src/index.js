@@ -27,6 +27,15 @@ export const feeOrderTypes = Object.freeze([
   "unknown"
 ]);
 export const feeReviewDecisionStatuses = Object.freeze(["approved", "rejected", "edited"]);
+export const feeMonthlyClaimWorkStatuses = Object.freeze([
+  "not_started",
+  "diagnosis_requested",
+  "doctor_confirming",
+  "collected",
+  "ready_for_claim",
+  "excluded"
+]);
+export const feeReceiptAnnotationStatuses = Object.freeze(["draft", "confirmed", "rejected"]);
 export const feeCalculationModes = Object.freeze(["full", "reuse_clinical"]);
 export const clinicalAutoCalculationOptionKeys = Object.freeze([
   "procedure_codes",
@@ -143,6 +152,12 @@ export function validateUpdateFeeSessionInput(input = {}) {
     calculationOptions: hasOwn(input, "calculationOptions") || hasOwn(input, "calculation_options")
       ? nullablePlainObject(input.calculationOptions ?? input.calculation_options, "calculationOptions")
       : undefined,
+    monthlyClaimWork: hasOwn(input, "monthlyClaimWork") || hasOwn(input, "monthly_claim_work")
+      ? normalizeMonthlyClaimWork(input.monthlyClaimWork ?? input.monthly_claim_work)
+      : undefined,
+    receiptAnnotations: hasOwn(input, "receiptAnnotations") || hasOwn(input, "receipt_annotations")
+      ? normalizeReceiptAnnotations(input.receiptAnnotations ?? input.receipt_annotations)
+      : undefined,
     sourceSystem: optionalString(input.sourceSystem ?? input.source_system)
   };
 
@@ -172,6 +187,106 @@ export function validateReviewDecisionInput(input = {}) {
     status: optionalEnum(input.status, feeReviewDecisionStatuses, "status") || "approved",
     note: optionalMultilineString(input.note, 5000),
     replacementText: optionalMultilineString(input.replacementText ?? input.replacement_text, 20000)
+  });
+}
+
+function normalizeMonthlyClaimWork(input) {
+  if (input === undefined) {
+    return undefined;
+  }
+  if (input === null) {
+    return null;
+  }
+  if (!isPlainObject(input)) {
+    throw validationError("monthlyClaimWork must be an object", "monthlyClaimWork");
+  }
+  return compactObject({
+    status: optionalEnum(input.status, feeMonthlyClaimWorkStatuses, "monthlyClaimWork.status") || "not_started",
+    note: optionalMultilineString(input.note, 5000),
+    diagnosisCandidates: hasOwn(input, "diagnosisCandidates") || hasOwn(input, "diagnosis_candidates")
+      ? normalizeDiagnoses(input.diagnosisCandidates ?? input.diagnosis_candidates)
+      : undefined,
+    diagnosisRequestReason: optionalMultilineString(input.diagnosisRequestReason ?? input.diagnosis_request_reason, 5000),
+    doctorName: optionalString(input.doctorName ?? input.doctor_name),
+    requestedAt: optionalString(input.requestedAt ?? input.requested_at),
+    collectedAt: optionalString(input.collectedAt ?? input.collected_at),
+    collectedResult: optionalMultilineString(input.collectedResult ?? input.collected_result, 10000),
+    appliedDiagnosisNames: normalizeStringArray(input.appliedDiagnosisNames ?? input.applied_diagnosis_names),
+    updatedByMemberId: optionalString(input.updatedByMemberId ?? input.updated_by_member_id),
+    updatedAt: optionalString(input.updatedAt ?? input.updated_at)
+  });
+}
+
+function normalizeReceiptAnnotations(input) {
+  if (input === undefined) {
+    return undefined;
+  }
+  if (input === null) {
+    return null;
+  }
+  if (!isPlainObject(input)) {
+    throw validationError("receiptAnnotations must be an object", "receiptAnnotations");
+  }
+  return compactObject({
+    comments: normalizeReceiptAnnotationList(input.comments, "receiptAnnotations.comments", normalizeReceiptCommentAnnotation),
+    symptomDetails: normalizeReceiptAnnotationList(
+      input.symptomDetails ?? input.symptom_details,
+      "receiptAnnotations.symptomDetails",
+      normalizeReceiptSymptomDetailAnnotation
+    ),
+    updatedByMemberId: optionalString(input.updatedByMemberId ?? input.updated_by_member_id),
+    updatedAt: optionalString(input.updatedAt ?? input.updated_at)
+  });
+}
+
+function normalizeReceiptAnnotationList(value, field, normalize) {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw validationError(`${field} must be an array`, field);
+  }
+  return value.map((entry, index) => normalize(entry, `${field}[${index}]`));
+}
+
+function normalizeReceiptCommentAnnotation(input, field) {
+  if (!isPlainObject(input)) {
+    throw validationError(`${field} must be an object`, field);
+  }
+  const text = optionalMultilineString(input.text, 5000);
+  return compactObject({
+    annotationId: optionalString(input.annotationId ?? input.annotation_id),
+    status: optionalEnum(input.status, feeReceiptAnnotationStatuses, `${field}.status`) || "draft",
+    shinryoIdentification: optionalString(input.shinryoIdentification ?? input.shinryo_identification),
+    code: optionalString(input.code),
+    text,
+    sourceReviewItemId: optionalString(input.sourceReviewItemId ?? input.source_review_item_id),
+    sourceLabel: optionalString(input.sourceLabel ?? input.source_label),
+    note: optionalMultilineString(input.note, 5000),
+    createdAt: optionalString(input.createdAt ?? input.created_at),
+    createdByMemberId: optionalString(input.createdByMemberId ?? input.created_by_member_id),
+    updatedAt: optionalString(input.updatedAt ?? input.updated_at),
+    updatedByMemberId: optionalString(input.updatedByMemberId ?? input.updated_by_member_id)
+  });
+}
+
+function normalizeReceiptSymptomDetailAnnotation(input, field) {
+  if (!isPlainObject(input)) {
+    throw validationError(`${field} must be an object`, field);
+  }
+  const text = optionalMultilineString(input.text, 10000);
+  return compactObject({
+    annotationId: optionalString(input.annotationId ?? input.annotation_id),
+    status: optionalEnum(input.status, feeReceiptAnnotationStatuses, `${field}.status`) || "draft",
+    kubun: optionalString(input.kubun),
+    text,
+    sourceReviewItemId: optionalString(input.sourceReviewItemId ?? input.source_review_item_id),
+    sourceLabel: optionalString(input.sourceLabel ?? input.source_label),
+    note: optionalMultilineString(input.note, 5000),
+    createdAt: optionalString(input.createdAt ?? input.created_at),
+    createdByMemberId: optionalString(input.createdByMemberId ?? input.created_by_member_id),
+    updatedAt: optionalString(input.updatedAt ?? input.updated_at),
+    updatedByMemberId: optionalString(input.updatedByMemberId ?? input.updated_by_member_id)
   });
 }
 

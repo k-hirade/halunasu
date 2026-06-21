@@ -517,6 +517,8 @@ body:has(.fee-shell--detail) {
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .quick-start-actions .btn {
@@ -717,6 +719,454 @@ body:has(.fee-shell--detail) {
   text-align: center;
   color: var(--muted);
   font-weight: 800;
+}
+
+.fee-monthly-dashboard {
+  display: grid;
+  gap: 22px;
+}
+
+.fee-monthly-header {
+  margin-bottom: 0;
+}
+
+.fee-monthly-header > div:first-child {
+  display: grid;
+  gap: 6px;
+}
+
+.fee-monthly-header-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fee-monthly-month-field {
+  min-width: 180px;
+  display: grid;
+  gap: 6px;
+}
+
+.fee-monthly-month-field span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.fee-monthly-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.fee-monthly-metric {
+  min-height: 104px;
+  padding: 16px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+}
+
+.fee-monthly-metric span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.fee-monthly-metric strong {
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.fee-monthly-metric--review {
+  border-color: #fed7aa;
+  background: #fffaf5;
+}
+
+.fee-monthly-metric--supported {
+  border-color: #abefc6;
+  background: #f6fef9;
+}
+
+.fee-monthly-precheck {
+  padding: 18px;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+}
+
+.fee-monthly-precheck > div:first-child {
+  display: grid;
+  gap: 6px;
+}
+
+.fee-monthly-precheck strong {
+  font-size: 1.05rem;
+}
+
+.fee-monthly-precheck dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(100px, 1fr));
+  gap: 10px;
+}
+
+.fee-monthly-precheck dl div {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.fee-monthly-precheck dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.fee-monthly-precheck dd {
+  margin: 4px 0 0;
+  font-size: 1.12rem;
+  font-weight: 900;
+}
+
+.fee-monthly-bulk-panel {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.fee-monthly-bulk-head,
+.fee-monthly-bulk-status {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.fee-monthly-bulk-head h2 {
+  margin: 2px 0 0;
+  font-size: 1.05rem;
+}
+
+.fee-monthly-bulk-head p,
+.fee-monthly-bulk-empty,
+.fee-monthly-bulk-status small {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.fee-monthly-bulk-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.fee-monthly-bulk-metrics div {
+  padding: 10px;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.fee-monthly-bulk-metrics dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.fee-monthly-bulk-metrics dd {
+  margin: 4px 0 0;
+  font-size: 1.05rem;
+  font-weight: 950;
+}
+
+.fee-monthly-bulk-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.fee-monthly-bulk-items {
+  display: grid;
+  gap: 8px;
+}
+
+.fee-monthly-bulk-items div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 0.6fr) minmax(0, 1.4fr);
+  gap: 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.fee-monthly-bulk-items small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.fee-monthly-worklist {
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.fee-monthly-worklist-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.fee-monthly-worklist-head h2 {
+  margin: 0;
+  font-size: 1.18rem;
+}
+
+.fee-monthly-worklist-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.fee-monthly-worklist-head > span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.fee-monthly-filterbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fee-segment-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #344054;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.fee-segment-button.is-active {
+  border-color: #175cd3;
+  background: #eff8ff;
+  color: #175cd3;
+}
+
+.fee-monthly-table-wrap {
+  overflow-x: auto;
+}
+
+.fee-monthly-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+}
+
+.fee-monthly-table th,
+.fee-monthly-table td {
+  padding: 12px 10px;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.fee-monthly-table th {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.fee-monthly-table td {
+  font-size: 0.9rem;
+}
+
+.fee-monthly-table td:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.fee-monthly-table td:first-child strong {
+  font-weight: 900;
+}
+
+.fee-monthly-table td:first-child small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.fee-monthly-table td:nth-child(5) {
+  color: #44546a;
+  line-height: 1.5;
+}
+
+.fee-monthly-patient-button {
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.fee-monthly-patient-button:hover strong {
+  color: #175cd3;
+}
+
+.fee-monthly-detail-row td {
+  padding: 0 10px 14px;
+  background: #fbfcfe;
+}
+
+.fee-monthly-session-list {
+  padding: 12px 0 0;
+  display: grid;
+  gap: 10px;
+}
+
+.fee-monthly-session-review {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  display: grid;
+  gap: 12px;
+}
+
+.fee-monthly-session-review-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.fee-monthly-session-review-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.fee-monthly-session-review-head small {
+  color: var(--muted);
+}
+
+.fee-monthly-session-review-head label {
+  min-width: 180px;
+  display: grid;
+  gap: 5px;
+}
+
+.fee-monthly-session-review-head label span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.fee-monthly-session-review ul {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+
+.fee-monthly-session-review li {
+  padding: 9px 10px;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.fee-monthly-session-review li span {
+  font-weight: 900;
+}
+
+.fee-monthly-session-review li p,
+.fee-monthly-session-review > p {
+  margin: 4px 0 0;
+  color: #475467;
+  line-height: 1.5;
+}
+
+.fee-monthly-diagnosis-task {
+  padding: 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #ffffff;
+  display: grid;
+  gap: 12px;
+}
+
+.fee-monthly-annotation-task {
+  padding: 12px;
+  border: 1px solid #fedf89;
+  border-radius: 8px;
+  background: #fffcf5;
+  display: grid;
+  gap: 12px;
+}
+
+.fee-monthly-diagnosis-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.6fr) minmax(220px, 1fr) minmax(260px, 1.2fr) minmax(220px, 1fr);
+  gap: 10px;
+}
+
+.fee-monthly-diagnosis-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.fee-monthly-diagnosis-grid label span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.fee-monthly-diagnosis-grid textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.fee-monthly-annotation-text {
+  grid-column: span 2;
+}
+
+.fee-monthly-diagnosis-actions,
+.fee-monthly-diagnosis-history {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.fee-monthly-diagnosis-history {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.fee-monthly-skeleton {
+  display: grid;
+  gap: 10px;
 }
 
 .skeleton {
@@ -1171,6 +1621,65 @@ body:has(.fee-shell--detail) {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.receipt-export-validation {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #fedf89;
+  border-radius: 8px;
+  background: #fffcf5;
+}
+
+.receipt-export-validation--ready_for_review {
+  border-color: #abefc6;
+  background: #f6fef9;
+}
+
+.receipt-export-validation > div {
+  display: grid;
+  gap: 3px;
+}
+
+.receipt-export-validation span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.receipt-export-validation strong {
+  color: #26364f;
+}
+
+.receipt-export-validation small {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.receipt-export-validation ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.receipt-export-validation li {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px;
+  border: 1px solid #fde7b7;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.receipt-export-validation li p {
+  margin: 0;
+  color: #34445c;
+  line-height: 1.45;
 }
 
 .receipt-uke-group {
@@ -2158,6 +2667,34 @@ body:has(.fee-shell--detail) {
   font-weight: 900;
 }
 
+.issue-assessment-risk {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fffaf5;
+  display: grid;
+  gap: 4px;
+}
+
+.issue-assessment-risk span {
+  color: #b54708;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.issue-assessment-risk p {
+  margin: 0;
+  color: #7a2e0e;
+  line-height: 1.45;
+}
+
+.issue-assessment-risk small {
+  color: #9c4221;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .candidate-line-status {
   border-radius: 999px;
   background: #eef4ff;
@@ -2244,6 +2781,11 @@ body:has(.fee-shell--detail) {
 
 .issue-card--rule {
   border-left-color: #64748b;
+}
+
+.issue-card--claim-risk {
+  border-left-color: #f97316;
+  background: #fffaf5;
 }
 
 .issue-category-badge {
@@ -2374,6 +2916,48 @@ body:has(.fee-shell--detail) {
   margin-top: 8px;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.fee-modal-receipt-annotation {
+  border: 1px solid #fedf89;
+  border-radius: 8px;
+  background: #fffcf5;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.fee-modal-annotation-grid {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.7fr) minmax(140px, 0.7fr) minmax(180px, 1fr);
+  gap: 10px;
+}
+
+.fee-modal-annotation-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.fee-modal-annotation-grid label span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.fee-modal-annotation-text {
+  grid-column: 1 / -1;
+}
+
+.fee-modal-annotation-text textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.fee-modal-annotation-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .modal-point-summary {
@@ -2942,7 +3526,13 @@ body:has(.fee-shell--detail) {
   .fee-quick-start,
   .fee-section-head,
   .quick-start-panel,
-  .session-history-head {
+  .session-history-head,
+  .fee-monthly-header,
+  .fee-monthly-bulk-head,
+  .fee-monthly-bulk-status,
+  .fee-monthly-worklist-head,
+  .fee-monthly-precheck,
+  .fee-monthly-session-review-head {
     display: grid;
   }
 
@@ -2960,6 +3550,12 @@ body:has(.fee-shell--detail) {
 
   .fee-toolbar,
   .session-history-toolbar,
+  .fee-monthly-summary-grid,
+  .fee-monthly-precheck dl,
+  .fee-monthly-bulk-metrics,
+  .fee-monthly-bulk-items div,
+  .fee-monthly-diagnosis-grid,
+  .fee-modal-annotation-grid,
   .fee-form-grid,
   .fee-source-condition-grid,
   .fee-detail-grid,
@@ -2976,6 +3572,10 @@ body:has(.fee-shell--detail) {
   .master-search-controls,
   .order-editor-row {
     grid-template-columns: 1fr;
+  }
+
+  .fee-monthly-annotation-text {
+    grid-column: auto;
   }
 
   .patient-picker-row,

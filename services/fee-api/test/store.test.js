@@ -92,6 +92,34 @@ test("stores fee sessions by organization and saves calculation results", () => 
   assert.equal(decided.feeSession.reviewDecisions[reviewItems[0].reviewItemId].status, "approved");
 });
 
+test("stores monthly bulk jobs with progress", () => {
+  let counter = 0;
+  const store = new MemoryFeeStore({
+    now: () => new Date("2026-06-01T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const created = store.createMonthlyBulkJob("org_123", {
+    claimMonth: "2026-06",
+    items: [
+      { itemId: "item_1", feeSessionId: "fee_1", status: "pending" },
+      { itemId: "item_2", feeSessionId: "fee_2", status: "skipped" }
+    ],
+    createdByMemberId: "mem_123"
+  });
+  const updated = store.updateMonthlyBulkJob("org_123", created.monthlyBulkJob.monthlyBulkJobId, {
+    items: [
+      { itemId: "item_1", feeSessionId: "fee_1", status: "queued" },
+      { itemId: "item_2", feeSessionId: "fee_2", status: "skipped" }
+    ]
+  });
+
+  assert.equal(created.monthlyBulkJob.monthlyBulkJobId, "fee_monthly_bulk_job_001");
+  assert.equal(updated.monthlyBulkJob.progress.totalCount, 2);
+  assert.equal(updated.monthlyBulkJob.progress.queuedCount, 1);
+  assert.equal(updated.monthlyBulkJob.progress.skippedCount, 1);
+  assert.equal(store.getMonthlyBulkJob("org_123", "fee_monthly_bulk_job_001").claimMonth, "2026-06");
+});
+
 test("Firestore fee store strips undefined review decision fields before persisting", async () => {
   let counter = 0;
   const docs = new Map();
@@ -156,6 +184,13 @@ function fakeFirestoreDb(docs) {
         async set(value) {
           assertNoUndefined(value);
           docs.set(path, value);
+        },
+        async update(value) {
+          assertNoUndefined(value);
+          docs.set(path, {
+            ...(docs.get(path) || {}),
+            ...value
+          });
         },
         collection(name) {
           return fakeCollection(`${path}/${name}`, docs);

@@ -92,6 +92,29 @@ test("normalizes fee session update input", () => {
       history: {
         same_month_history_codes: ["160000410"]
       }
+    },
+    monthly_claim_work: {
+      status: "diagnosis_requested",
+      note: "病名出し済み",
+      diagnosis_candidates: [{ name: "急性上気道炎" }],
+      diagnosis_request_reason: "病名不足のため確認",
+      doctor_name: "山田医師",
+      collected_result: "急性上気道炎",
+      applied_diagnosis_names: ["急性上気道炎"]
+    },
+    receipt_annotations: {
+      comments: [{
+        status: "confirmed",
+        shinryo_identification: "60",
+        code: "830000001",
+        text: "コメント本文",
+        source_review_item_id: "review_1"
+      }],
+      symptom_details: [{
+        status: "draft",
+        kubun: "01",
+        text: "症状詳記本文"
+      }]
     }
   });
 
@@ -103,6 +126,17 @@ test("normalizes fee session update input", () => {
   assert.deepEqual(normalized.orders, []);
   assert.equal(normalized.claimContext, null);
   assert.deepEqual(normalized.calculationOptions.history.same_month_history_codes, ["160000410"]);
+  assert.equal(normalized.monthlyClaimWork.status, "diagnosis_requested");
+  assert.equal(normalized.monthlyClaimWork.note, "病名出し済み");
+  assert.equal(normalized.monthlyClaimWork.diagnosisCandidates[0].name, "急性上気道炎");
+  assert.equal(normalized.monthlyClaimWork.diagnosisRequestReason, "病名不足のため確認");
+  assert.equal(normalized.monthlyClaimWork.doctorName, "山田医師");
+  assert.equal(normalized.monthlyClaimWork.collectedResult, "急性上気道炎");
+  assert.deepEqual(normalized.monthlyClaimWork.appliedDiagnosisNames, ["急性上気道炎"]);
+  assert.equal(normalized.receiptAnnotations.comments[0].status, "confirmed");
+  assert.equal(normalized.receiptAnnotations.comments[0].shinryoIdentification, "60");
+  assert.equal(normalized.receiptAnnotations.comments[0].sourceReviewItemId, "review_1");
+  assert.equal(normalized.receiptAnnotations.symptomDetails[0].kubun, "01");
 });
 
 test("validates shared patient shape for fee patient creation", () => {

@@ -47,7 +47,8 @@ try {
     const drawer = page.locator(".admin-nav-drawer");
     await drawer.waitFor();
     assert.equal(await drawer.locator(".admin-nav-drawer-head strong").textContent(), "移動先を選択");
-    assert.equal(await drawer.locator(".admin-sidebar-link").count(), 5);
+    assert.equal(await drawer.locator(".admin-sidebar-link").count(), 6);
+    assert.equal(await drawer.getByRole("link", { name: /月次レセ点検/ }).count(), 1);
 
     const drawerBox = await drawer.boundingBox();
     assert.ok(drawerBox, "drawer must be visible");
@@ -63,6 +64,18 @@ try {
 
     const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     assert.equal(hasHorizontalOverflow, false);
+
+    await page.goto(`${baseUrl}/monthly`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "請求月ごとの確認状況" }).waitFor();
+    await page.getByRole("heading", { name: "患者別点検リスト" }).waitFor();
+    assert.equal(await page.getByText("病名不足 1件").count(), 1, "monthly worklist must show missing diagnosis count");
+    assert.equal(await page.getByText("要確認 2件").count(), 1, "monthly worklist must show review count");
+    await page.getByRole("button", { name: /患者名未入力/ }).click();
+    await page.getByText("作業状態").waitFor();
+    await page.getByText("候補病名").waitFor();
+    assert.equal(await page.locator("textarea").evaluateAll((items) => items.some((item) => item.value === "急性上気道炎")), true);
+    await page.getByText("算定根拠の確認が必要です。").waitFor();
+    assert.equal(await page.getByRole("link", { name: "開く" }).first().getAttribute("href"), "/sessions/fee_test_1");
 
     await page.goto(`${baseUrl}/sessions/fee_test_1`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "患者", level: 2 }).waitFor();
@@ -188,6 +201,111 @@ async function installApiMocks(page) {
         displayName: "General"
       }],
       masterStatus: { available: true }
+    })
+  }));
+  await page.route("**/api/fee/v1/fee/monthly-summary**", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      claimMonth: "2026-06",
+      patientCount: 2,
+      sessionCount: 3,
+      totalPoints: 451,
+      calculatedCount: 2,
+      needsReviewCount: 2,
+      missingDiagnosisCount: 1,
+      symptomDetailCandidateCount: 1,
+      readyForClaimCount: 1,
+      blockedCount: 2,
+      uncalculatedCount: 0,
+      patients: [{
+        patientId: "patient_1",
+        patientName: "患者名未入力",
+        sessionCount: 2,
+        totalPoints: 321,
+        calculatedCount: 2,
+        needsReviewCount: 2,
+        missingDiagnosisCount: 0,
+        symptomDetailCandidateCount: 1,
+        readyForClaimCount: 1,
+        blockedCount: 1,
+        uncalculatedCount: 0,
+        readyForClaim: false,
+        blocked: true,
+        sessions: [{
+          feeSessionId: "fee_test_1",
+          serviceDate: "2026-06-03",
+          status: "needs_review",
+          totalPoints: 321,
+          monthlyClaimWork: {
+            status: "doctor_confirming",
+            diagnosisCandidates: [{ name: "急性上気道炎" }],
+            diagnosisRequestReason: "病名不足のため確認",
+            doctorName: "山田医師",
+            collectedResult: "急性上気道炎"
+          },
+          readiness: {
+            blocked: true,
+            readyForClaim: false,
+            diagnosisRequestCandidate: true,
+            issues: [{
+              type: "review",
+              label: "要確認",
+              detail: "算定根拠の確認が必要です。"
+            }]
+          }
+        }]
+      }, {
+        patientId: "patient_2",
+        patientName: "病名未確認患者",
+        sessionCount: 1,
+        totalPoints: 130,
+        calculatedCount: 1,
+        needsReviewCount: 0,
+        missingDiagnosisCount: 1,
+        symptomDetailCandidateCount: 0,
+        readyForClaimCount: 0,
+        blockedCount: 1,
+        uncalculatedCount: 0,
+        readyForClaim: false,
+        blocked: true,
+        sessions: [{
+          feeSessionId: "fee_test_2",
+          serviceDate: "2026-06-04",
+          status: "calculated",
+          totalPoints: 130
+        }]
+      }]
+    })
+  }));
+  await page.route("**/api/fee/v1/fee/monthly-bulk-candidates**", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      claimMonth: "2026-06",
+      targetCount: 1,
+      runnableCount: 1,
+      blockedCount: 0,
+      reasonCounts: { uncalculated: 1 },
+      targets: [{
+        feeSessionId: "fee_test_2",
+        patientId: "patient_2",
+        patientName: "病名未確認患者",
+        serviceDate: "2026-06-04",
+        reason: "uncalculated",
+        reasonLabel: "未算定",
+        canRun: true
+      }]
+    })
+  }));
+  await page.route("**/api/fee/v1/fee/monthly-bulk-jobs**", (route) => route.fulfill({
+    status: 202,
+    contentType: "application/json",
+    body: JSON.stringify({
+      monthlyBulkJob: {
+        monthlyBulkJobId: "bulk_1",
+        status: "completed_with_errors",
+        progress: { totalCount: 1, processedCount: 1, queuedCount: 0, failedCount: 1, skippedCount: 0, percent: 100 },
+        items: [{ itemId: "bulk_item_1", feeSessionId: "fee_test_2", patientName: "病名未確認患者", serviceDate: "2026-06-04", status: "failed", reasonLabel: "未算定", errorMessage: "not configured" }]
+      }
     })
   }));
   await page.route("**/api/fee/v1/fee/sessions**", (route) => {

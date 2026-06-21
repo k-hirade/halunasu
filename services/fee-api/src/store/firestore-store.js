@@ -15,6 +15,7 @@ import {
 import {
   matchesSearch,
   matchesStatus,
+  monthlyBulkJobProgress,
   normalizeListOptions,
   notFoundError,
   toSessionSummary
@@ -342,6 +343,47 @@ export class FirestoreFeeStore {
     return { calculationJob: updated };
   }
 
+  async createMonthlyBulkJob(orgId, input = {}) {
+    const now = this.timestamp();
+    const monthlyBulkJobId = this.idFactory("fee_monthly_bulk_job");
+    const job = sanitizeForFirestore({
+      monthlyBulkJobId,
+      jobId: monthlyBulkJobId,
+      orgId,
+      claimMonth: input.claimMonth || null,
+      status: input.status || "planned",
+      phase: input.phase || "planned",
+      progress: input.progress || monthlyBulkJobProgress(input.items || []),
+      items: Array.isArray(input.items) ? input.items : [],
+      resultSummary: input.resultSummary || null,
+      createdByMemberId: input.createdByMemberId || null,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    });
+    await this.monthlyBulkJobDoc(orgId, monthlyBulkJobId).set(job);
+    return { monthlyBulkJob: job };
+  }
+
+  async getMonthlyBulkJob(orgId, monthlyBulkJobId) {
+    return docDataOrNull(await this.monthlyBulkJobDoc(orgId, monthlyBulkJobId).get());
+  }
+
+  async updateMonthlyBulkJob(orgId, monthlyBulkJobId, patch = {}) {
+    const current = await this.getMonthlyBulkJob(orgId, monthlyBulkJobId);
+    if (!current) {
+      throw notFoundError("monthly bulk job not found");
+    }
+    const updated = sanitizeForFirestore({
+      ...current,
+      ...patch,
+      progress: patch.progress || monthlyBulkJobProgress(patch.items || current.items || []),
+      updatedAt: this.timestamp()
+    });
+    await this.monthlyBulkJobDoc(orgId, monthlyBulkJobId).set(updated);
+    return { monthlyBulkJob: updated };
+  }
+
   doc(path) {
     return this.db.doc(path);
   }
@@ -354,6 +396,10 @@ export class FirestoreFeeStore {
     return this.doc(feeSessionPath(orgId, feeSessionId))
       .collection("calculationJobs")
       .doc(calculationJobId);
+  }
+
+  monthlyBulkJobDoc(orgId, monthlyBulkJobId) {
+    return this.orgCollection(orgId, "monthlyBulkJobs").doc(monthlyBulkJobId);
   }
 
   sessionStatusViewDoc(orgId, feeSessionId) {

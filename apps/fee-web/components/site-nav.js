@@ -62,7 +62,8 @@ export function SiteNav() {
   } = useAdminNav();
 
   const isAdminRoute = pathname?.startsWith("/admin");
-  const isFeeRoute = !isAdminRoute;
+  const isMonthlyRoute = pathname?.startsWith("/monthly");
+  const isSessionsRoute = !isAdminRoute && !isMonthlyRoute;
   const settingsSections = (isAdminNavAvailable && adminSections.length ? adminSections : SETTINGS_MENU_SECTIONS)
     .map((section) => ({
       ...section,
@@ -151,13 +152,22 @@ export function SiteNav() {
               <div className="admin-sidebar-group">
                 <span>メイン</span>
                 <a
-                  aria-current={isFeeRoute ? "page" : undefined}
-                  className={`admin-sidebar-link ${isFeeRoute ? "is-active" : ""}`}
+                  aria-current={isSessionsRoute ? "page" : undefined}
+                  className={`admin-sidebar-link ${isSessionsRoute ? "is-active" : ""}`}
                   href="/sessions"
                   onClick={closeAdminNav}
                 >
                   <strong>算定</strong>
                   <small>算定記録の作成、一覧、レビューを行います。</small>
+                </a>
+                <a
+                  aria-current={isMonthlyRoute ? "page" : undefined}
+                  className={`admin-sidebar-link ${isMonthlyRoute ? "is-active" : ""}`}
+                  href="/monthly"
+                  onClick={closeAdminNav}
+                >
+                  <strong>月次レセ点検</strong>
+                  <small>請求月ごとの要確認、病名不足、出力可否を確認します。</small>
                 </a>
               </div>
               {settingsSectionGroups.map(({ group, sections }) => (
@@ -186,4 +196,3 @@ export function SiteNav() {
     </>
   );
 }
-

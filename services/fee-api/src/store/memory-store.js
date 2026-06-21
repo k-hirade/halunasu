@@ -14,6 +14,7 @@ export class MemoryFeeStore {
     this.idFactory = options.idFactory || createId;
     this.sessionsByOrg = new Map();
     this.calculationJobsByOrg = new Map();
+    this.monthlyBulkJobsByOrg = new Map();
   }
 
   createSession(input) {
@@ -209,6 +210,47 @@ export class MemoryFeeStore {
     return { calculationJob: updated };
   }
 
+  createMonthlyBulkJob(orgId, input = {}) {
+    const now = this.timestamp();
+    const monthlyBulkJobId = this.idFactory("fee_monthly_bulk_job");
+    const job = {
+      monthlyBulkJobId,
+      jobId: monthlyBulkJobId,
+      orgId,
+      claimMonth: input.claimMonth || null,
+      status: input.status || "planned",
+      phase: input.phase || "planned",
+      progress: input.progress || monthlyBulkJobProgress(input.items || []),
+      items: Array.isArray(input.items) ? input.items : [],
+      resultSummary: input.resultSummary || null,
+      createdByMemberId: input.createdByMemberId || null,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    };
+    this.monthlyBulkJobsForOrg(orgId).set(monthlyBulkJobId, job);
+    return { monthlyBulkJob: job };
+  }
+
+  getMonthlyBulkJob(orgId, monthlyBulkJobId) {
+    return this.monthlyBulkJobsForOrg(orgId).get(monthlyBulkJobId) || null;
+  }
+
+  updateMonthlyBulkJob(orgId, monthlyBulkJobId, patch = {}) {
+    const current = this.getMonthlyBulkJob(orgId, monthlyBulkJobId);
+    if (!current) {
+      throw notFoundError("monthly bulk job not found");
+    }
+    const updated = {
+      ...current,
+      ...patch,
+      progress: patch.progress || monthlyBulkJobProgress(patch.items || current.items || []),
+      updatedAt: this.timestamp()
+    };
+    this.monthlyBulkJobsForOrg(orgId).set(monthlyBulkJobId, updated);
+    return { monthlyBulkJob: updated };
+  }
+
   sessionsForOrg(orgId) {
     if (!this.sessionsByOrg.has(orgId)) {
       this.sessionsByOrg.set(orgId, new Map());
@@ -225,9 +267,38 @@ export class MemoryFeeStore {
     return this.calculationJobsByOrg.get(orgId);
   }
 
+  monthlyBulkJobsForOrg(orgId) {
+    if (!this.monthlyBulkJobsByOrg.has(orgId)) {
+      this.monthlyBulkJobsByOrg.set(orgId, new Map());
+    }
+
+    return this.monthlyBulkJobsByOrg.get(orgId);
+  }
+
   timestamp() {
     return this.now().toISOString();
   }
+}
+
+export function monthlyBulkJobProgress(items = []) {
+  const counts = {};
+  for (const item of Array.isArray(items) ? items : []) {
+    const status = String(item.status || "pending");
+    counts[status] = Number(counts[status] || 0) + 1;
+  }
+  const totalCount = Array.isArray(items) ? items.length : 0;
+  const processedCount = ["queued", "succeeded", "failed", "skipped", "canceled"].reduce((sum, status) => sum + Number(counts[status] || 0), 0);
+  return {
+    totalCount,
+    processedCount,
+    pendingCount: Number(counts.pending || 0),
+    queuedCount: Number(counts.queued || 0),
+    succeededCount: Number(counts.succeeded || 0),
+    failedCount: Number(counts.failed || 0),
+    skippedCount: Number(counts.skipped || 0),
+    canceledCount: Number(counts.canceled || 0),
+    percent: totalCount ? Math.round((processedCount / totalCount) * 100) : 100
+  };
 }
 
 function calculationJobKey(feeSessionId, calculationJobId) {
