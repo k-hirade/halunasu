@@ -102,16 +102,51 @@ try {
     await clinicalEditor.focus();
     const medicationAnnotation = clinicalEditor.locator(".clinical-text-inline-annotation").filter({ hasText: "ゲーベンクリーム XXgを塗布。" }).first();
     await medicationAnnotation.evaluate((span) => {
+      const editor = span.closest(".clinical-text-editable");
+      editor?.focus();
+      const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
+      let textNode = null;
+      let offset = -1;
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        offset = node.textContent.indexOf("XX");
+        if (offset >= 0) {
+          textNode = node;
+          break;
+        }
+      }
+      if (!textNode || offset < 0) {
+        throw new Error("missing editable medication placeholder");
+      }
       const range = document.createRange();
-      range.selectNodeContents(span);
+      range.setStart(textNode, offset);
+      range.setEnd(textNode, offset + "XX".length);
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
+      const inserted = document.execCommand("insertText", false, "50");
+      if (!inserted) {
+        throw new Error("failed to insert medication text");
+      }
     });
-    await page.keyboard.insertText("ゲーベンクリーム 5gを塗布。");
-    await page.waitForFunction(() => document.querySelector(".clinical-text-editable")?.innerText.includes("ゲーベンクリーム 5gを塗布。"));
+    await clinicalEditor.evaluate(() => {
+      const inserted = document.execCommand("insertText", false, "m");
+      if (!inserted) {
+        throw new Error("failed to continue medication text edit");
+      }
+    });
+    const editedMedicationText = "ゲーベンクリーム 50mgを塗布。";
+    await page.waitForFunction(
+      (expected) => document.querySelector(".clinical-text-editable")?.innerText.includes(expected),
+      editedMedicationText
+    );
     assert.equal(
-      await clinicalEditor.locator(".clinical-text-inline-annotation").filter({ hasText: "ゲーベンクリーム 5gを塗布。" }).count(),
+      await clinicalEditor.evaluate((element) => element.innerText.trim().startsWith("m")),
+      false,
+      "continued typing after editing an inline annotation must not jump to the beginning"
+    );
+    assert.equal(
+      await clinicalEditor.locator(".clinical-text-inline-annotation").filter({ hasText: editedMedicationText }).count(),
       0,
       "edited inline annotation must become regular chart text"
     );
@@ -168,7 +203,7 @@ try {
       "unedited inline red ointment annotation must not be persisted into the original chart text"
     );
     assert.equal(
-      patchBody.clinicalText.includes("ゲーベンクリーム 5gを塗布。"),
+      patchBody.clinicalText.includes(editedMedicationText),
       true,
       "edited inline annotation must be persisted as regular chart text"
     );
