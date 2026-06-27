@@ -853,6 +853,69 @@ test("preserves clinical event specimen and review issue policy metadata", () =>
   assert.equal(workbench.issues[0].assessmentRisk.riskCategory, "body_laterality");
 });
 
+test("hides negated and excluded clinical event review items from the workspace", () => {
+  const session = buildFeeSession({
+    orgId: "org_123",
+    createdByMemberId: "member_1",
+    patientId: "patient_1",
+    facilityId: "facility_1",
+    serviceDate: "2026-06-07"
+  }, {
+    feeSessionId: "fee_hidden_review",
+    now: "2026-06-07T00:00:00.000Z"
+  });
+  const calculated = applyCalculationResult(session, {
+    reviewIssues: [{
+      reviewIssueId: "issue_nebulizer_not_done",
+      issueCode: "planned_not_performed",
+      severity: "warning",
+      title: "ネブライザーの確認",
+      messageForStaff: "ネブライザーは施行せずと記載されているため、算定候補には入れていません。",
+      source: "clinical_event_rule"
+    }, {
+      reviewIssueId: "issue_comment_required",
+      issueCode: "needs_review",
+      severity: "warning",
+      title: "レセプトコメントの確認",
+      messageForStaff: "レセプトコメントの確認: 120002910 処方箋料に必要なコメント: 830100194 １を算定しない理由（処方箋料）",
+      requiredInput: "コメント本文",
+      source: "required_comment"
+    }]
+  }, {
+    calculationId: "calc_hidden_review",
+    now: "2026-06-07T00:01:00.000Z"
+  });
+
+  const reviewItems = buildReviewItems(calculated);
+  const hiddenItem = reviewItems.find((item) => item.reviewIssue?.reviewIssueId === "issue_nebulizer_not_done");
+  const commentItem = reviewItems.find((item) => item.reviewIssue?.reviewIssueId === "issue_comment_required");
+  const workbench = buildCandidateWorkbench(calculated);
+
+  assert.equal(hiddenItem.status, "hidden");
+  assert.equal(hiddenItem.hiddenFromWorkspace, true);
+  assert.equal(commentItem.status, "needs_review");
+  assert.equal(workbench.issues.length, 1);
+  assert.equal(workbench.issues[0].displayTitle, "レセプトコメントの確認");
+  assert.equal(workbench.hiddenIssues.length, 1);
+  assert.equal(workbench.needsReviewCount, 1);
+
+  const hiddenOnly = applyCalculationResult(session, {
+    reviewIssues: [{
+      reviewIssueId: "issue_nebulizer_not_done",
+      issueCode: "planned_not_performed",
+      severity: "warning",
+      title: "ネブライザーの確認",
+      messageForStaff: "ネブライザーは施行せずと記載されているため、算定候補には入れていません。",
+      source: "clinical_event_rule"
+    }]
+  }, {
+    calculationId: "calc_hidden_only",
+    now: "2026-06-07T00:02:00.000Z"
+  });
+  assert.equal(hiddenOnly.status, "calculated");
+  assert.equal(buildCandidateWorkbench(hiddenOnly).needsReviewCount, 0);
+});
+
 function assertNoUndefined(value) {
   if (Array.isArray(value)) {
     value.forEach(assertNoUndefined);

@@ -876,13 +876,15 @@ export function buildReviewItems(session = {}) {
     .filter(Boolean));
   const structuredIssueItems = reviewIssues.map((issue) => {
     const reviewItemId = reviewIssueReviewItemId(issue);
+    const hiddenFromWorkspace = shouldHideReviewIssueFromWorkspace({ reviewIssue: issue });
     return reviewItem({
       reviewItemId,
       sourceType: "review_issue",
       severity: issue.severity || "warning",
       title: issue.topicLabel || issue.title || reviewWarningTitle(issue.messageForStaff),
       reason: issue.messageForStaff || "確認が必要です。",
-      defaultStatus: "needs_review",
+      defaultStatus: hiddenFromWorkspace ? "hidden" : "needs_review",
+      hiddenFromWorkspace,
       reviewIssue: issue,
       decision: decisions[reviewItemId]
     });
@@ -893,6 +895,7 @@ export function buildReviewItems(session = {}) {
     }
     const reviewItemId = warningReviewItemId(message, index);
     const legacyReviewItemId = legacyWarningReviewItemId(index);
+    const hiddenFromWorkspace = shouldHideReviewIssueFromWorkspace({ message });
     return reviewItem({
       reviewItemId,
       legacyReviewItemId,
@@ -900,6 +903,8 @@ export function buildReviewItems(session = {}) {
       severity: "warning",
       title: reviewWarningTitle(message),
       reason: message,
+      defaultStatus: hiddenFromWorkspace ? "hidden" : "needs_review",
+      hiddenFromWorkspace,
       decision: decisions[reviewItemId] || decisions[legacyReviewItemId]
     });
   });
@@ -985,7 +990,22 @@ export function buildCandidateWorkbench(session = {}, options = {}) {
   });
   const proposalItems = reviewItems.filter((item) => item?.sourceType === "candidate_proposal");
   const warningItems = reviewItems.filter((item) => item?.sourceType === "warning" || item?.sourceType === "review_issue");
-  attachWarningsToLines(lines, warningItems);
+  const hiddenIssues = [];
+  const visibleWarningItems = [];
+  for (const item of warningItems) {
+    const normalized = normalizeCandidateActionItem(item);
+    if (shouldHideCandidateActionItem(item, normalized)) {
+      hiddenIssues.push({
+        ...normalized,
+        kind: "hidden_issue",
+        kindLabel: "非表示の除外理由",
+        bucket: "hidden"
+      });
+    } else {
+      visibleWarningItems.push(item);
+    }
+  }
+  attachWarningsToLines(lines, visibleWarningItems);
   const lineTexts = lines.map((line) => `${line.name || ""} ${line.displayTitle || ""}`).join(" ");
   const proposals = [];
   const issues = [];
@@ -1027,7 +1047,7 @@ export function buildCandidateWorkbench(session = {}, options = {}) {
     }
   }
 
-  for (const item of warningItems) {
+  for (const item of visibleWarningItems) {
     if (shouldSuppressWarningForExistingLine(item, lineTexts)) {
       continue;
     }
@@ -1050,7 +1070,7 @@ export function buildCandidateWorkbench(session = {}, options = {}) {
       issues.push({
         ...normalized,
         kind: "issue",
-        kindLabel: "確認・修正",
+        kindLabel: "不足情報・追記",
         bucket: "issue"
       });
     }
@@ -1068,6 +1088,7 @@ export function buildCandidateWorkbench(session = {}, options = {}) {
     includedLines,
     pendingLines,
     excludedLines,
+    hiddenIssues,
     proposals,
     issues
   });
@@ -1080,12 +1101,14 @@ export function buildCandidateWorkbench(session = {}, options = {}) {
     includedLines,
     pendingLines,
     excludedLines,
+    hiddenIssues,
     proposals,
     issues,
     counts: {
       included: includedLines.length,
       pending: pendingLines.length,
       excluded: excludedLines.length,
+      hidden: hiddenIssues.length,
       proposals: proposals.length,
       issues: issues.length,
       reviewLines: reviewLineCount,
@@ -1096,6 +1119,7 @@ export function buildCandidateWorkbench(session = {}, options = {}) {
     includedCount: includedLines.length,
     pendingCount: pendingLines.length,
     excludedCount: excludedLines.length,
+    hiddenIssueCount: hiddenIssues.length,
     needsReviewCount: proposals.length + issues.length + reviewLineCount,
     generatedAt: receiptDraft.generatedAt || timestamp(options.now)
   };
@@ -1140,9 +1164,11 @@ export function createId(prefix) {
 }
 
 function calculationNeedsReview(calculation) {
-  return (calculation.warnings || []).length > 0
+  const visibleWarnings = (calculation.warnings || []).filter((message) => !shouldHideReviewIssueFromWorkspace({ message }));
+  const visibleReviewIssues = (calculation.reviewIssues || []).filter((issue) => !shouldHideReviewIssueFromWorkspace({ reviewIssue: issue }));
+  return visibleWarnings.length > 0
     || (calculation.candidateProposals || []).length > 0
-    || (calculation.reviewIssues || []).length > 0
+    || visibleReviewIssues.length > 0
     || calculation.coverage?.reviewRequired === true
     || (calculation.lineItems || []).some((line) => {
       const status = line.status || "candidate";
@@ -1622,6 +1648,7 @@ function reviewItem(input) {
     topicLabel: input.topicLabel || reviewIssue?.topicLabel || reviewIssue?.topic_label || null,
     source: input.source || reviewIssue?.source || candidateProposal?.source || null,
     policy: input.policy || reviewIssue?.policy || candidateProposal?.policy || null,
+    hiddenFromWorkspace: input.hiddenFromWorkspace === true,
     requiredInput: input.requiredInput || reviewIssue?.requiredInput || reviewIssue?.required_input || candidateProposal?.policy?.requiredInput || null,
     resolutionOptions: Array.isArray(input.resolutionOptions)
       ? input.resolutionOptions
@@ -1785,6 +1812,7 @@ function normalizeCandidateActionItem(item = {}) {
     status: item.status || "needs_review",
     decisionStatus: item.decision?.status || item.status || "needs_review",
     sourceType: item.sourceType || "warning",
+    hiddenFromWorkspace: item.hiddenFromWorkspace === true,
     source,
     policy,
     assessmentRisk: reviewIssue?.assessmentRisk || reviewIssue?.assessment_risk || null,
@@ -1794,6 +1822,79 @@ function normalizeCandidateActionItem(item = {}) {
     reviewIssue,
     sourceItem: item
   };
+}
+
+function shouldHideCandidateActionItem(item = {}, normalized = {}) {
+  if (item.hiddenFromWorkspace === true || normalized.hiddenFromWorkspace === true) {
+    return true;
+  }
+  const issueCode = normalized.issueCode || item.issueCode || item.reviewIssue?.issueCode || item.reviewIssue?.issue_code || "";
+  if (hiddenWorkspaceIssueCodes().has(String(issueCode || "").trim())) {
+    return true;
+  }
+  const text = [
+    normalized.displayTitle,
+    normalized.displayReason,
+    normalized.conditionText,
+    item.title,
+    item.reason,
+    item.reviewIssue?.messageForStaff,
+    item.reviewIssue?.evidence
+  ].filter(Boolean).join(" ");
+  return isHiddenWorkspaceReviewText(text);
+}
+
+function shouldHideReviewIssueFromWorkspace({ reviewIssue = null, message = "" } = {}) {
+  const issueCode = reviewIssue?.issueCode || reviewIssue?.issue_code || "";
+  if (hiddenWorkspaceIssueCodes().has(String(issueCode || "").trim())) {
+    return true;
+  }
+  if (reviewIssue?.policy?.riskGate === "hidden") {
+    return true;
+  }
+  const reasons = Array.isArray(reviewIssue?.policy?.reasons) ? reviewIssue.policy.reasons : [];
+  if (reasons.some((reason) => [
+    "negated_service_context",
+    "future_or_order_only_context",
+    "past_or_external_context"
+  ].includes(String(reason || "")))) {
+    return true;
+  }
+  const text = [
+    message,
+    reviewIssue?.title,
+    reviewIssue?.messageForStaff,
+    reviewIssue?.evidence
+  ].filter(Boolean).join(" ");
+  return isHiddenWorkspaceReviewText(text);
+}
+
+function hiddenWorkspaceIssueCodes() {
+  return new Set([
+    "planned_not_performed",
+    "instruction_only",
+    "other_provider",
+    "past_or_carried_in",
+    "unsupported_event"
+  ]);
+}
+
+function isHiddenWorkspaceReviewText(text = "") {
+  const value = String(text || "");
+  if (!value) {
+    return false;
+  }
+  if (/(施行せず|実施せず|未実施|未施行|行わず|行っていない|施行していない|実施していない|撮影せず|検査せず|中止|否定)/u.test(value)) {
+    return true;
+  }
+  if (/(他科|他院|他施設|他医療機関|過去値|持参情報|既往薬|内服中|今後の予定|予定・依頼|予定|依頼|検討).{0,40}(算定候補には入れていません|自動算定には入れていません|今回算定候補には入れていません)/u.test(value)) {
+    return true;
+  }
+  if (/(現在の自動算定では直接候補化できない|現在の算定ルールで直接候補化できない|未対応項目|算定候補には入れていません)/u.test(value)
+    && !/(コメント|症状詳記|病名|適応|施設基準|数量|日数|総量|1回量|1日回数|部位|左右|機器区分|造影|受付時刻|同月|管理料|指導料|採血|検体採取)/u.test(value)) {
+    return true;
+  }
+  return false;
 }
 
 function issueCategoryForActionItem(item = {}, normalized = {}) {
@@ -2003,7 +2104,7 @@ function isVisitFeeReviewText(text = "") {
   return /初診|再診|受診履歴|過去算定記録|Outpatient basic/u.test(String(text || ""));
 }
 
-function buildCoverageSummary({ calculation = {}, includedLines = [], pendingLines = [], excludedLines = [], proposals = [], issues = [] } = {}) {
+function buildCoverageSummary({ calculation = {}, includedLines = [], pendingLines = [], excludedLines = [], hiddenIssues = [], proposals = [], issues = [] } = {}) {
   const supportLevel = calculation.coverage?.supportLevel || calculation.coverage?.support_level || "partial";
   const includedScopeLabels = uniqueCompact(includedLines.map((line) => line.businessCategory || receiptGroupLabel(line.orderType)));
   const excludedScopeLabels = uniqueCompact(excludedLines.map((line) => line.businessCategory || receiptGroupLabel(line.orderType)));
@@ -2020,10 +2121,11 @@ function buildCoverageSummary({ calculation = {}, includedLines = [], pendingLin
     includedScopeLabels,
     pendingScopeLabels,
     excludedScopeLabels,
+    hiddenIssueCount: hiddenIssues.length,
     unresolvedCount,
     badges: [
       ...includedScopeLabels.map((label) => `${label}を候補化`),
-      unresolvedCount > 0 ? `要確認 ${unresolvedCount}件` : "追加確認なし"
+      unresolvedCount > 0 ? `未処理 ${unresolvedCount}件` : "追加対応なし"
     ]
   });
 }

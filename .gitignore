@@ -97,3 +97,4 @@ python/data/master/*.sqlite
 python/data/master/*.sqlite-*
 python/data/master/*.sqlite.gz
 
+tmp/

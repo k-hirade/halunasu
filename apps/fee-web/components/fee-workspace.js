@@ -914,7 +914,6 @@ function FeeSessionDetailView({ sessionId }) {
   const [manualItemModalOpen, setManualItemModalOpen] = useState(false);
   const [manualItemDraft, setManualItemDraft] = useState(defaultManualBillingItemDraft);
   const [activeMainTab, setActiveMainTab] = useState("work");
-  const [activeWorkTab, setActiveWorkTab] = useState("candidates");
   const suppressAutoSaveRef = useRef(false);
   const autoSaveTimerRef = useRef(null);
   const pendingAutoSaveRef = useRef(null);
@@ -1438,7 +1437,7 @@ function FeeSessionDetailView({ sessionId }) {
           receiptAnnotations: upsertReceiptAnnotation(feeSession?.receiptAnnotations, {
             ...draft,
             sourceReviewItemId: item?.reviewItemId || draft.sourceReviewItemId,
-            sourceLabel: item?.displayTitle || item?.name || "要確認項目"
+            sourceLabel: item?.displayTitle || item?.name || "算定候補"
           })
         }
       });
@@ -1714,7 +1713,6 @@ function FeeSessionDetailView({ sessionId }) {
         />
         <WorkPane
           activeMainTab={activeMainTab}
-          activeWorkTab={activeWorkTab}
           calculation={calculation}
           candidateWorkbench={candidateWorkbench}
           disabled={busy}
@@ -1728,10 +1726,8 @@ function FeeSessionDetailView({ sessionId }) {
             setManualItemDraft(defaultManualBillingItemDraft());
             setManualItemModalOpen(true);
             setActiveMainTab("work");
-            setActiveWorkTab("candidates");
           }}
           onSetMainTab={setActiveMainTab}
-          onSetWorkTab={setActiveWorkTab}
           onRemoveManualOrder={removeManualOrderAndCalculate}
           orderRows={orderRows}
           receiptDraft={receiptDraft}
@@ -1931,7 +1927,6 @@ function SourcePane({
 
 function WorkPane({
   activeMainTab,
-  activeWorkTab,
   calculation,
   candidateWorkbench,
   disabled,
@@ -1944,7 +1939,6 @@ function WorkPane({
   onOpenManualItem,
   onRemoveManualOrder,
   onSetMainTab,
-  onSetWorkTab,
   orderRows = [],
   receiptDraft,
   selected
@@ -1958,14 +1952,12 @@ function WorkPane({
       <div className="fee-work-pane-body">
         {activeMainTab === "work" ? (
           <CandidateWorkbench
-            activeTab={activeWorkTab}
             calculation={calculation}
             disabled={disabled}
             feeSession={feeSession}
             onDecision={onDecision}
             onOpenManualItem={onOpenManualItem}
             onOpenDetail={onOpenDetail}
-            onTabChange={onSetWorkTab}
             candidateWorkbench={candidateWorkbench}
           />
         ) : (
@@ -2439,13 +2431,13 @@ function OrderEditor({ onAdd, onRemove, onUpdate, rows }) {
   );
 }
 
-function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbench, disabled, feeSession, onDecision, onOpenManualItem, onOpenDetail, onTabChange }) {
+function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSession, onDecision, onOpenManualItem, onOpenDetail }) {
   if (feeSession?.status === "calculating") {
     return (
       <div className="result result-empty">
         <div className="calculation-waiting-card" role="status" aria-live="polite">
           <strong>カルテ本文を読み取り算定中</strong>
-          <p>候補化が完了すると、算定候補と要確認を更新します。</p>
+          <p>候補化が完了すると、算定候補と不足情報を更新します。</p>
           <div className="calculation-waiting-lines" aria-hidden="true">
             <span />
             <span />
@@ -2476,14 +2468,12 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
   const model = normalizeCandidateWorkbenchModel(
     candidateWorkbench || emptyCandidateWorkbenchModel({ calculation })
   );
-  const adjustmentLines = [...model.pendingLines, ...model.excludedLines];
   const includedCount = model.includedLines.length;
   const proposalCount = model.proposals.length;
-  const candidateCount = includedCount + proposalCount;
-  const needsReviewCount = model.issues.length + adjustmentLines.length;
+  const issueCount = model.issues.length + model.pendingLines.length;
+  const candidateCount = includedCount + proposalCount + issueCount;
   const potentialPointsTotal = Number(model.potentialPointsTotal || 0);
   const coverageSummary = model.coverageSummary || {};
-  const selectedWorkTab = activeTab === "lines" || activeTab === "proposals" ? "candidates" : activeTab;
   return (
     <div className="candidate-workbench">
       <div className="candidate-summary">
@@ -2493,65 +2483,51 @@ function CandidateWorkbench({ activeTab = "issues", calculation, candidateWorkbe
         </div>
         <div className="candidate-summary-grid">
           <div><span>算定候補</span><strong>{candidateCount.toLocaleString()}件</strong></div>
-          <div><span>要確認</span><strong>{needsReviewCount.toLocaleString()}件</strong></div>
+          <div><span>不足情報</span><strong>{issueCount.toLocaleString()}件</strong></div>
           <div><span>増点余地</span><strong>{potentialPointsTotal > 0 ? `+${potentialPointsTotal.toLocaleString()}点` : `${proposalCount.toLocaleString()}件`}</strong></div>
         </div>
       </div>
 
-      <div className="fee-sub-tabs" role="tablist" aria-label="算定作業">
-        <TabButton active={selectedWorkTab === "candidates"} count={candidateCount} onClick={() => onTabChange("candidates")}>算定候補</TabButton>
-        <TabButton active={selectedWorkTab === "issues"} count={needsReviewCount} onClick={() => onTabChange("issues")}>要確認</TabButton>
-      </div>
-
-      {selectedWorkTab === "issues" ? (
-        <section className="candidate-bucket">
-          <BucketHeader title="確認・修正が必要" count={needsReviewCount} note="このままだと算定しづらい項目です。各項目の内容を確認し、算定する／算定しない を選んでください。" />
-          {model.issues.length ? (
-            <div className="issue-list">
-              {model.issues.map((item) => (
-                <IssueCard item={item} key={item.reviewItemId} onOpenDetail={onOpenDetail} />
-              ))}
-            </div>
-          ) : null}
-          {adjustmentLines.length ? (
-            <div className="candidate-line-list candidate-line-list--review">
-              {adjustmentLines.map((line) => (
-                <CandidateLineRow disabled={disabled} item={line} key={line.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
-              ))}
-            </div>
-          ) : null}
-          {!model.issues.length && !adjustmentLines.length ? <p className="field-note">追加で確認が必要な項目はありません。</p> : null}
-        </section>
-      ) : null}
-
-      {selectedWorkTab === "candidates" ? (
-        <section className="candidate-bucket">
-          <BucketHeader
-            action={(
-              <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={onOpenManualItem} type="button">
-                明細を追加
-              </button>
-            )}
-            title="算定候補"
-            note="合計点数に入っている明細と、条件を満たすと採用できる提案です。"
-          />
-          {model.includedLines.length ? (
-            <div className="candidate-line-list">
-              {model.includedLines.map((line) => (
-                <CandidateLineRow disabled={disabled} item={line} key={line.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
-              ))}
-            </div>
-          ) : null}
-          {model.proposals.length ? (
-            <div className="proposal-list">
-              {model.proposals.map((item) => (
-                <ProposalLineRow disabled={disabled} item={item} key={item.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
-              ))}
-            </div>
-          ) : null}
-          {!model.includedLines.length && !model.proposals.length ? <p className="field-note">算定候補はまだありません。</p> : null}
-        </section>
-      ) : null}
+      <section className="candidate-bucket">
+        <BucketHeader
+          action={(
+            <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={onOpenManualItem} type="button">
+              明細を追加
+            </button>
+          )}
+          title="算定候補"
+          note="点数に入っている明細、条件確認で採用できる提案、不足情報をまとめて表示します。未実施・否定・他院・過去情報は表示しません。"
+        />
+        {model.includedLines.length ? (
+          <div className="candidate-line-list">
+            {model.includedLines.map((line) => (
+              <CandidateLineRow disabled={disabled} item={line} key={line.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
+            ))}
+          </div>
+        ) : null}
+        {model.proposals.length ? (
+          <div className="proposal-list">
+            {model.proposals.map((item) => (
+              <ProposalLineRow disabled={disabled} item={item} key={item.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
+            ))}
+          </div>
+        ) : null}
+        {model.issues.length ? (
+          <div className="issue-list issue-list--inline">
+            {model.issues.map((item) => (
+              <IssueCard item={item} key={item.reviewItemId} onOpenDetail={onOpenDetail} />
+            ))}
+          </div>
+        ) : null}
+        {model.pendingLines.length ? (
+          <div className="candidate-line-list candidate-line-list--review">
+            {model.pendingLines.map((line) => (
+              <CandidateLineRow disabled={disabled} item={line} key={line.reviewItemId} onDecision={onDecision} onOpenDetail={onOpenDetail} />
+            ))}
+          </div>
+        ) : null}
+        {!model.includedLines.length && !model.proposals.length && !model.issues.length && !model.pendingLines.length ? <p className="field-note">算定候補はまだありません。</p> : null}
+      </section>
     </div>
   );
 }
@@ -4332,14 +4308,17 @@ function normalizeCandidateWorkbenchModel(model = {}) {
   const pendingLines = rawPendingLines.filter((line) => decisionSelectValue(line?.decisionStatus) !== "rejected");
   const excludedLines = rawExcludedLines.filter((line) => decisionSelectValue(line?.decisionStatus) !== "rejected");
   const proposals = Array.isArray(model.proposals) ? model.proposals : [];
-  const issues = Array.isArray(model.issues) ? model.issues : [];
+  const issues = Array.isArray(model.issues)
+    ? model.issues.filter((item) => item?.hiddenFromWorkspace !== true && item?.bucket !== "hidden")
+    : [];
+  const hiddenIssues = Array.isArray(model.hiddenIssues) ? model.hiddenIssues : [];
   const rawCounts = model.counts && typeof model.counts === "object" ? model.counts : {};
   const includedCount = includedLines.length;
   const pendingCount = pendingLines.length;
   const excludedCount = excludedLines.length;
   const proposalCount = proposals.length;
   const issueCount = issues.length;
-  const needsReview = issueCount + pendingCount + excludedCount;
+  const needsReview = issueCount + pendingCount;
   const potentialPointsTotal = Number(model.potentialPointsTotal ?? 0);
   return {
     ...model,
@@ -4349,10 +4328,12 @@ function normalizeCandidateWorkbenchModel(model = {}) {
     excludedLines,
     proposals,
     issues,
+    hiddenIssues,
     counts: {
       included: includedCount,
       pending: pendingCount,
       excluded: excludedCount,
+      hidden: hiddenIssues.length,
       proposals: proposalCount,
       issues: issueCount,
       needsReview
@@ -4360,6 +4341,7 @@ function normalizeCandidateWorkbenchModel(model = {}) {
     includedCount,
     pendingCount,
     excludedCount,
+    hiddenIssueCount: hiddenIssues.length,
     needsReviewCount: needsReview,
     potentialPointsTotal,
     coverageSummary: model.coverageSummary || null,
@@ -4391,12 +4373,14 @@ function emptyCandidateWorkbenchModel({ calculation } = {}) {
     includedLines: [],
     pendingLines: [],
     excludedLines: [],
+    hiddenIssues: [],
     proposals: [],
     issues: [],
     counts: {
       included: 0,
       pending: 0,
       excluded: 0,
+      hidden: 0,
       proposals: 0,
       issues: 0,
       needsReview: 0
