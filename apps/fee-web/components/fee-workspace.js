@@ -1898,10 +1898,18 @@ function SourcePane({
             {clinicalAnnotations.length ? (
               <div className="clinical-text-annotations" aria-label="カルテ本文の不足情報">
                 {clinicalAnnotations.map((annotation) => (
-                  <p key={annotation.key}>
-                    <span>【不足情報】</span>
-                    {annotation.text}
-                  </p>
+                  <div key={annotation.key}>
+                    <p>
+                      <span>【不足情報】</span>
+                      {annotation.text}
+                    </p>
+                    {annotation.example ? (
+                      <p className="clinical-text-annotation-example">
+                        <span>【追記例】</span>
+                        {annotation.example}
+                      </p>
+                    ) : null}
+                  </div>
                 ))}
               </div>
             ) : null}
@@ -2899,13 +2907,15 @@ function clinicalTextAnnotationForIssue(item = {}) {
   if (/レセプトコメント|コメント/u.test(text)) {
     return {
       key: item.reviewItemId || title,
-      text: `${title}: ${compactReceiptCommentReason(reason || text)}`
+      text: `${title}: ${humanReadableReceiptCommentReason(reason || text)}`,
+      example: receiptCommentExample(reason || text)
     };
   }
   if (category === "medication" || /薬剤|数量|日数|総量|1回量|1日回数/u.test(text)) {
     return {
       key: item.reviewItemId || title,
-      text: `${title}: ${requiredInput || compactRequiredInformation(item.conditionText) || "1回量、1日回数、日数または総量を確認してください。"}`
+      text: `${title}: ${requiredInput || compactRequiredInformation(item.conditionText) || "1回量、1日回数、日数または総量を追記してください。"}`,
+      example: medicationAnnotationExample(title)
     };
   }
   if (requiredInput) {
@@ -2950,10 +2960,31 @@ function isClinicalTextActionableIssue(text = "", item = {}) {
   return /レセプトコメント|コメント|症状詳記|病名|傷病名|適応|理由|査定|薬剤|処方|数量|日数|総量|1回量|1日回数|部位|左右|造影|機器区分|受付時刻|同月|検体|採取/u.test(String(text || ""));
 }
 
-function compactReceiptCommentReason(value = "") {
+function humanReadableReceiptCommentReason(value = "") {
   const text = String(value || "").trim();
-  const match = text.match(/に必要なコメント\s*[:：]\s*(.+)$/u);
-  return match ? `必要コメント: ${match[1]}` : compactClinicalIssueReason(text);
+  if (/複数診療科で処方/u.test(text)) {
+    return "複数診療科で処方している場合は、その旨をレセプトコメントに記載してください。";
+  }
+  if (/[１1]を算定しない理由/u.test(text)) {
+    return "処方料1を算定しない理由を確認し、該当する場合は理由をレセプトコメントに記載してください。";
+  }
+  return "レセプトコメントの要否を確認し、必要な理由を記載してください。";
+}
+
+function receiptCommentExample(value = "") {
+  const text = String(value || "").trim();
+  if (/複数診療科で処方/u.test(text)) {
+    return "複数診療科で処方。";
+  }
+  if (/[１1]を算定しない理由/u.test(text)) {
+    return "処方料1を算定しない理由: ○○のため。";
+  }
+  return "";
+}
+
+function medicationAnnotationExample(title = "") {
+  const name = String(title || "").replace(/の確認$/u, "").trim() || "薬剤名";
+  return `${name} XXmg 1日X回 X日分。`;
 }
 
 function compactRequiredInformation(value = "") {

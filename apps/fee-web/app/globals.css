@@ -1533,6 +1533,15 @@ body:has(.fee-shell--detail) {
   overflow-wrap: anywhere;
 }
 
+.clinical-text-annotations > div {
+  display: grid;
+  gap: 2px;
+}
+
+.clinical-text-annotation-example {
+  font-weight: 800;
+}
+
 .clinical-text-annotations span {
   margin-right: 4px;
 }
