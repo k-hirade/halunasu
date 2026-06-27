@@ -90,6 +90,8 @@ try {
     const sameDayTreatmentAnnotationAtSentenceEnd = await clinicalEditor.evaluate((element) => {
       const html = element.innerHTML;
       return html.includes("被覆）。<span class=\"clinical-text-inline-annotation\"")
+        && html.includes("右前腕部II度熱傷")
+        && html.includes("右前腕擦過創 30cm²")
         && html.includes("別部位としてそれぞれ処置。");
     });
     assert.equal(

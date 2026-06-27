@@ -2138,40 +2138,160 @@ function sameDayWoundTreatmentInlineText(clinicalText = "") {
 }
 
 function woundTreatmentDetailsFromClinicalText(clinicalText = "") {
-  const seen = new Set();
-  const details = [];
-  for (const sentence of String(clinicalText || "").split(/[。\n]/u)) {
-    if (!/(熱傷|やけど|創傷|擦過創|切創|裂創|挫創)/u.test(sentence)) {
-      continue;
-    }
-    const normalized = sentence.replace(/\s+/gu, " ").trim();
-    const fragments = [
-      ...normalized.matchAll(/((?:右|左)?[^、。]*?(?:熱傷|やけど)[^、。]*?(?:約?\d+(?:\.\d+)?\s*(?:cm²|cm2|㎠|平方cm))?)/gu),
-      ...normalized.matchAll(/((?:右|左)?[^、。]*?(?:創傷|擦過創|切創|裂創|挫創)[^、。]*?(?:約?\d+(?:\.\d+)?\s*(?:cm²|cm2|㎠|平方cm))?)/gu)
-    ];
-    for (const match of fragments) {
-      const detail = cleanWoundTreatmentDetail(match[1]);
-      if (!detail || seen.has(detail)) {
-        continue;
-      }
-      seen.add(detail);
-      details.push(detail);
-      if (details.length >= 3) {
-        return details;
-      }
+  const candidates = indexedClinicalSentences(clinicalText)
+    .flatMap((sentence, sentenceIndex) => woundDetailCandidatesFromSentence(sentence.text, sentence.start + sentenceIndex / 100));
+  const bestByKey = new Map();
+  for (const candidate of candidates) {
+    const current = bestByKey.get(candidate.key);
+    if (!current || candidate.score > current.score || (candidate.score === current.score && candidate.text.length > current.text.length)) {
+      bestByKey.set(candidate.key, candidate);
     }
   }
-  return details;
+  return [...bestByKey.values()]
+    .sort((left, right) => left.order - right.order)
+    .slice(0, 3)
+    .map((candidate) => candidate.text);
 }
 
-function cleanWoundTreatmentDetail(value = "") {
-  return String(value || "")
+function woundDetailCandidatesFromSentence(sentence = "", order = 0) {
+  const text = String(sentence || "").replace(/\s+/gu, " ").trim();
+  if (!/(熱傷|やけど|創傷|擦過創|切創|裂創|挫創)/u.test(text)) {
+    return [];
+  }
+  const candidates = [];
+  const woundTypePattern = /((?:(?:[IVXⅠⅡⅢⅣⅤ]+|[1-5])度?)?熱傷|やけど|創傷|擦過創|切創|裂創|挫創)/gu;
+  for (const match of text.matchAll(woundTypePattern)) {
+    const typeStart = match.index ?? 0;
+    const typeEnd = typeStart + String(match[0] || "").length;
+    if (isProcedureOnlyWoundTerm(text, typeStart, typeEnd)) {
+      continue;
+    }
+    const context = woundContextAroundType(text, typeStart, typeEnd);
+    const site = woundSiteBeforeType(context.before);
+    const area = woundAreaFromContext(context.full);
+    const type = normalizeWoundType(match[1], context.after);
+    if (!site && !area) {
+      continue;
+    }
+    const display = woundDetailDisplayText({ site, type, area });
+    if (!display) {
+      continue;
+    }
+    candidates.push({
+      key: woundDetailKey(site, type),
+      order: order + typeStart / 100000,
+      score: woundDetailSpecificityScore({ sentence: text, site, type, area }),
+      text: display
+    });
+  }
+  return candidates;
+}
+
+function isProcedureOnlyWoundTerm(text = "", start = 0, end = 0) {
+  const after = String(text || "").slice(end, end + 4);
+  const before = String(text || "").slice(Math.max(0, start - 4), start);
+  return /^(?:処置|処理|手術|術)/u.test(after) && !/(右|左|部|面|側)$/u.test(before);
+}
+
+function woundContextAroundType(sentence = "", start = 0, end = 0) {
+  const text = String(sentence || "");
+  const beforeDelimiter = Math.max(
+    text.lastIndexOf("。", start),
+    text.lastIndexOf("、", start),
+    text.lastIndexOf("；", start),
+    text.lastIndexOf(";", start),
+    text.lastIndexOf("\n", start)
+  );
+  const afterPunctuation = ["。", "、", "；", ";", "\n"]
+    .map((char) => text.indexOf(char, end))
+    .filter((index) => index >= 0);
+  const afterDelimiter = afterPunctuation.length ? Math.min(...afterPunctuation) : text.length;
+  const contextStart = Math.max(0, beforeDelimiter + 1);
+  const contextEnd = Math.min(text.length, Math.max(afterDelimiter, end + 24));
+  return {
+    before: text.slice(contextStart, start),
+    after: text.slice(end, contextEnd),
+    full: text.slice(contextStart, contextEnd)
+  };
+}
+
+function woundSiteBeforeType(value = "") {
+  let text = String(value || "")
     .replace(/^[SOAＰP]\s*[：:]/u, "")
-    .replace(/^.*?(右|左)/u, "$1")
-    .replace(/範囲\s*/u, "")
-    .replace(/[（）()]/gu, "")
+    .replace(/(?:当日|本日|同時に|同時|また|さらに|加えて|および|及び|ならびに|並びに)/gu, "")
+    .replace(/[（）()]/gu, " ")
     .replace(/\s+/gu, "")
+    .replace(/[にのをへで]+$/u, "")
     .trim();
+  if (!text) {
+    return "";
+  }
+  if (/(右|左)/u.test(text)) {
+    text = text.replace(/^.*?(右|左)/u, "$1");
+  }
+  const siteMatch = text.match(/((?:右|左)?[一-龥ァ-ヶーA-Za-z0-9]*(?:前腕|上腕|下腿|大腿|手指|足趾|手背|足背|手掌|足底|膝|肘|肩|頬|額|顔面|頭部|胸部|腹部|背部|臀部|体幹|指|趾|腕|脚|足|手|部)(?:前面|後面|内側|外側|部)?)/u);
+  return (siteMatch?.[1] || text)
+    .replace(/[にのをへで]+$/u, "")
+    .trim();
+}
+
+function woundAreaFromContext(value = "") {
+  const text = String(value || "");
+  const match = text.match(/(?:範囲|大きさ|サイズ)?\s*(?:約)?\s*(\d+(?:\.\d+)?\s*(?:cm²|cm2|㎠|平方cm)|\d+(?:\.\d+)?\s*[×xX]\s*\d+(?:\.\d+)?\s*(?:cm²|cm2|㎠|平方cm|cm)?)/u);
+  if (!match) {
+    return "";
+  }
+  return String(match[1] || "")
+    .replace(/\s+/gu, "")
+    .replace(/cm2/giu, "cm²")
+    .replace(/㎠|平方cm/gu, "cm²")
+    .replace(/x/gu, "×")
+    .replace(/X/gu, "×")
+    .trim();
+}
+
+function normalizeWoundType(type = "", after = "") {
+  const text = String(type || "").replace(/\s+/gu, "").trim();
+  if (text === "熱傷") {
+    const degree = String(after || "").match(/[（(]?\s*((?:[IVXⅠⅡⅢⅣⅤ]+|[1-5])度)/u)?.[1];
+    return degree ? `${degree}熱傷` : text;
+  }
+  if (/^(?:[IVXⅠⅡⅢⅣⅤ]+|[1-5])熱傷$/u.test(text)) {
+    return text.replace(/熱傷$/u, "度熱傷");
+  }
+  return text;
+}
+
+function woundDetailDisplayText({ site = "", type = "", area = "" } = {}) {
+  const body = `${site}${type}`.replace(/\s+/gu, "").trim();
+  if (!body) {
+    return "";
+  }
+  return area ? `${body} ${area}` : body;
+}
+
+function woundDetailSpecificityScore({ sentence = "", site = "", type = "", area = "" } = {}) {
+  let score = 0;
+  if (site) score += 20;
+  if (/(右|左)/u.test(site)) score += 8;
+  if (area) score += 30;
+  if (/(?:[IVXⅠⅡⅢⅣⅤ]+|[1-5])度/u.test(type)) score += 12;
+  if (/擦過創|切創|裂創|挫創/u.test(type)) score += 10;
+  if (/処置|施行|洗浄|塗布|被覆|保護/u.test(sentence)) score += 6;
+  if (/やけど/u.test(type)) score -= 8;
+  if (/既往|前回|初回処置済み|受傷後|経過/u.test(sentence) && !area) score -= 5;
+  return score;
+}
+
+function woundDetailKey(site = "", type = "") {
+  const normalizedSite = normalizeSearchText(site);
+  const side = String(site || "").match(/[右左]/u)?.[0] || "";
+  const region = [
+    "前腕", "上腕", "下腿", "大腿", "手指", "足趾", "手背", "足背", "手掌", "足底",
+    "顔面", "頭部", "胸部", "腹部", "背部", "臀部", "体幹", "膝", "肘", "肩", "頬", "額", "指", "趾", "腕", "脚", "足", "手"
+  ].find((candidate) => normalizedSite.includes(normalizeSearchText(candidate))) || normalizedSite;
+  const family = /熱傷|やけど/u.test(type) ? "burn" : "wound";
+  return `${family}:${side}:${region}`;
 }
 
 function clinicalInlineAnnotationPlacements(clinicalText = "", annotations = []) {
@@ -2953,7 +3073,7 @@ function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSess
             </button>
           )}
           title="算定候補"
-          note="点数に入っている明細、条件確認で採用できる提案、不足情報をまとめて表示します。未実施・否定・他院・過去情報は表示しません。"
+          note="点数に入っている明細と、条件確認で採用できる提案を表示します。未実施・否定・他院・過去情報は表示しません。"
         />
         {model.includedLines.length ? (
           <div className="candidate-line-list">
@@ -2969,13 +3089,6 @@ function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSess
             ))}
           </div>
         ) : null}
-        {model.issues.length ? (
-          <div className="issue-list issue-list--inline">
-            {model.issues.map((item) => (
-              <IssueCard item={item} key={item.reviewItemId} onOpenDetail={onOpenDetail} />
-            ))}
-          </div>
-        ) : null}
         {model.pendingLines.length ? (
           <div className="candidate-line-list candidate-line-list--review">
             {model.pendingLines.map((line) => (
@@ -2985,6 +3098,8 @@ function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSess
         ) : null}
         {!model.includedLines.length && !model.proposals.length && !model.issues.length && !model.pendingLines.length ? <p className="field-note">算定候補はまだありません。</p> : null}
       </section>
+
+      <TaskInbox items={model.issues} onOpenDetail={onOpenDetail} />
     </div>
   );
 }
@@ -3085,49 +3200,95 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
   );
 }
 
-// セクション見出しに集約済みの汎用文言。各カードでの繰り返し表示はノイズになるため抑制する。
-const GENERIC_ISSUE_CONDITION_TEXT = "条件を満たす場合は算定できます。満たさない場合は算定しないに変更してください。";
+// 確認事項(不足情報・査定リスク・要確認)を「やること」インボックスとして表示する。
+// 1件=1行に圧縮し、詳細は展開ではなくポップアップ(CandidateDetailModal)で開く。
+const TASK_SEVERITY_META = {
+  action: { rank: 0, label: "要対応", icon: "!" },
+  check: { rank: 1, label: "確認", icon: "?" },
+  info: { rank: 2, label: "情報", icon: "i" }
+};
 
-function IssueCard({ item, onOpenDetail }) {
-  const requiredInput = reviewRequiredInput(item);
-  const resolutionOptions = reviewResolutionOptions(item);
-  const risk = assessmentRiskForItem(item);
+function taskSeverity(item = {}) {
+  if (assessmentRiskForItem(item)) {
+    return "action";
+  }
   const tone = issueTone(item);
+  if (tone === "danger") {
+    return "action";
+  }
+  if (tone === "info" || tone === "neutral") {
+    return "info";
+  }
+  return "check";
+}
+
+// CTAは「何をすればいいか」が伝わる動詞にする。押下時はいずれもポップアップを開く。
+function taskActionLabel(item = {}) {
+  const blob = `${item.displayTitle || ""} ${item.displayReason || ""} ${reviewRequiredInput(item) || ""}`;
+  if (/コメント/u.test(blob)) {
+    return "理由を記載";
+  }
+  if (/病名/u.test(blob)) {
+    return "病名を確認";
+  }
+  return taskSeverity(item) === "info" ? "確認する" : "対応する";
+}
+
+function TaskInbox({ items = [], onOpenDetail }) {
+  const tasks = Array.isArray(items) ? items : [];
+  if (!tasks.length) {
+    return null;
+  }
+  const counts = { action: 0, check: 0, info: 0 };
+  const sorted = tasks
+    .map((item, index) => {
+      const severity = taskSeverity(item);
+      counts[severity] += 1;
+      return { item, severity, index };
+    })
+    .sort((a, b) => (TASK_SEVERITY_META[a.severity].rank - TASK_SEVERITY_META[b.severity].rank) || (a.index - b.index));
   return (
-    <article className={`issue-card issue-card--${item.issueCategory || "rule"}`}>
-      <span className={`issue-tone-dot issue-tone-dot--${tone}`} aria-hidden="true">
-        {issueToneIcon(tone)}
-      </span>
-      <div>
-        <strong>{item.displayTitle}</strong>
-        <p>{item.displayReason}</p>
-        {item.conditionText && item.conditionText !== GENERIC_ISSUE_CONDITION_TEXT ? <small>{item.conditionText}</small> : null}
-        {risk ? (
-          <div className="issue-assessment-risk">
-            <span>{risk.denialType || "査定リスク"}</span>
-            <p>{risk.reason || "査定・返戻につながる可能性があります。"}</p>
-            {Array.isArray(risk.checkPoints) && risk.checkPoints.length ? (
-              <small>{risk.checkPoints.join(" / ")}</small>
-            ) : null}
-          </div>
-        ) : null}
-        {requiredInput ? (
-          <div className="issue-required-input">
-            <span>確認する情報</span>
-            <strong>{requiredInput}</strong>
-          </div>
-        ) : null}
-        {resolutionOptions.length ? (
-          <div className="issue-resolution-options" aria-label="確認の選択肢">
-            {resolutionOptions.slice(0, 4).map((option) => (
-              <span key={option.value || option.label}>{option.label || option.value}</span>
-            ))}
-          </div>
-        ) : null}
+    <section className="todo-section">
+      <header className="todo-head">
+        <div>
+          <h3>やること</h3>
+          <p>確認・対応が必要な項目です。各行のボタンから内容を確認できます。</p>
+        </div>
+        <div className="todo-counts" role="status" aria-live="polite">
+          {(["action", "check", "info"]).map((severity) => (
+            counts[severity] ? (
+              <span className={`todo-chip todo-chip--${severity}`} key={severity}>
+                {TASK_SEVERITY_META[severity].label} {counts[severity]}
+              </span>
+            ) : null
+          ))}
+        </div>
+      </header>
+      <div className="todo-list">
+        {sorted.map(({ item, severity }) => (
+          <TaskRow item={item} key={item.reviewItemId} onOpenDetail={onOpenDetail} severity={severity} />
+        ))}
       </div>
-      <div className="issue-card-actions">
-        <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">詳細</button>
+    </section>
+  );
+}
+
+function TaskRow({ item, onOpenDetail, severity }) {
+  const meta = TASK_SEVERITY_META[severity] || TASK_SEVERITY_META.check;
+  const ask = String(item.displayReason || item.conditionText || "内容を確認してください。").trim();
+  return (
+    <article className={`todo-row todo-row--${severity}`}>
+      <span className={`todo-dot todo-dot--${severity}`} aria-hidden="true">{meta.icon}</span>
+      <div className="todo-main">
+        <div className="todo-meta">
+          <span className="todo-kind">{item.displayTitle || "確認事項"}</span>
+          <span className="todo-sev">{meta.label}</span>
+        </div>
+        <p className="todo-ask">{ask}</p>
       </div>
+      <button className="btn btn--sm" onClick={() => onOpenDetail(item)} type="button">
+        {taskActionLabel(item)}
+      </button>
     </article>
   );
 }
@@ -3565,16 +3726,6 @@ function issueTone(item = {}) {
   if (category === "evidence") return "warning";
   if (category === "claim-risk") return "warning";
   return "neutral";
-}
-
-function issueToneIcon(tone) {
-  return {
-    danger: "!",
-    warning: "!",
-    notice: "i",
-    info: "?",
-    neutral: "?"
-  }[tone] || "?";
 }
 
 function canApproveReviewItem(item = {}) {

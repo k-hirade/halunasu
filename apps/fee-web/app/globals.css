@@ -2902,6 +2902,157 @@ body:has(.fee-shell--detail) {
   font-weight: 900;
 }
 
+/* やること(確認事項インボックス) */
+.todo-section {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.todo-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.todo-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.todo-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.todo-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.todo-chip {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.todo-chip--action {
+  background: #fde8e8;
+  color: #b42318;
+}
+
+.todo-chip--check {
+  background: #e6effe;
+  color: #1d4ed8;
+}
+
+.todo-chip--info {
+  background: #eef1f5;
+  color: #475467;
+}
+
+.todo-list {
+  display: grid;
+  gap: 8px;
+}
+
+.todo-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.todo-row--action {
+  border-left-color: #dc2626;
+}
+
+.todo-row--check {
+  border-left-color: #2563eb;
+}
+
+.todo-row--info {
+  border-left-color: #94a3b8;
+}
+
+.todo-dot {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 1000;
+}
+
+.todo-dot--action {
+  background: #dc2626;
+}
+
+.todo-dot--check {
+  background: #2563eb;
+}
+
+.todo-dot--info {
+  background: #64748b;
+}
+
+.todo-main {
+  min-width: 0;
+}
+
+.todo-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.todo-kind {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.todo-sev {
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475467;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.todo-ask {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.todo-row .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .fee-modal-overlay {
   position: fixed;
   inset: 0;
@@ -3697,6 +3848,7 @@ body:has(.fee-shell--detail) {
   .proposal-card,
   .candidate-line-row,
   .issue-card,
+  .todo-row,
   .calculation-progress-preview,
   .master-search-controls,
   .order-editor-row {
