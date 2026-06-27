@@ -2179,10 +2179,8 @@ function humanizeReviewMessage(message = "") {
   if (/Outpatient rapid lab add-on skipped/i.test(text)) {
     return "外来迅速検体検査加算は、当日説明・文書要件を確認できないため自動追加していません。";
   }
-  if (/Required comment candidate:/i.test(text)) {
-    return text
-      .replace(/^Required comment candidate:\s*/iu, "レセプトコメントの確認: ")
-      .replace(/\s+needs\s+/iu, " に必要なコメント: ");
+  if (/レセプトコメント|Required comment candidate|必要なコメント/u.test(text)) {
+    return humanReadableRequiredCommentMessage(text);
   }
   if (/Imaging fee skipped: duplicate imaging order/i.test(text)) {
     return "画像診断の重複候補を除外しました。必要な撮影だけが算定されているか確認してください。";
@@ -2206,6 +2204,21 @@ function humanizeReviewMessage(message = "") {
     return "標準マスターには一致しましたが、章ごとの算定条件は未確認です。";
   }
   return text;
+}
+
+function humanReadableRequiredCommentMessage(value = "") {
+  const text = String(value || "").trim();
+  const target = text.match(/(?:レセプトコメントの確認\s*[:：]\s*)?(.+?)\s*に必要なコメント/u)?.[1]
+    || text.match(/^Required comment candidate:\s*(.+?)\s+needs\s+/iu)?.[1]
+    || "";
+  const prefix = target ? `${target.replace(/\b\d{6,}\b/gu, "").trim()}: ` : "";
+  if (/複数診療科で処方/u.test(text)) {
+    return `${prefix}複数診療科で処方している場合は、その旨をレセプトコメントに記載してください。`;
+  }
+  if (/[１1]を算定しない理由/u.test(text)) {
+    return `${prefix}処方料1を算定しない理由を確認し、該当する場合は理由をレセプトコメントに記載してください。`;
+  }
+  return `${prefix}レセプトコメントの要否を確認し、必要な理由を記載してください。`;
 }
 
 function stableHash(value = "") {

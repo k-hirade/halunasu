@@ -1889,30 +1889,11 @@ function SourcePane({
           </div>
           <label className="clinical-text-field">
             <span>カルテの内容</span>
-            <textarea
-              className="clinical-textarea"
-              placeholder={"S/O/A/Pや診療メモをそのまま貼り付けてください。"}
+            <ClinicalTextEditor
+              annotations={clinicalAnnotations}
+              onChange={onUpdateClinicalText}
               value={form.clinicalText}
-              onChange={(event) => onUpdateClinicalText(event.target.value)}
             />
-            {clinicalAnnotations.length ? (
-              <div className="clinical-text-annotations" aria-label="カルテ本文の不足情報">
-                {clinicalAnnotations.map((annotation) => (
-                  <div key={annotation.key}>
-                    <p>
-                      <span>【不足情報】</span>
-                      {annotation.text}
-                    </p>
-                    {annotation.example ? (
-                      <p className="clinical-text-annotation-example">
-                        <span>【追記例】</span>
-                        {annotation.example}
-                      </p>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : null}
           </label>
         </section>
 
@@ -1944,6 +1925,73 @@ function SourcePane({
       </div>
     </section>
   );
+}
+
+function ClinicalTextEditor({ annotations = [], onChange, value = "" }) {
+  const editorRef = useRef(null);
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || document.activeElement === editor) {
+      return;
+    }
+    const current = normalizeEditableClinicalText(editor.innerText);
+    if (current !== String(value || "")) {
+      editor.textContent = value || "";
+    }
+  }, [value]);
+
+  function handleInput() {
+    const next = normalizeEditableClinicalText(editorRef.current?.innerText || "");
+    onChange(next);
+  }
+
+  function handlePaste(event) {
+    const plainText = event.clipboardData?.getData("text/plain");
+    if (!plainText) {
+      return;
+    }
+    event.preventDefault();
+    document.execCommand("insertText", false, plainText);
+  }
+
+  return (
+    <div className="clinical-text-editor">
+      <div
+        aria-label="カルテの内容"
+        className="clinical-text-editable"
+        contentEditable
+        data-placeholder="S/O/A/Pや診療メモをそのまま貼り付けてください。"
+        onInput={handleInput}
+        onPaste={handlePaste}
+        ref={editorRef}
+        role="textbox"
+        suppressContentEditableWarning
+        tabIndex={0}
+      />
+      {annotations.length ? (
+        <div className="clinical-text-annotations" aria-label="カルテ本文の不足情報" contentEditable={false}>
+          {annotations.map((annotation) => (
+            <div key={annotation.key}>
+              <p>
+                <span>【不足情報】</span>
+                {annotation.text}
+              </p>
+              {annotation.example ? (
+                <p className="clinical-text-annotation-example">
+                  <span>【追記例】</span>
+                  {annotation.example}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function normalizeEditableClinicalText(value = "") {
+  return String(value || "").replace(/\u00a0/gu, " ").replace(/\n$/u, "");
 }
 
 function WorkPane({

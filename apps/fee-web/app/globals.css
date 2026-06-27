@@ -1517,10 +1517,45 @@ body:has(.fee-shell--detail) {
   white-space: pre-wrap;
 }
 
+.clinical-text-editor {
+  min-height: 330px;
+  max-height: min(52dvh, 520px);
+  overflow: auto;
+  border: 1px solid #c8d4e2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 11px;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.clinical-text-editor:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
+}
+
+.clinical-text-editable {
+  min-height: 240px;
+  outline: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.55;
+}
+
+.clinical-text-editable:empty::before {
+  content: attr(data-placeholder);
+  color: #98a2b3;
+  pointer-events: none;
+}
+
 .clinical-text-annotations {
   display: grid;
   gap: 6px;
-  margin-top: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed #fecaca;
   color: #b91c1c;
   font-size: 13px;
   font-weight: 900;
