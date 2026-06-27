@@ -2194,6 +2194,12 @@ function clinicalInlineAnnotationPlacements(clinicalText = "", annotations = [])
 }
 
 function clinicalInlineAnnotationIndex(clinicalText = "", annotation = {}) {
+  if (annotation.inlineKind === "same_day_wound_treatment") {
+    const treatmentIndex = sameDayWoundTreatmentAnnotationIndex(clinicalText, annotation);
+    if (treatmentIndex >= 0) {
+      return treatmentIndex;
+    }
+  }
   const targets = annotationTargetCandidates(annotation);
   if (!targets.length) {
     return -1;
@@ -2214,6 +2220,72 @@ function clinicalInlineAnnotationIndex(clinicalText = "", annotation = {}) {
     }
   }
   return best?.index ?? -1;
+}
+
+function sameDayWoundTreatmentAnnotationIndex(clinicalText = "", annotation = {}) {
+  const targets = annotationTargetCandidates(annotation);
+  const sentences = indexedClinicalSentences(clinicalText);
+  let best = null;
+  for (const sentence of sentences) {
+    const score = sameDayWoundTreatmentSentenceScore(sentence.text, targets);
+    if (score <= 0) {
+      continue;
+    }
+    if (!best || score > best.score || (score === best.score && sentence.end < best.index)) {
+      best = {
+        index: sentence.end,
+        score
+      };
+    }
+  }
+  return best?.index ?? -1;
+}
+
+function sameDayWoundTreatmentSentenceScore(sentence = "", targets = []) {
+  const text = String(sentence || "");
+  const normalized = normalizeSearchText(text);
+  const targetMatched = targets.some((target) => normalized.includes(normalizeSearchText(target)));
+  const hasWoundContext = /(熱傷|やけど|創傷|擦過創|切創|裂創|挫創|潰瘍)/u.test(text);
+  const hasTreatmentAction = /(処置|施行|洗浄|軟膏塗布|塗布|被覆|保護|デブリードマン|創処置)/u.test(text);
+  if (!targetMatched && !(hasWoundContext && hasTreatmentAction)) {
+    return 0;
+  }
+  let score = 0;
+  if (targetMatched) score += 40;
+  if (hasWoundContext) score += 18;
+  if (hasTreatmentAction) score += 18;
+  if (/当日|本日|同時|同日|別部位|別創傷/u.test(text)) score += 8;
+  if (/洗浄|被覆|軟膏塗布|塗布/u.test(text)) score += 6;
+  return score;
+}
+
+function indexedClinicalSentences(value = "") {
+  const text = String(value || "");
+  const sentences = [];
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const nextTwo = text.slice(index + 1, index + 3);
+    const isSentenceEnd = /[。；;]/u.test(char)
+      || char === "\n"
+      || (/^[A-ZＡ-Ｚ][：:]/u.test(nextTwo) && index > start);
+    if (!isSentenceEnd) {
+      continue;
+    }
+    const end = char === "\n" ? index : index + 1;
+    const sentence = text.slice(start, end);
+    if (sentence.trim()) {
+      sentences.push({ text: sentence, start, end });
+    }
+    start = char === "\n" ? index + 1 : index + 1;
+  }
+  if (start < text.length) {
+    const sentence = text.slice(start);
+    if (sentence.trim()) {
+      sentences.push({ text: sentence, start, end: text.length });
+    }
+  }
+  return sentences;
 }
 
 function annotationTargetCandidates(annotation = {}) {

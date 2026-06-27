@@ -87,6 +87,16 @@ try {
       1,
       "medication missing-dose annotation must render inline inside the chart text"
     );
+    const sameDayTreatmentAnnotationAtSentenceEnd = await clinicalEditor.evaluate((element) => {
+      const html = element.innerHTML;
+      return html.includes("被覆）。<span class=\"clinical-text-inline-annotation\"")
+        && html.includes("別部位としてそれぞれ処置。");
+    });
+    assert.equal(
+      sameDayTreatmentAnnotationAtSentenceEnd,
+      true,
+      "same-day wound treatment annotation must render after the treatment sentence"
+    );
 
     const detailColumns = await page.locator(".fee-session-workspace").evaluate((element) => getComputedStyle(element).gridTemplateColumns);
     assert.ok(detailColumns.trim().split(/\s+/).length >= 2, "desktop fee detail view must use two robust columns");
@@ -419,8 +429,16 @@ function buildMockCandidateWorkbench() {
       displayReason: "薬剤日数不足: 薬剤「ゲーベンクリーム」は日数または総量が不足しているため、算定候補には入れていません。",
       requiredInput: "1回量、1日回数、日数または総量。",
       hiddenFromWorkspace: false
+    }, {
+      reviewItemId: "review_same_day_treatment",
+      kind: "issue",
+      sourceType: "warning",
+      issueCategory: "input",
+      displayTitle: "同日複数処置の確認",
+      displayReason: "同日複数処置の確認: 熱傷処置と創傷処置を同日に算定しています。別部位・別創傷として処置した根拠を確認してください。",
+      hiddenFromWorkspace: false
     }],
-    counts: { included: 0, pending: 0, excluded: 0, proposals: 0, issues: 1, needsReview: 1 }
+    counts: { included: 0, pending: 0, excluded: 0, proposals: 0, issues: 2, needsReview: 2 }
   };
 }
 
@@ -445,7 +463,7 @@ function buildMockDetailSession(overrides = {}) {
       "熱傷創、上皮化進行中",
       "感染兆候なし",
       "P（Plan：計画）",
-      "ゲーベンクリーム塗布＋ノンスティックガーゼで保護"
+      "当日、熱傷処置を施行（洗浄・軟膏塗布・被覆）。当日、同時に右前腕の擦過創（約30cm²）にも創傷処置を施行。ゲーベンクリーム塗布＋ノンスティックガーゼで保護"
     ].join("\n"),
     diagnoses: [],
     orders: [],
