@@ -8,6 +8,8 @@ import {
   validateCreateFeeCalculationInput,
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput,
+  defaultFeeSettings,
+  validateUpdateFeeSettingsInput,
   validateUpdateFeeSessionInput
 } from "../../../packages/fee-contracts/src/index.js";
 import iconv from "iconv-lite";
@@ -24,7 +26,8 @@ import {
   departmentSnapshot,
   facilitySnapshot,
   insuranceSnapshot,
-  patientSnapshot
+  patientSnapshot,
+  validatePatchFacilityInput
 } from "../../../packages/platform-contracts/src/index.js";
 import {
   buildClinicalCalculationPreparation,
@@ -207,6 +210,39 @@ async function routeFeeApiRequest(input = {}) {
     return ok({ patients: filterPatientsForFeeSearch(patients, patientListOptionsFromUrl(url)) });
   }
 
+  if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "patients"]) && parts[4] === "billing-history") {
+    const patientId = decodeURIComponent(parts[3]);
+    const events = typeof feeStore.listBillingHistoryEventsForPatient === "function"
+      ? await feeStore.listBillingHistoryEventsForPatient(context.session.orgId, patientId, billingHistoryListOptionsFromUrl(url))
+      : [];
+    return ok({ billingHistoryEvents: events });
+  }
+
+  if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "patients"]) && parts[4] === "billing-history") {
+    requireFeeAdminContext(context);
+    requireMutationCsrf(input, context.session);
+    const patientId = decodeURIComponent(parts[3]);
+    const eventInput = normalizeBillingHistoryEventInput({ ...(input.body || {}), patientId });
+    const event = typeof feeStore.createBillingHistoryEvent === "function"
+      ? await feeStore.createBillingHistoryEvent(context.session.orgId, eventInput)
+      : eventInput;
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.billing_history_imported",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "patient",
+      targetId: patientId,
+      productId: PRODUCT_ID,
+      safePayload: {
+        patientId,
+        serviceDate: event.serviceDate,
+        lineItemCount: Array.isArray(event.lineItems) ? event.lineItems.length : 0,
+        source: event.source || "manual"
+      }
+    });
+    return created({ billingHistoryEvent: event });
+  }
+
   if (method === "POST" && matches(parts, ["v1", "fee", "patients"])) {
     requireMutationCsrf(input, context.session);
     const patient = await platformStore.createPatient(
@@ -229,8 +265,66 @@ async function routeFeeApiRequest(input = {}) {
     return ok({ facilities: await platformStore.listFacilities(context.session.orgId) });
   }
 
+  if (method === "PATCH" && parts.length === 4 && matches(parts.slice(0, 3), ["v1", "fee", "facilities"])) {
+    requireFeeAdminContext(context);
+    requireMutationCsrf(input, context.session);
+    const facilityId = decodeURIComponent(parts[3]);
+    const patch = validatePatchFacilityInput(input.body || {});
+    const facility = await platformStore.updateFacility(context.session.orgId, facilityId, patch);
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.facility_settings_updated",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "facility",
+      targetId: facility.facilityId,
+      productId: PRODUCT_ID,
+      safePayload: {
+        facilityId: facility.facilityId,
+        changedFields: Object.keys(patch).sort()
+      }
+    });
+    clearFacilityProfileCacheFor(context.session.orgId, facilityId);
+    return ok({ facility });
+  }
+
   if (method === "GET" && matches(parts, ["v1", "fee", "departments"])) {
     return ok({ departments: await platformStore.listDepartments(context.session.orgId) });
+  }
+
+  if (method === "GET" && matches(parts, ["v1", "fee", "settings"])) {
+    const facilities = await platformStore.listFacilities(context.session.orgId);
+    const settings = await feeSettingsForFacilities(feeStore, context.session.orgId, facilities);
+    return ok({ facilities, settings });
+  }
+
+  if (method === "PATCH" && parts.length === 4 && matches(parts.slice(0, 3), ["v1", "fee", "settings"])) {
+    requireFeeAdminContext(context);
+    requireMutationCsrf(input, context.session);
+    const facilityId = decodeURIComponent(parts[3]) || "default";
+    const current = typeof feeStore.getFeeSettings === "function"
+      ? await feeStore.getFeeSettings(context.session.orgId, facilityId)
+      : null;
+    const settings = validateUpdateFeeSettingsInput({
+      ...(input.body || {}),
+      facilityId,
+      current: current || {}
+    });
+    const saved = typeof feeStore.updateFeeSettings === "function"
+      ? await feeStore.updateFeeSettings(context.session.orgId, facilityId, settings)
+      : settings;
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.settings_updated",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "fee_settings",
+      targetId: facilityId,
+      productId: PRODUCT_ID,
+      safePayload: {
+        facilityId,
+        changedFields: Object.keys(input.body || {}).sort()
+      }
+    });
+    return ok({ settings: saved });
   }
 
   if (method === "GET" && matches(parts, ["v1", "fee", "sessions"])) {
@@ -610,6 +704,95 @@ async function requireFeeContext(input, platformStore) {
     productLabel: "Fee",
     allowedProductRoles: FEE_PRODUCT_ROLES
   });
+}
+
+function requireFeeAdminContext(context = {}) {
+  const session = context.session || {};
+  const feeRoles = Array.isArray(session.productRoles?.[PRODUCT_ID]) ? session.productRoles[PRODUCT_ID] : [];
+  const globalRoles = Array.isArray(session.globalRoles) ? session.globalRoles : [];
+  if (feeRoles.includes("admin") || globalRoles.some((role) => ["platform_admin", "org_owner", "org_admin"].includes(role))) {
+    return;
+  }
+  const error = new Error("Fee admin access is required");
+  error.name = "ForbiddenError";
+  error.statusCode = 403;
+  throw error;
+}
+
+async function feeSettingsForFacilities(feeStore, orgId, facilities = []) {
+  const facilityIds = Array.isArray(facilities) && facilities.length
+    ? facilities.map((facility) => facility.facilityId).filter(Boolean)
+    : ["default"];
+  const entries = await Promise.all(facilityIds.map(async (facilityId) => {
+    const current = typeof feeStore.getFeeSettings === "function"
+      ? await feeStore.getFeeSettings(orgId, facilityId)
+      : null;
+    return [facilityId, current || defaultFeeSettings({ facilityId })];
+  }));
+  if (!entries.some(([facilityId]) => facilityId === "default")) {
+    const current = typeof feeStore.getFeeSettings === "function"
+      ? await feeStore.getFeeSettings(orgId, "default")
+      : null;
+    entries.push(["default", current || defaultFeeSettings({ facilityId: "default" })]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function billingHistoryListOptionsFromUrl(url) {
+  return {
+    beforeServiceDate: url.searchParams.get("beforeServiceDate") || "",
+    sinceServiceDate: url.searchParams.get("sinceServiceDate") || "",
+    includeSameServiceDate: url.searchParams.get("includeSameServiceDate") === "true",
+    limit: Number.parseInt(url.searchParams.get("limit") || "100", 10) || 100
+  };
+}
+
+function normalizeBillingHistoryEventInput(input = {}) {
+  const patientId = String(input.patientId || input.patient_id || "").trim();
+  const serviceDate = String(input.serviceDate || input.service_date || "").trim();
+  if (!patientId) {
+    throw requestValidationError("patientId is required");
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) {
+    throw requestValidationError("serviceDate must use YYYY-MM-DD");
+  }
+  const rawLineItems = Array.isArray(input.lineItems) ? input.lineItems : input.line_items;
+  const lineItems = (Array.isArray(rawLineItems) ? rawLineItems : [])
+    .map((line, index) => normalizeBillingHistoryLineItem(line, index));
+  if (!lineItems.length) {
+    throw requestValidationError("lineItems requires at least one code");
+  }
+  return {
+    patientId,
+    serviceDate,
+    source: String(input.source || "manual").trim() || "manual",
+    sourceLabel: String(input.sourceLabel || input.source_label || "").trim() || null,
+    confidence: String(input.confidence || "external").trim() || "external",
+    lineItems
+  };
+}
+
+function normalizeBillingHistoryLineItem(line = {}, index = 0) {
+  if (!line || typeof line !== "object" || Array.isArray(line)) {
+    throw requestValidationError(`lineItems[${index}] must be an object`);
+  }
+  const code = String(line.code || line.procedureCode || line.procedure_code || "").trim();
+  if (!code) {
+    throw requestValidationError(`lineItems[${index}].code is required`);
+  }
+  return {
+    code,
+    name: String(line.name || line.procedureName || line.procedure_name || "").trim() || "",
+    status: String(line.status || "confirmed").trim() || "confirmed",
+    includedInTotal: line.includedInTotal === false ? false : true
+  };
+}
+
+function requestValidationError(message) {
+  const error = new Error(message);
+  error.name = "ValidationError";
+  error.statusCode = 400;
+  return error;
 }
 
 async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now, options = {}) {
@@ -1722,7 +1905,8 @@ async function loadPriorFeeSessionsForPatient({
   feeStore,
   orgId,
   session = {},
-  feeSessionId = ""
+  feeSessionId = "",
+  feeSettings = null
 } = {}) {
   if (
     !feeStore
@@ -1732,16 +1916,82 @@ async function loadPriorFeeSessionsForPatient({
   ) {
     return [];
   }
+  const lookbackMonths = historyLookbackMonths(feeSettings);
+  const sinceServiceDate = subtractMonthsDate(session.serviceDate, lookbackMonths);
   try {
     return await feeStore.listPriorSessionsForPatient(orgId, session.patientId, {
       beforeServiceDate: session.serviceDate,
       includeSameServiceDate: true,
       excludeFeeSessionId: feeSessionId || session.feeSessionId,
-      limit: 10
+      sinceServiceDate,
+      limit: historyLookbackLimit(lookbackMonths)
     });
   } catch {
     return [];
   }
+}
+
+async function loadPriorBillingHistoryForPatient({
+  feeStore,
+  orgId,
+  session = {},
+  feeSettings = null
+} = {}) {
+  if (
+    !feeSettings?.historyPolicy?.externalHistoryEnabled
+    || !feeStore
+    || typeof feeStore.listBillingHistoryEventsForPatient !== "function"
+    || !orgId
+    || !session.patientId
+  ) {
+    return [];
+  }
+  const lookbackMonths = historyLookbackMonths(feeSettings);
+  const sinceServiceDate = subtractMonthsDate(session.serviceDate, lookbackMonths);
+  try {
+    return await feeStore.listBillingHistoryEventsForPatient(orgId, session.patientId, {
+      beforeServiceDate: session.serviceDate,
+      includeSameServiceDate: true,
+      sinceServiceDate,
+      limit: historyLookbackLimit(lookbackMonths)
+    });
+  } catch {
+    return [];
+  }
+}
+
+function billingHistoryEventsAsPriorSessions(events = []) {
+  return (Array.isArray(events) ? events : []).map((event) => ({
+    feeSessionId: `external:${event.historyEventId || event.serviceDate || ""}`,
+    serviceDate: event.serviceDate || "",
+    sourceSystem: event.source || "external",
+    calculationResult: {
+      lineItems: Array.isArray(event.lineItems) ? event.lineItems : []
+    },
+    diagnoses: []
+  }));
+}
+
+function historyLookbackMonths(feeSettings = null) {
+  const configured = Number.parseInt(feeSettings?.historyPolicy?.defaultLookbackMonths, 10);
+  if (!Number.isFinite(configured)) {
+    return 12;
+  }
+  return Math.min(12, Math.max(1, configured));
+}
+
+function historyLookbackLimit(lookbackMonths = 12) {
+  return Math.min(500, Math.max(50, Number(lookbackMonths || 12) * 20));
+}
+
+function subtractMonthsDate(serviceDate = "", months = 12) {
+  const date = parseIsoDate(serviceDate);
+  if (!date) {
+    return "";
+  }
+  const result = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  result.setUTCMonth(result.getUTCMonth() - Math.min(12, Math.max(1, Number(months || 12))));
+  return result.toISOString().slice(0, 10);
 }
 
 // #4段階A: セッションを患者×月で名寄せし、月次サマリ(患者別の受診一覧・合計点数)を作る。
@@ -2101,15 +2351,22 @@ function countSymptomDetailCandidates({ reviewItems = [], warnings = [] } = {}) 
 
 // #8: 受診履歴(priorSessions)から、算定エンジンが同月制限・回数制限の判定に使う
 // history(same_month_history_codes / procedure_history_events 等)を組み立てる。
-export function buildPriorHistoryOptions(priorSessions = [], { serviceDate = "" } = {}) {
+export function buildPriorHistoryOptions(priorSessions = [], { serviceDate = "", feeSettings = null } = {}) {
   if (!Array.isArray(priorSessions) || !priorSessions.length) {
     return null;
   }
   const currentMonth = String(serviceDate || "").slice(0, 7);
   const sameMonthCodes = new Set();
   const sameDayCodes = new Set();
+  const sameWeekCodes = new Set();
+  const judgementGroups = new Set();
   const events = [];
   const seenEvents = new Set();
+  let labManagementSameMonth = false;
+  let medicationManagementSameMonth = false;
+  let chronicDiseaseManagementSameMonth = false;
+  let bloodCollectionSameDay = false;
+  let rapidLabSameDay = false;
 
   for (const prior of priorSessions) {
     const priorDate = String(prior?.serviceDate || "");
@@ -2131,21 +2388,85 @@ export function buildPriorHistoryOptions(priorSessions = [], { serviceDate = "" 
       }
       if (currentMonth && priorDate.slice(0, 7) === currentMonth) {
         sameMonthCodes.add(code);
+        const classification = classifyHistoryLine(line);
+        if (classification.judgementGroup) {
+          judgementGroups.add(classification.judgementGroup);
+        }
+        if (classification.labManagement) {
+          labManagementSameMonth = true;
+        }
+        if (classification.medicationManagement) {
+          medicationManagementSameMonth = true;
+        }
+        if (classification.chronicDiseaseManagement) {
+          chronicDiseaseManagementSameMonth = true;
+        }
       }
       if (serviceDate && priorDate === serviceDate) {
         sameDayCodes.add(code);
+        const classification = classifyHistoryLine(line);
+        if (classification.bloodCollection) {
+          bloodCollectionSameDay = true;
+        }
+        if (classification.rapidLab) {
+          rapidLabSameDay = true;
+        }
+      }
+      if (serviceDate && isSameIsoWeek(priorDate, serviceDate)) {
+        sameWeekCodes.add(code);
       }
     }
   }
 
-  if (!events.length && !sameMonthCodes.size && !sameDayCodes.size) {
+  if (!events.length && !sameMonthCodes.size && !sameDayCodes.size && !sameWeekCodes.size) {
     return null;
   }
-  return {
+  return compactObject({
     same_month_history_codes: [...sameMonthCodes],
     same_day_history_codes: [...sameDayCodes],
+    same_week_history_codes: [...sameWeekCodes],
+    already_billed_judgement_groups: [...judgementGroups],
+    already_billed_lab_management_same_month: labManagementSameMonth || undefined,
+    medication_already_billed_same_month: medicationManagementSameMonth || undefined,
+    chronic_disease_management_already_billed_same_month: chronicDiseaseManagementSameMonth || undefined,
+    blood_collection_already_billed_same_day: bloodCollectionSameDay || undefined,
+    outpatient_rapid_lab_already_billed_same_day: rapidLabSameDay || undefined,
+    history_completeness: feeSettings?.historyPolicy?.historyCompleteness || undefined,
+    history_lookback_months: feeSettings?.historyPolicy?.defaultLookbackMonths || undefined,
     procedure_history_events: events
+  });
+}
+
+function classifyHistoryLine(line = {}) {
+  const text = [
+    line.name,
+    line.label,
+    line.displayName,
+    line.masterName,
+    line.source,
+    line.category,
+    line.orderType
+  ].map((value) => String(value || "")).join(" ");
+  const code = String(line.code || "").trim();
+  const judgementGroup = judgementGroupForText(text);
+  return {
+    judgementGroup,
+    labManagement: /検体検査管理加算/u.test(text),
+    bloodCollection: /血液採取|静脈採血|採血/u.test(text),
+    rapidLab: /外来迅速検体検査加算/u.test(text),
+    medicationManagement: /特定疾患処方管理|処方管理/u.test(text),
+    chronicDiseaseManagement: /特定疾患療養管理|生活習慣病管理|管理料/u.test(text) && !/検体検査管理/u.test(text),
+    code
   };
+}
+
+function judgementGroupForText(text = "") {
+  if (/尿・糞便等検査判断料/u.test(text)) return "urine_feces";
+  if (/血液学的検査判断料/u.test(text)) return "hematology";
+  if (/生化学的検査判断料/u.test(text)) return "biochemistry";
+  if (/免疫学的検査判断料/u.test(text)) return "immunology";
+  if (/微生物学的検査判断料/u.test(text)) return "microbiology";
+  return "";
 }
 
 // 明確に算定しないと判断された行は履歴に含めない(過大な制限検知を避ける)
@@ -2164,8 +2485,21 @@ function isHistoryCountableLine(line = {}) {
 export function mergePriorHistoryIntoOptions(options = {}, priorHistory = {}) {
   const existing = isPlainObject(options.history) ? options.history : {};
   const merged = { ...existing };
-  for (const key of ["same_month_history_codes", "same_day_history_codes"]) {
+  for (const key of ["same_month_history_codes", "same_day_history_codes", "same_week_history_codes", "already_billed_judgement_groups"]) {
     if ((!Array.isArray(existing[key]) || !existing[key].length) && Array.isArray(priorHistory[key]) && priorHistory[key].length) {
+      merged[key] = priorHistory[key];
+    }
+  }
+  for (const key of [
+    "already_billed_lab_management_same_month",
+    "medication_already_billed_same_month",
+    "chronic_disease_management_already_billed_same_month",
+    "blood_collection_already_billed_same_day",
+    "outpatient_rapid_lab_already_billed_same_day",
+    "history_completeness",
+    "history_lookback_months"
+  ]) {
+    if (existing[key] === undefined && priorHistory[key] !== undefined) {
       merged[key] = priorHistory[key];
     }
   }
@@ -2440,12 +2774,28 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     orgId: input.orgId || baseSession.orgId,
     session: baseSession
   }));
+  const feeSettings = await measureStage(stageTimings, "feeSettings", () => loadFeeSettingsForCalculation({
+    feeStore: input.feeStore,
+    orgId: input.orgId || baseSession.orgId,
+    session: baseSession
+  }));
   const priorSessions = await measureStage(stageTimings, "patientHistory", () => loadPriorFeeSessionsForPatient({
     feeStore: input.feeStore,
     orgId: input.orgId || baseSession.orgId,
     session: baseSession,
-    feeSessionId: input.feeSessionId || baseSession.feeSessionId
+    feeSessionId: input.feeSessionId || baseSession.feeSessionId,
+    feeSettings
   }));
+  const priorBillingHistory = await measureStage(stageTimings, "externalBillingHistory", () => loadPriorBillingHistoryForPatient({
+    feeStore: input.feeStore,
+    orgId: input.orgId || baseSession.orgId,
+    session: baseSession,
+    feeSettings
+  }));
+  const combinedPriorSessions = [
+    ...priorSessions,
+    ...billingHistoryEventsAsPriorSessions(priorBillingHistory)
+  ];
   const reusableClinicalPreparation = reusableClinicalCalculationPreparation({
     session: baseSession,
     calculationInput,
@@ -2477,7 +2827,8 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
         || process.env.OPENAI_FEE_CLINICAL_TIMEOUT_MS
         || DEFAULT_OPENAI_FEE_CLINICAL_TIMEOUT_MS
       ),
-      priorSessions,
+      priorSessions: combinedPriorSessions,
+      feeSettings,
       clinicalFactsExtractor: input.clinicalFactsExtractor
     }));
   const primaryPrepared = applyFacilityProfileToPreparation(legacy, facilityProfile, {
@@ -2490,7 +2841,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     calculationInput,
     feeCalculator,
     facilityProfile,
-    priorSessions,
+    priorSessions: combinedPriorSessions,
     clinicalText: baseSession.clinicalText || calculationInput.clinicalText || ""
   }));
   const prepared = attachShadowCalculationsToPreparation(primaryPrepared, shadowCalculations);
@@ -2499,7 +2850,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
   // 同月・回数制限の判定材料を calculationOptions.history へ自動注入する。
   const hasExplicitClaimContext = isPlainObject(session.claimContext) || isPlainObject(calculationInput.claimContext);
   if (!hasExplicitClaimContext && isPlainObject(prepared.calculationOptions)) {
-    const priorHistory = buildPriorHistoryOptions(priorSessions, { serviceDate: baseSession.serviceDate });
+    const priorHistory = buildPriorHistoryOptions(combinedPriorSessions, { serviceDate: baseSession.serviceDate, feeSettings });
     if (priorHistory) {
       prepared.calculationOptions = mergePriorHistoryIntoOptions(prepared.calculationOptions, priorHistory);
     }
@@ -2953,6 +3304,20 @@ async function loadFacilityProfileForCalculation({ platformStore, orgId, session
     pruneFacilityProfileCache();
   }
   return profile;
+}
+
+async function loadFeeSettingsForCalculation({ feeStore, orgId, session = {} } = {}) {
+  const facilityId = String(session.facilityId || session.facilitySnapshot?.facilityId || "default").trim() || "default";
+  const facilitySettings = typeof feeStore?.getFeeSettings === "function"
+    ? await feeStore.getFeeSettings(orgId, facilityId)
+    : null;
+  if (facilitySettings) {
+    return facilitySettings;
+  }
+  const defaultSettings = facilityId !== "default" && typeof feeStore?.getFeeSettings === "function"
+    ? await feeStore.getFeeSettings(orgId, "default")
+    : null;
+  return defaultSettings || defaultFeeSettings({ facilityId });
 }
 
 function applyFacilityProfileToPreparation(prepared = {}, facilityProfile = {}, context = {}) {
@@ -3630,6 +3995,37 @@ function uniqueStrings(values = []) {
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
+function compactObject(value = {}) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function isSameIsoWeek(left = "", right = "") {
+  const leftDate = parseIsoDate(left);
+  const rightDate = parseIsoDate(right);
+  if (!leftDate || !rightDate) {
+    return false;
+  }
+  const leftMonday = isoWeekMonday(leftDate);
+  const rightMonday = isoWeekMonday(rightDate);
+  return leftMonday.getTime() === rightMonday.getTime();
+}
+
+function isoWeekMonday(date) {
+  const normalized = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = normalized.getUTCDay() || 7;
+  normalized.setUTCDate(normalized.getUTCDate() - day + 1);
+  return normalized;
+}
+
+function parseIsoDate(value = "") {
+  const text = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return null;
+  }
+  const date = new Date(`${text}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function pruneFacilityProfileCache() {
   const now = Date.now();
   for (const [cacheKey, entry] of facilityProfileCache.entries()) {
@@ -3643,6 +4039,15 @@ function pruneFacilityProfileCache() {
       break;
     }
     facilityProfileCache.delete(oldestKey);
+  }
+}
+
+function clearFacilityProfileCacheFor(orgId = "", facilityId = "") {
+  const orgPart = `:${orgId || ""}:${facilityId || ""}`;
+  for (const cacheKey of facilityProfileCache.keys()) {
+    if (cacheKey.endsWith(orgPart)) {
+      facilityProfileCache.delete(cacheKey);
+    }
   }
 }
 

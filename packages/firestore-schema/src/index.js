@@ -16,6 +16,8 @@ export const collections = Object.freeze({
   auditEvents: "audit_events",
   dataRequests: "data_requests",
   chartingEncounters: "charting_encounters",
+  feeSettings: "fee_settings",
+  feeBillingHistory: "fee_billing_history",
   feeSessions: "fee_sessions",
   referrals: "referrals"
 });
@@ -102,6 +104,14 @@ export function chartingEncounterPath(orgId, encounterId) {
 
 export function feeSessionPath(orgId, feeSessionId) {
   return orgDocPath(orgId, collections.feeSessions, feeSessionId, "feeSessionId");
+}
+
+export function feeSettingsPath(orgId, facilityId = "default") {
+  return orgDocPath(orgId, collections.feeSettings, facilityId || "default", "facilityId");
+}
+
+export function feeBillingHistoryPath(orgId, historyEventId) {
+  return orgDocPath(orgId, collections.feeBillingHistory, historyEventId, "historyEventId");
 }
 
 export function referralPath(orgId, referralId) {

@@ -15,6 +15,8 @@ export class MemoryFeeStore {
     this.sessionsByOrg = new Map();
     this.calculationJobsByOrg = new Map();
     this.monthlyBulkJobsByOrg = new Map();
+    this.feeSettingsByOrg = new Map();
+    this.billingHistoryByOrg = new Map();
   }
 
   createSession(input) {
@@ -57,9 +59,10 @@ export class MemoryFeeStore {
       return [];
     }
     const beforeServiceDate = String(options.beforeServiceDate || "").trim();
+    const sinceServiceDate = String(options.sinceServiceDate || "").trim();
     const includeSameServiceDate = options.includeSameServiceDate === true;
     const excludeFeeSessionId = String(options.excludeFeeSessionId || "").trim();
-    const limit = Math.min(50, Math.max(1, Number.parseInt(options.limit, 10) || 10));
+    const limit = Math.min(500, Math.max(1, Number.parseInt(options.limit, 10) || 10));
 
     return [...this.sessionsForOrg(orgId).values()]
       .filter((session) => String(session.patientId || "").trim() === normalizedPatientId)
@@ -70,6 +73,7 @@ export class MemoryFeeStore {
           ? String(session.serviceDate || "") <= beforeServiceDate
           : String(session.serviceDate || "") < beforeServiceDate)
       ))
+      .filter((session) => !sinceServiceDate || String(session.serviceDate || "") >= sinceServiceDate)
       .sort((left, right) => (
         String(right.serviceDate || "").localeCompare(String(left.serviceDate || ""))
         || String(right.createdAt || "").localeCompare(String(left.createdAt || ""))
@@ -251,6 +255,64 @@ export class MemoryFeeStore {
     return { monthlyBulkJob: updated };
   }
 
+  getFeeSettings(orgId, facilityId = "default") {
+    return this.feeSettingsForOrg(orgId).get(facilityId || "default") || null;
+  }
+
+  updateFeeSettings(orgId, facilityId = "default", settings = {}) {
+    const now = this.timestamp();
+    const key = facilityId || "default";
+    const current = this.getFeeSettings(orgId, key) || {};
+    const updated = {
+      ...current,
+      ...settings,
+      orgId,
+      facilityId: key,
+      schemaVersion: 1,
+      createdAt: current.createdAt || now,
+      updatedAt: now
+    };
+    this.feeSettingsForOrg(orgId).set(key, updated);
+    return updated;
+  }
+
+  createBillingHistoryEvent(orgId, input = {}) {
+    const now = this.timestamp();
+    const historyEventId = this.idFactory("fee_hist");
+    const event = {
+      historyEventId,
+      orgId,
+      ...input,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    };
+    this.billingHistoryForOrg(orgId).set(historyEventId, event);
+    return event;
+  }
+
+  listBillingHistoryEventsForPatient(orgId, patientId, options = {}) {
+    const normalizedPatientId = String(patientId || "").trim();
+    if (!normalizedPatientId) {
+      return [];
+    }
+    const beforeServiceDate = String(options.beforeServiceDate || "").trim();
+    const sinceServiceDate = String(options.sinceServiceDate || "").trim();
+    const includeSameServiceDate = options.includeSameServiceDate === true;
+    const limit = Math.min(500, Math.max(1, Number.parseInt(options.limit, 10) || 100));
+    return [...this.billingHistoryForOrg(orgId).values()]
+      .filter((event) => String(event.patientId || "").trim() === normalizedPatientId)
+      .filter((event) => (
+        !beforeServiceDate
+        || (includeSameServiceDate
+          ? String(event.serviceDate || "") <= beforeServiceDate
+          : String(event.serviceDate || "") < beforeServiceDate)
+      ))
+      .filter((event) => !sinceServiceDate || String(event.serviceDate || "") >= sinceServiceDate)
+      .sort((left, right) => String(right.serviceDate || "").localeCompare(String(left.serviceDate || "")))
+      .slice(0, limit);
+  }
+
   sessionsForOrg(orgId) {
     if (!this.sessionsByOrg.has(orgId)) {
       this.sessionsByOrg.set(orgId, new Map());
@@ -273,6 +335,22 @@ export class MemoryFeeStore {
     }
 
     return this.monthlyBulkJobsByOrg.get(orgId);
+  }
+
+  feeSettingsForOrg(orgId) {
+    if (!this.feeSettingsByOrg.has(orgId)) {
+      this.feeSettingsByOrg.set(orgId, new Map());
+    }
+
+    return this.feeSettingsByOrg.get(orgId);
+  }
+
+  billingHistoryForOrg(orgId) {
+    if (!this.billingHistoryByOrg.has(orgId)) {
+      this.billingHistoryByOrg.set(orgId, new Map());
+    }
+
+    return this.billingHistoryByOrg.get(orgId);
   }
 
   timestamp() {

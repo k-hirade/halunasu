@@ -580,6 +580,7 @@ export async function buildClinicalCalculationPreparation({
   openAiReasoningEffort = "low",
   openAiTimeoutMs = 0,
   priorSessions = [],
+  feeSettings = null,
   clinicalFactsExtractor = null
 } = {}) {
   const manualOptions = manualCalculationOptions(session, calculationInput);
@@ -717,6 +718,7 @@ export async function buildClinicalCalculationPreparation({
     const historyBasic = inferOutpatientBasicFromPatientHistory({
       session,
       priorSessions,
+      feeSettings,
       diagnoses: [
         ...asArray(session.diagnoses),
         ...inferredDiagnoses
@@ -3765,6 +3767,7 @@ function hasNonDpcContext(text = "", session = {}) {
 function inferOutpatientBasicFromPatientHistory({
   session = {},
   priorSessions = [],
+  feeSettings = null,
   diagnoses = [],
   currentOutpatientBasic = null
 } = {}) {
@@ -3779,6 +3782,9 @@ function inferOutpatientBasicFromPatientHistory({
   const usablePriorSessions = asArray(priorSessions)
     .filter((prior) => prior && prior.feeSessionId !== session.feeSessionId);
 
+  const historyPolicy = feeSettings?.historyPolicy || {};
+  const initialRevisitPolicy = feeSettings?.initialRevisitPolicy || {};
+  const historyCompleteness = String(historyPolicy.historyCompleteness || "unknown");
   const historyBasedBasic = usablePriorSessions.length
     ? { fee_kind: "revisit" }
     : { fee_kind: "initial" };
@@ -3788,7 +3794,7 @@ function inferOutpatientBasicFromPatientHistory({
     if (historyBasedBasic.fee_kind === "revisit") {
       reviewWarnings.push("同一患者の過去算定記録があるため再診料候補を優先しています。新疾患初診として扱う場合は手動で確認してください。");
     } else {
-      reviewWarnings.push("同一患者の過去算定記録が見つからないため初診料候補を優先しています。過去受診履歴がある場合は手動で確認してください。");
+      reviewWarnings.push("同一患者の過去算定記録が見つからないため初診料候補を置いていますが、履歴なしは初診確定ではありません。過去受診履歴がある場合は手動で確認してください。");
     }
     return {
       outpatientBasic: historyBasedBasic,
@@ -3797,12 +3803,17 @@ function inferOutpatientBasicFromPatientHistory({
   }
 
   if (usablePriorSessions.length) {
+    if (historyCompleteness !== "complete") {
+      reviewWarnings.push("患者履歴が完全ではない設定のため、初診/再診候補は過去算定の不足を前提に確認してください。");
+    }
     const priorDiagnosisNames = diagnosisNames(usablePriorSessions.flatMap((prior) => asArray(prior.diagnoses)));
     if (!currentDiagnosisNames.length) {
       reviewWarnings.push("同一患者の過去算定記録があるため再診料候補を立てています。病名が未入力のため、継続診療か新疾患初診かを確認してください。");
     } else if (priorDiagnosisNames.length && !hasRelatedDiagnosisName(currentDiagnosisNames, priorDiagnosisNames)) {
       reviewWarnings.push("同一患者の過去算定記録があるため再診料候補を立てています。過去病名と今回病名の継続性を確認してください。");
     }
+  } else if (initialRevisitPolicy.requireReviewWhenNoHistory !== false || historyCompleteness !== "complete") {
+    reviewWarnings.push("同一患者の過去算定記録が見つからないため初診料候補を置いていますが、履歴なしは初診確定ではありません。導入前・外部レセ・他システムの履歴を確認してください。");
   }
 
   return {

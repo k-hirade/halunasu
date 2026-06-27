@@ -9,6 +9,8 @@ import {
 } from "../../../../packages/fee-core/src/index.js";
 import {
   collections,
+  feeBillingHistoryPath,
+  feeSettingsPath,
   feeSessionPath,
   organizationPath
 } from "../../../../packages/firestore-schema/src/index.js";
@@ -49,6 +51,7 @@ const SESSION_SUMMARY_FIELDS = [
 const PATIENT_HISTORY_FIELDS = [
   ...SESSION_SUMMARY_FIELDS,
   "diagnoses",
+  "calculationResult",
   "calculationOptions",
   "calculationOptionsSource"
 ];
@@ -138,15 +141,19 @@ export class FirestoreFeeStore {
       return [];
     }
     const beforeServiceDate = String(options.beforeServiceDate || "").trim();
+    const sinceServiceDate = String(options.sinceServiceDate || "").trim();
     const includeSameServiceDate = options.includeSameServiceDate === true;
     const excludeFeeSessionId = String(options.excludeFeeSessionId || "").trim();
-    const limit = Math.min(50, Math.max(1, Number.parseInt(options.limit, 10) || 10));
+    const limit = Math.min(500, Math.max(1, Number.parseInt(options.limit, 10) || 10));
 
     try {
       let query = this.orgCollection(orgId, collections.feeSessions)
         .where("patientId", "==", normalizedPatientId);
       if (beforeServiceDate) {
         query = query.where("serviceDate", includeSameServiceDate ? "<=" : "<", beforeServiceDate);
+      }
+      if (sinceServiceDate) {
+        query = query.where("serviceDate", ">=", sinceServiceDate);
       }
       const snapshot = await query
         .orderBy("serviceDate", "desc")
@@ -158,6 +165,7 @@ export class FirestoreFeeStore {
     } catch {
       return this.listPriorSessionsForPatientByBoundedScan(orgId, normalizedPatientId, {
         beforeServiceDate,
+        sinceServiceDate,
         includeSameServiceDate,
         excludeFeeSessionId,
         limit
@@ -173,9 +181,10 @@ export class FirestoreFeeStore {
       .limit(scanLimit)
       .get();
     const beforeServiceDate = String(options.beforeServiceDate || "").trim();
+    const sinceServiceDate = String(options.sinceServiceDate || "").trim();
     const includeSameServiceDate = options.includeSameServiceDate === true;
     const excludeFeeSessionId = String(options.excludeFeeSessionId || "").trim();
-    const limit = Math.min(50, Math.max(1, Number.parseInt(options.limit, 10) || 10));
+    const limit = Math.min(500, Math.max(1, Number.parseInt(options.limit, 10) || 10));
     return docsFromSnapshot(snapshot)
       .filter((session) => String(session.patientId || "").trim() === patientId)
       .filter((session) => !excludeFeeSessionId || session.feeSessionId !== excludeFeeSessionId)
@@ -185,6 +194,7 @@ export class FirestoreFeeStore {
           ? String(session.serviceDate || "") <= beforeServiceDate
           : String(session.serviceDate || "") < beforeServiceDate)
       ))
+      .filter((session) => !sinceServiceDate || String(session.serviceDate || "") >= sinceServiceDate)
       .sort((left, right) => (
         String(right.serviceDate || "").localeCompare(String(left.serviceDate || ""))
         || String(right.createdAt || "").localeCompare(String(left.createdAt || ""))
@@ -382,6 +392,82 @@ export class FirestoreFeeStore {
     });
     await this.monthlyBulkJobDoc(orgId, monthlyBulkJobId).set(updated);
     return { monthlyBulkJob: updated };
+  }
+
+  async getFeeSettings(orgId, facilityId = "default") {
+    return docDataOrNull(await this.doc(feeSettingsPath(orgId, facilityId || "default")).get());
+  }
+
+  async updateFeeSettings(orgId, facilityId = "default", settings = {}) {
+    const now = this.timestamp();
+    const key = facilityId || "default";
+    const current = await this.getFeeSettings(orgId, key);
+    const updated = sanitizeForFirestore({
+      ...(current || {}),
+      ...settings,
+      orgId,
+      facilityId: key,
+      schemaVersion: 1,
+      createdAt: current?.createdAt || now,
+      updatedAt: now
+    });
+    await this.doc(feeSettingsPath(orgId, key)).set(updated);
+    return updated;
+  }
+
+  async createBillingHistoryEvent(orgId, input = {}) {
+    const now = this.timestamp();
+    const historyEventId = this.idFactory("fee_hist");
+    const event = sanitizeForFirestore({
+      historyEventId,
+      orgId,
+      ...input,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    });
+    await this.doc(feeBillingHistoryPath(orgId, historyEventId)).set(event);
+    return event;
+  }
+
+  async listBillingHistoryEventsForPatient(orgId, patientId, options = {}) {
+    const normalizedPatientId = String(patientId || "").trim();
+    if (!normalizedPatientId) {
+      return [];
+    }
+    const beforeServiceDate = String(options.beforeServiceDate || "").trim();
+    const sinceServiceDate = String(options.sinceServiceDate || "").trim();
+    const includeSameServiceDate = options.includeSameServiceDate === true;
+    const limit = Math.min(500, Math.max(1, Number.parseInt(options.limit, 10) || 100));
+    try {
+      let query = this.orgCollection(orgId, collections.feeBillingHistory)
+        .where("patientId", "==", normalizedPatientId);
+      if (beforeServiceDate) {
+        query = query.where("serviceDate", includeSameServiceDate ? "<=" : "<", beforeServiceDate);
+      }
+      if (sinceServiceDate) {
+        query = query.where("serviceDate", ">=", sinceServiceDate);
+      }
+      const snapshot = await query.orderBy("serviceDate", "desc").limit(limit).get();
+      return docsFromSnapshot(snapshot);
+    } catch {
+      const scanLimit = Number.parseInt(process.env.FEE_BILLING_HISTORY_SCAN_LIMIT || "500", 10) || 500;
+      const snapshot = await this.orgCollection(orgId, collections.feeBillingHistory)
+        .orderBy("createdAt", "desc")
+        .limit(scanLimit)
+        .get();
+      return docsFromSnapshot(snapshot)
+        .filter((event) => String(event.patientId || "").trim() === normalizedPatientId)
+        .filter((event) => (
+          !beforeServiceDate
+          || (includeSameServiceDate
+            ? String(event.serviceDate || "") <= beforeServiceDate
+            : String(event.serviceDate || "") < beforeServiceDate)
+        ))
+        .filter((event) => !sinceServiceDate || String(event.serviceDate || "") >= sinceServiceDate)
+        .sort((left, right) => String(right.serviceDate || "").localeCompare(String(left.serviceDate || "")))
+        .slice(0, limit);
+    }
   }
 
   doc(path) {

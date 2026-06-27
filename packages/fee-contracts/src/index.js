@@ -37,6 +37,11 @@ export const feeMonthlyClaimWorkStatuses = Object.freeze([
 ]);
 export const feeReceiptAnnotationStatuses = Object.freeze(["draft", "confirmed", "rejected"]);
 export const feeCalculationModes = Object.freeze(["full", "reuse_clinical"]);
+export const feeHistoryCompletenessValues = Object.freeze(["complete", "partial", "unknown"]);
+export const feeMissingHistoryBehaviors = Object.freeze(["candidate_with_review", "review_required", "suppress_history_dependent"]);
+export const feePriorHistoryBehaviors = Object.freeze(["prefer_revisit_candidate", "warn_only"]);
+export const feeNewDiseaseInitialHandlings = Object.freeze(["candidate_requires_review", "manual_only"]);
+export const feeReviewPolicyModes = Object.freeze(["standard", "conservative", "review_heavy"]);
 export const clinicalAutoCalculationOptionKeys = Object.freeze([
   "procedure_codes",
   "outpatient_basic",
@@ -182,6 +187,61 @@ export function validateCreateFeeCalculationInput(input = {}) {
   });
 }
 
+export function defaultFeeSettings(input = {}) {
+  const facilityId = optionalString(input.facilityId ?? input.facility_id) || "default";
+  return {
+    facilityId,
+    effectiveFrom: optionalDate(input.effectiveFrom ?? input.effective_from, "effectiveFrom") || "2026-06-01",
+    historyPolicy: {
+      defaultLookbackMonths: 12,
+      externalHistoryEnabled: false,
+      historyCompleteness: "unknown",
+      missingHistoryBehavior: "review_required"
+    },
+    initialRevisitPolicy: {
+      officialRuleBasis: "mhlw_2024_medical_fee_table",
+      priorHistoryBehavior: "prefer_revisit_candidate",
+      newDiseaseInitialHandling: "candidate_requires_review",
+      manualOverrideRequiresReason: true,
+      requireReviewWhenNoHistory: true,
+      requireReviewOnPriorHistoryConflict: true
+    },
+    reviewPolicy: {
+      mode: "standard",
+      autoAddAllowedSources: ["deterministic_order_mapping"],
+      reviewRequiredSources: ["history_conflict", "new_disease_initial", "missing_history"]
+    }
+  };
+}
+
+export function validateUpdateFeeSettingsInput(input = {}) {
+  const current = isPlainObject(input.current) ? input.current : {};
+  const currentHistoryPolicy = isPlainObject(current.historyPolicy ?? current.history_policy) ? (current.historyPolicy ?? current.history_policy) : {};
+  const currentInitialRevisitPolicy = isPlainObject(current.initialRevisitPolicy ?? current.initial_revisit_policy)
+    ? (current.initialRevisitPolicy ?? current.initial_revisit_policy)
+    : {};
+  const currentReviewPolicy = isPlainObject(current.reviewPolicy ?? current.review_policy) ? (current.reviewPolicy ?? current.review_policy) : {};
+  const inputHistoryPolicy = isPlainObject(input.historyPolicy ?? input.history_policy) ? (input.historyPolicy ?? input.history_policy) : {};
+  const inputInitialRevisitPolicy = isPlainObject(input.initialRevisitPolicy ?? input.initial_revisit_policy)
+    ? (input.initialRevisitPolicy ?? input.initial_revisit_policy)
+    : {};
+  const inputReviewPolicy = isPlainObject(input.reviewPolicy ?? input.review_policy) ? (input.reviewPolicy ?? input.review_policy) : {};
+  const base = defaultFeeSettings({
+    facilityId: input.facilityId ?? input.facility_id ?? current.facilityId ?? current.facility_id,
+    effectiveFrom: input.effectiveFrom ?? input.effective_from ?? current.effectiveFrom ?? current.effective_from
+  });
+  const baseHistoryPolicy = { ...base.historyPolicy, ...currentHistoryPolicy, ...inputHistoryPolicy };
+  const baseInitialRevisitPolicy = { ...base.initialRevisitPolicy, ...currentInitialRevisitPolicy, ...inputInitialRevisitPolicy };
+  const baseReviewPolicy = { ...base.reviewPolicy, ...currentReviewPolicy, ...inputReviewPolicy };
+  return {
+    facilityId: optionalString(input.facilityId ?? input.facility_id ?? current.facilityId ?? current.facility_id) || base.facilityId,
+    effectiveFrom: optionalDate(input.effectiveFrom ?? input.effective_from ?? current.effectiveFrom ?? current.effective_from, "effectiveFrom") || base.effectiveFrom,
+    historyPolicy: normalizeHistoryPolicy(baseHistoryPolicy),
+    initialRevisitPolicy: normalizeInitialRevisitPolicy(baseInitialRevisitPolicy),
+    reviewPolicy: normalizeReviewPolicy(baseReviewPolicy)
+  };
+}
+
 export function validateReviewDecisionInput(input = {}) {
   return compactObject({
     status: optionalEnum(input.status, feeReviewDecisionStatuses, "status") || "approved",
@@ -237,6 +297,66 @@ function normalizeReceiptAnnotations(input) {
     updatedByMemberId: optionalString(input.updatedByMemberId ?? input.updated_by_member_id),
     updatedAt: optionalString(input.updatedAt ?? input.updated_at)
   });
+}
+
+function normalizeHistoryPolicy(input = {}) {
+  const value = isPlainObject(input) ? input : {};
+  return {
+    defaultLookbackMonths: clampInteger(value.defaultLookbackMonths ?? value.default_lookback_months, 1, 12, 12),
+    externalHistoryEnabled: optionalBoolean(value.externalHistoryEnabled ?? value.external_history_enabled, false),
+    historyCompleteness: optionalEnum(value.historyCompleteness ?? value.history_completeness, feeHistoryCompletenessValues, "historyPolicy.historyCompleteness") || "unknown",
+    missingHistoryBehavior: optionalEnum(value.missingHistoryBehavior ?? value.missing_history_behavior, feeMissingHistoryBehaviors, "historyPolicy.missingHistoryBehavior") || "review_required"
+  };
+}
+
+function normalizeInitialRevisitPolicy(input = {}) {
+  const value = isPlainObject(input) ? input : {};
+  return {
+    officialRuleBasis: optionalString(value.officialRuleBasis ?? value.official_rule_basis) || "mhlw_2024_medical_fee_table",
+    priorHistoryBehavior: optionalEnum(value.priorHistoryBehavior ?? value.prior_history_behavior, feePriorHistoryBehaviors, "initialRevisitPolicy.priorHistoryBehavior") || "prefer_revisit_candidate",
+    newDiseaseInitialHandling: optionalEnum(
+      value.newDiseaseInitialHandling ?? value.new_disease_initial_handling,
+      feeNewDiseaseInitialHandlings,
+      "initialRevisitPolicy.newDiseaseInitialHandling"
+    ) || "candidate_requires_review",
+    manualOverrideRequiresReason: optionalBoolean(value.manualOverrideRequiresReason ?? value.manual_override_requires_reason, true),
+    requireReviewWhenNoHistory: optionalBoolean(value.requireReviewWhenNoHistory ?? value.require_review_when_no_history, true),
+    requireReviewOnPriorHistoryConflict: optionalBoolean(value.requireReviewOnPriorHistoryConflict ?? value.require_review_on_prior_history_conflict, true)
+  };
+}
+
+function normalizeReviewPolicy(input = {}) {
+  const value = isPlainObject(input) ? input : {};
+  return {
+    mode: optionalEnum(value.mode, feeReviewPolicyModes, "reviewPolicy.mode") || "standard",
+    autoAddAllowedSources: normalizeStringArray(value.autoAddAllowedSources ?? value.auto_add_allowed_sources),
+    reviewRequiredSources: normalizeStringArray(value.reviewRequiredSources ?? value.review_required_sources)
+  };
+}
+
+function clampInteger(value, min, max, fallback) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  const number = Number.parseInt(value, 10);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, number));
+}
+
+function optionalBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    if (value === "true") return true;
+    if (value === "false") return false;
+  }
+  return Boolean(value);
 }
 
 function normalizeReceiptAnnotationList(value, field, normalize) {

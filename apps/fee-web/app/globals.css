@@ -2023,6 +2023,35 @@ body:has(.fee-shell--detail) {
   white-space: pre-line;
 }
 
+.fee-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  color: #26364f;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.fee-field select,
+.fee-field textarea {
+  width: 100%;
+}
+
+.fee-field textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.fee-checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  color: #26364f;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .patient-inline-create {
   display: flex;
   justify-content: flex-end;

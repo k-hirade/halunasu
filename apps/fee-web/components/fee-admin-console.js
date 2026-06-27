@@ -104,8 +104,11 @@ export function FeeAdminConsole() {
         setPlatformData((current) => ({ ...current, ...response }));
       }
       if (tab === "settings") {
-        const response = await feeApi("/v1/fee/bootstrap?page=1&pageSize=1");
-        setFeeData(response);
+        const [bootstrap, settings] = await Promise.all([
+          feeApi("/v1/fee/bootstrap?page=1&pageSize=1"),
+          feeApi("/v1/fee/settings")
+        ]);
+        setFeeData({ ...bootstrap, ...settings });
       }
     } catch (error) {
       setErrorMessage(toUserFacingErrorMessage(error, "表示内容を読み込めませんでした。"));
@@ -193,24 +196,7 @@ function renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platfo
   }
 
   if (activeTab === "settings") {
-    const masterStatus = feeData.masterStatus || null;
-    return (
-      <div className="fee-admin-placeholder fee-settings-grid">
-        <h2>算定設定</h2>
-        <div className="fee-setting-card">
-          <strong>算定範囲</strong>
-          <p>外来検体検査を中心に候補を作成します。入院/DPCは限定対応としてレビュー前提で扱います。</p>
-        </div>
-        <div className="fee-setting-card">
-          <strong>マスター検索</strong>
-          <p>{masterStatus ? "診療行為・薬剤・特定器材・コメントの検索を利用できます。" : "マスター検索APIの反映待ちです。通常の算定入力は利用できます。"}</p>
-        </div>
-        <div className="fee-setting-card">
-          <strong>レビュー方針</strong>
-          <p>未対応章、病名不足、施設基準確認、コメント確認が必要な行はレビュー対象として表示します。</p>
-        </div>
-      </div>
-    );
+    return <FeeSettingsPanel data={feeData} />;
   }
 
   if (activeTab === "master") {
@@ -282,6 +268,179 @@ function renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platfo
     <div className="fee-admin-placeholder">
       <h2>設定</h2>
       <p>移行中です。</p>
+    </div>
+  );
+}
+
+function FeeSettingsPanel({ data }) {
+  const facilities = Array.isArray(data.facilities) ? data.facilities : [];
+  const settingsMap = data.settings || {};
+  const firstFacilityId = facilities[0]?.facilityId || "default";
+  const [selectedFacilityId, setSelectedFacilityId] = useState(firstFacilityId);
+  const selectedFacility = facilities.find((facility) => facility.facilityId === selectedFacilityId) || facilities[0] || null;
+  const selectedSettings = settingsMap[selectedFacilityId] || settingsMap.default || defaultSettingsForFacility(selectedFacilityId);
+  const [facilityKeysText, setFacilityKeysText] = useState(labelsForList(selectedFacility?.facilityStandardKeys || []));
+  const [draft, setDraft] = useState(selectedSettings);
+  const [saving, setSaving] = useState(false);
+  const [savedMessage, setSavedMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    setSelectedFacilityId(firstFacilityId);
+  }, [firstFacilityId]);
+
+  useEffect(() => {
+    setFacilityKeysText(labelsForList(selectedFacility?.facilityStandardKeys || []));
+    setDraft(selectedSettings);
+    setSavedMessage("");
+    setErrorMessage("");
+  }, [selectedFacility?.facilityId, selectedSettings]);
+
+  async function saveSettings() {
+    setSaving(true);
+    setSavedMessage("");
+    setErrorMessage("");
+    try {
+      const facilityStandardKeys = splitList(facilityKeysText);
+      if (selectedFacility?.facilityId) {
+        const facilityResponse = await feeApi(`/v1/fee/facilities/${encodeURIComponent(selectedFacility.facilityId)}`, {
+          method: "PATCH",
+          body: { facilityStandardKeys }
+        });
+        selectedFacility.facilityStandardKeys = facilityResponse.facility?.facilityStandardKeys || facilityStandardKeys;
+      }
+      const settingsResponse = await feeApi(`/v1/fee/settings/${encodeURIComponent(selectedFacilityId || "default")}`, {
+        method: "PATCH",
+        body: draft
+      });
+      setDraft(settingsResponse.settings || draft);
+      setSavedMessage("保存しました。次回算定からこの設定を参照します。");
+    } catch (error) {
+      setErrorMessage(toUserFacingErrorMessage(error, "算定設定を保存できませんでした。"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function updateHistoryPolicy(patch) {
+    setDraft((current) => ({ ...current, historyPolicy: { ...(current.historyPolicy || {}), ...patch } }));
+  }
+
+  function updateInitialRevisitPolicy(patch) {
+    setDraft((current) => ({ ...current, initialRevisitPolicy: { ...(current.initialRevisitPolicy || {}), ...patch } }));
+  }
+
+  function updateReviewPolicy(patch) {
+    setDraft((current) => ({ ...current, reviewPolicy: { ...(current.reviewPolicy || {}), ...patch } }));
+  }
+
+  if (!facilities.length) {
+    return <div className="fee-empty-state">施設が登録されていません。Core Adminで施設を登録してください。</div>;
+  }
+
+  return (
+    <div className="fee-admin-placeholder fee-settings-grid">
+      <div className="fee-admin-filter">
+        <select value={selectedFacilityId} onChange={(event) => setSelectedFacilityId(event.target.value)}>
+          {facilities.map((facility) => (
+            <option key={facility.facilityId} value={facility.facilityId}>{facility.displayName || facility.facilityId}</option>
+          ))}
+        </select>
+        <button className="btn btn--primary" disabled={saving} onClick={saveSettings} type="button">
+          {saving ? "保存中" : "保存"}
+        </button>
+      </div>
+      {errorMessage ? <div className="fee-error-state" role="status">{errorMessage}</div> : null}
+      {savedMessage ? <div className="fee-empty-state" role="status">{savedMessage}</div> : null}
+
+      <div className="fee-setting-card">
+        <strong>基本施設情報</strong>
+        <dl className="account-definition-list">
+          <div><dt>医療機関コード</dt><dd>{selectedFacility?.medicalInstitutionCode || "-"}</dd></div>
+          <div><dt>施設種別</dt><dd>{selectedFacility?.facilityType || "-"}</dd></div>
+          <div><dt>都道府県</dt><dd>{selectedFacility?.prefecture || "-"}</dd></div>
+          <div><dt>地方厚生局</dt><dd>{selectedFacility?.regionalBureau || "-"}</dd></div>
+        </dl>
+      </div>
+
+      <div className="fee-setting-card">
+        <strong>施設基準・届出</strong>
+        <label className="fee-field">
+          <span>施設基準キー</span>
+          <textarea value={facilityKeysText} onChange={(event) => setFacilityKeysText(event.target.value)} rows={3} />
+        </label>
+        <p>カンマ、改行、読点で区切って入力します。公式ルールを上書きする設定ではなく、届出済み施設基準の前提として使います。</p>
+      </div>
+
+      <div className="fee-setting-card">
+        <strong>履歴の扱い</strong>
+        <label className="fee-field">
+          <span>参照期間</span>
+          <select value={draft.historyPolicy?.defaultLookbackMonths || 12} onChange={(event) => updateHistoryPolicy({ defaultLookbackMonths: Number(event.target.value) })}>
+            {[2, 3, 4, 6, 12].map((month) => <option key={month} value={month}>{month}か月</option>)}
+          </select>
+        </label>
+        <label className="fee-field">
+          <span>履歴完全性</span>
+          <select value={draft.historyPolicy?.historyCompleteness || "unknown"} onChange={(event) => updateHistoryPolicy({ historyCompleteness: event.target.value })}>
+            <option value="complete">完全</option>
+            <option value="partial">一部</option>
+            <option value="unknown">不明</option>
+          </select>
+        </label>
+        <label className="fee-field">
+          <span>履歴不明時</span>
+          <select value={draft.historyPolicy?.missingHistoryBehavior || "review_required"} onChange={(event) => updateHistoryPolicy({ missingHistoryBehavior: event.target.value })}>
+            <option value="review_required">医事レビュー必須</option>
+            <option value="candidate_with_review">候補提示 + 要確認</option>
+            <option value="suppress_history_dependent">履歴依存候補を抑制</option>
+          </select>
+        </label>
+        <label className="fee-checkbox">
+          <input checked={draft.historyPolicy?.externalHistoryEnabled === true} onChange={(event) => updateHistoryPolicy({ externalHistoryEnabled: event.target.checked })} type="checkbox" />
+          <span>外部レセ/CSV/手入力履歴を利用する</span>
+        </label>
+      </div>
+
+      <div className="fee-setting-card">
+        <strong>初診/再診・基本診療料</strong>
+        <label className="fee-field">
+          <span>過去受診あり</span>
+          <select value={draft.initialRevisitPolicy?.priorHistoryBehavior || "prefer_revisit_candidate"} onChange={(event) => updateInitialRevisitPolicy({ priorHistoryBehavior: event.target.value })}>
+            <option value="prefer_revisit_candidate">再診候補を優先</option>
+            <option value="warn_only">警告のみ</option>
+          </select>
+        </label>
+        <label className="fee-field">
+          <span>新疾患初診</span>
+          <select value={draft.initialRevisitPolicy?.newDiseaseInitialHandling || "candidate_requires_review"} onChange={(event) => updateInitialRevisitPolicy({ newDiseaseInitialHandling: event.target.value })}>
+            <option value="candidate_requires_review">候補 + レビュー必須</option>
+            <option value="manual_only">手動確認のみ</option>
+          </select>
+        </label>
+        <label className="fee-checkbox">
+          <input checked={draft.initialRevisitPolicy?.requireReviewWhenNoHistory !== false} onChange={(event) => updateInitialRevisitPolicy({ requireReviewWhenNoHistory: event.target.checked })} type="checkbox" />
+          <span>履歴なしの場合はレビュー必須</span>
+        </label>
+        <label className="fee-checkbox">
+          <input checked={draft.initialRevisitPolicy?.manualOverrideRequiresReason !== false} onChange={(event) => updateInitialRevisitPolicy({ manualOverrideRequiresReason: event.target.checked })} type="checkbox" />
+          <span>初診/再診の手動上書き理由を必須にする</span>
+        </label>
+        <p>初診/再診の公式定義は施設ごとに上書きしません。ここでは履歴不完全時の確認方針だけを管理します。</p>
+      </div>
+
+      <div className="fee-setting-card">
+        <strong>レビュー方針</strong>
+        <label className="fee-field">
+          <span>モード</span>
+          <select value={draft.reviewPolicy?.mode || "standard"} onChange={(event) => updateReviewPolicy({ mode: event.target.value })}>
+            <option value="standard">標準</option>
+            <option value="conservative">保守的</option>
+            <option value="review_heavy">レビュー重視</option>
+          </select>
+        </label>
+        <p>履歴矛盾、新疾患初診、履歴不明はレビュー対象として扱います。</p>
+      </div>
     </div>
   );
 }
@@ -458,6 +617,36 @@ function MasterBrowser() {
 
 function labelsForList(values) {
   return Array.isArray(values) && values.length ? values.join("、") : "";
+}
+
+function splitList(value) {
+  return [...new Set(String(value || "").split(/[,\n、]/u).map((item) => item.trim()).filter(Boolean))];
+}
+
+function defaultSettingsForFacility(facilityId = "default") {
+  return {
+    facilityId,
+    effectiveFrom: "2026-06-01",
+    historyPolicy: {
+      defaultLookbackMonths: 12,
+      externalHistoryEnabled: false,
+      historyCompleteness: "unknown",
+      missingHistoryBehavior: "review_required"
+    },
+    initialRevisitPolicy: {
+      officialRuleBasis: "mhlw_2024_medical_fee_table",
+      priorHistoryBehavior: "prefer_revisit_candidate",
+      newDiseaseInitialHandling: "candidate_requires_review",
+      manualOverrideRequiresReason: true,
+      requireReviewWhenNoHistory: true,
+      requireReviewOnPriorHistoryConflict: true
+    },
+    reviewPolicy: {
+      mode: "standard",
+      autoAddAllowedSources: ["deterministic_order_mapping"],
+      reviewRequiredSources: ["history_conflict", "new_disease_initial", "missing_history"]
+    }
+  };
 }
 
 function DataTable({ columns, empty, rows }) {

@@ -4164,7 +4164,7 @@ test("infers revisit basic fee from prior patient fee sessions", async () => {
 
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
-  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("過去病名と今回病名")));
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("患者履歴が完全ではない")));
   assert.equal(calculation.body.feeSession.calculationProgress.metrics.patientHistory.priorSessionCount, 1);
 });
 
@@ -8194,6 +8194,61 @@ test("fee-api no longer contains OPERATOR_ACCOUNTS_JSON production path", () => 
 
   assert.equal(source.includes("OPERATOR_ACCOUNTS_JSON"), false);
   assert.equal(source.includes("tenant_id"), false);
+});
+
+test("updates facility fee settings and records audit event", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+
+  const settings = await request(stores, "PATCH", "/v1/fee/settings/fac_001", {
+    historyPolicy: {
+      defaultLookbackMonths: 6,
+      externalHistoryEnabled: true,
+      historyCompleteness: "partial",
+      missingHistoryBehavior: "review_required"
+    },
+    initialRevisitPolicy: {
+      requireReviewWhenNoHistory: true
+    }
+  }, headers);
+
+  assert.equal(settings.statusCode, 200);
+  assert.equal(settings.body.settings.facilityId, "fac_001");
+  assert.equal(settings.body.settings.historyPolicy.defaultLookbackMonths, 6);
+  assert.equal(settings.body.settings.historyPolicy.externalHistoryEnabled, true);
+  assert.equal(settings.body.settings.historyPolicy.historyCompleteness, "partial");
+
+  const bootstrap = await request(stores, "GET", "/v1/fee/settings", undefined, headers);
+  assert.equal(bootstrap.statusCode, 200);
+  assert.equal(bootstrap.body.settings.fac_001.historyPolicy.defaultLookbackMonths, 6);
+
+  const auditEvents = stores.platformStore.listAuditEvents("org_001");
+  assert.ok(auditEvents.some((event) => event.eventType === "fee.settings_updated"));
+});
+
+test("imports external billing history for a patient", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "履歴 患者",
+    birthDate: "1970-01-01",
+    sex: "male"
+  }, headers);
+
+  const imported = await request(stores, "POST", `/v1/fee/patients/${patient.body.patient.patientId}/billing-history`, {
+    serviceDate: "2026-04-10",
+    source: "receipt_csv",
+    lineItems: [{ code: "160000410", name: "生化学的検査判断料" }]
+  }, headers);
+
+  assert.equal(imported.statusCode, 201);
+  assert.equal(imported.body.billingHistoryEvent.patientId, patient.body.patient.patientId);
+  assert.equal(imported.body.billingHistoryEvent.lineItems[0].code, "160000410");
+
+  const listed = await request(stores, "GET", `/v1/fee/patients/${patient.body.patient.patientId}/billing-history?limit=10`, undefined, headers);
+  assert.equal(listed.statusCode, 200);
+  assert.equal(listed.body.billingHistoryEvents.length, 1);
+  assert.equal(listed.body.billingHistoryEvents[0].source, "receipt_csv");
 });
 
 function createStores(options = {}) {
