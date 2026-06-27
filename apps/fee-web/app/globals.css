@@ -1586,6 +1586,10 @@ body:has(.fee-shell--detail) {
   resize: vertical;
 }
 
+.diagnosis-inline-field {
+  margin-top: 2px;
+}
+
 .source-section-head {
   display: flex;
   justify-content: space-between;

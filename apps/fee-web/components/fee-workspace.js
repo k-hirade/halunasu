@@ -988,7 +988,7 @@ function FeeSessionDetailView({ sessionId }) {
     [feeSession, form.patientId, patients]
   );
 
-  const applyDetail = useCallback((detail) => {
+  const applyDetail = useCallback((detail, options = {}) => {
     suppressAutoSaveRef.current = true;
     applyDetailResponse(detail, {
       setFeeSession,
@@ -1000,7 +1000,7 @@ function FeeSessionDetailView({ sessionId }) {
       setOrderRows,
       setOrderRowsTouched,
       setClinicalTextBaselineHash
-    });
+    }, options);
     setAutoSaveStatus("saved");
     setAutoSaveError("");
   }, []);
@@ -1262,7 +1262,12 @@ function FeeSessionDetailView({ sessionId }) {
       csrf: true,
       body
     });
-    applyDetail(response);
+    applyDetail(response, {
+      preserveCalculationOutput: true,
+      currentFeeSession: feeSession,
+      currentReceiptDraft: receiptDraft,
+      currentCandidateWorkbench: candidateWorkbench
+    });
     if (!options.silent) {
       addToast("入力を保存しました。", "success");
     }
@@ -1270,14 +1275,17 @@ function FeeSessionDetailView({ sessionId }) {
   }, [
     addToast,
     applyDetail,
+    candidateWorkbench,
     clinicalTextBaselineHash,
     defaultFacilityId,
     diagnosesTouched,
     feeApi,
+    feeSession,
     form,
     orderRows,
     orderRowsTouched,
     patients,
+    receiptDraft,
     sessionId
   ]);
 
@@ -1884,8 +1892,12 @@ function SourcePane({
         <section className="source-section source-section--chart">
           <div className="source-section-head">
             <div>
-              <h2>カルテ本文</h2>
+              <h2>カルテ本文・病名</h2>
+              <p>病名 {diagnosisCount.toLocaleString()}件</p>
             </div>
+            <button className="btn btn--ghost btn--sm" onClick={onOpenOrders} type="button">
+              オーダーを確認
+            </button>
           </div>
           <label className="clinical-text-field">
             <span>カルテの内容</span>
@@ -1895,19 +1907,7 @@ function SourcePane({
               value={form.clinicalText}
             />
           </label>
-        </section>
-
-        <section className="source-section">
-          <div className="source-section-head">
-            <div>
-              <h2>病名</h2>
-              <p>{diagnosisCount.toLocaleString()}件</p>
-            </div>
-            <button className="btn btn--ghost btn--sm" onClick={onOpenOrders} type="button">
-              オーダーを確認
-            </button>
-          </div>
-          <label>
+          <label className="diagnosis-inline-field">
             <span>病名・補足</span>
             <textarea
               className="diagnosis-textarea"
@@ -3788,11 +3788,27 @@ async function runBusy(setBusy, addToast, task) {
   }
 }
 
-function applyDetailResponse(response, setters) {
-  const session = response.feeSession || response;
+function applyDetailResponse(response, setters, options = {}) {
+  const sourceSession = response.feeSession || response;
+  let session = sourceSession || null;
+  let receiptDraft = response.receiptDraft || null;
+  let candidateWorkbench = response.candidateWorkbench || null;
+  if (options.preserveCalculationOutput && options.currentFeeSession?.calculationResult && !sourceSession?.calculationResult) {
+    session = {
+      ...(sourceSession || {}),
+      calculationResult: options.currentFeeSession.calculationResult,
+      calculationSummary: options.currentFeeSession.calculationSummary || sourceSession?.calculationSummary || null,
+      latestCalculationId: options.currentFeeSession.latestCalculationId || sourceSession?.latestCalculationId || null,
+      status: ["calculated", "needs_review"].includes(options.currentFeeSession.status)
+        ? options.currentFeeSession.status
+        : sourceSession?.status
+    };
+    receiptDraft = options.currentReceiptDraft || receiptDraft;
+    candidateWorkbench = options.currentCandidateWorkbench || candidateWorkbench;
+  }
   setters.setFeeSession(session || null);
-  setters.setReceiptDraft(response.receiptDraft || null);
-  setters.setCandidateWorkbench?.(response.candidateWorkbench || null);
+  setters.setReceiptDraft(receiptDraft);
+  setters.setCandidateWorkbench?.(candidateWorkbench);
   setters.setForm(formFromFeeSession(session || {}));
   setters.setDiagnosesTouched?.(String(session?.diagnosesSource || "").trim() === "manual");
   setters.setDiagnosesEditedSinceLoad?.(false);
