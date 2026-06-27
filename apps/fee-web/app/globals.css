@@ -1552,6 +1552,7 @@ body:has(.fee-shell--detail) {
 
 .clinical-text-inline-annotation {
   color: #b91c1c;
+  cursor: text;
   font-weight: 900;
 }
 

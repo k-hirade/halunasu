@@ -2007,6 +2007,7 @@ function SourcePane({
           <label className="clinical-text-field">
             <span>カルテの内容</span>
             <ClinicalTextEditor
+              annotationRevisionKey={candidateWorkbench}
               annotations={clinicalAnnotations}
               onChange={onUpdateClinicalText}
               value={form.clinicalText}
@@ -2022,23 +2023,54 @@ function SourcePane({
   );
 }
 
-function ClinicalTextEditor({ annotations = [], onChange, value = "" }) {
+function ClinicalTextEditor({ annotationRevisionKey = null, annotations = [], onChange, value = "" }) {
   const editorRef = useRef(null);
-  const renderedHtml = useMemo(() => renderClinicalTextEditorHtml(value, annotations), [annotations, value]);
+  const [acceptedAnnotationKeys, setAcceptedAnnotationKeys] = useState(() => new Set());
+  const renderedHtml = useMemo(
+    () => renderClinicalTextEditorHtml(value, annotations, { suppressedAnnotationKeys: acceptedAnnotationKeys }),
+    [acceptedAnnotationKeys, annotations, value]
+  );
+
+  useEffect(() => {
+    setAcceptedAnnotationKeys(new Set());
+  }, [annotationRevisionKey]);
 
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor || document.activeElement === editor) {
       return;
     }
-    const current = clinicalTextWithoutInlineAnnotations(editor);
+    const current = clinicalTextFromEditor(editor);
     if (current !== String(value || "") || editor.innerHTML !== renderedHtml) {
       editor.innerHTML = renderedHtml;
     }
   }, [renderedHtml, value]);
 
+  function rememberAcceptedAnnotationKeys(acceptedKeys = []) {
+    if (!acceptedKeys.length) {
+      return;
+    }
+    setAcceptedAnnotationKeys((current) => {
+      const next = new Set(current);
+      let changed = false;
+      for (const key of acceptedKeys) {
+        if (!next.has(key)) {
+          next.add(key);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }
+
+  function handleBeforeInput() {
+    rememberAcceptedAnnotationKeys(acceptSuggestionAnnotationsForSelection(editorRef.current));
+  }
+
   function handleInput() {
-    const next = clinicalTextWithoutInlineAnnotations(editorRef.current);
+    const editor = editorRef.current;
+    rememberAcceptedAnnotationKeys(acceptEditedSuggestionAnnotations(editor));
+    const next = clinicalTextFromEditor(editor);
     onChange(next);
   }
 
@@ -2058,6 +2090,7 @@ function ClinicalTextEditor({ annotations = [], onChange, value = "" }) {
         className="clinical-text-editable"
         contentEditable
         data-placeholder="S/O/A/Pや診療メモをそのまま貼り付けてください。"
+        onBeforeInput={handleBeforeInput}
         onInput={handleInput}
         onPaste={handlePaste}
         ref={editorRef}
@@ -2074,23 +2107,26 @@ function normalizeEditableClinicalText(value = "") {
   return String(value || "").replace(/\u00a0/gu, " ").replace(/\n$/u, "");
 }
 
-function clinicalTextWithoutInlineAnnotations(editor) {
+function clinicalTextFromEditor(editor) {
   if (!editor) {
     return "";
   }
   const clone = editor.cloneNode(true);
-  clone.querySelectorAll?.("[data-clinical-annotation='true']").forEach((node) => node.remove());
+  clone.querySelectorAll?.("[data-clinical-annotation-status='suggestion']").forEach((node) => node.remove());
   return normalizeEditableClinicalText(clone.innerText || clone.textContent || "");
 }
 
-function renderClinicalTextEditorHtml(value = "", annotations = []) {
+function renderClinicalTextEditorHtml(value = "", annotations = [], options = {}) {
   const clinicalText = String(value || "");
   if (!clinicalText) {
     return "";
   }
+  const suppressedAnnotationKeys = options.suppressedAnnotationKeys instanceof Set
+    ? options.suppressedAnnotationKeys
+    : new Set();
   const inlineAnnotations = annotations
     .map((annotation) => resolveClinicalInlineAnnotation(annotation, clinicalText))
-    .filter((annotation) => annotation?.inlineText);
+    .filter((annotation) => annotation?.inlineText && !suppressedAnnotationKeys.has(annotation.key));
   const placements = clinicalInlineAnnotationPlacements(clinicalText, inlineAnnotations);
   if (!placements.length) {
     return escapeHtml(clinicalText);
@@ -2109,11 +2145,84 @@ function renderClinicalTextEditorHtml(value = "", annotations = []) {
     const list = placementMap.get(index);
     if (list?.length) {
       for (const placement of list) {
-        html += `<span class="clinical-text-inline-annotation" data-clinical-annotation="true" contenteditable="false"> ${escapeHtml(placement.text)}</span>`;
+        html += `<span class="clinical-text-inline-annotation" data-clinical-annotation="true" data-clinical-annotation-key="${escapeHtml(placement.key)}" data-clinical-annotation-original="${escapeHtml(placement.text)}" data-clinical-annotation-status="suggestion"> ${escapeHtml(placement.text)}</span>`;
       }
     }
   }
   return html;
+}
+
+function acceptSuggestionAnnotationsForSelection(editor) {
+  if (!editor || typeof window === "undefined") {
+    return [];
+  }
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount <= 0) {
+    return [];
+  }
+  const spans = new Set();
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    const range = selection.getRangeAt(index);
+    if (!editor.contains(range.commonAncestorContainer)) {
+      continue;
+    }
+    if (range.collapsed) {
+      const span = closestSuggestionAnnotationSpan(range.startContainer, editor);
+      if (span) {
+        spans.add(span);
+      }
+      continue;
+    }
+    editor.querySelectorAll?.("[data-clinical-annotation-status='suggestion']").forEach((span) => {
+      if (range.intersectsNode(span)) {
+        spans.add(span);
+      }
+    });
+  }
+  const acceptedKeys = [];
+  for (const span of spans) {
+    const key = acceptSuggestionAnnotationSpan(span);
+    if (key) acceptedKeys.push(key);
+  }
+  return acceptedKeys;
+}
+
+function acceptEditedSuggestionAnnotations(editor) {
+  if (!editor) {
+    return [];
+  }
+  const acceptedKeys = [];
+  editor.querySelectorAll?.("[data-clinical-annotation-status='suggestion']").forEach((span) => {
+    const original = normalizeAnnotationInlineText(span.getAttribute("data-clinical-annotation-original") || "");
+    const current = normalizeAnnotationInlineText(span.textContent || "");
+    if (original && current && original !== current) {
+      const key = acceptSuggestionAnnotationSpan(span);
+      if (key) acceptedKeys.push(key);
+    }
+  });
+  return acceptedKeys;
+}
+
+function acceptSuggestionAnnotationSpan(span) {
+  const key = String(span?.getAttribute?.("data-clinical-annotation-key") || "").trim();
+  span?.setAttribute?.("data-clinical-annotation-status", "accepted");
+  span?.classList?.remove("clinical-text-inline-annotation");
+  return key;
+}
+
+function normalizeAnnotationInlineText(value = "") {
+  return String(value || "").replace(/\s+/gu, " ").trim();
+}
+
+function closestSuggestionAnnotationSpan(node, editor) {
+  let current = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+  while (current && current !== editor) {
+    if (current.matches?.("[data-clinical-annotation-status='suggestion']")) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
 }
 
 function resolveClinicalInlineAnnotation(annotation = {}, clinicalText = "") {

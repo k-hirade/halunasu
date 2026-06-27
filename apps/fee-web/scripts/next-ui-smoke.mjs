@@ -99,6 +99,22 @@ try {
       true,
       "same-day wound treatment annotation must render after the treatment sentence"
     );
+    await clinicalEditor.focus();
+    const medicationAnnotation = clinicalEditor.locator(".clinical-text-inline-annotation").filter({ hasText: "ゲーベンクリーム XXgを塗布。" }).first();
+    await medicationAnnotation.evaluate((span) => {
+      const range = document.createRange();
+      range.selectNodeContents(span);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await page.keyboard.insertText("ゲーベンクリーム 5gを塗布。");
+    await page.waitForFunction(() => document.querySelector(".clinical-text-editable")?.innerText.includes("ゲーベンクリーム 5gを塗布。"));
+    assert.equal(
+      await clinicalEditor.locator(".clinical-text-inline-annotation").filter({ hasText: "ゲーベンクリーム 5gを塗布。" }).count(),
+      0,
+      "edited inline annotation must become regular chart text"
+    );
 
     const detailColumns = await page.locator(".fee-session-workspace").evaluate((element) => getComputedStyle(element).gridTemplateColumns);
     assert.ok(detailColumns.trim().split(/\s+/).length >= 2, "desktop fee detail view must use two robust columns");
@@ -149,7 +165,17 @@ try {
     assert.equal(
       patchBody.clinicalText.includes("ゲーベンクリーム XXgを塗布。"),
       false,
-      "inline red ointment annotation must not be persisted into the original chart text"
+      "unedited inline red ointment annotation must not be persisted into the original chart text"
+    );
+    assert.equal(
+      patchBody.clinicalText.includes("ゲーベンクリーム 5gを塗布。"),
+      true,
+      "edited inline annotation must be persisted as regular chart text"
+    );
+    assert.equal(
+      patchBody.clinicalText.includes("別部位としてそれぞれ処置。"),
+      false,
+      "unedited same-day treatment annotation must not be persisted into the original chart text"
     );
     await browser.close();
   } catch (error) {
