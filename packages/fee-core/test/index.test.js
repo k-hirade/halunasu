@@ -470,7 +470,9 @@ test("builds structured candidate workbench buckets from receipt and review data
   assert.equal(workbench.pendingLines.length, 1);
   assert.equal(workbench.excludedLines.length, 0);
   assert.equal(workbench.proposals.length, 0);
-  assert.equal(workbench.issues.length, 2);
+  assert.equal(workbench.issues.length, 1);
+  assert.equal(workbench.hiddenIssues.length, 1);
+  assert.equal(workbench.hiddenIssues[0].issueCategory, "facility");
   assert.ok(workbench.issues.every((item) => item.kind === "issue"));
   assert.ok(workbench.issues.find((item) => item.displayTitle === "ロキソプロフェンの確認").conditionText.includes("60mg 1日2回 7日分"));
 });
@@ -914,6 +916,25 @@ test("hides negated and excluded clinical event review items from the workspace"
   });
   assert.equal(hiddenOnly.status, "calculated");
   assert.equal(buildCandidateWorkbench(hiddenOnly).needsReviewCount, 0);
+
+  const facilityOnly = applyCalculationResult(session, {
+    reviewIssues: [{
+      reviewIssueId: "issue_facility_standard",
+      issueCode: "hospital_profile_missing",
+      severity: "warning",
+      title: "施設基準確認",
+      messageForStaff: "施設基準が登録されていないため、施設基準が必要な加算は自動追加していません。",
+      source: "facility_standard"
+    }]
+  }, {
+    calculationId: "calc_facility_hidden",
+    now: "2026-06-07T00:03:00.000Z"
+  });
+  const facilityWorkbench = buildCandidateWorkbench(facilityOnly);
+  assert.equal(facilityOnly.status, "calculated");
+  assert.equal(facilityWorkbench.issues.length, 0);
+  assert.equal(facilityWorkbench.hiddenIssues.length, 1);
+  assert.equal(facilityWorkbench.needsReviewCount, 0);
 });
 
 function assertNoUndefined(value) {

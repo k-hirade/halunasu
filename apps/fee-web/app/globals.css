@@ -1517,6 +1517,26 @@ body:has(.fee-shell--detail) {
   white-space: pre-wrap;
 }
 
+.clinical-text-annotations {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.55;
+}
+
+.clinical-text-annotations p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.clinical-text-annotations span {
+  margin-right: 4px;
+}
+
 .source-section .diagnosis-textarea {
   min-height: 96px;
   resize: vertical;

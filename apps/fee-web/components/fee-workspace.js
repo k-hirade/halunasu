@@ -1694,6 +1694,7 @@ function FeeSessionDetailView({ sessionId }) {
       <div className="fee-session-workspace">
         <SourcePane
           busy={busy}
+          candidateWorkbench={candidateWorkbench}
           filteredPatients={filteredPatients}
           form={form}
           newPatient={newPatient}
@@ -1830,6 +1831,7 @@ function SessionActionFooter({ autoSaveError, autoSaveLabelText, autoSaveStatus,
 
 function SourcePane({
   busy,
+  candidateWorkbench,
   filteredPatients,
   form,
   newPatient,
@@ -1848,6 +1850,7 @@ function SourcePane({
   setPatientPickerOpen
 }) {
   const diagnosisCount = form.diagnosesText.split(/\n+/u).map((item) => item.trim()).filter(Boolean).length;
+  const clinicalAnnotations = clinicalTextAnnotationsFromWorkbench(candidateWorkbench);
 
   return (
     <section className="fee-source-pane" aria-label="算定条件とカルテ">
@@ -1892,6 +1895,16 @@ function SourcePane({
               value={form.clinicalText}
               onChange={(event) => onUpdateClinicalText(event.target.value)}
             />
+            {clinicalAnnotations.length ? (
+              <div className="clinical-text-annotations" aria-label="カルテ本文の不足情報">
+                {clinicalAnnotations.map((annotation) => (
+                  <p key={annotation.key}>
+                    <span>【不足情報】</span>
+                    {annotation.text}
+                  </p>
+                ))}
+              </div>
+            ) : null}
           </label>
         </section>
 
@@ -2845,6 +2858,112 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision, onSaveRecei
       </section>
     </div>
   );
+}
+
+function clinicalTextAnnotationsFromWorkbench(workbench = {}) {
+  const issues = Array.isArray(workbench?.issues) ? workbench.issues : [];
+  const seen = new Set();
+  return issues
+    .map(clinicalTextAnnotationForIssue)
+    .filter(Boolean)
+    .filter((annotation) => {
+      if (seen.has(annotation.text)) {
+        return false;
+      }
+      seen.add(annotation.text);
+      return true;
+    })
+    .slice(0, 8)
+    .map((annotation, index) => ({
+      ...annotation,
+      key: `${annotation.key || "clinical_text_annotation"}_${index}`
+    }));
+}
+
+function clinicalTextAnnotationForIssue(item = {}) {
+  if (!item || item.hiddenFromWorkspace === true) {
+    return null;
+  }
+  const text = clinicalIssueText(item);
+  if (!text || isFacilityStandardClinicalIssue(text, item)) {
+    return null;
+  }
+  if (!isClinicalTextActionableIssue(text, item)) {
+    return null;
+  }
+
+  const title = String(item.displayTitle || item.title || item.name || "不足情報").trim();
+  const category = String(item.issueCategory || "").trim();
+  const requiredInput = reviewRequiredInput(item);
+  const reason = String(item.displayReason || item.reasonText || item.reason || "").trim();
+  if (/レセプトコメント|コメント/u.test(text)) {
+    return {
+      key: item.reviewItemId || title,
+      text: `${title}: ${compactReceiptCommentReason(reason || text)}`
+    };
+  }
+  if (category === "medication" || /薬剤|数量|日数|総量|1回量|1日回数/u.test(text)) {
+    return {
+      key: item.reviewItemId || title,
+      text: `${title}: ${requiredInput || compactRequiredInformation(item.conditionText) || "1回量、1日回数、日数または総量を確認してください。"}`
+    };
+  }
+  if (requiredInput) {
+    return {
+      key: item.reviewItemId || title,
+      text: `${title}: ${requiredInput}`
+    };
+  }
+  return {
+    key: item.reviewItemId || title,
+    text: `${title}: ${compactClinicalIssueReason(reason || text)}`
+  };
+}
+
+function clinicalIssueText(item = {}) {
+  return [
+    item.displayTitle,
+    item.displayReason,
+    item.reasonText,
+    item.requiredInput,
+    item.reviewIssue?.issueCode,
+    item.reviewIssue?.title,
+    item.reviewIssue?.messageForStaff,
+    item.candidateProposal?.reason
+  ].filter(Boolean).join(" ");
+}
+
+function isFacilityStandardClinicalIssue(text = "", item = {}) {
+  const code = String(item.issueCode || item.reviewIssue?.issueCode || item.reviewIssue?.issue_code || "").trim();
+  return ["facility_unknown", "hospital_profile_missing", "facility_standard_not_found"].includes(code)
+    || /施設基準|地方厚生局|届け出|届出|facility_standard|hospital_profile/u.test(String(text || ""));
+}
+
+function isClinicalTextActionableIssue(text = "", item = {}) {
+  const category = String(item.issueCategory || "").trim();
+  if (["facility", "management", "unsupported"].includes(category)) {
+    return false;
+  }
+  if (["medication", "diagnosis", "input", "claim-risk", "time", "imaging", "specimen"].includes(category)) {
+    return true;
+  }
+  return /レセプトコメント|コメント|症状詳記|病名|傷病名|適応|理由|査定|薬剤|処方|数量|日数|総量|1回量|1日回数|部位|左右|造影|機器区分|受付時刻|同月|検体|採取/u.test(String(text || ""));
+}
+
+function compactReceiptCommentReason(value = "") {
+  const text = String(value || "").trim();
+  const match = text.match(/に必要なコメント\s*[:：]\s*(.+)$/u);
+  return match ? `必要コメント: ${match[1]}` : compactClinicalIssueReason(text);
+}
+
+function compactRequiredInformation(value = "") {
+  const text = String(value || "").trim();
+  const match = text.match(/必要な情報\s*[:：]\s*(.+)$/u);
+  return match ? match[1] : "";
+}
+
+function compactClinicalIssueReason(value = "") {
+  return String(value || "").replace(/\s+/gu, " ").trim();
 }
 
 function reviewRequiredInput(item = {}) {

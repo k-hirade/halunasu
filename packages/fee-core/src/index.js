@@ -1866,17 +1866,27 @@ function shouldHideReviewIssueFromWorkspace({ reviewIssue = null, message = "" }
     reviewIssue?.messageForStaff,
     reviewIssue?.evidence
   ].filter(Boolean).join(" ");
+  if (isFacilityStandardReviewText(text)) {
+    return true;
+  }
   return isHiddenWorkspaceReviewText(text);
 }
 
 function hiddenWorkspaceIssueCodes() {
   return new Set([
+    "facility_unknown",
+    "hospital_profile_missing",
+    "facility_standard_not_found",
     "planned_not_performed",
     "instruction_only",
     "other_provider",
     "past_or_carried_in",
     "unsupported_event"
   ]);
+}
+
+function isFacilityStandardReviewText(text = "") {
+  return /施設基準|地方厚生局|届け出|届出|facility_standard|hospital_profile/u.test(String(text || ""));
 }
 
 function isHiddenWorkspaceReviewText(text = "") {
