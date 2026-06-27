@@ -1550,6 +1550,11 @@ body:has(.fee-shell--detail) {
   pointer-events: none;
 }
 
+.clinical-text-inline-annotation {
+  color: #b91c1c;
+  font-weight: 900;
+}
+
 .clinical-text-annotations {
   display: grid;
   gap: 6px;

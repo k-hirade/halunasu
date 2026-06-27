@@ -6514,7 +6514,10 @@ test("normalizes internal calculator warnings before returning review output", a
       "hospital_profile_missing: 施設基準がないため検体検査管理加算は自動追加しない",
       "D026 judgement fee for group 3",
       "Collection fee requested by blood_venous",
-      "Medication fee candidate for in_house"
+      "Medication fee candidate for in_house",
+      "In-house medication fee requires drug inputs",
+      "Exclusion candidate: 140000610 創傷処置（１００ｃｍ２未満） and 140032110 熱傷処置（１００ｃｍ２以上５００ｃｍ２未満） matched from current",
+      "Exclusion candidate: 140032110 熱傷処置（１００ｃｍ２以上５００ｃｍ２未満） and 140000610 創傷処置（１００ｃｍ２未満） matched from current"
     ]
   });
 
@@ -6536,14 +6539,20 @@ test("normalizes internal calculator warnings before returning review output", a
   );
 
   assert.equal(calculation.statusCode, 201);
-  assert.equal(calculation.body.calculationResult.warnings.some((warning) => /Lab management|D026|Collection fee|Medication fee/i.test(warning)), false);
+  assert.equal(calculation.body.calculationResult.warnings.some((warning) => /Lab management|D026|Collection fee|Medication fee|In-house medication|Exclusion candidate/i.test(warning)), false);
   assert.equal(
     calculation.body.calculationResult.warnings.filter((warning) => warning.includes("施設基準")).length,
+    1
+  );
+  assert.equal(
+    calculation.body.calculationResult.warnings.filter((warning) => warning.includes("同日複数処置の確認")).length,
     1
   );
   assert.ok(calculation.body.reviewItems.some((item) => item.title === "判断料確認"));
   assert.ok(calculation.body.reviewItems.some((item) => item.title === "採血料確認"));
   assert.ok(calculation.body.reviewItems.some((item) => item.title === "投薬料の確認"));
+  assert.ok(calculation.body.reviewItems.some((item) => item.title === "院内処方の薬剤情報確認"));
+  assert.ok(calculation.body.reviewItems.some((item) => item.title === "同日複数処置の確認"));
 });
 
 test("keeps explicit legacy calculation options over inferred values", async () => {

@@ -2310,6 +2310,25 @@ async function convertSingleClinicalCalculationEvent({
   }
 
   if (type === "material") {
+    const materialName = clinicalEventName(event);
+    if (isMaterialNameNoise(materialName)) {
+      return result;
+    }
+    if (isMedicationLikeName(materialName)) {
+      const medication = await medicationOrderFromClinicalEvent({
+        ...event,
+        type: "medication",
+        event_type: "medication",
+        billing_domain: "standard_medication"
+      }, feeCalculator);
+      if (medication.order) {
+        result.medicationOrders.push(medication.order);
+      }
+      result.masterCandidates.push(...asArray(medication.masterCandidates));
+      result.billingCandidates.push(...billingCandidatesFromMedicationResult(event, medication));
+      result.reviewWarnings.push(...medication.reviewWarnings);
+      return result;
+    }
     const material = await materialInputFromClinicalEvent(event, feeCalculator);
     if (material.input) {
       result.materialInputs.push(material.input);
@@ -4523,6 +4542,9 @@ async function inferMaterialInputs(text, feeCalculator) {
     if (!sentence) {
       continue;
     }
+    if (isMaterialNameNoise(query) || isMedicationLikeName(query)) {
+      continue;
+    }
     if (!isCurrentMaterialUseContext(sentence)) {
       reviewWarnings.push(`特定器材・材料「${query}」は今回使用として確定できないため、算定候補には入れていません。`);
       continue;
@@ -4547,10 +4569,10 @@ function materialNameCandidatesFromClinicalText(text = "") {
     if (!/(材料|特定器材|使用|装着|保護|固定|交換|シーネ|包帯|カテーテル|ドレーン|フィルム|パッド)/u.test(sentence)) {
       continue;
     }
-    const matches = sentence.matchAll(/([一-龥ァ-ヶーA-Za-z0-9]+(?:シーネ|包帯|カテーテル|ドレーン|チューブ|フィルム|パッド))/gu);
+    const matches = sentence.matchAll(/([一-龥ァ-ヶーA-Za-z0-9]+(?:シーネ|包帯|カテーテル|ドレーン|チューブ|フィルム|パッド|ガーゼ|被覆材|保護材|固定材))/gu);
     for (const match of matches) {
       const query = String(match[1] || "").trim();
-      if (!query || /(湿布|貼付薬)$/u.test(query)) {
+      if (!query || /(湿布|貼付薬)$/u.test(query) || isMaterialNameNoise(query) || isMedicationLikeName(query)) {
         continue;
       }
       const key = query.toLowerCase();
@@ -6991,8 +7013,14 @@ function medicationQuantityFromClinicalEvent(event = {}) {
 async function materialInputFromClinicalEvent(event = {}, feeCalculator) {
   const reviewWarnings = [];
   const name = clinicalEventName(event);
+  if (isMaterialNameNoise(name)) {
+    return { input: null, masterCandidates: [], reviewWarnings };
+  }
   if (!name) {
     reviewWarnings.push("特定器材・材料名がカルテ本文から確定できないため、算定候補には入れていません。");
+    return { input: null, masterCandidates: [], reviewWarnings };
+  }
+  if (isMedicationLikeName(name)) {
     return { input: null, masterCandidates: [], reviewWarnings };
   }
   const item = await searchFirstMasterItem(feeCalculator, "material", name, "material");
@@ -7013,6 +7041,24 @@ async function materialInputFromClinicalEvent(event = {}, feeCalculator) {
     ].filter(Boolean),
     reviewWarnings
   };
+}
+
+function isMedicationLikeName(value = "") {
+  const text = String(value || "").replace(/\s+/gu, "").trim();
+  if (!text) {
+    return false;
+  }
+  return /(?:錠|カプセル|配合錠|散|細粒|顆粒|シロップ|点眼|点鼻|注射液|軟膏|クリーム|ローション|坐剤|湿布|貼付薬)$/u.test(text)
+    || /(?:抗菌薬|抗生剤|鎮痛薬|解熱鎮痛薬|降圧薬|スタチン|保湿剤|ステロイド)/u.test(text);
+}
+
+function isMaterialNameNoise(value = "") {
+  const text = String(value || "").replace(/\s+/gu, "").trim();
+  if (!text) {
+    return true;
+  }
+  return AUTO_PLACEHOLDER_ORDER_NAMES.has(text)
+    || /^(?:特定器材|材料|特定器材・材料|医療材料|材料名|被覆材|保護材|固定材)$/u.test(text);
 }
 
 function labCollectionFeeInputsFromClinicalEvent(event = {}, procedure = {}) {

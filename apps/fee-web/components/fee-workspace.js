@@ -1912,7 +1912,7 @@ function MissingDiagnosisWarningModal({
             病名なしでも算定候補は作成できますが、査定・返戻確認では病名が算定根拠になります。分かる範囲で入力してから進むことを推奨します。
           </p>
           <label className="missing-diagnosis-field">
-            <span>病名・補足</span>
+            <span>病名</span>
             <textarea
               disabled={disabled}
               onChange={(event) => onChange(event.target.value)}
@@ -1994,6 +1994,16 @@ function SourcePane({
               オーダーを確認
             </button>
           </div>
+          <label className="diagnosis-inline-field">
+            <span>病名</span>
+            <textarea
+              className="diagnosis-textarea"
+              placeholder={"必要に応じて病名を1行ずつ入力してください"}
+              value={form.diagnosesText}
+              onChange={(event) => onUpdateDiagnosesText(event.target.value)}
+            />
+            <small>未入力の場合は算定候補作成時に確認します。</small>
+          </label>
           <label className="clinical-text-field">
             <span>カルテの内容</span>
             <ClinicalTextEditor
@@ -2001,16 +2011,6 @@ function SourcePane({
               onChange={onUpdateClinicalText}
               value={form.clinicalText}
             />
-          </label>
-          <label className="diagnosis-inline-field">
-            <span>病名・補足</span>
-            <textarea
-              className="diagnosis-textarea"
-              placeholder={"必要に応じて病名を1行ずつ入力してください"}
-              value={form.diagnosesText}
-              onChange={(event) => onUpdateDiagnosesText(event.target.value)}
-            />
-            <small>未入力の場合はカルテ本文から候補を補完し、不足時はレビューに出します。</small>
           </label>
           <div className="source-order-summary">
             <span>手入力オーダー</span>
@@ -2024,19 +2024,21 @@ function SourcePane({
 
 function ClinicalTextEditor({ annotations = [], onChange, value = "" }) {
   const editorRef = useRef(null);
+  const renderedHtml = useMemo(() => renderClinicalTextEditorHtml(value, annotations), [annotations, value]);
+
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor || document.activeElement === editor) {
       return;
     }
-    const current = normalizeEditableClinicalText(editor.innerText);
-    if (current !== String(value || "")) {
-      editor.textContent = value || "";
+    const current = clinicalTextWithoutInlineAnnotations(editor);
+    if (current !== String(value || "") || editor.innerHTML !== renderedHtml) {
+      editor.innerHTML = renderedHtml;
     }
-  }, [value]);
+  }, [renderedHtml, value]);
 
   function handleInput() {
-    const next = normalizeEditableClinicalText(editorRef.current?.innerText || "");
+    const next = clinicalTextWithoutInlineAnnotations(editorRef.current);
     onChange(next);
   }
 
@@ -2060,33 +2062,252 @@ function ClinicalTextEditor({ annotations = [], onChange, value = "" }) {
         onPaste={handlePaste}
         ref={editorRef}
         role="textbox"
+        dangerouslySetInnerHTML={{ __html: renderedHtml }}
         suppressContentEditableWarning
         tabIndex={0}
       />
-      {annotations.length ? (
-        <div className="clinical-text-annotations" aria-label="カルテ本文の不足情報" contentEditable={false}>
-          {annotations.map((annotation) => (
-            <div key={annotation.key}>
-              <p>
-                <span>【不足情報】</span>
-                {annotation.text}
-              </p>
-              {annotation.example ? (
-                <p className="clinical-text-annotation-example">
-                  <span>【追記例】</span>
-                  {annotation.example}
-                </p>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
 
 function normalizeEditableClinicalText(value = "") {
   return String(value || "").replace(/\u00a0/gu, " ").replace(/\n$/u, "");
+}
+
+function clinicalTextWithoutInlineAnnotations(editor) {
+  if (!editor) {
+    return "";
+  }
+  const clone = editor.cloneNode(true);
+  clone.querySelectorAll?.("[data-clinical-annotation='true']").forEach((node) => node.remove());
+  return normalizeEditableClinicalText(clone.innerText || clone.textContent || "");
+}
+
+function renderClinicalTextEditorHtml(value = "", annotations = []) {
+  const clinicalText = String(value || "");
+  if (!clinicalText) {
+    return "";
+  }
+  const inlineAnnotations = annotations
+    .map((annotation) => resolveClinicalInlineAnnotation(annotation, clinicalText))
+    .filter((annotation) => annotation?.inlineText);
+  const placements = clinicalInlineAnnotationPlacements(clinicalText, inlineAnnotations);
+  if (!placements.length) {
+    return escapeHtml(clinicalText);
+  }
+  const placementMap = new Map();
+  for (const placement of placements) {
+    const list = placementMap.get(placement.index) || [];
+    list.push(placement);
+    placementMap.set(placement.index, list);
+  }
+  let html = "";
+  for (let index = 0; index <= clinicalText.length; index += 1) {
+    if (index > 0) {
+      html += escapeHtml(clinicalText[index - 1]);
+    }
+    const list = placementMap.get(index);
+    if (list?.length) {
+      for (const placement of list) {
+        html += `<span class="clinical-text-inline-annotation" data-clinical-annotation="true" contenteditable="false"> ${escapeHtml(placement.text)}</span>`;
+      }
+    }
+  }
+  return html;
+}
+
+function resolveClinicalInlineAnnotation(annotation = {}, clinicalText = "") {
+  if (annotation.inlineKind === "same_day_wound_treatment") {
+    return {
+      ...annotation,
+      inlineText: sameDayWoundTreatmentInlineText(clinicalText) || annotation.inlineText
+    };
+  }
+  return annotation;
+}
+
+function sameDayWoundTreatmentInlineText(clinicalText = "") {
+  const details = woundTreatmentDetailsFromClinicalText(clinicalText);
+  if (details.length >= 2) {
+    return `${details.join("、")}。別部位としてそれぞれ処置。`;
+  }
+  if (details.length === 1) {
+    return `${details[0]}。別部位・別創傷として処置した場合は部位、面積、処置内容を追記。`;
+  }
+  return "";
+}
+
+function woundTreatmentDetailsFromClinicalText(clinicalText = "") {
+  const seen = new Set();
+  const details = [];
+  for (const sentence of String(clinicalText || "").split(/[。\n]/u)) {
+    if (!/(熱傷|やけど|創傷|擦過創|切創|裂創|挫創)/u.test(sentence)) {
+      continue;
+    }
+    const normalized = sentence.replace(/\s+/gu, " ").trim();
+    const fragments = [
+      ...normalized.matchAll(/((?:右|左)?[^、。]*?(?:熱傷|やけど)[^、。]*?(?:約?\d+(?:\.\d+)?\s*(?:cm²|cm2|㎠|平方cm))?)/gu),
+      ...normalized.matchAll(/((?:右|左)?[^、。]*?(?:創傷|擦過創|切創|裂創|挫創)[^、。]*?(?:約?\d+(?:\.\d+)?\s*(?:cm²|cm2|㎠|平方cm))?)/gu)
+    ];
+    for (const match of fragments) {
+      const detail = cleanWoundTreatmentDetail(match[1]);
+      if (!detail || seen.has(detail)) {
+        continue;
+      }
+      seen.add(detail);
+      details.push(detail);
+      if (details.length >= 3) {
+        return details;
+      }
+    }
+  }
+  return details;
+}
+
+function cleanWoundTreatmentDetail(value = "") {
+  return String(value || "")
+    .replace(/^[SOAＰP]\s*[：:]/u, "")
+    .replace(/^.*?(右|左)/u, "$1")
+    .replace(/範囲\s*/u, "")
+    .replace(/[（）()]/gu, "")
+    .replace(/\s+/gu, "")
+    .trim();
+}
+
+function clinicalInlineAnnotationPlacements(clinicalText = "", annotations = []) {
+  const occupied = new Set();
+  return annotations
+    .map((annotation) => {
+      const index = clinicalInlineAnnotationIndex(clinicalText, annotation);
+      if (index < 0 || occupied.has(index)) {
+        return null;
+      }
+      occupied.add(index);
+      return {
+        index,
+        key: annotation.key,
+        text: annotation.inlineText
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.index - right.index);
+}
+
+function clinicalInlineAnnotationIndex(clinicalText = "", annotation = {}) {
+  const targets = annotationTargetCandidates(annotation);
+  if (!targets.length) {
+    return -1;
+  }
+  const lines = indexedTextLines(clinicalText);
+  let best = null;
+  for (const line of lines) {
+    for (const target of targets) {
+      const match = normalizedIndexOf(line.text, target);
+      if (!match) {
+        continue;
+      }
+      const endIndex = extendMedicationInsertionIndex(clinicalText, line.start + match.end);
+      const score = clinicalAnnotationLineScore(line.text, match.text);
+      if (!best || score > best.score || (score === best.score && endIndex < best.index)) {
+        best = { index: endIndex, score };
+      }
+    }
+  }
+  return best?.index ?? -1;
+}
+
+function annotationTargetCandidates(annotation = {}) {
+  const candidates = [
+    annotation.targetText,
+    annotation.title,
+    annotation.text
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+  const expanded = [];
+  for (const candidate of candidates) {
+    const withoutConfirm = candidate.replace(/の確認$/u, "").trim();
+    expanded.push(withoutConfirm);
+    expanded.push(withoutConfirm.replace(/(OD)?錠|カプセル|散|細粒|顆粒|シロップ|液|坐剤$/u, "").trim());
+  }
+  return [...new Set(expanded.map((value) => value.trim()).filter((value) => value.length >= 2))]
+    .sort((left, right) => right.length - left.length);
+}
+
+function indexedTextLines(value = "") {
+  const lines = [];
+  let start = 0;
+  for (const part of String(value || "").split(/(\n)/u)) {
+    if (part === "\n") {
+      start += 1;
+      continue;
+    }
+    lines.push({ text: part, start });
+    start += part.length;
+  }
+  return lines.length ? lines : [{ text: String(value || ""), start: 0 }];
+}
+
+function normalizedIndexOf(source = "", target = "") {
+  const sourceMap = normalizedSearchTextWithMap(source);
+  const normalizedTarget = normalizeSearchText(target);
+  if (!normalizedTarget) {
+    return null;
+  }
+  const start = sourceMap.text.indexOf(normalizedTarget);
+  if (start < 0) {
+    return null;
+  }
+  const endNormalizedIndex = start + normalizedTarget.length - 1;
+  return {
+    start: sourceMap.map[start] ?? 0,
+    end: (sourceMap.map[endNormalizedIndex] ?? 0) + 1,
+    text: target
+  };
+}
+
+function normalizedSearchTextWithMap(value = "") {
+  let text = "";
+  const map = [];
+  Array.from(String(value || "")).forEach((char, index) => {
+    const normalized = normalizeSearchText(char);
+    text += normalized;
+    for (let offset = 0; offset < normalized.length; offset += 1) {
+      map.push(index);
+    }
+  });
+  return { text, map };
+}
+
+function normalizeSearchText(value = "") {
+  return String(value || "").normalize("NFKC").toLowerCase().replace(/\s+/gu, "");
+}
+
+function extendMedicationInsertionIndex(text = "", index = 0) {
+  let nextIndex = index;
+  while (/[）)\]】」』]/u.test(String(text[nextIndex] || ""))) {
+    nextIndex += 1;
+  }
+  return nextIndex;
+}
+
+function clinicalAnnotationLineScore(line = "", target = "") {
+  let score = 0;
+  if (/\bP\s*[：:]/u.test(line) || /^P\s*[：:]/u.test(line.trim())) {
+    score += 20;
+  }
+  if (/院内処方|院外処方|処方|投薬|内服|頓用|薬剤/u.test(line)) {
+    score += 10;
+  }
+  score += Math.min(5, String(target || "").length / 4);
+  return score;
+}
+
+function escapeHtml(value = "") {
+  return String(value || "")
+    .replace(/&/gu, "&amp;")
+    .replace(/</gu, "&lt;")
+    .replace(/>/gu, "&gt;")
+    .replace(/"/gu, "&quot;")
+    .replace(/'/gu, "&#39;");
 }
 
 function WorkPane({
@@ -3018,10 +3239,11 @@ function clinicalTextAnnotationsFromWorkbench(workbench = {}) {
     .map(clinicalTextAnnotationForIssue)
     .filter(Boolean)
     .filter((annotation) => {
-      if (seen.has(annotation.text)) {
+      const key = [annotation.targetText, annotation.inlineText, annotation.text].filter(Boolean).join("::");
+      if (seen.has(key)) {
         return false;
       }
-      seen.add(annotation.text);
+      seen.add(key);
       return true;
     })
     .slice(0, 8)
@@ -3047,18 +3269,40 @@ function clinicalTextAnnotationForIssue(item = {}) {
   const category = String(item.issueCategory || "").trim();
   const requiredInput = reviewRequiredInput(item);
   const reason = String(item.displayReason || item.reasonText || item.reason || "").trim();
-  if (/レセプトコメント|コメント/u.test(text)) {
+  const materialName = materialNameFromClinicalIssue(text);
+  if (materialName) {
     return {
-      key: item.reviewItemId || title,
-      text: `${title}: ${humanReadableReceiptCommentReason(reason || text)}`,
-      example: receiptCommentExample(reason || text)
+      key: item.reviewItemId || `${materialName}_material`,
+      title: `${materialName}の確認`,
+      targetText: materialName,
+      text: `${materialName}: 使用量または規格を追記してください。`,
+      inlineText: materialAnnotationExample(materialName)
     };
   }
-  if (category === "medication" || /薬剤|数量|日数|総量|1回量|1日回数/u.test(text)) {
+  if (/同日複数処置|創傷処置|熱傷処置/u.test(text) && /レセプトコメント|コメント|同日複数処置/u.test(text)) {
     return {
       key: item.reviewItemId || title,
+      title,
+      targetText: "熱傷処置",
+      text: "同日複数処置の根拠を追記してください。",
+      inlineKind: "same_day_wound_treatment",
+      inlineText: "別部位・別創傷としてそれぞれ処置。"
+    };
+  }
+  if (/レセプトコメント|コメント/u.test(text)) {
+    return null;
+  }
+  if (category === "medication" || /薬剤|数量|日数|総量|1回量|1日回数/u.test(text)) {
+    const targetText = medicationAnnotationTarget(title);
+    if (!targetText || isGenericMedicationAnnotationTarget(targetText)) {
+      return null;
+    }
+    return {
+      key: item.reviewItemId || title,
+      title,
+      targetText,
       text: `${title}: ${requiredInput || compactRequiredInformation(item.conditionText) || "1回量、1日回数、日数または総量を追記してください。"}`,
-      example: medicationAnnotationExample(title)
+      inlineText: medicationAnnotationExample(targetText || title)
     };
   }
   if (requiredInput) {
@@ -3133,7 +3377,46 @@ function receiptCommentExample(value = "") {
 
 function medicationAnnotationExample(title = "") {
   const name = String(title || "").replace(/の確認$/u, "").trim() || "薬剤名";
+  if (/軟膏|クリーム|ローション/u.test(name)) {
+    return `${name} XXgを塗布。`;
+  }
+  if (/テープ|貼付薬|湿布/u.test(name)) {
+    return `${name} XX枚を貼付。`;
+  }
+  if (/シロップ|液/u.test(name)) {
+    return `${name} XXmL 1日X回 X日分。`;
+  }
   return `${name} XXmg 1日X回 X日分。`;
+}
+
+function medicationAnnotationTarget(title = "") {
+  return String(title || "")
+    .replace(/の確認$/u, "")
+    .replace(/(OD)?錠|カプセル|散|細粒|顆粒|シロップ|液|坐剤$/u, "")
+    .trim();
+}
+
+function isGenericMedicationAnnotationTarget(value = "") {
+  return /^(?:薬剤|処方|投薬|院内処方|院内処方の薬剤情報確認|薬剤情報確認)$/u.test(String(value || "").trim());
+}
+
+function materialNameFromClinicalIssue(text = "") {
+  const name = String(text || "").match(/特定器材・材料「([^」]+)」をマスターコードへ解決できませんでした/u)?.[1];
+  if (!name || /^(?:特定器材|材料|特定器材・材料|医療材料|材料名)$/u.test(name)) {
+    return "";
+  }
+  return name;
+}
+
+function materialAnnotationExample(name = "") {
+  const value = String(name || "").trim() || "材料名";
+  if (/ガーゼ|フィルム|フォーム|被覆材|保護材|固定材|パッド/u.test(value)) {
+    return `${value} XXcm²を使用。`;
+  }
+  if (/チューブ|カテーテル|ドレーン/u.test(value)) {
+    return `${value} XX本を使用。`;
+  }
+  return `${value} XX個を使用。`;
 }
 
 function compactRequiredInformation(value = "") {

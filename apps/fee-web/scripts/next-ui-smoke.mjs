@@ -80,6 +80,13 @@ try {
     await page.goto(`${baseUrl}/sessions/fee_test_1`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "患者", level: 2 }).waitFor();
     await page.getByText("カルテの内容").waitFor();
+    const clinicalEditor = page.locator(".clinical-text-editable");
+    await clinicalEditor.getByText("ゲーベンクリーム XXgを塗布。").waitFor();
+    assert.equal(
+      await clinicalEditor.locator(".clinical-text-inline-annotation").filter({ hasText: "ゲーベンクリーム XXgを塗布。" }).count(),
+      1,
+      "medication missing-dose annotation must render inline inside the chart text"
+    );
 
     const detailColumns = await page.locator(".fee-session-workspace").evaluate((element) => getComputedStyle(element).gridTemplateColumns);
     assert.ok(detailColumns.trim().split(/\s+/).length >= 2, "desktop fee detail view must use two robust columns");
@@ -121,6 +128,16 @@ try {
       patchBody.diagnoses.map((diagnosis) => diagnosis.name),
       [],
       "chart-only calculation must not submit client-side fixed diagnoses"
+    );
+    assert.equal(
+      patchBody.clinicalText.includes("ゲーベンクリーム XXmg 1日X回 X日分。"),
+      false,
+      "inline red annotation must not be persisted into the original chart text"
+    );
+    assert.equal(
+      patchBody.clinicalText.includes("ゲーベンクリーム XXgを塗布。"),
+      false,
+      "inline red ointment annotation must not be persisted into the original chart text"
     );
     await browser.close();
   } catch (error) {
@@ -356,6 +373,7 @@ async function installApiMocks(page) {
         body: JSON.stringify({
           feeSession: buildMockDetailSession(),
           reviewItems: [],
+          candidateWorkbench: buildMockCandidateWorkbench(),
           receiptDraft: null
         })
       });
@@ -382,6 +400,28 @@ async function installApiMocks(page) {
     });
   });
   return { patchPromise };
+}
+
+function buildMockCandidateWorkbench() {
+  return {
+    lines: [],
+    includedLines: [],
+    pendingLines: [],
+    excludedLines: [],
+    proposals: [],
+    hiddenIssues: [],
+    issues: [{
+      reviewItemId: "review_medication_missing_dose",
+      kind: "issue",
+      sourceType: "review_issue",
+      issueCategory: "medication",
+      displayTitle: "ゲーベンクリームの確認",
+      displayReason: "薬剤日数不足: 薬剤「ゲーベンクリーム」は日数または総量が不足しているため、算定候補には入れていません。",
+      requiredInput: "1回量、1日回数、日数または総量。",
+      hiddenFromWorkspace: false
+    }],
+    counts: { included: 0, pending: 0, excluded: 0, proposals: 0, issues: 1, needsReview: 1 }
+  };
 }
 
 function buildMockDetailSession(overrides = {}) {

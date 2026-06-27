@@ -1723,6 +1723,12 @@ function receiptLineSemanticKey(line = {}) {
 
 function reviewWarningTitle(message = "") {
   const text = String(message || "");
+  if (/同日複数処置の確認|Exclusion candidate/i.test(text)) {
+    return "同日複数処置の確認";
+  }
+  if (/院内処方の薬剤情報確認|In-house medication fee requires drug inputs/i.test(text)) {
+    return "院内処方の薬剤情報確認";
+  }
   const topicLabel = text.match(/^([^\s:：]{2,20}確認)\s*[:：]/u)?.[1];
   if (topicLabel) {
     return topicLabel;
@@ -2154,6 +2160,10 @@ function uniqueCompact(values = []) {
 
 function candidateActionSemanticKey(item = {}, normalized = {}) {
   const text = `${normalized.displayTitle || ""} ${normalized.displayReason || ""} ${item.title || ""} ${item.reason || ""}`.toLowerCase();
+  const exclusion = parseElectronicExclusionMessage(text);
+  if (exclusion) return `warning:electronic_exclusion:${[exclusion.baseCode, exclusion.excludedCode].sort().join(":")}`;
+  const normalizedExclusion = text.match(/同日複数処置の確認\s*[:：]\s*(.+?)と(.+?)を同日に算定/u);
+  if (normalizedExclusion) return `warning:electronic_exclusion:${[normalizeSemanticToken(normalizedExclusion[1]), normalizeSemanticToken(normalizedExclusion[2])].sort().join(":")}`;
   if (/施設基準|hospital_profile_missing|facility_standard/u.test(text)) return "warning:facility_standard";
   if (/mri|ｍｒｉ/u.test(text) && /予定|依頼|オーダー|planned|ordered/u.test(text)) return "warning:mri_planned";
   if (/単純x線|x線|レントゲン|simple_radiography/u.test(text) && /撮影方式|写真診断|機器|条件/u.test(text)) return "warning:simple_radiography_condition";
@@ -2166,6 +2176,13 @@ function humanizeReviewMessage(message = "") {
   const raw = String(message || "").trim();
   if (!raw) return "算定候補の内容を確認してください。";
   const text = raw.replace(/^[a-z][a-z0-9_]*:\s*/iu, "").trim();
+  const exclusion = parseElectronicExclusionMessage(text);
+  if (exclusion) {
+    return `同日複数処置の確認: ${exclusion.baseName}と${exclusion.excludedName}を同日に算定しています。別部位・別創傷として処置した根拠を確認してください。`;
+  }
+  if (/In-house medication fee requires drug inputs/i.test(text)) {
+    return "院内処方の薬剤情報確認: 薬剤料を計算するには、薬剤名、用量、日数または総量が必要です。";
+  }
   if (/hospital_profile_missing|facility_standard|Lab management fee skipped|施設基準がない|施設基準/u.test(raw)) {
     return "施設基準が登録されていないため、施設基準が必要な加算は自動追加していません。";
   }
@@ -2214,12 +2231,29 @@ function humanizeReviewMessage(message = "") {
   return text;
 }
 
+function parseElectronicExclusionMessage(value = "") {
+  const match = String(value || "").match(/Exclusion candidate:\s*(\d{6,})\s+(.+?)\s+and\s+(\d{6,})\s+(.+?)\s+matched from\s+(.+)$/iu);
+  if (!match) {
+    return null;
+  }
+  return {
+    baseCode: match[1],
+    baseName: String(match[2] || "").trim(),
+    excludedCode: match[3],
+    excludedName: String(match[4] || "").trim(),
+    matchedFrom: String(match[5] || "").trim()
+  };
+}
+
 function humanReadableRequiredCommentMessage(value = "") {
   const text = String(value || "").trim();
   const target = text.match(/(?:レセプトコメントの確認\s*[:：]\s*)?(.+?)\s*に必要なコメント/u)?.[1]
     || text.match(/^Required comment candidate:\s*(.+?)\s+needs\s+/iu)?.[1]
     || "";
   const prefix = target ? `${target.replace(/\b\d{6,}\b/gu, "").trim()}: ` : "";
+  if (/創傷処置|熱傷処置|皮膚科軟膏処置|爪甲除去|デブリードマン/u.test(text)) {
+    return `${prefix}同日に複数の創傷・熱傷などの処置を算定する場合は、部位・面積・処置内容が分かるレセプトコメントを確認してください。`;
+  }
   if (/複数診療科で処方/u.test(text)) {
     return `${prefix}複数診療科で処方している場合は、その旨をレセプトコメントに記載してください。`;
   }

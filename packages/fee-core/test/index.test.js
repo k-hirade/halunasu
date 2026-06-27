@@ -957,6 +957,42 @@ test("hides negated and excluded clinical event review items from the workspace"
   assert.equal(missingDiagnosisWorkbench.needsReviewCount, 0);
 });
 
+test("normalizes electronic exclusion and in-house medication warnings for the workspace", () => {
+  const session = buildFeeSession({
+    orgId: "org_123",
+    createdByMemberId: "member_1",
+    patientId: "patient_1",
+    facilityId: "facility_1",
+    serviceDate: "2026-06-07"
+  }, {
+    feeSessionId: "fee_warning_normalize",
+    now: "2026-06-07T01:00:00.000Z"
+  });
+  const calculated = applyCalculationResult(session, {
+    totalPoints: 277,
+    lineItems: [{
+      lineId: "line_burn",
+      code: "140032110",
+      name: "熱傷処置（１００ｃｍ２以上５００ｃｍ２未満）",
+      points: 147,
+      status: "confirmed"
+    }],
+    warnings: [
+      "In-house medication fee requires drug inputs",
+      "Exclusion candidate: 140000610 創傷処置（１００ｃｍ２未満） and 140032110 熱傷処置（１００ｃｍ２以上５００ｃｍ２未満） matched from current",
+      "Exclusion candidate: 140032110 熱傷処置（１００ｃｍ２以上５００ｃｍ２未満） and 140000610 創傷処置（１００ｃｍ２未満） matched from current"
+    ]
+  }, {
+    calculationId: "calc_warning_normalize",
+    now: "2026-06-07T01:01:00.000Z"
+  });
+
+  const workbench = buildCandidateWorkbench(calculated);
+  assert.equal(workbench.issues.filter((item) => item.displayTitle === "同日複数処置の確認").length, 1);
+  assert.equal(workbench.issues.filter((item) => item.displayTitle === "院内処方の薬剤情報確認").length, 1);
+  assert.equal(workbench.issues.some((item) => /Exclusion candidate|In-house medication/i.test(item.displayReason)), false);
+});
+
 function assertNoUndefined(value) {
   if (Array.isArray(value)) {
     value.forEach(assertNoUndefined);

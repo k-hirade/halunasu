@@ -3836,6 +3836,13 @@ function normalizeCalculationWarning(value = "") {
   if (!warning) {
     return "";
   }
+  const exclusion = parseElectronicExclusionWarning(warning);
+  if (exclusion) {
+    return `同日複数処置の確認: ${exclusion.baseName}と${exclusion.excludedName}を同日に算定しています。別部位・別創傷として処置した根拠を確認してください。`;
+  }
+  if (/In-house medication fee requires drug inputs/i.test(warning)) {
+    return "院内処方の薬剤情報確認: 薬剤料を計算するには、薬剤名、用量、日数または総量が必要です。";
+  }
   if (/Lab management fee skipped: facility_standard_not_found|facility_standard_not_found/u.test(warning)) {
     return "施設基準確認: 検体検査管理加算の届出確認が必要です。施設基準が登録されていないため、検体検査管理加算は自動追加していません。";
   }
@@ -3882,6 +3889,14 @@ function normalizeCalculationWarning(value = "") {
 
 function calculationWarningKey(warning = "") {
   const text = String(warning || "").trim();
+  const exclusion = parseElectronicExclusionWarning(text);
+  if (exclusion) {
+    return `electronic_exclusion:${[exclusion.baseCode, exclusion.excludedCode].sort().join(":")}`;
+  }
+  const normalizedExclusion = text.match(/^同日複数処置の確認\s*[:：]\s*(.+?)と(.+?)を同日に算定/u);
+  if (normalizedExclusion) {
+    return `electronic_exclusion:${[normalizeWarningLabel(normalizedExclusion[1]), normalizeWarningLabel(normalizedExclusion[2])].sort().join(":")}`;
+  }
   const medication = text.match(/薬剤「([^」]+)」/u)?.[1];
   if (medication) {
     return `medication:${medication.replace(/\d+(?:\.\d+)?\s*(?:mg|g|μg|mL).*$/iu, "").trim()}:${warningReasonKey(text)}`;
@@ -3891,6 +3906,24 @@ function calculationWarningKey(warning = "") {
   const procedureCode = text.match(/\b(\d{6,})\b/u)?.[1];
   if (procedureCode) return `procedure:${procedureCode}:${warningReasonKey(text)}`;
   return text.replace(/\s+/gu, "").slice(0, 120);
+}
+
+function parseElectronicExclusionWarning(value = "") {
+  const match = String(value || "").match(/^Exclusion candidate:\s*(\d{6,})\s+(.+?)\s+and\s+(\d{6,})\s+(.+?)\s+matched from\s+(.+)$/iu);
+  if (!match) {
+    return null;
+  }
+  return {
+    baseCode: match[1],
+    baseName: String(match[2] || "").trim(),
+    excludedCode: match[3],
+    excludedName: String(match[4] || "").trim(),
+    matchedFrom: String(match[5] || "").trim()
+  };
+}
+
+function normalizeWarningLabel(value = "") {
+  return String(value || "").replace(/\s+/gu, "").trim();
 }
 
 function warningReasonKey(warning = "") {
