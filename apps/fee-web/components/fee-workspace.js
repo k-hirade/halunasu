@@ -913,6 +913,8 @@ function FeeSessionDetailView({ sessionId }) {
   const [settingsModalMode, setSettingsModalMode] = useState(null);
   const [manualItemModalOpen, setManualItemModalOpen] = useState(false);
   const [manualItemDraft, setManualItemDraft] = useState(defaultManualBillingItemDraft);
+  const [missingDiagnosisPromptOpen, setMissingDiagnosisPromptOpen] = useState(false);
+  const [missingDiagnosisDraft, setMissingDiagnosisDraft] = useState("");
   const [activeMainTab, setActiveMainTab] = useState("work");
   const suppressAutoSaveRef = useRef(false);
   const autoSaveTimerRef = useRef(null);
@@ -1253,7 +1255,7 @@ function FeeSessionDetailView({ sessionId }) {
       form: formForPayload,
       orderRows: rowsForPayload,
       patients,
-      diagnosesTouched,
+      diagnosesTouched: options.diagnosesTouchedOverride ?? diagnosesTouched,
       orderRowsTouched: options.orderRowsTouchedOverride ?? orderRowsTouched,
       clinicalTextBaselineHash
     });
@@ -1340,7 +1342,7 @@ function FeeSessionDetailView({ sessionId }) {
           form: options.formOverride || form,
           orderRows: Array.isArray(options.orderRowsOverride) ? options.orderRowsOverride : orderRows,
           patients,
-          diagnosesTouched,
+          diagnosesTouched: options.diagnosesTouchedOverride ?? diagnosesTouched,
           orderRowsTouched: options.orderRowsOverride ? true : orderRowsTouched,
           clinicalTextBaselineHash
         });
@@ -1358,6 +1360,7 @@ function FeeSessionDetailView({ sessionId }) {
           silent: true,
           formOverride: options.formOverride,
           orderRowsOverride: options.orderRowsOverride,
+          diagnosesTouchedOverride: options.diagnosesTouchedOverride,
           orderRowsTouchedOverride: options.orderRowsOverride ? true : undefined
         });
         if (options.calculationMode) {
@@ -1392,6 +1395,41 @@ function FeeSessionDetailView({ sessionId }) {
       if (!jobQueued) {
         addToast("算定ジョブを開始できませんでした。Cloud Tasks または Pub/Sub の設定を確認して再度お試しください。", "error");
       }
+    });
+  }
+
+  async function requestCalculate() {
+    if (!hasDiagnosisInput(form.diagnosesText)) {
+      setMissingDiagnosisDraft("");
+      setMissingDiagnosisPromptOpen(true);
+      return;
+    }
+    await calculate();
+  }
+
+  async function calculateWithoutDiagnosis() {
+    setMissingDiagnosisPromptOpen(false);
+    await calculate({ allowMissingDiagnosis: true });
+  }
+
+  async function calculateWithDiagnosis() {
+    const nextDiagnosesText = String(missingDiagnosisDraft || "").trim();
+    if (!nextDiagnosesText) {
+      addToast("病名を入力するか、病名なしで進んでください。", "error");
+      return;
+    }
+    const nextForm = {
+      ...form,
+      diagnosesText: nextDiagnosesText
+    };
+    setDiagnosesTouched(true);
+    setDiagnosesEditedSinceLoad(true);
+    setForm(nextForm);
+    setMissingDiagnosisPromptOpen(false);
+    await calculate({
+      allowMissingDiagnosis: true,
+      formOverride: nextForm,
+      diagnosesTouchedOverride: true
     });
   }
 
@@ -1748,7 +1786,7 @@ function FeeSessionDetailView({ sessionId }) {
         autoSaveLabelText={saveStatusLabel}
         autoSaveStatus={autoSaveStatus}
         busy={busy}
-        calculate={calculate}
+        calculate={requestCalculate}
         isCalculating={isCalculating}
         onRefresh={() => loadAll({ forceBootstrap: true })}
       />
@@ -1784,6 +1822,15 @@ function FeeSessionDetailView({ sessionId }) {
         onClose={() => setCandidateDetail(null)}
         onDecision={decideReviewItem}
         onSaveReceiptAnnotation={saveReceiptAnnotationFromItem}
+      />
+      <MissingDiagnosisWarningModal
+        disabled={busy}
+        onChange={setMissingDiagnosisDraft}
+        onClose={() => setMissingDiagnosisPromptOpen(false)}
+        onProceedWithDiagnosis={calculateWithDiagnosis}
+        onProceedWithoutDiagnosis={calculateWithoutDiagnosis}
+        open={missingDiagnosisPromptOpen}
+        value={missingDiagnosisDraft}
       />
       <ManualBillingItemModal
         available={masterSearchAvailable}
@@ -1834,6 +1881,54 @@ function SessionActionFooter({ autoSaveError, autoSaveLabelText, autoSaveStatus,
         <button className="btn btn--ghost btn--icon" disabled={busy} onClick={onRefresh} type="button" aria-label="最新の状態に更新">↻</button>
       </div>
     </footer>
+  );
+}
+
+function MissingDiagnosisWarningModal({
+  disabled,
+  onChange,
+  onClose,
+  onProceedWithDiagnosis,
+  onProceedWithoutDiagnosis,
+  open,
+  value
+}) {
+  if (!open) {
+    return null;
+  }
+  const canProceedWithDiagnosis = hasDiagnosisInput(value);
+  return (
+    <div className="fee-modal-overlay" role="presentation" onMouseDown={onClose}>
+      <section className="fee-modal-card missing-diagnosis-modal" role="dialog" aria-modal="true" aria-label="病名未入力の確認" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="fee-modal-head">
+          <div>
+            <span className="modal-kicker">算定前確認</span>
+            <h2>病名が未入力です</h2>
+          </div>
+          <button className="btn btn--ghost btn--icon" disabled={disabled} onClick={onClose} type="button" aria-label="閉じる">×</button>
+        </header>
+        <div className="fee-modal-body">
+          <p>
+            病名なしでも算定候補は作成できますが、査定・返戻確認では病名が算定根拠になります。分かる範囲で入力してから進むことを推奨します。
+          </p>
+          <label className="missing-diagnosis-field">
+            <span>病名・補足</span>
+            <textarea
+              disabled={disabled}
+              onChange={(event) => onChange(event.target.value)}
+              placeholder={"例: 急性胃腸炎（ウイルス性疑い）\n例: 高血圧症（コントロール良好）"}
+              rows={4}
+              value={value}
+            />
+          </label>
+        </div>
+        <footer className="fee-modal-footer">
+          <button className="btn btn--ghost" disabled={disabled} onClick={onClose} type="button">キャンセル</button>
+          <button className="btn btn--ghost" disabled={disabled} onClick={onProceedWithoutDiagnosis} type="button">病名なしで進む</button>
+          <button className="btn btn--primary" disabled={disabled || !canProceedWithDiagnosis} onClick={onProceedWithDiagnosis} type="button">病名を入れて進む</button>
+        </footer>
+      </section>
+    </div>
   );
 }
 
@@ -2941,7 +3036,7 @@ function clinicalTextAnnotationForIssue(item = {}) {
     return null;
   }
   const text = clinicalIssueText(item);
-  if (!text || isFacilityStandardClinicalIssue(text, item)) {
+  if (!text || isFacilityStandardClinicalIssue(text, item) || isMissingDiagnosisClinicalIssue(text, item)) {
     return null;
   }
   if (!isClinicalTextActionableIssue(text, item)) {
@@ -2995,6 +3090,12 @@ function isFacilityStandardClinicalIssue(text = "", item = {}) {
   const code = String(item.issueCode || item.reviewIssue?.issueCode || item.reviewIssue?.issue_code || "").trim();
   return ["facility_unknown", "hospital_profile_missing", "facility_standard_not_found"].includes(code)
     || /施設基準|地方厚生局|届け出|届出|facility_standard|hospital_profile/u.test(String(text || ""));
+}
+
+function isMissingDiagnosisClinicalIssue(text = "", item = {}) {
+  const code = String(item.issueCode || item.reviewIssue?.issueCode || item.reviewIssue?.issue_code || "").trim();
+  return code === "missing_diagnosis"
+    || /病名が入力されていません|病名が未入力|病名未入力|算定根拠として使う病名が未入力/u.test(String(text || ""));
 }
 
 function isClinicalTextActionableIssue(text = "", item = {}) {
@@ -3862,6 +3963,10 @@ function defaultFeeForm() {
     diagnosesText: "",
     calculationOptionsText: ""
   };
+}
+
+function hasDiagnosisInput(value) {
+  return parseDiagnoses(value).length > 0;
 }
 
 function defaultClaimMonth() {

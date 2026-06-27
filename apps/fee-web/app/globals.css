@@ -2892,6 +2892,33 @@ body:has(.fee-shell--detail) {
   width: min(760px, 100%);
 }
 
+.missing-diagnosis-modal {
+  width: min(680px, 100%);
+}
+
+.modal-kicker {
+  display: block;
+  color: var(--warn);
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.missing-diagnosis-field {
+  display: grid;
+  gap: 6px;
+}
+
+.missing-diagnosis-field span {
+  color: #26364f;
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.missing-diagnosis-field textarea {
+  min-height: 122px;
+  resize: vertical;
+}
+
 .fee-settings-section {
   display: grid;
   gap: 14px;

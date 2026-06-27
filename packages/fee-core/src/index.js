@@ -1472,9 +1472,10 @@ function normalizeReviewIssues(items) {
 function normalizeCalculationCoverage(coverage, lineItems, warnings) {
   const input = isPlainObject(coverage) ? coverage : {};
   const reviewLineCount = lineItems.filter((line) => line.reviewRequired === true).length;
+  const visibleWarnings = warnings.filter((message) => !shouldHideReviewIssueFromWorkspace({ message }));
   const reviewRequired = coerceBoolean(
     input.reviewRequired ?? input.review_required,
-    warnings.length > 0 || reviewLineCount > 0
+    visibleWarnings.length > 0 || reviewLineCount > 0
   );
   const supportLevel = input.supportLevel || input.support_level || "partial";
 
@@ -1487,7 +1488,7 @@ function normalizeCalculationCoverage(coverage, lineItems, warnings) {
     review_required: reviewRequired,
     lineCount: Number(input.lineCount ?? input.line_count ?? lineItems.length),
     reviewLineCount: Number(input.reviewLineCount ?? input.review_line_count ?? reviewLineCount),
-    reviewMessageCount: Number(input.reviewMessageCount ?? input.review_message_count ?? warnings.length),
+    reviewMessageCount: Number(input.reviewMessageCount ?? input.review_message_count ?? visibleWarnings.length),
     description: input.description || "This result is a billing candidate and review-support draft. It is not a finalized claim calculation."
   };
 }
@@ -1866,6 +1867,9 @@ function shouldHideReviewIssueFromWorkspace({ reviewIssue = null, message = "" }
     reviewIssue?.messageForStaff,
     reviewIssue?.evidence
   ].filter(Boolean).join(" ");
+  if (isMissingDiagnosisReviewText(text)) {
+    return true;
+  }
   if (isFacilityStandardReviewText(text)) {
     return true;
   }
@@ -1887,6 +1891,10 @@ function hiddenWorkspaceIssueCodes() {
 
 function isFacilityStandardReviewText(text = "") {
   return /施設基準|地方厚生局|届け出|届出|facility_standard|hospital_profile/u.test(String(text || ""));
+}
+
+function isMissingDiagnosisReviewText(text = "") {
+  return /病名が入力されていません|病名が未入力|病名未入力|算定根拠として使う病名が未入力/u.test(String(text || ""));
 }
 
 function isHiddenWorkspaceReviewText(text = "") {

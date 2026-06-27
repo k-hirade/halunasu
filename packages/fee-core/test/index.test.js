@@ -935,6 +935,26 @@ test("hides negated and excluded clinical event review items from the workspace"
   assert.equal(facilityWorkbench.issues.length, 0);
   assert.equal(facilityWorkbench.hiddenIssues.length, 1);
   assert.equal(facilityWorkbench.needsReviewCount, 0);
+
+  const missingDiagnosisOnly = applyCalculationResult(session, {
+    totalPoints: 76,
+    lineItems: [{
+      id: "line_revisit",
+      name: "再診料",
+      code: "112007410",
+      points: 76,
+      status: "confirmed"
+    }],
+    warnings: ["病名が入力されていません。査定リスク確認のため、主病名または疑い病名を入力してください。"]
+  }, {
+    calculationId: "calc_missing_diagnosis_hidden",
+    now: "2026-06-07T00:04:00.000Z"
+  });
+  const missingDiagnosisWorkbench = buildCandidateWorkbench(missingDiagnosisOnly);
+  assert.equal(missingDiagnosisOnly.status, "calculated");
+  assert.equal(missingDiagnosisWorkbench.issues.length, 0);
+  assert.equal(missingDiagnosisWorkbench.hiddenIssues.length, 1);
+  assert.equal(missingDiagnosisWorkbench.needsReviewCount, 0);
 });
 
 function assertNoUndefined(value) {

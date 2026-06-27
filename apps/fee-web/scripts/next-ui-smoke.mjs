@@ -108,6 +108,9 @@ try {
     await page.setViewportSize({ width: 1440, height: 1000 });
 
     await page.getByRole("button", { name: "カルテから算定候補を作成" }).click();
+    const missingDiagnosisDialog = page.getByRole("dialog", { name: "病名未入力の確認" });
+    await missingDiagnosisDialog.waitFor();
+    await missingDiagnosisDialog.getByRole("button", { name: "病名なしで進む" }).click();
     const patchBody = await apiMocks.patchPromise;
     assert.deepEqual(
       patchBody.orders.map((order) => [order.orderType, order.localName, order.standardCode]),
