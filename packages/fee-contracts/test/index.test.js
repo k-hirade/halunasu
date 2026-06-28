@@ -208,6 +208,28 @@ test("normalizes facility receipt policy settings without dropping current defau
   assert.equal(normalized.receiptPolicy.annotationDefaults.commentShinryoIdentification, "60");
 });
 
+test("normalizes structured facility standards and drops unused policy fields", () => {
+  const normalized = validateUpdateFeeSettingsInput({
+    facilityId: "fac_001",
+    historyPolicy: { defaultLookbackMonths: 6, externalHistoryEnabled: true },
+    facilityStandards: [
+      { key: "lab_management_1", name: "検体検査管理加算(I)", acceptanceNumber: "第1号", claimStartDate: "2026-06-01", status: "active" },
+      { name: "", key: "" }
+    ]
+  });
+
+  assert.equal(normalized.historyPolicy.defaultLookbackMonths, 6);
+  assert.equal(normalized.historyPolicy.externalHistoryEnabled, true);
+  assert.equal(normalized.facilityStandards.length, 1);
+  assert.equal(normalized.facilityStandards[0].key, "lab_management_1");
+  assert.equal(normalized.facilityStandards[0].status, "active");
+  assert.equal(normalized.facilityStandards[0].claimStartDate, "2026-06-01");
+  assert.equal(normalized.initialRevisitPolicy.requireReviewWhenNoHistory, true);
+  assert.equal(normalized.historyPolicy.missingHistoryBehavior, undefined);
+  assert.equal(normalized.reviewPolicy, undefined);
+  assert.equal(normalized.initialRevisitPolicy.priorHistoryBehavior, undefined);
+});
+
 test("detects performed blood collection using the shared strict predicate", () => {
   assert.equal(hasPerformedBloodCollectionEvidenceInText("O: 静脈採血を実施し、血液検体を提出した。"), true);
   assert.equal(hasPerformedBloodCollectionEvidenceInText("O: 静脈採血でCRP 0.3mg/dLを確認した。"), true);
