@@ -168,6 +168,27 @@ export class MemoryFeeStore {
     };
   }
 
+  decideReviewItems(orgId, feeSessionId, decisions = []) {
+    const current = this.getSession(orgId, feeSessionId);
+    if (!current) {
+      throw notFoundError("fee session not found");
+    }
+
+    const now = this.timestamp();
+    let updated = current;
+    for (const decision of Array.isArray(decisions) ? decisions : []) {
+      updated = applyReviewDecision(updated, decision.reviewItemId, decision, {
+        now
+      });
+    }
+    this.sessionsForOrg(orgId).set(feeSessionId, updated);
+
+    return {
+      feeSession: updated,
+      reviewItems: buildReviewItems(updated)
+    };
+  }
+
   createCalculationJob(orgId, feeSessionId, input = {}) {
     const current = this.getSession(orgId, feeSessionId);
     if (!current) {

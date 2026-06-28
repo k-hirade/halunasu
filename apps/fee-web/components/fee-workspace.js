@@ -930,6 +930,7 @@ function FeeSessionDetailView({ sessionId }) {
   const [missingDiagnosisPromptOpen, setMissingDiagnosisPromptOpen] = useState(false);
   const [missingDiagnosisDraft, setMissingDiagnosisDraft] = useState("");
   const [activeMainTab, setActiveMainTab] = useState("work");
+  const [pendingReviewDecisions, setPendingReviewDecisions] = useState({});
   const bootstrapLoadedRef = useRef(false);
   const toastTimersRef = useRef(new Map());
   const toastExitTimersRef = useRef(new Map());
@@ -992,6 +993,21 @@ function FeeSessionDetailView({ sessionId }) {
       || patientFromSessionSnapshot(feeSession, form.patientId),
     [feeSession, form.patientId, patients]
   );
+  const projectedReviewState = useMemo(() => projectPendingReviewDecisions({
+    feeSession,
+    receiptDraft,
+    candidateWorkbench,
+    pendingReviewDecisions
+  }), [candidateWorkbench, feeSession, pendingReviewDecisions, receiptDraft]);
+  const effectiveFeeSession = projectedReviewState.feeSession;
+  const effectiveReceiptDraft = projectedReviewState.receiptDraft;
+  const effectiveCandidateWorkbench = projectedReviewState.candidateWorkbench;
+  const pendingReviewDecisionCount = projectedReviewState.pendingCount;
+  const effectiveCandidateDetail = useMemo(() => (
+    candidateDetail?.reviewItemId
+      ? findCandidateWorkbenchItemByReviewItemId(effectiveCandidateWorkbench, candidateDetail.reviewItemId) || candidateDetail
+      : candidateDetail
+  ), [candidateDetail, effectiveCandidateWorkbench]);
 
   const applyDetail = useCallback((detail, options = {}) => {
     applyDetailResponse(detail, {
@@ -1005,6 +1021,9 @@ function FeeSessionDetailView({ sessionId }) {
       setOrderRowsTouched,
       setClinicalTextBaselineHash
     }, options);
+    if (!options.preservePendingReviewDecisions) {
+      setPendingReviewDecisions({});
+    }
   }, []);
 
   useEffect(() => {
@@ -1156,6 +1175,18 @@ function FeeSessionDetailView({ sessionId }) {
       window.clearTimeout(timeoutId);
     };
   }, [addToast, feeSession?.status, refreshCalculationStatus, refreshDetail]);
+
+  useEffect(() => {
+    if (!pendingReviewDecisionCount) {
+      return undefined;
+    }
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [pendingReviewDecisionCount]);
 
   useEffect(() => {
     if (!masterSearchAvailable) {
@@ -1314,7 +1345,42 @@ function FeeSessionDetailView({ sessionId }) {
     sessionId
   ]);
 
+  async function savePendingReviewDecisions(options = {}) {
+    const decisions = Object.entries(pendingReviewDecisions)
+      .map(([reviewItemId, decision]) => ({
+        reviewItemId,
+        status: decision.status
+      }))
+      .filter((decision) => decision.reviewItemId && decision.status);
+    if (!decisions.length) {
+      return true;
+    }
+    let succeeded = false;
+    await runBusy(setBusy, addToast, async () => {
+      const response = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/review-items`, {
+        method: "PATCH",
+        csrf: true,
+        body: { decisions }
+      });
+      setFeeSession(response.feeSession || effectiveFeeSession || feeSession);
+      setReceiptDraft(response.receiptDraft || effectiveReceiptDraft || receiptDraft);
+      setCandidateWorkbench(response.candidateWorkbench || effectiveCandidateWorkbench || null);
+      setPendingReviewDecisions({});
+      succeeded = true;
+      if (!options.silent) {
+        addToast("採否変更を保存しました。", "success");
+      }
+    });
+    return succeeded;
+  }
+
   async function calculate(options = {}) {
+    if (!options.skipSaveReviewDecisions && pendingReviewDecisionCount) {
+      const saved = await savePendingReviewDecisions({ silent: true });
+      if (!saved) {
+        return;
+      }
+    }
     await runBusy(setBusy, addToast, async () => {
       let saved = null;
       let calculationBody = {};
@@ -1448,17 +1514,27 @@ function FeeSessionDetailView({ sessionId }) {
     });
   }
 
-  async function decideReviewItem(reviewItemId, status) {
-    await runBusy(setBusy, addToast, async () => {
-      const response = await feeApi(`/v1/fee/sessions/${encodeURIComponent(sessionId)}/review-items/${encodeURIComponent(reviewItemId)}`, {
-        method: "PATCH",
-        csrf: true,
-        body: { status }
-      });
-      setFeeSession(response.feeSession || feeSession);
-      setReceiptDraft(response.receiptDraft || receiptDraft);
-      setCandidateWorkbench(response.candidateWorkbench || null);
-      addToast("採否を更新しました。", "success");
+  function decideReviewItem(reviewItemId, status, previousStatus = "") {
+    if (!reviewItemId) {
+      return;
+    }
+    const nextStatus = decisionSelectValue(status);
+    setPendingReviewDecisions((current) => {
+      const currentDecision = current[reviewItemId] || null;
+      const baselineItem = findCandidateWorkbenchItemByReviewItemId(candidateWorkbench, reviewItemId);
+      const baseStatus = currentDecision?.baseStatus
+        || decisionSelectValue(baselineItem?.decisionStatus || baselineItem?.status || previousStatus);
+      const next = { ...current };
+      if (nextStatus === baseStatus) {
+        delete next[reviewItemId];
+      } else {
+        next[reviewItemId] = {
+          baseStatus,
+          status: nextStatus,
+          decidedAt: new Date().toISOString()
+        };
+      }
+      return next;
     });
   }
 
@@ -1483,13 +1559,13 @@ function FeeSessionDetailView({ sessionId }) {
   }
 
   async function copyReceiptDraft(options = {}) {
-    const target = options.scope === "monthly" ? options.receiptDraft : receiptDraft;
+    const target = options.scope === "monthly" ? options.receiptDraft : effectiveReceiptDraft;
     if (!target) {
       addToast("コピーできるレセプト案がまだありません。", "error");
       return;
     }
     await runBusy(setBusy, addToast, async () => {
-      const text = formatReceiptDraftForClipboard({ feeSession, receiptDraft: target });
+      const text = formatReceiptDraftForClipboard({ feeSession: effectiveFeeSession, receiptDraft: target });
       await writeClipboardText(text);
       addToast(options.scope === "monthly" ? "月次集計レセプトをコピーしました。" : "レセプト案をコピーしました。", "success");
     });
@@ -1509,6 +1585,10 @@ function FeeSessionDetailView({ sessionId }) {
     }
     if (!sessionId) {
       addToast("CSVを出力できるセッションがありません。", "error");
+      return;
+    }
+    if (pendingReviewDecisionCount) {
+      addToast("未保存の採否変更があります。保存してからCSVを出力してください。", "error");
       return;
     }
     await runBusy(setBusy, addToast, async () => {
@@ -1531,6 +1611,10 @@ function FeeSessionDetailView({ sessionId }) {
     }
     if (!sessionId) {
       addToast("レセ電を出力できるセッションがありません。", "error");
+      return;
+    }
+    if (pendingReviewDecisionCount) {
+      addToast("未保存の採否変更があります。保存してからレセ電を出力してください。", "error");
       return;
     }
     await runBusy(setBusy, addToast, async () => {
@@ -1748,8 +1832,8 @@ function FeeSessionDetailView({ sessionId }) {
       <div className="fee-session-workspace">
         <SourcePane
           busy={busy}
-          candidateWorkbench={candidateWorkbench}
-          feeSession={feeSession}
+          candidateWorkbench={effectiveCandidateWorkbench}
+          feeSession={effectiveFeeSession}
           filteredPatients={filteredPatients}
           form={form}
           newPatient={newPatient}
@@ -1772,9 +1856,9 @@ function FeeSessionDetailView({ sessionId }) {
         <WorkPane
           activeMainTab={activeMainTab}
           calculation={calculation}
-          candidateWorkbench={candidateWorkbench}
+          candidateWorkbench={effectiveCandidateWorkbench}
           disabled={busy}
-          feeSession={feeSession}
+          feeSession={effectiveFeeSession}
           onCopyReceipt={copyReceiptDraft}
           onDownloadCsv={downloadReceiptCsv}
           onDownloadUke={downloadReceiptUke}
@@ -1788,7 +1872,7 @@ function FeeSessionDetailView({ sessionId }) {
           onSetMainTab={setActiveMainTab}
           onRemoveManualOrder={removeManualOrderAndCalculate}
           orderRows={orderRows}
-          receiptDraft={receiptDraft}
+          receiptDraft={effectiveReceiptDraft}
           selected={Boolean(sessionId)}
         />
       </div>
@@ -1796,7 +1880,14 @@ function FeeSessionDetailView({ sessionId }) {
         busy={busy}
         calculate={requestCalculate}
         isCalculating={isCalculating}
-        onRefresh={() => loadAll({ forceBootstrap: true })}
+        onRefresh={() => {
+          if (pendingReviewDecisionCount && !window.confirm("未保存の採否変更を破棄して最新状態に更新しますか？")) {
+            return;
+          }
+          loadAll({ forceBootstrap: true });
+        }}
+        onSaveReviewDecisions={savePendingReviewDecisions}
+        pendingReviewDecisionCount={pendingReviewDecisionCount}
       />
       <FeeSettingsModal
         available={masterSearchAvailable}
@@ -1826,7 +1917,7 @@ function FeeSessionDetailView({ sessionId }) {
       />
       <CandidateDetailModal
         disabled={busy}
-        item={candidateDetail}
+        item={effectiveCandidateDetail}
         onClose={() => setCandidateDetail(null)}
         onDecision={decideReviewItem}
         onSaveReceiptAnnotation={saveReceiptAnnotationFromItem}
@@ -1868,17 +1959,22 @@ function FeeSessionDetailView({ sessionId }) {
         }))}
         open={manualItemModalOpen}
         orderRows={orderRows}
-        receiptDraft={receiptDraft}
+        receiptDraft={effectiveReceiptDraft}
         selectedMasterIndex={selectedMasterIndex}
       />
     </main>
   );
 }
 
-function SessionActionFooter({ busy, calculate, isCalculating, onRefresh }) {
+function SessionActionFooter({ busy, calculate, isCalculating, onRefresh, onSaveReviewDecisions, pendingReviewDecisionCount = 0 }) {
   return (
     <footer className="fee-session-action-footer">
       <div className="source-action-buttons">
+        {pendingReviewDecisionCount ? (
+          <button className="btn btn--primary" disabled={busy || isCalculating} onClick={() => onSaveReviewDecisions()} type="button">
+            変更を保存（{pendingReviewDecisionCount.toLocaleString()}件）
+          </button>
+        ) : null}
         <button className="btn btn--primary" disabled={busy || isCalculating} onClick={calculate} type="button">
           {isCalculating ? "算定候補を作成中" : "カルテから算定候補を作成"}
         </button>
@@ -3243,7 +3339,7 @@ function ProposalLineRow({ disabled, item, onDecision, onOpenDetail }) {
           ariaLabel={`${item.displayTitle || "提案"}の採否`}
           disabled={disabled || !canApprove}
           value={decisionStatus}
-          onChange={(value) => onDecision(item.reviewItemId, value)}
+          onChange={(value) => onDecision(item.reviewItemId, value, decisionStatus)}
         />
       </div>
       <div className="candidate-line-main">
@@ -3267,7 +3363,7 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
           ariaLabel={`${item.name}の採否`}
           disabled={disabled || !canApprove}
           value={decisionStatus}
-          onChange={(value) => onDecision(item.reviewItemId, value)}
+          onChange={(value) => onDecision(item.reviewItemId, value, decisionStatus)}
         />
       </div>
       <div className="candidate-line-main">
@@ -3418,6 +3514,7 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision, onSaveRecei
     return null;
   }
   const canDecide = Boolean(item.reviewItemId);
+  const itemDecisionStatus = decisionSelectValue(item.decisionStatus || item.status);
   const canDirectAdopt = canDecide && (
     item.kind === "line"
       ? canApproveReviewItem(item)
@@ -3554,17 +3651,17 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision, onSaveRecei
         <footer className="fee-modal-footer">
           {canDirectAdopt ? (
             <>
-              <button className="btn btn--primary" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">
+              <button className="btn btn--primary" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "approved", itemDecisionStatus)} type="button">
                 {directAdoptLabel}
               </button>
               {canReject ? (
-                <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected")} type="button">算定しない</button>
+                <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected", itemDecisionStatus)} type="button">算定しない</button>
               ) : null}
             </>
           ) : canConfirmAdopt ? (
             <>
-              <button className="btn btn--primary" disabled={disabled || !confirmAdoptionChecked} onClick={() => onDecision(item.reviewItemId, "approved")} type="button">算定する</button>
-              <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected")} type="button">算定しない</button>
+              <button className="btn btn--primary" disabled={disabled || !confirmAdoptionChecked} onClick={() => onDecision(item.reviewItemId, "approved", itemDecisionStatus)} type="button">算定する</button>
+              <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected", itemDecisionStatus)} type="button">算定しない</button>
             </>
           ) : null}
         </footer>
@@ -5683,6 +5780,386 @@ function asStringList(value) {
   return Array.isArray(value)
     ? value.map((item) => String(item || "").trim()).filter(Boolean)
     : [];
+}
+
+function projectPendingReviewDecisions({
+  feeSession,
+  receiptDraft,
+  candidateWorkbench,
+  pendingReviewDecisions = {}
+} = {}) {
+  const entries = Object.entries(pendingReviewDecisions)
+    .filter(([reviewItemId, decision]) => reviewItemId && decision?.status);
+  if (!entries.length) {
+    return {
+      feeSession,
+      receiptDraft,
+      candidateWorkbench,
+      pendingCount: 0
+    };
+  }
+  const decisionById = new Map(entries.map(([reviewItemId, decision]) => [reviewItemId, decision]));
+  const nextFeeSession = feeSession
+    ? {
+      ...feeSession,
+      reviewDecisions: {
+        ...(feeSession.reviewDecisions || {})
+      }
+    }
+    : feeSession;
+  if (nextFeeSession) {
+    for (const [reviewItemId, decision] of entries) {
+      nextFeeSession.reviewDecisions[reviewItemId] = {
+        ...(nextFeeSession.reviewDecisions[reviewItemId] || {}),
+        status: decision.status,
+        decidedAt: decision.decidedAt
+      };
+    }
+  }
+  const nextReceiptDraft = projectReceiptDraftForReviewDecisions(receiptDraft, candidateWorkbench, decisionById);
+  const nextCandidateWorkbench = projectCandidateWorkbenchForReviewDecisions(candidateWorkbench, nextReceiptDraft, decisionById);
+  return {
+    feeSession: nextFeeSession,
+    receiptDraft: nextReceiptDraft,
+    candidateWorkbench: nextCandidateWorkbench,
+    pendingCount: entries.length
+  };
+}
+
+function projectReceiptDraftForReviewDecisions(receiptDraft, candidateWorkbench, decisionById) {
+  if (!receiptDraft) {
+    return receiptDraft;
+  }
+  const sourceLines = receiptDraftLines(receiptDraft);
+  let lines = sourceLines.map((line) => ({ ...line }));
+  const workbenchItems = candidateWorkbenchItems(candidateWorkbench);
+  for (const item of workbenchItems.filter((entry) => entry.kind === "line")) {
+    const decision = decisionById.get(item.reviewItemId);
+    if (!decision?.status) {
+      continue;
+    }
+    let matched = false;
+    lines = lines.map((line) => {
+      if (!receiptLineMatchesCandidateItem(line, item)) {
+        return line;
+      }
+      matched = true;
+      return projectReceiptLineDecision(line, decision.status);
+    });
+    if (!matched && decision.status === "approved") {
+      lines.push(projectReceiptLineDecision(receiptLineFromCandidateLineItem(item), "approved"));
+    }
+  }
+  for (const item of workbenchItems.filter((entry) => entry.kind === "proposal")) {
+    const decision = decisionById.get(item.reviewItemId);
+    if (!decision?.status) {
+      continue;
+    }
+    const existingIndex = lines.findIndex((line) => receiptLineMatchesCandidateItem(line, item));
+    if (decision.status === "approved") {
+      const nextLine = projectReceiptLineDecision(receiptLineFromProposalItem(item, existingIndex), "approved");
+      if (existingIndex >= 0) {
+        lines[existingIndex] = {
+          ...lines[existingIndex],
+          ...nextLine,
+          receiptLineId: lines[existingIndex].receiptLineId || nextLine.receiptLineId
+        };
+      } else {
+        lines.push(nextLine);
+      }
+    } else if (existingIndex >= 0) {
+      lines[existingIndex] = projectReceiptLineDecision(lines[existingIndex], decision.status);
+    }
+  }
+  lines = uniqueReceiptLines(lines);
+  const includedLines = lines.filter((line) => line.includedInTotal !== false);
+  const totalPoints = includedLines.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0);
+  return {
+    ...receiptDraft,
+    totalPoints,
+    billing: projectBillingSummary(receiptDraft.billing, totalPoints),
+    lines,
+    lineGroups: groupReceiptDraftLines(includedLines)
+  };
+}
+
+function projectCandidateWorkbenchForReviewDecisions(candidateWorkbench, receiptDraft, decisionById) {
+  if (!candidateWorkbench) {
+    return candidateWorkbench;
+  }
+  const model = normalizeCandidateWorkbenchModel(candidateWorkbench);
+  const baseLines = uniqueCandidateLines([
+    ...model.lines,
+    ...model.includedLines,
+    ...model.pendingLines,
+    ...model.excludedLines
+  ]);
+  let lines = baseLines.map((line) => {
+    const decision = decisionById.get(line.reviewItemId);
+    return decision?.status ? projectCandidateLineDecision(line, decision.status) : line;
+  });
+  const proposals = model.proposals
+    .map((item) => {
+      const decision = decisionById.get(item.reviewItemId);
+      return decision?.status ? { ...item, decisionStatus: decision.status, status: decision.status } : item;
+    })
+    .filter((item) => reviewDecisionStatusValue(item) !== "approved");
+  for (const item of model.proposals) {
+    const decision = decisionById.get(item.reviewItemId);
+    if (decision?.status !== "approved") {
+      continue;
+    }
+    lines.push(candidateLineFromProposalItem(item, receiptDraft));
+  }
+  lines = uniqueCandidateLines(lines);
+  const includedLines = lines.filter((line) => line.inclusionStatus === "included");
+  const pendingLines = lines.filter((line) => line.inclusionStatus === "pending");
+  const excludedLines = lines.filter((line) => line.inclusionStatus === "excluded");
+  const issues = Array.isArray(model.issues) ? model.issues : [];
+  const hiddenIssues = Array.isArray(model.hiddenIssues) ? model.hiddenIssues : [];
+  const potentialPointsTotal = proposals
+    .filter((item) => reviewDecisionStatusValue(item) !== "rejected")
+    .reduce((sum, item) => sum + Number(item.potentialPoints || item.candidateLine?.totalPoints || 0), 0);
+  return {
+    ...model,
+    totalPoints: Number(receiptDraft?.totalPoints ?? model.totalPoints ?? 0),
+    includedTotalPoints: Number(receiptDraft?.totalPoints ?? model.includedTotalPoints ?? model.totalPoints ?? 0),
+    lines,
+    includedLines,
+    pendingLines,
+    excludedLines,
+    proposals,
+    issues,
+    hiddenIssues,
+    counts: {
+      included: includedLines.length,
+      pending: pendingLines.length,
+      excluded: excludedLines.length,
+      hidden: hiddenIssues.length,
+      proposals: proposals.length,
+      issues: issues.length,
+      needsReview: issues.length + pendingLines.length + proposals.length
+    },
+    includedCount: includedLines.length,
+    pendingCount: pendingLines.length,
+    excludedCount: excludedLines.length,
+    hiddenIssueCount: hiddenIssues.length,
+    needsReviewCount: issues.length + pendingLines.length + proposals.length,
+    potentialPointsTotal
+  };
+}
+
+function candidateWorkbenchItems(workbench = {}) {
+  const model = workbench ? normalizeCandidateWorkbenchModel(workbench) : emptyCandidateWorkbenchModel();
+  return [
+    ...model.includedLines,
+    ...model.pendingLines,
+    ...model.excludedLines,
+    ...model.proposals,
+    ...model.issues
+  ].filter((item) => item?.reviewItemId);
+}
+
+function findCandidateWorkbenchItemByReviewItemId(workbench = {}, reviewItemId = "") {
+  if (!reviewItemId) {
+    return null;
+  }
+  return candidateWorkbenchItems(workbench).find((item) => item.reviewItemId === reviewItemId) || null;
+}
+
+function reviewDecisionStatusValue(item = {}) {
+  return String(item.decisionStatus || item.status || "").trim();
+}
+
+function receiptDraftLines(receiptDraft = {}) {
+  if (Array.isArray(receiptDraft.lines)) {
+    return receiptDraft.lines;
+  }
+  return Array.isArray(receiptDraft.lineGroups)
+    ? receiptDraft.lineGroups.flatMap((group) => Array.isArray(group.lines) ? group.lines : [])
+    : [];
+}
+
+function receiptLineMatchesCandidateItem(line = {}, item = {}) {
+  if (line.reviewItemId && item.reviewItemId && line.reviewItemId === item.reviewItemId) {
+    return true;
+  }
+  if (line.receiptLineId && item.receiptLineId && line.receiptLineId === item.receiptLineId) {
+    return true;
+  }
+  if (line.sourceLineId && item.sourceLineId && line.sourceLineId === item.sourceLineId) {
+    return true;
+  }
+  if (line.sourceProposalId && item.candidateProposal?.proposalId && line.sourceProposalId === item.candidateProposal.proposalId) {
+    return true;
+  }
+  const candidateLine = item.candidateLine || item.candidateProposal?.candidateLine || item.lineItem || {};
+  if (line.sourceLineId && candidateLine.lineId && line.sourceLineId === candidateLine.lineId) {
+    return true;
+  }
+  return Boolean(line.code || item.code || candidateLine.code)
+    && String(line.code || "") === String(item.code || candidateLine.code || "")
+    && normalizeSearchText(line.name || "") === normalizeSearchText(item.name || item.displayTitle || candidateLine.name || "")
+    && String(line.orderType || "") === String(item.orderType || candidateLine.orderType || "");
+}
+
+function projectReceiptLineDecision(line = {}, status = "") {
+  const approved = decisionSelectValue(status) === "approved";
+  return {
+    ...line,
+    decisionStatus: approved ? "approved" : "rejected",
+    inclusionStatus: approved ? "included" : "excluded",
+    includedInTotal: approved
+  };
+}
+
+function projectCandidateLineDecision(line = {}, status = "") {
+  const approved = decisionSelectValue(status) === "approved";
+  return {
+    ...line,
+    decisionStatus: approved ? "approved" : "rejected",
+    status: approved ? "approved" : "rejected",
+    inclusionStatus: approved ? "included" : "excluded"
+  };
+}
+
+function receiptLineFromProposalItem(item = {}, index = 0) {
+  const candidateLine = item.candidateLine || item.candidateProposal?.candidateLine || {};
+  const proposal = item.candidateProposal || {};
+  const points = Number(candidateLine.points || item.potentialPoints || proposal.potentialPoints || 0);
+  const quantity = Number(candidateLine.quantity || 1);
+  const totalPoints = Number(candidateLine.totalPoints || item.potentialPoints || proposal.potentialPoints || points * quantity || 0);
+  return {
+    receiptLineId: `proposal_${proposal.proposalId || item.reviewItemId || index + 1}`,
+    sourceLineId: candidateLine.lineId || null,
+    sourceProposalId: proposal.proposalId || null,
+    reviewItemId: item.reviewItemId || null,
+    code: candidateLine.code || item.code || proposal.code || null,
+    name: candidateLine.name || item.displayTitle || item.name || proposal.title || "増点提案",
+    orderType: candidateLine.orderType || item.orderType || proposal.orderType || "other",
+    points,
+    quantity,
+    totalPoints,
+    status: candidateLine.status || "candidate",
+    source: candidateLine.source || proposal.source || "candidate_proposal",
+    coverage: candidateLine.coverage || null,
+    supportLevel: candidateLine.supportLevel || "candidate",
+    reviewRequired: true
+  };
+}
+
+function receiptLineFromCandidateLineItem(item = {}) {
+  const line = item.lineItem || {};
+  const points = Number(line.points || item.points || 0);
+  const quantity = Number(line.quantity || 1);
+  const totalPoints = Number(line.totalPoints || item.totalPoints || points * quantity || 0);
+  return {
+    receiptLineId: item.receiptLineId || line.lineId || item.reviewItemId,
+    sourceLineId: item.sourceLineId || line.lineId || null,
+    reviewItemId: item.reviewItemId || null,
+    code: line.code || item.code || null,
+    name: line.name || item.name || item.displayTitle || "算定候補",
+    orderType: line.orderType || item.orderType || "other",
+    points,
+    quantity,
+    totalPoints,
+    status: line.status || "candidate",
+    source: line.source || "fee-core",
+    coverage: line.coverage || null,
+    supportLevel: line.supportLevel || "candidate",
+    reviewRequired: line.reviewRequired ?? item.reviewRequired ?? true
+  };
+}
+
+function candidateLineFromProposalItem(item = {}, receiptDraft = {}) {
+  const receiptLine = receiptDraftLines(receiptDraft).find((line) => receiptLineMatchesCandidateItem(line, item));
+  const candidateLine = item.candidateLine || item.candidateProposal?.candidateLine || {};
+  const orderType = receiptLine?.orderType || candidateLine.orderType || item.orderType || "other";
+  const totalPoints = Number(receiptLine?.totalPoints || candidateLine.totalPoints || item.potentialPoints || 0);
+  const code = receiptLine?.code || candidateLine.code || item.code || null;
+  return {
+    kind: "line",
+    kindLabel: "算定中の明細",
+    reviewItemId: item.reviewItemId,
+    sourceReviewItemId: item.reviewItemId,
+    receiptLineId: receiptLine?.receiptLineId || `proposal_${item.candidateProposal?.proposalId || item.reviewItemId}`,
+    sourceLineId: receiptLine?.sourceLineId || candidateLine.lineId || null,
+    name: receiptLine?.name || candidateLine.name || item.displayTitle || item.name || "増点提案",
+    displayTitle: receiptLine?.name || candidateLine.name || item.displayTitle || item.name || "増点提案",
+    displayReason: item.displayReason || item.reasonText || "条件を確認して算定に含めました。",
+    conditionText: item.conditionText || "採用済みの算定候補です。",
+    decisionStatus: "approved",
+    status: "approved",
+    inclusionStatus: "included",
+    metaLabel: code ? `${code} / ${orderTypeLabel(orderType)}` : orderTypeLabel(orderType),
+    statusLabel: "算定中",
+    totalPoints,
+    pointsLabel: `${totalPoints.toLocaleString()}点`,
+    code,
+    orderType,
+    businessCategory: orderTypeLabel(orderType),
+    reviewRequired: true,
+    sourceProposalId: item.candidateProposal?.proposalId || null,
+    candidateLine,
+    candidateProposal: item.candidateProposal || null
+  };
+}
+
+function uniqueReceiptLines(lines = []) {
+  const seen = new Set();
+  const result = [];
+  for (const line of lines) {
+    const key = [
+      line.reviewItemId || "",
+      line.receiptLineId || "",
+      line.sourceProposalId || "",
+      line.sourceLineId || "",
+      line.code || "",
+      normalizeSearchText(line.name || ""),
+      line.orderType || ""
+    ].join("|");
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(line);
+  }
+  return result;
+}
+
+function groupReceiptDraftLines(lines = []) {
+  const groups = new Map();
+  for (const line of lines) {
+    const key = line.orderType || "unknown";
+    if (!groups.has(key)) {
+      groups.set(key, {
+        groupId: key,
+        label: orderTypeLabel(key),
+        totalPoints: 0,
+        lines: []
+      });
+    }
+    const group = groups.get(key);
+    group.totalPoints += Number(line.totalPoints || 0);
+    group.lines.push(line);
+  }
+  return [...groups.values()];
+}
+
+function projectBillingSummary(billing = {}, totalPoints = 0) {
+  if (!billing || typeof billing !== "object") {
+    return billing;
+  }
+  const totalFee = Number(totalPoints || 0) * 10;
+  const burdenRatio = typeof billing.burdenRatio === "number" ? billing.burdenRatio : null;
+  const copay = burdenRatio === null ? billing.copay : Math.round((totalFee * burdenRatio) / 10) * 10;
+  return {
+    ...billing,
+    totalPoints,
+    totalFee,
+    copay,
+    insurerPay: typeof copay === "number" ? totalFee - copay : billing.insurerPay
+  };
 }
 
 function normalizeCandidateWorkbenchModel(model = {}) {

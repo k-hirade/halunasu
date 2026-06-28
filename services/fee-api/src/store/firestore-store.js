@@ -307,6 +307,29 @@ export class FirestoreFeeStore {
     };
   }
 
+  async decideReviewItems(orgId, feeSessionId, decisions = []) {
+    const current = await this.getSession(orgId, feeSessionId);
+    if (!current) {
+      throw notFoundError("fee session not found");
+    }
+
+    const now = this.timestamp();
+    let updated = current;
+    for (const decision of Array.isArray(decisions) ? decisions : []) {
+      updated = applyReviewDecision(updated, decision.reviewItemId, decision, {
+        now
+      });
+    }
+    updated = sanitizeForFirestore(updated);
+    await this.writeSessionPatch(orgId, feeSessionId, current, updated);
+    await this.writeSessionStatusView(orgId, feeSessionId, updated);
+
+    return {
+      feeSession: updated,
+      reviewItems: buildReviewItems(updated)
+    };
+  }
+
   async createCalculationJob(orgId, feeSessionId, input = {}) {
     const current = await this.getSession(orgId, feeSessionId);
     if (!current) {

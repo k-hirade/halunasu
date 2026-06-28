@@ -690,6 +690,27 @@ async function routeFeeApiRequest(input = {}) {
     return ok({ reviewItems: await feeStore.listReviewItems(context.session.orgId, parts[3]) });
   }
 
+  if (method === "PATCH" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "review-items") {
+    requireMutationCsrf(input, context.session);
+    const decisions = normalizeReviewDecisionBatchInput(input.body || {});
+    const result = await feeStore.decideReviewItems(context.session.orgId, parts[3], decisions);
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.review_items_decided",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "fee_session",
+      targetId: parts[3],
+      productId: PRODUCT_ID,
+      safePayload: {
+        feeSessionId: result.feeSession.feeSessionId,
+        decisionCount: decisions.length,
+        statuses: decisions.map((decision) => decision.status)
+      }
+    });
+
+    return ok(await feeSessionMutationResponse(feeStore, context.session.orgId, result, input.now || new Date()));
+  }
+
   if (method === "PATCH" && parts.length === 6 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "review-items") {
     requireMutationCsrf(input, context.session);
     const result = await feeStore.decideReviewItem(context.session.orgId, parts[3], decodeURIComponent(parts[5]), input.body || {});
@@ -863,6 +884,27 @@ function normalizeBillingHistoryLineItem(line = {}, index = 0) {
     status: String(line.status || "confirmed").trim() || "confirmed",
     includedInTotal: line.includedInTotal === false ? false : true
   };
+}
+
+function normalizeReviewDecisionBatchInput(input = {}) {
+  const decisions = Array.isArray(input.decisions) ? input.decisions : [];
+  if (!decisions.length) {
+    throw requestValidationError("decisions requires at least one review decision");
+  }
+  return decisions.map((decision, index) => {
+    if (!decision || typeof decision !== "object" || Array.isArray(decision)) {
+      throw requestValidationError(`decisions[${index}] must be an object`);
+    }
+    const reviewItemId = String(decision.reviewItemId || decision.review_item_id || "").trim();
+    if (!reviewItemId) {
+      throw requestValidationError(`decisions[${index}].reviewItemId is required`);
+    }
+    return {
+      ...decision,
+      reviewItemId,
+      status: String(decision.status || "approved").trim() || "approved"
+    };
+  });
 }
 
 function requestValidationError(message) {

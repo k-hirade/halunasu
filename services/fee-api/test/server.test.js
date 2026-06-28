@@ -131,6 +131,17 @@ test("creates Platform patients and product-owned fee sessions", async () => {
     { status: "approved", note: "確認済み" },
     headers
   );
+  const batchDecision = await request(
+    stores,
+    "PATCH",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/review-items`,
+    {
+      decisions: [
+        { reviewItemId: reviewItems.body.reviewItems[0].reviewItemId, status: "approved" }
+      ]
+    },
+    headers
+  );
   const listed = await request(stores, "GET", "/v1/fee/sessions", undefined, headers);
   const bootstrap = await request(stores, "GET", "/v1/fee/bootstrap?page=1&pageSize=20", undefined, headers);
   const auditEvents = stores.platformStore.listAuditEvents("org_001");
@@ -160,6 +171,8 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.ok(detail.body.reviewItems.length >= 1);
   assert.equal(decision.body.feeSession.reviewDecisions[reviewItems.body.reviewItems[0].reviewItemId].status, "approved");
   assert.equal(decision.body.receiptDraft.totalPoints, 137);
+  assert.equal(batchDecision.statusCode, 200);
+  assert.equal(batchDecision.body.feeSession.reviewDecisions[reviewItems.body.reviewItems[0].reviewItemId].status, "approved");
   assert.equal(listed.body.feeSessions.length, 1);
   assert.equal(listed.body.page, 1);
   assert.equal(listed.body.totalCount, 1);
@@ -172,6 +185,7 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.ok(auditEvents.some((event) => event.eventType === "fee.session_created"));
   assert.ok(auditEvents.some((event) => event.eventType === "fee.calculated"));
   assert.ok(auditEvents.some((event) => event.eventType === "fee.review_item_decided"));
+  assert.ok(auditEvents.some((event) => event.eventType === "fee.review_items_decided"));
 });
 
 test("calculates fee sessions inline outside test env", async () => {

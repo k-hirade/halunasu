@@ -67,6 +67,10 @@ export class LazyFirestoreFeeStore {
     return this.call("decideReviewItem", orgId, feeSessionId, reviewItemId, input);
   }
 
+  async decideReviewItems(orgId, feeSessionId, decisions) {
+    return this.call("decideReviewItems", orgId, feeSessionId, decisions);
+  }
+
   async createCalculationJob(orgId, feeSessionId, input) {
     return this.call("createCalculationJob", orgId, feeSessionId, input);
   }
