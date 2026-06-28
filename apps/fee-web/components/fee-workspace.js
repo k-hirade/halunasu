@@ -1712,6 +1712,7 @@ function FeeSessionDetailView({ sessionId }) {
         <SourcePane
           busy={busy}
           candidateWorkbench={candidateWorkbench}
+          feeSession={feeSession}
           filteredPatients={filteredPatients}
           form={form}
           newPatient={newPatient}
@@ -1900,6 +1901,7 @@ function MissingDiagnosisWarningModal({
 function SourcePane({
   busy,
   candidateWorkbench,
+  feeSession,
   filteredPatients,
   form,
   newPatient,
@@ -1920,7 +1922,10 @@ function SourcePane({
   setPatientPickerOpen
 }) {
   const diagnosisCount = form.diagnosesText.split(/\n+/u).map((item) => item.trim()).filter(Boolean).length;
-  const clinicalAnnotations = clinicalTextAnnotationsFromWorkbench(candidateWorkbench);
+  const clinicalAnnotations = clinicalTextAnnotationsFromCalculationContext({
+    calculationResult: feeSession?.calculationResult,
+    workbench: candidateWorkbench
+  });
 
   return (
     <section className="fee-source-pane" aria-label="算定条件とカルテ">
@@ -3529,14 +3534,26 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision, onSaveRecei
   );
 }
 
+function clinicalTextAnnotationsFromCalculationContext({ workbench = {}, calculationResult = null } = {}) {
+  return clinicalTextAnnotationsFromIssues([
+    ...(Array.isArray(workbench?.issues) ? workbench.issues : []),
+    ...clinicalTextAnnotationIssuesFromCalculationWarnings(calculationResult)
+  ]);
+}
+
 function clinicalTextAnnotationsFromWorkbench(workbench = {}) {
-  const issues = Array.isArray(workbench?.issues) ? workbench.issues : [];
+  return clinicalTextAnnotationsFromIssues(Array.isArray(workbench?.issues) ? workbench.issues : []);
+}
+
+function clinicalTextAnnotationsFromIssues(issues = []) {
   const seen = new Set();
   return issues
     .map(clinicalTextAnnotationForIssue)
     .filter(Boolean)
     .filter((annotation) => {
-      const key = [annotation.targetText, annotation.inlineText, annotation.text].filter(Boolean).join("::");
+      const key = annotation.targetText && annotation.inlineText
+        ? [annotation.targetText, annotation.inlineText].join("::")
+        : [annotation.targetText, annotation.inlineText, annotation.text].filter(Boolean).join("::");
       if (seen.has(key)) {
         return false;
       }
@@ -3548,6 +3565,35 @@ function clinicalTextAnnotationsFromWorkbench(workbench = {}) {
       ...annotation,
       key: `${annotation.key || "clinical_text_annotation"}_${index}`
     }));
+}
+
+function clinicalTextAnnotationIssuesFromCalculationWarnings(calculationResult = null) {
+  const warnings = Array.isArray(calculationResult?.warnings) ? calculationResult.warnings : [];
+  return warnings
+    .map((message, index) => clinicalTextAnnotationIssueFromCalculationWarning(message, index))
+    .filter(Boolean);
+}
+
+function clinicalTextAnnotationIssueFromCalculationWarning(message = "", index = 0) {
+  const text = String(message || "").trim();
+  if (!text || isFacilityStandardClinicalIssue(text) || isMissingDiagnosisClinicalIssue(text)) {
+    return null;
+  }
+  const drugName = medicationNameFromCalculationWarning(text);
+  if (!drugName) {
+    return null;
+  }
+  if (!/薬剤|処方|数量|日数|総量|1回量|1日回数|不足/u.test(text)) {
+    return null;
+  }
+  return {
+    reviewItemId: `calculation_warning_medication_${clinicalTextHash(`${drugName}:${index}:${text}`)}`,
+    displayTitle: `${drugName}の確認`,
+    displayReason: text,
+    reasonText: text,
+    issueCategory: "medication",
+    sourceType: "calculation_warning"
+  };
 }
 
 function clinicalTextAnnotationForIssue(item = {}) {
@@ -3691,6 +3737,19 @@ function medicationAnnotationTarget(title = "") {
     .replace(/の確認$/u, "")
     .replace(/(OD)?錠|カプセル|散|細粒|顆粒|シロップ|液|坐剤$/u, "")
     .trim();
+}
+
+function medicationNameFromCalculationWarning(value = "") {
+  const text = String(value || "").trim();
+  const quoted = text.match(/薬剤「([^」]+)」/u)?.[1]?.trim();
+  if (quoted) {
+    return quoted;
+  }
+  const titled = text.match(/(?:^|[:：\s])([^:：\n]{1,40})の確認/u)?.[1]?.trim();
+  if (titled && !isGenericMedicationAnnotationTarget(titled)) {
+    return titled;
+  }
+  return "";
 }
 
 function isGenericMedicationAnnotationTarget(value = "") {
