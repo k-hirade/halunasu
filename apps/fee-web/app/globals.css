@@ -754,84 +754,6 @@ body:has(.fee-shell--detail) {
   font-weight: 800;
 }
 
-.fee-monthly-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.fee-monthly-metric {
-  min-height: 104px;
-  padding: 16px;
-  display: grid;
-  align-content: center;
-  gap: 8px;
-}
-
-.fee-monthly-metric span {
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 800;
-}
-
-.fee-monthly-metric strong {
-  font-size: 1.35rem;
-  line-height: 1.2;
-}
-
-.fee-monthly-metric--review {
-  border-color: #fed7aa;
-  background: #fffaf5;
-}
-
-.fee-monthly-metric--supported {
-  border-color: #abefc6;
-  background: #f6fef9;
-}
-
-.fee-monthly-precheck {
-  padding: 18px;
-  display: flex;
-  justify-content: space-between;
-  gap: 18px;
-  align-items: center;
-}
-
-.fee-monthly-precheck > div:first-child {
-  display: grid;
-  gap: 6px;
-}
-
-.fee-monthly-precheck strong {
-  font-size: 1.05rem;
-}
-
-.fee-monthly-precheck dl {
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(100px, 1fr));
-  gap: 10px;
-}
-
-.fee-monthly-precheck dl div {
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fbfcfe;
-}
-
-.fee-monthly-precheck dt {
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.fee-monthly-precheck dd {
-  margin: 4px 0 0;
-  font-size: 1.12rem;
-  font-weight: 900;
-}
-
 .fee-monthly-bulk-panel {
   padding: 18px;
   display: grid;
@@ -950,11 +872,15 @@ body:has(.fee-shell--detail) {
   flex-wrap: wrap;
 }
 
-.fee-segment-button {
+/* サマリ兼フィルタのチップ。ラベル＋件数を1つにまとめ、上部の重複カードを置き換える。 */
+.fee-filter-chip {
   min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   padding: 0 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 999px;
   background: #ffffff;
   color: #344054;
   font: inherit;
@@ -963,10 +889,105 @@ body:has(.fee-shell--detail) {
   cursor: pointer;
 }
 
-.fee-segment-button.is-active {
+.fee-filter-chip span {
+  border-radius: 999px;
+  background: #eef1f5;
+  color: #475467;
+  padding: 1px 8px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.fee-filter-chip.is-active {
   border-color: #175cd3;
   background: #eff8ff;
   color: #175cd3;
+}
+
+.fee-filter-chip.is-active span {
+  background: #d1e4ff;
+  color: #175cd3;
+}
+
+.fee-monthly-row {
+  cursor: pointer;
+}
+
+.fee-monthly-row:hover {
+  background: #f7f9fc;
+}
+
+.fee-monthly-task-cell span {
+  font-weight: 800;
+}
+
+.fee-monthly-task-cell small {
+  margin-left: 6px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.fee-monthly-task-none {
+  color: var(--muted);
+  font-weight: 700 !important;
+}
+
+/* 月次点検の右ドロワー（患者詳細） */
+.fee-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(15, 23, 42, 0.36);
+}
+
+.fee-drawer-panel {
+  width: min(560px, 100%);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-left: 1px solid var(--line);
+  box-shadow: -16px 0 48px rgba(15, 23, 42, 0.2);
+}
+
+.fee-drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.fee-drawer-head strong {
+  display: block;
+  font-size: 1.05rem;
+}
+
+.fee-drawer-head small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.fee-drawer-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.fee-drawer-body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 18px;
+}
+
+.fee-drawer-panel .fee-monthly-diagnosis-grid {
+  grid-template-columns: 1fr;
 }
 
 .fee-monthly-table-wrap {
@@ -1032,13 +1053,7 @@ body:has(.fee-shell--detail) {
   color: #175cd3;
 }
 
-.fee-monthly-detail-row td {
-  padding: 0 10px 14px;
-  background: #fbfcfe;
-}
-
 .fee-monthly-session-list {
-  padding: 12px 0 0;
   display: grid;
   gap: 10px;
 }
@@ -4173,7 +4188,6 @@ body:has(.fee-shell--detail) {
   .fee-monthly-bulk-head,
   .fee-monthly-bulk-status,
   .fee-monthly-worklist-head,
-  .fee-monthly-precheck,
   .fee-monthly-session-review-head {
     display: grid;
   }
@@ -4192,8 +4206,6 @@ body:has(.fee-shell--detail) {
 
   .fee-toolbar,
   .session-history-toolbar,
-  .fee-monthly-summary-grid,
-  .fee-monthly-precheck dl,
   .fee-monthly-bulk-metrics,
   .fee-monthly-bulk-items div,
   .fee-monthly-diagnosis-grid,

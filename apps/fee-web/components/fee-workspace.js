@@ -28,13 +28,11 @@ const MASTER_TYPES = [
   ["comment", "コメント"],
   ["all", "すべて"]
 ];
-const MONTHLY_FILTERS = [
+// サマリ兼フィルタのチップ。上部の重複した数値カードを廃止し、これ1本に集約する。
+const MONTHLY_PRIMARY_FILTERS = [
   ["all", "すべて"],
-  ["diagnosis", "病名出し"],
-  ["doctor", "医師確認"],
-  ["annotation", "詳記未対応"],
-  ["blocked", "要対応"],
   ["ready", "提出候補"],
+  ["blocked", "要対応"],
   ["uncalculated", "未算定"]
 ];
 const MONTHLY_WORK_STATUS_OPTIONS = [
@@ -91,7 +89,8 @@ function MonthlyClaimDashboard() {
   const [summary, setSummary] = useState(null);
   const [bulkPlan, setBulkPlan] = useState(null);
   const [bulkJob, setBulkJob] = useState(null);
-  const [expandedPatientId, setExpandedPatientId] = useState("");
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [drawerPatientKey, setDrawerPatientKey] = useState("");
   const [savingSessionId, setSavingSessionId] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -126,9 +125,15 @@ function MonthlyClaimDashboard() {
   const filteredPatients = patients.filter((patient) => monthlyPatientMatchesFilter(patient, filter));
   const blockedPatientCount = patients.filter((patient) => patient.blocked).length;
   const readyPatientCount = patients.filter((patient) => patient.readyForClaim).length;
-  const preClaimBlockedCount = Number(summary?.blockedCount || 0);
-  const preClaimUncalculatedCount = Number(summary?.uncalculatedCount || 0);
-  const preClaimReadyCount = Number(summary?.readyForClaimCount || 0);
+  const uncalculatedPatientCount = patients.filter((patient) => Number(patient.uncalculatedCount || 0) > 0).length;
+  const filterCounts = {
+    all: patients.length,
+    ready: readyPatientCount,
+    blocked: blockedPatientCount,
+    uncalculated: uncalculatedPatientCount
+  };
+  const bulkTargetCount = Number(bulkPlan?.targetCount || 0);
+  const drawerPatient = patients.find((patient) => monthlyPatientKey(patient) === drawerPatientKey) || null;
 
   async function updateMonthlyWork(session, patch) {
     if (!session?.feeSessionId) {
@@ -274,65 +279,43 @@ function MonthlyClaimDashboard() {
 
       {errorMessage ? <div className="inline-error" role="status">{errorMessage}</div> : null}
 
-      <section className="fee-monthly-summary-grid" aria-label="月次サマリ">
-        <MonthlyMetric label="患者" value={summary?.patientCount || 0} suffix="人" />
-        <MonthlyMetric label="受診分" value={summary?.sessionCount || 0} suffix="件" />
-        <MonthlyMetric label="合計点数" value={summary?.totalPoints || 0} suffix="点" />
-        <MonthlyMetric label="要対応患者" value={blockedPatientCount} suffix="人" tone={blockedPatientCount ? "review" : "supported"} />
-        <MonthlyMetric label="提出候補" value={readyPatientCount} suffix="人" tone="supported" />
-      </section>
-
-      <section className="card fee-monthly-precheck" aria-label="提出前チェック">
-        <div>
-          <span className="label">提出前チェック</span>
-          <strong>{preClaimBlockedCount || preClaimUncalculatedCount ? "未完了の確認があります" : "提出候補のみです"}</strong>
-        </div>
-        <dl>
-          <div>
-            <dt>提出候補</dt>
-            <dd>{preClaimReadyCount.toLocaleString()}件</dd>
-          </div>
-          <div>
-            <dt>要対応</dt>
-            <dd>{preClaimBlockedCount.toLocaleString()}件</dd>
-          </div>
-          <div>
-            <dt>未算定</dt>
-            <dd>{preClaimUncalculatedCount.toLocaleString()}件</dd>
-          </div>
-        </dl>
-      </section>
-
-      <MonthlyBulkPanel
-        busy={bulkBusy}
-        job={bulkJob}
-        onCancel={() => updateMonthlyBulkJob("cancel")}
-        onConfirmSafe={() => updateMonthlyBulkJob("confirm_safe")}
-        onCreate={createMonthlyBulkJob}
-        onRetryFailed={() => updateMonthlyBulkJob("retry_failed")}
-        plan={bulkPlan}
-      />
-
       <section className="card fee-monthly-worklist">
         <div className="fee-monthly-worklist-head">
           <div>
             <h2>患者別点検リスト</h2>
-            <p>病名不足、要確認、詳記候補、未算定がある患者を優先して表示します。</p>
+            <p>要対応の患者から確認できます。合計 {Number(summary?.totalPoints || 0).toLocaleString()}点 / {Number(summary?.sessionCount || 0).toLocaleString()}受診分。</p>
           </div>
-          <span>{loading ? "読み込み中" : `${filteredPatients.length.toLocaleString()}人`}</span>
+          {bulkTargetCount || bulkJob ? (
+            <button className="btn btn--ghost btn--sm" onClick={() => setBulkOpen((current) => !current)} type="button">
+              {bulkOpen ? "一括候補化を閉じる" : `未算定をまとめて候補化（${bulkTargetCount.toLocaleString()}件）`}
+            </button>
+          ) : null}
         </div>
+
         <div className="fee-monthly-filterbar" role="group" aria-label="月次点検フィルタ">
-          {MONTHLY_FILTERS.map(([value, label]) => (
+          {MONTHLY_PRIMARY_FILTERS.map(([value, label]) => (
             <button
-              className={`fee-segment-button ${filter === value ? "is-active" : ""}`}
+              className={`fee-filter-chip ${filter === value ? "is-active" : ""}`}
               key={value}
               onClick={() => setFilter(value)}
               type="button"
             >
-              {label}
+              {label}<span>{Number(filterCounts[value] || 0).toLocaleString()}</span>
             </button>
           ))}
         </div>
+
+        {bulkOpen ? (
+          <MonthlyBulkPanel
+            busy={bulkBusy}
+            job={bulkJob}
+            onCancel={() => updateMonthlyBulkJob("cancel")}
+            onConfirmSafe={() => updateMonthlyBulkJob("confirm_safe")}
+            onCreate={createMonthlyBulkJob}
+            onRetryFailed={() => updateMonthlyBulkJob("retry_failed")}
+            plan={bulkPlan}
+          />
+        ) : null}
 
         {loading ? (
           <MonthlySkeleton />
@@ -345,21 +328,15 @@ function MonthlyClaimDashboard() {
                   <th>受診</th>
                   <th>点数</th>
                   <th>状態</th>
-                  <th>確認</th>
-                  <th>詳細</th>
+                  <th>次にやること</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredPatients.map((patient) => (
                   <MonthlyPatientRow
-                    expanded={expandedPatientId === monthlyPatientKey(patient)}
                     key={monthlyPatientKey(patient)}
-                    onToggle={() => setExpandedPatientId((current) => current === monthlyPatientKey(patient) ? "" : monthlyPatientKey(patient))}
-                    onApplyDiagnoses={applyMonthlyDiagnoses}
-                    onUpdateReceiptAnnotations={updateMonthlyReceiptAnnotations}
-                    onUpdateWork={updateMonthlyWork}
+                    onOpen={() => setDrawerPatientKey(monthlyPatientKey(patient))}
                     patient={patient}
-                    savingSessionId={savingSessionId}
                   />
                 ))}
               </tbody>
@@ -369,16 +346,16 @@ function MonthlyClaimDashboard() {
           <div className="session-list-empty">この条件に一致する算定記録はありません。</div>
         )}
       </section>
-    </main>
-  );
-}
 
-function MonthlyMetric({ label, suffix = "", tone = "neutral", value }) {
-  return (
-    <article className={`card fee-monthly-metric fee-monthly-metric--${tone}`}>
-      <span>{label}</span>
-      <strong>{Number(value || 0).toLocaleString()}{suffix}</strong>
-    </article>
+      <MonthlyPatientDrawer
+        onApplyDiagnoses={applyMonthlyDiagnoses}
+        onClose={() => setDrawerPatientKey("")}
+        onUpdateReceiptAnnotations={updateMonthlyReceiptAnnotations}
+        onUpdateWork={updateMonthlyWork}
+        patient={drawerPatient}
+        savingSessionId={savingSessionId}
+      />
+    </main>
   );
 }
 
@@ -393,55 +370,49 @@ function MonthlyBulkPanel({ busy, job, onCancel, onConfirmSafe, onCreate, onRetr
       <div className="fee-monthly-bulk-head">
         <div>
           <span className="label">一括候補化</span>
-          <h2>未算定・再計算対象</h2>
+          <h2>未算定・再計算対象 {targetCount.toLocaleString()}件</h2>
           <p>請求月内の対象を抽出し、既存の単票算定ジョブへ順に投入します。</p>
         </div>
         <button className="btn btn--primary btn--sm" disabled={busy || targetCount === 0} onClick={onCreate} type="button">
           候補化ジョブ作成
         </button>
       </div>
-      <dl className="fee-monthly-bulk-metrics">
-        <div>
-          <dt>対象</dt>
-          <dd>{targetCount.toLocaleString()}件</dd>
-        </div>
-        <div>
-          <dt>実行可能</dt>
-          <dd>{Number(plan?.runnableCount || 0).toLocaleString()}件</dd>
-        </div>
-        <div>
-          <dt>投入済み</dt>
-          <dd>{queuedCount.toLocaleString()}件</dd>
-        </div>
-        <div>
-          <dt>失敗</dt>
-          <dd>{failedCount.toLocaleString()}件</dd>
-        </div>
-        <div>
-          <dt>除外</dt>
-          <dd>{skippedCount.toLocaleString()}件</dd>
-        </div>
-      </dl>
       {job ? (
-        <div className="fee-monthly-bulk-status">
-          <div>
-            <strong>{monthlyBulkStatusLabel(job.status)}</strong>
-            <small>{Number(progress.percent || 0).toLocaleString()}% / {Number(progress.processedCount || 0).toLocaleString()}件処理</small>
+        <>
+          <dl className="fee-monthly-bulk-metrics">
+            <div>
+              <dt>投入済み</dt>
+              <dd>{queuedCount.toLocaleString()}件</dd>
+            </div>
+            <div>
+              <dt>失敗</dt>
+              <dd>{failedCount.toLocaleString()}件</dd>
+            </div>
+            <div>
+              <dt>除外</dt>
+              <dd>{skippedCount.toLocaleString()}件</dd>
+            </div>
+          </dl>
+          <div className="fee-monthly-bulk-status">
+            <div>
+              <strong>{monthlyBulkStatusLabel(job.status)}</strong>
+              <small>{Number(progress.percent || 0).toLocaleString()}% / {Number(progress.processedCount || 0).toLocaleString()}件処理</small>
+            </div>
+            <div className="fee-monthly-bulk-actions">
+              <button className="btn btn--ghost btn--sm" disabled={busy || failedCount === 0} onClick={onRetryFailed} type="button">
+                失敗のみ再実行
+              </button>
+              <button className="btn btn--ghost btn--sm" disabled={busy || job.status === "canceled"} onClick={onCancel} type="button">
+                キャンセル
+              </button>
+              <button className="btn btn--primary btn--sm" disabled={busy} onClick={onConfirmSafe} type="button">
+                リスクなしを提出候補へ
+              </button>
+            </div>
           </div>
-          <div className="fee-monthly-bulk-actions">
-            <button className="btn btn--ghost btn--sm" disabled={busy || failedCount === 0} onClick={onRetryFailed} type="button">
-              失敗のみ再実行
-            </button>
-            <button className="btn btn--ghost btn--sm" disabled={busy || job.status === "canceled"} onClick={onCancel} type="button">
-              キャンセル
-            </button>
-            <button className="btn btn--primary btn--sm" disabled={busy} onClick={onConfirmSafe} type="button">
-              リスクなしを提出候補へ
-            </button>
-          </div>
-        </div>
+        </>
       ) : (
-        <p className="fee-monthly-bulk-empty">未算定または再計算が必要な受診分だけを対象にします。</p>
+        <p className="fee-monthly-bulk-empty">未算定または再計算が必要な受診分だけを対象にします。実行可能 {Number(plan?.runnableCount || 0).toLocaleString()}件。</p>
       )}
       {Array.isArray(job?.items) && job.items.length ? (
         <div className="fee-monthly-bulk-items">
@@ -458,55 +429,96 @@ function MonthlyBulkPanel({ busy, job, onCancel, onConfirmSafe, onCreate, onRetr
   );
 }
 
-function MonthlyPatientRow({ expanded, onApplyDiagnoses, onToggle, onUpdateReceiptAnnotations, onUpdateWork, patient, savingSessionId }) {
-  const firstSession = Array.isArray(patient.sessions) ? patient.sessions[0] : null;
-  const status = patient.readyForClaim ? "ready" : patient.blocked ? "needs_review" : "partial";
-  const issues = [
+// 確認列に詰め込んでいた最大5種を、優先度順の先頭1件＋「他N」に圧縮する。
+function monthlyPatientPrimaryTask(patient = {}) {
+  const tasks = [
     Number(patient.missingDiagnosisCount || 0) ? `病名不足 ${Number(patient.missingDiagnosisCount).toLocaleString()}件` : "",
+    Number(patient.uncalculatedCount || 0) ? `未算定 ${Number(patient.uncalculatedCount).toLocaleString()}件` : "",
     Number(patient.needsReviewCount || 0) ? `要確認 ${Number(patient.needsReviewCount).toLocaleString()}件` : "",
-    Number(patient.symptomDetailCandidateCount || 0) ? `詳記候補 ${Number(patient.symptomDetailCandidateCount).toLocaleString()}件` : "",
     Number(patient.pendingReceiptAnnotationCount || 0) ? `詳記未対応 ${Number(patient.pendingReceiptAnnotationCount).toLocaleString()}件` : "",
-    Number(patient.uncalculatedCount || 0) ? `未算定 ${Number(patient.uncalculatedCount).toLocaleString()}件` : ""
+    Number(patient.symptomDetailCandidateCount || 0) ? `詳記候補 ${Number(patient.symptomDetailCandidateCount).toLocaleString()}件` : ""
   ].filter(Boolean);
+  return { primary: tasks[0] || "", restCount: Math.max(0, tasks.length - 1) };
+}
+
+function MonthlyPatientRow({ onOpen, patient }) {
+  const status = patient.readyForClaim ? "ready" : patient.blocked ? "needs_review" : "partial";
+  const { primary, restCount } = monthlyPatientPrimaryTask(patient);
 
   return (
-    <>
-      <tr>
-        <td>
-          <button className="fee-monthly-patient-button" onClick={onToggle} type="button" aria-expanded={expanded}>
+    <tr className="fee-monthly-row" onClick={onOpen}>
+      <td>
+        <button className="fee-monthly-patient-button" onClick={onOpen} type="button">
+          <strong>{patient.patientName || patient.patientId || "患者未設定"}</strong>
+          <small>{patient.patientId || "患者ID未設定"}</small>
+        </button>
+      </td>
+      <td>{Number(patient.sessionCount || 0).toLocaleString()}件</td>
+      <td>{Number(patient.totalPoints || 0).toLocaleString()}点</td>
+      <td><span className={badgeClass(status)}>{patient.readyForClaim ? "提出候補" : patient.blocked ? "要対応" : "確認中"}</span></td>
+      <td className="fee-monthly-task-cell">
+        {primary ? (
+          <>
+            <span>{primary}</span>
+            {restCount ? <small>他 {restCount.toLocaleString()}</small> : null}
+          </>
+        ) : <span className="fee-monthly-task-none">追加確認なし</span>}
+      </td>
+    </tr>
+  );
+}
+
+// STEP4: 患者の点検詳細を右ドロワーで開く。テーブルのインライン展開を廃止して一覧の見通しを保つ。
+function MonthlyPatientDrawer({ onApplyDiagnoses, onClose, onUpdateReceiptAnnotations, onUpdateWork, patient, savingSessionId }) {
+  useEffect(() => {
+    if (!patient) {
+      return undefined;
+    }
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [patient, onClose]);
+
+  if (!patient) {
+    return null;
+  }
+  const firstSession = Array.isArray(patient.sessions) ? patient.sessions[0] : null;
+  const status = patient.readyForClaim ? "提出候補" : patient.blocked ? "要対応" : "確認中";
+  return (
+    <div className="fee-drawer-overlay" role="presentation" onMouseDown={onClose}>
+      <aside className="fee-drawer-panel" role="dialog" aria-modal="true" aria-label="患者の点検詳細" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="fee-drawer-head">
+          <div>
             <strong>{patient.patientName || patient.patientId || "患者未設定"}</strong>
-            <small>{patient.patientId || "患者ID未設定"}</small>
-          </button>
-        </td>
-        <td>{Number(patient.sessionCount || 0).toLocaleString()}件</td>
-        <td>{Number(patient.totalPoints || 0).toLocaleString()}点</td>
-        <td><span className={badgeClass(status)}>{patient.readyForClaim ? "提出候補" : patient.blocked ? "要対応" : "確認中"}</span></td>
-        <td>{issues.length ? issues.join(" / ") : "追加確認なし"}</td>
-        <td>
-          {firstSession?.feeSessionId ? (
-            <a className="btn btn--ghost btn--sm" href={`/sessions/${encodeURIComponent(firstSession.feeSessionId)}`}>開く</a>
-          ) : "-"}
-        </td>
-      </tr>
-      {expanded ? (
-        <tr className="fee-monthly-detail-row">
-          <td colSpan={6}>
-            <div className="fee-monthly-session-list">
-              {(patient.sessions || []).map((session) => (
-                <MonthlySessionReview
-                  key={session.feeSessionId || session.serviceDate}
-                  onApplyDiagnoses={onApplyDiagnoses}
-                  onUpdateReceiptAnnotations={onUpdateReceiptAnnotations}
-                  onUpdateWork={onUpdateWork}
-                  saving={savingSessionId === session.feeSessionId}
-                  session={session}
-                />
-              ))}
-            </div>
-          </td>
-        </tr>
-      ) : null}
-    </>
+            <small>{patient.patientId || "患者ID未設定"} / {Number(patient.sessionCount || 0).toLocaleString()}受診 / {Number(patient.totalPoints || 0).toLocaleString()}点 / {status}</small>
+          </div>
+          <div className="fee-drawer-head-actions">
+            {firstSession?.feeSessionId ? (
+              <a className="btn btn--ghost btn--sm" href={`/sessions/${encodeURIComponent(firstSession.feeSessionId)}`}>算定画面で開く</a>
+            ) : null}
+            <button className="btn btn--ghost btn--icon" onClick={onClose} type="button" aria-label="閉じる">×</button>
+          </div>
+        </header>
+        <div className="fee-drawer-body">
+          <div className="fee-monthly-session-list">
+            {(patient.sessions || []).map((session) => (
+              <MonthlySessionReview
+                key={session.feeSessionId || session.serviceDate}
+                onApplyDiagnoses={onApplyDiagnoses}
+                onUpdateReceiptAnnotations={onUpdateReceiptAnnotations}
+                onUpdateWork={onUpdateWork}
+                saving={savingSessionId === session.feeSessionId}
+                session={session}
+              />
+            ))}
+          </div>
+        </div>
+      </aside>
+    </div>
   );
 }
 
