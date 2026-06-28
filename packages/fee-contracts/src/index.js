@@ -42,6 +42,30 @@ export const feeMissingHistoryBehaviors = Object.freeze(["candidate_with_review"
 export const feePriorHistoryBehaviors = Object.freeze(["prefer_revisit_candidate", "warn_only"]);
 export const feeNewDiseaseInitialHandlings = Object.freeze(["candidate_requires_review", "manual_only"]);
 export const feeReviewPolicyModes = Object.freeze(["standard", "conservative", "review_heavy"]);
+export const feeReceiptExportEncodings = Object.freeze(["shift_jis", "utf-8"]);
+export const feeReceiptValidationSeverities = Object.freeze(["error", "warning", "off"]);
+const defaultReceiptValidationSeverity = Object.freeze({
+  facilityMedicalInstitutionCode: "error",
+  facilityPrefectureCode: "warning",
+  patientDisplayName: "error",
+  patientSex: "warning",
+  patientBirthDate: "warning",
+  serviceDate: "error",
+  claimMonth: "error",
+  insuranceInsurerNumber: "error",
+  insuranceInsuredSymbol: "warning",
+  insuranceInsuredNumber: "warning",
+  publicInsurancePayerNumber: "error",
+  publicInsuranceRecipientNumber: "error",
+  lineCode: "warning",
+  linePoints: "warning",
+  lineOrderType: "warning",
+  commentText: "error",
+  commentCode: "warning",
+  commentShinryoIdentification: "warning",
+  symptomDetailText: "error",
+  symptomDetailKubun: "warning"
+});
 export const clinicalAutoCalculationOptionKeys = Object.freeze([
   "procedure_codes",
   "outpatient_basic",
@@ -210,6 +234,16 @@ export function defaultFeeSettings(input = {}) {
       mode: "standard",
       autoAddAllowedSources: ["deterministic_order_mapping"],
       reviewRequiredSources: ["history_conflict", "new_disease_initial", "missing_history"]
+    },
+    receiptPolicy: {
+      ukeEncoding: "shift_jis",
+      blockExportOnErrors: false,
+      connectorSpecVerified: false,
+      validationSeverity: { ...defaultReceiptValidationSeverity },
+      annotationDefaults: {
+        commentShinryoIdentification: "",
+        symptomDetailKubun: ""
+      }
     }
   };
 }
@@ -221,11 +255,13 @@ export function validateUpdateFeeSettingsInput(input = {}) {
     ? (current.initialRevisitPolicy ?? current.initial_revisit_policy)
     : {};
   const currentReviewPolicy = isPlainObject(current.reviewPolicy ?? current.review_policy) ? (current.reviewPolicy ?? current.review_policy) : {};
+  const currentReceiptPolicy = isPlainObject(current.receiptPolicy ?? current.receipt_policy) ? (current.receiptPolicy ?? current.receipt_policy) : {};
   const inputHistoryPolicy = isPlainObject(input.historyPolicy ?? input.history_policy) ? (input.historyPolicy ?? input.history_policy) : {};
   const inputInitialRevisitPolicy = isPlainObject(input.initialRevisitPolicy ?? input.initial_revisit_policy)
     ? (input.initialRevisitPolicy ?? input.initial_revisit_policy)
     : {};
   const inputReviewPolicy = isPlainObject(input.reviewPolicy ?? input.review_policy) ? (input.reviewPolicy ?? input.review_policy) : {};
+  const inputReceiptPolicy = isPlainObject(input.receiptPolicy ?? input.receipt_policy) ? (input.receiptPolicy ?? input.receipt_policy) : {};
   const base = defaultFeeSettings({
     facilityId: input.facilityId ?? input.facility_id ?? current.facilityId ?? current.facility_id,
     effectiveFrom: input.effectiveFrom ?? input.effective_from ?? current.effectiveFrom ?? current.effective_from
@@ -233,12 +269,14 @@ export function validateUpdateFeeSettingsInput(input = {}) {
   const baseHistoryPolicy = { ...base.historyPolicy, ...currentHistoryPolicy, ...inputHistoryPolicy };
   const baseInitialRevisitPolicy = { ...base.initialRevisitPolicy, ...currentInitialRevisitPolicy, ...inputInitialRevisitPolicy };
   const baseReviewPolicy = { ...base.reviewPolicy, ...currentReviewPolicy, ...inputReviewPolicy };
+  const baseReceiptPolicy = mergeReceiptPolicy(base.receiptPolicy, currentReceiptPolicy, inputReceiptPolicy);
   return {
     facilityId: optionalString(input.facilityId ?? input.facility_id ?? current.facilityId ?? current.facility_id) || base.facilityId,
     effectiveFrom: optionalDate(input.effectiveFrom ?? input.effective_from ?? current.effectiveFrom ?? current.effective_from, "effectiveFrom") || base.effectiveFrom,
     historyPolicy: normalizeHistoryPolicy(baseHistoryPolicy),
     initialRevisitPolicy: normalizeInitialRevisitPolicy(baseInitialRevisitPolicy),
-    reviewPolicy: normalizeReviewPolicy(baseReviewPolicy)
+    reviewPolicy: normalizeReviewPolicy(baseReviewPolicy),
+    receiptPolicy: normalizeReceiptPolicy(baseReceiptPolicy)
   };
 }
 
@@ -332,6 +370,65 @@ function normalizeReviewPolicy(input = {}) {
     autoAddAllowedSources: normalizeStringArray(value.autoAddAllowedSources ?? value.auto_add_allowed_sources),
     reviewRequiredSources: normalizeStringArray(value.reviewRequiredSources ?? value.review_required_sources)
   };
+}
+
+function mergeReceiptPolicy(base = {}, current = {}, input = {}) {
+  return {
+    ...base,
+    ...current,
+    ...input,
+    validationSeverity: {
+      ...(base.validationSeverity || {}),
+      ...(current.validationSeverity ?? current.validation_severity ?? {}),
+      ...(input.validationSeverity ?? input.validation_severity ?? {})
+    },
+    annotationDefaults: {
+      ...(base.annotationDefaults || {}),
+      ...(current.annotationDefaults ?? current.annotation_defaults ?? {}),
+      ...(input.annotationDefaults ?? input.annotation_defaults ?? {})
+    }
+  };
+}
+
+function normalizeReceiptPolicy(input = {}) {
+  const value = isPlainObject(input) ? input : {};
+  return {
+    ukeEncoding: optionalEnum(normalizeReceiptEncoding(value.ukeEncoding ?? value.uke_encoding), feeReceiptExportEncodings, "receiptPolicy.ukeEncoding") || "shift_jis",
+    blockExportOnErrors: optionalBoolean(value.blockExportOnErrors ?? value.block_export_on_errors, false),
+    connectorSpecVerified: optionalBoolean(value.connectorSpecVerified ?? value.connector_spec_verified, false),
+    validationSeverity: normalizeReceiptValidationSeverity(value.validationSeverity ?? value.validation_severity),
+    annotationDefaults: normalizeReceiptAnnotationDefaults(value.annotationDefaults ?? value.annotation_defaults)
+  };
+}
+
+function normalizeReceiptValidationSeverity(input = {}) {
+  const value = isPlainObject(input) ? input : {};
+  return Object.fromEntries(Object.entries(defaultReceiptValidationSeverity).map(([key, fallback]) => [
+    key,
+    optionalEnum(value[key], feeReceiptValidationSeverities, `receiptPolicy.validationSeverity.${key}`) || fallback
+  ]));
+}
+
+function normalizeReceiptAnnotationDefaults(input = {}) {
+  const value = isPlainObject(input) ? input : {};
+  return {
+    commentShinryoIdentification: optionalString(value.commentShinryoIdentification ?? value.comment_shinryo_identification) || "",
+    symptomDetailKubun: optionalString(value.symptomDetailKubun ?? value.symptom_detail_kubun) || ""
+  };
+}
+
+function normalizeReceiptEncoding(value) {
+  const normalized = optionalString(value)?.toLowerCase().replace(/[-_]/g, "");
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "utf8" || normalized === "utf") {
+    return "utf-8";
+  }
+  if (normalized === "shiftjis" || normalized === "sjis") {
+    return "shift_jis";
+  }
+  return value;
 }
 
 function clampInteger(value, min, max, fallback) {

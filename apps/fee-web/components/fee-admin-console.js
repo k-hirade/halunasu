@@ -47,6 +47,22 @@ const MASTER_TYPES = [
   { id: "comment", label: "コメント", amountLabel: "点数/金額" }
 ];
 
+const RECEIPT_VALIDATION_FIELDS = [
+  ["facilityPrefectureCode", "都道府県コード"],
+  ["patientSex", "患者性別"],
+  ["patientBirthDate", "患者生年月日"],
+  ["insuranceInsuredSymbol", "被保険者記号"],
+  ["insuranceInsuredNumber", "被保険者番号"],
+  ["commentShinryoIdentification", "コメント診療識別"],
+  ["symptomDetailKubun", "症状詳記区分"]
+];
+
+const RECEIPT_SEVERITY_OPTIONS = [
+  ["warning", "警告"],
+  ["error", "必須エラー"],
+  ["off", "確認しない"]
+];
+
 export function FeeAdminConsole() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -334,9 +350,51 @@ function FeeSettingsPanel({ data }) {
     setDraft((current) => ({ ...current, reviewPolicy: { ...(current.reviewPolicy || {}), ...patch } }));
   }
 
+  function updateReceiptPolicy(patch) {
+    setDraft((current) => {
+      const currentPolicy = receiptPolicyForDraft(current, selectedFacilityId);
+      return { ...current, receiptPolicy: { ...currentPolicy, ...patch } };
+    });
+  }
+
+  function updateReceiptValidationSeverity(key, value) {
+    setDraft((current) => {
+      const currentPolicy = receiptPolicyForDraft(current, selectedFacilityId);
+      return {
+        ...current,
+        receiptPolicy: {
+          ...currentPolicy,
+          validationSeverity: {
+            ...(currentPolicy.validationSeverity || {}),
+            [key]: value
+          }
+        }
+      };
+    });
+  }
+
+  function updateReceiptAnnotationDefaults(patch) {
+    setDraft((current) => {
+      const currentPolicy = receiptPolicyForDraft(current, selectedFacilityId);
+      return {
+        ...current,
+        receiptPolicy: {
+          ...currentPolicy,
+          annotationDefaults: {
+            ...(currentPolicy.annotationDefaults || {}),
+            ...patch
+          }
+        }
+      };
+    });
+  }
+
   if (!facilities.length) {
     return <div className="fee-empty-state">施設が登録されていません。Core Adminで施設を登録してください。</div>;
   }
+
+  const receiptPolicy = receiptPolicyForDraft(draft, selectedFacilityId);
+  const receiptAnnotationDefaults = receiptPolicy.annotationDefaults || {};
 
   return (
     <div className="fee-admin-placeholder fee-settings-grid">
@@ -441,7 +499,70 @@ function FeeSettingsPanel({ data }) {
         </label>
         <p>履歴矛盾、新疾患初診、履歴不明はレビュー対象として扱います。</p>
       </div>
+
+      <div className="fee-setting-card">
+        <strong>レセプト出力</strong>
+        <label className="fee-field">
+          <span>レセ電(UKE)の既定文字コード</span>
+          <select value={receiptPolicy.ukeEncoding || "shift_jis"} onChange={(event) => updateReceiptPolicy({ ukeEncoding: event.target.value })}>
+            <option value="shift_jis">Shift_JIS</option>
+            <option value="utf-8">UTF-8</option>
+          </select>
+        </label>
+        <label className="fee-checkbox">
+          <input checked={receiptPolicy.connectorSpecVerified === true} onChange={(event) => updateReceiptPolicy({ connectorSpecVerified: event.target.checked })} type="checkbox" />
+          <span>接続先レセコンのCSV/UKE/API仕様を確認済みにする</span>
+        </label>
+        <label className="fee-checkbox">
+          <input checked={receiptPolicy.blockExportOnErrors === true} onChange={(event) => updateReceiptPolicy({ blockExportOnErrors: event.target.checked })} type="checkbox" />
+          <span>必須エラーがある場合はCSV/UKE出力を止める</span>
+        </label>
+        <p>算定要件や点数を施設ごとに上書きする設定ではありません。提出前の出力形式と不足項目チェックの既定値だけを管理します。</p>
+      </div>
+
+      <div className="fee-setting-card">
+        <strong>出力前チェック</strong>
+        {RECEIPT_VALIDATION_FIELDS.map(([key, label]) => (
+          <ReceiptSeveritySelect
+            key={key}
+            label={label}
+            value={receiptPolicy.validationSeverity?.[key] || "warning"}
+            onChange={(value) => updateReceiptValidationSeverity(key, value)}
+          />
+        ))}
+        <label className="fee-field">
+          <span>コメントの既定診療識別</span>
+          <input
+            maxLength={8}
+            onChange={(event) => updateReceiptAnnotationDefaults({ commentShinryoIdentification: event.target.value })}
+            placeholder="例: 60"
+            value={receiptAnnotationDefaults.commentShinryoIdentification || ""}
+          />
+        </label>
+        <label className="fee-field">
+          <span>症状詳記の既定区分</span>
+          <input
+            maxLength={8}
+            onChange={(event) => updateReceiptAnnotationDefaults({ symptomDetailKubun: event.target.value })}
+            placeholder="例: 01"
+            value={receiptAnnotationDefaults.symptomDetailKubun || ""}
+          />
+        </label>
+      </div>
     </div>
+  );
+}
+
+function ReceiptSeveritySelect({ label, onChange, value }) {
+  return (
+    <label className="fee-field">
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {RECEIPT_SEVERITY_OPTIONS.map(([optionValue, optionLabel]) => (
+          <option key={optionValue} value={optionValue}>{optionLabel}</option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -645,6 +766,54 @@ function defaultSettingsForFacility(facilityId = "default") {
       mode: "standard",
       autoAddAllowedSources: ["deterministic_order_mapping"],
       reviewRequiredSources: ["history_conflict", "new_disease_initial", "missing_history"]
+    },
+    receiptPolicy: {
+      ukeEncoding: "shift_jis",
+      blockExportOnErrors: false,
+      connectorSpecVerified: false,
+      validationSeverity: {
+        facilityMedicalInstitutionCode: "error",
+        facilityPrefectureCode: "warning",
+        patientDisplayName: "error",
+        patientSex: "warning",
+        patientBirthDate: "warning",
+        serviceDate: "error",
+        claimMonth: "error",
+        insuranceInsurerNumber: "error",
+        insuranceInsuredSymbol: "warning",
+        insuranceInsuredNumber: "warning",
+        publicInsurancePayerNumber: "error",
+        publicInsuranceRecipientNumber: "error",
+        lineCode: "warning",
+        linePoints: "warning",
+        lineOrderType: "warning",
+        commentText: "error",
+        commentCode: "warning",
+        commentShinryoIdentification: "warning",
+        symptomDetailText: "error",
+        symptomDetailKubun: "warning"
+      },
+      annotationDefaults: {
+        commentShinryoIdentification: "",
+        symptomDetailKubun: ""
+      }
+    }
+  };
+}
+
+function receiptPolicyForDraft(draft = {}, facilityId = "default") {
+  const defaults = defaultSettingsForFacility(facilityId).receiptPolicy;
+  const current = draft.receiptPolicy || {};
+  return {
+    ...defaults,
+    ...current,
+    validationSeverity: {
+      ...(defaults.validationSeverity || {}),
+      ...(current.validationSeverity || {})
+    },
+    annotationDefaults: {
+      ...(defaults.annotationDefaults || {}),
+      ...(current.annotationDefaults || {})
     }
   };
 }

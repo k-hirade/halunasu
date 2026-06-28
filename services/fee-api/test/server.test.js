@@ -8218,6 +8218,19 @@ test("updates facility fee settings and records audit event", async () => {
     },
     initialRevisitPolicy: {
       requireReviewWhenNoHistory: true
+    },
+    receiptPolicy: {
+      ukeEncoding: "utf-8",
+      blockExportOnErrors: true,
+      connectorSpecVerified: true,
+      validationSeverity: {
+        patientBirthDate: "error",
+        insuranceInsuredSymbol: "error"
+      },
+      annotationDefaults: {
+        commentShinryoIdentification: "60",
+        symptomDetailKubun: "01"
+      }
     }
   }, headers);
 
@@ -8226,10 +8239,16 @@ test("updates facility fee settings and records audit event", async () => {
   assert.equal(settings.body.settings.historyPolicy.defaultLookbackMonths, 6);
   assert.equal(settings.body.settings.historyPolicy.externalHistoryEnabled, true);
   assert.equal(settings.body.settings.historyPolicy.historyCompleteness, "partial");
+  assert.equal(settings.body.settings.receiptPolicy.ukeEncoding, "utf-8");
+  assert.equal(settings.body.settings.receiptPolicy.blockExportOnErrors, true);
+  assert.equal(settings.body.settings.receiptPolicy.connectorSpecVerified, true);
+  assert.equal(settings.body.settings.receiptPolicy.validationSeverity.patientBirthDate, "error");
+  assert.equal(settings.body.settings.receiptPolicy.annotationDefaults.commentShinryoIdentification, "60");
 
   const bootstrap = await request(stores, "GET", "/v1/fee/settings", undefined, headers);
   assert.equal(bootstrap.statusCode, 200);
   assert.equal(bootstrap.body.settings.fac_001.historyPolicy.defaultLookbackMonths, 6);
+  assert.equal(bootstrap.body.settings.fac_001.receiptPolicy.ukeEncoding, "utf-8");
 
   const auditEvents = stores.platformStore.listAuditEvents("org_001");
   assert.ok(auditEvents.some((event) => event.eventType === "fee.settings_updated"));
@@ -8527,4 +8546,14 @@ test("exports a receipt UKE in Shift_JIS by default and UTF-8 on request", async
   const utf8 = await request(stores, "GET", `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/receipt.uke?encoding=utf-8`, undefined, headers);
   assert.match(utf8.headers["content-type"], /charset=utf-8/);
   assert.match(utf8.body.toString("utf-8"), /^IR,/);
+
+  await request(stores, "PATCH", "/v1/fee/settings/fac_001", {
+    receiptPolicy: {
+      ukeEncoding: "utf-8",
+      connectorSpecVerified: true
+    }
+  }, headers);
+  const configured = await request(stores, "GET", `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/receipt.uke`, undefined, headers);
+  assert.match(configured.headers["content-type"], /charset=utf-8/);
+  assert.equal(configured.headers["x-halunasu-connector-status"], "spec-verified");
 });

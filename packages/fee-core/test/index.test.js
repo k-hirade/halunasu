@@ -1169,3 +1169,20 @@ test("buildReceiptExportValidation reports required UKE draft fields", () => {
   assert.ok(invalid.issues.some((issue) => issue.field === "patient.displayName" && issue.severity === "error"));
   assert.ok(invalid.issues.some((issue) => issue.field === "insurance.insurerNumber" && issue.severity === "error"));
 });
+
+test("buildReceiptExportValidation applies facility receipt validation severity policy", () => {
+  const validation = buildReceiptExportValidation({
+    ...ukeFixtureDraft(),
+    patientSnapshot: { displayName: "山田 太郎" }
+  }, {
+    receiptPolicy: {
+      validationSeverity: {
+        patientSex: "off",
+        patientBirthDate: "error"
+      }
+    }
+  });
+
+  assert.ok(!validation.issues.some((issue) => issue.field === "patient.sex"));
+  assert.ok(validation.issues.some((issue) => issue.field === "patient.birthDate" && issue.severity === "error"));
+});

@@ -329,23 +329,24 @@ export function buildReceiptExportValidation(receiptDraft = {}, context = {}) {
   const publicInsurance = Array.isArray(insuranceSnapshot.publicInsurance) ? insuranceSnapshot.publicInsurance : [];
   const patient = isPlainObject(receiptDraft.patientSnapshot) ? receiptDraft.patientSnapshot : {};
   const facility = isPlainObject(receiptDraft.facilitySnapshot) ? receiptDraft.facilitySnapshot : {};
+  const severityFor = receiptValidationSeverityResolver(context.receiptPolicy);
   const issues = [];
 
-  addReceiptValidationIssue(issues, !facility.medicalInstitutionCode, "facility.medicalInstitutionCode", "error", "医療機関コードが未設定です。");
-  addReceiptValidationIssue(issues, !facility.prefectureCode, "facility.prefectureCode", "warning", "都道府県コードが未設定です。");
-  addReceiptValidationIssue(issues, !patient.displayName, "patient.displayName", "error", "患者氏名が未設定です。");
-  addReceiptValidationIssue(issues, !patient.sex, "patient.sex", "warning", "患者性別が未設定です。");
-  addReceiptValidationIssue(issues, !patient.birthDate, "patient.birthDate", "warning", "患者生年月日が未設定です。");
-  addReceiptValidationIssue(issues, !receiptDraft.serviceDate, "receiptDraft.serviceDate", "error", "診療日が未設定です。");
-  addReceiptValidationIssue(issues, !receiptDraft.claimMonth, "receiptDraft.claimMonth", "error", "請求月が未設定です。");
-  addReceiptValidationIssue(issues, !insurance.insurerNumber, "insurance.insurerNumber", "error", "保険者番号が未設定です。");
-  addReceiptValidationIssue(issues, !insurance.insuredSymbol, "insurance.insuredSymbol", "warning", "被保険者記号が未設定です。");
-  addReceiptValidationIssue(issues, !insurance.insuredNumber, "insurance.insuredNumber", "warning", "被保険者番号が未設定です。");
+  addReceiptValidationIssue(issues, !facility.medicalInstitutionCode, "facility.medicalInstitutionCode", severityFor("facilityMedicalInstitutionCode", "error"), "医療機関コードが未設定です。");
+  addReceiptValidationIssue(issues, !facility.prefectureCode, "facility.prefectureCode", severityFor("facilityPrefectureCode", "warning"), "都道府県コードが未設定です。");
+  addReceiptValidationIssue(issues, !patient.displayName, "patient.displayName", severityFor("patientDisplayName", "error"), "患者氏名が未設定です。");
+  addReceiptValidationIssue(issues, !patient.sex, "patient.sex", severityFor("patientSex", "warning"), "患者性別が未設定です。");
+  addReceiptValidationIssue(issues, !patient.birthDate, "patient.birthDate", severityFor("patientBirthDate", "warning"), "患者生年月日が未設定です。");
+  addReceiptValidationIssue(issues, !receiptDraft.serviceDate, "receiptDraft.serviceDate", severityFor("serviceDate", "error"), "診療日が未設定です。");
+  addReceiptValidationIssue(issues, !receiptDraft.claimMonth, "receiptDraft.claimMonth", severityFor("claimMonth", "error"), "請求月が未設定です。");
+  addReceiptValidationIssue(issues, !insurance.insurerNumber, "insurance.insurerNumber", severityFor("insuranceInsurerNumber", "error"), "保険者番号が未設定です。");
+  addReceiptValidationIssue(issues, !insurance.insuredSymbol, "insurance.insuredSymbol", severityFor("insuranceInsuredSymbol", "warning"), "被保険者記号が未設定です。");
+  addReceiptValidationIssue(issues, !insurance.insuredNumber, "insurance.insuredNumber", severityFor("insuranceInsuredNumber", "warning"), "被保険者番号が未設定です。");
   addReceiptValidationIssue(issues, !context.connectorSpecVerified, "connector.targetSpec", "warning", "接続先レセコンのCSV/UKE/API仕様が未設定です。実請求前に接続先仕様を確認してください。");
 
   for (const [index, publicEntry] of publicInsurance.entries()) {
-    addReceiptValidationIssue(issues, !publicEntry.payerNumber, `publicInsurance[${index}].payerNumber`, "error", "公費負担者番号が未設定です。");
-    addReceiptValidationIssue(issues, !publicEntry.recipientNumber, `publicInsurance[${index}].recipientNumber`, "error", "公費受給者番号が未設定です。");
+    addReceiptValidationIssue(issues, !publicEntry.payerNumber, `publicInsurance[${index}].payerNumber`, severityFor("publicInsurancePayerNumber", "error"), "公費負担者番号が未設定です。");
+    addReceiptValidationIssue(issues, !publicEntry.recipientNumber, `publicInsurance[${index}].recipientNumber`, severityFor("publicInsuranceRecipientNumber", "error"), "公費受給者番号が未設定です。");
   }
 
   const lines = Array.isArray(receiptDraft.lineGroups)
@@ -353,20 +354,20 @@ export function buildReceiptExportValidation(receiptDraft = {}, context = {}) {
     : [];
   addReceiptValidationIssue(issues, receiptDraft.status !== "ready", "receiptDraft.status", "warning", "レセプト案が未算定状態です。");
   for (const [index, line] of lines.entries()) {
-    addReceiptValidationIssue(issues, !line.code, `lines[${index}].code`, "warning", "診療行為・薬剤・材料コードが未設定の明細があります。");
-    addReceiptValidationIssue(issues, Number(line.points || 0) <= 0, `lines[${index}].points`, "warning", "点数が0以下の明細があります。");
-    addReceiptValidationIssue(issues, !ukeLineRecordId(line.orderType), `lines[${index}].orderType`, "warning", "レセ電レコード種別を確認してください。");
+    addReceiptValidationIssue(issues, !line.code, `lines[${index}].code`, severityFor("lineCode", "warning"), "診療行為・薬剤・材料コードが未設定の明細があります。");
+    addReceiptValidationIssue(issues, Number(line.points || 0) <= 0, `lines[${index}].points`, severityFor("linePoints", "warning"), "点数が0以下の明細があります。");
+    addReceiptValidationIssue(issues, !ukeLineRecordId(line.orderType), `lines[${index}].orderType`, severityFor("lineOrderType", "warning"), "レセ電レコード種別を確認してください。");
   }
 
   for (const [index, comment] of (Array.isArray(context.comments) ? context.comments : []).entries()) {
-    addReceiptValidationIssue(issues, !comment.text, `comments[${index}].text`, "error", "コメント本文が未設定です。");
-    addReceiptValidationIssue(issues, !comment.code, `comments[${index}].code`, "warning", "コメントコードが未設定です。");
-    addReceiptValidationIssue(issues, !comment.shinryoIdentification, `comments[${index}].shinryoIdentification`, "warning", "コメントの診療識別が未設定です。");
+    addReceiptValidationIssue(issues, !comment.text, `comments[${index}].text`, severityFor("commentText", "error"), "コメント本文が未設定です。");
+    addReceiptValidationIssue(issues, !comment.code, `comments[${index}].code`, severityFor("commentCode", "warning"), "コメントコードが未設定です。");
+    addReceiptValidationIssue(issues, !comment.shinryoIdentification, `comments[${index}].shinryoIdentification`, severityFor("commentShinryoIdentification", "warning"), "コメントの診療識別が未設定です。");
   }
 
   for (const [index, detail] of (Array.isArray(context.symptomDetails) ? context.symptomDetails : []).entries()) {
-    addReceiptValidationIssue(issues, !detail.text, `symptomDetails[${index}].text`, "error", "症状詳記本文が未設定です。");
-    addReceiptValidationIssue(issues, !detail.kubun, `symptomDetails[${index}].kubun`, "warning", "症状詳記区分が未設定です。");
+    addReceiptValidationIssue(issues, !detail.text, `symptomDetails[${index}].text`, severityFor("symptomDetailText", "error"), "症状詳記本文が未設定です。");
+    addReceiptValidationIssue(issues, !detail.kubun, `symptomDetails[${index}].kubun`, severityFor("symptomDetailKubun", "warning"), "症状詳記区分が未設定です。");
   }
 
   const blockingIssueCount = issues.filter((issue) => issue.severity === "error").length;
@@ -380,8 +381,16 @@ export function buildReceiptExportValidation(receiptDraft = {}, context = {}) {
   };
 }
 
+function receiptValidationSeverityResolver(receiptPolicy = {}) {
+  const configured = isPlainObject(receiptPolicy?.validationSeverity) ? receiptPolicy.validationSeverity : {};
+  return (key, fallback) => {
+    const severity = configured[key] || fallback;
+    return ["error", "warning", "off"].includes(severity) ? severity : fallback;
+  };
+}
+
 function addReceiptValidationIssue(issues, condition, field, severity, message) {
-  if (!condition) {
+  if (!condition || severity === "off") {
     return;
   }
   issues.push({ field, severity, message });

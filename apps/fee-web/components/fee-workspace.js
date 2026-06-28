@@ -2597,9 +2597,11 @@ function WorkPane({
         ) : (
           <ReceiptDraftPane
             disabled={disabled}
+            feeSession={feeSession}
             onCopyReceipt={onCopyReceipt}
             onDownloadCsv={onDownloadCsv}
             onDownloadUke={onDownloadUke}
+            onOpenManualItem={onOpenManualItem}
             onRemoveManualOrder={onRemoveManualOrder}
             orderRows={orderRows}
             receiptDraft={receiptDraft}
@@ -3878,18 +3880,37 @@ function confirmableProposalForAdoption(item = {}) {
     && points > 0;
 }
 
-function ReceiptDraftPane({ disabled, onCopyReceipt, onDownloadCsv, onDownloadUke, onRemoveManualOrder, orderRows = [], receiptDraft, selected }) {
+function ReceiptDraftPane({
+  disabled,
+  feeSession,
+  onCopyReceipt,
+  onDownloadCsv,
+  onDownloadUke,
+  onOpenManualItem,
+  onRemoveManualOrder,
+  orderRows = [],
+  receiptDraft,
+  selected
+}) {
   const manualOrders = manualBillingOrderEntries(orderRows);
   const exportValidation = receiptDraft?.exportValidation || null;
   const [ukeEncoding, setUkeEncoding] = useState("shift_jis");
+  function printReceiptDraft() {
+    if (typeof window !== "undefined") {
+      window.print();
+    }
+  }
   return (
     <div className="receipt-draft-pane">
       <div className="receipt-pane-head">
         <div>
           <h2>レセプト案</h2>
-          <p>区分別合計と明細です。CSV・レセ電(UKE)は仕様確認用の下書きとして出力します。</p>
+          <p>提出前の帳票プレビューです。修正後にCSV・レセ電(UKE)を出力できます。</p>
         </div>
         <div className="receipt-pane-actions">
+          <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={printReceiptDraft} type="button">
+            印刷/PDF
+          </button>
           <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={onCopyReceipt} type="button">
             コピー
           </button>
@@ -3911,38 +3932,19 @@ function ReceiptDraftPane({ disabled, onCopyReceipt, onDownloadCsv, onDownloadUk
               レセ電(UKE)出力
             </button>
           </span>
-          <button className="btn btn--primary btn--sm" disabled title="確定APIが未実装です" type="button">
-            確定
-          </button>
         </div>
       </div>
-      <ReceiptExportValidation validation={exportValidation} />
-      <BillingSummary billing={receiptDraft?.billing} />
-      {manualOrders.length ? (
-        <section className="manual-billing-list" aria-label="ユーザー追加明細">
-          <div className="manual-billing-list-head">
-            <div>
-              <h3>ユーザー追加明細</h3>
-              <p>カルテ自動抽出ではなく、人手で追加した算定入力です。削除すると再計算します。</p>
-            </div>
-            <span>{manualOrders.length.toLocaleString()}件</span>
-          </div>
-          {manualOrders.map(({ row, rowIndex }) => (
-            <article className="manual-billing-row" key={`${row.standardCode || row.localName || "manual"}-${rowIndex}`}>
-              <div>
-                <strong>{row.standardName || row.localName || row.standardCode || "名称未設定"}</strong>
-                <small>{orderTypeLabel(row.orderType)} / {row.standardCode || "コード未設定"} / 数量 {row.quantity || "1"}</small>
-                {row.note ? <small>{row.note}</small> : null}
-              </div>
-              <span>手入力</span>
-              <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onRemoveManualOrder(rowIndex)} type="button">
-                削除して再計算
-              </button>
-            </article>
-          ))}
-        </section>
-      ) : null}
-      <ReceiptDraft receiptDraft={receiptDraft} selected={selected} />
+      <div className="receipt-review-layout">
+        <ReceiptDraft receiptDraft={receiptDraft} feeSession={feeSession} selected={selected} />
+        <ReceiptCorrectionPanel
+          disabled={disabled}
+          manualOrders={manualOrders}
+          onOpenManualItem={onOpenManualItem}
+          onRemoveManualOrder={onRemoveManualOrder}
+          receiptDraft={receiptDraft}
+          validation={exportValidation}
+        />
+      </div>
     </div>
   );
 }
@@ -4260,30 +4262,223 @@ function CalculationProgress({ progress }) {
   );
 }
 
-function ReceiptDraft({ receiptDraft, selected }) {
+function ReceiptCorrectionPanel({
+  disabled,
+  manualOrders = [],
+  onOpenManualItem,
+  onRemoveManualOrder,
+  receiptDraft,
+  validation
+}) {
+  return (
+    <aside className="receipt-correction-panel" aria-label="レセプト修正">
+      <section className="receipt-correction-section">
+        <div className="receipt-correction-head">
+          <h3>修正</h3>
+          <span>{Number(receiptDraft?.totalPoints || 0).toLocaleString()}点</span>
+        </div>
+        <div className="receipt-correction-actions">
+          <button className="btn btn--primary btn--sm" disabled={disabled || !receiptDraft} onClick={onOpenManualItem} type="button">
+            明細を追加
+          </button>
+        </div>
+      </section>
+      <ReceiptExportValidation validation={validation} />
+      {manualOrders.length ? (
+        <section className="manual-billing-list" aria-label="ユーザー追加明細">
+          <div className="manual-billing-list-head">
+            <div>
+              <h3>ユーザー追加明細</h3>
+              <p>削除すると再計算します。</p>
+            </div>
+            <span>{manualOrders.length.toLocaleString()}件</span>
+          </div>
+          {manualOrders.map(({ row, rowIndex }) => (
+            <article className="manual-billing-row" key={`${row.standardCode || row.localName || "manual"}-${rowIndex}`}>
+              <div>
+                <strong>{row.standardName || row.localName || row.standardCode || "名称未設定"}</strong>
+                <small>{orderTypeLabel(row.orderType)} / {row.standardCode || "コード未設定"} / 数量 {row.quantity || "1"}</small>
+                {row.note ? <small>{row.note}</small> : null}
+              </div>
+              <span>手入力</span>
+              <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onRemoveManualOrder(rowIndex)} type="button">
+                削除
+              </button>
+            </article>
+          ))}
+        </section>
+      ) : null}
+    </aside>
+  );
+}
+
+function ReceiptDraft({ feeSession, receiptDraft, selected }) {
   if (!receiptDraft) {
     return <div className="fee-empty-state">{selected ? "算定候補を作成すると、レセプト案が表示されます。" : "算定記録を選択してください。"}</div>;
   }
+  const patient = receiptDraft.patientSnapshot || {};
+  const facility = receiptDraft.facilitySnapshot || {};
+  const department = receiptDraft.departmentSnapshot || {};
+  const insurance = receiptDraft.insuranceSnapshot?.insurance || {};
+  const billing = receiptDraft.billing || {};
+  const groups = Array.isArray(receiptDraft.lineGroups) ? receiptDraft.lineGroups : [];
+  const annotations = receiptDisplayAnnotations(feeSession);
+  const totalLineCount = groups.reduce((sum, group) => sum + Number(group.lines?.length || 0), 0);
   return (
-    <div className="receipt-list">
-      <article className="receipt-line">
-        <header>
-          <span>{receiptDraft.claimMonth} / {statusLabel(receiptDraft.status)}</span>
-          <span>{Number(receiptDraft.totalPoints || 0).toLocaleString()} 点</span>
+    <div className="receipt-paper-shell">
+      <article className="receipt-paper" aria-label="レセプト提出前プレビュー">
+        <header className="receipt-paper-header">
+          <div>
+            <span className="receipt-paper-kicker">提出前プレビュー</span>
+            <h3>診療報酬明細書</h3>
+            <p>{receiptSettingLabel(receiptDraft.setting)} / {receiptDraft.claimMonth || "請求月未設定"}</p>
+          </div>
+          <div className="receipt-paper-status">
+            <span>{statusLabel(receiptDraft.status)}</span>
+            <strong>{Number(receiptDraft.totalPoints || 0).toLocaleString()}点</strong>
+          </div>
         </header>
-        <p>請求月ごとのレセプト案です。内容を確認してから確定してください。</p>
+
+        <section className="receipt-paper-meta-grid" aria-label="レセプト基本情報">
+          <div>
+            <span>医療機関</span>
+            <strong>{facility.displayName || "未設定"}</strong>
+            <small>医療機関コード {facility.medicalInstitutionCode || "未設定"} / 都道府県 {facility.prefectureCode || "未設定"}</small>
+          </div>
+          <div>
+            <span>患者</span>
+            <strong>{patient.displayName || receiptDraft.patientRef || "未設定"}</strong>
+            <small>{patient.birthDate || "生年月日未設定"} / {sexLabel(patient.sex)} / 患者ID {receiptDraft.patientRef || receiptDraft.patientId || "未設定"}</small>
+          </div>
+          <div>
+            <span>保険</span>
+            <strong>{insurance.insurerNumber || "保険者番号未設定"}</strong>
+            <small>{[insurance.insuredSymbol, insurance.insuredNumber].filter(Boolean).join(" - ") || "記号番号未設定"}</small>
+          </div>
+          <div>
+            <span>診療</span>
+            <strong>{receiptDraft.serviceDate || "診療日未設定"}</strong>
+            <small>{department.displayName || "診療科未設定"} / 明細 {totalLineCount.toLocaleString()}件</small>
+          </div>
+        </section>
+
+        <section className="receipt-paper-section" aria-label="診療明細">
+          <div className="receipt-paper-section-head">
+            <h4>診療明細</h4>
+            <span>{Number(receiptDraft.totalPoints || 0).toLocaleString()}点</span>
+          </div>
+          {groups.length ? (
+            <table className="receipt-paper-table">
+              <thead>
+                <tr>
+                  <th>区分・コード</th>
+                  <th>名称</th>
+                  <th>回数</th>
+                  <th>点数</th>
+                  <th>合計</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((group, groupIndex) => (
+                  <FragmentForReceiptGroup group={group} groupIndex={groupIndex} key={`${group.label || "group"}-${groupIndex}`} />
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="receipt-paper-empty">明細がありません。</p>
+          )}
+        </section>
+
+        <section className="receipt-paper-section receipt-paper-section--annotations" aria-label="コメントと症状詳記">
+          <div className="receipt-paper-section-head">
+            <h4>コメント・症状詳記</h4>
+            <span>{(annotations.comments.length + annotations.symptomDetails.length).toLocaleString()}件</span>
+          </div>
+          {annotations.comments.length || annotations.symptomDetails.length ? (
+            <div className="receipt-paper-annotations">
+              {annotations.comments.map((comment) => (
+                <div key={comment.annotationId || `${comment.code}-${comment.text}`}>
+                  <span>コメント {comment.code || "コード未設定"}</span>
+                  <p>{comment.text}</p>
+                </div>
+              ))}
+              {annotations.symptomDetails.map((detail) => (
+                <div key={detail.annotationId || `${detail.kubun}-${detail.text}`}>
+                  <span>症状詳記 {detail.kubun || "区分未設定"}</span>
+                  <p>{detail.text}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="receipt-paper-empty">コメント・症状詳記はありません。</p>
+          )}
+        </section>
+
+        <footer className="receipt-paper-total">
+          <div>
+            <span>総医療費</span>
+            <strong>¥{Number(billing.totalFee || 0).toLocaleString()}</strong>
+          </div>
+          <div>
+            <span>窓口負担</span>
+            <strong>¥{Number(billing.copay || 0).toLocaleString()}</strong>
+          </div>
+          <div>
+            <span>合計点数</span>
+            <strong>{Number(receiptDraft.totalPoints || 0).toLocaleString()}点</strong>
+          </div>
+        </footer>
       </article>
-      {(receiptDraft.lineGroups || []).map((group, index) => (
-        <article className="receipt-line" key={`${group.label || "group"}-${index}`}>
-          <header>
-            <span>{group.label}</span>
-            <span>{Number(group.totalPoints || 0).toLocaleString()} 点</span>
-          </header>
-          <p>{(group.lines || []).map((line) => `${line.name} ${line.totalPoints}点 (${statusLabel(line.status)})`).join(" / ")}</p>
-        </article>
-      ))}
     </div>
   );
+}
+
+function FragmentForReceiptGroup({ group, groupIndex }) {
+  const lines = Array.isArray(group.lines) ? group.lines : [];
+  return (
+    <>
+      <tr className="receipt-paper-group-row">
+        <td colSpan={4}>{group.label || "未分類"}</td>
+        <td>{Number(group.totalPoints || 0).toLocaleString()}点</td>
+      </tr>
+      {lines.map((line, lineIndex) => (
+        <tr key={`${line.receiptLineId || line.code || line.name || groupIndex}-${lineIndex}`}>
+          <td>
+            <span>{line.code || "コード未設定"}</span>
+            <small>{orderTypeLabel(line.orderType) || line.orderType || "未分類"}</small>
+          </td>
+          <td>{line.name || "名称未設定"}</td>
+          <td>{Number(line.quantity || 1).toLocaleString()}</td>
+          <td>{Number(line.points || 0).toLocaleString()}</td>
+          <td>{Number(line.totalPoints || 0).toLocaleString()}</td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
+function receiptDisplayAnnotations(feeSession = {}) {
+  const annotations = normalizeReceiptAnnotationsForClient(feeSession?.receiptAnnotations);
+  return {
+    comments: annotations.comments.filter((item) => String(item?.text || "").trim()),
+    symptomDetails: annotations.symptomDetails.filter((item) => String(item?.text || "").trim())
+  };
+}
+
+function receiptSettingLabel(value = "") {
+  return ({
+    outpatient: "外来",
+    inpatient: "入院"
+  })[value] || value || "区分未設定";
+}
+
+function sexLabel(value = "") {
+  return ({
+    male: "男性",
+    female: "女性",
+    other: "その他",
+    unknown: "性別未設定"
+  })[value] || value || "性別未設定";
 }
 
 function formatReceiptDraftForClipboard({ feeSession, receiptDraft }) {

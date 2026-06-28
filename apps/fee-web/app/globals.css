@@ -2027,6 +2027,7 @@ body:has(.fee-shell--detail) {
 }
 
 .fee-field select,
+.fee-field input,
 .fee-field textarea {
   width: 100%;
 }
@@ -3539,6 +3540,13 @@ body:has(.fee-shell--detail) {
   gap: 12px;
 }
 
+.receipt-review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
 .receipt-pane-head {
   display: flex;
   justify-content: space-between;
@@ -3570,6 +3578,268 @@ body:has(.fee-shell--detail) {
   font-weight: 900;
 }
 
+.receipt-paper-shell {
+  min-width: 0;
+  overflow: auto;
+}
+
+.receipt-paper {
+  width: min(100%, 820px);
+  min-height: 980px;
+  margin: 0 auto;
+  border: 1px solid #d8dee8;
+  border-radius: 4px;
+  background: #fff;
+  color: #111827;
+  padding: 24px;
+  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.10);
+}
+
+.receipt-paper-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #111827;
+}
+
+.receipt-paper-kicker {
+  display: inline-block;
+  margin-bottom: 5px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.receipt-paper-header h3 {
+  margin: 0;
+  font-size: 1.35rem;
+  letter-spacing: 0;
+}
+
+.receipt-paper-header p {
+  margin: 5px 0 0;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.receipt-paper-status {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+  text-align: right;
+}
+
+.receipt-paper-status span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.receipt-paper-status strong {
+  font-size: 1.4rem;
+}
+
+.receipt-paper-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.receipt-paper-meta-grid > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid #d8dee8;
+  background: #fbfdff;
+  padding: 10px;
+}
+
+.receipt-paper-meta-grid span,
+.receipt-paper-section-head span,
+.receipt-paper-annotations span,
+.receipt-paper-total span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.receipt-paper-meta-grid strong,
+.receipt-paper-meta-grid small {
+  overflow-wrap: anywhere;
+}
+
+.receipt-paper-meta-grid strong {
+  font-size: 13px;
+}
+
+.receipt-paper-meta-grid small {
+  color: #475569;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.receipt-paper-section {
+  margin-top: 18px;
+}
+
+.receipt-paper-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #d8dee8;
+  padding-bottom: 6px;
+}
+
+.receipt-paper-section-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.receipt-paper-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.receipt-paper-table th,
+.receipt-paper-table td {
+  border: 1px solid #d8dee8;
+  padding: 7px 8px;
+  vertical-align: top;
+}
+
+.receipt-paper-table th {
+  color: #334155;
+  background: #f1f5f9;
+  font-size: 11px;
+  font-weight: 900;
+  text-align: left;
+}
+
+.receipt-paper-table th:nth-child(3),
+.receipt-paper-table th:nth-child(4),
+.receipt-paper-table th:nth-child(5),
+.receipt-paper-table td:nth-child(3),
+.receipt-paper-table td:nth-child(4),
+.receipt-paper-table td:nth-child(5) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.receipt-paper-table td span,
+.receipt-paper-table td small {
+  display: block;
+}
+
+.receipt-paper-table td small {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.receipt-paper-group-row td {
+  color: #0f172a;
+  background: #eef6f6;
+  font-weight: 900;
+}
+
+.receipt-paper-empty {
+  margin: 0;
+  border: 1px dashed #cbd5e1;
+  border-radius: 4px;
+  color: #64748b;
+  padding: 10px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.receipt-paper-annotations {
+  display: grid;
+  gap: 8px;
+}
+
+.receipt-paper-annotations > div {
+  border: 1px solid #d8dee8;
+  background: #fff;
+  padding: 9px 10px;
+}
+
+.receipt-paper-annotations p {
+  margin: 3px 0 0;
+  color: #1f2937;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.receipt-paper-total {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 22px;
+  border-top: 2px solid #111827;
+  padding-top: 12px;
+}
+
+.receipt-paper-total > div {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #d8dee8;
+  background: #fbfdff;
+  padding: 10px;
+}
+
+.receipt-paper-total strong {
+  font-size: 1.05rem;
+}
+
+.receipt-correction-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.receipt-correction-section {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 12px;
+}
+
+.receipt-correction-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.receipt-correction-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.receipt-correction-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.receipt-correction-actions {
+  display: grid;
+  gap: 8px;
+}
+
 .fee-admin-filter {
   margin-bottom: 14px;
 }
@@ -3585,6 +3855,29 @@ body:has(.fee-shell--detail) {
 .fee-page-chip.is-active {
   color: #fff;
   background: var(--accent-dark);
+}
+
+@media print {
+  body:has(.receipt-paper) * {
+    visibility: hidden;
+  }
+
+  body:has(.receipt-paper) .receipt-paper,
+  body:has(.receipt-paper) .receipt-paper * {
+    visibility: visible;
+  }
+
+  body:has(.receipt-paper) .receipt-paper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    min-height: auto;
+    margin: 0;
+    border: 0;
+    box-shadow: none;
+    border-radius: 0;
+  }
 }
 
 .settings-home {
@@ -3927,6 +4220,30 @@ body:has(.fee-shell--detail) {
   .master-search-controls,
   .order-editor-row {
     grid-template-columns: 1fr;
+  }
+
+  .receipt-paper {
+    min-height: 0;
+    padding: 16px;
+  }
+
+  .receipt-paper-header,
+  .receipt-paper-total,
+  .receipt-paper-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .receipt-paper-header {
+    display: grid;
+  }
+
+  .receipt-paper-status {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .receipt-paper-table {
+    min-width: 640px;
   }
 
   .fee-monthly-annotation-text {

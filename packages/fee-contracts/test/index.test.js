@@ -5,6 +5,7 @@ import {
   validateCreateFeeSessionInput,
   validateUpdateFeeSessionInput,
   validateCreateFeeCalculationInput,
+  validateUpdateFeeSettingsInput,
   hasPerformedBloodCollectionEvidence,
   hasPerformedBloodCollectionEvidenceInText,
   isClinicalDateRatioFalsePositiveContext
@@ -172,6 +173,39 @@ test("normalizes calculation override input", () => {
   assert.deepEqual(input.claimContext.procedure_codes, ["160000410"]);
   assert.deepEqual(input.calculationOptions.comment_inputs[0], { code: "840000001", text: "コメント" });
   assert.equal(input.calculationMode, "reuse_clinical");
+});
+
+test("normalizes facility receipt policy settings without dropping current defaults", () => {
+  const normalized = validateUpdateFeeSettingsInput({
+    facilityId: "fac_001",
+    current: {
+      receiptPolicy: {
+        ukeEncoding: "shift_jis",
+        validationSeverity: {
+          patientSex: "off"
+        }
+      }
+    },
+    receiptPolicy: {
+      ukeEncoding: "UTF-8",
+      blockExportOnErrors: true,
+      connectorSpecVerified: true,
+      validationSeverity: {
+        patientBirthDate: "error"
+      },
+      annotationDefaults: {
+        commentShinryoIdentification: "60"
+      }
+    }
+  });
+
+  assert.equal(normalized.receiptPolicy.ukeEncoding, "utf-8");
+  assert.equal(normalized.receiptPolicy.blockExportOnErrors, true);
+  assert.equal(normalized.receiptPolicy.connectorSpecVerified, true);
+  assert.equal(normalized.receiptPolicy.validationSeverity.patientSex, "off");
+  assert.equal(normalized.receiptPolicy.validationSeverity.patientBirthDate, "error");
+  assert.equal(normalized.receiptPolicy.validationSeverity.insuranceInsurerNumber, "error");
+  assert.equal(normalized.receiptPolicy.annotationDefaults.commentShinryoIdentification, "60");
 });
 
 test("detects performed blood collection using the shared strict predicate", () => {

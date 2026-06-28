@@ -531,7 +531,7 @@ async function routeFeeApiRequest(input = {}) {
       }
     });
 
-    return ok(feeSessionMutationResponse(result, input.now || new Date()));
+    return ok(await feeSessionMutationResponse(feeStore, context.session.orgId, result, input.now || new Date()));
   }
 
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "receipt-draft") {
@@ -539,7 +539,8 @@ async function routeFeeApiRequest(input = {}) {
     if (!session) {
       return notFound("fee session not found");
     }
-    const receiptDraft = withReceiptExportValidation(buildReceiptDraft(session, { now: input.now || new Date() }), session);
+    const feeSettings = await loadFeeSettingsForCalculation({ feeStore, orgId: context.session.orgId, session });
+    const receiptDraft = withReceiptExportValidation(buildReceiptDraft(session, { now: input.now || new Date() }), session, feeSettings);
     return ok({ receiptDraft, receiptExportValidation: receiptDraft.exportValidation });
   }
 
@@ -549,7 +550,8 @@ async function routeFeeApiRequest(input = {}) {
       return notFound("fee session not found");
     }
     const receiptDraft = buildReceiptDraft(session, { now: input.now || new Date() });
-    return ok({ receiptExportValidation: buildReceiptExportValidation(receiptDraft, receiptExportContext(session)) });
+    const feeSettings = await loadFeeSettingsForCalculation({ feeStore, orgId: context.session.orgId, session });
+    return ok({ receiptExportValidation: buildReceiptExportValidation(receiptDraft, receiptExportContext(session, feeSettings)) });
   }
 
   // レセコン取込用CSV(段階A): セッションから最新の receiptDraft を生成してCSV化
@@ -559,8 +561,13 @@ async function routeFeeApiRequest(input = {}) {
       return notFound("fee session not found");
     }
     const receiptDraft = buildReceiptDraft(session, { now: input.now || new Date() });
-    const csv = buildReceiptCsv(receiptDraft);
-    const validation = buildReceiptExportValidation(receiptDraft, receiptExportContext(session));
+    const feeSettings = await loadFeeSettingsForCalculation({ feeStore, orgId: context.session.orgId, session });
+    const exportContext = receiptExportContext(session, feeSettings);
+    const validation = buildReceiptExportValidation(receiptDraft, exportContext);
+    if (shouldBlockReceiptExport(url, validation, exportContext)) {
+      return receiptExportValidationFailed(validation);
+    }
+    const csv = buildReceiptCsv(receiptDraft, exportContext);
     return {
       statusCode: 200,
       raw: true,
@@ -568,7 +575,7 @@ async function routeFeeApiRequest(input = {}) {
       headers: {
         "content-type": "text/csv; charset=utf-8",
         "x-halunasu-export-status": validation.exportStatus,
-        "x-halunasu-connector-status": "spec-unverified",
+        "x-halunasu-connector-status": exportContext.connectorSpecVerified ? "spec-verified" : "spec-unverified",
         "content-disposition": `attachment; filename="receipt_${parts[3]}.csv"`
       }
     };
@@ -581,20 +588,14 @@ async function routeFeeApiRequest(input = {}) {
       return notFound("fee session not found");
     }
     const receiptDraft = buildReceiptDraft(session, { now: input.now || new Date() });
-    const exportContext = receiptExportContext(session);
+    const feeSettings = await loadFeeSettingsForCalculation({ feeStore, orgId: context.session.orgId, session });
+    const exportContext = receiptExportContext(session, feeSettings);
     const validation = buildReceiptExportValidation(receiptDraft, exportContext);
-    if (url.searchParams.get("validate") === "true" && validation.blockingIssueCount > 0) {
-      return {
-        statusCode: 409,
-        body: {
-          error: "receipt_validation_failed",
-          message: "レセ電出力前の必須項目が不足しています。",
-          receiptExportValidation: validation
-        }
-      };
+    if (shouldBlockReceiptExport(url, validation, exportContext)) {
+      return receiptExportValidationFailed(validation);
     }
     const uke = serializeUke(buildReceiptDenshin(receiptDraft, exportContext));
-    const encoding = normalizeUkeEncoding(url.searchParams.get("encoding"));
+    const encoding = normalizeUkeEncoding(url.searchParams.get("encoding") || exportContext.receiptPolicy?.ukeEncoding);
     const body = encoding === "shift_jis" ? iconv.encode(uke, "Shift_JIS") : Buffer.from(uke, "utf-8");
     const charset = encoding === "shift_jis" ? "shift_jis" : "utf-8";
     return {
@@ -604,7 +605,7 @@ async function routeFeeApiRequest(input = {}) {
       headers: {
         "content-type": `text/plain; charset=${charset}`,
         "x-halunasu-export-status": validation.exportStatus,
-        "x-halunasu-connector-status": "spec-unverified",
+        "x-halunasu-connector-status": exportContext.connectorSpecVerified ? "spec-verified" : "spec-unverified",
         "content-disposition": `attachment; filename="receipt_${parts[3]}.UKE"`
       }
     };
@@ -631,7 +632,7 @@ async function routeFeeApiRequest(input = {}) {
       }
     });
 
-    return ok(feeSessionMutationResponse(result, input.now || new Date()));
+    return ok(await feeSessionMutationResponse(feeStore, context.session.orgId, result, input.now || new Date()));
   }
 
   if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "calculation-jobs") {
@@ -805,7 +806,8 @@ async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now, options
     throw error;
   }
 
-  const receiptDraft = withReceiptExportValidation(buildReceiptDraft(feeSession, { now }), feeSession);
+  const feeSettings = await loadFeeSettingsForCalculation({ feeStore, orgId, session: feeSession });
+  const receiptDraft = withReceiptExportValidation(buildReceiptDraft(feeSession, { now }), feeSession, feeSettings);
   const reviewItems = buildReviewItems(feeSession);
   const candidateWorkbench = buildCandidateWorkbench(feeSession, { now, receiptDraft, reviewItems });
   return {
@@ -817,8 +819,9 @@ async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now, options
   };
 }
 
-function feeSessionMutationResponse(result = {}, now = new Date()) {
-  const receiptDraft = withReceiptExportValidation(buildReceiptDraft(result.feeSession, { now }), result.feeSession);
+async function feeSessionMutationResponse(feeStore, orgId, result = {}, now = new Date()) {
+  const feeSettings = await loadFeeSettingsForCalculation({ feeStore, orgId, session: result.feeSession });
+  const receiptDraft = withReceiptExportValidation(buildReceiptDraft(result.feeSession, { now }), result.feeSession, feeSettings);
   const reviewItems = buildReviewItems(result.feeSession);
   return {
     ...result,
@@ -2696,37 +2699,59 @@ function stampReceiptAnnotationList(items = [], { memberId = "", timestamp = "" 
   }));
 }
 
-export function receiptAnnotationContext(session = {}) {
+export function receiptAnnotationContext(session = {}, receiptPolicy = {}) {
   const annotations = session.receiptAnnotations || {};
+  const annotationDefaults = receiptPolicy?.annotationDefaults || {};
   const comments = (Array.isArray(annotations.comments) ? annotations.comments : [])
     .filter((comment) => comment?.status === "confirmed" && String(comment.text || "").trim())
     .map((comment) => ({
-      shinryoIdentification: comment.shinryoIdentification || "",
+      shinryoIdentification: comment.shinryoIdentification || annotationDefaults.commentShinryoIdentification || "",
       code: comment.code || "",
       text: comment.text || ""
     }));
   const symptomDetails = (Array.isArray(annotations.symptomDetails) ? annotations.symptomDetails : [])
     .filter((detail) => detail?.status === "confirmed" && String(detail.text || "").trim())
     .map((detail) => ({
-      kubun: detail.kubun || "",
+      kubun: detail.kubun || annotationDefaults.symptomDetailKubun || "",
       text: detail.text || ""
     }));
   return { comments, symptomDetails };
 }
 
-function receiptExportContext(session = {}) {
+function receiptExportContext(session = {}, feeSettings = {}) {
+  const receiptPolicy = feeSettings?.receiptPolicy || {};
   return {
     insuranceSnapshot: session.insuranceSnapshot || null,
-    ...receiptAnnotationContext(session)
+    receiptPolicy,
+    connectorSpecVerified: receiptPolicy.connectorSpecVerified === true,
+    ...receiptAnnotationContext(session, receiptPolicy)
   };
 }
 
-function withReceiptExportValidation(receiptDraft = {}, session = {}) {
-  const exportValidation = buildReceiptExportValidation(receiptDraft, receiptExportContext(session));
+function withReceiptExportValidation(receiptDraft = {}, session = {}, feeSettings = {}) {
+  const exportValidation = buildReceiptExportValidation(receiptDraft, receiptExportContext(session, feeSettings));
   return {
     ...receiptDraft,
     exportStatus: exportValidation.exportStatus,
     exportValidation
+  };
+}
+
+function shouldBlockReceiptExport(url, validation = {}, exportContext = {}) {
+  if (Number(validation.blockingIssueCount || 0) <= 0) {
+    return false;
+  }
+  return url.searchParams.get("validate") === "true" || exportContext.receiptPolicy?.blockExportOnErrors === true;
+}
+
+function receiptExportValidationFailed(validation = {}) {
+  return {
+    statusCode: 409,
+    body: {
+      error: "receipt_validation_failed",
+      message: "レセプト出力前の必須項目が不足しています。",
+      receiptExportValidation: validation
+    }
   };
 }
 
