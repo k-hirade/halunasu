@@ -3191,10 +3191,6 @@ function BucketHeader({ action = null, count, note, title }) {
 function ProposalLineRow({ disabled, item, onDecision, onOpenDetail }) {
   const canApprove = canApproveReviewItem(item);
   const decisionStatus = decisionSelectValue(item.decisionStatus);
-  const options = [
-    { value: "approved", label: "算定する" },
-    { value: "rejected", label: "算定しない" }
-  ];
   const metaLabel = [
     item.code,
     orderTypeLabel(item.orderType || item.candidateLine?.orderType),
@@ -3204,18 +3200,11 @@ function ProposalLineRow({ disabled, item, onDecision, onOpenDetail }) {
   return (
     <article className={`candidate-line-row candidate-line-row--proposal ${canApprove ? "" : "candidate-line-row--confirm-required"}`}>
       <div className="candidate-line-action">
-        <AdminSelect
+        <CandidateDecisionToggle
           ariaLabel={`${item.displayTitle || "提案"}の採否`}
           disabled={disabled || !canApprove}
-          className="candidate-decision-select"
-          options={options}
-          placeholder={canApprove ? "確認中" : confirmableProposalForAdoption(item) ? "詳細で確認" : item.nextActionLabel || "条件確認"}
           value={decisionStatus}
-          onValueChange={(value) => {
-            if (value) {
-              onDecision(item.reviewItemId, value);
-            }
-          }}
+          onChange={(value) => onDecision(item.reviewItemId, value)}
         />
       </div>
       <div className="candidate-line-main">
@@ -3235,21 +3224,11 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
   return (
     <article className={`candidate-line-row candidate-line-row--${item.inclusionStatus}`}>
       <div className="candidate-line-action">
-        <AdminSelect
+        <CandidateDecisionToggle
           ariaLabel={`${item.name}の採否`}
           disabled={disabled || !canApprove}
-          className="candidate-decision-select"
-          options={[
-            { value: "approved", label: "算定する" },
-            { value: "rejected", label: "算定しない" }
-          ]}
-          placeholder="確認中"
           value={decisionStatus}
-          onValueChange={(value) => {
-            if (value) {
-              onDecision(item.reviewItemId, value);
-            }
-          }}
+          onChange={(value) => onDecision(item.reviewItemId, value)}
         />
       </div>
       <div className="candidate-line-main">
@@ -3266,6 +3245,28 @@ function CandidateLineRow({ disabled, item, onDecision, onOpenDetail }) {
       <strong className="candidate-line-points">{Number(item.totalPoints || 0).toLocaleString()}点</strong>
       <button className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(item)} type="button">詳細</button>
     </article>
+  );
+}
+
+function CandidateDecisionToggle({ ariaLabel = "採否", disabled = false, onChange, value = "" }) {
+  const checked = decisionSelectValue(value) === "approved";
+  const nextValue = checked ? "rejected" : "approved";
+  return (
+    <button
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      className={`candidate-decision-toggle ${checked ? "candidate-decision-toggle--on" : "candidate-decision-toggle--off"}`}
+      disabled={disabled}
+      onClick={() => onChange(nextValue)}
+      role="switch"
+      title={checked ? "クリックすると算定しないに変更します" : "クリックすると算定するに変更します"}
+      type="button"
+    >
+      <span className="candidate-decision-toggle-track" aria-hidden="true">
+        <span className="candidate-decision-toggle-knob" />
+      </span>
+      <span className="candidate-decision-toggle-label">{checked ? "算定する" : "算定しない"}</span>
+    </button>
   );
 }
 
@@ -3864,7 +3865,7 @@ function canApproveReviewItem(item = {}) {
 }
 
 function decisionSelectValue(value = "") {
-  return ["approved", "rejected"].includes(value) ? value : "";
+  return value === "approved" ? "approved" : "rejected";
 }
 
 function confirmableProposalForAdoption(item = {}) {
