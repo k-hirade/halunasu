@@ -47,8 +47,9 @@ try {
     const drawer = page.locator(".admin-nav-drawer");
     await drawer.waitFor();
     assert.equal(await drawer.locator(".admin-nav-drawer-head strong").textContent(), "移動先を選択");
-    assert.equal(await drawer.locator(".admin-sidebar-link").count(), 6);
+    assert.equal(await drawer.locator(".admin-sidebar-link").count(), 7);
     assert.equal(await drawer.getByRole("link", { name: /月次レセ点検/ }).count(), 1);
+    assert.equal(await drawer.getByRole("link", { name: /レセプト設定/ }).count(), 1);
 
     const drawerBox = await drawer.boundingBox();
     assert.ok(drawerBox, "drawer must be visible");

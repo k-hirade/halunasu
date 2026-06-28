@@ -3267,7 +3267,6 @@ function CandidateDecisionToggle({ ariaLabel = "採否", disabled = false, onCha
       <span className="candidate-decision-toggle-track" aria-hidden="true">
         <span className="candidate-decision-toggle-knob" />
       </span>
-      <span className="candidate-decision-toggle-label">{checked ? "算定する" : "算定しない"}</span>
     </button>
   );
 }

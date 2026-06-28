@@ -2700,15 +2700,14 @@ body:has(.fee-shell--detail) {
 .candidate-decision-toggle {
   display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  width: 132px;
-  min-height: 38px;
-  border: 1px solid #cbd5e1;
+  justify-content: center;
+  width: 40px;
+  min-height: 24px;
+  border: 0;
   border-radius: 999px;
-  background: #f8fafc;
+  background: transparent;
   color: #475569;
-  padding: 5px 10px;
+  padding: 2px;
   font: inherit;
   font-size: 12px;
   font-weight: 900;
@@ -2719,7 +2718,6 @@ body:has(.fee-shell--detail) {
 
 .candidate-decision-toggle:hover:not(:disabled),
 .candidate-decision-toggle:focus-visible {
-  border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
   outline: 0;
 }
@@ -2730,14 +2728,12 @@ body:has(.fee-shell--detail) {
 }
 
 .candidate-decision-toggle--on {
-  border-color: #0f766e;
-  background: #ecfdf5;
+  background: transparent;
   color: #0f766e;
 }
 
 .candidate-decision-toggle--off {
-  border-color: #cbd5e1;
-  background: #f8fafc;
+  background: transparent;
   color: #64748b;
 }
 
@@ -2769,11 +2765,6 @@ body:has(.fee-shell--detail) {
 
 .candidate-decision-toggle--on .candidate-decision-toggle-knob {
   transform: translateX(14px);
-}
-
-.candidate-decision-toggle-label {
-  min-width: 0;
-  white-space: nowrap;
 }
 
 .candidate-line-main {

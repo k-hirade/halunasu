@@ -20,6 +20,12 @@ const ADMIN_SECTIONS = [
     description: "算定時の初期値、レビュー表示、マスター検索の扱いを管理します。"
   },
   {
+    id: "receipt-settings",
+    group: "設定",
+    label: "レセプト設定",
+    description: "レセ電出力、出力前チェック、コメント・詳記の既定値を管理します。"
+  },
+  {
     id: "master",
     group: "設定",
     label: "マスタ確認",
@@ -119,7 +125,7 @@ export function FeeAdminConsole() {
         const response = await auth.api(`/v1/organizations/${encodeURIComponent(auth.session?.orgId)}/admin-bootstrap?section=${section}`);
         setPlatformData((current) => ({ ...current, ...response }));
       }
-      if (tab === "settings") {
+      if (tab === "settings" || tab === "receipt-settings") {
         const [bootstrap, settings] = await Promise.all([
           feeApi("/v1/fee/bootstrap?page=1&pageSize=1"),
           feeApi("/v1/fee/settings")
@@ -212,7 +218,11 @@ function renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platfo
   }
 
   if (activeTab === "settings") {
-    return <FeeSettingsPanel data={feeData} />;
+    return <FeeSettingsPanel data={feeData} mode="billing" />;
+  }
+
+  if (activeTab === "receipt-settings") {
+    return <FeeSettingsPanel data={feeData} mode="receipt" />;
   }
 
   if (activeTab === "master") {
@@ -288,7 +298,7 @@ function renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platfo
   );
 }
 
-function FeeSettingsPanel({ data }) {
+function FeeSettingsPanel({ data, mode = "billing" }) {
   const facilities = Array.isArray(data.facilities) ? data.facilities : [];
   const settingsMap = data.settings || {};
   const firstFacilityId = facilities[0]?.facilityId || "default";
@@ -395,6 +405,8 @@ function FeeSettingsPanel({ data }) {
 
   const receiptPolicy = receiptPolicyForDraft(draft, selectedFacilityId);
   const receiptAnnotationDefaults = receiptPolicy.annotationDefaults || {};
+  const showBillingSettings = mode !== "receipt";
+  const showReceiptSettings = mode === "receipt";
 
   return (
     <div className="fee-admin-placeholder fee-settings-grid">
@@ -421,16 +433,16 @@ function FeeSettingsPanel({ data }) {
         </dl>
       </div>
 
-      <div className="fee-setting-card">
+      {showBillingSettings ? <div className="fee-setting-card">
         <strong>施設基準・届出</strong>
         <label className="fee-field">
           <span>施設基準キー</span>
           <textarea value={facilityKeysText} onChange={(event) => setFacilityKeysText(event.target.value)} rows={3} />
         </label>
         <p>カンマ、改行、読点で区切って入力します。公式ルールを上書きする設定ではなく、届出済み施設基準の前提として使います。</p>
-      </div>
+      </div> : null}
 
-      <div className="fee-setting-card">
+      {showBillingSettings ? <div className="fee-setting-card">
         <strong>履歴の扱い</strong>
         <label className="fee-field">
           <span>参照期間</span>
@@ -458,9 +470,9 @@ function FeeSettingsPanel({ data }) {
           <input checked={draft.historyPolicy?.externalHistoryEnabled === true} onChange={(event) => updateHistoryPolicy({ externalHistoryEnabled: event.target.checked })} type="checkbox" />
           <span>外部レセ/CSV/手入力履歴を利用する</span>
         </label>
-      </div>
+      </div> : null}
 
-      <div className="fee-setting-card">
+      {showBillingSettings ? <div className="fee-setting-card">
         <strong>初診/再診・基本診療料</strong>
         <label className="fee-field">
           <span>過去受診あり</span>
@@ -485,9 +497,9 @@ function FeeSettingsPanel({ data }) {
           <span>初診/再診の手動上書き理由を必須にする</span>
         </label>
         <p>初診/再診の公式定義は施設ごとに上書きしません。ここでは履歴不完全時の確認方針だけを管理します。</p>
-      </div>
+      </div> : null}
 
-      <div className="fee-setting-card">
+      {showBillingSettings ? <div className="fee-setting-card">
         <strong>レビュー方針</strong>
         <label className="fee-field">
           <span>モード</span>
@@ -498,9 +510,9 @@ function FeeSettingsPanel({ data }) {
           </select>
         </label>
         <p>履歴矛盾、新疾患初診、履歴不明はレビュー対象として扱います。</p>
-      </div>
+      </div> : null}
 
-      <div className="fee-setting-card">
+      {showReceiptSettings ? <div className="fee-setting-card">
         <strong>レセプト出力</strong>
         <label className="fee-field">
           <span>レセ電(UKE)の既定文字コード</span>
@@ -518,9 +530,9 @@ function FeeSettingsPanel({ data }) {
           <span>必須エラーがある場合はCSV/UKE出力を止める</span>
         </label>
         <p>算定要件や点数を施設ごとに上書きする設定ではありません。提出前の出力形式と不足項目チェックの既定値だけを管理します。</p>
-      </div>
+      </div> : null}
 
-      <div className="fee-setting-card">
+      {showReceiptSettings ? <div className="fee-setting-card">
         <strong>出力前チェック</strong>
         {RECEIPT_VALIDATION_FIELDS.map(([key, label]) => (
           <ReceiptSeveritySelect
@@ -548,7 +560,7 @@ function FeeSettingsPanel({ data }) {
             value={receiptAnnotationDefaults.symptomDetailKubun || ""}
           />
         </label>
-      </div>
+      </div> : null}
     </div>
   );
 }

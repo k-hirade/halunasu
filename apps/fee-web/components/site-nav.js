@@ -21,6 +21,13 @@ const SETTINGS_MENU_SECTIONS = [
     href: "/admin?section=settings"
   },
   {
+    id: "receipt-settings",
+    group: "設定",
+    label: "レセプト設定",
+    description: "レセ電出力、出力前チェック、詳記の既定値を管理します。",
+    href: "/admin?section=receipt-settings"
+  },
+  {
     id: "audit",
     group: "管理",
     label: "操作ログ",
@@ -45,6 +52,7 @@ function hrefForAdminSection(section) {
     home: "/admin",
     members: "/admin?section=members",
     settings: "/admin?section=settings",
+    "receipt-settings": "/admin?section=receipt-settings",
     audit: "/admin?section=audit",
     account: "/admin?section=account"
   }[section.id] || "/admin";
