@@ -2062,6 +2062,111 @@ body:has(.fee-shell--detail) {
   font-weight: 800;
 }
 
+/* 設定画面：上部固定の保存バー */
+.fee-settings-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  background: var(--bg);
+}
+
+.fee-settings-bar-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 320px;
+}
+
+.fee-settings-bar-main select {
+  width: auto;
+  min-width: 200px;
+}
+
+.fee-settings-note {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.fee-settings-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.fee-settings-dirty {
+  color: #b54708;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.fee-setting-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.fee-setting-help {
+  color: var(--muted) !important;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+/* 施設基準・届出テーブル */
+.fee-standard-table-wrap {
+  margin-top: 12px;
+  overflow-x: auto;
+}
+
+.fee-standard-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.fee-standard-table th {
+  padding: 6px 8px;
+  text-align: left;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.fee-standard-table td {
+  padding: 4px 6px;
+  vertical-align: middle;
+}
+
+.fee-standard-table input,
+.fee-standard-table select {
+  min-width: 96px;
+}
+
+/* 出力前チェックのグループ */
+.fee-severity-group {
+  margin-top: 14px;
+}
+
+.fee-severity-group-label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .patient-inline-create {
   display: flex;
   justify-content: flex-end;

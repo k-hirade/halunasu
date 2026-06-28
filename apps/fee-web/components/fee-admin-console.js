@@ -832,10 +832,6 @@ function labelsForList(values) {
   return Array.isArray(values) && values.length ? values.join("、") : "";
 }
 
-function splitList(value) {
-  return [...new Set(String(value || "").split(/[,\n、]/u).map((item) => item.trim()).filter(Boolean))];
-}
-
 function defaultSettingsForFacility(facilityId = "default") {
   return {
     facilityId,
@@ -843,22 +839,12 @@ function defaultSettingsForFacility(facilityId = "default") {
     historyPolicy: {
       defaultLookbackMonths: 12,
       externalHistoryEnabled: false,
-      historyCompleteness: "unknown",
-      missingHistoryBehavior: "review_required"
+      historyCompleteness: "unknown"
     },
     initialRevisitPolicy: {
-      officialRuleBasis: "mhlw_2024_medical_fee_table",
-      priorHistoryBehavior: "prefer_revisit_candidate",
-      newDiseaseInitialHandling: "candidate_requires_review",
-      manualOverrideRequiresReason: true,
-      requireReviewWhenNoHistory: true,
-      requireReviewOnPriorHistoryConflict: true
+      requireReviewWhenNoHistory: true
     },
-    reviewPolicy: {
-      mode: "standard",
-      autoAddAllowedSources: ["deterministic_order_mapping"],
-      reviewRequiredSources: ["history_conflict", "new_disease_initial", "missing_history"]
-    },
+    facilityStandards: [],
     receiptPolicy: {
       ukeEncoding: "shift_jis",
       blockExportOnErrors: false,
