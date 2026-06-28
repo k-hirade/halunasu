@@ -576,6 +576,13 @@ function FeeSettingsPanel({ data, mode = "billing" }) {
         <strong>レセプト出力</strong>
         <p className="fee-setting-help">提出物(レセ電/CSV)の形式の既定値です。点数・算定要件は上書きしません。</p>
         <label className="fee-field">
+          <span>レセプト表示単位の既定</span>
+          <select value={receiptPolicy.defaultReceiptScope || "service_date"} onChange={(event) => updateReceiptPolicy({ defaultReceiptScope: event.target.value })}>
+            <option value="service_date">診療日単位</option>
+            <option value="monthly">月次集計</option>
+          </select>
+        </label>
+        <label className="fee-field">
           <span>レセ電(UKE)の既定文字コード</span>
           <select value={receiptPolicy.ukeEncoding || "shift_jis"} onChange={(event) => updateReceiptPolicy({ ukeEncoding: event.target.value })}>
             <option value="shift_jis">Shift_JIS</option>
@@ -849,6 +856,7 @@ function defaultSettingsForFacility(facilityId = "default") {
       ukeEncoding: "shift_jis",
       blockExportOnErrors: false,
       connectorSpecVerified: false,
+      defaultReceiptScope: "service_date",
       validationSeverity: {
         facilityMedicalInstitutionCode: "error",
         facilityPrefectureCode: "warning",

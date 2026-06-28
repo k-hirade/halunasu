@@ -321,6 +321,103 @@ export function buildReceiptDraft(session = {}, options = {}) {
   };
 }
 
+// 患者×請求月で、その月の全受診を1枚のレセプト案に集計する(出来高の月次レセに相当)。
+// 各受診の receiptDraft を再利用して明細をマージし、診療実日数は受診日のユニーク数で数える。
+export function buildMonthlyReceiptDraft(sessions = [], options = {}) {
+  const patientId = options.patientId || null;
+  const claimMonth = String(options.claimMonth || "").slice(0, 7);
+  const monthOf = (session) => String(session.claimMonth || String(session.serviceDate || "").slice(0, 7));
+  const relevant = (Array.isArray(sessions) ? sessions : [])
+    .filter((session) => session && session.calculationResult && session.calculationResult.status)
+    .filter((session) => !patientId || session.patientId === patientId)
+    .filter((session) => !claimMonth || monthOf(session) === claimMonth)
+    .sort((a, b) => String(a.serviceDate || "").localeCompare(String(b.serviceDate || "")));
+
+  const lineMap = new Map();
+  for (const session of relevant) {
+    const draft = buildReceiptDraft(session, { now: options.now });
+    for (const line of Array.isArray(draft.lines) ? draft.lines : []) {
+      if (line.includedInTotal === false) {
+        continue;
+      }
+      const key = `${line.code || ""}|${line.orderType || ""}|${line.name || ""}`;
+      const existing = lineMap.get(key);
+      if (existing) {
+        existing.quantity = Number(existing.quantity || 0) + Number(line.quantity || 1);
+        existing.totalPoints = Number(existing.totalPoints || 0) + Number(line.totalPoints || 0);
+      } else {
+        lineMap.set(key, { ...line, quantity: Number(line.quantity || 1), totalPoints: Number(line.totalPoints || 0) });
+      }
+    }
+  }
+  const lines = [...lineMap.values()];
+  const totalPoints = lines.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0);
+  const serviceDates = [...new Set(relevant.map((session) => String(session.serviceDate || "")).filter(Boolean))];
+  const base = relevant[relevant.length - 1] || {};
+
+  return {
+    receiptDraftId: `receipt_monthly_${patientId || "unknown"}_${claimMonth || "unknown"}`,
+    scope: "monthly",
+    feeSessionId: base.feeSessionId || null,
+    patientId: patientId || base.patientId || null,
+    patientRef: base.patientRef || base.patientId || null,
+    patientSnapshot: base.patientSnapshot || null,
+    insuranceSnapshot: base.insuranceSnapshot || null,
+    facilitySnapshot: base.facilitySnapshot || null,
+    departmentSnapshot: base.departmentSnapshot || null,
+    serviceDate: base.serviceDate || null,
+    claimMonth: claimMonth || (base.serviceDate ? String(base.serviceDate).slice(0, 7) : null),
+    setting: base.setting || "outpatient",
+    status: relevant.length ? "ready" : "not_calculated",
+    actualDays: serviceDates.length,
+    sessionCount: relevant.length,
+    totalPoints,
+    billing: buildBillingSummary(base, { totalPoints }),
+    diagnoses: mergeMonthlyDiagnoses(relevant),
+    receiptAnnotations: mergeMonthlyReceiptAnnotations(relevant),
+    lines,
+    lineGroups: groupReceiptLines(lines),
+    generatedAt: timestamp(options.now),
+    schemaVersion: 1
+  };
+}
+
+function mergeMonthlyDiagnoses(sessions = []) {
+  const map = new Map();
+  for (const session of sessions) {
+    for (const diagnosis of Array.isArray(session.diagnoses) ? session.diagnoses : []) {
+      const key = `${diagnosis.name || ""}|${diagnosis.icd10Code || ""}`;
+      if (!`${diagnosis.name || ""}${diagnosis.icd10Code || ""}`.trim()) {
+        continue;
+      }
+      const existing = map.get(key);
+      if (existing) {
+        if (diagnosis.isPrimary) {
+          existing.isPrimary = true;
+        }
+      } else {
+        map.set(key, { ...diagnosis });
+      }
+    }
+  }
+  return [...map.values()];
+}
+
+function mergeMonthlyReceiptAnnotations(sessions = []) {
+  const comments = [];
+  const symptomDetails = [];
+  for (const session of sessions) {
+    const annotations = isPlainObject(session.receiptAnnotations) ? session.receiptAnnotations : {};
+    for (const comment of Array.isArray(annotations.comments) ? annotations.comments : []) {
+      comments.push(comment);
+    }
+    for (const detail of Array.isArray(annotations.symptomDetails) ? annotations.symptomDetails : []) {
+      symptomDetails.push(detail);
+    }
+  }
+  return { comments, symptomDetails };
+}
+
 export function buildReceiptExportValidation(receiptDraft = {}, context = {}) {
   const insuranceSnapshot = isPlainObject(context.insuranceSnapshot)
     ? context.insuranceSnapshot

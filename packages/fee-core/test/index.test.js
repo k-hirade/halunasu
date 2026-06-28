@@ -7,6 +7,7 @@ import {
   buildBillingSummary,
   buildCandidateWorkbench,
   buildReceiptDraft,
+  buildMonthlyReceiptDraft,
   buildReceiptDenshin,
   buildReceiptExportValidation,
   serializeUke,
@@ -14,6 +15,56 @@ import {
   normalizeCalculationResult,
   buildReviewItems
 } from "../src/index.js";
+
+test("aggregates a monthly receipt across a patient's visits", () => {
+  function calculatedSession({ feeSessionId, serviceDate, lineItems, diagnoses, totalPoints }) {
+    return applyCalculationResult(buildFeeSession({
+      orgId: "org_123",
+      patientId: "pat_month",
+      facilityId: "fac_123",
+      createdByMemberId: "mem_123",
+      serviceDate,
+      diagnoses
+    }, { feeSessionId, now: new Date(`${serviceDate}T00:00:00.000Z`) }), {
+      provider: "test",
+      status: "completed",
+      totalPoints,
+      lineItems,
+      warnings: []
+    }, { calculationId: `calc_${feeSessionId}`, now: new Date(`${serviceDate}T00:01:00.000Z`) });
+  }
+
+  const sessions = [
+    calculatedSession({
+      feeSessionId: "fee_m1",
+      serviceDate: "2026-06-03",
+      totalPoints: 73,
+      lineItems: [{ code: "112007410", name: "再診料", orderType: "basic", totalPoints: 73, quantity: 1 }],
+      diagnoses: [{ name: "急性上気道炎", isPrimary: true }]
+    }),
+    calculatedSession({
+      feeSessionId: "fee_m2",
+      serviceDate: "2026-06-17",
+      totalPoints: 133,
+      lineItems: [
+        { code: "112007410", name: "再診料", orderType: "basic", totalPoints: 73, quantity: 1 },
+        { code: "160000000", name: "末梢血液一般", orderType: "lab", totalPoints: 60, quantity: 1 }
+      ],
+      diagnoses: [{ name: "急性上気道炎" }, { name: "高血圧症" }]
+    })
+  ];
+
+  const receipt = buildMonthlyReceiptDraft(sessions, { patientId: "pat_month", claimMonth: "2026-06" });
+  assert.equal(receipt.scope, "monthly");
+  assert.equal(receipt.actualDays, 2);
+  assert.equal(receipt.sessionCount, 2);
+  assert.equal(receipt.totalPoints, 206);
+  const revisit = receipt.lines.find((line) => line.code === "112007410");
+  assert.equal(revisit.quantity, 2);
+  assert.equal(revisit.totalPoints, 146);
+  assert.equal(receipt.diagnoses.length, 2);
+  assert.equal(receipt.diagnoses.find((d) => d.name === "急性上気道炎").isPrimary, true);
+});
 
 test("builds Platform-scoped fee sessions", () => {
   const session = buildFeeSession({

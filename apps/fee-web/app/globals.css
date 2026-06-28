@@ -3916,6 +3916,274 @@ body:has(.fee-shell--detail) {
   font-size: 1.05rem;
 }
 
+.receipt-scope-toggle {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* 様式寄りレセプトプレビュー(Phase 1) */
+.receipt-form {
+  color: #111827;
+  font-size: 12px;
+}
+
+.receipt-form-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) auto minmax(0, 1.4fr);
+  gap: 14px;
+  align-items: start;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #111827;
+}
+
+.receipt-form-title h3 {
+  margin: 4px 0 2px;
+  font-size: 1.2rem;
+}
+
+.receipt-form-title small {
+  color: #475467;
+  font-weight: 700;
+}
+
+.receipt-form-period {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+  text-align: right;
+}
+
+.receipt-form-period span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.receipt-form-period strong {
+  font-size: 1rem;
+}
+
+.receipt-form-insurance {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+}
+
+.receipt-form-insurance div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px dotted #c8d0dc;
+  padding-bottom: 2px;
+}
+
+.receipt-form-insurance dt {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.receipt-form-insurance dd {
+  margin: 0;
+  font-weight: 800;
+}
+
+.receipt-form-patient {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 12px;
+  border: 1px solid #111827;
+}
+
+.receipt-form-patient > div {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-right: 1px solid #c8d0dc;
+}
+
+.receipt-form-patient > div:last-child {
+  border-right: 0;
+}
+
+.receipt-form-patient span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.receipt-form-patient small {
+  color: #64748b;
+}
+
+.receipt-form-block {
+  margin-top: 14px;
+  border: 1px solid #111827;
+}
+
+.receipt-form-block-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: #eef2f7;
+  border-bottom: 1px solid #111827;
+}
+
+.receipt-form-block-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.receipt-form-block-head span {
+  color: #475467;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.receipt-form-disease {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.receipt-form-disease th,
+.receipt-form-disease td {
+  padding: 6px 8px;
+  border-top: 1px solid #d8dee8;
+  text-align: left;
+}
+
+.receipt-form-disease th {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.receipt-form-disease th:first-child,
+.receipt-form-disease td:first-child,
+.receipt-form-disease-primary {
+  width: 44px;
+  text-align: center;
+}
+
+.receipt-form-benefit {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
+  gap: 0;
+  margin-top: 14px;
+  border: 1px solid #111827;
+}
+
+.receipt-form-points {
+  border-collapse: collapse;
+  border-right: 1px solid #111827;
+}
+
+.receipt-form-points th,
+.receipt-form-points td {
+  padding: 5px 8px;
+  border-top: 1px solid #d8dee8;
+  text-align: right;
+}
+
+.receipt-form-points th:first-child,
+.receipt-form-points td:first-child {
+  text-align: left;
+}
+
+.receipt-form-points th {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.receipt-form-points tr.is-empty td {
+  color: #98a2b3;
+}
+
+.receipt-form-points-total td {
+  border-top: 2px solid #111827;
+  font-weight: 900;
+}
+
+.receipt-form-tekiyo {
+  min-width: 0;
+}
+
+.receipt-form-tekiyo ul {
+  margin: 0;
+  padding: 8px 10px;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.receipt-form-tekiyo-cat {
+  display: inline-block;
+  margin-bottom: 2px;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.receipt-form-tekiyo p {
+  margin: 1px 0 0;
+  line-height: 1.45;
+}
+
+.receipt-form-foot {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+  border-top: 2px solid #111827;
+  padding-top: 12px;
+}
+
+.receipt-form-foot > div {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #111827;
+  padding: 10px;
+}
+
+.receipt-form-foot span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.receipt-form-foot strong {
+  font-size: 1.05rem;
+}
+
+/* 印刷/PDF: レセプト用紙だけを出力する */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .receipt-paper-shell,
+  .receipt-paper-shell * {
+    visibility: visible !important;
+  }
+  .receipt-paper-shell {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+  }
+  .receipt-paper {
+    width: 100%;
+    min-height: auto;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+}
+
 .receipt-correction-panel {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

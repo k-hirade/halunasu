@@ -190,6 +190,7 @@ test("normalizes facility receipt policy settings without dropping current defau
       ukeEncoding: "UTF-8",
       blockExportOnErrors: true,
       connectorSpecVerified: true,
+      defaultReceiptScope: "monthly",
       validationSeverity: {
         patientBirthDate: "error"
       },
@@ -206,6 +207,7 @@ test("normalizes facility receipt policy settings without dropping current defau
   assert.equal(normalized.receiptPolicy.validationSeverity.patientBirthDate, "error");
   assert.equal(normalized.receiptPolicy.validationSeverity.insuranceInsurerNumber, "error");
   assert.equal(normalized.receiptPolicy.annotationDefaults.commentShinryoIdentification, "60");
+  assert.equal(normalized.receiptPolicy.defaultReceiptScope, "monthly");
 });
 
 test("normalizes structured facility standards and drops unused policy fields", () => {

@@ -897,6 +897,8 @@ function FeeSessionDetailView({ sessionId }) {
   const feeApi = useFeeApi();
   const downloadReceiptCsvFile = useFeeReceiptCsvDownload();
   const downloadReceiptUkeFile = useFeeReceiptUkeDownload();
+  const downloadMonthlyReceiptCsvFile = useFeeMonthlyReceiptCsvDownload();
+  const downloadMonthlyReceiptUkeFile = useFeeMonthlyReceiptUkeDownload();
   const [patients, setPatients] = useState([]);
   const [facilities, setFacilities] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -1480,19 +1482,31 @@ function FeeSessionDetailView({ sessionId }) {
     });
   }
 
-  async function copyReceiptDraft() {
-    if (!receiptDraft) {
+  async function copyReceiptDraft(options = {}) {
+    const target = options.scope === "monthly" ? options.receiptDraft : receiptDraft;
+    if (!target) {
       addToast("コピーできるレセプト案がまだありません。", "error");
       return;
     }
     await runBusy(setBusy, addToast, async () => {
-      const text = formatReceiptDraftForClipboard({ feeSession, receiptDraft });
+      const text = formatReceiptDraftForClipboard({ feeSession, receiptDraft: target });
       await writeClipboardText(text);
-      addToast("レセプト案をコピーしました。", "success");
+      addToast(options.scope === "monthly" ? "月次集計レセプトをコピーしました。" : "レセプト案をコピーしました。", "success");
     });
   }
 
-  async function downloadReceiptCsv() {
+  async function downloadReceiptCsv(options = {}) {
+    if (options.scope === "monthly") {
+      if (!options.patientId || !options.claimMonth) {
+        addToast("月次集計CSVを出力する患者・請求月がありません。", "error");
+        return;
+      }
+      await runBusy(setBusy, addToast, async () => {
+        await downloadMonthlyReceiptCsvFile(options.patientId, options.claimMonth);
+        addToast("月次集計レセプトCSVをダウンロードしました。", "success");
+      });
+      return;
+    }
     if (!sessionId) {
       addToast("CSVを出力できるセッションがありません。", "error");
       return;
@@ -1503,7 +1517,18 @@ function FeeSessionDetailView({ sessionId }) {
     });
   }
 
-  async function downloadReceiptUke(encoding = "shift_jis") {
+  async function downloadReceiptUke(encoding = "shift_jis", options = {}) {
+    if (options.scope === "monthly") {
+      if (!options.patientId || !options.claimMonth) {
+        addToast("月次集計レセ電を出力する患者・請求月がありません。", "error");
+        return;
+      }
+      await runBusy(setBusy, addToast, async () => {
+        await downloadMonthlyReceiptUkeFile(options.patientId, options.claimMonth, encoding);
+        addToast("月次集計レセプト電算(UKE)をダウンロードしました。", "success");
+      });
+      return;
+    }
     if (!sessionId) {
       addToast("レセ電を出力できるセッションがありません。", "error");
       return;
@@ -3903,9 +3928,69 @@ function ReceiptDraftPane({
   receiptDraft,
   selected
 }) {
+  const feeApi = useFeeApi();
   const manualOrders = manualBillingOrderEntries(orderRows);
   const exportValidation = receiptDraft?.exportValidation || null;
   const [ukeEncoding, setUkeEncoding] = useState("shift_jis");
+  const [scope, setScope] = useState("service_date");
+  const [monthlyReceipt, setMonthlyReceipt] = useState(null);
+  const [monthlyLoading, setMonthlyLoading] = useState(false);
+  const [monthlyError, setMonthlyError] = useState("");
+  const patientId = feeSession?.patientId || "";
+  const claimMonth = feeSession?.claimMonth || String(feeSession?.serviceDate || "").slice(0, 7);
+
+  // 施設のレセプト表示単位(a/b)の既定値を読み、初期スコープに反映する(ベストエフォート)。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await feeApi("/v1/fee/settings");
+        const settingsMap = response?.settings || {};
+        const facilityScope = settingsMap[feeSession?.facilityId]?.receiptPolicy?.defaultReceiptScope
+          || settingsMap.default?.receiptPolicy?.defaultReceiptScope;
+        if (!cancelled && (facilityScope === "monthly" || facilityScope === "service_date")) {
+          setScope(facilityScope);
+        }
+      } catch {
+        // 既定スコープの取得失敗時は診療日単位のまま。
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [feeApi, feeSession?.facilityId]);
+
+  // 月次集計スコープのときだけ、患者×請求月の集計レセプトを取得する。
+  useEffect(() => {
+    if (scope !== "monthly" || !patientId || !claimMonth) {
+      return undefined;
+    }
+    let cancelled = false;
+    setMonthlyLoading(true);
+    setMonthlyError("");
+    (async () => {
+      try {
+        const params = new URLSearchParams({ patientId, claimMonth });
+        const response = await feeApi(`/v1/fee/monthly-receipt?${params.toString()}`);
+        if (!cancelled) {
+          setMonthlyReceipt(response?.receiptDraft || null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setMonthlyError(toUserFacingErrorMessage(error, "月次集計レセプトを取得できませんでした。"));
+        }
+      } finally {
+        if (!cancelled) {
+          setMonthlyLoading(false);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [scope, patientId, claimMonth, feeApi, feeSession?.status]);
+
+  const previewReceiptDraft = scope === "monthly" ? monthlyReceipt : receiptDraft;
+  const exportTarget = scope === "monthly" ? monthlyReceipt : receiptDraft;
+  const exportOptions = scope === "monthly"
+    ? { scope: "monthly", patientId, claimMonth, receiptDraft: monthlyReceipt }
+    : { scope: "service_date" };
   function printReceiptDraft() {
     if (typeof window !== "undefined") {
       window.print();
@@ -3917,36 +4002,54 @@ function ReceiptDraftPane({
         <div>
           <h2>レセプト案</h2>
           <p>提出前の帳票プレビューです。修正後にCSV・レセ電(UKE)を出力できます。</p>
+          <div className="receipt-scope-toggle" role="group" aria-label="レセプト表示単位">
+            {[["service_date", "診療日単位"], ["monthly", "月次集計"]].map(([value, label]) => (
+              <button
+                className={`fee-filter-chip ${scope === value ? "is-active" : ""}`}
+                key={value}
+                onClick={() => setScope(value)}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="receipt-pane-actions">
-          <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={printReceiptDraft} type="button">
+          <button className="btn btn--ghost btn--sm" disabled={disabled || !exportTarget} onClick={printReceiptDraft} type="button">
             印刷/PDF
           </button>
-          <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={onCopyReceipt} type="button">
+          <button className="btn btn--ghost btn--sm" disabled={disabled || !exportTarget} onClick={() => onCopyReceipt(exportOptions)} type="button">
             コピー
           </button>
-          <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={onDownloadCsv} type="button">
+          <button className="btn btn--ghost btn--sm" disabled={disabled || !exportTarget} onClick={() => onDownloadCsv(exportOptions)} type="button">
             CSV出力
           </button>
           <span className="receipt-uke-group">
             <select
               className="receipt-uke-encoding"
               aria-label="レセ電の文字コード"
-              disabled={disabled || !receiptDraft}
+              disabled={disabled || !exportTarget}
               value={ukeEncoding}
               onChange={(event) => setUkeEncoding(event.target.value)}
             >
               <option value="shift_jis">Shift_JIS</option>
               <option value="utf-8">UTF-8</option>
             </select>
-            <button className="btn btn--ghost btn--sm" disabled={disabled || !receiptDraft} onClick={() => onDownloadUke(ukeEncoding)} type="button">
+            <button className="btn btn--ghost btn--sm" disabled={disabled || !exportTarget} onClick={() => onDownloadUke(ukeEncoding, exportOptions)} type="button">
               レセ電(UKE)出力
             </button>
           </span>
         </div>
       </div>
       <div className="receipt-review-layout">
-        <ReceiptDraft receiptDraft={receiptDraft} feeSession={feeSession} selected={selected} />
+        {scope === "monthly" && monthlyLoading ? (
+          <div className="fee-empty-state">月次集計レセプトを作成しています…</div>
+        ) : scope === "monthly" && monthlyError ? (
+          <div className="fee-error-state" role="status">{monthlyError}</div>
+        ) : (
+          <ReceiptDraft receiptDraft={previewReceiptDraft} feeSession={feeSession} selected={selected} />
+        )}
         <ReceiptCorrectionPanel
           disabled={disabled}
           manualOrders={manualOrders}
@@ -4329,79 +4432,118 @@ function ReceiptDraft({ feeSession, receiptDraft, selected }) {
   }
   const patient = receiptDraft.patientSnapshot || {};
   const facility = receiptDraft.facilitySnapshot || {};
-  const department = receiptDraft.departmentSnapshot || {};
   const insurance = receiptDraft.insuranceSnapshot?.insurance || {};
+  const publicInsurance = Array.isArray(receiptDraft.insuranceSnapshot?.publicInsurance) ? receiptDraft.insuranceSnapshot.publicInsurance : [];
   const billing = receiptDraft.billing || {};
   const groups = Array.isArray(receiptDraft.lineGroups) ? receiptDraft.lineGroups : [];
-  const annotations = receiptDisplayAnnotations(feeSession);
-  const totalLineCount = groups.reduce((sum, group) => sum + Number(group.lines?.length || 0), 0);
+  const lines = groups.flatMap((group) => (Array.isArray(group.lines) ? group.lines : []));
+  const sections = receiptBenefitSections(lines);
+  // 月次集計(scope=monthly)では傷病名・注記・実日数を receiptDraft 側が持つ。診療日単位は feeSession から。
+  const annotationSource = receiptDraft.receiptAnnotations ? { receiptAnnotations: receiptDraft.receiptAnnotations } : feeSession;
+  const annotations = receiptDisplayAnnotations(annotationSource);
+  const diagnoses = Array.isArray(receiptDraft.diagnoses) && receiptDraft.diagnoses.length
+    ? receiptDraft.diagnoses
+    : (Array.isArray(feeSession?.diagnoses) ? feeSession.diagnoses : []);
+  const actualDays = Number(receiptDraft.actualDays || 1);
+  const burdenRatio = typeof billing.burdenRatio === "number" ? billing.burdenRatio : null;
+  const benefitPercent = burdenRatio !== null ? Math.round((1 - burdenRatio) * 100) : null;
   return (
     <div className="receipt-paper-shell">
-      <article className="receipt-paper" aria-label="レセプト提出前プレビュー">
-        <header className="receipt-paper-header">
-          <div>
+      <article className="receipt-paper receipt-form" aria-label="レセプト提出前プレビュー">
+        <header className="receipt-form-top">
+          <div className="receipt-form-title">
             <span className="receipt-paper-kicker">提出前プレビュー</span>
             <h3>診療報酬明細書</h3>
-            <p>{receiptSettingLabel(receiptDraft.setting)} / {receiptDraft.claimMonth || "請求月未設定"}</p>
+            <small>（医科）{receiptSettingLabel(receiptDraft.setting)} / {statusLabel(receiptDraft.status)}</small>
           </div>
-          <div className="receipt-paper-status">
-            <span>{statusLabel(receiptDraft.status)}</span>
-            <strong>{Number(receiptDraft.totalPoints || 0).toLocaleString()}点</strong>
+          <div className="receipt-form-period">
+            <span>診療年月</span>
+            <strong>{warekiYearMonth(receiptDraft.claimMonth || receiptDraft.serviceDate)}</strong>
           </div>
+          <dl className="receipt-form-insurance">
+            <div><dt>保険者番号</dt><dd>{insurance.insurerNumber || "—"}</dd></div>
+            <div><dt>記号・番号</dt><dd>{[insurance.insuredSymbol, insurance.insuredNumber].filter(Boolean).join(" ・ ") || "—"}</dd></div>
+            <div><dt>給付割合</dt><dd>{benefitPercent !== null ? `${benefitPercent}%` : "—"}</dd></div>
+            <div><dt>公費</dt><dd>{publicInsurance.length ? `${publicInsurance.length}件` : "なし"}</dd></div>
+          </dl>
         </header>
 
-        <section className="receipt-paper-meta-grid" aria-label="レセプト基本情報">
-          <div>
-            <span>医療機関</span>
-            <strong>{facility.displayName || "未設定"}</strong>
-            <small>医療機関コード {facility.medicalInstitutionCode || "未設定"} / 都道府県 {facility.prefectureCode || "未設定"}</small>
-          </div>
-          <div>
-            <span>患者</span>
-            <strong>{patient.displayName || receiptDraft.patientRef || "未設定"}</strong>
-            <small>{patient.birthDate || "生年月日未設定"} / {sexLabel(patient.sex)} / 患者ID {receiptDraft.patientRef || receiptDraft.patientId || "未設定"}</small>
-          </div>
-          <div>
-            <span>保険</span>
-            <strong>{insurance.insurerNumber || "保険者番号未設定"}</strong>
-            <small>{[insurance.insuredSymbol, insurance.insuredNumber].filter(Boolean).join(" - ") || "記号番号未設定"}</small>
-          </div>
-          <div>
-            <span>診療</span>
-            <strong>{receiptDraft.serviceDate || "診療日未設定"}</strong>
-            <small>{department.displayName || "診療科未設定"} / 明細 {totalLineCount.toLocaleString()}件</small>
-          </div>
+        <section className="receipt-form-patient" aria-label="患者・医療機関">
+          <div><span>氏名</span><strong>{patient.displayName || receiptDraft.patientRef || "—"}</strong></div>
+          <div><span>性別</span><strong>{sexLabel(patient.sex)}</strong></div>
+          <div><span>生年月日</span><strong>{warekiDate(patient.birthDate) || "—"}</strong></div>
+          <div><span>医療機関</span><strong>{facility.displayName || "—"}</strong><small>コード {facility.medicalInstitutionCode || "—"} / 都道府県 {facility.prefectureCode || "—"}</small></div>
         </section>
 
-        <section className="receipt-paper-section" aria-label="診療明細">
-          <div className="receipt-paper-section-head">
-            <h4>診療明細</h4>
-            <span>{Number(receiptDraft.totalPoints || 0).toLocaleString()}点</span>
+        <section className="receipt-form-block" aria-label="傷病名">
+          <div className="receipt-form-block-head">
+            <h4>傷病名</h4>
+            <span>診療開始日 {warekiDate(receiptDraft.serviceDate) || "—"}</span>
           </div>
-          {groups.length ? (
-            <table className="receipt-paper-table">
+          {diagnoses.length ? (
+            <table className="receipt-form-disease">
               <thead>
-                <tr>
-                  <th>区分・コード</th>
-                  <th>名称</th>
-                  <th>回数</th>
-                  <th>点数</th>
-                  <th>合計</th>
-                </tr>
+                <tr><th>#</th><th>傷病名</th><th>ICD10</th><th>主病</th><th>転帰</th></tr>
               </thead>
               <tbody>
-                {groups.map((group, groupIndex) => (
-                  <FragmentForReceiptGroup group={group} groupIndex={groupIndex} key={`${group.label || "group"}-${groupIndex}`} />
+                {diagnoses.map((diagnosis, index) => (
+                  <tr key={diagnosis.diagnosisId || index}>
+                    <td>{index + 1}</td>
+                    <td>{diagnosis.name || "—"}</td>
+                    <td>{diagnosis.icd10Code || "—"}</td>
+                    <td className="receipt-form-disease-primary">{diagnosis.isPrimary ? "●" : ""}</td>
+                    <td>{diagnosisOutcomeLabel(diagnosis.outcome)}</td>
+                  </tr>
                 ))}
               </tbody>
             </table>
-          ) : (
-            <p className="receipt-paper-empty">明細がありません。</p>
-          )}
+          ) : <p className="receipt-paper-empty">傷病名が未入力です。カルテ本文・病名欄で入力してください。</p>}
         </section>
 
-        <section className="receipt-paper-section receipt-paper-section--annotations" aria-label="コメントと症状詳記">
-          <div className="receipt-paper-section-head">
+        <section className="receipt-form-benefit" aria-label="点数欄と摘要">
+          <table className="receipt-form-points">
+            <thead>
+              <tr><th>区分</th><th>回数</th><th>点数</th></tr>
+            </thead>
+            <tbody>
+              {sections.map((section) => (
+                <tr className={section.count ? "" : "is-empty"} key={section.key}>
+                  <td>{section.label}</td>
+                  <td>{section.count ? section.count.toLocaleString() : "—"}</td>
+                  <td>{section.points ? section.points.toLocaleString() : "—"}</td>
+                </tr>
+              ))}
+              <tr className="receipt-form-points-total">
+                <td>合計</td>
+                <td />
+                <td>{Number(receiptDraft.totalPoints || 0).toLocaleString()}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div className="receipt-form-tekiyo">
+            <div className="receipt-form-block-head">
+              <h4>摘要</h4>
+              <span>診療実日数 {actualDays.toLocaleString()}日</span>
+            </div>
+            {sections.some((section) => section.lines.length) ? (
+              <ul>
+                {sections.filter((section) => section.lines.length).map((section) => (
+                  <li key={section.key}>
+                    <span className="receipt-form-tekiyo-cat">{section.label}</span>
+                    {section.lines.map((line, lineIndex) => (
+                      <p key={`${line.receiptLineId || line.code || lineIndex}-${lineIndex}`}>
+                        {line.name || line.code || "—"}　{Number(line.points || 0).toLocaleString()}点 × {Number(line.quantity || 1).toLocaleString()}
+                      </p>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="receipt-paper-empty">明細がありません。</p>}
+          </div>
+        </section>
+
+        <section className="receipt-form-block" aria-label="コメントと症状詳記">
+          <div className="receipt-form-block-head">
             <h4>コメント・症状詳記</h4>
             <span>{(annotations.comments.length + annotations.symptomDetails.length).toLocaleString()}件</span>
           </div>
@@ -4409,63 +4551,121 @@ function ReceiptDraft({ feeSession, receiptDraft, selected }) {
             <div className="receipt-paper-annotations">
               {annotations.comments.map((comment) => (
                 <div key={comment.annotationId || `${comment.code}-${comment.text}`}>
-                  <span>コメント {comment.code || "コード未設定"}</span>
+                  <span>コメント {comment.code || "—"}</span>
                   <p>{comment.text}</p>
                 </div>
               ))}
               {annotations.symptomDetails.map((detail) => (
                 <div key={detail.annotationId || `${detail.kubun}-${detail.text}`}>
-                  <span>症状詳記 {detail.kubun || "区分未設定"}</span>
+                  <span>症状詳記 {detail.kubun || "—"}</span>
                   <p>{detail.text}</p>
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="receipt-paper-empty">コメント・症状詳記はありません。</p>
-          )}
+          ) : <p className="receipt-paper-empty">コメント・症状詳記はありません。</p>}
         </section>
 
-        <footer className="receipt-paper-total">
-          <div>
-            <span>総医療費</span>
-            <strong>¥{Number(billing.totalFee || 0).toLocaleString()}</strong>
-          </div>
-          <div>
-            <span>窓口負担</span>
-            <strong>¥{Number(billing.copay || 0).toLocaleString()}</strong>
-          </div>
-          <div>
-            <span>合計点数</span>
-            <strong>{Number(receiptDraft.totalPoints || 0).toLocaleString()}点</strong>
-          </div>
+        <footer className="receipt-form-foot">
+          <div><span>請求点数</span><strong>{Number(receiptDraft.totalPoints || 0).toLocaleString()}点</strong></div>
+          <div><span>総医療費</span><strong>¥{Number(billing.totalFee || 0).toLocaleString()}</strong></div>
+          <div><span>一部負担金</span><strong>¥{Number(billing.copay || 0).toLocaleString()}</strong></div>
         </footer>
       </article>
     </div>
   );
 }
 
-function FragmentForReceiptGroup({ group, groupIndex }) {
-  const lines = Array.isArray(group.lines) ? group.lines : [];
-  return (
-    <>
-      <tr className="receipt-paper-group-row">
-        <td colSpan={4}>{group.label || "未分類"}</td>
-        <td>{Number(group.totalPoints || 0).toLocaleString()}点</td>
-      </tr>
-      {lines.map((line, lineIndex) => (
-        <tr key={`${line.receiptLineId || line.code || line.name || groupIndex}-${lineIndex}`}>
-          <td>
-            <span>{line.code || "コード未設定"}</span>
-            <small>{orderTypeLabel(line.orderType) || line.orderType || "未分類"}</small>
-          </td>
-          <td>{line.name || "名称未設定"}</td>
-          <td>{Number(line.quantity || 1).toLocaleString()}</td>
-          <td>{Number(line.points || 0).toLocaleString()}</td>
-          <td>{Number(line.totalPoints || 0).toLocaleString()}</td>
-        </tr>
-      ))}
-    </>
-  );
+// 出来高の点数欄を公式区分(初診〜その他)へ寄せる。lineは先に一致した区分へ一度だけ割り当てる。
+const RECEIPT_BENEFIT_SECTIONS = [
+  ["shoshin", "初診", (line) => line.orderType === "basic" && (/初診/u.test(line.name || "") || String(line.code || "").startsWith("1110"))],
+  ["saishin", "再診", (line) => line.orderType === "basic"],
+  ["kanri", "医学管理", (line) => line.orderType === "management" || /管理料|指導料/u.test(line.name || "")],
+  ["zaitaku", "在宅", (line) => line.orderType === "home" || /在宅/u.test(line.name || "")],
+  ["toyaku", "投薬", (line) => ["drug", "medication"].includes(line.orderType)],
+  ["chusha", "注射", (line) => line.orderType === "injection"],
+  ["shochi", "処置", (line) => line.orderType === "treatment"],
+  ["shujutsu", "手術・麻酔", (line) => ["procedure", "surgery", "anesthesia"].includes(line.orderType)],
+  ["kensa", "検査・病理", (line) => ["lab", "pathology"].includes(line.orderType)],
+  ["gazo", "画像診断", (line) => line.orderType === "imaging"],
+  ["sonota", "その他", () => true]
+];
+
+function receiptBenefitSections(lines = []) {
+  const used = new Array(lines.length).fill(false);
+  return RECEIPT_BENEFIT_SECTIONS.map(([key, label, match]) => {
+    const matched = [];
+    lines.forEach((line, index) => {
+      if (!used[index] && match(line)) {
+        used[index] = true;
+        matched.push(line);
+      }
+    });
+    return {
+      key,
+      label,
+      count: matched.reduce((sum, line) => sum + Number(line.quantity || 1), 0),
+      points: matched.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0),
+      lines: matched
+    };
+  });
+}
+
+function diagnosisOutcomeLabel(outcome = "") {
+  return ({
+    cured: "治ゆ",
+    recovered: "治ゆ",
+    improved: "軽快",
+    unchanged: "不変",
+    deteriorated: "増悪",
+    death: "死亡",
+    died: "死亡",
+    transferred: "転医",
+    discontinued: "中止",
+    ongoing: "—",
+    unknown: "—"
+  })[outcome] || outcome || "—";
+}
+
+function parseReceiptDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return null;
+  }
+  const normalized = /^\d{4}-\d{2}$/u.test(raw) ? `${raw}-01` : raw;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function warekiParts(date) {
+  const eras = [
+    ["令和", 2019, 5, 1],
+    ["平成", 1989, 1, 8],
+    ["昭和", 1926, 12, 25]
+  ];
+  for (const [era, year, month, day] of eras) {
+    if (date >= new Date(year, month - 1, day)) {
+      return { era, year: date.getFullYear() - year + 1 };
+    }
+  }
+  return { era: "西暦", year: date.getFullYear() };
+}
+
+function warekiDate(value) {
+  const date = parseReceiptDate(value);
+  if (!date) {
+    return "";
+  }
+  const { era, year } = warekiParts(date);
+  return `${era}${year}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function warekiYearMonth(value) {
+  const date = parseReceiptDate(String(value || "").slice(0, 7));
+  if (!date) {
+    return value || "—";
+  }
+  const { era, year } = warekiParts(date);
+  return `${era}${year}年${date.getMonth() + 1}月`;
 }
 
 function receiptDisplayAnnotations(feeSession = {}) {
@@ -4712,6 +4912,48 @@ function useFeeReceiptUkeDownload() {
     link.remove();
     URL.revokeObjectURL(url);
   }, [auth.accessToken]);
+}
+
+function useFeeReceiptBlobDownload() {
+  const auth = usePlatformAuth();
+  return useCallback(async (path, filename) => {
+    const config = typeof window !== "undefined" ? window.__HALUNASU_FEE_CONFIG__ || {} : {};
+    const baseUrl = config.feeBaseUrl || "/api/fee";
+    const headers = {};
+    const accessToken = auth.accessToken || getStoredPlatformAccessToken();
+    if (accessToken) {
+      headers.authorization = `Bearer ${accessToken}`;
+    }
+    const response = await fetch(`${baseUrl}${path}`, { method: "GET", headers, credentials: "include" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [auth.accessToken]);
+}
+
+function useFeeMonthlyReceiptCsvDownload() {
+  const download = useFeeReceiptBlobDownload();
+  return useCallback((patientId, claimMonth) => {
+    const params = new URLSearchParams({ patientId, claimMonth });
+    return download(`/v1/fee/monthly-receipt.csv?${params.toString()}`, `receipt_monthly_${claimMonth || "month"}.csv`);
+  }, [download]);
+}
+
+function useFeeMonthlyReceiptUkeDownload() {
+  const download = useFeeReceiptBlobDownload();
+  return useCallback((patientId, claimMonth, encoding = "shift_jis") => {
+    const params = new URLSearchParams({ patientId, claimMonth, encoding });
+    return download(`/v1/fee/monthly-receipt.uke?${params.toString()}`, `receipt_monthly_${claimMonth || "month"}.UKE`);
+  }, [download]);
 }
 
 async function runBusy(setBusy, addToast, task) {

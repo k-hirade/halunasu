@@ -18,6 +18,7 @@ import {
   buildReceiptCsv,
   buildReceiptDenshin,
   buildReceiptDraft,
+  buildMonthlyReceiptDraft,
   buildReceiptExportValidation,
   buildReviewItems,
   serializeUke
@@ -340,6 +341,15 @@ async function routeFeeApiRequest(input = {}) {
     return ok(buildMonthlyClaimSummary(sessionList, { claimMonth }));
   }
 
+  // 患者×請求月で集計した月次レセプト案(プレビューのb=月次集計)
+  if (method === "GET" && matches(parts, ["v1", "fee", "monthly-receipt"])) {
+    const claimMonth = url.searchParams.get("claimMonth") || "";
+    const patientId = url.searchParams.get("patientId") || "";
+    const sessions = await feeStore.listSessions(context.session.orgId);
+    const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+    return ok({ receiptDraft: buildMonthlyReceiptDraft(sessionList, { patientId, claimMonth }) });
+  }
+
   if (method === "GET" && matches(parts, ["v1", "fee", "monthly-bulk-candidates"])) {
     const claimMonth = url.searchParams.get("claimMonth") || "";
     const sessions = await feeStore.listSessions(context.session.orgId);
@@ -607,6 +617,71 @@ async function routeFeeApiRequest(input = {}) {
         "x-halunasu-export-status": validation.exportStatus,
         "x-halunasu-connector-status": exportContext.connectorSpecVerified ? "spec-verified" : "spec-unverified",
         "content-disposition": `attachment; filename="receipt_${parts[3]}.UKE"`
+      }
+    };
+  }
+
+  // 月次集計レセプトのCSV出力(scope=monthly)
+  if (method === "GET" && matches(parts, ["v1", "fee", "monthly-receipt.csv"])) {
+    const exportData = await loadMonthlyReceiptForExport({
+      feeStore,
+      orgId: context.session.orgId,
+      patientId: url.searchParams.get("patientId") || "",
+      claimMonth: url.searchParams.get("claimMonth") || "",
+      now: input.now || new Date()
+    });
+    if (!exportData.base) {
+      return notFound("monthly receipt has no calculated sessions");
+    }
+    const feeSettings = await loadFeeSettingsForCalculation({ feeStore, orgId: context.session.orgId, session: exportData.base });
+    const exportContext = { ...receiptExportContext(exportData.receiptDraft, feeSettings), actualDays: exportData.receiptDraft.actualDays };
+    const validation = buildReceiptExportValidation(exportData.receiptDraft, exportContext);
+    if (shouldBlockReceiptExport(url, validation, exportContext)) {
+      return receiptExportValidationFailed(validation);
+    }
+    return {
+      statusCode: 200,
+      raw: true,
+      body: buildReceiptCsv(exportData.receiptDraft, exportContext),
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "x-halunasu-export-status": validation.exportStatus,
+        "x-halunasu-connector-status": exportContext.connectorSpecVerified ? "spec-verified" : "spec-unverified",
+        "content-disposition": `attachment; filename="${monthlyReceiptFileName(exportData.receiptDraft, "csv")}"`
+      }
+    };
+  }
+
+  // 月次集計レセプトのレセ電(UKE)出力(scope=monthly)
+  if (method === "GET" && matches(parts, ["v1", "fee", "monthly-receipt.uke"])) {
+    const exportData = await loadMonthlyReceiptForExport({
+      feeStore,
+      orgId: context.session.orgId,
+      patientId: url.searchParams.get("patientId") || "",
+      claimMonth: url.searchParams.get("claimMonth") || "",
+      now: input.now || new Date()
+    });
+    if (!exportData.base) {
+      return notFound("monthly receipt has no calculated sessions");
+    }
+    const feeSettings = await loadFeeSettingsForCalculation({ feeStore, orgId: context.session.orgId, session: exportData.base });
+    const exportContext = { ...receiptExportContext(exportData.receiptDraft, feeSettings), actualDays: exportData.receiptDraft.actualDays };
+    const validation = buildReceiptExportValidation(exportData.receiptDraft, exportContext);
+    if (shouldBlockReceiptExport(url, validation, exportContext)) {
+      return receiptExportValidationFailed(validation);
+    }
+    const uke = serializeUke(buildReceiptDenshin(exportData.receiptDraft, exportContext));
+    const encoding = normalizeUkeEncoding(url.searchParams.get("encoding") || exportContext.receiptPolicy?.ukeEncoding);
+    const body = encoding === "shift_jis" ? iconv.encode(uke, "Shift_JIS") : Buffer.from(uke, "utf-8");
+    return {
+      statusCode: 200,
+      raw: true,
+      body,
+      headers: {
+        "content-type": `text/plain; charset=${encoding === "shift_jis" ? "shift_jis" : "utf-8"}`,
+        "x-halunasu-export-status": validation.exportStatus,
+        "x-halunasu-connector-status": exportContext.connectorSpecVerified ? "spec-verified" : "spec-unverified",
+        "content-disposition": `attachment; filename="${monthlyReceiptFileName(exportData.receiptDraft, "UKE")}"`
       }
     };
   }
@@ -2716,6 +2791,26 @@ export function receiptAnnotationContext(session = {}, receiptPolicy = {}) {
       text: detail.text || ""
     }));
   return { comments, symptomDetails };
+}
+
+async function loadMonthlyReceiptForExport({ feeStore, orgId, patientId, claimMonth, now }) {
+  const sessions = await feeStore.listSessions(orgId);
+  const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+  const month = String(claimMonth || "").slice(0, 7);
+  const monthOf = (session) => String(session.claimMonth || String(session.serviceDate || "").slice(0, 7));
+  const base = sessionList.find((session) => session
+    && session.patientId === patientId
+    && (!month || monthOf(session) === month)
+    && session.calculationResult
+    && session.calculationResult.status) || null;
+  const receiptDraft = buildMonthlyReceiptDraft(sessionList, { patientId, claimMonth, now });
+  return { sessionList, base, receiptDraft };
+}
+
+function monthlyReceiptFileName(receiptDraft = {}, extension = "csv") {
+  const patient = String(receiptDraft.patientId || "patient").replace(/[^\w-]+/gu, "");
+  const month = String(receiptDraft.claimMonth || "month").replace(/[^\w-]+/gu, "");
+  return `receipt_monthly_${patient}_${month}.${extension}`;
 }
 
 function receiptExportContext(session = {}, feeSettings = {}) {

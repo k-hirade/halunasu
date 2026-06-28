@@ -44,6 +44,7 @@ export const feeNewDiseaseInitialHandlings = Object.freeze(["candidate_requires_
 export const feeReviewPolicyModes = Object.freeze(["standard", "conservative", "review_heavy"]);
 export const feeReceiptExportEncodings = Object.freeze(["shift_jis", "utf-8"]);
 export const feeFacilityStandardStatuses = Object.freeze(["active", "pending", "expired", "withdrawn"]);
+export const feeReceiptScopes = Object.freeze(["service_date", "monthly"]);
 export const feeReceiptValidationSeverities = Object.freeze(["error", "warning", "off"]);
 const defaultReceiptValidationSeverity = Object.freeze({
   facilityMedicalInstitutionCode: "error",
@@ -230,6 +231,7 @@ export function defaultFeeSettings(input = {}) {
       ukeEncoding: "shift_jis",
       blockExportOnErrors: false,
       connectorSpecVerified: false,
+      defaultReceiptScope: "service_date",
       validationSeverity: { ...defaultReceiptValidationSeverity },
       annotationDefaults: {
         commentShinryoIdentification: "",
@@ -389,6 +391,7 @@ function normalizeReceiptPolicy(input = {}) {
     ukeEncoding: optionalEnum(normalizeReceiptEncoding(value.ukeEncoding ?? value.uke_encoding), feeReceiptExportEncodings, "receiptPolicy.ukeEncoding") || "shift_jis",
     blockExportOnErrors: optionalBoolean(value.blockExportOnErrors ?? value.block_export_on_errors, false),
     connectorSpecVerified: optionalBoolean(value.connectorSpecVerified ?? value.connector_spec_verified, false),
+    defaultReceiptScope: optionalEnum(value.defaultReceiptScope ?? value.default_receipt_scope, feeReceiptScopes, "receiptPolicy.defaultReceiptScope") || "service_date",
     validationSeverity: normalizeReceiptValidationSeverity(value.validationSeverity ?? value.validation_severity),
     annotationDefaults: normalizeReceiptAnnotationDefaults(value.annotationDefaults ?? value.annotation_defaults)
   };
