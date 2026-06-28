@@ -1338,8 +1338,8 @@ function FeeSessionDetailView({ sessionId }) {
       setFeeSession((current) => ({
         ...(saved?.feeSession || current || {}),
         status: "calculating",
-        calculationResult: null,
-        calculationSummary: null,
+        calculationResult: saved?.feeSession?.calculationResult || current?.calculationResult || null,
+        calculationSummary: saved?.feeSession?.calculationSummary || current?.calculationSummary || null,
         calculationProgress: buildClientCalculationProgress({
           phase: "extract",
           percent: 10,
@@ -1359,7 +1359,15 @@ function FeeSessionDetailView({ sessionId }) {
       }
       const jobStatus = String(response.calculationJob?.status || "").trim();
       const jobQueued = ["queued", "waiting_for_worker", "running"].includes(jobStatus);
-      await refreshCalculationStatus();
+      const statusDetail = await refreshCalculationStatus();
+      const refreshedStatus = String(statusDetail.feeSession?.status || "").trim();
+      if (jobQueued && refreshedStatus && refreshedStatus !== "calculating") {
+        await refreshDetail();
+        if (refreshedStatus === "failed") {
+          addToast("算定候補の作成に失敗しました。入力内容を確認してもう一度お試しください。", "error");
+        }
+        return;
+      }
       if (!jobQueued) {
         addToast("算定ジョブを開始できませんでした。Cloud Tasks または Pub/Sub の設定を確認して再度お試しください。", "error");
       }
