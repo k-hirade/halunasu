@@ -2701,13 +2701,13 @@ body:has(.fee-shell--detail) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  min-height: 24px;
+  width: 34px;
+  min-height: 20px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 0;
   background: transparent;
   color: #475569;
-  padding: 2px;
+  padding: 0;
   font: inherit;
   font-size: 12px;
   font-weight: 900;
@@ -2718,8 +2718,12 @@ body:has(.fee-shell--detail) {
 
 .candidate-decision-toggle:hover:not(:disabled),
 .candidate-decision-toggle:focus-visible {
-  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
   outline: 0;
+}
+
+.candidate-decision-toggle:hover:not(:disabled) .candidate-decision-toggle-track,
+.candidate-decision-toggle:focus-visible .candidate-decision-toggle-track {
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
 }
 
 .candidate-decision-toggle:disabled {
@@ -2744,7 +2748,7 @@ body:has(.fee-shell--detail) {
   height: 20px;
   border-radius: 999px;
   background: #94a3b8;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .candidate-decision-toggle--on .candidate-decision-toggle-track {
