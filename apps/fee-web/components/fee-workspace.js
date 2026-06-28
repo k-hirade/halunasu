@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getStoredPlatformAccessToken, usePlatformAuth } from "./platform-auth";
 
 const FEE_SESSION_PAGE_SIZE = 20;
+const PATIENT_SEARCH_LIMIT = 30;
 const CALCULATION_POLL_DELAYS_MS = [2500, 3500, 5000, 8000, 12000];
 const CALCULATION_POLL_TIMEOUT_MS = 90000;
 const EMPTY_SELECT_VALUE = "__fee_empty__";
@@ -898,6 +899,7 @@ function FeeSessionDetailView({ sessionId }) {
   const [orderRowsTouched, setOrderRowsTouched] = useState(false);
   const [clinicalTextBaselineHash, setClinicalTextBaselineHash] = useState("");
   const [patientFilter, setPatientFilter] = useState("");
+  const [patientSearchLoading, setPatientSearchLoading] = useState(false);
   const [newPatient, setNewPatient] = useState(defaultPatientForm);
   const [patientPickerOpen, setPatientPickerOpen] = useState(false);
   const [masterType, setMasterType] = useState("procedure");
@@ -907,8 +909,6 @@ function FeeSessionDetailView({ sessionId }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState([]);
-  const [autoSaveStatus, setAutoSaveStatus] = useState("saved");
-  const [autoSaveError, setAutoSaveError] = useState("");
   const [candidateDetail, setCandidateDetail] = useState(null);
   const [settingsModalMode, setSettingsModalMode] = useState(null);
   const [manualItemModalOpen, setManualItemModalOpen] = useState(false);
@@ -916,12 +916,11 @@ function FeeSessionDetailView({ sessionId }) {
   const [missingDiagnosisPromptOpen, setMissingDiagnosisPromptOpen] = useState(false);
   const [missingDiagnosisDraft, setMissingDiagnosisDraft] = useState("");
   const [activeMainTab, setActiveMainTab] = useState("work");
-  const suppressAutoSaveRef = useRef(false);
-  const autoSaveTimerRef = useRef(null);
-  const pendingAutoSaveRef = useRef(null);
   const bootstrapLoadedRef = useRef(false);
   const toastTimersRef = useRef(new Map());
   const toastExitTimersRef = useRef(new Map());
+  const patientSearchCacheRef = useRef(new Map());
+  const patientSearchRequestSeqRef = useRef(0);
   const masterSearchCacheRef = useRef(new Map());
   const masterSearchRequestSeqRef = useRef(0);
 
@@ -970,18 +969,8 @@ function FeeSessionDetailView({ sessionId }) {
   }, []);
 
   const masterSearchAvailable = isMasterSearchAvailable(masterStatus);
-  const filteredPatients = useMemo(() => {
-    const keyword = normalizeSearch(patientFilter);
-    if (!keyword) {
-      return patients;
-    }
-    return patients.filter((patient) => normalizeSearch([
-      patient.displayName,
-      patient.patientId,
-      patient.primaryPatientNumber,
-      ...(Array.isArray(patient.externalPatientIds) ? patient.externalPatientIds : [])
-    ].join(" ")).includes(keyword));
-  }, [patientFilter, patients]);
+  const patientSearchReady = shouldFetchPatientSearch(patientFilter);
+  const filteredPatients = useMemo(() => patients.slice(0, PATIENT_SEARCH_LIMIT), [patients]);
 
   const defaultFacilityId = facilities.length === 1 ? facilities[0].facilityId : "";
   const selectedPatient = useMemo(
@@ -991,7 +980,6 @@ function FeeSessionDetailView({ sessionId }) {
   );
 
   const applyDetail = useCallback((detail, options = {}) => {
-    suppressAutoSaveRef.current = true;
     applyDetailResponse(detail, {
       setFeeSession,
       setReceiptDraft,
@@ -1003,8 +991,6 @@ function FeeSessionDetailView({ sessionId }) {
       setOrderRowsTouched,
       setClinicalTextBaselineHash
     }, options);
-    setAutoSaveStatus("saved");
-    setAutoSaveError("");
   }, []);
 
   useEffect(() => {
@@ -1059,27 +1045,50 @@ function FeeSessionDetailView({ sessionId }) {
 
   useEffect(() => {
     if (!patientPickerOpen) {
+      patientSearchRequestSeqRef.current += 1;
+      setPatientSearchLoading(false);
       return undefined;
     }
-    let cancelled = false;
+    const rawQuery = patientFilter.trim();
+    if (!shouldFetchPatientSearch(rawQuery)) {
+      patientSearchRequestSeqRef.current += 1;
+      setPatientSearchLoading(false);
+      setPatients((current) => mergeSelectedPatient(current.slice(0, PATIENT_SEARCH_LIMIT), patientFromSessionSnapshot(feeSession, form.patientId)));
+      return undefined;
+    }
+    const requestSeq = ++patientSearchRequestSeqRef.current;
+    const cacheKey = normalizePatientSearchCacheKey(rawQuery);
+    const cached = patientSearchCacheRef.current.get(cacheKey);
+    if (cached?.expiresAt > Date.now()) {
+      setPatients(mergeSelectedPatient(cached.patients || [], patientFromSessionSnapshot(feeSession, form.patientId)));
+    }
+    setPatientSearchLoading(true);
     const timer = window.setTimeout(async () => {
       try {
-        const params = new URLSearchParams({ limit: "50" });
-        if (patientFilter.trim()) {
-          params.set("q", patientFilter.trim());
+        const params = new URLSearchParams({ limit: String(PATIENT_SEARCH_LIMIT) });
+        if (rawQuery) {
+          params.set("q", rawQuery);
         }
         const response = await feeApi(`/v1/fee/patients?${params.toString()}`);
-        if (!cancelled) {
-          setPatients(mergeSelectedPatient(response.patients || [], patientFromSessionSnapshot(feeSession, form.patientId)));
+        if (requestSeq !== patientSearchRequestSeqRef.current) {
+          return;
         }
+        const nextPatients = response.patients || [];
+        patientSearchCacheRef.current.set(cacheKey, {
+          patients: nextPatients,
+          expiresAt: Date.now() + 5 * 60 * 1000
+        });
+        prunePatientSearchCache(patientSearchCacheRef.current);
+        setPatients(mergeSelectedPatient(nextPatients, patientFromSessionSnapshot(feeSession, form.patientId)));
       } catch {
         // Patient search is advisory; keep the current list if the request fails.
+      } finally {
+        if (requestSeq === patientSearchRequestSeqRef.current) {
+          setPatientSearchLoading(false);
+        }
       }
-    }, 180);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
+    }, cached ? 80 : 220);
+    return () => window.clearTimeout(timer);
   }, [feeApi, feeSession, form.patientId, patientFilter, patientPickerOpen]);
 
   useEffect(() => {
@@ -1291,49 +1300,8 @@ function FeeSessionDetailView({ sessionId }) {
     sessionId
   ]);
 
-  useEffect(() => {
-    if (loading || !feeSession?.feeSessionId || feeSession.status === "calculating") {
-      return undefined;
-    }
-    if (suppressAutoSaveRef.current) {
-      suppressAutoSaveRef.current = false;
-      return undefined;
-    }
-    window.clearTimeout(autoSaveTimerRef.current);
-    setAutoSaveStatus("pending");
-    setAutoSaveError("");
-    autoSaveTimerRef.current = window.setTimeout(() => {
-      setAutoSaveStatus("saving");
-      const task = saveDetails({ silent: true, auto: true })
-        .then(() => {
-          setAutoSaveStatus("saved");
-          setAutoSaveError("");
-        })
-        .catch((error) => {
-          setAutoSaveStatus("error");
-          setAutoSaveError(toUserFacingErrorMessage(error, "自動保存できませんでした。"));
-        })
-        .finally(() => {
-          pendingAutoSaveRef.current = null;
-        });
-      pendingAutoSaveRef.current = task;
-    }, 700);
-    return () => window.clearTimeout(autoSaveTimerRef.current);
-  }, [
-    feeSession?.feeSessionId,
-    feeSession?.status,
-    form,
-    loading,
-    orderRows,
-    saveDetails
-  ]);
-
   async function calculate(options = {}) {
     await runBusy(setBusy, addToast, async () => {
-      window.clearTimeout(autoSaveTimerRef.current);
-      if (pendingAutoSaveRef.current) {
-        await pendingAutoSaveRef.current;
-      }
       let saved = null;
       let calculationBody = {};
       if (options.skipSaveDetails) {
@@ -1468,8 +1436,6 @@ function FeeSessionDetailView({ sessionId }) {
       setFeeSession(response.feeSession || feeSession);
       setReceiptDraft(response.receiptDraft || receiptDraft);
       setCandidateWorkbench(response.candidateWorkbench || null);
-      setAutoSaveStatus("saved");
-      setAutoSaveError("");
       addToast("採否を更新しました。", "success");
     });
   }
@@ -1490,8 +1456,6 @@ function FeeSessionDetailView({ sessionId }) {
       setFeeSession(response.feeSession || feeSession);
       setReceiptDraft(response.receiptDraft || receiptDraft);
       setCandidateWorkbench(response.candidateWorkbench || null);
-      setAutoSaveStatus("saved");
-      setAutoSaveError("");
       addToast("コメント・詳記を保存しました。", "success");
     });
   }
@@ -1716,7 +1680,6 @@ function FeeSessionDetailView({ sessionId }) {
 
   const calculation = feeSession?.calculationResult || null;
   const isCalculating = feeSession?.status === "calculating";
-  const saveStatusLabel = autoSaveLabel(autoSaveStatus, autoSaveError);
 
   return (
     <main className="fee-shell fee-shell--detail">
@@ -1753,6 +1716,8 @@ function FeeSessionDetailView({ sessionId }) {
           orderCount={parseOrdersFromRows(orderRows).length}
           patientFilter={patientFilter}
           patientPickerOpen={patientPickerOpen}
+          patientSearchLoading={patientSearchLoading}
+          patientSearchReady={patientSearchReady}
           selectedPatient={selectedPatient}
           setNewPatient={setNewPatient}
           setPatientFilter={setPatientFilter}
@@ -1782,9 +1747,6 @@ function FeeSessionDetailView({ sessionId }) {
         />
       </div>
       <SessionActionFooter
-        autoSaveError={autoSaveError}
-        autoSaveLabelText={saveStatusLabel}
-        autoSaveStatus={autoSaveStatus}
         busy={busy}
         calculate={requestCalculate}
         isCalculating={isCalculating}
@@ -1867,13 +1829,9 @@ function FeeSessionDetailView({ sessionId }) {
   );
 }
 
-function SessionActionFooter({ autoSaveError, autoSaveLabelText, autoSaveStatus, busy, calculate, isCalculating, onRefresh }) {
+function SessionActionFooter({ busy, calculate, isCalculating, onRefresh }) {
   return (
     <footer className="fee-session-action-footer">
-      <div>
-        <strong>{autoSaveLabelText}</strong>
-        <small>{autoSaveStatus === "error" ? autoSaveError || "通信状態を確認してください。" : "入力と採否は自動保存されます。"}</small>
-      </div>
       <div className="source-action-buttons">
         <button className="btn btn--primary" disabled={busy || isCalculating} onClick={calculate} type="button">
           {isCalculating ? "算定候補を作成中" : "カルテから算定候補を作成"}
@@ -1902,7 +1860,6 @@ function MissingDiagnosisWarningModal({
       <section className="fee-modal-card missing-diagnosis-modal" role="dialog" aria-modal="true" aria-label="病名未入力の確認" onMouseDown={(event) => event.stopPropagation()}>
         <header className="fee-modal-head">
           <div>
-            <span className="modal-kicker">算定前確認</span>
             <h2>病名が未入力です</h2>
           </div>
           <button className="btn btn--ghost btn--icon" disabled={disabled} onClick={onClose} type="button" aria-label="閉じる">×</button>
@@ -1947,6 +1904,8 @@ function SourcePane({
   orderCount,
   patientFilter,
   patientPickerOpen,
+  patientSearchLoading,
+  patientSearchReady,
   selectedPatient,
   setNewPatient,
   setPatientFilter,
@@ -1973,6 +1932,8 @@ function SourcePane({
               onOpenChange={setPatientPickerOpen}
               onSelect={onSelectPatient}
               patientFilter={patientFilter}
+              searchLoading={patientSearchLoading}
+              searchReady={patientSearchReady}
               selectedPatient={selectedPatient}
             />
             <PatientCreateForm
@@ -2865,11 +2826,12 @@ function FeeSettingsModal({
   );
 }
 
-function PatientPicker({ filteredPatients, isOpen, onFilterChange, onOpenChange, onSelect, patientFilter, selectedPatient }) {
+function PatientPicker({ filteredPatients, isOpen, onFilterChange, onOpenChange, onSelect, patientFilter, searchLoading, searchReady, selectedPatient }) {
   const pickerRef = useRef(null);
   const selectedLabel = selectedPatient
     ? selectedPatient.displayName || "患者名未入力"
     : "患者を選択";
+  const hasQuery = Boolean(patientFilter.trim());
 
   useEffect(() => {
     if (!isOpen) {
@@ -2920,6 +2882,11 @@ function PatientPicker({ filteredPatients, isOpen, onFilterChange, onOpenChange,
               onChange={(event) => onFilterChange(event.target.value)}
             />
           </label>
+          {!searchReady ? (
+            <div className="patient-search-status">氏名は2文字以上、患者番号は1文字以上入力すると検索できます。</div>
+          ) : searchLoading && filteredPatients.length ? (
+            <div className="patient-search-status">検索結果を更新中です。</div>
+          ) : null}
           <div className="patient-result-list">
             {filteredPatients.length ? filteredPatients.map((patient) => (
               <button
@@ -2931,7 +2898,17 @@ function PatientPicker({ filteredPatients, isOpen, onFilterChange, onOpenChange,
                 <strong>{patient.displayName || "患者名未入力"}</strong>
                 <small>{patient.patientCode || patient.primaryPatientNumber || patient.externalPatientIds?.[0] || patient.patientId}</small>
               </button>
-            )) : <div className="fee-empty-state">一致する患者はいません。</div>}
+            )) : (
+              <div className="fee-empty-state">
+                {searchLoading
+                  ? "患者を検索しています。"
+                  : !searchReady
+                    ? "氏名は2文字以上、患者番号は1文字以上入力すると検索できます。"
+                    : hasQuery
+                      ? "一致する患者はいません。"
+                      : "最近更新された患者はありません。"}
+              </div>
+            )}
           </div>
         </div>
       ) : null}
@@ -3116,10 +3093,6 @@ function CandidateWorkbench({ calculation, candidateWorkbench, disabled, feeSess
             <h2>算定候補</h2>
             <p>患者とカルテ本文を確認し、「カルテから算定候補を作成」で候補を作成してください。</p>
           </div>
-        </div>
-        <div className="notice-card">
-          <strong>算定記録を準備しました</strong>
-          <p>{feeSession?.patientSnapshot?.displayName || feeSession?.patientId || "患者未選択"} / {feeSession?.serviceDate || "診療日未設定"} / {statusLabel(feeSession?.status || "ready")}</p>
         </div>
       </div>
     );
@@ -5325,13 +5298,6 @@ function orderTypeLabel(value = "") {
   return ORDER_TYPE_OPTIONS.find(([key]) => key === value)?.[1] || "";
 }
 
-function autoSaveLabel(status, error = "") {
-  if (status === "saving") return "保存中...";
-  if (status === "pending") return "変更を自動保存します。";
-  if (status === "error") return error || "自動保存できませんでした。";
-  return "保存済み";
-}
-
 function supportLevelLabel(level) {
   return ({
     supported: "対応済み",
@@ -5503,6 +5469,39 @@ function mergeSelectedPatient(patients = [], selectedPatient = null) {
     return list;
   }
   return [selectedPatient, ...list];
+}
+
+function shouldFetchPatientSearch(value = "") {
+  const query = String(value || "").trim();
+  if (!query) {
+    return true;
+  }
+  const normalized = normalizeSearch(query);
+  if (!normalized) {
+    return false;
+  }
+  return /[0-9a-z]/u.test(normalized) || [...normalized].length >= 2;
+}
+
+function normalizePatientSearchCacheKey(value = "") {
+  const query = String(value || "").trim();
+  return query ? `q:${normalizeSearch(query)}` : "recent";
+}
+
+function prunePatientSearchCache(cache) {
+  if (!cache || cache.size <= 30) {
+    return;
+  }
+  const now = Date.now();
+  for (const [key, value] of cache.entries()) {
+    if (!value || value.expiresAt <= now) {
+      cache.delete(key);
+    }
+  }
+  while (cache.size > 30) {
+    const oldestKey = cache.keys().next().value;
+    cache.delete(oldestKey);
+  }
 }
 
 function pruneMasterSearchCache(cache) {

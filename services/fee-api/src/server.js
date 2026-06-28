@@ -206,8 +206,9 @@ async function routeFeeApiRequest(input = {}) {
   }
 
   if (method === "GET" && matches(parts, ["v1", "fee", "patients"])) {
-    const patients = await platformStore.listPatients(context.session.orgId);
-    return ok({ patients: filterPatientsForFeeSearch(patients, patientListOptionsFromUrl(url)) });
+    const options = patientListOptionsFromUrl(url);
+    const patients = await platformStore.listPatients(context.session.orgId, options);
+    return ok({ patients: filterPatientsForFeeSearch(patients, options) });
   }
 
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "patients"]) && parts[4] === "billing-history") {

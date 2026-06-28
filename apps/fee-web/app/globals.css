@@ -1669,24 +1669,12 @@ body:has(.fee-shell--detail) {
   bottom: 0;
   left: 0;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   align-items: center;
   border-top: 1px solid var(--line);
   background: var(--surface);
   padding: 12px 20px;
-}
-
-.fee-session-action-footer strong,
-.fee-session-action-footer small {
-  display: block;
-}
-
-.fee-session-action-footer small {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .source-action-buttons,
@@ -2335,6 +2323,12 @@ body:has(.fee-shell--detail) {
   gap: 6px;
   max-height: 280px;
   overflow: auto;
+}
+
+.patient-search-status {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .patient-result {
@@ -3872,14 +3866,11 @@ body:has(.fee-shell--detail) {
     gap: 8px;
   }
 
-  .fee-session-action-footer > div {
-    width: 100%;
-  }
-
   .fee-session-action-footer .source-action-buttons {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     justify-content: stretch;
+    width: 100%;
   }
 
   .fee-session-action-footer .source-action-buttons .btn--primary {

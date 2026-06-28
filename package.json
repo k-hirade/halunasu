@@ -61,6 +61,7 @@
     "check:openai-final": "node scripts/check_openai_final_transcription.mjs",
     "check:openai-soap": "node scripts/check_openai_soap_pipeline.mjs",
     "ops:billing-maintenance": "node scripts/run_platform_billing_maintenance.mjs",
+    "ops:backfill:patient-search": "node scripts/backfill_platform_patient_search_fields.mjs",
     "ops:retention:dry-run": "node scripts/run_retention_cleanup.mjs",
     "ops:retention:apply": "node scripts/run_retention_cleanup.mjs --apply",
     "ops:runtime-artifacts:dry-run": "bash scripts/p19_cleanup_runtime_artifacts.sh",

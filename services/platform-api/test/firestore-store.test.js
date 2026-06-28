@@ -49,6 +49,45 @@ test("stores members and patients below organization documents", async () => {
   assert.equal((await store.getPatient(organization.orgId, patient.patientId)).patientIdentifiers[0].value, "legacy-001");
 });
 
+test("lists patients with bounded recent and search options", async () => {
+  let now = new Date("2026-05-27T00:00:00.000Z");
+  let counter = 0;
+  const store = new FirestorePlatformStore({
+    db: new FakeFirestoreDb(),
+    now: () => now,
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const organization = await store.createOrganization({
+    organizationCode: "Clinic Patient Search",
+    displayName: "Clinic Patient Search"
+  });
+  const alpha = await store.createPatient(organization.orgId, {
+    displayName: "Alpha Patient",
+    primaryPatientNumber: "000111"
+  });
+  now = new Date("2026-05-28T00:00:00.000Z");
+  const beta = await store.createPatient(organization.orgId, {
+    displayName: "Beta Patient",
+    primaryPatientNumber: "000222",
+    externalPatientIds: ["legacy-222"]
+  });
+
+  assert.equal(alpha.patientSearchName, undefined);
+  assert.equal(beta.patientSearchPrimaryNumber, undefined);
+  assert.deepEqual(
+    (await store.listPatients(organization.orgId, { limit: 1 })).map((patient) => patient.patientId),
+    [beta.patientId]
+  );
+  assert.deepEqual(
+    (await store.listPatients(organization.orgId, { search: "0001", limit: 10 })).map((patient) => patient.patientId),
+    [alpha.patientId]
+  );
+  assert.deepEqual(
+    (await store.listPatients(organization.orgId, { search: "legacy", limit: 10 })).map((patient) => patient.patientId),
+    [beta.patientId]
+  );
+});
+
 test("stores login identities and shared master data", async () => {
   const store = createTestStore();
   const organization = await store.createOrganization({
@@ -312,22 +351,50 @@ class FakeCollectionRef {
   orderBy(fieldName, direction) {
     return new FakeQuery(this.db, this.path, fieldName, direction);
   }
+
+  where(fieldName, operator, value) {
+    return new FakeQuery(this.db, this.path).where(fieldName, operator, value);
+  }
 }
 
 class FakeQuery {
-  constructor(db, path, fieldName, direction) {
+  constructor(db, path, fieldName = "", direction = "asc", filters = [], limitValue = null) {
     this.db = db;
     this.path = path;
     this.fieldName = fieldName;
     this.direction = direction;
+    this.filters = filters;
+    this.limitValue = limitValue;
+  }
+
+  where(fieldName, operator, value) {
+    return new FakeQuery(this.db, this.path, this.fieldName, this.direction, [
+      ...this.filters,
+      { fieldName, operator, value }
+    ], this.limitValue);
+  }
+
+  orderBy(fieldName, direction = "asc") {
+    return new FakeQuery(this.db, this.path, fieldName, direction, this.filters, this.limitValue);
+  }
+
+  limit(value) {
+    return new FakeQuery(this.db, this.path, this.fieldName, this.direction, this.filters, value);
   }
 
   async get() {
     const prefix = `${this.path}/`;
-    const docs = [...this.db.documents.entries()]
+    let docs = [...this.db.documents.entries()]
       .filter(([path]) => path.startsWith(prefix) && path.slice(prefix.length).split("/").length === 1)
       .map(([, value]) => new FakeDocumentSnapshot(value))
-      .sort((left, right) => compare(left.data()[this.fieldName], right.data()[this.fieldName], this.direction));
+      .filter((doc) => this.filters.every((filter) => matchesFilter(doc.data()[filter.fieldName], filter.operator, filter.value)));
+
+    if (this.fieldName) {
+      docs = docs.sort((left, right) => compare(left.data()[this.fieldName], right.data()[this.fieldName], this.direction));
+    }
+    if (this.limitValue !== null) {
+      docs = docs.slice(0, this.limitValue);
+    }
 
     return { docs };
   }
@@ -347,4 +414,12 @@ class FakeDocumentSnapshot {
 function compare(left, right, direction) {
   const result = String(left).localeCompare(String(right));
   return direction === "desc" ? -result : result;
+}
+
+function matchesFilter(left, operator, right) {
+  if (operator === "==") return left === right;
+  if (operator === "array-contains") return Array.isArray(left) && left.includes(right);
+  if (operator === ">=") return String(left) >= String(right);
+  if (operator === "<") return String(left) < String(right);
+  throw new Error(`unsupported fake filter operator: ${operator}`);
 }

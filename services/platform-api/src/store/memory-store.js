@@ -595,6 +595,7 @@ export class MemoryPlatformStore {
       patientId,
       orgId,
       ...normalized,
+      ...buildPatientSearchFields({ patientId, orgId, ...normalized }),
       mergedIntoPatientId: undefined,
       createdAt: now,
       updatedAt: now,
@@ -602,17 +603,22 @@ export class MemoryPlatformStore {
     });
 
     this.patientsForOrg(orgId).set(patientId, patient);
-    return patient;
+    return patientPublicView(patient);
   }
 
-  listPatients(orgId) {
+  listPatients(orgId, options = undefined) {
     this.requireOrganization(orgId);
-    return sortByCreatedAt([...this.patientsForOrg(orgId).values()]);
+    const list = [...this.patientsForOrg(orgId).values()];
+    if (!options) {
+      return sortByCreatedAt(list).map(patientPublicView);
+    }
+    return filterPatientsForListOptions(list, options).map(patientPublicView);
   }
 
   getPatient(orgId, patientId) {
     this.requireOrganization(orgId);
-    return this.patientsForOrg(orgId).get(patientId) || null;
+    const patient = this.patientsForOrg(orgId).get(patientId);
+    return patient ? patientPublicView(patient) : null;
   }
 
   updatePatient(orgId, patientId, input) {
@@ -626,11 +632,12 @@ export class MemoryPlatformStore {
     const updated = compactObject({
       ...current,
       ...patch,
+      ...buildPatientSearchFields({ ...current, ...patch }),
       updatedAt: this.timestamp()
     });
 
     this.patientsForOrg(orgId).set(patientId, updated);
-    return updated;
+    return patientPublicView(updated);
   }
 
   upsertProductEntitlement(orgId, input) {
@@ -994,6 +1001,156 @@ function daysFromNow(now, days) {
 
 function sortByCreatedAt(items) {
   return items.sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)));
+}
+
+function filterPatientsForListOptions(patients = [], options = {}) {
+  const normalized = normalizePatientListOptions(options);
+  const keyword = normalizePatientSearchValue(normalized.search);
+  const filtered = keyword
+    ? patients.filter((patient) => patientMatchesPatientSearch(patient, keyword))
+    : patients;
+  return filtered
+    .slice()
+    .sort(comparePatientsByRecentUpdate)
+    .slice(0, normalized.limit);
+}
+
+function patientPublicView(patient = {}) {
+  const {
+    patientSearchName,
+    patientSearchKana,
+    patientSearchPrimaryNumber,
+    patientSearchExternalId,
+    patientSearchId,
+    patientSearchPrefixes,
+    patientSearchText,
+    ...publicPatient
+  } = patient || {};
+  return structuredClone(publicPatient);
+}
+
+function normalizePatientListOptions(options = {}) {
+  return {
+    search: String(options.search || "").trim(),
+    limit: Math.min(Math.max(Number.parseInt(options.limit, 10) || 30, 1), 100)
+  };
+}
+
+function comparePatientsByRecentUpdate(left = {}, right = {}) {
+  const leftTime = Date.parse(left.updatedAt || left.createdAt || "");
+  const rightTime = Date.parse(right.updatedAt || right.createdAt || "");
+  const safeLeftTime = Number.isFinite(leftTime) ? leftTime : 0;
+  const safeRightTime = Number.isFinite(rightTime) ? rightTime : 0;
+  if (safeLeftTime !== safeRightTime) {
+    return safeRightTime - safeLeftTime;
+  }
+  return String(left.displayName || left.patientId || "").localeCompare(String(right.displayName || right.patientId || ""), "ja");
+}
+
+function buildPatientSearchFields(patient = {}) {
+  const primaryCode = patient.primaryPatientNumber
+    || patient.patientCode
+    || firstPatientIdentifierValue(patient)
+    || "";
+  const externalId = Array.isArray(patient.externalPatientIds) ? patient.externalPatientIds[0] : "";
+  const name = normalizePatientSearchValue(patient.displayName);
+  const kana = normalizePatientSearchValue(patient.displayNameKana);
+  const primaryNumber = normalizePatientSearchValue(primaryCode);
+  const external = normalizePatientSearchValue(externalId);
+  const patientId = normalizePatientSearchValue(patient.patientId);
+  return compactObject({
+    patientSearchName: name || undefined,
+    patientSearchKana: kana || undefined,
+    patientSearchPrimaryNumber: primaryNumber || undefined,
+    patientSearchExternalId: external || undefined,
+    patientSearchId: patientId || undefined,
+    patientSearchPrefixes: buildPatientSearchPrefixes(patient),
+    patientSearchText: normalizePatientSearchValue([
+      patient.displayName,
+      patient.displayNameKana,
+      primaryCode,
+      externalId,
+      patient.patientId
+    ].filter(Boolean).join(" ")) || undefined
+  });
+}
+
+function patientMatchesPatientSearch(patient = {}, keyword = "") {
+  const normalizedKeyword = normalizePatientSearchValue(keyword);
+  if (!normalizedKeyword) {
+    return true;
+  }
+  return patientSearchCandidates(patient).some((candidate) => (
+    candidate.startsWith(normalizedKeyword) || candidate.includes(normalizedKeyword)
+  ));
+}
+
+function patientSearchCandidates(patient = {}) {
+  const fields = buildPatientSearchFields(patient);
+  return [
+    fields.patientSearchName,
+    fields.patientSearchKana,
+    fields.patientSearchPrimaryNumber,
+    fields.patientSearchExternalId,
+    fields.patientSearchId,
+    fields.patientSearchText,
+    ...normalizePatientIdentifierValues(patient)
+  ].filter(Boolean);
+}
+
+function buildPatientSearchPrefixes(patient = {}) {
+  const fields = buildPatientSearchFieldsWithoutPrefixes(patient);
+  const values = [
+    fields.patientSearchName,
+    fields.patientSearchKana,
+    fields.patientSearchPrimaryNumber,
+    fields.patientSearchExternalId,
+    fields.patientSearchId,
+    ...normalizePatientIdentifierValues(patient)
+  ].filter(Boolean);
+  const prefixes = new Set();
+  for (const value of values) {
+    const chars = [...value].slice(0, 32);
+    for (let index = 1; index <= chars.length; index += 1) {
+      prefixes.add(chars.slice(0, index).join(""));
+    }
+  }
+  return prefixes.size ? [...prefixes].slice(0, 200) : undefined;
+}
+
+function buildPatientSearchFieldsWithoutPrefixes(patient = {}) {
+  const primaryCode = patient.primaryPatientNumber
+    || patient.patientCode
+    || firstPatientIdentifierValue(patient)
+    || "";
+  const externalId = Array.isArray(patient.externalPatientIds) ? patient.externalPatientIds[0] : "";
+  return compactObject({
+    patientSearchName: normalizePatientSearchValue(patient.displayName) || undefined,
+    patientSearchKana: normalizePatientSearchValue(patient.displayNameKana) || undefined,
+    patientSearchPrimaryNumber: normalizePatientSearchValue(primaryCode) || undefined,
+    patientSearchExternalId: normalizePatientSearchValue(externalId) || undefined,
+    patientSearchId: normalizePatientSearchValue(patient.patientId) || undefined
+  });
+}
+
+function firstPatientIdentifierValue(patient = {}) {
+  return normalizePatientIdentifierValues(patient)[0] || "";
+}
+
+function normalizePatientIdentifierValues(patient = {}) {
+  const identifiers = Array.isArray(patient.patientIdentifiers) ? patient.patientIdentifiers : [];
+  return identifiers
+    .map((identifier) => identifier?.value || identifier?.patientNumber || identifier?.id || "")
+    .map(normalizePatientSearchValue)
+    .filter(Boolean);
+}
+
+function normalizePatientSearchValue(value = "") {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\s+/gu, "")
+    .trim();
 }
 
 function compactObject(value) {

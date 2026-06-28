@@ -80,6 +80,24 @@ try {
     await page.goto(`${baseUrl}/sessions/fee_test_1`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "患者", level: 2 }).waitFor();
     await page.getByText("カルテの内容").waitFor();
+    assert.equal(await page.getByText("算定記録を準備しました").count(), 0, "empty candidate pane must not show patient-dependent preparation notice");
+    assert.equal(await page.getByText("入力と採否は自動保存されます。").count(), 0, "detail footer must not show autosave status copy");
+    await page.getByRole("button", { name: /患者名未入力/ }).click();
+    const patientDialog = page.getByRole("dialog", { name: "患者検索" });
+    await patientDialog.waitFor();
+    await waitForCondition(() => apiMocks.patientSearchRequests.length >= 1, "initial patient search request");
+    assert.equal(apiMocks.patientSearchRequests.at(-1).searchParams.get("limit"), "30");
+    assert.equal(apiMocks.patientSearchRequests.at(-1).searchParams.get("q"), null);
+    await patientDialog.getByPlaceholder("氏名・患者番号で検索").fill("山");
+    await page.waitForTimeout(320);
+    assert.equal(apiMocks.patientSearchRequests.length, 1, "single-character name search must not hit the API");
+    await patientDialog.getByPlaceholder("氏名・患者番号で検索").fill("吉田");
+    await waitForCondition(() => apiMocks.patientSearchRequests.some((url) => url.searchParams.get("q") === "吉田"), "patient search request for typed name");
+    const patchCountBeforePatientSelect = apiMocks.patchBodies.length;
+    await patientDialog.getByRole("button", { name: /吉田 結衣/ }).click();
+    await page.waitForTimeout(850);
+    assert.equal(apiMocks.patchBodies.length, patchCountBeforePatientSelect, "selecting a patient must not autosave the session before calculation");
+
     const clinicalEditor = page.locator(".clinical-text-editable");
     await clinicalEditor.getByText("ゲーベンクリーム XXgを塗布。").waitFor();
     assert.equal(
@@ -182,6 +200,11 @@ try {
     await missingDiagnosisDialog.waitFor();
     await missingDiagnosisDialog.getByRole("button", { name: "病名なしで進む" }).click();
     const patchBody = await apiMocks.patchPromise;
+    assert.equal(
+      patchBody.patientId,
+      "patient_100",
+      "selected patient must be saved only when calculation is requested"
+    );
     assert.deepEqual(
       patchBody.orders.map((order) => [order.orderType, order.localName, order.standardCode]),
       [],
@@ -254,8 +277,21 @@ async function waitForHttp(url, timeoutMs) {
   throw new Error(`Timed out waiting for ${url}.\n${serverOutput}`);
 }
 
+async function waitForCondition(predicate, label, timeoutMs = 3000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+}
+
 async function installApiMocks(page) {
   let patchResolve;
+  const patchBodies = [];
+  const patientSearchRequests = [];
   const patchPromise = new Promise((resolve) => {
     patchResolve = resolve;
   });
@@ -401,11 +437,37 @@ async function installApiMocks(page) {
       }
     })
   }));
+  await page.route("**/api/fee/v1/fee/patients**", (route) => {
+    const requestUrl = new URL(route.request().url());
+    patientSearchRequests.push(requestUrl);
+    const query = requestUrl.searchParams.get("q") || "";
+    const patients = query ? [{
+      patientId: "patient_100",
+      displayName: "吉田 結衣",
+      primaryPatientNumber: "100",
+      externalPatientIds: ["100"]
+    }] : [{
+      patientId: "patient_1",
+      displayName: "患者名未入力",
+      primaryPatientNumber: "1234",
+      externalPatientIds: ["1234"]
+    }, {
+      patientId: "patient_100",
+      displayName: "吉田 結衣",
+      primaryPatientNumber: "100",
+      externalPatientIds: ["100"]
+    }];
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ patients })
+    });
+  });
   await page.route("**/api/fee/v1/fee/sessions**", (route) => {
     const request = route.request();
     const requestUrl = request.url();
     if (request.method() === "PATCH" && requestUrl.match(/\/fee_test_1$/u)) {
       const body = JSON.parse(request.postData() || "{}");
+      patchBodies.push(body);
       patchResolve(body);
       return route.fulfill({
         contentType: "application/json",
@@ -472,7 +534,7 @@ async function installApiMocks(page) {
       })
     });
   });
-  return { patchPromise };
+  return { patchBodies, patchPromise, patientSearchRequests };
 }
 
 function buildMockCandidateWorkbench() {

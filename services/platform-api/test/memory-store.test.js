@@ -32,6 +32,45 @@ test("stores organizations, members, and patients in org scope", () => {
   assert.equal(store.listPatients(organization.orgId).length, 1);
 });
 
+test("lists patients with bounded recent and search options", () => {
+  let now = new Date("2026-05-27T00:00:00.000Z");
+  let counter = 0;
+  const store = new MemoryPlatformStore({
+    now: () => now,
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const organization = store.createOrganization({
+    organizationCode: "Clinic Patient Search",
+    displayName: "Clinic Patient Search"
+  });
+
+  const alpha = store.createPatient(organization.orgId, {
+    displayName: "Alpha Patient",
+    primaryPatientNumber: "000111"
+  });
+  now = new Date("2026-05-28T00:00:00.000Z");
+  const beta = store.createPatient(organization.orgId, {
+    displayName: "Beta Patient",
+    primaryPatientNumber: "000222",
+    externalPatientIds: ["legacy-222"]
+  });
+
+  assert.equal(alpha.patientSearchName, undefined);
+  assert.equal(beta.patientSearchPrimaryNumber, undefined);
+  assert.deepEqual(
+    store.listPatients(organization.orgId, { limit: 1 }).map((patient) => patient.patientId),
+    [beta.patientId]
+  );
+  assert.deepEqual(
+    store.listPatients(organization.orgId, { search: "0001", limit: 10 }).map((patient) => patient.patientId),
+    [alpha.patientId]
+  );
+  assert.deepEqual(
+    store.listPatients(organization.orgId, { search: "legacy", limit: 10 }).map((patient) => patient.patientId),
+    [beta.patientId]
+  );
+});
+
 test("stores login identities and shared master data", () => {
   let counter = 0;
   const store = new MemoryPlatformStore({
