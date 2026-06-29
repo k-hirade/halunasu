@@ -28,6 +28,7 @@ This directory contains architecture decisions and system diagrams for the Halun
 - [022 App Billing Trial And Pricing Plan](022-app-billing-trial-and-pricing-plan.md)
 - [027 Fee Charting UI Parity Audit](027-fee-charting-ui-parity-audit.md)
 - [028 Zero Trust Security Risk Audit](028-zero-trust-security-risk-audit.md)
+- [031 STG Netlify IP Allowlist Runbook](031-stg-netlify-ip-allowlist-runbook.md)
 
 ## Reading Order
 
@@ -55,3 +56,4 @@ This directory contains architecture decisions and system diagrams for the Halun
 22. Use the app billing trial and pricing plan before changing signup, Stripe Prices, reminders, or product entitlement billing.
 23. Use the fee/charting UI parity audit before changing the fee calculation browser app.
 24. Use the zero-trust security risk audit before exposing SOAP/Core Admin workflows to real PHI or production customers.
+25. Use the STG Netlify IP allowlist runbook before changing staging frontend access restrictions.

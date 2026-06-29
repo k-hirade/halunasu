@@ -131,6 +131,15 @@ function shouldCopyStaticAsset(sourcePath) {
 }
 
 async function writeNetlifyDeployFiles(destination, targets) {
+  await writeFile(join(destination, "netlify.toml"), [
+    "[build]",
+    "publish = \".\"",
+    "",
+    "[[edge_functions]]",
+    "path = \"/*\"",
+    "function = \"stg-gate\"",
+    ""
+  ].join("\n"));
   await writeFile(join(destination, "_redirects"), [
     `/api/platform/* ${requiredTarget(targets, "platform")}/:splat 200`,
     `/api/charting/* ${requiredTarget(targets, "charting")}/:splat 200`,

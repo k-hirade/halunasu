@@ -70,7 +70,7 @@ for (const job of jobs) {
     "--site",
     job.site.siteId,
     "--dir",
-    publishDir,
+    ".",
     "--message",
     `P13 ${job.env}/${job.app}`
   ];
@@ -80,18 +80,68 @@ for (const job of jobs) {
   console.log(`Target domain: ${job.site.targetDomain}`);
 
   if (apply) {
-    const result = spawnSync(command[0], command.slice(1), {
-      cwd: tmpdir(),
-      env: process.env,
-      stdio: "inherit"
-    });
-    if (result.status !== 0) {
-      process.exit(result.status || 1);
+    const deployEnv = {
+      ...process.env,
+      NETLIFY_SITE_ID: job.site.siteId,
+      HALUNASU_ENV: job.env,
+      NEXT_PUBLIC_HALUNASU_ENV: job.env,
+      ...stgGateEnvForDeploy(job.env)
+    };
+    for (const [key, value] of Object.entries(stgGateEnvForDeploy(job.env))) {
+      setNetlifyEnv({ key, siteId: job.site.siteId, value });
     }
+    runCommand(["netlify", "build"], {
+      cwd: publishDir,
+      env: deployEnv
+    });
+    runCommand(command, {
+      cwd: publishDir,
+      env: deployEnv
+    });
   } else {
+    console.log("DRY RUN: netlify build");
     console.log(`DRY RUN: ${formatCommand(command)}`);
   }
   console.log();
+}
+
+function runCommand(command, options = {}) {
+  const result = spawnSync(command[0], command.slice(1), {
+    cwd: options.cwd || tmpdir(),
+    env: options.env || process.env,
+    stdio: "inherit"
+  });
+  if (result.status !== 0) {
+    process.exit(result.status || 1);
+  }
+}
+
+function setNetlifyEnv({ key, siteId, value }) {
+  runCommand([
+    "netlify",
+    "env:set",
+    key,
+    value,
+    "--context",
+    "production",
+    "--force"
+  ], {
+    cwd: tmpdir(),
+    env: {
+      ...process.env,
+      NETLIFY_SITE_ID: siteId
+    }
+  });
+}
+
+function stgGateEnvForDeploy(env) {
+  const values = {
+    STG_GATE_ENABLED: env === "stg" ? "true" : "false"
+  };
+  if (env === "stg" && process.env.STG_GATE_ALLOWED_IPS) {
+    values.STG_GATE_ALLOWED_IPS = process.env.STG_GATE_ALLOWED_IPS;
+  }
+  return values;
 }
 
 function parseArgs(values) {

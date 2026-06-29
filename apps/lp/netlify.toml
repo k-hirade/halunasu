@@ -1,6 +1,10 @@
 [build]
   publish = "."
 
+[[edge_functions]]
+  path = "/*"
+  function = "stg-gate"
+
 [[headers]]
   for = "/*"
   [headers.values]

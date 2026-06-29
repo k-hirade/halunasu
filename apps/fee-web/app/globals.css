@@ -2167,6 +2167,200 @@ body:has(.fee-shell--detail) {
   font-weight: 900;
 }
 
+/* 統合設定(2ペイン) */
+.fee-settings-app {
+  display: grid;
+  gap: 14px;
+}
+
+.fee-settings-facility {
+  width: auto;
+  min-width: 200px;
+}
+
+.fee-settings-search {
+  width: auto;
+  flex: 1 1 220px;
+  max-width: 360px;
+}
+
+.fee-settings-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.fee-settings-nav {
+  position: sticky;
+  top: 64px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.fee-settings-nav-group {
+  display: grid;
+  gap: 2px;
+}
+
+.fee-settings-nav-group-label {
+  padding: 0 10px;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.fee-settings-nav-item {
+  text-align: left;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #344054;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.fee-settings-nav-item:hover {
+  background: #eef2f7;
+}
+
+.fee-settings-nav-item.is-active {
+  background: #eff8ff;
+  color: #175cd3;
+}
+
+.fee-settings-content {
+  min-width: 0;
+}
+
+.fee-settings-section {
+  display: grid;
+  gap: 4px;
+}
+
+.fee-settings-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.fee-settings-section-head h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.fee-settings-section-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.fee-settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.5fr);
+  gap: 16px;
+  align-items: center;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.fee-settings-row-label strong {
+  display: block;
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.fee-settings-row-label small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.fee-settings-row-control select,
+.fee-settings-row-control input {
+  width: 100%;
+}
+
+.fee-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #475467;
+}
+
+.fee-toggle input {
+  width: auto;
+}
+
+.fee-severity-group-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.fee-severity-bulk {
+  display: flex;
+  gap: 6px;
+}
+
+.btn--xs {
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.fee-standard-row--soon input,
+.fee-standard-row--soon select {
+  border-color: #f59e0b;
+}
+
+.fee-standard-row--expired input,
+.fee-standard-row--expired select {
+  border-color: #dc2626;
+}
+
+.fee-standard-expiry {
+  display: block;
+  margin-top: 2px;
+  color: #b54708;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .fee-settings-body {
+    grid-template-columns: 1fr;
+  }
+  .fee-settings-nav {
+    position: static;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    overflow-x: auto;
+    gap: 8px;
+  }
+  .fee-settings-nav-group {
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+  }
+  .fee-settings-nav-group-label {
+    display: none;
+  }
+}
+
 .patient-inline-create {
   display: flex;
   justify-content: flex-end;

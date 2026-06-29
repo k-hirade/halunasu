@@ -74,6 +74,9 @@ for (const env of envs) {
   setNetlifyEnv(site.siteId, "HALUNASU_ENV", env);
   setNetlifyEnv(site.siteId, "LP_BASE_URL", lpBaseUrl);
   setNetlifyEnv(site.siteId, "NEXT_PUBLIC_LP_BASE_URL", lpBaseUrl);
+  for (const [key, value] of Object.entries(stgGateEnvForDeploy(env))) {
+    setNetlifyEnv(site.siteId, key, value);
+  }
 
   const buildEnv = {
     ...process.env,
@@ -90,7 +93,8 @@ for (const env of envs) {
     NEXT_PUBLIC_BILLING_BASE_URL: "/billing",
     BILLING_PROXY_TARGET: billingUrl,
     LP_BASE_URL: lpBaseUrl,
-    NEXT_PUBLIC_LP_BASE_URL: lpBaseUrl
+    NEXT_PUBLIC_LP_BASE_URL: lpBaseUrl,
+    ...stgGateEnvForDeploy(env)
   };
 
   runCommand(["netlify", "build"], {
@@ -135,7 +139,7 @@ async function prepareNetlifyFrameworkOutput() {
     throw new Error(`Missing Netlify generated static dir: ${staticDir}`);
   }
 
-  for (const name of ["functions", "functions-internal", "deploy"]) {
+  for (const name of ["functions", "functions-internal", "deploy", "edge-functions", "edge-functions-dist"]) {
     const source = join(generatedRoot, name);
     if (!existsSync(source)) {
       continue;
@@ -144,6 +148,13 @@ async function prepareNetlifyFrameworkOutput() {
     await rm(destination, { recursive: true, force: true });
     await mkdir(dirname(destination), { recursive: true });
     await cp(source, destination, { recursive: true });
+  }
+  for (const name of ["edge-functions-import-map.json"]) {
+    const source = join(generatedRoot, name);
+    if (!existsSync(source)) {
+      continue;
+    }
+    await cp(source, join(deployRoot, name));
   }
 
   const handlerDir = join(deployRoot, "functions-internal", "___netlify-server-handler");
@@ -193,6 +204,16 @@ function setNetlifyEnv(siteId, key, value) {
       NETLIFY_SITE_ID: siteId
     }
   });
+}
+
+function stgGateEnvForDeploy(env) {
+  const values = {
+    STG_GATE_ENABLED: env === "stg" ? "true" : "false"
+  };
+  if (env === "stg" && process.env.STG_GATE_ALLOWED_IPS) {
+    values.STG_GATE_ALLOWED_IPS = process.env.STG_GATE_ALLOWED_IPS;
+  }
+  return values;
 }
 
 function runCommand(command, options = {}) {

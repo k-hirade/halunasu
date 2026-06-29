@@ -16,14 +16,8 @@ const ADMIN_SECTIONS = [
   {
     id: "settings",
     group: "設定",
-    label: "算定設定",
-    description: "算定時の初期値、レビュー表示、マスター検索の扱いを管理します。"
-  },
-  {
-    id: "receipt-settings",
-    group: "設定",
-    label: "レセプト設定",
-    description: "レセ電出力、出力前チェック、コメント・詳記の既定値を管理します。"
+    label: "設定",
+    description: "算定の前提・施設基準・レセプト出力の既定値をまとめて管理します。"
   },
   {
     id: "master",
@@ -115,7 +109,9 @@ export function FeeAdminConsole() {
     () => ADMIN_SECTIONS.filter((section) => !section.stgOnly || isStgEnv),
     [isStgEnv]
   );
-  const currentSection = adminSections.find((section) => section.id === activeTab) || null;
+  // 旧「レセプト設定」リンク(?section=receipt-settings)は統合した「設定」へ寄せる。
+  const resolvedTab = activeTab === "receipt-settings" ? "settings" : activeTab;
+  const currentSection = adminSections.find((section) => section.id === resolvedTab) || null;
   const [platformData, setPlatformData] = useState({});
   const [feeData, setFeeData] = useState({});
   const [loadingSection, setLoadingSection] = useState("");
@@ -252,12 +248,8 @@ function renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platfo
     );
   }
 
-  if (activeTab === "settings") {
-    return <FeeSettingsPanel data={feeData} mode="billing" />;
-  }
-
-  if (activeTab === "receipt-settings") {
-    return <FeeSettingsPanel data={feeData} mode="receipt" />;
+  if (activeTab === "settings" || activeTab === "receipt-settings") {
+    return <FeeSettingsPanel data={feeData} initialGroup={activeTab === "receipt-settings" ? "receipt" : "billing"} />;
   }
 
   if (activeTab === "master") {
@@ -333,7 +325,7 @@ function renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platfo
   );
 }
 
-function FeeSettingsPanel({ data, mode = "billing" }) {
+function FeeSettingsPanel({ data, initialGroup = "billing" }) {
   const facilities = Array.isArray(data.facilities) ? data.facilities : [];
   const settingsMap = data.settings || {};
   const firstFacilityId = facilities[0]?.facilityId || "default";
@@ -346,6 +338,8 @@ function FeeSettingsPanel({ data, mode = "billing" }) {
   const [saving, setSaving] = useState(false);
   const [savedMessage, setSavedMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [activeSection, setActiveSection] = useState(initialGroup === "receipt" ? "receipt-output" : "history");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     setSelectedFacilityId(firstFacilityId);
@@ -469,19 +463,31 @@ function FeeSettingsPanel({ data, mode = "billing" }) {
 
   const receiptPolicy = receiptPolicyForDraft(draft, selectedFacilityId);
   const receiptAnnotationDefaults = receiptPolicy.annotationDefaults || {};
-  const showBillingSettings = mode !== "receipt";
-  const showReceiptSettings = mode === "receipt";
+  const keyword = search.trim().toLowerCase();
+  const visibleNav = keyword
+    ? SETTINGS_NAV.filter((section) => `${section.label} ${section.keywords || ""}`.toLowerCase().includes(keyword))
+    : SETTINGS_NAV;
+  const currentSectionId = visibleNav.some((section) => section.id === activeSection)
+    ? activeSection
+    : (visibleNav[0]?.id || activeSection);
+  const navGroups = [...new Set(visibleNav.map((section) => section.group))];
 
   return (
-    <div className="fee-admin-placeholder fee-settings-grid">
+    <div className="fee-settings-app">
       <div className="fee-settings-bar">
         <div className="fee-settings-bar-main">
-          <select value={selectedFacilityId} onChange={(event) => setSelectedFacilityId(event.target.value)}>
+          <select className="fee-settings-facility" value={selectedFacilityId} onChange={(event) => setSelectedFacilityId(event.target.value)}>
             {facilities.map((facility) => (
               <option key={facility.facilityId} value={facility.facilityId}>{facility.displayName || facility.facilityId}</option>
             ))}
           </select>
-          <span className="fee-settings-note">{mode === "receipt" ? "提出物の形式と出力前チェックの既定値です。点数・算定要件は上書きしません。" : "算定時の前提・確認方針です。点数・算定ルールは公式マスタで固定です。"}</span>
+          <input
+            className="fee-settings-search"
+            type="search"
+            placeholder="設定を検索…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
         </div>
         <div className="fee-settings-bar-actions">
           {dirty ? <span className="fee-settings-dirty">未保存の変更</span> : null}
@@ -493,153 +499,256 @@ function FeeSettingsPanel({ data, mode = "billing" }) {
       {errorMessage ? <div className="fee-error-state" role="status">{errorMessage}</div> : null}
       {savedMessage ? <div className="fee-empty-state" role="status">{savedMessage}</div> : null}
 
-      <div className="fee-setting-card">
-        <strong>基本施設情報</strong>
-        <dl className="account-definition-list">
-          <div><dt>医療機関コード</dt><dd>{selectedFacility?.medicalInstitutionCode || "-"}</dd></div>
-          <div><dt>施設種別</dt><dd>{selectedFacility?.facilityType || "-"}</dd></div>
-          <div><dt>都道府県</dt><dd>{selectedFacility?.prefecture || "-"}</dd></div>
-          <div><dt>地方厚生局</dt><dd>{selectedFacility?.regionalBureau || "-"}</dd></div>
-        </dl>
-      </div>
+      <div className="fee-settings-body">
+        <nav className="fee-settings-nav" aria-label="設定セクション">
+          {navGroups.map((group) => (
+            <div className="fee-settings-nav-group" key={group || "_"}>
+              {group ? <span className="fee-settings-nav-group-label">{group}</span> : null}
+              {visibleNav.filter((section) => section.group === group).map((section) => (
+                <button
+                  className={`fee-settings-nav-item ${currentSectionId === section.id ? "is-active" : ""}`}
+                  key={section.id}
+                  onClick={() => setActiveSection(section.id)}
+                  type="button"
+                >
+                  {section.label}
+                </button>
+              ))}
+            </div>
+          ))}
+          {visibleNav.length === 0 ? <p className="fee-setting-help">一致する設定はありません。</p> : null}
+        </nav>
 
-      {showBillingSettings ? <div className="fee-setting-card">
-        <div className="fee-setting-card-head">
-          <strong>施設基準・届出</strong>
-          <button className="btn btn--ghost btn--sm" onClick={addFacilityStandard} type="button">＋ 追加</button>
+        <div className="fee-settings-content">
+          {currentSectionId === "facility" ? (
+            <SettingsSection title="施設情報" help="Core Adminで管理する施設の基本情報です（ここでは編集できません）。">
+              <dl className="account-definition-list">
+                <div><dt>医療機関名</dt><dd>{selectedFacility?.displayName || "-"}</dd></div>
+                <div><dt>医療機関コード</dt><dd>{selectedFacility?.medicalInstitutionCode || "-"}</dd></div>
+                <div><dt>施設種別</dt><dd>{selectedFacility?.facilityType || "-"}</dd></div>
+                <div><dt>都道府県</dt><dd>{selectedFacility?.prefecture || "-"}</dd></div>
+                <div><dt>地方厚生局</dt><dd>{selectedFacility?.regionalBureau || "-"}</dd></div>
+              </dl>
+            </SettingsSection>
+          ) : null}
+
+          {currentSectionId === "history" ? (
+            <SettingsSection title="履歴の扱い" help="過去受診の参照範囲と、履歴が不完全なときの確認方針です。点数・算定ルールは公式マスタで固定で、上書きしません。">
+              <SettingRow label="参照期間" help="過去の受診をどこまで遡って参照するか。">
+                <select value={draft.historyPolicy?.defaultLookbackMonths || 12} onChange={(event) => updateHistoryPolicy({ defaultLookbackMonths: Number(event.target.value) })}>
+                  {[2, 3, 4, 6, 12].map((month) => <option key={month} value={month}>{month}か月</option>)}
+                </select>
+              </SettingRow>
+              <SettingRow label="履歴完全性" help="取り込めている過去履歴の完全さ。算定の確信度に影響します。">
+                <select value={draft.historyPolicy?.historyCompleteness || "unknown"} onChange={(event) => updateHistoryPolicy({ historyCompleteness: event.target.value })}>
+                  <option value="complete">完全</option>
+                  <option value="partial">一部</option>
+                  <option value="unknown">不明</option>
+                </select>
+              </SettingRow>
+              <SettingRow label="外部履歴を利用する" help="外部レセ・CSV・手入力で取り込んだ履歴も参照します。">
+                <ToggleInput checked={draft.historyPolicy?.externalHistoryEnabled === true} onChange={(checked) => updateHistoryPolicy({ externalHistoryEnabled: checked })} />
+              </SettingRow>
+            </SettingsSection>
+          ) : null}
+
+          {currentSectionId === "initial-revisit" ? (
+            <SettingsSection title="初診・再診" help="初診/再診の公式定義は上書きしません。履歴が不完全なときの確認方針のみ管理します。">
+              <SettingRow label="履歴なしはレビュー必須" help="過去履歴が無い場合、初診/再診の確定を医事レビューに回します。">
+                <ToggleInput checked={draft.initialRevisitPolicy?.requireReviewWhenNoHistory !== false} onChange={(checked) => updateInitialRevisitPolicy({ requireReviewWhenNoHistory: checked })} />
+              </SettingRow>
+            </SettingsSection>
+          ) : null}
+
+          {currentSectionId === "facility-standards" ? (
+            <SettingsSection
+              title="施設基準・届出"
+              help="届出済みの施設基準を管理します。状態が「届出済み」の行のキーだけを算定の前提に使います（受理番号・算定開始日・有効期限は届出管理用）。"
+              action={<button className="btn btn--ghost btn--sm" onClick={addFacilityStandard} type="button">＋ 追加</button>}
+            >
+              {facilityStandards.length ? (
+                <div className="fee-standard-table-wrap">
+                  <table className="fee-standard-table">
+                    <thead>
+                      <tr>
+                        <th>施設基準キー</th>
+                        <th>名称</th>
+                        <th>受理番号</th>
+                        <th>算定開始日</th>
+                        <th>有効期限</th>
+                        <th>状態</th>
+                        <th aria-label="操作" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {facilityStandards.map((entry, index) => (
+                        <tr className={facilityStandardExpiryClass(entry)} key={index}>
+                          <td><input value={entry.key} placeholder="例: lab_management_1" onChange={(event) => updateFacilityStandard(index, { key: event.target.value })} /></td>
+                          <td><input value={entry.name} placeholder="例: 検体検査管理加算(I)" onChange={(event) => updateFacilityStandard(index, { name: event.target.value })} /></td>
+                          <td><input value={entry.acceptanceNumber} placeholder="第○号" onChange={(event) => updateFacilityStandard(index, { acceptanceNumber: event.target.value })} /></td>
+                          <td><input type="date" value={entry.claimStartDate} onChange={(event) => updateFacilityStandard(index, { claimStartDate: event.target.value })} /></td>
+                          <td>
+                            <input type="date" value={entry.effectiveTo} onChange={(event) => updateFacilityStandard(index, { effectiveTo: event.target.value })} />
+                            {facilityStandardExpiryNote(entry) ? <small className="fee-standard-expiry">{facilityStandardExpiryNote(entry)}</small> : null}
+                          </td>
+                          <td>
+                            <select value={entry.status} onChange={(event) => updateFacilityStandard(index, { status: event.target.value })}>
+                              {FACILITY_STANDARD_STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                            </select>
+                          </td>
+                          <td><button className="btn btn--ghost btn--sm" onClick={() => removeFacilityStandard(index)} type="button">削除</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <p className="fee-setting-help">届出済みの施設基準を「＋追加」から登録してください。</p>}
+            </SettingsSection>
+          ) : null}
+
+          {currentSectionId === "receipt-output" ? (
+            <SettingsSection title="レセプト出力" help="提出物(レセ電/CSV)の形式の既定値です。点数・算定要件は上書きしません。">
+              <SettingRow label="レセプト表示単位の既定" help="プレビュー/出力の既定スコープ。施設ごとに上書きできます。">
+                <select value={receiptPolicy.defaultReceiptScope || "service_date"} onChange={(event) => updateReceiptPolicy({ defaultReceiptScope: event.target.value })}>
+                  <option value="service_date">診療日単位</option>
+                  <option value="monthly">月次集計</option>
+                </select>
+              </SettingRow>
+              <SettingRow label="レセ電(UKE)の既定文字コード" help="レセ電出力の文字コード。">
+                <select value={receiptPolicy.ukeEncoding || "shift_jis"} onChange={(event) => updateReceiptPolicy({ ukeEncoding: event.target.value })}>
+                  <option value="shift_jis">Shift_JIS</option>
+                  <option value="utf-8">UTF-8</option>
+                </select>
+              </SettingRow>
+              <SettingRow label="接続先レセコンの仕様を確認済み" help="CSV/UKE/APIの取込仕様を検証済みとして扱います。">
+                <ToggleInput checked={receiptPolicy.connectorSpecVerified === true} onChange={(checked) => updateReceiptPolicy({ connectorSpecVerified: checked })} />
+              </SettingRow>
+              <SettingRow label="必須エラー時は出力を止める" help="出力前チェックの必須エラーがある場合、CSV/UKE出力をブロックします。">
+                <ToggleInput checked={receiptPolicy.blockExportOnErrors === true} onChange={(checked) => updateReceiptPolicy({ blockExportOnErrors: checked })} />
+              </SettingRow>
+            </SettingsSection>
+          ) : null}
+
+          {currentSectionId === "receipt-validation" ? (
+            <SettingsSection title="出力前チェック" help="提出前に不足項目を検出する重大度です。「必須エラー」は出力停止の対象にできます。">
+              {RECEIPT_VALIDATION_GROUPS.map(([groupLabel, fields]) => (
+                <div className="fee-severity-group" key={groupLabel}>
+                  <div className="fee-severity-group-top">
+                    <span className="fee-severity-group-label">{groupLabel}</span>
+                    <div className="fee-severity-bulk">
+                      {RECEIPT_SEVERITY_OPTIONS.map(([value, label]) => (
+                        <button
+                          className="btn btn--ghost btn--xs"
+                          key={value}
+                          onClick={() => fields.forEach(([key]) => updateReceiptValidationSeverity(key, value))}
+                          type="button"
+                        >
+                          全て{label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {fields.map(([key, label]) => (
+                    <ReceiptSeveritySelect
+                      key={key}
+                      label={label}
+                      value={receiptPolicy.validationSeverity?.[key] || "warning"}
+                      onChange={(value) => updateReceiptValidationSeverity(key, value)}
+                    />
+                  ))}
+                </div>
+              ))}
+            </SettingsSection>
+          ) : null}
+
+          {currentSectionId === "receipt-annotations" ? (
+            <SettingsSection title="コメント・症状詳記の既定値" help="レセプトのコメント・症状詳記に使う既定の区分です。">
+              <SettingRow label="コメントの既定診療識別" help="コメント(CO)に既定で付与する診療識別。">
+                <input maxLength={8} placeholder="例: 60" value={receiptAnnotationDefaults.commentShinryoIdentification || ""} onChange={(event) => updateReceiptAnnotationDefaults({ commentShinryoIdentification: event.target.value })} />
+              </SettingRow>
+              <SettingRow label="症状詳記の既定区分" help="症状詳記(SJ)に既定で付与する区分。">
+                <input maxLength={8} placeholder="例: 01" value={receiptAnnotationDefaults.symptomDetailKubun || ""} onChange={(event) => updateReceiptAnnotationDefaults({ symptomDetailKubun: event.target.value })} />
+              </SettingRow>
+            </SettingsSection>
+          ) : null}
         </div>
-        <p className="fee-setting-help">届出済みの施設基準を管理します。状態が「届出済み」の行のキーだけを算定の前提として使います（受理番号・算定開始日・有効期限は届出管理用）。</p>
-        {facilityStandards.length ? (
-          <div className="fee-standard-table-wrap">
-            <table className="fee-standard-table">
-              <thead>
-                <tr>
-                  <th>施設基準キー</th>
-                  <th>名称</th>
-                  <th>受理番号</th>
-                  <th>算定開始日</th>
-                  <th>有効期限</th>
-                  <th>状態</th>
-                  <th aria-label="操作" />
-                </tr>
-              </thead>
-              <tbody>
-                {facilityStandards.map((entry, index) => (
-                  <tr key={index}>
-                    <td><input value={entry.key} placeholder="例: lab_management_1" onChange={(event) => updateFacilityStandard(index, { key: event.target.value })} /></td>
-                    <td><input value={entry.name} placeholder="例: 検体検査管理加算(I)" onChange={(event) => updateFacilityStandard(index, { name: event.target.value })} /></td>
-                    <td><input value={entry.acceptanceNumber} placeholder="第○号" onChange={(event) => updateFacilityStandard(index, { acceptanceNumber: event.target.value })} /></td>
-                    <td><input type="date" value={entry.claimStartDate} onChange={(event) => updateFacilityStandard(index, { claimStartDate: event.target.value })} /></td>
-                    <td><input type="date" value={entry.effectiveTo} onChange={(event) => updateFacilityStandard(index, { effectiveTo: event.target.value })} /></td>
-                    <td>
-                      <select value={entry.status} onChange={(event) => updateFacilityStandard(index, { status: event.target.value })}>
-                        {FACILITY_STANDARD_STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                      </select>
-                    </td>
-                    <td><button className="btn btn--ghost btn--sm" onClick={() => removeFacilityStandard(index)} type="button">削除</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : <p className="fee-setting-help">届出済みの施設基準を「＋追加」から登録してください。</p>}
-      </div> : null}
-
-      {showBillingSettings ? <div className="fee-setting-card">
-        <strong>履歴の扱い</strong>
-        <p className="fee-setting-help">過去受診の参照範囲と、履歴が不完全なときの確認方針です。</p>
-        <label className="fee-field">
-          <span>参照期間</span>
-          <select value={draft.historyPolicy?.defaultLookbackMonths || 12} onChange={(event) => updateHistoryPolicy({ defaultLookbackMonths: Number(event.target.value) })}>
-            {[2, 3, 4, 6, 12].map((month) => <option key={month} value={month}>{month}か月</option>)}
-          </select>
-        </label>
-        <label className="fee-field">
-          <span>履歴完全性</span>
-          <select value={draft.historyPolicy?.historyCompleteness || "unknown"} onChange={(event) => updateHistoryPolicy({ historyCompleteness: event.target.value })}>
-            <option value="complete">完全</option>
-            <option value="partial">一部</option>
-            <option value="unknown">不明</option>
-          </select>
-        </label>
-        <label className="fee-checkbox">
-          <input checked={draft.historyPolicy?.externalHistoryEnabled === true} onChange={(event) => updateHistoryPolicy({ externalHistoryEnabled: event.target.checked })} type="checkbox" />
-          <span>外部レセ/CSV/手入力履歴を利用する</span>
-        </label>
-        <label className="fee-checkbox">
-          <input checked={draft.initialRevisitPolicy?.requireReviewWhenNoHistory !== false} onChange={(event) => updateInitialRevisitPolicy({ requireReviewWhenNoHistory: event.target.checked })} type="checkbox" />
-          <span>履歴なしの場合は初診/再診をレビュー必須にする</span>
-        </label>
-      </div> : null}
-
-      {showReceiptSettings ? <div className="fee-setting-card">
-        <strong>レセプト出力</strong>
-        <p className="fee-setting-help">提出物(レセ電/CSV)の形式の既定値です。点数・算定要件は上書きしません。</p>
-        <label className="fee-field">
-          <span>レセプト表示単位の既定</span>
-          <select value={receiptPolicy.defaultReceiptScope || "service_date"} onChange={(event) => updateReceiptPolicy({ defaultReceiptScope: event.target.value })}>
-            <option value="service_date">診療日単位</option>
-            <option value="monthly">月次集計</option>
-          </select>
-        </label>
-        <label className="fee-field">
-          <span>レセ電(UKE)の既定文字コード</span>
-          <select value={receiptPolicy.ukeEncoding || "shift_jis"} onChange={(event) => updateReceiptPolicy({ ukeEncoding: event.target.value })}>
-            <option value="shift_jis">Shift_JIS</option>
-            <option value="utf-8">UTF-8</option>
-          </select>
-        </label>
-        <label className="fee-checkbox">
-          <input checked={receiptPolicy.connectorSpecVerified === true} onChange={(event) => updateReceiptPolicy({ connectorSpecVerified: event.target.checked })} type="checkbox" />
-          <span>接続先レセコンのCSV/UKE/API仕様を確認済みにする</span>
-        </label>
-        <label className="fee-checkbox">
-          <input checked={receiptPolicy.blockExportOnErrors === true} onChange={(event) => updateReceiptPolicy({ blockExportOnErrors: event.target.checked })} type="checkbox" />
-          <span>必須エラーがある場合はCSV/UKE出力を止める</span>
-        </label>
-      </div> : null}
-
-      {showReceiptSettings ? <div className="fee-setting-card">
-        <strong>出力前チェック</strong>
-        <p className="fee-setting-help">提出前に不足項目を検出する重大度です。「必須エラー」は上の設定で出力を止められます。</p>
-        {RECEIPT_VALIDATION_GROUPS.map(([groupLabel, fields]) => (
-          <div className="fee-severity-group" key={groupLabel}>
-            <span className="fee-severity-group-label">{groupLabel}</span>
-            {fields.map(([key, label]) => (
-              <ReceiptSeveritySelect
-                key={key}
-                label={label}
-                value={receiptPolicy.validationSeverity?.[key] || "warning"}
-                onChange={(value) => updateReceiptValidationSeverity(key, value)}
-              />
-            ))}
-          </div>
-        ))}
-      </div> : null}
-
-      {showReceiptSettings ? <div className="fee-setting-card">
-        <strong>コメント・症状詳記の既定値</strong>
-        <label className="fee-field">
-          <span>コメントの既定診療識別</span>
-          <input
-            maxLength={8}
-            onChange={(event) => updateReceiptAnnotationDefaults({ commentShinryoIdentification: event.target.value })}
-            placeholder="例: 60"
-            value={receiptAnnotationDefaults.commentShinryoIdentification || ""}
-          />
-        </label>
-        <label className="fee-field">
-          <span>症状詳記の既定区分</span>
-          <input
-            maxLength={8}
-            onChange={(event) => updateReceiptAnnotationDefaults({ symptomDetailKubun: event.target.value })}
-            placeholder="例: 01"
-            value={receiptAnnotationDefaults.symptomDetailKubun || ""}
-          />
-        </label>
-      </div> : null}
+      </div>
     </div>
   );
+}
+
+const SETTINGS_NAV = [
+  { id: "facility", label: "施設情報", group: null, keywords: "医療機関 都道府県 厚生局" },
+  { id: "history", label: "履歴の扱い", group: "算定", keywords: "参照期間 完全性 外部履歴" },
+  { id: "initial-revisit", label: "初診・再診", group: "算定", keywords: "初診 再診 レビュー" },
+  { id: "facility-standards", label: "施設基準・届出", group: "算定", keywords: "施設基準 届出 受理番号 算定開始日 有効期限" },
+  { id: "receipt-output", label: "レセプト出力", group: "レセプト", keywords: "uke レセ電 csv 文字コード 表示単位 月次" },
+  { id: "receipt-validation", label: "出力前チェック", group: "レセプト", keywords: "チェック 重大度 必須 エラー 警告" },
+  { id: "receipt-annotations", label: "コメント・症状詳記", group: "レセプト", keywords: "コメント 症状詳記 診療識別 区分" }
+];
+
+function SettingsSection({ action = null, children, help, title }) {
+  return (
+    <section className="fee-settings-section">
+      <header className="fee-settings-section-head">
+        <div>
+          <h3>{title}</h3>
+          {help ? <p>{help}</p> : null}
+        </div>
+        {action}
+      </header>
+      <div className="fee-settings-section-body">{children}</div>
+    </section>
+  );
+}
+
+function SettingRow({ children, help, label }) {
+  return (
+    <div className="fee-settings-row">
+      <div className="fee-settings-row-label">
+        <strong>{label}</strong>
+        {help ? <small>{help}</small> : null}
+      </div>
+      <div className="fee-settings-row-control">{children}</div>
+    </div>
+  );
+}
+
+function ToggleInput({ checked, onChange }) {
+  return (
+    <label className="fee-toggle">
+      <input checked={checked} onChange={(event) => onChange(event.target.checked)} type="checkbox" />
+      <span>{checked ? "ON" : "OFF"}</span>
+    </label>
+  );
+}
+
+function facilityStandardExpiryInfo(entry = {}) {
+  const raw = String(entry.effectiveTo || "").trim();
+  if (!raw || entry.status === "withdrawn") {
+    return null;
+  }
+  const end = new Date(raw.length === 7 ? `${raw}-01` : raw);
+  if (Number.isNaN(end.getTime())) {
+    return null;
+  }
+  const days = Math.floor((end.getTime() - Date.now()) / 86400000);
+  if (days < 0) {
+    return { level: "expired", note: "有効期限切れ" };
+  }
+  if (days <= 60) {
+    return { level: "soon", note: `あと${days}日で期限` };
+  }
+  return null;
+}
+
+function facilityStandardExpiryClass(entry) {
+  const info = facilityStandardExpiryInfo(entry);
+  return info ? `fee-standard-row--${info.level}` : "";
+}
+
+function facilityStandardExpiryNote(entry) {
+  return facilityStandardExpiryInfo(entry)?.note || "";
 }
 
 function initialFacilityStandards(settings = {}, facility = null) {

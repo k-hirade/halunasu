@@ -89,7 +89,10 @@ for (const env of envs) {
     }
 
     const targets = normalizeTargets(env, config.requiredTargets);
-    const appEnv = config.envForTarget(env, targets);
+    const appEnv = {
+      ...config.envForTarget(env, targets),
+      ...stgGateEnvForDeploy(env)
+    };
     const baseDir = join(root, config.baseDir);
     const deployCommand = buildDeployCommand({ baseDir, packageName: config.packageName, siteId: site.siteId, message: `P18 ${env}/${app} Next.js` });
 
@@ -170,7 +173,7 @@ async function prepareNetlifyFrameworkOutput({ appDirName, baseDir }) {
     throw new Error(`Missing Netlify generated static dir: ${staticDir}`);
   }
 
-  for (const name of ["functions", "functions-internal", "deploy"]) {
+  for (const name of ["functions", "functions-internal", "deploy", "edge-functions", "edge-functions-dist"]) {
     const source = join(generatedRoot, name);
     if (!existsSync(source)) {
       continue;
@@ -179,6 +182,13 @@ async function prepareNetlifyFrameworkOutput({ appDirName, baseDir }) {
     await rm(destination, { recursive: true, force: true });
     await mkdir(dirname(destination), { recursive: true });
     await cp(source, destination, { recursive: true });
+  }
+  for (const name of ["edge-functions-import-map.json"]) {
+    const source = join(generatedRoot, name);
+    if (!existsSync(source)) {
+      continue;
+    }
+    await cp(source, join(deployRoot, name));
   }
 
   const handlerDir = join(deployRoot, "functions-internal", "___netlify-server-handler");
@@ -227,6 +237,16 @@ function setNetlifyEnv({ key, packageName, siteId, value }) {
       NETLIFY_SITE_ID: siteId
     }
   });
+}
+
+function stgGateEnvForDeploy(env) {
+  const values = {
+    STG_GATE_ENABLED: env === "stg" ? "true" : "false"
+  };
+  if (env === "stg" && process.env.STG_GATE_ALLOWED_IPS) {
+    values.STG_GATE_ALLOWED_IPS = process.env.STG_GATE_ALLOWED_IPS;
+  }
+  return values;
 }
 
 function runCommand(command, options = {}) {
