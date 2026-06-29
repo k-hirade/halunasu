@@ -102,19 +102,21 @@ For a hospital, office, or VPN, prefer a fixed egress IP or CIDR from the networ
 
 ## First Deploy Or Allowlist Change
 
-Pass `STG_GATE_ALLOWED_IPS` when deploying. The scripts set the Netlify environment variable for STG sites.
+Pass `STG_GATE_ALLOWED_IPS` when deploying STG. The scripts set the Netlify environment variable for STG sites.
+
+Use `--env stg` for STG gate changes. Do not use `--env all` for this operation unless a normal PROD deploy is also intended.
 
 ```bash
-STG_GATE_ALLOWED_IPS='203.0.113.10/32' npm run build:runtime-apps -- --env all
-STG_GATE_ALLOWED_IPS='203.0.113.10/32' npm run deploy:netlify-static -- --env all --app all --apply
-STG_GATE_ALLOWED_IPS='203.0.113.10/32' npm run deploy:netlify-charting-next -- --env all --apply
-STG_GATE_ALLOWED_IPS='203.0.113.10/32' npm run deploy:netlify-admin-fee-next -- --env all --app all --apply
+STG_GATE_ALLOWED_IPS='203.0.113.10/32' npm run build:runtime-apps -- --env stg
+STG_GATE_ALLOWED_IPS='203.0.113.10/32' npm run deploy:netlify-static -- --env stg --app all --apply
+STG_GATE_ALLOWED_IPS='203.0.113.10/32' npm run deploy:netlify-charting-next -- --env stg --apply
+STG_GATE_ALLOWED_IPS='203.0.113.10/32' npm run deploy:netlify-admin-fee-next -- --env stg --app all --apply
 ```
 
 For a Fee-only deploy:
 
 ```bash
-STG_GATE_ALLOWED_IPS='203.0.113.10/32' npm run deploy:netlify-admin-fee-next -- --env all --app fee-web --apply
+STG_GATE_ALLOWED_IPS='203.0.113.10/32' npm run deploy:netlify-admin-fee-next -- --env stg --app fee-web --apply
 ```
 
 After the Netlify environment variable has been set once, normal deploys can omit `STG_GATE_ALLOWED_IPS` unless the allowlist changes.
