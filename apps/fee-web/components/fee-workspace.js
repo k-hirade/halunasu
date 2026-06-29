@@ -95,6 +95,68 @@ function MonthlyClaimDashboard() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [diffOpen, setDiffOpen] = useState(false);
+  const [diffResult, setDiffResult] = useState(null);
+  const [diffBusy, setDiffBusy] = useState(false);
+  const [diffError, setDiffError] = useState("");
+  const [diffFileName, setDiffFileName] = useState("");
+  const [diffOptions, setDiffOptions] = useState({
+    columnMap: { patient_id: "", claim_month: "", medical_institution_code: "", code: "", name: "", points: "", count: "" },
+    ukeLayout: { line_code_index: "", line_points_index: "", line_count_index: "", re_name_index: "", ho_points_index: "", ho_days_index: "" },
+    baselineEncoding: "auto",
+    knownUnsupportedText: "",
+    codeMapText: ""
+  });
+
+  async function runBaselineDiff(file) {
+    if (!file) {
+      return;
+    }
+    setDiffBusy(true);
+    setDiffError("");
+    setDiffResult(null);
+    setDiffFileName(file.name || "");
+    try {
+      const contentBase64 = arrayBufferToBase64(await file.arrayBuffer());
+      const baselineFormat = /\.uke$/iu.test(file.name || "") ? "uke" : "csv";
+      const body = {
+        claimMonth,
+        baselineContentBase64: contentBase64,
+        baselineEncoding: diffOptions.baselineEncoding || "auto",
+        baselineFormat
+      };
+      const knownUnsupportedCodes = splitCodeList(diffOptions.knownUnsupportedText);
+      if (knownUnsupportedCodes.length) {
+        body.knownUnsupportedCodes = knownUnsupportedCodes;
+      }
+      const codeMap = parseCodeMap(diffOptions.codeMapText);
+      if (Object.keys(codeMap).length) {
+        body.codeMap = codeMap;
+      }
+      if (baselineFormat === "csv") {
+        const columnMap = compactColumnMap(diffOptions.columnMap);
+        if (Object.keys(columnMap).length) {
+          body.columnMap = columnMap;
+        }
+      }
+      if (baselineFormat === "uke") {
+        const ukeLayout = compactUkeLayout(diffOptions.ukeLayout);
+        if (Object.keys(ukeLayout).length) {
+          body.ukeLayout = ukeLayout;
+        }
+      }
+      const response = await feeApi("/v1/fee/baseline-diagnosis", {
+        method: "POST",
+        csrf: true,
+        body
+      });
+      setDiffResult(response || null);
+    } catch (error) {
+      setDiffError(toUserFacingErrorMessage(error, "差分診断を実行できませんでした。"));
+    } finally {
+      setDiffBusy(false);
+    }
+  }
 
   const loadSummary = useCallback(async () => {
     setLoading(true);
@@ -346,6 +408,22 @@ function MonthlyClaimDashboard() {
           <div className="session-list-empty">この条件に一致する算定記録はありません。</div>
         )}
       </section>
+
+      <MonthlyBaselineDiffPanel
+        busy={diffBusy}
+        claimMonth={claimMonth}
+        errorMessage={diffError}
+        fileName={diffFileName}
+        onClose={() => setDiffOpen(false)}
+        onOpen={() => setDiffOpen(true)}
+        onOpenBulk={() => { setBulkOpen(true); setDiffOpen(false); }}
+        onUpdateOptions={(patch) => setDiffOptions((current) => ({ ...current, ...patch }))}
+        onUpload={runBaselineDiff}
+        open={diffOpen}
+        options={diffOptions}
+        result={diffResult}
+        uncalculatedCount={Number(summary?.uncalculatedCount || 0)}
+      />
 
       <MonthlyPatientDrawer
         onApplyDiagnoses={applyMonthlyDiagnoses}
@@ -701,6 +779,253 @@ function MonthlySessionReview({ onApplyDiagnoses, onUpdateReceiptAnnotations, on
         </div>
       ) : null}
     </article>
+  );
+}
+
+// 既存レセの取込はサーバ(Python adapter)で行う。以下は差分診断オプションの整形ヘルパ。
+function splitCodeList(text) {
+  return [...new Set(String(text || "").split(/[\s,、\n]+/u).map((item) => item.trim()).filter(Boolean))];
+}
+
+function parseCodeMap(text) {
+  const map = {};
+  for (const line of String(text || "").split(/\n+/u)) {
+    const match = line.split(/[=\t,]/u).map((cell) => cell.trim()).filter(Boolean);
+    if (match.length >= 2) {
+      map[match[0]] = match[1];
+    }
+  }
+  return map;
+}
+
+function compactColumnMap(columnMap = {}) {
+  const out = {};
+  for (const [logical, actual] of Object.entries(columnMap)) {
+    if (String(actual || "").trim()) {
+      out[logical] = String(actual).trim();
+    }
+  }
+  return out;
+}
+
+const BASELINE_COLUMN_FIELDS = [
+  ["patient_id", "患者ID列"],
+  ["code", "コード列"],
+  ["name", "名称列"],
+  ["points", "点数列"],
+  ["count", "回数列"],
+  ["claim_month", "請求月列"],
+  ["medical_institution_code", "医療機関コード列"]
+];
+
+// UKEレコードのフィールド位置(0始まり)。空欄は既定レイアウトを使用。
+const BASELINE_UKE_FIELDS = [
+  ["line_code_index", "明細コード位置"],
+  ["line_points_index", "明細点数位置"],
+  ["line_count_index", "明細回数位置"],
+  ["re_name_index", "RE氏名位置"],
+  ["ho_points_index", "HO請求点数位置"],
+  ["ho_days_index", "HO診療実日数位置"]
+];
+
+function compactUkeLayout(ukeLayout = {}) {
+  const out = {};
+  for (const [key, value] of Object.entries(ukeLayout)) {
+    const trimmed = String(value ?? "").trim();
+    if (trimmed !== "" && Number.isFinite(Number(trimmed))) {
+      out[key] = Number(trimmed);
+    }
+  }
+  return out;
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer || new ArrayBuffer(0));
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function downloadTextFile(filename, text, mime) {
+  if (typeof document === "undefined") {
+    return;
+  }
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+const BASELINE_DIFF_ORDER = { missing_candidate: 0, needs_review: 1, consider: 2 };
+
+function baselineDiffRows(result) {
+  const rows = (result?.diagnoses || []).flatMap((diagnosis) => (diagnosis.findings || []).map((finding) => ({ patientId: diagnosis.patientId, ...finding })));
+  rows.sort((a, b) => (BASELINE_DIFF_ORDER[a.category] - BASELINE_DIFF_ORDER[b.category]) || (Number(b.points || 0) - Number(a.points || 0)));
+  return rows;
+}
+
+function baselineDiffToCsv(result) {
+  const clean = (value) => String(value ?? "").replace(/[",\n]/gu, " ");
+  const lines = ["患者,分類,コード,名称,点数,概算影響額(円),理由"];
+  for (const row of baselineDiffRows(result)) {
+    lines.push([clean(row.patientId), clean(row.categoryLabel), clean(row.code), clean(row.name), Number(row.points || 0), Number(row.estimatedYen || 0), clean(row.reason)].join(","));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function baselineDiffToHtml(result) {
+  const summary = result?.summary || {};
+  const rowsHtml = baselineDiffRows(result).map((row) => (
+    `<tr class="c-${row.category}"><td>${escapeHtml(String(row.patientId || ""))}</td>`
+    + `<td class="cat">${escapeHtml(row.categoryLabel || "")}</td>`
+    + `<td>${escapeHtml(String(row.code || ""))}</td>`
+    + `<td>${escapeHtml(row.name || "")}</td>`
+    + `<td class="num">${Number(row.points || 0).toLocaleString()}</td>`
+    + `<td class="num">${Number(row.estimatedYen || 0).toLocaleString()}</td>`
+    + `<td>${escapeHtml(row.reason || "")}</td></tr>`
+  )).join("") || '<tr><td colspan="7">差分はありません。</td></tr>';
+  return `<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>レセプト差分診断レポート</title>
+<style>body{font-family:'Noto Sans JP',system-ui,sans-serif;color:#111827;margin:24px;font-size:13px}
+h1{font-size:1.3rem;margin:0 0 6px}.note{color:#475467;font-size:12px;margin:2px 0}
+table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border-top:1px solid #e4e7ec;padding:7px 8px;text-align:left}
+th{color:#64748b;font-size:11px}td.num{text-align:right;white-space:nowrap}td.cat{font-weight:800}
+tr.c-missing_candidate td.cat{color:#1d4ed8}tr.c-needs_review td.cat{color:#b42318}tr.c-consider td.cat{color:#475467}
+@media print{body{margin:0}}</style></head><body>
+<h1>レセプト差分診断レポート（${escapeHtml(result?.claimMonth || "")}）</h1>
+<p class="note">差分はすべて要確認です。実施事実・算定要件・施設基準・病名を確認のうえ判断してください。</p>
+<p class="note">概算影響額は点数×10円・総医療費ベースの概算です（負担按分なし）。算定もれ候補 ${Number(summary.missingCandidateCount || 0)}件 / 約${Number(summary.missingCandidateEstimatedYen || 0).toLocaleString()}円 ・ 要確認 ${Number(summary.needsReviewCount || 0)}件 ・ 検討 ${Number(summary.considerCount || 0)}件</p>
+<table><thead><tr><th>患者</th><th>分類</th><th>コード</th><th>名称</th><th>点数</th><th>概算影響額(円)</th><th>理由</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+</body></html>`;
+}
+
+function MonthlyBaselineDiffPanel({ busy, claimMonth, errorMessage, fileName, onClose, onOpen, onOpenBulk, onUpdateOptions, onUpload, open, options, result, uncalculatedCount = 0 }) {
+  const summary = result?.summary || null;
+  const findings = Array.isArray(result?.diagnoses)
+    ? result.diagnoses.flatMap((diagnosis) => (diagnosis.findings || []).map((finding) => ({ ...finding, patientId: diagnosis.patientId })))
+    : [];
+  const order = { missing_candidate: 0, needs_review: 1, consider: 2 };
+  findings.sort((a, b) => (order[a.category] - order[b.category]) || (Number(b.points || 0) - Number(a.points || 0)));
+  return (
+    <section className="card fee-monthly-diff">
+      <div className="fee-monthly-worklist-head">
+        <div>
+          <h2>既存レセとの差分診断</h2>
+          <p>既存レセコンのCSVを取り込み、当社再算定（{claimMonth || "請求月"}）と突合して 算定もれ候補／要確認／検討 を出します。差分はすべて要確認です。</p>
+        </div>
+        <button className="btn btn--ghost btn--sm" onClick={open ? onClose : onOpen} type="button">{open ? "閉じる" : "開く"}</button>
+      </div>
+      {open ? (
+        <div className="fee-monthly-diff-body">
+          <details className="fee-monthly-diff-options">
+            <summary>詳細設定（列マッピング・未対応コード・コード対応表）</summary>
+            <div className="fee-monthly-diff-grid">
+              {BASELINE_COLUMN_FIELDS.map(([key, label]) => (
+                <label className="fee-field" key={key}>
+                  <span>{label}</span>
+                  <input
+                    placeholder="（CSVの実列名。空欄=自動判定）"
+                    value={options.columnMap?.[key] || ""}
+                    onChange={(event) => onUpdateOptions({ columnMap: { ...options.columnMap, [key]: event.target.value } })}
+                  />
+                </label>
+              ))}
+            </div>
+            <label className="fee-field">
+              <span>文字コード</span>
+              <select
+                value={options.baselineEncoding || "auto"}
+                onChange={(event) => onUpdateOptions({ baselineEncoding: event.target.value })}
+              >
+                <option value="auto">自動判定</option>
+                <option value="cp932">CP932 / Shift_JIS</option>
+                <option value="utf-8-sig">UTF-8</option>
+              </select>
+            </label>
+            <label className="fee-field">
+              <span>当社未対応コード（カンマ/改行区切り。差分は「検討」に分類）</span>
+              <textarea rows={2} value={options.knownUnsupportedText} onChange={(event) => onUpdateOptions({ knownUnsupportedText: event.target.value })} />
+            </label>
+            <label className="fee-field">
+              <span>コード対応表（1行に「既存コード=正規コード」）</span>
+              <textarea rows={2} placeholder={"例)\nOLD_A=112007410"} value={options.codeMapText} onChange={(event) => onUpdateOptions({ codeMapText: event.target.value })} />
+            </label>
+            <details className="fee-monthly-diff-uke">
+              <summary>UKEフィールド位置（.uke取込時のみ・空欄は既定）</summary>
+              <div className="fee-monthly-diff-grid">
+                {BASELINE_UKE_FIELDS.map(([key, label]) => (
+                  <label className="fee-field" key={key}>
+                    <span>{label}</span>
+                    <input
+                      inputMode="numeric"
+                      placeholder="（0始まり・空欄=既定）"
+                      value={options.ukeLayout?.[key] || ""}
+                      onChange={(event) => onUpdateOptions({ ukeLayout: { ...options.ukeLayout, [key]: event.target.value } })}
+                    />
+                  </label>
+                ))}
+              </div>
+            </details>
+          </details>
+          {uncalculatedCount ? (
+            <div className="fee-monthly-diff-warning" role="status">
+              この請求月に未算定の受診が {Number(uncalculatedCount).toLocaleString()} 件あります。当社側(engineClaim)が不足し差分を過少評価する可能性があります。
+              {onOpenBulk ? <button className="btn btn--ghost btn--sm" onClick={onOpenBulk} type="button">一括候補化を開く</button> : null}
+            </div>
+          ) : null}
+          <label className="fee-monthly-diff-upload">
+            <span>既存レセを取込（.csv / .uke）。CSV列は自動判定、必要なら上の詳細設定で指定。</span>
+            <input accept=".csv,.uke,.txt,text/csv" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) { onUpload(file); } event.target.value = ""; }} type="file" />
+          </label>
+          {fileName ? <p className="field-note">取込: {fileName}</p> : null}
+          {busy ? <div className="fee-empty-state">差分診断を実行しています…</div> : null}
+          {errorMessage ? <div className="inline-error" role="status">{errorMessage}</div> : null}
+          {summary ? (
+            <>
+              <div className="fee-monthly-filterbar" aria-label="差分サマリ">
+                <span className="fee-filter-chip is-active">算定もれ候補 {summary.missingCandidateCount}件 / 約{Number(summary.missingCandidateEstimatedYen || 0).toLocaleString()}円</span>
+                <span className="fee-filter-chip">要確認 {summary.needsReviewCount}</span>
+                <span className="fee-filter-chip">検討 {summary.considerCount}</span>
+              </div>
+              <div className="fee-monthly-diff-actions">
+                <button className="btn btn--ghost btn--sm" onClick={() => downloadTextFile(`baseline-diff_${claimMonth || "month"}.csv`, baselineDiffToCsv(result), "text/csv;charset=utf-8")} type="button">CSV出力</button>
+                <button className="btn btn--ghost btn--sm" onClick={() => downloadTextFile(`baseline-diff_${claimMonth || "month"}.html`, baselineDiffToHtml(result), "text/html;charset=utf-8")} type="button">HTML出力</button>
+              </div>
+              <p className="fee-setting-help">概算影響額は点数×10円・総医療費ベースの概算です（負担按分なし）。実施事実・要件・施設基準・病名を確認のうえ判断してください。</p>
+              {findings.length ? (
+                <div className="fee-monthly-table-wrap">
+                  <table className="fee-monthly-table">
+                    <thead>
+                      <tr><th>患者</th><th>分類</th><th>コード</th><th>名称</th><th>点数</th><th>概算影響額</th><th>理由</th></tr>
+                    </thead>
+                    <tbody>
+                      {findings.map((finding, index) => (
+                        <tr className={`fee-diff-row fee-diff-row--${finding.category}`} key={`${finding.patientId}-${finding.code}-${index}`}>
+                          <td>{finding.patientId}</td>
+                          <td className="fee-diff-cat">{finding.categoryLabel}</td>
+                          <td>{finding.code}</td>
+                          <td>{finding.name || "—"}</td>
+                          <td>{Number(finding.points || 0).toLocaleString()}点</td>
+                          <td>約{Number(finding.estimatedYen || 0).toLocaleString()}円</td>
+                          <td>{finding.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <div className="session-list-empty">差分はありません（既存レセと当社再算定が一致）。</div>}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }
 

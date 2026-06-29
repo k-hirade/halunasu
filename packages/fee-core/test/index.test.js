@@ -13,7 +13,11 @@ import {
   serializeUke,
   buildFeeSession,
   normalizeCalculationResult,
-  buildReviewItems
+  buildReviewItems,
+  buildBaselineDiagnosis,
+  buildMonthlyBaselineDiagnosis,
+  engineClaimFromSessions,
+  BASELINE_DIFF_CATEGORY
 } from "../src/index.js";
 
 test("aggregates a monthly receipt across a patient's visits", () => {
@@ -1236,4 +1240,88 @@ test("buildReceiptExportValidation applies facility receipt validation severity 
 
   assert.ok(!validation.issues.some((issue) => issue.field === "patient.sex"));
   assert.ok(validation.issues.some((issue) => issue.field === "patient.birthDate" && issue.severity === "error"));
+});
+
+test("buildBaselineDiagnosis classifies missing / review / consider with over二義性", () => {
+  const baseline = {
+    patientId: "patA",
+    claimMonth: "2026-06",
+    lines: [
+      { code: "112007410", name: "再診料", points: 73, count: 2 },
+      { code: "900000000", name: "未対応算定", points: 150, count: 1 },
+      { code: "160000000", name: "末梢血液一般", points: 60, count: 2 }
+    ]
+  };
+  const engine = {
+    patientId: "patA",
+    claimMonth: "2026-06",
+    lines: [
+      { code: "112007410", name: "再診料", points: 73, count: 2 },
+      { code: "113001810", name: "特定疾患療養管理料", points: 225, count: 1 },
+      { code: "160000000", name: "末梢血液一般", points: 60, count: 1 },
+      { code: "220000000", name: "低確信候補", points: 50, count: 1 }
+    ],
+    lowConfidenceCodes: ["220000000"]
+  };
+  const diag = buildBaselineDiagnosis(baseline, engine, { knownUnsupportedCodes: ["900000000"] });
+  const byCode = Object.fromEntries(diag.findings.map((f) => [f.code, f]));
+  assert.equal(byCode["113001810"].category, BASELINE_DIFF_CATEGORY.MISSING); // engine only confirmed
+  assert.equal(byCode["900000000"].category, BASELINE_DIFF_CATEGORY.CONSIDER); // 未対応→検討(過剰にしない)
+  assert.equal(byCode["220000000"].category, BASELINE_DIFF_CATEGORY.CONSIDER); // 低確信→検討
+  assert.equal(byCode["160000000"].category, BASELINE_DIFF_CATEGORY.REVIEW); // baseline多い→要確認
+  assert.equal(byCode["112007410"], undefined); // 一致→所見なし
+  assert.equal(byCode["113001810"].estimatedYen, 2250);
+});
+
+test("engineClaimFromSessions aggregates lineItems and marks low confidence", () => {
+  const sessions = [
+    { patientId: "patA", claimMonth: "2026-06", calculationResult: { lineItems: [
+      { code: "112007410", name: "再診料", points: 73, quantity: 1, status: "confirmed" },
+      { code: "160061710", name: "判断料", points: 34, quantity: 1, status: "candidate" },
+      { code: "999", name: "却下", points: 10, quantity: 1, status: "blocked" }
+    ] } },
+    { patientId: "patA", claimMonth: "2026-06", calculationResult: { lineItems: [
+      { code: "112007410", name: "再診料", points: 73, quantity: 1, status: "confirmed" }
+    ] } }
+  ];
+  const engine = engineClaimFromSessions(sessions, { patientId: "patA", claimMonth: "2026-06" });
+  const byCode = Object.fromEntries(engine.lines.map((l) => [l.code, l]));
+  assert.equal(byCode["999"], undefined); // blocked 除外
+  assert.equal(byCode["112007410"].count, 2); // 同月2受診合算
+  assert.ok(engine.lowConfidenceCodes.includes("160061710"));
+  assert.ok(!engine.lowConfidenceCodes.includes("112007410"));
+});
+
+test("buildMonthlyBaselineDiagnosis pairs sessions and uploaded baseline by patient", () => {
+  const sessions = [
+    { patientId: "patA", claimMonth: "2026-06", calculationResult: { lineItems: [
+      { code: "112007410", name: "再診料", points: 73, quantity: 2, status: "confirmed" },
+      { code: "113001810", name: "特定疾患療養管理料", points: 225, quantity: 1, status: "confirmed" }
+    ] } }
+  ];
+  const baselineClaims = [
+    { patientId: "patA", claimMonth: "2026-06", lines: [{ code: "112007410", name: "再診料", points: 73, count: 2 }] }
+  ];
+  const result = buildMonthlyBaselineDiagnosis({ sessions, baselineClaims, claimMonth: "2026-06" });
+  assert.equal(result.patientCount, 1);
+  assert.equal(result.summary.missingCandidateCount, 1); // 特定疾患療養管理料が算定もれ候補
+  assert.equal(result.summary.missingCandidatePoints, 225);
+});
+
+test("buildMonthlyBaselineDiagnosis filters baseline claims by claimMonth and keeps months isolated", () => {
+  const sessions = [
+    { patientId: "patA", claimMonth: "2026-06", calculationResult: { lineItems: [
+      { code: "112007410", name: "再診料", points: 73, quantity: 1, status: "confirmed" }
+    ] } }
+  ];
+  const baselineClaims = [
+    { patientId: "patA", claimMonth: "2026-06", lines: [{ code: "112007410", name: "再診料", points: 73, count: 1 }] },
+    { patientId: "patA", claimMonth: "2026-05", lines: [{ code: "113001810", name: "特定疾患療養管理料", points: 225, count: 1 }] }
+  ];
+
+  const june = buildMonthlyBaselineDiagnosis({ sessions, baselineClaims, claimMonth: "2026-06" });
+
+  assert.equal(june.patientCount, 1);
+  assert.equal(june.diagnoses[0].claimMonth, "2026-06");
+  assert.equal(june.diagnoses[0].findings.length, 0);
 });

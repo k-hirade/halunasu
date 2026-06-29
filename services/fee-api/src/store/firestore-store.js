@@ -108,6 +108,19 @@ export class FirestoreFeeStore {
     };
   }
 
+  async listSessionsForClaimMonth(orgId, claimMonth, options = {}) {
+    const month = String(claimMonth || "").trim().slice(0, 7);
+    if (!month) {
+      return [];
+    }
+    const limit = Math.max(1, Number.parseInt(options.limit, 10) || 5000);
+    const snapshot = await this.orgCollection(orgId, collections.feeSessions)
+      .where("claimMonth", "==", month)
+      .limit(limit)
+      .get();
+    return docsFromSnapshot(snapshot).sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || "")));
+  }
+
   async listSessionsByBoundedScan(baseQuery, listOptions) {
     const scanLimit = Math.max(
       listOptions.page * listOptions.pageSize,

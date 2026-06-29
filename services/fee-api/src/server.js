@@ -19,6 +19,7 @@ import {
   buildReceiptDenshin,
   buildReceiptDraft,
   buildMonthlyReceiptDraft,
+  buildMonthlyBaselineDiagnosis,
   buildReceiptExportValidation,
   buildReviewItems,
   serializeUke
@@ -44,6 +45,9 @@ const FEE_PRODUCT_ROLES = ["admin", "doctor", "nurse", "medical_clerk", "viewer"
 const DEFAULT_OPENAI_FEE_CLINICAL_TIMEOUT_MS = 60000;
 const DEFAULT_FACILITY_PROFILE_CACHE_TTL_MS = 60_000;
 const DEFAULT_ORDER_ENRICH_CONCURRENCY = 4;
+const DEFAULT_MAX_JSON_BODY_BYTES = 10 * 1024 * 1024;
+const DEFAULT_BASELINE_DIAGNOSIS_SESSION_LIMIT = 5000;
+const DEFAULT_BASELINE_DIAGNOSIS_CLAIM_LIMIT = 5000;
 const facilityProfileCache = new Map();
 const facilityProfileStoreIds = new WeakMap();
 let facilityProfileStoreIdCounter = 0;
@@ -339,6 +343,75 @@ async function routeFeeApiRequest(input = {}) {
     const sessions = await feeStore.listSessions(context.session.orgId);
     const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
     return ok(buildMonthlyClaimSummary(sessionList, { claimMonth }));
+  }
+
+  // 導入前 一括レセプト差分診断: 既存レセ(baselineClaims) と 当社算定(セッション) を患者×月で突合
+  if (method === "POST" && matches(parts, ["v1", "fee", "baseline-diagnosis"])) {
+    requireBaselineDiagnosisContext(context);
+    requireMutationCsrf(input, context.session);
+    const body = input.body || {};
+    const claimMonth = String(body.claimMonth ?? body.claim_month ?? "").trim();
+    if (!/^\d{4}-\d{2}$/u.test(claimMonth)) {
+      throw requestValidationError("claimMonth must use YYYY-MM");
+    }
+    let baselineClaims = Array.isArray(body.baselineClaims ?? body.baseline_claims) ? (body.baselineClaims ?? body.baseline_claims) : [];
+    // 既存レセのテキスト(UKE/CSV)が渡された場合は Python adapter で baselineClaims に変換する。
+    const baselineText = String(body.baselineText ?? body.baseline_text ?? "");
+    const baselineContentBase64 = String(body.baselineContentBase64 ?? body.baseline_content_base64 ?? "").trim();
+    const baselineFormat = String(body.baselineFormat ?? body.baseline_format ?? "").trim().toLowerCase();
+    if ((baselineText || baselineContentBase64) && !["uke", "csv"].includes(baselineFormat)) {
+      throw requestValidationError("baselineFormat must be csv or uke when baseline content is provided");
+    }
+    if ((baselineText || baselineContentBase64) && (baselineFormat === "uke" || baselineFormat === "csv")) {
+      if (typeof feeCalculator.parseBaseline !== "function") {
+        return { statusCode: 501, body: { error: "baseline_parser_unavailable", message: "既存レセ取込(Python adapter)が利用できません。" } };
+      }
+      const parsed = await feeCalculator.parseBaseline({
+        op: baselineFormat === "uke" ? "parse_uke" : "parse_csv",
+        ...(baselineContentBase64 ? { content_base64: baselineContentBase64 } : { text: baselineText }),
+        encoding: String(body.baselineEncoding ?? body.baseline_encoding ?? "auto").trim() || "auto",
+        claim_month: claimMonth,
+        only_claim_month: claimMonth,
+        uke_layout: isPlainObject(body.ukeLayout ?? body.uke_layout) ? (body.ukeLayout ?? body.uke_layout) : undefined,
+        column_map: isPlainObject(body.columnMap ?? body.column_map) ? (body.columnMap ?? body.column_map) : undefined,
+        only_medical_institution_code: body.onlyMedicalInstitutionCode ?? body.only_medical_institution_code ?? undefined,
+        code_map: isPlainObject(body.codeMap ?? body.code_map) ? (body.codeMap ?? body.code_map) : undefined
+      });
+      baselineClaims = Array.isArray(parsed?.baselineClaims) ? parsed.baselineClaims : [];
+    }
+    baselineClaims = normalizeBaselineClaimsForDiagnosis(baselineClaims, {
+      claimMonth,
+      limit: baselineDiagnosisClaimLimit(input.processEnv || process.env)
+    });
+    const sessionList = await listSessionsForBaselineDiagnosis(feeStore, context.session.orgId, {
+      claimMonth,
+      limit: baselineDiagnosisSessionLimit(input.processEnv || process.env)
+    });
+    const diagnosis = buildMonthlyBaselineDiagnosis({
+      sessions: sessionList,
+      baselineClaims,
+      claimMonth,
+      knownUnsupportedCodes: Array.isArray(body.knownUnsupportedCodes ?? body.known_unsupported_codes) ? (body.knownUnsupportedCodes ?? body.known_unsupported_codes) : [],
+      codeMap: isPlainObject(body.codeMap ?? body.code_map) ? (body.codeMap ?? body.code_map) : null
+    });
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.baseline_diagnosis_run",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "fee_baseline_diagnosis",
+      targetId: claimMonth,
+      productId: PRODUCT_ID,
+      safePayload: {
+        claimMonth,
+        baselineFormat: baselineFormat || (baselineClaims.length ? "claims" : "none"),
+        baselineClaimCount: baselineClaims.length,
+        sessionCount: sessionList.length,
+        missingCandidateCount: diagnosis.summary?.missingCandidateCount || 0,
+        needsReviewCount: diagnosis.summary?.needsReviewCount || 0,
+        considerCount: diagnosis.summary?.considerCount || 0
+      }
+    });
+    return ok(diagnosis);
   }
 
   // 患者×請求月で集計した月次レセプト案(プレビューのb=月次集計)
@@ -817,6 +890,22 @@ function requireFeeAdminContext(context = {}) {
   throw error;
 }
 
+function requireBaselineDiagnosisContext(context = {}) {
+  const session = context.session || {};
+  const feeRoles = Array.isArray(session.productRoles?.[PRODUCT_ID]) ? session.productRoles[PRODUCT_ID] : [];
+  const globalRoles = Array.isArray(session.globalRoles) ? session.globalRoles : [];
+  if (
+    feeRoles.some((role) => ["admin", "medical_clerk"].includes(role))
+    || globalRoles.some((role) => ["platform_admin", "org_owner", "org_admin"].includes(role))
+  ) {
+    return;
+  }
+  const error = new Error("Fee baseline diagnosis access is required");
+  error.name = "ForbiddenError";
+  error.statusCode = 403;
+  throw error;
+}
+
 async function feeSettingsForFacilities(feeStore, orgId, facilities = []) {
   const facilityIds = Array.isArray(facilities) && facilities.length
     ? facilities.map((facility) => facility.facilityId).filter(Boolean)
@@ -912,6 +1001,67 @@ function requestValidationError(message) {
   error.name = "ValidationError";
   error.statusCode = 400;
   return error;
+}
+
+async function listSessionsForBaselineDiagnosis(feeStore, orgId, options = {}) {
+  const claimMonth = String(options.claimMonth || "").trim();
+  const limit = Math.max(1, Number.parseInt(options.limit, 10) || DEFAULT_BASELINE_DIAGNOSIS_SESSION_LIMIT);
+  if (typeof feeStore.listSessionsForClaimMonth === "function") {
+    const sessions = await feeStore.listSessionsForClaimMonth(orgId, claimMonth, { limit: limit + 1 });
+    if (sessions.length > limit) {
+      throw requestValidationError(`baseline diagnosis is limited to ${limit} sessions per claimMonth`);
+    }
+    return sessions;
+  }
+
+  const sessions = await feeStore.listSessions(orgId);
+  const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+  const filtered = sessionList.filter((session) => baselineSessionClaimMonth(session) === claimMonth);
+  if (filtered.length > limit) {
+    throw requestValidationError(`baseline diagnosis is limited to ${limit} sessions per claimMonth`);
+  }
+  return filtered;
+}
+
+function normalizeBaselineClaimsForDiagnosis(claims = [], options = {}) {
+  const claimMonth = String(options.claimMonth || "").trim();
+  const limit = Math.max(1, Number.parseInt(options.limit, 10) || DEFAULT_BASELINE_DIAGNOSIS_CLAIM_LIMIT);
+  const normalized = [];
+  for (const claim of Array.isArray(claims) ? claims : []) {
+    if (!claim || typeof claim !== "object") {
+      continue;
+    }
+    const patientId = String(claim.patientId ?? claim.patient_id ?? "").trim();
+    const month = baselineSessionClaimMonth(claim) || claimMonth;
+    if (!patientId || month !== claimMonth) {
+      continue;
+    }
+    normalized.push({
+      ...claim,
+      patientId,
+      claimMonth: month,
+      lines: Array.isArray(claim.lines)
+        ? claim.lines
+        : (Array.isArray(claim.lineItems) ? claim.lineItems : [])
+    });
+    if (normalized.length > limit) {
+      throw requestValidationError(`baseline diagnosis is limited to ${limit} baseline claims per claimMonth`);
+    }
+  }
+  return normalized;
+}
+
+function baselineSessionClaimMonth(value = {}) {
+  const raw = String(value.claimMonth ?? value.claim_month ?? (value.serviceDate ? String(value.serviceDate).slice(0, 7) : "") ?? "").trim();
+  return raw ? raw.slice(0, 7) : "";
+}
+
+function baselineDiagnosisSessionLimit(env = process.env) {
+  return parsePositiveInteger(env.FEE_BASELINE_DIAGNOSIS_SESSION_LIMIT, DEFAULT_BASELINE_DIAGNOSIS_SESSION_LIMIT, 50_000);
+}
+
+function baselineDiagnosisClaimLimit(env = process.env) {
+  return parsePositiveInteger(env.FEE_BASELINE_DIAGNOSIS_CLAIM_LIMIT, DEFAULT_BASELINE_DIAGNOSIS_CLAIM_LIMIT, 50_000);
 }
 
 async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now, options = {}) {
@@ -4308,7 +4458,16 @@ async function readJsonBody(req) {
   }
 
   const chunks = [];
+  const maxBytes = parsePositiveInteger(process.env.FEE_API_MAX_JSON_BODY_BYTES, DEFAULT_MAX_JSON_BODY_BYTES, 50 * 1024 * 1024);
+  let totalBytes = 0;
   for await (const chunk of req) {
+    totalBytes += Buffer.byteLength(chunk);
+    if (totalBytes > maxBytes) {
+      const error = new Error(`Request body exceeds ${maxBytes} bytes`);
+      error.name = "PayloadTooLargeError";
+      error.statusCode = 413;
+      throw error;
+    }
     chunks.push(chunk);
   }
 

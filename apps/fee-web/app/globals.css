@@ -872,6 +872,93 @@ body:has(.fee-shell--detail) {
   flex-wrap: wrap;
 }
 
+.fee-monthly-diff {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.fee-monthly-diff-body {
+  display: grid;
+  gap: 12px;
+}
+
+.fee-monthly-diff-upload {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #26364f;
+}
+
+.fee-monthly-diff-options {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fbfcfe;
+}
+
+.fee-monthly-diff-options summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  color: #344054;
+}
+
+.fee-monthly-diff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.fee-monthly-diff-uke {
+  margin-top: 10px;
+}
+
+.fee-monthly-diff-uke summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  color: #475467;
+}
+
+.fee-monthly-diff-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fee-monthly-diff-warning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  border: 1px solid #fed7aa;
+  background: #fffaf5;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #b54708;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.fee-diff-cat {
+  font-weight: 900;
+}
+
+.fee-diff-row--missing_candidate .fee-diff-cat {
+  color: #1d4ed8;
+}
+
+.fee-diff-row--needs_review .fee-diff-cat {
+  color: #b42318;
+}
+
+.fee-diff-row--consider .fee-diff-cat {
+  color: #475467;
+}
+
 /* サマリ兼フィルタのチップ。ラベル＋件数を1つにまとめ、上部の重複カードを置き換える。 */
 .fee-filter-chip {
   min-height: 34px;

@@ -134,6 +134,17 @@ export class PythonFeeCalculator {
     });
   }
 
+  // 既存レセ(UKE/レセコンCSV)を baselineClaims に変換する(Python adapter経由)。マスタDB不要。
+  async parseBaseline(payload = {}) {
+    return runPythonJson({
+      moduleName: "medical_fee_calculation.baseline_api",
+      pythonBin: this.pythonBin,
+      pythonPath: this.pythonPath,
+      timeoutMs: Math.min(this.timeoutMs, 15000),
+      payload
+    });
+  }
+
   readiness() {
     const masterDbPathExists = this.masterDbPath ? existsSync(this.masterDbPath) : false;
     const masterDbGzipPathExists = this.masterDbGzipPath ? existsSync(this.masterDbGzipPath) : false;

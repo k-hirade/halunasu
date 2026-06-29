@@ -92,6 +92,34 @@ test("stores fee sessions by organization and saves calculation results", () => 
   assert.equal(decided.feeSession.reviewDecisions[reviewItems[0].reviewItemId].status, "approved");
 });
 
+test("lists fee sessions for a single claim month", () => {
+  let counter = 0;
+  const store = new MemoryFeeStore({
+    now: () => new Date("2026-05-28T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  store.createSession({
+    orgId: "org_123",
+    patientId: "pat_123",
+    facilityId: "fac_123",
+    createdByMemberId: "mem_123",
+    serviceDate: "2026-05-28"
+  });
+  store.createSession({
+    orgId: "org_123",
+    patientId: "pat_456",
+    facilityId: "fac_123",
+    createdByMemberId: "mem_123",
+    serviceDate: "2026-06-02"
+  });
+
+  const maySessions = store.listSessionsForClaimMonth("org_123", "2026-05");
+  const juneSessions = store.listSessionsForClaimMonth("org_123", "2026-06");
+
+  assert.deepEqual(maySessions.map((session) => session.feeSessionId), ["fee_001"]);
+  assert.deepEqual(juneSessions.map((session) => session.feeSessionId), ["fee_002"]);
+});
+
 test("stores monthly bulk jobs with progress", () => {
   let counter = 0;
   const store = new MemoryFeeStore({

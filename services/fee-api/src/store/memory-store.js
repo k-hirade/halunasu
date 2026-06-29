@@ -53,6 +53,17 @@ export class MemoryFeeStore {
     };
   }
 
+  listSessionsForClaimMonth(orgId, claimMonth, options = {}) {
+    const month = String(claimMonth || "").trim().slice(0, 7);
+    if (!month) {
+      return [];
+    }
+    const limit = Math.max(1, Number.parseInt(options.limit, 10) || 5000);
+    return sortByCreatedAt([...this.sessionsForOrg(orgId).values()])
+      .filter((session) => sessionClaimMonth(session) === month)
+      .slice(0, limit);
+  }
+
   listPriorSessionsForPatient(orgId, patientId, options = {}) {
     const normalizedPatientId = String(patientId || "").trim();
     if (!normalizedPatientId) {
@@ -430,6 +441,11 @@ function sortByCreatedAt(items) {
 
 function sortByCreatedAtDesc(items) {
   return items.sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
+}
+
+function sessionClaimMonth(session = {}) {
+  const raw = String(session.claimMonth || (session.serviceDate ? String(session.serviceDate).slice(0, 7) : "") || "").trim();
+  return raw ? raw.slice(0, 7) : "";
 }
 
 export function normalizeListOptions(options = {}) {

@@ -2436,3 +2436,273 @@ function hasOwn(value, key) {
 function feeSessionHasRequiredCalculationContext(session = {}) {
   return Boolean(session.patientId && session.facilityId && session.serviceDate);
 }
+
+// ── 導入前 一括レセプト差分診断(Phase B / fee-web側) ──────────────────
+// engineClaim(=保存済みの当社算定結果)と baselineClaim(=アップロードした既存レセ)を
+// 患者×月で突合し、算定もれ候補/要確認/検討の3分類にする。Python版 baseline_diagnosis と同義。
+export const BASELINE_DIFF_CATEGORY = Object.freeze({
+  MISSING: "missing_candidate",
+  REVIEW: "needs_review",
+  CONSIDER: "consider"
+});
+
+const BASELINE_DIFF_CATEGORY_LABELS = Object.freeze({
+  missing_candidate: "算定もれ候補",
+  needs_review: "要確認",
+  consider: "検討"
+});
+
+// engineClaim に含める(=当社が前に出す)ステータス。confirmed以外は低確信扱い。
+const ENGINE_INCLUDED_STATUSES = new Set(["confirmed", "candidate", "needs_review"]);
+
+export function baselineDiffCategoryLabel(category) {
+  return BASELINE_DIFF_CATEGORY_LABELS[category] || category;
+}
+
+export function estimateReceiptYen(points) {
+  return Math.round((Number(points) || 0) * 10);
+}
+
+function normalizeBaselineCode(code, codeMap) {
+  const raw = String(code || "").trim();
+  if (codeMap && Object.prototype.hasOwnProperty.call(codeMap, raw)) {
+    return String(codeMap[raw]).trim();
+  }
+  return raw;
+}
+
+function aggregateBaselineLines(lines, codeMap) {
+  const aggregated = new Map();
+  for (const line of Array.isArray(lines) ? lines : []) {
+    const code = normalizeBaselineCode(line.code, codeMap);
+    if (!code) {
+      continue;
+    }
+    const points = line.totalPoints != null
+      ? Number(line.totalPoints) || 0
+      : (Number(line.points || 0) || 0) * (Number(line.count ?? line.quantity ?? 1) || 0);
+    const entry = aggregated.get(code) || { code, name: "", count: 0, totalPoints: 0 };
+    if (!entry.name && line.name) {
+      entry.name = line.name;
+    }
+    entry.count += Number(line.count ?? line.quantity ?? 1) || 0;
+    entry.totalPoints += points;
+    aggregated.set(code, entry);
+  }
+  return aggregated;
+}
+
+// 月次の各セッションの算定結果(lineItems)から engineClaim を組み立てる(患者×月)。
+export function engineClaimFromSessions(sessions = [], { patientId = "", claimMonth = "" } = {}) {
+  const aggregated = new Map();
+  const lowConfidence = new Set();
+  const confirmed = new Set();
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    const lines = Array.isArray(session?.calculationResult?.lineItems) ? session.calculationResult.lineItems : [];
+    for (const line of lines) {
+      const status = String(line.status || "candidate");
+      if (!ENGINE_INCLUDED_STATUSES.has(status)) {
+        continue;
+      }
+      const code = String(line.code || "").trim();
+      if (!code) {
+        continue;
+      }
+      const entry = aggregated.get(code) || { code, name: line.name || "", points: Number(line.points || 0) || 0, count: 0 };
+      entry.count += Number(line.quantity || 1) || 0;
+      aggregated.set(code, entry);
+      if (status === "confirmed") {
+        confirmed.add(code);
+      } else {
+        lowConfidence.add(code);
+      }
+    }
+  }
+  for (const code of confirmed) {
+    lowConfidence.delete(code);
+  }
+  return {
+    patientId,
+    claimMonth,
+    lines: [...aggregated.values()],
+    lowConfidenceCodes: [...lowConfidence]
+  };
+}
+
+export function buildBaselineDiagnosis(baseline = {}, engine = {}, options = {}) {
+  const knownUnsupported = new Set(options.knownUnsupportedCodes || []);
+  const lowConfidence = new Set(engine.lowConfidenceCodes || []);
+  const codeMap = options.codeMap || null;
+  const tolerance = Number(options.pointTolerance || 0);
+  const base = aggregateBaselineLines(baseline.lines, codeMap);
+  const eng = aggregateBaselineLines(engine.lines, codeMap);
+  const findings = [];
+
+  const push = (category, code, name, points, side, reason) => {
+    findings.push({
+      category,
+      categoryLabel: baselineDiffCategoryLabel(category),
+      code,
+      name: name || "",
+      points: Number(points) || 0,
+      estimatedYen: estimateReceiptYen(points),
+      side,
+      reason
+    });
+  };
+
+  const codes = [...new Set([...base.keys(), ...eng.keys()])].sort();
+  for (const code of codes) {
+    const b = base.get(code);
+    const e = eng.get(code);
+    if (e && !b) {
+      if (lowConfidence.has(code)) {
+        push(BASELINE_DIFF_CATEGORY.CONSIDER, code, e.name, e.totalPoints, "engine_only", "低確信の当社候補");
+      } else {
+        push(BASELINE_DIFF_CATEGORY.MISSING, code, e.name, e.totalPoints, "engine_only", "当社再算定では候補だが既存レセに無い");
+      }
+    } else if (b && !e) {
+      if (knownUnsupported.has(code)) {
+        push(BASELINE_DIFF_CATEGORY.CONSIDER, code, b.name, b.totalPoints, "baseline_only", "当社未対応領域の可能性");
+      } else {
+        push(BASELINE_DIFF_CATEGORY.REVIEW, code, b.name, b.totalPoints, "baseline_only", "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）");
+      }
+    } else if (b && e) {
+      const delta = e.totalPoints - b.totalPoints;
+      if (Math.abs(delta) <= tolerance) {
+        continue;
+      }
+      if (delta > 0) {
+        push(BASELINE_DIFF_CATEGORY.MISSING, code, e.name || b.name, delta, "both", "当社再算定の方が回数/点数が多い");
+      } else {
+        push(BASELINE_DIFF_CATEGORY.REVIEW, code, e.name || b.name, Math.abs(delta), "both", "既存の方が回数/点数が多い（当社未対応の可能性／既存の過剰の可能性）");
+      }
+    }
+  }
+
+  const baselineTotal = baseline.totalPoints != null
+    ? Number(baseline.totalPoints) || 0
+    : [...base.values()].reduce((sum, entry) => sum + entry.totalPoints, 0);
+  const engineTotal = engine.totalPoints != null
+    ? Number(engine.totalPoints) || 0
+    : [...eng.values()].reduce((sum, entry) => sum + entry.totalPoints, 0);
+
+  return {
+    patientId: baseline.patientId || engine.patientId || null,
+    claimMonth: baseline.claimMonth || engine.claimMonth || null,
+    findings,
+    baselineTotalPoints: baselineTotal,
+    engineTotalPoints: engineTotal
+  };
+}
+
+// 月次点検向け: セッション群(engineClaim源)とアップロードした baselineClaims を患者×月で突合。
+export function buildMonthlyBaselineDiagnosis({ sessions = [], baselineClaims = [], claimMonth = "", knownUnsupportedCodes = [], codeMap = null } = {}) {
+  const month = baselineClaimMonth({ claimMonth });
+  const sessionsByKey = new Map();
+  const baselineByKey = new Map();
+
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    const patientId = String(session?.patientId || "").trim();
+    const sessionMonth = baselineClaimMonth(session, month);
+    if (!patientId || (month && sessionMonth !== month)) {
+      continue;
+    }
+    const key = monthlyBaselineKey(patientId, sessionMonth);
+    const entry = sessionsByKey.get(key) || { patientId, claimMonth: sessionMonth, sessions: [] };
+    entry.sessions.push(session);
+    sessionsByKey.set(key, entry);
+  }
+
+  for (const claim of Array.isArray(baselineClaims) ? baselineClaims : []) {
+    const patientId = String(claim?.patientId ?? claim?.patient_id ?? "").trim();
+    const baselineMonth = baselineClaimMonth(claim, month);
+    if (!patientId || (month && baselineMonth !== month)) {
+      continue;
+    }
+    const key = monthlyBaselineKey(patientId, baselineMonth);
+    const normalized = normalizeBaselineClaimForDiagnosis(claim, { patientId, claimMonth: baselineMonth });
+    const current = baselineByKey.get(key);
+    baselineByKey.set(key, current ? mergeBaselineClaims(current, normalized) : normalized);
+  }
+
+  const keys = [...new Set([...baselineByKey.keys(), ...sessionsByKey.keys()])].sort();
+  const diagnoses = keys.map((key) => {
+    const sessionEntry = sessionsByKey.get(key);
+    const baseline = baselineByKey.get(key);
+    const patientId = sessionEntry?.patientId || baseline?.patientId || "";
+    const diagnosisMonth = sessionEntry?.claimMonth || baseline?.claimMonth || month;
+    const engine = engineClaimFromSessions(sessionEntry?.sessions || [], { patientId, claimMonth: diagnosisMonth });
+    return buildBaselineDiagnosis(
+      baseline || { patientId, claimMonth: diagnosisMonth, lines: [] },
+      engine,
+      { knownUnsupportedCodes, codeMap }
+    );
+  });
+
+  const countCategory = (category) => diagnoses.reduce(
+    (sum, diagnosis) => sum + diagnosis.findings.filter((finding) => finding.category === category).length,
+    0
+  );
+  const missingPoints = diagnoses.reduce(
+    (sum, diagnosis) => sum + diagnosis.findings.filter((finding) => finding.category === BASELINE_DIFF_CATEGORY.MISSING).reduce((acc, finding) => acc + finding.points, 0),
+    0
+  );
+
+  return {
+    claimMonth: month || null,
+    patientCount: diagnoses.length,
+    diagnoses,
+    summary: {
+      missingCandidateCount: countCategory(BASELINE_DIFF_CATEGORY.MISSING),
+      missingCandidatePoints: missingPoints,
+      missingCandidateEstimatedYen: estimateReceiptYen(missingPoints),
+      needsReviewCount: countCategory(BASELINE_DIFF_CATEGORY.REVIEW),
+      considerCount: countCategory(BASELINE_DIFF_CATEGORY.CONSIDER)
+    }
+  };
+}
+
+function monthlyBaselineKey(patientId, claimMonth) {
+  return `${String(patientId || "").trim()}\u0000${String(claimMonth || "").trim()}`;
+}
+
+function baselineClaimMonth(value = {}, fallback = "") {
+  const raw = String(
+    value.claimMonth
+    ?? value.claim_month
+    ?? (value.serviceDate ? String(value.serviceDate).slice(0, 7) : "")
+    ?? fallback
+    ?? ""
+  ).trim();
+  return raw ? raw.slice(0, 7) : String(fallback || "").trim().slice(0, 7);
+}
+
+function normalizeBaselineClaimForDiagnosis(claim = {}, fallback = {}) {
+  const patientId = String(claim.patientId ?? claim.patient_id ?? fallback.patientId ?? "").trim();
+  const claimMonth = baselineClaimMonth(claim, fallback.claimMonth);
+  const lines = Array.isArray(claim.lines)
+    ? claim.lines
+    : (Array.isArray(claim.lineItems) ? claim.lineItems : []);
+  return {
+    ...claim,
+    patientId,
+    claimMonth,
+    lines
+  };
+}
+
+function mergeBaselineClaims(left = {}, right = {}) {
+  const totalLeft = Number(left.totalPoints ?? left.total_points);
+  const totalRight = Number(right.totalPoints ?? right.total_points);
+  return {
+    ...left,
+    ...right,
+    patientId: left.patientId || right.patientId,
+    claimMonth: left.claimMonth || right.claimMonth,
+    lines: [...(Array.isArray(left.lines) ? left.lines : []), ...(Array.isArray(right.lines) ? right.lines : [])],
+    ...(Number.isFinite(totalLeft) || Number.isFinite(totalRight)
+      ? { totalPoints: (Number.isFinite(totalLeft) ? totalLeft : 0) + (Number.isFinite(totalRight) ? totalRight : 0) }
+      : {})
+  };
+}

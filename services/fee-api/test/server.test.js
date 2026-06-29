@@ -8293,6 +8293,78 @@ test("imports external billing history for a patient", async () => {
   assert.equal(listed.body.billingHistoryEvents[0].source, "receipt_csv");
 });
 
+test("runs baseline diagnosis with month-scoped sessions and records audit event", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore, { globalRoles: [], productRoles: { fee: ["medical_clerk"] } });
+  const june = stores.feeStore.createSession({
+    orgId: "org_001",
+    patientId: "patA",
+    facilityId: "fac_001",
+    createdByMemberId: "mem_001",
+    serviceDate: "2026-06-10"
+  });
+  const may = stores.feeStore.createSession({
+    orgId: "org_001",
+    patientId: "patA",
+    facilityId: "fac_001",
+    createdByMemberId: "mem_001",
+    serviceDate: "2026-05-10"
+  });
+  stores.feeStore.saveCalculation("org_001", june.feeSessionId, {
+    provider: "test",
+    status: "completed",
+    lineItems: [{ code: "112007410", name: "再診料", points: 73, quantity: 1, status: "confirmed" }]
+  });
+  stores.feeStore.saveCalculation("org_001", may.feeSessionId, {
+    provider: "test",
+    status: "completed",
+    lineItems: [{ code: "113001810", name: "特定疾患療養管理料", points: 225, quantity: 1, status: "confirmed" }]
+  });
+
+  const response = await request(stores, "POST", "/v1/fee/baseline-diagnosis", {
+    claimMonth: "2026-06",
+    baselineClaims: [
+      { patientId: "patA", claimMonth: "2026-06", lines: [{ code: "112007410", name: "再診料", points: 73, count: 1 }] },
+      { patientId: "patA", claimMonth: "2026-05", lines: [{ code: "113001810", name: "特定疾患療養管理料", points: 225, count: 1 }] }
+    ]
+  }, headers);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.patientCount, 1);
+  assert.equal(response.body.summary.missingCandidateCount, 0);
+  assert.equal(response.body.summary.needsReviewCount, 0);
+  const auditEvents = stores.platformStore.listAuditEvents("org_001");
+  assert.ok(auditEvents.some((event) => event.eventType === "fee.baseline_diagnosis_run" && event.safePayload.claimMonth === "2026-06"));
+});
+
+test("baseline diagnosis rejects missing csrf and viewer role", async () => {
+  const stores = createStores();
+  const adminHeaders = await signedHeaders(stores.platformStore);
+  const csrfResponse = await request(stores, "POST", "/v1/fee/baseline-diagnosis", {
+    claimMonth: "2026-06",
+    baselineClaims: []
+  }, { cookie: adminHeaders.cookie });
+  assert.equal(csrfResponse.statusCode, 403);
+
+  stores.platformStore.createMember("org_001", {
+    loginId: "viewer@example.com",
+    displayName: "Viewer",
+    globalRoles: [],
+    productRoles: { fee: ["viewer"] },
+    password: "viewer password"
+  });
+  const viewerHeaders = await signedHeaders(stores.platformStore, {
+    loginId: "viewer@example.com",
+    globalRoles: [],
+    productRoles: { fee: ["viewer"] }
+  });
+  const viewerResponse = await request(stores, "POST", "/v1/fee/baseline-diagnosis", {
+    claimMonth: "2026-06",
+    baselineClaims: []
+  }, viewerHeaders);
+  assert.equal(viewerResponse.statusCode, 403);
+});
+
 function createStores(options = {}) {
   let counter = 0;
   const platformCounters = new Map();
@@ -8412,16 +8484,17 @@ function createStores(options = {}) {
   return { platformStore, feeStore, feeCalculator };
 }
 
-async function signedHeaders(platformStore) {
-  const identity = platformStore.getLoginIdentity("clinic", "admin@example.com");
+async function signedHeaders(platformStore, options = {}) {
+  const loginId = options.loginId || "admin@example.com";
+  const identity = platformStore.getLoginIdentity("clinic", loginId);
   const { token, session } = createSignedSession({
     orgId: identity.orgId,
     memberId: identity.memberId,
     organizationCode: identity.organizationCode,
     loginId: identity.loginId,
     tokenVersion: identity.tokenVersion,
-    globalRoles: ["org_admin"],
-    productRoles: { fee: ["admin"] },
+    globalRoles: options.globalRoles || ["org_admin"],
+    productRoles: options.productRoles || { fee: ["admin"] },
     csrfToken: "csrf_test"
   }, {
     now: new Date("2026-05-28T00:00:00.000Z"),
