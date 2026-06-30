@@ -72,11 +72,11 @@ try {
     assert.equal(await page.getByText("病名不足 1件").count(), 1, "monthly worklist must show missing diagnosis count");
     assert.equal(await page.getByText("要確認 2件").count(), 1, "monthly worklist must show review count");
     await page.getByRole("button", { name: /患者名未入力/ }).click();
-    await page.getByText("作業状態").waitFor();
-    await page.getByText("候補病名").waitFor();
-    assert.equal(await page.locator("textarea").evaluateAll((items) => items.some((item) => item.value === "急性上気道炎")), true);
-    await page.getByText("算定根拠の確認が必要です。").waitFor();
-    assert.equal(await page.getByRole("link", { name: "開く" }).first().getAttribute("href"), "/sessions/fee_test_1");
+    const monthlyPopup = page.getByRole("dialog", { name: "患者の点検" });
+    await monthlyPopup.waitFor();
+    await monthlyPopup.getByRole("heading", { name: "やること" }).waitFor();
+    await monthlyPopup.getByText("要確認").first().waitFor();
+    assert.equal(await monthlyPopup.getByRole("link", { name: "算定画面で開く" }).first().getAttribute("href"), "/sessions/fee_test_1");
 
     await page.goto(`${baseUrl}/sessions/fee_test_1`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "患者", level: 2 }).waitFor();

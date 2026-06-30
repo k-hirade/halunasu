@@ -162,63 +162,6 @@ function MonthlyClaimDashboard() {
     }
   }
 
-  async function applyMonthlyDiagnoses(session, collectedResult, workPatch = {}) {
-    if (!session?.feeSessionId) {
-      return;
-    }
-    const diagnoses = parseDiagnoses(collectedResult);
-    if (!diagnoses.length) {
-      setErrorMessage("反映する病名がありません。回収結果に病名を1行ずつ入力してください。");
-      return;
-    }
-    setSavingSessionId(session.feeSessionId);
-    setErrorMessage("");
-    try {
-      await feeApi(`/v1/fee/sessions/${encodeURIComponent(session.feeSessionId)}`, {
-        method: "PATCH",
-        csrf: true,
-        body: {
-          diagnoses,
-          diagnosesSource: "manual",
-          monthlyClaimWork: {
-            ...(session.monthlyClaimWork || {}),
-            ...workPatch,
-            status: "collected",
-            collectedResult,
-            appliedDiagnosisNames: diagnoses.map((diagnosis) => diagnosis.name).filter(Boolean)
-          }
-        }
-      });
-      await loadSummary();
-    } catch (error) {
-      setErrorMessage(toUserFacingErrorMessage(error, "回収した病名を反映できませんでした。"));
-    } finally {
-      setSavingSessionId("");
-    }
-  }
-
-  async function updateMonthlyReceiptAnnotations(session, receiptAnnotations) {
-    if (!session?.feeSessionId) {
-      return;
-    }
-    setSavingSessionId(session.feeSessionId);
-    setErrorMessage("");
-    try {
-      await feeApi(`/v1/fee/sessions/${encodeURIComponent(session.feeSessionId)}`, {
-        method: "PATCH",
-        csrf: true,
-        body: {
-          receiptAnnotations
-        }
-      });
-      await loadSummary();
-    } catch (error) {
-      setErrorMessage(toUserFacingErrorMessage(error, "コメント・詳記を保存できませんでした。"));
-    } finally {
-      setSavingSessionId("");
-    }
-  }
-
   async function createMonthlyBulkJob() {
     setBulkBusy(true);
     setErrorMessage("");
@@ -347,10 +290,8 @@ function MonthlyClaimDashboard() {
         )}
       </section>
 
-      <MonthlyPatientDrawer
-        onApplyDiagnoses={applyMonthlyDiagnoses}
+      <MonthlyPatientPopup
         onClose={() => setDrawerPatientKey("")}
-        onUpdateReceiptAnnotations={updateMonthlyReceiptAnnotations}
         onUpdateWork={updateMonthlyWork}
         patient={drawerPatient}
         savingSessionId={savingSessionId}
@@ -468,8 +409,8 @@ function MonthlyPatientRow({ onOpen, patient }) {
   );
 }
 
-// STEP4: 患者の点検詳細を右ドロワーで開く。テーブルのインライン展開を廃止して一覧の見通しを保つ。
-function MonthlyPatientDrawer({ onApplyDiagnoses, onClose, onUpdateReceiptAnnotations, onUpdateWork, patient, savingSessionId }) {
+// 患者×月の最小トリアージ・ポップアップ。表示・作業状態の切替に専念し、編集は算定画面で行う。
+function MonthlyPatientPopup({ onClose, onUpdateWork, patient, savingSessionId }) {
   useEffect(() => {
     if (!patient) {
       return undefined;
@@ -486,263 +427,97 @@ function MonthlyPatientDrawer({ onApplyDiagnoses, onClose, onUpdateReceiptAnnota
   if (!patient) {
     return null;
   }
-  const firstSession = Array.isArray(patient.sessions) ? patient.sessions[0] : null;
-  const status = patient.readyForClaim ? "提出候補" : patient.blocked ? "要対応" : "確認中";
+  const sessions = Array.isArray(patient.sessions) ? patient.sessions : [];
+  const firstSession = sessions[0] || null;
+  const statusKey = patient.readyForClaim ? "ready" : patient.blocked ? "needs_review" : "partial";
+  const statusLabelText = patient.readyForClaim ? "提出候補" : patient.blocked ? "要対応" : "確認中";
+  const breakdown = Array.isArray(patient.pointsBreakdown) ? patient.pointsBreakdown : [];
+  const tasks = [
+    { count: patient.missingDiagnosisCount, label: "病名不足", severity: "action" },
+    { count: patient.uncalculatedCount, label: "未算定", severity: "action" },
+    { count: patient.pendingReceiptAnnotationCount, label: "詳記・コメント未対応", severity: "action" },
+    { count: patient.symptomDetailCandidateCount, label: "詳記候補", severity: "check" },
+    { count: patient.needsReviewCount, label: "要確認", severity: "check" }
+  ].filter((task) => Number(task.count || 0) > 0);
+
   return (
-    <div className="fee-drawer-overlay" role="presentation" onMouseDown={onClose}>
-      <aside className="fee-drawer-panel" role="dialog" aria-modal="true" aria-label="患者の点検詳細" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="fee-drawer-head">
+    <div className="fee-modal-overlay" role="presentation" onMouseDown={onClose}>
+      <section className="fee-modal-card monthly-popup" role="dialog" aria-modal="true" aria-label="患者の点検" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="fee-modal-head">
           <div>
-            <strong>{patient.patientName || patient.patientId || "患者未設定"}</strong>
-            <small>{patient.patientId || "患者ID未設定"} / {Number(patient.sessionCount || 0).toLocaleString()}受診 / {Number(patient.totalPoints || 0).toLocaleString()}点 / {status}</small>
+            <span className="label">月次レセ点検</span>
+            <h2>{patient.patientName || patient.patientId || "患者未設定"}</h2>
+            <small>
+              {patient.patientId || "患者ID未設定"} / {Number(patient.sessionCount || 0).toLocaleString()}受診 / {Number(patient.totalPoints || 0).toLocaleString()}点
+              <span className={badgeClass(statusKey)}>{statusLabelText}</span>
+            </small>
           </div>
-          <div className="fee-drawer-head-actions">
-            {firstSession?.feeSessionId ? (
-              <a className="btn btn--ghost btn--sm" href={`/sessions/${encodeURIComponent(firstSession.feeSessionId)}`}>算定画面で開く</a>
-            ) : null}
-            <button className="btn btn--ghost btn--icon" onClick={onClose} type="button" aria-label="閉じる">×</button>
-          </div>
+          <button className="btn btn--ghost btn--icon" onClick={onClose} type="button" aria-label="閉じる">×</button>
         </header>
-        <div className="fee-drawer-body">
-          <div className="fee-monthly-session-list">
-            {(patient.sessions || []).map((session) => (
-              <MonthlySessionReview
-                key={session.feeSessionId || session.serviceDate}
-                onApplyDiagnoses={onApplyDiagnoses}
-                onUpdateReceiptAnnotations={onUpdateReceiptAnnotations}
-                onUpdateWork={onUpdateWork}
-                saving={savingSessionId === session.feeSessionId}
-                session={session}
-              />
-            ))}
-          </div>
+        <div className="fee-modal-body">
+          {breakdown.length ? (
+            <section className="monthly-popup-section">
+              <h3>点数内訳</h3>
+              <div className="fee-monthly-breakdown">
+                {breakdown.map((entry) => (
+                  <span className="fee-monthly-breakdown-chip" key={entry.label}>{entry.label}<b>{Number(entry.points || 0).toLocaleString()}</b></span>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="monthly-popup-section">
+            <h3>やること</h3>
+            {tasks.length ? (
+              <ul className="fee-monthly-tasklist">
+                {tasks.map((task) => (
+                  <li className={`fee-monthly-task fee-monthly-task--${task.severity}`} key={task.label}>
+                    <span className="fee-monthly-task-dot" aria-hidden="true" />
+                    <strong>{task.label}</strong>
+                    <small>{Number(task.count).toLocaleString()}件</small>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="fee-monthly-task-none">追加確認はありません。提出候補です。</p>}
+            <p className="monthly-popup-hint">修正は各受診の「算定画面で開く」から行ってください。</p>
+          </section>
+
+          <section className="monthly-popup-section">
+            <h3>受診</h3>
+            <div className="monthly-popup-sessions">
+              {sessions.map((session) => (
+                <div className="monthly-popup-session" key={session.feeSessionId || session.serviceDate}>
+                  <div className="monthly-popup-session-main">
+                    <strong>{session.serviceDate || "受診日未設定"}</strong>
+                    <small>{Number(session.totalPoints || 0).toLocaleString()}点 / {monthlySessionStatusLabel(session)}</small>
+                  </div>
+                  <select
+                    aria-label="作業状態"
+                    className="monthly-popup-status"
+                    disabled={savingSessionId === session.feeSessionId}
+                    onChange={(event) => onUpdateWork(session, { status: event.target.value })}
+                    value={session.monthlyClaimWork?.status || "not_started"}
+                  >
+                    {MONTHLY_WORK_STATUS_OPTIONS.map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                  {session.feeSessionId ? (
+                    <a className="btn btn--ghost btn--sm" href={`/sessions/${encodeURIComponent(session.feeSessionId)}`}>算定画面で開く</a>
+                  ) : <span className="monthly-popup-noopen">-</span>}
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
-      </aside>
+        <footer className="fee-modal-footer">
+          {firstSession?.feeSessionId ? (
+            <a className="btn btn--primary" href={`/sessions/${encodeURIComponent(firstSession.feeSessionId)}`}>算定画面で開く</a>
+          ) : null}
+          <button className="btn btn--ghost" onClick={onClose} type="button">閉じる</button>
+        </footer>
+      </section>
     </div>
-  );
-}
-
-// 自動算定の対象外・手動確認のみで、この画面では対応できない情報系issueを判定する。
-const MONTHLY_ISSUE_INFO_RE = /自動追加していません|人手で確認|未対応領域|現行の自動算定|在宅医療領域|自動算定には入れていません|確定算定せず/u;
-
-function classifyMonthlyIssue(issue = {}) {
-  const type = String(issue.type || "");
-  if (type === "missing_diagnosis" || type === "uncalculated" || type === "symptom_detail" || type === "receipt_annotation") {
-    return "action";
-  }
-  if (MONTHLY_ISSUE_INFO_RE.test(String(issue.detail || "")) || MONTHLY_ISSUE_INFO_RE.test(String(issue.label || ""))) {
-    return "info";
-  }
-  return "check";
-}
-
-function MonthlySessionReview({ onApplyDiagnoses, onUpdateReceiptAnnotations, onUpdateWork, saving, session }) {
-  const issues = Array.isArray(session.readiness?.issues) ? session.readiness.issues : [];
-  const workStatus = session.monthlyClaimWork?.status || "not_started";
-  const firstAnnotation = firstReceiptAnnotation(session.receiptAnnotations);
-  const [doctorName, setDoctorName] = useState(session.monthlyClaimWork?.doctorName || "");
-  const [candidatesText, setCandidatesText] = useState(formatDiagnoses(session.monthlyClaimWork?.diagnosisCandidates || []));
-  const [reason, setReason] = useState(session.monthlyClaimWork?.diagnosisRequestReason || defaultDiagnosisRequestReason(session));
-  const [collectedResult, setCollectedResult] = useState(session.monthlyClaimWork?.collectedResult || "");
-  const [annotationKind, setAnnotationKind] = useState(firstAnnotation.kind || "symptom_detail");
-  const [annotationStatus, setAnnotationStatus] = useState(firstAnnotation.status || "draft");
-  const [annotationCode, setAnnotationCode] = useState(firstAnnotation.code || "");
-  const [annotationText, setAnnotationText] = useState(firstAnnotation.text || defaultReceiptAnnotationText(session));
-
-  useEffect(() => {
-    const nextAnnotation = firstReceiptAnnotation(session.receiptAnnotations);
-    setDoctorName(session.monthlyClaimWork?.doctorName || "");
-    setCandidatesText(formatDiagnoses(session.monthlyClaimWork?.diagnosisCandidates || []));
-    setReason(session.monthlyClaimWork?.diagnosisRequestReason || defaultDiagnosisRequestReason(session));
-    setCollectedResult(session.monthlyClaimWork?.collectedResult || "");
-    setAnnotationKind(nextAnnotation.kind || "symptom_detail");
-    setAnnotationStatus(nextAnnotation.status || "draft");
-    setAnnotationCode(nextAnnotation.code || "");
-    setAnnotationText(nextAnnotation.text || defaultReceiptAnnotationText(session));
-  }, [session]);
-
-  const diagnosisTarget = Boolean(session.readiness?.diagnosisRequestCandidate || session.monthlyClaimWork?.diagnosisRequestReason || session.monthlyClaimWork?.collectedResult);
-  const annotationTarget = Boolean(
-    session.readiness?.pendingReceiptAnnotationCount
-    || session.readiness?.symptomDetailCandidateCount
-    || firstAnnotation.text
-  );
-
-  function saveDiagnosisWork(nextStatus = workStatus) {
-    onUpdateWork(session, {
-      status: nextStatus,
-      doctorName,
-      diagnosisCandidates: parseDiagnoses(candidatesText),
-      diagnosisRequestReason: reason,
-      collectedResult
-    });
-  }
-
-  function saveReceiptAnnotation(nextStatus = annotationStatus) {
-    const nextAnnotations = upsertReceiptAnnotation(session.receiptAnnotations, {
-      kind: annotationKind,
-      status: nextStatus,
-      code: annotationCode,
-      text: annotationText,
-      sourceReviewItemId: monthlyReceiptAnnotationSourceId(session),
-      sourceLabel: "月次点検"
-    });
-    onUpdateReceiptAnnotations(session, nextAnnotations);
-  }
-
-  const classifiedIssues = issues.map((issue) => ({ issue, severity: classifyMonthlyIssue(issue) }));
-  const actionableIssues = classifiedIssues.filter((entry) => entry.severity !== "info");
-  const infoIssues = classifiedIssues.filter((entry) => entry.severity === "info");
-  const breakdown = Array.isArray(session.pointsBreakdown) ? session.pointsBreakdown : [];
-
-  return (
-    <article className="fee-monthly-session-review">
-      <div className="fee-monthly-session-review-head">
-        <div>
-          <strong>{session.serviceDate || "受診日未設定"}</strong>
-          <small>{Number(session.totalPoints || 0).toLocaleString()}点 / {monthlySessionStatusLabel(session)}</small>
-        </div>
-        <label>
-          <span>作業状態</span>
-          <select
-            disabled={saving}
-            onChange={(event) => onUpdateWork(session, { status: event.target.value })}
-            value={workStatus}
-          >
-            {MONTHLY_WORK_STATUS_OPTIONS.map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {breakdown.length ? (
-        <div className="fee-monthly-breakdown" aria-label="点数内訳">
-          {breakdown.map((entry) => (
-            <span className="fee-monthly-breakdown-chip" key={entry.label}>
-              {entry.label}<b>{Number(entry.points || 0).toLocaleString()}</b>
-            </span>
-          ))}
-        </div>
-      ) : null}
-      {actionableIssues.length ? (
-        <ul className="fee-monthly-tasklist">
-          {actionableIssues.map(({ issue, severity }, index) => (
-            <li className={`fee-monthly-task fee-monthly-task--${severity}`} key={`${issue.type || "issue"}-${index}`}>
-              <span className="fee-monthly-task-dot" aria-hidden="true" />
-              <strong>{issue.label || "要確認"}</strong>
-              {issue.detail ? <small>{issue.detail}</small> : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {infoIssues.length ? (
-        <details className="fee-monthly-task-info">
-          <summary>参考（自動算定の対象外・要手動確認） {infoIssues.length}件</summary>
-          <ul className="fee-monthly-tasklist">
-            {infoIssues.map(({ issue }, index) => (
-              <li className="fee-monthly-task fee-monthly-task--info" key={`info-${index}`}>
-                <span className="fee-monthly-task-dot" aria-hidden="true" />
-                <strong>{issue.label}</strong>
-                {issue.detail ? <small>{issue.detail}</small> : null}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-      {!actionableIssues.length && !infoIssues.length ? <p className="fee-monthly-task-none">追加確認はありません。</p> : null}
-      {diagnosisTarget ? (
-        <div className="fee-monthly-diagnosis-task">
-          <div className="fee-monthly-diagnosis-grid">
-            <label>
-              <span>依頼先医師</span>
-              <input disabled={saving} onChange={(event) => setDoctorName(event.target.value)} value={doctorName} />
-            </label>
-            <label>
-              <span>候補病名</span>
-              <textarea disabled={saving} onChange={(event) => setCandidatesText(event.target.value)} rows={3} value={candidatesText} />
-            </label>
-            <label>
-              <span>確認理由</span>
-              <textarea disabled={saving} onChange={(event) => setReason(event.target.value)} rows={3} value={reason} />
-            </label>
-            <label>
-              <span>回収結果</span>
-              <textarea disabled={saving} onChange={(event) => setCollectedResult(event.target.value)} rows={3} value={collectedResult} />
-            </label>
-          </div>
-          <div className="fee-monthly-diagnosis-actions">
-            <button className="btn btn--ghost btn--sm" disabled={saving} onClick={() => saveDiagnosisWork("diagnosis_requested")} type="button">
-              病名依頼として保存
-            </button>
-            <button className="btn btn--ghost btn--sm" disabled={saving} onClick={() => saveDiagnosisWork("doctor_confirming")} type="button">
-              医師確認中にする
-            </button>
-            <button className="btn btn--ghost btn--sm" disabled={saving} onClick={() => saveDiagnosisWork("collected")} type="button">
-              回収済みにする
-            </button>
-            <button
-              className="btn btn--primary btn--sm"
-              disabled={saving}
-              onClick={() => onApplyDiagnoses(session, collectedResult, {
-                doctorName,
-                diagnosisCandidates: parseDiagnoses(candidatesText),
-                diagnosisRequestReason: reason
-              })}
-              type="button"
-            >
-              病名へ反映
-            </button>
-          </div>
-          <div className="fee-monthly-diagnosis-history">
-            {session.monthlyClaimWork?.requestedAt ? <span>依頼 {formatDateTime(session.monthlyClaimWork.requestedAt)}</span> : null}
-            {session.monthlyClaimWork?.collectedAt ? <span>回収 {formatDateTime(session.monthlyClaimWork.collectedAt)}</span> : null}
-            {session.monthlyClaimWork?.appliedDiagnosisNames?.length ? <span>反映済み {session.monthlyClaimWork.appliedDiagnosisNames.join("、")}</span> : null}
-          </div>
-        </div>
-      ) : null}
-      {annotationTarget ? (
-        <div className="fee-monthly-annotation-task">
-          <div className="fee-monthly-diagnosis-grid">
-            <label>
-              <span>種別</span>
-              <select disabled={saving} onChange={(event) => setAnnotationKind(event.target.value)} value={annotationKind}>
-                <option value="symptom_detail">症状詳記</option>
-                <option value="comment">コメント</option>
-              </select>
-            </label>
-            <label>
-              <span>状態</span>
-              <select disabled={saving} onChange={(event) => setAnnotationStatus(event.target.value)} value={annotationStatus}>
-                <option value="draft">下書き</option>
-                <option value="confirmed">確定</option>
-                <option value="rejected">不要</option>
-              </select>
-            </label>
-            {annotationKind === "comment" ? (
-              <label>
-                <span>コメントコード</span>
-                <input disabled={saving} onChange={(event) => setAnnotationCode(event.target.value)} value={annotationCode} />
-              </label>
-            ) : null}
-            <label className="fee-monthly-annotation-text">
-              <span>{annotationKind === "comment" ? "コメント本文" : "症状詳記本文"}</span>
-              <textarea disabled={saving} onChange={(event) => setAnnotationText(event.target.value)} rows={4} value={annotationText} />
-            </label>
-          </div>
-          <div className="fee-monthly-diagnosis-actions">
-            <button className="btn btn--ghost btn--sm" disabled={saving || !annotationText.trim()} onClick={() => saveReceiptAnnotation("draft")} type="button">
-              下書き保存
-            </button>
-            <button className="btn btn--primary btn--sm" disabled={saving || !annotationText.trim()} onClick={() => saveReceiptAnnotation("confirmed")} type="button">
-              確定して出力対象
-            </button>
-            <button className="btn btn--ghost btn--sm" disabled={saving} onClick={() => saveReceiptAnnotation("rejected")} type="button">
-              不要にする
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </article>
   );
 }
 

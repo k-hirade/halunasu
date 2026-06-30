@@ -1302,6 +1302,78 @@ body:has(.fee-shell--detail) {
   font-size: 13px;
 }
 
+/* 月次トリアージ・ポップアップ */
+.monthly-popup .fee-modal-head small {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.monthly-popup-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.monthly-popup-section:first-child {
+  margin-top: 0;
+}
+
+.monthly-popup-section h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+
+.monthly-popup-hint {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.monthly-popup-sessions {
+  display: grid;
+  gap: 8px;
+}
+
+.monthly-popup-session {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, auto) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.monthly-popup-session-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.monthly-popup-session-main small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.monthly-popup-status {
+  min-width: 120px;
+}
+
+.monthly-popup-noopen {
+  color: var(--muted);
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .monthly-popup-session {
+    grid-template-columns: 1fr;
+  }
+}
+
 .fee-monthly-diagnosis-task {
   padding: 12px;
   border: 1px solid #d0d5dd;
