@@ -522,6 +522,20 @@ function MonthlyPatientDrawer({ onApplyDiagnoses, onClose, onUpdateReceiptAnnota
   );
 }
 
+// 自動算定の対象外・手動確認のみで、この画面では対応できない情報系issueを判定する。
+const MONTHLY_ISSUE_INFO_RE = /自動追加していません|人手で確認|未対応領域|現行の自動算定|在宅医療領域|自動算定には入れていません|確定算定せず/u;
+
+function classifyMonthlyIssue(issue = {}) {
+  const type = String(issue.type || "");
+  if (type === "missing_diagnosis" || type === "uncalculated" || type === "symptom_detail" || type === "receipt_annotation") {
+    return "action";
+  }
+  if (MONTHLY_ISSUE_INFO_RE.test(String(issue.detail || "")) || MONTHLY_ISSUE_INFO_RE.test(String(issue.label || ""))) {
+    return "info";
+  }
+  return "check";
+}
+
 function MonthlySessionReview({ onApplyDiagnoses, onUpdateReceiptAnnotations, onUpdateWork, saving, session }) {
   const issues = Array.isArray(session.readiness?.issues) ? session.readiness.issues : [];
   const workStatus = session.monthlyClaimWork?.status || "not_started";
@@ -576,6 +590,11 @@ function MonthlySessionReview({ onApplyDiagnoses, onUpdateReceiptAnnotations, on
     onUpdateReceiptAnnotations(session, nextAnnotations);
   }
 
+  const classifiedIssues = issues.map((issue) => ({ issue, severity: classifyMonthlyIssue(issue) }));
+  const actionableIssues = classifiedIssues.filter((entry) => entry.severity !== "info");
+  const infoIssues = classifiedIssues.filter((entry) => entry.severity === "info");
+  const breakdown = Array.isArray(session.pointsBreakdown) ? session.pointsBreakdown : [];
+
   return (
     <article className="fee-monthly-session-review">
       <div className="fee-monthly-session-review-head">
@@ -596,18 +615,41 @@ function MonthlySessionReview({ onApplyDiagnoses, onUpdateReceiptAnnotations, on
           </select>
         </label>
       </div>
-      {issues.length ? (
-        <ul>
-          {issues.map((issue, index) => (
-            <li key={`${issue.type || "issue"}-${index}`}>
-              <span>{issue.label || "要確認"}</span>
-              <p>{issue.detail || "確認内容の詳細を確認してください。"}</p>
+      {breakdown.length ? (
+        <div className="fee-monthly-breakdown" aria-label="点数内訳">
+          {breakdown.map((entry) => (
+            <span className="fee-monthly-breakdown-chip" key={entry.label}>
+              {entry.label}<b>{Number(entry.points || 0).toLocaleString()}</b>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {actionableIssues.length ? (
+        <ul className="fee-monthly-tasklist">
+          {actionableIssues.map(({ issue, severity }, index) => (
+            <li className={`fee-monthly-task fee-monthly-task--${severity}`} key={`${issue.type || "issue"}-${index}`}>
+              <span className="fee-monthly-task-dot" aria-hidden="true" />
+              <strong>{issue.label || "要確認"}</strong>
+              {issue.detail ? <small>{issue.detail}</small> : null}
             </li>
           ))}
         </ul>
-      ) : (
-        <p>この受診分に追加確認はありません。</p>
-      )}
+      ) : null}
+      {infoIssues.length ? (
+        <details className="fee-monthly-task-info">
+          <summary>参考（自動算定の対象外・要手動確認） {infoIssues.length}件</summary>
+          <ul className="fee-monthly-tasklist">
+            {infoIssues.map(({ issue }, index) => (
+              <li className="fee-monthly-task fee-monthly-task--info" key={`info-${index}`}>
+                <span className="fee-monthly-task-dot" aria-hidden="true" />
+                <strong>{issue.label}</strong>
+                {issue.detail ? <small>{issue.detail}</small> : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      {!actionableIssues.length && !infoIssues.length ? <p className="fee-monthly-task-none">追加確認はありません。</p> : null}
       {diagnosisTarget ? (
         <div className="fee-monthly-diagnosis-task">
           <div className="fee-monthly-diagnosis-grid">

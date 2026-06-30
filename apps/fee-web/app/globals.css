@@ -1208,6 +1208,100 @@ body:has(.fee-shell--detail) {
   line-height: 1.5;
 }
 
+/* 点数内訳(コンパクト) */
+.fee-monthly-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fee-monthly-breakdown-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fafc;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #475467;
+}
+
+.fee-monthly-breakdown-chip b {
+  margin-left: 5px;
+  color: var(--ink);
+}
+
+/* やること(コンパクト・1行) */
+.fee-monthly-session-review .fee-monthly-tasklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.fee-monthly-session-review .fee-monthly-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  min-width: 0;
+}
+
+.fee-monthly-task-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: #94a3b8;
+}
+
+.fee-monthly-task--action .fee-monthly-task-dot {
+  background: #dc2626;
+}
+
+.fee-monthly-task--check .fee-monthly-task-dot {
+  background: #2563eb;
+}
+
+.fee-monthly-session-review .fee-monthly-task strong {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  font-weight: 900;
+}
+
+.fee-monthly-session-review .fee-monthly-task small {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fee-monthly-task-info {
+  margin-top: 2px;
+}
+
+.fee-monthly-task-info summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.fee-monthly-task-info .fee-monthly-tasklist {
+  margin-top: 6px;
+}
+
+.fee-monthly-task-none {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .fee-monthly-diagnosis-task {
   padding: 12px;
   border: 1px solid #d0d5dd;

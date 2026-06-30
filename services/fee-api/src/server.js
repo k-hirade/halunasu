@@ -2328,12 +2328,15 @@ export function buildMonthlyClaimSummary(sessions = [], { claimMonth = "" } = {}
     if (!group.patientName && session.patientSnapshot?.displayName) {
       group.patientName = session.patientSnapshot.displayName;
     }
+    const pointsBreakdown = monthlyPointsBreakdown(session);
+    group.pointsBreakdown = mergeMonthlyPointsBreakdown(group.pointsBreakdown, pointsBreakdown);
     group.sessions.push({
       feeSessionId: session.feeSessionId,
       serviceDate: session.serviceDate || null,
       claimMonth: sessionMonthOf(session) || null,
       status: session.status || null,
       totalPoints: points,
+      pointsBreakdown,
       monthlyClaimWork: work,
       receiptAnnotations: receiptAnnotationView(session.receiptAnnotations),
       readiness
@@ -2495,6 +2498,55 @@ function feeMonthlySessionReadiness(session = {}) {
     }),
     status
   };
+}
+
+// 何が点数として加算されているかの区分別内訳(コンパクト表示用)。
+const MONTHLY_BREAKDOWN_LABELS = {
+  basic: "基本料",
+  management: "医学管理",
+  home: "在宅",
+  drug: "投薬",
+  injection: "注射",
+  treatment: "処置",
+  procedure: "手術",
+  surgery: "手術",
+  anesthesia: "麻酔",
+  lab: "検査",
+  pathology: "病理",
+  imaging: "画像",
+  material: "特定器材",
+  other: "その他",
+  unknown: "その他"
+};
+
+function monthlyPointsBreakdown(session = {}) {
+  const lines = Array.isArray(session?.calculationResult?.lineItems) ? session.calculationResult.lineItems : [];
+  const map = new Map();
+  for (const line of lines) {
+    const status = String(line?.status || "");
+    if (line?.includedInTotal === false || status === "blocked" || status === "rejected") {
+      continue;
+    }
+    const points = Number(line?.totalPoints || 0) || 0;
+    if (points <= 0) {
+      continue;
+    }
+    const label = MONTHLY_BREAKDOWN_LABELS[String(line?.orderType || "unknown")] || "その他";
+    const entry = map.get(label) || { label, points: 0 };
+    entry.points += points;
+    map.set(label, entry);
+  }
+  return [...map.values()].sort((a, b) => b.points - a.points);
+}
+
+function mergeMonthlyPointsBreakdown(base = [], add = []) {
+  const map = new Map((Array.isArray(base) ? base : []).map((entry) => [entry.label, { ...entry }]));
+  for (const entry of Array.isArray(add) ? add : []) {
+    const existing = map.get(entry.label) || { label: entry.label, points: 0 };
+    existing.points += Number(entry.points || 0);
+    map.set(entry.label, existing);
+  }
+  return [...map.values()].sort((a, b) => b.points - a.points);
 }
 
 function monthlyReadinessIssues({
