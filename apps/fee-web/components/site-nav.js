@@ -1,9 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { BRAND_NAME, PRODUCT_NAME } from "../lib/brand";
 import { useAdminNav } from "./admin-nav-context";
+import { isStgFeeEnvironment } from "../lib/baseline-diff";
+
+const BASELINE_DIFF_MENU_SECTION = {
+  id: "baseline-diff",
+  group: "設定",
+  label: "既存レセとの差分診断",
+  description: "既存レセと当社再算定を突合し差分を出します（STG限定）。",
+  href: "/admin?section=baseline-diff"
+};
 
 const SETTINGS_MENU_SECTIONS = [
   {
@@ -53,6 +62,7 @@ function hrefForAdminSection(section) {
     members: "/admin?section=members",
     settings: "/admin?section=settings",
     "receipt-settings": "/admin?section=receipt-settings",
+    "baseline-diff": "/admin?section=baseline-diff",
     audit: "/admin?section=audit",
     account: "/admin?section=account"
   }[section.id] || "/admin";
@@ -69,10 +79,17 @@ export function SiteNav() {
     toggleAdminNav
   } = useAdminNav();
 
+  const [isStg, setIsStg] = useState(false);
+  useEffect(() => {
+    setIsStg(isStgFeeEnvironment());
+  }, []);
+
   const isAdminRoute = pathname?.startsWith("/admin");
   const isMonthlyRoute = pathname?.startsWith("/monthly");
   const isSessionsRoute = !isAdminRoute && !isMonthlyRoute;
-  const settingsSections = (isAdminNavAvailable && adminSections.length ? adminSections : SETTINGS_MENU_SECTIONS)
+  // /admin ではコンテキスト(STGフィルタ済み)を使用。それ以外ではフォールバックにSTG限定項目を足す。
+  const fallbackSections = isStg ? [...SETTINGS_MENU_SECTIONS, BASELINE_DIFF_MENU_SECTION] : SETTINGS_MENU_SECTIONS;
+  const settingsSections = (isAdminNavAvailable && adminSections.length ? adminSections : fallbackSections)
     .map((section) => ({
       ...section,
       href: hrefForAdminSection(section)

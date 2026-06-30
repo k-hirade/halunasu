@@ -8327,7 +8327,7 @@ test("runs baseline diagnosis with month-scoped sessions and records audit event
       { patientId: "patA", claimMonth: "2026-06", lines: [{ code: "112007410", name: "再診料", points: 73, count: 1 }] },
       { patientId: "patA", claimMonth: "2026-05", lines: [{ code: "113001810", name: "特定疾患療養管理料", points: 225, count: 1 }] }
     ]
-  }, headers);
+  }, headers, { env: "stg" });
 
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.patientCount, 1);
@@ -8343,7 +8343,7 @@ test("baseline diagnosis rejects missing csrf and viewer role", async () => {
   const csrfResponse = await request(stores, "POST", "/v1/fee/baseline-diagnosis", {
     claimMonth: "2026-06",
     baselineClaims: []
-  }, { cookie: adminHeaders.cookie });
+  }, { cookie: adminHeaders.cookie }, { env: "stg" });
   assert.equal(csrfResponse.statusCode, 403);
 
   stores.platformStore.createMember("org_001", {
@@ -8361,8 +8361,26 @@ test("baseline diagnosis rejects missing csrf and viewer role", async () => {
   const viewerResponse = await request(stores, "POST", "/v1/fee/baseline-diagnosis", {
     claimMonth: "2026-06",
     baselineClaims: []
-  }, viewerHeaders);
+  }, viewerHeaders, { env: "stg" });
   assert.equal(viewerResponse.statusCode, 403);
+});
+
+test("baseline diagnosis is unavailable outside stg and rejects empty parsed uploads", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const prodResponse = await request(stores, "POST", "/v1/fee/baseline-diagnosis", {
+    claimMonth: "2026-06",
+    baselineClaims: []
+  }, headers, { env: "prod" });
+  assert.equal(prodResponse.statusCode, 404);
+
+  const emptyUpload = await request(stores, "POST", "/v1/fee/baseline-diagnosis", {
+    claimMonth: "2026-06",
+    baselineFormat: "csv",
+    baselineContentBase64: Buffer.from("patient_id,claim_month,code\n", "utf8").toString("base64")
+  }, headers, { env: "stg" });
+  assert.equal(emptyUpload.statusCode, 400);
+  assert.match(emptyUpload.body.message, /既存レセを取り込めません/);
 });
 
 function createStores(options = {}) {
@@ -8423,6 +8441,9 @@ function createStores(options = {}) {
           rowCount: 1
         }]
       };
+    },
+    async parseBaseline() {
+      return { baselineClaims: [] };
     },
     async calculate(feeSession) {
       return {

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toUserFacingErrorMessage } from "@halunasu/web-ui/user-facing-error";
 import { useAdminNav } from "./admin-nav-context";
 import { getStoredPlatformAccessToken, usePlatformAuth } from "./platform-auth";
+import { FeeBaselineDiffConsole } from "./fee-baseline-diff-console";
 
 const ADMIN_SECTIONS = [
   {
@@ -18,6 +19,13 @@ const ADMIN_SECTIONS = [
     group: "設定",
     label: "設定",
     description: "算定の前提・施設基準・レセプト出力の既定値をまとめて管理します。"
+  },
+  {
+    id: "baseline-diff",
+    group: "設定",
+    label: "既存レセとの差分診断",
+    description: "既存レセコン出力と当社再算定を突合し、算定もれ候補・要確認・検討を出します（STG限定）。",
+    stgOnly: true
   },
   {
     id: "master",
@@ -145,7 +153,7 @@ export function FeeAdminConsole() {
     if (tab === "home" || tab === "account") {
       return;
     }
-    if (tab === "master") {
+    if (tab === "master" || tab === "baseline-diff") {
       return;
     }
     setLoadingSection(tab);
@@ -250,6 +258,13 @@ function renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platfo
 
   if (activeTab === "settings" || activeTab === "receipt-settings") {
     return <FeeSettingsPanel data={feeData} initialGroup={activeTab === "receipt-settings" ? "receipt" : "billing"} />;
+  }
+
+  if (activeTab === "baseline-diff") {
+    if (!isStgEnv) {
+      return <div className="fee-empty-state">この画面はSTG環境だけで利用できます。</div>;
+    }
+    return <FeeBaselineDiffConsole />;
   }
 
   if (activeTab === "master") {

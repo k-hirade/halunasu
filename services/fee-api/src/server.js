@@ -347,6 +347,9 @@ async function routeFeeApiRequest(input = {}) {
 
   // 導入前 一括レセプト差分診断: 既存レセ(baselineClaims) と 当社算定(セッション) を患者×月で突合
   if (method === "POST" && matches(parts, ["v1", "fee", "baseline-diagnosis"])) {
+    if (!isStgEnvironment(input.env)) {
+      return notFound("Route not found");
+    }
     requireBaselineDiagnosisContext(context);
     requireMutationCsrf(input, context.session);
     const body = input.body || {};
@@ -358,11 +361,12 @@ async function routeFeeApiRequest(input = {}) {
     // 既存レセのテキスト(UKE/CSV)が渡された場合は Python adapter で baselineClaims に変換する。
     const baselineText = String(body.baselineText ?? body.baseline_text ?? "");
     const baselineContentBase64 = String(body.baselineContentBase64 ?? body.baseline_content_base64 ?? "").trim();
+    const baselineContentProvided = Boolean(baselineText || baselineContentBase64);
     const baselineFormat = String(body.baselineFormat ?? body.baseline_format ?? "").trim().toLowerCase();
-    if ((baselineText || baselineContentBase64) && !["uke", "csv"].includes(baselineFormat)) {
+    if (baselineContentProvided && !["uke", "csv"].includes(baselineFormat)) {
       throw requestValidationError("baselineFormat must be csv or uke when baseline content is provided");
     }
-    if ((baselineText || baselineContentBase64) && (baselineFormat === "uke" || baselineFormat === "csv")) {
+    if (baselineContentProvided && (baselineFormat === "uke" || baselineFormat === "csv")) {
       if (typeof feeCalculator.parseBaseline !== "function") {
         return { statusCode: 501, body: { error: "baseline_parser_unavailable", message: "既存レセ取込(Python adapter)が利用できません。" } };
       }
@@ -383,6 +387,9 @@ async function routeFeeApiRequest(input = {}) {
       claimMonth,
       limit: baselineDiagnosisClaimLimit(input.processEnv || process.env)
     });
+    if (baselineContentProvided && baselineClaims.length === 0) {
+      throw requestValidationError("既存レセを取り込めませんでした。CSV列マッピング、請求月、文字コードを確認してください。");
+    }
     const sessionList = await listSessionsForBaselineDiagnosis(feeStore, context.session.orgId, {
       claimMonth,
       limit: baselineDiagnosisSessionLimit(input.processEnv || process.env)

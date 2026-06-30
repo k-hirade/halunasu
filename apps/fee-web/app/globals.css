@@ -5012,3 +5012,270 @@ body:has(.fee-shell--detail) {
     gap: 4px;
   }
 }
+
+/* 既存レセとの差分診断(専用ページ・STG限定) */
+.baseline-diff {
+  display: grid;
+  gap: 16px;
+}
+
+.baseline-diff-locked {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcfe;
+  padding: 28px;
+  text-align: center;
+}
+
+.baseline-diff-locked strong {
+  font-size: 1.05rem;
+}
+
+.baseline-diff-locked p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.baseline-diff-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.baseline-diff-month {
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.baseline-diff-month span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.baseline-diff-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  flex: 1 1 320px;
+}
+
+.baseline-diff-warning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  border: 1px solid #fed7aa;
+  background: #fffaf5;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #b54708;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.baseline-diff-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.baseline-diff-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.baseline-diff-card-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.baseline-diff-card-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.baseline-diff-drop {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  text-align: center;
+  border: 2px dashed #c8d4e2;
+  border-radius: 10px;
+  background: #fbfdff;
+  padding: 28px 16px;
+  cursor: pointer;
+}
+
+.baseline-diff-drop.is-over {
+  border-color: var(--accent);
+  background: var(--soft-accent);
+}
+
+.baseline-diff-drop strong {
+  font-size: 0.98rem;
+}
+
+.baseline-diff-drop span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.baseline-diff-drop small {
+  margin-top: 4px;
+  color: var(--accent-dark);
+  font-weight: 800;
+}
+
+.baseline-diff-options {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 10px 12px;
+}
+
+.baseline-diff-options summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  color: #344054;
+}
+
+.baseline-diff-options-body {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.baseline-diff-fieldset {
+  display: grid;
+  gap: 6px;
+}
+
+.baseline-diff-fieldset-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.baseline-diff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.baseline-diff-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.baseline-diff-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.baseline-diff-metric {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.baseline-diff-metric span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.baseline-diff-metric strong {
+  font-size: 1.35rem;
+}
+
+.baseline-diff-metric small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.baseline-diff-metric--missing {
+  border-color: #bcd3ff;
+  background: #f3f8ff;
+}
+
+.baseline-diff-metric--review {
+  border-color: #fecdca;
+  background: #fef3f2;
+}
+
+.baseline-diff-metric--consider {
+  border-color: #e4e7ec;
+  background: #f8fafc;
+}
+
+.baseline-diff-disclaimer {
+  margin: 0;
+  color: var(--muted) !important;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.baseline-diff-table-wrap {
+  overflow-x: auto;
+}
+
+.baseline-diff-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.baseline-diff-table th,
+.baseline-diff-table td {
+  padding: 9px 10px;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.baseline-diff-table th {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.baseline-diff-table td.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.baseline-diff-cat {
+  font-weight: 900;
+}
+
+.baseline-diff-row--missing_candidate .baseline-diff-cat {
+  color: #1d4ed8;
+}
+
+.baseline-diff-row--needs_review .baseline-diff-cat {
+  color: #b42318;
+}
+
+.baseline-diff-row--consider .baseline-diff-cat {
+  color: #475467;
+}
