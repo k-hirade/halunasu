@@ -409,6 +409,27 @@ function MonthlyPatientRow({ onOpen, patient }) {
   );
 }
 
+// 受診ごとの「やること」を readiness から組み立てる(その受診に紐づく)。
+function monthlySessionTasks(readiness = {}) {
+  const tasks = [];
+  if (readiness?.missingDiagnosis) {
+    tasks.push({ label: "病名不足", severity: "action" });
+  }
+  if (readiness?.uncalculated) {
+    tasks.push({ label: "未算定", severity: "action" });
+  }
+  if (Number(readiness?.pendingReceiptAnnotationCount || 0) > 0) {
+    tasks.push({ label: "詳記・コメント未対応", count: readiness.pendingReceiptAnnotationCount, severity: "action" });
+  }
+  if (Number(readiness?.symptomDetailCandidateCount || 0) > 0) {
+    tasks.push({ label: "詳記候補", count: readiness.symptomDetailCandidateCount, severity: "check" });
+  }
+  if (Number(readiness?.needsReviewCount || 0) > 0) {
+    tasks.push({ label: "要確認", count: readiness.needsReviewCount, severity: "check" });
+  }
+  return tasks;
+}
+
 // 患者×月の最小トリアージ・ポップアップ。表示・作業状態の切替に専念し、編集は算定画面で行う。
 function MonthlyPatientPopup({ onClose, onUpdateWork, patient, savingSessionId }) {
   useEffect(() => {
@@ -431,14 +452,6 @@ function MonthlyPatientPopup({ onClose, onUpdateWork, patient, savingSessionId }
   const firstSession = sessions[0] || null;
   const statusKey = patient.readyForClaim ? "ready" : patient.blocked ? "needs_review" : "partial";
   const statusLabelText = patient.readyForClaim ? "提出候補" : patient.blocked ? "要対応" : "確認中";
-  const breakdown = Array.isArray(patient.pointsBreakdown) ? patient.pointsBreakdown : [];
-  const tasks = [
-    { count: patient.missingDiagnosisCount, label: "病名不足", severity: "action" },
-    { count: patient.uncalculatedCount, label: "未算定", severity: "action" },
-    { count: patient.pendingReceiptAnnotationCount, label: "詳記・コメント未対応", severity: "action" },
-    { count: patient.symptomDetailCandidateCount, label: "詳記候補", severity: "check" },
-    { count: patient.needsReviewCount, label: "要確認", severity: "check" }
-  ].filter((task) => Number(task.count || 0) > 0);
 
   return (
     <div className="fee-modal-overlay" role="presentation" onMouseDown={onClose}>
@@ -455,60 +468,62 @@ function MonthlyPatientPopup({ onClose, onUpdateWork, patient, savingSessionId }
           <button className="btn btn--ghost btn--icon" onClick={onClose} type="button" aria-label="閉じる">×</button>
         </header>
         <div className="fee-modal-body">
-          {breakdown.length ? (
-            <section className="monthly-popup-section">
-              <h3>点数内訳</h3>
-              <div className="fee-monthly-breakdown">
-                {breakdown.map((entry) => (
-                  <span className="fee-monthly-breakdown-chip" key={entry.label}>{entry.label}<b>{Number(entry.points || 0).toLocaleString()}</b></span>
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          <section className="monthly-popup-section">
-            <h3>やること</h3>
-            {tasks.length ? (
-              <ul className="fee-monthly-tasklist">
-                {tasks.map((task) => (
-                  <li className={`fee-monthly-task fee-monthly-task--${task.severity}`} key={task.label}>
-                    <span className="fee-monthly-task-dot" aria-hidden="true" />
-                    <strong>{task.label}</strong>
-                    <small>{Number(task.count).toLocaleString()}件</small>
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="fee-monthly-task-none">追加確認はありません。提出候補です。</p>}
-            <p className="monthly-popup-hint">修正は各受診の「算定画面で開く」から行ってください。</p>
-          </section>
-
-          <section className="monthly-popup-section">
-            <h3>受診</h3>
-            <div className="monthly-popup-sessions">
-              {sessions.map((session) => (
-                <div className="monthly-popup-session" key={session.feeSessionId || session.serviceDate}>
-                  <div className="monthly-popup-session-main">
-                    <strong>{session.serviceDate || "受診日未設定"}</strong>
-                    <small>{Number(session.totalPoints || 0).toLocaleString()}点 / {monthlySessionStatusLabel(session)}</small>
+          <p className="monthly-popup-hint">点数内訳・やることは受診ごとに表示します。修正は各受診の「算定画面で開く」から行ってください。</p>
+          <div className="monthly-popup-visits">
+            {sessions.map((session) => {
+              const breakdown = Array.isArray(session.pointsBreakdown) ? session.pointsBreakdown : [];
+              const tasks = monthlySessionTasks(session.readiness);
+              const sessionStatusKey = session.readiness?.readyForClaim ? "ready" : session.readiness?.blocked ? "needs_review" : "partial";
+              return (
+                <article className="monthly-popup-visit" key={session.feeSessionId || session.serviceDate}>
+                  <header className="monthly-popup-visit-head">
+                    <strong>受診 {session.serviceDate || "受診日未設定"}</strong>
+                    <span className="monthly-popup-visit-points">{Number(session.totalPoints || 0).toLocaleString()}点</span>
+                    <span className={badgeClass(sessionStatusKey)}>{monthlySessionStatusLabel(session)}</span>
+                  </header>
+                  {breakdown.length ? (
+                    <div className="monthly-popup-visit-row">
+                      <span className="monthly-popup-visit-key">点数</span>
+                      <div className="fee-monthly-breakdown">
+                        {breakdown.map((entry) => (
+                          <span className="fee-monthly-breakdown-chip" key={entry.label}>{entry.label}<b>{Number(entry.points || 0).toLocaleString()}</b></span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="monthly-popup-visit-row">
+                    <span className="monthly-popup-visit-key">やること</span>
+                    {tasks.length ? (
+                      <div className="monthly-popup-tasks">
+                        {tasks.map((task) => (
+                          <span className={`monthly-popup-task monthly-popup-task--${task.severity}`} key={task.label}>
+                            <span className="fee-monthly-task-dot" aria-hidden="true" />
+                            {task.label}{task.count ? <b>{Number(task.count).toLocaleString()}</b> : null}
+                          </span>
+                        ))}
+                      </div>
+                    ) : <span className="monthly-popup-visit-none">なし</span>}
                   </div>
-                  <select
-                    aria-label="作業状態"
-                    className="monthly-popup-status"
-                    disabled={savingSessionId === session.feeSessionId}
-                    onChange={(event) => onUpdateWork(session, { status: event.target.value })}
-                    value={session.monthlyClaimWork?.status || "not_started"}
-                  >
-                    {MONTHLY_WORK_STATUS_OPTIONS.map(([value, label]) => (
-                      <option key={value} value={value}>{label}</option>
-                    ))}
-                  </select>
-                  {session.feeSessionId ? (
-                    <a className="btn btn--ghost btn--sm" href={`/sessions/${encodeURIComponent(session.feeSessionId)}`}>算定画面で開く</a>
-                  ) : <span className="monthly-popup-noopen">-</span>}
-                </div>
-              ))}
-            </div>
-          </section>
+                  <div className="monthly-popup-visit-actions">
+                    <select
+                      aria-label="作業状態"
+                      className="monthly-popup-status"
+                      disabled={savingSessionId === session.feeSessionId}
+                      onChange={(event) => onUpdateWork(session, { status: event.target.value })}
+                      value={session.monthlyClaimWork?.status || "not_started"}
+                    >
+                      {MONTHLY_WORK_STATUS_OPTIONS.map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                    {session.feeSessionId ? (
+                      <a className="btn btn--ghost btn--sm" href={`/sessions/${encodeURIComponent(session.feeSessionId)}`}>算定画面で開く</a>
+                    ) : <span className="monthly-popup-noopen">-</span>}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </div>
         <footer className="fee-modal-footer">
           {firstSession?.feeSessionId ? (

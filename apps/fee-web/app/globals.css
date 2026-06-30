@@ -1368,9 +1368,107 @@ body:has(.fee-shell--detail) {
   text-align: center;
 }
 
+/* 受診カード(点数内訳・やることを受診に紐づけて表示) */
+.monthly-popup-visits {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.monthly-popup-visit {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fff;
+}
+
+.monthly-popup-visit-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.monthly-popup-visit-head strong {
+  font-size: 0.95rem;
+}
+
+.monthly-popup-visit-points {
+  margin-left: auto;
+  font-weight: 900;
+}
+
+.monthly-popup-visit-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.monthly-popup-visit-key {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  padding-top: 3px;
+}
+
+.monthly-popup-visit-none {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.monthly-popup-tasks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.monthly-popup-task {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px 3px 8px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #344054;
+}
+
+.monthly-popup-task b {
+  color: var(--ink);
+}
+
+.monthly-popup-task--action {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.monthly-popup-task--check {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.monthly-popup-visit-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.monthly-popup-visit-actions .monthly-popup-status {
+  min-width: 130px;
+}
+
+.monthly-popup-visit-actions .btn {
+  margin-left: auto;
+}
+
 @media (max-width: 640px) {
-  .monthly-popup-session {
+  .monthly-popup-visit-row {
     grid-template-columns: 1fr;
+    gap: 4px;
   }
 }
 

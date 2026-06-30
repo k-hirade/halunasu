@@ -74,7 +74,7 @@ try {
     await page.getByRole("button", { name: /患者名未入力/ }).click();
     const monthlyPopup = page.getByRole("dialog", { name: "患者の点検" });
     await monthlyPopup.waitFor();
-    await monthlyPopup.getByRole("heading", { name: "やること" }).waitFor();
+    await monthlyPopup.getByText("受診 2026-06-03").waitFor();
     await monthlyPopup.getByText("要確認").first().waitFor();
     assert.equal(await monthlyPopup.getByRole("link", { name: "算定画面で開く" }).first().getAttribute("href"), "/sessions/fee_test_1");
 
@@ -373,10 +373,16 @@ async function installApiMocks(page) {
             doctorName: "山田医師",
             collectedResult: "急性上気道炎"
           },
+          pointsBreakdown: [{ label: "手術", points: 4040 }, { label: "基本料", points: 233 }],
           readiness: {
             blocked: true,
             readyForClaim: false,
             diagnosisRequestCandidate: true,
+            missingDiagnosis: false,
+            needsReviewCount: 2,
+            symptomDetailCandidateCount: 1,
+            pendingReceiptAnnotationCount: 0,
+            uncalculated: false,
             issues: [{
               type: "review",
               label: "要確認",
