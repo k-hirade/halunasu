@@ -121,6 +121,7 @@ for (const env of envs) {
       NETLIFY_SITE_ID: site.siteId
     };
 
+    await cleanNetlifyNextBuildOutput({ appDirName: config.baseDir, baseDir });
     runCommand(["netlify", "build"], {
       cwd: baseDir,
       env: buildEnv
@@ -163,6 +164,24 @@ function buildDeployCommand({ baseDir, packageName, siteId, message }) {
     message,
     "--skip-functions-cache"
   ];
+}
+
+async function cleanNetlifyNextBuildOutput({ appDirName, baseDir }) {
+  const deployRoot = join(baseDir, ".netlify");
+  const generatedRoot = join(baseDir, appDirName, ".netlify");
+  for (const path of [
+    join(baseDir, ".next"),
+    generatedRoot,
+    join(deployRoot, "deploy"),
+    join(deployRoot, "edge-functions"),
+    join(deployRoot, "edge-functions-dist"),
+    join(deployRoot, "edge-functions-import-map.json"),
+    join(deployRoot, "functions"),
+    join(deployRoot, "functions-internal"),
+    join(deployRoot, "static")
+  ]) {
+    await rm(path, { recursive: true, force: true });
+  }
 }
 
 async function prepareNetlifyFrameworkOutput({ appDirName, baseDir }) {
