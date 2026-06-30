@@ -9,7 +9,7 @@ import {
   baselineDiffRows,
   baselineDiffToCsv,
   baselineDiffToHtml,
-  buildBaselineDiffRequest,
+  buildRecalculationDiffRequest,
   downloadTextFile,
   emptyBaselineDiffOptions,
   isStgFeeEnvironment
@@ -55,52 +55,57 @@ export function FeeBaselineDiffConsole() {
   const [options, setOptions] = useState(emptyBaselineDiffOptions());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [fileName, setFileName] = useState("");
+  const [baselineFile, setBaselineFile] = useState(null);
+  const [baselineFileName, setBaselineFileName] = useState("");
+  const [recalculationFile, setRecalculationFile] = useState(null);
+  const [recalculationFileName, setRecalculationFileName] = useState("");
   const [result, setResult] = useState(null);
-  const [dragOver, setDragOver] = useState(false);
-  const [uncalculatedCount, setUncalculatedCount] = useState(0);
-  const inputRef = useRef(null);
+  const [dragOverTarget, setDragOverTarget] = useState("");
+  const baselineInputRef = useRef(null);
+  const recalculationInputRef = useRef(null);
 
   useEffect(() => {
     setStg(isStgFeeEnvironment());
   }, []);
 
-  // 当該請求月の未算定件数(engineClaim過少評価の注意喚起)。
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const summary = await feeApi(`/v1/fee/monthly-summary?claimMonth=${encodeURIComponent(claimMonth)}`);
-        if (!cancelled) {
-          setUncalculatedCount(Number(summary?.uncalculatedCount || 0));
-        }
-      } catch {
-        if (!cancelled) {
-          setUncalculatedCount(0);
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [feeApi, claimMonth]);
-
-  const runDiagnosis = useCallback(async (file) => {
+  const selectBaselineFile = useCallback((file) => {
     if (!file) {
+      return;
+    }
+    setBaselineFile(file);
+    setBaselineFileName(file.name || "");
+    setResult(null);
+    setError("");
+  }, []);
+
+  const selectRecalculationFile = useCallback((file) => {
+    if (!file) {
+      return;
+    }
+    setRecalculationFile(file);
+    setRecalculationFileName(file.name || "");
+    setResult(null);
+    setError("");
+  }, []);
+
+  const runDiagnosis = useCallback(async () => {
+    if (!baselineFile || !recalculationFile) {
+      setError("既存レセと再算定元データを選択してください。");
       return;
     }
     setBusy(true);
     setError("");
     setResult(null);
-    setFileName(file.name || "");
     try {
-      const body = await buildBaselineDiffRequest(file, { claimMonth, options });
-      const response = await feeApi("/v1/fee/baseline-diagnosis", { method: "POST", csrf: true, body });
+      const body = await buildRecalculationDiffRequest(baselineFile, recalculationFile, { claimMonth, options });
+      const response = await feeApi("/v1/fee/recalculation-diff-diagnosis", { method: "POST", csrf: true, body });
       setResult(response || null);
     } catch (err) {
       setError(toUserFacingErrorMessage(err, "差分診断を実行できませんでした。"));
     } finally {
       setBusy(false);
     }
-  }, [feeApi, claimMonth, options]);
+  }, [baselineFile, recalculationFile, feeApi, claimMonth, options]);
 
   const updateOptions = useCallback((patch) => setOptions((current) => ({ ...current, ...patch })), []);
 
@@ -123,41 +128,62 @@ export function FeeBaselineDiffConsole() {
           <span>請求月</span>
           <input type="month" value={claimMonth} onChange={(event) => setClaimMonth(event.target.value)} />
         </label>
-        <p className="baseline-diff-note">既存レセ（レセコン出力）と当社再算定を患者×月で突合し、算定もれ候補／要確認／検討を出します。差分はすべて要確認です。</p>
+        <p className="baseline-diff-note">既存レセと再算定元データを取り込み、当社エンジンの再算定結果と患者×月で突合します。差分はすべて要確認です。</p>
       </div>
-
-      {uncalculatedCount ? (
-        <div className="baseline-diff-warning" role="status">
-          この請求月に未算定の受診が {uncalculatedCount.toLocaleString()} 件あります。当社側（再算定）が不足し差分を過少評価する可能性があります。
-          <a className="btn btn--ghost btn--sm" href="/monthly">月次レセ点検で一括候補化</a>
-        </div>
-      ) : null}
 
       <section className="baseline-diff-card">
         <div className="baseline-diff-card-head">
-          <h3>1. 既存レセを取込</h3>
-          <span>.csv / .uke（Shift_JIS可）</span>
+          <h3>1. データを取込</h3>
+          <span>既存レセ + 再算定用JSON</span>
         </div>
-        <div
-          className={`baseline-diff-drop ${dragOver ? "is-over" : ""}`}
-          onClick={() => inputRef.current?.click()}
-          onDragOver={(event) => { event.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(event) => { event.preventDefault(); setDragOver(false); const file = event.dataTransfer.files?.[0]; if (file) { runDiagnosis(file); } }}
-          role="button"
-          tabIndex={0}
-        >
-          <strong>ファイルをドラッグ＆ドロップ</strong>
-          <span>またはクリックして選択（.csv / .uke）</span>
-          {fileName ? <small>取込: {fileName}</small> : null}
-          <input
-            accept=".csv,.uke,.txt,text/csv"
-            disabled={busy}
-            hidden
-            onChange={(event) => { const file = event.target.files?.[0]; if (file) { runDiagnosis(file); } event.target.value = ""; }}
-            ref={inputRef}
-            type="file"
-          />
+        <div className="baseline-diff-upload-grid">
+          <div
+            className={`baseline-diff-drop ${dragOverTarget === "baseline" ? "is-over" : ""}`}
+            onClick={() => baselineInputRef.current?.click()}
+            onDragOver={(event) => { event.preventDefault(); setDragOverTarget("baseline"); }}
+            onDragLeave={() => setDragOverTarget("")}
+            onDrop={(event) => { event.preventDefault(); setDragOverTarget(""); const file = event.dataTransfer.files?.[0]; if (file) { selectBaselineFile(file); } }}
+            role="button"
+            tabIndex={0}
+          >
+            <strong>既存レセ</strong>
+            <span>.csv / .uke（Shift_JIS可）</span>
+            {baselineFileName ? <small>取込: {baselineFileName}</small> : null}
+            <input
+              accept=".csv,.uke,.txt,text/csv"
+              disabled={busy}
+              hidden
+              onChange={(event) => { const file = event.target.files?.[0]; if (file) { selectBaselineFile(file); } event.target.value = ""; }}
+              ref={baselineInputRef}
+              type="file"
+            />
+          </div>
+          <div
+            className={`baseline-diff-drop ${dragOverTarget === "recalculation" ? "is-over" : ""}`}
+            onClick={() => recalculationInputRef.current?.click()}
+            onDragOver={(event) => { event.preventDefault(); setDragOverTarget("recalculation"); }}
+            onDragLeave={() => setDragOverTarget("")}
+            onDrop={(event) => { event.preventDefault(); setDragOverTarget(""); const file = event.dataTransfer.files?.[0]; if (file) { selectRecalculationFile(file); } }}
+            role="button"
+            tabIndex={0}
+          >
+            <strong>再算定元データ</strong>
+            <span>再算定用 .json / .jsonl</span>
+            {recalculationFileName ? <small>取込: {recalculationFileName}</small> : null}
+            <input
+              accept=".json,.jsonl,.ndjson,application/json"
+              disabled={busy}
+              hidden
+              onChange={(event) => { const file = event.target.files?.[0]; if (file) { selectRecalculationFile(file); } event.target.value = ""; }}
+              ref={recalculationInputRef}
+              type="file"
+            />
+          </div>
+        </div>
+        <div className="baseline-diff-run">
+          <button className="btn btn--primary" disabled={busy || !baselineFile || !recalculationFile} onClick={runDiagnosis} type="button">
+            {busy ? "診断中..." : "差分診断を実行"}
+          </button>
         </div>
 
         <details className="baseline-diff-options">
@@ -252,7 +278,7 @@ export function FeeBaselineDiffConsole() {
               </div>
             ) : <div className="fee-empty-state">差分はありません（既存レセと当社再算定が一致）。</div>}
           </>
-        ) : (!busy && !error ? <div className="fee-empty-state">既存レセを取込むと、ここに診断結果が表示されます。</div> : null)}
+        ) : (!busy && !error ? <div className="fee-empty-state">既存レセと再算定元データを選択して実行すると、ここに診断結果が表示されます。</div> : null)}
       </section>
     </div>
   );

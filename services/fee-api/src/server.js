@@ -48,6 +48,7 @@ const DEFAULT_ORDER_ENRICH_CONCURRENCY = 4;
 const DEFAULT_MAX_JSON_BODY_BYTES = 10 * 1024 * 1024;
 const DEFAULT_BASELINE_DIAGNOSIS_SESSION_LIMIT = 5000;
 const DEFAULT_BASELINE_DIAGNOSIS_CLAIM_LIMIT = 5000;
+const DEFAULT_RECALCULATION_DIFF_PAYLOAD_LIMIT = 200;
 const facilityProfileCache = new Map();
 const facilityProfileStoreIds = new WeakMap();
 let facilityProfileStoreIdCounter = 0;
@@ -345,6 +346,63 @@ async function routeFeeApiRequest(input = {}) {
     return ok(buildMonthlyClaimSummary(sessionList, { claimMonth }));
   }
 
+  // STG限定 再算定差分診断: 既存レセと、アップロードされたclaim payloadを当社エンジンで再算定した結果を突合
+  if (method === "POST" && matches(parts, ["v1", "fee", "recalculation-diff-diagnosis"])) {
+    if (!isStgEnvironment(input.env)) {
+      return notFound("Route not found");
+    }
+    requireBaselineDiagnosisContext(context);
+    requireMutationCsrf(input, context.session);
+    const body = input.body || {};
+    const claimMonth = String(body.claimMonth ?? body.claim_month ?? "").trim();
+    if (!/^\d{4}-\d{2}$/u.test(claimMonth)) {
+      throw requestValidationError("claimMonth must use YYYY-MM");
+    }
+    const baseline = await baselineClaimsFromDiagnosisBody({
+      body,
+      claimMonth,
+      feeCalculator,
+      processEnv: input.processEnv || process.env
+    });
+    const calculationPayloads = normalizeCalculationPayloadsForRecalculationDiff(body, {
+      claimMonth,
+      limit: recalculationDiffPayloadLimit(input.processEnv || process.env)
+    });
+    if (!calculationPayloads.length) {
+      throw requestValidationError("再算定元データを取り込めませんでした。再算定用JSON/JSONL、患者ID、診療日を確認してください。");
+    }
+    const sessions = await calculateRecalculationDiffSessions({
+      feeCalculator,
+      calculationPayloads,
+      claimMonth
+    });
+    const diagnosis = buildMonthlyBaselineDiagnosis({
+      sessions,
+      baselineClaims: baseline.baselineClaims,
+      claimMonth,
+      knownUnsupportedCodes: Array.isArray(body.knownUnsupportedCodes ?? body.known_unsupported_codes) ? (body.knownUnsupportedCodes ?? body.known_unsupported_codes) : [],
+      codeMap: isPlainObject(body.codeMap ?? body.code_map) ? (body.codeMap ?? body.code_map) : null
+    });
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.recalculation_diff_diagnosis_run",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "fee_recalculation_diff_diagnosis",
+      targetId: claimMonth,
+      productId: PRODUCT_ID,
+      safePayload: {
+        claimMonth,
+        baselineFormat: baseline.baselineFormat || (baseline.baselineClaims.length ? "claims" : "none"),
+        baselineClaimCount: baseline.baselineClaims.length,
+        calculationPayloadCount: calculationPayloads.length,
+        missingCandidateCount: diagnosis.summary?.missingCandidateCount || 0,
+        needsReviewCount: diagnosis.summary?.needsReviewCount || 0,
+        considerCount: diagnosis.summary?.considerCount || 0
+      }
+    });
+    return ok(diagnosis);
+  }
+
   // 導入前 一括レセプト差分診断: 既存レセ(baselineClaims) と 当社算定(セッション) を患者×月で突合
   if (method === "POST" && matches(parts, ["v1", "fee", "baseline-diagnosis"])) {
     if (!isStgEnvironment(input.env)) {
@@ -357,46 +415,19 @@ async function routeFeeApiRequest(input = {}) {
     if (!/^\d{4}-\d{2}$/u.test(claimMonth)) {
       throw requestValidationError("claimMonth must use YYYY-MM");
     }
-    let baselineClaims = Array.isArray(body.baselineClaims ?? body.baseline_claims) ? (body.baselineClaims ?? body.baseline_claims) : [];
-    // 既存レセのテキスト(UKE/CSV)が渡された場合は Python adapter で baselineClaims に変換する。
-    const baselineText = String(body.baselineText ?? body.baseline_text ?? "");
-    const baselineContentBase64 = String(body.baselineContentBase64 ?? body.baseline_content_base64 ?? "").trim();
-    const baselineContentProvided = Boolean(baselineText || baselineContentBase64);
-    const baselineFormat = String(body.baselineFormat ?? body.baseline_format ?? "").trim().toLowerCase();
-    if (baselineContentProvided && !["uke", "csv"].includes(baselineFormat)) {
-      throw requestValidationError("baselineFormat must be csv or uke when baseline content is provided");
-    }
-    if (baselineContentProvided && (baselineFormat === "uke" || baselineFormat === "csv")) {
-      if (typeof feeCalculator.parseBaseline !== "function") {
-        return { statusCode: 501, body: { error: "baseline_parser_unavailable", message: "既存レセ取込(Python adapter)が利用できません。" } };
-      }
-      const parsed = await feeCalculator.parseBaseline({
-        op: baselineFormat === "uke" ? "parse_uke" : "parse_csv",
-        ...(baselineContentBase64 ? { content_base64: baselineContentBase64 } : { text: baselineText }),
-        encoding: String(body.baselineEncoding ?? body.baseline_encoding ?? "auto").trim() || "auto",
-        claim_month: claimMonth,
-        only_claim_month: claimMonth,
-        uke_layout: isPlainObject(body.ukeLayout ?? body.uke_layout) ? (body.ukeLayout ?? body.uke_layout) : undefined,
-        column_map: isPlainObject(body.columnMap ?? body.column_map) ? (body.columnMap ?? body.column_map) : undefined,
-        only_medical_institution_code: body.onlyMedicalInstitutionCode ?? body.only_medical_institution_code ?? undefined,
-        code_map: isPlainObject(body.codeMap ?? body.code_map) ? (body.codeMap ?? body.code_map) : undefined
-      });
-      baselineClaims = Array.isArray(parsed?.baselineClaims) ? parsed.baselineClaims : [];
-    }
-    baselineClaims = normalizeBaselineClaimsForDiagnosis(baselineClaims, {
+    const baseline = await baselineClaimsFromDiagnosisBody({
+      body,
       claimMonth,
-      limit: baselineDiagnosisClaimLimit(input.processEnv || process.env)
+      feeCalculator,
+      processEnv: input.processEnv || process.env
     });
-    if (baselineContentProvided && baselineClaims.length === 0) {
-      throw requestValidationError("既存レセを取り込めませんでした。CSV列マッピング、請求月、文字コードを確認してください。");
-    }
     const sessionList = await listSessionsForBaselineDiagnosis(feeStore, context.session.orgId, {
       claimMonth,
       limit: baselineDiagnosisSessionLimit(input.processEnv || process.env)
     });
     const diagnosis = buildMonthlyBaselineDiagnosis({
       sessions: sessionList,
-      baselineClaims,
+      baselineClaims: baseline.baselineClaims,
       claimMonth,
       knownUnsupportedCodes: Array.isArray(body.knownUnsupportedCodes ?? body.known_unsupported_codes) ? (body.knownUnsupportedCodes ?? body.known_unsupported_codes) : [],
       codeMap: isPlainObject(body.codeMap ?? body.code_map) ? (body.codeMap ?? body.code_map) : null
@@ -410,8 +441,8 @@ async function routeFeeApiRequest(input = {}) {
       productId: PRODUCT_ID,
       safePayload: {
         claimMonth,
-        baselineFormat: baselineFormat || (baselineClaims.length ? "claims" : "none"),
-        baselineClaimCount: baselineClaims.length,
+        baselineFormat: baseline.baselineFormat || (baseline.baselineClaims.length ? "claims" : "none"),
+        baselineClaimCount: baseline.baselineClaims.length,
         sessionCount: sessionList.length,
         missingCandidateCount: diagnosis.summary?.missingCandidateCount || 0,
         needsReviewCount: diagnosis.summary?.needsReviewCount || 0,
@@ -1010,6 +1041,217 @@ function requestValidationError(message) {
   return error;
 }
 
+async function baselineClaimsFromDiagnosisBody({ body = {}, claimMonth = "", feeCalculator, processEnv = process.env } = {}) {
+  let baselineClaims = Array.isArray(body.baselineClaims ?? body.baseline_claims) ? (body.baselineClaims ?? body.baseline_claims) : [];
+  const baselineText = String(body.baselineText ?? body.baseline_text ?? "");
+  const baselineContentBase64 = String(body.baselineContentBase64 ?? body.baseline_content_base64 ?? "").trim();
+  const baselineContentProvided = Boolean(baselineText || baselineContentBase64);
+  const baselineFormat = String(body.baselineFormat ?? body.baseline_format ?? "").trim().toLowerCase();
+  if (baselineContentProvided && !["uke", "csv"].includes(baselineFormat)) {
+    throw requestValidationError("baselineFormat must be csv or uke when baseline content is provided");
+  }
+  if (baselineContentProvided && (baselineFormat === "uke" || baselineFormat === "csv")) {
+    if (typeof feeCalculator.parseBaseline !== "function") {
+      const error = new Error("既存レセ取込(Python adapter)が利用できません。");
+      error.name = "NotImplementedError";
+      error.statusCode = 501;
+      throw error;
+    }
+    const parsed = await feeCalculator.parseBaseline({
+      op: baselineFormat === "uke" ? "parse_uke" : "parse_csv",
+      ...(baselineContentBase64 ? { content_base64: baselineContentBase64 } : { text: baselineText }),
+      encoding: String(body.baselineEncoding ?? body.baseline_encoding ?? "auto").trim() || "auto",
+      claim_month: claimMonth,
+      only_claim_month: claimMonth,
+      uke_layout: isPlainObject(body.ukeLayout ?? body.uke_layout) ? (body.ukeLayout ?? body.uke_layout) : undefined,
+      column_map: isPlainObject(body.columnMap ?? body.column_map) ? (body.columnMap ?? body.column_map) : undefined,
+      only_medical_institution_code: body.onlyMedicalInstitutionCode ?? body.only_medical_institution_code ?? undefined,
+      code_map: isPlainObject(body.codeMap ?? body.code_map) ? (body.codeMap ?? body.code_map) : undefined
+    });
+    baselineClaims = Array.isArray(parsed?.baselineClaims) ? parsed.baselineClaims : [];
+  }
+  baselineClaims = normalizeBaselineClaimsForDiagnosis(baselineClaims, {
+    claimMonth,
+    limit: baselineDiagnosisClaimLimit(processEnv)
+  });
+  if (baselineContentProvided && baselineClaims.length === 0) {
+    throw requestValidationError("既存レセを取り込めませんでした。CSV列マッピング、請求月、文字コードを確認してください。");
+  }
+  return { baselineClaims, baselineFormat, baselineContentProvided };
+}
+
+function normalizeCalculationPayloadsForRecalculationDiff(body = {}, options = {}) {
+  const claimMonth = String(options.claimMonth || "").trim();
+  const limit = Math.max(1, Number.parseInt(options.limit, 10) || DEFAULT_RECALCULATION_DIFF_PAYLOAD_LIMIT);
+  const rawPayloads = [
+    ...arrayValue(body.calculationPayloads ?? body.calculation_payloads),
+    ...arrayValue(body.claimPayloads ?? body.claim_payloads)
+  ];
+  const contentText = String(body.calculationPayloadText ?? body.calculation_payload_text ?? "").trim();
+  const contentBase64 = String(body.calculationPayloadContentBase64 ?? body.calculation_payload_content_base64 ?? "").trim();
+  if (contentText || contentBase64) {
+    rawPayloads.push(...parseCalculationPayloadContent(contentBase64 ? decodeBase64Utf8(contentBase64) : contentText));
+  }
+  const normalized = [];
+  for (const entry of rawPayloads) {
+    const payload = normalizeCalculationPayloadEntry(entry);
+    if (!payload) {
+      continue;
+    }
+    const patientId = claimPayloadPatientId(payload);
+    const serviceDate = claimPayloadServiceDate(payload);
+    const payloadMonth = String(serviceDate || "").slice(0, 7);
+    if (!patientId || !/^\d{4}-\d{2}-\d{2}$/u.test(serviceDate)) {
+      continue;
+    }
+    if (claimMonth && payloadMonth !== claimMonth) {
+      continue;
+    }
+    normalized.push(payload);
+    if (normalized.length > limit) {
+      throw requestValidationError(`recalculation diff diagnosis is limited to ${limit} calculation payloads`);
+    }
+  }
+  return normalized;
+}
+
+function parseCalculationPayloadContent(text = "") {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) {
+    return [];
+  }
+  try {
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+      const parsed = JSON.parse(trimmed);
+      return extractCalculationPayloadArray(parsed);
+    }
+    return trimmed
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .flatMap((line) => extractCalculationPayloadArray(JSON.parse(line)));
+  } catch {
+    throw requestValidationError("再算定元データを読み込めませんでした。再算定用JSON/JSONLの形式を確認してください。");
+  }
+}
+
+function extractCalculationPayloadArray(parsed) {
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
+  if (!isPlainObject(parsed)) {
+    return [];
+  }
+  for (const key of ["calculationPayloads", "calculation_payloads", "claimPayloads", "claim_payloads", "payloads", "records"]) {
+    if (Array.isArray(parsed[key])) {
+      return parsed[key];
+    }
+  }
+  return [parsed];
+}
+
+function normalizeCalculationPayloadEntry(entry) {
+  if (!isPlainObject(entry)) {
+    return null;
+  }
+  for (const key of ["claimContext", "claim_context", "payload", "claimPayload", "claim_payload"]) {
+    if (isPlainObject(entry[key])) {
+      return entry[key];
+    }
+  }
+  return entry;
+}
+
+function decodeBase64Utf8(value = "") {
+  try {
+    return Buffer.from(String(value || ""), "base64").toString("utf8");
+  } catch {
+    throw requestValidationError("再算定元データを読み込めませんでした。JSON/JSONLファイルを確認してください。");
+  }
+}
+
+function arrayValue(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (isPlainObject(value)) {
+    return [value];
+  }
+  return [];
+}
+
+async function calculateRecalculationDiffSessions({ feeCalculator, calculationPayloads = [], claimMonth = "" } = {}) {
+  if (typeof feeCalculator.calculate !== "function") {
+    const error = new Error("再算定エンジンが利用できません。");
+    error.name = "NotImplementedError";
+    error.statusCode = 501;
+    throw error;
+  }
+  const sessions = [];
+  let index = 0;
+  for (const payload of calculationPayloads) {
+    index += 1;
+    const session = feeSessionFromClaimPayload(payload, { index, claimMonth });
+    const output = await feeCalculator.calculate(session, { claimContext: payload });
+    const calculationResult = output?.calculationResult || output?.calculation_result || output || {};
+    sessions.push({
+      ...session,
+      calculationResult
+    });
+  }
+  return sessions;
+}
+
+function feeSessionFromClaimPayload(payload = {}, { index = 1, claimMonth = "" } = {}) {
+  const encounter = isPlainObject(payload.encounter) ? payload.encounter : {};
+  const patient = isPlainObject(payload.patient) ? payload.patient : {};
+  const serviceDate = claimPayloadServiceDate(payload);
+  const patientId = claimPayloadPatientId(payload);
+  return {
+    feeSessionId: `recalc_${claimMonth || "month"}_${String(index).padStart(5, "0")}`,
+    patientId,
+    patientRef: patientId,
+    serviceDate,
+    claimMonth: String(serviceDate || "").slice(0, 7) || claimMonth,
+    setting: encounter.is_outpatient === false ? "inpatient" : "outpatient",
+    patientSnapshot: {
+      patientId,
+      displayName: patient.display_name || patient.displayName || patient.name || patientId,
+      birthDate: patient.birth_date || patient.birthDate || null,
+      sex: patient.sex || null
+    },
+    facilitySnapshot: {
+      medicalInstitutionCode: encounter.medical_institution_code || encounter.medicalInstitutionCode || null,
+      regionalBureau: encounter.regional_bureau || encounter.regionalBureau || null
+    },
+    claimContext: payload
+  };
+}
+
+function claimPayloadPatientId(payload = {}) {
+  const patient = isPlainObject(payload.patient) ? payload.patient : {};
+  return String(
+    patient.patient_id
+    || patient.patientId
+    || payload.patient_id
+    || payload.patientId
+    || payload.record_id
+    || payload.recordId
+    || ""
+  ).trim();
+}
+
+function claimPayloadServiceDate(payload = {}) {
+  const encounter = isPlainObject(payload.encounter) ? payload.encounter : {};
+  return String(
+    encounter.service_date
+    || encounter.serviceDate
+    || payload.service_date
+    || payload.serviceDate
+    || ""
+  ).trim();
+}
+
 async function listSessionsForBaselineDiagnosis(feeStore, orgId, options = {}) {
   const claimMonth = String(options.claimMonth || "").trim();
   const limit = Math.max(1, Number.parseInt(options.limit, 10) || DEFAULT_BASELINE_DIAGNOSIS_SESSION_LIMIT);
@@ -1069,6 +1311,10 @@ function baselineDiagnosisSessionLimit(env = process.env) {
 
 function baselineDiagnosisClaimLimit(env = process.env) {
   return parsePositiveInteger(env.FEE_BASELINE_DIAGNOSIS_CLAIM_LIMIT, DEFAULT_BASELINE_DIAGNOSIS_CLAIM_LIMIT, 50_000);
+}
+
+function recalculationDiffPayloadLimit(env = process.env) {
+  return parsePositiveInteger(env.FEE_RECALCULATION_DIFF_PAYLOAD_LIMIT, DEFAULT_RECALCULATION_DIFF_PAYLOAD_LIMIT, 5_000);
 }
 
 async function buildFeeSessionDetail(feeStore, orgId, feeSessionId, now, options = {}) {

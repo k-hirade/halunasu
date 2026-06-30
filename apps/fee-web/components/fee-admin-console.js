@@ -23,8 +23,8 @@ const ADMIN_SECTIONS = [
   {
     id: "baseline-diff",
     group: "設定",
-    label: "既存レセとの差分診断",
-    description: "既存レセコン出力と当社再算定を突合し、算定もれ候補・要確認・検討を出します（STG限定）。",
+    label: "再算定差分診断",
+    description: "既存レセと当社再算定を突合し、算定もれ候補・要確認・検討を出します（STG限定）。",
     stgOnly: true
   },
   {

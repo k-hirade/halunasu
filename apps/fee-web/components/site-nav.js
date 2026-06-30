@@ -9,7 +9,7 @@ import { isStgFeeEnvironment } from "../lib/baseline-diff";
 const BASELINE_DIFF_MENU_SECTION = {
   id: "baseline-diff",
   group: "設定",
-  label: "既存レセとの差分診断",
+  label: "再算定差分診断",
   description: "既存レセと当社再算定を突合し差分を出します（STG限定）。",
   href: "/admin?section=baseline-diff"
 };

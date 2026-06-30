@@ -1,4 +1,4 @@
-// 既存レセとの差分診断: フロント共有ヘルパ(取込・整形・出力)。
+// 再算定差分診断: フロント共有ヘルパ(取込・整形・出力)。
 
 export function isStgFeeEnvironment() {
   if (typeof window === "undefined") {
@@ -119,6 +119,13 @@ export async function buildBaselineDiffRequest(file, { claimMonth, options }) {
       body.ukeLayout = ukeLayout;
     }
   }
+  return body;
+}
+
+export async function buildRecalculationDiffRequest(baselineFile, recalculationFile, { claimMonth, options }) {
+  const body = await buildBaselineDiffRequest(baselineFile, { claimMonth, options });
+  body.calculationPayloadFormat = /\.(jsonl|ndjson)$/iu.test(recalculationFile.name || "") ? "jsonl" : "json";
+  body.calculationPayloadContentBase64 = await fileToBase64(recalculationFile);
   return body;
 }
 

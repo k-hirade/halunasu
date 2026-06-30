@@ -8337,6 +8337,65 @@ test("runs baseline diagnosis with month-scoped sessions and records audit event
   assert.ok(auditEvents.some((event) => event.eventType === "fee.baseline_diagnosis_run" && event.safePayload.claimMonth === "2026-06"));
 });
 
+test("runs recalculation diff diagnosis from uploaded claim payloads without monthly sessions", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore, { globalRoles: [], productRoles: { fee: ["medical_clerk"] } });
+  const unrelated = stores.feeStore.createSession({
+    orgId: "org_001",
+    patientId: "patA",
+    facilityId: "fac_001",
+    createdByMemberId: "mem_001",
+    serviceDate: "2026-06-10"
+  });
+  stores.feeStore.saveCalculation("org_001", unrelated.feeSessionId, {
+    provider: "test",
+    status: "completed",
+    lineItems: [{ code: "999999999", name: "保存済みセッション由来", points: 999, quantity: 1, status: "confirmed" }]
+  });
+  const calls = [];
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    calls.push({ feeSession, calculationInput });
+    const codes = calculationInput.claimContext.procedure_codes || [];
+    return {
+      provider: "test",
+      status: "completed",
+      totalPoints: codes.length * 100,
+      lineItems: codes.map((code) => ({
+        code,
+        name: code === "113001810" ? "特定疾患療養管理料" : "再診料",
+        points: code === "113001810" ? 225 : 73,
+        quantity: 1,
+        totalPoints: code === "113001810" ? 225 : 73,
+        status: "confirmed"
+      })),
+      warnings: []
+    };
+  };
+  const calculationPayloads = [{
+    patient: { patient_id: "patA" },
+    encounter: { service_date: "2026-06-10", is_outpatient: true },
+    procedure_codes: ["112007410", "113001810"]
+  }];
+
+  const response = await request(stores, "POST", "/v1/fee/recalculation-diff-diagnosis", {
+    claimMonth: "2026-06",
+    baselineClaims: [
+      { patientId: "patA", claimMonth: "2026-06", lines: [{ code: "112007410", name: "再診料", points: 73, count: 1 }] }
+    ],
+    calculationPayloadContentBase64: Buffer.from(JSON.stringify(calculationPayloads), "utf8").toString("base64")
+  }, headers, { env: "stg" });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].feeSession.patientId, "patA");
+  assert.equal(response.body.patientCount, 1);
+  assert.equal(response.body.summary.missingCandidateCount, 1);
+  assert.equal(response.body.diagnoses[0].findings[0].code, "113001810");
+  assert.equal(response.body.diagnoses[0].findings.some((finding) => finding.code === "999999999"), false);
+  const auditEvents = stores.platformStore.listAuditEvents("org_001");
+  assert.ok(auditEvents.some((event) => event.eventType === "fee.recalculation_diff_diagnosis_run" && event.safePayload.calculationPayloadCount === 1));
+});
+
 test("baseline diagnosis rejects missing csrf and viewer role", async () => {
   const stores = createStores();
   const adminHeaders = await signedHeaders(stores.platformStore);

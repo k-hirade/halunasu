@@ -5277,7 +5277,7 @@ body:has(.fee-shell--detail) {
   }
 }
 
-/* 既存レセとの差分診断(専用ページ・STG限定) */
+/* 再算定差分診断(専用ページ・STG限定) */
 .baseline-diff {
   display: grid;
   gap: 16px;
@@ -5402,6 +5402,17 @@ body:has(.fee-shell--detail) {
   margin-top: 4px;
   color: var(--accent-dark);
   font-weight: 800;
+}
+
+.baseline-diff-upload-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.baseline-diff-run {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .baseline-diff-options {
@@ -5542,4 +5553,18 @@ body:has(.fee-shell--detail) {
 
 .baseline-diff-row--consider .baseline-diff-cat {
   color: #475467;
+}
+
+@media (max-width: 720px) {
+  .baseline-diff-upload-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .baseline-diff-run {
+    justify-content: stretch;
+  }
+
+  .baseline-diff-run .btn {
+    width: 100%;
+  }
 }
