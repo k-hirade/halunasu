@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import http from "node:http";
+import { inflateRawSync } from "node:zlib";
 import {
   requirePlatformCsrf,
   requireProductContext
@@ -358,18 +359,30 @@ async function routeFeeApiRequest(input = {}) {
     if (!/^\d{4}-\d{2}$/u.test(claimMonth)) {
       throw requestValidationError("claimMonth must use YYYY-MM");
     }
+    const dataset = parseRecalculationDiffDatasetFromBody(body);
+    const diagnosisBody = mergeRecalculationDiffDatasetIntoBody(body, dataset);
     const baseline = await baselineClaimsFromDiagnosisBody({
-      body,
+      body: diagnosisBody,
       claimMonth,
       feeCalculator,
       processEnv: input.processEnv || process.env
     });
-    const calculationPayloads = normalizeCalculationPayloadsForRecalculationDiff(body, {
+    const calculationPayloadLimit = recalculationDiffPayloadLimit(input.processEnv || process.env);
+    let calculationPayloads = normalizeCalculationPayloadsForRecalculationDiff(diagnosisBody, {
       claimMonth,
-      limit: recalculationDiffPayloadLimit(input.processEnv || process.env)
+      limit: calculationPayloadLimit
     });
+    const generatedPayloads = calculationPayloads.length
+      ? { payloads: [], warnings: [], stats: {} }
+      : buildCalculationPayloadsFromRecalculationDiffDataset(dataset, { claimMonth });
     if (!calculationPayloads.length) {
-      throw requestValidationError("再算定元データを取り込めませんでした。再算定用JSON/JSONL、患者ID、診療日を確認してください。");
+      calculationPayloads = generatedPayloads.payloads;
+    }
+    if (calculationPayloads.length > calculationPayloadLimit) {
+      throw requestValidationError(`recalculation diff diagnosis is limited to ${calculationPayloadLimit} calculation payloads`);
+    }
+    if (!calculationPayloads.length) {
+      throw requestValidationError("再算定元データを取り込めませんでした。再算定用JSON/JSONL、または患者・カルテ・オーダー・病名ファイルの患者IDと診療日を確認してください。");
     }
     const sessions = await calculateRecalculationDiffSessions({
       feeCalculator,
@@ -380,8 +393,14 @@ async function routeFeeApiRequest(input = {}) {
       sessions,
       baselineClaims: baseline.baselineClaims,
       claimMonth,
-      knownUnsupportedCodes: Array.isArray(body.knownUnsupportedCodes ?? body.known_unsupported_codes) ? (body.knownUnsupportedCodes ?? body.known_unsupported_codes) : [],
-      codeMap: isPlainObject(body.codeMap ?? body.code_map) ? (body.codeMap ?? body.code_map) : null
+      knownUnsupportedCodes: Array.isArray(diagnosisBody.knownUnsupportedCodes ?? diagnosisBody.known_unsupported_codes) ? (diagnosisBody.knownUnsupportedCodes ?? diagnosisBody.known_unsupported_codes) : [],
+      codeMap: isPlainObject(diagnosisBody.codeMap ?? diagnosisBody.code_map) ? (diagnosisBody.codeMap ?? diagnosisBody.code_map) : null
+    });
+    const ingestion = recalculationDiffIngestionSummary({
+      baseline,
+      calculationPayloads,
+      dataset,
+      generatedPayloads
     });
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.recalculation_diff_diagnosis_run",
@@ -397,10 +416,11 @@ async function routeFeeApiRequest(input = {}) {
         calculationPayloadCount: calculationPayloads.length,
         missingCandidateCount: diagnosis.summary?.missingCandidateCount || 0,
         needsReviewCount: diagnosis.summary?.needsReviewCount || 0,
-        considerCount: diagnosis.summary?.considerCount || 0
+        considerCount: diagnosis.summary?.considerCount || 0,
+        datasetWarningCount: ingestion.warningCount || 0
       }
     });
-    return ok(diagnosis);
+    return ok({ ...diagnosis, ingestion });
   }
 
   // 導入前 一括レセプト差分診断: 既存レセ(baselineClaims) と 当社算定(セッション) を患者×月で突合
@@ -1080,6 +1100,900 @@ async function baselineClaimsFromDiagnosisBody({ body = {}, claimMonth = "", fee
   return { baselineClaims, baselineFormat, baselineContentProvided };
 }
 
+function parseRecalculationDiffDatasetFromBody(body = {}) {
+  const dataset = {
+    manifest: {},
+    sources: {},
+    warnings: []
+  };
+  const datasetContentBase64 = String(body.datasetContentBase64 ?? body.dataset_content_base64 ?? "").trim();
+  if (datasetContentBase64) {
+    const datasetFileName = String(body.datasetFileName ?? body.dataset_file_name ?? "").trim();
+    const datasetFormat = String(body.datasetFormat ?? body.dataset_format ?? inferUploadFormat(datasetFileName) ?? "json").trim().toLowerCase();
+    if (datasetFormat === "zip" || /\.zip$/iu.test(datasetFileName)) {
+      mergeZipDatasetSources(dataset, datasetContentBase64, datasetFileName);
+    } else {
+      mergeJsonDatasetSources(dataset, decodeUploadedTextBase64(datasetContentBase64, body.datasetEncoding ?? body.dataset_encoding), datasetFileName);
+    }
+  }
+
+  addBodyTextSource(dataset, body, "patients", ["patients", "patient"]);
+  addBodyTextSource(dataset, body, "charts", ["charts", "chart", "clinicalTexts", "clinical_texts"]);
+  addBodyTextSource(dataset, body, "orders", ["orders", "order"]);
+  addBodyTextSource(dataset, body, "diagnoses", ["diagnoses", "diagnosis"]);
+  addBodyTextSource(dataset, body, "facility", ["facility", "facilitySettings", "facility_settings"]);
+  addBodyTextSource(dataset, body, "calculationPayloads", ["calculationPayloads", "calculation_payloads", "claimPayloads", "claim_payloads", "payloads"]);
+  return dataset;
+}
+
+function mergeRecalculationDiffDatasetIntoBody(body = {}, dataset = {}) {
+  const next = { ...body };
+  const baselineSource = firstDatasetSource(dataset, "baselineReceipt");
+  if (
+    baselineSource
+    && !(next.baselineText || next.baseline_text || next.baselineContentBase64 || next.baseline_content_base64)
+    && !Array.isArray(next.baselineClaims ?? next.baseline_claims)
+  ) {
+    if (String(baselineSource.format || "").toLowerCase() === "json") {
+      next.baselineClaims = recordsFromTextSource(baselineSource, "baselineClaims");
+    } else {
+      next.baselineText = baselineSource.text;
+      next.baselineFormat = inferBaselineUploadFormat(baselineSource.name || baselineSource.format || "") || "csv";
+      next.baselineEncoding = "utf-8";
+    }
+  }
+  const payloadSource = firstDatasetSource(dataset, "calculationPayloads");
+  if (
+    payloadSource
+    && !(next.calculationPayloadText || next.calculation_payload_text || next.calculationPayloadContentBase64 || next.calculation_payload_content_base64)
+    && !Array.isArray(next.calculationPayloads ?? next.calculation_payloads)
+    && !Array.isArray(next.claimPayloads ?? next.claim_payloads)
+  ) {
+    next.calculationPayloadText = payloadSource.text;
+  }
+  if (!next.claimMonth && !next.claim_month && dataset.manifest?.claimMonth) {
+    next.claimMonth = dataset.manifest.claimMonth;
+  }
+  return next;
+}
+
+function buildCalculationPayloadsFromRecalculationDiffDataset(dataset = {}, { claimMonth = "" } = {}) {
+  const patientRecords = datasetRecords(dataset, "patients");
+  const chartRecords = datasetRecords(dataset, "charts");
+  const orderRecords = datasetRecords(dataset, "orders");
+  const diagnosisRecords = datasetRecords(dataset, "diagnoses");
+  const facility = datasetFacility(dataset);
+  const patientMap = new Map();
+  for (const record of patientRecords) {
+    const normalized = normalizeDatasetPatient(record);
+    if (normalized.patientId) {
+      patientMap.set(normalized.patientId, normalized);
+    }
+  }
+
+  const groups = new Map();
+  const warnings = [...(Array.isArray(dataset.warnings) ? dataset.warnings : [])];
+  const ensureGroup = (patientId, serviceDate) => {
+    const key = `${patientId}\u0000${serviceDate}`;
+    const group = groups.get(key) || {
+      patientId,
+      serviceDate,
+      charts: [],
+      orders: [],
+      diagnoses: [],
+      medicalInstitutionCode: "",
+      regionalBureau: "",
+      isOutpatient: true
+    };
+    groups.set(key, group);
+    return group;
+  };
+
+  for (const record of chartRecords) {
+    const normalized = normalizeDatasetChart(record);
+    if (!normalized.patientId || !normalized.serviceDate) {
+      warnings.push("カルテファイルに患者IDまたは診療日がない行があります。");
+      continue;
+    }
+    if (claimMonth && normalized.serviceDate.slice(0, 7) !== claimMonth) {
+      continue;
+    }
+    const group = ensureGroup(normalized.patientId, normalized.serviceDate);
+    group.charts.push(normalized);
+    group.medicalInstitutionCode ||= normalized.medicalInstitutionCode;
+    group.regionalBureau ||= normalized.regionalBureau;
+  }
+
+  for (const record of orderRecords) {
+    const normalized = normalizeDatasetOrder(record);
+    if (!normalized.patientId || !normalized.serviceDate) {
+      warnings.push("オーダーファイルに患者IDまたは診療日がない行があります。");
+      continue;
+    }
+    if (claimMonth && normalized.serviceDate.slice(0, 7) !== claimMonth) {
+      continue;
+    }
+    const group = ensureGroup(normalized.patientId, normalized.serviceDate);
+    group.orders.push(normalized);
+    group.medicalInstitutionCode ||= normalized.medicalInstitutionCode;
+    group.regionalBureau ||= normalized.regionalBureau;
+  }
+
+  for (const record of diagnosisRecords) {
+    const normalized = normalizeDatasetDiagnosis(record);
+    if (!normalized.patientId || !normalized.serviceDate) {
+      warnings.push("病名ファイルに患者IDまたは診療日がない行があります。");
+      continue;
+    }
+    if (claimMonth && normalized.serviceDate.slice(0, 7) !== claimMonth) {
+      continue;
+    }
+    const group = ensureGroup(normalized.patientId, normalized.serviceDate);
+    group.diagnoses.push(normalized);
+  }
+
+  const payloads = [];
+  for (const group of groups.values()) {
+    const patient = patientMap.get(group.patientId) || {};
+    const claimContext = claimContextFromDatasetGroup(group, {
+      patient,
+      facility,
+      manifest: dataset.manifest || {}
+    });
+    if (!hasBillableClaimContextInput(claimContext)) {
+      warnings.push(`患者 ${group.patientId} / ${group.serviceDate} は算定可能な構造化オーダーがないため再算定対象から除外しました。`);
+      continue;
+    }
+    payloads.push(claimContext);
+  }
+
+  return {
+    payloads,
+    warnings: uniqueStrings(warnings),
+    stats: {
+      patientRecordCount: patientRecords.length,
+      chartRecordCount: chartRecords.length,
+      orderRecordCount: orderRecords.length,
+      diagnosisRecordCount: diagnosisRecords.length,
+      generatedPayloadCount: payloads.length
+    }
+  };
+}
+
+function recalculationDiffIngestionSummary({ baseline = {}, calculationPayloads = [], dataset = {}, generatedPayloads = {} } = {}) {
+  const sourceCounts = {};
+  for (const [role, sources] of Object.entries(dataset.sources || {})) {
+    sourceCounts[role] = Array.isArray(sources) ? sources.length : 0;
+  }
+  const warnings = uniqueStrings([
+    ...(Array.isArray(dataset.warnings) ? dataset.warnings : []),
+    ...(Array.isArray(generatedPayloads.warnings) ? generatedPayloads.warnings : [])
+  ]);
+  return {
+    baselineClaimCount: Array.isArray(baseline.baselineClaims) ? baseline.baselineClaims.length : 0,
+    calculationPayloadCount: Array.isArray(calculationPayloads) ? calculationPayloads.length : 0,
+    warningCount: warnings.length,
+    warnings: warnings.slice(0, 20),
+    sourceCounts,
+    stats: generatedPayloads.stats || {}
+  };
+}
+
+function mergeZipDatasetSources(dataset, contentBase64, fileName = "") {
+  const entries = unzipTextEntries(Buffer.from(contentBase64, "base64"));
+  const manifestEntry = entries.find((entry) => /(?:^|\/)manifest\.json$/iu.test(entry.path));
+  if (manifestEntry) {
+    try {
+      dataset.manifest = { ...dataset.manifest, ...JSON.parse(manifestEntry.text) };
+    } catch {
+      dataset.warnings.push("manifest.jsonを読み込めませんでした。");
+    }
+  } else if (fileName) {
+    dataset.manifest.datasetFileName = fileName;
+  }
+  for (const role of RECALCULATION_DATASET_ROLES) {
+    const source = zipEntryForDatasetRole(entries, role, dataset.manifest);
+    if (source) {
+      addDatasetSource(dataset, role.role, source);
+    }
+  }
+}
+
+function mergeJsonDatasetSources(dataset, text = "", fileName = "") {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) {
+    return;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    addDatasetSource(dataset, "calculationPayloads", { name: fileName || "dataset.jsonl", format: "jsonl", text: trimmed });
+    return;
+  }
+  if (Array.isArray(parsed)) {
+    addDatasetSource(dataset, "calculationPayloads", { name: fileName || "payloads.json", format: "json", text: JSON.stringify(parsed) });
+    return;
+  }
+  if (!isPlainObject(parsed)) {
+    return;
+  }
+  const manifest = isPlainObject(parsed.manifest) ? parsed.manifest : parsed;
+  dataset.manifest = { ...dataset.manifest, ...manifest };
+  for (const role of RECALCULATION_DATASET_ROLES) {
+    const value = valueByAliases(parsed, role.bundleAliases || [role.role]);
+    if (value === undefined || value === null) {
+      continue;
+    }
+    addDatasetSource(dataset, role.role, {
+      name: `${role.role}.json`,
+      format: "json",
+      text: JSON.stringify(value)
+    });
+  }
+}
+
+const RECALCULATION_DATASET_ROLES = [
+  {
+    role: "baselineReceipt",
+    manifestAliases: ["baselineReceipt", "receipt", "existingReceipt", "baseline", "receipts"],
+    bundleAliases: ["baselineClaims", "baseline_claims"],
+    patterns: [/receipt\.(?:csv|uke|txt)$/iu, /receipts?\.(?:csv|uke|txt)$/iu, /baseline.*\.(?:csv|uke|txt)$/iu, /レセ/u]
+  },
+  {
+    role: "patients",
+    manifestAliases: ["patients", "patient"],
+    bundleAliases: ["patients", "patientRecords", "patient_records"],
+    patterns: [/patients?\.(?:csv|jsonl?|ndjson|tsv)$/iu, /患者/u]
+  },
+  {
+    role: "charts",
+    manifestAliases: ["charts", "chart", "chartNotes", "clinicalTexts", "clinical_texts"],
+    bundleAliases: ["charts", "chartNotes", "chart_notes", "clinicalTexts", "clinical_texts"],
+    patterns: [/charts?\.(?:csv|jsonl?|ndjson|tsv)$/iu, /chart[_-]?notes?\.(?:csv|jsonl?|ndjson|tsv)$/iu, /clinical.*\.(?:csv|jsonl?|ndjson|tsv)$/iu, /カルテ/u]
+  },
+  {
+    role: "orders",
+    manifestAliases: ["orders", "order"],
+    bundleAliases: ["orders", "orderRecords", "order_records"],
+    patterns: [/orders?\.(?:csv|jsonl?|ndjson|tsv)$/iu, /オーダ/u]
+  },
+  {
+    role: "diagnoses",
+    manifestAliases: ["diagnoses", "diagnosis", "diseases"],
+    bundleAliases: ["diagnoses", "diagnosisRecords", "diagnosis_records", "diseases"],
+    patterns: [/diagnos(?:is|es)\.(?:csv|jsonl?|ndjson|tsv)$/iu, /diseases?\.(?:csv|jsonl?|ndjson|tsv)$/iu, /病名/u]
+  },
+  {
+    role: "facility",
+    manifestAliases: ["facility", "facilitySettings", "facility_settings"],
+    bundleAliases: ["facility", "facilitySettings", "facility_settings"],
+    patterns: [/facility.*\.(?:json|csv|tsv)$/iu, /施設/u]
+  },
+  {
+    role: "calculationPayloads",
+    manifestAliases: ["calculationPayloads", "calculation_payloads", "claimPayloads", "claim_payloads", "payloads", "recalculation"],
+    bundleAliases: ["calculationPayloads", "calculation_payloads", "claimPayloads", "claim_payloads", "payloads", "records"],
+    patterns: [/(?:claim|calculation|recalculation).*payloads?\.(?:jsonl?|ndjson)$/iu, /recalculation\.(?:jsonl?|ndjson)$/iu, /再算定/u]
+  }
+];
+
+function addBodyTextSource(dataset, body, role, aliases = []) {
+  for (const alias of aliases) {
+    const camel = alias.charAt(0).toLowerCase() + alias.slice(1);
+    const snake = camel.replace(/[A-Z]/gu, (match) => `_${match.toLowerCase()}`);
+    const contentBase64 = String(body[`${camel}ContentBase64`] ?? body[`${snake}_content_base64`] ?? "").trim();
+    const text = String(body[`${camel}Text`] ?? body[`${snake}_text`] ?? "");
+    if (!contentBase64 && !text) {
+      continue;
+    }
+    const name = String(body[`${camel}FileName`] ?? body[`${snake}_file_name`] ?? `${role}.json`).trim();
+    const format = String(body[`${camel}Format`] ?? body[`${snake}_format`] ?? inferUploadFormat(name) ?? "json").trim().toLowerCase();
+    addDatasetSource(dataset, role, {
+      name,
+      format,
+      text: contentBase64 ? decodeUploadedTextBase64(contentBase64, body[`${camel}Encoding`] ?? body[`${snake}_encoding`]) : text
+    });
+    return;
+  }
+}
+
+function addDatasetSource(dataset, role, source = {}) {
+  if (!source || !String(source.text || "").trim()) {
+    return;
+  }
+  const normalizedRole = String(role || "").trim();
+  if (!normalizedRole) {
+    return;
+  }
+  const sources = Array.isArray(dataset.sources?.[normalizedRole]) ? dataset.sources[normalizedRole] : [];
+  sources.push({
+    name: String(source.name || `${normalizedRole}.json`).trim(),
+    format: String(source.format || inferUploadFormat(source.name || "") || "json").trim().toLowerCase(),
+    text: String(source.text || "")
+  });
+  dataset.sources[normalizedRole] = sources;
+}
+
+function firstDatasetSource(dataset = {}, role = "") {
+  const sources = dataset.sources?.[role];
+  return Array.isArray(sources) && sources.length ? sources[0] : null;
+}
+
+function datasetRecords(dataset = {}, role = "") {
+  const sources = Array.isArray(dataset.sources?.[role]) ? dataset.sources[role] : [];
+  return sources.flatMap((source) => recordsFromTextSource(source, role));
+}
+
+function recordsFromTextSource(source = {}, role = "") {
+  const text = String(source.text || "").trim();
+  if (!text) {
+    return [];
+  }
+  const format = String(source.format || inferUploadFormat(source.name || "") || "").toLowerCase();
+  if (format === "csv" || format === "tsv" || (/^[^\n]+\n/u.test(text) && !/^\s*[\[{]/u.test(text))) {
+    return parseDelimitedRecords(text, format === "tsv" || /\.tsv$/iu.test(source.name || "") ? "\t" : null);
+  }
+  try {
+    if (text.startsWith("[") || text.startsWith("{")) {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(isPlainObject);
+      }
+      if (isPlainObject(parsed)) {
+        const direct = valueByAliases(parsed, [role, "records", "items", "rows"]);
+        if (Array.isArray(direct)) {
+          return direct.filter(isPlainObject);
+        }
+        return [parsed];
+      }
+      return [];
+    }
+    return text
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter(isPlainObject);
+  } catch {
+    return [];
+  }
+}
+
+function datasetFacility(dataset = {}) {
+  const source = firstDatasetSource(dataset, "facility");
+  let value = {};
+  if (source) {
+    const records = recordsFromTextSource(source, "facility");
+    if (records.length === 1) {
+      value = records[0];
+    } else if (records.length > 1) {
+      value = Object.fromEntries(records.map((record) => [
+        stringValue(record, ["key", "name", "項目"]),
+        stringValue(record, ["value", "値"])
+      ]).filter(([key]) => key));
+    }
+  }
+  return {
+    medicalInstitutionCode: stringValue(value, ["medicalInstitutionCode", "medical_institution_code", "医療機関コード"]) || stringValue(dataset.manifest || {}, ["medicalInstitutionCode", "medical_institution_code"]),
+    regionalBureau: stringValue(value, ["regionalBureau", "regional_bureau", "厚生局"]) || stringValue(dataset.manifest || {}, ["regionalBureau", "regional_bureau"]),
+    facilityStandardKeys: uniqueStrings([
+      ...listValue(valueByAliases(value, ["facilityStandardKeys", "facility_standard_keys", "施設基準"])),
+      ...listValue(valueByAliases(dataset.manifest || {}, ["facilityStandardKeys", "facility_standard_keys"]))
+    ])
+  };
+}
+
+function claimContextFromDatasetGroup(group = {}, { patient = {}, facility = {}, manifest = {} } = {}) {
+  const procedureCodes = [];
+  const drugInputs = [];
+  const medicationOrders = [];
+  const injectionDrugInputs = [];
+  const injectionOrders = [];
+  const materialInputs = [];
+  const treatmentOrders = [];
+  const imagingOrders = [];
+  const commentInputs = [];
+
+  for (const order of group.orders || []) {
+    if (!datasetOrderIsPerformed(order)) {
+      continue;
+    }
+    const mapped = mapDatasetOrderToClaimInput(order);
+    if (!mapped) {
+      continue;
+    }
+    if (mapped.procedureCode) procedureCodes.push(mapped.procedureCode);
+    if (mapped.drugInput) drugInputs.push(mapped.drugInput);
+    if (mapped.medicationOrder) medicationOrders.push(mapped.medicationOrder);
+    if (mapped.injectionDrugInput) injectionDrugInputs.push(mapped.injectionDrugInput);
+    if (mapped.injectionOrder) injectionOrders.push(mapped.injectionOrder);
+    if (mapped.materialInput) materialInputs.push(mapped.materialInput);
+    if (mapped.treatmentOrder) treatmentOrders.push(mapped.treatmentOrder);
+    if (mapped.imagingOrder) imagingOrders.push(mapped.imagingOrder);
+    if (mapped.commentInput) commentInputs.push(mapped.commentInput);
+  }
+
+  const clinicalText = uniqueStrings((group.charts || []).map((chart) => chart.clinicalText).filter(Boolean)).join("\n\n");
+  const diagnoses = (group.diagnoses || []).map((diagnosis) => ({
+    name: diagnosis.name,
+    icd10Code: diagnosis.icd10Code || "",
+    isPrimary: diagnosis.isPrimary === true
+  })).filter((diagnosis) => diagnosis.name);
+  const payload = {
+    record_id: `dataset_${group.patientId}_${group.serviceDate}`,
+    patient: {
+      patient_id: group.patientId,
+      display_name: patient.displayName || group.patientId,
+      birth_date: patient.birthDate || null,
+      sex: patient.sex || null
+    },
+    encounter: {
+      service_date: group.serviceDate,
+      medical_institution_code: group.medicalInstitutionCode || facility.medicalInstitutionCode || stringValue(manifest, ["medicalInstitutionCode", "medical_institution_code"]) || null,
+      regional_bureau: group.regionalBureau || facility.regionalBureau || stringValue(manifest, ["regionalBureau", "regional_bureau"]) || null,
+      is_outpatient: group.isOutpatient !== false
+    },
+    procedure_codes: uniqueStrings(procedureCodes),
+    drug_inputs: compactClaimInputArray(drugInputs),
+    medication_orders: compactClaimInputArray(medicationOrders),
+    injection_drug_inputs: compactClaimInputArray(injectionDrugInputs),
+    injection_orders: compactClaimInputArray(injectionOrders),
+    treatment_orders: compactClaimInputArray(treatmentOrders),
+    imaging_orders: compactClaimInputArray(imagingOrders),
+    material_inputs: compactClaimInputArray(materialInputs),
+    comment_inputs: compactClaimInputArray(commentInputs),
+    diagnoses,
+    clinical_text: clinicalText
+  };
+  const facilityStandardKeys = uniqueStrings(facility.facilityStandardKeys || []);
+  if (facilityStandardKeys.length) {
+    payload.facility_standard_keys = facilityStandardKeys;
+  }
+  return payload;
+}
+
+function hasBillableClaimContextInput(payload = {}) {
+  return [
+    payload.procedure_codes,
+    payload.drug_inputs,
+    payload.medication_orders,
+    payload.injection_drug_inputs,
+    payload.injection_orders,
+    payload.treatment_orders,
+    payload.imaging_orders,
+    payload.material_inputs
+  ].some((value) => Array.isArray(value) && value.length > 0);
+}
+
+function normalizeDatasetPatient(record = {}) {
+  return {
+    patientId: stringValue(record, ["patient_id", "patientId", "patient", "patientCode", "患者ID", "患者番号"]),
+    displayName: stringValue(record, ["display_name", "displayName", "name", "patient_name", "氏名", "患者名"]),
+    birthDate: dateValue(record, ["birth_date", "birthDate", "生年月日"]),
+    sex: normalizeSex(stringValue(record, ["sex", "gender", "性別"]))
+  };
+}
+
+function normalizeDatasetChart(record = {}) {
+  return {
+    patientId: stringValue(record, ["patient_id", "patientId", "patient", "patientCode", "患者ID", "患者番号"]),
+    serviceDate: dateValue(record, ["service_date", "serviceDate", "date", "encounter_date", "診療日", "受診日"]),
+    clinicalText: stringValue(record, ["clinical_text", "clinicalText", "chart_text", "chartText", "note", "text", "カルテ", "カルテ本文", "診療録"]),
+    medicalInstitutionCode: stringValue(record, ["medical_institution_code", "medicalInstitutionCode", "医療機関コード"]),
+    regionalBureau: stringValue(record, ["regional_bureau", "regionalBureau", "厚生局"])
+  };
+}
+
+function normalizeDatasetOrder(record = {}) {
+  return {
+    raw: record,
+    patientId: stringValue(record, ["patient_id", "patientId", "patient", "patientCode", "患者ID", "患者番号"]),
+    serviceDate: dateValue(record, ["service_date", "serviceDate", "date", "encounter_date", "診療日", "受診日"]),
+    orderType: normalizeOrderType(stringValue(record, ["order_type", "orderType", "type", "category", "区分", "種別"])),
+    name: stringValue(record, ["name", "order_name", "orderName", "drug_name", "material_name", "名称", "オーダー名"]),
+    code: stringValue(record, ["code", "standard_code", "standardCode", "drug_code", "material_code", "procedure_code", "コード", "マスターコード"]),
+    quantity: numberValue(record, ["quantity", "count", "回数", "数量"]),
+    totalQuantity: numberValue(record, ["total_quantity", "totalQuantity", "総量"]),
+    quantityPerDay: numberValue(record, ["quantity_per_day", "quantityPerDay", "1日量"]),
+    days: integerValue(record, ["days", "日数"]),
+    doseQuantity: numberValue(record, ["dose_quantity", "doseQuantity", "1回量"]),
+    dosesPerDay: numberValue(record, ["doses_per_day", "dosesPerDay", "1日回数"]),
+    status: stringValue(record, ["status", "状態", "実施状態"]),
+    kind: stringValue(record, ["kind", "treatment_kind", "imaging_kind", "処置種別", "画像種別"]),
+    areaSize: stringValue(record, ["area_size", "areaSize", "area", "面積", "範囲"]),
+    medicalInstitutionCode: stringValue(record, ["medical_institution_code", "medicalInstitutionCode", "医療機関コード"]),
+    regionalBureau: stringValue(record, ["regional_bureau", "regionalBureau", "厚生局"])
+  };
+}
+
+function normalizeDatasetDiagnosis(record = {}) {
+  const primaryRaw = stringValue(record, ["is_primary", "isPrimary", "primary", "主病名"]);
+  return {
+    patientId: stringValue(record, ["patient_id", "patientId", "patient", "patientCode", "患者ID", "患者番号"]),
+    serviceDate: dateValue(record, ["service_date", "serviceDate", "date", "encounter_date", "診療日", "受診日"]),
+    name: stringValue(record, ["diagnosis_name", "diagnosisName", "name", "disease_name", "病名"]),
+    icd10Code: stringValue(record, ["icd10_code", "icd10Code", "icd10", "ICD10"]),
+    isPrimary: /^(?:1|true|yes|主|主病名)$/iu.test(primaryRaw)
+  };
+}
+
+function mapDatasetOrderToClaimInput(order = {}) {
+  const code = String(order.code || "").trim();
+  const type = order.orderType || inferOrderTypeFromName(order.name);
+  if (type === "drug") {
+    if (!code) return null;
+    const medicationOrder = compactClaimObject({
+      drug_code: code,
+      total_quantity: finiteNumberOrNull(order.totalQuantity),
+      quantity_per_day: finiteNumberOrNull(order.quantityPerDay),
+      days: finiteIntegerOrNull(order.days),
+      dose_quantity: finiteNumberOrNull(order.doseQuantity),
+      doses_per_day: finiteNumberOrNull(order.dosesPerDay)
+    });
+    return Object.keys(medicationOrder).length > 1
+      ? { medicationOrder }
+      : { drugInput: { code, quantity: finiteNumberOrOne(order.quantity) } };
+  }
+  if (type === "injection") {
+    if (!code) return null;
+    const injectionOrder = compactClaimObject({
+      drug_code: code,
+      total_quantity: finiteNumberOrNull(order.totalQuantity),
+      dose_quantity: finiteNumberOrNull(order.doseQuantity),
+      administrations: finiteNumberOrOne(order.quantity)
+    });
+    return Object.keys(injectionOrder).length > 1
+      ? { injectionOrder }
+      : { injectionDrugInput: { code, quantity: finiteNumberOrOne(order.quantity) } };
+  }
+  if (type === "material") {
+    return code ? { materialInput: { code, quantity: finiteNumberOrOne(order.quantity) } } : null;
+  }
+  if (type === "treatment") {
+    const treatmentOrder = treatmentOrderFromDatasetOrder(order);
+    if (treatmentOrder) {
+      return { treatmentOrder };
+    }
+    return code ? { procedureCode: code } : null;
+  }
+  if (type === "imaging") {
+    const imagingOrder = imagingOrderFromDatasetOrder(order);
+    if (imagingOrder) {
+      return { imagingOrder };
+    }
+    return code ? { procedureCode: code } : null;
+  }
+  if (type === "comment") {
+    return code ? { commentInput: { code } } : { commentInput: { text: order.name } };
+  }
+  return code ? { procedureCode: code } : null;
+}
+
+function treatmentOrderFromDatasetOrder(order = {}) {
+  const text = `${order.kind || ""} ${order.name || ""}`;
+  const kind = /熱傷|burn/iu.test(text)
+    ? "burn"
+    : /創傷|擦過|創処置|wound/iu.test(text)
+      ? "wound"
+      : /軟膏|皮膚科軟膏|dermatology/iu.test(text)
+        ? "dermatology_ointment"
+        : "";
+  if (!kind) {
+    return null;
+  }
+  return compactClaimObject({
+    kind,
+    area_size: treatmentAreaSizeKind(order.areaSize || order.name)
+  });
+}
+
+function imagingOrderFromDatasetOrder(order = {}) {
+  const text = `${order.kind || ""} ${order.name || ""}`;
+  const kind = /CT|ＣＴ/iu.test(text)
+    ? "ct"
+    : /MRI|ＭＲＩ/iu.test(text)
+      ? "mri"
+      : /単純|X線|Ｘ線|レントゲン|radiography/iu.test(text)
+        ? "simple_radiography"
+        : "";
+  return kind ? { kind } : null;
+}
+
+function treatmentAreaSizeKind(value = "") {
+  const text = String(value || "");
+  const numeric = Number((text.match(/(\d+(?:\.\d+)?)/u) || [])[1]);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  if (numeric < 100) return "lt_100_cm2";
+  if (numeric < 500) return "ge_100_lt_500_cm2";
+  if (numeric < 3000) return "ge_500_lt_3000_cm2";
+  if (numeric < 6000) return "ge_3000_lt_6000_cm2";
+  return "ge_6000_cm2";
+}
+
+function datasetOrderIsPerformed(order = {}) {
+  const status = String(order.status || "").trim();
+  if (!status) {
+    return true;
+  }
+  return !/(?:予定|未実施|中止|キャンセル|施行せず|他院|過去|planned|cancel|not[_ -]?done|not[_ -]?performed)/iu.test(status);
+}
+
+function normalizeOrderType(value = "") {
+  const text = String(value || "").trim();
+  if (/^(?:drug|medication|medicine|投薬|薬剤|処方)$/iu.test(text)) return "drug";
+  if (/^(?:injection|注射)$/iu.test(text)) return "injection";
+  if (/^(?:material|device|特定器材|材料)$/iu.test(text)) return "material";
+  if (/^(?:treatment|procedure|処置)$/iu.test(text)) return "treatment";
+  if (/^(?:imaging|radiology|画像|画像診断|検査画像)$/iu.test(text)) return "imaging";
+  if (/^(?:comment|コメント)$/iu.test(text)) return "comment";
+  if (/^(?:procedure_code|手技|基本料|医学管理)$/iu.test(text)) return "procedure";
+  return "";
+}
+
+function inferOrderTypeFromName(value = "") {
+  const text = String(value || "");
+  if (/注射/u.test(text)) return "injection";
+  if (/材料|被覆材|フォーム|カテーテル/u.test(text)) return "material";
+  if (/処置|熱傷|創傷|軟膏塗布/u.test(text)) return "treatment";
+  if (/CT|MRI|X線|Ｘ線|レントゲン/u.test(text)) return "imaging";
+  if (/錠|カプセル|散|液|軟膏|クリーム|薬/u.test(text)) return "drug";
+  return "";
+}
+
+function parseDelimitedRecords(text = "", delimiter = null) {
+  const rows = parseDelimitedRows(String(text || "").replace(/^\uFEFF/u, ""), delimiter);
+  if (rows.length < 2) {
+    return [];
+  }
+  const headers = rows[0].map((header) => String(header || "").trim());
+  return rows.slice(1)
+    .filter((row) => row.some((cell) => String(cell || "").trim()))
+    .map((row) => Object.fromEntries(headers.map((header, index) => [header || `col_${index + 1}`, row[index] ?? ""])));
+}
+
+function parseDelimitedRows(text = "", delimiter = null) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  const resolvedDelimiter = delimiter || inferDelimiter(text);
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (quoted) {
+      if (char === "\"" && next === "\"") {
+        cell += "\"";
+        index += 1;
+      } else if (char === "\"") {
+        quoted = false;
+      } else {
+        cell += char;
+      }
+      continue;
+    }
+    if (char === "\"") {
+      quoted = true;
+    } else if (char === resolvedDelimiter) {
+      row.push(cell);
+      cell = "";
+    } else if (char === "\n") {
+      row.push(cell.replace(/\r$/u, ""));
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+  row.push(cell.replace(/\r$/u, ""));
+  rows.push(row);
+  return rows;
+}
+
+function inferDelimiter(text = "") {
+  const firstLine = String(text || "").split(/\r?\n/u)[0] || "";
+  const tabs = (firstLine.match(/\t/gu) || []).length;
+  const commas = (firstLine.match(/,/gu) || []).length;
+  return tabs > commas ? "\t" : ",";
+}
+
+function unzipTextEntries(buffer) {
+  const entries = [];
+  const eocdOffset = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (eocdOffset < 0) {
+    throw requestValidationError("ZIPファイルを読み込めませんでした。");
+  }
+  const entryCount = buffer.readUInt16LE(eocdOffset + 10);
+  const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16);
+  let offset = centralDirectoryOffset;
+  for (let index = 0; index < entryCount && index < 128; index += 1) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) {
+      break;
+    }
+    const flags = buffer.readUInt16LE(offset + 8);
+    const method = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const fileNameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const localHeaderOffset = buffer.readUInt32LE(offset + 42);
+    const nameBytes = buffer.subarray(offset + 46, offset + 46 + fileNameLength);
+    const entryPath = (flags & 0x0800 ? nameBytes.toString("utf8") : nameBytes.toString("utf8")).replace(/^\/+/u, "");
+    offset += 46 + fileNameLength + extraLength + commentLength;
+    if (!entryPath || entryPath.endsWith("/") || /(?:^|\/)\.\.(?:\/|$)/u.test(entryPath)) {
+      continue;
+    }
+    if (buffer.readUInt32LE(localHeaderOffset) !== 0x04034b50) {
+      continue;
+    }
+    const localNameLength = buffer.readUInt16LE(localHeaderOffset + 26);
+    const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28);
+    const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
+    const compressed = buffer.subarray(dataStart, dataStart + compressedSize);
+    const raw = method === 0
+      ? compressed
+      : method === 8
+        ? inflateRawSync(compressed)
+        : null;
+    if (!raw) {
+      continue;
+    }
+    entries.push({
+      path: entryPath,
+      text: decodeUploadedText(raw)
+    });
+  }
+  return entries;
+}
+
+function zipEntryForDatasetRole(entries = [], role, manifest = {}) {
+  const files = isPlainObject(manifest.files) ? manifest.files : {};
+  for (const alias of role.manifestAliases || []) {
+    const manifestPath = String(files[alias] || files[alias.replace(/[A-Z]/gu, (match) => `_${match.toLowerCase()}`)] || "").trim();
+    if (!manifestPath) {
+      continue;
+    }
+    const found = entries.find((entry) => normalizeDatasetPath(entry.path) === normalizeDatasetPath(manifestPath));
+    if (found) {
+      return { name: found.path, format: inferUploadFormat(found.path), text: found.text };
+    }
+  }
+  const found = entries.find((entry) => (role.patterns || []).some((pattern) => pattern.test(entry.path)));
+  return found ? { name: found.path, format: inferUploadFormat(found.path), text: found.text } : null;
+}
+
+function decodeUploadedTextBase64(value = "", encoding = "auto") {
+  return decodeUploadedText(Buffer.from(String(value || ""), "base64"), encoding);
+}
+
+function decodeUploadedText(buffer, encoding = "auto") {
+  const normalized = String(encoding || "auto").trim().toLowerCase().replace("_", "-");
+  if (normalized && normalized !== "auto") {
+    return iconv.decode(buffer, normalized === "shift-jis" ? "shift_jis" : normalized);
+  }
+  const utf8 = iconv.decode(buffer, "utf8");
+  if (!utf8.includes("\uFFFD")) {
+    return utf8;
+  }
+  return iconv.decode(buffer, "cp932");
+}
+
+function inferUploadFormat(name = "") {
+  const lower = String(name || "").toLowerCase();
+  if (lower.endsWith(".zip")) return "zip";
+  if (lower.endsWith(".uke")) return "uke";
+  if (lower.endsWith(".csv")) return "csv";
+  if (lower.endsWith(".tsv")) return "tsv";
+  if (lower.endsWith(".jsonl") || lower.endsWith(".ndjson")) return "jsonl";
+  if (lower.endsWith(".json")) return "json";
+  if (lower.endsWith(".txt")) return "txt";
+  return "";
+}
+
+function inferBaselineUploadFormat(name = "") {
+  const format = inferUploadFormat(name);
+  return format === "uke" ? "uke" : "csv";
+}
+
+function normalizeDatasetPath(value = "") {
+  return String(value || "").trim().replace(/\\/gu, "/").replace(/^\.?\//u, "").toLowerCase();
+}
+
+function valueByAliases(record = {}, aliases = []) {
+  if (!isPlainObject(record)) {
+    return undefined;
+  }
+  const normalizedMap = new Map();
+  for (const [key, value] of Object.entries(record)) {
+    normalizedMap.set(normalizeRecordKey(key), value);
+  }
+  for (const alias of aliases) {
+    if (Object.prototype.hasOwnProperty.call(record, alias)) {
+      return record[alias];
+    }
+    const normalized = normalizeRecordKey(alias);
+    if (normalizedMap.has(normalized)) {
+      return normalizedMap.get(normalized);
+    }
+  }
+  return undefined;
+}
+
+function normalizeRecordKey(key = "") {
+  return String(key || "").trim().replace(/[\s_\-・／/]/gu, "").toLowerCase();
+}
+
+function stringValue(record = {}, aliases = []) {
+  const value = valueByAliases(record, aliases);
+  return value == null ? "" : String(value).trim();
+}
+
+function dateValue(record = {}, aliases = []) {
+  const raw = stringValue(record, aliases);
+  if (!raw) {
+    return "";
+  }
+  const match = raw.match(/(\d{4})[\/\-年.](\d{1,2})[\/\-月.](\d{1,2})/u);
+  if (!match) {
+    return /^\d{8}$/u.test(raw) ? `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}` : raw.slice(0, 10);
+  }
+  return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+}
+
+function normalizeSex(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  if (/^(?:m|male|男|男性)$/u.test(text)) return "male";
+  if (/^(?:f|female|女|女性)$/u.test(text)) return "female";
+  return text || null;
+}
+
+function numberValue(record = {}, aliases = []) {
+  const raw = stringValue(record, aliases);
+  if (!raw) {
+    return null;
+  }
+  const numeric = Number(String(raw).replace(/,/gu, "").match(/-?\d+(?:\.\d+)?/u)?.[0]);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function integerValue(record = {}, aliases = []) {
+  const numeric = numberValue(record, aliases);
+  return Number.isFinite(numeric) ? Math.trunc(numeric) : null;
+}
+
+function finiteNumberOrNull(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function finiteIntegerOrNull(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.trunc(numeric) : null;
+}
+
+function finiteNumberOrOne(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 1;
+}
+
+function compactClaimObject(value = {}) {
+  return Object.fromEntries(Object.entries(value).filter(([, entryValue]) => entryValue !== null && entryValue !== undefined && entryValue !== ""));
+}
+
+function compactClaimInputArray(values = []) {
+  return (Array.isArray(values) ? values : []).map(compactClaimObject).filter((value) => Object.keys(value).length > 0);
+}
+
+function listValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  return String(value || "").split(/[\s,、\n]+/u).map((item) => item.trim()).filter(Boolean);
+}
+
 function normalizeCalculationPayloadsForRecalculationDiff(body = {}, options = {}) {
   const claimMonth = String(options.claimMonth || "").trim();
   const limit = Math.max(1, Number.parseInt(options.limit, 10) || DEFAULT_RECALCULATION_DIFF_PAYLOAD_LIMIT);
@@ -1224,6 +2138,8 @@ function feeSessionFromClaimPayload(payload = {}, { index = 1, claimMonth = "" }
       medicalInstitutionCode: encounter.medical_institution_code || encounter.medicalInstitutionCode || null,
       regionalBureau: encounter.regional_bureau || encounter.regionalBureau || null
     },
+    clinicalText: payload.clinical_text || payload.clinicalText || "",
+    diagnoses: Array.isArray(payload.diagnoses) ? payload.diagnoses : [],
     claimContext: payload
   };
 }

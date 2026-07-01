@@ -25,6 +25,41 @@
 
 受領形式・列名はベンダーで異なるため、**病院別マッピング（CSV column_map / UKE UkeLayout）を最初に確定**する。
 
+### STG Web UI の取込形式
+STG の「再算定差分診断」は、次のどちらかで取り込める。
+
+1. **診断データセットZIP**
+   - `manifest.json`
+   - `receipt.csv` または `receipt.uke`
+   - `patients.csv` / `patients.jsonl`
+   - `charts.csv` / `charts.jsonl`
+   - `orders.csv` / `orders.jsonl`
+   - `diagnoses.csv` / `diagnoses.jsonl`
+   - `facility.json`
+2. **個別アップロード**
+   - 既存レセ、患者情報、カルテ、オーダー、病名、施設設定を画面上で個別に指定する。
+
+最小必須は、既存レセと、患者ID・診療日・算定対象コードを含む再算定元データ。カルテ本文だけでは薬剤量・処置面積・施設基準・同月履歴などが不足しやすいため、初期運用では**構造化オーダーを主入力、カルテは根拠・補助情報**として扱う。
+
+標準CSV列例:
+```csv
+# patients.csv
+patient_id,birth_date,sex,display_name
+pat_001,1970-01-01,male,山田 太郎
+
+# charts.csv
+patient_id,service_date,clinical_text
+pat_001,2026-06-10,A：高血圧症。P：管理を継続。
+
+# orders.csv
+patient_id,service_date,order_type,code,name,status
+pat_001,2026-06-10,procedure,113001810,特定疾患療養管理料,performed
+
+# diagnoses.csv
+patient_id,service_date,diagnosis_name,is_primary
+pat_001,2026-06-10,高血圧症,true
+```
+
 ## 2. PHI / セキュリティ（必須）
 - 受領〜削除まで**アクセス権限を限定**（担当者のみ）、保存先は**IP制限された隔離環境**。
 - **ログ・標準出力にカルテ本文や患者氏名を出さない**（レポートも患者符牒運用を推奨）。

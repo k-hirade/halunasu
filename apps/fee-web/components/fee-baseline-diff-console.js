@@ -9,7 +9,7 @@ import {
   baselineDiffRows,
   baselineDiffToCsv,
   baselineDiffToHtml,
-  buildRecalculationDiffRequest,
+  buildRecalculationDatasetDiffRequest,
   downloadTextFile,
   emptyBaselineDiffOptions,
   isStgFeeEnvironment
@@ -55,14 +55,24 @@ export function FeeBaselineDiffConsole() {
   const [options, setOptions] = useState(emptyBaselineDiffOptions());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [datasetFile, setDatasetFile] = useState(null);
+  const [datasetFileName, setDatasetFileName] = useState("");
   const [baselineFile, setBaselineFile] = useState(null);
   const [baselineFileName, setBaselineFileName] = useState("");
   const [recalculationFile, setRecalculationFile] = useState(null);
   const [recalculationFileName, setRecalculationFileName] = useState("");
+  const [sourceFiles, setSourceFiles] = useState({});
+  const [sourceFileNames, setSourceFileNames] = useState({});
   const [result, setResult] = useState(null);
   const [dragOverTarget, setDragOverTarget] = useState("");
+  const datasetInputRef = useRef(null);
   const baselineInputRef = useRef(null);
   const recalculationInputRef = useRef(null);
+  const patientInputRef = useRef(null);
+  const chartInputRef = useRef(null);
+  const orderInputRef = useRef(null);
+  const diagnosisInputRef = useRef(null);
+  const facilityInputRef = useRef(null);
 
   useEffect(() => {
     setStg(isStgFeeEnvironment());
@@ -78,6 +88,16 @@ export function FeeBaselineDiffConsole() {
     setError("");
   }, []);
 
+  const selectDatasetFile = useCallback((file) => {
+    if (!file) {
+      return;
+    }
+    setDatasetFile(file);
+    setDatasetFileName(file.name || "");
+    setResult(null);
+    setError("");
+  }, []);
+
   const selectRecalculationFile = useCallback((file) => {
     if (!file) {
       return;
@@ -88,16 +108,37 @@ export function FeeBaselineDiffConsole() {
     setError("");
   }, []);
 
+  const selectSourceFile = useCallback((key, file) => {
+    if (!file) {
+      return;
+    }
+    setSourceFiles((current) => ({ ...current, [key]: file }));
+    setSourceFileNames((current) => ({ ...current, [key]: file.name || "" }));
+    setResult(null);
+    setError("");
+  }, []);
+
+  const canRunDiagnosis = Boolean(datasetFile || (baselineFile && (recalculationFile || sourceFiles.orders)));
+
   const runDiagnosis = useCallback(async () => {
-    if (!baselineFile || !recalculationFile) {
-      setError("既存レセと再算定元データを選択してください。");
+    if (!canRunDiagnosis) {
+      setError("診断データセット、または既存レセと再算定元データを選択してください。");
       return;
     }
     setBusy(true);
     setError("");
     setResult(null);
     try {
-      const body = await buildRecalculationDiffRequest(baselineFile, recalculationFile, { claimMonth, options });
+      const body = await buildRecalculationDatasetDiffRequest({
+        datasetFile,
+        sourceFiles: {
+          baselineReceipt: baselineFile,
+          calculationPayloads: recalculationFile,
+          ...sourceFiles
+        },
+        claimMonth,
+        options
+      });
       const response = await feeApi("/v1/fee/recalculation-diff-diagnosis", { method: "POST", csrf: true, body });
       setResult(response || null);
     } catch (err) {
@@ -105,12 +146,20 @@ export function FeeBaselineDiffConsole() {
     } finally {
       setBusy(false);
     }
-  }, [baselineFile, recalculationFile, feeApi, claimMonth, options]);
+  }, [baselineFile, canRunDiagnosis, claimMonth, datasetFile, feeApi, options, recalculationFile, sourceFiles]);
 
   const updateOptions = useCallback((patch) => setOptions((current) => ({ ...current, ...patch })), []);
 
   const findings = useMemo(() => baselineDiffRows(result), [result]);
   const summary = result?.summary || null;
+  const ingestion = result?.ingestion || null;
+  const sourceDropConfigs = [
+    ["patients", "患者情報", ".csv / .jsonl", patientInputRef, ".csv,.tsv,.json,.jsonl,.ndjson,text/csv,application/json"],
+    ["charts", "カルテ", ".csv / .jsonl", chartInputRef, ".csv,.tsv,.json,.jsonl,.ndjson,text/csv,application/json"],
+    ["orders", "オーダー", ".csv / .jsonl", orderInputRef, ".csv,.tsv,.json,.jsonl,.ndjson,text/csv,application/json"],
+    ["diagnoses", "病名", ".csv / .jsonl", diagnosisInputRef, ".csv,.tsv,.json,.jsonl,.ndjson,text/csv,application/json"],
+    ["facility", "施設設定", ".json / .csv", facilityInputRef, ".json,.csv,.tsv,application/json,text/csv"]
+  ];
 
   if (!stg) {
     return (
@@ -134,7 +183,28 @@ export function FeeBaselineDiffConsole() {
       <section className="baseline-diff-card">
         <div className="baseline-diff-card-head">
           <h3>1. データを取込</h3>
-          <span>既存レセ + 再算定用JSON</span>
+          <span>ZIP一括 または 個別ファイル</span>
+        </div>
+        <div
+          className={`baseline-diff-drop baseline-diff-drop--wide ${dragOverTarget === "dataset" ? "is-over" : ""}`}
+          onClick={() => datasetInputRef.current?.click()}
+          onDragOver={(event) => { event.preventDefault(); setDragOverTarget("dataset"); }}
+          onDragLeave={() => setDragOverTarget("")}
+          onDrop={(event) => { event.preventDefault(); setDragOverTarget(""); const file = event.dataTransfer.files?.[0]; if (file) { selectDatasetFile(file); } }}
+          role="button"
+          tabIndex={0}
+        >
+          <strong>診断データセット</strong>
+          <span>manifest.json付き .zip / bundle .json</span>
+          {datasetFileName ? <small>取込: {datasetFileName}</small> : null}
+          <input
+            accept=".zip,.json,application/zip,application/json"
+            disabled={busy}
+            hidden
+            onChange={(event) => { const file = event.target.files?.[0]; if (file) { selectDatasetFile(file); } event.target.value = ""; }}
+            ref={datasetInputRef}
+            type="file"
+          />
         </div>
         <div className="baseline-diff-upload-grid">
           <div
@@ -181,14 +251,43 @@ export function FeeBaselineDiffConsole() {
           </div>
         </div>
         <div className="baseline-diff-run">
-          <button className="btn btn--primary" disabled={busy || !baselineFile || !recalculationFile} onClick={runDiagnosis} type="button">
+          <button className="btn btn--primary" disabled={busy || !canRunDiagnosis} onClick={runDiagnosis} type="button">
             {busy ? "診断中..." : "差分診断を実行"}
           </button>
         </div>
 
         <details className="baseline-diff-options">
-          <summary>詳細設定（列マッピング・UKE位置・未対応コード・コード対応表）</summary>
+          <summary>個別ファイル・詳細設定</summary>
           <div className="baseline-diff-options-body">
+            <div className="baseline-diff-fieldset">
+              <span className="baseline-diff-fieldset-label">個別ファイル（ZIPを使わない場合、または一部だけ差し替える場合）</span>
+              <div className="baseline-diff-upload-grid baseline-diff-upload-grid--compact">
+                {sourceDropConfigs.map(([key, label, hint, inputRef, accept]) => (
+                  <div
+                    className={`baseline-diff-drop ${dragOverTarget === key ? "is-over" : ""}`}
+                    key={key}
+                    onClick={() => inputRef.current?.click()}
+                    onDragOver={(event) => { event.preventDefault(); setDragOverTarget(key); }}
+                    onDragLeave={() => setDragOverTarget("")}
+                    onDrop={(event) => { event.preventDefault(); setDragOverTarget(""); const file = event.dataTransfer.files?.[0]; if (file) { selectSourceFile(key, file); } }}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <strong>{label}</strong>
+                    <span>{hint}</span>
+                    {sourceFileNames[key] ? <small>取込: {sourceFileNames[key]}</small> : null}
+                    <input
+                      accept={accept}
+                      disabled={busy}
+                      hidden
+                      onChange={(event) => { const file = event.target.files?.[0]; if (file) { selectSourceFile(key, file); } event.target.value = ""; }}
+                      ref={inputRef}
+                      type="file"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
             <div className="baseline-diff-fieldset">
               <span className="baseline-diff-fieldset-label">CSV列マッピング（空欄=標準列名。列名が違う場合は指定）</span>
               <div className="baseline-diff-grid">
@@ -239,6 +338,13 @@ export function FeeBaselineDiffConsole() {
 
         {summary ? (
           <>
+            {ingestion ? (
+              <div className="baseline-diff-ingestion">
+                <span>取込: レセ {Number(ingestion.baselineClaimCount || 0).toLocaleString()}件</span>
+                <span>再算定 {Number(ingestion.calculationPayloadCount || 0).toLocaleString()}件</span>
+                {Number(ingestion.warningCount || 0) ? <span>確認 {Number(ingestion.warningCount || 0).toLocaleString()}件</span> : null}
+              </div>
+            ) : null}
             <div className="baseline-diff-summary">
               <article className="baseline-diff-metric baseline-diff-metric--missing">
                 <span>算定もれ候補</span>

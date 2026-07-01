@@ -726,6 +726,7 @@ function sanitizeSafePayload(value) {
     "claimMonth",
     "count",
     "dataRequestId",
+    "datasetWarningCount",
     "departmentId",
     "encounterId",
     "eventId",

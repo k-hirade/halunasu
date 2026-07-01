@@ -5404,10 +5404,22 @@ body:has(.fee-shell--detail) {
   font-weight: 800;
 }
 
+.baseline-diff-drop--wide {
+  margin-bottom: 12px;
+}
+
 .baseline-diff-upload-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.baseline-diff-upload-grid--compact {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.baseline-diff-upload-grid--compact .baseline-diff-drop {
+  padding: 18px 12px;
 }
 
 .baseline-diff-run {
@@ -5456,6 +5468,23 @@ body:has(.fee-shell--detail) {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.baseline-diff-ingestion {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 8px;
+}
+
+.baseline-diff-ingestion span {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 8px;
 }
 
 .baseline-diff-summary {

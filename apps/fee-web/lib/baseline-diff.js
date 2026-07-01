@@ -123,10 +123,43 @@ export async function buildBaselineDiffRequest(file, { claimMonth, options }) {
 }
 
 export async function buildRecalculationDiffRequest(baselineFile, recalculationFile, { claimMonth, options }) {
-  const body = await buildBaselineDiffRequest(baselineFile, { claimMonth, options });
-  body.calculationPayloadFormat = /\.(jsonl|ndjson)$/iu.test(recalculationFile.name || "") ? "jsonl" : "json";
-  body.calculationPayloadContentBase64 = await fileToBase64(recalculationFile);
+  const body = baselineFile ? await buildBaselineDiffRequest(baselineFile, { claimMonth, options }) : { claimMonth };
+  if (recalculationFile) {
+    await appendUploadFile(body, "calculationPayload", recalculationFile);
+  }
   return body;
+}
+
+export async function buildRecalculationDatasetDiffRequest({ datasetFile, sourceFiles = {}, claimMonth, options }) {
+  const body = await buildRecalculationDiffRequest(sourceFiles.baselineReceipt || null, sourceFiles.calculationPayloads || null, { claimMonth, options });
+  if (datasetFile) {
+    await appendUploadFile(body, "dataset", datasetFile);
+  }
+  for (const [key, file] of Object.entries(sourceFiles || {})) {
+    if (!file || ["baselineReceipt", "calculationPayloads"].includes(key)) {
+      continue;
+    }
+    await appendUploadFile(body, key, file);
+  }
+  return body;
+}
+
+async function appendUploadFile(body, prefix, file) {
+  const name = file.name || "";
+  body[`${prefix}FileName`] = name;
+  body[`${prefix}Format`] = uploadFormatFromName(name);
+  body[`${prefix}ContentBase64`] = await fileToBase64(file);
+}
+
+function uploadFormatFromName(name = "") {
+  const lower = String(name || "").toLowerCase();
+  if (lower.endsWith(".zip")) return "zip";
+  if (lower.endsWith(".uke")) return "uke";
+  if (lower.endsWith(".csv")) return "csv";
+  if (lower.endsWith(".tsv")) return "tsv";
+  if (lower.endsWith(".jsonl") || lower.endsWith(".ndjson")) return "jsonl";
+  if (lower.endsWith(".json")) return "json";
+  return "txt";
 }
 
 export function baselineDiffRows(result) {

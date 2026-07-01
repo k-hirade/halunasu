@@ -8396,6 +8396,53 @@ test("runs recalculation diff diagnosis from uploaded claim payloads without mon
   assert.ok(auditEvents.some((event) => event.eventType === "fee.recalculation_diff_diagnosis_run" && event.safePayload.calculationPayloadCount === 1));
 });
 
+test("builds recalculation diff claim payloads from uploaded patient chart order diagnosis files", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore, { globalRoles: [], productRoles: { fee: ["medical_clerk"] } });
+  const calls = [];
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    calls.push({ feeSession, calculationInput });
+    const context = calculationInput.claimContext || {};
+    const hasManagement = (context.procedure_codes || []).includes("113001810");
+    return {
+      provider: "test",
+      status: "completed",
+      totalPoints: hasManagement ? 301 : 76,
+      lineItems: [
+        { code: "112007410", name: "再診料", points: 76, quantity: 1, totalPoints: 76, status: "confirmed" },
+        ...(hasManagement ? [{ code: "113001810", name: "特定疾患療養管理料", points: 225, quantity: 1, totalPoints: 225, status: "confirmed" }] : [])
+      ],
+      warnings: []
+    };
+  };
+
+  const encode = (text) => Buffer.from(text, "utf8").toString("base64");
+  const response = await request(stores, "POST", "/v1/fee/recalculation-diff-diagnosis", {
+    claimMonth: "2026-06",
+    baselineClaims: [
+      { patientId: "patA", claimMonth: "2026-06", lines: [{ code: "112007410", name: "再診料", points: 76, count: 1 }] }
+    ],
+    patientsContentBase64: encode("patient_id,birth_date,sex,display_name\npatA,1970-01-01,male,山田 太郎\n"),
+    patientsFormat: "csv",
+    chartsContentBase64: encode(`${JSON.stringify({ patient_id: "patA", service_date: "2026-06-10", clinical_text: "A：高血圧症。P：管理を継続。" })}\n`),
+    chartsFormat: "jsonl",
+    ordersContentBase64: encode("patient_id,service_date,order_type,code,name,status\npatA,2026-06-10,procedure,113001810,特定疾患療養管理料,performed\n"),
+    ordersFormat: "csv",
+    diagnosesContentBase64: encode("patient_id,service_date,diagnosis_name,is_primary\npatA,2026-06-10,高血圧症,true\n"),
+    diagnosesFormat: "csv"
+  }, headers, { env: "stg" });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].calculationInput.claimContext.patient.patient_id, "patA");
+  assert.equal(calls[0].calculationInput.claimContext.patient.display_name, "山田 太郎");
+  assert.equal(calls[0].calculationInput.claimContext.clinical_text.includes("高血圧症"), true);
+  assert.deepEqual(calls[0].calculationInput.claimContext.procedure_codes, ["113001810"]);
+  assert.equal(response.body.ingestion.calculationPayloadCount, 1);
+  assert.equal(response.body.summary.missingCandidateCount, 1);
+  assert.equal(response.body.diagnoses[0].findings[0].code, "113001810");
+});
+
 test("baseline diagnosis rejects missing csrf and viewer role", async () => {
   const stores = createStores();
   const adminHeaders = await signedHeaders(stores.platformStore);
