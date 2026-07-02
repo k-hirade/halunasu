@@ -56,6 +56,7 @@ export function FeeBaselineDiffConsole() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [datasetFile, setDatasetFile] = useState(null);
+  const [datasetFiles, setDatasetFiles] = useState([]);
   const [datasetFileName, setDatasetFileName] = useState("");
   const [baselineFile, setBaselineFile] = useState(null);
   const [baselineFileName, setBaselineFileName] = useState("");
@@ -88,12 +89,16 @@ export function FeeBaselineDiffConsole() {
     setError("");
   }, []);
 
-  const selectDatasetFile = useCallback((file) => {
-    if (!file) {
+  const selectDatasetFiles = useCallback((files) => {
+    const list = Array.from(files || []).filter(Boolean);
+    if (!list.length) {
       return;
     }
-    setDatasetFile(file);
-    setDatasetFileName(file.name || "");
+    setDatasetFiles(list);
+    setDatasetFile(list.length === 1 ? list[0] : null);
+    setDatasetFileName(list.length === 1
+      ? (list[0].name || "")
+      : `${list.length.toLocaleString()}ファイルを取込`);
     setResult(null);
     setError("");
   }, []);
@@ -118,7 +123,8 @@ export function FeeBaselineDiffConsole() {
     setError("");
   }, []);
 
-  const canRunDiagnosis = Boolean(datasetFile || (baselineFile && (recalculationFile || sourceFiles.orders)));
+  const hasDatasetFiles = datasetFiles.length > 0 || Boolean(datasetFile);
+  const canRunDiagnosis = Boolean(hasDatasetFiles || (baselineFile && (recalculationFile || sourceFiles.orders)));
 
   const runDiagnosis = useCallback(async () => {
     if (!canRunDiagnosis) {
@@ -131,6 +137,7 @@ export function FeeBaselineDiffConsole() {
     try {
       const body = await buildRecalculationDatasetDiffRequest({
         datasetFile,
+        datasetFiles,
         sourceFiles: {
           baselineReceipt: baselineFile,
           calculationPayloads: recalculationFile,
@@ -146,13 +153,14 @@ export function FeeBaselineDiffConsole() {
     } finally {
       setBusy(false);
     }
-  }, [baselineFile, canRunDiagnosis, claimMonth, datasetFile, feeApi, options, recalculationFile, sourceFiles]);
+  }, [baselineFile, canRunDiagnosis, claimMonth, datasetFile, datasetFiles, feeApi, options, recalculationFile, sourceFiles]);
 
   const updateOptions = useCallback((patch) => setOptions((current) => ({ ...current, ...patch })), []);
 
   const findings = useMemo(() => baselineDiffRows(result), [result]);
   const summary = result?.summary || null;
   const ingestion = result?.ingestion || null;
+  const resultClaimMonth = result?.claimMonth || claimMonth || "month";
   const sourceDropConfigs = [
     ["patients", "患者情報", ".csv / .jsonl", patientInputRef, ".csv,.tsv,.json,.jsonl,.ndjson,text/csv,application/json"],
     ["charts", "カルテ", ".csv / .jsonl", chartInputRef, ".csv,.tsv,.json,.jsonl,.ndjson,text/csv,application/json"],
@@ -174,10 +182,10 @@ export function FeeBaselineDiffConsole() {
     <div className="baseline-diff">
       <div className="baseline-diff-toolbar">
         <label className="baseline-diff-month">
-          <span>請求月</span>
+          <span>{hasDatasetFiles ? "請求月（データ内にない場合のみ使用）" : "請求月"}</span>
           <input type="month" value={claimMonth} onChange={(event) => setClaimMonth(event.target.value)} />
         </label>
-        <p className="baseline-diff-note">既存レセと再算定元データを取り込み、当社エンジンの再算定結果と患者×月で突合します。差分はすべて要確認です。</p>
+        <p className="baseline-diff-note">診断データセット内の請求月を優先して、既存レセと当社再算定を患者×月で突合します。差分はすべて要確認です。</p>
       </div>
 
       <section className="baseline-diff-card">
@@ -190,18 +198,19 @@ export function FeeBaselineDiffConsole() {
           onClick={() => datasetInputRef.current?.click()}
           onDragOver={(event) => { event.preventDefault(); setDragOverTarget("dataset"); }}
           onDragLeave={() => setDragOverTarget("")}
-          onDrop={(event) => { event.preventDefault(); setDragOverTarget(""); const file = event.dataTransfer.files?.[0]; if (file) { selectDatasetFile(file); } }}
+          onDrop={(event) => { event.preventDefault(); setDragOverTarget(""); selectDatasetFiles(event.dataTransfer.files); }}
           role="button"
           tabIndex={0}
         >
           <strong>診断データセット</strong>
-          <span>manifest.json付き .zip / bundle .json</span>
+          <span>manifest.json付き .zip / CSV・JSON複数選択</span>
           {datasetFileName ? <small>取込: {datasetFileName}</small> : null}
           <input
-            accept=".zip,.json,application/zip,application/json"
+            accept=".zip,.json,.jsonl,.ndjson,.csv,.tsv,.uke,.txt,application/zip,application/json,text/csv"
             disabled={busy}
             hidden
-            onChange={(event) => { const file = event.target.files?.[0]; if (file) { selectDatasetFile(file); } event.target.value = ""; }}
+            multiple
+            onChange={(event) => { selectDatasetFiles(event.target.files); event.target.value = ""; }}
             ref={datasetInputRef}
             type="file"
           />
@@ -327,8 +336,8 @@ export function FeeBaselineDiffConsole() {
           <h3>2. 診断結果</h3>
           {summary ? (
             <div className="baseline-diff-actions">
-              <button className="btn btn--ghost btn--sm" onClick={() => downloadTextFile(`baseline-diff_${claimMonth || "month"}.csv`, baselineDiffToCsv(result), "text/csv;charset=utf-8")} type="button">CSV出力</button>
-              <button className="btn btn--ghost btn--sm" onClick={() => downloadTextFile(`baseline-diff_${claimMonth || "month"}.html`, baselineDiffToHtml(result), "text/html;charset=utf-8")} type="button">HTML出力</button>
+              <button className="btn btn--ghost btn--sm" onClick={() => downloadTextFile(`baseline-diff_${resultClaimMonth}.csv`, baselineDiffToCsv(result), "text/csv;charset=utf-8")} type="button">CSV出力</button>
+              <button className="btn btn--ghost btn--sm" onClick={() => downloadTextFile(`baseline-diff_${resultClaimMonth}.html`, baselineDiffToHtml(result), "text/html;charset=utf-8")} type="button">HTML出力</button>
             </div>
           ) : null}
         </div>

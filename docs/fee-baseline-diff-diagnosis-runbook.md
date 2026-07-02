@@ -36,10 +36,15 @@ STG の「再算定差分診断」は、次のどちらかで取り込める。
    - `orders.csv` / `orders.jsonl`
    - `diagnoses.csv` / `diagnoses.jsonl`
    - `facility.json`
-2. **個別アップロード**
+2. **CSV/JSONの複数ファイル一括アップロード**
+   - ZIPにまとめず、`receipt.csv`、`patients.csv`、`charts.jsonl`、`orders.csv`、`diagnoses.csv`、`facility.json` などを同時選択して取り込める。
+   - ファイル名から役割を判定するため、標準名に寄せる。判定できないJSONはbundle JSON、判定できないテキストは再算定payloadとして扱う。
+3. **個別アップロード**
    - 既存レセ、患者情報、カルテ、オーダー、病名、施設設定を画面上で個別に指定する。
 
 最小必須は、既存レセと、患者ID・診療日・算定対象コードを含む再算定元データ。カルテ本文だけでは薬剤量・処置面積・施設基準・同月履歴などが不足しやすいため、初期運用では**構造化オーダーを主入力、カルテは根拠・補助情報**として扱う。
+
+請求月は、`manifest.json` の `claimMonth` / `claim_month` を最優先し、次に既存レセ・オーダー・カルテ等の `claim_month` または `service_date` から推定する。画面上の「請求月」は、データ内に請求月を持たない場合だけ使うフォールバック。
 
 標準CSV列例:
 ```csv

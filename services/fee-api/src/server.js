@@ -355,12 +355,12 @@ async function routeFeeApiRequest(input = {}) {
     requireBaselineDiagnosisContext(context);
     requireMutationCsrf(input, context.session);
     const body = input.body || {};
-    const claimMonth = String(body.claimMonth ?? body.claim_month ?? "").trim();
+    const dataset = parseRecalculationDiffDatasetFromBody(body);
+    const claimMonth = resolveRecalculationDiffClaimMonth(body, dataset);
     if (!/^\d{4}-\d{2}$/u.test(claimMonth)) {
       throw requestValidationError("claimMonth must use YYYY-MM");
     }
-    const dataset = parseRecalculationDiffDatasetFromBody(body);
-    const diagnosisBody = mergeRecalculationDiffDatasetIntoBody(body, dataset);
+    const diagnosisBody = mergeRecalculationDiffDatasetIntoBody({ ...body, claimMonth }, dataset);
     const baseline = await baselineClaimsFromDiagnosisBody({
       body: diagnosisBody,
       claimMonth,
@@ -1113,8 +1113,19 @@ function parseRecalculationDiffDatasetFromBody(body = {}) {
     if (datasetFormat === "zip" || /\.zip$/iu.test(datasetFileName)) {
       mergeZipDatasetSources(dataset, datasetContentBase64, datasetFileName);
     } else {
-      mergeJsonDatasetSources(dataset, decodeUploadedTextBase64(datasetContentBase64, body.datasetEncoding ?? body.dataset_encoding), datasetFileName);
+      mergeUploadedDatasetFile(dataset, {
+        fileName: datasetFileName || "dataset.json",
+        format: datasetFormat,
+        contentBase64: datasetContentBase64,
+        encoding: body.datasetEncoding ?? body.dataset_encoding
+      });
     }
+  }
+  const datasetFiles = Array.isArray(body.datasetFiles ?? body.dataset_files)
+    ? (body.datasetFiles ?? body.dataset_files)
+    : [];
+  for (const file of datasetFiles) {
+    mergeUploadedDatasetFile(dataset, file);
   }
 
   addBodyTextSource(dataset, body, "patients", ["patients", "patient"]);
@@ -1155,6 +1166,45 @@ function mergeRecalculationDiffDatasetIntoBody(body = {}, dataset = {}) {
     next.claimMonth = dataset.manifest.claimMonth;
   }
   return next;
+}
+
+function resolveRecalculationDiffClaimMonth(body = {}, dataset = {}) {
+  const candidates = [
+    stringValue(dataset.manifest || {}, ["claimMonth", "claim_month", "請求月"]),
+    deriveClaimMonthFromDataset(dataset),
+    String(body.claimMonth ?? body.claim_month ?? "").trim()
+  ].filter(Boolean);
+  return candidates[0] || "";
+}
+
+function deriveClaimMonthFromDataset(dataset = {}) {
+  const baselineSources = Array.isArray(dataset.sources?.baselineReceipt) ? dataset.sources.baselineReceipt : [];
+  for (const source of baselineSources) {
+    const records = recordsFromTextSource(source, "baselineClaims");
+    for (const record of records) {
+      const month = stringValue(record, ["claim_month", "claimMonth", "請求月"]);
+      if (/^\d{4}-\d{2}$/u.test(month)) {
+        return month;
+      }
+      const serviceDate = dateValue(record, ["service_date", "serviceDate", "診療日", "受診日"]);
+      if (/^\d{4}-\d{2}-\d{2}$/u.test(serviceDate)) {
+        return serviceDate.slice(0, 7);
+      }
+    }
+  }
+  for (const role of ["orders", "charts", "diagnoses", "calculationPayloads"]) {
+    for (const record of datasetRecords(dataset, role)) {
+      const month = stringValue(record, ["claim_month", "claimMonth", "請求月"]);
+      if (/^\d{4}-\d{2}$/u.test(month)) {
+        return month;
+      }
+      const serviceDate = dateValue(record, ["service_date", "serviceDate", "date", "encounter_date", "診療日", "受診日"]);
+      if (/^\d{4}-\d{2}-\d{2}$/u.test(serviceDate)) {
+        return serviceDate.slice(0, 7);
+      }
+    }
+  }
+  return "";
 }
 
 function buildCalculationPayloadsFromRecalculationDiffDataset(dataset = {}, { claimMonth = "" } = {}) {
@@ -1297,6 +1347,45 @@ function mergeZipDatasetSources(dataset, contentBase64, fileName = "") {
       addDatasetSource(dataset, role.role, source);
     }
   }
+}
+
+function mergeUploadedDatasetFile(dataset, file = {}) {
+  if (!isPlainObject(file)) {
+    return;
+  }
+  const fileName = String(file.fileName ?? file.file_name ?? file.name ?? "").trim();
+  const format = String(file.format ?? inferUploadFormat(fileName) ?? "").trim().toLowerCase();
+  const contentBase64 = String(file.contentBase64 ?? file.content_base64 ?? "").trim();
+  if (format === "zip" || /\.zip$/iu.test(fileName)) {
+    if (contentBase64) {
+      mergeZipDatasetSources(dataset, contentBase64, fileName);
+    }
+    return;
+  }
+  const text = contentBase64
+    ? decodeUploadedTextBase64(contentBase64, file.encoding)
+    : String(file.text ?? "");
+  if (!text && !contentBase64) {
+    return;
+  }
+  const role = datasetRoleForFileName(fileName);
+  if (role) {
+    addDatasetSource(dataset, role, {
+      name: fileName || `${role}.${format || "json"}`,
+      format: format || inferUploadFormat(fileName) || "json",
+      text
+    });
+    return;
+  }
+  if (format === "json" || /\.json$/iu.test(fileName)) {
+    mergeJsonDatasetSources(dataset, text, fileName);
+    return;
+  }
+  addDatasetSource(dataset, "calculationPayloads", {
+    name: fileName || `dataset.${format || "txt"}`,
+    format: format || "txt",
+    text
+  });
 }
 
 function mergeJsonDatasetSources(dataset, text = "", fileName = "") {
@@ -1863,6 +1952,25 @@ function zipEntryForDatasetRole(entries = [], role, manifest = {}) {
   }
   const found = entries.find((entry) => (role.patterns || []).some((pattern) => pattern.test(entry.path)));
   return found ? { name: found.path, format: inferUploadFormat(found.path), text: found.text } : null;
+}
+
+function datasetRoleForFileName(name = "") {
+  const normalized = String(name || "").trim();
+  if (!normalized) {
+    return "";
+  }
+  const matched = RECALCULATION_DATASET_ROLES.find((role) => (
+    role.role !== "calculationPayloads"
+    && (role.patterns || []).some((pattern) => pattern.test(normalized))
+  ));
+  if (matched) {
+    return matched.role;
+  }
+  const payloadMatched = RECALCULATION_DATASET_ROLES.find((role) => (
+    role.role === "calculationPayloads"
+    && (role.patterns || []).some((pattern) => pattern.test(normalized))
+  ));
+  return payloadMatched?.role || "";
 }
 
 function decodeUploadedTextBase64(value = "", encoding = "auto") {

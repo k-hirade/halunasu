@@ -130,10 +130,16 @@ export async function buildRecalculationDiffRequest(baselineFile, recalculationF
   return body;
 }
 
-export async function buildRecalculationDatasetDiffRequest({ datasetFile, sourceFiles = {}, claimMonth, options }) {
+export async function buildRecalculationDatasetDiffRequest({ datasetFile, datasetFiles = [], sourceFiles = {}, claimMonth, options }) {
   const body = await buildRecalculationDiffRequest(sourceFiles.baselineReceipt || null, sourceFiles.calculationPayloads || null, { claimMonth, options });
-  if (datasetFile) {
-    await appendUploadFile(body, "dataset", datasetFile);
+  const uploadFiles = Array.isArray(datasetFiles) && datasetFiles.length
+    ? datasetFiles
+    : (datasetFile ? [datasetFile] : []);
+  if (uploadFiles.length === 1) {
+    const [file] = uploadFiles;
+    await appendUploadFile(body, "dataset", file);
+  } else if (uploadFiles.length > 1) {
+    body.datasetFiles = await Promise.all(uploadFiles.map(uploadFileDescriptor));
   }
   for (const [key, file] of Object.entries(sourceFiles || {})) {
     if (!file || ["baselineReceipt", "calculationPayloads"].includes(key)) {
@@ -142,6 +148,15 @@ export async function buildRecalculationDatasetDiffRequest({ datasetFile, source
     await appendUploadFile(body, key, file);
   }
   return body;
+}
+
+async function uploadFileDescriptor(file) {
+  const name = file.name || "";
+  return {
+    fileName: name,
+    format: uploadFormatFromName(name),
+    contentBase64: await fileToBase64(file)
+  };
 }
 
 async function appendUploadFile(body, prefix, file) {
