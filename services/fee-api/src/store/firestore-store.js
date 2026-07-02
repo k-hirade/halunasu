@@ -114,11 +114,23 @@ export class FirestoreFeeStore {
       return [];
     }
     const limit = Math.max(1, Number.parseInt(options.limit, 10) || 5000);
-    const snapshot = await this.orgCollection(orgId, collections.feeSessions)
-      .where("claimMonth", "==", month)
-      .limit(limit)
-      .get();
-    return docsFromSnapshot(snapshot).sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || "")));
+    const collection = this.orgCollection(orgId, collections.feeSessions);
+    const [claimMonthSnapshot, serviceDateSnapshot] = await Promise.all([
+      collection
+        .where("claimMonth", "==", month)
+        .limit(limit)
+        .get(),
+      collection
+        .where("serviceDate", ">=", `${month}-01`)
+        .where("serviceDate", "<", nextClaimMonthStart(month))
+        .orderBy("serviceDate", "asc")
+        .limit(limit)
+        .get()
+    ]);
+    return mergeMonthlySessionSnapshots([
+      claimMonthSnapshot,
+      serviceDateSnapshot
+    ], month).sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || "")));
   }
 
   async listSessionsByBoundedScan(baseQuery, listOptions) {
@@ -564,6 +576,40 @@ export async function createFirestoreDb(options = {}) {
 
 function docsFromSnapshot(snapshot) {
   return snapshot.docs.map((doc) => doc.data());
+}
+
+function mergeMonthlySessionSnapshots(snapshots = [], month = "") {
+  const byId = new Map();
+  for (const snapshot of snapshots) {
+    for (const session of docsFromSnapshot(snapshot)) {
+      if (sessionClaimMonth(session) !== month) {
+        continue;
+      }
+      const key = session.feeSessionId || session.sessionId;
+      if (!key) {
+        continue;
+      }
+      byId.set(key, session);
+    }
+  }
+  return [...byId.values()];
+}
+
+function sessionClaimMonth(session = {}) {
+  const raw = String(session.claimMonth || (session.serviceDate ? String(session.serviceDate).slice(0, 7) : "") || "").trim();
+  return raw ? raw.slice(0, 7) : "";
+}
+
+function nextClaimMonthStart(month = "") {
+  const [yearText, monthText] = String(month || "").split("-");
+  const year = Number.parseInt(yearText, 10);
+  const monthNumber = Number.parseInt(monthText, 10);
+  if (!Number.isInteger(year) || !Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) {
+    return `${month}-32`;
+  }
+  const nextYear = monthNumber === 12 ? year + 1 : year;
+  const nextMonth = monthNumber === 12 ? 1 : monthNumber + 1;
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
 }
 
 function sanitizeForFirestore(value) {

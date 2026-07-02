@@ -43,6 +43,12 @@ export function PlatformAuthProvider({ children, platformBaseUrl, brand }) {
   const authMutationRef = useRef(0);
   const normalizedBrand = useMemo(() => normalizeBrand(brand), [brand]);
 
+  // デプロイ構成(same-origin プロキシ or クロスオリジン)に応じてトークン永続化方針を決める。
+  // 副作用前(初回レンダー時)に確定させたいので useMemo で同期的に適用する。
+  useMemo(() => {
+    setPlatformAccessTokenPersistence(shouldPersistPlatformAccessToken(platformBaseUrl));
+  }, [platformBaseUrl]);
+
   const api = useCallback(async (path, options = {}) => {
     const headers = { "content-type": "application/json" };
     const bearer = options.accessToken || accessToken || getStoredPlatformAccessToken();
@@ -423,8 +429,36 @@ export function usePlatformAuth() {
   return context;
 }
 
-export function getStoredPlatformAccessToken() {
+// アクセストークンの保存方針:
+// 既定(same-origin プロキシ経由 = /api/... 相対URL)では HttpOnly セッション cookie が同一オリジンで
+// 認証を担うため、Bearer トークンを localStorage に永続保存しない(XSSによる持ち出し面を排除)。
+// 生存期間中はメモリ上のミラーだけを保持し、リロード時は cookie を使った /v1/auth/session で復元する。
+// クロスオリジンの API ベースURL(NEXT_PUBLIC_*_BASE_URL に絶対URLを設定)を使う構成では、
+// SameSite=Lax cookie がクロスサイト fetch で送られないため、従来どおり localStorage 永続化にフォールバックする。
+let accessTokenPersistenceEnabled = false;
+let inMemoryAccessToken = "";
+
+export function setPlatformAccessTokenPersistence(enabled) {
+  accessTokenPersistenceEnabled = Boolean(enabled);
   if (typeof window === "undefined") {
+    return;
+  }
+  if (!accessTokenPersistenceEnabled) {
+    // same-origin 構成に切り替わった場合、過去に永続化された古いトークンを掃除する。
+    window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  }
+}
+
+// API ベースURLが絶対URL(http/https)= クロスオリジン構成かどうか。相対URL(/api/...)は same-origin プロキシ。
+export function shouldPersistPlatformAccessToken(baseUrl) {
+  return /^https?:\/\//iu.test(String(baseUrl || "").trim());
+}
+
+export function getStoredPlatformAccessToken() {
+  if (inMemoryAccessToken) {
+    return inMemoryAccessToken;
+  }
+  if (typeof window === "undefined" || !accessTokenPersistenceEnabled) {
     return "";
   }
   return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) || "";
@@ -435,10 +469,11 @@ function readAccessToken() {
 }
 
 function writeAccessToken(token) {
+  inMemoryAccessToken = token || "";
   if (typeof window === "undefined") {
     return;
   }
-  if (token) {
+  if (accessTokenPersistenceEnabled && token) {
     window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
   } else {
     window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);

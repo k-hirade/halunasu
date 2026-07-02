@@ -8759,6 +8759,85 @@ function request(stores, method, path, body, headers = {}, overrides = {}) {
   });
 }
 
+test("allows netlify preview and localhost origins only outside production", async () => {
+  const stores = createStores();
+  const previewOrigin = "https://deploy-preview-42--halunasu-fee-stg.netlify.app";
+  const localOrigin = "http://localhost:3000";
+
+  const stgPreview = await request(stores, "GET", "/healthz", undefined, { origin: previewOrigin }, { env: "stg" });
+  assert.equal(stgPreview.headers["access-control-allow-origin"], previewOrigin);
+  const stgLocal = await request(stores, "GET", "/healthz", undefined, { origin: localOrigin }, { env: "stg" });
+  assert.equal(stgLocal.headers["access-control-allow-origin"], localOrigin);
+
+  const prodPreview = await request(stores, "GET", "/healthz", undefined, { origin: previewOrigin }, { env: "prod" });
+  assert.equal(prodPreview.headers?.["access-control-allow-origin"], undefined);
+  const prodLocal = await request(stores, "GET", "/healthz", undefined, { origin: localOrigin }, { env: "prod" });
+  assert.equal(prodLocal.headers?.["access-control-allow-origin"], undefined);
+
+  const prodCanonical = await request(stores, "GET", "/healthz", undefined, { origin: "https://fee.halunasu.com" }, { env: "prod" });
+  assert.equal(prodCanonical.headers["access-control-allow-origin"], "https://fee.halunasu.com");
+});
+
+test("monthly summary rejects overflow instead of silently truncating sessions", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeStore.createSession({
+    orgId: "org_001",
+    patientId: "pat_monthly_1",
+    facilityId: "fac_001",
+    createdByMemberId: "mem_001",
+    serviceDate: "2026-06-01"
+  });
+  stores.feeStore.createSession({
+    orgId: "org_001",
+    patientId: "pat_monthly_2",
+    facilityId: "fac_001",
+    createdByMemberId: "mem_001",
+    serviceDate: "2026-06-02"
+  });
+
+  const response = await request(
+    stores,
+    "GET",
+    "/v1/fee/monthly-summary?claimMonth=2026-06",
+    undefined,
+    headers,
+    { processEnv: { FEE_MONTHLY_VIEW_SESSION_LIMIT: "1" } }
+  );
+
+  assert.equal(response.statusCode, 400);
+  assert.match(response.body.message, /monthly view is limited to 1 sessions per claimMonth/);
+});
+
+test("monthly summary includes legacy sessions whose claimMonth is missing", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const legacy = stores.feeStore.createSession({
+    orgId: "org_001",
+    patientId: "pat_legacy",
+    facilityId: "fac_001",
+    createdByMemberId: "mem_001",
+    serviceDate: "2026-06-02"
+  });
+  stores.feeStore.sessionsForOrg("org_001").set(legacy.feeSessionId, {
+    ...legacy,
+    claimMonth: null
+  });
+
+  const response = await request(
+    stores,
+    "GET",
+    "/v1/fee/monthly-summary?claimMonth=2026-06",
+    undefined,
+    headers
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.sessionCount, 1);
+  assert.equal(response.body.patients[0].patientId, "pat_legacy");
+  assert.equal(response.body.patients[0].sessions[0].claimMonth, "2026-06");
+});
+
 test("exports a receipt CSV with billing summary", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);

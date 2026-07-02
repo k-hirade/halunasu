@@ -15,10 +15,11 @@ function = "stg-gate"
 [[headers]]
 for = "/*"
 
+# Content-Security-Policy は middleware.js が nonce 付きで動的に付与する(本番は 'unsafe-inline' を排除)。
+# 静的CSPをここに置くと二重CSP(競合)で nonce/strict-dynamic が無効化されるため、あえて設定しない。
 [headers.values]
 X-Content-Type-Options = "nosniff"
 Referrer-Policy = "no-referrer"
 X-Frame-Options = "DENY"
 Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 Strict-Transport-Security = "max-age=31536000; includeSubDomains"
-Content-Security-Policy = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://*.run.app; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests"
