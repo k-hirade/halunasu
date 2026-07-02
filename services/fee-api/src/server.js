@@ -47,6 +47,7 @@ const DEFAULT_OPENAI_FEE_CLINICAL_TIMEOUT_MS = 60000;
 const DEFAULT_FACILITY_PROFILE_CACHE_TTL_MS = 60_000;
 const DEFAULT_ORDER_ENRICH_CONCURRENCY = 4;
 const DEFAULT_MAX_JSON_BODY_BYTES = 10 * 1024 * 1024;
+const DEFAULT_MONTHLY_VIEW_SESSION_LIMIT = 50_000;
 const DEFAULT_BASELINE_DIAGNOSIS_SESSION_LIMIT = 5000;
 const DEFAULT_BASELINE_DIAGNOSIS_CLAIM_LIMIT = 5000;
 const DEFAULT_RECALCULATION_DIFF_PAYLOAD_LIMIT = 200;
@@ -342,8 +343,9 @@ async function routeFeeApiRequest(input = {}) {
   // #4段階A: 患者×月でセッションを名寄せした月次サマリ
   if (method === "GET" && matches(parts, ["v1", "fee", "monthly-summary"])) {
     const claimMonth = url.searchParams.get("claimMonth") || "";
-    const sessions = await feeStore.listSessions(context.session.orgId);
-    const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+    const sessionList = await listSessionsForMonthlyView(feeStore, context.session.orgId, claimMonth, {
+      processEnv: input.processEnv || process.env
+    });
     return ok(buildMonthlyClaimSummary(sessionList, { claimMonth }));
   }
 
@@ -476,23 +478,26 @@ async function routeFeeApiRequest(input = {}) {
   if (method === "GET" && matches(parts, ["v1", "fee", "monthly-receipt"])) {
     const claimMonth = url.searchParams.get("claimMonth") || "";
     const patientId = url.searchParams.get("patientId") || "";
-    const sessions = await feeStore.listSessions(context.session.orgId);
-    const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+    const sessionList = await listSessionsForMonthlyView(feeStore, context.session.orgId, claimMonth, {
+      processEnv: input.processEnv || process.env
+    });
     return ok({ receiptDraft: buildMonthlyReceiptDraft(sessionList, { patientId, claimMonth }) });
   }
 
   if (method === "GET" && matches(parts, ["v1", "fee", "monthly-bulk-candidates"])) {
     const claimMonth = url.searchParams.get("claimMonth") || "";
-    const sessions = await feeStore.listSessions(context.session.orgId);
-    const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+    const sessionList = await listSessionsForMonthlyView(feeStore, context.session.orgId, claimMonth, {
+      processEnv: input.processEnv || process.env
+    });
     return ok(buildMonthlyBulkCandidatePlan(sessionList, { claimMonth }));
   }
 
   if (method === "POST" && matches(parts, ["v1", "fee", "monthly-bulk-jobs"])) {
     requireMutationCsrf(input, context.session);
     const claimMonth = String(input.body?.claimMonth ?? input.body?.claim_month ?? "").trim();
-    const sessions = await feeStore.listSessions(context.session.orgId);
-    const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+    const sessionList = await listSessionsForMonthlyView(feeStore, context.session.orgId, claimMonth, {
+      processEnv: input.processEnv || process.env
+    });
     const plan = buildMonthlyBulkCandidatePlan(sessionList, { claimMonth });
     const createdBulkJob = await feeStore.createMonthlyBulkJob(context.session.orgId, {
       claimMonth: plan.claimMonth,
@@ -759,7 +764,8 @@ async function routeFeeApiRequest(input = {}) {
       orgId: context.session.orgId,
       patientId: url.searchParams.get("patientId") || "",
       claimMonth: url.searchParams.get("claimMonth") || "",
-      now: input.now || new Date()
+      now: input.now || new Date(),
+      processEnv: input.processEnv || process.env
     });
     if (!exportData.base) {
       return notFound("monthly receipt has no calculated sessions");
@@ -790,7 +796,8 @@ async function routeFeeApiRequest(input = {}) {
       orgId: context.session.orgId,
       patientId: url.searchParams.get("patientId") || "",
       claimMonth: url.searchParams.get("claimMonth") || "",
-      now: input.now || new Date()
+      now: input.now || new Date(),
+      processEnv: input.processEnv || process.env
     });
     if (!exportData.base) {
       return notFound("monthly receipt has no calculated sessions");
@@ -2276,6 +2283,30 @@ function claimPayloadServiceDate(payload = {}) {
   ).trim();
 }
 
+// 月次点検系(サマリ/一括候補/レセプト)は請求月で絞り、全件フルスキャンを避ける。
+// store 側は claimMonth 欠損の既存データを serviceDate 月範囲で補完し、ここでは上限超過を
+// 明示的にエラー化する。請求系で静かに切り捨てる挙動は避ける。
+async function listSessionsForMonthlyView(feeStore, orgId, claimMonth, options = {}) {
+  const month = String(claimMonth || "").trim();
+  const limit = monthlyViewSessionLimit(options.processEnv || process.env);
+  if (month && typeof feeStore.listSessionsForClaimMonth === "function") {
+    const sessions = await feeStore.listSessionsForClaimMonth(orgId, month, {
+      limit: limit + 1
+    });
+    const sessionList = Array.isArray(sessions) ? sessions : [];
+    if (sessionList.length > limit) {
+      throw requestValidationError(`monthly view is limited to ${limit} sessions per claimMonth`);
+    }
+    return sessionList;
+  }
+  const sessions = await feeStore.listSessions(orgId);
+  const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+  if (month) {
+    return sessionList.filter((session) => baselineSessionClaimMonth(session) === month);
+  }
+  return sessionList;
+}
+
 async function listSessionsForBaselineDiagnosis(feeStore, orgId, options = {}) {
   const claimMonth = String(options.claimMonth || "").trim();
   const limit = Math.max(1, Number.parseInt(options.limit, 10) || DEFAULT_BASELINE_DIAGNOSIS_SESSION_LIMIT);
@@ -2331,6 +2362,10 @@ function baselineSessionClaimMonth(value = {}) {
 
 function baselineDiagnosisSessionLimit(env = process.env) {
   return parsePositiveInteger(env.FEE_BASELINE_DIAGNOSIS_SESSION_LIMIT, DEFAULT_BASELINE_DIAGNOSIS_SESSION_LIMIT, 50_000);
+}
+
+function monthlyViewSessionLimit(env = process.env) {
+  return parsePositiveInteger(env.FEE_MONTHLY_VIEW_SESSION_LIMIT, DEFAULT_MONTHLY_VIEW_SESSION_LIMIT, 100_000);
 }
 
 function baselineDiagnosisClaimLimit(env = process.env) {
@@ -2538,7 +2573,7 @@ async function runMonthlyBulkJob({
       items[index] = {
         ...item,
         status: "failed",
-        errorMessage: error.message || "算定ジョブを投入できませんでした。"
+        errorMessage: safeClientErrorMessage(error, "算定ジョブを投入できませんでした。")
       };
     }
     job = (await feeStore.updateMonthlyBulkJob(context.session.orgId, monthlyBulkJobId, { items, progress: monthlyBulkProgress(items) })).monthlyBulkJob;
@@ -3302,7 +3337,7 @@ function feeCalculationProgress({
     percent: Math.max(0, Math.min(100, Number(percent) || 0)),
     updatedAt: timestampForProgress(now),
     ...(prepared?.metrics ? { metrics: prepared.metrics } : {}),
-    ...(error ? { error: safeLogError(error) } : {}),
+    ...(error ? { error: safeClientErrorSummary(error) } : {}),
     ...feeCalculationProgressPreview({ session, prepared, calculationResult })
   };
 }
@@ -4314,9 +4349,8 @@ export function receiptAnnotationContext(session = {}, receiptPolicy = {}) {
   return { comments, symptomDetails };
 }
 
-async function loadMonthlyReceiptForExport({ feeStore, orgId, patientId, claimMonth, now }) {
-  const sessions = await feeStore.listSessions(orgId);
-  const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+async function loadMonthlyReceiptForExport({ feeStore, orgId, patientId, claimMonth, now, processEnv = process.env }) {
+  const sessionList = await listSessionsForMonthlyView(feeStore, orgId, claimMonth, { processEnv });
   const month = String(claimMonth || "").slice(0, 7);
   const monthOf = (session) => String(session.claimMonth || String(session.serviceDate || "").slice(0, 7));
   const base = sessionList.find((session) => session
@@ -5872,16 +5906,45 @@ function notFound(message) {
   };
 }
 
+// 5xx はサーバ内部/下流(Python算定エンジン等)の失敗であり、error.message には
+// スタックトレース・内部パス・入力データ片(PHI)が混入しうる。クライアントには固定文言だけを返し、
+// 詳細は logFeeApiError 経由でサーバログにのみ残す。4xx は意図的な検証/権限メッセージなので保持する。
+const SERVER_ERROR_MESSAGES = Object.freeze({
+  502: "算定処理でエラーが発生しました。時間をおいて再度お試しください。",
+  503: "現在この機能を利用できません。時間をおいて再度お試しください。",
+  504: "算定処理がタイムアウトしました。時間をおいて再度お試しください。"
+});
+
 function errorResponse(error) {
   const statusCode = Number.isInteger(error.statusCode) ? error.statusCode : 500;
+  const isServerError = statusCode >= 500;
   return {
     statusCode,
     body: {
-      error: statusCode === 500 ? "internal_error" : toErrorCode(error.name),
-      message: statusCode === 500 ? "Internal server error" : error.message,
-      field: error.field
+      error: isServerError ? serverErrorCode(statusCode) : toErrorCode(error.name),
+      message: isServerError
+        ? (SERVER_ERROR_MESSAGES[statusCode] || "サーバでエラーが発生しました。時間をおいて再度お試しください。")
+        : error.message,
+      field: isServerError ? undefined : error.field
     }
   };
+}
+
+function serverErrorCode(statusCode) {
+  if (statusCode === 502) return "upstream_error";
+  if (statusCode === 503) return "service_unavailable";
+  if (statusCode === 504) return "upstream_timeout";
+  return "internal_error";
+}
+
+// クライアント/永続データに載せてよい安全なメッセージだけを返す。
+// 4xx(意図的な検証/権限メッセージ)は保持し、5xx相当(内部/下流失敗)は固定文言に置換する。
+function safeClientErrorMessage(error = {}, fallback = "処理でエラーが発生しました。") {
+  const statusCode = Number.isInteger(error.statusCode) ? error.statusCode : 500;
+  if (statusCode >= 500) {
+    return SERVER_ERROR_MESSAGES[statusCode] || fallback;
+  }
+  return error.message || fallback;
 }
 
 function logFeeApiError(error, context = {}) {
@@ -5922,7 +5985,7 @@ function withCors(input, response) {
 
 function corsHeaders(input) {
   const origin = headerValue(input.headers || {}, "origin");
-  if (!origin || !isAllowedOrigin(origin)) {
+  if (!origin || !isAllowedOrigin(origin, input.env)) {
     return {};
   }
 
@@ -5935,12 +5998,23 @@ function corsHeaders(input) {
   };
 }
 
-function isAllowedOrigin(origin) {
-  return defaultAllowedWebOrigins().includes(origin)
-    || configuredAllowedWebOrigins().includes(origin)
-    || /^https:\/\/[a-z0-9-]+--halunasu-[a-z0-9-]+\.netlify\.app$/.test(origin)
+function isAllowedOrigin(origin, env) {
+  if (defaultAllowedWebOrigins().includes(origin) || configuredAllowedWebOrigins().includes(origin)) {
+    return true;
+  }
+  // Netlify のデプロイプレビュー(ブランチ/PRごとの一時URL)と localhost は保護が緩いため、
+  // 本番(prod)では正当オリジンとして受け入れない。非本番(stg/local/test 等)でのみ許可する。
+  if (!allowsPreviewAndLocalOrigins(env)) {
+    return false;
+  }
+  return /^https:\/\/[a-z0-9-]+--halunasu-[a-z0-9-]+\.netlify\.app$/.test(origin)
     || /^http:\/\/localhost(:\d+)?$/.test(origin)
     || /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin);
+}
+
+function allowsPreviewAndLocalOrigins(env) {
+  const value = String(env || "").trim().toLowerCase();
+  return value !== "prod" && value !== "production";
 }
 
 function defaultAllowedWebOrigins() {
@@ -6061,11 +6135,26 @@ function hasBearerAuth(headers = {}) {
   return /^Bearer\s+\S+/iu.test(String(headerValue(headers, "authorization") || ""));
 }
 
+// サーバログ専用。生の error.message(スタックトレース/内部パス/入力データ片を含みうる)まで残す。
 function safeLogError(error) {
   return [
     error?.name || "Error",
     error?.safeProviderMessage || error?.code || error?.message || ""
   ].map((value) => String(value || "").trim()).filter(Boolean).join(": ").slice(0, 240);
+}
+
+// クライアントに返す calculationProgress.error 用。5xx相当では生の message を出さず、
+// name とプロバイダ安全メッセージ/コードのみに絞る(PHI・内部情報の露出防止)。
+function safeClientErrorSummary(error) {
+  const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+  const detail = statusCode >= 500
+    ? (error?.safeProviderMessage || error?.code || "")
+    : (error?.safeProviderMessage || error?.code || error?.message || "");
+  return [error?.name || "Error", detail]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(": ")
+    .slice(0, 240);
 }
 
 function isFeeSessionDocument(parts) {

@@ -12,6 +12,13 @@
 
 ---
 
+> **対応履歴（2026-07-02, branch `fix/p1-p4-cross-theme`）**
+> - **高-1（P4a）✅**: same-origin プロキシ構成ではアクセストークンの localStorage 永続化を廃止し、メモリミラー＋HttpOnly cookie に一本化。クロスオリジン構成のみ従来どおり永続化にフォールバック（`web-ui/src/platform-auth.js` の `setPlatformAccessTokenPersistence`/`shouldPersistPlatformAccessToken`）。
+> - **高-2（P2）✅**: 5xx のエラーメッセージを固定文言化。Python算定失敗のstderrはサーバログのみに（`fee-api/src/server.js` の `errorResponse`/`safeClientErrorMessage`/`safeClientErrorSummary`）。
+> - **中-1（P3）✅**: 本番CORSで Netlify プレビュー／localhost を非許可に（`isAllowedOrigin(origin, env)`＋`allowsPreviewAndLocalOrigins`）。テスト追加済み。
+> - **中-4（P4b）✅**: CSP を middleware で nonce 付き動的付与に変更、本番で `script-src` の `'unsafe-inline'` を排除（`apps/fee-web/middleware.js`, `apps/charting-web/middleware.js`、各 `netlify.toml` の静的CSPは削除）。本番ビルド＋実起動で header/HTML の nonce 一致を確認。**Netlifyプレビューでの実機スモークが本番反映前の残作業。**
+> - 未対応（別フェーズ）: 高-3（gatewayステート）、中-2（OpenAI氏名仮名化）、中-3（WS pairing）。
+
 ## 高-1: アクセストークンを localStorage に保存（XSSでセッション奪取）
 
 **場所**: `packages/web-ui/src/platform-auth.js:13, 427-446`

@@ -1,5 +1,6 @@
 import "@halunasu/web-ui/styles/halunasu-ui.css";
 import "./globals.css";
+import { headers } from "next/headers";
 import Script from "next/script";
 import { AdminNavProvider } from "../components/admin-nav-context";
 import { SiteNav } from "../components/site-nav";
@@ -14,7 +15,8 @@ export const metadata = {
   }
 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const nonce = (await headers()).get("x-nonce") || "";
   const runtimeConfig = {
     gatewayBaseUrl:
       process.env.GATEWAY_BASE_URL ??
@@ -40,6 +42,7 @@ export default function RootLayout({ children }) {
         <Script
           id="medical-runtime-config"
           strategy="beforeInteractive"
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `window.__MEDICAL_CONFIG__ = ${JSON.stringify(runtimeConfig)};`
           }}

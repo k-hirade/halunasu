@@ -17,6 +17,20 @@
 | 7 | コンプライアンス・PHI・運用（追加テーマ） | [07-compliance-phi-ops.md](07-compliance-phi-ops.md) |
 | 8 | 他SaaSベンチマーク（追加テーマ） | [08-saas-benchmark.md](08-saas-benchmark.md) |
 
+## 対応状況（2026-07-02 更新 / branch: `fix/p1-p4-cross-theme`）
+
+ハイプライオリティの P1〜P4 を実装・検証済み。詳細は各テーマ末尾の「対応履歴」を参照。
+
+| ID | 内容 | 状態 | 検証 |
+|----|------|------|------|
+| P1 | 月次サマリ等のフルスキャン解消（claimMonthクエリへ） | ✅ 実装済 | fee-api 115テスト green |
+| P2 | 5xxエラーの内部/PHI露出停止（固定文言化） | ✅ 実装済 | fee-api 115テスト green |
+| P3 | 本番CORSの許可オリジン厳格化（preview/localhostを非本番限定） | ✅ 実装済 | 追加CORSテスト green |
+| P4a | アクセストークンのlocalStorage永続化を廃止（same-origin構成） | ✅ 実装済 | web-ui/auth テスト green |
+| P4b | CSP nonce化（`unsafe-inline`排除・middleware動的付与） | ✅ 実装済 | 本番ビルド＋実起動でnonce一致を確認 |
+
+⚠️ **P4b は本番反映前に Netlify プレビューでの実機スモークが必須**（Netlifyエッジ＋Next 15の nonce 伝播は本レポジトリのローカル本番起動では確認済みだが、Netlifyランタイム固有の挙動は要現地確認）。
+
 ## 深刻度の定義
 
 - **高**: 本番運用前に対応すべき。情報漏えい・請求誤り・サービス停止に直結しうる。

@@ -1,5 +1,6 @@
 import "@halunasu/web-ui/styles/halunasu-ui.css";
 import "./globals.css";
+import { headers } from "next/headers";
 import Script from "next/script";
 import { AdminNavProvider } from "../components/admin-nav-context";
 import { AuthGate, PlatformAuthProvider } from "../components/platform-auth";
@@ -16,8 +17,9 @@ export const metadata = {
   }
 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
   const runtimeConfig = feeRuntimeConfigFromEnv();
+  const nonce = (await headers()).get("x-nonce") || "";
 
   return (
     <html lang="ja">
@@ -25,6 +27,7 @@ export default function RootLayout({ children }) {
         <Script
           id="halunasu-fee-runtime-config"
           strategy="beforeInteractive"
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `window.__HALUNASU_FEE_CONFIG__ = ${JSON.stringify(runtimeConfig)};`
           }}

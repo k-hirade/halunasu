@@ -10,6 +10,10 @@
 
 ---
 
+> **対応履歴（2026-07-02, branch `fix/p1-p4-cross-theme`）**
+> - **高-1（P1）✅**: `listSessionsForMonthlyView(feeStore, orgId, claimMonth)` を新設し、月指定時は `listSessionsForClaimMonth`（claimMonthインデックスクエリ）を使用。`monthly-summary` / `monthly-bulk-candidates` / `monthly-bulk-jobs` / `monthly-receipt` / エクスポート経路のフルスキャンを解消。Firestore store は `claimMonth` 欠損の既存データを `serviceDate` 月範囲で補完し、上限超過時は静かに切り捨てず `FEE_MONTHLY_VIEW_SESSION_LIMIT` に基づく明示エラーにする。fee-api 全テスト green。
+> - 未対応（別フェーズ）: 高-2（Python算定ワーカー）、中-1（fee-webコード分割）、中-3（gateway逐語/SOAP分離）。
+
 ## 高-1: 月次サマリが全セッション・全期間フルスキャン
 
 **場所**: `services/fee-api/src/server.js:343-347`
