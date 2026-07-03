@@ -7,8 +7,9 @@ The conversion is intentionally conservative:
   receipt.csv and orders.csv.
 - Comment rows, ambiguous rows, unmatched rows, and inputs without structured
   code/quantity data are written to unknowns.csv.
-- Patient folders are included for review, while root-level aggregate files are
-  kept so the current STG recalculation-diff UI can ingest the ZIP.
+- An all-patient ZIP and one ZIP per patient are generated. Each ZIP has
+  manifest.json, receipt.csv, orders.csv, and related files at its root so the
+  current STG recalculation-diff UI can ingest it directly.
 """
 
 from __future__ import annotations
@@ -75,6 +76,17 @@ UNKNOWN_FIELDS = [
     "candidate_codes",
     "note",
 ]
+SUMMARY_FIELDS = [
+    "patient_id",
+    "display_name",
+    "receipt_rows",
+    "order_rows",
+    "chart_rows",
+    "unknown_rows",
+    "analysis_status",
+    "note",
+    "zip_path",
+]
 
 
 def normalize_action_name(value: str) -> str:
@@ -110,6 +122,10 @@ def write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+
+
+def write_summary_csv(path: Path, rows: list[dict]) -> None:
+    write_csv(path, rows, SUMMARY_FIELDS)
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -294,16 +310,19 @@ def write_dataset_files(output_dir: Path, rows: dict[str, list[dict]], manifest:
     (output_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def write_readme(output_dir: Path, summary: dict) -> None:
+def write_dataset_readme(output_dir: Path, summary: dict, *, patient_id: str = "", display_name: str = "") -> None:
+    subject = "全患者" if not patient_id else f"患者 {patient_id} {display_name}".strip()
     text = f"""# mock HOMIS 再算定差分診断データセット
 
 作成日: {summary["createdAt"]}
 
 ## 使い方
 
-STG の `再算定差分診断` 画面で `{summary["zipName"]}` を `診断データセット` としてアップロードします。
+STG の `再算定差分診断` 画面で、このフォルダをZIP化したファイルを `診断データセット` としてアップロードします。
 
-このZIPは、現行UIが読めるルート集約ファイルと、レビュー用の患者別フォルダを同梱しています。
+対象: {subject}
+
+このフォルダは、現行UIが読めるように `manifest.json` / `receipt.csv` / `patients.csv` / `charts.jsonl` / `orders.csv` / `diagnoses.csv` / `facility.json` をルートに置いています。
 
 ## 変換ルール
 
@@ -318,7 +337,42 @@ STG の `再算定差分診断` 画面で `{summary["zipName"]}` を `診断デ�
 - receipt.csv 明細: {summary["receiptRowCount"]}
 - orders.csv 明細: {summary["orderRowCount"]}
 - unknowns.csv 行: {summary["unknownRowCount"]}
-- 患者別フォルダ: `patients/{{patient_id}}/`
+"""
+    (output_dir / "README.md").write_text(text, encoding="utf-8")
+
+
+def write_root_readme(output_dir: Path, summary: dict) -> None:
+    text = f"""# mock HOMIS 患者別 再算定差分診断ZIP
+
+作成日: {summary["createdAt"]}
+
+## 使い方
+
+STG の `再算定差分診断` 画面で、`patient_zips/` のZIPを1つずつアップロードすると患者ごとに分析できます。
+
+全患者をまとめて確認したい場合は `all_patients/{summary["allPatientsZipName"]}` をアップロードします。
+
+## ディレクトリ
+
+- `patient_zips/`: 患者ごとのアップロード用ZIP
+- `patient_sources/{{patient_id}}/`: 患者ごとのZIP元ファイル
+- `all_patients/`: 全患者まとめ版のZIPと元ファイル
+- `summary.csv`: 患者ごとの行数と分析可能性
+- `summary.json`: 生成サマリ
+
+## 変換ルール
+
+- `receipt.csv` と `orders.csv` には、`gold_actions.csv` と `homis_action_master_map.csv` で完全一致し、かつ点数付き診療行為として確定できる行だけを入れています。
+- コード未確定、候補複数、コメント/非請求、薬剤・材料数量不足、訪問日別病名として確定できない情報は `unknowns.csv` に出しています。
+- 不明値は推測で補っていません。
+
+## 件数
+
+- 対象請求月: {summary["claimMonth"]}
+- 患者ZIP数: {summary["patientZipCount"]}
+- receipt.csv 明細: {summary["receiptRowCount"]}
+- orders.csv 明細: {summary["orderRowCount"]}
+- unknowns.csv 行: {summary["unknownRowCount"]}
 """
     (output_dir / "README.md").write_text(text, encoding="utf-8")
 
@@ -333,6 +387,20 @@ def zip_dir(source_dir: Path, zip_path: Path) -> None:
             zf.write(path, path.relative_to(source_dir).as_posix())
 
 
+def patient_display_name(row: dict) -> str:
+    return str(row.get("display_name") or row.get("displayName") or row.get("name") or "").strip()
+
+
+def patient_zip_status(bundle: dict[str, list[dict]]) -> tuple[str, str]:
+    if bundle["receipt"] and bundle["orders"] and bundle["charts"]:
+        return "ready", "既存レセ相当・再算定元オーダー・カルテがあります。"
+    if bundle["receipt"] and bundle["orders"]:
+        return "partial", "カルテがないため、構造化オーダー中心の確認になります。"
+    if bundle["receipt"] or bundle["orders"]:
+        return "partial", "既存レセ相当または再算定元オーダーの片方だけがあります。"
+    return "review_only", "安全に変換できた明細がないため、unknowns.csv の確認が中心です。"
+
+
 def main() -> None:
     source_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else SOURCE_DIR
     output_root = Path(sys.argv[2]) if len(sys.argv) > 2 else OUTPUT_ROOT
@@ -343,7 +411,7 @@ def main() -> None:
         raise SystemExit("targetMonth/claimMonth が manifest.json にありません。")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = output_root / f"{timestamp}_mock_homis_recalculation_diff"
+    output_dir = output_root / f"{timestamp}_mock_homis_patient_recalculation_diff"
     output_dir.mkdir(parents=True, exist_ok=False)
 
     patients = read_csv(standard_dir / "patients.csv")
@@ -417,7 +485,11 @@ def main() -> None:
             "notInferred": True,
         },
     }
-    write_dataset_files(output_dir, rows, upload_manifest)
+    all_patients_dir = output_dir / "all_patients"
+    all_source_dir = all_patients_dir / "source"
+    patient_sources_dir = output_dir / "patient_sources"
+    patient_zips_dir = output_dir / "patient_zips"
+    patient_zips_dir.mkdir(parents=True, exist_ok=True)
 
     by_patient = defaultdict(lambda: {
         "receipt": [],
@@ -433,8 +505,37 @@ def main() -> None:
             if patient_id:
                 by_patient[patient_id][key].append(row)
 
+    created_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    all_zip_name = f"mock-homis-recalculation-diff_all_{timestamp}.zip"
+    summary = {
+        "createdAt": created_at,
+        "sourceDir": str(source_dir),
+        "outputDir": str(output_dir),
+        "allPatientsZipName": all_zip_name,
+        "claimMonth": target_month,
+        "patientCount": len(target_patient_ids),
+        "patientZipCount": len(target_patient_ids),
+        "receiptRowCount": len(receipt_rows),
+        "orderRowCount": len(order_rows),
+        "unknownRowCount": len(unknown_rows),
+        "safeActionCount": len(order_rows),
+        "goldActionTargetMonthCount": sum(1 for row in gold_actions if row_claim_month(row) == target_month),
+        "unknownStatusCounts": dict(Counter(row["match_status"] for row in unknown_rows)),
+        "patientIds": target_patient_ids,
+    }
+
+    # 全患者まとめ版。現行UIで一括確認したい場合に使う。
+    write_dataset_files(all_source_dir, rows, upload_manifest)
+    write_dataset_readme(all_source_dir, summary)
+    all_zip_path = all_patients_dir / all_zip_name
+    zip_dir(all_source_dir, all_zip_path)
+    summary["allPatientsZipPath"] = str(all_zip_path)
+
+    patient_summary_rows = []
+    patient_zip_paths = []
+    patient_by_id = {row_patient_id(row): row for row in patient_rows}
     for patient_id in target_patient_ids:
-        patient_dir = output_dir / "patients" / patient_id
+        patient_dir = patient_sources_dir / patient_id
         patient_manifest = {
             **upload_manifest,
             "datasetName": f"mock-homis-recalculation-diff-{patient_id}",
@@ -453,27 +554,35 @@ def main() -> None:
             "unknowns": by_patient[patient_id]["unknowns"],
         }
         write_dataset_files(patient_dir, patient_rows_bundle, patient_manifest)
+        display_name = patient_display_name(patient_by_id.get(patient_id, {}))
+        patient_summary = {
+            **summary,
+            "patientCount": 1,
+            "receiptRowCount": len(patient_rows_bundle["receipt"]),
+            "orderRowCount": len(patient_rows_bundle["orders"]),
+            "unknownRowCount": len(patient_rows_bundle["unknowns"]),
+        }
+        write_dataset_readme(patient_dir, patient_summary, patient_id=patient_id, display_name=display_name)
+        zip_name = f"{patient_id}_mock-homis-recalculation-diff_{timestamp}.zip"
+        zip_path = patient_zips_dir / zip_name
+        zip_dir(patient_dir, zip_path)
+        status, note = patient_zip_status(patient_rows_bundle)
+        patient_zip_paths.append(str(zip_path))
+        patient_summary_rows.append({
+            "patient_id": patient_id,
+            "display_name": display_name,
+            "receipt_rows": str(len(patient_rows_bundle["receipt"])),
+            "order_rows": str(len(patient_rows_bundle["orders"])),
+            "chart_rows": str(len(patient_rows_bundle["charts"])),
+            "unknown_rows": str(len(patient_rows_bundle["unknowns"])),
+            "analysis_status": status,
+            "note": note,
+            "zip_path": str(zip_path),
+        })
 
-    summary = {
-        "createdAt": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "sourceDir": str(source_dir),
-        "outputDir": str(output_dir),
-        "zipName": f"mock-homis-recalculation-diff_{timestamp}.zip",
-        "claimMonth": target_month,
-        "patientCount": len(target_patient_ids),
-        "receiptRowCount": len(receipt_rows),
-        "orderRowCount": len(order_rows),
-        "unknownRowCount": len(unknown_rows),
-        "safeActionCount": len(order_rows),
-        "goldActionTargetMonthCount": sum(1 for row in gold_actions if row_claim_month(row) == target_month),
-        "unknownStatusCounts": dict(Counter(row["match_status"] for row in unknown_rows)),
-        "patientIds": target_patient_ids,
-    }
-    (output_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    write_readme(output_dir, summary)
-    zip_path = output_dir / summary["zipName"]
-    zip_dir(output_dir, zip_path)
-    summary["zipPath"] = str(zip_path)
+    write_summary_csv(output_dir / "summary.csv", patient_summary_rows)
+    summary["patientZips"] = patient_zip_paths
+    write_root_readme(output_dir, summary)
     (output_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
