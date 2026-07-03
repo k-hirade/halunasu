@@ -17,6 +17,7 @@ import {
   buildBaselineDiagnosis,
   buildMonthlyBaselineDiagnosis,
   engineClaimFromSessions,
+  BASELINE_COMPARISON_STATUS,
   BASELINE_DIFF_CATEGORY
 } from "../src/index.js";
 
@@ -1271,6 +1272,13 @@ test("buildBaselineDiagnosis classifies missing / review / consider with over二
   assert.equal(byCode["160000000"].category, BASELINE_DIFF_CATEGORY.REVIEW); // baseline多い→要確認
   assert.equal(byCode["112007410"], undefined); // 一致→所見なし
   assert.equal(byCode["113001810"].estimatedYen, 2250);
+
+  const comparisonsByCode = Object.fromEntries(diag.comparisonRows.map((row) => [row.code, row]));
+  assert.equal(comparisonsByCode["112007410"].comparisonStatus, BASELINE_COMPARISON_STATUS.MATCHED);
+  assert.equal(comparisonsByCode["113001810"].comparisonStatus, BASELINE_COMPARISON_STATUS.ENGINE_ONLY);
+  assert.equal(comparisonsByCode["900000000"].comparisonStatus, BASELINE_COMPARISON_STATUS.BASELINE_ONLY);
+  assert.equal(comparisonsByCode["160000000"].comparisonStatus, BASELINE_COMPARISON_STATUS.BOTH_DELTA);
+  assert.equal(comparisonsByCode["160000000"].deltaPoints, -60);
 });
 
 test("engineClaimFromSessions aggregates lineItems and marks low confidence", () => {
@@ -1306,6 +1314,8 @@ test("buildMonthlyBaselineDiagnosis pairs sessions and uploaded baseline by pati
   assert.equal(result.patientCount, 1);
   assert.equal(result.summary.missingCandidateCount, 1); // 特定疾患療養管理料が算定もれ候補
   assert.equal(result.summary.missingCandidatePoints, 225);
+  assert.equal(result.summary.engineOnlyCount, 1);
+  assert.equal(result.summary.matchedCount, 1);
 });
 
 test("buildMonthlyBaselineDiagnosis filters baseline claims by claimMonth and keeps months isolated", () => {

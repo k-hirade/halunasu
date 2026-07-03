@@ -398,6 +398,16 @@ async function routeFeeApiRequest(input = {}) {
       knownUnsupportedCodes: Array.isArray(diagnosisBody.knownUnsupportedCodes ?? diagnosisBody.known_unsupported_codes) ? (diagnosisBody.knownUnsupportedCodes ?? diagnosisBody.known_unsupported_codes) : [],
       codeMap: isPlainObject(diagnosisBody.codeMap ?? diagnosisBody.code_map) ? (diagnosisBody.codeMap ?? diagnosisBody.code_map) : null
     });
+    const reproductionFailures = buildRecalculationReproductionFailures({
+      calculationPayloads,
+      sessions,
+      dataset,
+      claimMonth
+    });
+    diagnosis.summary = {
+      ...(diagnosis.summary || {}),
+      reproductionFailureCount: reproductionFailures.length
+    };
     const ingestion = recalculationDiffIngestionSummary({
       baseline,
       calculationPayloads,
@@ -419,10 +429,11 @@ async function routeFeeApiRequest(input = {}) {
         missingCandidateCount: diagnosis.summary?.missingCandidateCount || 0,
         needsReviewCount: diagnosis.summary?.needsReviewCount || 0,
         considerCount: diagnosis.summary?.considerCount || 0,
+        reproductionFailureCount: reproductionFailures.length,
         datasetWarningCount: ingestion.warningCount || 0
       }
     });
-    return ok({ ...diagnosis, ingestion });
+    return ok({ ...diagnosis, ingestion, reproductionFailures });
   }
 
   // 導入前 一括レセプト差分診断: 既存レセ(baselineClaims) と 当社算定(セッション) を患者×月で突合
@@ -2229,6 +2240,169 @@ async function calculateRecalculationDiffSessions({ feeCalculator, calculationPa
     });
   }
   return sessions;
+}
+
+function buildRecalculationReproductionFailures({ calculationPayloads = [], sessions = [], dataset = {}, claimMonth = "" } = {}) {
+  const datasetRows = datasetOrderCodeRows(dataset, claimMonth);
+  const payloadRows = calculationPayloads.flatMap((payload) => claimPayloadInputCodeRows(payload, { claimMonth }));
+  const sourceRows = aggregateRecalculationInputCodeRows(
+    datasetRows.length ? datasetRows : payloadRows,
+    datasetOrderNameMap(dataset, claimMonth)
+  );
+  const engineRows = aggregateRecalculationEngineCodeRows(sessions);
+  const failures = [];
+  for (const [key, source] of sourceRows.entries()) {
+    const engine = engineRows.get(key);
+    const engineCount = Number(engine?.count || 0) || 0;
+    if (engineCount >= source.count) {
+      continue;
+    }
+    failures.push({
+      patientId: source.patientId,
+      claimMonth: source.claimMonth,
+      code: source.code,
+      name: source.name || engine?.name || "",
+      sourceCount: source.count,
+      engineCount,
+      missingCount: Math.max(0, source.count - engineCount),
+      reason: engineCount > 0
+        ? "再算定元データにある回数より、当社エンジン結果の回数が少ない"
+        : "再算定元データにはありますが、当社エンジン結果に出ませんでした。"
+    });
+  }
+  failures.sort((a, b) => (
+    String(a.patientId).localeCompare(String(b.patientId))
+    || String(a.code).localeCompare(String(b.code))
+  ));
+  return failures;
+}
+
+function datasetOrderCodeRows(dataset = {}, claimMonth = "") {
+  const rows = [];
+  for (const record of datasetRecords(dataset, "orders")) {
+    const order = normalizeDatasetOrder(record);
+    if (!datasetOrderIsPerformed(order) || !order.patientId || !order.code) {
+      continue;
+    }
+    const month = String(order.serviceDate || "").slice(0, 7) || claimMonth;
+    if (!month || (claimMonth && month !== claimMonth)) {
+      continue;
+    }
+    rows.push({
+      patientId: order.patientId,
+      claimMonth: month,
+      code: order.code,
+      name: order.name,
+      count: finiteNumberOrOne(order.quantity)
+    });
+  }
+  return rows;
+}
+
+function aggregateRecalculationInputCodeRows(rows = [], nameMap = new Map()) {
+  const aggregated = new Map();
+  for (const row of rows) {
+    const key = recalculationCodeKey(row.patientId, row.claimMonth, row.code);
+    const current = aggregated.get(key) || {
+      patientId: row.patientId,
+      claimMonth: row.claimMonth,
+      code: row.code,
+      name: "",
+      count: 0
+    };
+    current.name ||= row.name || nameMap.get(key) || "";
+    current.count += Number(row.count || 1) || 1;
+    aggregated.set(key, current);
+  }
+  return aggregated;
+}
+
+function aggregateRecalculationEngineCodeRows(sessions = []) {
+  const aggregated = new Map();
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    const patientId = String(session?.patientId || "").trim();
+    const claimMonth = baselineSessionClaimMonth(session);
+    const lineItems = Array.isArray(session?.calculationResult?.lineItems) ? session.calculationResult.lineItems : [];
+    for (const line of lineItems) {
+      const status = String(line?.status || "candidate");
+      if (!["confirmed", "candidate", "needs_review"].includes(status)) {
+        continue;
+      }
+      const code = String(line?.code || "").trim();
+      if (!patientId || !claimMonth || !code) {
+        continue;
+      }
+      const key = recalculationCodeKey(patientId, claimMonth, code);
+      const current = aggregated.get(key) || { patientId, claimMonth, code, name: "", count: 0 };
+      current.name ||= String(line?.name || "").trim();
+      current.count += Number(line?.quantity || line?.count || 1) || 1;
+      aggregated.set(key, current);
+    }
+  }
+  return aggregated;
+}
+
+function claimPayloadInputCodeRows(payload = {}, { claimMonth = "" } = {}) {
+  const patientId = claimPayloadPatientId(payload);
+  const serviceDate = claimPayloadServiceDate(payload);
+  const month = String(serviceDate || "").slice(0, 7) || claimMonth;
+  if (!patientId || !month) {
+    return [];
+  }
+  const rows = [];
+  const push = (code, count = 1, name = "") => {
+    const normalized = String(code || "").trim();
+    if (!normalized) {
+      return;
+    }
+    rows.push({
+      patientId,
+      claimMonth: month,
+      code: normalized,
+      name: String(name || "").trim(),
+      count: Number(count || 1) || 1
+    });
+  };
+  for (const code of listValue(payload.procedure_codes)) {
+    push(code);
+  }
+  for (const item of [
+    ...arrayValue(payload.drug_inputs),
+    ...arrayValue(payload.material_inputs),
+    ...arrayValue(payload.injection_drug_inputs)
+  ]) {
+    push(item.code || item.drug_code || item.material_code, item.quantity);
+  }
+  for (const item of [
+    ...arrayValue(payload.medication_orders),
+    ...arrayValue(payload.injection_orders)
+  ]) {
+    push(item.code || item.drug_code, item.total_quantity || item.quantity || item.administrations || 1);
+  }
+  for (const item of arrayValue(payload.comment_inputs)) {
+    push(item.code);
+  }
+  return rows;
+}
+
+function datasetOrderNameMap(dataset = {}, claimMonth = "") {
+  const map = new Map();
+  for (const record of datasetRecords(dataset, "orders")) {
+    const order = normalizeDatasetOrder(record);
+    if (!datasetOrderIsPerformed(order) || !order.patientId || !order.code) {
+      continue;
+    }
+    const month = String(order.serviceDate || "").slice(0, 7) || claimMonth;
+    if (claimMonth && month !== claimMonth) {
+      continue;
+    }
+    map.set(recalculationCodeKey(order.patientId, month, order.code), order.name);
+  }
+  return map;
+}
+
+function recalculationCodeKey(patientId, claimMonth, code) {
+  return `${String(patientId || "").trim()}\u0000${String(claimMonth || "").trim()}\u0000${String(code || "").trim()}`;
 }
 
 function feeSessionFromClaimPayload(payload = {}, { index = 1, claimMonth = "" } = {}) {

@@ -34,6 +34,22 @@ export const BASELINE_UKE_FIELDS = [
 
 export const BASELINE_DIFF_CATEGORY_ORDER = { missing_candidate: 0, needs_review: 1, consider: 2 };
 
+export const BASELINE_COMPARISON_STATUS_ORDER = {
+  baseline_only: 0,
+  engine_only: 1,
+  both_delta: 2,
+  matched: 3
+};
+
+export const BASELINE_COMPARISON_STATUS_LABELS = {
+  baseline_only: "既存のみ",
+  engine_only: "当社のみ",
+  both_delta: "両方差分あり",
+  matched: "一致"
+};
+
+export const REPRODUCTION_FAILURE_STATUS = "reproduction_failed";
+
 export function emptyBaselineDiffOptions() {
   return {
     columnMap: { patient_id: "", claim_month: "", medical_institution_code: "", code: "", name: "", points: "", count: "" },
@@ -183,6 +199,49 @@ export function baselineDiffRows(result) {
   return rows;
 }
 
+export function baselineComparisonRows(result) {
+  const rows = (result?.diagnoses || []).flatMap((diagnosis) => {
+    const comparisonRows = Array.isArray(diagnosis.comparisonRows) ? diagnosis.comparisonRows : [];
+    if (comparisonRows.length) {
+      return comparisonRows.map((row) => ({ patientId: diagnosis.patientId, claimMonth: diagnosis.claimMonth, ...row }));
+    }
+    return (diagnosis.findings || []).map((finding) => ({
+      patientId: diagnosis.patientId,
+      claimMonth: diagnosis.claimMonth,
+      comparisonStatus: comparisonStatusFromFinding(finding),
+      comparisonStatusLabel: BASELINE_COMPARISON_STATUS_LABELS[comparisonStatusFromFinding(finding)] || finding.categoryLabel || "差分",
+      baselinePoints: finding.side === "engine_only" ? 0 : Number(finding.points || 0),
+      enginePoints: finding.side === "baseline_only" ? 0 : Number(finding.points || 0),
+      deltaPoints: finding.side === "baseline_only" ? -Number(finding.points || 0) : Number(finding.points || 0),
+      ...finding
+    }));
+  });
+  rows.sort((a, b) => (
+    (BASELINE_COMPARISON_STATUS_ORDER[a.comparisonStatus] ?? 99) - (BASELINE_COMPARISON_STATUS_ORDER[b.comparisonStatus] ?? 99)
+    || Math.abs(Number(b.deltaPoints ?? b.points ?? 0)) - Math.abs(Number(a.deltaPoints ?? a.points ?? 0))
+    || String(a.patientId || "").localeCompare(String(b.patientId || ""))
+  ));
+  return rows;
+}
+
+export function reproductionFailureRows(result) {
+  return (result?.reproductionFailures || []).map((row) => ({
+    ...row,
+    comparisonStatus: REPRODUCTION_FAILURE_STATUS,
+    comparisonStatusLabel: "再現失敗",
+    categoryLabel: "再現失敗"
+  })).sort((a, b) => (
+    String(a.patientId || "").localeCompare(String(b.patientId || ""))
+    || String(a.code || "").localeCompare(String(b.code || ""))
+  ));
+}
+
+function comparisonStatusFromFinding(finding = {}) {
+  if (finding.side === "baseline_only") return "baseline_only";
+  if (finding.side === "engine_only") return "engine_only";
+  return "both_delta";
+}
+
 function escapeHtmlText(value) {
   return String(value ?? "")
     .replace(/&/gu, "&amp;")
@@ -193,36 +252,70 @@ function escapeHtmlText(value) {
 
 export function baselineDiffToCsv(result) {
   const clean = (value) => String(value ?? "").replace(/[",\n]/gu, " ");
-  const lines = ["患者,分類,コード,名称,点数,概算影響額(円),理由"];
-  for (const row of baselineDiffRows(result)) {
-    lines.push([clean(row.patientId), clean(row.categoryLabel), clean(row.code), clean(row.name), Number(row.points || 0), Number(row.estimatedYen || 0), clean(row.reason)].join(","));
+  const lines = ["患者,分類,コード,名称,既存点数,当社点数,差分点数,概算影響額(円),既存回数,当社回数,理由"];
+  for (const row of [...baselineComparisonRows(result), ...reproductionFailureRows(result)]) {
+    const baselinePoints = row.comparisonStatus === REPRODUCTION_FAILURE_STATUS ? "" : Number(row.baselinePoints || 0);
+    const enginePoints = row.comparisonStatus === REPRODUCTION_FAILURE_STATUS ? "" : Number(row.enginePoints || 0);
+    const deltaPoints = row.comparisonStatus === REPRODUCTION_FAILURE_STATUS ? "" : Number(row.deltaPoints || 0);
+    const baselineCount = row.comparisonStatus === REPRODUCTION_FAILURE_STATUS ? Number(row.sourceCount || 0) : Number(row.baselineCount || 0);
+    const engineCount = row.comparisonStatus === REPRODUCTION_FAILURE_STATUS ? Number(row.engineCount || 0) : Number(row.engineCount || 0);
+    lines.push([
+      clean(row.patientId),
+      clean(row.comparisonStatusLabel || row.categoryLabel),
+      clean(row.code),
+      clean(row.name),
+      baselinePoints,
+      enginePoints,
+      deltaPoints,
+      Number(row.estimatedYen || 0),
+      baselineCount,
+      engineCount,
+      clean(row.reason)
+    ].join(","));
   }
   return `${lines.join("\n")}\n`;
 }
 
 export function baselineDiffToHtml(result) {
   const summary = result?.summary || {};
-  const rowsHtml = baselineDiffRows(result).map((row) => (
-    `<tr class="c-${row.category}"><td>${escapeHtmlText(row.patientId)}</td>`
-    + `<td class="cat">${escapeHtmlText(row.categoryLabel)}</td>`
+  const rowsHtml = [...baselineComparisonRows(result), ...reproductionFailureRows(result)].map((row) => (
+    `<tr class="c-${escapeHtmlText(row.comparisonStatus || row.category)}"><td>${escapeHtmlText(row.patientId)}</td>`
+    + `<td class="cat">${escapeHtmlText(row.comparisonStatusLabel || row.categoryLabel)}</td>`
     + `<td>${escapeHtmlText(row.code)}</td>`
     + `<td>${escapeHtmlText(row.name)}</td>`
-    + `<td class="num">${Number(row.points || 0).toLocaleString()}</td>`
+    + `<td class="num">${formatHtmlPoints(row.baselinePoints)}</td>`
+    + `<td class="num">${formatHtmlPoints(row.enginePoints)}</td>`
+    + `<td class="num">${formatHtmlDelta(row.deltaPoints)}</td>`
     + `<td class="num">${Number(row.estimatedYen || 0).toLocaleString()}</td>`
     + `<td>${escapeHtmlText(row.reason)}</td></tr>`
-  )).join("") || '<tr><td colspan="7">差分はありません。</td></tr>';
+  )).join("") || '<tr><td colspan="9">差分はありません。</td></tr>';
   return `<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>レセプト差分診断レポート</title>
 <style>body{font-family:'Noto Sans JP',system-ui,sans-serif;color:#111827;margin:24px;font-size:13px}
 h1{font-size:1.3rem;margin:0 0 6px}.note{color:#475467;font-size:12px;margin:2px 0}
 table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border-top:1px solid #e4e7ec;padding:7px 8px;text-align:left}
 th{color:#64748b;font-size:11px}td.num{text-align:right;white-space:nowrap}td.cat{font-weight:800}
-tr.c-missing_candidate td.cat{color:#1d4ed8}tr.c-needs_review td.cat{color:#b42318}tr.c-consider td.cat{color:#475467}
+tr.c-baseline_only td.cat{color:#b42318}tr.c-engine_only td.cat{color:#1d4ed8}tr.c-both_delta td.cat{color:#7a2e0e}tr.c-matched td.cat{color:#087443}tr.c-reproduction_failed td.cat{color:#b42318}
 @media print{body{margin:0}}</style></head><body>
 <h1>レセプト差分診断レポート（${escapeHtmlText(result?.claimMonth || "")}）</h1>
 <p class="note">差分はすべて要確認です。実施事実・算定要件・施設基準・病名を確認のうえ判断してください。</p>
-<p class="note">概算影響額は点数×10円・総医療費ベースの概算です（負担按分なし）。算定もれ候補 ${Number(summary.missingCandidateCount || 0)}件 / 約${Number(summary.missingCandidateEstimatedYen || 0).toLocaleString()}円 ・ 要確認 ${Number(summary.needsReviewCount || 0)}件 ・ 検討 ${Number(summary.considerCount || 0)}件</p>
-<table><thead><tr><th>患者</th><th>分類</th><th>コード</th><th>名称</th><th>点数</th><th>概算影響額(円)</th><th>理由</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+<p class="note">概算影響額は点数×10円・総医療費ベースの概算です（負担按分なし）。既存のみ ${Number(summary.baselineOnlyCount || 0)}件 ・ 当社のみ ${Number(summary.engineOnlyCount || 0)}件 ・ 両方差分あり ${Number(summary.bothDiffCount || 0)}件 ・ 一致 ${Number(summary.matchedCount || 0)}件 ・ 再現失敗 ${Number(summary.reproductionFailureCount || 0)}件</p>
+<table><thead><tr><th>患者</th><th>分類</th><th>コード</th><th>名称</th><th>既存</th><th>当社</th><th>差分</th><th>概算影響額(円)</th><th>理由</th></tr></thead><tbody>${rowsHtml}</tbody></table>
 </body></html>`;
+}
+
+function formatHtmlPoints(value) {
+  if (!Number.isFinite(Number(value))) {
+    return "";
+  }
+  return Number(value || 0).toLocaleString();
+}
+
+function formatHtmlDelta(value) {
+  if (!Number.isFinite(Number(value))) {
+    return "";
+  }
+  const numeric = Number(value || 0);
+  return numeric > 0 ? `+${numeric.toLocaleString()}` : numeric.toLocaleString();
 }
 
 export function downloadTextFile(filename, text, mime) {

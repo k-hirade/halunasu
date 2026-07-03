@@ -6,13 +6,14 @@ import { getStoredPlatformAccessToken, usePlatformAuth } from "./platform-auth";
 import {
   BASELINE_COLUMN_FIELDS,
   BASELINE_UKE_FIELDS,
-  baselineDiffRows,
+  baselineComparisonRows,
   baselineDiffToCsv,
   baselineDiffToHtml,
   buildRecalculationDatasetDiffRequest,
   downloadTextFile,
   emptyBaselineDiffOptions,
-  isStgFeeEnvironment
+  isStgFeeEnvironment,
+  reproductionFailureRows
 } from "../lib/baseline-diff";
 
 function defaultClaimMonth() {
@@ -48,6 +49,32 @@ function useFeeApi() {
   }, [auth.accessToken, auth.csrfToken]);
 }
 
+function countComparisonRows(comparisonRows, reproductionRows, summary = {}) {
+  const countByStatus = (status) => comparisonRows.filter((row) => row.comparisonStatus === status).length;
+  return {
+    baseline_only: Number(summary?.baselineOnlyCount ?? countByStatus("baseline_only")) || 0,
+    engine_only: Number(summary?.engineOnlyCount ?? countByStatus("engine_only")) || 0,
+    both_delta: Number(summary?.bothDiffCount ?? countByStatus("both_delta")) || 0,
+    matched: Number(summary?.matchedCount ?? countByStatus("matched")) || 0,
+    reproduction_failed: Number(summary?.reproductionFailureCount ?? reproductionRows.length) || 0
+  };
+}
+
+function formatPointCell(value) {
+  if (!Number.isFinite(Number(value))) {
+    return "—";
+  }
+  return `${Number(value || 0).toLocaleString()}点`;
+}
+
+function formatDeltaPointCell(value) {
+  if (!Number.isFinite(Number(value))) {
+    return "—";
+  }
+  const numeric = Number(value || 0);
+  return `${numeric > 0 ? "+" : ""}${numeric.toLocaleString()}点`;
+}
+
 export function FeeBaselineDiffConsole() {
   const feeApi = useFeeApi();
   const [stg, setStg] = useState(true);
@@ -65,6 +92,7 @@ export function FeeBaselineDiffConsole() {
   const [sourceFiles, setSourceFiles] = useState({});
   const [sourceFileNames, setSourceFileNames] = useState({});
   const [result, setResult] = useState(null);
+  const [activeResultTab, setActiveResultTab] = useState("baseline_only");
   const [dragOverTarget, setDragOverTarget] = useState("");
   const datasetInputRef = useRef(null);
   const baselineInputRef = useRef(null);
@@ -157,10 +185,27 @@ export function FeeBaselineDiffConsole() {
 
   const updateOptions = useCallback((patch) => setOptions((current) => ({ ...current, ...patch })), []);
 
-  const findings = useMemo(() => baselineDiffRows(result), [result]);
+  const comparisonRows = useMemo(() => baselineComparisonRows(result), [result]);
+  const reproductionRows = useMemo(() => reproductionFailureRows(result), [result]);
   const summary = result?.summary || null;
   const ingestion = result?.ingestion || null;
   const resultClaimMonth = result?.claimMonth || claimMonth || "month";
+  const resultTabs = useMemo(() => {
+    const counts = countComparisonRows(comparisonRows, reproductionRows, summary);
+    return [
+      { id: "baseline_only", label: "既存のみ", count: counts.baseline_only, className: "baseline" },
+      { id: "engine_only", label: "当社のみ", count: counts.engine_only, className: "engine" },
+      { id: "both_delta", label: "両方差分あり", count: counts.both_delta, className: "both" },
+      { id: "matched", label: "一致", count: counts.matched, className: "matched" },
+      { id: "reproduction_failed", label: "再現失敗", count: counts.reproduction_failed, className: "repro" }
+    ];
+  }, [comparisonRows, reproductionRows, summary]);
+  const visibleRows = useMemo(() => {
+    if (activeResultTab === "reproduction_failed") {
+      return reproductionRows;
+    }
+    return comparisonRows.filter((row) => row.comparisonStatus === activeResultTab);
+  }, [activeResultTab, comparisonRows, reproductionRows]);
   const sourceDropConfigs = [
     ["patients", "患者情報", ".csv / .jsonl", patientInputRef, ".csv,.tsv,.json,.jsonl,.ndjson,text/csv,application/json"],
     ["charts", "カルテ", ".csv / .jsonl", chartInputRef, ".csv,.tsv,.json,.jsonl,.ndjson,text/csv,application/json"],
@@ -168,6 +213,14 @@ export function FeeBaselineDiffConsole() {
     ["diagnoses", "病名", ".csv / .jsonl", diagnosisInputRef, ".csv,.tsv,.json,.jsonl,.ndjson,text/csv,application/json"],
     ["facility", "施設設定", ".json / .csv", facilityInputRef, ".json,.csv,.tsv,application/json,text/csv"]
   ];
+
+  useEffect(() => {
+    if (!summary) {
+      return;
+    }
+    const nextTab = resultTabs.find((tab) => tab.count > 0)?.id || "baseline_only";
+    setActiveResultTab(nextTab);
+  }, [resultTabs, summary]);
 
   if (!stg) {
     return (
@@ -355,43 +408,56 @@ export function FeeBaselineDiffConsole() {
               </div>
             ) : null}
             <div className="baseline-diff-summary">
-              <article className="baseline-diff-metric baseline-diff-metric--missing">
-                <span>算定もれ候補</span>
-                <strong>{summary.missingCandidateCount.toLocaleString()}件</strong>
-                <small>約{Number(summary.missingCandidateEstimatedYen || 0).toLocaleString()}円</small>
-              </article>
-              <article className="baseline-diff-metric baseline-diff-metric--review">
-                <span>要確認</span>
-                <strong>{summary.needsReviewCount.toLocaleString()}件</strong>
-              </article>
-              <article className="baseline-diff-metric baseline-diff-metric--consider">
-                <span>検討</span>
-                <strong>{summary.considerCount.toLocaleString()}件</strong>
-              </article>
+              {resultTabs.map((tab) => (
+                <article className={`baseline-diff-metric baseline-diff-metric--${tab.className}`} key={tab.id}>
+                  <span>{tab.label}</span>
+                  <strong>{tab.count.toLocaleString()}件</strong>
+                  {tab.id === "engine_only" ? <small>約{Number(summary.missingCandidateEstimatedYen || 0).toLocaleString()}円</small> : null}
+                </article>
+              ))}
             </div>
             <p className="baseline-diff-disclaimer">概算影響額は点数×10円・総医療費ベースの概算です（負担按分なし）。実施事実・算定要件・施設基準・病名を確認のうえ判断してください。</p>
-            {findings.length ? (
+            <div className="baseline-diff-tabs" role="tablist" aria-label="診断結果の分類">
+              {resultTabs.map((tab) => (
+                <button
+                  aria-selected={activeResultTab === tab.id}
+                  className={`baseline-diff-tab ${activeResultTab === tab.id ? "is-active" : ""}`}
+                  key={tab.id}
+                  onClick={() => setActiveResultTab(tab.id)}
+                  role="tab"
+                  type="button"
+                >
+                  <span>{tab.label}</span>
+                  <strong>{tab.count.toLocaleString()}</strong>
+                </button>
+              ))}
+            </div>
+            {visibleRows.length ? (
               <div className="baseline-diff-table-wrap">
                 <table className="baseline-diff-table">
                   <thead>
-                    <tr><th>患者</th><th>分類</th><th>コード</th><th>名称</th><th>点数</th><th>概算影響額</th><th>理由</th></tr>
+                    <tr><th>患者</th><th>分類</th><th>コード</th><th>名称</th><th>既存</th><th>当社</th><th>差分</th><th>理由</th></tr>
                   </thead>
                   <tbody>
-                    {findings.map((finding, index) => (
-                      <tr className={`baseline-diff-row baseline-diff-row--${finding.category}`} key={`${finding.patientId}-${finding.code}-${index}`}>
-                        <td>{finding.patientId}</td>
-                        <td className="baseline-diff-cat">{finding.categoryLabel}</td>
-                        <td>{finding.code}</td>
-                        <td>{finding.name || "—"}</td>
-                        <td className="num">{Number(finding.points || 0).toLocaleString()}点</td>
-                        <td className="num">約{Number(finding.estimatedYen || 0).toLocaleString()}円</td>
-                        <td>{finding.reason}</td>
-                      </tr>
-                    ))}
+                    {visibleRows.map((row, index) => {
+                      const isReproductionFailure = row.comparisonStatus === "reproduction_failed";
+                      return (
+                        <tr className={`baseline-diff-row baseline-diff-row--${row.comparisonStatus || row.category}`} key={`${row.patientId}-${row.code}-${index}`}>
+                          <td>{row.patientId}</td>
+                          <td className="baseline-diff-cat">{row.comparisonStatusLabel || row.categoryLabel}</td>
+                          <td>{row.code}</td>
+                          <td>{row.name || "—"}</td>
+                          <td className="num">{isReproductionFailure ? `${Number(row.sourceCount || 0).toLocaleString()}回` : formatPointCell(row.baselinePoints)}</td>
+                          <td className="num">{isReproductionFailure ? `${Number(row.engineCount || 0).toLocaleString()}回` : formatPointCell(row.enginePoints)}</td>
+                          <td className="num">{isReproductionFailure ? `-${Number(row.missingCount || 0).toLocaleString()}回` : formatDeltaPointCell(row.deltaPoints)}</td>
+                          <td>{row.reason}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
-            ) : <div className="fee-empty-state">差分はありません（既存レセと当社再算定が一致）。</div>}
+            ) : <div className="fee-empty-state">{activeResultTab === "matched" ? "一致した明細はありません。" : "この分類の明細はありません。"}</div>}
           </>
         ) : (!busy && !error ? <div className="fee-empty-state">既存レセと再算定元データを選択して実行すると、ここに診断結果が表示されます。</div> : null)}
       </section>

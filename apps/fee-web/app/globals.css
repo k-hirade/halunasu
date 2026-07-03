@@ -5521,6 +5521,31 @@ body:has(.fee-shell--detail) {
   background: #f3f8ff;
 }
 
+.baseline-diff-metric--baseline {
+  border-color: #fecdca;
+  background: #fef3f2;
+}
+
+.baseline-diff-metric--engine {
+  border-color: #bcd3ff;
+  background: #f3f8ff;
+}
+
+.baseline-diff-metric--both {
+  border-color: #fedf89;
+  background: #fffbeb;
+}
+
+.baseline-diff-metric--matched {
+  border-color: #abefc6;
+  background: #f0fdf4;
+}
+
+.baseline-diff-metric--repro {
+  border-color: #fecdd3;
+  background: #fff1f2;
+}
+
 .baseline-diff-metric--review {
   border-color: #fecdca;
   background: #fef3f2;
@@ -5537,6 +5562,52 @@ body:has(.fee-shell--detail) {
   font-size: 12px;
   font-weight: 700;
   line-height: 1.5;
+}
+
+.baseline-diff-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.baseline-diff-tab {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 7px;
+  min-height: 34px;
+  padding: 6px 11px;
+}
+
+.baseline-diff-tab span {
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.baseline-diff-tab strong {
+  background: #e2e8f0;
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1;
+  min-width: 22px;
+  padding: 4px 6px;
+  text-align: center;
+}
+
+.baseline-diff-tab.is-active {
+  background: #eefdf9;
+  border-color: var(--brand);
+  color: var(--brand-dark);
+}
+
+.baseline-diff-tab.is-active strong {
+  background: var(--brand);
+  color: #ffffff;
 }
 
 .baseline-diff-table-wrap {
@@ -5582,6 +5653,23 @@ body:has(.fee-shell--detail) {
 
 .baseline-diff-row--consider .baseline-diff-cat {
   color: #475467;
+}
+
+.baseline-diff-row--baseline_only .baseline-diff-cat,
+.baseline-diff-row--reproduction_failed .baseline-diff-cat {
+  color: #b42318;
+}
+
+.baseline-diff-row--engine_only .baseline-diff-cat {
+  color: #1d4ed8;
+}
+
+.baseline-diff-row--both_delta .baseline-diff-cat {
+  color: #7a2e0e;
+}
+
+.baseline-diff-row--matched .baseline-diff-cat {
+  color: #087443;
 }
 
 @media (max-width: 720px) {

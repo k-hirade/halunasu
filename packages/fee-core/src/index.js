@@ -2452,11 +2452,29 @@ const BASELINE_DIFF_CATEGORY_LABELS = Object.freeze({
   consider: "検討"
 });
 
+export const BASELINE_COMPARISON_STATUS = Object.freeze({
+  BASELINE_ONLY: "baseline_only",
+  ENGINE_ONLY: "engine_only",
+  BOTH_DELTA: "both_delta",
+  MATCHED: "matched"
+});
+
+const BASELINE_COMPARISON_STATUS_LABELS = Object.freeze({
+  baseline_only: "既存のみ",
+  engine_only: "当社のみ",
+  both_delta: "両方差分あり",
+  matched: "一致"
+});
+
 // engineClaim に含める(=当社が前に出す)ステータス。confirmed以外は低確信扱い。
 const ENGINE_INCLUDED_STATUSES = new Set(["confirmed", "candidate", "needs_review"]);
 
 export function baselineDiffCategoryLabel(category) {
   return BASELINE_DIFF_CATEGORY_LABELS[category] || category;
+}
+
+export function baselineComparisonStatusLabel(status) {
+  return BASELINE_COMPARISON_STATUS_LABELS[status] || status;
 }
 
 export function estimateReceiptYen(points) {
@@ -2537,6 +2555,7 @@ export function buildBaselineDiagnosis(baseline = {}, engine = {}, options = {})
   const base = aggregateBaselineLines(baseline.lines, codeMap);
   const eng = aggregateBaselineLines(engine.lines, codeMap);
   const findings = [];
+  const comparisonRows = [];
 
   const push = (category, code, name, points, side, reason) => {
     findings.push({
@@ -2550,6 +2569,35 @@ export function buildBaselineDiagnosis(baseline = {}, engine = {}, options = {})
       reason
     });
   };
+  const pushComparison = ({
+    comparisonStatus,
+    category = "",
+    code,
+    name,
+    baselineEntry = null,
+    engineEntry = null,
+    points = 0,
+    side = "",
+    reason = ""
+  }) => {
+    comparisonRows.push({
+      comparisonStatus,
+      comparisonStatusLabel: baselineComparisonStatusLabel(comparisonStatus),
+      category,
+      categoryLabel: category ? baselineDiffCategoryLabel(category) : baselineComparisonStatusLabel(comparisonStatus),
+      code,
+      name: name || baselineEntry?.name || engineEntry?.name || "",
+      points: Number(points) || 0,
+      estimatedYen: estimateReceiptYen(points),
+      baselinePoints: Number(baselineEntry?.totalPoints || 0) || 0,
+      enginePoints: Number(engineEntry?.totalPoints || 0) || 0,
+      deltaPoints: (Number(engineEntry?.totalPoints || 0) || 0) - (Number(baselineEntry?.totalPoints || 0) || 0),
+      baselineCount: Number(baselineEntry?.count || 0) || 0,
+      engineCount: Number(engineEntry?.count || 0) || 0,
+      side,
+      reason
+    });
+  };
 
   const codes = [...new Set([...base.keys(), ...eng.keys()])].sort();
   for (const code of codes) {
@@ -2558,24 +2606,96 @@ export function buildBaselineDiagnosis(baseline = {}, engine = {}, options = {})
     if (e && !b) {
       if (lowConfidence.has(code)) {
         push(BASELINE_DIFF_CATEGORY.CONSIDER, code, e.name, e.totalPoints, "engine_only", "低確信の当社候補");
+        pushComparison({
+          comparisonStatus: BASELINE_COMPARISON_STATUS.ENGINE_ONLY,
+          category: BASELINE_DIFF_CATEGORY.CONSIDER,
+          code,
+          name: e.name,
+          engineEntry: e,
+          points: e.totalPoints,
+          side: "engine_only",
+          reason: "低確信の当社候補"
+        });
       } else {
         push(BASELINE_DIFF_CATEGORY.MISSING, code, e.name, e.totalPoints, "engine_only", "当社再算定では候補だが既存レセに無い");
+        pushComparison({
+          comparisonStatus: BASELINE_COMPARISON_STATUS.ENGINE_ONLY,
+          category: BASELINE_DIFF_CATEGORY.MISSING,
+          code,
+          name: e.name,
+          engineEntry: e,
+          points: e.totalPoints,
+          side: "engine_only",
+          reason: "当社再算定では候補だが既存レセに無い"
+        });
       }
     } else if (b && !e) {
       if (knownUnsupported.has(code)) {
         push(BASELINE_DIFF_CATEGORY.CONSIDER, code, b.name, b.totalPoints, "baseline_only", "当社未対応領域の可能性");
+        pushComparison({
+          comparisonStatus: BASELINE_COMPARISON_STATUS.BASELINE_ONLY,
+          category: BASELINE_DIFF_CATEGORY.CONSIDER,
+          code,
+          name: b.name,
+          baselineEntry: b,
+          points: b.totalPoints,
+          side: "baseline_only",
+          reason: "当社未対応領域の可能性"
+        });
       } else {
         push(BASELINE_DIFF_CATEGORY.REVIEW, code, b.name, b.totalPoints, "baseline_only", "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）");
+        pushComparison({
+          comparisonStatus: BASELINE_COMPARISON_STATUS.BASELINE_ONLY,
+          category: BASELINE_DIFF_CATEGORY.REVIEW,
+          code,
+          name: b.name,
+          baselineEntry: b,
+          points: b.totalPoints,
+          side: "baseline_only",
+          reason: "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+        });
       }
     } else if (b && e) {
       const delta = e.totalPoints - b.totalPoints;
       if (Math.abs(delta) <= tolerance) {
+        pushComparison({
+          comparisonStatus: BASELINE_COMPARISON_STATUS.MATCHED,
+          code,
+          name: e.name || b.name,
+          baselineEntry: b,
+          engineEntry: e,
+          points: 0,
+          side: "both",
+          reason: "既存レセと当社再算定が一致"
+        });
         continue;
       }
       if (delta > 0) {
         push(BASELINE_DIFF_CATEGORY.MISSING, code, e.name || b.name, delta, "both", "当社再算定の方が回数/点数が多い");
+        pushComparison({
+          comparisonStatus: BASELINE_COMPARISON_STATUS.BOTH_DELTA,
+          category: BASELINE_DIFF_CATEGORY.MISSING,
+          code,
+          name: e.name || b.name,
+          baselineEntry: b,
+          engineEntry: e,
+          points: delta,
+          side: "both",
+          reason: "当社再算定の方が回数/点数が多い"
+        });
       } else {
         push(BASELINE_DIFF_CATEGORY.REVIEW, code, e.name || b.name, Math.abs(delta), "both", "既存の方が回数/点数が多い（当社未対応の可能性／既存の過剰の可能性）");
+        pushComparison({
+          comparisonStatus: BASELINE_COMPARISON_STATUS.BOTH_DELTA,
+          category: BASELINE_DIFF_CATEGORY.REVIEW,
+          code,
+          name: e.name || b.name,
+          baselineEntry: b,
+          engineEntry: e,
+          points: Math.abs(delta),
+          side: "both",
+          reason: "既存の方が回数/点数が多い（当社未対応の可能性／既存の過剰の可能性）"
+        });
       }
     }
   }
@@ -2591,6 +2711,7 @@ export function buildBaselineDiagnosis(baseline = {}, engine = {}, options = {})
     patientId: baseline.patientId || engine.patientId || null,
     claimMonth: baseline.claimMonth || engine.claimMonth || null,
     findings,
+    comparisonRows,
     baselineTotalPoints: baselineTotal,
     engineTotalPoints: engineTotal
   };
@@ -2644,6 +2765,10 @@ export function buildMonthlyBaselineDiagnosis({ sessions = [], baselineClaims = 
     (sum, diagnosis) => sum + diagnosis.findings.filter((finding) => finding.category === category).length,
     0
   );
+  const countComparisonStatus = (status) => diagnoses.reduce(
+    (sum, diagnosis) => sum + (diagnosis.comparisonRows || []).filter((row) => row.comparisonStatus === status).length,
+    0
+  );
   const missingPoints = diagnoses.reduce(
     (sum, diagnosis) => sum + diagnosis.findings.filter((finding) => finding.category === BASELINE_DIFF_CATEGORY.MISSING).reduce((acc, finding) => acc + finding.points, 0),
     0
@@ -2658,7 +2783,11 @@ export function buildMonthlyBaselineDiagnosis({ sessions = [], baselineClaims = 
       missingCandidatePoints: missingPoints,
       missingCandidateEstimatedYen: estimateReceiptYen(missingPoints),
       needsReviewCount: countCategory(BASELINE_DIFF_CATEGORY.REVIEW),
-      considerCount: countCategory(BASELINE_DIFF_CATEGORY.CONSIDER)
+      considerCount: countCategory(BASELINE_DIFF_CATEGORY.CONSIDER),
+      baselineOnlyCount: countComparisonStatus(BASELINE_COMPARISON_STATUS.BASELINE_ONLY),
+      engineOnlyCount: countComparisonStatus(BASELINE_COMPARISON_STATUS.ENGINE_ONLY),
+      bothDiffCount: countComparisonStatus(BASELINE_COMPARISON_STATUS.BOTH_DELTA),
+      matchedCount: countComparisonStatus(BASELINE_COMPARISON_STATUS.MATCHED)
     }
   };
 }
