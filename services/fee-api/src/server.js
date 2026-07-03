@@ -16,6 +16,9 @@ import {
 import iconv from "iconv-lite";
 import {
   buildCandidateWorkbench,
+  buildMissingBillingReviewIssues,
+  buildIndicationReviewIssues,
+  claimCheckLookupCodes,
   buildReceiptCsv,
   buildReceiptDenshin,
   buildReceiptDraft,
@@ -3381,6 +3384,11 @@ async function calculatePreparedFeeSessionNow({
       now: input.now || new Date()
     })
   });
+  const indicationReviewIssues = await resolveIndicationReviewIssues({
+    feeCalculator,
+    session: calculationSession,
+    calculation: calculationResult
+  });
   const result = await timedCalculationStage({
     stage: "saveCalculation",
     orgId: context.session.orgId,
@@ -3404,7 +3412,9 @@ async function calculatePreparedFeeSessionNow({
           ...buildClaimRiskReviewIssues(calculationSession, {
             ...calculationResult,
             clinicalEvents: Array.isArray(prepared.clinicalEvents) ? prepared.clinicalEvents : []
-          })
+          }),
+          ...buildMissingBillingReviewIssues(claimCheckInput(calculationSession, calculationResult)),
+          ...indicationReviewIssues
         ],
         clinicalExtraction: prepared.clinicalExtraction || null,
         shadowCalculations: Array.isArray(prepared.shadowCalculations) ? prepared.shadowCalculations : [],
@@ -3490,6 +3500,102 @@ async function markFeeCalculationFailed({
     });
   } catch {
     // Preserve the original calculation error.
+  }
+}
+
+// 算定もれ/適応点検(fee-core claim-checks)へ渡す正規化claimを、
+// 当社算定の明細(judgement区分はB1でengineが付与済み)とセッションから組み立てる。
+function claimCheckInput(session = {}, calculation = {}) {
+  const lineItems = Array.isArray(calculation.lineItems) ? calculation.lineItems : [];
+  const patient = session.patientSnapshot || {};
+  return {
+    isInpatient: String(session.setting || "") === "inpatient",
+    serviceDate: session.serviceDate || "",
+    sex: normalizeCheckSex(patient.sex),
+    ageYears: patientAgeYears(patient.birthDate || patient.birth_date, session.serviceDate),
+    items: lineItems.map((line) => ({
+      code: line.code || "",
+      name: line.name || "",
+      orderType: line.orderType || "",
+      judgementKind: line.judgementKind || "",
+      judgementGroup: line.judgementGroup || ""
+    })),
+    diseases: (Array.isArray(session.diagnoses) ? session.diagnoses : []).map((d) => ({
+      code: String(d?.code || d?.diseaseCode || d?.disease_code || "").trim(),
+      name: String(d?.name || d?.displayName || d?.display_name || "").trim(),
+      suspected: Boolean(d?.suspected) || /疑い/u.test(String(d?.name || d?.displayName || ""))
+    }))
+  };
+}
+
+// レセ電の男女区分に合わせる(1:男 2:女)。
+function normalizeCheckSex(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "male" || raw === "m" || raw === "1" || raw === "男") return "1";
+  if (raw === "female" || raw === "f" || raw === "2" || raw === "女") return "2";
+  return "";
+}
+
+function patientAgeYears(birthDate, serviceDate) {
+  const birth = new Date(String(birthDate || ""));
+  const service = new Date(String(serviceDate || "") || Date.now());
+  if (Number.isNaN(birth.getTime()) || Number.isNaN(service.getTime())) {
+    return null;
+  }
+  let age = service.getFullYear() - birth.getFullYear();
+  const beforeBirthday = service.getMonth() < birth.getMonth()
+    || (service.getMonth() === birth.getMonth() && service.getDate() < birth.getDate());
+  if (beforeBirthday) {
+    age -= 1;
+  }
+  return age >= 0 ? age : null;
+}
+
+// 適応/禁忌/併用点検(C)。checkLookup で必要マスタを引き reviewIssue[] を返す。
+// マスタ未取込・コード無し・lookup失敗のいずれでも算定本体は止めない(点検は補助)。
+async function resolveIndicationReviewIssues({ feeCalculator, session, calculation }) {
+  try {
+    if (!feeCalculator || typeof feeCalculator.checkLookup !== "function") {
+      return [];
+    }
+    const claim = claimCheckInput(session, calculation);
+    const codes = claimCheckLookupCodes(claim);
+    if (codes.drug_codes.length === 0 && codes.act_codes.length === 0) {
+      return [];
+    }
+    // カルテ由来の病名は名称主体でコードが薄い。適応/禁忌照合のため名称→傷病名コードを解決する。
+    await enrichClaimDiseaseCodes(feeCalculator, claim);
+    const lookupCodes = claimCheckLookupCodes(claim);
+    const lookup = await feeCalculator.checkLookup(lookupCodes);
+    return buildIndicationReviewIssues(claim, lookup);
+  } catch (error) {
+    logFeeApiError(error, { stage: "claim_check_indication" });
+    return [];
+  }
+}
+
+// claim.diseases のうちコード未解決のものを、名称から傷病名コードへ寄せる(病名コード化)。
+async function enrichClaimDiseaseCodes(feeCalculator, claim) {
+  if (typeof feeCalculator.resolveDiseases !== "function") {
+    return;
+  }
+  const diseases = Array.isArray(claim.diseases) ? claim.diseases : [];
+  const names = [...new Set(diseases.filter((d) => !d.code && d.name).map((d) => d.name))];
+  if (names.length === 0) {
+    return;
+  }
+  const response = await feeCalculator.resolveDiseases({ names });
+  const resolved = response?.resolved || {};
+  for (const disease of diseases) {
+    if (disease.code || !disease.name) {
+      continue;
+    }
+    const hit = resolved[disease.name];
+    // exact/partial で得たコードのみ採用(none は未解決のまま=無指摘で安全側)。
+    if (hit && hit.code && (hit.matchType === "exact" || hit.matchType === "partial")) {
+      disease.code = hit.code;
+      disease.suspected = Boolean(disease.suspected) || Boolean(hit.suspected);
+    }
   }
 }
 

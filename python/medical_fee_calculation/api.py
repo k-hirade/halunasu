@@ -28,11 +28,11 @@ def calculate_fee_session(payload: dict[str, Any]) -> dict[str, Any]:
             sequence_number=1,
             auto_master_sources=True,
         )
+        result_dict = result.to_dict()
+        # 点検(算定もれ等)で使う診療行為メタ(検査判断区分・区分)を明細に付与する。conn を閉じる前に解決する。
+        line_items = _fee_line_items(result_dict["lines"], conn=conn)
     finally:
         conn.close()
-
-    result_dict = result.to_dict()
-    line_items = _fee_line_items(result_dict["lines"])
     return {
         "calculationResult": {
             "provider": "medical_fee_calculation",
@@ -178,28 +178,67 @@ def _unique_strings(values: list[str]) -> list[str]:
     return result
 
 
-def _fee_line_items(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _fee_line_items(lines: list[dict[str, Any]], conn: Any = None) -> list[dict[str, Any]]:
+    codes = [str(line.get("code")) for line in lines if line.get("code")]
+    procedure_meta = _procedure_meta_map(conn, codes) if conn is not None else {}
     result: list[dict[str, Any]] = []
     for index, line in enumerate(lines):
         coverage = _line_coverage(line)
-        result.append(
-            {
-                "lineId": f"line_{index + 1}",
-                "code": line.get("code"),
-                "name": line.get("name"),
-                "orderType": _order_type_for_source(line.get("source")),
-                "points": line.get("points") or 0,
-                "quantity": line.get("quantity") or 1,
-                "totalPoints": line.get("total_points") or 0,
-                "status": line.get("status") or "candidate",
-                "reason": line.get("reason"),
-                "source": line.get("source") or "medical_fee_calculation",
-                "coverage": coverage,
-                "supportLevel": coverage["supportLevel"],
-                "reviewRequired": coverage["reviewRequired"],
-            }
-        )
+        item = {
+            "lineId": f"line_{index + 1}",
+            "code": line.get("code"),
+            "name": line.get("name"),
+            "orderType": _order_type_for_source(line.get("source")),
+            "points": line.get("points") or 0,
+            "quantity": line.get("quantity") or 1,
+            "totalPoints": line.get("total_points") or 0,
+            "status": line.get("status") or "candidate",
+            "reason": line.get("reason"),
+            "source": line.get("source") or "medical_fee_calculation",
+            "coverage": coverage,
+            "supportLevel": coverage["supportLevel"],
+            "reviewRequired": coverage["reviewRequired"],
+        }
+        meta = procedure_meta.get(str(line.get("code") or ""))
+        if meta:
+            # 算定もれ点検(検査判断料等)で使う診療行為メタ。存在する項目のみ付与。
+            for key in ("judgementKind", "judgementGroup", "bundleLabGroup", "chapter", "section"):
+                if meta.get(key):
+                    item[key] = meta[key]
+        result.append(item)
     return result
+
+
+def _procedure_meta_map(conn: Any, codes: list[str]) -> dict[str, dict[str, str]]:
+    """診療行為コード群のメタ(検査判断区分・グループ・区分)を1クエリで引く。"""
+    unique = _unique_strings(codes)
+    if not unique:
+        return {}
+    placeholders = ",".join("?" for _ in unique)
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT code, judgement_kind, judgement_group, bundle_lab_group, chapter, section
+            FROM medical_procedures
+            WHERE code IN ({placeholders})
+            """,
+            unique,
+        ).fetchall()
+    except Exception:  # noqa: BLE001 - メタ付与は点検補助であり、失敗しても算定本体は返す。
+        return {}
+    meta: dict[str, dict[str, str]] = {}
+    for row in rows:
+        code = str(row["code"])
+        if code in meta:
+            continue
+        meta[code] = {
+            "judgementKind": (row["judgement_kind"] or "").strip(),
+            "judgementGroup": (row["judgement_group"] or "").strip().lstrip("0"),
+            "bundleLabGroup": (row["bundle_lab_group"] or "").strip(),
+            "chapter": (row["chapter"] or "").strip(),
+            "section": (row["section"] or "").strip(),
+        }
+    return meta
 
 
 def _calculation_coverage(result: dict[str, Any], line_items: list[dict[str, Any]]) -> dict[str, Any]:

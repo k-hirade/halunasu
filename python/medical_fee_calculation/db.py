@@ -623,6 +623,80 @@ WHERE chapter = '2'
   AND judgement_group IS NOT NULL
   AND judgement_group <> ''
   AND judgement_group <> '0';
+
+-- ============================================================================
+-- レセ点検マスタ(支払基金コンピュータチェックマスタ + 傷病名/修飾語)。
+-- 算定本体では使わず、適応/禁忌/併用/病名整備の点検(fee-core claim-checks)が参照する。
+-- スキーマは recept-checker(official_import.py)の実績スキーマを踏襲。
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS diseases (
+    source_id INTEGER NOT NULL REFERENCES master_sources(id) ON DELETE CASCADE,
+    code TEXT NOT NULL,
+    name TEXT,
+    name_kana TEXT,
+    exchange_code TEXT,
+    icd10 TEXT,
+    single_flag TEXT,
+    effective_from TEXT,
+    effective_to TEXT,
+    raw_row_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_diseases_code ON diseases(code);
+CREATE INDEX IF NOT EXISTS idx_diseases_name ON diseases(name);
+
+CREATE TABLE IF NOT EXISTS disease_modifiers (
+    source_id INTEGER NOT NULL REFERENCES master_sources(id) ON DELETE CASCADE,
+    code TEXT NOT NULL,
+    name TEXT,
+    kubun TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_disease_modifiers_code ON disease_modifiers(code);
+
+CREATE TABLE IF NOT EXISTS cc_drug_indications (
+    source_id INTEGER NOT NULL REFERENCES master_sources(id) ON DELETE CASCADE,
+    drug_code TEXT NOT NULL,
+    disease_code TEXT,
+    sex TEXT,
+    age_min REAL,
+    age_max REAL,
+    check_kubun TEXT,
+    max_dose REAL,
+    max_days INTEGER,
+    tekigi TEXT,
+    ref_range TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cc_ind_drug ON cc_drug_indications(drug_code);
+
+CREATE TABLE IF NOT EXISTS cc_drug_contra_disease (
+    source_id INTEGER NOT NULL REFERENCES master_sources(id) ON DELETE CASCADE,
+    drug_code TEXT NOT NULL,
+    disease_code TEXT,
+    ref_range TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cc_contra_drug ON cc_drug_contra_disease(drug_code);
+
+CREATE TABLE IF NOT EXISTS cc_drug_interactions (
+    source_id INTEGER NOT NULL REFERENCES master_sources(id) ON DELETE CASCADE,
+    drug_a TEXT NOT NULL,
+    drug_b TEXT NOT NULL,
+    ref_range TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cc_inter_a ON cc_drug_interactions(drug_a);
+CREATE INDEX IF NOT EXISTS idx_cc_inter_b ON cc_drug_interactions(drug_b);
+
+CREATE TABLE IF NOT EXISTS cc_act_indications (
+    source_id INTEGER NOT NULL REFERENCES master_sources(id) ON DELETE CASCADE,
+    act_code TEXT NOT NULL,
+    disease_code TEXT,
+    sex TEXT,
+    age_min REAL,
+    age_max REAL,
+    nyugai TEXT,
+    utagai TEXT,
+    ref_range TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cc_act_code ON cc_act_indications(act_code);
 """
 
 

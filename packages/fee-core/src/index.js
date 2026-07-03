@@ -3,6 +3,15 @@ import {
   validateReviewDecisionInput
 } from "../../fee-contracts/src/index.js";
 
+export {
+  buildMissingBillingFindings,
+  buildMissingBillingReviewIssues,
+  buildIndicationFindings,
+  buildIndicationReviewIssues,
+  claimCheckLookupCodes,
+  findingToReviewIssue
+} from "./claim-checks.js";
+
 export function buildFeeSession(input = {}, options = {}) {
   const now = timestamp(options.now);
   const feeSessionId = options.feeSessionId || createId("fee");

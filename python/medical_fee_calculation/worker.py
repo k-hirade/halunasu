@@ -5,6 +5,7 @@ import sys
 from typing import Any
 
 from medical_fee_calculation.api import calculate_fee_session
+from medical_fee_calculation.checks_api import check_lookup, resolve_diseases
 from medical_fee_calculation.master_search import search_master
 
 
@@ -22,6 +23,10 @@ def main() -> None:
             operation = str(payload.get("op") or payload.get("operation") or "calculate").strip()
             if operation == "master_search":
                 result = search_master(payload)
+            elif operation == "check_lookup":
+                result = check_lookup(payload)
+            elif operation == "resolve_diseases":
+                result = resolve_diseases(payload)
             else:
                 result = calculate_fee_session(payload)
             response: dict[str, Any] = {

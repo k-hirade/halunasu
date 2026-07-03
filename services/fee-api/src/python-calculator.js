@@ -137,6 +137,46 @@ export class PythonFeeCalculator {
     });
   }
 
+  // レセ点検(適応/禁忌/併用/病名整備)のためのマスタ参照。コード群→該当行を返す薄いクエリ。
+  async checkLookup(payload = {}) {
+    await this.ensureMasterDbReady();
+    const request = { ...payload, db_path: this.masterDbPath };
+    const timeoutMs = Math.min(this.timeoutMs, 10000);
+    if (this.workerMode) {
+      return this.runWorkerJson({ ...request, op: "check_lookup" }, {
+        requestIdPrefix: "fee_check_lookup",
+        timeoutMs
+      });
+    }
+    return runPythonJson({
+      moduleName: "medical_fee_calculation.checks_api",
+      pythonBin: this.pythonBin,
+      pythonPath: this.pythonPath,
+      timeoutMs,
+      payload: request
+    });
+  }
+
+  // カルテ由来の病名名称を標準傷病名コードへ寄せる(適応/禁忌点検の実効化)。
+  async resolveDiseases(payload = {}) {
+    await this.ensureMasterDbReady();
+    const request = { ...payload, db_path: this.masterDbPath };
+    const timeoutMs = Math.min(this.timeoutMs, 10000);
+    if (this.workerMode) {
+      return this.runWorkerJson({ ...request, op: "resolve_diseases" }, {
+        requestIdPrefix: "fee_resolve_diseases",
+        timeoutMs
+      });
+    }
+    return runPythonJson({
+      moduleName: "medical_fee_calculation.checks_api",
+      pythonBin: this.pythonBin,
+      pythonPath: this.pythonPath,
+      timeoutMs,
+      payload: { ...request, op: "resolve_diseases" }
+    });
+  }
+
   // 既存レセ(UKE/レセコンCSV)を baselineClaims に変換する(Python adapter経由)。マスタDB不要。
   async parseBaseline(payload = {}) {
     return runPythonJson({

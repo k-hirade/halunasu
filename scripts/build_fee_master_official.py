@@ -10,6 +10,7 @@ from pathlib import Path
 from shutil import copyfileobj
 from urllib.request import Request, urlopen
 
+from medical_fee_calculation.check_masters_import import import_check_masters
 from medical_fee_calculation.db import connect, initialize_schema
 from medical_fee_calculation.standard_build import (
     build_standard_master_db,
@@ -50,6 +51,16 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=45.0)
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--skip-download", action="store_true")
+    # レセ点検マスタ(支払基金チェックマスタ+傷病名/修飾語)を同じDBへ同梱する(任意)。
+    # 既定は無効(配布サイズ増を避ける)。指定時のみ、展開済みディレクトリから取り込む。
+    parser.add_argument(
+        "--check-master-raw",
+        type=Path,
+        default=None,
+        help="点検マスタ(b_*/z_*/IY_Tekio 等)を展開したディレクトリ。指定時のみ同梱する。",
+    )
+    parser.add_argument("--check-master-label", default="", help="点検マスタ版の表示名(例: 令和8年度版)")
+    parser.add_argument("--check-master-effective", default="", help="点検マスタ適用開始年月(YYYYMM)")
     args = parser.parse_args()
 
     if args.output.exists() and not args.overwrite:
@@ -86,6 +97,21 @@ def main() -> int:
     failed = [result for result in results if result.status != "ok"]
     if failed:
         return 4
+
+    # 任意: レセ点検マスタ(適応/禁忌/併用/傷病名/修飾語)を同じDBへ同梱する。
+    # gzip 圧縮の前に取り込む(圧縮対象へ含めるため)。
+    if args.check_master_raw is not None:
+        if not args.check_master_raw.is_dir():
+            print(f"エラー: --check-master-raw {args.check_master_raw} がありません", file=sys.stderr)
+            return 5
+        print(f"点検マスタ取込: {args.check_master_raw} → {args.output}")
+        counts = import_check_masters(
+            args.check_master_raw,
+            args.output,
+            version_label=args.check_master_label,
+            effective_from=args.check_master_effective,
+        )
+        print(f"点検マスタ取込完了: 合計 {sum(counts.values()):,}件")
 
     if not args.no_gzip:
         gzip_output = args.gzip_output or args.output.with_suffix(args.output.suffix + ".gz")

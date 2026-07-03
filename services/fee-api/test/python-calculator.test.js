@@ -60,6 +60,48 @@ test("routes master search through persistent worker and caches identical querie
   assert.equal(calculator.readiness().masterSearchCacheEntries, 1);
 });
 
+test("checkLookup routes through the worker with op check_lookup", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "fee-check-lookup-"));
+  const dbPath = path.join(root, "standard-master.sqlite");
+  writeFileSync(dbPath, "sqlite fixture");
+
+  const calculator = new PythonFeeCalculator({ masterDbPath: dbPath, workerMode: true });
+  let seen = null;
+  calculator.runWorkerJson = async (payload, options) => {
+    seen = { payload, options };
+    return { drugIndications: { "600": [] }, diseaseNames: {} };
+  };
+
+  const result = await calculator.checkLookup({ drug_codes: ["600"], disease_codes: ["A"] });
+
+  assert.equal(seen.payload.op, "check_lookup");
+  assert.equal(seen.payload.db_path, dbPath);
+  assert.deepEqual(seen.payload.drug_codes, ["600"]);
+  assert.equal(seen.options.requestIdPrefix, "fee_check_lookup");
+  assert.deepEqual(result.drugIndications["600"], []);
+});
+
+test("resolveDiseases routes through the worker with op resolve_diseases", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "fee-resolve-dis-"));
+  const dbPath = path.join(root, "standard-master.sqlite");
+  writeFileSync(dbPath, "sqlite fixture");
+
+  const calculator = new PythonFeeCalculator({ masterDbPath: dbPath, workerMode: true });
+  let seen = null;
+  calculator.runWorkerJson = async (payload, options) => {
+    seen = { payload, options };
+    return { resolved: { "高血圧症": { code: "8830592", matchType: "exact", suspected: false } } };
+  };
+
+  const result = await calculator.resolveDiseases({ names: ["高血圧症"] });
+
+  assert.equal(seen.payload.op, "resolve_diseases");
+  assert.equal(seen.payload.db_path, dbPath);
+  assert.deepEqual(seen.payload.names, ["高血圧症"]);
+  assert.equal(seen.options.requestIdPrefix, "fee_resolve_diseases");
+  assert.equal(result.resolved["高血圧症"].code, "8830592");
+});
+
 test("worker timeout fails only the timed-out request and re-dispatches survivors", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "fee-worker-timeout-"));
   const dbPath = path.join(root, "standard-master.sqlite");
