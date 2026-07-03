@@ -60,6 +60,41 @@ test("routes master search through persistent worker and caches identical querie
   assert.equal(calculator.readiness().masterSearchCacheEntries, 1);
 });
 
+test("worker timeout fails only the timed-out request and re-dispatches survivors", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "fee-worker-timeout-"));
+  const dbPath = path.join(root, "standard-master.sqlite");
+  writeFileSync(dbPath, "sqlite fixture");
+
+  const calculator = new PythonFeeCalculator({ masterDbPath: dbPath, workerMode: true });
+
+  let workerCount = 0;
+  const makeFakeWorker = () => ({
+    killed: false,
+    stdin: { write() {} },
+    kill() { this.killed = true; }
+  });
+  calculator.ensureWorker = function ensureWorker() {
+    if (this.worker && !this.worker.killed) {
+      return this.worker;
+    }
+    workerCount += 1;
+    this.worker = makeFakeWorker();
+    return this.worker;
+  };
+
+  // reqA は応答せずタイムアウトさせる。reqB は巻き込まれず新ワーカーで完了させる。
+  const slow = calculator.runWorkerJson({ q: "A" }, { timeoutMs: 40 });
+  const survivor = calculator.runWorkerJson({ q: "B" }, { timeoutMs: 5000 });
+
+  await assert.rejects(slow, /timed out/u);
+
+  // 再送後、生存リクエスト(同一 requestId)へ新ワーカーが応答する。
+  calculator.handleWorkerLine(JSON.stringify({ id: "fee_calc_2", ok: true, result: { q: "B" } }));
+
+  assert.deepEqual(await survivor, { q: "B" });
+  assert.equal(workerCount, 2);
+});
+
 test("reports detailed master readiness with checksums and source metadata", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "fee-master-readyz-"));
   const dbPath = path.join(root, "standard-master.sqlite");

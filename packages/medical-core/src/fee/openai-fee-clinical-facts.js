@@ -440,7 +440,9 @@ export async function extractFeeClinicalFactsWithOpenAi({
 
 function safeSessionContext(context = {}) {
   return {
-    patientDisplayName: context.patientDisplayName || "",
+    // 患者氏名は要配慮個人情報であり、臨床イベント抽出には不要なため外部AIへ構造化フィールドとしては送らない。
+    // 氏名の有無だけを非識別のフラグで伝える(本人/家族の判別はカルテ本文中の 本人/母/父/家族 等の語で行う)。
+    patientDisplayNameRedacted: Boolean(String(context.patientDisplayName || "").trim()),
     facilityName: context.facilityName || "",
     departmentName: context.departmentName || "",
     serviceDate: context.serviceDate || "",

@@ -15,6 +15,9 @@ const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const DEFAULT_MASTER_SEARCH_CACHE_MAX_ENTRIES = 2000;
 const DEFAULT_MASTER_SEARCH_CACHE_TTL_MS = 600_000;
 const DEFAULT_MASTER_METADATA_CACHE_TTL_MS = 60_000;
+// ワーカータイムアウト時、巻き込まれた待機リクエストを新ワーカーへ再送する最大試行回数。
+// これを超えたら該当リクエストも失敗させ、無限再送を防ぐ。
+const WORKER_MAX_DISPATCH_ATTEMPTS = 2;
 
 export function createFeeCalculatorFromEnv(env = process.env) {
   const gzipPath = env.FEE_MASTER_DB_GZIP_PATH || env.MEDICAL_FEE_MASTER_DB_GZIP_PATH || "";
@@ -266,23 +269,57 @@ export class PythonFeeCalculator {
   }
 
   runWorkerJson(payload, options = {}) {
-    const child = this.ensureWorker();
     const requestId = `${options.requestIdPrefix || "fee_calc"}_${++this.workerRequestCounter}`;
     const timeoutMs = options.timeoutMs || this.timeoutMs;
 
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.workerPending.delete(requestId);
-        this.stopWorker();
-        reject(feeCalculationTimeoutError());
-      }, timeoutMs);
-      this.workerPending.set(requestId, {
+      this.dispatchWorkerRequest({
+        requestId,
+        payload,
+        timeoutMs,
         resolve,
         reject,
-        timer
+        timer: null,
+        attempts: 0
       });
-      child.stdin.write(`${JSON.stringify({ id: requestId, payload })}\n`);
     });
+  }
+
+  dispatchWorkerRequest(entry) {
+    const child = this.ensureWorker();
+    entry.attempts += 1;
+    entry.timer = setTimeout(() => this.handleWorkerRequestTimeout(entry.requestId), entry.timeoutMs);
+    this.workerPending.set(entry.requestId, entry);
+    child.stdin.write(`${JSON.stringify({ id: entry.requestId, payload: entry.payload })}\n`);
+  }
+
+  // タイムアウトは「該当リクエストのみ」失敗させ、待機中の他リクエストは新しいワーカーへ再送する。
+  // 従来は timeout→worker全kill→close で pending を一括 reject しており、重い1件が全ユーザを巻き込んでいた。
+  // 算定は入力に対する純粋関数なので、生存リクエストの再送(冪等)は安全。再送は上限回数で打ち切る。
+  handleWorkerRequestTimeout(requestId) {
+    const timedOut = this.workerPending.get(requestId);
+    if (!timedOut) {
+      return;
+    }
+    const survivors = [];
+    for (const [id, entry] of this.workerPending.entries()) {
+      clearTimeout(entry.timer);
+      if (id === requestId) {
+        continue;
+      }
+      if (entry.attempts >= WORKER_MAX_DISPATCH_ATTEMPTS) {
+        entry.reject(feeCalculationTimeoutError());
+      } else {
+        survivors.push(entry);
+      }
+    }
+    this.workerPending.clear();
+    // 詰まった可能性のあるワーカーを停止(pending は空なので close ハンドラの一括 reject は発生しない)。
+    this.stopWorker();
+    timedOut.reject(feeCalculationTimeoutError());
+    for (const entry of survivors) {
+      this.dispatchWorkerRequest(entry);
+    }
   }
 
   executeMasterSearch(payload) {
@@ -392,9 +429,17 @@ export class PythonFeeCalculator {
       this.workerStderrBuffer = `${this.workerStderrBuffer}${chunk}`.slice(-8000);
     });
     child.on("error", (error) => {
+      // タイムアウト再起動で置き換えられた古いワーカーの遅延イベントは、
+      // 新ワーカーの pending を巻き込まないよう無視する。
+      if (this.worker !== child) {
+        return;
+      }
       this.rejectPendingWorkerRequests(error);
     });
     child.on("close", (code) => {
+      if (this.worker !== child) {
+        return;
+      }
       const error = new Error(this.workerStderrBuffer.trim() || `medical fee worker exited with code ${code}`);
       error.name = "FeeCalculationError";
       error.statusCode = 502;

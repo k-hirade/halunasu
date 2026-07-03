@@ -10,9 +10,10 @@
 
 ---
 
-> **対応履歴（2026-07-02, branch `fix/p1-p4-cross-theme`）**
-> - **高-1（P1）✅**: `listSessionsForMonthlyView(feeStore, orgId, claimMonth)` を新設し、月指定時は `listSessionsForClaimMonth`（claimMonthインデックスクエリ）を使用。`monthly-summary` / `monthly-bulk-candidates` / `monthly-bulk-jobs` / `monthly-receipt` / エクスポート経路のフルスキャンを解消。Firestore store は `claimMonth` 欠損の既存データを `serviceDate` 月範囲で補完し、上限超過時は静かに切り捨てず `FEE_MONTHLY_VIEW_SESSION_LIMIT` に基づく明示エラーにする。fee-api 全テスト green。
-> - 未対応（別フェーズ）: 高-2（Python算定ワーカー）、中-1（fee-webコード分割）、中-3（gateway逐語/SOAP分離）。
+> **対応履歴（2026-07-02〜03, branch `fix/p1-p4-cross-theme`）**
+> - **高-1（P1）✅**: `listSessionsForMonthlyView(feeStore, orgId, claimMonth)` を新設し、月指定時は `listSessionsForClaimMonth`（claimMonthインデックスクエリ）を使用。`monthly-summary` / `monthly-bulk-candidates` / `monthly-bulk-jobs` / `monthly-receipt` / エクスポート経路のフルスキャンを解消。Firestore store は `claimMonth` 欠損の既存データを `serviceDate` 月範囲で補完（`mergeMonthlySessionSnapshots`）し、上限超過時は静かに切り捨てず `FEE_MONTHLY_VIEW_SESSION_LIMIT`（既定50,000）に基づく明示エラーにする。fee-api 127テスト green。
+> - **高-2（一部）✅（T1-2）**: Python算定ワーカーの**タイムアウト巻き添えを解消**。`runWorkerJson` を `dispatchWorkerRequest`＋`handleWorkerRequestTimeout` に分離し、タイムアウトは該当リクエストのみ失敗させ、待機中リクエストは新ワーカーへ**冪等再送**（最大 `WORKER_MAX_DISPATCH_ATTEMPTS`=2 回）。旧ワーカーの遅延 close/error は `this.worker !== child` ガードで新pendingを巻き込まない。専用テスト追加。**残り（別フェーズ）**: SQLite接続/スキーマの使い回し（`api.py` 毎回 `initialize_schema`）、ワーカープール化。
+> - 未対応（別フェーズ）: 高-2残り（接続再利用/プール）、中-1（fee-webコード分割）、中-3（gateway逐語/SOAP分離）。
 
 ## 高-1: 月次サマリが全セッション・全期間フルスキャン
 

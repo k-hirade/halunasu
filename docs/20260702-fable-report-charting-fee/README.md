@@ -28,8 +28,14 @@
 | P3 | 本番CORSの許可オリジン厳格化（preview/localhostを非本番限定） | ✅ 実装済 | 追加CORSテスト green |
 | P4a | アクセストークンのlocalStorage永続化を廃止（same-origin構成） | ✅ 実装済 | web-ui/auth テスト green |
 | P4b | CSP nonce化（`unsafe-inline`排除・middleware動的付与） | ✅ 実装済 | 本番ビルド＋実起動でnonce一致を確認 |
+| T1-1 | P1追補: claimMonth欠損の`serviceDate`補完＋上限明示エラー | ✅ 実装済 | fee-api 127テスト green |
+| T1-2 | Python算定タイムアウトの巻き添え解消（該当のみ失敗＋冪等再送） | ✅ 実装済 | 専用テスト＋fee-api green |
+| T1-3 | OpenAI送信の患者氏名（構造化フィールド）を除去 | ✅ 実装済 | 専用テスト＋medical-core green |
 
-⚠️ **P4b は本番反映前に Netlify プレビューでの実機スモークが必須**（Netlifyエッジ＋Next 15の nonce 伝播は本レポジトリのローカル本番起動では確認済みだが、Netlifyランタイム固有の挙動は要現地確認）。
+⚠️ **本番反映前の残作業**:
+- **P4b**: Netlify プレビューでの実機スモーク必須（Netlifyエッジ＋Next 15 nonce 伝播はローカル本番起動では確認済み、Netlifyランタイム固有挙動は要現地確認）。
+- **T1-3**: SOAP→算定 E2Eゴールドの回帰確認（`npm run eval:fee-soap-e2e`。抽出プロンプト入力が変化したため）。**カルテ本文中の氏名は未マスク**（別フェーズ）。
+- **T1-2**: SQLite接続/スキーマ再利用・ワーカープール化は未対応（別フェーズ）。
 
 ## 深刻度の定義
 

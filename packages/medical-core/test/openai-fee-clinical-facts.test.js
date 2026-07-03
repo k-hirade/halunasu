@@ -98,6 +98,31 @@ test("fee clinical facts prompt preserves performed tests with normal or negativ
   assert.match(requestBody.instructions, /Use action_status=not_performed only when the clinical text says the act itself was not performed/);
 });
 
+test("fee clinical facts request does not send the patient display name to OpenAI", async () => {
+  let requestBody = null;
+
+  await withFetch(
+    async (url, options) => {
+      requestBody = JSON.parse(options.body);
+      return jsonResponse({ output_text: JSON.stringify(feeClinicalFactsPayload()) });
+    },
+    async () => {
+      await extractFeeClinicalFactsWithOpenAi({
+        apiKey: "test-key",
+        clinicalText: "S: 経過良好。",
+        sessionContext: { patientDisplayName: "山田 太郎", facilityName: "テスト医院" }
+      });
+    }
+  );
+
+  // 患者氏名(値)も、氏名を載せる構造化キー("patientDisplayName")も外部AIへ送信されない。
+  assert.equal(requestBody.input.includes("山田 太郎"), false);
+  assert.doesNotMatch(requestBody.input, /"patientDisplayName"\s*:/u);
+  // 氏名の有無は非識別フラグとしてのみ渡る。施設名など氏名以外の文脈は維持。
+  assert.match(requestBody.input, /"patientDisplayNameRedacted": true/u);
+  assert.match(requestBody.input, /テスト医院/u);
+});
+
 test("fee clinical facts schema is valid for OpenAI strict json_schema", async () => {
   let requestBody = null;
 
