@@ -152,11 +152,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710",
           "160182770",
           "160095710"
@@ -181,6 +182,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -342,11 +349,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 473,
+        "totalPoints": 475,
         "candidateCodes": [
           "160169450",
           "160044110",
           "112007410",
+          "180820010",
           "160062110"
         ],
         "engineStatus": "completed"
@@ -369,6 +377,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160062110",
@@ -513,10 +527,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 274,
+        "totalPoints": 276,
         "candidateCodes": [
           "620008991",
           "112007410",
+          "180820010",
           "120001010",
           "120001210",
           "140032010"
@@ -537,6 +552,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "120001010",
@@ -678,9 +699,10 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 359,
+        "totalPoints": 361,
         "candidateCodes": [
           "111000110",
+          "180819910",
           "120002910",
           "120004270"
         ],
@@ -692,6 +714,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "120002910",
@@ -838,9 +866,10 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1096,
+        "totalPoints": 1098,
         "candidateCodes": [
           "112007410",
+          "180820010",
           "170011810",
           "170028810"
         ],
@@ -852,6 +881,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "170011810",
@@ -998,9 +1033,10 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 444,
+        "totalPoints": 446,
         "candidateCodes": [
           "111000110",
+          "180819910",
           "170000410",
           "170027910"
         ],
@@ -1012,6 +1048,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "170000410",
@@ -1695,10 +1737,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 352,
+        "totalPoints": 354,
         "candidateCodes": [
           "160169450",
           "112007410",
+          "180820010",
           "160062110"
         ],
         "engineStatus": "completed"
@@ -1715,6 +1758,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160062110",
@@ -1831,9 +1880,10 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 359,
+        "totalPoints": 361,
         "candidateCodes": [
           "111000110",
+          "180819910",
           "120002910",
           "120004270"
         ],
@@ -1845,6 +1895,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "120002910",
@@ -1982,11 +2038,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710"
         ],
         "engineStatus": "completed"
@@ -2009,6 +2066,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -2147,11 +2210,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "112007410",
+          "180820010",
           "160061810",
           "160062110",
           "160095710"
@@ -2176,6 +2240,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061810",
@@ -2322,10 +2392,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 700,
+        "totalPoints": 702,
         "candidateCodes": [
           "160230050",
           "111000110",
+          "180819910",
           "160062110",
           "160095710"
         ],
@@ -2343,6 +2414,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160062110",
@@ -2478,9 +2555,10 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1311,
+        "totalPoints": 1313,
         "candidateCodes": [
           "111000110",
+          "180819910",
           "170011810",
           "170028810"
         ],
@@ -2492,6 +2570,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "170011810",
@@ -2626,9 +2710,10 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 286,
+        "totalPoints": 288,
         "candidateCodes": [
           "112007410",
+          "180820010",
           "170000410",
           "170027910",
           "170000210"
@@ -2641,6 +2726,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "170000410",
@@ -2786,11 +2877,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 398,
+        "totalPoints": 400,
         "candidateCodes": [
           "160000310",
           "160000410",
           "111000110",
+          "180819910",
           "160061710",
           "160095710"
         ],
@@ -2814,6 +2906,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -4359,9 +4457,10 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 136,
+        "totalPoints": 138,
         "candidateCodes": [
           "112007410",
+          "180820010",
           "120002910"
         ],
         "engineStatus": "completed"
@@ -4372,6 +4471,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "120002910",
@@ -4501,9 +4606,10 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 229,
+        "totalPoints": 231,
         "candidateCodes": [
           "112007410",
+          "180820010",
           "170000410",
           "170027910"
         ],
@@ -4515,6 +4621,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "170000410",
@@ -4655,10 +4767,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 596,
+        "totalPoints": 598,
         "candidateCodes": [
           "160044110",
           "111000110",
+          "180819910",
           "160062110",
           "160095710"
         ],
@@ -4676,6 +4789,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160062110",
@@ -4816,10 +4935,11 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 485,
+        "totalPoints": 487,
         "candidateCodes": [
           "160230050",
           "112007410",
+          "180820010",
           "160062110",
           "160095710"
         ],
@@ -4837,6 +4957,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160062110",
@@ -4975,9 +5101,10 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 359,
+        "totalPoints": 361,
         "candidateCodes": [
           "111000110",
+          "180819910",
           "120002910",
           "120004270"
         ],
@@ -4989,6 +5116,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "120002910",
@@ -7074,11 +7207,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710"
         ],
         "engineStatus": "completed"
@@ -7101,6 +7235,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -7927,11 +8067,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710",
           "160182770",
           "160095710"
@@ -7956,6 +8097,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -8250,11 +8397,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "112007410",
+          "180820010",
           "160061810",
           "160062110",
           "160095710"
@@ -8279,6 +8427,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061810",
@@ -8567,11 +8721,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710"
         ],
         "engineStatus": "completed"
@@ -8594,6 +8749,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -9420,11 +9581,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710",
           "160182770",
           "160095710"
@@ -9449,6 +9611,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -9744,11 +9912,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "112007410",
+          "180820010",
           "160061810",
           "160062110",
           "160095710"
@@ -9773,6 +9942,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061810",
@@ -10067,11 +10242,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710"
         ],
         "engineStatus": "completed"
@@ -10094,6 +10270,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -10931,11 +11113,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710",
           "160182770",
           "160095710"
@@ -10960,6 +11143,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -11257,11 +11446,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "112007410",
+          "180820010",
           "160061810",
           "160062110",
           "160095710"
@@ -11286,6 +11476,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061810",
@@ -11578,11 +11774,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710"
         ],
         "engineStatus": "completed"
@@ -11605,6 +11802,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -12440,11 +12643,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710",
           "160182770",
           "160095710"
@@ -12469,6 +12673,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -12768,11 +12978,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "112007410",
+          "180820010",
           "160061810",
           "160062110",
           "160095710"
@@ -12797,6 +13008,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061810",
@@ -13091,11 +13308,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710"
         ],
         "engineStatus": "completed"
@@ -13118,6 +13336,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -13961,11 +14185,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710",
           "160182770",
           "160095710"
@@ -13990,6 +14215,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -14291,11 +14522,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "112007410",
+          "180820010",
           "160061810",
           "160062110",
           "160095710"
@@ -14320,6 +14552,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061810",
@@ -14612,11 +14850,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710"
         ],
         "engineStatus": "completed"
@@ -14639,6 +14878,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -15481,11 +15726,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710",
           "160182770",
           "160095710"
@@ -15510,6 +15756,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -15811,11 +16063,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "112007410",
+          "180820010",
           "160061810",
           "160062110",
           "160095710"
@@ -15840,6 +16093,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061810",
@@ -16133,11 +16392,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710"
         ],
         "engineStatus": "completed"
@@ -16160,6 +16420,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -16996,11 +17262,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "112007410",
+          "180820010",
           "160061710",
           "160182770",
           "160095710"
@@ -17025,6 +17292,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061710",
@@ -17323,11 +17596,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160008010",
           "160054710",
           "112007410",
+          "180820010",
           "160061810",
           "160062110",
           "160095710"
@@ -17352,6 +17626,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "160061810",
@@ -17638,12 +17918,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -17671,6 +17952,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -18436,14 +18723,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
           "160182770",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -18483,6 +18771,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -18749,14 +19043,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "160061810",
           "160062110",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -18796,6 +19091,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -19176,12 +19477,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 452,
+        "totalPoints": 454,
         "candidateCodes": [
           "160169450",
           "160062110",
           "160182770",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -19209,6 +19511,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -19467,12 +19775,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 596,
+        "totalPoints": 598,
         "candidateCodes": [
           "160044110",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -19500,6 +19809,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -19887,12 +20202,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 700,
+        "totalPoints": 702,
         "candidateCodes": [
           "160230050",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -19920,6 +20236,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -20298,9 +20620,10 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 291,
+        "totalPoints": 293,
         "candidateCodes": [
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -20310,6 +20633,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -20587,11 +20916,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 274,
+        "totalPoints": 276,
         "candidateCodes": [
           "140032010",
           "620008991",
           "112007410",
+          "180820010",
           "120001010",
           "120001210"
         ],
@@ -20617,6 +20947,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "120001010",
@@ -20884,11 +21220,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 229,
+        "totalPoints": 231,
         "candidateCodes": [
           "170000410",
           "170027910",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -20910,6 +21247,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -21429,12 +21772,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 286,
+        "totalPoints": 288,
         "candidateCodes": [
           "170000410",
           "170027910",
           "170000210",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -21462,6 +21806,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -21718,11 +22068,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1096,
+        "totalPoints": 1098,
         "candidateCodes": [
           "170011810",
           "170028810",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -21744,6 +22095,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -22131,11 +22488,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1311,
+        "totalPoints": 1313,
         "candidateCodes": [
           "170011810",
           "170028810",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -22157,6 +22515,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -22547,12 +22911,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -22580,6 +22945,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -22979,14 +23350,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
           "160182770",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -23026,6 +23398,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -23296,14 +23674,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "160061810",
           "160062110",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -23343,6 +23722,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -23864,12 +24249,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 452,
+        "totalPoints": 454,
         "candidateCodes": [
           "160169450",
           "160062110",
           "160182770",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -23897,6 +24283,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -24160,12 +24552,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 596,
+        "totalPoints": 598,
         "candidateCodes": [
           "160044110",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -24193,6 +24586,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -24588,12 +24987,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 700,
+        "totalPoints": 702,
         "candidateCodes": [
           "160230050",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -24621,6 +25021,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -25001,9 +25407,10 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 291,
+        "totalPoints": 293,
         "candidateCodes": [
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -25013,6 +25420,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -25289,11 +25702,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 274,
+        "totalPoints": 276,
         "candidateCodes": [
           "140032010",
           "620008991",
           "112007410",
+          "180820010",
           "120001010",
           "120001210"
         ],
@@ -25319,6 +25733,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         },
         {
           "code": "120001010",
@@ -25587,11 +26007,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 229,
+        "totalPoints": 231,
         "candidateCodes": [
           "170000410",
           "170027910",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -25613,6 +26034,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -26250,12 +26677,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 286,
+        "totalPoints": 288,
         "candidateCodes": [
           "170000410",
           "170027910",
           "170000210",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -26283,6 +26711,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -26536,11 +26970,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1096,
+        "totalPoints": 1098,
         "candidateCodes": [
           "170011810",
           "170028810",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -26562,6 +26997,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -26816,11 +27257,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1311,
+        "totalPoints": 1313,
         "candidateCodes": [
           "170011810",
           "170028810",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -26842,6 +27284,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -27228,12 +27676,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -27261,6 +27710,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -27648,14 +28103,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
           "160182770",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -27695,6 +28151,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -27951,14 +28413,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "160061810",
           "160062110",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -27998,6 +28461,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -28369,12 +28838,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 452,
+        "totalPoints": 454,
         "candidateCodes": [
           "160169450",
           "160062110",
           "160182770",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -28402,6 +28872,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -28652,12 +29128,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 596,
+        "totalPoints": 598,
         "candidateCodes": [
           "160044110",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -28685,6 +29162,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -29056,12 +29539,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 700,
+        "totalPoints": 702,
         "candidateCodes": [
           "160230050",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -29089,6 +29573,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -29577,12 +30067,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -29610,6 +30101,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -29996,14 +30493,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
           "160182770",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -30043,6 +30541,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -30299,14 +30803,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "160061810",
           "160062110",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -30346,6 +30851,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -30837,12 +31348,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 452,
+        "totalPoints": 454,
         "candidateCodes": [
           "160169450",
           "160062110",
           "160182770",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -30870,6 +31382,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -31119,12 +31637,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 596,
+        "totalPoints": 598,
         "candidateCodes": [
           "160044110",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -31152,6 +31671,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -31401,12 +31926,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 700,
+        "totalPoints": 702,
         "candidateCodes": [
           "160230050",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -31434,6 +31960,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -31802,12 +32334,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -31835,6 +32368,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -32217,14 +32756,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
           "160182770",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -32264,6 +32804,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -32520,14 +33066,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "160061810",
           "160062110",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -32567,6 +33114,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -32936,12 +33489,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 452,
+        "totalPoints": 454,
         "candidateCodes": [
           "160169450",
           "160062110",
           "160182770",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -32969,6 +33523,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -33218,12 +33778,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 596,
+        "totalPoints": 598,
         "candidateCodes": [
           "160044110",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -33251,6 +33812,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -33500,12 +34067,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 700,
+        "totalPoints": 702,
         "candidateCodes": [
           "160230050",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -33533,6 +34101,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -34148,12 +34722,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -34181,6 +34756,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -34441,14 +35022,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
           "160182770",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -34488,6 +35070,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -34864,14 +35452,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "160061810",
           "160062110",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -34911,6 +35500,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -35280,12 +35875,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 452,
+        "totalPoints": 454,
         "candidateCodes": [
           "160169450",
           "160062110",
           "160182770",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -35313,6 +35909,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -35684,12 +36286,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 596,
+        "totalPoints": 598,
         "candidateCodes": [
           "160044110",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -35717,6 +36320,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -35966,12 +36575,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 700,
+        "totalPoints": 702,
         "candidateCodes": [
           "160230050",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -35999,6 +36609,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -36367,12 +36983,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -36400,6 +37017,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -36660,14 +37283,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
           "160182770",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -36707,6 +37331,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -37085,14 +37715,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "160061810",
           "160062110",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -37132,6 +37763,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -37501,12 +38138,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 452,
+        "totalPoints": 454,
         "candidateCodes": [
           "160169450",
           "160062110",
           "160182770",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -37534,6 +38172,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -37909,12 +38553,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 596,
+        "totalPoints": 598,
         "candidateCodes": [
           "160044110",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -37942,6 +38587,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -38191,12 +38842,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 700,
+        "totalPoints": 702,
         "candidateCodes": [
           "160230050",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -38224,6 +38876,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -38714,12 +39372,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -38747,6 +39406,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -39007,14 +39672,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
           "160182770",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -39054,6 +39720,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -39310,14 +39982,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "160061810",
           "160062110",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -39357,6 +40030,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -39726,12 +40405,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 452,
+        "totalPoints": 454,
         "candidateCodes": [
           "160169450",
           "160062110",
           "160182770",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -39759,6 +40439,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -40130,12 +40816,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 596,
+        "totalPoints": 598,
         "candidateCodes": [
           "160044110",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -40163,6 +40850,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -40532,12 +41225,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 700,
+        "totalPoints": 702,
         "candidateCodes": [
           "160230050",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -40565,6 +41259,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -40933,12 +41633,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -40966,6 +41667,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -41226,14 +41933,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
           "160182770",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -41273,6 +41981,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -41763,14 +42477,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "160061810",
           "160062110",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -41810,6 +42525,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -42170,12 +42891,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 452,
+        "totalPoints": 454,
         "candidateCodes": [
           "160169450",
           "160062110",
           "160182770",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -42203,6 +42925,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -42446,12 +43174,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 596,
+        "totalPoints": 598,
         "candidateCodes": [
           "160044110",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -42479,6 +43208,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -42722,12 +43457,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 700,
+        "totalPoints": 702,
         "candidateCodes": [
           "160230050",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -42755,6 +43491,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -43236,12 +43978,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -43269,6 +44012,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -43522,14 +44271,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
           "160182770",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -43569,6 +44319,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -43819,14 +44575,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "160061810",
           "160062110",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -43866,6 +44623,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -44226,12 +44989,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 452,
+        "totalPoints": 454,
         "candidateCodes": [
           "160169450",
           "160062110",
           "160182770",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -44259,6 +45023,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -44624,12 +45394,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 596,
+        "totalPoints": 598,
         "candidateCodes": [
           "160044110",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -44657,6 +45428,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -44900,12 +45677,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 700,
+        "totalPoints": 702,
         "candidateCodes": [
           "160230050",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -44933,6 +45711,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -45292,12 +46076,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -45325,6 +46110,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -45816,14 +46607,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
           "160182770",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -45863,6 +46655,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -46235,14 +47033,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 422,
+        "totalPoints": 424,
         "candidateCodes": [
           "160054710",
           "160008010",
           "160061810",
           "160062110",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -46282,6 +47081,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -46642,12 +47447,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 452,
+        "totalPoints": 454,
         "candidateCodes": [
           "160169450",
           "160062110",
           "160182770",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -46675,6 +47481,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -46918,12 +47730,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 596,
+        "totalPoints": 598,
         "candidateCodes": [
           "160044110",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -46951,6 +47764,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -47194,12 +48013,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 700,
+        "totalPoints": 702,
         "candidateCodes": [
           "160230050",
           "160062110",
           "160095710",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -47227,6 +48047,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -47708,12 +48534,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 143,
+        "totalPoints": 145,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -47741,6 +48568,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -47994,14 +48827,15 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 283,
+        "totalPoints": 285,
         "candidateCodes": [
           "160000310",
           "160000410",
           "160061710",
           "160182770",
           "160095710",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -48041,6 +48875,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -48285,11 +49125,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 229,
+        "totalPoints": 231,
         "candidateCodes": [
           "170000410",
           "170027910",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -48311,6 +49152,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -48678,12 +49525,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 286,
+        "totalPoints": 288,
         "candidateCodes": [
           "170000410",
           "170027910",
           "170000210",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -48711,6 +49559,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -48956,11 +49810,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1096,
+        "totalPoints": 1098,
         "candidateCodes": [
           "170011810",
           "170028810",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -48982,6 +49837,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -49586,11 +50447,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1311,
+        "totalPoints": 1313,
         "candidateCodes": [
           "170011810",
           "170028810",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -49612,6 +50474,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -49857,11 +50725,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 229,
+        "totalPoints": 231,
         "candidateCodes": [
           "170000410",
           "170027910",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -49883,6 +50752,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -50131,12 +51006,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 286,
+        "totalPoints": 288,
         "candidateCodes": [
           "170000410",
           "170027910",
           "170000210",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -50164,6 +51040,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -50528,11 +51410,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1096,
+        "totalPoints": 1098,
         "candidateCodes": [
           "170011810",
           "170028810",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -50554,6 +51437,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -50922,11 +51811,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1311,
+        "totalPoints": 1313,
         "candidateCodes": [
           "170011810",
           "170028810",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -50948,6 +51838,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -51314,11 +52210,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 229,
+        "totalPoints": 231,
         "candidateCodes": [
           "170000410",
           "170027910",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -51340,6 +52237,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -51706,12 +52609,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 286,
+        "totalPoints": 288,
         "candidateCodes": [
           "170000410",
           "170027910",
           "170000210",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -51739,6 +52643,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -51985,11 +52895,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1096,
+        "totalPoints": 1098,
         "candidateCodes": [
           "170011810",
           "170028810",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -52011,6 +52922,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -52378,11 +53295,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1311,
+        "totalPoints": 1313,
         "candidateCodes": [
           "170011810",
           "170028810",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -52404,6 +53322,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -52769,11 +53693,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 229,
+        "totalPoints": 231,
         "candidateCodes": [
           "170000410",
           "170027910",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -52795,6 +53720,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -53160,12 +54091,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 286,
+        "totalPoints": 288,
         "candidateCodes": [
           "170000410",
           "170027910",
           "170000210",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -53193,6 +54125,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -53439,11 +54377,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1096,
+        "totalPoints": 1098,
         "candidateCodes": [
           "170011810",
           "170028810",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -53465,6 +54404,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -53951,11 +54896,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 1311,
+        "totalPoints": 1313,
         "candidateCodes": [
           "170011810",
           "170028810",
-          "111000110"
+          "111000110",
+          "180819910"
         ],
         "engineStatus": "completed"
       },
@@ -53977,6 +54923,12 @@
           "name": "初診料",
           "points": 291,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -54223,11 +55175,12 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 229,
+        "totalPoints": 231,
         "candidateCodes": [
           "170000410",
           "170027910",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -54249,6 +55202,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [
@@ -54496,12 +55455,13 @@
       },
       "expectedCalculation": {
         "assertionLevel": "exact",
-        "totalPoints": 286,
+        "totalPoints": 288,
         "candidateCodes": [
           "170000410",
           "170027910",
           "170000210",
-          "112007410"
+          "112007410",
+          "180820010"
         ],
         "engineStatus": "completed"
       },
@@ -54529,6 +55489,12 @@
           "name": "再診料",
           "points": 76,
           "source": "outpatient_basic_fee"
+        },
+        {
+          "code": "180820010",
+          "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+          "points": 2,
+          "source": "outpatient_price_support_add_on"
         }
       ],
       "evidence": [

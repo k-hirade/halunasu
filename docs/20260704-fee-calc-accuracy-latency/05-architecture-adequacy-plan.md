@@ -38,6 +38,10 @@
 
 ## 3. 計画（4フェーズ）
 
+> **実施状況（2026-07-05更新）**
+> - **P1-3 ✅ 完了（gold更新）**: 物価対応料ズレの根本原因を特定 — 導出ルール（`outpatient_basic.py` の `BasicFeeDerivedAddOnRule`, effective 2026-06-01）が **2026-06-16 にエンジン追加**（直前の rebaseline は 06-15）で、gold が一度も追随していなかった。公式の `scripts/rebaseline_fee_soap_e2e_v2_expected_points.mjs` を dry-run→差分検証→apply：**dataset/blueprints 各40件、全て+2点・追加は物価対応料のみ（再診32/初診8）・削除0・エラー0**。適用後の再dry-run差分0、`validate_fee_gold_dataset` green。
+> - **プロセス上の教訓（P1-2の根拠）**: 「エンジンのルール追加 → rebaseline 差分確認」がゲート化されていなかったのが直接原因。エンジン変更PRに rebaseline dry-run 差分の添付を必須化すべき。
+
 ### P1: 計測と守りの確立（反例を"検出できる"状態に）
 1. **フルgold STGラン**（391件 or 層化サンプル100件）で**実LLM込みの真のpass率・失敗分布**を測る（現状5-10件runのみ）。`--repeat 3` で **stability（同一ケース再現率）** を初計測。
 2. **CIゲート**: 決定論gold（オフライン138+）は毎PR必須。LLM系E2Eは**プロンプト版変更時に必須**。SafetyRatio（過大/過小の非対称）を採点に追加。
