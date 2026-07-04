@@ -20,16 +20,29 @@ export const BASELINE_COLUMN_FIELDS = [
   ["points", "点数列"],
   ["count", "回数列"],
   ["claim_month", "請求月列"],
-  ["medical_institution_code", "医療機関コード列"]
+  ["medical_institution_code", "医療機関コード列"],
+  // 任意: あると点検(年齢性別条件・入院判定)が有効になる
+  ["sex", "性別列（任意）"],
+  ["birth_date", "生年月日列（任意）"],
+  ["receipt_type", "レセプト種別列（任意）"]
 ];
 
 export const BASELINE_UKE_FIELDS = [
   ["line_code_index", "明細コード位置"],
   ["line_points_index", "明細点数位置"],
   ["line_count_index", "明細回数位置"],
+  ["re_type_index", "REレセプト種別位置"],
   ["re_name_index", "RE氏名位置"],
+  ["re_sex_index", "RE男女区分位置"],
+  ["re_birthdate_index", "RE生年月日位置"],
   ["ho_points_index", "HO請求点数位置"],
-  ["ho_days_index", "HO診療実日数位置"]
+  ["ho_days_index", "HO診療実日数位置"],
+  ["sy_code_index", "SY傷病名コード位置"],
+  ["sy_start_date_index", "SY診療開始日位置"],
+  ["sy_tenki_index", "SY転帰位置"],
+  ["sy_modifier_index", "SY修飾語位置"],
+  ["sy_name_index", "SY傷病名称位置"],
+  ["sy_main_index", "SY主傷病位置"]
 ];
 
 export const BASELINE_DIFF_CATEGORY_ORDER = { missing_candidate: 0, needs_review: 1, consider: 2 };
@@ -52,8 +65,16 @@ export const REPRODUCTION_FAILURE_STATUS = "reproduction_failed";
 
 export function emptyBaselineDiffOptions() {
   return {
-    columnMap: { patient_id: "", claim_month: "", medical_institution_code: "", code: "", name: "", points: "", count: "" },
-    ukeLayout: { line_code_index: "", line_points_index: "", line_count_index: "", re_name_index: "", ho_points_index: "", ho_days_index: "" },
+    columnMap: {
+      patient_id: "", claim_month: "", medical_institution_code: "", code: "", name: "", points: "", count: "",
+      sex: "", birth_date: "", receipt_type: ""
+    },
+    ukeLayout: {
+      line_code_index: "", line_points_index: "", line_count_index: "",
+      re_type_index: "", re_name_index: "", re_sex_index: "", re_birthdate_index: "",
+      ho_points_index: "", ho_days_index: "",
+      sy_code_index: "", sy_start_date_index: "", sy_tenki_index: "", sy_modifier_index: "", sy_name_index: "", sy_main_index: ""
+    },
     knownUnsupportedText: "",
     codeMapText: ""
   };
@@ -331,4 +352,68 @@ export function downloadTextFile(filename, text, mime) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// 売上改善診断(clinic-diagnosis)の出力整形。fee-core clinic-diagnosis.js と同形。
+// ---------------------------------------------------------------------------
+
+const CLINIC_SEVERITY_LABEL = Object.freeze({ error: "要修正", warning: "要確認", info: "候補" });
+
+export function clinicDiagnosisSeverityLabel(severity) {
+  return CLINIC_SEVERITY_LABEL[severity] || String(severity || "");
+}
+
+export function clinicDiagnosisToCsv(report = {}) {
+  const clean = (value) => String(value ?? "").replace(/[",\n]/gu, " ");
+  const lines = ["患者,請求月,重大度,分類,ルール,指摘,対応の目安"];
+  for (const f of report.findings || []) {
+    lines.push([
+      clean(f.patientKey), clean(f.claimMonth), clean(clinicDiagnosisSeverityLabel(f.severity)),
+      clean(f.category), clean(f.ruleName), clean(f.message), clean(f.suggestion)
+    ].join(","));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+export function clinicDiagnosisToHtml(report = {}, { title = "売上改善診断レポート", subtitle = "" } = {}) {
+  const summary = report.summary || {};
+  const ruleRows = (report.byRule || [])
+    .map((r) => `<tr><td>${escapeHtmlText(r.ruleName)}</td><td>${escapeHtmlText(r.category)}</td><td class="num">${Number(r.count || 0)}</td></tr>`)
+    .join("") || '<tr><td colspan="3">指摘はありません。</td></tr>';
+  const findingRows = (report.findings || [])
+    .map((f) => (
+      `<tr><td>${escapeHtmlText(f.patientKey)}</td>`
+      + `<td>${escapeHtmlText(f.claimMonth)}</td>`
+      + `<td class="sev sev-${escapeHtmlText(f.severity)}">${escapeHtmlText(clinicDiagnosisSeverityLabel(f.severity))}</td>`
+      + `<td>${escapeHtmlText(f.category)}</td>`
+      + `<td>${escapeHtmlText(f.message)}</td>`
+      + `<td>${escapeHtmlText(f.suggestion)}</td></tr>`
+    ))
+    .join("") || '<tr><td colspan="6">指摘はありません。</td></tr>';
+  return `<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>${escapeHtmlText(title)}</title>
+<style>body{font-family:'Noto Sans JP',system-ui,sans-serif;color:#111827;margin:24px;font-size:13px}
+h1{font-size:1.4rem;margin:0 0 4px}.sub{color:#475467;font-size:12px;margin:0 0 12px}
+.cards{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
+.card{border:1px solid #e4e7ec;border-radius:10px;padding:10px 14px;min-width:150px}
+.card .n{font-size:1.6rem;font-weight:800}.card .l{color:#64748b;font-size:11px}
+table{width:100%;border-collapse:collapse;margin:8px 0 18px}th,td{border-top:1px solid #e4e7ec;padding:7px 8px;text-align:left;vertical-align:top}
+th{color:#64748b;font-size:11px}td.num{text-align:right}
+td.sev{font-weight:700}.sev-error{color:#b42318}.sev-warning{color:#b54708}.sev-info{color:#1d4ed8}
+.note{color:#475467;font-size:11px}@media print{body{margin:0}}</style></head><body>
+<h1>${escapeHtmlText(title)}</h1>
+<p class="sub">${escapeHtmlText(subtitle)}</p>
+<div class="cards">
+  <div class="card"><div class="n">${Number(summary.patientCount || 0)}</div><div class="l">対象患者</div></div>
+  <div class="card"><div class="n">${Number(summary.claimCount || 0)}</div><div class="l">対象レセ(患者×月)</div></div>
+  <div class="card"><div class="n">${Number(summary.billingMissCount || 0)}</div><div class="l">算定もれ候補</div></div>
+  <div class="card"><div class="n">${Number(summary.assessmentRiskCount || 0)}</div><div class="l">査定・返戻リスク</div></div>
+  <div class="card"><div class="n">${Number(summary.errorCount || 0)}</div><div class="l">要修正(エラー)</div></div>
+</div>
+<p class="note">本レポートは決定論点検(公的マスタ準拠)による確認候補の提示です。最終判断は告示・通知・審査取扱いに基づき医事課/診療部門で行ってください。</p>
+<h2 style="font-size:1rem">指摘サマリ(ルール別)</h2>
+<table><thead><tr><th>ルール</th><th>分類</th><th>件数</th></tr></thead><tbody>${ruleRows}</tbody></table>
+<h2 style="font-size:1rem">明細</h2>
+<table><thead><tr><th>患者</th><th>請求月</th><th>重大度</th><th>分類</th><th>指摘</th><th>対応の目安</th></tr></thead><tbody>${findingRows}</tbody></table>
+</body></html>`;
 }

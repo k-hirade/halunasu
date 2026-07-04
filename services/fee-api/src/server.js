@@ -16,6 +16,7 @@ import {
 import iconv from "iconv-lite";
 import {
   buildCandidateWorkbench,
+  buildClinicDiagnosisReport,
   buildMissingBillingReviewIssues,
   buildIndicationReviewIssues,
   claimCheckLookupCodes,
@@ -486,6 +487,63 @@ async function routeFeeApiRequest(input = {}) {
       }
     });
     return ok(diagnosis);
+  }
+
+  // STG限定 売上改善診断(導入前コンサル): 既存レセ(UKE/CSV・匿名化済み)に決定論点検
+  // (算定もれ/適応/禁忌/併用)を回し、コンサル成果物のレポートを返す。
+  if (method === "POST" && matches(parts, ["v1", "fee", "clinic-diagnosis"])) {
+    if (!isStgEnvironment(input.env)) {
+      return notFound("Route not found");
+    }
+    requireBaselineDiagnosisContext(context);
+    requireMutationCsrf(input, context.session);
+    const body = input.body || {};
+    const claimMonth = String(body.claimMonth ?? body.claim_month ?? "").trim();
+    if (!/^\d{4}-\d{2}$/u.test(claimMonth)) {
+      throw requestValidationError("claimMonth must use YYYY-MM");
+    }
+    const baseline = await baselineClaimsFromDiagnosisBody({
+      body,
+      claimMonth,
+      feeCalculator,
+      processEnv: input.processEnv || process.env
+    });
+    const { claims, dpcSkippedCount, inpatientCount } = clinicCheckClaimsFromBaseline(baseline.baselineClaims, claimMonth);
+    if (!claims.length) {
+      throw requestValidationError(
+        dpcSkippedCount
+          ? `DPCレセプト${dpcSkippedCount}件は本診断の対象外です。医科出来高レセプトを取り込んでください。`
+          : "診断対象のレセプトを取り込めませんでした。UKE/CSVの形式と請求月を確認してください。"
+      );
+    }
+    const report = await buildClinicDiagnosisReportForClaims({ feeCalculator, claims });
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.clinic_diagnosis_run",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "fee_clinic_diagnosis",
+      targetId: claimMonth,
+      productId: PRODUCT_ID,
+      safePayload: {
+        claimMonth,
+        baselineFormat: baseline.baselineFormat || (baseline.baselineClaims.length ? "claims" : "none"),
+        claimCount: report.summary?.claimCount || 0,
+        patientCount: report.summary?.patientCount || 0,
+        billingMissCount: report.summary?.billingMissCount || 0,
+        assessmentRiskCount: report.summary?.assessmentRiskCount || 0,
+        errorCount: report.summary?.errorCount || 0
+      }
+    });
+    return ok({
+      claimMonth,
+      report,
+      ingestion: {
+        baselineClaimCount: baseline.baselineClaims.length,
+        analyzedClaimCount: claims.length,
+        inpatientClaimCount: inpatientCount,
+        dpcSkippedCount
+      }
+    });
   }
 
   // 患者×請求月で集計した月次レセプト案(プレビューのb=月次集計)
@@ -3634,6 +3692,133 @@ async function enrichClaimDiseaseCodes(feeCalculator, claim) {
       disease.suspected = Boolean(disease.suspected) || Boolean(hit.suspected);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// STG限定 売上改善診断(clinic-diagnosis): 既存レセ(UKE/CSV)→点検入力claim→決定論点検レポート
+// ---------------------------------------------------------------------------
+
+// レセ電コードの先頭桁で明細種別を判定(6=医薬品IY, 7=特定器材TO, その他=診療行為SI)。
+function clinicRecTypeFromCode(code) {
+  const head = String(code || "").trim().charAt(0);
+  if (head === "6") return { recType: "IY", orderType: "drug" };
+  if (head === "7") return { recType: "TO", orderType: "material" };
+  return { recType: "SI", orderType: "procedure" };
+}
+
+const CLINIC_WAREKI_BASE_YEARS = Object.freeze({ 1: 1867, 2: 1911, 3: 1925, 4: 1988, 5: 2018 });
+
+// 生年月日(和暦GYYMMDD or 西暦YYYYMMDD、空白区切り許容)→請求月1日時点の満年齢。
+function clinicAgeYearsFromBirth(birth, claimMonth) {
+  const digits = String(birth || "").replace(/\D+/gu, "");
+  let year;
+  let month;
+  let day;
+  if (digits.length === 7) {
+    const base = CLINIC_WAREKI_BASE_YEARS[Number(digits[0])];
+    if (!base) return null;
+    year = base + Number(digits.slice(1, 3));
+    month = Number(digits.slice(3, 5));
+    day = Number(digits.slice(5, 7));
+  } else if (digits.length === 8) {
+    year = Number(digits.slice(0, 4));
+    month = Number(digits.slice(4, 6));
+    day = Number(digits.slice(6, 8));
+  } else {
+    return null;
+  }
+  const [cy, cm] = String(claimMonth || "").split("-").map(Number);
+  if (!cy || !cm || !year || !month || !day) return null;
+  // 請求月1日時点で誕生日未到来なら-1
+  let age = cy - year;
+  if (cm < month || (cm === month && day > 1)) {
+    age -= 1;
+  }
+  return age >= 0 ? age : null;
+}
+
+// baselineClaims(UKE/CSV取込結果)を fee-core claim-checks の入力claimへ変換する。
+// レセプト種別(4桁)で入院/外来を判定し、DPC(点数表コード3)は点検スコープ外としてスキップ
+// (外来出来高前提のルールで誤検知しないため。スキップ数は結果に明示する)。
+function clinicCheckClaimsFromBaseline(baselineClaims = [], claimMonth = "") {
+  const claims = [];
+  let dpcSkippedCount = 0;
+  let inpatientCount = 0;
+  for (const claim of Array.isArray(baselineClaims) ? baselineClaims : []) {
+    const month = String(claim?.claimMonth ?? claim?.claim_month ?? claimMonth ?? "").trim();
+    if (claimMonth && month !== claimMonth) {
+      continue; // 他月の混入は診断対象外
+    }
+    const receiptType = String(claim?.receiptType ?? claim?.receipt_type ?? "").trim();
+    if (receiptType.charAt(0) === "3") {
+      dpcSkippedCount += 1; // DPCは対象外(包括/出来高境界は本診断のスコープ外)
+      continue;
+    }
+    const isInpatient = receiptType.length === 4 && receiptType.charAt(3) === "1";
+    if (isInpatient) {
+      inpatientCount += 1;
+    }
+    const rawLines = Array.isArray(claim?.lines) ? claim.lines : [];
+    const items = rawLines
+      .filter((line) => String(line?.code || "").trim())
+      .map((line) => ({
+        code: String(line.code).trim(),
+        name: String(line.name || "").trim(),
+        ...clinicRecTypeFromCode(line.code)
+      }));
+    const diseases = (Array.isArray(claim?.diseases) ? claim.diseases : []).map((d) => ({
+      code: String(d?.code || "").trim(),
+      name: String(d?.name || "").trim(),
+      suspected: Boolean(d?.suspected)
+    }));
+    claims.push({
+      patientKey: String(claim?.patientId ?? claim?.patient_id ?? "").trim() || "(不明)",
+      claimMonth: month,
+      sex: String(claim?.sex || "").trim(),
+      ageYears: clinicAgeYearsFromBirth(claim?.birthDate ?? claim?.birth_date, month),
+      isInpatient,
+      items,
+      diseases
+    });
+  }
+  return { claims, dpcSkippedCount, inpatientCount };
+}
+
+// 点検入力claim群に、病名コード化→点検マスタlookup→決定論点検を回してレポートを作る。
+async function buildClinicDiagnosisReportForClaims({ feeCalculator, claims = [] }) {
+  for (const claim of claims) {
+    try {
+      await enrichClaimDiseaseCodes(feeCalculator, claim);
+    } catch (error) {
+      logFeeApiError(error, { stage: "clinic_diagnosis_resolve_diseases" });
+    }
+  }
+  let lookup = {};
+  try {
+    if (feeCalculator && typeof feeCalculator.checkLookup === "function") {
+      const drugCodes = new Set();
+      const actCodes = new Set();
+      const diseaseCodes = new Set();
+      for (const claim of claims) {
+        const codes = claimCheckLookupCodes(claim);
+        codes.drug_codes.forEach((code) => drugCodes.add(code));
+        codes.act_codes.forEach((code) => actCodes.add(code));
+        codes.disease_codes.forEach((code) => diseaseCodes.add(code));
+      }
+      lookup = await feeCalculator.checkLookup({
+        drug_codes: [...drugCodes],
+        act_codes: [...actCodes],
+        disease_codes: [...diseaseCodes]
+      }) || {};
+    }
+  } catch (error) {
+    logFeeApiError(error, { stage: "clinic_diagnosis_check_lookup" });
+    lookup = {};
+  }
+  return buildClinicDiagnosisReport(claims, {
+    lookup,
+    procedureMeta: lookup.procedureMeta || {}
+  });
 }
 
 function feeCalculationProgress({

@@ -8308,6 +8308,100 @@ test("imports external billing history for a patient", async () => {
   assert.equal(listed.body.billingHistoryEvents[0].source, "receipt_csv");
 });
 
+test("runs clinic diagnosis on ingested receipts with claim checks and audit event", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore, { globalRoles: [], productRoles: { fee: ["medical_clerk"] } });
+
+  // UKE取込(パース)・点検マスタlookup・病名コード化をフェイクで注入
+  stores.feeCalculator.parseBaseline = async () => ({
+    baselineClaims: [{
+      patientId: "deadbeef01",
+      claimMonth: "2026-06",
+      sex: "2",
+      birthDate: "3500615", // 昭和50年6月15日 → 2026-06時点50歳
+      receiptType: "1112", // 医科・入院外
+      diseases: [
+        { code: "8834321", name: "妊娠", suspected: false },
+        { code: "", name: "急性気管支炎の疑い", suspected: false }
+      ],
+      lines: [
+        { code: "112007410", name: "再診料", points: 76, count: 1 },
+        { code: "160008010", name: "末梢血液一般", points: 21, count: 1 },
+        { code: "620000600", name: "アムロジピン錠", points: 1, count: 1 },
+        { code: "620000601", name: "ワルファリン錠", points: 1, count: 1 }
+      ]
+    }, {
+      patientId: "inpatient01",
+      claimMonth: "2026-06",
+      sex: "1",
+      receiptType: "1111", // 医科・入院 → 外来前提のMI-003/MI-004は発火しない
+      diseases: [],
+      lines: [
+        { code: "620000700", name: "入院用薬剤", points: 1, count: 1 }
+      ]
+    }, {
+      patientId: "dpc01",
+      claimMonth: "2026-06",
+      receiptType: "3112", // DPC → 対象外スキップ
+      diseases: [],
+      lines: [{ code: "112007410", name: "再診料", points: 76, count: 1 }]
+    }]
+  });
+  stores.feeCalculator.resolveDiseases = async ({ names }) => ({
+    resolved: Object.fromEntries((names || []).map((name) => [
+      name,
+      name.includes("気管支") ? { code: "4660009", matchType: "exact", suspected: true } : { code: "", matchType: "none" }
+    ]))
+  });
+  stores.feeCalculator.checkLookup = async () => ({
+    drugIndications: { "620000600": [{ diseaseCode: "8830592", sex: "", ageMin: 0, ageMax: 999 }] },
+    drugContraDiseases: { "620000600": ["8834321"] },
+    drugInteractions: [["620000600", "620000601"]],
+    actIndications: {},
+    diseaseNames: { "8830592": "高血圧症", "8834321": "妊娠" },
+    procedureMeta: { "160008010": { judgementKind: "1", judgementGroup: "2", name: "末梢血液一般" } }
+  });
+
+  const body = {
+    claimMonth: "2026-06",
+    baselineFormat: "uke",
+    baselineContentBase64: Buffer.from("dummy", "utf8").toString("base64")
+  };
+
+  const prod = await request(stores, "POST", "/v1/fee/clinic-diagnosis", body, headers, { env: "prod" });
+  assert.equal(prod.statusCode, 404); // STG限定
+
+  const response = await request(stores, "POST", "/v1/fee/clinic-diagnosis", body, headers, { env: "stg" });
+  assert.equal(response.statusCode, 200);
+  const report = response.body.report;
+  // DPCはスキップ、入院+外来の2claimが対象。取込サマリで可視化。
+  assert.equal(response.body.ingestion.baselineClaimCount, 3);
+  assert.equal(response.body.ingestion.analyzedClaimCount, 2);
+  assert.equal(response.body.ingestion.inpatientClaimCount, 1);
+  assert.equal(response.body.ingestion.dpcSkippedCount, 1);
+  assert.equal(report.summary.claimCount, 2);
+  assert.equal(report.summary.patientCount, 2);
+  // 入院claimには外来前提の「基本診療料なし(MI-003)」「処方料もれ(MI-004)」を出さない
+  const inpatientFindings = report.findings.filter((f) => f.patientKey === "inpatient01");
+  assert.ok(!inpatientFindings.some((f) => f.ruleId === "MI-003" || f.ruleId === "MI-004"));
+  // 算定もれ(判断料MI-002・処方料MI-004) と 査定リスク(適応なしIY-001/禁忌IY-003/併用IY-004)
+  const rules = new Set(report.findings.map((f) => f.ruleId));
+  assert.ok(rules.has("MI-002"), "検体検査判断料もれ");
+  assert.ok(rules.has("MI-004"), "処方料もれ");
+  assert.ok(rules.has("IY-001"), "適応病名なし");
+  assert.ok(rules.has("IY-003"), "禁忌傷病名");
+  assert.ok(rules.has("IY-004"), "併用禁忌");
+  const iy003 = report.findings.find((f) => f.ruleId === "IY-003");
+  assert.ok(iy003.message.includes("妊娠"));
+
+  const audits = stores.platformStore.listAuditEvents("org_001");
+  const audit = audits.find((event) => event.eventType === "fee.clinic_diagnosis_run");
+  assert.ok(audit);
+  assert.equal(audit.safePayload.claimCount, 2);
+  assert.ok(audit.safePayload.billingMissCount >= 2);
+  assert.ok(audit.safePayload.assessmentRiskCount >= 2);
+});
+
 test("runs baseline diagnosis with month-scoped sessions and records audit event", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore, { globalRoles: [], productRoles: { fee: ["medical_clerk"] } });

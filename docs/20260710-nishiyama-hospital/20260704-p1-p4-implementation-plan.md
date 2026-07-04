@@ -13,7 +13,21 @@
 > - **P-4 ✅**: 匿名サンプル `samples/nishiyama-demo/`＋デモ点検マスタ `scripts/seed_clinic_demo_master.py`＋ワンコマンド `scripts/run_clinic_demo.mjs`（E2Eスモーク兼用）。**判断料もれ/処方料もれ/適応なし/禁忌/併用禁忌 を検出**を確認。
 > - デモが**併用禁忌の実バグ（claim横断lookupで片方の薬しか無くても指摘）を検出→修正**（`checkDrugInteraction` が両薬の存在を確認）。回帰テスト追加。
 > - 全テスト green（Python 17 / JS 169 / fee-core 13）。使い方は `samples/nishiyama-demo/README.md`。
-> - 残: 実データ点検マスタ投入（[Runbook](../20260703-fable-fee-comparison/04-check-master-runbook.md)）、当日サンプルでの deid-config/intake-map 実列名合わせ、施設基準の取得余地(P-6)。
+> - 残: 当日サンプルでの deid-config/intake-map 実列名合わせ、施設基準の取得余地(P-6)。
+>
+> **追補（2026-07-05）— Web版（STG限定）＋実マスタ投入 完了**
+> - **実CCマスタ投入 ✅**: SSK公開データ（傷病名b/修飾語z/CCマスタ）をDL・展開し、ローカルマスタDBへ取込完了。**計1,487,034件**（適応1,234,290／行為適応218,375／併用禁忌4,208／傷病名27,684——公表値と完全一致でパーサ検証も兼ねた）。`resolve_diseases` 実データ動作確認済（「急性気管支炎の疑い」→4660009＋疑い）。STG/本番は [Runbook](../20260703-fable-fee-comparison/04-check-master-runbook.md) の `--check-master-raw` でビルド。
+> - **UKE直結 ✅**: `baseline_adapter` に **SY（傷病名・修飾語8002疑い判定・主傷病・転帰）と RE（性別・生年月日）** のパースを追加（layout上書き可・自社出力既定）。`baseline_api` がclaimに diseases/sex/birthDate を返す。
+> - **STG限定Webルート ✅**: `POST /v1/fee/clinic-diagnosis`（STGゲート/ロール/CSRF/監査safePayload=件数のみ）。UKE/CSV取込→和暦生年月日→年齢→病名コード化→check_lookup→**fee-core決定論点検**→レポートJSON。
+> - **コンソールUI ✅**: 再算定差分診断コンソールに「**売上改善診断を実行（既存レセのみでOK）**」ボタン＋結果セクション（サマリカード/所見テーブル/CSV・HTML出力/匿名化注意書き）を追加。
+> - テスト: JS 216 / Python 28 green、UIスモーク passed。
+> - **当日フロー確定**: 匿名化（院内・ローカル）→ 匿名UKEをSTGコンソールへ → 差分診断＋売上改善診断を画面で提示 → レポートDL。CLI版はオフライン時の保険として維持。
+>
+> **レビュー修正（2026-07-05）**
+> - **入院/DPC対応 ✅**: REレセプト種別（4桁・index2）を取込（UKE/CSV両対応）。**入院（4桁目=1）は isInpatient:true**（外来前提のMI-003/MI-004は発火しない）、**DPC（1桁目=3）は対象外スキップ**して取込サマリに件数表示（対象0件時は明示エラー）。
+> - **UIレイアウト補正 ✅**: UKE詳細設定に RE種別/男女/生年月日・SY全6位置 を追加（ベンダーUKEの位置ズレをWebから補正可能に）。CSV列マッピングに 性別/生年月日/レセプト種別（任意）を追加。
+> - **CSV制約の明示 ✅**: UIに「SY付きUKE推奨。CSVで属性列マッピングが無い場合は算定もれ中心の診断」と注記。CSVパーサも sex/birth_date/receipt_type 任意列を取り込む。
+> - テスト: JS 207 / Python 21+8 green、UIスモーク passed。
 
 ## 0. 全体アーキテクチャ（オフライン・パイプライン）
 

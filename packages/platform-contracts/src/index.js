@@ -751,7 +751,13 @@ function sanitizeSafePayload(value) {
     "sessionCount",
     "targetId",
     "targetType",
-    "totalPoints"
+    "totalPoints",
+    // 売上改善診断(clinic-diagnosis)の集計(件数のみ・PHIなし)
+    "assessmentRiskCount",
+    "billingMissCount",
+    "claimCount",
+    "errorCount",
+    "patientCount"
   ]);
 
   return Object.fromEntries(

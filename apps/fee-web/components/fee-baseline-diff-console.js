@@ -9,7 +9,11 @@ import {
   baselineComparisonRows,
   baselineDiffToCsv,
   baselineDiffToHtml,
+  buildBaselineDiffRequest,
   buildRecalculationDatasetDiffRequest,
+  clinicDiagnosisSeverityLabel,
+  clinicDiagnosisToCsv,
+  clinicDiagnosisToHtml,
   downloadTextFile,
   emptyBaselineDiffOptions,
   isStgFeeEnvironment,
@@ -153,6 +157,32 @@ export function FeeBaselineDiffConsole() {
 
   const hasDatasetFiles = datasetFiles.length > 0 || Boolean(datasetFile);
   const canRunDiagnosis = Boolean(hasDatasetFiles || (baselineFile && (recalculationFile || sourceFiles.orders)));
+  const [clinicBusy, setClinicBusy] = useState(false);
+  const [clinicError, setClinicError] = useState("");
+  const [clinicReport, setClinicReport] = useState(null);
+  const [clinicIngestion, setClinicIngestion] = useState(null);
+
+  // 売上改善診断(算定もれ・適応/禁忌/併用): 既存レセ(UKE/CSV)だけで実行できる。
+  const runClinicDiagnosis = useCallback(async () => {
+    if (!baselineFile) {
+      setClinicError("既存レセ(.uke / .csv)を選択してください。");
+      return;
+    }
+    setClinicBusy(true);
+    setClinicError("");
+    setClinicReport(null);
+    setClinicIngestion(null);
+    try {
+      const body = await buildBaselineDiffRequest(baselineFile, { claimMonth, options });
+      const response = await feeApi("/v1/fee/clinic-diagnosis", { method: "POST", csrf: true, body });
+      setClinicReport(response?.report || null);
+      setClinicIngestion(response?.ingestion || null);
+    } catch (err) {
+      setClinicError(toUserFacingErrorMessage(err, "売上改善診断を実行できませんでした。"));
+    } finally {
+      setClinicBusy(false);
+    }
+  }, [baselineFile, claimMonth, feeApi, options]);
 
   const runDiagnosis = useCallback(async () => {
     if (!canRunDiagnosis) {
@@ -316,7 +346,11 @@ export function FeeBaselineDiffConsole() {
           <button className="btn btn--primary" disabled={busy || !canRunDiagnosis} onClick={runDiagnosis} type="button">
             {busy ? "診断中..." : "差分診断を実行"}
           </button>
+          <button className="btn btn--secondary" disabled={clinicBusy || !baselineFile} onClick={runClinicDiagnosis} type="button">
+            {clinicBusy ? "点検中..." : "売上改善診断を実行（既存レセのみでOK）"}
+          </button>
         </div>
+        <p className="baseline-diff-note">アップロードは<strong>匿名化済みデータのみ</strong>にしてください（氏名・保険者番号等の直接識別子を含めない）。売上改善診断は既存レセに決定論点検（算定もれ・適応病名・禁忌・併用禁忌）を行います。<strong>SY（傷病名）付きUKE推奨</strong>：CSVの場合、性別・生年月日・病名の列マッピングが無いと適応・禁忌・年齢性別の点検は効かず、算定もれ中心の診断になります。DPCレセプトは対象外（スキップ件数を表示）。</p>
 
         <details className="baseline-diff-options">
           <summary>個別ファイル・詳細設定</summary>
@@ -460,6 +494,63 @@ export function FeeBaselineDiffConsole() {
             ) : <div className="fee-empty-state">{activeResultTab === "matched" ? "一致した明細はありません。" : "この分類の明細はありません。"}</div>}
           </>
         ) : (!busy && !error ? <div className="fee-empty-state">既存レセと再算定元データを選択して実行すると、ここに診断結果が表示されます。</div> : null)}
+      </section>
+
+      <section className="baseline-diff-card">
+        <div className="baseline-diff-card-head">
+          <h3>3. 売上改善診断（算定もれ・査定リスク）</h3>
+          {clinicReport ? (
+            <div className="baseline-diff-actions">
+              <button className="btn btn--ghost btn--sm" onClick={() => downloadTextFile(`clinic-diagnosis_${claimMonth}.csv`, clinicDiagnosisToCsv(clinicReport), "text/csv;charset=utf-8")} type="button">CSV出力</button>
+              <button className="btn btn--ghost btn--sm" onClick={() => downloadTextFile(`clinic-diagnosis_${claimMonth}.html`, clinicDiagnosisToHtml(clinicReport, { subtitle: `請求月 ${claimMonth}（匿名データ）` }), "text/html;charset=utf-8")} type="button">HTML出力</button>
+            </div>
+          ) : null}
+        </div>
+
+        {clinicBusy ? <div className="fee-empty-state">決定論点検を実行しています…</div> : null}
+        {clinicError ? <div className="inline-error" role="status">{clinicError}</div> : null}
+
+        {clinicReport ? (
+          <>
+            {clinicIngestion ? (
+              <div className="baseline-diff-ingestion">
+                <span>取込: レセ {Number(clinicIngestion.baselineClaimCount || 0).toLocaleString()}件</span>
+                <span>診断対象 {Number(clinicIngestion.analyzedClaimCount || 0).toLocaleString()}件</span>
+                {Number(clinicIngestion.inpatientClaimCount || 0) ? <span>うち入院 {Number(clinicIngestion.inpatientClaimCount || 0).toLocaleString()}件</span> : null}
+                {Number(clinicIngestion.dpcSkippedCount || 0) ? <span>DPC対象外 {Number(clinicIngestion.dpcSkippedCount || 0).toLocaleString()}件</span> : null}
+              </div>
+            ) : null}
+            <div className="baseline-diff-summary">
+              <article className="baseline-diff-metric"><span>対象患者</span><strong>{Number(clinicReport.summary?.patientCount || 0).toLocaleString()}人</strong></article>
+              <article className="baseline-diff-metric"><span>対象レセ</span><strong>{Number(clinicReport.summary?.claimCount || 0).toLocaleString()}件</strong></article>
+              <article className="baseline-diff-metric baseline-diff-metric--engine"><span>算定もれ候補</span><strong>{Number(clinicReport.summary?.billingMissCount || 0).toLocaleString()}件</strong></article>
+              <article className="baseline-diff-metric baseline-diff-metric--baseline"><span>査定・返戻リスク</span><strong>{Number(clinicReport.summary?.assessmentRiskCount || 0).toLocaleString()}件</strong></article>
+              <article className="baseline-diff-metric baseline-diff-metric--repro"><span>要修正</span><strong>{Number(clinicReport.summary?.errorCount || 0).toLocaleString()}件</strong></article>
+            </div>
+            <p className="baseline-diff-disclaimer">決定論点検（公的マスタ準拠）による確認候補の提示です。最終判断は告示・通知・審査取扱いに基づき医事課/診療部門で行ってください。</p>
+            {(clinicReport.findings || []).length ? (
+              <div className="baseline-diff-table-wrap">
+                <table className="baseline-diff-table">
+                  <thead>
+                    <tr><th>患者</th><th>請求月</th><th>重大度</th><th>分類</th><th>指摘</th><th>対応の目安</th></tr>
+                  </thead>
+                  <tbody>
+                    {(clinicReport.findings || []).map((finding, index) => (
+                      <tr className={`baseline-diff-row baseline-diff-row--clinic-${finding.severity}`} key={`${finding.patientKey}-${finding.ruleId}-${index}`}>
+                        <td>{finding.patientKey}</td>
+                        <td>{finding.claimMonth}</td>
+                        <td className="baseline-diff-cat">{clinicDiagnosisSeverityLabel(finding.severity)}</td>
+                        <td>{finding.category}</td>
+                        <td>{finding.message}</td>
+                        <td>{finding.suggestion}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <div className="fee-empty-state">指摘はありません。</div>}
+          </>
+        ) : (!clinicBusy && !clinicError ? <div className="fee-empty-state">既存レセ（.uke / .csv）を選択して「売上改善診断を実行」すると、算定もれ・査定リスクの点検結果が表示されます。</div> : null)}
       </section>
     </div>
   );

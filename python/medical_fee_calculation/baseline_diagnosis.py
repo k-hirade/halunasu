@@ -46,6 +46,18 @@ class ClaimLine:
 
 
 @dataclass(frozen=True)
+class BaselineDisease:
+    """レセ電SYレコード由来の傷病名(適応/禁忌点検・病名整理に使う)。"""
+
+    code: str = ""
+    name: str = ""
+    start_date: str = ""  # GYYMMDD(和暦) or YYYYMMDD
+    tenki: str = ""  # 転帰区分 1:継続 2:治ゆ 3:死亡 4:中止
+    suspected: bool = False  # 修飾語8002(の疑い) or 名称に「疑い」
+    is_main: bool = False
+
+
+@dataclass(frozen=True)
 class BaselineClaim:
     """既存レセコンの確定済みレセプト(患者×暦月)。gold ではなく baseline。"""
 
@@ -54,6 +66,11 @@ class BaselineClaim:
     lines: tuple[ClaimLine, ...] = ()
     total_points: float | None = None
     actual_days: int | None = None
+    # 点検(適応/禁忌/算定もれ)向けの追加属性。差分診断のみの利用では未設定でよい。
+    sex: str = ""  # 1:男 2:女
+    birth_date: str = ""  # GYYMMDD(和暦) or YYYYMMDD
+    receipt_type: str = ""  # レセプト種別4桁(1桁目=点数表 1医科/3DPC, 4桁目=1入院/2入院外)
+    diseases: tuple[BaselineDisease, ...] = ()
 
 
 @dataclass(frozen=True)

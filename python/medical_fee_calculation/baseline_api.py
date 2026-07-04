@@ -31,6 +31,21 @@ def _claim_to_dict(claim) -> dict:
         "claimMonth": claim.claim_month,
         "totalPoints": claim.total_points,
         "actualDays": claim.actual_days,
+        # 点検(適応/禁忌/算定もれ)向け属性。UKE以外の経路では空のことがある。
+        "sex": getattr(claim, "sex", "") or "",
+        "birthDate": getattr(claim, "birth_date", "") or "",
+        "receiptType": getattr(claim, "receipt_type", "") or "",
+        "diseases": [
+            {
+                "code": d.code,
+                "name": d.name,
+                "startDate": d.start_date,
+                "tenki": d.tenki,
+                "suspected": d.suspected,
+                "isMain": d.is_main,
+            }
+            for d in (getattr(claim, "diseases", ()) or ())
+        ],
         "lines": [
             {"code": line.code, "name": line.name, "points": line.points, "count": line.count}
             for line in claim.lines

@@ -15,7 +15,7 @@ import csv
 import io
 from dataclasses import dataclass, field
 
-from medical_fee_calculation.baseline_diagnosis import BaselineClaim, ClaimLine
+from medical_fee_calculation.baseline_diagnosis import BaselineClaim, BaselineDisease, ClaimLine
 
 
 @dataclass(frozen=True)
@@ -27,10 +27,53 @@ class UkeLayout:
     line_points_index: int = 5
     line_count_index: int = 6
     re_record: str = "RE"
+    # レセプト種別(4桁: 1桁目=点数表 1医科/3DPC, 4桁目=1入院/2入院外)。自社/標準とも index=2。
+    re_type_index: int = 2
     re_name_index: int = 3
+    # 既定は自社buildReceiptDenshin出力の並び(氏名=3, 男女=4, 生年月日=5)。
+    # 標準レセ電(氏名=4, 男女=5, 生年月日=6)やベンダー差は layout 上書きで吸収する。
+    re_sex_index: int = 4
+    re_birthdate_index: int = 5
     ho_record: str = "HO"
     ho_days_index: int = 5
     ho_points_index: int = 6
+    # SY(傷病名)レコード: コード=1, 診療開始日=2, 転帰=3, 修飾語=4, 名称=5, 主傷病=6。
+    sy_record: str = "SY"
+    sy_code_index: int = 1
+    sy_start_date_index: int = 2
+    sy_tenki_index: int = 3
+    sy_modifier_index: int = 4
+    sy_name_index: int = 5
+    sy_main_index: int = 6
+
+
+# 修飾語「の疑い」。傷病名の疑いフラグ判定に使う(4桁×最大20連結のいずれか)。
+_SUSPECT_MODIFIER_CODE = "8002"
+
+
+def _split_modifier_codes(value: str) -> tuple[str, ...]:
+    text = str(value or "").strip()
+    return tuple(text[i:i + 4] for i in range(0, len(text) - len(text) % 4, 4))
+
+
+def _parse_sy_disease(fields: list[str], layout: "UkeLayout") -> BaselineDisease | None:
+    def at(index: int) -> str:
+        return fields[index].strip() if len(fields) > index else ""
+
+    code = at(layout.sy_code_index)
+    name = at(layout.sy_name_index)
+    if not code and not name:
+        return None
+    modifiers = _split_modifier_codes(at(layout.sy_modifier_index))
+    suspected = _SUSPECT_MODIFIER_CODE in modifiers or "疑い" in name
+    return BaselineDisease(
+        code=code,
+        name=name,
+        start_date=at(layout.sy_start_date_index),
+        tenki=at(layout.sy_tenki_index),
+        suspected=suspected,
+        is_main=at(layout.sy_main_index) in {"01", "1"},
+    )
 
 
 def _num(value, fallback=0.0) -> float:
@@ -67,10 +110,15 @@ def parse_uke(
     current_lines: list[ClaimLine] = []
     current_total: float | None = None
     current_days: int | None = None
+    current_sex: str = ""
+    current_birth: str = ""
+    current_type: str = ""
+    current_diseases: list[BaselineDisease] = []
     seq = 0
 
     def flush():
         nonlocal current_pid, current_lines, current_total, current_days
+        nonlocal current_sex, current_birth, current_type, current_diseases
         if current_pid is not None:
             claims.append(BaselineClaim(
                 patient_id=current_pid,
@@ -78,8 +126,13 @@ def parse_uke(
                 lines=tuple(current_lines),
                 total_points=current_total,
                 actual_days=current_days,
+                sex=current_sex,
+                birth_date=current_birth,
+                receipt_type=current_type,
+                diseases=tuple(current_diseases),
             ))
         current_pid, current_lines, current_total, current_days = None, [], None, None
+        current_sex, current_birth, current_type, current_diseases = "", "", "", []
 
     for raw_line in str(uke_text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         if not raw_line.strip():
@@ -97,12 +150,20 @@ def parse_uke(
             current_lines = []
             current_total = None
             current_days = None
+            current_sex = fields[layout.re_sex_index].strip() if len(fields) > layout.re_sex_index else ""
+            current_birth = fields[layout.re_birthdate_index].strip() if len(fields) > layout.re_birthdate_index else ""
+            current_type = fields[layout.re_type_index].strip() if len(fields) > layout.re_type_index else ""
+            current_diseases = []
         elif record == layout.ho_record and current_pid is not None:
             if len(fields) > layout.ho_points_index:
                 current_total = _num(fields[layout.ho_points_index], None) or None
             if len(fields) > layout.ho_days_index:
                 days = _num(fields[layout.ho_days_index], None)
                 current_days = int(days) if days else None
+        elif record == layout.sy_record and current_pid is not None:
+            disease = _parse_sy_disease(fields, layout)
+            if disease is not None:
+                current_diseases.append(disease)
         elif record in layout.line_records and current_pid is not None:
             code = _apply_code_map(fields[layout.line_code_index] if len(fields) > layout.line_code_index else "", code_map)
             if not code:
@@ -123,6 +184,10 @@ DEFAULT_CSV_COLUMN_MAP = {
     "points": "points",
     "count": "count",
     "medical_institution_code": "medical_institution_code",
+    # 任意列(あれば点検の年齢性別条件・入院判定が有効になる)
+    "sex": "sex",
+    "birth_date": "birth_date",
+    "receipt_type": "receipt_type",
 }
 
 
@@ -144,6 +209,7 @@ def parse_receipt_csv(
     cmap = {**DEFAULT_CSV_COLUMN_MAP, **(column_map or {})}
     reader = csv.DictReader(io.StringIO(csv_text))
     grouped: dict[tuple[str, str], list[ClaimLine]] = {}
+    attrs: dict[tuple[str, str], dict[str, str]] = {}
     order: list[tuple[str, str]] = []
 
     def col(row, logical):
@@ -164,6 +230,7 @@ def parse_receipt_csv(
         key = (patient_id, claim_month)
         if key not in grouped:
             grouped[key] = []
+            attrs[key] = {"sex": "", "birth_date": "", "receipt_type": ""}
             order.append(key)
         grouped[key].append(ClaimLine(
             code=code,
@@ -171,8 +238,19 @@ def parse_receipt_csv(
             points=_num(col(row, "points")),
             count=_num(col(row, "count"), 1.0) or 1.0,
         ))
+        # 属性列(任意)は最初に現れた非空値を採用
+        for logical in ("sex", "birth_date", "receipt_type"):
+            if not attrs[key][logical]:
+                attrs[key][logical] = col(row, logical)
 
     return [
-        BaselineClaim(patient_id=pid, claim_month=month, lines=tuple(grouped[(pid, month)]))
+        BaselineClaim(
+            patient_id=pid,
+            claim_month=month,
+            lines=tuple(grouped[(pid, month)]),
+            sex=attrs[(pid, month)]["sex"],
+            birth_date=attrs[(pid, month)]["birth_date"],
+            receipt_type=attrs[(pid, month)]["receipt_type"],
+        )
         for (pid, month) in order
     ]
