@@ -809,7 +809,7 @@ export function normalizeClinicalText(value) {
     .trim();
 }
 
-function buildClinicalTextPreprocessing(text = "") {
+export function buildClinicalTextPreprocessing(text = "") {
   const rawText = String(text || "").replace(/\r\n?/gu, "\n");
   const sectionCounts = {};
   const lines = [];
@@ -857,6 +857,56 @@ function buildClinicalTextPreprocessing(text = "") {
     lineCount: lines.length,
     sectionCounts: Object.fromEntries(Object.entries(sectionCounts).map(([key, value]) => [key, Number(value || 0)]))
   };
+}
+
+// v12軽量schema(fee-clinical-events-v12)の復元処理。
+// LLMは evidence 引用文・section・char offsets を出力せず evidence_line_ids のみ返すため、
+// 前処理済み行(line_id→text/section)から evidence 本文と section を決定論的に埋め戻す。
+// 行テキストはカルテ本文の逐語なので、根拠検証(evidence_verifier)・否定/時制判定・
+// 注釈配置など既存の evidence 消費ロジックはそのまま成立する。
+// 既に evidence を持つ入力(旧schema・テスト用extractor)は上書きしない。
+export function backfillClinicalFactsEvidenceFromLines(facts = {}, preprocessing = null) {
+  const lines = Array.isArray(preprocessing?.lines) ? preprocessing.lines : [];
+  if (!lines.length || !facts || typeof facts !== "object") {
+    return facts;
+  }
+  const lineById = new Map(lines.map((line) => [String(line.lineId || ""), line]));
+
+  const resolveLines = (value) => asArray(value)
+    .map((lineId) => lineById.get(String(lineId || "").trim()))
+    .filter(Boolean);
+
+  for (const event of asArray(facts.clinical_events)) {
+    if (!event || typeof event !== "object") {
+      continue;
+    }
+    const refs = resolveLines(event.evidence_line_ids);
+    if (!refs.length) {
+      continue;
+    }
+    if (!String(event.evidence || "").trim()) {
+      event.evidence = String(refs[0].text || "").trim().slice(0, 180);
+    }
+    const section = String(event.section || "").trim();
+    if (!section || section === "unknown") {
+      event.section = refs[0].section || "unknown";
+    }
+  }
+
+  for (const finding of asArray(facts.checklist_findings)) {
+    if (!finding || typeof finding !== "object") {
+      continue;
+    }
+    if (String(finding.evidence || "").trim()) {
+      continue;
+    }
+    const refs = resolveLines(finding.evidence_line_ids);
+    if (refs.length) {
+      finding.evidence = String(refs[0].text || "").trim().slice(0, 180);
+    }
+  }
+
+  return facts;
 }
 
 function clinicalSectionFromLine(line = "") {
@@ -1482,6 +1532,9 @@ async function inferStructuredClinicalCalculationOptions({
     });
     openAiProviderDurationMs = Date.now() - providerStartedAt;
     const facts = factsResult?.parsed || factsResult || {};
+    // v12軽量schema: LLMは evidence_line_ids のみ返す。evidence本文とsectionを
+    // 前処理済み行から決定論的に復元し、下流(根拠検証・否定判定・注釈)を従来どおり動かす。
+    backfillClinicalFactsEvidenceFromLines(facts, clinicalTextPreprocessing);
     const conversionStartedAt = Date.now();
     const converted = await clinicalFactsToCalculationOptions(facts, {
       text,

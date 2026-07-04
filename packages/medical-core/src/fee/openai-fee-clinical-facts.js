@@ -1,6 +1,10 @@
 import { createStructuredOpenAiResponse } from "../openai/responses-structured.js";
 
-export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v11";
+// v12: 出力トークン削減(レイテンシはdecodeに線形・実測139tok/s、1イベント≒240tok→目標~100tok)。
+// clinical_events から evidence引用文/section/char_start/char_end を削除し evidence_line_ids のみに、
+// checklist_findings の evidence も line_ids 化。本文・sectionはサーバ側で行テキストから決定論復元する
+// (fee-api clinical-calculation-input.js の backfill)。抽出の意味軸(status/時制/主体/確信度)は維持。
+export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v12";
 
 const LEGACY_EVENT_STATUSES = [
   "performed",
@@ -202,11 +206,7 @@ const feeClinicalFactsSchema = {
           "provider_ownership",
           "result_assertion",
           "certainty",
-          "section",
-          "evidence",
           "evidence_line_ids",
-          "char_start",
-          "char_end",
           "search_queries",
           "modality",
           "body_site",
@@ -227,12 +227,16 @@ const feeClinicalFactsSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["menu_id", "status", "evidence", "reason"],
+        required: ["menu_id", "status", "evidence_line_ids", "reason"],
         properties: {
           menu_id: shortString(50),
           status: { type: "string", enum: CHECKLIST_STATUSES },
-          evidence: shortString(90),
-          reason: shortString(70)
+          evidence_line_ids: {
+            type: "array",
+            maxItems: 2,
+            items: shortString(20)
+          },
+          reason: shortString(40)
         }
       }
     },
@@ -279,6 +283,8 @@ function shortString(maxLength = 70) {
 }
 
 function eventProperties() {
+  // v12: evidence引用文/section/char offsets はLLM出力から削除(トークン削減)。
+  // evidence_line_ids から fee-api 側で行テキスト・sectionを決定論復元する。
   return {
     type: { type: "string", enum: EVENT_TYPES },
     billing_domain: { type: "string", enum: BILLING_DOMAINS },
@@ -289,27 +295,14 @@ function eventProperties() {
     provider_ownership: { type: "string", enum: PROVIDER_OWNERSHIPS },
     result_assertion: { type: "string", enum: RESULT_ASSERTIONS },
     certainty: { type: "string", enum: CERTAINTY_LEVELS },
-    section: {
-      type: "string",
-      enum: ["S", "O", "A", "P", "unknown"]
-    },
-    evidence: shortString(90),
     evidence_line_ids: {
       type: "array",
-      maxItems: 3,
+      maxItems: 2,
       items: shortString(20)
-    },
-    char_start: {
-      type: "string",
-      maxLength: 12
-    },
-    char_end: {
-      type: "string",
-      maxLength: 12
     },
     search_queries: {
       type: "array",
-      maxItems: 5,
+      maxItems: 2,
       items: shortString(40)
     },
     modality: {
@@ -351,6 +344,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
   model = "gpt-5.4-nano",
   reasoningEffort = "low",
   timeoutMs = 0,
+  maxOutputTokens = 4096,
   stream = false,
   onOutputTextSnapshot = null
 }) {
@@ -383,8 +377,8 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "Your output is clinical_events, not billing candidates. Do not calculate points. Do not choose billing codes. Do not decide billable/proposal/review eligibility. Downstream master search and rules will decide those.",
       checklistInstructionForMode(checklistVerificationMode),
       "For each checklist menu item, return exactly one checklist_finding with the same menu_id. Use status=performed_today only when the note supports that the item happened in this clinic during this encounter. Use planned for future/order/予定/依頼/予約/次回. Use past_or_external for 前回/以前/他院/前医/持参/健診/他科/主治医. Use mentioned_not_performed when the note says the act was not done. Use not_in_text when the menu item is not actually supported by the note. Use unclear when named but timing/ownership/performance cannot be determined.",
-      "For checklist_findings evidence, quote a short exact excerpt from the clinical text when status is not_in_text leave evidence empty. Do not invent evidence.",
-      "For every clinical_event, when a matching item exists in Preprocessed clinical lines, set evidence_line_ids to the relevant line_id values; use an empty array only when no line can be identified. evidence must still be a short quote from the original clinical text. Set char_start/char_end to decimal character offsets only when you can identify the original span exactly; otherwise set them to empty strings.",
+      "For checklist_findings, set evidence_line_ids to the supporting line_id values from Preprocessed clinical lines (at most 2). When status is not_in_text leave evidence_line_ids empty. Do not quote text; the line ids are the evidence. Do not invent line ids.",
+      "For every clinical_event, set evidence_line_ids to the relevant line_id values from Preprocessed clinical lines (at most 2); use an empty array only when no supporting line can be identified. Do not quote the original text; the line ids are the evidence.",
       "For each clinical_event, set billing_domain as a structured meaning label. Use standard_lab for ordinary specimen tests including blood/urine/rapid tests and ordinary specimen submission; pathology only for pathology diagnosis, cytology, histology, tissue specimen pathology submission, or specimen preparation in a pathology-diagnosis context; emergency_time_addon only for emergency/time-after-hours/holiday/night billing add-on context such as 救急加算, 時間外加算, 休日加算, 深夜加算, or受付時刻確認 for those add-ons. Do not mark symptom timing such as 夜間頻尿 or 夜間咳嗽 as emergency_time_addon.",
       "Separate action_status, temporal_relation, source_origin, provider_ownership, result_assertion, and certainty. Do not compress them into one status.",
       "Use action_status=performed/prescribed/administered only for actions that happened during the current encounter or are clearly prescribed/administered by this clinic today.",
@@ -403,19 +397,19 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "Domain contrast examples: 静脈採血後に検体提出 is billing_domain=standard_lab, not pathology. 組織標本を病理提出 or 細胞診検体を提出 is billing_domain=pathology. 内視鏡検査・生検はbilling_domain=endoscopy. 透析はbilling_domain=dialysis. 輸血はbilling_domain=transfusion. 放射線治療・照射条件はbilling_domain=radiation_therapy. 背部皮下腫瘤切除, 粉瘤摘出, 体表腫瘤摘出, or 手術室/局所麻酔下の切除 is billing_domain=surgery, not standard_procedure. 夜間頻尿 is a symptom/time context, not emergency_time_addon. 時間外加算の算定条件確認 is billing_domain=emergency_time_addon. 次回再診, 2週間後再診, or 外来フォロー予定 is follow_up/planned, not home_care.",
       "For imaging, set modality to simple_radiography, ct, mri, ultrasound, endoscopy, or other when explicit. Planned imaging should not be mixed with performed imaging.",
       "When a procedure or treatment may vary by body site or measured size, such as wound, burn, dermatology, or site-dependent procedures, extract body_site and numeric area_size_cm2 whenever they are explicitly written. Do not infer a size that is not written; leave area_size_cm2 empty and add review_reason for missing size when the size affects billing classification.",
-      "For every clinical_event, set section to S/O/A/P when clear. Use temporal_relation=current_visit/past/future/unknown; source_origin=own_clinic_record/patient_reported/external_document/carried_in_result/other_provider_record/unknown; provider_ownership=own_clinic/same_institution_other_department/other_provider/unknown.",
-      "search_queries must be Japanese master-search phrases for the clinical event, not billing codes, point values, or reimbursement conclusions. Include concise synonyms when useful, but do not invent a reimbursement item that is not anchored in the note.",
+      "Use temporal_relation=current_visit/past/future/unknown; source_origin=own_clinic_record/patient_reported/external_document/carried_in_result/other_provider_record/unknown; provider_ownership=own_clinic/same_institution_other_department/other_provider/unknown. The S/O/A/P section is derived from evidence_line_ids downstream; do not output it.",
+      "search_queries must be Japanese master-search phrases for the clinical event (at most 2), not billing codes, point values, or reimbursement conclusions. Prefer the single best phrase; add one synonym only when clearly useful. Do not invent a reimbursement item that is not anchored in the note.",
       "For materials and devices, mark instruction_only when the text only says 装着指導, 説明, or self-care guidance rather than actual billed use.",
       "Do not put lab values, abnormal findings, or measurement results into diagnoses. Numeric test values, marker elevations, and isolated imaging findings are findings/events, not diagnoses.",
-      "Each diagnosis and event must include a short evidence excerpt from the input text.",
-      "Keep the response compact: evidence and reasons should be short excerpts, not explanations. Do not add dosage/unit/frequency details unless they are needed for quantity_per_day, days, total_quantity, or area_size_cm2.",
+      "Each diagnosis must include a short evidence excerpt from the input text. clinical_events and checklist_findings carry evidence as evidence_line_ids only.",
+      "Keep the response compact: reasons and excerpts must be short, not explanations. Do not add dosage/unit/frequency details unless they are needed for quantity_per_day, days, total_quantity, or area_size_cm2.",
       "Prefer clinical_events. Keep excluded_events, missing_information, and review_flags empty unless they add information not already present in a clinical event.",
       "The examples below are schema examples only. Do not prefer those diseases, drugs, tests, or specialties. Apply the same event extraction rules to any clinical specialty.",
       "When a performed lab value, imaging result, treatment, management, or counseling event is present in Objective or Plan, extract the event generically by its clinical name even if it is not shown in the examples.",
       "",
       "Examples:",
-      "- Text: O欄に「検査名：数値/所見」がある場合 -> clinical_events include that test or exam as action_status=performed, section=O, temporal_relation=current_visit, source_origin=own_clinic_record, provider_ownership=own_clinic, with result_assertion and search_queries suitable for master search.",
-      "- Text: P欄に「検査オーダー」「次回」「予定」「後日」がある場合 -> action_status=planned or ordered, section=P, temporal_relation=future. Do not mix it with performed events unless O欄 also has same-day results.",
+      "- Text: O欄に「検査名：数値/所見」がある場合 -> clinical_events include that test or exam as action_status=performed, temporal_relation=current_visit, source_origin=own_clinic_record, provider_ownership=own_clinic, with result_assertion and search_queries suitable for master search, and evidence_line_ids pointing at the O-line.",
+      "- Text: P欄に「検査オーダー」「次回」「予定」「後日」がある場合 -> action_status=planned or ordered, temporal_relation=future. Do not mix it with performed events unless O欄 also has same-day results.",
       "- Text: 既往歴、持参結果、他科主治医、他院、かかりつけで管理中 -> temporal_relation=past or unknown, source_origin=carried_in_result/other_provider_record, provider_ownership=same_institution_other_department/other_provider. Do not mark it as own_clinic current billing.",
       "- Text: 処方薬は、今回新規処方/変更/継続処方が明確な場合だけ medication action_status=prescribed. 説明・指導・検討だけなら counseling/management or planned/considered, not medication.",
       "- Do not create review_flags such as 今後の検討 or 方針確認 when the phrase is only follow-up planning and not a billable event."
@@ -425,7 +419,8 @@ export async function extractFeeClinicalFactsWithOpenAi({
     schema: feeClinicalFactsSchema,
     stream,
     onOutputTextSnapshot,
-    timeoutMs
+    timeoutMs,
+    maxOutputTokens
   });
 
   return {

@@ -290,7 +290,8 @@ export async function createStructuredOpenAiResponse({
   stream = false,
   onOutputTextDelta = null,
   onOutputTextSnapshot = null,
-  timeoutMs = 0
+  timeoutMs = 0,
+  maxOutputTokens = 0
 }) {
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
@@ -314,6 +315,11 @@ export async function createStructuredOpenAiResponse({
       }
     }
   };
+
+  // decode時間は出力トークンにほぼ線形(実測139tok/s)。暴走出力の上限を設ける(0=無制限)。
+  if (Number(maxOutputTokens) > 0) {
+    body.max_output_tokens = Math.floor(Number(maxOutputTokens));
+  }
 
   if (shouldStream) {
     body.stream = true;

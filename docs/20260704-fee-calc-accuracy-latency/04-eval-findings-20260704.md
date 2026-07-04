@@ -1,5 +1,13 @@
 # 04. 実測評価からの所見（2026-07-04 stg-openai run）
 
+> **実装状況（2026-07-04, branch `fix/p1-p4-cross-theme`）— schema軽量化 v12 実装済み**
+> - `fee-clinical-events-v12`: clinical_events から **evidence引用文・section・char_start/char_end を削除**、`evidence_line_ids`（≦2）のみに。checklist_findings の evidence も line_ids 化。`search_queries` ≦2。
+> - **サーバ側で決定論復元**: `backfillClinicalFactsEvidenceFromLines`（`clinical-calculation-input.js`）が line_id→行テキスト/section を埋め戻す。行テキストはカルテ逐語なので **evidence_verifier・否定/時制判定・注釈配置など既存の evidence 消費ロジックは無変更で成立**（安全チェックはむしろ行全文で頑健化）。旧schema/テスト用extractorの evidence は上書きしない。
+> - **`max_output_tokens` 上限**（既定4096）を responses-structured→抽出に配線（暴走出力ガード）。
+> - テスト: medical-core 9（schema形状・上限の固定含む）/ fee-api 117 / backfill 2 — **全green**。
+> - 期待効果: ~240tok/件 → **~110-130tok/件**（引用文・オフセット・section・クエリ削減）＝ **平均レイテンシ 約12秒→5-7秒** 見込み（相関0.993）。
+> - **残作業（要OpenAIキー）**: STG実測での回帰確認 `npm run eval:fee-soap-e2e:stg`（同じ5+5ケースで tok/件・LLM時間・recall を before/after 比較）。プロンプト版が v12 に変わったため必須。
+
 `data/tests/fee-soap-e2e-v2/reports/stg-openai-5-20260704_143505.*` ＋ `stg-openai-extra5-20260704_1455-*` を分析。
 **推測でなく実測**に基づく所見。前提の一部を訂正する。
 

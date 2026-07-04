@@ -123,6 +123,40 @@ test("fee clinical facts request does not send the patient display name to OpenA
   assert.match(requestBody.input, /テスト医院/u);
 });
 
+test("v12 lightweight schema: events carry line-id evidence only and output is capped", async () => {
+  let requestBody = null;
+
+  await withFetch(
+    async (url, options) => {
+      requestBody = JSON.parse(options.body);
+      return jsonResponse({ output_text: JSON.stringify(feeClinicalFactsPayload()) });
+    },
+    async () => {
+      await extractFeeClinicalFactsWithOpenAi({
+        apiKey: "test-key",
+        clinicalText: "O: 心電図 異常なし。",
+        sessionContext: {}
+      });
+    }
+  );
+
+  const eventSchema = requestBody.text.format.schema.properties.clinical_events.items;
+  // 出力トークン削減: evidence引用文・section・char offsets はLLM出力から排除(サーバ側で行から復元)
+  assert.equal(eventSchema.properties.evidence, undefined);
+  assert.equal(eventSchema.properties.section, undefined);
+  assert.equal(eventSchema.properties.char_start, undefined);
+  assert.equal(eventSchema.properties.char_end, undefined);
+  assert.ok(eventSchema.properties.evidence_line_ids);
+  assert.equal(eventSchema.properties.evidence_line_ids.maxItems, 2);
+  assert.equal(eventSchema.properties.search_queries.maxItems, 2);
+  // checklist_findings も line_ids 化
+  const checklistSchema = requestBody.text.format.schema.properties.checklist_findings.items;
+  assert.equal(checklistSchema.properties.evidence, undefined);
+  assert.ok(checklistSchema.properties.evidence_line_ids);
+  // 暴走出力の上限(既定4096)
+  assert.equal(requestBody.max_output_tokens, 4096);
+});
+
 test("fee clinical facts schema is valid for OpenAI strict json_schema", async () => {
   let requestBody = null;
 
