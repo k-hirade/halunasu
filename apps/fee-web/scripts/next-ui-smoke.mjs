@@ -77,6 +77,13 @@ try {
     await monthlyPopup.getByText("受診 2026-06-03").waitFor();
     await monthlyPopup.getByText("要確認").first().waitFor();
     assert.equal(await monthlyPopup.getByRole("link", { name: "算定画面で開く" }).first().getAttribute("href"), "/sessions/fee_test_1");
+    await monthlyPopup.getByRole("button", { name: "月次レセプト案を開く" }).click();
+    const monthlyReceiptDialog = page.getByRole("dialog", { name: "月次レセプト案" });
+    await monthlyReceiptDialog.waitFor();
+    await monthlyReceiptDialog.getByRole("heading", { name: "患者名未入力" }).waitFor();
+    await monthlyReceiptDialog.getByRole("button", { name: "CSV出力" }).waitFor();
+    await monthlyReceiptDialog.getByText("診療報酬明細書").waitFor();
+    await monthlyReceiptDialog.locator(".fee-modal-footer").getByRole("button", { name: "閉じる" }).click();
 
     await page.goto(`${baseUrl}/sessions/fee_test_1`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "患者", level: 2 }).waitFor();
@@ -182,9 +189,9 @@ try {
     assert.equal(await page.getByText("詳細条件 JSON").count(), 0, "claimContext JSON editor must be removed from the UI");
     assert.equal(await page.getByText("算定オプション JSON").count(), 0, "calculationOptions JSON editor must be removed from the UI");
     assert.equal(await page.locator(".fee-session-action-footer").isVisible(), true, "detail actions must be available in the session footer");
-    await page.getByRole("tab", { name: "レセプト案" }).click();
-    assert.equal(await page.getByRole("button", { name: "コピー" }).isVisible(), true, "receipt draft copy must be available in the receipt tab");
-    await page.getByRole("tab", { name: "算定作業" }).click();
+    assert.equal(await page.getByRole("tab", { name: "レセプト案" }).count(), 0, "receipt draft tab must be removed from session detail");
+    assert.equal(await page.getByRole("tab", { name: "算定作業" }).count(), 0, "work tab must be removed from session detail");
+    assert.equal(await page.getByRole("button", { name: "コピー" }).count(), 0, "receipt draft export actions must not be shown in session detail");
 
     const hasDetailHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     assert.equal(hasDetailHorizontalOverflow, false);
@@ -441,6 +448,44 @@ async function installApiMocks(page) {
         status: "completed_with_errors",
         progress: { totalCount: 1, processedCount: 1, queuedCount: 0, failedCount: 1, skippedCount: 0, percent: 100 },
         items: [{ itemId: "bulk_item_1", feeSessionId: "fee_test_2", patientName: "病名未確認患者", serviceDate: "2026-06-04", status: "failed", reasonLabel: "未算定", errorMessage: "not configured" }]
+      }
+    })
+  }));
+  await page.route("**/api/fee/v1/fee/monthly-receipt?**", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      receiptDraft: {
+        receiptDraftId: "receipt_monthly_patient_1_2026_06",
+        scope: "monthly",
+        patientId: "patient_1",
+        patientRef: "patient_1",
+        patientSnapshot: { displayName: "患者名未入力", sex: "unknown" },
+        facilitySnapshot: { displayName: "prod-test", medicalInstitutionCode: "" },
+        insuranceSnapshot: { insurance: { insurerNumber: "12345678", insuredSymbol: "A", insuredNumber: "1" }, publicInsurance: [] },
+        claimMonth: "2026-06",
+        serviceDate: "2026-06-03",
+        setting: "outpatient",
+        status: "ready",
+        actualDays: 1,
+        totalPoints: 321,
+        billing: { totalPoints: 321, totalFee: 3210, burdenRatio: 0.3, burdenRatioSource: "default_unknown", copay: 960, insurerPay: 2250, notes: [] },
+        diagnoses: [{ name: "急性上気道炎", icd10Code: "J06.9", isPrimary: true }],
+        receiptAnnotations: { comments: [], symptomDetails: [] },
+        lineGroups: [{
+          key: "basic",
+          label: "基本料",
+          totalPoints: 321,
+          lines: [{
+            code: "112007410",
+            name: "再診料",
+            orderType: "basic",
+            quantity: 1,
+            points: 76,
+            totalPoints: 76,
+            includedInTotal: true,
+            status: "included"
+          }]
+        }]
       }
     })
   }));

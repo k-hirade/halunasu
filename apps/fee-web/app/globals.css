@@ -1310,6 +1310,29 @@ body:has(.fee-shell--detail) {
   flex-wrap: wrap;
 }
 
+.monthly-receipt-modal {
+  width: min(1120px, 100%);
+}
+
+.monthly-receipt-modal .fee-modal-head small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.monthly-receipt-modal-body {
+  gap: 12px;
+}
+
+.monthly-receipt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .monthly-popup-section {
   display: grid;
   gap: 8px;
@@ -1556,6 +1579,15 @@ body:has(.fee-shell--detail) {
   border-radius: 8px;
   background: #fff1f0;
   color: #b42318;
+  padding: 12px 14px;
+  font-weight: 800;
+}
+
+.inline-success {
+  border: 1px solid #abefc6;
+  border-radius: 8px;
+  background: #f6fef9;
+  color: #067647;
   padding: 12px 14px;
   font-weight: 800;
 }
@@ -2186,7 +2218,7 @@ body:has(.fee-shell--detail) {
 
 .fee-work-pane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .fee-main-tabs,

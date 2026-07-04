@@ -32,6 +32,7 @@
 | 2 | 精度改善（抽出・コードリンキング・検証ゲート・評価） | [02-accuracy.md](02-accuracy.md) |
 | 3 | 現行パイプライン分解（実測ポイント・ステージ） | [03-current-pipeline.md](03-current-pipeline.md) |
 | 4 | **実測評価からの所見（2026-07-04 run）★これが確定版** | [04-eval-findings-20260704.md](04-eval-findings-20260704.md) |
+| 5 | **アーキテクチャ妥当性評価と汎用精度改善計画（反例防止）** | [05-architecture-adequacy-plan.md](05-architecture-adequacy-plan.md) |
 
 > **⚠️ 実測で判明した訂正（[04](04-eval-findings-20260704.md)）**
 > - **レイテンシは総時間の83–90%がLLMコール**（master/py/ruleは合計<0.5秒）。→ 「準備段の並列化(L1)」は効果極小。**唯一のレバーはLLM出力の短縮**（`max_output_tokens`未設定・イベントschema過大・char offsets等）＋並列抽出＋モデル階層化。

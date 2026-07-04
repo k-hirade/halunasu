@@ -91,6 +91,7 @@ function MonthlyClaimDashboard() {
   const [bulkJob, setBulkJob] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [drawerPatientKey, setDrawerPatientKey] = useState("");
+  const [receiptPatientKey, setReceiptPatientKey] = useState("");
   const [savingSessionId, setSavingSessionId] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -134,6 +135,7 @@ function MonthlyClaimDashboard() {
   };
   const bulkTargetCount = Number(bulkPlan?.targetCount || 0);
   const drawerPatient = patients.find((patient) => monthlyPatientKey(patient) === drawerPatientKey) || null;
+  const receiptPatient = patients.find((patient) => monthlyPatientKey(patient) === receiptPatientKey) || null;
 
   async function updateMonthlyWork(session, patch) {
     if (!session?.feeSessionId) {
@@ -292,10 +294,21 @@ function MonthlyClaimDashboard() {
 
       <MonthlyPatientPopup
         onClose={() => setDrawerPatientKey("")}
+        onOpenReceipt={(patient) => {
+          setReceiptPatientKey(monthlyPatientKey(patient));
+          setDrawerPatientKey("");
+        }}
         onUpdateWork={updateMonthlyWork}
         patient={drawerPatient}
         savingSessionId={savingSessionId}
       />
+      {receiptPatient ? (
+        <MonthlyReceiptModal
+          claimMonth={claimMonth}
+          onClose={() => setReceiptPatientKey("")}
+          patient={receiptPatient}
+        />
+      ) : null}
     </main>
   );
 }
@@ -431,7 +444,7 @@ function monthlySessionTasks(readiness = {}) {
 }
 
 // 患者×月の最小トリアージ・ポップアップ。表示・作業状態の切替に専念し、編集は算定画面で行う。
-function MonthlyPatientPopup({ onClose, onUpdateWork, patient, savingSessionId }) {
+function MonthlyPatientPopup({ onClose, onOpenReceipt, onUpdateWork, patient, savingSessionId }) {
   useEffect(() => {
     if (!patient) {
       return undefined;
@@ -526,9 +539,167 @@ function MonthlyPatientPopup({ onClose, onUpdateWork, patient, savingSessionId }
           </div>
         </div>
         <footer className="fee-modal-footer">
+          <button className="btn btn--primary" disabled={!patient.patientId} onClick={() => onOpenReceipt(patient)} type="button">
+            月次レセプト案を開く
+          </button>
           {firstSession?.feeSessionId ? (
-            <a className="btn btn--primary" href={`/sessions/${encodeURIComponent(firstSession.feeSessionId)}`}>算定画面で開く</a>
+            <a className="btn btn--ghost" href={`/sessions/${encodeURIComponent(firstSession.feeSessionId)}`}>算定画面で開く</a>
           ) : null}
+          <button className="btn btn--ghost" onClick={onClose} type="button">閉じる</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function MonthlyReceiptModal({ claimMonth, onClose, patient }) {
+  const feeApi = useFeeApi();
+  const downloadMonthlyReceiptCsvFile = useFeeMonthlyReceiptCsvDownload();
+  const downloadMonthlyReceiptUkeFile = useFeeMonthlyReceiptUkeDownload();
+  const [receiptDraft, setReceiptDraft] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [noticeMessage, setNoticeMessage] = useState("");
+  const [ukeEncoding, setUkeEncoding] = useState("shift_jis");
+  const patientId = patient?.patientId || "";
+  const patientName = patient?.patientName || patientId || "患者未設定";
+  const receiptFeeSession = useMemo(() => ({
+    claimMonth,
+    patientId,
+    patientRef: patientId,
+    patientSnapshot: { displayName: patientName },
+    serviceDate: receiptDraft?.serviceDate || ""
+  }), [claimMonth, patientId, patientName, receiptDraft?.serviceDate]);
+
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!patientId || !claimMonth) {
+      setReceiptDraft(null);
+      setErrorMessage("月次レセプト案を作成する患者または請求月がありません。");
+      return undefined;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setErrorMessage("");
+    setNoticeMessage("");
+    (async () => {
+      try {
+        const params = new URLSearchParams({ patientId, claimMonth });
+        const response = await feeApi(`/v1/fee/monthly-receipt?${params.toString()}`);
+        if (!cancelled) {
+          setReceiptDraft(response?.receiptDraft || null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setReceiptDraft(null);
+          setErrorMessage(toUserFacingErrorMessage(error, "月次レセプト案を取得できませんでした。"));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [claimMonth, feeApi, patientId]);
+
+  async function runExportTask(task, successMessage) {
+    setBusy(true);
+    setErrorMessage("");
+    setNoticeMessage("");
+    try {
+      await task();
+      setNoticeMessage(successMessage);
+    } catch (error) {
+      setErrorMessage(toUserFacingErrorMessage(error, "出力に失敗しました。"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function printReceiptDraft() {
+    if (typeof window !== "undefined") {
+      window.print();
+    }
+  }
+
+  const exportDisabled = busy || loading || !receiptDraft || !patientId || !claimMonth;
+
+  return (
+    <div className="fee-modal-overlay" role="presentation" onMouseDown={onClose}>
+      <section className="fee-modal-card monthly-receipt-modal" role="dialog" aria-modal="true" aria-label="月次レセプト案" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="fee-modal-head">
+          <div>
+            <span className="label">月次レセプト案</span>
+            <h2>{patientName}</h2>
+            <small>{patientId || "患者ID未設定"} / {claimMonth || "請求月未設定"} / {Number(receiptDraft?.totalPoints || 0).toLocaleString()}点</small>
+          </div>
+          <button className="btn btn--ghost btn--icon" onClick={onClose} type="button" aria-label="閉じる">×</button>
+        </header>
+        <div className="fee-modal-body monthly-receipt-modal-body">
+          <div className="monthly-receipt-actions" aria-label="月次レセプト出力">
+            <button className="btn btn--ghost btn--sm" disabled={exportDisabled} onClick={printReceiptDraft} type="button">
+              印刷/PDF
+            </button>
+            <button
+              className="btn btn--ghost btn--sm"
+              disabled={exportDisabled}
+              onClick={() => runExportTask(async () => {
+                const text = formatReceiptDraftForClipboard({ feeSession: receiptFeeSession, receiptDraft });
+                await writeClipboardText(text);
+              }, "月次レセプト案をコピーしました。")}
+              type="button"
+            >
+              コピー
+            </button>
+            <button
+              className="btn btn--ghost btn--sm"
+              disabled={exportDisabled}
+              onClick={() => runExportTask(() => downloadMonthlyReceiptCsvFile(patientId, claimMonth), "月次レセプトCSVをダウンロードしました。")}
+              type="button"
+            >
+              CSV出力
+            </button>
+            <span className="receipt-uke-group">
+              <select
+                className="receipt-uke-encoding"
+                aria-label="レセ電の文字コード"
+                disabled={exportDisabled}
+                value={ukeEncoding}
+                onChange={(event) => setUkeEncoding(event.target.value)}
+              >
+                <option value="shift_jis">Shift_JIS</option>
+                <option value="utf-8">UTF-8</option>
+              </select>
+              <button
+                className="btn btn--ghost btn--sm"
+                disabled={exportDisabled}
+                onClick={() => runExportTask(() => downloadMonthlyReceiptUkeFile(patientId, claimMonth, ukeEncoding), "月次レセプト電算(UKE)をダウンロードしました。")}
+                type="button"
+              >
+                レセ電(UKE)出力
+              </button>
+            </span>
+          </div>
+          {errorMessage ? <div className="inline-error" role="status">{errorMessage}</div> : null}
+          {noticeMessage ? <div className="inline-success" role="status">{noticeMessage}</div> : null}
+          {loading ? (
+            <div className="fee-empty-state">月次レセプト案を作成しています…</div>
+          ) : (
+            <ReceiptDraft receiptDraft={receiptDraft} feeSession={receiptFeeSession} selected={Boolean(patientId)} />
+          )}
+        </div>
+        <footer className="fee-modal-footer">
           <button className="btn btn--ghost" onClick={onClose} type="button">閉じる</button>
         </footer>
       </section>
@@ -727,10 +898,6 @@ function FeeSessionListView() {
 
 function FeeSessionDetailView({ sessionId }) {
   const feeApi = useFeeApi();
-  const downloadReceiptCsvFile = useFeeReceiptCsvDownload();
-  const downloadReceiptUkeFile = useFeeReceiptUkeDownload();
-  const downloadMonthlyReceiptCsvFile = useFeeMonthlyReceiptCsvDownload();
-  const downloadMonthlyReceiptUkeFile = useFeeMonthlyReceiptUkeDownload();
   const [patients, setPatients] = useState([]);
   const [facilities, setFacilities] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -761,7 +928,6 @@ function FeeSessionDetailView({ sessionId }) {
   const [manualItemDraft, setManualItemDraft] = useState(defaultManualBillingItemDraft);
   const [missingDiagnosisPromptOpen, setMissingDiagnosisPromptOpen] = useState(false);
   const [missingDiagnosisDraft, setMissingDiagnosisDraft] = useState("");
-  const [activeMainTab, setActiveMainTab] = useState("work");
   const [pendingReviewDecisions, setPendingReviewDecisions] = useState({});
   const bootstrapLoadedRef = useRef(false);
   const toastTimersRef = useRef(new Map());
@@ -1390,71 +1556,6 @@ function FeeSessionDetailView({ sessionId }) {
     });
   }
 
-  async function copyReceiptDraft(options = {}) {
-    const target = options.scope === "monthly" ? options.receiptDraft : effectiveReceiptDraft;
-    if (!target) {
-      addToast("コピーできるレセプト案がまだありません。", "error");
-      return;
-    }
-    await runBusy(setBusy, addToast, async () => {
-      const text = formatReceiptDraftForClipboard({ feeSession: effectiveFeeSession, receiptDraft: target });
-      await writeClipboardText(text);
-      addToast(options.scope === "monthly" ? "月次集計レセプトをコピーしました。" : "レセプト案をコピーしました。", "success");
-    });
-  }
-
-  async function downloadReceiptCsv(options = {}) {
-    if (options.scope === "monthly") {
-      if (!options.patientId || !options.claimMonth) {
-        addToast("月次集計CSVを出力する患者・請求月がありません。", "error");
-        return;
-      }
-      await runBusy(setBusy, addToast, async () => {
-        await downloadMonthlyReceiptCsvFile(options.patientId, options.claimMonth);
-        addToast("月次集計レセプトCSVをダウンロードしました。", "success");
-      });
-      return;
-    }
-    if (!sessionId) {
-      addToast("CSVを出力できるセッションがありません。", "error");
-      return;
-    }
-    if (pendingReviewDecisionCount) {
-      addToast("未保存の採否変更があります。保存してからCSVを出力してください。", "error");
-      return;
-    }
-    await runBusy(setBusy, addToast, async () => {
-      await downloadReceiptCsvFile(sessionId);
-      addToast("レセプト取込用CSVをダウンロードしました。", "success");
-    });
-  }
-
-  async function downloadReceiptUke(encoding = "shift_jis", options = {}) {
-    if (options.scope === "monthly") {
-      if (!options.patientId || !options.claimMonth) {
-        addToast("月次集計レセ電を出力する患者・請求月がありません。", "error");
-        return;
-      }
-      await runBusy(setBusy, addToast, async () => {
-        await downloadMonthlyReceiptUkeFile(options.patientId, options.claimMonth, encoding);
-        addToast("月次集計レセプト電算(UKE)をダウンロードしました。", "success");
-      });
-      return;
-    }
-    if (!sessionId) {
-      addToast("レセ電を出力できるセッションがありません。", "error");
-      return;
-    }
-    if (pendingReviewDecisionCount) {
-      addToast("未保存の採否変更があります。保存してからレセ電を出力してください。", "error");
-      return;
-    }
-    await runBusy(setBusy, addToast, async () => {
-      await downloadReceiptUkeFile(sessionId, encoding);
-      addToast("レセプト電算(UKE)をダウンロードしました。", "success");
-    });
-  }
-
   function addOrderRow() {
     setOrderRowsTouched(true);
     setOrderRows((current) => [...current.filter((row) => row.localName || row.standardCode), createEmptyOrderRow()]);
@@ -1582,26 +1683,6 @@ function FeeSessionDetailView({ sessionId }) {
     });
   }
 
-  async function removeManualOrderAndCalculate(rowIndex) {
-    const nextRows = orderRows.filter((_, index) => index !== rowIndex);
-    const normalizedRows = nextRows.length ? nextRows : [createEmptyOrderRow()];
-    setOrderRowsTouched(true);
-    setOrderRows(normalizedRows);
-    const canReuseClinical = canReuseClinicalCalculationForManualChange({
-      feeSession,
-      form,
-      nextForm: form,
-      defaultFacilityId,
-      clinicalTextBaselineHash
-    });
-    await calculate({
-      orderRowsOverride: normalizedRows,
-      skipSaveDetails: canReuseClinical,
-      calculationMode: canReuseClinical ? "reuse_clinical" : undefined,
-      includeOrdersForCalculation: canReuseClinical
-    });
-  }
-
   function updateOutpatientBasicKind(value) {
     try {
       const options = parseJsonObjectField(form.calculationOptionsText, "算定オプション JSON") || {};
@@ -1686,26 +1767,16 @@ function FeeSessionDetailView({ sessionId }) {
           setPatientPickerOpen={setPatientPickerOpen}
         />
         <WorkPane
-          activeMainTab={activeMainTab}
           calculation={calculation}
           candidateWorkbench={effectiveCandidateWorkbench}
           disabled={busy}
           feeSession={effectiveFeeSession}
-          onCopyReceipt={copyReceiptDraft}
-          onDownloadCsv={downloadReceiptCsv}
-          onDownloadUke={downloadReceiptUke}
           onDecision={decideReviewItem}
           onOpenDetail={setCandidateDetail}
           onOpenManualItem={() => {
             setManualItemDraft(defaultManualBillingItemDraft());
             setManualItemModalOpen(true);
-            setActiveMainTab("work");
           }}
-          onSetMainTab={setActiveMainTab}
-          onRemoveManualOrder={removeManualOrderAndCalculate}
-          orderRows={orderRows}
-          receiptDraft={effectiveReceiptDraft}
-          selected={Boolean(sessionId)}
         />
       </div>
       <SessionActionFooter
@@ -2525,65 +2596,28 @@ function escapeHtml(value = "") {
 }
 
 function WorkPane({
-  activeMainTab,
   calculation,
   candidateWorkbench,
   disabled,
   feeSession,
-  onCopyReceipt,
-  onDownloadCsv,
-  onDownloadUke,
   onDecision,
   onOpenDetail,
-  onOpenManualItem,
-  onRemoveManualOrder,
-  onSetMainTab,
-  orderRows = [],
-  receiptDraft,
-  selected
+  onOpenManualItem
 }) {
   return (
-    <section className="fee-work-pane" aria-label="算定作業とレセプト案">
-      <div className="fee-main-tabs" role="tablist" aria-label="算定画面">
-        <TabButton active={activeMainTab === "work"} onClick={() => onSetMainTab("work")}>算定作業</TabButton>
-        <TabButton active={activeMainTab === "receipt"} onClick={() => onSetMainTab("receipt")}>レセプト案</TabButton>
-      </div>
+    <section className="fee-work-pane" aria-label="算定候補">
       <div className="fee-work-pane-body">
-        {activeMainTab === "work" ? (
-          <CandidateWorkbench
-            calculation={calculation}
-            disabled={disabled}
-            feeSession={feeSession}
-            onDecision={onDecision}
-            onOpenManualItem={onOpenManualItem}
-            onOpenDetail={onOpenDetail}
-            candidateWorkbench={candidateWorkbench}
-          />
-        ) : (
-          <ReceiptDraftPane
-            disabled={disabled}
-            feeSession={feeSession}
-            onCopyReceipt={onCopyReceipt}
-            onDownloadCsv={onDownloadCsv}
-            onDownloadUke={onDownloadUke}
-            onOpenManualItem={onOpenManualItem}
-            onRemoveManualOrder={onRemoveManualOrder}
-            orderRows={orderRows}
-            receiptDraft={receiptDraft}
-            selected={selected}
-          />
-        )}
+        <CandidateWorkbench
+          calculation={calculation}
+          disabled={disabled}
+          feeSession={feeSession}
+          onDecision={onDecision}
+          onOpenManualItem={onOpenManualItem}
+          onOpenDetail={onOpenDetail}
+          candidateWorkbench={candidateWorkbench}
+        />
       </div>
     </section>
-  );
-}
-
-function TabButton({ active, children, count, onClick }) {
-  return (
-    <button className={`fee-tab-button ${active ? "is-active" : ""}`} onClick={onClick} role="tab" type="button">
-      <span>{children}</span>
-      {typeof count === "number" ? <strong>{count.toLocaleString()}</strong> : null}
-    </button>
   );
 }
 
@@ -3845,179 +3879,6 @@ function confirmableProposalForAdoption(item = {}) {
     && points > 0;
 }
 
-function ReceiptDraftPane({
-  disabled,
-  feeSession,
-  onCopyReceipt,
-  onDownloadCsv,
-  onDownloadUke,
-  onOpenManualItem,
-  onRemoveManualOrder,
-  orderRows = [],
-  receiptDraft,
-  selected
-}) {
-  const feeApi = useFeeApi();
-  const manualOrders = manualBillingOrderEntries(orderRows);
-  const exportValidation = receiptDraft?.exportValidation || null;
-  const [ukeEncoding, setUkeEncoding] = useState("shift_jis");
-  const [scope, setScope] = useState("service_date");
-  const [monthlyReceipt, setMonthlyReceipt] = useState(null);
-  const [monthlyLoading, setMonthlyLoading] = useState(false);
-  const [monthlyError, setMonthlyError] = useState("");
-  const patientId = feeSession?.patientId || "";
-  const claimMonth = feeSession?.claimMonth || String(feeSession?.serviceDate || "").slice(0, 7);
-
-  // 施設のレセプト表示単位(a/b)の既定値を読み、初期スコープに反映する(ベストエフォート)。
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const response = await feeApi("/v1/fee/settings");
-        const settingsMap = response?.settings || {};
-        const facilityScope = settingsMap[feeSession?.facilityId]?.receiptPolicy?.defaultReceiptScope
-          || settingsMap.default?.receiptPolicy?.defaultReceiptScope;
-        if (!cancelled && (facilityScope === "monthly" || facilityScope === "service_date")) {
-          setScope(facilityScope);
-        }
-      } catch {
-        // 既定スコープの取得失敗時は診療日単位のまま。
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [feeApi, feeSession?.facilityId]);
-
-  // 月次集計スコープのときだけ、患者×請求月の集計レセプトを取得する。
-  useEffect(() => {
-    if (scope !== "monthly" || !patientId || !claimMonth) {
-      return undefined;
-    }
-    let cancelled = false;
-    setMonthlyLoading(true);
-    setMonthlyError("");
-    (async () => {
-      try {
-        const params = new URLSearchParams({ patientId, claimMonth });
-        const response = await feeApi(`/v1/fee/monthly-receipt?${params.toString()}`);
-        if (!cancelled) {
-          setMonthlyReceipt(response?.receiptDraft || null);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setMonthlyError(toUserFacingErrorMessage(error, "月次集計レセプトを取得できませんでした。"));
-        }
-      } finally {
-        if (!cancelled) {
-          setMonthlyLoading(false);
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [scope, patientId, claimMonth, feeApi, feeSession?.status]);
-
-  const previewReceiptDraft = scope === "monthly" ? monthlyReceipt : receiptDraft;
-  const exportTarget = scope === "monthly" ? monthlyReceipt : receiptDraft;
-  const exportOptions = scope === "monthly"
-    ? { scope: "monthly", patientId, claimMonth, receiptDraft: monthlyReceipt }
-    : { scope: "service_date" };
-  function printReceiptDraft() {
-    if (typeof window !== "undefined") {
-      window.print();
-    }
-  }
-  return (
-    <div className="receipt-draft-pane">
-      <div className="receipt-pane-head">
-        <div>
-          <h2>レセプト案</h2>
-          <p>提出前の帳票プレビューです。修正後にCSV・レセ電(UKE)を出力できます。</p>
-          <div className="receipt-scope-toggle" role="group" aria-label="レセプト表示単位">
-            {[["service_date", "診療日単位"], ["monthly", "月次集計"]].map(([value, label]) => (
-              <button
-                className={`fee-filter-chip ${scope === value ? "is-active" : ""}`}
-                key={value}
-                onClick={() => setScope(value)}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="receipt-pane-actions">
-          <button className="btn btn--ghost btn--sm" disabled={disabled || !exportTarget} onClick={printReceiptDraft} type="button">
-            印刷/PDF
-          </button>
-          <button className="btn btn--ghost btn--sm" disabled={disabled || !exportTarget} onClick={() => onCopyReceipt(exportOptions)} type="button">
-            コピー
-          </button>
-          <button className="btn btn--ghost btn--sm" disabled={disabled || !exportTarget} onClick={() => onDownloadCsv(exportOptions)} type="button">
-            CSV出力
-          </button>
-          <span className="receipt-uke-group">
-            <select
-              className="receipt-uke-encoding"
-              aria-label="レセ電の文字コード"
-              disabled={disabled || !exportTarget}
-              value={ukeEncoding}
-              onChange={(event) => setUkeEncoding(event.target.value)}
-            >
-              <option value="shift_jis">Shift_JIS</option>
-              <option value="utf-8">UTF-8</option>
-            </select>
-            <button className="btn btn--ghost btn--sm" disabled={disabled || !exportTarget} onClick={() => onDownloadUke(ukeEncoding, exportOptions)} type="button">
-              レセ電(UKE)出力
-            </button>
-          </span>
-        </div>
-      </div>
-      <div className="receipt-review-layout">
-        {scope === "monthly" && monthlyLoading ? (
-          <div className="fee-empty-state">月次集計レセプトを作成しています…</div>
-        ) : scope === "monthly" && monthlyError ? (
-          <div className="fee-error-state" role="status">{monthlyError}</div>
-        ) : (
-          <ReceiptDraft receiptDraft={previewReceiptDraft} feeSession={feeSession} selected={selected} />
-        )}
-        <ReceiptCorrectionPanel
-          disabled={disabled}
-          manualOrders={manualOrders}
-          onOpenManualItem={onOpenManualItem}
-          onRemoveManualOrder={onRemoveManualOrder}
-          receiptDraft={receiptDraft}
-          validation={exportValidation}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ReceiptExportValidation({ validation }) {
-  if (!validation) {
-    return null;
-  }
-  const issues = Array.isArray(validation.issues) ? validation.issues : [];
-  return (
-    <section className={`receipt-export-validation receipt-export-validation--${validation.exportStatus || "draft"}`} aria-label="出力前検証">
-      <div>
-        <span>{validation.label || "レセ電下書き"}</span>
-        <strong>{Number(validation.blockingIssueCount || 0) ? "必須項目の不足があります" : "下書き出力の基本項目は揃っています"}</strong>
-        <small>必須 {Number(validation.blockingIssueCount || 0).toLocaleString()}件 / 警告 {Number(validation.warningIssueCount || 0).toLocaleString()}件</small>
-      </div>
-      {issues.length ? (
-        <ul>
-          {issues.slice(0, 5).map((issue) => (
-            <li key={`${issue.field}-${issue.message}`}>
-              <span>{issue.severity === "error" ? "必須" : "警告"}</span>
-              <p>{issue.message}</p>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </section>
-  );
-}
-
 const BURDEN_RATIO_SOURCE_LABEL = {
   explicit: "保険情報の指定",
   age: "年齢から自動判定",
@@ -4305,59 +4166,9 @@ function CalculationProgress({ progress }) {
   );
 }
 
-function ReceiptCorrectionPanel({
-  disabled,
-  manualOrders = [],
-  onOpenManualItem,
-  onRemoveManualOrder,
-  receiptDraft,
-  validation
-}) {
-  return (
-    <aside className="receipt-correction-panel" aria-label="レセプト修正">
-      <section className="receipt-correction-section">
-        <div className="receipt-correction-head">
-          <h3>修正</h3>
-          <span>{Number(receiptDraft?.totalPoints || 0).toLocaleString()}点</span>
-        </div>
-        <div className="receipt-correction-actions">
-          <button className="btn btn--primary btn--sm" disabled={disabled || !receiptDraft} onClick={onOpenManualItem} type="button">
-            明細を追加
-          </button>
-        </div>
-      </section>
-      <ReceiptExportValidation validation={validation} />
-      {manualOrders.length ? (
-        <section className="manual-billing-list" aria-label="ユーザー追加明細">
-          <div className="manual-billing-list-head">
-            <div>
-              <h3>ユーザー追加明細</h3>
-              <p>削除すると再計算します。</p>
-            </div>
-            <span>{manualOrders.length.toLocaleString()}件</span>
-          </div>
-          {manualOrders.map(({ row, rowIndex }) => (
-            <article className="manual-billing-row" key={`${row.standardCode || row.localName || "manual"}-${rowIndex}`}>
-              <div>
-                <strong>{row.standardName || row.localName || row.standardCode || "名称未設定"}</strong>
-                <small>{orderTypeLabel(row.orderType)} / {row.standardCode || "コード未設定"} / 数量 {row.quantity || "1"}</small>
-                {row.note ? <small>{row.note}</small> : null}
-              </div>
-              <span>手入力</span>
-              <button className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => onRemoveManualOrder(rowIndex)} type="button">
-                削除
-              </button>
-            </article>
-          ))}
-        </section>
-      ) : null}
-    </aside>
-  );
-}
-
 function ReceiptDraft({ feeSession, receiptDraft, selected }) {
   if (!receiptDraft) {
-    return <div className="fee-empty-state">{selected ? "算定候補を作成すると、レセプト案が表示されます。" : "算定記録を選択してください。"}</div>;
+    return <div className="fee-empty-state">{selected ? "対象月の算定候補を作成すると、月次レセプト案が表示されます。" : "患者を選択してください。"}</div>;
   }
   const patient = receiptDraft.patientSnapshot || {};
   const facility = receiptDraft.facilitySnapshot || {};
@@ -4627,7 +4438,7 @@ function formatReceiptDraftForClipboard({ feeSession, receiptDraft }) {
   const claimMonth = receiptDraft?.claimMonth || feeSession?.claimMonth || "請求月未設定";
   const totalPoints = Number(receiptDraft?.totalPoints || 0);
   const lines = [
-    "レセプト案",
+    "月次レセプト案",
     `患者: ${patientName}`,
     `診療日: ${serviceDate}`,
     `請求月: ${claimMonth}`,
@@ -4781,66 +4592,6 @@ function useFeeApi() {
     }
     return payload;
   }, [auth.accessToken, auth.csrfToken]);
-}
-
-// レセコン取込用CSVのダウンロード(JSONではなくテキスト応答を扱う)
-function useFeeReceiptCsvDownload() {
-  const auth = usePlatformAuth();
-  return useCallback(async (sessionId) => {
-    const config = typeof window !== "undefined" ? window.__HALUNASU_FEE_CONFIG__ || {} : {};
-    const baseUrl = config.feeBaseUrl || "/api/fee";
-    const headers = {};
-    const accessToken = auth.accessToken || getStoredPlatformAccessToken();
-    if (accessToken) {
-      headers.authorization = `Bearer ${accessToken}`;
-    }
-    const response = await fetch(
-      `${baseUrl}/v1/fee/sessions/${encodeURIComponent(sessionId)}/receipt.csv`,
-      { method: "GET", headers, credentials: "include" }
-    );
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `receipt_${sessionId}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }, [auth.accessToken]);
-}
-
-// レセプト電算(UKE)のダウンロード。文字コードを選択(既定 Shift_JIS)。
-function useFeeReceiptUkeDownload() {
-  const auth = usePlatformAuth();
-  return useCallback(async (sessionId, encoding = "shift_jis") => {
-    const config = typeof window !== "undefined" ? window.__HALUNASU_FEE_CONFIG__ || {} : {};
-    const baseUrl = config.feeBaseUrl || "/api/fee";
-    const headers = {};
-    const accessToken = auth.accessToken || getStoredPlatformAccessToken();
-    if (accessToken) {
-      headers.authorization = `Bearer ${accessToken}`;
-    }
-    const response = await fetch(
-      `${baseUrl}/v1/fee/sessions/${encodeURIComponent(sessionId)}/receipt.uke?encoding=${encodeURIComponent(encoding)}`,
-      { method: "GET", headers, credentials: "include" }
-    );
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `receipt_${sessionId}.UKE`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }, [auth.accessToken]);
 }
 
 function useFeeReceiptBlobDownload() {
@@ -5418,12 +5169,6 @@ function calculationOptionsTextWithComment(value, item = {}) {
     ];
   }
   return formatJsonObject(options);
-}
-
-function manualBillingOrderEntries(rows = []) {
-  return rows
-    .map((row, rowIndex) => ({ row, rowIndex }))
-    .filter(({ row }) => String(row?.sourceSystem || row?.source_system || "") === "fee_web_user_added");
 }
 
 function manualBillingDuplicateReason({ item = {}, orderRows = [], receiptDraft = null } = {}) {
