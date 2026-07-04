@@ -64,11 +64,23 @@ test("aggregates a monthly receipt across a patient's visits", () => {
   assert.equal(receipt.actualDays, 2);
   assert.equal(receipt.sessionCount, 2);
   assert.equal(receipt.totalPoints, 206);
+  assert.equal(receipt.receiptType, "medical_outpatient");
+  assert.deepEqual(receipt.receiptTypes, ["medical_outpatient"]);
+  assert.match(receipt.claimKey, /^pat_month\|2026-06\|medical_outpatient\|/);
   const revisit = receipt.lines.find((line) => line.code === "112007410");
   assert.equal(revisit.quantity, 2);
   assert.equal(revisit.totalPoints, 146);
+  assert.deepEqual(revisit.serviceDates, ["2026-06-03", "2026-06-17"]);
+  assert.equal(receipt.lineOccurrences.length, 3);
+  assert.deepEqual(
+    receipt.lineOccurrences
+      .filter((line) => line.code === "112007410")
+      .map((line) => line.serviceDate),
+    ["2026-06-03", "2026-06-17"]
+  );
   assert.equal(receipt.diagnoses.length, 2);
   assert.equal(receipt.diagnoses.find((d) => d.name === "急性上気道炎").isPrimary, true);
+  assert.equal(receipt.diagnoses.find((d) => d.name === "急性上気道炎").firstSeenServiceDate, "2026-06-03");
 });
 
 test("builds Platform-scoped fee sessions", () => {

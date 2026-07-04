@@ -457,6 +457,8 @@ async function installApiMocks(page) {
       receiptDraft: {
         receiptDraftId: "receipt_monthly_patient_1_2026_06",
         scope: "monthly",
+        receiptType: "medical_outpatient",
+        claimKey: "patient_1|2026-06|medical_outpatient|12345678|A|1|",
         patientId: "patient_1",
         patientRef: "patient_1",
         patientSnapshot: { displayName: "患者名未入力", sex: "unknown" },
@@ -471,6 +473,17 @@ async function installApiMocks(page) {
         billing: { totalPoints: 321, totalFee: 3210, burdenRatio: 0.3, burdenRatioSource: "default_unknown", copay: 960, insurerPay: 2250, notes: [] },
         diagnoses: [{ name: "急性上気道炎", icd10Code: "J06.9", isPrimary: true }],
         receiptAnnotations: { comments: [], symptomDetails: [] },
+        lineOccurrences: [{
+          occurrenceId: "fee_test_1_line_1",
+          aggregateKey: "112007410|basic|再診料",
+          serviceDate: "2026-06-03",
+          code: "112007410",
+          name: "再診料",
+          orderType: "basic",
+          quantity: 1,
+          points: 76,
+          totalPoints: 76
+        }],
         lineGroups: [{
           key: "basic",
           label: "基本料",

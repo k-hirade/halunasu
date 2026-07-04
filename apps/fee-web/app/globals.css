@@ -4507,7 +4507,7 @@ body:has(.fee-shell--detail) {
 
 .receipt-form-top {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) auto minmax(0, 1.4fr);
+  grid-template-columns: minmax(0, 1.2fr) auto auto minmax(0, 1.45fr);
   gap: 14px;
   align-items: start;
   padding-bottom: 12px;
@@ -4539,6 +4539,34 @@ body:has(.fee-shell--detail) {
 
 .receipt-form-period strong {
   font-size: 1rem;
+}
+
+.receipt-form-period small {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.receipt-form-classification {
+  min-width: 72px;
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  border: 1px solid #111827;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.receipt-form-classification span,
+.receipt-form-classification small {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.receipt-form-classification strong {
+  font-size: 1.4rem;
+  line-height: 1;
 }
 
 .receipt-form-insurance {
@@ -4687,6 +4715,15 @@ body:has(.fee-shell--detail) {
   font-weight: 900;
 }
 
+.receipt-form-section-code {
+  display: inline-flex;
+  width: 22px;
+  margin-right: 6px;
+  color: #475467;
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .receipt-form-tekiyo {
   min-width: 0;
 }
@@ -4710,6 +4747,46 @@ body:has(.fee-shell--detail) {
 .receipt-form-tekiyo p {
   margin: 1px 0 0;
   line-height: 1.45;
+}
+
+.receipt-form-tekiyo-line {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 2px 0;
+}
+
+.receipt-form-tekiyo-date {
+  display: inline-flex;
+  justify-content: center;
+  border: 1px solid #d8dee8;
+  border-radius: 4px;
+  padding: 1px 4px;
+  color: #475467;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.receipt-form-tekiyo-line strong,
+.receipt-form-tekiyo-line small,
+.receipt-form-tekiyo-line em {
+  display: block;
+}
+
+.receipt-form-tekiyo-line small {
+  color: #64748b;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.receipt-form-tekiyo-line em {
+  color: #9a3412;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
 }
 
 .receipt-form-foot {
@@ -4736,6 +4813,10 @@ body:has(.fee-shell--detail) {
 
 .receipt-form-foot strong {
   font-size: 1.05rem;
+}
+
+.receipt-form--unsupported .receipt-form-top {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 /* 印刷/PDF: レセプト用紙だけを出力する */
@@ -5116,6 +5197,28 @@ body:has(.fee-shell--detail) {
   .fee-source-form,
   .fee-work-pane-body {
     overflow: visible;
+  }
+
+  .receipt-form-top,
+  .receipt-form--unsupported .receipt-form-top {
+    grid-template-columns: 1fr;
+  }
+
+  .receipt-form-classification,
+  .receipt-form-period {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .receipt-form-benefit,
+  .receipt-form-patient,
+  .receipt-form-foot {
+    grid-template-columns: 1fr;
+  }
+
+  .receipt-form-patient > div,
+  .receipt-form-points {
+    border-right: 0;
   }
 
   .fee-toast-container {

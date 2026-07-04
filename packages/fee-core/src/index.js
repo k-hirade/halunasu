@@ -308,9 +308,17 @@ export function buildReceiptDraft(session = {}, options = {}) {
   const lines = [...baseLines, ...adoptedProposalLines];
   const includedLines = lines.filter((line) => line.includedInTotal !== false);
   const totalPoints = Number(includedLines.reduce((sum, line) => sum + line.totalPoints, 0));
+  const receiptType = receiptTypeFromSession(session);
 
   return {
     receiptDraftId: `receipt_${requiredString(session.feeSessionId, "feeSessionId")}`,
+    receiptType,
+    claimKey: buildReceiptClaimKey({
+      patientId: session.patientId || null,
+      claimMonth: session.claimMonth || String(session.serviceDate).slice(0, 7),
+      receiptType,
+      insuranceSnapshot: session.insuranceSnapshot
+    }),
     feeSessionId: session.feeSessionId,
     orgId: requiredString(session.orgId, "orgId"),
     patientId: session.patientId || null,
@@ -327,6 +335,7 @@ export function buildReceiptDraft(session = {}, options = {}) {
     totalPoints,
     billing: buildBillingSummary(session, { totalPoints }),
     lines,
+    lineOccurrences: includedLines.map((line, index) => receiptLineOccurrenceFromLine(line, session, index)),
     lineGroups: groupReceiptLines(includedLines),
     validationIssues: warnings.map((message, index) => ({
       issueId: warningReviewItemId(message, index),
@@ -352,19 +361,33 @@ export function buildMonthlyReceiptDraft(sessions = [], options = {}) {
     .sort((a, b) => String(a.serviceDate || "").localeCompare(String(b.serviceDate || "")));
 
   const lineMap = new Map();
+  const lineOccurrences = [];
   for (const session of relevant) {
     const draft = buildReceiptDraft(session, { now: options.now });
     for (const line of Array.isArray(draft.lines) ? draft.lines : []) {
       if (line.includedInTotal === false) {
         continue;
       }
-      const key = `${line.code || ""}|${line.orderType || ""}|${line.name || ""}`;
+      const key = receiptLineAggregateKey(line);
+      const occurrence = receiptLineOccurrenceFromLine(line, session, lineOccurrences.length, { aggregateKey: key });
+      lineOccurrences.push(occurrence);
       const existing = lineMap.get(key);
       if (existing) {
         existing.quantity = Number(existing.quantity || 0) + Number(line.quantity || 1);
         existing.totalPoints = Number(existing.totalPoints || 0) + Number(line.totalPoints || 0);
+        existing.occurrenceCount = Number(existing.occurrenceCount || 0) + 1;
+        existing.occurrenceIds = [...(Array.isArray(existing.occurrenceIds) ? existing.occurrenceIds : []), occurrence.occurrenceId];
+        existing.serviceDates = uniqueSortedStrings([...(Array.isArray(existing.serviceDates) ? existing.serviceDates : []), occurrence.serviceDate]);
       } else {
-        lineMap.set(key, { ...line, quantity: Number(line.quantity || 1), totalPoints: Number(line.totalPoints || 0) });
+        lineMap.set(key, {
+          ...line,
+          aggregateKey: key,
+          quantity: Number(line.quantity || 1),
+          totalPoints: Number(line.totalPoints || 0),
+          occurrenceCount: 1,
+          occurrenceIds: [occurrence.occurrenceId],
+          serviceDates: occurrence.serviceDate ? [occurrence.serviceDate] : []
+        });
       }
     }
   }
@@ -372,19 +395,31 @@ export function buildMonthlyReceiptDraft(sessions = [], options = {}) {
   const totalPoints = lines.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0);
   const serviceDates = [...new Set(relevant.map((session) => String(session.serviceDate || "")).filter(Boolean))];
   const base = relevant[relevant.length - 1] || {};
+  const receiptTypes = uniqueSortedStrings(relevant.map((session) => receiptTypeFromSession(session)));
+  const receiptType = receiptTypes.length > 1 ? "mixed" : receiptTypeFromSession(base);
+  const effectivePatientId = patientId || base.patientId || null;
+  const effectiveClaimMonth = claimMonth || (base.serviceDate ? String(base.serviceDate).slice(0, 7) : null);
 
   return {
-    receiptDraftId: `receipt_monthly_${patientId || "unknown"}_${claimMonth || "unknown"}`,
+    receiptDraftId: `receipt_monthly_${effectivePatientId || "unknown"}_${effectiveClaimMonth || "unknown"}`,
     scope: "monthly",
+    receiptType,
+    receiptTypes,
+    claimKey: buildReceiptClaimKey({
+      patientId: effectivePatientId,
+      claimMonth: effectiveClaimMonth,
+      receiptType,
+      insuranceSnapshot: base.insuranceSnapshot
+    }),
     feeSessionId: base.feeSessionId || null,
-    patientId: patientId || base.patientId || null,
+    patientId: effectivePatientId,
     patientRef: base.patientRef || base.patientId || null,
     patientSnapshot: base.patientSnapshot || null,
     insuranceSnapshot: base.insuranceSnapshot || null,
     facilitySnapshot: base.facilitySnapshot || null,
     departmentSnapshot: base.departmentSnapshot || null,
     serviceDate: base.serviceDate || null,
-    claimMonth: claimMonth || (base.serviceDate ? String(base.serviceDate).slice(0, 7) : null),
+    claimMonth: effectiveClaimMonth,
     setting: base.setting || "outpatient",
     status: relevant.length ? "ready" : "not_calculated",
     actualDays: serviceDates.length,
@@ -394,6 +429,7 @@ export function buildMonthlyReceiptDraft(sessions = [], options = {}) {
     diagnoses: mergeMonthlyDiagnoses(relevant),
     receiptAnnotations: mergeMonthlyReceiptAnnotations(relevant),
     lines,
+    lineOccurrences,
     lineGroups: groupReceiptLines(lines),
     generatedAt: timestamp(options.now),
     schemaVersion: 1
@@ -413,8 +449,12 @@ function mergeMonthlyDiagnoses(sessions = []) {
         if (diagnosis.isPrimary) {
           existing.isPrimary = true;
         }
+        existing.firstSeenServiceDate = earliestYmd(existing.firstSeenServiceDate, session.serviceDate);
       } else {
-        map.set(key, { ...diagnosis });
+        map.set(key, {
+          ...diagnosis,
+          firstSeenServiceDate: diagnosis.firstSeenServiceDate || session.serviceDate || null
+        });
       }
     }
   }
@@ -783,7 +823,8 @@ function ukeBurdenClass(publicInsurance = []) {
 // ※本人/家族・高齢区分は情報不足のため既定値。要・仕様検証。
 function ukeReceiptType(receiptDraft = {}, publicInsurance = []) {
   const combination = publicInsurance.length >= 2 ? "3" : publicInsurance.length === 1 ? "2" : "1";
-  const inpatient = receiptDraft.setting === "inpatient" ? "1" : "2";
+  const receiptType = receiptDraft.receiptType || "";
+  const inpatient = receiptType === "medical_inpatient" || receiptType === "medical_dpc" || receiptDraft.setting === "inpatient" ? "1" : "2";
   return `1${combination}1${inpatient}`;
 }
 
@@ -986,6 +1027,90 @@ function receiptLineFromProposal(proposal = {}, index = 0, calculation = {}, opt
     inclusionStatus: included ? "included" : "pending",
     includedInTotal: included
   };
+}
+
+function receiptTypeFromSession(session = {}) {
+  const explicit = String(session.receiptType || session.receipt_type || "").trim();
+  if (explicit) {
+    return explicit;
+  }
+  const setting = String(session.setting || "").toLowerCase();
+  if (setting.includes("dpc")) {
+    return "medical_dpc";
+  }
+  if (setting.includes("inpatient") || setting.includes("入院")) {
+    return "medical_inpatient";
+  }
+  return "medical_outpatient";
+}
+
+function buildReceiptClaimKey({ patientId, claimMonth, receiptType, insuranceSnapshot } = {}) {
+  const insurance = isPlainObject(insuranceSnapshot?.insurance) ? insuranceSnapshot.insurance : {};
+  const publicInsurance = Array.isArray(insuranceSnapshot?.publicInsurance) ? insuranceSnapshot.publicInsurance : [];
+  const publicKey = publicInsurance
+    .map((entry) => `${entry?.payerNumber || ""}:${entry?.recipientNumber || ""}`)
+    .filter((value) => value !== ":")
+    .join("+");
+  return [
+    patientId || "unknown_patient",
+    claimMonth || "unknown_month",
+    receiptType || "medical_outpatient",
+    insurance.insurerNumber || "unknown_insurer",
+    insurance.insuredSymbol || "",
+    insurance.insuredNumber || "",
+    publicKey
+  ].join("|");
+}
+
+function receiptLineAggregateKey(line = {}) {
+  return [
+    line.code || "",
+    line.orderType || "",
+    line.name || ""
+  ].join("|");
+}
+
+function receiptLineOccurrenceFromLine(line = {}, session = {}, index = 0, options = {}) {
+  const aggregateKey = options.aggregateKey || receiptLineAggregateKey(line);
+  const serviceDate = line.serviceDate || line.performedDate || session.serviceDate || null;
+  const serviceTime = line.serviceTime || line.performedTime || line.time || null;
+  return compactObject({
+    occurrenceId: `${session.feeSessionId || "session"}_${line.receiptLineId || line.sourceLineId || line.code || "line"}_${index + 1}`,
+    aggregateKey,
+    receiptLineId: line.receiptLineId || null,
+    sourceLineId: line.sourceLineId || null,
+    sourceProposalId: line.sourceProposalId || null,
+    feeSessionId: session.feeSessionId || null,
+    serviceDate,
+    serviceTime,
+    departmentName: session.departmentSnapshot?.displayName || session.departmentSnapshot?.name || null,
+    code: line.code || null,
+    name: line.name || "未分類",
+    orderType: line.orderType || "unknown",
+    points: Number(line.points || 0),
+    quantity: Number(line.quantity || 1),
+    totalPoints: Number(line.totalPoints || 0),
+    bodySite: line.bodySite || line.body_site || null,
+    laterality: line.laterality || null,
+    comment: line.comment || line.commentText || line.comment_text || null,
+    comments: Array.isArray(line.comments) ? line.comments : undefined,
+    supportLevel: line.supportLevel || null,
+    reviewRequired: line.reviewRequired ?? null
+  });
+}
+
+function uniqueSortedStrings(values = []) {
+  return [...new Set(values.map((value) => String(value || "")).filter(Boolean))].sort();
+}
+
+function earliestYmd(current, next) {
+  if (!current) {
+    return next || null;
+  }
+  if (!next) {
+    return current || null;
+  }
+  return String(next).localeCompare(String(current)) < 0 ? next : current;
 }
 
 export function buildReviewItems(session = {}) {

@@ -4170,6 +4170,14 @@ function ReceiptDraft({ feeSession, receiptDraft, selected }) {
   if (!receiptDraft) {
     return <div className="fee-empty-state">{selected ? "対象月の算定候補を作成すると、月次レセプト案が表示されます。" : "患者を選択してください。"}</div>;
   }
+  const receiptType = receiptTypeForClient(receiptDraft);
+  if (receiptType !== "medical_outpatient") {
+    return <UnsupportedReceiptDraft receiptDraft={receiptDraft} receiptType={receiptType} />;
+  }
+  return <MedicalOutpatientReceiptDraft feeSession={feeSession} receiptDraft={receiptDraft} />;
+}
+
+function MedicalOutpatientReceiptDraft({ feeSession, receiptDraft }) {
   const patient = receiptDraft.patientSnapshot || {};
   const facility = receiptDraft.facilitySnapshot || {};
   const insurance = receiptDraft.insuranceSnapshot?.insurance || {};
@@ -4177,7 +4185,7 @@ function ReceiptDraft({ feeSession, receiptDraft, selected }) {
   const billing = receiptDraft.billing || {};
   const groups = Array.isArray(receiptDraft.lineGroups) ? receiptDraft.lineGroups : [];
   const lines = groups.flatMap((group) => (Array.isArray(group.lines) ? group.lines : []));
-  const sections = receiptBenefitSections(lines);
+  const sections = receiptBenefitSections(lines, receiptDraft.lineOccurrences);
   // 月次集計(scope=monthly)では傷病名・注記・実日数を receiptDraft 側が持つ。診療日単位は feeSession から。
   const annotationSource = receiptDraft.receiptAnnotations ? { receiptAnnotations: receiptDraft.receiptAnnotations } : feeSession;
   const annotations = receiptDisplayAnnotations(annotationSource);
@@ -4187,18 +4195,26 @@ function ReceiptDraft({ feeSession, receiptDraft, selected }) {
   const actualDays = Number(receiptDraft.actualDays || 1);
   const burdenRatio = typeof billing.burdenRatio === "number" ? billing.burdenRatio : null;
   const benefitPercent = burdenRatio !== null ? Math.round((1 - burdenRatio) * 100) : null;
+  const validationIssues = Array.isArray(receiptDraft.validationIssues) ? receiptDraft.validationIssues : [];
+  const reviewCount = annotations.comments.length + annotations.symptomDetails.length + validationIssues.length;
   return (
     <div className="receipt-paper-shell">
       <article className="receipt-paper receipt-form" aria-label="レセプト提出前プレビュー">
         <header className="receipt-form-top">
           <div className="receipt-form-title">
             <span className="receipt-paper-kicker">提出前プレビュー</span>
-            <h3>診療報酬明細書</h3>
-            <small>（医科）{receiptSettingLabel(receiptDraft.setting)} / {statusLabel(receiptDraft.status)}</small>
+            <h3>診療報酬明細書（医科入院外）</h3>
+            <small>月次レセプト案 / {statusLabel(receiptDraft.status)}</small>
+          </div>
+          <div className="receipt-form-classification" aria-label="レセプト区分">
+            <span>区分</span>
+            <strong>外</strong>
+            <small>医科入院外</small>
           </div>
           <div className="receipt-form-period">
             <span>診療年月</span>
             <strong>{warekiYearMonth(receiptDraft.claimMonth || receiptDraft.serviceDate)}</strong>
+            <small>{receiptDraft.claimKey ? "保険条件別" : "月次"}</small>
           </div>
           <dl className="receipt-form-insurance">
             <div><dt>保険者番号</dt><dd>{insurance.insurerNumber || "—"}</dd></div>
@@ -4218,18 +4234,19 @@ function ReceiptDraft({ feeSession, receiptDraft, selected }) {
         <section className="receipt-form-block" aria-label="傷病名">
           <div className="receipt-form-block-head">
             <h4>傷病名</h4>
-            <span>診療開始日 {warekiDate(receiptDraft.serviceDate) || "—"}</span>
+            <span>診療実日数 {actualDays.toLocaleString()}日</span>
           </div>
           {diagnoses.length ? (
             <table className="receipt-form-disease">
               <thead>
-                <tr><th>#</th><th>傷病名</th><th>ICD10</th><th>主病</th><th>転帰</th></tr>
+                <tr><th>#</th><th>傷病名</th><th>開始日</th><th>ICD10</th><th>主病</th><th>転帰</th></tr>
               </thead>
               <tbody>
                 {diagnoses.map((diagnosis, index) => (
                   <tr key={diagnosis.diagnosisId || index}>
                     <td>{index + 1}</td>
                     <td>{diagnosis.name || "—"}</td>
+                    <td>{warekiDate(diagnosisStartDate(diagnosis)) || "—"}</td>
                     <td>{diagnosis.icd10Code || "—"}</td>
                     <td className="receipt-form-disease-primary">{diagnosis.isPrimary ? "●" : ""}</td>
                     <td>{diagnosisOutcomeLabel(diagnosis.outcome)}</td>
@@ -4248,7 +4265,7 @@ function ReceiptDraft({ feeSession, receiptDraft, selected }) {
             <tbody>
               {sections.map((section) => (
                 <tr className={section.count ? "" : "is-empty"} key={section.key}>
-                  <td>{section.label}</td>
+                  <td><span className="receipt-form-section-code">{section.code}</span>{section.label}</td>
                   <td>{section.count ? section.count.toLocaleString() : "—"}</td>
                   <td>{section.points ? section.points.toLocaleString() : "—"}</td>
                 </tr>
@@ -4263,17 +4280,22 @@ function ReceiptDraft({ feeSession, receiptDraft, selected }) {
           <div className="receipt-form-tekiyo">
             <div className="receipt-form-block-head">
               <h4>摘要</h4>
-              <span>診療実日数 {actualDays.toLocaleString()}日</span>
+              <span>{sections.reduce((sum, section) => sum + section.occurrences.length, 0).toLocaleString()}明細</span>
             </div>
             {sections.some((section) => section.lines.length) ? (
               <ul>
                 {sections.filter((section) => section.lines.length).map((section) => (
                   <li key={section.key}>
-                    <span className="receipt-form-tekiyo-cat">{section.label}</span>
-                    {section.lines.map((line, lineIndex) => (
-                      <p key={`${line.receiptLineId || line.code || lineIndex}-${lineIndex}`}>
-                        {line.name || line.code || "—"}　{Number(line.points || 0).toLocaleString()}点 × {Number(line.quantity || 1).toLocaleString()}
-                      </p>
+                    <span className="receipt-form-tekiyo-cat">{section.code} {section.label}</span>
+                    {(section.occurrences.length ? section.occurrences : section.lines).map((entry, lineIndex) => (
+                      <div className="receipt-form-tekiyo-line" key={`${entry.occurrenceId || entry.receiptLineId || entry.code || lineIndex}-${lineIndex}`}>
+                        <span className="receipt-form-tekiyo-date">{shortMonthDay(entry.serviceDate || receiptDraft.serviceDate)}</span>
+                        <p>
+                          <strong>{entry.name || entry.code || "—"}</strong>
+                          <small>{receiptLineMeta(entry)}</small>
+                          {receiptLineCommentText(entry) ? <em>{receiptLineCommentText(entry)}</em> : null}
+                        </p>
+                      </div>
                     ))}
                   </li>
                 ))}
@@ -4284,10 +4306,10 @@ function ReceiptDraft({ feeSession, receiptDraft, selected }) {
 
         <section className="receipt-form-block" aria-label="コメントと症状詳記">
           <div className="receipt-form-block-head">
-            <h4>コメント・症状詳記</h4>
-            <span>{(annotations.comments.length + annotations.symptomDetails.length).toLocaleString()}件</span>
+            <h4>提出前確認</h4>
+            <span>{reviewCount.toLocaleString()}件</span>
           </div>
-          {annotations.comments.length || annotations.symptomDetails.length ? (
+          {reviewCount ? (
             <div className="receipt-paper-annotations">
               {annotations.comments.map((comment) => (
                 <div key={comment.annotationId || `${comment.code}-${comment.text}`}>
@@ -4301,8 +4323,14 @@ function ReceiptDraft({ feeSession, receiptDraft, selected }) {
                   <p>{detail.text}</p>
                 </div>
               ))}
+              {validationIssues.map((issue, index) => (
+                <div key={`${issue.field || "validation"}-${index}`}>
+                  <span>{issue.severity === "error" ? "要修正" : "要確認"}</span>
+                  <p>{issue.message}</p>
+                </div>
+              ))}
             </div>
-          ) : <p className="receipt-paper-empty">コメント・症状詳記はありません。</p>}
+          ) : <p className="receipt-paper-empty">コメント・症状詳記・出力前の確認事項はありません。</p>}
         </section>
 
         <footer className="receipt-form-foot">
@@ -4315,24 +4343,60 @@ function ReceiptDraft({ feeSession, receiptDraft, selected }) {
   );
 }
 
+function UnsupportedReceiptDraft({ receiptDraft, receiptType }) {
+  const billing = receiptDraft.billing || {};
+  return (
+    <div className="receipt-paper-shell">
+      <article className="receipt-paper receipt-form receipt-form--unsupported" aria-label="レセプト提出前プレビュー">
+        <header className="receipt-form-top">
+          <div className="receipt-form-title">
+            <span className="receipt-paper-kicker">提出前プレビュー</span>
+            <h3>診療報酬明細書</h3>
+            <small>{receiptTypeLabel(receiptType)} / {statusLabel(receiptDraft.status)}</small>
+          </div>
+          <div className="receipt-form-period">
+            <span>診療年月</span>
+            <strong>{warekiYearMonth(receiptDraft.claimMonth || receiptDraft.serviceDate)}</strong>
+          </div>
+        </header>
+        <section className="receipt-form-block">
+          <div className="receipt-form-block-head">
+            <h4>簡易プレビュー</h4>
+            <span>{receiptTypeLabel(receiptType)}</span>
+          </div>
+          <p className="receipt-paper-empty">このレセプト種別は医科入院外とは項目が異なるため、外来用の紙面では表示していません。必要データが揃うまで、点数サマリと確認事項のみを表示します。</p>
+        </section>
+        <footer className="receipt-form-foot">
+          <div><span>請求点数</span><strong>{Number(receiptDraft.totalPoints || 0).toLocaleString()}点</strong></div>
+          <div><span>総医療費</span><strong>¥{Number(billing.totalFee || 0).toLocaleString()}</strong></div>
+          <div><span>一部負担金</span><strong>¥{Number(billing.copay || 0).toLocaleString()}</strong></div>
+        </footer>
+      </article>
+    </div>
+  );
+}
+
 // 出来高の点数欄を公式区分(初診〜その他)へ寄せる。lineは先に一致した区分へ一度だけ割り当てる。
 const RECEIPT_BENEFIT_SECTIONS = [
-  ["shoshin", "初診", (line) => line.orderType === "basic" && (/初診/u.test(line.name || "") || String(line.code || "").startsWith("1110"))],
-  ["saishin", "再診", (line) => line.orderType === "basic"],
-  ["kanri", "医学管理", (line) => line.orderType === "management" || /管理料|指導料/u.test(line.name || "")],
-  ["zaitaku", "在宅", (line) => line.orderType === "home" || /在宅/u.test(line.name || "")],
-  ["toyaku", "投薬", (line) => ["drug", "medication"].includes(line.orderType)],
-  ["chusha", "注射", (line) => line.orderType === "injection"],
-  ["shochi", "処置", (line) => line.orderType === "treatment"],
-  ["shujutsu", "手術・麻酔", (line) => ["procedure", "surgery", "anesthesia"].includes(line.orderType)],
-  ["kensa", "検査・病理", (line) => ["lab", "pathology"].includes(line.orderType)],
-  ["gazo", "画像診断", (line) => line.orderType === "imaging"],
-  ["sonota", "その他", () => true]
+  ["shoshin", "11", "初診", (line) => line.orderType === "basic" && (/初診/u.test(line.name || "") || String(line.code || "").startsWith("1110"))],
+  ["saishin", "12", "再診", (line) => line.orderType === "basic"],
+  ["kanri", "13", "医学管理", (line) => line.orderType === "management" || /管理料|指導料|情報提供料/u.test(line.name || "")],
+  ["zaitaku", "14", "在宅", (line) => line.orderType === "home" || /在宅/u.test(line.name || "")],
+  ["toyaku", "20", "投薬", (line) => ["drug", "medication"].includes(line.orderType)],
+  ["chusha", "30", "注射", (line) => line.orderType === "injection"],
+  ["shochi", "40", "処置", (line) => line.orderType === "treatment"],
+  ["shujutsu", "50", "手術・麻酔", (line) => ["procedure", "surgery", "anesthesia"].includes(line.orderType)],
+  ["kensa", "60", "検査・病理", (line) => ["lab", "pathology"].includes(line.orderType)],
+  ["gazo", "70", "画像診断", (line) => line.orderType === "imaging"],
+  ["sonota", "80", "その他", () => true]
 ];
 
-function receiptBenefitSections(lines = []) {
+function receiptBenefitSections(lines = [], occurrences = []) {
   const used = new Array(lines.length).fill(false);
-  return RECEIPT_BENEFIT_SECTIONS.map(([key, label, match]) => {
+  const sourceOccurrences = Array.isArray(occurrences) && occurrences.length
+    ? occurrences
+    : lines.map((line, index) => ({ ...line, occurrenceId: line.receiptLineId || `${line.code || "line"}_${index}`, aggregateKey: receiptUiLineAggregateKey(line) }));
+  return RECEIPT_BENEFIT_SECTIONS.map(([key, code, label, match]) => {
     const matched = [];
     lines.forEach((line, index) => {
       if (!used[index] && match(line)) {
@@ -4340,14 +4404,88 @@ function receiptBenefitSections(lines = []) {
         matched.push(line);
       }
     });
+    const matchedKeys = new Set(matched.map(receiptUiLineAggregateKey));
+    const matchedOccurrences = sourceOccurrences.filter((occurrence) => (
+      matchedKeys.has(occurrence.aggregateKey || receiptUiLineAggregateKey(occurrence))
+      || matched.some((line) => receiptLineMatchesOccurrence(line, occurrence))
+    ));
     return {
       key,
+      code,
       label,
       count: matched.reduce((sum, line) => sum + Number(line.quantity || 1), 0),
       points: matched.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0),
-      lines: matched
+      lines: matched,
+      occurrences: matchedOccurrences
     };
   });
+}
+
+function receiptTypeForClient(receiptDraft = {}) {
+  const explicit = String(receiptDraft.receiptType || receiptDraft.receipt_type || "").trim();
+  if (explicit) return explicit;
+  const setting = String(receiptDraft.setting || "").toLowerCase();
+  if (setting.includes("dpc")) return "medical_dpc";
+  if (setting.includes("inpatient") || setting.includes("入院")) return "medical_inpatient";
+  return "medical_outpatient";
+}
+
+function receiptTypeLabel(receiptType = "") {
+  return {
+    medical_outpatient: "医科入院外",
+    medical_inpatient: "医科入院",
+    medical_dpc: "医科DPC",
+    dental: "歯科",
+    pharmacy: "調剤",
+    home_nursing: "訪問看護",
+    mixed: "入外・種別混在"
+  }[receiptType] || "未分類";
+}
+
+function receiptUiLineAggregateKey(line = {}) {
+  return [line.code || "", line.orderType || "", line.name || ""].join("|");
+}
+
+function receiptLineMatchesOccurrence(line = {}, occurrence = {}) {
+  return Boolean(line.code || occurrence.code)
+    && String(line.code || "") === String(occurrence.code || "")
+    && normalizeSearchText(line.name || "") === normalizeSearchText(occurrence.name || "")
+    && String(line.orderType || "") === String(occurrence.orderType || "");
+}
+
+function diagnosisStartDate(diagnosis = {}) {
+  return diagnosis.serviceStartDate
+    || diagnosis.startDate
+    || diagnosis.startedOn
+    || diagnosis.firstSeenServiceDate
+    || null;
+}
+
+function shortMonthDay(value = "") {
+  const matched = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ""));
+  if (!matched) return "—";
+  return `${Number(matched[2])}/${Number(matched[3])}`;
+}
+
+function receiptLineMeta(entry = {}) {
+  const parts = [];
+  if (entry.code) parts.push(entry.code);
+  if (entry.serviceTime) parts.push(entry.serviceTime);
+  const points = Number(entry.points || 0);
+  const quantity = Number(entry.quantity || 1);
+  if (points || quantity) parts.push(`${points.toLocaleString()}点 × ${quantity.toLocaleString()}`);
+  if (entry.totalPoints && Number(entry.totalPoints) !== points * quantity) {
+    parts.push(`計 ${Number(entry.totalPoints).toLocaleString()}点`);
+  }
+  return parts.join(" / ");
+}
+
+function receiptLineCommentText(entry = {}) {
+  if (entry.comment) return entry.comment;
+  if (Array.isArray(entry.comments)) {
+    return entry.comments.map((comment) => comment?.text || comment?.message || "").filter(Boolean).join(" / ");
+  }
+  return "";
 }
 
 function diagnosisOutcomeLabel(outcome = "") {
