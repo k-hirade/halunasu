@@ -6,6 +6,15 @@
 
 ---
 
+> **実装状況（2026-07-04, branch `fix/p1-p4-cross-theme`）— P-1〜P-4 実装・検証済み**
+> - **P-1 ✅**: `python/medical_fee_calculation/deidentify.py`（脱識別＋HMAC擬似ID＋生年月日→年齢＋残存識別子スキャン＋dry-run）。テスト3件。
+> - **P-2 ✅**: `python/medical_fee_calculation/clinic_intake.py`（列マップ駆動で断片CSV→患者×月の正規化claim JSONL）。テスト2件。
+> - **P-3 ✅**: fee-core `clinic-diagnosis.js`（`buildClinicDiagnosisReport`/HTML/CSV、純関数）＋ CLI `scripts/build_clinic_diagnosis_report.mjs`（Pythonの check_lookup/resolve_diseases をオフライン解決）。`check_lookup` に判断区分メタ（procedureMeta）を追加。テスト3件。
+> - **P-4 ✅**: 匿名サンプル `samples/nishiyama-demo/`＋デモ点検マスタ `scripts/seed_clinic_demo_master.py`＋ワンコマンド `scripts/run_clinic_demo.mjs`（E2Eスモーク兼用）。**判断料もれ/処方料もれ/適応なし/禁忌/併用禁忌 を検出**を確認。
+> - デモが**併用禁忌の実バグ（claim横断lookupで片方の薬しか無くても指摘）を検出→修正**（`checkDrugInteraction` が両薬の存在を確認）。回帰テスト追加。
+> - 全テスト green（Python 17 / JS 169 / fee-core 13）。使い方は `samples/nishiyama-demo/README.md`。
+> - 残: 実データ点検マスタ投入（[Runbook](../20260703-fable-fee-comparison/04-check-master-runbook.md)）、当日サンプルでの deid-config/intake-map 実列名合わせ、施設基準の取得余地(P-6)。
+
 ## 0. 全体アーキテクチャ（オフライン・パイプライン）
 
 ```

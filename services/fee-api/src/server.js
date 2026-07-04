@@ -3451,14 +3451,51 @@ async function calculatePreparedFeeSessionNow({
       }
     })
   });
+  const performance = buildFeeCalculationPerformanceSnapshot({
+    env: input.processEnv || process.env,
+    orgId: context.session.orgId,
+    feeSessionId,
+    feeSession: result.feeSession,
+    calculationResult: result.calculationResult,
+    prepared,
+    stageTimings,
+    totalDurationMs: Date.now() - overallStartedAt,
+    completedAt: new Date().toISOString()
+  });
+  const performancePersist = await persistFeeCalculationPerformance({
+    feeStore,
+    orgId: context.session.orgId,
+    feeSessionId,
+    calculationJobId,
+    feeSession: result.feeSession,
+    performance
+  });
+  if (performancePersist?.feeSession) {
+    result.feeSession = performancePersist.feeSession;
+  } else if (performancePersist?.progress) {
+    result.feeSession = {
+      ...result.feeSession,
+      calculationProgress: performancePersist.progress
+    };
+  }
+  console.info(JSON.stringify({
+    event: "fee.calculate.performance",
+    orgId: context.session.orgId,
+    feeSessionId,
+    calculationId: result.calculationResult.calculationId,
+    status: result.feeSession.status,
+    ...performance
+  }));
   console.info(JSON.stringify({
     event: "fee.calculate.completed",
     orgId: context.session.orgId,
     feeSessionId,
     status: result.feeSession.status,
     totalPoints: result.calculationResult.totalPoints,
-    totalDurationMs: Date.now() - overallStartedAt,
+    totalDurationMs: performance.totalDurationMs,
     calculatorDurationMs: stageDuration(stageTimings, "pythonCalculator"),
+    bottleneckStage: performance.bottleneckStage,
+    cache: performance.openAiCache || null,
     stageTimings,
     clinicalStructuring: prepared.metrics?.clinicalStructuring || null,
     ruleBasedClinicalInference: prepared.metrics?.ruleBasedClinicalInference || null,
@@ -4440,6 +4477,234 @@ function safeStageDetail(value) {
   return Object.fromEntries(
     Object.entries(value).filter(([, item]) => item !== undefined)
   );
+}
+
+function buildFeeCalculationPerformanceSnapshot({
+  env = process.env,
+  orgId = "",
+  feeSessionId = "",
+  feeSession = {},
+  calculationResult = {},
+  prepared = {},
+  stageTimings = [],
+  totalDurationMs = 0,
+  completedAt = new Date().toISOString()
+} = {}) {
+  const safeStages = safeStageTimings(stageTimings);
+  const prepareStageTimings = safeStageTimings(prepared?.metrics?.stageTimings || []);
+  const clinical = prepared?.metrics?.clinicalStructuring || {};
+  const ruleBased = prepared?.metrics?.ruleBasedClinicalInference || {};
+  const usage = openAiUsageSummary(clinical.usage);
+  const shadow = shadowCalculationPerformanceSummary(prepared.shadowCalculations || []);
+  const bottleneckStage = bottleneckStageName(safeStages);
+  const lineItems = Array.isArray(calculationResult.lineItems) ? calculationResult.lineItems : [];
+  const reviewIssues = Array.isArray(calculationResult.reviewIssues) ? calculationResult.reviewIssues : [];
+  const warnings = Array.isArray(calculationResult.warnings) ? calculationResult.warnings : [];
+  const claimCheckIssueCount = reviewIssues.filter((issue) => issue?.source === "claim_check").length;
+
+  return compactObject({
+    schemaVersion: 1,
+    source: "fee-api",
+    completedAt,
+    runtime: compactObject({
+      environment: env.HALUNASU_ENV || env.NODE_ENV || null,
+      cloudRunService: env.K_SERVICE || null,
+      cloudRunRevision: env.K_REVISION || null,
+      projectId: env.GOOGLE_CLOUD_PROJECT || null
+    }),
+    orgId,
+    feeSessionId,
+    calculationId: calculationResult.calculationId || null,
+    status: feeSession.status || null,
+    totalPoints: Number(calculationResult.totalPoints || 0),
+    totalDurationMs: Number(totalDurationMs || 0),
+    bottleneckStage,
+    durations: compactObject({
+      prepareMs: stageDuration(safeStages, "prepare"),
+      savePreparedSessionMs: stageDuration(safeStages, "savePreparedSession"),
+      pythonCalculatorMs: stageDuration(safeStages, "pythonCalculator"),
+      saveCalculationMs: stageDuration(safeStages, "saveCalculation"),
+      auditMs: stageDuration(safeStages, "audit"),
+      clinicalCalculationPreparationMs: stageDuration(prepareStageTimings, "clinicalCalculationPreparation"),
+      openAiProviderMs: numberOrNull(clinical.openAiProviderDurationMs),
+      clinicalFactsConvertMs: numberOrNull(clinical.clinicalFactsConvertDurationMs),
+      masterLookupMs: numberOrNull(clinical.masterLookupDurationMs),
+      ruleBasedClinicalInferenceMs: numberOrNull(ruleBased.durationMs),
+      shadowCalculationPreparationMs: stageDuration(prepareStageTimings, "shadowCalculationPreparation")
+    }),
+    clinical: compactObject({
+      source: clinical.source || null,
+      model: clinical.model || null,
+      reasoningEffort: clinical.reasoningEffort || null,
+      promptVersion: clinical.promptVersion || null,
+      ruleSetVersion: clinical.ruleSetVersion || null,
+      registryVersion: clinical.registryVersion || null,
+      masterVersion: clinical.masterVersion || null,
+      checklistVerificationMode: clinical.checklistVerificationMode || null,
+      timeoutMs: numberOrNull(clinical.timeoutMs),
+      fallbackReasonCode: clinical.fallbackReason ? clinicalFallbackReasonCode(clinical.fallbackReason) : null,
+      reusedFromCalculationId: clinical.reusedFromCalculationId || null
+    }),
+    openAiUsage: usage,
+    openAiCache: openAiCacheSummary(usage),
+    counts: compactObject({
+      lineItemCount: lineItems.length,
+      warningCount: warnings.length,
+      reviewIssueCount: reviewIssues.length,
+      claimCheckIssueCount,
+      candidateProposalCount: Array.isArray(calculationResult.candidateProposals) ? calculationResult.candidateProposals.length : null,
+      clinicalEventCount: Array.isArray(prepared.clinicalEvents) ? prepared.clinicalEvents.length : null,
+      canonicalClinicalFactCount: Array.isArray(prepared.canonicalClinicalFacts) ? prepared.canonicalClinicalFacts.length : null,
+      masterCandidateCount: Array.isArray(prepared.masterCandidates) ? prepared.masterCandidates.length : null,
+      billingCandidateCount: Array.isArray(prepared.billingCandidates) ? prepared.billingCandidates.length : null,
+      prepareReviewWarningCount: Array.isArray(prepared.reviewWarnings) ? prepared.reviewWarnings.length : null
+    }),
+    stageTimings: safeStages,
+    prepareStageTimings,
+    shadowCalculations: shadow
+  });
+}
+
+async function persistFeeCalculationPerformance({
+  feeStore,
+  orgId,
+  feeSessionId,
+  calculationJobId = null,
+  feeSession = {},
+  performance = {}
+} = {}) {
+  if (!feeStore || !orgId || !feeSessionId || !isPlainObject(performance)) {
+    return null;
+  }
+  const currentProgress = isPlainObject(feeSession.calculationProgress) ? feeSession.calculationProgress : {};
+  const progress = {
+    ...currentProgress,
+    updatedAt: performance.completedAt || currentProgress.updatedAt || new Date().toISOString(),
+    metrics: {
+      ...(isPlainObject(currentProgress.metrics) ? currentProgress.metrics : {}),
+      performance
+    },
+    performance
+  };
+  try {
+    if (calculationJobId && typeof feeStore.updateCalculationJob === "function") {
+      await feeStore.updateCalculationJob(orgId, feeSessionId, calculationJobId, {
+        phase: "complete",
+        progress
+      });
+    }
+    let updatedSession = null;
+    if (typeof feeStore.updateSession === "function") {
+      const result = await feeStore.updateSession(orgId, feeSessionId, { calculationProgress: progress });
+      updatedSession = result?.feeSession || null;
+    }
+    return { progress, feeSession: updatedSession };
+  } catch (error) {
+    console.warn(JSON.stringify({
+      event: "fee.calculate.performance_persist_failed",
+      orgId,
+      feeSessionId,
+      error: safeLogError(error)
+    }));
+    return { progress };
+  }
+}
+
+function safeStageTimings(stageTimings = []) {
+  return (Array.isArray(stageTimings) ? stageTimings : [])
+    .map((entry) => compactObject({
+      stage: String(entry?.stage || "").trim(),
+      durationMs: numberOrNull(entry?.durationMs),
+      failed: entry?.failed === true ? true : undefined
+    }))
+    .filter((entry) => entry.stage && entry.durationMs != null);
+}
+
+function numberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function bottleneckStageName(stageTimings = []) {
+  const stages = safeStageTimings(stageTimings);
+  if (!stages.length) {
+    return null;
+  }
+  return stages.reduce((max, entry) => (
+    Number(entry.durationMs || 0) > Number(max.durationMs || 0) ? entry : max
+  ), stages[0]).stage;
+}
+
+function openAiUsageSummary(usage = null) {
+  if (!isPlainObject(usage)) {
+    return null;
+  }
+  const inputTokens = numberOrNull(usage.input_tokens ?? usage.prompt_tokens);
+  const outputTokens = numberOrNull(usage.output_tokens ?? usage.completion_tokens);
+  const totalTokens = numberOrNull(usage.total_tokens);
+  const cachedInputTokens = numberOrNull(
+    usage.input_tokens_details?.cached_tokens
+    ?? usage.prompt_tokens_details?.cached_tokens
+  );
+  const reasoningTokens = numberOrNull(
+    usage.output_tokens_details?.reasoning_tokens
+    ?? usage.completion_tokens_details?.reasoning_tokens
+  );
+  return compactObject({
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cachedInputTokens,
+    cachedInputTokenRatio: inputTokens && cachedInputTokens != null
+      ? Number((cachedInputTokens / inputTokens).toFixed(4))
+      : null,
+    reasoningTokens
+  });
+}
+
+function openAiCacheSummary(usage = null) {
+  if (!isPlainObject(usage)) {
+    return null;
+  }
+  const inputTokens = numberOrNull(usage.inputTokens);
+  const cachedInputTokens = numberOrNull(usage.cachedInputTokens);
+  return compactObject({
+    inputTokens,
+    cachedInputTokens,
+    cachedInputTokenRatio: usage.cachedInputTokenRatio ?? (
+      inputTokens && cachedInputTokens != null ? Number((cachedInputTokens / inputTokens).toFixed(4)) : null
+    ),
+    cacheHit: Number(cachedInputTokens || 0) > 0
+  });
+}
+
+function shadowCalculationPerformanceSummary(shadowCalculations = []) {
+  return (Array.isArray(shadowCalculations) ? shadowCalculations : []).map((shadow) => compactObject({
+    mode: shadow?.mode || null,
+    pipeline: shadow?.pipeline || null,
+    source: shadow?.source || null,
+    status: shadow?.status || null,
+    durationMs: numberOrNull(shadow?.durationMs),
+    optionDiff: isPlainObject(shadow?.optionDiff)
+      ? compactObject({
+        primaryCount: numberOrNull(shadow.optionDiff.primaryCount),
+        shadowCount: numberOrNull(shadow.optionDiff.shadowCount),
+        sharedCount: numberOrNull(shadow.optionDiff.sharedCount),
+        onlyInPrimaryCount: Array.isArray(shadow.optionDiff.onlyInPrimary) ? shadow.optionDiff.onlyInPrimary.length : null,
+        onlyInShadowCount: Array.isArray(shadow.optionDiff.onlyInShadow) ? shadow.optionDiff.onlyInShadow.length : null
+      })
+      : null
+  }));
+}
+
+function clinicalFallbackReasonCode(reason = "") {
+  const value = String(reason || "").toLowerCase();
+  if (value.includes("quota")) return "openai_quota";
+  if (value.includes("timeout")) return "openai_timeout";
+  if (value.includes("rate limit") || value.includes("rate_limit")) return "openai_rate_limit";
+  if (value.includes("json")) return "openai_json";
+  if (value.includes("stream")) return "openai_stream";
+  return "openai_other";
 }
 
 async function resolveFeePatient(context, platformStore, input) {

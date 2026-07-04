@@ -1,0 +1,53 @@
+{
+  "salt": "nishiyama-demo-salt-do-not-use-in-production",
+  "reference_date": "2026-09-01",
+  "date_granularity": "full",
+  "files": {
+    "patients": {
+      "path": "patients.csv",
+      "encoding": "utf-8",
+      "columns": {
+        "患者ID": "patient_key",
+        "氏名": "drop",
+        "カナ": "drop",
+        "生年月日": "birthdate",
+        "性別": "keep",
+        "保険者番号": "drop"
+      }
+    },
+    "diagnosis": {
+      "path": "diagnosis.csv",
+      "encoding": "utf-8",
+      "columns": {
+        "患者ID": "patient_key",
+        "傷病名コード": "keep",
+        "傷病名": "keep",
+        "診療開始日": "service_date",
+        "転帰": "keep",
+        "主傷病": "keep"
+      }
+    },
+    "labs": {
+      "path": "labs.csv",
+      "encoding": "utf-8",
+      "columns": {
+        "患者ID": "patient_key",
+        "診療行為コード": "keep",
+        "名称": "keep",
+        "実施日": "service_date",
+        "回数": "keep"
+      }
+    },
+    "drug": {
+      "path": "drug.csv",
+      "encoding": "utf-8",
+      "columns": {
+        "患者ID": "patient_key",
+        "医薬品コード": "keep",
+        "名称": "keep",
+        "実施日": "service_date",
+        "回数": "keep"
+      }
+    }
+  }
+}

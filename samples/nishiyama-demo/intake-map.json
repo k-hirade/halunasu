@@ -1,0 +1,26 @@
+{
+  "encoding": "utf-8",
+  "patients": {
+    "path": "patients.deid.csv",
+    "columns": { "patientKey": "患者ID", "sex": "性別", "ageYears": "生年月日" }
+  },
+  "diagnosis": {
+    "path": "diagnosis.deid.csv",
+    "columns": {
+      "patientKey": "患者ID", "code": "傷病名コード", "name": "傷病名",
+      "startDate": "診療開始日", "tenki": "転帰", "isMain": "主傷病"
+    }
+  },
+  "orders": [
+    {
+      "path": "labs.deid.csv",
+      "recType": "SI",
+      "columns": { "patientKey": "患者ID", "code": "診療行為コード", "name": "名称", "date": "実施日", "count": "回数" }
+    },
+    {
+      "path": "drug.deid.csv",
+      "recType": "IY",
+      "columns": { "patientKey": "患者ID", "code": "医薬品コード", "name": "名称", "date": "実施日", "count": "回数" }
+    }
+  ]
+}

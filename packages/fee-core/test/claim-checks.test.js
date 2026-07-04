@@ -142,6 +142,13 @@ test("IY-003 禁忌傷病名 / IY-004 併用禁忌を検出", () => {
   const iy004 = inter.filter((f) => f.ruleId === "IY-004");
   assert.equal(iy004.length, 1);
   assert.ok(iy004[0].message.includes("薬A"));
+
+  // 片方の薬しか無いclaimでは、全体lookupに載っていても指摘しない(回帰)
+  const onlyOne = buildIndicationFindings(
+    { items: [{ code: "600", name: "薬A", orderType: "drug" }] },
+    { drugInteractions: [["600", "601"]] }
+  );
+  assert.equal(onlyOne.filter((f) => f.ruleId === "IY-004").length, 0);
 });
 
 test("claimCheckLookupCodes: 薬剤/診療行為/病名コードを抽出", () => {

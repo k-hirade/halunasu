@@ -2,6 +2,9 @@ import crypto from "node:crypto";
 import {
   validateReviewDecisionInput
 } from "../../fee-contracts/src/index.js";
+import { estimateReceiptYen } from "./receipt-utils.js";
+
+export { estimateReceiptYen } from "./receipt-utils.js";
 
 export {
   buildMissingBillingFindings,
@@ -11,6 +14,12 @@ export {
   claimCheckLookupCodes,
   findingToReviewIssue
 } from "./claim-checks.js";
+
+export {
+  buildClinicDiagnosisReport,
+  clinicDiagnosisReportToHtml,
+  clinicDiagnosisReportToCsv
+} from "./clinic-diagnosis.js";
 
 export function buildFeeSession(input = {}, options = {}) {
   const now = timestamp(options.now);
@@ -2486,9 +2495,6 @@ export function baselineComparisonStatusLabel(status) {
   return BASELINE_COMPARISON_STATUS_LABELS[status] || status;
 }
 
-export function estimateReceiptYen(points) {
-  return Math.round((Number(points) || 0) * 10);
-}
 
 function normalizeBaselineCode(code, codeMap) {
   const raw = String(code || "").trim();

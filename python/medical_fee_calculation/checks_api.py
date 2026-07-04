@@ -53,9 +53,41 @@ def check_lookup(payload: dict[str, Any]) -> dict[str, Any]:
             "drugInteractions": interactions,
             "actIndications": act_indications,
             "diseaseNames": _disease_names(conn, sorted(name_codes)),
+            # 算定もれ点検(検査判断料)のため、診療行為コードの判断区分メタも返す。
+            "procedureMeta": _procedure_meta(conn, act_codes),
         }
     finally:
         conn.close()
+
+
+def _procedure_meta(conn: Any, codes: list[str]) -> dict[str, dict[str, str]]:
+    codes = [c for c in codes if c]
+    if not codes:
+        return {}
+    placeholders = ",".join("?" for _ in codes)
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT code, judgement_kind, judgement_group, bundle_lab_group, short_name
+            FROM medical_procedures
+            WHERE code IN ({placeholders})
+            """,
+            codes,
+        ).fetchall()
+    except Exception:  # noqa: BLE001 - メタは点検補助。失敗しても他は返す。
+        return {}
+    meta: dict[str, dict[str, str]] = {}
+    for row in rows:
+        code = str(row["code"])
+        if code in meta:
+            continue
+        meta[code] = {
+            "judgementKind": str(row["judgement_kind"] or "").strip(),
+            "judgementGroup": str(row["judgement_group"] or "").strip().lstrip("0"),
+            "bundleLabGroup": str(row["bundle_lab_group"] or "").strip(),
+            "name": str(row["short_name"] or "").strip(),
+        }
+    return meta
 
 
 def _clean_codes(value: Any) -> list[str]:

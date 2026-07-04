@@ -6470,6 +6470,21 @@ test("records fee calculation progress and split clinical structuring metrics", 
   assert.equal(typeof calculation.body.feeSession.calculationProgress.metrics.clinicalStructuring.openAiProviderDurationMs, "number");
   assert.equal(typeof calculation.body.feeSession.calculationProgress.metrics.clinicalStructuring.clinicalFactsConvertDurationMs, "number");
   assert.equal(typeof calculation.body.feeSession.calculationProgress.metrics.ruleBasedClinicalInference.durationMs, "number");
+  const performance = calculation.body.feeSession.calculationProgress.metrics.performance;
+  assert.equal(performance.schemaVersion, 1);
+  assert.equal(performance.source, "fee-api");
+  assert.equal(performance.clinical.source, "openai");
+  assert.equal(typeof performance.totalDurationMs, "number");
+  assert.equal(typeof performance.durations.pythonCalculatorMs, "number");
+  assert.equal(typeof performance.durations.saveCalculationMs, "number");
+  assert.equal(performance.counts.lineItemCount, 1);
+  assert.equal(performance.counts.reviewIssueCount, calculation.body.calculationResult.reviewIssues.length);
+  assert.ok(performance.stageTimings.some((entry) => entry.stage === "prepare"));
+  assert.ok(performance.stageTimings.some((entry) => entry.stage === "pythonCalculator"));
+  assert.ok(performance.stageTimings.some((entry) => entry.stage === "saveCalculation"));
+  assert.ok(performance.stageTimings.some((entry) => entry.stage === "audit"));
+  const stored = stores.feeStore.getSession(session.body.feeSession.orgId, session.body.feeSession.feeSessionId);
+  assert.equal(stored.calculationProgress.metrics.performance.schemaVersion, 1);
 });
 
 test("adds review warning when calculation produces no candidate lines", async () => {

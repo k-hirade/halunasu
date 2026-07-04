@@ -283,8 +283,13 @@ function checkDrugInteraction(claim, items, lookup) {
   if (pairs.length === 0) {
     return [];
   }
+  // lookup.drugInteractions は複数claim分をまとめて引いた全ペアを含みうるため、
+  // 「両方の薬剤がこのclaimに存在する」ペアだけを指摘する。
+  const drugCodes = new Set(
+    items.filter((it) => it.orderType === "drug" || it.recType === "IY").map((it) => it.code).filter(Boolean)
+  );
   const nameByCode = new Map(items.map((it) => [it.code, it.name || it.code]));
-  return pairs.map(([a, b]) => ({
+  return pairs.filter(([a, b]) => drugCodes.has(a) && drugCodes.has(b)).map(([a, b]) => ({
     ruleId: "IY-004", ruleName: "併用禁忌", category: "医薬品適応",
     severity: "error", target: `${nameByCode.get(a) || a} × ${nameByCode.get(b) || b}`,
     message: `併用禁忌の組み合わせが投与されています: 「${nameByCode.get(a) || a}」と「${nameByCode.get(b) || b}」`,
