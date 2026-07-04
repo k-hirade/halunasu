@@ -5,8 +5,21 @@
 > - **サーバ側で決定論復元**: `backfillClinicalFactsEvidenceFromLines`（`clinical-calculation-input.js`）が line_id→行テキスト/section を埋め戻す。行テキストはカルテ逐語なので **evidence_verifier・否定/時制判定・注釈配置など既存の evidence 消費ロジックは無変更で成立**（安全チェックはむしろ行全文で頑健化）。旧schema/テスト用extractorの evidence は上書きしない。
 > - **`max_output_tokens` 上限**（既定4096）を responses-structured→抽出に配線（暴走出力ガード）。
 > - テスト: medical-core 9（schema形状・上限の固定含む）/ fee-api 117 / backfill 2 — **全green**。
-> - 期待効果: ~240tok/件 → **~110-130tok/件**（引用文・オフセット・section・クエリ削減）＝ **平均レイテンシ 約12秒→5-7秒** 見込み（相関0.993）。
-> - **残作業（要OpenAIキー）**: STG実測での回帰確認 `npm run eval:fee-soap-e2e:stg`（同じ5+5ケースで tok/件・LLM時間・recall を before/after 比較）。プロンプト版が v12 に変わったため必須。
+> - 期待効果: ~240tok/件 → **~110-130tok/件** 見込みだった（下記実測で訂正）。
+>
+> **STG実測（2026-07-04 16:55/17:10, compare10-prev5/new5）— v12稼働確認済み**
+> - **精度: 回帰なし・むしろ改善**。同一5ケース再実行で **V2-IM-IMG-005 の CT が復活**（Δpt **-1018→+2**、candRec 0.333→**1.0**、CT撮影900点＋電子画像管理加算120点を正しく抽出）。V2-PED-LAB-002 も Δ+102→**+2**。**新規5ケースは 5/5 pass**。残る+2系は全て物価対応料（gold陳腐化）。
+> - **レイテンシ: tok/件 226→207（-8%）にとどまり期待未達**。平均LLM時間はほぼ不変（イベント抽出数が run 間で増減し相殺）。
+> - **原因（確定）**: 削った4フィールドの実コストは ~20-40tok/件。**残り19必須フィールド（specimen/collection_method/quantity_per_day/days/total_quantity/area_size_cm2/body_site/modality/review_reason 等）が空文字でも毎イベント出力され ~200tok/件を占有**。strict json_schema の「全プロパティ必須」が根本コスト。
+> - **次のレバー（確定）**: (a) **anyOf 型別イベントschema**（下記 v13 で実装済み）。(b) 二段抽出（軽量→選択的詳細）。
+>
+> **v13 実装済み（anyOf 型別イベントschema, 2026-07-04）**
+> - `clinical_events.items` を **5つの型別variant**に分割（type enum は互いに素・和=全15種）:
+>   - 投薬系(medication/injection): 共通12＋用量3 ／ 検体系(lab/exam/pathology): ＋specimen/collection_method ／ 画像(imaging): ＋modality/body_site ／ 部位処置(procedure/treatment): ＋body_site/area_size_cm2 ／ **一般(その他7種): 共通12フィールドのみ**
+> - 意味軸（action_status/時制/主体/結果/確信度）は全variant共通で維持（精度の芯を崩さない）。instructionsにvariant規則を明記。
+> - 期待値: 19フィールド→12〜15/件 ＝ **tok/件 207→~140-150（約30%減）** 見込み。テスト: medical-core 9 / fee-api 122 green（下流は欠落フィールド耐性あり・変更不要）。
+> - **残作業**: STG再実測（prev5/new5 と同条件）で tok/件・LLM時間・recall を確認。
+> - **新たな課題（安定性）**: 同一ケースで抽出件数が run 間で変動（IM-MED-004: 7→12件）、V2-IM-LAB-001 は今回 160182770（検体検査管理加算2）を**逆に取りこぼし**（前回は取得）。→ `--repeat N` での stability 測定と、**施設基準由来の加算は LLM 依存でなく決定論導出**へ寄せる余地。
 
 `data/tests/fee-soap-e2e-v2/reports/stg-openai-5-20260704_143505.*` ＋ `stg-openai-extra5-20260704_1455-*` を分析。
 **推測でなく実測**に基づく所見。前提の一部を訂正する。

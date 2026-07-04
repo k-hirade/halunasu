@@ -1,10 +1,13 @@
 import { createStructuredOpenAiResponse } from "../openai/responses-structured.js";
 
-// v12: 出力トークン削減(レイテンシはdecodeに線形・実測139tok/s、1イベント≒240tok→目標~100tok)。
+// v12: 出力トークン削減(レイテンシはdecodeに線形・実測139tok/s)。
 // clinical_events から evidence引用文/section/char_start/char_end を削除し evidence_line_ids のみに、
 // checklist_findings の evidence も line_ids 化。本文・sectionはサーバ側で行テキストから決定論復元する
 // (fee-api clinical-calculation-input.js の backfill)。抽出の意味軸(status/時制/主体/確信度)は維持。
-export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v12";
+// v13: strict json_schema は全プロパティ必須のため、空フィールドの出力コスト(~200tok/件)が残った。
+// clinical_events を anyOf の型別variant(投薬/検体/画像/部位処置/一般)に分割し、
+// イベント種別に関係するフィールドだけを出力させる(type enum を互いに素に分割して判別)。
+export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v13";
 
 const LEGACY_EVENT_STATUSES = [
   "performed",
@@ -94,6 +97,22 @@ const EVENT_TYPES = [
   "management",
   "counseling",
   "pathology",
+  "emergency_time_addon",
+  "follow_up",
+  "other"
+];
+
+// v13: 型別variantの type 分割(互いに素・和 = EVENT_TYPES)。
+// 各variantは種別に関係するフィールドだけを持ち、無関係な空フィールドの出力コストを排除する。
+const MEDICATION_EVENT_TYPES = ["medication", "injection"];          // 用量・日数
+const SPECIMEN_EVENT_TYPES = ["lab", "exam", "pathology"];           // 検体・採取法
+const IMAGING_EVENT_TYPES = ["imaging"];                              // モダリティ・部位
+const SITE_EVENT_TYPES = ["procedure", "treatment"];                  // 部位・面積
+const GENERAL_EVENT_TYPES = [
+  "outpatient_basic",
+  "material",
+  "management",
+  "counseling",
   "emergency_time_addon",
   "follow_up",
   "other"
@@ -194,31 +213,30 @@ const feeClinicalFactsSchema = {
       type: "array",
       maxItems: 18,
       items: {
-        type: "object",
-        additionalProperties: false,
-        required: [
-          "type",
-          "billing_domain",
-          "name",
-          "action_status",
-          "temporal_relation",
-          "source_origin",
-          "provider_ownership",
-          "result_assertion",
-          "certainty",
-          "evidence_line_ids",
-          "search_queries",
-          "modality",
-          "body_site",
-          "specimen",
-          "collection_method",
-          "quantity_per_day",
-          "days",
-          "total_quantity",
-          "area_size_cm2",
-          "review_reason"
-        ],
-        properties: eventProperties()
+        // v13: 型別variant。type enum は互いに素(全variantの和 = EVENT_TYPES)なので判別可能。
+        anyOf: [
+          eventVariant(MEDICATION_EVENT_TYPES, {
+            quantity_per_day: shortString(20),
+            days: shortString(20),
+            total_quantity: shortString(20)
+          }),
+          eventVariant(SPECIMEN_EVENT_TYPES, {
+            specimen: shortString(40),
+            collection_method: shortString(40)
+          }),
+          eventVariant(IMAGING_EVENT_TYPES, {
+            modality: {
+              type: "string",
+              enum: ["simple_radiography", "ct", "mri", "ultrasound", "endoscopy", "other", "none"]
+            },
+            body_site: shortString(40)
+          }),
+          eventVariant(SITE_EVENT_TYPES, {
+            body_site: shortString(40),
+            area_size_cm2: shortString(20)
+          }),
+          eventVariant(GENERAL_EVENT_TYPES, {})
+        ]
       }
     },
     checklist_findings: {
@@ -282,11 +300,12 @@ function shortString(maxLength = 70) {
   return { type: "string", maxLength };
 }
 
-function eventProperties() {
-  // v12: evidence引用文/section/char offsets はLLM出力から削除(トークン削減)。
-  // evidence_line_ids から fee-api 側で行テキスト・sectionを決定論復元する。
+// v12/v13: evidence引用文/section/char offsets はLLM出力から削除(トークン削減)。
+// evidence_line_ids から fee-api 側で行テキスト・sectionを決定論復元する。
+// 意味軸(action_status/時制/主体/結果/確信度)は全variant共通で維持(精度の芯)。
+function eventCoreProperties(types) {
   return {
-    type: { type: "string", enum: EVENT_TYPES },
+    type: { type: "string", enum: types },
     billing_domain: { type: "string", enum: BILLING_DOMAINS },
     name: shortString(60),
     action_status: { type: "string", enum: ACTION_STATUSES },
@@ -305,18 +324,20 @@ function eventProperties() {
       maxItems: 2,
       items: shortString(40)
     },
-    modality: {
-      type: "string",
-      enum: ["simple_radiography", "ct", "mri", "ultrasound", "endoscopy", "other", "none"]
-    },
-    body_site: shortString(40),
-    specimen: shortString(40),
-    collection_method: shortString(40),
-    quantity_per_day: shortString(20),
-    days: shortString(20),
-    total_quantity: shortString(20),
-    area_size_cm2: shortString(20),
     review_reason: shortString(70)
+  };
+}
+
+function eventVariant(types, extraProperties = {}) {
+  const properties = {
+    ...eventCoreProperties(types),
+    ...extraProperties
+  };
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: Object.keys(properties),
+    properties
   };
 }
 
@@ -379,6 +400,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "For each checklist menu item, return exactly one checklist_finding with the same menu_id. Use status=performed_today only when the note supports that the item happened in this clinic during this encounter. Use planned for future/order/予定/依頼/予約/次回. Use past_or_external for 前回/以前/他院/前医/持参/健診/他科/主治医. Use mentioned_not_performed when the note says the act was not done. Use not_in_text when the menu item is not actually supported by the note. Use unclear when named but timing/ownership/performance cannot be determined.",
       "For checklist_findings, set evidence_line_ids to the supporting line_id values from Preprocessed clinical lines (at most 2). When status is not_in_text leave evidence_line_ids empty. Do not quote text; the line ids are the evidence. Do not invent line ids.",
       "For every clinical_event, set evidence_line_ids to the relevant line_id values from Preprocessed clinical lines (at most 2); use an empty array only when no supporting line can be identified. Do not quote the original text; the line ids are the evidence.",
+      "clinical_events are type-specific variants. medication/injection events additionally carry quantity_per_day/days/total_quantity. lab/exam/pathology events carry specimen/collection_method. imaging events carry modality/body_site. procedure/treatment events carry body_site/area_size_cm2. All other event types carry only the common fields. Output exactly the fields of the matching variant.",
       "For each clinical_event, set billing_domain as a structured meaning label. Use standard_lab for ordinary specimen tests including blood/urine/rapid tests and ordinary specimen submission; pathology only for pathology diagnosis, cytology, histology, tissue specimen pathology submission, or specimen preparation in a pathology-diagnosis context; emergency_time_addon only for emergency/time-after-hours/holiday/night billing add-on context such as 救急加算, 時間外加算, 休日加算, 深夜加算, or受付時刻確認 for those add-ons. Do not mark symptom timing such as 夜間頻尿 or 夜間咳嗽 as emergency_time_addon.",
       "Separate action_status, temporal_relation, source_origin, provider_ownership, result_assertion, and certainty. Do not compress them into one status.",
       "Use action_status=performed/prescribed/administered only for actions that happened during the current encounter or are clearly prescribed/administered by this clinic today.",

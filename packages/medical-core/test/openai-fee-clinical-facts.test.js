@@ -71,6 +71,12 @@ function assertStrictObjectSchemasHaveRequiredProperties(schema, path = "schema"
   if (schema.type === "array") {
     assertStrictObjectSchemasHaveRequiredProperties(schema.items, `${path}.items`);
   }
+
+  if (Array.isArray(schema.anyOf)) {
+    for (const [index, variant] of schema.anyOf.entries()) {
+      assertStrictObjectSchemasHaveRequiredProperties(variant, `${path}.anyOf[${index}]`);
+    }
+  }
 }
 
 test("fee clinical facts prompt preserves performed tests with normal or negative results", async () => {
@@ -123,7 +129,7 @@ test("fee clinical facts request does not send the patient display name to OpenA
   assert.match(requestBody.input, /テスト医院/u);
 });
 
-test("v12 lightweight schema: events carry line-id evidence only and output is capped", async () => {
+test("v13 lightweight schema: type-specific variants carry only relevant fields", async () => {
   let requestBody = null;
 
   await withFetch(
@@ -140,16 +146,44 @@ test("v12 lightweight schema: events carry line-id evidence only and output is c
     }
   );
 
-  const eventSchema = requestBody.text.format.schema.properties.clinical_events.items;
-  // 出力トークン削減: evidence引用文・section・char offsets はLLM出力から排除(サーバ側で行から復元)
-  assert.equal(eventSchema.properties.evidence, undefined);
-  assert.equal(eventSchema.properties.section, undefined);
-  assert.equal(eventSchema.properties.char_start, undefined);
-  assert.equal(eventSchema.properties.char_end, undefined);
-  assert.ok(eventSchema.properties.evidence_line_ids);
-  assert.equal(eventSchema.properties.evidence_line_ids.maxItems, 2);
-  assert.equal(eventSchema.properties.search_queries.maxItems, 2);
-  // checklist_findings も line_ids 化
+  const variants = requestBody.text.format.schema.properties.clinical_events.items.anyOf;
+  assert.ok(Array.isArray(variants) && variants.length === 5, "5つの型別variant");
+
+  // type enum は互いに素で、全variantの和が全イベント種別を覆う
+  const seenTypes = [];
+  for (const variant of variants) {
+    const types = variant.properties.type.enum;
+    for (const t of types) {
+      assert.ok(!seenTypes.includes(t), `type '${t}' が複数variantに重複していない`);
+      seenTypes.push(t);
+    }
+    // 共通: 全variantが v12 の軽量化(引用文・section・offsets無し / line_ids・queries上限)を維持
+    assert.equal(variant.properties.evidence, undefined);
+    assert.equal(variant.properties.section, undefined);
+    assert.equal(variant.properties.char_start, undefined);
+    assert.equal(variant.properties.char_end, undefined);
+    assert.equal(variant.properties.evidence_line_ids.maxItems, 2);
+    assert.equal(variant.properties.search_queries.maxItems, 2);
+  }
+  assert.equal(seenTypes.length, 15);
+
+  const byType = (t) => variants.find((v) => v.properties.type.enum.includes(t));
+  // 投薬系だけが用量フィールドを持つ
+  assert.ok(byType("medication").properties.quantity_per_day);
+  assert.equal(byType("lab").properties.quantity_per_day, undefined);
+  // 検体系だけが specimen を持つ
+  assert.ok(byType("lab").properties.specimen);
+  assert.equal(byType("medication").properties.specimen, undefined);
+  // 画像だけが modality を持つ
+  assert.ok(byType("imaging").properties.modality);
+  assert.equal(byType("procedure").properties.modality, undefined);
+  // 処置系だけが面積を持つ
+  assert.ok(byType("treatment").properties.area_size_cm2);
+  assert.equal(byType("management").properties.area_size_cm2, undefined);
+  // 一般variantは共通フィールドのみ(12個)
+  assert.equal(Object.keys(byType("management").properties).length, 12);
+
+  // checklist_findings も line_ids 化を維持
   const checklistSchema = requestBody.text.format.schema.properties.checklist_findings.items;
   assert.equal(checklistSchema.properties.evidence, undefined);
   assert.ok(checklistSchema.properties.evidence_line_ids);
@@ -207,9 +241,12 @@ test("fee clinical facts schema keeps enough diagnoses and excluded events for c
   assert.ok(schema.properties.visit_facts);
   assert.ok(schema.properties.clinical_events);
   assert.ok(schema.properties.checklist_findings);
-  assert.ok(schema.properties.clinical_events.items.properties.billing_domain);
-  assert.ok(schema.properties.clinical_events.items.properties.specimen);
-  assert.ok(schema.properties.clinical_events.items.properties.collection_method);
+  // v13: 型別variant。billing_domainは全variant共通、specimen系は検体variantが持つ
+  const variants = schema.properties.clinical_events.items.anyOf;
+  assert.ok(variants.every((v) => v.properties.billing_domain));
+  const specimenVariant = variants.find((v) => v.properties.type.enum.includes("lab"));
+  assert.ok(specimenVariant.properties.specimen);
+  assert.ok(specimenVariant.properties.collection_method);
   assert.equal(schema.required.includes("clinical_events"), true);
   assert.equal(schema.required.includes("checklist_findings"), true);
   assert.equal(schema.required.includes("billing_events"), false);
