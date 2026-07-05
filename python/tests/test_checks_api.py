@@ -19,7 +19,14 @@ class ChecksApiTest(unittest.TestCase):
             )
             # 薬剤600の適応=病名A(男性)、禁忌=病名Z。薬剤600と601は併用禁忌。
             conn.execute(
-                "INSERT INTO cc_drug_indications (source_id, drug_code, disease_code, sex, age_min, age_max) VALUES (1,'600','A','1',0,999)"
+                "INSERT INTO cc_drug_indications "
+                "(source_id, drug_code, disease_code, sex, age_min, age_max, check_kubun, max_dose, max_days, tekigi, ref_range) "
+                "VALUES (1,'600','A','1',0,999,'1',60,14,'','mg')"
+            )
+            conn.execute(
+                "INSERT INTO cc_drug_dose_groups "
+                "(source_id, drug_code, dosage_form, unit, group_name, disease_code, sex, age_min, age_max, ingredient_amount, target_flag, max_dose, ref_range) "
+                "VALUES (1,'600','21','mg','成分X','0000000','',0,999,10,'2',100,'')"
             )
             conn.execute(
                 "INSERT INTO cc_drug_contra_disease (source_id, drug_code, disease_code) VALUES (1,'600','Z')"
@@ -55,6 +62,10 @@ class ChecksApiTest(unittest.TestCase):
 
         self.assertEqual(result["drugIndications"]["600"][0]["diseaseCode"], "A")
         self.assertEqual(result["drugIndications"]["600"][0]["sex"], "1")
+        self.assertEqual(result["drugDoseRules"]["600"][0]["maxDose"], 60)
+        self.assertEqual(result["drugDoseRules"]["600"][0]["maxDays"], 14)
+        self.assertEqual(result["drugDoseGroups"]["600"][0]["groupName"], "成分X")
+        self.assertEqual(result["drugDoseGroups"]["600"][0]["ingredientAmount"], 10)
         self.assertEqual(result["drugContraDiseases"]["600"], ["Z"])
         self.assertEqual(result["drugInteractions"], [["600", "601"]])
         self.assertEqual(result["actIndications"]["700"][0]["utagai"], "1")
@@ -97,6 +108,8 @@ class ChecksApiTest(unittest.TestCase):
             self._seed(db_path)
             result = check_lookup({"db_path": str(db_path)})
         self.assertEqual(result["drugIndications"], {})
+        self.assertEqual(result["drugDoseRules"], {})
+        self.assertEqual(result["drugDoseGroups"], {})
         self.assertEqual(result["drugInteractions"], [])
         self.assertEqual(result["diseaseNames"], {})
 

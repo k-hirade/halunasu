@@ -668,6 +668,24 @@ CREATE TABLE IF NOT EXISTS cc_drug_indications (
 );
 CREATE INDEX IF NOT EXISTS idx_cc_ind_drug ON cc_drug_indications(drug_code);
 
+CREATE TABLE IF NOT EXISTS cc_drug_dose_groups (
+    source_id INTEGER NOT NULL REFERENCES master_sources(id) ON DELETE CASCADE,
+    drug_code TEXT NOT NULL,
+    dosage_form TEXT,
+    unit TEXT,
+    group_name TEXT,
+    disease_code TEXT,
+    sex TEXT,
+    age_min REAL,
+    age_max REAL,
+    ingredient_amount REAL,
+    target_flag TEXT,
+    max_dose REAL,
+    ref_range TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cc_dose_group_drug ON cc_drug_dose_groups(drug_code);
+CREATE INDEX IF NOT EXISTS idx_cc_dose_group_name ON cc_drug_dose_groups(group_name);
+
 CREATE TABLE IF NOT EXISTS cc_drug_contra_disease (
     source_id INTEGER NOT NULL REFERENCES master_sources(id) ON DELETE CASCADE,
     drug_code TEXT NOT NULL,

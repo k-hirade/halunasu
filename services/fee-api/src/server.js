@@ -3548,7 +3548,8 @@ async function calculatePreparedFeeSessionNow({
   const indicationReviewIssues = await resolveIndicationReviewIssues({
     feeCalculator,
     session: calculationSession,
-    calculation: calculationResult
+    calculation: calculationResult,
+    calculationInput: calculationInputForSession
   });
   const result = await timedCalculationStage({
     stage: "saveCalculation",
@@ -3574,7 +3575,7 @@ async function calculatePreparedFeeSessionNow({
             ...calculationResult,
             clinicalEvents: Array.isArray(prepared.clinicalEvents) ? prepared.clinicalEvents : []
           }),
-          ...buildMissingBillingReviewIssues(claimCheckInput(calculationSession, calculationResult)),
+          ...buildMissingBillingReviewIssues(claimCheckInput(calculationSession, calculationResult, calculationInputForSession)),
           ...indicationReviewIssues
         ],
         clinicalExtraction: prepared.clinicalExtraction || null,
@@ -3703,27 +3704,136 @@ async function markFeeCalculationFailed({
 
 // 算定もれ/適応点検(fee-core claim-checks)へ渡す正規化claimを、
 // 当社算定の明細(judgement区分はB1でengineが付与済み)とセッションから組み立てる。
-function claimCheckInput(session = {}, calculation = {}) {
+function claimCheckInput(session = {}, calculation = {}, calculationInput = {}) {
   const lineItems = Array.isArray(calculation.lineItems) ? calculation.lineItems : [];
   const patient = session.patientSnapshot || {};
+  const doseByCode = claimCheckDoseContextByDrugCode(calculationInput, calculation);
   return {
     isInpatient: String(session.setting || "") === "inpatient",
     serviceDate: session.serviceDate || "",
     sex: normalizeCheckSex(patient.sex),
     ageYears: patientAgeYears(patient.birthDate || patient.birth_date, session.serviceDate),
-    items: lineItems.map((line) => ({
-      code: line.code || "",
-      name: line.name || "",
-      orderType: line.orderType || "",
-      judgementKind: line.judgementKind || "",
-      judgementGroup: line.judgementGroup || ""
-    })),
+    items: lineItems.map((line) => {
+      const dose = doseByCode.get(String(line.code || "").trim()) || {};
+      return {
+        lineId: line.lineId || line.line_id || "",
+        code: line.code || "",
+        name: line.name || "",
+        orderType: line.orderType || "",
+        recType: line.recType || line.rec_type || "",
+        judgementKind: line.judgementKind || "",
+        judgementGroup: line.judgementGroup || "",
+        quantity: finiteNumberOrNull(line.quantity),
+        quantityPerDay: finiteNumberOrNull(line.quantityPerDay ?? line.quantity_per_day ?? dose.quantityPerDay),
+        doseQuantity: finiteNumberOrNull(line.doseQuantity ?? line.dose_quantity ?? dose.doseQuantity),
+        dosesPerDay: finiteNumberOrNull(line.dosesPerDay ?? line.doses_per_day ?? dose.dosesPerDay),
+        totalQuantity: finiteNumberOrNull(line.totalQuantity ?? line.total_quantity ?? dose.totalQuantity),
+        days: finiteIntegerOrNull(line.days ?? dose.days),
+        dispensingKind: line.dispensingKind || line.dispensing_kind || dose.dispensingKind || "",
+        shinryoShikibetsu: line.shinryoShikibetsu || line.shinryo_shikibetsu || dose.shinryoShikibetsu || "",
+        unit: line.unit || dose.unit || ""
+      };
+    }),
     diseases: (Array.isArray(session.diagnoses) ? session.diagnoses : []).map((d) => ({
       code: String(d?.code || d?.diseaseCode || d?.disease_code || "").trim(),
       name: String(d?.name || d?.displayName || d?.display_name || "").trim(),
       suspected: Boolean(d?.suspected) || /疑い/u.test(String(d?.name || d?.displayName || ""))
     }))
   };
+}
+
+function claimCheckDoseContextByDrugCode(calculationInput = {}, calculation = {}) {
+  const byCode = new Map();
+  const add = (code, patch = {}) => {
+    const normalized = String(code || patch.drug_code || patch.drugCode || patch.code || "").trim();
+    if (!normalized) {
+      return;
+    }
+    const current = byCode.get(normalized) || {};
+    byCode.set(normalized, mergeClaimCheckDoseContext(current, patch));
+  };
+
+  const options = isPlainObject(calculationInput.calculationOptions || calculationInput.calculation_options)
+    ? calculationInput.calculationOptions || calculationInput.calculation_options
+    : {};
+  const claimContext = isPlainObject(calculationInput.claimContext || calculationInput.claim_context)
+    ? calculationInput.claimContext || calculationInput.claim_context
+    : {};
+
+  for (const source of [options, claimContext]) {
+    for (const order of arrayValue(source.medication_orders || source.medicationOrders)) {
+      add(order.drug_code || order.drugCode || order.code, {
+        quantityPerDay: order.quantity_per_day ?? order.quantityPerDay,
+        doseQuantity: order.dose_quantity ?? order.doseQuantity,
+        dosesPerDay: order.doses_per_day ?? order.dosesPerDay,
+        totalQuantity: order.total_quantity ?? order.totalQuantity,
+        days: order.days,
+        dispensingKind: order.dispensing_kind ?? order.dispensingKind,
+        shinryoShikibetsu: "21"
+      });
+    }
+    for (const order of arrayValue(source.injection_orders || source.injectionOrders)) {
+      add(order.drug_code || order.drugCode || order.code, {
+        quantityPerDay: order.dose_quantity ?? order.doseQuantity ?? order.total_quantity ?? order.totalQuantity,
+        doseQuantity: order.dose_quantity ?? order.doseQuantity,
+        totalQuantity: order.total_quantity ?? order.totalQuantity,
+        shinryoShikibetsu: "31"
+      });
+    }
+  }
+
+  for (const order of arrayValue(calculationInput.orders)) {
+    const orderType = String(order.orderType || order.order_type || "").trim();
+    if (orderType !== "drug" && orderType !== "injection") {
+      continue;
+    }
+    add(order.code || order.drug_code || order.drugCode, {
+      quantityPerDay: order.quantityPerDay ?? order.quantity_per_day,
+      doseQuantity: order.doseQuantity ?? order.dose_quantity,
+      dosesPerDay: order.dosesPerDay ?? order.doses_per_day,
+      totalQuantity: order.totalQuantity ?? order.total_quantity,
+      days: order.days,
+      shinryoShikibetsu: orderType === "injection" ? "31" : "21"
+    });
+  }
+
+  for (const line of arrayValue(calculation.lineItems || calculation.line_items)) {
+    add(line.code, {
+      quantityPerDay: line.quantityPerDay ?? line.quantity_per_day,
+      doseQuantity: line.doseQuantity ?? line.dose_quantity,
+      dosesPerDay: line.dosesPerDay ?? line.doses_per_day,
+      totalQuantity: line.totalQuantity ?? line.total_quantity,
+      days: line.days,
+      dispensingKind: line.dispensingKind ?? line.dispensing_kind,
+      shinryoShikibetsu: line.shinryoShikibetsu ?? line.shinryo_shikibetsu,
+      unit: line.unit
+    });
+  }
+
+  return byCode;
+}
+
+function mergeClaimCheckDoseContext(current = {}, patch = {}) {
+  const next = { ...current };
+  const maxNumber = (key, value) => {
+    const incoming = finiteNumberOrNull(value);
+    if (incoming == null) {
+      return;
+    }
+    const existing = finiteNumberOrNull(next[key]);
+    next[key] = existing == null ? incoming : Math.max(existing, incoming);
+  };
+  maxNumber("quantityPerDay", patch.quantityPerDay ?? patch.quantity_per_day);
+  maxNumber("doseQuantity", patch.doseQuantity ?? patch.dose_quantity);
+  maxNumber("dosesPerDay", patch.dosesPerDay ?? patch.doses_per_day);
+  maxNumber("totalQuantity", patch.totalQuantity ?? patch.total_quantity);
+  maxNumber("days", patch.days);
+  for (const key of ["dispensingKind", "shinryoShikibetsu", "unit"]) {
+    if (!next[key] && patch[key]) {
+      next[key] = String(patch[key]);
+    }
+  }
+  return next;
 }
 
 // レセ電の男女区分に合わせる(1:男 2:女)。
@@ -3751,12 +3861,12 @@ function patientAgeYears(birthDate, serviceDate) {
 
 // 適応/禁忌/併用点検(C)。checkLookup で必要マスタを引き reviewIssue[] を返す。
 // マスタ未取込・コード無し・lookup失敗のいずれでも算定本体は止めない(点検は補助)。
-async function resolveIndicationReviewIssues({ feeCalculator, session, calculation }) {
+async function resolveIndicationReviewIssues({ feeCalculator, session, calculation, calculationInput = {} }) {
   try {
     if (!feeCalculator || typeof feeCalculator.checkLookup !== "function") {
       return [];
     }
-    const claim = claimCheckInput(session, calculation);
+    const claim = claimCheckInput(session, calculation, calculationInput);
     const codes = claimCheckLookupCodes(claim);
     if (codes.drug_codes.length === 0 && codes.act_codes.length === 0) {
       return [];

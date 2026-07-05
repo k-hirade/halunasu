@@ -151,6 +151,81 @@ test("IY-003 禁忌傷病名 / IY-004 併用禁忌を検出", () => {
   assert.equal(onlyOne.filter((f) => f.ruleId === "IY-004").length, 0);
 });
 
+test("IY-002: 1日最大用量と投与日数の超過を検出する", () => {
+  const lookup = {
+    drugDoseRules: {
+      "600": [{ diseaseCode: "A", sex: "", ageMin: 0, ageMax: 999, checkKubun: "1", maxDose: 60, maxDays: 14, tekigi: "" }]
+    }
+  };
+  const findings = buildIndicationFindings(
+    {
+      sex: "1",
+      ageYears: 50,
+      items: [{ code: "600", name: "薬A", orderType: "drug", quantityPerDay: 90, days: 28 }],
+      diseases: [{ code: "A", name: "適応病名" }]
+    },
+    lookup
+  );
+
+  const dosage = findings.filter((f) => f.ruleId === "IY-002");
+  assert.equal(dosage.length, 2);
+  assert.ok(dosage.some((f) => f.ruleName === "薬剤用量の確認" && f.message.includes("90")));
+  assert.ok(dosage.some((f) => f.ruleName === "投与日数の確認" && f.message.includes("28日分")));
+});
+
+test("IY-002: 算定数量だけでは用量超過を指摘しない", () => {
+  const findings = buildIndicationFindings(
+    {
+      items: [{ code: "600", name: "薬A", orderType: "drug", quantity: 10 }],
+      diseases: [{ code: "A" }]
+    },
+    { drugDoseRules: { "600": [{ diseaseCode: "A", checkKubun: "1", maxDose: 1, maxDays: 7 }] } }
+  );
+
+  assert.equal(findings.filter((f) => f.ruleId === "IY-002").length, 0);
+});
+
+test("IY-002: 同一薬剤コードの1日量は合算して判定する", () => {
+  const findings = buildIndicationFindings(
+    {
+      items: [
+        { lineId: "a", code: "600", name: "薬A", orderType: "drug", quantityPerDay: 40 },
+        { lineId: "b", code: "600", name: "薬A", orderType: "drug", quantityPerDay: 30 }
+      ],
+      diseases: [{ code: "A" }]
+    },
+    { drugDoseRules: { "600": [{ diseaseCode: "A", checkKubun: "1", maxDose: 60 }] } }
+  );
+
+  const dosage = findings.filter((f) => f.ruleId === "IY-002" && f.ruleName === "薬剤用量の確認");
+  assert.equal(dosage.length, 1);
+  assert.ok(dosage[0].message.includes("70"));
+});
+
+test("IY-002: 同一成分グループの1日合算過量を検出する", () => {
+  const lookup = {
+    drugDoseGroups: {
+      "600": [{ groupName: "成分X", unit: "mg", diseaseCode: "0000000", sex: "", ageMin: 0, ageMax: 999, ingredientAmount: 10, targetFlag: "2", maxDose: 100 }],
+      "601": [{ groupName: "成分X", unit: "mg", diseaseCode: "0000000", sex: "", ageMin: 0, ageMax: 999, ingredientAmount: 20, targetFlag: "2", maxDose: 100 }]
+    }
+  };
+  const findings = buildIndicationFindings(
+    {
+      items: [
+        { lineId: "a", code: "600", name: "薬A", orderType: "drug", quantityPerDay: 4 },
+        { lineId: "b", code: "601", name: "薬B", orderType: "drug", quantityPerDay: 4 }
+      ]
+    },
+    lookup
+  );
+
+  const group = findings.filter((f) => f.ruleId === "IY-002" && f.ruleName === "同一成分用量の確認");
+  assert.equal(group.length, 1);
+  assert.ok(group[0].message.includes("120mg"));
+  assert.ok(group[0].target.includes("薬A"));
+  assert.ok(group[0].target.includes("薬B"));
+});
+
 test("claimCheckLookupCodes: 薬剤/診療行為/病名コードを抽出", () => {
   const codes = claimCheckLookupCodes({
     items: [{ code: "600", orderType: "drug" }, { code: "700", orderType: "procedure" }],

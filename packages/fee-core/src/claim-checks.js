@@ -16,17 +16,56 @@ const KENSA_HANTEI_GROUP_NAMES = Object.freeze({
 
 // 尿中一般物質定性半定量検査(D000)。これ「のみ」の場合は尿・糞便等検査判断料を算定できない。
 const D000_URINE_CODE = "160000310";
+const NON_DISEASE_CODES = new Set(["0000000", "0000001", "0000002", "0000003"]);
+const ORAL_SHINRYO_SHIKIBETSU = new Set(["21", "22"]);
+const INJECTION_SHINRYO_SHIKIBETSU = new Set(["31", "32", "33"]);
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== "");
+}
+
+function numericOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function positiveNumberOrNull(value) {
+  const number = numericOrNull(value);
+  return number != null && number > 0 ? number : null;
+}
+
+function normalizeString(value) {
+  return String(value || "").trim();
+}
+
+function formatQuantity(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "";
+  }
+  return Number.isInteger(number) ? String(number) : String(Number(number.toFixed(4)));
+}
 
 function normalizeItems(claim = {}) {
   const items = Array.isArray(claim.items) ? claim.items : [];
   return items
     .map((item) => ({
       code: String(item.code || "").trim(),
+      lineId: String(firstDefined(item.lineId, item.line_id, item.orderId, item.order_id) || "").trim(),
       name: String(item.name || "").trim(),
       orderType: String(item.orderType || "").trim(),
       recType: String(item.recType || "").trim(),
       judgementKind: String(item.judgementKind || "").trim(),
-      judgementGroup: String(item.judgementGroup || "").trim().replace(/^0+/u, "")
+      judgementGroup: String(item.judgementGroup || "").trim().replace(/^0+/u, ""),
+      quantity: numericOrNull(firstDefined(item.quantity, item.count, item.usageQuantity, item.usage_quantity)),
+      quantityPerDay: numericOrNull(firstDefined(item.quantityPerDay, item.quantity_per_day, item.dailyQuantity, item.daily_quantity)),
+      doseQuantity: numericOrNull(firstDefined(item.doseQuantity, item.dose_quantity)),
+      dosesPerDay: numericOrNull(firstDefined(item.dosesPerDay, item.doses_per_day)),
+      totalQuantity: numericOrNull(firstDefined(item.totalQuantity, item.total_quantity)),
+      days: numericOrNull(firstDefined(item.days, item.daysSupply, item.days_supply, item.administrationDays, item.administration_days)),
+      dispensingKind: normalizeString(firstDefined(item.dispensingKind, item.dispensing_kind)),
+      shinryoShikibetsu: normalizeString(firstDefined(item.shinryoShikibetsu, item.shinryo_shikibetsu, item.billingCategory, item.billing_category)),
+      unit: normalizeString(item.unit)
     }))
     .filter((item) => item.code || item.name);
 }
@@ -340,11 +379,240 @@ function checkActIndication(claim, items, lookup) {
   return findings;
 }
 
+function drugItems(items) {
+  return items.filter((it) => it.orderType === "drug" || it.recType === "IY");
+}
+
+function itemDailyQuantity(item = {}) {
+  const perDay = positiveNumberOrNull(item.quantityPerDay);
+  if (perDay != null) {
+    return perDay;
+  }
+  const dose = positiveNumberOrNull(item.doseQuantity);
+  const times = positiveNumberOrNull(item.dosesPerDay);
+  if (dose != null && times != null) {
+    return dose * times;
+  }
+
+  // レセ電由来で診療識別が明示されている場合のみ、使用量を1日量として扱う。
+  // 通常のlineItems.quantityは「算定数量」のことがあるため、識別なしでは用量判定に使わない。
+  const shikibetsu = String(item.shinryoShikibetsu || "").trim();
+  if (ORAL_SHINRYO_SHIKIBETSU.has(shikibetsu) || INJECTION_SHINRYO_SHIKIBETSU.has(shikibetsu)) {
+    return positiveNumberOrNull(item.quantity);
+  }
+  return null;
+}
+
+function itemPrescriptionDays(item = {}) {
+  return positiveNumberOrNull(item.days);
+}
+
+function diseaseCodesForClaim(claim = {}) {
+  return new Set(normalizeDiseases(claim).map((d) => d.code).filter(Boolean));
+}
+
+function rowDiseaseApplies(row = {}, diseaseCodes = new Set()) {
+  const code = String(row.diseaseCode || "").trim();
+  return !code || NON_DISEASE_CODES.has(code) || diseaseCodes.has(code);
+}
+
+function applicableDoseRules(rows = [], claim = {}, diseaseCodes = new Set()) {
+  return (Array.isArray(rows) ? rows : []).filter((row) => {
+    const kubun = String(row.checkKubun || "").trim();
+    return (!kubun || kubun === "1" || kubun === "2")
+      && sexMatches(row.sex, claim.sex)
+      && ageMatches(row.ageMin, row.ageMax, claim.ageYears)
+      && rowDiseaseApplies(row, diseaseCodes);
+  });
+}
+
+function doseUnitFor(item = {}, rows = []) {
+  const unit = String(item.unit || "").trim();
+  if (unit) {
+    return unit;
+  }
+  const ref = rows.map((row) => String(row.refRange || "").trim()).find(Boolean);
+  return ref || "";
+}
+
+function checkDrugDailyDose(claim, items, lookup) {
+  const findings = [];
+  const diseaseCodes = diseaseCodesForClaim(claim);
+  const byCode = new Map();
+  for (const drug of drugItems(items)) {
+    if (!drug.code) {
+      continue;
+    }
+    const daily = itemDailyQuantity(drug);
+    if (daily == null) {
+      continue;
+    }
+    const entry = byCode.get(drug.code) || {
+      code: drug.code,
+      name: drug.name || drug.code,
+      totalDaily: 0,
+      items: []
+    };
+    entry.totalDaily += daily;
+    if (drug.name && !entry.name) {
+      entry.name = drug.name;
+    }
+    entry.items.push(drug);
+    byCode.set(drug.code, entry);
+  }
+
+  for (const entry of byCode.values()) {
+    const applicable = applicableDoseRules((lookup?.drugDoseRules || {})[entry.code], claim, diseaseCodes)
+      .filter((row) => positiveNumberOrNull(row.maxDose) != null && positiveNumberOrNull(row.maxDose) < 99999);
+    if (applicable.length === 0) {
+      continue;
+    }
+    // 複数条件が該当する場合は最も緩い上限を採用し、過剰検知を避ける。
+    const limit = Math.max(...applicable.map((row) => positiveNumberOrNull(row.maxDose)).filter((value) => value != null));
+    if (!Number.isFinite(limit) || entry.totalDaily <= limit) {
+      continue;
+    }
+    const tekigi = applicable.some((row) => String(row.tekigi || "") === "01");
+    const unit = doseUnitFor(entry.items[0], applicable);
+    const suffix = unit ? unit : "";
+    findings.push({
+      ruleId: "IY-002",
+      ruleName: "薬剤用量の確認",
+      category: "用量・日数",
+      severity: tekigi ? "info" : "warning",
+      target: entry.name || entry.code,
+      code: entry.code,
+      message: `医薬品「${entry.name || entry.code}」の1日量 ${formatQuantity(entry.totalDaily)}${suffix} が公式チェック上限 ${formatQuantity(limit)}${suffix} を超えています`,
+      detail: tekigi
+        ? "支払基金チェックマスタの最大投与量を超えています。添付文書上「適宜増減」の記載があるため、投与理由を確認してください。"
+        : "支払基金チェックマスタの最大投与量を超えています。",
+      suggestion: "投与量・体重・腎機能・増量理由を確認してください。医学的必要性がある場合は症状詳記またはコメントで説明してください。"
+    });
+  }
+  return findings;
+}
+
+function checkDrugDaysLimit(claim, items, lookup) {
+  const findings = [];
+  const diseaseCodes = diseaseCodesForClaim(claim);
+  for (const drug of drugItems(items)) {
+    if (!drug.code) {
+      continue;
+    }
+    const days = itemPrescriptionDays(drug);
+    if (days == null) {
+      continue;
+    }
+    const applicable = applicableDoseRules((lookup?.drugDoseRules || {})[drug.code], claim, diseaseCodes)
+      .filter((row) => positiveNumberOrNull(row.maxDays) != null && positiveNumberOrNull(row.maxDays) < 999);
+    if (applicable.length === 0) {
+      continue;
+    }
+    const limit = Math.max(...applicable.map((row) => positiveNumberOrNull(row.maxDays)).filter((value) => value != null));
+    if (!Number.isFinite(limit) || days <= limit) {
+      continue;
+    }
+    findings.push({
+      ruleId: "IY-002",
+      ruleName: "投与日数の確認",
+      category: "用量・日数",
+      severity: "warning",
+      target: drug.name || drug.code,
+      code: drug.code,
+      message: `医薬品「${drug.name || drug.code}」が${formatQuantity(days)}日分処方されています。公式チェック上限は${formatQuantity(limit)}日です`,
+      detail: "支払基金チェックマスタの最長投与日数を超えています。",
+      suggestion: "投与日数制限を確認してください。長期投与が妥当な場合は理由を摘要欄・症状詳記で説明してください。"
+    });
+  }
+  return findings;
+}
+
+function applicableDoseGroups(rows = [], claim = {}, diseaseCodes = new Set()) {
+  return (Array.isArray(rows) ? rows : []).filter((row) => {
+    const flag = String(row.targetFlag || "").trim();
+    return (flag === "2" || flag === "3")
+      && sexMatches(row.sex, claim.sex)
+      && ageMatches(row.ageMin, row.ageMax, claim.ageYears)
+      && rowDiseaseApplies(row, diseaseCodes)
+      && String(row.groupName || "").trim()
+      && positiveNumberOrNull(row.ingredientAmount) != null
+      && positiveNumberOrNull(row.maxDose) != null
+      && positiveNumberOrNull(row.maxDose) < 99999999;
+  });
+}
+
+function checkDrugDoseGroups(claim, items, lookup) {
+  const diseaseCodes = diseaseCodesForClaim(claim);
+  const groups = new Map();
+  for (const drug of drugItems(items)) {
+    if (!drug.code) {
+      continue;
+    }
+    const daily = itemDailyQuantity(drug);
+    if (daily == null) {
+      continue;
+    }
+    const rows = applicableDoseGroups((lookup?.drugDoseGroups || {})[drug.code], claim, diseaseCodes);
+    for (const row of rows) {
+      const groupName = String(row.groupName || "").trim();
+      const unit = String(row.unit || "").trim();
+      const key = `${groupName}\u0000${unit}`;
+      const ingredientAmount = positiveNumberOrNull(row.ingredientAmount);
+      const maxDose = positiveNumberOrNull(row.maxDose);
+      const entry = groups.get(key) || {
+        groupName,
+        unit,
+        total: 0,
+        limit: maxDose,
+        drugs: new Set(),
+        counted: new Set()
+      };
+      const countKey = drug.lineId || `${drug.code}\u0000${drug.name}\u0000${daily}\u0000${entry.counted.size}`;
+      if (entry.counted.has(countKey)) {
+        groups.set(key, entry);
+        continue;
+      }
+      entry.counted.add(countKey);
+      entry.total += daily * ingredientAmount;
+      entry.limit = Math.max(entry.limit, maxDose);
+      entry.drugs.add(drug.name || drug.code);
+      groups.set(key, entry);
+    }
+  }
+  const findings = [];
+  for (const group of groups.values()) {
+    if (group.total <= group.limit) {
+      continue;
+    }
+    const suffix = group.unit || "";
+    findings.push({
+      ruleId: "IY-002",
+      ruleName: "同一成分用量の確認",
+      category: "用量・日数",
+      severity: "warning",
+      target: [...group.drugs].sort().join("、"),
+      message: `${group.groupName}の1日合算量 ${formatQuantity(group.total)}${suffix} が公式チェック上限 ${formatQuantity(group.limit)}${suffix} を超えています`,
+      detail: "支払基金チェックマスタの投与量グループに基づき、同一成分・同一薬効グループを合算して確認しています。",
+      suggestion: "重複処方・同一成分の合算過量がないか確認してください。医学的必要性がある場合は理由を記録してください。"
+    });
+  }
+  return findings;
+}
+
+function checkDrugDosage(claim, items, lookup) {
+  return [
+    ...checkDrugDailyDose(claim, items, lookup),
+    ...checkDrugDaysLimit(claim, items, lookup),
+    ...checkDrugDoseGroups(claim, items, lookup)
+  ];
+}
+
 // 適応/禁忌/併用点検の本体。lookup(checkLookupの戻り)を注入して Finding[] を返す。
 export function buildIndicationFindings(claim = {}, lookup = {}) {
   const items = normalizeItems(claim);
   return [
     ...checkDrugIndication(claim, items, lookup),
+    ...checkDrugDosage(claim, items, lookup),
     ...checkDrugContraindication(claim, items, lookup),
     ...checkDrugInteraction(claim, items, lookup),
     ...checkActIndication(claim, items, lookup)

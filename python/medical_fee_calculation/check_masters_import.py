@@ -86,6 +86,7 @@ def _reset_check_tables(conn: Any) -> None:
         "diseases",
         "disease_modifiers",
         "cc_drug_indications",
+        "cc_drug_dose_groups",
         "cc_drug_contra_disease",
         "cc_drug_interactions",
         "cc_act_indications",
@@ -163,6 +164,19 @@ def import_check_masters(
                         continue
                     yield (source_id, r[0], r[1], r[4], _f(r[5]), _f(r[6]), r[7], _f(r[12]), _i(r[14]), r[20], r[23])
             log("医薬品適応", _batch_insert(conn, "INSERT INTO cc_drug_indications VALUES (?,?,?,?,?,?,?,?,?,?,?)", gen()))
+
+        # 投与量グループ IY_Toyoryou (skip header, len>=13, 取消区分 r11 not in 1/9)
+        p = _find(raw, "IY_Toyoryou")
+        if p:
+            def gen():
+                for r in _rows(p, encoding, skip_header=True):
+                    if len(r) < 13 or r[11] in ("1", "9"):
+                        continue
+                    yield (
+                        source_id, r[0], r[1], r[2], r[3], r[4], r[5],
+                        _f(r[6]), _f(r[7]), _f(r[8]), r[9], _f(r[10]), r[12]
+                    )
+            log("投与量グループ", _batch_insert(conn, "INSERT INTO cc_drug_dose_groups VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", gen()))
 
         # 傷病名禁忌 IY_ShobyoKinki (len>=8, r6 not in 1/9)
         p = _find(raw, "IY_ShobyoKinki")

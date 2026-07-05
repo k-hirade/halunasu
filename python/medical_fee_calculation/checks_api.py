@@ -31,6 +31,8 @@ def check_lookup(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         initialize_schema(conn)
         drug_indications = {c: _drug_indications(conn, c) for c in drug_codes}
+        drug_dose_rules = {c: _drug_dose_rules(conn, c) for c in drug_codes}
+        drug_dose_groups = {c: _drug_dose_groups(conn, c) for c in drug_codes}
         drug_contra = {c: _drug_contra(conn, c) for c in drug_codes}
         act_indications = {c: _act_indications(conn, c) for c in act_codes}
         interactions = _interaction_pairs(conn, drug_codes)
@@ -41,6 +43,10 @@ def check_lookup(payload: dict[str, Any]) -> dict[str, Any]:
         name_codes: set[str] = set(disease_codes)
         for rows in drug_indications.values():
             name_codes.update(str(r.get("diseaseCode") or "") for r in rows)
+        for rows in drug_dose_rules.values():
+            name_codes.update(str(r.get("diseaseCode") or "") for r in rows)
+        for rows in drug_dose_groups.values():
+            name_codes.update(str(r.get("diseaseCode") or "") for r in rows)
         for rows in act_indications.values():
             name_codes.update(str(r.get("diseaseCode") or "") for r in rows)
         for codes in drug_contra.values():
@@ -49,6 +55,8 @@ def check_lookup(payload: dict[str, Any]) -> dict[str, Any]:
 
         return {
             "drugIndications": drug_indications,
+            "drugDoseRules": drug_dose_rules,
+            "drugDoseGroups": drug_dose_groups,
             "drugContraDiseases": drug_contra,
             "drugInteractions": interactions,
             "actIndications": act_indications,
@@ -120,6 +128,64 @@ def _drug_indications(conn: Any, drug_code: str) -> list[dict[str, Any]]:
             "sex": str(r["sex"] or ""),
             "ageMin": r["age_min"],
             "ageMax": r["age_max"],
+        }
+        for r in rows
+    ]
+
+
+def _drug_dose_rules(conn: Any, drug_code: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT disease_code, sex, age_min, age_max, check_kubun, max_dose, max_days, tekigi, ref_range
+        FROM cc_drug_indications
+        WHERE drug_code = ?
+          AND (
+            (max_dose IS NOT NULL AND max_dose < 99999.0)
+            OR (max_days IS NOT NULL AND max_days < 999)
+          )
+        """,
+        (drug_code,),
+    ).fetchall()
+    return [
+        {
+            "diseaseCode": str(r["disease_code"] or ""),
+            "sex": str(r["sex"] or ""),
+            "ageMin": r["age_min"],
+            "ageMax": r["age_max"],
+            "checkKubun": str(r["check_kubun"] or ""),
+            "maxDose": r["max_dose"],
+            "maxDays": r["max_days"],
+            "tekigi": str(r["tekigi"] or ""),
+            "refRange": str(r["ref_range"] or ""),
+        }
+        for r in rows
+    ]
+
+
+def _drug_dose_groups(conn: Any, drug_code: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT group_name, unit, disease_code, sex, age_min, age_max,
+               ingredient_amount, target_flag, max_dose, ref_range
+        FROM cc_drug_dose_groups
+        WHERE drug_code = ?
+          AND max_dose IS NOT NULL
+          AND max_dose < 99999999.0
+        """,
+        (drug_code,),
+    ).fetchall()
+    return [
+        {
+            "groupName": str(r["group_name"] or ""),
+            "unit": str(r["unit"] or ""),
+            "diseaseCode": str(r["disease_code"] or ""),
+            "sex": str(r["sex"] or ""),
+            "ageMin": r["age_min"],
+            "ageMax": r["age_max"],
+            "ingredientAmount": r["ingredient_amount"],
+            "targetFlag": str(r["target_flag"] or ""),
+            "maxDose": r["max_dose"],
+            "refRange": str(r["ref_range"] or ""),
         }
         for r in rows
     ]
