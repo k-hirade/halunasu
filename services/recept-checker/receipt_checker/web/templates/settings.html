@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}設定 - レセプトチェッカー{% endblock %}
+{% block content %}
+
+<div class="panel">
+  <h2>点検除外の設定 ({{ exclusions | length }}件)</h2>
+  <p class="muted">
+    STGの一時点検版では、点検除外はDBに保存しません。
+  </p>
+  {% if exclusions %}
+  <table>
+    <tr><th>ルール</th><th>対象</th><th>患者</th><th>登録日時</th><th></th></tr>
+    {% for e in exclusions %}
+    <tr>
+      <td class="muted">{{ e.rule_id }}</td>
+      <td>{{ e.target or "(すべて)" }}</td>
+      <td>{{ e.patient_name or "(すべて)" }}</td>
+      <td class="muted">{{ e.created_at }}</td>
+      <td>
+        <form action="/settings/exclusions/delete" method="post">
+          <input type="hidden" name="exclusion_id" value="{{ e.id }}">
+          <button class="btn-mini" type="submit">解除</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p><span class="badge ok">なし</span> 点検除外は登録されていません。</p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>無効化中のルール ({{ disabled | length }}件)</h2>
+  {% if disabled %}
+  <p class="muted">
+    以下のルールは<a href="/rules">チェックルール一覧</a>で無効化されています。
+  </p>
+  <ul>
+    {% for rid in disabled | sort %}<li class="muted">{{ rid }}</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">すべてのルールが有効です。<a href="/rules">チェックルール一覧</a>からプロセス内で一時的に無効化できます。</p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>年度版マスター</h2>
+  {% if versions %}
+  <table>
+    <tr><th>版</th><th>適用開始</th></tr>
+    {% for label, eff in versions %}
+    <tr>
+      <td>{{ label }}</td>
+      <td>{{ "常時(単一版)" if eff == "000000" else format_ym(eff) + "〜" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="muted">
+    レセプトの診療年月に応じて適用される年度版が自動選択されます(診療報酬改定またぎ対応)。
+  </p>
+  {% else %}
+  <p class="muted">公的マスターDBが見つかりません(フォールバックCSVで動作中)。README の手順で取込みできます。</p>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}レセプト詳細 - レセプトチェッカー{% endblock %}
+{% block content %}
+
+<p><a href="/result/{{ result_id }}">← 点検結果に戻る</a></p>
+
+<div class="panel">
+  <h2>レセプト No.{{ receipt.receipt_no }}: {{ receipt.patient_name }}</h2>
+  <table>
+    <tr>
+      <th style="width:130px">患者</th>
+      <td>{{ receipt.patient_name }}
+        {% if receipt.kana_name %}({{ receipt.kana_name }}){% endif %}
+        / {{ receipt.sex_label }} / {{ receipt.age if receipt.age is not none else "?" }}歳
+        <span class="muted">(生年月日: {{ receipt.birthdate }})</span>
+      </td>
+    </tr>
+    <tr><th>レセプト種別</th><td>{{ describe_receipt_type(receipt.type_code) }} ({{ receipt.type_code }})</td></tr>
+    <tr><th>診療年月</th><td>{{ format_ym(receipt.shinryo_ym) }}</td></tr>
+    <tr><th>診療実日数</th><td>{{ receipt.jitsu_nissu if receipt.jitsu_nissu is not none else "-" }}日
+      {% if receipt.visit_days %}<span class="muted">(算定日: {{ receipt.visit_days | join(", ") }}日)</span>{% endif %}
+    </td></tr>
+    <tr><th>合計点数</th><td>{{ "{:,}".format(receipt.total_points) if receipt.total_points is not none else "-" }}点</td></tr>
+    {% if receipt.insurance %}
+    <tr><th>保険者番号</th><td>{{ receipt.insurance.insurer_number }}</td></tr>
+    {% endif %}
+    {% if receipt.karte_no %}
+    <tr><th>カルテ番号</th><td>{{ receipt.karte_no }}</td></tr>
+    {% endif %}
+  </table>
+</div>
+
+<div class="panel">
+  <h2>このレセプトへの指摘 ({{ findings | length }}件)</h2>
+  {% if findings %}
+  <table>
+    <tr><th>重大度</th><th>分類</th><th>指摘内容</th></tr>
+    {% for f in findings %}
+    <tr class="sev-{{ f.severity.value }}">
+      <td>
+        {% if f.severity.value == "error" %}<span class="badge error">エラー</span>
+        {% elif f.severity.value == "warning" %}<span class="badge warning">警告</span>
+        {% else %}<span class="badge info">情報</span>{% endif %}
+      </td>
+      <td>{{ f.category }}<div class="muted">{{ f.rule_id }}</div></td>
+      <td>
+        <div class="finding-msg">{{ f.message }}</div>
+        {% if f.detail %}<div class="finding-detail">{{ f.detail }}</div>{% endif %}
+        {% if f.suggestion %}<div class="suggestion">💡 {{ f.suggestion }}</div>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p><span class="badge ok">指摘なし</span></p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>傷病名 ({{ receipt.diseases | length }}件)</h2>
+  <table>
+    <tr><th>傷病名</th><th>コード</th><th>診療開始日</th><th>転帰</th><th>主傷病</th></tr>
+    {% for d in receipt.diseases %}
+    <tr>
+      <td>{{ d.display_name }}{% if d.is_suspected %} <span class="badge warning">疑い</span>{% endif %}
+        {% if d.is_uncoded %} <span class="badge info">未コード化</span>{% endif %}</td>
+      <td class="muted">{{ d.code }}</td>
+      <td>{{ d.start_date }}</td>
+      <td>{{ TENKI.get(d.tenki, d.tenki or "継続") }}</td>
+      <td>{% if d.is_main %}●{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="panel">
+  <h2>診療内容</h2>
+  {% for (code, label), items in groups %}
+  <h3>{{ label }}</h3>
+  <table>
+    <tr><th style="width:90px">種別</th><th>名称</th><th>コード</th><th>数量</th><th>点数</th><th>回数</th><th>算定日</th><th>コメント</th></tr>
+    {% for it in items %}
+    <tr>
+      <td class="muted">{{ {"SI":"診療行為","IY":"医薬品","TO":"特定器材"}.get(it.rec_type, it.rec_type) }}</td>
+      <td>{{ it.display_name }}</td>
+      <td class="muted">{{ it.code }}</td>
+      <td>{{ it.quantity if it.quantity is not none else "" }}</td>
+      <td>{{ it.points if it.points is not none else "" }}</td>
+      <td>{{ it.total_count }}</td>
+      <td class="muted">{{ it.days_used | join(",") }}</td>
+      <td class="muted">
+        {% for ccode, ctext in it.comments %}{{ ctext or ccode }}{% if not loop.last %} / {% endif %}{% endfor %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endfor %}
+
+  {% if receipt.symptom_details %}
+  <h3>症状詳記</h3>
+  <table>
+    <tr><th style="width:120px">区分</th><th>内容</th></tr>
+    {% for sj in receipt.symptom_details %}
+    <tr><td>{{ sj.kubun }}</td><td>{{ sj.text }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+
+{% endblock %}

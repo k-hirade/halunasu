@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}点検結果 - レセプトチェッカー{% endblock %}
+{% block content %}
+
+<div class="panel">
+  <h2>点検結果: {{ result.claim_file.source_name }}</h2>
+  <p class="muted">
+    {{ result.claim_file.facility.name }}
+    ({{ format_ym(result.claim_file.facility.seikyu_ym) }}請求分) /
+    実行ルール数: {{ result.rules_run }}
+    {% if result.master_version %} / 適用マスター: {{ result.master_version }}{% endif %}
+  </p>
+  <div class="stats">
+    <div class="stat"><div class="num">{{ result.claim_file.receipts | length }}</div><div class="label">レセプト件数</div></div>
+    <div class="stat"><div class="num">{{ result.receipts_with_findings }}</div><div class="label">指摘のあるレセプト</div></div>
+    <div class="stat error"><div class="num">{{ result.error_count }}</div><div class="label">エラー(要修正)</div></div>
+    <div class="stat warning"><div class="num">{{ result.warning_count }}</div><div class="label">警告(要確認)</div></div>
+    <div class="stat info"><div class="num">{{ result.info_count }}</div><div class="label">情報(算定もれ等)</div></div>
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a class="btn" href="/result/{{ result_id }}/export.xlsx">Excelでダウンロード</a>
+    <a class="btn secondary" href="/result/{{ result_id }}/export.csv">CSVでダウンロード</a>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>指摘一覧 ({{ findings | length }}件)</h2>
+  <form class="filters" method="get" action="/result/{{ result_id }}">
+    <label>重大度:
+      <select name="severity" onchange="this.form.submit()">
+        <option value="">すべて</option>
+        <option value="error" {% if sel_severity=="error" %}selected{% endif %}>エラー</option>
+        <option value="warning" {% if sel_severity=="warning" %}selected{% endif %}>警告</option>
+        <option value="info" {% if sel_severity=="info" %}selected{% endif %}>情報</option>
+      </select>
+    </label>
+    <label>分類:
+      <select name="category" onchange="this.form.submit()">
+        <option value="">すべて</option>
+        {% for c in categories %}
+        <option value="{{ c }}" {% if sel_category==c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% if sel_severity or sel_category or sel_receipt_no is not none %}
+    <a href="/result/{{ result_id }}">絞り込み解除</a>
+    {% endif %}
+  </form>
+
+  {% if findings %}
+  <table>
+    <tr>
+      <th>重大度</th><th>レセプト</th><th>患者</th><th>分類</th><th>指摘内容</th>
+    </tr>
+    {% for f in findings %}
+    <tr class="sev-{{ f.severity.value }}">
+      <td>
+        {% if f.severity.value == "error" %}<span class="badge error">エラー</span>
+        {% elif f.severity.value == "warning" %}<span class="badge warning">警告</span>
+        {% else %}<span class="badge info">情報</span>{% endif %}
+      </td>
+      <td>
+        {% if f.receipt_no %}
+        <a href="/result/{{ result_id }}/receipt/{{ f.receipt_no }}">No.{{ f.receipt_no }}</a>
+        {% else %}-{% endif %}
+      </td>
+      <td>{{ f.patient_name }}</td>
+      <td>{{ f.category }}<div class="muted">{{ f.rule_id }}</div></td>
+      <td>
+        <div class="finding-msg">{{ f.message }}</div>
+        {% if f.detail %}<div class="finding-detail">{{ f.detail }}</div>{% endif %}
+        {% if f.suggestion %}<div class="suggestion">💡 {{ f.suggestion }}</div>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p><span class="badge ok">指摘なし</span> 条件に該当する指摘はありません。</p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>レセプト一覧</h2>
+  <table>
+    <tr><th>No.</th><th>患者氏名</th><th>種別</th><th>診療年月</th><th>実日数</th><th>合計点数</th><th>指摘</th></tr>
+    {% for r in result.claim_file.receipts %}
+    {% set fs = result.findings_for(r.receipt_no) %}
+    <tr>
+      <td><a href="/result/{{ result_id }}/receipt/{{ r.receipt_no }}">{{ r.receipt_no }}</a></td>
+      <td>{{ r.patient_name }} <span class="muted">({{ r.sex_label }}・{{ r.age if r.age is not none else "?" }}歳)</span></td>
+      <td class="muted">{{ describe_receipt_type(r.type_code) }}</td>
+      <td>{{ format_ym(r.shinryo_ym) }}</td>
+      <td>{{ r.jitsu_nissu if r.jitsu_nissu is not none else "-" }}日</td>
+      <td>{{ "{:,}".format(r.total_points) if r.total_points is not none else "-" }}点</td>
+      <td>
+        {% if fs %}
+          {% set ec = fs | selectattr("severity.value", "equalto", "error") | list | length %}
+          {% set wc = fs | selectattr("severity.value", "equalto", "warning") | list | length %}
+          {% set ic = fs | selectattr("severity.value", "equalto", "info") | list | length %}
+          {% if ec %}<span class="badge error">{{ ec }}</span>{% endif %}
+          {% if wc %}<span class="badge warning">{{ wc }}</span>{% endif %}
+          {% if ic %}<span class="badge info">{{ ic }}</span>{% endif %}
+        {% else %}
+          <span class="badge ok">OK</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+{% endblock %}

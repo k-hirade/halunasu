@@ -29,7 +29,7 @@ const appConfigs = {
     packageName: "@halunasu/fee-web",
     requiredTargets: ["platform", "fee"],
     envForTarget(env, targets) {
-      return {
+      const values = {
         HALUNASU_ENV: env,
         NEXT_PUBLIC_HALUNASU_ENV: env,
         PLATFORM_PROXY_TARGET: targets.platform,
@@ -41,6 +41,11 @@ const appConfigs = {
         CORE_ADMIN_BASE_URL: env === "stg" ? "https://admin.stg.halunasu.com" : "https://admin.halunasu.com",
         NEXT_PUBLIC_CORE_ADMIN_BASE_URL: env === "stg" ? "https://admin.stg.halunasu.com" : "https://admin.halunasu.com"
       };
+      const receptCheckerUrl = process.env.NEXT_PUBLIC_RECEPT_CHECKER_STG_URL || process.env.RECEPT_CHECKER_STG_URL;
+      if (env === "stg" && receptCheckerUrl) {
+        values.NEXT_PUBLIC_RECEPT_CHECKER_STG_URL = receptCheckerUrl;
+      }
+      return values;
     }
   }
 };

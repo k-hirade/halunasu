@@ -14,6 +14,14 @@ const BASELINE_DIFF_MENU_SECTION = {
   href: "/admin?section=baseline-diff"
 };
 
+const RECEPT_CHECKER_MENU_SECTION = {
+  id: "recept-checker",
+  group: "設定",
+  label: "レセプトチェッカー",
+  description: "UKEをアップロードして請求前点検を行います（STG限定）。",
+  href: "/admin?section=recept-checker"
+};
+
 const SETTINGS_MENU_SECTIONS = [
   {
     id: "members",
@@ -63,6 +71,7 @@ function hrefForAdminSection(section) {
     settings: "/admin?section=settings",
     "receipt-settings": "/admin?section=receipt-settings",
     "baseline-diff": "/admin?section=baseline-diff",
+    "recept-checker": "/admin?section=recept-checker",
     audit: "/admin?section=audit",
     account: "/admin?section=account"
   }[section.id] || "/admin";
@@ -88,7 +97,9 @@ export function SiteNav() {
   const isMonthlyRoute = pathname?.startsWith("/monthly");
   const isSessionsRoute = !isAdminRoute && !isMonthlyRoute;
   // /admin ではコンテキスト(STGフィルタ済み)を使用。それ以外ではフォールバックにSTG限定項目を足す。
-  const fallbackSections = isStg ? [...SETTINGS_MENU_SECTIONS, BASELINE_DIFF_MENU_SECTION] : SETTINGS_MENU_SECTIONS;
+  const fallbackSections = isStg
+    ? [...SETTINGS_MENU_SECTIONS, BASELINE_DIFF_MENU_SECTION, RECEPT_CHECKER_MENU_SECTION]
+    : SETTINGS_MENU_SECTIONS;
   const settingsSections = (isAdminNavAvailable && adminSections.length ? adminSections : fallbackSections)
     .map((section) => ({
       ...section,

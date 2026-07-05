@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="panel">
+  <h2>UKEファイルの点検</h2>
+  <p class="muted">
+    レセプト電算処理システムのUKEファイル(医科・Shift_JIS)をアップロードすると、
+    全レセプトを自動点検します。STG限定の一時点検として処理し、履歴DBには保存しません。
+  </p>
+  <form action="/check" method="post" enctype="multipart/form-data">
+    <input type="file" name="file" required accept=".uke,.UKE,.csv,.txt">
+    <button class="btn" type="submit">点検を実行</button>
+  </form>
+</div>
+
+{% if recent %}
+<div class="panel">
+  <h2>最近の点検結果</h2>
+  <table>
+    <tr><th>ファイル</th><th>請求年月</th><th>レセプト件数</th><th>エラー</th><th>警告</th><th>情報</th><th></th></tr>
+    {% for rid, res in recent %}
+    <tr>
+      <td>{{ res.claim_file.source_name }}</td>
+      <td>{{ format_ym(res.claim_file.facility.seikyu_ym) }}</td>
+      <td>{{ res.claim_file.receipts | length }}</td>
+      <td><span class="badge error">{{ res.error_count }}</span></td>
+      <td><span class="badge warning">{{ res.warning_count }}</span></td>
+      <td><span class="badge info">{{ res.info_count }}</span></td>
+      <td><a href="/result/{{ rid }}">結果を見る</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<div class="panel">
+  <h2>一時点検の扱い</h2>
+  <p class="muted">
+    このSTG版は、アップロードしたUKEをその場で点検するための画面です。
+    履歴保存、点検除外の永続化、返戻・査定データの蓄積は行いません。
+  </p>
+</div>
+
+<div class="panel">
+  <h2>ロード済みマスター</h2>
+  <table>
+    {% for name, count in master_stats.items() %}
+    <tr><th style="width:220px">{{ name }}</th><td>{{ count }}件</td></tr>
+    {% endfor %}
+  </table>
+  <p class="muted">
+    公的マスター(基本マスター・電子点数表・支払基金コンピュータチェックマスタ)を取込み済みの場合は
+    そちらを優先して点検します。取込み方法は README を参照してください。
+  </p>
+</div>
+
+{% endblock %}

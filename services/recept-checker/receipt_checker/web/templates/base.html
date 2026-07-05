@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}レセプトチェッカー{% endblock %}</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --panel: #ffffff; --border: #dde3ea;
+    --text: #1f2a37; --muted: #6b7684;
+    --primary: #1e6fb8; --primary-dark: #175a96;
+    --error: #c0392b; --error-bg: #fdecea;
+    --warning: #b7791f; --warning-bg: #fef5e7;
+    --info: #2471a3; --info-bg: #eaf2f8;
+    --ok: #1e8449; --ok-bg: #e9f7ef;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+    font-size: 14px; line-height: 1.6;
+  }
+  header {
+    background: var(--primary); color: #fff; padding: 10px 24px;
+    display: flex; align-items: center; gap: 24px;
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  header h1 a { color:#fff; text-decoration: none; }
+  header nav a {
+    color: #dbeafe; text-decoration: none; margin-right: 14px; font-size: 13px;
+  }
+  header nav a:hover { color: #fff; }
+  main { max-width: 1180px; margin: 24px auto; padding: 0 20px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 18px 22px; margin-bottom: 18px;
+  }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  h3 { font-size: 14px; margin: 16px 0 8px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td {
+    border: 1px solid var(--border); padding: 6px 10px; text-align: left;
+    vertical-align: top; font-size: 13px;
+  }
+  th { background: #f0f3f7; font-weight: 600; white-space: nowrap; }
+  a { color: var(--primary); }
+  .btn {
+    display: inline-block; background: var(--primary); color: #fff;
+    padding: 7px 16px; border-radius: 6px; text-decoration: none;
+    border: none; font-size: 13px; cursor: pointer;
+  }
+  .btn:hover { background: var(--primary-dark); }
+  .btn.secondary { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
+  .btn-mini {
+    background: #fff; color: var(--muted); border: 1px solid var(--border);
+    padding: 2px 8px; border-radius: 5px; font-size: 11px; cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-mini:hover { color: var(--error); border-color: var(--error); }
+  .badge {
+    display: inline-block; padding: 1px 9px; border-radius: 10px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .badge.error { background: var(--error-bg); color: var(--error); }
+  .badge.warning { background: var(--warning-bg); color: var(--warning); }
+  .badge.info { background: var(--info-bg); color: var(--info); }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .stats { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0; }
+  .stat {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 20px; min-width: 130px;
+  }
+  .stat .num { font-size: 24px; font-weight: 700; }
+  .stat .label { color: var(--muted); font-size: 12px; }
+  .stat.error .num { color: var(--error); }
+  .stat.warning .num { color: var(--warning); }
+  .stat.info .num { color: var(--info); }
+  .muted { color: var(--muted); font-size: 12px; }
+  .filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  select, input[type=file] {
+    padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+    background: #fff; font-size: 13px;
+  }
+  .finding-msg { font-weight: 600; }
+  .finding-detail { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .suggestion { color: var(--ok); font-size: 12px; margin-top: 2px; }
+  tr.sev-error td:first-child { border-left: 4px solid var(--error); }
+  tr.sev-warning td:first-child { border-left: 4px solid var(--warning); }
+  tr.sev-info td:first-child { border-left: 4px solid var(--info); }
+  footer { text-align: center; color: var(--muted); font-size: 11px; padding: 20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/">🏥 レセプトチェッカー</a></h1>
+  <nav>
+    <a href="/">ホーム</a>
+    <a href="/rules">チェックルール一覧</a>
+  </nav>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer>
+  レセプトチェッカー — STG限定の一時点検ツール(点検結果は参考情報です。最終判断は診療報酬点数表・関連通知をご確認ください)
+</footer>
+</body>
+</html>

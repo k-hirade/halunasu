@@ -28,6 +28,13 @@ const ADMIN_SECTIONS = [
     stgOnly: true
   },
   {
+    id: "recept-checker",
+    group: "設定",
+    label: "レセプトチェッカー",
+    description: "UKEをアップロードして、請求前の返戻・査定リスクをその場で点検します（STG限定）。",
+    stgOnly: true
+  },
+  {
     id: "master",
     group: "設定",
     label: "マスタ確認",
@@ -153,7 +160,7 @@ export function FeeAdminConsole() {
     if (tab === "home" || tab === "account") {
       return;
     }
-    if (tab === "master" || tab === "baseline-diff") {
+    if (tab === "master" || tab === "baseline-diff" || tab === "recept-checker") {
       return;
     }
     setLoadingSection(tab);
@@ -267,6 +274,13 @@ function renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platfo
     return <FeeBaselineDiffConsole />;
   }
 
+  if (activeTab === "recept-checker") {
+    if (!isStgEnv) {
+      return <div className="fee-empty-state">この画面はSTG環境だけで利用できます。</div>;
+    }
+    return <ReceptCheckerLaunchPanel />;
+  }
+
   if (activeTab === "master") {
     if (!isStgEnv) {
       return <div className="fee-empty-state">この画面はSTG環境だけで利用できます。</div>;
@@ -336,6 +350,24 @@ function renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platfo
     <div className="fee-admin-placeholder">
       <h2>設定</h2>
       <p>移行中です。</p>
+    </div>
+  );
+}
+
+function ReceptCheckerLaunchPanel() {
+  const url = process.env.NEXT_PUBLIC_RECEPT_CHECKER_STG_URL || "";
+  return (
+    <div className="fee-admin-placeholder">
+      <h2>レセプトチェッカー</h2>
+      <p>
+        UKEファイルをアップロードして、請求前の形式・病名・適応・併算定・回数制限・算定もれをSTG上で点検します。
+        このSTG版は一時点検用で、履歴DBへの保存は行いません。
+      </p>
+      {url ? (
+        <a className="btn btn--primary" href={url} rel="noreferrer" target="_blank">レセプトチェッカーを開く</a>
+      ) : (
+        <div className="fee-empty-state">NEXT_PUBLIC_RECEPT_CHECKER_STG_URL が未設定です。STGのレセプトチェッカーURLを設定してください。</div>
+      )}
     </div>
   );
 }

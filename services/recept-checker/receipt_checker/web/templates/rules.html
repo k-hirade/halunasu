@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}チェックルール一覧 - レセプトチェッカー{% endblock %}
+{% block content %}
+
+<div class="panel">
+  <h2>チェックルール一覧 ({{ rules | length }}件)</h2>
+  <p class="muted">
+    ルールの多く(適応・背反・回数制限・算定もれ等)は公的マスターと
+    receipt_checker/masters/data/ の施設ルールCSVで定義されています。
+    「有効」のチェックを外すと、このプロセスが動いている間だけ、そのルールは点検で実行されません。
+    STGの一時点検版ではDBへ永続保存しません。
+  </p>
+  <table>
+    <tr><th>有効</th><th>ID</th><th>ルール名</th><th>分類</th><th>既定の重大度</th><th>説明</th></tr>
+    {% for r in rules %}
+    <tr {% if r.rule_id in disabled %}style="opacity:.55"{% endif %}>
+      <td>
+        <form action="/rules/toggle" method="post">
+          <input type="hidden" name="rule_id" value="{{ r.rule_id }}">
+          <input type="hidden" name="enabled" value="{{ '0' if r.rule_id not in disabled else '1' }}">
+          <input type="checkbox" onchange="this.form.submit()"
+                 {% if r.rule_id not in disabled %}checked{% endif %}>
+        </form>
+      </td>
+      <td class="muted">{{ r.rule_id }}</td>
+      <td><b>{{ r.name }}</b></td>
+      <td>{{ r.category }}</td>
+      <td>
+        {% if r.severity == "error" %}<span class="badge error">エラー</span>
+        {% elif r.severity == "warning" %}<span class="badge warning">警告</span>
+        {% else %}<span class="badge info">情報</span>{% endif %}
+      </td>
+      <td>{{ r.description }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+{% endblock %}
