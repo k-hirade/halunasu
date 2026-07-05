@@ -5622,6 +5622,39 @@ body:has(.fee-shell--detail) {
   padding: 4px 8px;
 }
 
+.baseline-diff-phase-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.baseline-diff-phase {
+  background: #fbfcfe;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+}
+
+.baseline-diff-phase span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.baseline-diff-phase strong {
+  color: var(--text);
+  font-size: 1.15rem;
+}
+
+.baseline-diff-phase small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .baseline-diff-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

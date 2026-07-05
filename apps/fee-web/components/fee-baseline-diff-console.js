@@ -56,10 +56,10 @@ function useFeeApi() {
 function countComparisonRows(comparisonRows, reproductionRows, summary = {}) {
   const countByStatus = (status) => comparisonRows.filter((row) => row.comparisonStatus === status).length;
   return {
-    baseline_only: Number(summary?.baselineOnlyCount ?? countByStatus("baseline_only")) || 0,
-    engine_only: Number(summary?.engineOnlyCount ?? countByStatus("engine_only")) || 0,
-    both_delta: Number(summary?.bothDiffCount ?? countByStatus("both_delta")) || 0,
-    matched: Number(summary?.matchedCount ?? countByStatus("matched")) || 0,
+    baseline_only: countByStatus("baseline_only"),
+    engine_only: countByStatus("engine_only"),
+    both_delta: countByStatus("both_delta"),
+    matched: countByStatus("matched"),
     reproduction_failed: Number(summary?.reproductionFailureCount ?? reproductionRows.length) || 0
   };
 }
@@ -219,6 +219,9 @@ export function FeeBaselineDiffConsole() {
   const reproductionRows = useMemo(() => reproductionFailureRows(result), [result]);
   const summary = result?.summary || null;
   const ingestion = result?.ingestion || null;
+  const diagnostics = result?.diagnostics || null;
+  const receiptParse = diagnostics?.receiptParse || null;
+  const recalculationAccuracy = diagnostics?.recalculationAccuracy || null;
   const resultClaimMonth = result?.claimMonth || claimMonth || "month";
   const resultTabs = useMemo(() => {
     const counts = countComparisonRows(comparisonRows, reproductionRows, summary);
@@ -441,6 +444,24 @@ export function FeeBaselineDiffConsole() {
                 {Number(ingestion.warningCount || 0) ? <span>確認 {Number(ingestion.warningCount || 0).toLocaleString()}件</span> : null}
               </div>
             ) : null}
+            {(receiptParse || recalculationAccuracy) ? (
+              <div className="baseline-diff-phase-grid" aria-label="診断段階">
+                {receiptParse ? (
+                  <article className="baseline-diff-phase">
+                    <span>既存レセ解析確認</span>
+                    <strong>{Number(receiptParse.lineCount || 0).toLocaleString()}明細</strong>
+                    <small>レセ {Number(receiptParse.claimCount || 0).toLocaleString()}件 / {receiptParse.formatLabel || receiptParse.format || "取込済み"}</small>
+                  </article>
+                ) : null}
+                {recalculationAccuracy ? (
+                  <article className="baseline-diff-phase">
+                    <span>再算定精度確認</span>
+                    <strong>{Number(recalculationAccuracy.reproductionFailureCount || 0).toLocaleString()}件</strong>
+                    <small>再算定元 {Number(recalculationAccuracy.sourceCodeCount || 0).toLocaleString()}件 / 当社出力 {Number(recalculationAccuracy.engineCodeCount || 0).toLocaleString()}件</small>
+                  </article>
+                ) : null}
+              </div>
+            ) : null}
             <div className="baseline-diff-summary">
               {resultTabs.map((tab) => (
                 <article className={`baseline-diff-metric baseline-diff-metric--${tab.className}`} key={tab.id}>
@@ -450,7 +471,7 @@ export function FeeBaselineDiffConsole() {
                 </article>
               ))}
             </div>
-            <p className="baseline-diff-disclaimer">概算影響額は点数×10円・総医療費ベースの概算です（負担按分なし）。実施事実・算定要件・施設基準・病名を確認のうえ判断してください。</p>
+            <p className="baseline-diff-disclaimer">既存レセ解析確認は既存レセを読めたかの確認、再算定精度確認は当社エンジンで再現できたかの確認です。概算影響額は点数×10円・総医療費ベースの概算です（負担按分なし）。実施事実・算定要件・施設基準・病名を確認のうえ判断してください。</p>
             <div className="baseline-diff-tabs" role="tablist" aria-label="診断結果の分類">
               {resultTabs.map((tab) => (
                 <button

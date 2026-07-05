@@ -408,6 +408,14 @@ async function routeFeeApiRequest(input = {}) {
       dataset,
       claimMonth
     });
+    const diagnostics = buildRecalculationDiffDiagnostics({
+      baseline,
+      calculationPayloads,
+      sessions,
+      dataset,
+      claimMonth,
+      reproductionFailures
+    });
     diagnosis.summary = {
       ...(diagnosis.summary || {}),
       reproductionFailureCount: reproductionFailures.length
@@ -434,10 +442,11 @@ async function routeFeeApiRequest(input = {}) {
         needsReviewCount: diagnosis.summary?.needsReviewCount || 0,
         considerCount: diagnosis.summary?.considerCount || 0,
         reproductionFailureCount: reproductionFailures.length,
+        homeCareUnsupportedCount: diagnostics.recalculationAccuracy?.homeCareUnsupportedCount || 0,
         datasetWarningCount: ingestion.warningCount || 0
       }
     });
-    return ok({ ...diagnosis, ingestion, reproductionFailures });
+    return ok({ ...diagnosis, ingestion, reproductionFailures, diagnostics });
   }
 
   // 導入前 一括レセプト差分診断: 既存レセ(baselineClaims) と 当社算定(セッション) を患者×月で突合
@@ -2304,12 +2313,7 @@ async function calculateRecalculationDiffSessions({ feeCalculator, calculationPa
 }
 
 function buildRecalculationReproductionFailures({ calculationPayloads = [], sessions = [], dataset = {}, claimMonth = "" } = {}) {
-  const datasetRows = datasetOrderCodeRows(dataset, claimMonth);
-  const payloadRows = calculationPayloads.flatMap((payload) => claimPayloadInputCodeRows(payload, { claimMonth }));
-  const sourceRows = aggregateRecalculationInputCodeRows(
-    datasetRows.length ? datasetRows : payloadRows,
-    datasetOrderNameMap(dataset, claimMonth)
-  );
+  const sourceRows = recalculationSourceCodeRows({ calculationPayloads, dataset, claimMonth });
   const engineRows = aggregateRecalculationEngineCodeRows(sessions);
   const failures = [];
   for (const [key, source] of sourceRows.entries()) {
@@ -2318,17 +2322,20 @@ function buildRecalculationReproductionFailures({ calculationPayloads = [], sess
     if (engineCount >= source.count) {
       continue;
     }
+    const domain = classifyRecalculationFailureDomain(source, engine);
     failures.push({
       patientId: source.patientId,
       claimMonth: source.claimMonth,
       code: source.code,
       name: source.name || engine?.name || "",
+      domain: domain.domain,
+      domainLabel: domain.domainLabel,
+      supportStatus: domain.supportStatus,
+      supportStatusLabel: domain.supportStatusLabel,
       sourceCount: source.count,
       engineCount,
       missingCount: Math.max(0, source.count - engineCount),
-      reason: engineCount > 0
-        ? "再算定元データにある回数より、当社エンジン結果の回数が少ない"
-        : "再算定元データにはありますが、当社エンジン結果に出ませんでした。"
+      reason: reproductionFailureReason({ domain, engineCount })
     });
   }
   failures.sort((a, b) => (
@@ -2336,6 +2343,102 @@ function buildRecalculationReproductionFailures({ calculationPayloads = [], sess
     || String(a.code).localeCompare(String(b.code))
   ));
   return failures;
+}
+
+function buildRecalculationDiffDiagnostics({ baseline = {}, calculationPayloads = [], sessions = [], dataset = {}, claimMonth = "", reproductionFailures = [] } = {}) {
+  const baselineClaims = Array.isArray(baseline.baselineClaims) ? baseline.baselineClaims : [];
+  const sourceRows = recalculationSourceCodeRows({ calculationPayloads, dataset, claimMonth });
+  const engineRows = aggregateRecalculationEngineCodeRows(sessions);
+  const homeCareUnsupportedCount = reproductionFailures.filter((row) => row.domain === "home_care").length;
+  return {
+    receiptParse: {
+      status: baselineClaims.length ? "parsed" : "empty",
+      format: baseline.baselineFormat || (baselineClaims.length ? "claims" : "none"),
+      formatLabel: baselineFormatLabel(baseline.baselineFormat || (baselineClaims.length ? "claims" : "none")),
+      claimCount: baselineClaims.length,
+      lineCount: baselineClaimLineCount(baselineClaims),
+      message: baselineClaims.length
+        ? "既存レセを患者×月の明細として取り込めています。"
+        : "既存レセ明細は取り込まれていません。"
+    },
+    recalculationAccuracy: {
+      status: reproductionFailures.length ? "needs_engine_work" : "ready",
+      sourcePayloadCount: Array.isArray(calculationPayloads) ? calculationPayloads.length : 0,
+      sourceCodeCount: sourceRows.size,
+      engineCodeCount: engineRows.size,
+      reproductionFailureCount: reproductionFailures.length,
+      homeCareUnsupportedCount,
+      message: reproductionFailures.length
+        ? "UKE解析とは別に、当社エンジンで再現できていない明細があります。"
+        : "再算定元データと当社エンジン出力の再現失敗はありません。"
+    },
+    engineCoverageDecision: {
+      homeCare: {
+        status: "not_enabled",
+        label: "在宅系は当社未対応として表示",
+        reason: "在宅患者訪問診療料・在宅系加算は要件が多いため、現時点では自動再現対象に広げず、再現失敗として可視化します。"
+      }
+    }
+  };
+}
+
+function recalculationSourceCodeRows({ calculationPayloads = [], dataset = {}, claimMonth = "" } = {}) {
+  const datasetRows = datasetOrderCodeRows(dataset, claimMonth);
+  const payloadRows = calculationPayloads.flatMap((payload) => claimPayloadInputCodeRows(payload, { claimMonth }));
+  return aggregateRecalculationInputCodeRows(
+    datasetRows.length ? datasetRows : payloadRows,
+    datasetOrderNameMap(dataset, claimMonth)
+  );
+}
+
+function baselineClaimLineCount(baselineClaims = []) {
+  return (Array.isArray(baselineClaims) ? baselineClaims : []).reduce((sum, claim) => {
+    const lines = Array.isArray(claim?.lines) ? claim.lines : (Array.isArray(claim?.lineItems) ? claim.lineItems : []);
+    return sum + lines.length;
+  }, 0);
+}
+
+function baselineFormatLabel(format = "") {
+  const normalized = String(format || "").toLowerCase();
+  if (normalized === "uke") return "UKE";
+  if (normalized === "csv") return "CSV";
+  if (normalized === "claims") return "構造化データ";
+  if (normalized === "none") return "未取込";
+  return normalized || "取込済み";
+}
+
+function classifyRecalculationFailureDomain(source = {}, engine = {}) {
+  const code = String(source?.code || engine?.code || "").trim();
+  const name = String(source?.name || engine?.name || "").trim();
+  if (isHomeCareClaimCode(code, name)) {
+    return {
+      domain: "home_care",
+      domainLabel: "在宅系",
+      supportStatus: "unsupported_home_care",
+      supportStatusLabel: "当社未対応（在宅）"
+    };
+  }
+  return {
+    domain: "general",
+    domainLabel: "一般",
+    supportStatus: "engine_gap",
+    supportStatusLabel: "再現失敗"
+  };
+}
+
+function isHomeCareClaimCode(code = "", name = "") {
+  return /^114/u.test(String(code || ""))
+    || /在宅|訪問診療|往診|在医総管|施医総管|在宅医療|訪問看護|施設入居/u.test(String(name || ""));
+}
+
+function reproductionFailureReason({ domain = {}, engineCount = 0 } = {}) {
+  if (Number(engineCount || 0) > 0) {
+    return "再算定元データにある回数より、当社エンジン結果の回数が少ないため確認が必要です。";
+  }
+  if (domain.domain === "home_care") {
+    return "再算定元データにはありますが、在宅系コードは当社エンジンの再現対象として未整備です。UKE解析は成功しています。";
+  }
+  return "再算定元データにはありますが、当社エンジン結果に出ませんでした。算定ロジックまたは入力変換の確認が必要です。";
 }
 
 function datasetOrderCodeRows(dataset = {}, claimMonth = "") {

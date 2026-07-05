@@ -8537,7 +8537,7 @@ test("builds recalculation diff claim payloads from uploaded patient chart order
       { fileName: "receipt.csv", format: "csv", contentBase64: encode("patient_id,claim_month,code,name,points,count\npatA,2026-06,112007410,再診料,76,1\n") },
       { fileName: "patients.csv", format: "csv", contentBase64: encode("patient_id,birth_date,sex,display_name\npatA,1970-01-01,male,山田 太郎\n") },
       { fileName: "charts.jsonl", format: "jsonl", contentBase64: encode(`${JSON.stringify({ patient_id: "patA", service_date: "2026-06-10", clinical_text: "A：高血圧症。P：管理を継続。" })}\n`) },
-      { fileName: "orders.csv", format: "csv", contentBase64: encode("patient_id,service_date,order_type,code,name,status\npatA,2026-06-10,procedure,113001810,特定疾患療養管理料,performed\npatA,2026-06-10,procedure,140000610,創傷処置（１００ｃｍ２未満）,performed\n") },
+      { fileName: "orders.csv", format: "csv", contentBase64: encode("patient_id,service_date,order_type,code,name,status\npatA,2026-06-10,procedure,113001810,特定疾患療養管理料,performed\npatA,2026-06-10,procedure,140000610,創傷処置（１００ｃｍ２未満）,performed\npatA,2026-06-10,procedure_code,114001110,在宅患者訪問診療料（１）１（同一建物居住者以外）,performed\n") },
       { fileName: "diagnoses.csv", format: "csv", contentBase64: encode("patient_id,service_date,diagnosis_name,is_primary\npatA,2026-06-10,高血圧症,true\n") }
     ]
   }, headers, { env: "stg" });
@@ -8547,15 +8547,22 @@ test("builds recalculation diff claim payloads from uploaded patient chart order
   assert.equal(calls[0].calculationInput.claimContext.patient.patient_id, "patA");
   assert.equal(calls[0].calculationInput.claimContext.patient.display_name, "山田 太郎");
   assert.equal(calls[0].calculationInput.claimContext.clinical_text.includes("高血圧症"), true);
-  assert.deepEqual(calls[0].calculationInput.claimContext.procedure_codes, ["113001810"]);
+  assert.deepEqual(calls[0].calculationInput.claimContext.procedure_codes, ["113001810", "114001110"]);
   assert.equal(calls[0].calculationInput.claimContext.treatment_orders.length, 1);
   assert.equal(response.body.ingestion.calculationPayloadCount, 1);
+  assert.equal(response.body.diagnostics.receiptParse.format, "csv");
+  assert.equal(response.body.diagnostics.receiptParse.lineCount, 1);
+  assert.equal(response.body.diagnostics.recalculationAccuracy.sourceCodeCount, 3);
+  assert.equal(response.body.diagnostics.recalculationAccuracy.engineCodeCount, 2);
+  assert.equal(response.body.diagnostics.recalculationAccuracy.homeCareUnsupportedCount, 1);
   assert.equal(response.body.summary.missingCandidateCount, 1);
   assert.equal(response.body.diagnoses[0].findings[0].code, "113001810");
-  assert.equal(response.body.summary.reproductionFailureCount, 1);
-  assert.equal(response.body.reproductionFailures[0].code, "140000610");
-  assert.equal(response.body.reproductionFailures[0].sourceCount, 1);
-  assert.equal(response.body.reproductionFailures[0].engineCount, 0);
+  assert.equal(response.body.summary.reproductionFailureCount, 2);
+  assert.equal(response.body.reproductionFailures.find((row) => row.code === "140000610").sourceCount, 1);
+  assert.equal(response.body.reproductionFailures.find((row) => row.code === "140000610").engineCount, 0);
+  const homeFailure = response.body.reproductionFailures.find((row) => row.code === "114001110");
+  assert.equal(homeFailure.supportStatus, "unsupported_home_care");
+  assert.equal(homeFailure.supportStatusLabel, "当社未対応（在宅）");
 });
 
 test("recalculation diff dataset claimMonth overrides stale UI month", async () => {
