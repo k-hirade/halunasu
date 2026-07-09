@@ -1,0 +1,6 @@
+patient_id,service_date,diagnosis_name,is_primary
+NDM001,2026-07-01,急性胃腸炎,1
+NDM002,2026-07-02,右下腿II度熱傷,1
+NDM002,2026-07-02,右前腕擦過創,
+NDM005,2026-07-05,末期肺癌,1
+NDM005,2026-07-05,がん性疼痛,

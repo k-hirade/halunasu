@@ -6,6 +6,7 @@ import { toUserFacingErrorMessage } from "@halunasu/web-ui/user-facing-error";
 import { useAdminNav } from "./admin-nav-context";
 import { getStoredPlatformAccessToken, usePlatformAuth } from "./platform-auth";
 import { FeeBaselineDiffConsole } from "./fee-baseline-diff-console";
+import { isFeeUploadToolsAllowed, isStgFeeEnvironment } from "../lib/baseline-diff";
 
 const ADMIN_SECTIONS = [
   {
@@ -24,15 +25,15 @@ const ADMIN_SECTIONS = [
     id: "baseline-diff",
     group: "設定",
     label: "再算定差分診断",
-    description: "既存レセと当社再算定を突合し、算定もれ候補・要確認・検討を出します（STG限定）。",
-    stgOnly: true
+    description: "既存レセと当社再算定を突合し、算定もれ候補・要確認・検討を出します（STG/Demo限定）。",
+    uploadToolsOnly: true
   },
   {
     id: "recept-checker",
     group: "設定",
     label: "レセプトチェッカー",
-    description: "UKEをアップロードして、請求前の返戻・査定リスクをその場で点検します（STG限定）。",
-    stgOnly: true
+    description: "UKEをアップロードして、請求前の返戻・査定リスクをその場で点検します（STG/Demo限定）。",
+    uploadToolsOnly: true
   },
   {
     id: "master",
@@ -120,9 +121,13 @@ export function FeeAdminConsole() {
   const activeTab = searchParams.get("section") || "home";
   const { registerAdminNav, clearAdminNav } = useAdminNav();
   const [isStgEnv, setIsStgEnv] = useState(false);
+  const [uploadToolsAllowed, setUploadToolsAllowed] = useState(false);
   const adminSections = useMemo(
-    () => ADMIN_SECTIONS.filter((section) => !section.stgOnly || isStgEnv),
-    [isStgEnv]
+    () => ADMIN_SECTIONS.filter((section) => (
+      (!section.stgOnly || isStgEnv)
+      && (!section.uploadToolsOnly || uploadToolsAllowed)
+    )),
+    [isStgEnv, uploadToolsAllowed]
   );
   // 旧「レセプト設定」リンク(?section=receipt-settings)は統合した「設定」へ寄せる。
   const resolvedTab = activeTab === "receipt-settings" ? "settings" : activeTab;
@@ -140,7 +145,8 @@ export function FeeAdminConsole() {
 
   useEffect(() => {
     setIsStgEnv(isStgFeeEnvironment());
-  }, []);
+    setUploadToolsAllowed(isFeeUploadToolsAllowed(auth.session));
+  }, [auth.session]);
 
   useEffect(() => {
     registerAdminNav({
@@ -240,13 +246,13 @@ export function FeeAdminConsole() {
             />
           </div>
         ) : null}
-        {loadingSection === activeTab ? <div className="fee-empty-state">読み込み中</div> : renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platformData })}
+        {loadingSection === activeTab ? <div className="fee-empty-state">読み込み中</div> : renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platformData, uploadToolsAllowed })}
       </section>
     </main>
   );
 }
 
-function renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platformData }) {
+function renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platformData, uploadToolsAllowed }) {
   if (activeTab === "members") {
     return (
       <DataTable
@@ -268,15 +274,15 @@ function renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platfo
   }
 
   if (activeTab === "baseline-diff") {
-    if (!isStgEnv) {
-      return <div className="fee-empty-state">この画面はSTG環境だけで利用できます。</div>;
+    if (!uploadToolsAllowed) {
+      return <div className="fee-empty-state">この画面はSTG環境または許可されたDemo組織だけで利用できます。</div>;
     }
     return <FeeBaselineDiffConsole />;
   }
 
   if (activeTab === "recept-checker") {
-    if (!isStgEnv) {
-      return <div className="fee-empty-state">この画面はSTG環境だけで利用できます。</div>;
+    if (!uploadToolsAllowed) {
+      return <div className="fee-empty-state">この画面はSTG環境または許可されたDemo組織だけで利用できます。</div>;
     }
     return <ReceptCheckerLaunchPanel />;
   }
@@ -355,18 +361,18 @@ function renderSection(activeTab, { auditFilter, auth, feeData, isStgEnv, platfo
 }
 
 function ReceptCheckerLaunchPanel() {
-  const url = process.env.NEXT_PUBLIC_RECEPT_CHECKER_STG_URL || "";
+  const url = process.env.NEXT_PUBLIC_RECEPT_CHECKER_URL || process.env.NEXT_PUBLIC_RECEPT_CHECKER_STG_URL || "";
   return (
     <div className="fee-admin-placeholder">
       <h2>レセプトチェッカー</h2>
       <p>
-        UKEファイルをアップロードして、請求前の形式・病名・適応・併算定・回数制限・算定もれをSTG上で点検します。
-        このSTG版は一時点検用で、履歴DBへの保存は行いません。
+        UKEファイルをアップロードして、請求前の形式・病名・適応・併算定・回数制限・算定もれをその場で点検します。
+        このデモ版は一時点検用で、履歴DBへの保存は行いません。
       </p>
       {url ? (
         <a className="btn btn--primary" href={url} rel="noreferrer" target="_blank">レセプトチェッカーを開く</a>
       ) : (
-        <div className="fee-empty-state">NEXT_PUBLIC_RECEPT_CHECKER_STG_URL が未設定です。STGのレセプトチェッカーURLを設定してください。</div>
+        <div className="fee-empty-state">NEXT_PUBLIC_RECEPT_CHECKER_URL または NEXT_PUBLIC_RECEPT_CHECKER_STG_URL を設定してください。</div>
       )}
     </div>
   );

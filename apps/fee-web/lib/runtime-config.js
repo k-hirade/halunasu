@@ -13,6 +13,10 @@ export function feeRuntimeConfigFromEnv() {
     coreAdminBaseUrl:
       process.env.CORE_ADMIN_BASE_URL ??
       process.env.NEXT_PUBLIC_CORE_ADMIN_BASE_URL ??
-      "https://admin.halunasu.com"
+      "https://admin.halunasu.com",
+    demoUploadOrgCodes:
+      process.env.NEXT_PUBLIC_FEE_DEMO_UPLOAD_ORG_CODES ??
+      process.env.FEE_DEMO_UPLOAD_ORG_CODES ??
+      "nishiyama-demo,nishiyama-demo-stg"
   };
 }

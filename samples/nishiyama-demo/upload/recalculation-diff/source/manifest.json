@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "recalculation-diff.v1",
+  "datasetName": "nishiyama-demo-recalculation-diff",
+  "claimMonth": "2026-07",
+  "clinicName": "西山病院 Demo",
+  "medicalInstitutionCode": "9999999",
+  "files": {
+    "baselineReceipt": "RECEIPTC.UKE",
+    "patients": "patients.csv",
+    "charts": "charts.jsonl",
+    "orders": "orders.csv",
+    "diagnoses": "diagnoses.csv",
+    "facility": "facility.json",
+    "receiptCsvReference": "receipt.csv"
+  },
+  "conversionPolicy": {
+    "notInferred": true,
+    "demoDataOnly": true
+  }
+}

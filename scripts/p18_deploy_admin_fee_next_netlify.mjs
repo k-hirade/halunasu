@@ -41,9 +41,13 @@ const appConfigs = {
         CORE_ADMIN_BASE_URL: env === "stg" ? "https://admin.stg.halunasu.com" : "https://admin.halunasu.com",
         NEXT_PUBLIC_CORE_ADMIN_BASE_URL: env === "stg" ? "https://admin.stg.halunasu.com" : "https://admin.halunasu.com"
       };
-      const receptCheckerUrl = process.env.NEXT_PUBLIC_RECEPT_CHECKER_STG_URL || process.env.RECEPT_CHECKER_STG_URL;
-      if (env === "stg" && receptCheckerUrl) {
-        values.NEXT_PUBLIC_RECEPT_CHECKER_STG_URL = receptCheckerUrl;
+      const receptCheckerUrl = process.env.NEXT_PUBLIC_RECEPT_CHECKER_URL || process.env.RECEPT_CHECKER_URL;
+      const stgReceptCheckerUrl = process.env.NEXT_PUBLIC_RECEPT_CHECKER_STG_URL || process.env.RECEPT_CHECKER_STG_URL;
+      if (receptCheckerUrl) {
+        values.NEXT_PUBLIC_RECEPT_CHECKER_URL = receptCheckerUrl;
+      }
+      if (env === "stg" && stgReceptCheckerUrl) {
+        values.NEXT_PUBLIC_RECEPT_CHECKER_STG_URL = stgReceptCheckerUrl;
       }
       return values;
     }

@@ -1,0 +1,8 @@
+patient_id,claim_month,code,name,points,count,sex,birth_date,receipt_type
+NDM001,2026-07,112007410,再診料,76,1,male,1998-04-15,medical_outpatient
+NDM001,2026-07,120001210,処方料（その他）,42,1,male,1998-04-15,medical_outpatient
+NDM002,2026-07,140032110,熱傷処置（１００ｃｍ２以上５００ｃｍ２未満）,147,1,male,1991-06-20,medical_outpatient
+NDM002,2026-07,140000610,創傷処置（１００ｃｍ２未満）,52,1,male,1991-06-20,medical_outpatient
+NDM005,2026-07,114001110,在宅患者訪問診療料（１）１（同一建物居住者以外）,890,1,male,1942-11-05,medical_outpatient
+NDM005,2026-07,113012810,がん性疼痛緩和指導管理料,200,1,male,1942-11-05,medical_outpatient
+NDM005,2026-07,114057970,在宅データ提出加算（在医総管・施医総管）,50,1,male,1942-11-05,medical_outpatient

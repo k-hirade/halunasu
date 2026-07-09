@@ -52,3 +52,27 @@ node scripts/build_clinic_diagnosis_report.mjs \
 ## 注意
 - **本番のsaltを使わないこと**（このデモsaltは公開値）。実運用のsaltは先方がローカル生成・保持し、我々には渡さない。
 - レポートの概算影響額は点数×10円・按分なしの概算。最終判断は告示・通知・審査取扱いに基づき医事課/診療部門で。
+
+## Web Demo / CSV・UKEアップロード
+
+営業Demoで使うアップロード用サンプルです。すべて匿名の合成データです。
+
+- 再算定差分診断ZIP: `samples/nishiyama-demo/upload/recalculation-diff/nishiyama-demo-recalculation-diff.zip`
+- ZIP展開元: `samples/nishiyama-demo/upload/recalculation-diff/source`
+- レセプトチェッカー用UKE: `samples/nishiyama-demo/upload/receipt-checker/RECEIPTC.UKE`
+
+使い方:
+
+```bash
+# サンプルファイルだけ再生成
+npm run seed:nishiyama-demo -- --samples-only
+
+# STG/PRODのDemoアカウントとFirestoreダミーデータを作成（dry-run）
+npm run seed:nishiyama-demo -- --env all
+
+# 実作成。パスワードは生成ファイルに保存されます。
+npm run seed:nishiyama-demo -- --env all --generate-password-file .secrets/nishiyama-demo-password.txt --apply
+```
+
+PRODでは通常組織にアップロード系メニューを出さず、`nishiyama-demo` の組織コードだけに表示します。
+STGは `nishiyama-demo-stg` です。

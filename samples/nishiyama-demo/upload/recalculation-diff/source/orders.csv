@@ -1,0 +1,7 @@
+patient_id,service_date,order_type,code,name,quantity,days,dose_quantity,doses_per_day,area_size,status
+NDM001,2026-07-01,procedure,112007410,再診料,1,,,,,実施
+NDM001,2026-07-01,drug,612370052,ビオフェルミンＲ錠,3,5,1,3,,実施
+NDM002,2026-07-02,treatment,,熱傷処置,1,,,,120cm2,実施
+NDM002,2026-07-02,treatment,,創傷処置,1,,,,30cm2,実施
+NDM005,2026-07-05,procedure,114001110,在宅患者訪問診療料（１）１（同一建物居住者以外）,1,,,,,実施
+NDM005,2026-07-05,procedure,113012810,がん性疼痛緩和指導管理料,1,,,,,実施

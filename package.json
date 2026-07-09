@@ -20,6 +20,7 @@
     "deploy:firestore:plan": "scripts/p17_deploy_firestore_security_and_indexes.sh",
     "deploy:firestore:apply": "scripts/p17_deploy_firestore_security_and_indexes.sh --apply",
     "seed:core-account": "node scripts/p15_seed_core_account.mjs",
+    "seed:nishiyama-demo": "node scripts/seed_nishiyama_demo.mjs",
     "start:local-architecture-inspector": "npm run --prefix tools/local-architecture-inspector start",
     "dev:local-architecture-inspector": "npm run --prefix tools/local-architecture-inspector dev",
     "scan:local-architecture-inspector": "npm run --prefix tools/local-architecture-inspector scan",

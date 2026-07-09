@@ -1,0 +1,4 @@
+patient_id,display_name,birth_date,sex
+NDM001,西山デモ 患者001,1998-04-15,male
+NDM002,西山デモ 患者002,1991-06-20,male
+NDM005,西山デモ 患者005,1942-11-05,male

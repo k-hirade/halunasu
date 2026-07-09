@@ -16,7 +16,7 @@ import {
   clinicDiagnosisToHtml,
   downloadTextFile,
   emptyBaselineDiffOptions,
-  isStgFeeEnvironment,
+  isFeeUploadToolsAllowed,
   reproductionFailureRows
 } from "../lib/baseline-diff";
 
@@ -81,7 +81,8 @@ function formatDeltaPointCell(value) {
 
 export function FeeBaselineDiffConsole() {
   const feeApi = useFeeApi();
-  const [stg, setStg] = useState(true);
+  const auth = usePlatformAuth();
+  const [uploadToolsAllowed, setUploadToolsAllowed] = useState(false);
   const [claimMonth, setClaimMonth] = useState(defaultClaimMonth());
   const [options, setOptions] = useState(emptyBaselineDiffOptions());
   const [busy, setBusy] = useState(false);
@@ -108,8 +109,8 @@ export function FeeBaselineDiffConsole() {
   const facilityInputRef = useRef(null);
 
   useEffect(() => {
-    setStg(isStgFeeEnvironment());
-  }, []);
+    setUploadToolsAllowed(isFeeUploadToolsAllowed(auth.session));
+  }, [auth.session]);
 
   const selectBaselineFile = useCallback((file) => {
     if (!file) {
@@ -255,11 +256,11 @@ export function FeeBaselineDiffConsole() {
     setActiveResultTab(nextTab);
   }, [resultTabs, summary]);
 
-  if (!stg) {
+  if (!uploadToolsAllowed) {
     return (
       <div className="baseline-diff-locked">
-        <strong>この機能はSTG環境でのみ利用できます。</strong>
-        <p>実患者データを扱うため、STG限定の運用型診断として提供しています。</p>
+        <strong>この機能はSTG環境または許可されたDemo組織だけで利用できます。</strong>
+        <p>実患者データを扱う可能性があるため、通常のPROD組織には開放していません。</p>
       </div>
     );
   }

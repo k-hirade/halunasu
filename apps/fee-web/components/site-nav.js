@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { BRAND_NAME, PRODUCT_NAME } from "../lib/brand";
 import { useAdminNav } from "./admin-nav-context";
-import { isStgFeeEnvironment } from "../lib/baseline-diff";
+import { usePlatformAuth } from "./platform-auth";
+import { isFeeUploadToolsAllowed } from "../lib/baseline-diff";
 
 const BASELINE_DIFF_MENU_SECTION = {
   id: "baseline-diff",
   group: "設定",
   label: "再算定差分診断",
-  description: "既存レセと当社再算定を突合し差分を出します（STG限定）。",
+  description: "既存レセと当社再算定を突合し差分を出します（STG/Demo限定）。",
   href: "/admin?section=baseline-diff"
 };
 
@@ -18,7 +19,7 @@ const RECEPT_CHECKER_MENU_SECTION = {
   id: "recept-checker",
   group: "設定",
   label: "レセプトチェッカー",
-  description: "UKEをアップロードして請求前点検を行います（STG限定）。",
+  description: "UKEをアップロードして請求前点検を行います（STG/Demo限定）。",
   href: "/admin?section=recept-checker"
 };
 
@@ -79,6 +80,7 @@ function hrefForAdminSection(section) {
 
 export function SiteNav() {
   const pathname = usePathname();
+  const auth = usePlatformAuth();
   const {
     activeTab,
     closeAdminNav,
@@ -88,16 +90,16 @@ export function SiteNav() {
     toggleAdminNav
   } = useAdminNav();
 
-  const [isStg, setIsStg] = useState(false);
+  const [uploadToolsAllowed, setUploadToolsAllowed] = useState(false);
   useEffect(() => {
-    setIsStg(isStgFeeEnvironment());
-  }, []);
+    setUploadToolsAllowed(isFeeUploadToolsAllowed(auth.session));
+  }, [auth.session]);
 
   const isAdminRoute = pathname?.startsWith("/admin");
   const isMonthlyRoute = pathname?.startsWith("/monthly");
   const isSessionsRoute = !isAdminRoute && !isMonthlyRoute;
-  // /admin ではコンテキスト(STGフィルタ済み)を使用。それ以外ではフォールバックにSTG限定項目を足す。
-  const fallbackSections = isStg
+  // /admin ではコンテキスト(環境/デモorgフィルタ済み)を使用。それ以外ではフォールバックに限定項目を足す。
+  const fallbackSections = uploadToolsAllowed
     ? [...SETTINGS_MENU_SECTIONS, BASELINE_DIFF_MENU_SECTION, RECEPT_CHECKER_MENU_SECTION]
     : SETTINGS_MENU_SECTIONS;
   const settingsSections = (isAdminNavAvailable && adminSections.length ? adminSections : fallbackSections)

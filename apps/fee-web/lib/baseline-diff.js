@@ -13,6 +13,26 @@ export function isStgFeeEnvironment() {
     || host.endsWith("--halunasu-fee-stg.netlify.app");
 }
 
+export function feeDemoUploadOrgCodes() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  const config = window.__HALUNASU_FEE_CONFIG__ || {};
+  return String(config.demoUploadOrgCodes || "")
+    .split(/[\s,、]+/u)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isFeeDemoUploadOrg(session = {}) {
+  const organizationCode = String(session?.organizationCode || "").trim().toLowerCase();
+  return Boolean(organizationCode && feeDemoUploadOrgCodes().includes(organizationCode));
+}
+
+export function isFeeUploadToolsAllowed(session = {}) {
+  return isStgFeeEnvironment() || isFeeDemoUploadOrg(session);
+}
+
 export const BASELINE_COLUMN_FIELDS = [
   ["patient_id", "患者ID列"],
   ["code", "コード列"],
