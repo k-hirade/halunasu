@@ -6,7 +6,7 @@ import { toUserFacingErrorMessage } from "@halunasu/web-ui/user-facing-error";
 import { useAdminNav } from "./admin-nav-context";
 import { getStoredPlatformAccessToken, usePlatformAuth } from "./platform-auth";
 import { FeeBaselineDiffConsole } from "./fee-baseline-diff-console";
-import { isFeeUploadToolsAllowed, isStgFeeEnvironment } from "../lib/baseline-diff";
+import { isFeeUploadToolsAllowed } from "../lib/baseline-diff";
 
 const ADMIN_SECTIONS = [
   {
