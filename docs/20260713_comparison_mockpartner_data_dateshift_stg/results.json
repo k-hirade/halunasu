@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "mockpartner-stg-comparison.v1",
+  "runId": "mockpartner-20260713042657201",
+  "executedAt": "2026-07-13T04:27:23.830Z",
+  "claimMonth": "2026-06",
+  "repositoryCommit": "6c8094ad4e653077e454d9f57a84a64217fc4ed0",
+  "cloudRun": {
+    "project": "halunasu-fee-stg",
+    "service": "fee-api-stg",
+    "revision": "fee-api-stg-00151-mm6"
+  },
+  "requests": {
+    "total": 12,
+    "http200": 12,
+    "measured": 9
+  },
+  "summary": {
+    "patientCount": 3,
+    "baselineCodeRows": 15,
+    "matchedCodeRows": 15,
+    "baselineOccurrences": 25,
+    "matchedOccurrences": 25,
+    "baselinePoints": 8752,
+    "enginePoints": 8752,
+    "baselineOnlyCount": 0,
+    "engineOnlyCount": 0,
+    "bothDiffCount": 0,
+    "reproductionFailureCount": 0,
+    "stableAcrossMeasuredRuns": true
+  },
+  "ingestion": {
+    "patientRecordCount": 3,
+    "chartRecordCount": 8,
+    "orderRecordCount": 25,
+    "diagnosisRecordCount": 0,
+    "generatedPayloadCount": 8
+  },
+  "performanceMs": {
+    "clientMeasured": {
+      "min": 261.21,
+      "median": 402.26,
+      "mean": 380.21,
+      "p95NearestRank": 522.95,
+      "max": 522.95
+    },
+    "cloudRunMeasured": {
+      "min": 247.053,
+      "median": 377.189,
+      "mean": 354.59,
+      "p95NearestRank": 485.723,
+      "max": 485.723
+    },
+    "firstRequest": {
+      "client": 19561.24,
+      "cloudRun": 18994.423,
+      "coldStartConfirmed": true
+    }
+  },
+  "patients": [
+    {
+      "patientId": "1001",
+      "chartRecordCount": 2,
+      "orderRecordCount": 5,
+      "generatedPayloadCount": 2,
+      "matchedCodeRows": 3,
+      "matchedOccurrences": 5,
+      "baselinePoints": 1988,
+      "enginePoints": 1988,
+      "reproductionFailureCount": 0
+    },
+    {
+      "patientId": "1006",
+      "chartRecordCount": 4,
+      "orderRecordCount": 12,
+      "generatedPayloadCount": 4,
+      "matchedCodeRows": 6,
+      "matchedOccurrences": 12,
+      "baselinePoints": 4326,
+      "enginePoints": 4326,
+      "reproductionFailureCount": 0
+    },
+    {
+      "patientId": "1013",
+      "chartRecordCount": 2,
+      "orderRecordCount": 8,
+      "generatedPayloadCount": 2,
+      "matchedCodeRows": 6,
+      "matchedOccurrences": 8,
+      "baselinePoints": 2438,
+      "enginePoints": 2438,
+      "reproductionFailureCount": 0
+    }
+  ]
+}

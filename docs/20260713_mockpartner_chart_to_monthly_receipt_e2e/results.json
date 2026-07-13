@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "fee-monthly-chart-e2e-report.v1",
+  "sourceCommit": "6c8094ad4e653077e454d9f57a84a64217fc4ed0",
+  "environment": {
+    "name": "stg",
+    "project": "halunasu-fee-stg",
+    "service": "fee-api-stg",
+    "revision": "fee-api-stg-00151-mm6",
+    "organizationCode": "nishiyama-demo-stg",
+    "facilityStandardKeyCount": 0
+  },
+  "input": {
+    "externalPatientRef": "1001",
+    "claimMonth": "2026-06",
+    "chartCount": 2,
+    "chartHashes": [
+      "914f945061afad62b36e98c9c7dcebda584941e82edcc9b1cfd6354e01d8e65e",
+      "18e23af98341bce01ee1965c766806883def11a823f2a5b30e4473a716659e98"
+    ],
+    "calculationPayloadKeys": [],
+    "withheldFromCalculation": [
+      "orders.csv",
+      "UKE codes and points",
+      "expectedClaimContext"
+    ]
+  },
+  "primaryRun": {
+    "runId": "monthly-chart-e2e-20260713052611917-f5c6e2",
+    "generatedAt": "2026-07-13T05:27:36.520Z",
+    "repeatCount": 3,
+    "allCalculationsUsedOpenAi": true,
+    "candidateLinesStable": true,
+    "monthlyLinesStable": true,
+    "reviewIssuesStable": false,
+    "reviewIssueCounts": [3, 9, 6],
+    "clinicalEventCountsByVisit": [[2, 8], [9, 4], [7, 2]],
+    "baseline": {
+      "codeCount": 3,
+      "occurrenceCount": 5,
+      "totalPoints": 1988,
+      "lines": [
+        {"code": "114001110", "count": 2, "totalPoints": 1780},
+        {"code": "114057970", "count": 1, "totalPoints": 50},
+        {"code": "180725910", "count": 2, "totalPoints": 158}
+      ]
+    },
+    "engineMonthly": {
+      "sessionCount": 2,
+      "actualDays": 2,
+      "codeCount": 4,
+      "totalPoints": 371,
+      "lines": [
+        {"code": "111000110", "count": 1, "totalPoints": 291},
+        {"code": "112007410", "count": 1, "totalPoints": 76},
+        {"code": "180819910", "count": 1, "totalPoints": 2},
+        {"code": "180820010", "count": 1, "totalPoints": 2}
+      ]
+    },
+    "comparisonByRepeat": [
+      {"repeat": 1, "matched": 0, "baselineOnly": 3, "engineOnly": 4, "bothDelta": 0},
+      {"repeat": 2, "matched": 0, "baselineOnly": 3, "engineOnly": 4, "bothDelta": 0},
+      {"repeat": 3, "matched": 0, "baselineOnly": 3, "engineOnly": 4, "bothDelta": 0}
+    ],
+    "allUkeCodeRecall": 0,
+    "derivableSubset": {
+      "denominator": 0,
+      "metric": null,
+      "reason": "No UKE line had all required current-encounter, facility-standard, and billing-history inputs."
+    },
+    "performanceMs": {
+      "clientCalculate": {"count": 6, "min": 8020.68, "median": 12355.65, "mean": 12263.84, "max": 17175.36},
+      "cloudRunCalculate": {"count": 6, "min": 7826, "median": 12026.5, "mean": 11953.17, "max": 16667},
+      "openAiProvider": {"count": 6, "min": 7157, "median": 8410, "mean": 9978.17, "max": 14473},
+      "pythonAll": {"count": 6, "min": 23, "median": 28, "mean": 1115.67, "max": 6560},
+      "pythonWarm": {"count": 5, "min": 23, "median": 28, "mean": 26.8, "max": 30},
+      "monthlyReceipt": {"count": 3, "min": 135.38, "median": 219.4, "mean": 201.88, "max": 250.85},
+      "baselineDiagnosis": {"count": 3, "min": 162.24, "median": 210.82, "mean": 195.71, "max": 214.08}
+    }
+  },
+  "knownStartDateControl": {
+    "runId": "monthly-chart-e2e-20260713053611339-5592aa",
+    "generatedAt": "2026-07-13T05:37:35.466Z",
+    "repeatCount": 3,
+    "source": "patients.csv.start_date",
+    "seedDate": "2019-04-20",
+    "monthlyTotalPoints": [371, 371, 371],
+    "matchedCodeCounts": [0, 0, 0],
+    "reviewIssueCounts": [3, 8, 14],
+    "clientCalculateMs": {"count": 6, "min": 8883.3, "median": 10960.26, "mean": 12749.63, "max": 21397.06}
+  }
+}

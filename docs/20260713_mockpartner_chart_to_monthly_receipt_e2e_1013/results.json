@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "fee-monthly-chart-e2e-report.v1",
+  "patientRef": "1013",
+  "claimMonth": "2026-06",
+  "runId": "monthly-chart-e2e-20260713071114213-d757cb",
+  "generatedAt": "2026-07-13T07:12:22.474Z",
+  "sourceCommit": "6c8094ad4e653077e454d9f57a84a64217fc4ed0",
+  "environment": {
+    "project": "halunasu-fee-stg",
+    "service": "fee-api-stg",
+    "revision": "fee-api-stg-00151-mm6",
+    "facilityStandardKeyCount": 0
+  },
+  "input": {
+    "chartCount": 2,
+    "baselineCodeCount": 6,
+    "baselineOccurrenceCount": 8,
+    "baselineTotalPoints": 2438,
+    "calculationPayloadKeys": [],
+    "withheldFromCalculation": ["orders.csv", "UKE codes and points", "expectedClaimContext"]
+  },
+  "stability": {
+    "repeatCount": 3,
+    "candidateLinesStable": false,
+    "monthlyLinesStable": false,
+    "reviewIssuesStable": false,
+    "monthlyTotalPoints": [423, 423, 371],
+    "reviewIssueCounts": [2, 3, 1],
+    "clinicalEventCountsByVisit": [[2, 2], [4, 3], [5, 3]]
+  },
+  "comparison": {
+    "matchedCodeCounts": [0, 0, 0],
+    "baselineOnlyCounts": [6, 6, 6],
+    "engineOnlyCounts": [5, 5, 4],
+    "bothDeltaCounts": [0, 0, 0],
+    "allUkeCodeRecall": 0
+  },
+  "baselineLines": [
+    {"code": "113004310", "count": 1, "totalPoints": 100},
+    {"code": "113023110", "count": 1, "totalPoints": 250},
+    {"code": "114001110", "count": 2, "totalPoints": 1780},
+    {"code": "114057970", "count": 1, "totalPoints": 50},
+    {"code": "180000710", "count": 1, "totalPoints": 100},
+    {"code": "180725910", "count": 2, "totalPoints": 158}
+  ],
+  "engineMonthlyVariants": [
+    {
+      "repeats": [1, 2],
+      "totalPoints": 423,
+      "lines": [
+        {"code": "111000110", "count": 1, "totalPoints": 291},
+        {"code": "112007410", "count": 1, "totalPoints": 76},
+        {"code": "112011010", "count": 1, "totalPoints": 52},
+        {"code": "180819910", "count": 1, "totalPoints": 2},
+        {"code": "180820010", "count": 1, "totalPoints": 2}
+      ]
+    },
+    {
+      "repeats": [3],
+      "totalPoints": 371,
+      "lines": [
+        {"code": "111000110", "count": 1, "totalPoints": 291},
+        {"code": "112007410", "count": 1, "totalPoints": 76},
+        {"code": "180819910", "count": 1, "totalPoints": 2},
+        {"code": "180820010", "count": 1, "totalPoints": 2}
+      ]
+    }
+  ],
+  "directChartMisses": [
+    {"code": "113004310", "event": "療養費同意書を交付", "detected": false},
+    {"code": "180000710", "event": "傷病手当金意見書を作成・交付", "detected": false}
+  ],
+  "reviewCandidates": [
+    {"title": "難病外来指導管理料の確認", "countPerRepeat": [2, 2, 2], "inBaseline": false}
+  ],
+  "performanceMs": {
+    "clientCalculate": {"count": 6, "min": 7506.63, "median": 10068.53, "mean": 10010.92, "max": 12304.64},
+    "cloudRunCalculate": {"count": 6, "min": 7319, "median": 9803.5, "mean": 9727.17, "max": 11940},
+    "openAiProvider": {"count": 6, "min": 6727, "median": 9125.5, "mean": 9042.33, "max": 11304},
+    "python": {"count": 6, "min": 23, "median": 33, "mean": 32.67, "max": 40},
+    "monthlyReceipt": {"count": 3, "min": 492.62, "median": 604.27, "mean": 702.24, "max": 1009.83},
+    "baselineDiagnosis": {"count": 3, "min": 616.98, "median": 628.3, "mean": 678.88, "max": 791.37}
+  }
+}

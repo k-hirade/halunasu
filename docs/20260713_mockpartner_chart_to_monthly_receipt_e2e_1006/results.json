@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "fee-monthly-chart-e2e-report.v1",
+  "patientRef": "1006",
+  "claimMonth": "2026-06",
+  "runId": "monthly-chart-e2e-20260713070644352-61390c",
+  "generatedAt": "2026-07-13T07:10:09.122Z",
+  "sourceCommit": "6c8094ad4e653077e454d9f57a84a64217fc4ed0",
+  "environment": {
+    "project": "halunasu-fee-stg",
+    "service": "fee-api-stg",
+    "revision": "fee-api-stg-00151-mm6",
+    "facilityStandardKeyCount": 0
+  },
+  "input": {
+    "chartCount": 4,
+    "baselineCodeCount": 6,
+    "baselineOccurrenceCount": 12,
+    "baselineTotalPoints": 4326,
+    "calculationPayloadKeys": [],
+    "withheldFromCalculation": ["orders.csv", "UKE codes and points", "expectedClaimContext"]
+  },
+  "stability": {
+    "repeatCount": 3,
+    "candidateLinesStable": true,
+    "monthlyLinesStable": true,
+    "reviewIssuesStable": false,
+    "monthlyTotalPoints": [579, 579, 579],
+    "reviewIssueCounts": [17, 18, 16],
+    "clinicalEventCountsByVisit": [[12, 4, 5, 11], [6, 4, 5, 9], [5, 8, 6, 7]]
+  },
+  "comparison": {
+    "matchedCodeCounts": [0, 0, 0],
+    "baselineOnlyCounts": [6, 6, 6],
+    "engineOnlyCounts": [5, 5, 5],
+    "bothDeltaCounts": [0, 0, 0],
+    "allUkeCodeRecall": 0
+  },
+  "baselineLines": [
+    {"code": "113012810", "count": 1, "totalPoints": 200},
+    {"code": "114001110", "count": 4, "totalPoints": 3560},
+    {"code": "114016070", "count": 1, "totalPoints": 100},
+    {"code": "114057970", "count": 1, "totalPoints": 50},
+    {"code": "114723810", "count": 1, "totalPoints": 100},
+    {"code": "180725910", "count": 4, "totalPoints": 316}
+  ],
+  "engineMonthlyLines": [
+    {"code": "111000110", "count": 1, "totalPoints": 291},
+    {"code": "112007410", "count": 3, "totalPoints": 228},
+    {"code": "112011010", "count": 1, "totalPoints": 52},
+    {"code": "180819910", "count": 1, "totalPoints": 2},
+    {"code": "180820010", "count": 3, "totalPoints": 6}
+  ],
+  "semanticCandidateDetection": [
+    {
+      "baselineCode": "113012810",
+      "title": "がん性疼痛緩和指導管理料の確認",
+      "potentialPoints": 200,
+      "detectedOnVisitsPerRepeat": [4, 4, 4],
+      "autoAdopted": false
+    }
+  ],
+  "performanceMs": {
+    "clientCalculate": {"count": 12, "min": 10020.45, "median": 13725.69, "mean": 15525.26, "max": 25758.9},
+    "cloudRunCalculate": {"count": 12, "min": 9784, "median": 13394.5, "mean": 15196.17, "max": 25302},
+    "openAiProvider": {"count": 12, "min": 8831, "median": 12765, "mean": 14249.58, "max": 24049},
+    "python": {"count": 12, "min": 25, "median": 28.5, "mean": 29.92, "max": 40},
+    "monthlyReceipt": {"count": 3, "min": 413.96, "median": 573.45, "mean": 520.45, "max": 573.93},
+    "baselineDiagnosis": {"count": 3, "min": 326.85, "median": 525.37, "mean": 488.26, "max": 612.57}
+  }
+}

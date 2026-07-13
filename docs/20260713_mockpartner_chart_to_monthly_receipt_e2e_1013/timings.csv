@@ -1,0 +1,13 @@
+repeat,visit,operation,client_ms,cloud_total_ms,prepare_ms,openai_ms,python_ms,cache_hit,cached_input_ratio,total_points
+1,1,calculate,9729.33,9333,8636,8542,27,true,0.6579,293
+1,2,calculate,7506.63,7319,6777,6727,36,true,0.6745,130
+1,,monthly_receipt,492.62,,,,,,,
+1,,baseline_diagnosis,791.37,,,,,,,
+2,1,calculate,12304.64,11940,11342,11304,40,true,0.8333,293
+2,2,calculate,10115.52,9819,9128,9095,40,true,0.8544,130
+2,,monthly_receipt,604.27,,,,,,,
+2,,baseline_diagnosis,628.30,,,,,,,
+3,1,calculate,10021.53,9788,9204,9156,23,true,0.8333,293
+3,2,calculate,10387.89,10164,9462,9430,30,true,0.8544,78
+3,,monthly_receipt,1009.83,,,,,,,
+3,,baseline_diagnosis,616.98,,,,,,,
