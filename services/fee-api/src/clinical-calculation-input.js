@@ -2092,6 +2092,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   collectionFeeInputs.push(...eventConversion.collectionFeeInputs);
   masterCandidates.push(...eventConversion.masterCandidates);
   billingCandidates.push(...eventConversion.billingCandidates);
+  candidateProposals.push(...asArray(eventConversion.candidateProposals));
   reviewIssues.push(...eventConversion.reviewIssues);
   reviewWarnings.push(...eventConversion.reviewWarnings);
   clinicalTrace.push(...eventConversion.clinicalTrace);
@@ -2230,7 +2231,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   };
 }
 
-async function convertClinicalCalculationEvents({
+export async function convertClinicalCalculationEvents({
   clinicalEvents = [],
   feeCalculator,
   clinicalText = "",
@@ -2245,6 +2246,7 @@ async function convertClinicalCalculationEvents({
     collectionFeeInputs: [],
     masterCandidates: [],
     billingCandidates: [],
+    candidateProposals: [],
     reviewIssues: [],
     reviewWarnings: [],
     clinicalTrace: [],
@@ -2260,6 +2262,25 @@ async function convertClinicalCalculationEvents({
       verifiedOutsidePrescription
     });
     mergeClinicalEventConversionResult(result, converted);
+  }
+  result.candidateProposals = dedupeMasterLinkCandidateProposals(result.candidateProposals);
+  return result;
+}
+
+// 同一セッション内で複数イベントが同じマスタコードへ解決された場合は1候補に畳む。
+// (患者×月の重複排除は月次集計側で電子点数表の回数上限に基づいて行う)
+function dedupeMasterLinkCandidateProposals(proposals = []) {
+  const seenCodes = new Set();
+  const result = [];
+  for (const proposal of asArray(proposals)) {
+    const code = String(proposal?.code || "").trim();
+    if (proposal?.basis === "master_link_candidate" && code) {
+      if (seenCodes.has(code)) {
+        continue;
+      }
+      seenCodes.add(code);
+    }
+    result.push(proposal);
   }
   return result;
 }
@@ -2286,12 +2307,31 @@ async function convertSingleClinicalCalculationEvent({
   if (directReviewOnlyDomainIssues.length) {
     result.reviewIssues.push(...directReviewOnlyDomainIssues);
     result.reviewWarnings.push(...directReviewOnlyDomainIssues.map((issue) => issue.messageForStaff));
+    // review-only領域は「自動確定の禁止」であって「候補生成の禁止」ではない。
+    // マスタ照合できたものは点数付きの確認候補として提示する(承認までは合計に入らない)。
+    const domainLabel = reviewOnlyDomainLabel(reviewOnlyClinicalEventDomain(event));
+    const domainProposal = await masterLinkCandidateProposalFromClinicalEvent(feeCalculator, event, {
+      categoryLabel: domainLabel || "診療行為",
+      allowedFeeCategories: new Set([
+        "procedure_basic",
+        "treatment_basic",
+        "management_fee",
+        "imaging_basic",
+        "physiological_exam_basic"
+      ]),
+      conditionText: `${domainLabel}は自動確定の対象外です。実施内容・算定要件・施設基準を確認してから採用してください。`
+    });
+    if (domainProposal) {
+      result.candidateProposals.push(domainProposal);
+    }
     result.clinicalTrace.push(clinicalTraceEvent({
       stage: "review_only_domain_gate",
       event,
-      categoryLabel: reviewOnlyDomainLabel(reviewOnlyClinicalEventDomain(event)),
-      outcome: "review_required",
-      message: "review_only_domain_direct_retrieval_disabled"
+      categoryLabel: domainLabel,
+      outcome: domainProposal ? "candidate_proposed" : "review_required",
+      message: domainProposal
+        ? "review_only_domain_master_link_candidate_proposed"
+        : "review_only_domain_direct_retrieval_disabled"
     }));
     return result;
   }
@@ -2415,13 +2455,25 @@ async function convertSingleClinicalCalculationEvent({
     const issues = reviewIssuesFromManagementClinicalEvent(event, { categoryLabel });
     result.reviewIssues.push(...issues);
     result.reviewWarnings.push(...issues.map((issue) => issue.messageForStaff));
+    // 医学管理・指導料は自動確定しないが、マスタ照合できたものは点数付きの
+    // 確認候補として提示する(文書料・管理料が「候補にすら出ない」状態を防ぐ)。
+    const managementProposal = await masterLinkCandidateProposalFromClinicalEvent(feeCalculator, event, {
+      categoryLabel,
+      allowedFeeCategories: new Set(["management_fee", "procedure_basic"]),
+      conditionText: "対象病名・管理内容の記載・同月の算定回数を確認してから採用してください。"
+    });
+    if (managementProposal) {
+      result.candidateProposals.push(managementProposal);
+    }
     result.clinicalTrace.push(clinicalTraceEvent({
       stage: "management_review_gate",
       event,
       categoryLabel,
-      outcome: "review_required",
+      outcome: managementProposal ? "candidate_proposed" : "review_required",
       allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event),
-      message: "management_fee_direct_retrieval_disabled"
+      message: managementProposal
+        ? "management_fee_master_link_candidate_proposed"
+        : "management_fee_direct_retrieval_disabled"
     }));
     return result;
   }
@@ -2429,6 +2481,14 @@ async function convertSingleClinicalCalculationEvent({
   const unsupportedIssues = reviewIssuesFromUnsupportedClinicalEvent(event);
   result.reviewIssues.push(...unsupportedIssues);
   result.reviewWarnings.push(...unsupportedIssues.map((issue) => issue.messageForStaff));
+  // 未分類イベントも実施済みならマスタ照合を試み、候補として提示する。
+  const unsupportedProposal = await masterLinkCandidateProposalFromClinicalEvent(feeCalculator, event, {
+    categoryLabel: "診療行為",
+    allowedFeeCategories: new Set(["management_fee", "procedure_basic"])
+  });
+  if (unsupportedProposal) {
+    result.candidateProposals.push(unsupportedProposal);
+  }
   return result;
 }
 
@@ -2605,6 +2665,7 @@ function emptyClinicalEventConversionResult() {
     collectionFeeInputs: [],
     masterCandidates: [],
     billingCandidates: [],
+    candidateProposals: [],
     reviewIssues: [],
     reviewWarnings: [],
     clinicalTrace: [],
@@ -2622,6 +2683,7 @@ function mergeClinicalEventConversionResult(target, source = {}) {
   target.collectionFeeInputs.push(...asArray(source.collectionFeeInputs));
   target.masterCandidates.push(...asArray(source.masterCandidates));
   target.billingCandidates.push(...asArray(source.billingCandidates));
+  target.candidateProposals.push(...asArray(source.candidateProposals));
   target.reviewIssues.push(...asArray(source.reviewIssues));
   target.reviewWarnings.push(...asArray(source.reviewWarnings));
   target.clinicalTrace.push(...asArray(source.clinicalTrace));
@@ -2924,47 +2986,6 @@ function reviewIssueFromCanonicalFactGate(event = {}) {
   }, "evidence_verification_check");
 }
 
-async function clinicalEventCandidateProposal(event = {}, feeCalculator, {
-  categoryLabel = "診療行為",
-  sortOrder = 50
-} = {}) {
-  const name = clinicalEventName(event);
-  const evidence = clinicalEventEvidence(event);
-  const title = `${name || categoryLabel}の算定確認`;
-  const reason = `${name || categoryLabel}を${categoryLabel}に関係する医療イベントとして抽出しました。`;
-  const conditionText = `${categoryLabel}として算定できる項目があれば、対象疾患・施設基準・同月算定条件を確認してください。`;
-  const queries = clinicalEventSearchQueries(event, { categoryLabel });
-  const item = await searchProcedureCandidateItem(feeCalculator, queries, [
-    ...(name ? [new RegExp(escapeRegExp(name), "u")] : []),
-    new RegExp(escapeRegExp(categoryLabel), "u")
-  ], {
-    allowedFeeCategories: allowedDirectRetrievalFeeCategoriesForEvent(event)
-  });
-  if (item?.code) {
-    return candidateProposalFromProcedureItem({
-      proposalId: `clinical_event_${candidateIdPart(name || categoryLabel)}_${item.code}`,
-      title,
-      reason,
-      conditionText,
-      evidence,
-      item,
-      sortOrder,
-      basis: "カルテ本文から実施済みの医療イベントとして抽出しました。条件を満たす場合だけ採用してください。"
-    });
-  }
-  return {
-    proposalId: `clinical_event_${candidateIdPart([categoryLabel, name, evidence].join("_"))}_confirm`,
-    title,
-    reason,
-    conditionText: `${conditionText} 標準コードはマスター検索で確認してください。`,
-    evidence,
-    actionType: "confirm_required",
-    potentialPoints: 0,
-    orderType: "procedure",
-    source: "clinical_event_opportunity",
-    sortOrder
-  };
-}
 
 async function searchProcedureCandidateItem(feeCalculator, queries = [], preferredPatterns = [], options = {}) {
   if (typeof feeCalculator?.searchMaster !== "function") {
@@ -3123,6 +3144,45 @@ function candidateLineFromProcedureCandidate({
     supportLevel: "review_required",
     reviewRequired: true
   };
+}
+
+// 原則候補化(emit-as-candidate-by-default): 直接算定レーンに乗らないイベント
+// (医学管理・指導、review-only領域、未分類)も、実施済み・当日・自院なら
+// マスタ照合して「点数付きの確認候補」として提示する。確定はしない
+// (candidateProposal は人が承認するまで合計に入らない)。
+async function masterLinkCandidateProposalFromClinicalEvent(feeCalculator, event, {
+  categoryLabel = "診療行為",
+  allowedFeeCategories = null,
+  conditionText = "",
+  sortOrder = 60
+} = {}) {
+  if (!isBillableClinicalEvent(event)) {
+    return null;
+  }
+  const name = clinicalEventName(event);
+  if (!name) {
+    return null;
+  }
+  const queries = clinicalEventSearchQueries(event, { categoryLabel });
+  const item = await searchProcedureCandidateItem(feeCalculator, queries, [], { allowedFeeCategories });
+  if (!item?.code) {
+    return null;
+  }
+  const itemName = item.name || item.displayName || item.baseName || item.shortName || name;
+  return candidateProposalFromProcedureItem({
+    proposalId: `master_link_${candidateIdPart([
+      event?.clinicalEventId || event?.clinical_event_id || name,
+      item.code
+    ].join("_"))}`,
+    title: `${itemName}の算定確認`,
+    reason: `カルテに${categoryLabel}「${name}」の実施記載があります。${itemName}に該当する場合は算定できます。`,
+    conditionText: conditionText
+      || "実施事実・対象病名・回数制限・施設基準などの算定要件を確認してから採用してください。",
+    basis: "master_link_candidate",
+    evidence: String(event?.evidence || "").slice(0, 160),
+    item,
+    sortOrder
+  });
 }
 
 function candidateProposalFromProcedureItem({

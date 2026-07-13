@@ -562,7 +562,10 @@ async function routeFeeApiRequest(input = {}) {
     const sessionList = await listSessionsForMonthlyView(feeStore, context.session.orgId, claimMonth, {
       processEnv: input.processEnv || process.env
     });
-    return ok({ receiptDraft: buildMonthlyReceiptDraft(sessionList, { patientId, claimMonth }) });
+    const constraints = await monthlyCandidateConstraints(feeCalculator, sessionList, { patientId, claimMonth });
+    return ok({
+      receiptDraft: buildMonthlyReceiptDraft(sessionList, { patientId, claimMonth, ...constraints })
+    });
   }
 
   if (method === "GET" && matches(parts, ["v1", "fee", "monthly-bulk-candidates"])) {
@@ -2626,6 +2629,48 @@ function claimPayloadServiceDate(payload = {}) {
     || payload.serviceDate
     || ""
   ).trim();
+}
+
+// 月次候補の重複排除(回数上限)と背反注釈に使う電子点数表制約を引く。
+// 補助情報のため、マスタ未整備や参照失敗では空を返して月次集計自体は継続する。
+async function monthlyCandidateConstraints(feeCalculator, sessions = [], { patientId = "", claimMonth = "" } = {}) {
+  if (typeof feeCalculator?.checkLookup !== "function") {
+    return {};
+  }
+  const codes = new Set();
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    if (patientId && String(session?.patientId || "") !== String(patientId)) {
+      continue;
+    }
+    const month = String(session?.claimMonth || String(session?.serviceDate || "").slice(0, 7));
+    if (claimMonth && month !== claimMonth) {
+      continue;
+    }
+    for (const line of asArrayValue(session?.calculationResult?.lineItems)) {
+      const code = String(line?.code || "").trim();
+      if (code) codes.add(code);
+    }
+    for (const proposal of asArrayValue(session?.calculationResult?.candidateProposals)) {
+      const code = String(proposal?.code || proposal?.candidateLine?.code || "").trim();
+      if (code) codes.add(code);
+    }
+  }
+  if (!codes.size) {
+    return {};
+  }
+  try {
+    const lookup = await feeCalculator.checkLookup({ act_codes: [...codes], drug_codes: [], disease_codes: [] });
+    return {
+      actFrequencyLimits: isPlainObject(lookup?.actFrequencyLimits) ? lookup.actFrequencyLimits : {},
+      actExclusions: Array.isArray(lookup?.actExclusions) ? lookup.actExclusions : []
+    };
+  } catch {
+    return {};
+  }
+}
+
+function asArrayValue(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 // 月次点検系(サマリ/一括候補/レセプト)は請求月で絞り、全件フルスキャンを避ける。

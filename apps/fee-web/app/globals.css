@@ -4715,6 +4715,34 @@ body:has(.fee-shell--detail) {
   font-weight: 900;
 }
 
+/* 月次2段表示の下段: 未承認の増点候補 */
+.receipt-candidate-table {
+  width: 100%;
+  border-right: none;
+}
+
+.receipt-candidate-table td {
+  vertical-align: top;
+}
+
+.receipt-candidate-table td:last-child {
+  text-align: left;
+  max-width: 320px;
+}
+
+.receipt-candidate-evidence {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.receipt-candidate-conflict {
+  color: #b45309;
+  font-weight: 700;
+}
+
 .receipt-form-section-code {
   display: inline-flex;
   width: 22px;

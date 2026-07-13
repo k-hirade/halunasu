@@ -4333,13 +4333,61 @@ function MedicalOutpatientReceiptDraft({ feeSession, receiptDraft }) {
           ) : <p className="receipt-paper-empty">コメント・症状詳記・出力前の確認事項はありません。</p>}
         </section>
 
+        <MonthlyCandidateLinesSection receiptDraft={receiptDraft} />
+
         <footer className="receipt-form-foot">
           <div><span>請求点数</span><strong>{Number(receiptDraft.totalPoints || 0).toLocaleString()}点</strong></div>
+          {Number(receiptDraft.candidateTotalPoints || 0) > 0 ? (
+            <div><span>要確認候補</span><strong>+{Number(receiptDraft.candidateTotalPoints || 0).toLocaleString()}点（未算入）</strong></div>
+          ) : null}
           <div><span>総医療費</span><strong>¥{Number(billing.totalFee || 0).toLocaleString()}</strong></div>
           <div><span>一部負担金</span><strong>¥{Number(billing.copay || 0).toLocaleString()}</strong></div>
         </footer>
       </article>
     </div>
+  );
+}
+
+// 2段表示の下段: 未承認の増点候補(確認すれば算定できる可能性がある明細)。
+// 承認されるまで請求点数には入らない。
+function MonthlyCandidateLinesSection({ receiptDraft }) {
+  const candidateLines = Array.isArray(receiptDraft?.candidateLines) ? receiptDraft.candidateLines : [];
+  if (!candidateLines.length) {
+    return null;
+  }
+  return (
+    <section className="receipt-form-block" aria-label="要確認の算定候補">
+      <div className="receipt-form-block-head">
+        <h4>要確認の算定候補（未算入）</h4>
+        <span>+{Number(receiptDraft.candidateTotalPoints || 0).toLocaleString()}点</span>
+      </div>
+      <p className="receipt-paper-empty">カルテ記載から検出した算定候補です。算定要件を確認し、各受診の算定候補画面で採用すると請求点数へ反映されます。</p>
+      <table className="receipt-form-points receipt-candidate-table">
+        <thead>
+          <tr><th>候補</th><th>回数</th><th>点数</th><th>確認事項</th></tr>
+        </thead>
+        <tbody>
+          {candidateLines.map((line) => (
+            <tr key={line.candidateLineId}>
+              <td>
+                <strong>{line.name || "算定候補"}</strong>
+                {line.evidence ? <small className="receipt-candidate-evidence">根拠: {line.evidence}</small> : null}
+              </td>
+              <td>{Number(line.quantity || 1).toLocaleString()}回{Number(line.suppressedOccurrenceCount || 0) > 0 ? `（他${line.suppressedOccurrenceCount}回は回数上限で対象外）` : ""}</td>
+              <td>{Number(line.totalPoints || 0).toLocaleString()}点</td>
+              <td>
+                {line.conditionText ? <p>{line.conditionText}</p> : null}
+                {Array.isArray(line.conflicts) && line.conflicts.length ? (
+                  <p className="receipt-candidate-conflict">
+                    併算定不可の可能性: {line.conflicts.map((conflict) => conflict.withName || conflict.withCode).join("、")}
+                  </p>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }
 

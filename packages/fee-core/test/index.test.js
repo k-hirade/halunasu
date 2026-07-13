@@ -1347,3 +1347,104 @@ test("buildMonthlyBaselineDiagnosis filters baseline claims by claimMonth and ke
   assert.equal(june.diagnoses[0].claimMonth, "2026-06");
   assert.equal(june.diagnoses[0].findings.length, 0);
 });
+
+test("monthly receipt aggregates pending candidate proposals into a second tier", () => {
+  function sessionWithProposals({ feeSessionId, serviceDate, lineItems = [], candidateProposals = [], reviewDecisions = null }) {
+    const session = applyCalculationResult(buildFeeSession({
+      orgId: "org_123",
+      patientId: "pat_cand",
+      facilityId: "fac_123",
+      createdByMemberId: "mem_123",
+      serviceDate
+    }, { feeSessionId, now: new Date(`${serviceDate}T00:00:00.000Z`) }), {
+      provider: "test",
+      status: "completed",
+      totalPoints: lineItems.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0),
+      lineItems,
+      candidateProposals,
+      warnings: []
+    }, { calculationId: `calc_${feeSessionId}`, now: new Date(`${serviceDate}T00:01:00.000Z`) });
+    if (reviewDecisions) {
+      session.reviewDecisions = reviewDecisions;
+    }
+    return session;
+  }
+
+  const cancerPainProposal = (suffix) => ({
+    proposalId: `master_link_cancer_${suffix}`,
+    title: "がん性疼痛緩和指導管理料の算定確認",
+    reason: "カルテに医学管理等の実施記載があります。",
+    conditionText: "対象病名・同月の算定回数を確認してください。",
+    basis: "master_link_candidate",
+    evidence: "オピオイドを増量しレスキュー使用を指導",
+    code: "113012810",
+    potentialPoints: 200,
+    source: "clinical_billing_opportunity",
+    candidateLine: { code: "113012810", name: "がん性疼痛緩和指導管理料", orderType: "procedure", points: 200, totalPoints: 200, quantity: 1 }
+  });
+
+  const homeVisitProposal = {
+    proposalId: "master_link_home_visit",
+    title: "在宅患者訪問診療料の算定確認",
+    reason: "在宅医療の実施記載があります。",
+    basis: "master_link_candidate",
+    code: "114001110",
+    potentialPoints: 890,
+    candidateLine: { code: "114001110", name: "在宅患者訪問診療料（１）１", orderType: "procedure", points: 890, totalPoints: 890, quantity: 1 }
+  };
+
+  const rejectedProposal = {
+    proposalId: "master_link_rejected",
+    title: "却下済み候補",
+    code: "199999999",
+    potentialPoints: 999,
+    candidateLine: { code: "199999999", name: "却下済み候補", orderType: "procedure", points: 999, totalPoints: 999, quantity: 1 }
+  };
+
+  const sessions = [
+    sessionWithProposals({
+      feeSessionId: "fee_c1",
+      serviceDate: "2026-06-03",
+      lineItems: [{ code: "112011010", name: "外来管理加算", orderType: "basic", totalPoints: 52, quantity: 1 }],
+      candidateProposals: [cancerPainProposal("a"), homeVisitProposal]
+    }),
+    sessionWithProposals({ feeSessionId: "fee_c2", serviceDate: "2026-06-10", candidateProposals: [cancerPainProposal("b")] }),
+    sessionWithProposals({ feeSessionId: "fee_c3", serviceDate: "2026-06-17", candidateProposals: [cancerPainProposal("c")] }),
+    sessionWithProposals({
+      feeSessionId: "fee_c4",
+      serviceDate: "2026-06-24",
+      candidateProposals: [cancerPainProposal("d"), rejectedProposal],
+      reviewDecisions: { proposal_master_link_rejected: { status: "rejected" } }
+    })
+  ];
+
+  const receipt = buildMonthlyReceiptDraft(sessions, {
+    patientId: "pat_cand",
+    claimMonth: "2026-06",
+    actFrequencyLimits: { "113012810": [{ unitCode: "131", unit: "月", maxCount: 1 }] },
+    actExclusions: [
+      { exclusionTable: "exclusions_day", baseCode: "114001110", baseName: "在宅患者訪問診療料（１）１", excludedCode: "112011010", excludedName: "外来管理加算", ruleKind: "1" }
+    ]
+  });
+
+  // 上段(確定側)は candidateProposals の影響を受けない
+  assert.equal(receipt.totalPoints, 52);
+
+  const cancerPain = receipt.candidateLines.find((line) => line.code === "113012810");
+  assert.ok(cancerPain);
+  assert.equal(cancerPain.occurrenceCount, 4);
+  assert.equal(cancerPain.quantity, 1); // 月1回上限で畳む
+  assert.equal(cancerPain.suppressedOccurrenceCount, 3);
+  assert.equal(cancerPain.totalPoints, 200);
+  assert.ok(cancerPain.evidence.includes("オピオイド"));
+
+  const homeVisit = receipt.candidateLines.find((line) => line.code === "114001110");
+  assert.ok(homeVisit);
+  assert.equal(homeVisit.totalPoints, 890);
+  assert.equal(homeVisit.conflicts.length, 1);
+  assert.equal(homeVisit.conflicts[0].withCode, "112011010"); // 確定側の外来管理加算と背反
+
+  // 却下済みは候補に出ない
+  assert.ok(!receipt.candidateLines.some((line) => line.code === "199999999"));
+  assert.equal(receipt.candidateTotalPoints, 200 + 890);
+});

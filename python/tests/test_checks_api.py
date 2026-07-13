@@ -113,6 +113,50 @@ class ChecksApiTest(unittest.TestCase):
         self.assertEqual(result["drugInteractions"], [])
         self.assertEqual(result["diseaseNames"], {})
 
+    def test_check_lookup_returns_frequency_limits_and_exclusion_pairs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "master.sqlite"
+            self._seed(db_path)
+            conn = connect(db_path)
+            try:
+                # がん性疼痛=月1回、外来管理加算×訪問診療料の背反(両方向のうち片側)
+                conn.execute(
+                    "INSERT INTO electronic_frequency_limits "
+                    "(source_id, procedure_code, procedure_name, limit_code, limit_name, effective_from, effective_to, raw_row_json) "
+                    "VALUES (1,'113012810','がん性疼痛緩和指導管理料','131','月','2012-04-01','9999-12-31',"
+                    "'[\"0\",\"113012810\",\"がん性疼痛緩和指導管理料\",\"131\",\"月\",\"1\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"20120401\",\"99999999\"]')"
+                )
+                conn.execute(
+                    "INSERT INTO electronic_exclusions "
+                    "(source_id, exclusion_table, base_code, base_name, excluded_code, excluded_name, rule_kind, effective_from, effective_to, raw_row_json) "
+                    "VALUES (1,'exclusions_day','114001110','在宅患者訪問診療料','112011010','外来管理加算','1','','','[]')"
+                )
+                # 与えたコード群に相手が居ない背反は返さない
+                conn.execute(
+                    "INSERT INTO electronic_exclusions "
+                    "(source_id, exclusion_table, base_code, base_name, excluded_code, excluded_name, rule_kind, effective_from, effective_to, raw_row_json) "
+                    "VALUES (1,'exclusions_day','114001110','在宅患者訪問診療料','199999999','無関係','1','','','[]')"
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            result = check_lookup(
+                {
+                    "db_path": str(db_path),
+                    "drug_codes": [],
+                    "act_codes": ["113012810", "114001110", "112011010"],
+                    "disease_codes": [],
+                }
+            )
+            limits = result["actFrequencyLimits"]
+            self.assertEqual(limits["113012810"], [{"unitCode": "131", "unit": "月", "maxCount": 1}])
+            exclusions = result["actExclusions"]
+            self.assertEqual(len(exclusions), 1)
+            self.assertEqual(exclusions[0]["baseCode"], "114001110")
+            self.assertEqual(exclusions[0]["excludedCode"], "112011010")
+            self.assertEqual(exclusions[0]["ruleKind"], "1")
+
 
 if __name__ == "__main__":
     unittest.main()

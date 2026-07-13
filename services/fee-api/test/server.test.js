@@ -4355,13 +4355,13 @@ test("replaces stale auto diagnoses and resolves generic clinical event search q
   )));
 });
 
-test("gates management events into review instead of adoptable proposals", async () => {
+test("management events become adoptable proposals but never confirmed lines", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let receivedInput = null;
   const masterSearches = [];
   const masterItems = {
-    "慢性疾患指導": [{
+    "特定疾患療養管理料": [{
       kind: "procedure",
       code: "113999001",
       name: "特定疾患療養管理料（テスト）",
@@ -4413,7 +4413,7 @@ test("gates management events into review instead of adoptable proposals", async
         section: "P",
         date_relation: "current_visit",
         provider_ownership: "own_clinic",
-        search_queries: ["慢性疾患指導"],
+        search_queries: ["特定疾患療養管理料", "慢性疾患指導"],
         modality: "none",
         body_site: "",
         quantity_per_day: "",
@@ -4460,10 +4460,15 @@ test("gates management events into review instead of adoptable proposals", async
   );
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+  // 確定明細(procedure_codes)には決して入らない
   assert.equal(receivedInput.calculationOptions.procedure_codes, undefined);
-  assert.equal(masterSearches.length, 0);
-  assert.equal(calculation.body.candidateWorkbench.proposals.length, 0);
-  assert.equal(calculation.body.candidateWorkbench.potentialPointsTotal, 0);
+  // 医学管理イベントもマスタ照合され、点数付きの承認待ち候補として提示される
+  assert.ok(masterSearches.length >= 1);
+  const managementProposal = calculation.body.calculationResult.candidateProposals
+    .find((proposal) => proposal.code === "113999001");
+  assert.ok(managementProposal, "マスタ照合された管理料候補が提示される");
+  assert.equal(managementProposal.potentialPoints, 225);
+  assert.equal(managementProposal.basis, "master_link_candidate");
   assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => (
     issue.issueCode === "management_fee_review_required"
     && issue.messageForStaff.includes("慢性疾患指導")
@@ -5455,8 +5460,13 @@ test("routes pathology and emergency time addon events into review-only domain t
   );
 
   assert.equal(calculation.statusCode, 201);
+  // review-only領域は自動確定しない(確定明細に入らない)
   assert.equal(receivedInput.calculationOptions.procedure_codes, undefined);
-  assert.equal(masterSearches.length, 0);
+  // 実施済み(performed)のreview-onlyイベントは候補生成のためマスタ照合を試みる。
+  // 検討中(considered)のイベントは照合しない。このモックはヒット0件なので候補も0件。
+  assert.ok(masterSearches.length >= 1);
+  assert.equal(calculation.body.calculationResult.candidateProposals
+    .filter((proposal) => proposal.basis === "master_link_candidate").length, 0);
   const reviewIssues = calculation.body.calculationResult.reviewIssues;
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "病理未対応"));
   assert.ok(reviewIssues.some((issue) => issue.topicLabel === "検体提出確認"));

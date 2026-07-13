@@ -393,6 +393,11 @@ export function buildMonthlyReceiptDraft(sessions = [], options = {}) {
   }
   const lines = [...lineMap.values()];
   const totalPoints = lines.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0);
+  const candidateAggregation = aggregateMonthlyCandidateLines(relevant, {
+    confirmedLineCodes: lines.map((line) => String(line.code || "")).filter(Boolean),
+    actFrequencyLimits: options.actFrequencyLimits,
+    actExclusions: options.actExclusions
+  });
   const serviceDates = [...new Set(relevant.map((session) => String(session.serviceDate || "")).filter(Boolean))];
   const base = relevant[relevant.length - 1] || {};
   const receiptTypes = uniqueSortedStrings(relevant.map((session) => receiptTypeFromSession(session)));
@@ -431,8 +436,105 @@ export function buildMonthlyReceiptDraft(sessions = [], options = {}) {
     lines,
     lineOccurrences,
     lineGroups: groupReceiptLines(lines),
+    // 2段表示: totalPoints(=当社算定案) とは別に、未承認の増点候補を患者×月で集計する。
+    // 候補は承認されるまで totalPoints には入らない。
+    candidateLines: candidateAggregation.candidateLines,
+    candidateTotalPoints: candidateAggregation.candidateTotalPoints,
     generatedAt: timestamp(options.now),
     schemaVersion: 1
+  };
+}
+
+// 患者×月の未承認候補(candidateProposals)を明細形式に集計する。
+// - 承認済み(=lines へ採用済み)と却下済みは除外
+// - 同一コードは1行に畳み、電子点数表の回数上限(月)を超える分は suppressed として数える
+// - 確定明細/他候補との背反(併算定不可)を conflicts として注釈する
+function aggregateMonthlyCandidateLines(sessions = [], {
+  confirmedLineCodes = [],
+  actFrequencyLimits = null,
+  actExclusions = null
+} = {}) {
+  const map = new Map();
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    const decisions = isPlainObject(session.reviewDecisions) ? session.reviewDecisions : {};
+    const proposals = Array.isArray(session.calculationResult?.candidateProposals)
+      ? session.calculationResult.candidateProposals
+      : [];
+    for (const proposal of proposals) {
+      const decision = proposalDecision(proposal, decisions)?.status || "";
+      if (decision === "approved" || decision === "rejected") {
+        continue;
+      }
+      const code = String(proposal.code || proposal.candidateLine?.code || "").trim();
+      const points = Number(proposal.potentialPoints || proposal.candidateLine?.totalPoints || 0);
+      const key = code || `proposal:${proposal.proposalId || proposal.title || ""}`;
+      const serviceDate = String(session.serviceDate || "");
+      const existing = map.get(key);
+      if (existing) {
+        existing.occurrenceCount += 1;
+        existing.serviceDates = uniqueSortedStrings([...existing.serviceDates, serviceDate]);
+        existing.proposalIds.push(proposal.proposalId || null);
+      } else {
+        map.set(key, {
+          candidateLineId: `candidate_${key.replace(/[^\w-]/gu, "_")}`,
+          code: code || null,
+          name: proposal.candidateLine?.name || proposal.title || "算定候補",
+          orderType: proposal.orderType || proposal.candidateLine?.orderType || "procedure",
+          points,
+          occurrenceCount: 1,
+          title: proposal.title || "",
+          reason: proposal.reason || "",
+          conditionText: proposal.conditionText || "",
+          evidence: proposal.evidence || "",
+          source: proposal.source || "candidate_proposal",
+          serviceDates: serviceDate ? [serviceDate] : [],
+          proposalIds: [proposal.proposalId || null]
+        });
+      }
+    }
+  }
+
+  const frequencyLimits = isPlainObject(actFrequencyLimits) ? actFrequencyLimits : {};
+  const exclusions = Array.isArray(actExclusions) ? actExclusions : [];
+  const confirmedCodes = new Set((confirmedLineCodes || []).map((code) => String(code || "")).filter(Boolean));
+  const candidateCodes = new Set([...map.values()].map((line) => String(line.code || "")).filter(Boolean));
+
+  const candidateLines = [...map.values()].map((line) => {
+    const limits = Array.isArray(frequencyLimits[line.code]) ? frequencyLimits[line.code] : [];
+    const monthlyLimit = limits.find((limit) => limit && limit.unit === "月" && Number(limit.maxCount) > 0);
+    const cappedQuantity = monthlyLimit
+      ? Math.min(line.occurrenceCount, Number(monthlyLimit.maxCount))
+      : line.occurrenceCount;
+    const suppressedOccurrenceCount = line.occurrenceCount - cappedQuantity;
+    const conflicts = [];
+    for (const rule of exclusions) {
+      if (String(rule?.baseCode || "") !== String(line.code || "")) {
+        continue;
+      }
+      const counterpart = String(rule?.excludedCode || "");
+      if (!counterpart || (!confirmedCodes.has(counterpart) && !candidateCodes.has(counterpart))) {
+        continue;
+      }
+      conflicts.push({
+        withCode: counterpart,
+        withName: rule.excludedName || "",
+        ruleKind: String(rule.ruleKind || ""),
+        scope: String(rule.exclusionTable || "")
+      });
+    }
+    return {
+      ...line,
+      quantity: cappedQuantity,
+      totalPoints: Number(line.points || 0) * cappedQuantity,
+      suppressedOccurrenceCount,
+      frequencyLimits: limits.length ? limits : undefined,
+      conflicts: conflicts.length ? conflicts : undefined
+    };
+  }).sort((a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0));
+
+  return {
+    candidateLines,
+    candidateTotalPoints: candidateLines.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0)
   };
 }
 

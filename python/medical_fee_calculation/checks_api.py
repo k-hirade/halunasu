@@ -63,6 +63,10 @@ def check_lookup(payload: dict[str, Any]) -> dict[str, Any]:
             "diseaseNames": _disease_names(conn, sorted(name_codes)),
             # 算定もれ点検(検査判断料)のため、診療行為コードの判断区分メタも返す。
             "procedureMeta": _procedure_meta(conn, act_codes),
+            # 電子点数表由来の制約。候補提示側での回数上限(月1回等)の重複排除と
+            # 背反(併算定不可)注釈に使う。判定不能でも点検は継続できる補助情報。
+            "actFrequencyLimits": _act_frequency_limits(conn, act_codes),
+            "actExclusions": _act_exclusion_pairs(conn, act_codes),
         }
     finally:
         conn.close()
@@ -96,6 +100,86 @@ def _procedure_meta(conn: Any, codes: list[str]) -> dict[str, dict[str, str]]:
             "name": str(row["short_name"] or "").strip(),
         }
     return meta
+
+
+def _act_frequency_limits(conn: Any, codes: list[str]) -> dict[str, list[dict[str, Any]]]:
+    codes = [c for c in codes if c]
+    if not codes:
+        return {}
+    placeholders = ",".join("?" for _ in codes)
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT procedure_code, limit_code, limit_name, raw_row_json
+            FROM electronic_frequency_limits
+            WHERE procedure_code IN ({placeholders})
+            """,
+            codes,
+        ).fetchall()
+    except Exception:  # noqa: BLE001 - 制約は候補提示の補助。失敗しても他は返す。
+        return {}
+    limits: dict[str, list[dict[str, Any]]] = {}
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        code = str(row["procedure_code"] or "")
+        unit_code = str(row["limit_code"] or "")
+        if not code or (code, unit_code) in seen:
+            continue
+        seen.add((code, unit_code))
+        max_count = None
+        try:
+            raw = json.loads(row["raw_row_json"] or "[]")
+            # 電子点数表 算定回数テーブル: [5]=上限回数
+            max_count = int(str(raw[5]).strip() or "0") if len(raw) > 5 else None
+        except Exception:  # noqa: BLE001
+            max_count = None
+        limits.setdefault(code, []).append(
+            {
+                "unitCode": unit_code,
+                "unit": str(row["limit_name"] or ""),
+                "maxCount": max_count if max_count and max_count > 0 else None,
+            }
+        )
+    return limits
+
+
+def _act_exclusion_pairs(conn: Any, codes: list[str]) -> list[dict[str, str]]:
+    codes = sorted({c for c in codes if c})
+    if len(codes) < 2:
+        return []
+    placeholders = ",".join("?" for _ in codes)
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT exclusion_table, base_code, base_name, excluded_code, excluded_name, rule_kind
+            FROM electronic_exclusions
+            WHERE base_code IN ({placeholders}) AND excluded_code IN ({placeholders})
+            """,
+            codes + codes,
+        ).fetchall()
+    except Exception:  # noqa: BLE001 - 制約は候補提示の補助。失敗しても他は返す。
+        return []
+    seen: set[tuple[str, str, str]] = set()
+    out: list[dict[str, str]] = []
+    for row in rows:
+        base = str(row["base_code"] or "")
+        excluded = str(row["excluded_code"] or "")
+        table = str(row["exclusion_table"] or "")
+        key = (table, base, excluded)
+        if not base or not excluded or base == excluded or key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "exclusionTable": table,
+                "baseCode": base,
+                "baseName": str(row["base_name"] or ""),
+                "excludedCode": excluded,
+                "excludedName": str(row["excluded_name"] or ""),
+                "ruleKind": str(row["rule_kind"] or ""),
+            }
+        )
+    return out
 
 
 def _clean_codes(value: Any) -> list[str]:
