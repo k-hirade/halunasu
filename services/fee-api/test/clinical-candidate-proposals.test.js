@@ -165,3 +165,33 @@ test("辞書スキャン: 本文中のマスタ名称を候補化し、否定文
   assert.ok(doc.evidence.includes("傷病手当金意見書を作成・交付"));
   assert.ok(!doc.evidence.includes("催眠薬"), "根拠はヒット文のみ(行全体ではない)");
 });
+
+test("加算(親項目前提)はイベント照合レーンから単独候補にしない", async () => {
+  const addonCalculator = {
+    async searchMaster() {
+      return {
+        items: [{
+          code: "114013570",
+          name: "在宅患者連携指導加算（訪問看護・訪問看護（同一））",
+          points: 300,
+          kind: "procedure",
+          itemRole: "addon",
+          feeCategory: "procedure_addon",
+          derivedOnly: true
+        }]
+      };
+    }
+  };
+  const result = await convertClinicalCalculationEvents({
+    clinicalEvents: [managementEvent({
+      name: "訪問看護と連携した指導",
+      search_queries: ["在宅患者連携指導加算"]
+    })],
+    feeCalculator: addonCalculator
+  });
+  assert.equal(
+    result.candidateProposals.filter((item) => item.basis === "master_link_candidate").length,
+    0,
+    "加算は単独候補として提示しない"
+  );
+});

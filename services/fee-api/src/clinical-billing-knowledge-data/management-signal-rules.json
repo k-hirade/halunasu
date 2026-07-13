@@ -106,7 +106,7 @@
       ],
       "monthlyLimit": {
         "unit": "月",
-        "maxCount": 1
+        "maxCount": 2
       }
     },
     {
@@ -175,7 +175,7 @@
       ],
       "monthlyLimit": {
         "unit": "月",
-        "maxCount": 1
+        "maxCount": 2
       }
     },
     {

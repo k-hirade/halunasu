@@ -251,3 +251,17 @@ function assertNoUndefined(value) {
     assertNoUndefined(item);
   }
 }
+
+test("LazyFirestoreFeeStore は server.js が使う全メソッドを delegate している", async () => {
+  // server.js は `typeof feeStore.method === "function"` でフォールバックするため、
+  // delegate漏れは「保存せずエコー」等の沈黙劣化になる(STGで実際に発生した)。
+  const { LazyFirestoreFeeStore } = await import("../src/store/create-store.js");
+  const { readFileSync } = await import("node:fs");
+  const serverSource = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+  const usedMethods = [...new Set(
+    [...serverSource.matchAll(/feeStore\.([a-zA-Z]+)/gu)].map((match) => match[1])
+  )];
+  assert.ok(usedMethods.length >= 15, "抽出が機能していること");
+  const missing = usedMethods.filter((method) => typeof LazyFirestoreFeeStore.prototype[method] !== "function");
+  assert.deepEqual(missing, [], `LazyFirestoreFeeStore に delegate が無いメソッド: ${missing.join(", ")}`);
+});

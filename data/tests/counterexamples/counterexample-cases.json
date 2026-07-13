@@ -7,7 +7,9 @@
       "addedAt": "2026-07-13",
       "source": "mock_partner患者1013 STG E2Eで検出(抽出揺れで候補化されない回があった)",
       "clinicalText": "S）腰痛は軽減傾向。\nP）眠気・転倒リスクを踏まえ内服を見直し、催眠薬と三環系抗うつ薬の2剤を中止。残薬で症状増悪がないか次回評価。休業に伴う傷病手当金意見書を作成・交付。訪問看護と連携しリハビリを継続。",
-      "expectedCandidateCodes": ["180000710"],
+      "expectedCandidateCodes": [
+        "180000710"
+      ],
       "forbiddenCandidateCodes": []
     },
     {
@@ -15,7 +17,9 @@
       "addedAt": "2026-07-13",
       "source": "mock_partner患者1013 STG E2Eで検出",
       "clinicalText": "S）肩こりが続く。\nP）はり・きゅう施術のため療養費同意書を交付。次回は1か月後。",
-      "expectedCandidateCodes": ["113004310"],
+      "expectedCandidateCodes": [
+        "113004310"
+      ],
       "forbiddenCandidateCodes": []
     },
     {
@@ -24,7 +28,29 @@
       "source": "設計時の反例防止要件(未実施の行為を候補化しない)",
       "clinicalText": "S）頭痛あり。\nP）症状安定のためCT撮影は行わず経過観察。傷病手当金意見書の交付は今回は希望なし。",
       "expectedCandidateCodes": [],
-      "forbiddenCandidateCodes": ["180000710"]
+      "forbiddenCandidateCodes": [
+        "180000710"
+      ]
+    },
+    {
+      "caseId": "positive-reoccurrence-after-negative",
+      "addedAt": "2026-07-13",
+      "source": "レビュー指摘: 最初の出現が否定文脈でも、後の肯定記載を拾うこと",
+      "clinicalText": "S）前回受診時は傷病手当金意見書なし。\nP）本日、休業のため傷病手当金意見書を作成・交付。",
+      "expectedCandidateCodes": [
+        "180000710"
+      ],
+      "forbiddenCandidateCodes": []
+    },
+    {
+      "caseId": "clause-level-negation-same-sentence",
+      "addedAt": "2026-07-13",
+      "source": "レビュー指摘: 同一文内の否定節(CTは行わず)が肯定節(同意書を交付)を巻き込まないこと",
+      "clinicalText": "P）CT撮影は行わず、はり・きゅうの療養費同意書を交付。",
+      "expectedCandidateCodes": [
+        "113004310"
+      ],
+      "forbiddenCandidateCodes": []
     }
   ]
 }

@@ -412,9 +412,13 @@ function FeeSettingsPanel({ data, initialGroup = "billing" }) {
     setErrorMessage("");
     try {
       const cleanedStandards = facilityStandards.filter((entry) => (entry.key || entry.name));
-      // 算定エンジンが参照する施設基準キーは、届出済みの行から導出する。
+      // 算定の正は有効期間付きの fee設定(facilityStandards)。platform側キーは
+      // 設定未登録施設の移行用フォールバックのため、本日時点で有効な届出だけを平坦化する。
+      const today = new Date().toISOString().slice(0, 10);
       const facilityStandardKeys = cleanedStandards
         .filter((entry) => entry.status === "active" && entry.key)
+        .filter((entry) => !entry.claimStartDate || entry.claimStartDate <= today)
+        .filter((entry) => !entry.effectiveTo || entry.effectiveTo >= today)
         .map((entry) => entry.key);
       if (selectedFacility?.facilityId) {
         const facilityResponse = await feeApi(`/v1/fee/facilities/${encodeURIComponent(selectedFacility.facilityId)}`, {

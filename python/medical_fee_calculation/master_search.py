@@ -59,18 +59,40 @@ def _master_db(db_path: str) -> sqlite3.Connection:
 
 def _search_procedures(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
     rows = _search_procedure_rows(db, query, limit)
-    if not rows:
-        # 全文一致で0件のとき、長い名詞トークン順にフォールバック検索する。
-        # 「傷病手当金意見書 作成・交付」のような複合表現でも名詞核で当たる。
-        # ランキング(スコア・曖昧排除)は呼び出し側(Node)が行う。
-        for token in _fallback_tokens(query):
-            rows = _search_procedure_rows(db, token, limit)
-            if rows:
-                break
-    return [
-        _medical_procedure_item(row)
-        for row in rows
-    ]
+    if rows:
+        return [_medical_procedure_item(row) for row in rows]
+
+    # 全文一致で0件のとき、名詞トークンでフォールバック検索する。
+    # 「傷病手当金意見書 作成・交付」のような複合表現でも名詞核で当たる。
+    # 最初に当たったトークンで打ち切らず全トークンの結果をマージする
+    # (「在宅医療の訪問診療」で先トークンだけが無関係コードに当たる誤選択の防止)。
+    # フォールバック由来は matchOrigin で明示し、ランキング(スコア・曖昧排除)と
+    # 自動採用可否の判断は呼び出し側(Node)が行う。
+    per_token: list[list[dict[str, Any]]] = []
+    for token in _fallback_tokens(query):
+        group: list[dict[str, Any]] = []
+        for row in _search_procedure_rows(db, token, limit):
+            item = _medical_procedure_item(row)
+            item["matchOrigin"] = "token_fallback"
+            item["matchedToken"] = token
+            group.append(item)
+        if group:
+            per_token.append(group)
+    # トークン間でラウンドロビンに混ぜ、先頭トークンの結果だけで
+    # limit枠が埋まらないようにする(呼び出し側が全トークン分を再評価できる)。
+    merged: list[dict[str, Any]] = []
+    seen_codes: set[str] = set()
+    for rank in range(max((len(group) for group in per_token), default=0)):
+        for group in per_token:
+            if rank >= len(group):
+                continue
+            item = group[rank]
+            code = str(item.get("code") or "")
+            if not code or code in seen_codes:
+                continue
+            seen_codes.add(code)
+            merged.append(item)
+    return merged[: limit * 3]
 
 
 def _fallback_tokens(query: str) -> list[str]:
@@ -226,6 +248,11 @@ def _medical_procedure_role(row: sqlite3.Row) -> dict[str, Any]:
         item_role = "base"
     elif "外来迅速検体検査加算" in name or "検体検査管理加算" in name:
         fee_category = "lab_addon"
+        item_role = "addon"
+    elif "加算" in name:
+        # 「在宅患者連携指導加算」等、名称に加算を含む項目は親項目前提。
+        # 直接照合レーンから単独候補として提示しない(施設恒常ルール経由の追加は可能)。
+        fee_category = "procedure_addon"
         item_role = "addon"
     elif code.startswith("111") or code.startswith("112"):
         fee_category = "basic_fee"

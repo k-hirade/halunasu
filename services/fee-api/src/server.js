@@ -268,6 +268,14 @@ async function routeFeeApiRequest(input = {}) {
     if (!claims.length) {
       throw requestValidationError("既存レセを取り込めませんでした。baselineClaims、UKE/CSVファイル、externalPatientId を確認してください。");
     }
+    // 複数患者のレセを単一患者の履歴へ混在させない: externalPatientId 省略時は
+    // 入力内の外部患者IDが一種類であることを必須にする。
+    const distinctExternalIds = uniqueStrings(claims.map((claim) => String(claim.patientId || "")));
+    if (!externalPatientId && distinctExternalIds.length > 1) {
+      throw requestValidationError(
+        `入力に複数の外部患者ID(${distinctExternalIds.slice(0, 5).join(", ")}${distinctExternalIds.length > 5 ? " ほか" : ""})が含まれています。externalPatientId で対象患者を指定してください。`
+      );
+    }
     if (claims.length > 60) {
       throw requestValidationError("一括取込は60レセ(患者×月)までです。対象患者の月に絞ってください。");
     }
@@ -5529,14 +5537,17 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     orgId: input.orgId || baseSession.orgId,
     session: baseSession
   }));
-  // fee設定側の施設基準届出(有効期間内)を施設プロファイルへ合流させる。
-  // 施設基準が platform 施設情報に無い組織でも、fee設定だけで届出を登録できる。
+  // 施設基準は有効期間付きの fee設定(facilityStandards)を唯一の算定根拠とする。
+  // platform施設のキーは日付を持たない平坦なリストのため、設定が未登録の施設の
+  // 移行用フォールバックに限定する(和集合にすると失効済み届出が算定へ混入する)。
+  const hasDatedFacilityStandards = Array.isArray(feeSettings?.facilityStandards)
+    && feeSettings.facilityStandards.length > 0;
   const effectiveFacilityProfile = {
     ...facilityProfile,
-    facilityStandardKeys: uniqueStrings([
-      ...(Array.isArray(facilityProfile.facilityStandardKeys) ? facilityProfile.facilityStandardKeys : []),
-      ...activeFacilityStandardKeysFromFeeSettings(feeSettings, baseSession.serviceDate)
-    ])
+    facilityStandardKeysSource: hasDatedFacilityStandards ? "fee_settings_effective_dated" : facilityProfile.source,
+    facilityStandardKeys: hasDatedFacilityStandards
+      ? activeFacilityStandardKeysFromFeeSettings(feeSettings, baseSession.serviceDate)
+      : uniqueStrings(Array.isArray(facilityProfile.facilityStandardKeys) ? facilityProfile.facilityStandardKeys : [])
   };
   const priorSessions = await measureStage(stageTimings, "patientHistory", () => loadPriorFeeSessionsForPatient({
     feeStore: input.feeStore,
@@ -6127,6 +6138,7 @@ function applyAutoBillingRulesToPreparation(prepared = {}, {
   const keys = new Set((facilityStandardKeys || []).map((key) => String(key || "")).filter(Boolean));
   const applied = [];
   const confirmCodes = [];
+  const confirmWarnings = [];
   const candidateProposals = [];
   for (const rule of rules) {
     if (!rule?.code || String(rule.status || "active") !== "active") {
@@ -6141,6 +6153,9 @@ function applyAutoBillingRulesToPreparation(prepared = {}, {
     applied.push({ ruleId: rule.ruleId, code: rule.code, action: rule.action });
     if (rule.action === "confirm") {
       confirmCodes.push(String(rule.code));
+      confirmWarnings.push(
+        `施設恒常算定ルール: ${rule.title || rule.code}(${rule.code})を施設設定に基づき算定へ自動追加しました。今回の受診での実施事実と算定要件を確認してください。`
+      );
     } else {
       candidateProposals.push({
         proposalId: `facility_rule_${rule.ruleId}_${rule.code}`,
@@ -6179,6 +6194,11 @@ function applyAutoBillingRulesToPreparation(prepared = {}, {
     candidateProposals: [
       ...(Array.isArray(prepared.candidateProposals) ? prepared.candidateProposals : []),
       ...candidateProposals
+    ],
+    // confirmで自動追加した明細は、確認画面で出所が分かるよう警告として明示する。
+    reviewWarnings: [
+      ...(Array.isArray(prepared.reviewWarnings) ? prepared.reviewWarnings : []),
+      ...confirmWarnings
     ],
     metrics: {
       ...(prepared.metrics || {}),
@@ -6629,10 +6649,17 @@ function selectMasterItemForOrder(items = [], type, query) {
     return null;
   }
   const normalizedQuery = normalizeMasterMatchText(query);
-  return candidates.find((item) => normalizeMasterMatchText(item.name) === normalizedQuery)
+  const matched = candidates.find((item) => normalizeMasterMatchText(item.name) === normalizedQuery)
     || candidates.find((item) => normalizeMasterMatchText(item.baseName) === normalizedQuery)
     || candidates.find((item) => normalizeMasterMatchText(item.name).includes(normalizedQuery))
-    || candidates[0];
+    || candidates.find((item) => normalizeMasterMatchText(item.baseName).includes(normalizedQuery));
+  if (matched) {
+    return matched;
+  }
+  // 先頭候補の無条件採用は、全文一致検索(候補は必ずqueryを含む)時代の前提。
+  // トークンフォールバック由来の候補は部分語しか一致しておらず、確定オーダーへの
+  // 自動採用は誤コード混入になるため許可しない。
+  return candidates[0]?.matchOrigin === "token_fallback" ? null : candidates[0];
 }
 
 function normalizeMasterMatchText(value) {

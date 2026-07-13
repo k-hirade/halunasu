@@ -1,0 +1,1819 @@
+{
+  "schemaVersion": "fee-monthly-chart-e2e.v1",
+  "generatedAt": "2026-07-13T12:25:51.782Z",
+  "runId": "monthly-chart-e2e-20260713122404536-43c69e",
+  "mode": "stg",
+  "source": {
+    "patientDir": "tmp/dataset_recalculation_diff_diagnosis/20260705_102303_mock_homis_uke_recalculation_diff/patient_sources/1001",
+    "manifestSchemaVersion": "recalculation-diff.v1",
+    "syntheticDataOnly": true
+  },
+  "environment": {
+    "platformBaseUrl": "https://platform-api-stg-lp2t3inhza-an.a.run.app",
+    "feeBaseUrl": "https://fee-api-stg-wmfrwcpzkq-an.a.run.app",
+    "organizationCode": "nishiyama-demo-stg",
+    "facilityRef": "eeb5a5c8fbff",
+    "departmentRef": "3fb29f98d9a1",
+    "facilityStandardKeys": []
+  },
+  "security": {
+    "chartTextIncluded": false,
+    "patientNameIncluded": false,
+    "credentialsIncluded": false,
+    "expectedReceiptWithheldUntilComparison": true,
+    "structuredOrdersSentToCalculation": false,
+    "expectedClaimContextSentToCalculation": false
+  },
+  "inputAudit": {
+    "patientRef": "1001",
+    "claimMonth": "2026-06",
+    "chartCount": 2,
+    "chartHashes": [
+      "914f945061afad62b36e98c9c7dcebda584941e82edcc9b1cfd6354e01d8e65e",
+      "18e23af98341bce01ee1965c766806883def11a823f2a5b30e4473a716659e98"
+    ],
+    "baselineCodeCount": 3,
+    "baselineOccurrenceCount": 5,
+    "baselineTotalPoints": 1988,
+    "prohibitedCalculationInputs": [
+      "orders.csv",
+      "receipt/UKE codes",
+      "expectedClaimContext"
+    ],
+    "calculationPayloadKeys": []
+  },
+  "evaluationOptions": {
+    "repeat": 3,
+    "seedKnownPriorHistory": false
+  },
+  "summary": {
+    "repeatCount": 3,
+    "visitCountPerRepeat": 2,
+    "allCalculationsUsedOpenAi": true,
+    "candidateResultStable": true,
+    "monthlyResultStable": true,
+    "reviewIssueResultStable": false,
+    "reviewIssueCounts": [
+      9,
+      10,
+      3
+    ],
+    "clinicalEventCounts": [
+      [
+        6,
+        10
+      ],
+      [
+        8,
+        7
+      ],
+      [
+        3,
+        11
+      ]
+    ],
+    "extractionStability": {
+      "perVisit": [
+        {
+          "visit": 1,
+          "serviceDate": "2026-06-11",
+          "eventCounts": [
+            6,
+            8,
+            3
+          ],
+          "min": 3,
+          "max": 8,
+          "spread": 5
+        },
+        {
+          "visit": 2,
+          "serviceDate": "2026-06-25",
+          "eventCounts": [
+            10,
+            7,
+            11
+          ],
+          "min": 7,
+          "max": 11,
+          "spread": 4
+        }
+      ],
+      "maxSpread": 5,
+      "stableVisitCount": 0
+    },
+    "exactMatchRuns": 0,
+    "baselineCodeCount": 3,
+    "matchedCodeCounts": [
+      0,
+      0,
+      0
+    ],
+    "baselineOnlyCounts": [
+      3,
+      3,
+      3
+    ],
+    "engineOnlyCounts": [
+      4,
+      4,
+      4
+    ],
+    "bothDeltaCounts": [
+      0,
+      0,
+      0
+    ],
+    "baselineTotalPoints": 1988,
+    "monthlyTotalPoints": [
+      371,
+      371,
+      371
+    ],
+    "calculateRequestMs": {
+      "count": 6,
+      "min": 9123.53,
+      "median": 15098.54,
+      "mean": 14621.02,
+      "max": 18472.56
+    }
+  },
+  "repeats": [
+    {
+      "repeat": 1,
+      "patientRef": "b7c24246a9e8",
+      "priorHistorySeed": null,
+      "sessionRefs": [
+        "3425df56ed1b",
+        "59437c701e26"
+      ],
+      "baseline": {
+        "codeCount": 3,
+        "occurrenceCount": 5,
+        "totalPoints": 1988,
+        "lines": [
+          {
+            "code": "114001110",
+            "name": "",
+            "count": 2,
+            "totalPoints": 1780
+          },
+          {
+            "code": "114057970",
+            "name": "",
+            "count": 1,
+            "totalPoints": 50
+          },
+          {
+            "code": "180725910",
+            "name": "",
+            "count": 2,
+            "totalPoints": 158
+          }
+        ]
+      },
+      "visits": [
+        {
+          "sessionRef": "3425df56ed1b",
+          "serviceDate": "2026-06-11",
+          "chartHash": "914f945061afad62b36e98c9c7dcebda584941e82edcc9b1cfd6354e01d8e65e",
+          "totalPoints": 293,
+          "diagnoses": [
+            "高血圧症",
+            "慢性心不全",
+            "陳旧性心筋梗塞"
+          ],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "111000110",
+                "name": "初診料",
+                "count": 1,
+                "totalPoints": 291
+              },
+              {
+                "code": "180819910",
+                "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+                "count": 1,
+                "totalPoints": 2
+              }
+            ],
+            "proposals": [],
+            "issues": [
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              },
+              {
+                "title": "降圧薬・利尿薬の確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              }
+            ],
+            "proposalCount": 0,
+            "issueCount": 4
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v13",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "a6fe155b50e2",
+            "clinicalEventCount": 6,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 8
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 77
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 1
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 88
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 14790
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 7
+              }
+            ],
+            "clinicalStructuringMs": 14234,
+            "openAiProviderMs": 14204,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 1,
+            "masterLookupMs": 0,
+            "masterLookupCount": 0
+          }
+        },
+        {
+          "sessionRef": "59437c701e26",
+          "serviceDate": "2026-06-25",
+          "chartHash": "18e23af98341bce01ee1965c766806883def11a823f2a5b30e4473a716659e98",
+          "totalPoints": 78,
+          "diagnoses": [
+            "慢性心不全",
+            "高血圧症"
+          ],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "112007410",
+                "name": "再診料",
+                "count": 1,
+                "totalPoints": 76
+              },
+              {
+                "code": "180820010",
+                "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+                "count": 1,
+                "totalPoints": 2
+              }
+            ],
+            "proposals": [
+              {
+                "title": "在宅患者連携指導加算（訪問看護・訪問看護（同一））の算定確認",
+                "potentialPoints": 300,
+                "canAdopt": true,
+                "actionType": "adoptable"
+              }
+            ],
+            "issues": [
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "療養計画確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              },
+              {
+                "title": "在宅医療未対応",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              },
+              {
+                "title": "療養計画確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              }
+            ],
+            "proposalCount": 1,
+            "issueCount": 5
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v13",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "eba5b1d613cc",
+            "clinicalEventCount": 10,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 7
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 0
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 108
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 17342
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 10
+              }
+            ],
+            "clinicalStructuringMs": 17332,
+            "openAiProviderMs": 16492,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 1,
+            "masterLookupMs": 3071,
+            "masterLookupCount": 20
+          }
+        }
+      ],
+      "candidateSurface": {
+        "codeCount": 4,
+        "lines": [
+          {
+            "code": "111000110",
+            "name": "初診料",
+            "count": 1,
+            "totalPoints": 291
+          },
+          {
+            "code": "112007410",
+            "name": "再診料",
+            "count": 1,
+            "totalPoints": 76
+          },
+          {
+            "code": "180819910",
+            "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+            "count": 1,
+            "totalPoints": 2
+          },
+          {
+            "code": "180820010",
+            "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+            "count": 1,
+            "totalPoints": 2
+          }
+        ],
+        "proposalCount": 1,
+        "issueCount": 9
+      },
+      "monthly": {
+        "status": "ready",
+        "claimMonth": "2026-06",
+        "sessionCount": 2,
+        "actualDays": 2,
+        "totalPoints": 371,
+        "codeCount": 4,
+        "lines": [
+          {
+            "code": "111000110",
+            "name": "初診料",
+            "count": 1,
+            "totalPoints": 291
+          },
+          {
+            "code": "112007410",
+            "name": "再診料",
+            "count": 1,
+            "totalPoints": 76
+          },
+          {
+            "code": "180819910",
+            "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+            "count": 1,
+            "totalPoints": 2
+          },
+          {
+            "code": "180820010",
+            "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+            "count": 1,
+            "totalPoints": 2
+          }
+        ]
+      },
+      "comparison": {
+        "baselineCodeCount": 3,
+        "engineCodeCount": 4,
+        "matchedCodeCount": 0,
+        "baselineOnlyCount": 3,
+        "engineOnlyCount": 4,
+        "bothDeltaCount": 0,
+        "codeRecall": 0,
+        "codePrecision": 0,
+        "exactMatch": false,
+        "rows": [
+          {
+            "status": "engine_only",
+            "code": "111000110",
+            "name": "初診料",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 291,
+            "deltaPoints": 291
+          },
+          {
+            "status": "engine_only",
+            "code": "112007410",
+            "name": "再診料",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 76,
+            "deltaPoints": 76
+          },
+          {
+            "status": "baseline_only",
+            "code": "114001110",
+            "name": "",
+            "baselineCount": 2,
+            "engineCount": 0,
+            "baselinePoints": 1780,
+            "enginePoints": 0,
+            "deltaPoints": -1780
+          },
+          {
+            "status": "baseline_only",
+            "code": "114057970",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 50,
+            "enginePoints": 0,
+            "deltaPoints": -50
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725910",
+            "name": "",
+            "baselineCount": 2,
+            "engineCount": 0,
+            "baselinePoints": 158,
+            "enginePoints": 0,
+            "deltaPoints": -158
+          },
+          {
+            "status": "engine_only",
+            "code": "180819910",
+            "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 2,
+            "deltaPoints": 2
+          },
+          {
+            "status": "engine_only",
+            "code": "180820010",
+            "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 2,
+            "deltaPoints": 2
+          }
+        ]
+      },
+      "endpointComparison": {
+        "baselineTotalPoints": 1988,
+        "engineTotalPoints": 371,
+        "matchedCount": 0,
+        "baselineOnlyCount": 3,
+        "engineOnlyCount": 4,
+        "bothDeltaCount": 0,
+        "rows": [
+          {
+            "status": "engine_only",
+            "code": "111000110",
+            "name": "初診料",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 291,
+            "deltaPoints": 291,
+            "reason": "低確信の当社候補"
+          },
+          {
+            "status": "engine_only",
+            "code": "112007410",
+            "name": "再診料",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 76,
+            "deltaPoints": 76,
+            "reason": "低確信の当社候補"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114001110",
+            "name": "",
+            "baselineCount": 2,
+            "engineCount": 0,
+            "baselinePoints": 1780,
+            "enginePoints": 0,
+            "deltaPoints": -1780,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114057970",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 50,
+            "enginePoints": 0,
+            "deltaPoints": -50,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725910",
+            "name": "",
+            "baselineCount": 2,
+            "engineCount": 0,
+            "baselinePoints": 158,
+            "enginePoints": 0,
+            "deltaPoints": -158,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "engine_only",
+            "code": "180819910",
+            "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 2,
+            "deltaPoints": 2,
+            "reason": "低確信の当社候補"
+          },
+          {
+            "status": "engine_only",
+            "code": "180820010",
+            "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 2,
+            "deltaPoints": 2,
+            "reason": "低確信の当社候補"
+          }
+        ]
+      },
+      "performance": {
+        "totalClientMs": 40509.44,
+        "calculateRequestMs": {
+          "count": 2,
+          "min": 16366.57,
+          "median": 17419.57,
+          "mean": 17419.57,
+          "max": 18472.56
+        },
+        "clinicalStructuringMs": {
+          "count": 2,
+          "min": 14234,
+          "median": 15783,
+          "mean": 15783,
+          "max": 17332
+        },
+        "openAiProviderMs": {
+          "count": 2,
+          "min": 14204,
+          "median": 15348,
+          "mean": 15348,
+          "max": 16492
+        }
+      },
+      "requestTimings": [
+        {
+          "operation": "create_session",
+          "visit": 1,
+          "statusCode": 201,
+          "durationMs": 2168.48
+        },
+        {
+          "operation": "calculate",
+          "visit": 1,
+          "statusCode": 201,
+          "durationMs": 16366.57
+        },
+        {
+          "operation": "detail",
+          "visit": 1,
+          "statusCode": 200,
+          "durationMs": 375.04
+        },
+        {
+          "operation": "create_session",
+          "visit": 2,
+          "statusCode": 201,
+          "durationMs": 387.54
+        },
+        {
+          "operation": "calculate",
+          "visit": 2,
+          "statusCode": 201,
+          "durationMs": 18472.56
+        },
+        {
+          "operation": "detail",
+          "visit": 2,
+          "statusCode": 200,
+          "durationMs": 266.59
+        },
+        {
+          "operation": "monthly_receipt",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 1261.05
+        },
+        {
+          "operation": "baseline_diagnosis",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 1211.61
+        }
+      ]
+    },
+    {
+      "repeat": 2,
+      "patientRef": "a10f9d239fb9",
+      "priorHistorySeed": null,
+      "sessionRefs": [
+        "abac89419529",
+        "d2d41eaad470"
+      ],
+      "baseline": {
+        "codeCount": 3,
+        "occurrenceCount": 5,
+        "totalPoints": 1988,
+        "lines": [
+          {
+            "code": "114001110",
+            "name": "",
+            "count": 2,
+            "totalPoints": 1780
+          },
+          {
+            "code": "114057970",
+            "name": "",
+            "count": 1,
+            "totalPoints": 50
+          },
+          {
+            "code": "180725910",
+            "name": "",
+            "count": 2,
+            "totalPoints": 158
+          }
+        ]
+      },
+      "visits": [
+        {
+          "sessionRef": "abac89419529",
+          "serviceDate": "2026-06-11",
+          "chartHash": "914f945061afad62b36e98c9c7dcebda584941e82edcc9b1cfd6354e01d8e65e",
+          "totalPoints": 293,
+          "diagnoses": [
+            "高血圧症",
+            "慢性心不全",
+            "陳旧性心筋梗塞"
+          ],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "111000110",
+                "name": "初診料",
+                "count": 1,
+                "totalPoints": 291
+              },
+              {
+                "code": "180819910",
+                "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+                "count": 1,
+                "totalPoints": 2
+              }
+            ],
+            "proposals": [],
+            "issues": [
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              },
+              {
+                "title": "療養計画確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              },
+              {
+                "title": "療養計画確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              }
+            ],
+            "proposalCount": 0,
+            "issueCount": 6
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v13",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "7335add55776",
+            "clinicalEventCount": 8,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 12
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 0
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 36
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 12645
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 6
+              }
+            ],
+            "clinicalStructuringMs": 12634,
+            "openAiProviderMs": 12324,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 1,
+            "masterLookupMs": 1195,
+            "masterLookupCount": 13
+          }
+        },
+        {
+          "sessionRef": "d2d41eaad470",
+          "serviceDate": "2026-06-25",
+          "chartHash": "18e23af98341bce01ee1965c766806883def11a823f2a5b30e4473a716659e98",
+          "totalPoints": 78,
+          "diagnoses": [
+            "慢性心不全",
+            "高血圧症"
+          ],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "112007410",
+                "name": "再診料",
+                "count": 1,
+                "totalPoints": 76
+              },
+              {
+                "code": "180820010",
+                "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+                "count": 1,
+                "totalPoints": 2
+              }
+            ],
+            "proposals": [
+              {
+                "title": "在宅患者連携指導加算（訪問看護・訪問看護（同一））の算定確認",
+                "potentialPoints": 300,
+                "canAdopt": true,
+                "actionType": "adoptable"
+              }
+            ],
+            "issues": [
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "療養計画確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              },
+              {
+                "title": "在宅医療未対応",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              },
+              {
+                "title": "在宅医療未対応",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              }
+            ],
+            "proposalCount": 1,
+            "issueCount": 4
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v13",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "22e02da178e8",
+            "clinicalEventCount": 7,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 8
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 0
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 65
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 11296
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 9
+              }
+            ],
+            "clinicalStructuringMs": 11286,
+            "openAiProviderMs": 10972,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 0,
+            "masterLookupMs": 439,
+            "masterLookupCount": 20
+          }
+        }
+      ],
+      "candidateSurface": {
+        "codeCount": 4,
+        "lines": [
+          {
+            "code": "111000110",
+            "name": "初診料",
+            "count": 1,
+            "totalPoints": 291
+          },
+          {
+            "code": "112007410",
+            "name": "再診料",
+            "count": 1,
+            "totalPoints": 76
+          },
+          {
+            "code": "180819910",
+            "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+            "count": 1,
+            "totalPoints": 2
+          },
+          {
+            "code": "180820010",
+            "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+            "count": 1,
+            "totalPoints": 2
+          }
+        ],
+        "proposalCount": 1,
+        "issueCount": 10
+      },
+      "monthly": {
+        "status": "ready",
+        "claimMonth": "2026-06",
+        "sessionCount": 2,
+        "actualDays": 2,
+        "totalPoints": 371,
+        "codeCount": 4,
+        "lines": [
+          {
+            "code": "111000110",
+            "name": "初診料",
+            "count": 1,
+            "totalPoints": 291
+          },
+          {
+            "code": "112007410",
+            "name": "再診料",
+            "count": 1,
+            "totalPoints": 76
+          },
+          {
+            "code": "180819910",
+            "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+            "count": 1,
+            "totalPoints": 2
+          },
+          {
+            "code": "180820010",
+            "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+            "count": 1,
+            "totalPoints": 2
+          }
+        ]
+      },
+      "comparison": {
+        "baselineCodeCount": 3,
+        "engineCodeCount": 4,
+        "matchedCodeCount": 0,
+        "baselineOnlyCount": 3,
+        "engineOnlyCount": 4,
+        "bothDeltaCount": 0,
+        "codeRecall": 0,
+        "codePrecision": 0,
+        "exactMatch": false,
+        "rows": [
+          {
+            "status": "engine_only",
+            "code": "111000110",
+            "name": "初診料",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 291,
+            "deltaPoints": 291
+          },
+          {
+            "status": "engine_only",
+            "code": "112007410",
+            "name": "再診料",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 76,
+            "deltaPoints": 76
+          },
+          {
+            "status": "baseline_only",
+            "code": "114001110",
+            "name": "",
+            "baselineCount": 2,
+            "engineCount": 0,
+            "baselinePoints": 1780,
+            "enginePoints": 0,
+            "deltaPoints": -1780
+          },
+          {
+            "status": "baseline_only",
+            "code": "114057970",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 50,
+            "enginePoints": 0,
+            "deltaPoints": -50
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725910",
+            "name": "",
+            "baselineCount": 2,
+            "engineCount": 0,
+            "baselinePoints": 158,
+            "enginePoints": 0,
+            "deltaPoints": -158
+          },
+          {
+            "status": "engine_only",
+            "code": "180819910",
+            "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 2,
+            "deltaPoints": 2
+          },
+          {
+            "status": "engine_only",
+            "code": "180820010",
+            "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 2,
+            "deltaPoints": 2
+          }
+        ]
+      },
+      "endpointComparison": {
+        "baselineTotalPoints": 1988,
+        "engineTotalPoints": 371,
+        "matchedCount": 0,
+        "baselineOnlyCount": 3,
+        "engineOnlyCount": 4,
+        "bothDeltaCount": 0,
+        "rows": [
+          {
+            "status": "engine_only",
+            "code": "111000110",
+            "name": "初診料",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 291,
+            "deltaPoints": 291,
+            "reason": "低確信の当社候補"
+          },
+          {
+            "status": "engine_only",
+            "code": "112007410",
+            "name": "再診料",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 76,
+            "deltaPoints": 76,
+            "reason": "低確信の当社候補"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114001110",
+            "name": "",
+            "baselineCount": 2,
+            "engineCount": 0,
+            "baselinePoints": 1780,
+            "enginePoints": 0,
+            "deltaPoints": -1780,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114057970",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 50,
+            "enginePoints": 0,
+            "deltaPoints": -50,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725910",
+            "name": "",
+            "baselineCount": 2,
+            "engineCount": 0,
+            "baselinePoints": 158,
+            "enginePoints": 0,
+            "deltaPoints": -158,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "engine_only",
+            "code": "180819910",
+            "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 2,
+            "deltaPoints": 2,
+            "reason": "低確信の当社候補"
+          },
+          {
+            "status": "engine_only",
+            "code": "180820010",
+            "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 2,
+            "deltaPoints": 2,
+            "reason": "低確信の当社候補"
+          }
+        ]
+      },
+      "performance": {
+        "totalClientMs": 30185.45,
+        "calculateRequestMs": {
+          "count": 2,
+          "min": 12433.91,
+          "median": 13132.21,
+          "mean": 13132.21,
+          "max": 13830.51
+        },
+        "clinicalStructuringMs": {
+          "count": 2,
+          "min": 11286,
+          "median": 11960,
+          "mean": 11960,
+          "max": 12634
+        },
+        "openAiProviderMs": {
+          "count": 2,
+          "min": 10972,
+          "median": 11648,
+          "mean": 11648,
+          "max": 12324
+        }
+      },
+      "requestTimings": [
+        {
+          "operation": "create_session",
+          "visit": 1,
+          "statusCode": 201,
+          "durationMs": 441.81
+        },
+        {
+          "operation": "calculate",
+          "visit": 1,
+          "statusCode": 201,
+          "durationMs": 13830.51
+        },
+        {
+          "operation": "detail",
+          "visit": 1,
+          "statusCode": 200,
+          "durationMs": 243.77
+        },
+        {
+          "operation": "create_session",
+          "visit": 2,
+          "statusCode": 201,
+          "durationMs": 326.04
+        },
+        {
+          "operation": "calculate",
+          "visit": 2,
+          "statusCode": 201,
+          "durationMs": 12433.91
+        },
+        {
+          "operation": "detail",
+          "visit": 2,
+          "statusCode": 200,
+          "durationMs": 322.63
+        },
+        {
+          "operation": "monthly_receipt",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 1286.16
+        },
+        {
+          "operation": "baseline_diagnosis",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 1300.62
+        }
+      ]
+    },
+    {
+      "repeat": 3,
+      "patientRef": "918e4a012421",
+      "priorHistorySeed": null,
+      "sessionRefs": [
+        "b943c614cb3a",
+        "708264aae82c"
+      ],
+      "baseline": {
+        "codeCount": 3,
+        "occurrenceCount": 5,
+        "totalPoints": 1988,
+        "lines": [
+          {
+            "code": "114001110",
+            "name": "",
+            "count": 2,
+            "totalPoints": 1780
+          },
+          {
+            "code": "114057970",
+            "name": "",
+            "count": 1,
+            "totalPoints": 50
+          },
+          {
+            "code": "180725910",
+            "name": "",
+            "count": 2,
+            "totalPoints": 158
+          }
+        ]
+      },
+      "visits": [
+        {
+          "sessionRef": "b943c614cb3a",
+          "serviceDate": "2026-06-11",
+          "chartHash": "914f945061afad62b36e98c9c7dcebda584941e82edcc9b1cfd6354e01d8e65e",
+          "totalPoints": 293,
+          "diagnoses": [
+            "高血圧症",
+            "慢性心不全",
+            "陳旧性心筋梗塞"
+          ],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "111000110",
+                "name": "初診料",
+                "count": 1,
+                "totalPoints": 291
+              },
+              {
+                "code": "180819910",
+                "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+                "count": 1,
+                "totalPoints": 2
+              }
+            ],
+            "proposals": [],
+            "issues": [],
+            "proposalCount": 0,
+            "issueCount": 0
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v13",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "038a85a0e21d",
+            "clinicalEventCount": 3,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 3
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 42
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 0
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 25
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 8039
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 6
+              }
+            ],
+            "clinicalStructuringMs": 8030,
+            "openAiProviderMs": 8024,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 1,
+            "masterLookupMs": 0,
+            "masterLookupCount": 0
+          }
+        },
+        {
+          "sessionRef": "708264aae82c",
+          "serviceDate": "2026-06-25",
+          "chartHash": "18e23af98341bce01ee1965c766806883def11a823f2a5b30e4473a716659e98",
+          "totalPoints": 78,
+          "diagnoses": [
+            "慢性心不全",
+            "高血圧症"
+          ],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "112007410",
+                "name": "再診料",
+                "count": 1,
+                "totalPoints": 76
+              },
+              {
+                "code": "180820010",
+                "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+                "count": 1,
+                "totalPoints": 2
+              }
+            ],
+            "proposals": [
+              {
+                "title": "在宅患者連携指導加算（訪問看護・訪問看護（同一））の算定確認",
+                "potentialPoints": 300,
+                "canAdopt": true,
+                "actionType": "adoptable"
+              }
+            ],
+            "issues": [
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "在宅医療未対応",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now"
+              }
+            ],
+            "proposalCount": 1,
+            "issueCount": 3
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v13",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "f62ebe357660",
+            "clinicalEventCount": 11,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 7
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 0
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 38
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 16499
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 8
+              }
+            ],
+            "clinicalStructuringMs": 16490,
+            "openAiProviderMs": 16432,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 0,
+            "masterLookupMs": 51,
+            "masterLookupCount": 13
+          }
+        }
+      ],
+      "candidateSurface": {
+        "codeCount": 4,
+        "lines": [
+          {
+            "code": "111000110",
+            "name": "初診料",
+            "count": 1,
+            "totalPoints": 291
+          },
+          {
+            "code": "112007410",
+            "name": "再診料",
+            "count": 1,
+            "totalPoints": 76
+          },
+          {
+            "code": "180819910",
+            "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+            "count": 1,
+            "totalPoints": 2
+          },
+          {
+            "code": "180820010",
+            "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+            "count": 1,
+            "totalPoints": 2
+          }
+        ],
+        "proposalCount": 1,
+        "issueCount": 3
+      },
+      "monthly": {
+        "status": "ready",
+        "claimMonth": "2026-06",
+        "sessionCount": 2,
+        "actualDays": 2,
+        "totalPoints": 371,
+        "codeCount": 4,
+        "lines": [
+          {
+            "code": "111000110",
+            "name": "初診料",
+            "count": 1,
+            "totalPoints": 291
+          },
+          {
+            "code": "112007410",
+            "name": "再診料",
+            "count": 1,
+            "totalPoints": 76
+          },
+          {
+            "code": "180819910",
+            "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+            "count": 1,
+            "totalPoints": 2
+          },
+          {
+            "code": "180820010",
+            "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+            "count": 1,
+            "totalPoints": 2
+          }
+        ]
+      },
+      "comparison": {
+        "baselineCodeCount": 3,
+        "engineCodeCount": 4,
+        "matchedCodeCount": 0,
+        "baselineOnlyCount": 3,
+        "engineOnlyCount": 4,
+        "bothDeltaCount": 0,
+        "codeRecall": 0,
+        "codePrecision": 0,
+        "exactMatch": false,
+        "rows": [
+          {
+            "status": "engine_only",
+            "code": "111000110",
+            "name": "初診料",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 291,
+            "deltaPoints": 291
+          },
+          {
+            "status": "engine_only",
+            "code": "112007410",
+            "name": "再診料",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 76,
+            "deltaPoints": 76
+          },
+          {
+            "status": "baseline_only",
+            "code": "114001110",
+            "name": "",
+            "baselineCount": 2,
+            "engineCount": 0,
+            "baselinePoints": 1780,
+            "enginePoints": 0,
+            "deltaPoints": -1780
+          },
+          {
+            "status": "baseline_only",
+            "code": "114057970",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 50,
+            "enginePoints": 0,
+            "deltaPoints": -50
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725910",
+            "name": "",
+            "baselineCount": 2,
+            "engineCount": 0,
+            "baselinePoints": 158,
+            "enginePoints": 0,
+            "deltaPoints": -158
+          },
+          {
+            "status": "engine_only",
+            "code": "180819910",
+            "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 2,
+            "deltaPoints": 2
+          },
+          {
+            "status": "engine_only",
+            "code": "180820010",
+            "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 2,
+            "deltaPoints": 2
+          }
+        ]
+      },
+      "endpointComparison": {
+        "baselineTotalPoints": 1988,
+        "engineTotalPoints": 371,
+        "matchedCount": 0,
+        "baselineOnlyCount": 3,
+        "engineOnlyCount": 4,
+        "bothDeltaCount": 0,
+        "rows": [
+          {
+            "status": "engine_only",
+            "code": "111000110",
+            "name": "初診料",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 291,
+            "deltaPoints": 291,
+            "reason": "低確信の当社候補"
+          },
+          {
+            "status": "engine_only",
+            "code": "112007410",
+            "name": "再診料",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 76,
+            "deltaPoints": 76,
+            "reason": "低確信の当社候補"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114001110",
+            "name": "",
+            "baselineCount": 2,
+            "engineCount": 0,
+            "baselinePoints": 1780,
+            "enginePoints": 0,
+            "deltaPoints": -1780,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114057970",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 50,
+            "enginePoints": 0,
+            "deltaPoints": -50,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725910",
+            "name": "",
+            "baselineCount": 2,
+            "engineCount": 0,
+            "baselinePoints": 158,
+            "enginePoints": 0,
+            "deltaPoints": -158,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "engine_only",
+            "code": "180819910",
+            "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 2,
+            "deltaPoints": 2,
+            "reason": "低確信の当社候補"
+          },
+          {
+            "status": "engine_only",
+            "code": "180820010",
+            "name": "物価対応料１（外来・在宅物価対応料）（再診時等）ロ",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 2,
+            "deltaPoints": 2,
+            "reason": "低確信の当社候補"
+          }
+        ]
+      },
+      "performance": {
+        "totalClientMs": 30385.81,
+        "calculateRequestMs": {
+          "count": 2,
+          "min": 9123.53,
+          "median": 13311.28,
+          "mean": 13311.28,
+          "max": 17499.02
+        },
+        "clinicalStructuringMs": {
+          "count": 2,
+          "min": 8030,
+          "median": 12260,
+          "mean": 12260,
+          "max": 16490
+        },
+        "openAiProviderMs": {
+          "count": 2,
+          "min": 8024,
+          "median": 12228,
+          "mean": 12228,
+          "max": 16432
+        }
+      },
+      "requestTimings": [
+        {
+          "operation": "create_session",
+          "visit": 1,
+          "statusCode": 201,
+          "durationMs": 329.72
+        },
+        {
+          "operation": "calculate",
+          "visit": 1,
+          "statusCode": 201,
+          "durationMs": 9123.53
+        },
+        {
+          "operation": "detail",
+          "visit": 1,
+          "statusCode": 200,
+          "durationMs": 248.71
+        },
+        {
+          "operation": "create_session",
+          "visit": 2,
+          "statusCode": 201,
+          "durationMs": 253.42
+        },
+        {
+          "operation": "calculate",
+          "visit": 2,
+          "statusCode": 201,
+          "durationMs": 17499.02
+        },
+        {
+          "operation": "detail",
+          "visit": 2,
+          "statusCode": 200,
+          "durationMs": 372.56
+        },
+        {
+          "operation": "monthly_receipt",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 1278.09
+        },
+        {
+          "operation": "baseline_diagnosis",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 1280.76
+        }
+      ]
+    }
+  ]
+}

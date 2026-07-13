@@ -151,7 +151,8 @@ for (let repeatIndex = 1; repeatIndex <= args.repeat; repeatIndex += 1) {
     claimMonth,
     baselineClaim,
     context,
-    seedKnownPriorHistory: args.seedKnownPriorHistory
+    seedKnownPriorHistory: args.seedKnownPriorHistory,
+    encounterSetting: args.encounterSetting
   });
   repeats.push(repetition);
   process.stdout.write(
@@ -188,7 +189,8 @@ const result = {
   inputAudit,
   evaluationOptions: {
     repeat: args.repeat,
-    seedKnownPriorHistory: args.seedKnownPriorHistory
+    seedKnownPriorHistory: args.seedKnownPriorHistory,
+    encounterSetting: args.encounterSetting
   },
   summary: summarizeRepeats(repeats),
   repeats
@@ -209,7 +211,8 @@ async function runRepetition({
   claimMonth,
   baselineClaim,
   context,
-  seedKnownPriorHistory
+  seedKnownPriorHistory,
+  encounterSetting = "outpatient"
 }) {
   const requestTimings = [];
   const sessions = [];
@@ -266,7 +269,7 @@ async function runRepetition({
       departmentId: context.departmentId,
       serviceDate: String(chart.service_date || ""),
       claimMonth,
-      setting: "outpatient",
+      setting: encounterSetting,
       clinicalText: String(chart.clinical_text || ""),
       sourceSystem: `fee_monthly_chart_e2e:${runId}:r${repeatIndex}`
     });
@@ -338,6 +341,13 @@ async function runRepetition({
   const baselineLines = aggregateLines(baselineClaim.lines);
   const monthlyLines = aggregateLines(monthly.lines);
   const comparison = compareAggregates(baselineLines, monthlyLines);
+  // 2段評価: 確定明細のみの一致(comparison)と、承認待ち候補まで含めた検知(detection)を分ける。
+  // 候補は自動採用しない設計のため、検知率は「確認すれば到達できる上限」を示す。
+  const detectionLines = aggregateLines([
+    ...monthly.lines,
+    ...monthly.candidateLines.filter((line) => line.code)
+  ]);
+  const detection = compareAggregates(baselineLines, detectionLines);
   const candidateSurface = aggregateLines(sessions.flatMap((session) => session.candidateSurface.lines));
 
   return {
@@ -360,6 +370,12 @@ async function runRepetition({
     },
     monthly,
     comparison,
+    detection: {
+      matchedCodeCount: detection.matchedCodeCount,
+      baselineOnlyCount: detection.baselineOnlyCount,
+      codeRecall: detection.codeRecall,
+      rows: detection.rows.filter((row) => row.status !== "engine_only")
+    },
     endpointComparison: sanitizeEndpointDiagnosis(targetDiagnosis),
     performance: summarizePerformance(requestTimings, sessions),
     requestTimings
@@ -406,6 +422,15 @@ function sanitizeSessionDetail(body, chart, feeSessionId) {
 
 function sanitizeMonthlyReceipt(receipt) {
   const lines = aggregateLines(receipt.lines || []);
+  const candidateLines = (Array.isArray(receipt.candidateLines) ? receipt.candidateLines : []).map((line) => ({
+    code: line.code || null,
+    name: String(line.name || ""),
+    quantity: Number(line.quantity || 1),
+    totalPoints: Number(line.totalPoints || 0),
+    occurrenceCount: Number(line.occurrenceCount || 1),
+    suppressedOccurrenceCount: Number(line.suppressedOccurrenceCount || 0),
+    conflicts: Array.isArray(line.conflicts) ? line.conflicts.map((item) => item.withCode) : []
+  }));
   return {
     status: receipt.status || null,
     claimMonth: receipt.claimMonth || null,
@@ -413,7 +438,10 @@ function sanitizeMonthlyReceipt(receipt) {
     actualDays: Number(receipt.actualDays || 0),
     totalPoints: Number(receipt.totalPoints || 0),
     codeCount: lines.length,
-    lines
+    lines,
+    // 2段表示の下段(承認待ち候補)。確定一致とは別に「候補まで含む検知率」を評価する。
+    candidateLines,
+    candidateTotalPoints: Number(receipt.candidateTotalPoints || 0)
   };
 }
 
@@ -549,6 +577,8 @@ function summarizeRepeats(repeats) {
     exactMatchRuns: repeats.filter((item) => item.comparison.exactMatch).length,
     baselineCodeCount: repeats[0]?.comparison.baselineCodeCount || 0,
     matchedCodeCounts: repeats.map((item) => item.comparison.matchedCodeCount),
+    detectionMatchedCodeCounts: repeats.map((item) => item.detection?.matchedCodeCount ?? null),
+    monthlyCandidateTotalPoints: repeats.map((item) => item.monthly.candidateTotalPoints ?? null),
     baselineOnlyCounts: repeats.map((item) => item.comparison.baselineOnlyCount),
     engineOnlyCounts: repeats.map((item) => item.comparison.engineOnlyCount),
     bothDeltaCounts: repeats.map((item) => item.comparison.bothDeltaCount),
@@ -752,6 +782,7 @@ function parseArgs(argv) {
     departmentId: "",
     password: process.env.FEE_E2E_PASSWORD || "",
     seedKnownPriorHistory: false,
+    encounterSetting: "outpatient",
     dryRun: false,
     help: false
   };
@@ -774,6 +805,7 @@ function parseArgs(argv) {
     else if (arg === "--facility-id") parsed.facilityId = next(index++, arg);
     else if (arg === "--department-id") parsed.departmentId = next(index++, arg);
     else if (arg === "--seed-known-prior-history") parsed.seedKnownPriorHistory = true;
+    else if (arg === "--encounter-setting") parsed.encounterSetting = next(index++, arg);
     else if (arg === "--dry-run") parsed.dryRun = true;
     else if (arg === "--help" || arg === "-h") parsed.help = true;
     else throw new Error(`unknown option: ${arg}`);

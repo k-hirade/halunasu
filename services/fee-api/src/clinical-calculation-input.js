@@ -3213,9 +3213,11 @@ export async function dictionaryScanCandidateProposals({ feeCalculator, text = "
     if (String(match?.role || "base") !== "base") {
       continue;
     }
-    // SOAPは1行に複数文が入るため、否定判定はヒット位置を含む「文」単位で行う。
-    const sentence = sentenceAtIndex(text, Number(match?.index ?? -1));
-    if (sentence && DICTIONARY_SCAN_NEGATIVE_CONTEXT.test(sentence)) {
+    // 否定判定は「全出現位置 × 節(。・改行・読点区切り)単位」で行う。
+    // 「前回は意見書なし。本日は作成・交付」(肯定の再出現)や
+    // 「CTは行わず、意見書を作成」(同一文内の別節)を肯定として拾うため。
+    const positiveClause = firstPositiveClauseForMatch(text, String(match?.matchedText || name));
+    if (positiveClause === null) {
       skipped.push({ code, reason: "negative_context" });
       continue;
     }
@@ -3226,7 +3228,7 @@ export async function dictionaryScanCandidateProposals({ feeCalculator, text = "
       reason: `カルテ本文に「${name}」の記載があります。実施済みで算定要件を満たす場合は算定できます。`,
       conditionText: "実施事実・対象病名・回数制限・施設基準などの算定要件を確認してから採用してください。",
       basis: "dictionary_scan_candidate",
-      evidence: String(sentence || name).trim().slice(0, 160),
+      evidence: String(positiveClause || name).trim().slice(0, 160),
       item: { code, name, points: Number(match?.points || 0), kind: "procedure" },
       sortOrder: 70
     }));
@@ -3247,12 +3249,33 @@ export async function dictionaryScanCandidateProposals({ feeCalculator, text = "
   };
 }
 
-function sentenceAtIndex(text = "", index = -1) {
+// matchedText の全出現位置(最大6箇所)を節単位で判定し、最初の肯定節を返す。
+// 全出現が否定文脈なら null(候補化しない)。
+function firstPositiveClauseForMatch(text = "", matchedText = "") {
+  const value = String(text || "");
+  const target = String(matchedText || "");
+  if (!value || !target) {
+    return null;
+  }
+  let index = value.indexOf(target);
+  let occurrences = 0;
+  while (index >= 0 && occurrences < 6) {
+    occurrences += 1;
+    const clause = clauseAtIndex(value, index);
+    if (clause && !DICTIONARY_SCAN_NEGATIVE_CONTEXT.test(clause)) {
+      return clause;
+    }
+    index = value.indexOf(target, index + target.length);
+  }
+  return null;
+}
+
+function clauseAtIndex(text = "", index = -1) {
   const value = String(text || "");
   if (!Number.isFinite(index) || index < 0 || index >= value.length) {
     return "";
   }
-  const boundary = /[。\n]/u;
+  const boundary = /[。\n、]/u;
   let start = index;
   while (start > 0 && !boundary.test(value[start - 1])) {
     start -= 1;

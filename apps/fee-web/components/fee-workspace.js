@@ -2639,7 +2639,7 @@ function FeeInputSummary({ departments, form, onOpenConditions, onOpenOrders, or
         </div>
         <div>
           <span>区分</span>
-          <strong>{form.setting === "inpatient" ? "入院（限定対応）" : "外来"}</strong>
+          <strong>{encounterSettingLabel(form.setting)}</strong>
         </div>
         <div>
           <span>診療日</span>
@@ -2757,6 +2757,8 @@ function FeeSettingsModal({
                     ariaLabel="区分"
                     options={[
                       { value: "outpatient", label: "外来" },
+                      { value: "home_visit", label: "訪問診療（在宅）" },
+                      { value: "house_call", label: "往診（在宅）" },
                       { value: "inpatient", label: "入院（限定対応）" }
                     ]}
                     value={form.setting}
@@ -6028,6 +6030,13 @@ function emptyCandidateWorkbenchModel({ calculation } = {}) {
     },
     potentialPointsTotal: 0
   };
+}
+
+function encounterSettingLabel(value) {
+  if (value === "inpatient") return "入院（限定対応）";
+  if (value === "home_visit") return "訪問診療（在宅）";
+  if (value === "house_call") return "往診（在宅）";
+  return "外来";
 }
 
 function statusLabel(value) {
