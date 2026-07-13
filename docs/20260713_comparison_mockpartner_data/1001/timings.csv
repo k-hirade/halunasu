@@ -1,0 +1,9 @@
+deployment_phase,phase,iteration,http_status,client_ms,cloud_run_ms
+pre_fix,warmup,0,200,14526.53,14250.56
+pre_fix,measured,1,200,641.95,600.51
+pre_fix,measured,2,200,320.74,278.85
+pre_fix,measured,3,200,306.53,281.46
+post_fix,warmup,0,200,13203.62,13069.18
+post_fix,measured,1,200,450.64,407.29
+post_fix,measured,2,200,282.48,265.03
+post_fix,measured,3,200,269.26,247.46

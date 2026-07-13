@@ -8531,12 +8531,16 @@ test("builds recalculation diff claim payloads from uploaded patient chart order
   });
 
   const encode = (text) => Buffer.from(text, "utf8").toString("base64");
+  const chartRecords = [
+    { patient_id: "patA", service_date: "2026-06-10", clinical_text: "A：高血圧症。P：管理を継続。" },
+    { patient_id: "patA", service_date: "2026-06-10", clinical_text: "O：血圧は目標範囲内。" }
+  ];
   const response = await request(stores, "POST", "/v1/fee/recalculation-diff-diagnosis", {
     claimMonth: "2026-06",
     datasetFiles: [
       { fileName: "receipt.csv", format: "csv", contentBase64: encode("patient_id,claim_month,code,name,points,count\npatA,2026-06,112007410,再診料,76,1\n") },
       { fileName: "patients.csv", format: "csv", contentBase64: encode("patient_id,birth_date,sex,display_name\npatA,1970-01-01,male,山田 太郎\n") },
-      { fileName: "charts.jsonl", format: "jsonl", contentBase64: encode(`${JSON.stringify({ patient_id: "patA", service_date: "2026-06-10", clinical_text: "A：高血圧症。P：管理を継続。" })}\n`) },
+      { fileName: "charts.jsonl", format: "jsonl", contentBase64: encode(`${chartRecords.map((record) => JSON.stringify(record)).join("\n")}\n`) },
       { fileName: "orders.csv", format: "csv", contentBase64: encode("patient_id,service_date,order_type,code,name,status\npatA,2026-06-10,procedure,113001810,特定疾患療養管理料,performed\npatA,2026-06-10,procedure,140000610,創傷処置（１００ｃｍ２未満）,performed\npatA,2026-06-10,procedure_code,114001110,在宅患者訪問診療料（１）１（同一建物居住者以外）,performed\n") },
       { fileName: "diagnoses.csv", format: "csv", contentBase64: encode("patient_id,service_date,diagnosis_name,is_primary\npatA,2026-06-10,高血圧症,true\n") }
     ]
@@ -8547,9 +8551,11 @@ test("builds recalculation diff claim payloads from uploaded patient chart order
   assert.equal(calls[0].calculationInput.claimContext.patient.patient_id, "patA");
   assert.equal(calls[0].calculationInput.claimContext.patient.display_name, "山田 太郎");
   assert.equal(calls[0].calculationInput.claimContext.clinical_text.includes("高血圧症"), true);
+  assert.equal(calls[0].calculationInput.claimContext.clinical_text.includes("血圧は目標範囲内"), true);
   assert.deepEqual(calls[0].calculationInput.claimContext.procedure_codes, ["113001810", "114001110"]);
   assert.equal(calls[0].calculationInput.claimContext.treatment_orders.length, 1);
   assert.equal(response.body.ingestion.calculationPayloadCount, 1);
+  assert.equal(response.body.ingestion.stats.chartRecordCount, 2);
   assert.equal(response.body.diagnostics.receiptParse.format, "csv");
   assert.equal(response.body.diagnostics.receiptParse.lineCount, 1);
   assert.equal(response.body.diagnostics.recalculationAccuracy.sourceCodeCount, 3);

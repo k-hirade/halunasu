@@ -1,0 +1,30 @@
+{
+  "patientId": "1013",
+  "claimMonth": "2025-01",
+  "baselineCodeCount": 6,
+  "baselineTotalPoints": 2438,
+  "calculationPayloadCount": 2,
+  "orderRecordCount": 8,
+  "chartFileRecordCount": 2,
+  "unsupportedHomeCareCount": 3,
+  "generalEngineGapCount": 3,
+  "unknownCount": 11,
+  "preFix": {
+    "runId": "mockpartner-20260713020527479",
+    "revision": "fee-api-stg-00150-6rp",
+    "chartApiRecordCount": 0,
+    "engineCodeCount": 0,
+    "matchedCount": 0,
+    "reproductionFailureCount": 6,
+    "measuredResponsesIdentical": true
+  },
+  "postFix": {
+    "runId": "mockpartner-20260713023517795",
+    "revision": "fee-api-stg-00151-mm6",
+    "chartApiRecordCount": 2,
+    "engineCodeCount": 0,
+    "matchedCount": 0,
+    "reproductionFailureCount": 6,
+    "measuredResponsesIdentical": true
+  }
+}

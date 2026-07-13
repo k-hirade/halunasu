@@ -1612,6 +1612,9 @@ function recordsFromTextSource(source = {}, role = "") {
     return parseDelimitedRecords(text, format === "tsv" || /\.tsv$/iu.test(source.name || "") ? "\t" : null);
   }
   try {
+    if (format === "jsonl" || format === "ndjson") {
+      return parseJsonLineRecords(text);
+    }
     if (text.startsWith("[") || text.startsWith("{")) {
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed)) {
@@ -1626,15 +1629,19 @@ function recordsFromTextSource(source = {}, role = "") {
       }
       return [];
     }
-    return text
-      .split(/\r?\n/u)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => JSON.parse(line))
-      .filter(isPlainObject);
+    return parseJsonLineRecords(text);
   } catch {
     return [];
   }
+}
+
+function parseJsonLineRecords(text = "") {
+  return String(text || "")
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .filter(isPlainObject);
 }
 
 function datasetFacility(dataset = {}) {
