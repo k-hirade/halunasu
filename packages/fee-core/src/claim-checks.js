@@ -127,8 +127,12 @@ function checkKensaHanteiRyo(items) {
 }
 
 // MI-003: 外来レセに初診料・再診料・外来診療料のいずれもない。
+// 訪問診療/往診(home_visit/house_call)は基本診療料が訪問診療料等に置き換わるため対象外。
 function checkNoBaseVisitFee(claim, items) {
   if (claim.isInpatient || !items.length) {
+    return [];
+  }
+  if (["home_visit", "house_call"].includes(String(claim.encounterSetting || ""))) {
     return [];
   }
   const hasBase = items.some((item) => item.orderType === "basic");

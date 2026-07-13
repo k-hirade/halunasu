@@ -58,12 +58,66 @@ def _master_db(db_path: str) -> sqlite3.Connection:
 
 
 def _search_procedures(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+    rows = _search_procedure_rows(db, query, limit)
+    if not rows:
+        # 全文一致で0件のとき、長い名詞トークン順にフォールバック検索する。
+        # 「傷病手当金意見書 作成・交付」のような複合表現でも名詞核で当たる。
+        # ランキング(スコア・曖昧排除)は呼び出し側(Node)が行う。
+        for token in _fallback_tokens(query):
+            rows = _search_procedure_rows(db, token, limit)
+            if rows:
+                break
+    return [
+        _medical_procedure_item(row)
+        for row in rows
+    ]
+
+
+def _fallback_tokens(query: str) -> list[str]:
+    nfkc = unicodedata.normalize("NFKC", str(query or ""))
+    tokens: list[str] = []
+    current: list[str] = []
+    for char in nfkc:
+        if char.isalnum() or "぀" <= char <= "ヿ" or "一" <= char <= "鿿" or char == "ー":
+            current.append(char)
+        else:
+            if current:
+                tokens.append("".join(current))
+                current = []
+    if current:
+        tokens.append("".join(current))
+    # 「在宅医療の訪問診療」のように助詞で繋がる複合語は、助詞で割った
+    # サブトークンも後段候補に加える(元トークンで当たらない場合のみ試される)。
+    expanded = list(tokens)
+    for token in tokens:
+        piece = []
+        for char in token:
+            if char in "のをにとへではがやも":
+                if len(piece) >= 3:
+                    expanded.append("".join(piece))
+                piece = []
+            else:
+                piece.append(char)
+        if piece and len(piece) >= 3 and "".join(piece) != token:
+            expanded.append("".join(piece))
+
+    unique = []
+    seen: set[str] = set()
+    for token in sorted((t for t in expanded if len(t) >= 3), key=len, reverse=True):
+        if token in seen or token == str(query or "").strip():
+            continue
+        seen.add(token)
+        unique.append(token)
+    return unique[:6]
+
+
+def _search_procedure_rows(db: sqlite3.Connection, query: str, limit: int) -> list[sqlite3.Row]:
     search_condition, search_params = _master_search_condition(
         "p.code",
         ("p.short_name", "COALESCE(p.base_name, '')"),
         query,
     )
-    rows = db.execute(
+    return db.execute(
         f"""
         SELECT
             p.code,
@@ -110,10 +164,6 @@ def _search_procedures(db: sqlite3.Connection, query: str, limit: int) -> list[d
         """,
         (*search_params, query, f"{query}%", limit),
     ).fetchall()
-    return [
-        _medical_procedure_item(row)
-        for row in rows
-    ]
 
 
 def _medical_procedure_item(row: sqlite3.Row) -> dict[str, Any]:

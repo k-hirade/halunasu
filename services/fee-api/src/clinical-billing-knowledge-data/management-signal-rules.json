@@ -12,10 +12,28 @@
       "orderType": "procedure",
       "topicCode": "target_disease_check",
       "requiredInput": "対象疾患、発作状況、抗てんかん薬、指導記録、同月算定履歴",
-      "queryHints": ["てんかん指導料"],
-      "preferredPatterns": ["てんかん指導料"],
-      "diagnosisTerms": ["てんかん", "癲癇"],
-      "eventTerms": ["てんかん", "発作", "抗てんかん薬", "服薬指導", "発作時対応", "生活指導"]
+      "queryHints": [
+        "てんかん指導料"
+      ],
+      "preferredPatterns": [
+        "てんかん指導料"
+      ],
+      "diagnosisTerms": [
+        "てんかん",
+        "癲癇"
+      ],
+      "eventTerms": [
+        "てんかん",
+        "発作",
+        "抗てんかん薬",
+        "服薬指導",
+        "発作時対応",
+        "生活指導"
+      ],
+      "monthlyLimit": {
+        "unit": "月",
+        "maxCount": 1
+      }
     },
     {
       "ruleId": "B001_intractable_disease_guidance_signal",
@@ -27,10 +45,32 @@
       "orderType": "procedure",
       "topicCode": "target_disease_check",
       "requiredInput": "難病対象疾患、受給者証、管理主体、指導記録、同月算定履歴",
-      "queryHints": ["難病外来指導管理料"],
-      "preferredPatterns": ["難病外来指導管理料"],
-      "diagnosisTerms": ["指定難病", "難病", "潰瘍性大腸炎", "クローン病", "パーキンソン病", "全身性エリテマトーデス"],
-      "eventTerms": ["難病", "指定難病", "受給者証", "療養指導", "生活指導", "継続管理"]
+      "queryHints": [
+        "難病外来指導管理料"
+      ],
+      "preferredPatterns": [
+        "難病外来指導管理料"
+      ],
+      "diagnosisTerms": [
+        "指定難病",
+        "難病",
+        "潰瘍性大腸炎",
+        "クローン病",
+        "パーキンソン病",
+        "全身性エリテマトーデス"
+      ],
+      "eventTerms": [
+        "難病",
+        "指定難病",
+        "受給者証",
+        "療養指導",
+        "生活指導",
+        "継続管理"
+      ],
+      "monthlyLimit": {
+        "unit": "月",
+        "maxCount": 1
+      }
     },
     {
       "ruleId": "B001_specific_drug_therapeutic_management_signal",
@@ -42,10 +82,32 @@
       "orderType": "procedure",
       "topicCode": "test_code_check",
       "requiredInput": "対象薬剤、血中濃度測定、投与量調整、測定日、同月算定履歴",
-      "queryHints": ["特定薬剤治療管理料"],
-      "preferredPatterns": ["特定薬剤治療管理料"],
-      "diagnosisTerms": ["てんかん", "不整脈", "移植後", "統合失調症"],
-      "eventTerms": ["血中濃度", "TDM", "トラフ", "バンコマイシン", "テオフィリン", "リチウム", "免疫抑制薬", "抗てんかん薬"]
+      "queryHints": [
+        "特定薬剤治療管理料"
+      ],
+      "preferredPatterns": [
+        "特定薬剤治療管理料"
+      ],
+      "diagnosisTerms": [
+        "てんかん",
+        "不整脈",
+        "移植後",
+        "統合失調症"
+      ],
+      "eventTerms": [
+        "血中濃度",
+        "TDM",
+        "トラフ",
+        "バンコマイシン",
+        "テオフィリン",
+        "リチウム",
+        "免疫抑制薬",
+        "抗てんかん薬"
+      ],
+      "monthlyLimit": {
+        "unit": "月",
+        "maxCount": 1
+      }
     },
     {
       "ruleId": "B001_cancer_pain_palliative_guidance_signal",
@@ -57,10 +119,30 @@
       "orderType": "procedure",
       "topicCode": "target_disease_check",
       "requiredInput": "悪性腫瘍、疼痛評価、オピオイド等の処方、指導記録、同月算定履歴",
-      "queryHints": ["がん性疼痛緩和指導管理料"],
-      "preferredPatterns": ["がん性疼痛緩和指導管理料"],
-      "diagnosisTerms": ["癌", "がん", "悪性腫瘍", "悪性新生物"],
-      "eventTerms": ["がん性疼痛", "疼痛緩和", "緩和ケア", "オピオイド", "麻薬", "レスキュー"]
+      "queryHints": [
+        "がん性疼痛緩和指導管理料"
+      ],
+      "preferredPatterns": [
+        "がん性疼痛緩和指導管理料"
+      ],
+      "diagnosisTerms": [
+        "癌",
+        "がん",
+        "悪性腫瘍",
+        "悪性新生物"
+      ],
+      "eventTerms": [
+        "がん性疼痛",
+        "疼痛緩和",
+        "緩和ケア",
+        "オピオイド",
+        "麻薬",
+        "レスキュー"
+      ],
+      "monthlyLimit": {
+        "unit": "月",
+        "maxCount": 1
+      }
     },
     {
       "ruleId": "B001_nutrition_guidance_signal",
@@ -72,10 +154,29 @@
       "orderType": "procedure",
       "topicCode": "target_disease_check",
       "requiredInput": "対象疾患、栄養指導の実施者、指導内容、同月算定履歴",
-      "queryHints": ["外来栄養食事指導料"],
-      "preferredPatterns": ["栄養食事指導料"],
-      "diagnosisTerms": ["糖尿病", "慢性腎臓病", "脂質異常症", "高血圧", "肥満症"],
-      "eventTerms": ["栄養指導", "食事指導", "管理栄養士", "食事療法"]
+      "queryHints": [
+        "外来栄養食事指導料"
+      ],
+      "preferredPatterns": [
+        "栄養食事指導料"
+      ],
+      "diagnosisTerms": [
+        "糖尿病",
+        "慢性腎臓病",
+        "脂質異常症",
+        "高血圧",
+        "肥満症"
+      ],
+      "eventTerms": [
+        "栄養指導",
+        "食事指導",
+        "管理栄養士",
+        "食事療法"
+      ],
+      "monthlyLimit": {
+        "unit": "月",
+        "maxCount": 1
+      }
     },
     {
       "ruleId": "C101_home_self_injection_signal",
@@ -87,10 +188,30 @@
       "orderType": "procedure",
       "topicCode": "home_care_check",
       "requiredInput": "自己注射薬、指導記録、処方日、在宅管理の実施区分、同月算定履歴",
-      "queryHints": ["在宅自己注射指導管理料"],
-      "preferredPatterns": ["在宅自己注射指導管理料"],
-      "diagnosisTerms": ["糖尿病", "関節リウマチ", "骨粗鬆症", "成長ホルモン分泌不全"],
-      "eventTerms": ["自己注射", "インスリン", "GLP-1", "在宅自己注射", "注射手技", "注射指導"]
+      "queryHints": [
+        "在宅自己注射指導管理料"
+      ],
+      "preferredPatterns": [
+        "在宅自己注射指導管理料"
+      ],
+      "diagnosisTerms": [
+        "糖尿病",
+        "関節リウマチ",
+        "骨粗鬆症",
+        "成長ホルモン分泌不全"
+      ],
+      "eventTerms": [
+        "自己注射",
+        "インスリン",
+        "GLP-1",
+        "在宅自己注射",
+        "注射手技",
+        "注射指導"
+      ],
+      "monthlyLimit": {
+        "unit": "月",
+        "maxCount": 1
+      }
     },
     {
       "ruleId": "C103_home_oxygen_signal",
@@ -102,10 +223,31 @@
       "orderType": "procedure",
       "topicCode": "home_care_check",
       "requiredInput": "在宅酸素の指示、酸素流量、機器、指導記録、同月算定履歴",
-      "queryHints": ["在宅酸素療法指導管理料"],
-      "preferredPatterns": ["在宅酸素療法指導管理料"],
-      "diagnosisTerms": ["慢性呼吸不全", "COPD", "肺気腫", "間質性肺炎", "心不全"],
-      "eventTerms": ["在宅酸素", "HOT", "酸素濃縮器", "酸素ボンベ", "酸素流量", "酸素療法"]
+      "queryHints": [
+        "在宅酸素療法指導管理料"
+      ],
+      "preferredPatterns": [
+        "在宅酸素療法指導管理料"
+      ],
+      "diagnosisTerms": [
+        "慢性呼吸不全",
+        "COPD",
+        "肺気腫",
+        "間質性肺炎",
+        "心不全"
+      ],
+      "eventTerms": [
+        "在宅酸素",
+        "HOT",
+        "酸素濃縮器",
+        "酸素ボンベ",
+        "酸素流量",
+        "酸素療法"
+      ],
+      "monthlyLimit": {
+        "unit": "月",
+        "maxCount": 1
+      }
     },
     {
       "ruleId": "C107_2_home_cpap_signal",
@@ -117,10 +259,29 @@
       "orderType": "procedure",
       "topicCode": "home_care_check",
       "requiredInput": "CPAP/ASVの使用状況、機器設定、指導記録、同月算定履歴",
-      "queryHints": ["在宅持続陽圧呼吸療法指導管理料"],
-      "preferredPatterns": ["在宅持続陽圧呼吸療法指導管理料"],
-      "diagnosisTerms": ["睡眠時無呼吸症候群", "SAS", "中枢性睡眠時無呼吸"],
-      "eventTerms": ["CPAP", "ＣＰＡＰ", "ASV", "持続陽圧", "睡眠時無呼吸", "使用状況"]
+      "queryHints": [
+        "在宅持続陽圧呼吸療法指導管理料"
+      ],
+      "preferredPatterns": [
+        "在宅持続陽圧呼吸療法指導管理料"
+      ],
+      "diagnosisTerms": [
+        "睡眠時無呼吸症候群",
+        "SAS",
+        "中枢性睡眠時無呼吸"
+      ],
+      "eventTerms": [
+        "CPAP",
+        "ＣＰＡＰ",
+        "ASV",
+        "持続陽圧",
+        "睡眠時無呼吸",
+        "使用状況"
+      ],
+      "monthlyLimit": {
+        "unit": "月",
+        "maxCount": 1
+      }
     },
     {
       "ruleId": "I004_mind_body_psychotherapy_signal",
@@ -132,10 +293,26 @@
       "orderType": "procedure",
       "topicCode": "procedure_code_check",
       "requiredInput": "心身医学的治療の実施内容、時間、診療科、同月算定履歴",
-      "queryHints": ["心身医学療法"],
-      "preferredPatterns": ["心身医学療法"],
-      "diagnosisTerms": ["心身症", "過敏性腸症候群", "機能性ディスペプシア", "不安症"],
-      "eventTerms": ["心身医学療法", "心身医学", "心理的要因", "ストレス関連", "自律訓練", "面接療法"]
+      "queryHints": [
+        "心身医学療法"
+      ],
+      "preferredPatterns": [
+        "心身医学療法"
+      ],
+      "diagnosisTerms": [
+        "心身症",
+        "過敏性腸症候群",
+        "機能性ディスペプシア",
+        "不安症"
+      ],
+      "eventTerms": [
+        "心身医学療法",
+        "心身医学",
+        "心理的要因",
+        "ストレス関連",
+        "自律訓練",
+        "面接療法"
+      ]
     }
   ]
 }

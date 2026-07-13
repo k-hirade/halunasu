@@ -1448,3 +1448,47 @@ test("monthly receipt aggregates pending candidate proposals into a second tier"
   assert.ok(!receipt.candidateLines.some((line) => line.code === "199999999"));
   assert.equal(receipt.candidateTotalPoints, 200 + 890);
 });
+
+test("コード未確定の知識ルール候補は ruleId で畳まれ monthlyLimit フォールバックが効く", () => {
+  function sessionWithProposal(feeSessionId, serviceDate, proposal) {
+    return applyCalculationResult(buildFeeSession({
+      orgId: "org_123",
+      patientId: "pat_rule",
+      facilityId: "fac_123",
+      createdByMemberId: "mem_123",
+      serviceDate
+    }, { feeSessionId, now: new Date(`${serviceDate}T00:00:00.000Z`) }), {
+      provider: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      candidateProposals: [proposal],
+      warnings: []
+    }, { calculationId: `calc_${feeSessionId}`, now: new Date(`${serviceDate}T00:01:00.000Z`) });
+  }
+
+  // 難病外来指導管理料: マスタに1/2があり曖昧なため code 無し。evidenceが受診ごとに違い proposalId も異なる。
+  const proposal = (suffix, evidence) => ({
+    proposalId: `management_signal_B001_intractable_${suffix}`,
+    ruleId: "B001_intractable_disease_guidance_signal",
+    title: "難病外来指導管理料の確認",
+    potentialPoints: 270,
+    monthlyLimit: { unit: "月", maxCount: 1 },
+    evidence
+  });
+
+  const receipt = buildMonthlyReceiptDraft([
+    sessionWithProposal("fee_r1", "2026-06-13", proposal("a", "多発性硬化症で継続管理")),
+    sessionWithProposal("fee_r2", "2026-06-27", proposal("b", "難病の療養指導を実施"))
+  ], { patientId: "pat_rule", claimMonth: "2026-06" });
+
+  assert.equal(receipt.candidateLines.length, 1);
+  const line = receipt.candidateLines[0];
+  assert.equal(line.code, null);
+  assert.equal(line.occurrenceCount, 2);
+  assert.equal(line.quantity, 1); // ルール側 monthlyLimit で月1回に畳む
+  assert.equal(line.suppressedOccurrenceCount, 1);
+  assert.equal(line.totalPoints, 270);
+  assert.deepEqual(line.frequencyLimits, [{ unit: "月", unitCode: "", maxCount: 1 }]);
+  assert.equal(receipt.candidateTotalPoints, 270);
+});

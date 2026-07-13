@@ -231,6 +231,84 @@ async function routeFeeApiRequest(input = {}) {
     return ok({ billingHistoryEvents: events });
   }
 
+  // 既存レセ(UKE/レセコンCSV由来のbaselineClaims)を外部請求履歴として一括取込する。
+  // 取り込んだ履歴は historyPolicy.externalHistoryEnabled のとき初診/再診・同月回数判定に使われる。
+  if (method === "POST" && parts.length === 6 && matches(parts.slice(0, 3), ["v1", "fee", "patients"]) && parts[4] === "billing-history" && parts[5] === "import-baseline") {
+    requireFeeAdminContext(context);
+    requireMutationCsrf(input, context.session);
+    const patientId = decodeURIComponent(parts[3]);
+    const body = input.body || {};
+    // 履歴取込は複数月が本質のため、直接指定の baselineClaims は月フィルタなしで受ける。
+    // UKE/CSVアップロード時のみ(パーサ都合で)claimMonth 必須の既存経路を使う。
+    const directClaims = Array.isArray(body.baselineClaims ?? body.baseline_claims)
+      ? (body.baselineClaims ?? body.baseline_claims)
+      : [];
+    let importClaims;
+    if (directClaims.length) {
+      importClaims = directClaims
+        .filter((claim) => claim && typeof claim === "object")
+        .map((claim) => ({
+          patientId: String(claim.patientId ?? claim.patient_id ?? "").trim(),
+          claimMonth: String(claim.claimMonth ?? claim.claim_month ?? "").trim().slice(0, 7),
+          lines: Array.isArray(claim.lines) ? claim.lines : (Array.isArray(claim.lineItems) ? claim.lineItems : [])
+        }))
+        .filter((claim) => claim.patientId && /^\d{4}-\d{2}$/u.test(claim.claimMonth));
+    } else {
+      const baseline = await baselineClaimsFromDiagnosisBody({
+        body,
+        claimMonth: String(body.claimMonth ?? body.claim_month ?? "").trim(),
+        feeCalculator,
+        processEnv: input.processEnv || process.env
+      });
+      importClaims = baseline.baselineClaims;
+    }
+    const externalPatientId = String(body.externalPatientId ?? body.external_patient_id ?? "").trim();
+    const claims = importClaims
+      .filter((claim) => !externalPatientId || String(claim.patientId || "") === externalPatientId);
+    if (!claims.length) {
+      throw requestValidationError("既存レセを取り込めませんでした。baselineClaims、UKE/CSVファイル、externalPatientId を確認してください。");
+    }
+    if (claims.length > 60) {
+      throw requestValidationError("一括取込は60レセ(患者×月)までです。対象患者の月に絞ってください。");
+    }
+    const events = [];
+    for (const claim of claims) {
+      const claimMonth = String(claim.claimMonth || claim.claim_month || "").trim();
+      const eventInput = normalizeBillingHistoryEventInput({
+        patientId,
+        // UKEは請求月粒度のため、暦上必ず存在する月初日を履歴イベント日とする。
+        serviceDate: /^\d{4}-\d{2}$/u.test(claimMonth) ? `${claimMonth}-01` : claimMonth,
+        source: "baseline_import",
+        sourceLabel: `既存レセ取込 ${claimMonth}`,
+        lineItems: (Array.isArray(claim.lines) ? claim.lines : []).map((line) => ({
+          code: line.code,
+          name: line.name,
+          points: line.points,
+          quantity: line.count ?? line.quantity ?? 1
+        }))
+      });
+      const event = typeof feeStore.createBillingHistoryEvent === "function"
+        ? await feeStore.createBillingHistoryEvent(context.session.orgId, eventInput)
+        : eventInput;
+      events.push(event);
+    }
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.billing_history_imported",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "patient",
+      targetId: patientId,
+      productId: PRODUCT_ID,
+      safePayload: {
+        patientId,
+        source: "baseline_import",
+        importedClaimCount: events.length,
+        lineItemCount: events.reduce((sum, event) => sum + (Array.isArray(event.lineItems) ? event.lineItems.length : 0), 0)
+      }
+    });
+    return created({ billingHistoryEvents: events, importedClaimCount: events.length });
+  }
+
   if (method === "POST" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "patients"]) && parts[4] === "billing-history") {
     requireFeeAdminContext(context);
     requireMutationCsrf(input, context.session);
@@ -3762,6 +3840,7 @@ function claimCheckInput(session = {}, calculation = {}, calculationInput = {}) 
   const doseByCode = claimCheckDoseContextByDrugCode(calculationInput, calculation);
   return {
     isInpatient: String(session.setting || "") === "inpatient",
+    encounterSetting: String(session.setting || "outpatient"),
     serviceDate: session.serviceDate || "",
     sex: normalizeCheckSex(patient.sex),
     ageYears: patientAgeYears(patient.birthDate || patient.birth_date, session.serviceDate),
@@ -5450,6 +5529,15 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     orgId: input.orgId || baseSession.orgId,
     session: baseSession
   }));
+  // fee設定側の施設基準届出(有効期間内)を施設プロファイルへ合流させる。
+  // 施設基準が platform 施設情報に無い組織でも、fee設定だけで届出を登録できる。
+  const effectiveFacilityProfile = {
+    ...facilityProfile,
+    facilityStandardKeys: uniqueStrings([
+      ...(Array.isArray(facilityProfile.facilityStandardKeys) ? facilityProfile.facilityStandardKeys : []),
+      ...activeFacilityStandardKeysFromFeeSettings(feeSettings, baseSession.serviceDate)
+    ])
+  };
   const priorSessions = await measureStage(stageTimings, "patientHistory", () => loadPriorFeeSessionsForPatient({
     feeStore: input.feeStore,
     orgId: input.orgId || baseSession.orgId,
@@ -5502,16 +5590,24 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       feeSettings,
       clinicalFactsExtractor: input.clinicalFactsExtractor
     }));
-  const primaryPrepared = applyFacilityProfileToPreparation(legacy, facilityProfile, {
-    clinicalText: baseSession.clinicalText || calculationInput.clinicalText || ""
-  });
+  const primaryPrepared = applyAutoBillingRulesToPreparation(
+    applyFacilityProfileToPreparation(legacy, effectiveFacilityProfile, {
+      clinicalText: baseSession.clinicalText || calculationInput.clinicalText || ""
+    }),
+    {
+      feeSettings,
+      session: baseSession,
+      facilityStandardKeys: effectiveFacilityProfile.facilityStandardKeys,
+      hasExplicitClaimContext: isPlainObject(baseSession.claimContext) || isPlainObject(calculationInput.claimContext)
+    }
+  );
   const shadowCalculations = await measureStage(stageTimings, "shadowCalculationPreparation", () => buildFeeCalculationShadowCalculations({
     input,
     primaryPrepared,
     session: baseSession,
     calculationInput,
     feeCalculator,
-    facilityProfile,
+    facilityProfile: effectiveFacilityProfile,
     priorSessions: combinedPriorSessions,
     clinicalText: baseSession.clinicalText || calculationInput.clinicalText || ""
   }));
@@ -5989,6 +6085,109 @@ async function loadFeeSettingsForCalculation({ feeStore, orgId, session = {} } =
     ? await feeStore.getFeeSettings(orgId, "default")
     : null;
   return defaultSettings || defaultFeeSettings({ facilityId });
+}
+
+// fee設定の施設基準届出のうち、算定日に有効なもののキーを返す。
+function activeFacilityStandardKeysFromFeeSettings(feeSettings = {}, serviceDate = "") {
+  const standards = Array.isArray(feeSettings?.facilityStandards) ? feeSettings.facilityStandards : [];
+  const date = String(serviceDate || "").slice(0, 10);
+  return standards
+    .filter((entry) => {
+      if (!entry || String(entry.status || "active") !== "active" || !entry.key) {
+        return false;
+      }
+      const from = String(entry.claimStartDate || "");
+      const to = String(entry.effectiveTo || "");
+      if (date && from && from > date) {
+        return false;
+      }
+      if (date && to && to < date) {
+        return false;
+      }
+      return true;
+    })
+    .map((entry) => String(entry.key));
+}
+
+// 施設の恒常算定ルール(「この施設では条件を満たす受診に必ずXを算定/候補提示」)を適用する。
+// confirm: 算定入力の procedure_codes へ追加 → エンジンがマスタ照合し、背反・回数等の
+// 電子点数表チェックも通常どおり適用される。candidate: 承認待ち候補として提示。
+// claimContext指定(リプレイ/契約)の算定には適用しない。
+function applyAutoBillingRulesToPreparation(prepared = {}, {
+  feeSettings = {},
+  session = {},
+  facilityStandardKeys = [],
+  hasExplicitClaimContext = false
+} = {}) {
+  const rules = Array.isArray(feeSettings?.autoBillingRules) ? feeSettings.autoBillingRules : [];
+  if (!rules.length || hasExplicitClaimContext) {
+    return prepared;
+  }
+  const setting = String(session.setting || "outpatient");
+  const keys = new Set((facilityStandardKeys || []).map((key) => String(key || "")).filter(Boolean));
+  const applied = [];
+  const confirmCodes = [];
+  const candidateProposals = [];
+  for (const rule of rules) {
+    if (!rule?.code || String(rule.status || "active") !== "active") {
+      continue;
+    }
+    if (Array.isArray(rule.settings) && rule.settings.length && !rule.settings.includes(setting)) {
+      continue;
+    }
+    if (rule.requiredFacilityStandardKey && !keys.has(rule.requiredFacilityStandardKey)) {
+      continue;
+    }
+    applied.push({ ruleId: rule.ruleId, code: rule.code, action: rule.action });
+    if (rule.action === "confirm") {
+      confirmCodes.push(String(rule.code));
+    } else {
+      candidateProposals.push({
+        proposalId: `facility_rule_${rule.ruleId}_${rule.code}`,
+        ruleId: `facility_rule_${rule.ruleId}`,
+        title: rule.title ? `${rule.title}の算定確認` : `施設ルール候補 ${rule.code}`,
+        reason: rule.note || "施設の恒常算定ルールにより候補提示しています。実施事実と算定要件を確認してください。",
+        conditionText: "施設設定に基づく候補です。今回の受診で要件を満たす場合に採用してください。",
+        basis: "facility_auto_billing_rule",
+        code: String(rule.code),
+        potentialPoints: Number(rule.potentialPoints || 0),
+        orderType: "procedure",
+        source: "facility_auto_billing_rule"
+      });
+    }
+  }
+  if (!applied.length) {
+    return prepared;
+  }
+  const currentOptions = isPlainObject(prepared.calculationOptions) ? prepared.calculationOptions : {};
+  const calculationOptions = confirmCodes.length
+    ? {
+      ...currentOptions,
+      procedure_codes: uniqueStrings([
+        ...(Array.isArray(currentOptions.procedure_codes) ? currentOptions.procedure_codes : []),
+        ...confirmCodes
+      ])
+    }
+    : currentOptions;
+  return {
+    ...prepared,
+    calculationOptions,
+    calculationOptionsAutoKeys: uniqueStrings([
+      ...(Array.isArray(prepared.calculationOptionsAutoKeys) ? prepared.calculationOptionsAutoKeys : []),
+      ...(confirmCodes.length ? ["procedure_codes"] : [])
+    ]),
+    candidateProposals: [
+      ...(Array.isArray(prepared.candidateProposals) ? prepared.candidateProposals : []),
+      ...candidateProposals
+    ],
+    metrics: {
+      ...(prepared.metrics || {}),
+      autoBillingRules: {
+        appliedCount: applied.length,
+        applied
+      }
+    }
+  };
 }
 
 function applyFacilityProfileToPreparation(prepared = {}, facilityProfile = {}, context = {}) {

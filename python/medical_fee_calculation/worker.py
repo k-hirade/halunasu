@@ -7,6 +7,7 @@ from typing import Any
 from medical_fee_calculation.api import calculate_fee_session
 from medical_fee_calculation.checks_api import check_lookup, resolve_diseases
 from medical_fee_calculation.master_search import search_master
+from medical_fee_calculation.name_scan import scan_names
 
 
 def main() -> None:
@@ -27,6 +28,8 @@ def main() -> None:
                 result = check_lookup(payload)
             elif operation == "resolve_diseases":
                 result = resolve_diseases(payload)
+            elif operation == "name_scan":
+                result = scan_names(payload)
             else:
                 result = calculate_fee_session(payload)
             response: dict[str, Any] = {

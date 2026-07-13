@@ -1,0 +1,30 @@
+{
+  "version": "counterexamples-v1",
+  "description": "実運用・評価で見つかった『カルテに記載があるのに候補に出なかった/出てはいけないのに出た』最小再現ケース。LLM抜きの決定論レーン(辞書スキャン)で回帰検証する。新しい失敗を見つけたら、ここに最小ケースを追加する。",
+  "cases": [
+    {
+      "caseId": "doc-fee-sick-leave-certificate",
+      "addedAt": "2026-07-13",
+      "source": "mock_partner患者1013 STG E2Eで検出(抽出揺れで候補化されない回があった)",
+      "clinicalText": "S）腰痛は軽減傾向。\nP）眠気・転倒リスクを踏まえ内服を見直し、催眠薬と三環系抗うつ薬の2剤を中止。残薬で症状増悪がないか次回評価。休業に伴う傷病手当金意見書を作成・交付。訪問看護と連携しリハビリを継続。",
+      "expectedCandidateCodes": ["180000710"],
+      "forbiddenCandidateCodes": []
+    },
+    {
+      "caseId": "doc-fee-ryoyohi-consent",
+      "addedAt": "2026-07-13",
+      "source": "mock_partner患者1013 STG E2Eで検出",
+      "clinicalText": "S）肩こりが続く。\nP）はり・きゅう施術のため療養費同意書を交付。次回は1か月後。",
+      "expectedCandidateCodes": ["113004310"],
+      "forbiddenCandidateCodes": []
+    },
+    {
+      "caseId": "negative-context-not-performed",
+      "addedAt": "2026-07-13",
+      "source": "設計時の反例防止要件(未実施の行為を候補化しない)",
+      "clinicalText": "S）頭痛あり。\nP）症状安定のためCT撮影は行わず経過観察。傷病手当金意見書の交付は今回は希望なし。",
+      "expectedCandidateCodes": [],
+      "forbiddenCandidateCodes": ["180000710"]
+    }
+  ]
+}

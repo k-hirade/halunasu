@@ -157,6 +157,27 @@ export class PythonFeeCalculator {
     });
   }
 
+  // マスタ名称辞書でカルテ本文を決定論スキャンする(抽出漏れのセーフティネット)。
+  // 確定算定には使わず、候補提示の材料として否定文脈・既出コードの除外はNode側で行う。
+  async scanMasterNames(payload = {}) {
+    await this.ensureMasterDbReady();
+    const request = { ...payload, db_path: this.masterDbPath };
+    const timeoutMs = Math.min(this.timeoutMs, 10000);
+    if (this.workerMode) {
+      return this.runWorkerJson({ ...request, op: "name_scan" }, {
+        requestIdPrefix: "fee_name_scan",
+        timeoutMs
+      });
+    }
+    return runPythonJson({
+      moduleName: "medical_fee_calculation.name_scan",
+      pythonBin: this.pythonBin,
+      pythonPath: this.pythonPath,
+      timeoutMs,
+      payload: request
+    });
+  }
+
   // カルテ由来の病名名称を標準傷病名コードへ寄せる(適応/禁忌点検の実効化)。
   async resolveDiseases(payload = {}) {
     await this.ensureMasterDbReady();

@@ -467,13 +467,16 @@ function aggregateMonthlyCandidateLines(sessions = [], {
       }
       const code = String(proposal.code || proposal.candidateLine?.code || "").trim();
       const points = Number(proposal.potentialPoints || proposal.candidateLine?.totalPoints || 0);
-      const key = code || `proposal:${proposal.proposalId || proposal.title || ""}`;
+      // コード未確定の知識ルール候補(難病外来指導管理料1/2等)は ruleId で同一視する。
+      const key = code
+        || (proposal.ruleId ? `rule:${proposal.ruleId}` : `proposal:${proposal.proposalId || proposal.title || ""}`);
       const serviceDate = String(session.serviceDate || "");
       const existing = map.get(key);
       if (existing) {
         existing.occurrenceCount += 1;
         existing.serviceDates = uniqueSortedStrings([...existing.serviceDates, serviceDate]);
         existing.proposalIds.push(proposal.proposalId || null);
+        existing.proposalMonthlyLimit ||= normalizeProposalMonthlyLimit(proposal.monthlyLimit);
       } else {
         map.set(key, {
           candidateLineId: `candidate_${key.replace(/[^\w-]/gu, "_")}`,
@@ -488,7 +491,8 @@ function aggregateMonthlyCandidateLines(sessions = [], {
           evidence: proposal.evidence || "",
           source: proposal.source || "candidate_proposal",
           serviceDates: serviceDate ? [serviceDate] : [],
-          proposalIds: [proposal.proposalId || null]
+          proposalIds: [proposal.proposalId || null],
+          proposalMonthlyLimit: normalizeProposalMonthlyLimit(proposal.monthlyLimit)
         });
       }
     }
@@ -501,7 +505,10 @@ function aggregateMonthlyCandidateLines(sessions = [], {
 
   const candidateLines = [...map.values()].map((line) => {
     const limits = Array.isArray(frequencyLimits[line.code]) ? frequencyLimits[line.code] : [];
-    const monthlyLimit = limits.find((limit) => limit && limit.unit === "月" && Number(limit.maxCount) > 0);
+    // 回数上限は電子点数表(コード確定時)を優先し、コード未確定の候補は
+    // 知識ルール側の monthlyLimit をフォールバックとして使う。
+    const monthlyLimit = limits.find((limit) => limit && limit.unit === "月" && Number(limit.maxCount) > 0)
+      || line.proposalMonthlyLimit;
     const cappedQuantity = monthlyLimit
       ? Math.min(line.occurrenceCount, Number(monthlyLimit.maxCount))
       : line.occurrenceCount;
@@ -522,12 +529,15 @@ function aggregateMonthlyCandidateLines(sessions = [], {
         scope: String(rule.exclusionTable || "")
       });
     }
+    const { proposalMonthlyLimit, ...rest } = line;
     return {
-      ...line,
+      ...rest,
       quantity: cappedQuantity,
       totalPoints: Number(line.points || 0) * cappedQuantity,
       suppressedOccurrenceCount,
-      frequencyLimits: limits.length ? limits : undefined,
+      frequencyLimits: limits.length
+        ? limits
+        : (proposalMonthlyLimit ? [proposalMonthlyLimit] : undefined),
       conflicts: conflicts.length ? conflicts : undefined
     };
   }).sort((a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0));
@@ -536,6 +546,17 @@ function aggregateMonthlyCandidateLines(sessions = [], {
     candidateLines,
     candidateTotalPoints: candidateLines.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0)
   };
+}
+
+function normalizeProposalMonthlyLimit(value) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+  const maxCount = Number(value.maxCount ?? value.max_count ?? 0);
+  if (!Number.isFinite(maxCount) || maxCount <= 0) {
+    return null;
+  }
+  return { unit: String(value.unit || "月"), unitCode: String(value.unitCode || value.unit_code || ""), maxCount };
 }
 
 function mergeMonthlyDiagnoses(sessions = []) {

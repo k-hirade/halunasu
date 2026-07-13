@@ -543,6 +543,9 @@ function summarizeRepeats(repeats) {
     reviewIssueResultStable: new Set(issueSignatures).size === 1,
     reviewIssueCounts: repeats.map((item) => item.candidateSurface.issueCount),
     clinicalEventCounts: repeats.map((item) => item.visits.map((visit) => visit.extraction.clinicalEventCount)),
+    // 抽出安定性: 同一カルテの反復間でイベント数がどれだけ揺れたか(受診ごとの min/max/spread)。
+    // spread が大きい受診は抽出揺れが確定点数へ波及するリスクの監視対象。
+    extractionStability: summarizeExtractionStability(repeats),
     exactMatchRuns: repeats.filter((item) => item.comparison.exactMatch).length,
     baselineCodeCount: repeats[0]?.comparison.baselineCodeCount || 0,
     matchedCodeCounts: repeats.map((item) => item.comparison.matchedCodeCount),
@@ -552,6 +555,30 @@ function summarizeRepeats(repeats) {
     baselineTotalPoints: repeats[0]?.baseline.totalPoints || 0,
     monthlyTotalPoints: repeats.map((item) => item.monthly.totalPoints),
     calculateRequestMs: distribution(calculateTimings)
+  };
+}
+
+function summarizeExtractionStability(repeats) {
+  const visitCount = repeats[0]?.visits.length || 0;
+  const perVisit = [];
+  for (let visitIndex = 0; visitIndex < visitCount; visitIndex += 1) {
+    const counts = repeats
+      .map((item) => Number(item.visits[visitIndex]?.extraction.clinicalEventCount || 0));
+    const min = Math.min(...counts);
+    const max = Math.max(...counts);
+    perVisit.push({
+      visit: visitIndex + 1,
+      serviceDate: repeats[0]?.visits[visitIndex]?.serviceDate || null,
+      eventCounts: counts,
+      min,
+      max,
+      spread: max - min
+    });
+  }
+  return {
+    perVisit,
+    maxSpread: perVisit.length ? Math.max(...perVisit.map((item) => item.spread)) : 0,
+    stableVisitCount: perVisit.filter((item) => item.spread === 0).length
   };
 }
 

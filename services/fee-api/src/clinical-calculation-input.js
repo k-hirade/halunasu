@@ -707,6 +707,25 @@ export async function buildClinicalCalculationPreparation({
       candidateProposals.push(...asArray(ruleBased.candidateProposals));
       reviewWarnings.push(...structured.reviewWarnings, ...ruleBased.reviewWarnings);
     }
+
+    // 決定論セーフティネット: マスタ名称辞書でカルテ本文を走査し、
+    // 抽出・候補のどこにも現れていないコードを候補として補完する。
+    // LLM抽出の成否・揺れに依存しない下限保証(OpenAI不通のフォールバック時も効く)。
+    const dictionaryScan = await dictionaryScanCandidateProposals({
+      feeCalculator,
+      text,
+      knownCodes: uniqueStrings([
+        ...asArray(inferred.procedure_codes),
+        ...billingCandidates.map((candidate) => candidate?.code).filter(Boolean),
+        ...candidateProposals.map((proposal) => proposal?.code || proposal?.candidateLine?.code).filter(Boolean)
+      ])
+    });
+    if (dictionaryScan.proposals.length) {
+      candidateProposals.push(...dictionaryScan.proposals);
+    }
+    if (dictionaryScan.trace) {
+      clinicalTrace.push(dictionaryScan.trace);
+    }
   }
 
   const normalizedInferred = normalizeClinicalInferredOptions(inferred);
@@ -714,7 +733,18 @@ export async function buildClinicalCalculationPreparation({
   if (isInpatientEncounter(session, text) && !hasOwn(manualOptions, "outpatient_basic")) {
     delete normalizedInferred.outpatient_basic;
   }
-  if (!isInpatientEncounter(session, text) && !hasUnresolvedInpatientEncounterText(session, text)) {
+  // 訪問診療/往診の受診区分では、外来基本料(初診料・再診料・外来管理加算)を自動算定しない。
+  // 在宅系の基本料・加算は施設の恒常算定ルールまたは候補レーンで扱う。
+  const isHomeCareEncounter = ["home_visit", "house_call"].includes(String(session.setting || ""));
+  if (isHomeCareEncounter && !hasOwn(manualOptions, "outpatient_basic")) {
+    delete normalizedInferred.outpatient_basic;
+    // 注: 「初診/再診」の語を含めると calculationWarningKey の visit グループで
+    // 既存警告と重複排除されて消えるため、文言に含めない。
+    reviewWarnings.push(
+      "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+    );
+  }
+  if (!isHomeCareEncounter && !isInpatientEncounter(session, text) && !hasUnresolvedInpatientEncounterText(session, text)) {
     const historyBasic = inferOutpatientBasicFromPatientHistory({
       session,
       priorSessions,
@@ -3146,6 +3176,117 @@ function candidateLineFromProcedureCandidate({
   };
 }
 
+// 辞書スキャン候補から除外する文脈(否定・未実施・予定・他院・既往等)。
+// 保守的に倒す: 疑わしい行の名称ヒットは候補にしない(見落としより誤候補抑制を優先)。
+const DICTIONARY_SCAN_NEGATIVE_CONTEXT = /(なし|無し|未実施|中止|キャンセル|予定|検討中|検討する|希望|拒否|行わない|行わず|せず|しない|指示のみ|説明のみ|他院|紹介先|既往|前回|次回|予約)/u;
+const DICTIONARY_SCAN_MAX_PROPOSALS = 8;
+
+// 決定論セーフティネット: マスタ名称辞書スキャン結果を確認候補へ変換する。
+// LLM抽出に依存しないため、同じ本文なら毎回同じ候補が出る(揺れゼロの下限保証)。
+export async function dictionaryScanCandidateProposals({ feeCalculator, text = "", knownCodes = [] } = {}) {
+  const empty = { proposals: [], trace: null };
+  if (!text || typeof feeCalculator?.scanMasterNames !== "function") {
+    return empty;
+  }
+  let scan;
+  try {
+    scan = await feeCalculator.scanMasterNames({ text, limit: 40 });
+  } catch {
+    return empty;
+  }
+  const matches = asArray(scan?.matches);
+  if (!matches.length) {
+    return empty;
+  }
+  const known = new Set(asArray(knownCodes).map((code) => String(code || "").trim()).filter(Boolean));
+  const proposals = [];
+  const skipped = [];
+  for (const match of matches) {
+    if (proposals.length >= DICTIONARY_SCAN_MAX_PROPOSALS) {
+      break;
+    }
+    const code = String(match?.code || "").trim();
+    const name = String(match?.name || "").trim();
+    if (!code || !name || known.has(code)) {
+      continue;
+    }
+    if (String(match?.role || "base") !== "base") {
+      continue;
+    }
+    // SOAPは1行に複数文が入るため、否定判定はヒット位置を含む「文」単位で行う。
+    const sentence = sentenceAtIndex(text, Number(match?.index ?? -1));
+    if (sentence && DICTIONARY_SCAN_NEGATIVE_CONTEXT.test(sentence)) {
+      skipped.push({ code, reason: "negative_context" });
+      continue;
+    }
+    known.add(code);
+    proposals.push(candidateProposalFromProcedureItem({
+      proposalId: `dict_scan_${code}`,
+      title: `${name}の算定確認`,
+      reason: `カルテ本文に「${name}」の記載があります。実施済みで算定要件を満たす場合は算定できます。`,
+      conditionText: "実施事実・対象病名・回数制限・施設基準などの算定要件を確認してから採用してください。",
+      basis: "dictionary_scan_candidate",
+      evidence: String(sentence || name).trim().slice(0, 160),
+      item: { code, name, points: Number(match?.points || 0), kind: "procedure" },
+      sortOrder: 70
+    }));
+  }
+  return {
+    proposals,
+    trace: clinicalTraceEvent({
+      stage: "dictionary_scan",
+      categoryLabel: "辞書スキャン",
+      outcome: proposals.length ? "candidate_proposed" : "no_new_candidates",
+      selected: {
+        matchCount: matches.length,
+        proposedCodes: proposals.map((proposal) => proposal.code),
+        skipped: skipped.slice(0, 10)
+      },
+      message: "master_name_dictionary_scan_completed"
+    })
+  };
+}
+
+function sentenceAtIndex(text = "", index = -1) {
+  const value = String(text || "");
+  if (!Number.isFinite(index) || index < 0 || index >= value.length) {
+    return "";
+  }
+  const boundary = /[。\n]/u;
+  let start = index;
+  while (start > 0 && !boundary.test(value[start - 1])) {
+    start -= 1;
+  }
+  let end = index;
+  while (end < value.length && !boundary.test(value[end])) {
+    end += 1;
+  }
+  return value.slice(start, end).trim();
+}
+
+// 抽出イベント名は「傷病手当金意見書 作成・交付」のように動作語尾を伴うことが多く、
+// そのままではマスタ名称(「傷病手当金意見書交付料」)へのLIKE検索が外れる。
+// 名詞核へ寄せた追加クエリを生成する(元クエリで解決しない場合の後段候補)。
+function masterLinkQueryVariants(name = "") {
+  const base = String(name || "").trim();
+  if (!base) {
+    return [];
+  }
+  const variants = [];
+  const stripped = base
+    .replace(/[（(].*?[)）]/gu, "")
+    .replace(/(?:の|を)?(?:作成|交付|発行|記載|実施|施行)+(?:[・、\s].*)?$/u, "")
+    .trim();
+  if (stripped.length >= 4 && stripped !== base) {
+    variants.push(stripped);
+  }
+  const head = base.split(/[ 　・、,，/]/u)[0].trim();
+  if (head.length >= 4 && head !== base && head !== stripped) {
+    variants.push(head);
+  }
+  return variants;
+}
+
 // 原則候補化(emit-as-candidate-by-default): 直接算定レーンに乗らないイベント
 // (医学管理・指導、review-only領域、未分類)も、実施済み・当日・自院なら
 // マスタ照合して「点数付きの確認候補」として提示する。確定はしない
@@ -3163,7 +3304,10 @@ async function masterLinkCandidateProposalFromClinicalEvent(feeCalculator, event
   if (!name) {
     return null;
   }
-  const queries = clinicalEventSearchQueries(event, { categoryLabel });
+  const queries = uniqueStrings([
+    ...clinicalEventSearchQueries(event, { categoryLabel }),
+    ...masterLinkQueryVariants(name)
+  ]);
   const item = await searchProcedureCandidateItem(feeCalculator, queries, [], { allowedFeeCategories });
   if (!item?.code) {
     return null;

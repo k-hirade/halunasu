@@ -1,4 +1,6 @@
-export const feeSettings = Object.freeze(["outpatient", "inpatient"]);
+// 受診区分。home_visit(訪問診療)/house_call(往診)は入院外レセだが、
+// 外来基本料(初診・再診・外来管理加算)を自動算定しない。
+export const feeSettings = Object.freeze(["outpatient", "inpatient", "home_visit", "house_call"]);
 export {
   hasBloodCollectionNegationOrPlanningContext,
   hasPerformedBloodCollectionEvidence,
@@ -44,6 +46,9 @@ export const feeNewDiseaseInitialHandlings = Object.freeze(["candidate_requires_
 export const feeReviewPolicyModes = Object.freeze(["standard", "conservative", "review_heavy"]);
 export const feeReceiptExportEncodings = Object.freeze(["shift_jis", "utf-8"]);
 export const feeFacilityStandardStatuses = Object.freeze(["active", "pending", "expired", "withdrawn"]);
+// 恒常算定ルールの動作: confirm=算定入力へ自動追加(エンジンがマスタ照合・制約チェック),
+// candidate=承認待ち候補として提示(合計に入らない)。
+export const feeAutoBillingRuleActions = Object.freeze(["confirm", "candidate"]);
 export const feeReceiptScopes = Object.freeze(["service_date", "monthly"]);
 export const feeReceiptValidationSeverities = Object.freeze(["error", "warning", "off"]);
 const defaultReceiptValidationSeverity = Object.freeze({
@@ -227,6 +232,7 @@ export function defaultFeeSettings(input = {}) {
       requireReviewWhenNoHistory: true
     },
     facilityStandards: [],
+    autoBillingRules: [],
     receiptPolicy: {
       ukeEncoding: "shift_jis",
       blockExportOnErrors: false,
@@ -263,14 +269,47 @@ export function validateUpdateFeeSettingsInput(input = {}) {
   const facilityStandardsInput = hasOwn(input, "facilityStandards") || hasOwn(input, "facility_standards")
     ? (input.facilityStandards ?? input.facility_standards)
     : (current.facilityStandards ?? current.facility_standards);
+  const autoBillingRulesInput = hasOwn(input, "autoBillingRules") || hasOwn(input, "auto_billing_rules")
+    ? (input.autoBillingRules ?? input.auto_billing_rules)
+    : (current.autoBillingRules ?? current.auto_billing_rules);
   return {
     facilityId: optionalString(input.facilityId ?? input.facility_id ?? current.facilityId ?? current.facility_id) || base.facilityId,
     effectiveFrom: optionalDate(input.effectiveFrom ?? input.effective_from ?? current.effectiveFrom ?? current.effective_from, "effectiveFrom") || base.effectiveFrom,
     historyPolicy: normalizeHistoryPolicy(baseHistoryPolicy),
     initialRevisitPolicy: normalizeInitialRevisitPolicy(baseInitialRevisitPolicy),
     facilityStandards: normalizeFacilityStandards(facilityStandardsInput),
+    autoBillingRules: normalizeAutoBillingRules(autoBillingRulesInput),
     receiptPolicy: normalizeReceiptPolicy(baseReceiptPolicy)
   };
+}
+
+// 施設ごとの恒常算定ルール: 「この施設では条件を満たす受診に必ずXを算定/候補提示する」。
+// 項目追加を「実装」でなく「設定」にするためのデータ。コードはエンジンがマスタ照合するため
+// 点数はここに持たない(candidate表示用のpotentialPointsのみ任意)。
+function normalizeAutoBillingRules(input) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input
+    .map((entry, index) => {
+      const value = isPlainObject(entry) ? entry : {};
+      const code = optionalString(value.code ?? value.procedureCode ?? value.procedure_code) || "";
+      const settings = Array.isArray(value.settings)
+        ? value.settings.map((item) => optionalEnum(item, feeSettings, "autoBillingRules.settings")).filter(Boolean)
+        : [];
+      return {
+        ruleId: optionalString(value.ruleId ?? value.rule_id) || `facility_rule_${index + 1}`,
+        title: optionalString(value.title ?? value.name) || "",
+        code,
+        action: optionalEnum(value.action, feeAutoBillingRuleActions, "autoBillingRules.action") || "candidate",
+        settings,
+        requiredFacilityStandardKey: optionalString(value.requiredFacilityStandardKey ?? value.required_facility_standard_key) || "",
+        potentialPoints: Number(value.potentialPoints ?? value.potential_points ?? 0) || 0,
+        note: optionalString(value.note) || "",
+        status: optionalEnum(value.status, feeFacilityStandardStatuses, "autoBillingRules.status") || "active"
+      };
+    })
+    .filter((entry) => entry.code);
 }
 
 export function validateReviewDecisionInput(input = {}) {

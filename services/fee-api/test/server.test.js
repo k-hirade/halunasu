@@ -9066,3 +9066,161 @@ test("exports a receipt UKE in Shift_JIS by default and UTF-8 on request", async
   assert.match(configured.headers["content-type"], /charset=utf-8/);
   assert.equal(configured.headers["x-halunasu-connector-status"], "spec-verified");
 });
+
+test("施設恒常算定ルール: 届出キー・confirm/candidate・在宅受診区分の外来基本料抑制", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.searchMaster = async (input) => ({ query: input.query, type: input.type, items: [] });
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 890,
+      lineItems: [{
+        lineId: "visit_fee",
+        code: "114001110",
+        name: "在宅患者訪問診療料（１）１",
+        orderType: "procedure",
+        points: 890,
+        quantity: 1,
+        totalPoints: 890,
+        status: "needs_review",
+        source: "medical_procedure_master"
+      }],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "unknown", evidence: "", confidence: "low" },
+    diagnoses: [],
+    clinical_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  const settings = await request(stores, "PATCH", "/v1/fee/settings/fac_001", {
+    facilityStandards: [
+      { key: "zaitaku_data_teishutsu", name: "在宅データ提出加算", claimStartDate: "2026-01-01", status: "active" },
+      { key: "expired_key", name: "期限切れ", claimStartDate: "2025-01-01", effectiveTo: "2025-12-31", status: "active" }
+    ],
+    autoBillingRules: [
+      { ruleId: "home_visit_fee", title: "在宅患者訪問診療料", code: "114001110", action: "confirm", settings: ["home_visit"] },
+      { ruleId: "data_addon", title: "在宅データ提出加算", code: "114057970", action: "candidate", settings: ["home_visit"], requiredFacilityStandardKey: "zaitaku_data_teishutsu", potentialPoints: 50 },
+      { ruleId: "gated_off", title: "未届出ルール", code: "199999999", action: "confirm", settings: ["home_visit"], requiredFacilityStandardKey: "not_registered" },
+      { ruleId: "outpatient_only", title: "外来専用ルール", code: "188888888", action: "confirm", settings: ["outpatient"] }
+    ]
+  }, headers);
+  assert.equal(settings.statusCode, 200);
+  assert.equal(settings.body.settings.autoBillingRules.length, 4);
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", { displayName: "在宅ルール患者" }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-11",
+    setting: "home_visit",
+    clinicalText: "定期訪問。バイタル安定。処方継続。"
+  }, headers);
+  assert.equal(session.statusCode, 201);
+  assert.equal(session.body.feeSession.setting, "home_visit");
+
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.equal(calculation.statusCode, 201);
+
+  // confirmルール: 算定入力へ追加(エンジンがマスタ照合・制約チェック)。設定対象外・未届出は追加されない。
+  assert.ok(receivedInput.calculationOptions.procedure_codes.includes("114001110"));
+  assert.ok(!receivedInput.calculationOptions.procedure_codes.includes("199999999"));
+  assert.ok(!receivedInput.calculationOptions.procedure_codes.includes("188888888"));
+  // fee設定の届出キー(有効期間内のみ)が施設基準キーへ合流する
+  assert.ok(receivedInput.calculationOptions.facility_standard_keys.includes("zaitaku_data_teishutsu"));
+  assert.ok(!receivedInput.calculationOptions.facility_standard_keys.includes("expired_key"));
+  // 在宅受診区分では外来基本料を自動算定しない
+  assert.equal(receivedInput.calculationOptions.outpatient_basic, undefined);
+
+  // candidateルール: 承認待ち候補として提示される
+  const facilityProposal = calculation.body.calculationResult.candidateProposals
+    .find((proposal) => proposal.code === "114057970");
+  assert.ok(facilityProposal, "施設ルール候補が提示される");
+  assert.equal(facilityProposal.basis, "facility_auto_billing_rule");
+  assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("在宅区分の算定方針")));
+  // 在宅区分ではMI-003(基本診療料なし)を指摘しない
+  assert.ok(!calculation.body.calculationResult.reviewIssues.some((issue) => issue.ruleId === "MI-003"));
+});
+
+test("既存レセ一括取込が外部請求履歴になり、初診/再診判定に使われる", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.searchMaster = async (input) => ({ query: input.query, type: input.type, items: [] });
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return { provider: "test", source: "test", status: "completed", totalPoints: 76, lineItems: [], warnings: [] };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "unknown", evidence: "", confidence: "low" },
+    diagnoses: [{ name: "高血圧症", status: "confirmed", evidence: "高血圧症の継続管理" }],
+    clinical_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+
+  await request(stores, "PATCH", "/v1/fee/settings/fac_001", {
+    historyPolicy: { externalHistoryEnabled: true, historyCompleteness: "partial" }
+  }, headers);
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", { displayName: "履歴取込患者" }, headers);
+  const patientId = patient.body.patient.patientId;
+
+  // UKE由来のbaselineClaims(患者×月)を外部請求履歴として一括取込
+  const imported = await request(stores, "POST", `/v1/fee/patients/${patientId}/billing-history/import-baseline`, {
+    baselineClaims: [
+      {
+        patientId: "1001",
+        claimMonth: "2026-05",
+        lines: [{ code: "112007410", name: "再診料", points: 76, count: 2 }]
+      },
+      {
+        patientId: "1001",
+        claimMonth: "2026-04",
+        lines: [{ code: "113002310", name: "特定疾患療養管理料", points: 225, count: 1 }]
+      }
+    ],
+    externalPatientId: "1001"
+  }, headers);
+  assert.equal(imported.statusCode, 201);
+  assert.equal(imported.body.importedClaimCount, 2);
+
+  const listed = await request(stores, "GET", `/v1/fee/patients/${patientId}/billing-history`, undefined, headers);
+  assert.equal(listed.body.billingHistoryEvents.length, 2);
+  assert.ok(listed.body.billingHistoryEvents.every((event) => event.source === "baseline_import"));
+
+  // 取り込んだ履歴により、履歴ゼロの新規患者でも「再診」判定になる(初診料の誤確定防止)
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "高血圧症の継続管理。血圧安定。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+});

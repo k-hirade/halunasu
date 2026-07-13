@@ -317,6 +317,9 @@ async function candidateProposalsFromManagementSignalRules({
       topicCode: rule.topicCode || "target_disease_check",
       requiredInput: rule.requiredInput || "対象疾患、実施内容、記録、同月算定履歴",
       resolutionOptions: resolutionOptions[rule.topicCode] || [],
+      // マスタ照合が曖昧でコード未確定の候補(難病外来指導管理料1/2等)でも
+      // 患者×月の重複畳みができるよう、ルール側の算定単位上限を伝える。
+      monthlyLimit: rule.monthlyLimit || null,
       knowledge: {
         version: CLINICAL_BILLING_KNOWLEDGE_VERSION,
         signalRulesVersion: MANAGEMENT_SIGNAL_RULES_VERSION,

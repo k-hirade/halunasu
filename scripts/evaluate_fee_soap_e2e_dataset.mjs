@@ -800,9 +800,13 @@ function actualView({ feeSession, calculationResult, reviewItems, candidateWorkb
     status: feeSession.status || null,
     engineStatus: calculationResult.engineStatus || calculationResult.status || null,
     totalPoints: Number(calculationResult.totalPoints || 0),
+    confirmedCodes: uniqueStrings(lineItems.map((line) => line.code)),
     candidateCodes: uniqueStrings([
       ...(Array.isArray(calculationResult.candidateCodes) ? calculationResult.candidateCodes : []),
-      ...lineItems.map((line) => line.code)
+      ...lineItems.map((line) => line.code),
+      // 承認待ち候補(candidateProposals)のコードも「候補として提示できたか」の分子に含める。
+      // 確定できたか(confirmedCodeRecall)とは分けて評価する(2段recall)。
+      ...candidateProposals.map((item) => item.code).filter(Boolean)
     ]),
     lineItems: lineItems.map((line) => ({
       code: String(line.code || ""),
@@ -824,6 +828,7 @@ function actualView({ feeSession, calculationResult, reviewItems, candidateWorkb
     candidateProposals: candidateProposals.map((item) => ({
       title: item.title || item.name || "",
       name: item.name || "",
+      code: String(item.code || item.masterCode || ""),
       reason: item.reason || "",
       points: Number(item.points || item.totalPoints || 0)
     })),
@@ -965,6 +970,9 @@ function accuracyView(item, actual) {
   return {
     diagnosisRecall: recall(expectedDiagnoses, (value) => normalizedIncludes(actualDiagnosisText, value)),
     billingSignalRecall: recall(expectedSignals, (value) => billingSignalSatisfied(actualSignalText, value)),
+    // 2段recall: 確定明細に出たか(confirmed) / 確定または候補として提示できたか(candidate)。
+    // candidateが高く confirmed が低い場合は「検知はできるが確定要件が埋まらない」状態。
+    confirmedCodeRecall: recall(expectedCodes, (value) => asStrings(actual.confirmedCodes).includes(String(value))),
     candidateCodeRecall: recall(expectedCodes, (value) => actualCodes.includes(String(value))),
     candidateCodePrecision: actualCodes.length && expectedCodes.length
       ? round(actualCodes.filter((code) => expectedCodes.includes(code)).length / actualCodes.length)
@@ -1270,6 +1278,7 @@ function buildSafetySummary(results = []) {
     missingCandidateCodeCases: missingCandidateCodeCases.length,
     missingCandidateCodeCount: missingCandidateCodeCases.reduce((sum, item) => sum + (item.missing?.candidateCodes || []).length, 0),
     avgCandidateCodePrecision: averageMetric(results, (item) => item.accuracy?.candidateCodePrecision),
+    avgConfirmedCodeRecall: averageMetric(results, (item) => item.accuracy?.confirmedCodeRecall),
     avgCandidateCodeRecall: averageMetric(results, (item) => item.accuracy?.candidateCodeRecall),
     avgBillingSignalRecall: averageMetric(results, (item) => item.accuracy?.billingSignalRecall),
     avgReviewTopicRecall: averageMetric(results, (item) => item.accuracy?.reviewTopicRecall)
