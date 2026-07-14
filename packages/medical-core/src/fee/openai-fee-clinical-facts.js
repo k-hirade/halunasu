@@ -491,9 +491,19 @@ function safeSessionContext(context = {}) {
   };
 }
 
+// プロンプトへ渡す行数の上限。これを超える行はLLMに提示されないため、
+// line_review の全行契約もこの範囲でしか成立しない(長文カルテは分割抽出が必要)。
+export const FEE_CLINICAL_MAX_PROMPT_LINES = 80;
+
+// 呼び出し側が「実際にLLMへ提示された行ID全集合」を決定論的に再現するための
+// ヘルパー。line_review の完全照合(欠落・重複・未知ID検出)はこの集合を正とする。
+export function promptClinicalLineIds(lines = []) {
+  return safePreprocessedClinicalLines(lines).map((line) => line.line_id);
+}
+
 function safePreprocessedClinicalLines(lines = []) {
   return Array.isArray(lines)
-    ? lines.slice(0, 80).map((line) => ({
+    ? lines.slice(0, FEE_CLINICAL_MAX_PROMPT_LINES).map((line) => ({
       line_id: String(line?.lineId || line?.line_id || "").slice(0, 20),
       section: String(line?.section || "unknown").slice(0, 10),
       text: String(line?.text || "").slice(0, 220),

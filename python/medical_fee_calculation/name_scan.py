@@ -37,8 +37,13 @@ _ALIAS_BLACKLIST = frozenset({
     "在宅患者", "外来患者", "入院患者", "その他", "同一建物", "情報通信",
 })
 
-# db_path -> (source_id, [(alias, code, points, role, full_name)])
-_NAME_CACHE: dict[str, tuple[int, list[tuple[str, str, float, str, str]]]] = {}
+# 同一別名が多数コードに衝突する場合(「在医総管」=175コード等)でも、
+# 1出現は「コード選択が必要な1件の曖昧マッチ」として返す。候補コードは
+# 点数降順で上位のみ同梱し、総数は codeCount で伝える。
+_MAX_ALIAS_CODES = 8
+
+# db_path -> (source_id, [(alias, [(code, points, role, full_name), ...])])
+_NAME_CACHE: dict[str, tuple[int, list[tuple[str, list[tuple[str, float, str, str]]]]]] = {}
 
 
 def scan_names(payload: dict[str, Any]) -> dict[str, Any]:
@@ -51,33 +56,39 @@ def scan_names(payload: dict[str, Any]) -> dict[str, Any]:
     limit = int(payload.get("limit") or _MAX_MATCHES)
     limit = max(1, min(limit, _MAX_MATCHES))
 
-    names = _load_names(str(db_path))
+    groups = _load_names(str(db_path))
     matches: list[dict[str, Any]] = []
     seen_codes: set[str] = set()
-    for alias, code, points, role, full_name in names:
-        if code in seen_codes:
-            continue
+    for alias, entries in groups:
         index = text.find(alias)
         if index < 0:
             continue
-        seen_codes.add(code)
-        matches.append(
-            {
-                "code": code,
-                "name": full_name,
-                "points": points,
-                "role": role,
-                "index": index,
-                "matchedText": alias,
-            }
-        )
+        fresh = [entry for entry in entries if entry[0] not in seen_codes]
+        if not fresh:
+            continue
+        fresh.sort(key=lambda entry: (-float(entry[1] or 0), entry[0]))
+        seen_codes.update(entry[0] for entry in fresh)
+        match: dict[str, Any] = {
+            "index": index,
+            "matchedText": alias,
+            "codeCount": len(fresh),
+            "codes": [
+                {"code": code, "name": full_name, "points": points, "role": role}
+                for code, points, role, full_name in fresh[:_MAX_ALIAS_CODES]
+            ],
+        }
+        if len(fresh) == 1:
+            code, points, role, full_name = fresh[0]
+            # 単一コードは従来の平坦フィールドも保つ(呼び出し側の単純化)。
+            match.update({"code": code, "name": full_name, "points": points, "role": role})
+        matches.append(match)
         if len(matches) >= limit * 3:
             break
 
     # 同一位置で重なる短い名称は、より長い名称に吸収する
     # (「難病外来指導管理料」が当たった位置の「指導管理料」等を落とす)。
     matches = _drop_shadowed_matches(matches)
-    matches.sort(key=lambda m: (-float(m["points"] or 0), m["code"]))
+    matches.sort(key=lambda m: (-float(m["codes"][0]["points"] or 0), m["codes"][0]["code"]))
     return {"matches": matches[:limit]}
 
 
@@ -100,7 +111,7 @@ def _drop_shadowed_matches(matches: list[dict[str, Any]]) -> list[dict[str, Any]
     return result
 
 
-def _load_names(db_path: str) -> list[tuple[str, str, float, str]]:
+def _load_names(db_path: str) -> list[tuple[str, list[tuple[str, float, str, str]]]]:
     resolved = str(Path(db_path).expanduser().resolve())
     conn = connect(Path(resolved))
     try:
@@ -121,7 +132,8 @@ def _load_names(db_path: str) -> list[tuple[str, str, float, str]]:
             """,
             (source_id,),
         ).fetchall()
-        names: list[tuple[str, str, float, str, str]] = []
+        # 別名ごとに衝突コードをまとめる(同一別名=1マッチの前提)。
+        by_alias: dict[str, list[tuple[str, float, str, str]]] = {}
         for row in rows:
             code = str(row["code"] or "").strip()
             name = str(row["short_name"] or "").strip()
@@ -132,11 +144,11 @@ def _load_names(db_path: str) -> list[tuple[str, str, float, str]]:
             points = float(row["points"] or 0)
             role = _role_from_name(name)
             for alias in _scan_aliases(name):
-                names.append((alias, code, points, role, name))
+                by_alias.setdefault(alias, []).append((code, points, role, name))
         # 長い別名を先に照合する(重なり吸収の前提)。
-        names.sort(key=lambda item: -len(item[0]))
-        _NAME_CACHE[resolved] = (source_id, names)
-        return names
+        groups = sorted(by_alias.items(), key=lambda item: -len(item[0]))
+        _NAME_CACHE[resolved] = (source_id, groups)
+        return groups
     finally:
         conn.close()
 

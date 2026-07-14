@@ -6650,12 +6650,14 @@ function masterTypeForOrder(order = {}) {
   return "procedure";
 }
 
-function selectMasterItemForOrder(items = [], type, query) {
+export function selectMasterItemForOrder(items = [], type, query) {
   if (!Array.isArray(items)) {
     return null;
   }
   const expectedKind = type === "drug" ? "drug" : type === "material" ? "material" : "procedure";
-  const candidates = items.filter((item) => item && item.kind === expectedKind && item.code);
+  // 不変条件: 確定オーダーへの自動採用にフォールバック(近似召回)由来は使わない。
+  // includes等の部分一致より先に、入口で除外する(正規化完全一致も例外にしない)。
+  const candidates = items.filter((item) => item && item.kind === expectedKind && item.code && !item.matchOrigin);
   if (!candidates.length) {
     return null;
   }
@@ -6667,10 +6669,7 @@ function selectMasterItemForOrder(items = [], type, query) {
   if (matched) {
     return matched;
   }
-  // 先頭候補の無条件採用は、全文一致検索(候補は必ずqueryを含む)時代の前提。
-  // トークン/n-gramフォールバック由来の候補は部分一致・近似一致しかしておらず、
-  // 確定オーダーへの自動採用は誤コード混入になるため許可しない。
-  return candidates[0]?.matchOrigin ? null : candidates[0];
+  return candidates[0];
 }
 
 function normalizeMasterMatchText(value) {
@@ -6797,6 +6796,11 @@ function normalizeCalculationWarning(value = "") {
 
 function calculationWarningKey(warning = "") {
   const text = String(warning || "").trim();
+  // 抽出契約系の警告はカルテ行本文を引用するため、引用内の「初診」「再診」等が
+  // visit系キーに誤マッチして他の警告を飲み込む。先頭で専用キーにする。
+  if (/^(抽出契約違反|抽出漏れの可能性)/u.test(text)) {
+    return `extraction_contract:${text.replace(/\s+/gu, "").slice(0, 120)}`;
+  }
   const exclusion = parseElectronicExclusionWarning(text);
   if (exclusion) {
     return `electronic_exclusion:${[exclusion.baseCode, exclusion.excludedCode].sort().join(":")}`;

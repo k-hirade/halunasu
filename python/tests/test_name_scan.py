@@ -58,6 +58,37 @@ class NameScanTest(unittest.TestCase):
             # 位置情報は行特定(否定文脈判定)に使う
             self.assertGreaterEqual(by_code["180000710"]["index"], 0)
 
+    def test_same_alias_multiple_codes_returns_one_ambiguous_match(self) -> None:
+        """同一別名に複数コードが衝突したら、独立マッチではなく codes[] 付きの1件で返す。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "master.sqlite"
+            self._seed(db_path)
+            conn = connect(db_path)
+            try:
+                for code, name, points in [
+                    ("114003710", "在宅酸素療法指導管理料（その他）", 2400.0),
+                    ("114004110", "在宅酸素療法指導管理料（チアノーゼ型先天性心疾患）", 520.0),
+                ]:
+                    conn.execute(
+                        "INSERT INTO medical_procedures "
+                        "(source_id, code, short_name, base_name, points, inout_applicability, outpatient_aggregate, inpatient_aggregate, "
+                        " bundle_lab_group, judgement_kind, judgement_group, specimen_comment_flag, facility_standard_codes, chapter, part, "
+                        " alpha_part, section, branch, item, notice_chapter, notice_part, notice_alpha_part, notice_section, notice_branch, "
+                        " notice_item, effective_from, effective_to, raw_row_json) "
+                        "VALUES (1,?,?,?,?, '', '', '', '', '', '', '', '[]', '', '', '', '', '', '', '', '', '', '', '', '', '2026-06-01', '9999-12-31', '[]')",
+                        (code, name, name, points),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+            result = scan_names({"db_path": str(db_path), "text": "P）在宅酸素を継続する。"})
+            matches = [m for m in result["matches"] if m["matchedText"] == "在宅酸素"]
+            self.assertEqual(len(matches), 1)
+            match = matches[0]
+            self.assertEqual(match["codeCount"], 2)
+            self.assertEqual([c["code"] for c in match["codes"]], ["114003710", "114004110"])  # 点数降順
+            self.assertNotIn("code", match)  # 曖昧マッチは平坦codeを持たない(自動採用防止)
+
     def test_scan_returns_empty_for_short_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "master.sqlite"

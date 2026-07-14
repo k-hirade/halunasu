@@ -28,7 +28,12 @@ test("反例コーパス: 決定論レーンで期待候補が出て、禁止候
       text: item.clinicalText,
       knownCodes: []
     });
-    const codes = result.proposals.map((proposal) => String(proposal.code));
+    // 同一別名の複数コードは codeCandidates 付きの曖昧候補1件に統合されるため、
+    // 「候補として見える」判定は code と codeCandidates の和で行う。
+    const codes = result.proposals.flatMap((proposal) => [
+      String(proposal.code || ""),
+      ...(Array.isArray(proposal.codeCandidates) ? proposal.codeCandidates.map(String) : [])
+    ]).filter(Boolean);
     for (const expected of item.expectedCandidateCodes || []) {
       assert.ok(
         codes.includes(String(expected)),

@@ -1,6 +1,7 @@
 import {
   FEE_CLINICAL_FACTS_PROMPT_VERSION,
-  extractFeeClinicalFactsWithOpenAi
+  extractFeeClinicalFactsWithOpenAi,
+  promptClinicalLineIds
 } from "../../../packages/medical-core/src/fee/openai-fee-clinical-facts.js";
 import {
   clinicalAutoCalculationOptionKeys,
@@ -1591,21 +1592,58 @@ async function inferStructuredClinicalCalculationOptions({
     const sampleCount = Math.max(1, Math.min(3, Number(process.env.FEE_CLINICAL_EXTRACTION_SAMPLES || 1) || 1));
     let factsResult;
     if (sampleCount > 1) {
-      const sampleResults = await Promise.all(
+      // 部分失敗耐性: 全成功前提(Promise.all)だと1件の失敗が成功サンプルまで捨てて
+      // ルール縮退に落ちる。成功分を採用し、全滅時のみ従来どおり縮退(throw)する。
+      const settled = await Promise.allSettled(
         Array.from({ length: sampleCount }, (unused, index) => extractClinicalFactsWithChecklistMode({
           ...extractionRequest,
           onOutputTextSnapshot: index === 0 ? extractionRequest.onOutputTextSnapshot : undefined
         }))
       );
+      const fulfilled = settled
+        .filter((result) => result.status === "fulfilled" && result.value)
+        .map((result) => result.value);
+      if (!fulfilled.length) {
+        throw settled.find((result) => result.status === "rejected")?.reason
+          || new Error("clinical facts extraction returned no samples");
+      }
       factsResult = {
-        ...sampleResults[0],
-        parsed: mergeClinicalFactsSamples(sampleResults.map((result) => result?.parsed || result || {}))
+        ...fulfilled[0],
+        parsed: mergeClinicalFactsSamples(fulfilled.map((result) => result?.parsed || result || {})),
+        // 監査用: 全成功サンプルの response ID と usage 合算を記録する(先頭だけにしない)。
+        responseId: fulfilled.map((result) => result?.responseId).filter(Boolean).join(",") || null,
+        usage: mergeOpenAiUsage(...fulfilled.map((result) => result?.usage)),
+        sampleStats: { requested: sampleCount, succeeded: fulfilled.length }
       };
     } else {
       factsResult = await extractClinicalFactsWithChecklistMode(extractionRequest);
     }
+    let facts = factsResult?.parsed || factsResult || {};
+
+    // 契約検証(検証駆動リトライ): LLMに提示した行ID全集合(Node側で確定)と line_review を
+    // 完全照合する。LLMの申告だけでは行の丸ごと省略を検出できない。欠落行があれば
+    // 「欠落行だけ」を1回再抽出して統合し、なお欠落する行は下流で確認事項として明示する。
+    const promptLineIds = promptClinicalLineIds(clinicalTextPreprocessing.lines);
+    let lineReviewReconciliation = reconcileLineReview(facts, promptLineIds);
+    let lineReviewRetryCount = 0;
+    if (lineReviewReconciliation.missingIds.length) {
+      lineReviewRetryCount = 1;
+      const missingSet = new Set(lineReviewReconciliation.missingIds);
+      const retryResult = await extractClinicalFactsWithChecklistMode({
+        ...extractionRequest,
+        preprocessedLines: asArray(clinicalTextPreprocessing.lines)
+          .filter((line) => missingSet.has(String(line?.lineId || line?.line_id || "").trim())),
+        onOutputTextSnapshot: undefined
+      }).catch(() => null);
+      const retryFacts = retryResult?.parsed || retryResult;
+      if (retryFacts && typeof retryFacts === "object") {
+        facts = mergeClinicalFactsSamples([facts, retryFacts]);
+        lineReviewReconciliation = reconcileLineReview(facts, promptLineIds);
+      }
+    }
+    // 既知IDのみ・重複はORで畳んだ正規形に置換する(未知IDの幻覚行を下流に流さない)。
+    facts.line_review = lineReviewReconciliation.normalizedLineReview;
     openAiProviderDurationMs = Date.now() - providerStartedAt;
-    const facts = factsResult?.parsed || factsResult || {};
     // v12軽量schema: LLMは evidence_line_ids のみ返す。evidence本文とsectionを
     // 前処理済み行から決定論的に復元し、下流(根拠検証・否定判定・注釈)を従来どおり動かす。
     backfillClinicalFactsEvidenceFromLines(facts, clinicalTextPreprocessing);
@@ -1615,7 +1653,8 @@ async function inferStructuredClinicalCalculationOptions({
       session,
       feeCalculator: conversionSearch.calculator,
       checklistMenu,
-      priorSessions
+      priorSessions,
+      lineReviewReconciliation
     });
     const convertedOptionKeys = Object.keys(converted.inferred || {});
     return {
@@ -1650,7 +1689,11 @@ async function inferStructuredClinicalCalculationOptions({
         masterVersion: feeMasterVersion(feeCalculator),
         timeoutMs: Number(openAiTimeoutMs || 0),
         responseId: factsResult?.responseId || null,
-        usage: factsResult?.usage || null
+        usage: factsResult?.usage || null,
+        extractionSampleStats: factsResult?.sampleStats || null,
+        lineReviewRetryCount,
+        lineReviewMissingCount: lineReviewReconciliation.missingIds.length,
+        lineReviewUnknownCount: lineReviewReconciliation.unknownIds.length
       },
       visitFacts: normalizeVisitFactsForTrace(facts?.visit_facts),
       checklistFindingStatusCounts: checklistFindingStatusCounts(facts?.checklist_findings)
@@ -1783,7 +1826,7 @@ function mergeSplitChecklistClinicalFactsResults(freeResult = {}, checklistResul
   };
 }
 
-function mergeOpenAiUsage(...usages) {
+export function mergeOpenAiUsage(...usages) {
   const filtered = usages.filter((usage) => usage && typeof usage === "object");
   if (!filtered.length) {
     return null;
@@ -2042,7 +2085,7 @@ async function inferDeterministicSupplementalClinicalCalculationOptions({ text =
   };
 }
 
-async function clinicalFactsToCalculationOptions(facts = {}, { text = "", session = {}, feeCalculator, checklistMenu = [], priorSessions = [] } = {}) {
+async function clinicalFactsToCalculationOptions(facts = {}, { text = "", session = {}, feeCalculator, checklistMenu = [], priorSessions = [], lineReviewReconciliation = null } = {}) {
   const inferred = {};
   const diagnoses = diagnosesFromClinicalFacts(facts);
   const reviewWarnings = [];
@@ -2157,6 +2200,55 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     clinicalText: text,
     verifiedOutsidePrescription
   });
+
+  // v14契約検証の未解消分: 欠落行のみ再抽出しても line_review が埋まらなかった行は、
+  // 自動判定なし=「観測されない省略」なので、不完全結果として行本文つきで明示する。
+  if (lineReviewReconciliation
+    && (lineReviewReconciliation.missingIds.length || lineReviewReconciliation.unknownIds.length)) {
+    const lineTextById = new Map(
+      asArray(clinicalTextPreprocessing?.lines)
+        .map((line) => [String(line.lineId || line.line_id || ""), String(line.text || "")])
+    );
+    const missingLabels = lineReviewReconciliation.missingIds
+      .slice(0, 8)
+      .map((lineId) => `${lineId}「${String(lineTextById.get(lineId) || "").slice(0, 30)}」`)
+      .join(" / ");
+    if (lineReviewReconciliation.missingIds.length) {
+      const incompleteIssue = withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart(["line_review_incomplete", ...lineReviewReconciliation.missingIds].join("_"))}`,
+        issueCode: "line_review_incomplete",
+        severity: "warning",
+        title: "行判定の欠落",
+        messageForStaff: `抽出契約違反: カルテ${lineReviewReconciliation.missingIds.length}行の行為判定が返されませんでした(${missingLabels})。該当行は自動判定されていないため、算定対象の行為がないか行単位で確認してください。`,
+        evidence: lineReviewReconciliation.missingIds
+          .slice(0, 8)
+          .map((lineId) => lineTextById.get(lineId) || lineId)
+          .join(" / ")
+          .slice(0, 200),
+        requiredInput: "該当行の行為内容、実施有無",
+        source: "line_review_reconciliation"
+      }, "extraction_coverage_check");
+      reviewIssues.push(incompleteIssue);
+      // フラットなwarnings側にはカルテ本文を引用しない(本文つきの案内はreviewIssue側)。
+      reviewWarnings.push(
+        `抽出契約違反: カルテ${lineReviewReconciliation.missingIds.length}行の行為判定が返されませんでした`
+        + `(行ID: ${lineReviewReconciliation.missingIds.slice(0, 8).join(", ")})。`
+        + "該当行は自動判定されていないため、確認事項から行単位で確認してください。"
+      );
+    }
+    clinicalTrace.push(clinicalTraceEvent({
+      stage: "line_review_reconciliation",
+      categoryLabel: "行判定契約",
+      outcome: lineReviewReconciliation.missingIds.length ? "missing_lines" : "unknown_ids_dropped",
+      selected: {
+        expectedCount: lineReviewReconciliation.expectedCount,
+        missingLineIds: lineReviewReconciliation.missingIds.slice(0, 20),
+        unknownLineIds: lineReviewReconciliation.unknownIds.slice(0, 20),
+        duplicateLineIds: lineReviewReconciliation.duplicateIds.slice(0, 20)
+      },
+      message: "line_review_contract_reconciled"
+    }));
+  }
 
   // v14全行カバレッジ突合: has_billable_act=true なのにイベントが参照しない行は
   // 「抽出漏れの可能性」として明示する(辞書スキャン網が拾えるものは候補にも出る)。
@@ -3113,7 +3205,7 @@ async function searchProcedureCandidateItem(feeCalculator, queries = [], preferr
         || item.source === "medical_procedure_master"
       ))
         .map((item) => annotateMedicalServiceCandidate(item))
-        .filter((item) => !directRetrievalFilterReason(item, { allowedFeeCategories }));
+        .filter((item) => !directRetrievalFilterReason(item, { allowedFeeCategories, allowFuzzyRecall: true }));
       const candidate = bestProcedureCandidateForQuery(items, query, preferredPatterns);
       if (candidate?.code) {
         return candidate;
@@ -3142,7 +3234,7 @@ async function searchProcedureCandidateChoices(feeCalculator, queries = [], pref
         || item.source === "medical_procedure_master"
       ))
         .map((item) => annotateMedicalServiceCandidate(item))
-        .filter((item) => !directRetrievalFilterReason(item, { allowedFeeCategories }));
+        .filter((item) => !directRetrievalFilterReason(item, { allowedFeeCategories, allowFuzzyRecall: true }));
       const scored = items
         .map((item, index) => ({ item, index, score: procedureCandidateScore(item, query, preferredPatterns) }))
         .filter((entry) => Number.isFinite(entry.score) && entry.score >= 30)
@@ -3359,6 +3451,39 @@ export function mergeClinicalFactsSamples(samples = []) {
   return base;
 }
 
+// v14契約検証: line_review を「LLMに実際に提示した行ID全集合」と完全照合する。
+// LLM自身の申告(返ってきた行だけの検査)では行の丸ごと省略を検出できないため、
+// 期待集合はNode側(promptClinicalLineIds)で確定し、欠落・重複・未知IDを突合する。
+// normalizedLineReview は既知IDのみ・重複はhas_billable_actのORで畳んだ正規形。
+export function reconcileLineReview(facts = {}, promptLineIds = []) {
+  const expected = asArray(promptLineIds).map((id) => String(id || "").trim()).filter(Boolean);
+  const expectedSet = new Set(expected);
+  const flags = new Map();
+  const unknownIds = [];
+  const duplicateIds = [];
+  for (const entry of asArray(facts?.line_review)) {
+    const lineId = String(entry?.line_id || entry?.lineId || "").trim();
+    if (!lineId) {
+      continue;
+    }
+    if (!expectedSet.has(lineId)) {
+      unknownIds.push(lineId);
+      continue;
+    }
+    if (flags.has(lineId)) {
+      duplicateIds.push(lineId);
+    }
+    flags.set(lineId, Boolean(flags.get(lineId)) || entry?.has_billable_act === true);
+  }
+  return {
+    expectedCount: expected.length,
+    missingIds: expected.filter((id) => !flags.has(id)),
+    unknownIds: uniqueStrings(unknownIds),
+    duplicateIds: uniqueStrings(duplicateIds),
+    normalizedLineReview: [...flags.entries()].map(([lineId, flag]) => ({ line_id: lineId, has_billable_act: flag }))
+  };
+}
+
 // v14: line_review(全行のhas_billable_act判定)と clinical_events の evidence_line_ids を突合し、
 // 「算定対象と判定されたのにイベント化されていない行」を返す。
 function uncoveredBillableLinesFromFacts(facts = {}, clinicalEvents = [], preprocessing = null) {
@@ -3454,33 +3579,71 @@ export async function dictionaryScanCandidateProposals({ feeCalculator, text = "
     if (proposals.length >= DICTIONARY_SCAN_MAX_PROPOSALS) {
       break;
     }
-    const code = String(match?.code || "").trim();
-    const name = String(match?.name || "").trim();
-    if (!code || !name || known.has(code)) {
+    // 同一別名に複数コードが衝突する場合(「在医総管」等)、マッチは codes[] で来る。
+    // 旧形式(平坦な code/name)にも耐える。
+    const rawCodes = asArray(match?.codes).length
+      ? asArray(match.codes)
+      : (match?.code ? [{ code: match.code, name: match.name, points: match.points, role: match.role }] : []);
+    const codeEntries = rawCodes
+      .map((entry) => ({
+        code: String(entry?.code || "").trim(),
+        name: String(entry?.name || "").trim(),
+        points: Number(entry?.points || 0),
+        role: String(entry?.role || "base")
+      }))
+      .filter((entry) => entry.code && entry.name && entry.role === "base" && !known.has(entry.code));
+    if (!codeEntries.length) {
       continue;
     }
-    if (String(match?.role || "base") !== "base") {
-      continue;
-    }
+    const matchedText = String(match?.matchedText || codeEntries[0].name);
     // 否定判定は「全出現位置 × 節(。・改行・読点区切り)単位」で行う。
     // 「前回は意見書なし。本日は作成・交付」(肯定の再出現)や
     // 「CTは行わず、意見書を作成」(同一文内の別節)を肯定として拾うため。
-    const positiveClause = firstPositiveClauseForMatch(text, String(match?.matchedText || name));
+    const positiveClause = firstPositiveClauseForMatch(text, matchedText);
     if (positiveClause === null) {
-      skipped.push({ code, reason: "negative_context" });
+      skipped.push({ code: codeEntries[0].code, reason: "negative_context" });
       continue;
     }
-    known.add(code);
-    proposals.push(candidateProposalFromProcedureItem({
-      proposalId: `dict_scan_${code}`,
-      title: `${name}の算定確認`,
-      reason: `カルテ本文に「${name}」の記載があります。実施済みで算定要件を満たす場合は算定できます。`,
-      conditionText: "実施事実・対象病名・回数制限・施設基準などの算定要件を確認してから採用してください。",
+    for (const entry of codeEntries) {
+      known.add(entry.code);
+    }
+    if (codeEntries.length === 1) {
+      const { code, name, points } = codeEntries[0];
+      proposals.push(candidateProposalFromProcedureItem({
+        proposalId: `dict_scan_${code}`,
+        title: `${name}の算定確認`,
+        reason: `カルテ本文に「${name}」の記載があります。実施済みで算定要件を満たす場合は算定できます。`,
+        conditionText: "実施事実・対象病名・回数制限・施設基準などの算定要件を確認してから採用してください。",
+        basis: "dictionary_scan_candidate",
+        evidence: String(positiveClause || name).trim().slice(0, 160),
+        item: { code, name, points, kind: "procedure" },
+        sortOrder: 70
+      }));
+      continue;
+    }
+    // 複数コード衝突は「コード選択が必要な1件の曖昧候補」に統合する。
+    // 恣意的に1コードを選ばず、コード決定前は採用(candidateLine化)しない。
+    const codeCount = Number(match?.codeCount || codeEntries.length);
+    const choiceSummary = codeEntries
+      .slice(0, 3)
+      .map((entry) => `${entry.name}(${entry.points}点)`)
+      .join("、");
+    proposals.push({
+      proposalId: `dict_scan_choice_${candidateIdPart(matchedText)}`,
+      title: `「${matchedText}」の算定区分確認`,
+      reason: `カルテ本文の「${matchedText}」に${codeCount}件の算定区分が該当します(例: ${choiceSummary})。実施内容に一致する区分を選択した場合のみ算定できます。`,
+      conditionText: "同一名称に複数の算定区分があるため自動確定していません。マスター検索で該当区分を特定してから採用してください。",
       basis: "dictionary_scan_candidate",
-      evidence: String(positiveClause || name).trim().slice(0, 160),
-      item: { code, name, points: Number(match?.points || 0), kind: "procedure" },
-      sortOrder: 70
-    }));
+      evidence: String(positiveClause || matchedText).trim().slice(0, 160),
+      actionType: "confirm_required",
+      potentialPoints: 0,
+      code: "",
+      codeCandidates: codeEntries.map((entry) => entry.code),
+      orderType: "procedure",
+      source: "clinical_billing_opportunity",
+      sortOrder: 70,
+      candidateLine: null
+    });
   }
   return {
     proposals,
@@ -3490,7 +3653,9 @@ export async function dictionaryScanCandidateProposals({ feeCalculator, text = "
       outcome: proposals.length ? "candidate_proposed" : "no_new_candidates",
       selected: {
         matchCount: matches.length,
-        proposedCodes: proposals.map((proposal) => proposal.code),
+        proposedCodes: proposals.map((proposal) => (
+          proposal.code || `choice:${asArray(proposal.codeCandidates).slice(0, 4).join("/")}`
+        )),
         skipped: skipped.slice(0, 10)
       },
       message: "master_name_dictionary_scan_completed"
@@ -3805,7 +3970,12 @@ function inferFeeCategoryFromRole(role) {
   return "procedure_basic";
 }
 
-function directRetrievalFilterReason(item = {}, { allowedFeeCategories = null } = {}) {
+export function directRetrievalFilterReason(item = {}, { allowedFeeCategories = null, allowFuzzyRecall = false } = {}) {
+  // 不変条件: トークン/n-gramフォールバック(近似召回)由来の項目は確定算定へ入れない。
+  // 候補レーン(人が承認するまで合計に入らない)だけが allowFuzzyRecall で許可できる。
+  if (!allowFuzzyRecall && item?.matchOrigin) {
+    return `fuzzy_recall:${item.matchOrigin}`;
+  }
   const classified = classifyMedicalServiceCandidate(item);
   if (classified.derivedOnly || !classified.directRetrievalAllowed) {
     return `derived_only:${classified.itemRole || classified.feeCategory}`;
@@ -8756,7 +8926,8 @@ function procedureMasterQueriesFromEvidence(evidence = "") {
 async function searchFirstMasterItem(feeCalculator, type, query, expectedKind) {
   try {
     const result = await feeCalculator.searchMaster({ type, query, limit: 5 });
-    const items = Array.isArray(result?.items) ? result.items : [];
+    // 確定レーン(薬剤・材料コードの直接解決)。近似召回由来は採用しない。
+    const items = (Array.isArray(result?.items) ? result.items : []).filter((item) => !item?.matchOrigin);
     return items.find((item) => item?.kind === expectedKind && item.code)
       || items.find((item) => item?.code)
       || null;
@@ -9320,6 +9491,11 @@ function cleanReviewWarning(value) {
 }
 
 function reviewWarningDedupKey(warning) {
+  // 抽出契約系の警告はカルテ行本文を引用するため、引用内の「初診」「再診」等が
+  // visit系キーに誤マッチして他の警告(履歴上書き等)を飲み込む。先頭で専用キーにする。
+  if (/^(抽出契約違反|抽出漏れの可能性)/u.test(warning)) {
+    return `extraction_contract:${warning.replace(/\s+/gu, "").slice(0, 120)}`;
+  }
   const procedureCode = warning.match(/\b(\d{6,})\b/u)?.[1];
   if (procedureCode) {
     return `procedure:${procedureCode}:${reviewWarningReasonKey(warning)}`;

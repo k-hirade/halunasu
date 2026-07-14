@@ -7474,7 +7474,7 @@ test("reuses previous clinical extraction when repricing manual order changes", 
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let extractorCalls = 0;
-  const clinicalFactsExtractor = async () => {
+  const clinicalFactsExtractor = async ({ preprocessedLines }) => {
     extractorCalls += 1;
     return {
       visit_type: { kind: "revisit", evidence: "再診", confidence: "high" },
@@ -7494,7 +7494,9 @@ test("reuses previous clinical extraction when repricing manual order changes", 
       }],
       excluded_events: [],
       missing_information: [],
-      review_flags: []
+      review_flags: [],
+      // v14契約: 全行のline_reviewを返す(欠落すると検証駆動リトライで再抽出が走る)
+      line_review: (preprocessedLines || []).map((line) => ({ line_id: line.lineId, has_billable_act: true }))
     };
   };
   let lastCalculationInput = null;

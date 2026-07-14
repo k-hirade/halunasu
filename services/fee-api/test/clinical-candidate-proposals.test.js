@@ -166,6 +166,33 @@ test("辞書スキャン: 本文中のマスタ名称を候補化し、否定文
   assert.ok(!doc.evidence.includes("催眠薬"), "根拠はヒット文のみ(行全体ではない)");
 });
 
+test("辞書スキャン: 同一別名の複数コードは code未確定の曖昧候補1件に統合される", async () => {
+  const text = "P）在宅酸素を継続する。";
+  const scanner = {
+    async scanMasterNames() {
+      return {
+        matches: [{
+          index: text.indexOf("在宅酸素"),
+          matchedText: "在宅酸素",
+          codeCount: 2,
+          codes: [
+            { code: "114003710", name: "在宅酸素療法指導管理料（その他）", points: 2400, role: "base" },
+            { code: "114004110", name: "在宅酸素療法指導管理料（チアノーゼ型先天性心疾患）", points: 520, role: "base" }
+          ]
+        }]
+      };
+    }
+  };
+  const result = await dictionaryScanCandidateProposals({ feeCalculator: scanner, text, knownCodes: [] });
+  assert.equal(result.proposals.length, 1, "独立した採用スイッチ2つではなく曖昧候補1件");
+  const proposal = result.proposals[0];
+  assert.equal(proposal.code, "", "コード未確定");
+  assert.deepEqual(proposal.codeCandidates, ["114003710", "114004110"]);
+  assert.equal(proposal.candidateLine, null, "コード決定前は採用(明細化)できない");
+  assert.equal(proposal.potentialPoints, 0, "点数は区分確定まで表示しない(改定時の陳腐化防止)");
+  assert.ok(proposal.title.includes("在宅酸素"));
+});
+
 test("加算(親項目前提)はイベント照合レーンから単独候補にしない", async () => {
   const addonCalculator = {
     async searchMaster() {
@@ -258,4 +285,160 @@ test("mergeClinicalFactsSamples: イベント・診断・line_reviewを和集合
   assert.deepEqual(merged.diagnoses.map((d) => d.name), ["高血圧症", "糖尿病"]);
   const p1 = merged.line_review.find((entry) => entry.line_id === "P-001");
   assert.equal(p1.has_billable_act, true); // OR判定
+});
+
+// 不変条件: フォールバック(近似召回)由来の検索結果は確定算定へ入れない。
+test("directRetrievalFilterReason: matchOrigin付き項目は確定レーンで除外され、候補レーンだけ許可できる", async () => {
+  const { directRetrievalFilterReason } = await import("../src/clinical-calculation-input.js");
+  const fuzzyItem = { code: "160072110", name: "ＨｂＡ１ｃ", kind: "procedure", matchOrigin: "ngram_fallback" };
+  assert.equal(directRetrievalFilterReason(fuzzyItem), "fuzzy_recall:ngram_fallback");
+  assert.equal(
+    directRetrievalFilterReason({ ...fuzzyItem, matchOrigin: "token_fallback" }),
+    "fuzzy_recall:token_fallback"
+  );
+  // 候補レーン(人が承認するまで合計に入らない)は明示オプトインで通せる
+  assert.equal(directRetrievalFilterReason(fuzzyItem, { allowFuzzyRecall: true }), "");
+});
+
+test("selectMasterItemForOrder: フォールバック由来は正規化一致・部分一致でも採用しない", async () => {
+  const { selectMasterItemForOrder } = await import("../src/server.js");
+  const query = "ＨｂＡ１ｃ";
+  const fuzzy = { code: "160072110", name: "ＨｂＡ１ｃ", kind: "procedure", matchOrigin: "ngram_fallback" };
+  // 完全一致でもフォールバック由来なら不採用(不変条件に例外を作らない)
+  assert.equal(selectMasterItemForOrder([fuzzy], "procedure", query), null);
+  // 同じ項目が全文一致検索(matchOriginなし)で来た場合は従来どおり採用
+  const exact = { code: "160072110", name: "ＨｂＡ１ｃ", kind: "procedure" };
+  assert.equal(selectMasterItemForOrder([fuzzy, exact], "procedure", query)?.code, "160072110");
+  assert.equal(selectMasterItemForOrder([fuzzy, exact], "procedure", query)?.matchOrigin, undefined);
+});
+
+// v14契約検証: 期待行ID(Nodeが確定)との完全照合と、欠落行のみの再抽出。
+test("reconcileLineReview: 欠落・重複・未知IDを検出し正規形に畳む", async () => {
+  const { reconcileLineReview } = await import("../src/clinical-calculation-input.js");
+  const result = reconcileLineReview({
+    line_review: [
+      { line_id: "L-001", has_billable_act: false },
+      { line_id: "L-001", has_billable_act: true },  // 重複(ORで畳む)
+      { line_id: "X-999", has_billable_act: true }   // 未知ID(幻覚行)
+    ]
+  }, ["L-001", "L-002", "L-003"]);
+  assert.deepEqual(result.missingIds, ["L-002", "L-003"]);
+  assert.deepEqual(result.unknownIds, ["X-999"]);
+  assert.deepEqual(result.duplicateIds, ["L-001"]);
+  assert.deepEqual(result.normalizedLineReview, [{ line_id: "L-001", has_billable_act: true }]);
+});
+
+test("line_review欠落: 欠落行だけを再抽出し、埋まれば確認事項を出さない", async () => {
+  const { buildClinicalCalculationPreparation } = await import("../src/clinical-calculation-input.js");
+  const calls = [];
+  const extractor = async ({ preprocessedLines }) => {
+    calls.push((preprocessedLines || []).map((line) => line.lineId));
+    if (calls.length === 1) {
+      // 1回目: 先頭行しか判定を返さない(2行目を丸ごと省略)
+      return {
+        visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+        diagnoses: [], clinical_events: [], excluded_events: [], missing_information: [], review_flags: [],
+        line_review: [{ line_id: (preprocessedLines || [])[0]?.lineId, has_billable_act: false }]
+      };
+    }
+    // 2回目(検証駆動リトライ): 渡された行(=欠落行のみ)を全て判定する
+    return {
+      diagnoses: [], clinical_events: [], excluded_events: [], missing_information: [], review_flags: [],
+      line_review: (preprocessedLines || []).map((line) => ({ line_id: line.lineId, has_billable_act: false }))
+    };
+  };
+  const prep = await buildClinicalCalculationPreparation({
+    session: {
+      feeSessionId: "f", orgId: "o", patientId: "p", serviceDate: "2026-06-13", setting: "outpatient",
+      clinicalText: "S）体調は安定している。\nP）経過観察を継続する。"
+    },
+    calculationInput: {},
+    feeCalculator: { async searchMaster() { return { items: [] }; } },
+    openAiApiKey: "dummy",
+    clinicalFactsExtractor: extractor
+  });
+  assert.equal(calls.length, 2, "欠落検出で1回だけ再抽出する");
+  assert.equal(calls[1].length, 1, "再抽出は欠落行のみに絞る");
+  assert.ok(!calls[0].includes(calls[1][0]) || calls[0].length > calls[1].length);
+  const incomplete = (prep.reviewIssues || []).find((issue) => issue.issueCode === "line_review_incomplete");
+  assert.equal(incomplete, undefined, "再抽出で埋まれば契約違反issueは出ない");
+});
+
+test("line_review欠落が再抽出でも埋まらなければ line_review_incomplete を明示する", async () => {
+  const { buildClinicalCalculationPreparation } = await import("../src/clinical-calculation-input.js");
+  let callCount = 0;
+  const extractor = async ({ preprocessedLines }) => {
+    callCount += 1;
+    return {
+      visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+      diagnoses: [], clinical_events: [], excluded_events: [], missing_information: [], review_flags: [],
+      // 常に先頭行だけ判定(リトライでも省略が続く)
+      line_review: callCount === 1
+        ? [{ line_id: (preprocessedLines || [])[0]?.lineId, has_billable_act: false }]
+        : []
+    };
+  };
+  const prep = await buildClinicalCalculationPreparation({
+    session: {
+      feeSessionId: "f", orgId: "o", patientId: "p", serviceDate: "2026-06-13", setting: "outpatient",
+      clinicalText: "S）体調は安定している。\nP）超音波検査を実施した。"
+    },
+    calculationInput: {},
+    feeCalculator: { async searchMaster() { return { items: [] }; } },
+    openAiApiKey: "dummy",
+    clinicalFactsExtractor: extractor
+  });
+  const incomplete = (prep.reviewIssues || []).find((issue) => issue.issueCode === "line_review_incomplete");
+  assert.ok(incomplete, "未解消の欠落は不完全結果として明示する");
+  assert.ok(incomplete.messageForStaff.includes("超音波検査"), "欠落行の本文が示される");
+});
+
+test("mergeOpenAiUsage: 複数サンプルの数値usageを合算する", async () => {
+  const { mergeOpenAiUsage } = await import("../src/clinical-calculation-input.js");
+  assert.equal(mergeOpenAiUsage(), null);
+  const merged = mergeOpenAiUsage(
+    { input_tokens: 10, output_tokens: 5, input_tokens_details: { cached_tokens: 3 } },
+    { input_tokens: 7, output_tokens: 2 }
+  );
+  assert.equal(merged.input_tokens, 17);
+  assert.equal(merged.output_tokens, 7);
+  assert.deepEqual(merged.input_tokens_details, { cached_tokens: 3 });
+});
+
+test("複数サンプル抽出: 1件失敗しても成功サンプルで継続し縮退しない", async (t) => {
+  const previous = process.env.FEE_CLINICAL_EXTRACTION_SAMPLES;
+  process.env.FEE_CLINICAL_EXTRACTION_SAMPLES = "2";
+  t.after(() => {
+    if (previous === undefined) {
+      delete process.env.FEE_CLINICAL_EXTRACTION_SAMPLES;
+    } else {
+      process.env.FEE_CLINICAL_EXTRACTION_SAMPLES = previous;
+    }
+  });
+  const { buildClinicalCalculationPreparation } = await import("../src/clinical-calculation-input.js");
+  let callCount = 0;
+  const extractor = async ({ preprocessedLines }) => {
+    callCount += 1;
+    if (callCount === 1) {
+      throw new Error("sample 1 failed");
+    }
+    return {
+      visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+      diagnoses: [], clinical_events: [], excluded_events: [], missing_information: [], review_flags: [],
+      line_review: (preprocessedLines || []).map((line) => ({ line_id: line.lineId, has_billable_act: false })),
+      usage: { input_tokens: 11, output_tokens: 4 }
+    };
+  };
+  const prep = await buildClinicalCalculationPreparation({
+    session: {
+      feeSessionId: "f", orgId: "o", patientId: "p", serviceDate: "2026-06-13", setting: "outpatient",
+      clinicalText: "S）体調は安定している。\nP）経過観察を継続する。"
+    },
+    calculationInput: {},
+    feeCalculator: { async searchMaster() { return { items: [] }; } },
+    openAiApiKey: "dummy",
+    clinicalFactsExtractor: extractor
+  });
+  const degraded = (prep.reviewWarnings || []).some((warning) => String(warning).startsWith("抽出縮退"));
+  assert.equal(degraded, false, "成功サンプルがあればルール縮退しない");
 });
