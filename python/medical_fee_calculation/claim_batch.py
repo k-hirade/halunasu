@@ -77,6 +77,7 @@ CLAIM_CONTEXT_FIELDS = frozenset(
         "dpc",
         "data_completeness",
         "facility_standard_keys",
+        "kizami_quantities",
     )
 )
 ENCOUNTER_FIELDS = frozenset(
@@ -511,7 +512,23 @@ def parse_claim_context_payload(
         dpc=_parse_dpc_options(_dict_value(merged, "dpc")),
         data_completeness=_parse_data_completeness(_dict_value(merged, "data_completeness")),
         facility_standard_keys=_optional_frozenset(merged.get("facility_standard_keys")),
+        kizami_quantities=_parse_kizami_quantities(merged.get("kizami_quantities")),
     )
+
+
+def _parse_kizami_quantities(value: Any) -> tuple[tuple[str, float], ...]:
+    if not isinstance(value, dict):
+        return ()
+    result: list[tuple[str, float]] = []
+    for code, quantity in value.items():
+        code_text = str(code or "").strip()
+        try:
+            quantity_value = float(quantity)
+        except (TypeError, ValueError):
+            continue
+        if code_text and quantity_value > 0:
+            result.append((code_text, quantity_value))
+    return tuple(sorted(result))
 
 
 def _claim_context_facility_standard_keys(claim_context: ClaimContext) -> tuple[str, ...]:

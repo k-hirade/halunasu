@@ -207,7 +207,25 @@ def _medical_procedure_record(source_id: int, row: list[str]) -> tuple[object, .
         _compact_date(row[86]),
         _compact_date(row[87]),
         _json_array(row),
+        # 注加算コード/通番・きざみ・年齢条件(claim_adjustmentsの汎用エンジンが使用)。
+        # db.py の行レベルバックフィルと二重の防御で、新規取込行がNULLにならないようにする。
+        row[37],
+        row[38],
+        row[29],
+        _float_or_zero(row[30]),
+        _float_or_zero(row[31]),
+        _float_or_zero(row[32]),
+        _float_or_zero(row[33]),
+        row[40],
+        row[41],
     )
+
+
+def _float_or_zero(value: object) -> float:
+    try:
+        return float(str(value).strip() or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _drug_record(source_id: int, row: list[str]) -> tuple[object, ...]:
@@ -546,9 +564,18 @@ def import_medical_procedure_master(
                 notice_item,
                 effective_from,
                 effective_to,
-                raw_row_json
+                raw_row_json,
+                chu_addon_code,
+                chu_addon_seq,
+                kizami_flag,
+                kizami_min,
+                kizami_max,
+                kizami_unit,
+                kizami_points,
+                age_min_code,
+                age_max_code
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (_medical_procedure_record(source_id, row) for row in rows),
         )

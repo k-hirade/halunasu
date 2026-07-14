@@ -731,12 +731,18 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-# 医科診療行為マスタの機械可読構造(注加算識別・きざみ・年齢条件)をカラム化する。
-# 位置は実データで検証済み: raw[13]=注加算識別(1=注加算/年齢加算系),
-# raw[29..33]=きざみ(識別/下限/上限/きざみ値/きざみ点数), raw[40..41]=年齢下限/上限コード。
+# 医科診療行為マスタの機械可読構造(注加算・きざみ・年齢条件)をカラム化する。
+# 位置は実データと公式レイアウトで検証済み:
+#   raw[37]=注加算コード(グループ), raw[38]=注加算通番(0=親項目/1以上=注加算メンバー),
+#   raw[29..33]=きざみ(識別/下限/上限/きざみ値/きざみ点数), raw[40..41]=年齢下限/上限コード。
+# 注: 旧実装が使っていた raw[13] は注加算識別ではない(乳幼児時間外加算等の
+# 「選択・置換」関係の行too含まれ、過大算定を生む)。注加算はコード/通番のみで結線する。
 # 既存DBにも冪等に適用できるよう ALTER+json_extract バックフィルで行う(再取込不要)。
+# バックフィルは行レベル(chu_addon_code IS NULL)で毎回実行し、
+# 新sourceの取込後もカラムがNULLのまま沈黙停止しないようにする。
 _PROCEDURE_ANNOTATION_COLUMNS = (
-    ("notification_addon_flag", "TEXT", "$[13]"),
+    ("chu_addon_code", "TEXT", "$[37]"),
+    ("chu_addon_seq", "TEXT", "$[38]"),
     ("kizami_flag", "TEXT", "$[29]"),
     ("kizami_min", "REAL", "$[30]"),
     ("kizami_max", "REAL", "$[31]"),
@@ -749,18 +755,15 @@ _PROCEDURE_ANNOTATION_COLUMNS = (
 
 def _ensure_procedure_annotation_columns(conn: sqlite3.Connection) -> None:
     existing = {row[1] for row in conn.execute("PRAGMA table_info(medical_procedures)")}
-    added = False
     for name, col_type, _path in _PROCEDURE_ANNOTATION_COLUMNS:
         if name not in existing:
             conn.execute(f"ALTER TABLE medical_procedures ADD COLUMN {name} {col_type}")
-            added = True
-    if not added:
-        return
     assignments = ", ".join(
         f"{name} = json_extract(raw_row_json, '{path}')"
         for name, _t, path in _PROCEDURE_ANNOTATION_COLUMNS
     )
     conn.execute(
         f"UPDATE medical_procedures SET {assignments} "
-        "WHERE raw_row_json IS NOT NULL AND raw_row_json != '[]' AND raw_row_json != ''"
+        "WHERE chu_addon_code IS NULL "
+        "AND raw_row_json IS NOT NULL AND raw_row_json != '[]' AND raw_row_json != ''"
     )

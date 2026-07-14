@@ -333,6 +333,8 @@ class ClaimContext:
     data_completeness: DataCompletenessContext = field(default_factory=DataCompletenessContext)
     hospital_profile: HospitalProfile | None = None
     facility_standard_keys: frozenset[str] | None = None
+    # きざみ算定の数量({診療行為コード: 分・回・cm等})。orders/契約入力から任意で渡す。
+    kizami_quantities: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True)

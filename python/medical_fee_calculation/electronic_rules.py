@@ -26,6 +26,8 @@ class ExclusionHit:
     excluded_name: str
     rule_kind: str
     matched_from: str
+    # 特例区分(raw[6])。'1'=特例あり(条件次第で併算定可)。特例ありは自動降格しない。
+    special_condition: str = "0"
 
 
 @dataclass(frozen=True)
@@ -253,7 +255,8 @@ def _find_exclusions(
                 base_name,
                 excluded_code,
                 excluded_name,
-                rule_kind
+                rule_kind,
+                COALESCE(json_extract(raw_row_json, '$[6]'), '0') AS special_condition
             FROM electronic_exclusions
             WHERE {_service_date_filter("effective_from", "effective_to")}
               {source_sql}
@@ -291,6 +294,7 @@ def _find_exclusions(
                     excluded_name=str(row["excluded_name"]),
                     rule_kind=str(row["rule_kind"]),
                     matched_from=matched_from,
+                    special_condition=str(row["special_condition"] or "0"),
                 )
             )
 

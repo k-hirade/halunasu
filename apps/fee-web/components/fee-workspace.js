@@ -4897,7 +4897,8 @@ function buildFeeSessionPayload({
     serviceDate: form.serviceDate,
     claimMonth: emptyToNull(form.claimMonth),
     setting: form.setting,
-    receptionTime: emptyToNull(form.receptionTime) || undefined,
+    // 空欄はnull=クリアの明示(undefinedだとPATCHでキーが落ち、保存値を消せない)。
+    receptionTime: emptyToNull(form.receptionTime),
     clinicalText: form.clinicalText,
     diagnoses: parseDiagnoses(chartInput.diagnosesText),
     diagnosesSource,
@@ -5164,6 +5165,7 @@ function formFromFeeSession(session = {}) {
     serviceDate: session.serviceDate || fallback.serviceDate,
     claimMonth: session.claimMonth || String(session.serviceDate || fallback.serviceDate).slice(0, 7),
     setting: session.setting || "outpatient",
+    receptionTime: session.receptionTime || "",
     clinicalText: session.clinicalText || "",
     diagnosesText: formatDiagnoses(session.diagnoses),
     calculationOptionsText: formatJsonObject(editableCalculationOptions)

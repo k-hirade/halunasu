@@ -366,7 +366,7 @@ def calculate_lab_claim_standardized(
     all_lines, kizami_messages = apply_kizami_evaluation(
         conn,
         all_lines,
-        kizami_quantities=getattr(claim_context, "kizami_quantities", None),
+        kizami_quantities=dict(claim_context.kizami_quantities or ()),
         source_id=claim_context.master_sources.medical_procedure_source_id,
     )
 

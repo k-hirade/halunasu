@@ -3,7 +3,7 @@
 3つの汎用機構を提供する(いずれもマスタ/電子点数表のデータ駆動で、個別コード実装を持たない):
 
 1. 年齢条件つき注加算の自動付与 (apply_notification_age_addons)
-   マスタの注加算識別(notification_addon_flag)と年齢条件(age_min/max_code)を使い、
+   マスタの注加算コード/通番(chu_addon_code/seq)と年齢条件(age_min/max_code)を使い、
    親項目が明細に立ったとき年齢条件を満たす注加算を自動付与する。
 2. 電子点数表による確定側整合 (apply_electronic_consistency)
    背反(併算定不可)・回数上限超過・包括対象の劣後行を「合計から除外した要確認行」へ降格する。
@@ -74,32 +74,38 @@ def apply_notification_age_addons(
     source_sql = "AND source_id = ?" if source_id is not None else ""
 
     for parent in parent_lines:
+        # 親子関係はマスタの注加算コード(グループ)/通番で結線する。
+        # 通番0=親項目、通番1以上=その注に規定された加算メンバー。
+        # 区分番号だけのグルーピングは「乳幼児時間外加算」等の選択・置換関係の
+        # 兄弟行を加算と誤認し過大算定になるため使わない。
         group = conn.execute(
             f"""
-            SELECT chapter, part, alpha_part, section, branch, item
+            SELECT chu_addon_code, chu_addon_seq
             FROM medical_procedures
             WHERE code = ? {source_sql}
             LIMIT 1
             """,
             (parent.code, *((source_id,) if source_id is not None else ())),
         ).fetchone()
-        if group is None or not str(group["section"] or "").strip():
+        addon_group = str(group["chu_addon_code"] or "").strip() if group else ""
+        if not addon_group or addon_group == "0":
             continue
+        parent_seq = str(group["chu_addon_seq"] or "0").strip() or "0"
+        if parent_seq != "0":
+            continue  # 親項目(通番0)のみを起点にする
         candidates = conn.execute(
             f"""
             SELECT code, short_name, points, age_min_code, age_max_code, facility_standard_codes
             FROM medical_procedures
-            WHERE notification_addon_flag = '1'
-              AND chapter = ? AND part = ? AND COALESCE(alpha_part,'') = COALESCE(?,'')
-              AND section = ? AND COALESCE(branch,'') = COALESCE(?,'') AND COALESCE(item,'') = COALESCE(?,'')
+            WHERE chu_addon_code = ?
+              AND COALESCE(chu_addon_seq, '0') NOT IN ('', '0')
               AND (effective_from IS NULL OR effective_from <= ?)
               AND (effective_to IS NULL OR effective_to >= ?)
               {source_sql}
             ORDER BY code
             """,
             (
-                group["chapter"], group["part"], group["alpha_part"],
-                group["section"], group["branch"], group["item"],
+                addon_group,
                 service_date_text, service_date_text,
                 *((source_id,) if source_id is not None else ()),
             ),
@@ -224,8 +230,12 @@ def apply_electronic_consistency(
 
     # 背反(同一クレーム内で確定できる「同時」「同日」スコープのみ。
     # 同月・同週背反は履歴の完全性に依存するため警告に留める)
+    # 特例区分=1(条件次第で併算定可。同日・同時で9,824件)は条件を機械評価できないため
+    # 自動降格せず、既存の警告のみに委ねる。
     for hit in sorted(electronic_rules.exclusions, key=lambda h: (h.base_code, h.excluded_code)):
         if hit.scope not in ("same_day", "simultaneous") or hit.matched_from != "current":
+            continue
+        if str(getattr(hit, "special_condition", "0") or "0") == "1":
             continue
         base_index = counted(hit.base_code)
         excluded_index = counted(hit.excluded_code)
@@ -262,7 +272,10 @@ def apply_electronic_consistency(
         )
 
     # 包括(基本項目が本クレームに存在する場合、包括対象を除外)
+    # applicability=1(特例あり=条件次第で別算定可。2,156件)は自動降格せず警告のみ。
     for hit in sorted(electronic_rules.bundles, key=lambda h: (h.base_code, h.bundled_code)):
+        if str(hit.applicability or "0") == "1":
+            continue
         base_index = counted(hit.base_code)
         bundled_index = counted(hit.bundled_code)
         if base_index is None or bundled_index is None or base_index == bundled_index:

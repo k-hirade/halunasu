@@ -138,6 +138,7 @@ def build_claim_payload(session: dict[str, Any], calculation_input: dict[str, An
         "injection_orders",
         "treatment_orders",
         "imaging_orders",
+        "kizami_quantities",
     ):
         if key in options:
             claim_payload[key] = options[key]

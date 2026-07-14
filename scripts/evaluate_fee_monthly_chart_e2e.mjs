@@ -343,16 +343,31 @@ async function runRepetition({
   const comparison = compareAggregates(baselineLines, monthlyLines);
   // 2段評価: 確定明細のみの一致(comparison)と、承認待ち候補まで含めた検知(detection)を分ける。
   // 候補は自動採用しない設計のため、検知率は「確認すれば到達できる上限」を示す。
-  // コード未確定(1/2区分の同点タイ等)の候補は codeCandidates を検知一致の分子として展開する。
-  const expandedCandidateLines = monthly.candidateLines.flatMap((line) => {
-    if (line.code) return [line];
-    return (line.codeCandidates || []).map((code) => ({ ...line, code }));
-  });
+  // 検知照合: 確定行とコード確定済み候補で通常比較し、コード未確定候補
+  // (1/2区分の同点タイ等)は「1候補=最大1一致」で未一致の既存コードへ割り当てる。
+  // 全codeCandidatesへの複製は1候補が複数一致に数えられ recall が歪むため行わない。
   const detectionLines = aggregateLines([
     ...monthly.lines,
-    ...expandedCandidateLines.filter((line) => line.code)
+    ...monthly.candidateLines.filter((line) => line.code)
   ]);
   const detection = compareAggregates(baselineLines, detectionLines);
+  const ambiguousCandidates = monthly.candidateLines.filter((line) => !line.code && (line.codeCandidates || []).length);
+  const usedCandidates = new Set();
+  for (const row of detection.rows) {
+    if (row.status !== "baseline_only") continue;
+    const matchIndex = ambiguousCandidates.findIndex((candidate, index) => (
+      !usedCandidates.has(index) && (candidate.codeCandidates || []).includes(row.code)
+    ));
+    if (matchIndex >= 0) {
+      usedCandidates.add(matchIndex);
+      row.status = "matched_via_code_candidates";
+      detection.matchedCodeCount += 1;
+      detection.baselineOnlyCount -= 1;
+    }
+  }
+  detection.codeRecall = baselineLines.length
+    ? Math.round((detection.matchedCodeCount / baselineLines.length) * 1000) / 1000
+    : null;
   const candidateSurface = aggregateLines(sessions.flatMap((session) => session.candidateSurface.lines));
 
   return {

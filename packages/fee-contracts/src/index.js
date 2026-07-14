@@ -223,7 +223,11 @@ export function validateCreateFeeCalculationInput(input = {}) {
 }
 
 // 受付時刻(HH:MM)。時間外・休日・深夜加算の判定材料。
+// null は「クリア」の明示(update時にキーを残して保存値を消す)。
 function optionalReceptionTime(value) {
+  if (value === null) {
+    return null;
+  }
   const text = optionalString(value);
   if (!text) {
     return undefined;
