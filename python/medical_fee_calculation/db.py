@@ -727,4 +727,40 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
 
 def initialize_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
+    _ensure_procedure_annotation_columns(conn)
     conn.commit()
+
+
+# 医科診療行為マスタの機械可読構造(注加算識別・きざみ・年齢条件)をカラム化する。
+# 位置は実データで検証済み: raw[13]=注加算識別(1=注加算/年齢加算系),
+# raw[29..33]=きざみ(識別/下限/上限/きざみ値/きざみ点数), raw[40..41]=年齢下限/上限コード。
+# 既存DBにも冪等に適用できるよう ALTER+json_extract バックフィルで行う(再取込不要)。
+_PROCEDURE_ANNOTATION_COLUMNS = (
+    ("notification_addon_flag", "TEXT", "$[13]"),
+    ("kizami_flag", "TEXT", "$[29]"),
+    ("kizami_min", "REAL", "$[30]"),
+    ("kizami_max", "REAL", "$[31]"),
+    ("kizami_unit", "REAL", "$[32]"),
+    ("kizami_points", "REAL", "$[33]"),
+    ("age_min_code", "TEXT", "$[40]"),
+    ("age_max_code", "TEXT", "$[41]"),
+)
+
+
+def _ensure_procedure_annotation_columns(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(medical_procedures)")}
+    added = False
+    for name, col_type, _path in _PROCEDURE_ANNOTATION_COLUMNS:
+        if name not in existing:
+            conn.execute(f"ALTER TABLE medical_procedures ADD COLUMN {name} {col_type}")
+            added = True
+    if not added:
+        return
+    assignments = ", ".join(
+        f"{name} = json_extract(raw_row_json, '{path}')"
+        for name, _t, path in _PROCEDURE_ANNOTATION_COLUMNS
+    )
+    conn.execute(
+        f"UPDATE medical_procedures SET {assignments} "
+        "WHERE raw_row_json IS NOT NULL AND raw_row_json != '[]' AND raw_row_json != ''"
+    )

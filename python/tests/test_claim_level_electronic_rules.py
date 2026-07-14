@@ -64,7 +64,7 @@ class ClaimLevelElectronicRulesTest(unittest.TestCase):
             try:
                 initialize_schema(conn)
                 self._seed_exclusion(conn)
-                messages = _claim_level_electronic_messages(
+                messages, _rules = _claim_level_electronic_messages(
                     conn,
                     _claim_context(("AAA",)),
                     (_line("BBB"),),
@@ -84,9 +84,9 @@ class ClaimLevelElectronicRulesTest(unittest.TestCase):
             try:
                 initialize_schema(conn)
                 self._seed_exclusion(conn)
-                first = _claim_level_electronic_messages(conn, _claim_context(("AAA",)), (_line("BBB"),), ())
+                first, _rules1 = _claim_level_electronic_messages(conn, _claim_context(("AAA",)), (_line("BBB"),), ())
                 # 同じ本文を既出メッセージとして渡すと重複出力しない
-                second = _claim_level_electronic_messages(conn, _claim_context(("AAA",)), (_line("BBB"),), first)
+                second, _rules2 = _claim_level_electronic_messages(conn, _claim_context(("AAA",)), (_line("BBB"),), first)
             finally:
                 conn.close()
 
@@ -118,7 +118,7 @@ class ClaimLevelElectronicRulesTest(unittest.TestCase):
                 initialize_schema(conn)
                 self._seed_required_comment(conn)
                 # CCC は派生ライン(procedure_codes には無い)→ claim横断で必須コメント検知
-                messages = _claim_level_electronic_messages(
+                messages, _rules = _claim_level_electronic_messages(
                     conn,
                     _claim_context((), comment_inputs=()),
                     (_line("CCC"),),
@@ -136,7 +136,7 @@ class ClaimLevelElectronicRulesTest(unittest.TestCase):
             try:
                 initialize_schema(conn)
                 self._seed_required_comment(conn)
-                messages = _claim_level_electronic_messages(
+                messages, _rules = _claim_level_electronic_messages(
                     conn,
                     _claim_context((), comment_inputs=(CommentInput(code="830000001"),)),
                     (_line("CCC"),),
@@ -152,10 +152,11 @@ class ClaimLevelElectronicRulesTest(unittest.TestCase):
             try:
                 initialize_schema(conn)
                 self._seed_exclusion(conn)
-                messages = _claim_level_electronic_messages(conn, _claim_context(()), (), ())
+                messages, rules = _claim_level_electronic_messages(conn, _claim_context(()), (), ())
             finally:
                 conn.close()
         self.assertEqual(messages, ())
+        self.assertIsNone(rules)
 
 
 if __name__ == "__main__":

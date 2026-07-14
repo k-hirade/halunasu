@@ -2544,6 +2544,7 @@ def _line_to_dict(line: CalculationLine) -> dict[str, Any]:
         "reason": line.reason,
         "source": line.source,
         "total_points": line.total_points,
+        "excluded_from_total": line.excluded_from_total,
         "coverage": _line_coverage_to_dict(line),
     }
 

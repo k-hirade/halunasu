@@ -31,8 +31,13 @@ def calculate_fee_session(payload: dict[str, Any]) -> dict[str, Any]:
         result_dict = result.to_dict()
         # 点検(算定もれ等)で使う診療行為メタ(検査判断区分・区分)を明細に付与する。conn を閉じる前に解決する。
         line_items = _fee_line_items(result_dict["lines"], conn=conn)
+        coverage_warning = _master_coverage_warning(conn, claim_payload)
     finally:
         conn.close()
+    warnings = _warning_messages(result_dict)
+    if coverage_warning:
+        # 適用期間外は「静かに0点」で最も誤解を生むため、警告先頭で明示する。
+        warnings = [coverage_warning, *warnings]
     return {
         "calculationResult": {
             "provider": "medical_fee_calculation",
@@ -41,7 +46,7 @@ def calculate_fee_session(payload: dict[str, Any]) -> dict[str, Any]:
             "engineStatus": result.status,
             "totalPoints": result_dict["total_points"] or 0,
             "lineItems": line_items,
-            "warnings": _warning_messages(result_dict),
+            "warnings": warnings,
             "messages": result_dict["messages"],
             "inputCodes": result_dict["input_codes"],
             "candidateCodes": result_dict["candidate_codes"],
@@ -193,6 +198,7 @@ def _fee_line_items(lines: list[dict[str, Any]], conn: Any = None) -> list[dict[
             "quantity": line.get("quantity") or 1,
             "totalPoints": line.get("total_points") or 0,
             "status": line.get("status") or "candidate",
+            "excludedFromTotal": bool(line.get("excluded_from_total")),
             "reason": line.get("reason"),
             "source": line.get("source") or "medical_fee_calculation",
             "coverage": coverage,
@@ -336,6 +342,47 @@ def _raw_bool(value: Any, default: bool) -> bool:
         if normalized in {"false", "0", "no"}:
             return False
     return default
+
+
+def _master_coverage_warning(conn: Any, claim_payload: dict[str, Any]) -> str:
+    """診療日が取込済みマスタの適用期間外なら明示警告を返す。
+
+    期間外は全コードが「not found for service date」になり静かに0点となるため、
+    原因を利用者へ明示する(F3: mock_partner 2025-01 事象の恒久対応)。
+    """
+    encounter = claim_payload.get("encounter") if isinstance(claim_payload.get("encounter"), dict) else {}
+    service_date = str(encounter.get("service_date") or "").strip()
+    if not service_date:
+        return ""
+    try:
+        row = conn.execute(
+            """
+            SELECT MIN(effective_from) AS min_from, MAX(effective_to) AS max_to
+            FROM medical_procedures
+            WHERE source_id = (
+                SELECT id FROM master_sources
+                WHERE source_type = 'medical_procedure_master'
+                ORDER BY imported_at DESC, id DESC LIMIT 1
+            )
+            """
+        ).fetchone()
+    except Exception:  # noqa: BLE001 - 警告は補助。失敗しても算定は継続する。
+        return ""
+    if not row or not row["min_from"]:
+        return ""
+    min_from = str(row["min_from"])
+    max_to = str(row["max_to"] or "9999-12-31")
+    if service_date < min_from:
+        return (
+            f"マスタ適用期間外: 診療日{service_date}は取込済み診療行為マスタの適用開始({min_from})より前です。"
+            "診療行為コードが解決できず0点となる可能性があります。対象年度のマスタ取込か診療日を確認してください。"
+        )
+    if service_date > max_to:
+        return (
+            f"マスタ適用期間外: 診療日{service_date}は取込済み診療行為マスタの適用終了({max_to})より後です。"
+            "最新年度のマスタ取込を確認してください。"
+        )
+    return ""
 
 
 def _warning_messages(result: dict[str, Any]) -> list[str]:

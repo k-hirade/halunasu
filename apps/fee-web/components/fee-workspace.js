@@ -1742,6 +1742,7 @@ function FeeSessionDetailView({ sessionId }) {
         ))}
       </div>
 
+      <ExtractionDegradedBanner calculationResult={effectiveFeeSession?.calculationResult} />
       <div className="fee-session-workspace">
         <SourcePane
           busy={busy}
@@ -2763,6 +2764,15 @@ function FeeSettingsModal({
                     ]}
                     value={form.setting}
                     onValueChange={(value) => onUpdateForm("setting", value)}
+                  />
+                </label>
+                <label>
+                  <span>受付時刻（任意）</span>
+                  <input
+                    type="time"
+                    value={form.receptionTime || ""}
+                    onChange={(event) => onUpdateForm("receptionTime", event.target.value)}
+                    aria-label="受付時刻"
                   />
                 </label>
                 <label>
@@ -4887,6 +4897,7 @@ function buildFeeSessionPayload({
     serviceDate: form.serviceDate,
     claimMonth: emptyToNull(form.claimMonth),
     setting: form.setting,
+    receptionTime: emptyToNull(form.receptionTime) || undefined,
     clinicalText: form.clinicalText,
     diagnoses: parseDiagnoses(chartInput.diagnosesText),
     diagnosesSource,
@@ -4905,6 +4916,7 @@ function defaultFeeForm() {
     serviceDate: today,
     claimMonth: today.slice(0, 7),
     setting: "outpatient",
+    receptionTime: "",
     clinicalText: "",
     diagnosesText: "",
     calculationOptionsText: ""
@@ -6030,6 +6042,21 @@ function emptyCandidateWorkbenchModel({ calculation } = {}) {
     },
     potentialPointsTotal: 0
   };
+}
+
+// AI構造化の失敗でルール抽出のみに縮退した算定は、候補欠落の可能性を目立つ形で知らせる。
+function ExtractionDegradedBanner({ calculationResult }) {
+  const warnings = Array.isArray(calculationResult?.warnings) ? calculationResult.warnings : [];
+  const degraded = warnings.find((warning) => String(warning || "").startsWith("抽出縮退"));
+  if (!degraded) {
+    return null;
+  }
+  return (
+    <div className="fee-degraded-banner" role="alert">
+      <strong>抽出縮退</strong>
+      <span>{String(degraded).replace(/^抽出縮退:\s*/u, "")}</span>
+    </div>
+  );
 }
 
 function encounterSettingLabel(value) {

@@ -1492,3 +1492,30 @@ test("コード未確定の知識ルール候補は ruleId で畳まれ monthlyL
   assert.deepEqual(line.frequencyLimits, [{ unit: "月", unitCode: "", maxCount: 1 }]);
   assert.equal(receipt.candidateTotalPoints, 270);
 });
+
+test("エンジン自動整合で除外された行は承認までレセ合計に入らない", () => {
+  const session = applyCalculationResult(buildFeeSession({
+    orgId: "org_123",
+    patientId: "pat_excl",
+    facilityId: "fac_123",
+    createdByMemberId: "mem_123",
+    serviceDate: "2026-06-11"
+  }, { feeSessionId: "fee_excl", now: new Date("2026-06-11T00:00:00.000Z") }), {
+    provider: "test",
+    status: "completed",
+    totalPoints: 890,
+    lineItems: [
+      { code: "114001110", name: "在宅患者訪問診療料（１）１", orderType: "procedure", points: 890, totalPoints: 890, quantity: 1, status: "needs_review" },
+      { code: "112011010", name: "外来管理加算", orderType: "basic", points: 52, totalPoints: 52, quantity: 1, status: "needs_review", excludedFromTotal: true, reason: "併算定不可(背反)のため合計から除外" }
+    ],
+    warnings: []
+  }, { calculationId: "calc_excl", now: new Date("2026-06-11T00:01:00.000Z") });
+
+  const draft = buildReceiptDraft(session, { now: new Date("2026-06-11T00:02:00.000Z") });
+  assert.equal(draft.totalPoints, 890, "除外行はレセ合計に入らない");
+  const excludedLine = draft.lines.find((line) => line.code === "112011010");
+  assert.equal(excludedLine.includedInTotal, false);
+  assert.equal(excludedLine.inclusionStatus, "pending");
+  const included = draft.lines.find((line) => line.code === "114001110");
+  assert.equal(included.includedInTotal, true);
+});

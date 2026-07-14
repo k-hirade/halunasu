@@ -343,9 +343,14 @@ async function runRepetition({
   const comparison = compareAggregates(baselineLines, monthlyLines);
   // 2段評価: 確定明細のみの一致(comparison)と、承認待ち候補まで含めた検知(detection)を分ける。
   // 候補は自動採用しない設計のため、検知率は「確認すれば到達できる上限」を示す。
+  // コード未確定(1/2区分の同点タイ等)の候補は codeCandidates を検知一致の分子として展開する。
+  const expandedCandidateLines = monthly.candidateLines.flatMap((line) => {
+    if (line.code) return [line];
+    return (line.codeCandidates || []).map((code) => ({ ...line, code }));
+  });
   const detectionLines = aggregateLines([
     ...monthly.lines,
-    ...monthly.candidateLines.filter((line) => line.code)
+    ...expandedCandidateLines.filter((line) => line.code)
   ]);
   const detection = compareAggregates(baselineLines, detectionLines);
   const candidateSurface = aggregateLines(sessions.flatMap((session) => session.candidateSurface.lines));
@@ -424,6 +429,7 @@ function sanitizeMonthlyReceipt(receipt) {
   const lines = aggregateLines(receipt.lines || []);
   const candidateLines = (Array.isArray(receipt.candidateLines) ? receipt.candidateLines : []).map((line) => ({
     code: line.code || null,
+    codeCandidates: Array.isArray(line.codeCandidates) ? line.codeCandidates : [],
     name: String(line.name || ""),
     quantity: Number(line.quantity || 1),
     totalPoints: Number(line.totalPoints || 0),

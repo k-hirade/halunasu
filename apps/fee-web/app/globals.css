@@ -4715,6 +4715,25 @@ body:has(.fee-shell--detail) {
   font-weight: 900;
 }
 
+/* AI構造化の縮退バナー */
+.fee-degraded-banner {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin: 8px 16px 0;
+  padding: 10px 14px;
+  border: 1px solid #f59e0b;
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+}
+
+.fee-degraded-banner strong {
+  flex-shrink: 0;
+}
+
 /* 月次2段表示の下段: 未承認の増点候補 */
 .receipt-candidate-table {
   width: 100%;

@@ -313,6 +313,40 @@
         "自律訓練",
         "面接療法"
       ]
+    },
+    {
+      "ruleId": "B008_2_polypharmacy_adjustment_signal",
+      "family": "medication_review_management",
+      "title": "薬剤総合評価調整管理料の確認",
+      "displayName": "薬剤総合評価調整管理料",
+      "clinicalLabel": "多剤内服の総合評価と減薬(2種類以上の内服薬の中止・変更)を行った可能性",
+      "potentialPoints": 250,
+      "orderType": "procedure",
+      "topicCode": "same_month_check",
+      "requiredInput": "変更前の内服薬数(6種類以上)、中止・変更した薬剤(2種類以上)、4週間以上の継続見込み、評価の記録",
+      "queryHints": [
+        "薬剤総合評価調整管理料"
+      ],
+      "preferredPatterns": [
+        "薬剤総合評価調整管理料"
+      ],
+      "diagnosisTerms": [],
+      "requireDiagnosisMatch": false,
+      "eventTerms": [
+        "減薬",
+        "薬剤を中止",
+        "剤を中止",
+        "内服を見直",
+        "処方を見直",
+        "多剤",
+        "ポリファーマシー",
+        "薬剤調整",
+        "薬剤総合評価"
+      ],
+      "monthlyLimit": {
+        "unit": "月",
+        "maxCount": 1
+      }
     }
   ]
 }

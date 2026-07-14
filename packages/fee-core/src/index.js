@@ -46,6 +46,7 @@ export function buildFeeSession(input = {}, options = {}) {
     serviceDate,
     claimMonth: input.claimMonth || serviceDate.slice(0, 7),
     setting: input.setting || "outpatient",
+    receptionTime: input.receptionTime || input.reception_time || null,
     admissionDate: input.admissionDate || input.admission_date || null,
     inpatientBasicDays: input.inpatientBasicDays || input.inpatient_basic_days || null,
     clinicalText: input.clinicalText || "",
@@ -477,6 +478,10 @@ function aggregateMonthlyCandidateLines(sessions = [], {
         existing.serviceDates = uniqueSortedStrings([...existing.serviceDates, serviceDate]);
         existing.proposalIds.push(proposal.proposalId || null);
         existing.proposalMonthlyLimit ||= normalizeProposalMonthlyLimit(proposal.monthlyLimit);
+        existing.codeCandidates = uniqueSortedStrings([
+          ...(existing.codeCandidates || []),
+          ...(Array.isArray(proposal.codeCandidates) ? proposal.codeCandidates : [])
+        ]);
       } else {
         map.set(key, {
           candidateLineId: `candidate_${key.replace(/[^\w-]/gu, "_")}`,
@@ -492,7 +497,8 @@ function aggregateMonthlyCandidateLines(sessions = [], {
           source: proposal.source || "candidate_proposal",
           serviceDates: serviceDate ? [serviceDate] : [],
           proposalIds: [proposal.proposalId || null],
-          proposalMonthlyLimit: normalizeProposalMonthlyLimit(proposal.monthlyLimit)
+          proposalMonthlyLimit: normalizeProposalMonthlyLimit(proposal.monthlyLimit),
+          codeCandidates: Array.isArray(proposal.codeCandidates) ? proposal.codeCandidates.filter(Boolean) : []
         });
       }
     }
@@ -1123,6 +1129,7 @@ function receiptLineFromCalculationLine(line = {}, index = 0, calculation = {}, 
     coverage: line.coverage,
     supportLevel: line.supportLevel,
     reviewRequired: line.reviewRequired,
+    excludedFromTotal: Boolean(line.excludedFromTotal),
     inclusionStatus: lineInclusionStatus(line, decisions),
     includedInTotal: lineIncludedInTotal(line, decisions)
   };
@@ -1565,6 +1572,9 @@ function normalizeLineItems(items) {
       item.reviewRequired ?? item.review_required ?? coverage.reviewRequired,
       ["candidate", "needs_review"].includes(status) || supportLevel === "review_required"
     );
+    // エンジンの自動整合(背反・回数・包括・年齢)で合計から除外された行。
+    // 削除せず「承認待ち」として保持し、人の承認で再算入できる。
+    const excludedFromTotal = coerceBoolean(item.excludedFromTotal ?? item.excluded_from_total, false);
     return compactObject({
       lineId: item.lineId || item.line_id || `line_${index + 1}`,
       code: item.code || null,
@@ -1573,6 +1583,7 @@ function normalizeLineItems(items) {
       orderType: item.orderType || item.order_type || "unknown",
       points,
       quantity,
+      excludedFromTotal,
       quantityPerDay: item.quantityPerDay ?? item.quantity_per_day ?? null,
       doseQuantity: item.doseQuantity ?? item.dose_quantity ?? null,
       dosesPerDay: item.dosesPerDay ?? item.doses_per_day ?? null,
@@ -1649,6 +1660,10 @@ function normalizeCandidateProposal(item = {}, index = 0) {
     monthlyLimit: isPlainObject(item.monthlyLimit || item.monthly_limit)
       ? item.monthlyLimit || item.monthly_limit
       : null,
+    // 1/2区分等でマスタ照合が同点タイの場合の候補コード集合(単一codeは持たない)。
+    codeCandidates: Array.isArray(item.codeCandidates ?? item.code_candidates)
+      ? (item.codeCandidates ?? item.code_candidates).map((code) => String(code || "")).filter(Boolean)
+      : [],
     policy: isPlainObject(item.policy) ? item.policy : null,
     knowledge: isPlainObject(item.knowledge) ? item.knowledge : null,
     resolutionOptions: Array.isArray(item.resolutionOptions || item.resolution_options)
@@ -2074,6 +2089,11 @@ function lineInclusionStatus(line = {}, decisions = {}) {
   const status = lineDecision(line, decisions)?.status;
   if (status === "rejected") return "excluded";
   if (status === "edited") return "pending";
+  // エンジンの自動整合(背反・回数・包括・年齢)で除外された行は、
+  // 人が承認するまで合計に入れない(承認で再算入できる)。
+  if (line.excludedFromTotal) {
+    return status === "approved" ? "included" : "pending";
+  }
   return "included";
 }
 

@@ -13,6 +13,12 @@ from medical_fee_calculation.claim_models import (
     CommentInput,
     MedicationDeliveryKind,
 )
+from medical_fee_calculation.claim_adjustments import (
+    apply_age_range_guard,
+    apply_electronic_consistency,
+    apply_kizami_evaluation,
+    apply_notification_age_addons,
+)
 from medical_fee_calculation.electronic_rules import (
     ElectronicRuleContext,
     ElectronicRuleResult,
@@ -336,15 +342,52 @@ def calculate_lab_claim_standardized(
         *inpatient_fees.messages,
         *lab_result.messages,
     )
+    # 年齢条件つき注加算の自動付与(マスタ駆動)。親行が立った後・整合の前に行う。
+    addon_lines, addon_messages = apply_notification_age_addons(
+        conn,
+        all_lines,
+        patient_age_years=patient_age_years,
+        service_date=claim_context.encounter.service_date,
+        source_id=claim_context.master_sources.medical_procedure_source_id,
+    )
+    if addon_lines:
+        all_lines = (*all_lines, *addon_lines)
+
+    # 年齢範囲外の行を降格(誤確定防止)。
+    all_lines, age_guard_messages = apply_age_range_guard(
+        conn,
+        all_lines,
+        patient_age_years=patient_age_years,
+        source_id=claim_context.master_sources.medical_procedure_source_id,
+    )
+
+    # きざみ(時間・数量刻み)項目の評価。数量未指定の項目は「未評価」を明示する
+    # (静かな過少算定の防止)。数量指定時は点数を再計算する。
+    all_lines, kizami_messages = apply_kizami_evaluation(
+        conn,
+        all_lines,
+        kizami_quantities=getattr(claim_context, "kizami_quantities", None),
+        source_id=claim_context.master_sources.medical_procedure_source_id,
+    )
+
     # #6: 検査(lab)単位だけでなく、クレーム全体の算定コードに対して
     # 併算定不可・算定回数制限・必須コメントを横断適用する。
-    claim_level_messages = _claim_level_electronic_messages(
+    claim_level_messages, electronic_rules_result = _claim_level_electronic_messages(
         conn,
         claim_context,
         all_lines,
         base_messages,
         hospital_profile=hospital_profile,
     )
+
+    # 電子点数表による確定側整合: 背反・回数超過・包括の劣後行を合計から除外へ降格。
+    if electronic_rules_result is not None:
+        all_lines, consistency_messages = apply_electronic_consistency(
+            all_lines,
+            electronic_rules_result,
+        )
+    else:
+        consistency_messages = ()
 
     return CalculationResult(
         input_codes=_unique_codes(
@@ -355,7 +398,7 @@ def calculate_lab_claim_standardized(
             )
         ),
         lines=all_lines,
-        messages=(*base_messages, *claim_level_messages),
+        messages=(*base_messages, *addon_messages, *age_guard_messages, *kizami_messages, *claim_level_messages, *consistency_messages),
     )
 
 
@@ -381,7 +424,7 @@ def _claim_level_electronic_messages(
         )
     )
     if not codes:
-        return ()
+        return (), None
 
     history = claim_context.history
     electronic_rules = check_electronic_rules(
@@ -459,7 +502,7 @@ def _claim_level_electronic_messages(
             )
         )
 
-    return tuple(messages)
+    return tuple(messages), electronic_rules
 
 
 def lab_context_from_claim_context(

@@ -265,3 +265,15 @@ test("LazyFirestoreFeeStore は server.js が使う全メソッドを delegate �
   const missing = usedMethods.filter((method) => typeof LazyFirestoreFeeStore.prototype[method] !== "function");
   assert.deepEqual(missing, [], `LazyFirestoreFeeStore に delegate が無いメソッド: ${missing.join(", ")}`);
 });
+
+test("LazyFirestorePlatformStore は fee-api が使う全メソッドを delegate している", async () => {
+  const { LazyFirestorePlatformStore } = await import("../../platform-api/src/store/create-store.js");
+  const { readFileSync } = await import("node:fs");
+  const serverSource = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+  const usedMethods = [...new Set(
+    [...serverSource.matchAll(/platformStore\.([a-zA-Z]+)/gu)].map((match) => match[1])
+  )];
+  assert.ok(usedMethods.length >= 5, "抽出が機能していること");
+  const missing = usedMethods.filter((method) => typeof LazyFirestorePlatformStore.prototype[method] !== "function");
+  assert.deepEqual(missing, [], `LazyFirestorePlatformStore に delegate が無いメソッド: ${missing.join(", ")}`);
+});

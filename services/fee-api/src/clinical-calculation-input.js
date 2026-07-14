@@ -733,6 +733,13 @@ export async function buildClinicalCalculationPreparation({
   if (isInpatientEncounter(session, text) && !hasOwn(manualOptions, "outpatient_basic")) {
     delete normalizedInferred.outpatient_basic;
   }
+  // 受付時刻による時間帯判定(v1): 休日・深夜は客観判定できるため確認候補を明示する。
+  // 時間外(診療時間依存)は施設の診療時間設定が入るまで自動確定しない。
+  const timeContextWarning = receptionTimeContextWarning(session.receptionTime, session.serviceDate);
+  if (timeContextWarning) {
+    reviewWarnings.push(timeContextWarning);
+  }
+
   // 訪問診療/往診の受診区分では、外来基本料(初診料・再診料・外来管理加算)を自動算定しない。
   // 在宅系の基本料・加算は施設の恒常算定ルールまたは候補レーンで扱う。
   const isHomeCareEncounter = ["home_visit", "house_call"].includes(String(session.setting || ""));
@@ -1618,7 +1625,7 @@ async function inferStructuredClinicalCalculationOptions({
       diagnoses: [],
       candidateProposals: [],
       reviewWarnings: [
-        "AI構造化に失敗したため、従来のルールベース抽出で算定候補を作成しました。"
+        "抽出縮退: AI構造化に失敗したため、ルールベース抽出のみで算定候補を作成しました。カルテ由来の算定候補・確認事項が欠落している可能性があります。再計算で回復する場合があります。"
       ],
       metrics: {
         source: "rules_fallback",
@@ -2139,6 +2146,9 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     serviceDate: session.serviceDate || "",
     medicationDeliveryKind: medicationDeliveryKindFromStructuredOrText(visitMedication, text),
     searchProcedureCandidateItem: (queries, preferredPatterns) => searchProcedureCandidateItem(feeCalculator, queries, preferredPatterns),
+    // 1/2区分等でマスタ候補が同点タイの場合、単一コードは確定せず候補集合を返す
+    // (月次畳み・検知一致で codeCandidates を許容するため)。
+    searchProcedureCandidateChoices: (queries, preferredPatterns) => searchProcedureCandidateChoices(feeCalculator, queries, preferredPatterns),
     candidateLineFromProcedureCandidate,
     resolutionOptions: {
       targetDiseaseCheck: REVIEW_TOPIC_RESOLUTION_OPTIONS.target_disease_check,
@@ -3051,6 +3061,43 @@ async function searchProcedureCandidateItem(feeCalculator, queries = [], preferr
   return null;
 }
 
+// 曖昧タイ(スコア差<12)で単一確定できない場合でも、上位候補の集合を返す。
+// 呼び出し側は codeCandidates として保持し、恣意的な1コード選択はしない。
+async function searchProcedureCandidateChoices(feeCalculator, queries = [], preferredPatterns = [], options = {}) {
+  if (typeof feeCalculator?.searchMaster !== "function") {
+    return [];
+  }
+  const allowedFeeCategories = options.allowedFeeCategories || null;
+  const normalizedQueries = uniqueStrings(queries).filter((value) => value.length >= 2);
+  for (const query of normalizedQueries) {
+    try {
+      const result = await feeCalculator.searchMaster({ type: "procedure", query, limit: 20 });
+      const items = asArray(result?.items).filter((item) => item?.code && (
+        item.kind === "procedure"
+        || item.sourceType === "medical_procedure_master"
+        || item.source === "medical_procedure_master"
+      ))
+        .map((item) => annotateMedicalServiceCandidate(item))
+        .filter((item) => !directRetrievalFilterReason(item, { allowedFeeCategories }));
+      const scored = items
+        .map((item, index) => ({ item, index, score: procedureCandidateScore(item, query, preferredPatterns) }))
+        .filter((entry) => Number.isFinite(entry.score) && entry.score >= 30)
+        .sort((a, b) => (b.score - a.score) || (a.index - b.index));
+      if (!scored.length) {
+        continue;
+      }
+      const topScore = scored[0].score;
+      return scored
+        .filter((entry) => topScore - entry.score < 12)
+        .slice(0, 4)
+        .map((entry) => entry.item);
+    } catch {
+      // 検索は補助。失敗しても次のクエリを試す。
+    }
+  }
+  return [];
+}
+
 function bestProcedureCandidateForQuery(items = [], query = "", preferredPatterns = []) {
   const scored = asArray(items)
     .map((item, index) => ({
@@ -3071,20 +3118,40 @@ function bestProcedureCandidateForQuery(items = [], query = "", preferredPattern
 }
 
 function procedureCandidateScore(item = {}, query = "", preferredPatterns = []) {
-  const nameText = [item.name, item.baseName, item.displayName, item.shortName].filter(Boolean).join(" ");
-  const normalizedName = normalizeMatchText(nameText);
+  // 名称フィールドは連結せず、フィールドごとに最良の一致スコアを採る。
+  // 連結すると「name+baseName」が二重になり完全一致(+120)が壊れ、
+  // 「（情報通信機器）」等の派生名称と同点タイになる(がん性疼痛のcode null事象)。
+  const nameFields = [item.name, item.baseName, item.displayName, item.shortName].filter(Boolean);
+  const nameText = nameFields.join(" ");
   const normalizedQuery = normalizeMatchText(query);
-  if (!normalizedName || !normalizedQuery) {
+  if (!nameFields.length || !normalizedQuery) {
     return 0;
   }
 
-  let score = 0;
-  if (normalizedName === normalizedQuery) score += 120;
-  if (normalizedName.includes(normalizedQuery)) score += 80;
-  if (normalizedQuery.includes(normalizedName) && normalizedName.length >= 4) score += 60;
+  let bestFieldScore = 0;
+  let bestNormalizedName = "";
+  for (const field of nameFields) {
+    const normalizedName = normalizeMatchText(field);
+    if (!normalizedName) {
+      continue;
+    }
+    let fieldScore = 0;
+    if (normalizedName === normalizedQuery) fieldScore = 200;
+    else if (normalizedName.includes(normalizedQuery)) fieldScore = 80;
+    else if (normalizedQuery.includes(normalizedName) && normalizedName.length >= 4) fieldScore = 60;
+    if (fieldScore > bestFieldScore) {
+      bestFieldScore = fieldScore;
+      bestNormalizedName = normalizedName;
+    }
+    if (!bestNormalizedName) {
+      bestNormalizedName = normalizedName;
+    }
+  }
 
+  let score = bestFieldScore;
   const tokens = matchTokens(normalizedQuery);
-  const matchedTokens = tokens.filter((token) => normalizedName.includes(token));
+  const tokenTarget = normalizeMatchText(nameText);
+  const matchedTokens = tokens.filter((token) => tokenTarget.includes(token));
   score += matchedTokens.length * 18;
   if (tokens.length && matchedTokens.length === tokens.length) {
     score += 18;
@@ -3097,7 +3164,7 @@ function procedureCandidateScore(item = {}, query = "", preferredPatterns = []) 
     score += 4;
   }
 
-  score -= unrelatedBodySitePenalty(normalizedQuery, normalizedName);
+  score -= unrelatedBodySitePenalty(normalizedQuery, bestNormalizedName || tokenTarget);
   return score;
 }
 
@@ -3174,6 +3241,45 @@ function candidateLineFromProcedureCandidate({
     supportLevel: "review_required",
     reviewRequired: true
   };
+}
+
+// 日本の祝日(受付時刻の時間帯判定用)。年度更新時に追記する。
+const JP_HOLIDAYS = new Set([
+  "2026-01-01", "2026-01-12", "2026-02-11", "2026-02-23", "2026-03-20",
+  "2026-04-29", "2026-05-03", "2026-05-04", "2026-05-05", "2026-05-06",
+  "2026-07-20", "2026-08-11", "2026-09-21", "2026-09-22", "2026-09-23",
+  "2026-10-12", "2026-11-03", "2026-11-23",
+  "2027-01-01", "2027-01-11", "2027-02-11", "2027-02-23", "2027-03-21", "2027-03-22",
+  "2027-04-29", "2027-05-03", "2027-05-04", "2027-05-05",
+  "2027-07-19", "2027-08-11", "2027-09-20", "2027-09-23",
+  "2027-10-11", "2027-11-03", "2027-11-23"
+]);
+
+// 受付時刻・診療日から時間帯加算(休日・深夜・時間外)の確認を提示する。
+// v1: 休日(日曜・祝日・年末年始)と深夜(22時〜6時)は客観判定できるため確認候補を出す。
+// 時間外は施設の診療時間設定に依存するため、標準的時間帯(8〜18時)の外なら弱い確認のみ。
+export function receptionTimeContextWarning(receptionTime = "", serviceDate = "") {
+  const time = String(receptionTime || "").trim();
+  const date = String(serviceDate || "").trim();
+  if (!/^\d{2}:\d{2}$/u.test(time) || !/^\d{4}-\d{2}-\d{2}$/u.test(date)) {
+    return "";
+  }
+  const hour = Number(time.slice(0, 2));
+  const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+  const monthDay = date.slice(5);
+  const isHoliday = weekday === 0 || JP_HOLIDAYS.has(date)
+    || ["12-29", "12-30", "12-31", "01-02", "01-03"].includes(monthDay);
+  const isLateNight = hour >= 22 || hour < 6;
+  if (isLateNight) {
+    return `深夜加算確認: 受付時刻${time}は深夜(22時〜6時)に該当します。深夜加算(該当区分は施設の届出による)の算定要件を確認してください。`;
+  }
+  if (isHoliday) {
+    return `休日加算確認: 診療日${date}は休日(日曜・祝日等)に該当します。休日加算の算定要件を確認してください。`;
+  }
+  if (hour < 8 || hour >= 18) {
+    return `時間外加算確認: 受付時刻${time}は標準的な診療時間帯の外です。施設の診療時間と時間外加算の算定要件を確認してください。`;
+  }
+  return "";
 }
 
 // 辞書スキャン候補から除外する文脈(否定・未実施・予定・他院・既往等)。

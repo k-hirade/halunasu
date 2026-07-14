@@ -279,7 +279,25 @@ async function readStreamedStructuredResponse(response, { onOutputTextDelta, onO
   };
 }
 
-export async function createStructuredOpenAiResponse({
+export async function createStructuredOpenAiResponse(options = {}) {
+  try {
+    return await createStructuredOpenAiResponseOnce(options);
+  } catch (error) {
+    if (!isMalformedStructuredOutputError(error)) {
+      throw error;
+    }
+    // 不正JSON・空出力は生成側の一過性の途中切断が主因(strict json_schemaでも発生する)。
+    // HTTPエラーやタイムアウトは再試行しない(それぞれ既存のエラー処理に委ねる)。
+    return createStructuredOpenAiResponseOnce(options);
+  }
+}
+
+function isMalformedStructuredOutputError(error) {
+  const message = String(error?.message || "");
+  return message.includes("JSON parse failed") || message.includes("returned no output text");
+}
+
+async function createStructuredOpenAiResponseOnce({
   apiKey,
   model,
   instructions,

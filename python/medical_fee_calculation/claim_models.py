@@ -357,6 +357,8 @@ class CalculationLine:
     coverage_chapter: str | None = None
     support_level: str | None = None
     review_required: bool | None = None
+    # 自動整合(背反・回数・包括・年齢)で降格された行。削除はせず合計からのみ除外する。
+    excluded_from_total: bool = False
 
     @property
     def total_points(self) -> float:
@@ -373,15 +375,22 @@ class CalculationResult:
 
     @property
     def total_candidate_points(self) -> float:
-        return sum(line.total_points for line in self.lines if line.status == ClaimItemStatus.CANDIDATE)
+        return sum(
+            line.total_points for line in self.lines
+            if line.status == ClaimItemStatus.CANDIDATE and not line.excluded_from_total
+        )
 
     @property
     def total_confirmed_points(self) -> float:
-        return sum(line.total_points for line in self.lines if line.status == ClaimItemStatus.CONFIRMED)
+        return sum(
+            line.total_points for line in self.lines
+            if line.status == ClaimItemStatus.CONFIRMED and not line.excluded_from_total
+        )
 
     @property
     def total_points(self) -> float:
-        return sum(line.total_points for line in self.lines)
+        # 自動整合で降格(excluded_from_total)された行は合計に入れない。
+        return sum(line.total_points for line in self.lines if not line.excluded_from_total)
 
     @property
     def candidate_codes(self) -> tuple[str, ...]:

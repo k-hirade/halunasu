@@ -40,6 +40,7 @@ export async function candidateProposalsFromClinicalBillingKnowledge({
   serviceDate = "",
   medicationDeliveryKind = "",
   searchProcedureCandidateItem = null,
+  searchProcedureCandidateChoices = null,
   candidateLineFromProcedureCandidate = null,
   resolutionOptions = {}
 } = {}) {
@@ -154,6 +155,7 @@ export async function candidateProposalsFromClinicalBillingKnowledge({
     clinicalEvents,
     clinicalText,
     searchProcedureCandidateItem,
+    searchProcedureCandidateChoices,
     candidateLineFromProcedureCandidate,
     resolutionOptions
   }));
@@ -276,6 +278,7 @@ async function candidateProposalsFromManagementSignalRules({
   clinicalEvents = [],
   clinicalText = "",
   searchProcedureCandidateItem = null,
+  searchProcedureCandidateChoices = null,
   candidateLineFromProcedureCandidate = null,
   resolutionOptions = {}
 } = {}) {
@@ -299,6 +302,20 @@ async function candidateProposalsFromManagementSignalRules({
       asArray(rule.queryHints),
       asArray(rule.preferredPatterns).map((pattern) => new RegExp(pattern, "u"))
     );
+    // 単一確定できない場合(難病外来指導管理料1/2等の同点タイ)は候補コード集合を保持する。
+    // 恣意的に1コードを選ばず、月次畳み・既存レセ突合は codeCandidates 側で許容する。
+    let codeCandidates = [];
+    if (!masterItem?.code && typeof searchProcedureCandidateChoices === "function") {
+      try {
+        const choices = await searchProcedureCandidateChoices(
+          asArray(rule.queryHints),
+          asArray(rule.preferredPatterns).map((pattern) => new RegExp(pattern, "u"))
+        );
+        codeCandidates = asArray(choices).map((item) => String(item?.code || "")).filter(Boolean);
+      } catch {
+        codeCandidates = [];
+      }
+    }
     const potentialPoints = Number(masterItem?.points || masterItem?.totalPoints || rule.potentialPoints || 0);
     proposals.push(reviewOnlyIncreaseProposal({
       proposalId,
@@ -320,6 +337,7 @@ async function candidateProposalsFromManagementSignalRules({
       // マスタ照合が曖昧でコード未確定の候補(難病外来指導管理料1/2等)でも
       // 患者×月の重複畳みができるよう、ルール側の算定単位上限を伝える。
       monthlyLimit: rule.monthlyLimit || null,
+      codeCandidates,
       knowledge: {
         version: CLINICAL_BILLING_KNOWLEDGE_VERSION,
         signalRulesVersion: MANAGEMENT_SIGNAL_RULES_VERSION,
@@ -531,6 +549,7 @@ function reviewOnlyIncreaseProposal({
   requiredInput = "",
   resolutionOptions = [],
   monthlyLimit = null,
+  codeCandidates = [],
   candidateLine = null,
   knowledge = null
 } = {}) {
@@ -547,6 +566,7 @@ function reviewOnlyIncreaseProposal({
     orderType,
     source,
     monthlyLimit,
+    codeCandidates: Array.isArray(codeCandidates) ? codeCandidates.filter(Boolean) : [],
     candidateLine,
     knowledge,
     policy: {

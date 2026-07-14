@@ -118,6 +118,7 @@ export function validateCreateFeeSessionInput(input = {}) {
     serviceDate,
     claimMonth: optionalClaimMonth(input.claimMonth ?? input.claim_month) || (serviceDate ? serviceDate.slice(0, 7) : undefined),
     setting: optionalEnum(input.setting, feeSettings, "setting") || "outpatient",
+    receptionTime: optionalReceptionTime(input.receptionTime ?? input.reception_time),
     admissionDate: optionalDate(input.admissionDate ?? input.admission_date, "admissionDate"),
     inpatientBasicDays: optionalPositiveInteger(input.inpatientBasicDays ?? input.inpatient_basic_days, "inpatientBasicDays"),
     clinicalText: optionalMultilineString(input.clinicalText ?? input.clinical_text, 100000),
@@ -158,6 +159,9 @@ export function validateUpdateFeeSessionInput(input = {}) {
         ? serviceDate.slice(0, 7)
         : undefined,
     setting: optionalEnum(input.setting, feeSettings, "setting"),
+    receptionTime: hasOwn(input, "receptionTime") || hasOwn(input, "reception_time")
+      ? optionalReceptionTime(input.receptionTime ?? input.reception_time)
+      : undefined,
     admissionDate: hasOwn(input, "admissionDate") || hasOwn(input, "admission_date")
       ? optionalDate(input.admissionDate ?? input.admission_date, "admissionDate")
       : undefined,
@@ -216,6 +220,18 @@ export function validateCreateFeeCalculationInput(input = {}) {
       ? nullablePlainObject(input.calculationOptions ?? input.calculation_options, "calculationOptions")
       : undefined
   });
+}
+
+// 受付時刻(HH:MM)。時間外・休日・深夜加算の判定材料。
+function optionalReceptionTime(value) {
+  const text = optionalString(value);
+  if (!text) {
+    return undefined;
+  }
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/u.test(text)) {
+    throw validationError("receptionTime must use HH:MM", "receptionTime");
+  }
+  return text;
 }
 
 export function defaultFeeSettings(input = {}) {

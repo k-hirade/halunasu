@@ -2446,7 +2446,18 @@ function buildRecalculationDiffDiagnostics({ baseline = {}, calculationPayloads 
   const sourceRows = recalculationSourceCodeRows({ calculationPayloads, dataset, claimMonth });
   const engineRows = aggregateRecalculationEngineCodeRows(sessions);
   const homeCareUnsupportedCount = reproductionFailures.filter((row) => row.domain === "home_care").length;
+  // 診療月がマスタ適用期間外だと全コード未解決で「再現失敗」に見えるため、原因として明示する。
+  const masterCoverageWarnings = (Array.isArray(sessions) ? sessions : [])
+    .flatMap((session) => (Array.isArray(session?.calculationResult?.warnings) ? session.calculationResult.warnings : []))
+    .filter((warning) => String(warning || "").includes("マスタ適用期間外"));
   return {
+    masterCoverage: masterCoverageWarnings.length
+      ? {
+        status: "out_of_range",
+        affectedSessionWarningCount: masterCoverageWarnings.length,
+        message: masterCoverageWarnings[0]
+      }
+      : { status: "ok" },
     receiptParse: {
       status: baselineClaims.length ? "parsed" : "empty",
       format: baseline.baselineFormat || (baselineClaims.length ? "claims" : "none"),

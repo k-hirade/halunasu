@@ -195,3 +195,14 @@ test("加算(親項目前提)はイベント照合レーンから単独候補に
     "加算は単独候補として提示しない"
   );
 });
+
+test("受付時刻の時間帯判定: 深夜・休日・時間外・時間内", async () => {
+  const { receptionTimeContextWarning } = await import("../src/clinical-calculation-input.js");
+  assert.match(receptionTimeContextWarning("23:30", "2026-06-10"), /深夜加算確認/u);
+  assert.match(receptionTimeContextWarning("05:59", "2026-06-10"), /深夜加算確認/u);
+  assert.match(receptionTimeContextWarning("10:00", "2026-06-14"), /休日加算確認/u); // 日曜
+  assert.match(receptionTimeContextWarning("10:00", "2026-01-01"), /休日加算確認/u); // 祝日
+  assert.match(receptionTimeContextWarning("19:30", "2026-06-10"), /時間外加算確認/u);
+  assert.equal(receptionTimeContextWarning("10:00", "2026-06-10"), ""); // 平日日中
+  assert.equal(receptionTimeContextWarning("", "2026-06-10"), ""); // 未入力
+});
