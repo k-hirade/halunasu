@@ -768,11 +768,19 @@ export async function buildClinicalCalculationPreparation({
     ) {
       normalizedInferred.outpatient_basic = historyBasic.outpatientBasic;
     }
-    if (!hasOwn(manualOptions, "outpatient_basic")) {
-      normalizedInferred.outpatient_basic = withOutpatientManagementExplanation(
-        normalizedInferred.outpatient_basic,
-        outpatientManagementEvidence
-      );
+    // 改革1(確定ゼロ揺れ): 外来管理加算はLLM抽出(管理説明の根拠)の有無で確定点数が
+    // 反復ごとに揺れる主因だった。抽出由来の根拠では確定に入れず、承認待ち候補として
+    // 提示する(手動オプション・claimContext経由の明示指定は従来どおり確定できる)。
+    if (
+      !hasOwn(manualOptions, "outpatient_basic")
+      && outpatientManagementEvidence
+      && String(normalizedInferred.outpatient_basic?.fee_kind || "") === "revisit"
+      && !["home_visit", "house_call"].includes(String(session.setting || ""))
+    ) {
+      const managementAddonProposal = await outpatientManagementAddonProposal(feeCalculator, outpatientManagementEvidence);
+      if (managementAddonProposal) {
+        candidateProposals.push(managementAddonProposal);
+      }
     }
     reviewWarnings.push(...historyBasic.reviewWarnings);
     reviewWarnings.push(...inferPediatricAddOnReviewWarnings({
@@ -821,18 +829,28 @@ export async function buildClinicalCalculationPreparation({
   };
 }
 
-function withOutpatientManagementExplanation(outpatientBasic, managementEvidence = null) {
-  if (
-    !isPlainObject(outpatientBasic)
-    || !managementEvidence
-    || String(outpatientBasic.fee_kind || "") !== "revisit"
-  ) {
-    return outpatientBasic;
+// 外来管理加算(112011010)の承認待ち候補。点数はマスタから解決し、失敗時は52点を仮置く。
+async function outpatientManagementAddonProposal(feeCalculator, managementEvidence = null) {
+  if (!managementEvidence) {
+    return null;
   }
-  return {
-    ...outpatientBasic,
-    management_explanation_performed: true
-  };
+  let item = null;
+  try {
+    item = await searchProcedureCandidateItem(feeCalculator, ["外来管理加算"], [/^外来管理加算$/u]);
+  } catch {
+    item = null;
+  }
+  const resolved = item?.code === "112011010" ? item : { code: "112011010", name: "外来管理加算", points: 52, kind: "procedure" };
+  return candidateProposalFromProcedureItem({
+    proposalId: "outpatient_management_addon",
+    title: "外来管理加算の算定確認",
+    reason: "計画的な医学管理・説明の記載があります。処置・リハビリ等(外来管理加算と併算定不可の行為)が同日に無い場合に算定できます。",
+    conditionText: "同日に処置・検査(生体)・リハビリ・精神科専門療法等が無いこと、および医学管理の実施を確認してから採用してください。",
+    basis: "deterministic_gate_candidate",
+    evidence: String(managementEvidence.evidence || managementEvidence.name || "").slice(0, 160),
+    item: resolved,
+    sortOrder: 40
+  });
 }
 
 export function isAutoPlaceholderOrderName(value) {
@@ -1548,7 +1566,7 @@ async function inferStructuredClinicalCalculationOptions({
   let firstSnapshotSeen = false;
   try {
     const providerStartedAt = Date.now();
-    const factsResult = await extractClinicalFactsWithChecklistMode({
+    const extractionRequest = {
       extractor,
       apiKey: openAiApiKey,
       clinicalText: text,
@@ -1566,7 +1584,26 @@ async function inferStructuredClinicalCalculationOptions({
           firstOutputTextMs = Date.now() - providerStartedAt;
         }
       }
-    });
+    };
+    // 改革3: 任意の複数サンプルunion。FEE_CLINICAL_EXTRACTION_SAMPLES=2 で
+    // 2回並列抽出し、イベント・診断・line_review を和集合にする(拾い漏れ側の揺れ吸収)。
+    // 既定は1(コスト2倍を伴うため明示オプトイン)。
+    const sampleCount = Math.max(1, Math.min(3, Number(process.env.FEE_CLINICAL_EXTRACTION_SAMPLES || 1) || 1));
+    let factsResult;
+    if (sampleCount > 1) {
+      const sampleResults = await Promise.all(
+        Array.from({ length: sampleCount }, (unused, index) => extractClinicalFactsWithChecklistMode({
+          ...extractionRequest,
+          onOutputTextSnapshot: index === 0 ? extractionRequest.onOutputTextSnapshot : undefined
+        }))
+      );
+      factsResult = {
+        ...sampleResults[0],
+        parsed: mergeClinicalFactsSamples(sampleResults.map((result) => result?.parsed || result || {}))
+      };
+    } else {
+      factsResult = await extractClinicalFactsWithChecklistMode(extractionRequest);
+    }
     openAiProviderDurationMs = Date.now() - providerStartedAt;
     const facts = factsResult?.parsed || factsResult || {};
     // v12軽量schema: LLMは evidence_line_ids のみ返す。evidence本文とsectionを
@@ -2083,10 +2120,9 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     } else {
       const outpatientBasic = outpatientBasicFromStructuredVisit(facts?.visit_type, text);
       if (outpatientBasic) {
-        inferred.outpatient_basic = withOutpatientManagementExplanation(
-          outpatientBasic,
-          currentSpecificDiseaseManagementEvidence(clinicalEventsForCalculation)
-        );
+        // 改革1(確定ゼロ揺れ): LLM抽出の管理説明根拠で外来管理加算を確定に入れない。
+        // 根拠は outpatientManagementEvidence として返し、外側で承認待ち候補にする。
+        inferred.outpatient_basic = outpatientBasic;
       }
     }
   }
@@ -2121,6 +2157,34 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     clinicalText: text,
     verifiedOutsidePrescription
   });
+
+  // v14全行カバレッジ突合: has_billable_act=true なのにイベントが参照しない行は
+  // 「抽出漏れの可能性」として明示する(辞書スキャン網が拾えるものは候補にも出る)。
+  const uncoveredBillableLines = uncoveredBillableLinesFromFacts(facts, clinicalEventsForCalculation, clinicalTextPreprocessing);
+  if (uncoveredBillableLines.length) {
+    const lineLabels = uncoveredBillableLines
+      .map((line) => `${line.lineId}「${String(line.text || "").slice(0, 30)}」`)
+      .join(" / ");
+    const coverageIssue = withReviewTopic({
+      reviewIssueId: `issue_${candidateIdPart(["line_coverage", ...uncoveredBillableLines.map((line) => line.lineId)].join("_"))}`,
+      issueCode: "line_coverage_gap",
+      severity: "warning",
+      title: "抽出漏れの可能性",
+      messageForStaff: `抽出漏れの可能性: 算定対象の記載と判定された行がイベント化されていません(${lineLabels})。該当行の行為を確認し、必要なら算定候補へ追加してください。`,
+      evidence: uncoveredBillableLines.map((line) => line.text).join(" / ").slice(0, 200),
+      requiredInput: "該当行の行為内容、実施有無、標準コード",
+      source: "line_coverage_gate"
+    }, "extraction_coverage_check");
+    reviewIssues.push(coverageIssue);
+    reviewWarnings.push(coverageIssue.messageForStaff);
+    clinicalTrace.push(clinicalTraceEvent({
+      stage: "line_coverage_gate",
+      categoryLabel: "全行カバレッジ",
+      outcome: "uncovered_lines",
+      selected: { uncoveredLineIds: uncoveredBillableLines.map((line) => line.lineId) },
+      message: "billable_lines_without_events_detected"
+    }));
+  }
   procedureCodes.push(...eventConversion.procedureCodes);
   imagingOrders.push(...eventConversion.imagingOrders);
   medicationOrders.push(...eventConversion.medicationOrders);
@@ -3241,6 +3305,85 @@ function candidateLineFromProcedureCandidate({
     supportLevel: "review_required",
     reviewRequired: true
   };
+}
+
+// 複数サンプルの抽出結果を和集合にする(拾い漏れ側の揺れを吸収する。
+// 誤検出側は下流の事実ゲート・照合スコア・候補レーンが吸収する)。
+export function mergeClinicalFactsSamples(samples = []) {
+  const list = asArray(samples).filter((sample) => sample && typeof sample === "object");
+  if (list.length <= 1) {
+    return list[0] || {};
+  }
+  const base = { ...list[0] };
+  const eventKey = (event) => JSON.stringify([
+    String(event?.type || ""),
+    String(event?.name || "").trim(),
+    asArray(event?.evidence_line_ids).map(String).sort()
+  ]);
+  const events = [];
+  const seenEvents = new Set();
+  for (const sample of list) {
+    for (const event of asArray(sample.clinical_events)) {
+      const key = eventKey(event);
+      if (seenEvents.has(key)) continue;
+      seenEvents.add(key);
+      events.push(event);
+    }
+  }
+  base.clinical_events = events;
+
+  const diagnoses = [];
+  const seenDiagnoses = new Set();
+  for (const sample of list) {
+    for (const diagnosis of asArray(sample.diagnoses)) {
+      const key = String(diagnosis?.name || "").trim();
+      if (!key || seenDiagnoses.has(key)) continue;
+      seenDiagnoses.add(key);
+      diagnoses.push(diagnosis);
+    }
+  }
+  base.diagnoses = diagnoses;
+
+  // line_review は has_billable_act の OR(どれかのサンプルが行為ありと判定したら残す)
+  const lineFlags = new Map();
+  for (const sample of list) {
+    for (const entry of asArray(sample.line_review)) {
+      const lineId = String(entry?.line_id || "").trim();
+      if (!lineId) continue;
+      lineFlags.set(lineId, Boolean(lineFlags.get(lineId)) || entry?.has_billable_act === true);
+    }
+  }
+  if (lineFlags.size) {
+    base.line_review = [...lineFlags.entries()].map(([lineId, flag]) => ({ line_id: lineId, has_billable_act: flag }));
+  }
+  return base;
+}
+
+// v14: line_review(全行のhas_billable_act判定)と clinical_events の evidence_line_ids を突合し、
+// 「算定対象と判定されたのにイベント化されていない行」を返す。
+function uncoveredBillableLinesFromFacts(facts = {}, clinicalEvents = [], preprocessing = null) {
+  const review = asArray(facts?.line_review);
+  if (!review.length) {
+    return [];
+  }
+  const covered = new Set();
+  for (const event of asArray(clinicalEvents)) {
+    for (const lineId of asArray(event?.evidence_line_ids ?? event?.evidenceLineIds)) {
+      covered.add(String(lineId || "").trim());
+    }
+  }
+  const lineTextById = new Map(
+    asArray(preprocessing?.lines).map((line) => [String(line.lineId || line.line_id || ""), String(line.text || "")])
+  );
+  const uncovered = [];
+  for (const entry of review) {
+    const lineId = String(entry?.line_id || entry?.lineId || "").trim();
+    if (!lineId || entry?.has_billable_act !== true || covered.has(lineId)) {
+      continue;
+    }
+    uncovered.push({ lineId, text: lineTextById.get(lineId) || "" });
+  }
+  return uncovered.slice(0, 8);
 }
 
 // 日本の祝日(受付時刻の時間帯判定用)。年度更新時に追記する。

@@ -53,6 +53,22 @@ class MasterSearchFallbackTest(unittest.TestCase):
             })
             self.assertIn("114001110", [item["code"] for item in result2["items"]])
 
+    def test_ngram_fallback_catches_reordered_compound(self) -> None:
+        """トークンLIKEも全滅する語順違いを、bigram召回が最終網として拾う。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "master.sqlite"
+            self._seed(db_path)
+            result = search_master({
+                "db_path": str(db_path),
+                "type": "procedure",
+                "query": "交付料意見書傷病手当金",  # 語順を崩した複合語(部分語LIKEも不一致)
+                "limit": 5,
+            })
+            codes = [item["code"] for item in result["items"]]
+            self.assertIn("180000710", codes)
+            hit = next(item for item in result["items"] if item["code"] == "180000710")
+            self.assertEqual(hit.get("matchOrigin"), "ngram_fallback")
+
 
 if __name__ == "__main__":
     unittest.main()

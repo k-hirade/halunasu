@@ -6668,9 +6668,9 @@ function selectMasterItemForOrder(items = [], type, query) {
     return matched;
   }
   // 先頭候補の無条件採用は、全文一致検索(候補は必ずqueryを含む)時代の前提。
-  // トークンフォールバック由来の候補は部分語しか一致しておらず、確定オーダーへの
-  // 自動採用は誤コード混入になるため許可しない。
-  return candidates[0]?.matchOrigin === "token_fallback" ? null : candidates[0];
+  // トークン/n-gramフォールバック由来の候補は部分一致・近似一致しかしておらず、
+  // 確定オーダーへの自動採用は誤コード混入になるため許可しない。
+  return candidates[0]?.matchOrigin ? null : candidates[0];
 }
 
 function normalizeMasterMatchText(value) {

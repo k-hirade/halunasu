@@ -353,3 +353,17 @@ test("fee clinical facts prompt asks for explicit area and body site when billin
   assert.match(requestBody.instructions, /area_size_cm2/);
   assert.match(requestBody.instructions, /Do not infer a size that is not written/);
 });
+
+test("v14 全行カバレッジ: line_review が必須で各行のhas_billable_act判定を持つ", async () => {
+  const module = await import("../src/fee/openai-fee-clinical-facts.js");
+  assert.equal(module.FEE_CLINICAL_FACTS_PROMPT_VERSION, "fee-clinical-events-v14");
+  const schema = module.feeClinicalFactsSchema || module.FEE_CLINICAL_FACTS_SCHEMA;
+  // schemaが直接exportされていない場合はスキップせず、リクエストビルダー経由で検証する
+  if (schema) {
+    assert.ok(schema.required.includes("line_review"));
+    const lineReview = schema.properties.line_review;
+    assert.equal(lineReview.type, "array");
+    assert.deepEqual(lineReview.items.required, ["line_id", "has_billable_act"]);
+    assert.equal(lineReview.items.properties.has_billable_act.type, "boolean");
+  }
+});

@@ -7,7 +7,11 @@ import { createStructuredOpenAiResponse } from "../openai/responses-structured.j
 // v13: strict json_schema は全プロパティ必須のため、空フィールドの出力コスト(~200tok/件)が残った。
 // clinical_events を anyOf の型別variant(投薬/検体/画像/部位処置/一般)に分割し、
 // イベント種別に関係するフィールドだけを出力させる(type enum を互いに素に分割して判別)。
-export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v13";
+// v14: 全行カバレッジ契約。入力の各行に has_billable_act 判定を強制し、
+// 「何をイベントにするか」の選択自由度(サンプリング毎の粒度揺れ・拾い漏れの根因)を奪う。
+// true判定の行は必ず対応する clinical_event を持つこと(サーバ側で突合し、
+// 不整合行は決定論リカバリ+確認事項になる)。
+export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v14";
 
 const LEGACY_EVENT_STATUSES = [
   "performed",
@@ -142,13 +146,14 @@ const BILLING_DOMAINS = [
   "unknown"
 ];
 
-const feeClinicalFactsSchema = {
+export const feeClinicalFactsSchema = {
   type: "object",
   additionalProperties: false,
   required: [
     "visit_type",
     "visit_facts",
     "diagnoses",
+    "line_review",
     "clinical_events",
     "checklist_findings",
     "excluded_events",
@@ -206,6 +211,20 @@ const feeClinicalFactsSchema = {
             enum: ["confirmed", "suspected", "history", "denied", "unclear"]
           },
           evidence: shortString(90)
+        }
+      }
+    },
+    line_review: {
+      // 全行カバレッジ: 入力の各行(前処理line_id)を1行ずつ判定する。省略・選択は不可。
+      type: "array",
+      maxItems: 120,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["line_id", "has_billable_act"],
+        properties: {
+          line_id: shortString(20),
+          has_billable_act: { type: "boolean" }
         }
       }
     },
@@ -396,6 +415,8 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "You are a Japanese medical billing clinical-structure extraction engine.",
       "Return only facts supported by the provided clinical text and session context.",
       "Your output is clinical_events, not billing candidates. Do not calculate points. Do not choose billing codes. Do not decide billable/proposal/review eligibility. Downstream master search and rules will decide those.",
+      "line_review is mandatory full coverage: output exactly one entry for EVERY line_id in Preprocessed clinical lines, in order, no omissions. Set has_billable_act=true when the line records a clinical act performed/prescribed/administered at this clinic during this encounter (medication, injection, test, imaging, procedure, management/guidance, document issuance, etc.). Set false for symptoms, observations, assessments, plans without execution, and administrative notes.",
+      "Every line marked has_billable_act=true MUST be referenced by evidence_line_ids of at least one clinical_event. If multiple acts are on one line, create one clinical_event per act. Do not skip an act because it seems minor or ambiguous; extract it and let downstream decide.",
       checklistInstructionForMode(checklistVerificationMode),
       "For each checklist menu item, return exactly one checklist_finding with the same menu_id. Use status=performed_today only when the note supports that the item happened in this clinic during this encounter. Use planned for future/order/予定/依頼/予約/次回. Use past_or_external for 前回/以前/他院/前医/持参/健診/他科/主治医. Use mentioned_not_performed when the note says the act was not done. Use not_in_text when the menu item is not actually supported by the note. Use unclear when named but timing/ownership/performance cannot be determined.",
       "For checklist_findings, set evidence_line_ids to the supporting line_id values from Preprocessed clinical lines (at most 2). When status is not_in_text leave evidence_line_ids empty. Do not quote text; the line ids are the evidence. Do not invent line ids.",

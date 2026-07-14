@@ -61,6 +61,9 @@ def _search_procedures(db: sqlite3.Connection, query: str, limit: int) -> list[d
     rows = _search_procedure_rows(db, query, limit)
     if rows:
         return [_medical_procedure_item(row) for row in rows]
+    # 段階フォールバック: (1)名詞トークンLIKE → (2)文字bigram召回。
+    # 手書きエイリアスや語尾パターンの列挙に依存せず、表現ゆれ・語順違い・
+    # 部分省略の名称でも候補を返す(採否のスコアリングと曖昧排除は呼び出し側)。
 
     # 全文一致で0件のとき、名詞トークンでフォールバック検索する。
     # 「傷病手当金意見書 作成・交付」のような複合表現でも名詞核で当たる。
@@ -92,7 +95,100 @@ def _search_procedures(db: sqlite3.Connection, query: str, limit: int) -> list[d
                 continue
             seen_codes.add(code)
             merged.append(item)
-    return merged[: limit * 3]
+    if merged:
+        return merged[: limit * 3]
+    return _ngram_fallback(db, query, limit)
+
+
+# --- 文字bigram召回(最終フォールバック) -----------------------------------
+# db_path単位で名称のbigram転置インデックスをメモリに構築し、Dice係数で近い名称を返す。
+_NGRAM_INDEX_CACHE: dict[int, tuple[list[sqlite3.Row], dict[str, set[int]], list[set[str]]]] = {}
+_NGRAM_MIN_SCORE = 0.34
+
+
+def _normalize_for_ngram(value: str) -> str:
+    text = unicodedata.normalize("NFKC", str(value or "")).lower()
+    return "".join(char for char in text if char not in " \u3000・･（）()[]［］、，,。.-－ー")
+
+
+def _bigrams(text: str) -> set[str]:
+    return {text[i:i + 2] for i in range(len(text) - 1)} if len(text) >= 2 else set()
+
+
+def _ngram_index(db: sqlite3.Connection) -> tuple[list[sqlite3.Row], dict[str, set[int]], list[set[str]]]:
+    key = id(db)
+    cached = _NGRAM_INDEX_CACHE.get(key)
+    if cached is not None:
+        return cached
+    rows = db.execute(
+        """
+        SELECT
+            p.code,
+            p.short_name AS name,
+            p.base_name,
+            p.points,
+            p.effective_from,
+            p.effective_to,
+            p.inout_applicability,
+            p.outpatient_aggregate,
+            p.inpatient_aggregate,
+            p.bundle_lab_group,
+            p.judgement_kind,
+            p.judgement_group,
+            p.specimen_comment_flag,
+            p.facility_standard_codes,
+            p.chapter,
+            p.part,
+            p.alpha_part,
+            p.section,
+            p.branch,
+            p.item,
+            s.source_version,
+            s.published_at,
+            s.imported_at
+        FROM medical_procedures p
+        JOIN master_sources s ON s.id = p.source_id
+        WHERE p.source_id = (
+            SELECT id FROM master_sources
+            WHERE source_type = 'medical_procedure_master'
+            ORDER BY imported_at DESC, id DESC LIMIT 1
+        )
+        """
+    ).fetchall()
+    index: dict[str, set[int]] = {}
+    grams_per_row: list[set[str]] = []
+    for row_index, row in enumerate(rows):
+        grams = _bigrams(_normalize_for_ngram(str(row["name"] or "")))
+        grams_per_row.append(grams)
+        for gram in grams:
+            index.setdefault(gram, set()).add(row_index)
+    _NGRAM_INDEX_CACHE[key] = (rows, index, grams_per_row)
+    return rows, index, grams_per_row
+
+
+def _ngram_fallback(db: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+    query_grams = _bigrams(_normalize_for_ngram(query))
+    if len(query_grams) < 2:
+        return []
+    rows, index, grams_per_row = _ngram_index(db)
+    overlap: dict[int, int] = {}
+    for gram in query_grams:
+        for row_index in index.get(gram, ()):
+            overlap[row_index] = overlap.get(row_index, 0) + 1
+    scored: list[tuple[float, int]] = []
+    for row_index, shared in overlap.items():
+        denominator = len(query_grams) + len(grams_per_row[row_index])
+        score = (2 * shared) / denominator if denominator else 0.0
+        if score >= _NGRAM_MIN_SCORE:
+            scored.append((score, row_index))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    items: list[dict[str, Any]] = []
+    for score, row_index in scored[: limit * 3]:
+        item = _medical_procedure_item(rows[row_index])
+        item["matchOrigin"] = "ngram_fallback"
+        item["ngramScore"] = round(score, 3)
+        items.append(item)
+    return items
 
 
 def _fallback_tokens(query: str) -> list[str]:

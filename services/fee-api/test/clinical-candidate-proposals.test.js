@@ -206,3 +206,56 @@ test("受付時刻の時間帯判定: 深夜・休日・時間外・時間内", 
   assert.equal(receptionTimeContextWarning("10:00", "2026-06-10"), ""); // 平日日中
   assert.equal(receptionTimeContextWarning("", "2026-06-10"), ""); // 未入力
 });
+
+test("v14全行カバレッジ: 行為あり判定なのに未イベント化の行を確認事項として明示する", async () => {
+  const { buildClinicalCalculationPreparation } = await import("../src/clinical-calculation-input.js");
+  const extractor = async ({ preprocessedLines }) => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+    diagnoses: [],
+    // 全行に判定を返し、2行目を「行為あり」なのにイベント化しない
+    line_review: (preprocessedLines || []).map((line, index) => ({
+      line_id: line.lineId,
+      has_billable_act: index === 1
+    })),
+    clinical_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const prep = await buildClinicalCalculationPreparation({
+    session: {
+      feeSessionId: "f", orgId: "o", patientId: "p", serviceDate: "2026-06-13", setting: "outpatient",
+      clinicalText: "S）体調は安定している。\nP）超音波検査を実施した。"
+    },
+    calculationInput: {},
+    feeCalculator: { async searchMaster() { return { items: [] }; } },
+    openAiApiKey: "dummy",
+    clinicalFactsExtractor: extractor
+  });
+  const coverage = (prep.reviewIssues || []).find((issue) => issue.issueCode === "line_coverage_gap");
+  assert.ok(coverage, "カバレッジ欠落の確認事項が出る");
+  assert.ok(coverage.messageForStaff.includes("超音波検査"), "該当行の本文が示される");
+});
+
+test("mergeClinicalFactsSamples: イベント・診断・line_reviewを和集合にする", async () => {
+  const { mergeClinicalFactsSamples } = await import("../src/clinical-calculation-input.js");
+  const merged = mergeClinicalFactsSamples([
+    {
+      clinical_events: [{ type: "lab", name: "末梢血液一般", evidence_line_ids: ["O-001"] }],
+      diagnoses: [{ name: "高血圧症" }],
+      line_review: [{ line_id: "O-001", has_billable_act: true }, { line_id: "P-001", has_billable_act: false }]
+    },
+    {
+      clinical_events: [
+        { type: "lab", name: "末梢血液一般", evidence_line_ids: ["O-001"] }, // 重複
+        { type: "management", name: "療養指導", evidence_line_ids: ["P-001"] } // 追加
+      ],
+      diagnoses: [{ name: "高血圧症" }, { name: "糖尿病" }],
+      line_review: [{ line_id: "O-001", has_billable_act: true }, { line_id: "P-001", has_billable_act: true }]
+    }
+  ]);
+  assert.equal(merged.clinical_events.length, 2);
+  assert.deepEqual(merged.diagnoses.map((d) => d.name), ["高血圧症", "糖尿病"]);
+  const p1 = merged.line_review.find((entry) => entry.line_id === "P-001");
+  assert.equal(p1.has_billable_act, true); // OR判定
+});

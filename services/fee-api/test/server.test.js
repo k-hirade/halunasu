@@ -1526,7 +1526,7 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v13");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v14");
   assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v10");
   assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
     event.name === "腰椎X線"
@@ -7325,7 +7325,13 @@ test("passes documented management explanation to outpatient revisit options", a
 
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
-  assert.equal(receivedInput.calculationOptions.outpatient_basic.management_explanation_performed, true);
+  // 改革1(確定ゼロ揺れ): LLM抽出の管理説明根拠では外来管理加算を確定に入れない。
+  // 代わりに承認待ち候補として提示される。
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.management_explanation_performed, undefined);
+  const managementAddon = calculation.body.calculationResult.candidateProposals
+    .find((proposal) => proposal.code === "112011010");
+  assert.ok(managementAddon, "外来管理加算が承認待ち候補として提示される");
+  assert.equal(managementAddon.basis, "deterministic_gate_candidate");
 });
 
 test("can create inline Platform patient when creating fee session", async () => {

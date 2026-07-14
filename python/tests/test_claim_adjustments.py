@@ -333,3 +333,45 @@ class AnnotationBackfillTest(unittest.TestCase):
             })["calculationResult"]
             self.assertEqual(result["totalPoints"], 402.0)
             self.assertTrue(any("きざみ点数適用" in w for w in result["warnings"]))
+
+
+class EngineDeterminismTest(unittest.TestCase):
+    def test_same_input_twice_yields_identical_result(self) -> None:
+        """改革1: 同一入力に対する算定は完全決定論(確定ゼロ揺れの土台)。"""
+        import json as _json
+        from medical_fee_calculation.api import calculate_fee_session
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "m.sqlite"
+            conn = connect(db_path)
+            try:
+                initialize_schema(conn)
+                conn.execute(
+                    "INSERT INTO master_sources (id, source_type, source_version, raw_path, checksum_sha256, encoding, row_count, imported_at) "
+                    "VALUES (1, 'medical_procedure_master', 'test', 'f', 'c', 'utf-8', 1, '2026-06-01T00:00:00Z')"
+                )
+                conn.execute(
+                    "INSERT INTO medical_procedures "
+                    "(source_id, code, short_name, base_name, points, inout_applicability, outpatient_aggregate, inpatient_aggregate, "
+                    " bundle_lab_group, judgement_kind, judgement_group, specimen_comment_flag, facility_standard_codes, chapter, part, "
+                    " alpha_part, section, branch, item, notice_chapter, notice_part, notice_alpha_part, notice_section, notice_branch, "
+                    " notice_item, effective_from, effective_to, raw_row_json) "
+                    "VALUES (1,'113012810','がん性疼痛緩和指導管理料','',200,'','','','','','','','[]','','','','','','','','','','','','','2026-06-01','9999-12-31','[]')"
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            payload = {
+                "db_path": str(db_path),
+                "session": {"feeSessionId": "t", "patientId": "p", "serviceDate": "2026-06-15"},
+                "input": {"claimContext": {
+                    "record_id": "t", "patient": {"patient_id": "p", "birth_date": "1990-04-01"},
+                    "encounter": {"service_date": "2026-06-15", "is_outpatient": True},
+                    "procedure_codes": ["113012810"],
+                    "drug_inputs": [], "medication_orders": [], "injection_drug_inputs": [],
+                    "injection_orders": [], "treatment_orders": [], "imaging_orders": [],
+                    "material_inputs": [], "comment_inputs": [], "diagnoses": [], "clinical_text": ""
+                }}
+            }
+            first = calculate_fee_session(payload)["calculationResult"]
+            second = calculate_fee_session(payload)["calculationResult"]
+            self.assertEqual(_json.dumps(first, sort_keys=True, default=str), _json.dumps(second, sort_keys=True, default=str))

@@ -23,10 +23,19 @@ _MIN_NAME_LENGTH = 4
 _EXCLUDED_CODE_PREFIXES = ("111", "112")
 _MAX_MATCHES = 60
 
-# カルテは料金名称でなく行為を書く(「傷病手当金意見書を交付」)。
-# 名称語尾を落とした別名でも照合する。別名は誤爆防止のため长め(≥6文字)に限る。
-_ALIAS_STRIP_SUFFIXES = ("交付料",)
-_MIN_ALIAS_LENGTH = 6
+# カルテは料金名称でなく行為を書く(「傷病手当金意見書を交付」「在宅酸素を継続」)。
+# 特定の語尾を手書き列挙するのではなく、名称から機械的に別名を生成して照合する:
+#   1) 括弧修飾の除去: 「在宅酸素療法指導管理料（その他）」→「在宅酸素療法指導管理料」
+#   2) 算定用語尾の反復除去: 「〜交付料」「〜指導管理料」「〜指導料」「〜管理料」「〜療法」「〜検査」
+#      → 名詞核(「傷病手当金意見書」「在宅酸素」)まで畳む
+# 短い別名の誤爆は、最小長・汎用語ブラックリスト・文単位の否定判定(Node側)で抑える。
+_ALIAS_STRIP_SUFFIXES = ("交付料", "指導管理料", "指導料", "管理料", "療法", "検査料")
+_MIN_ALIAS_LENGTH = 4
+# それ自体では行為を特定しない汎用語。別名として採用しない。
+_ALIAS_BLACKLIST = frozenset({
+    "指導", "管理", "検査", "処置", "注射", "手術", "撮影", "診断", "判断",
+    "在宅患者", "外来患者", "入院患者", "その他", "同一建物", "情報通信",
+})
 
 # db_path -> (source_id, [(alias, code, points, role, full_name)])
 _NAME_CACHE: dict[str, tuple[int, list[tuple[str, str, float, str, str]]]] = {}
@@ -133,13 +142,53 @@ def _load_names(db_path: str) -> list[tuple[str, str, float, str]]:
 
 
 def _scan_aliases(name: str) -> list[str]:
-    aliases = [name]
-    for suffix in _ALIAS_STRIP_SUFFIXES:
-        if name.endswith(suffix):
-            stem = name[: -len(suffix)]
-            if len(stem) >= _MIN_ALIAS_LENGTH:
-                aliases.append(stem)
+    aliases: list[str] = []
+    seen: set[str] = set()
+
+    def add(alias: str) -> None:
+        alias = alias.strip()
+        if (
+            len(alias) >= _MIN_ALIAS_LENGTH
+            and alias not in seen
+            and alias not in _ALIAS_BLACKLIST
+        ):
+            seen.add(alias)
+            aliases.append(alias)
+
+    add(name)
+    # 括弧修飾を除いた核名称
+    core = _strip_parens(name)
+    add(core)
+    # 語尾を反復的に畳む(名詞核へ寄せる)。核名称からも畳む。
+    for base in (name, core):
+        current = base
+        for _ in range(3):
+            stripped = _strip_one_suffix(current)
+            if stripped == current:
+                break
+            add(stripped)
+            current = stripped
     return aliases
+
+
+def _strip_parens(name: str) -> str:
+    result: list[str] = []
+    depth = 0
+    for char in name:
+        if char in "（(":
+            depth += 1
+        elif char in "）)":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            result.append(char)
+    return "".join(result)
+
+
+def _strip_one_suffix(name: str) -> str:
+    for suffix in _ALIAS_STRIP_SUFFIXES:
+        if name.endswith(suffix) and len(name) - len(suffix) >= _MIN_ALIAS_LENGTH:
+            return name[: -len(suffix)]
+    return name
 
 
 def _role_from_name(name: str) -> str:
