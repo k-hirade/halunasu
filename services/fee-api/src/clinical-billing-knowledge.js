@@ -316,7 +316,9 @@ async function candidateProposalsFromManagementSignalRules({
         codeCandidates = [];
       }
     }
-    const potentialPoints = Number(masterItem?.points || masterItem?.totalPoints || rule.potentialPoints || 0);
+    const potentialPoints = masterItem?.code
+      ? Number(masterItem.points || masterItem.totalPoints || 0)
+      : 0;
     proposals.push(reviewOnlyIncreaseProposal({
       proposalId,
       ruleId: rule.ruleId,

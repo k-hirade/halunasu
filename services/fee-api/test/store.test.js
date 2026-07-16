@@ -112,12 +112,69 @@ test("lists fee sessions for a single claim month", () => {
     createdByMemberId: "mem_123",
     serviceDate: "2026-06-02"
   });
+  store.createSession({
+    orgId: "org_123",
+    patientId: "pat_789",
+    facilityId: "fac_123",
+    createdByMemberId: "mem_123",
+    serviceDate: "2026-06-03"
+  });
 
   const maySessions = store.listSessionsForClaimMonth("org_123", "2026-05");
   const juneSessions = store.listSessionsForClaimMonth("org_123", "2026-06");
+  const singlePatient = store.listSessionsForClaimMonth("org_123", "2026-06", {
+    patientId: " pat_456 ",
+    patientIds: ["pat_789"]
+  });
+  const selectedPatients = store.listSessionsForClaimMonth("org_123", "2026-06", {
+    patientIds: ["pat_789", "", "pat_789", "pat_456"]
+  });
+  const overChunkLimit = store.listSessionsForClaimMonth("org_123", "2026-06", {
+    patientIds: Array.from({ length: 101 }, (_, index) => `pat_${index}`)
+  });
 
   assert.deepEqual(maySessions.map((session) => session.feeSessionId), ["fee_001"]);
-  assert.deepEqual(juneSessions.map((session) => session.feeSessionId), ["fee_002"]);
+  assert.deepEqual(juneSessions.map((session) => session.feeSessionId), ["fee_002", "fee_003"]);
+  assert.deepEqual(singlePatient.map((session) => session.patientId), ["pat_456"]);
+  assert.deepEqual(selectedPatients.map((session) => session.patientId), ["pat_456", "pat_789"]);
+  assert.deepEqual(overChunkLimit.map((session) => session.patientId), ["pat_456", "pat_789"]);
+});
+
+test("Firestore monthly sessions apply patient filters to both query lanes and dedupe chunks", async () => {
+  const calls = [];
+  const store = new FirestoreFeeStore({ db: {} });
+  store.orgCollection = () => recordingMonthlyCollection(calls);
+  const patientIds = Array.from({ length: 51 }, (_, index) => `pat_${String(index).padStart(3, "0")}`);
+
+  const sessions = await store.listSessionsForClaimMonth("org_123", "2026-06", { patientIds });
+
+  assert.equal(calls.length, 6, "three 25-patient chunks each issue claimMonth and serviceDate queries");
+  assert.equal(sessions.length, 1, "the same feeSessionId returned by multiple lanes/chunks is deduplicated");
+  assert.deepEqual(
+    calls.map((call) => call.find((step) => step.kind === "where" && step.field === "patientId")?.value.length),
+    [25, 25, 25, 25, 1, 1]
+  );
+  assert.ok(calls.every((call) => call.some((step) => step.kind === "where" && step.field === "patientId" && step.operator === "in")));
+
+  calls.length = 0;
+  await store.listSessionsForClaimMonth("org_123", "2026-06", {
+    patientId: "pat_priority",
+    patientIds
+  });
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((call) => call.some((step) => (
+    step.kind === "where"
+    && step.field === "patientId"
+    && step.operator === "=="
+    && step.value === "pat_priority"
+  ))));
+
+  calls.length = 0;
+  await store.listSessionsForClaimMonth("org_123", "2026-06", {
+    patientIds: Array.from({ length: 101 }, (_, index) => `pat_${index}`)
+  });
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((call) => !call.some((step) => step.kind === "where" && step.field === "patientId")));
 });
 
 test("stores monthly bulk jobs with progress", () => {
@@ -234,6 +291,35 @@ function fakeCollection(path, docs) {
       return fakeFirestoreDb(docs).doc(`${path}/${id}`);
     }
   };
+}
+
+function recordingMonthlyCollection(calls) {
+  const createQuery = (steps = []) => ({
+    where(field, operator, value) {
+      return createQuery([...steps, { kind: "where", field, operator, value }]);
+    },
+    orderBy(field, direction) {
+      return createQuery([...steps, { kind: "orderBy", field, direction }]);
+    },
+    limit(value) {
+      return createQuery([...steps, { kind: "limit", value }]);
+    },
+    async get() {
+      calls.push(steps);
+      return {
+        docs: [{
+          data: () => ({
+            feeSessionId: "fee_shared",
+            patientId: "pat_000",
+            claimMonth: "2026-06",
+            serviceDate: "2026-06-01",
+            createdAt: "2026-06-01T00:00:00.000Z"
+          })
+        }]
+      };
+    }
+  });
+  return createQuery();
 }
 
 function assertNoUndefined(value) {

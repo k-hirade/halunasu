@@ -715,6 +715,7 @@ CREATE TABLE IF NOT EXISTS cc_act_indications (
     ref_range TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_cc_act_code ON cc_act_indications(act_code);
+CREATE INDEX IF NOT EXISTS idx_cc_act_indications_disease ON cc_act_indications(disease_code);
 """
 
 

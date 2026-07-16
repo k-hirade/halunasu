@@ -729,6 +729,72 @@ export async function buildClinicalCalculationPreparation({
     }
   }
 
+  // 病名駆動の決定論候補レーン。session病名を基礎に、LLM抽出病名は追加情報として
+  // 和集合へ入れる。既存のイベント/辞書/知識候補と同じコード群はこのレーンへ置換し、
+  // 抽出の有無による候補の出没と二重表示を防ぐ。
+  const diseaseScanDiagnoses = diagnosesForDiseaseIndicationScan([
+    ...asArray(session.diagnoses),
+    ...inferredDiagnoses
+  ]);
+  if (diseaseScanDiagnoses.length && typeof feeCalculator?.diseaseActCandidates === "function") {
+    const diseaseScanStartedAt = Date.now();
+    try {
+      const diseaseLookup = await feeCalculator.diseaseActCandidates({
+        diagnoses: diseaseScanDiagnoses,
+        setting: diseaseIndicationSetting(session, text),
+        patient_age: Number.isFinite(patientAgeOnServiceDate(session)) ? patientAgeOnServiceDate(session) : null,
+        patient_sex: patientSexForDiseaseIndicationScan(session),
+        service_date: String(session.serviceDate || ""),
+        act_code_prefixes: ["113", "114"],
+        limit: 12
+      });
+      const mergedDiseaseCandidates = mergeDiseaseIndicationCandidateProposals({
+        existingProposals: candidateProposals,
+        lookupResult: diseaseLookup,
+        confirmedCodes: uniqueStrings([
+          ...asArray(manualOptions.procedure_codes),
+          ...asArray(inferred.procedure_codes)
+        ])
+      });
+      candidateProposals.splice(0, candidateProposals.length, ...mergedDiseaseCandidates.candidateProposals);
+      const durationMs = Date.now() - diseaseScanStartedAt;
+      metrics.diseaseIndicationScan = {
+        durationMs,
+        resolvedDiagnosisCount: asArray(diseaseLookup?.resolvedNames).length,
+        candidateCount: mergedDiseaseCandidates.addedProposals.length,
+        unresolvedCount: asArray(diseaseLookup?.unresolvedNames).length
+      };
+      clinicalTrace.push({
+        traceId: `trace_${candidateIdPart(["disease_indication_scan", diseaseScanDiagnoses.map((item) => item.name).join("_")].join("_"))}`,
+        stage: "disease_indication_scan",
+        outcome: mergedDiseaseCandidates.addedProposals.length ? "candidate_proposed" : "no_new_candidates",
+        resolvedDiagnosisCount: asArray(diseaseLookup?.resolvedNames).length,
+        candidateCount: mergedDiseaseCandidates.addedProposals.length,
+        replacedProposalIds: mergedDiseaseCandidates.replacedProposalIds,
+        unresolvedNames: asArray(diseaseLookup?.unresolvedNames).slice(0, 20),
+        durationMs,
+        message: "disease_indication_candidates_completed"
+      });
+    } catch (error) {
+      const durationMs = Date.now() - diseaseScanStartedAt;
+      metrics.diseaseIndicationScan = {
+        durationMs,
+        resolvedDiagnosisCount: 0,
+        candidateCount: 0,
+        unresolvedCount: 0,
+        failed: true
+      };
+      clinicalTrace.push({
+        traceId: `trace_${candidateIdPart(["disease_indication_scan", "failed"].join("_"))}`,
+        stage: "disease_indication_scan",
+        outcome: "failed_soft",
+        error: String(error?.message || error || "Disease indication scan failed").slice(0, 240),
+        durationMs,
+        message: "disease_indication_candidates_failed_soft"
+      });
+    }
+  }
+
   const normalizedInferred = normalizeClinicalInferredOptions(inferred);
   const outpatientManagementEvidence = verifiedOutpatientManagementEvidence;
   if (isInpatientEncounter(session, text) && !hasOwn(manualOptions, "outpatient_basic")) {
@@ -774,9 +840,7 @@ export async function buildClinicalCalculationPreparation({
     // 提示する(手動オプション・claimContext経由の明示指定は従来どおり確定できる)。
     if (
       !hasOwn(manualOptions, "outpatient_basic")
-      && outpatientManagementEvidence
       && String(normalizedInferred.outpatient_basic?.fee_kind || "") === "revisit"
-      && !["home_visit", "house_call"].includes(String(session.setting || ""))
     ) {
       const managementAddonProposal = await outpatientManagementAddonProposal(feeCalculator, outpatientManagementEvidence);
       if (managementAddonProposal) {
@@ -830,25 +894,28 @@ export async function buildClinicalCalculationPreparation({
   };
 }
 
-// 外来管理加算(112011010)の承認待ち候補。点数はマスタから解決し、失敗時は52点を仮置く。
+// 外来管理加算(112011010)の承認待ち候補。外来再診という決定論情報で提示し、
+// LLM抽出由来の管理説明は表示用の根拠としてのみ扱う。
 async function outpatientManagementAddonProposal(feeCalculator, managementEvidence = null) {
-  if (!managementEvidence) {
-    return null;
-  }
   let item = null;
   try {
     item = await searchProcedureCandidateItem(feeCalculator, ["外来管理加算"], [/^外来管理加算$/u]);
   } catch {
     item = null;
   }
-  const resolved = item?.code === "112011010" ? item : { code: "112011010", name: "外来管理加算", points: 52, kind: "procedure" };
+  const resolved = item?.code === "112011010"
+    ? item
+    : { code: "112011010", name: "外来管理加算", points: 0, kind: "procedure" };
+  const evidence = String(managementEvidence?.evidence || managementEvidence?.name || "").slice(0, 160);
   return candidateProposalFromProcedureItem({
     proposalId: "outpatient_management_addon",
     title: "外来管理加算の算定確認",
-    reason: "計画的な医学管理・説明の記載があります。処置・リハビリ等(外来管理加算と併算定不可の行為)が同日に無い場合に算定できます。",
+    reason: evidence
+      ? "計画的な医学管理・説明の記載があります。処置・リハビリ等(外来管理加算と併算定不可の行為)が同日に無い場合に算定できます。"
+      : "再診です。同日に外来管理加算と併算定できない処置・検査等がなく、医学管理を実施した場合に算定できます。",
     conditionText: "同日に処置・検査(生体)・リハビリ・精神科専門療法等が無いこと、および医学管理の実施を確認してから採用してください。",
     basis: "deterministic_gate_candidate",
-    evidence: String(managementEvidence.evidence || managementEvidence.name || "").slice(0, 160),
+    evidence,
     item: resolved,
     sortOrder: 40
   });
@@ -3661,6 +3728,176 @@ export async function dictionaryScanCandidateProposals({ feeCalculator, text = "
       message: "master_name_dictionary_scan_completed"
     })
   };
+}
+
+export function diagnosesForDiseaseIndicationScan(values = []) {
+  const byName = new Map();
+  for (const diagnosis of asArray(values)) {
+    const name = cleanClinicalDiagnosisName(diagnosis?.name || diagnosis?.displayName || diagnosis);
+    if (!name) {
+      continue;
+    }
+    const status = normalizeDiagnosisStatus(diagnosis?.status);
+    if (["excluded", "history"].includes(status)) {
+      continue;
+    }
+    const key = name.replace(/\s+/gu, "").toLowerCase();
+    const suspected = diagnosis?.suspected === true || status === "suspected" || /(?:の)?疑い$/u.test(name);
+    const existing = byName.get(key);
+    if (!existing || (existing.suspected && !suspected)) {
+      byName.set(key, { name, suspected });
+    }
+  }
+  return [...byName.values()]
+    .sort((a, b) => a.name.localeCompare(b.name, "ja"))
+    .slice(0, 20);
+}
+
+export function mergeDiseaseIndicationCandidateProposals({
+  existingProposals = [],
+  lookupResult = {},
+  confirmedCodes = []
+} = {}) {
+  const confirmed = new Set(asArray(confirmedCodes).map((code) => String(code || "").trim()).filter(Boolean));
+  const existing = asArray(existingProposals);
+  // 実施イベントや辞書照合で得た候補は、病名だけから作る候補より根拠が強い。
+  // 病名レーンが置換してよいのは、抽出揺れの影響を受ける知識レーンに限定する。
+  const strongerExistingCodeSets = existing
+    .filter((proposal) => !replaceableByDiseaseIndicationProposal(proposal))
+    .map(proposalCandidateCodes)
+    .filter((codes) => codes.size);
+  const addedProposals = [];
+  const diseaseCodeSets = [];
+
+  for (const family of asArray(lookupResult?.candidates)) {
+    if (addedProposals.length >= 8) {
+      break;
+    }
+    const codeEntries = uniqueProcedureCandidateEntries(family?.codes);
+    if (!codeEntries.length) {
+      continue;
+    }
+    const familyCodes = new Set(codeEntries.map((entry) => entry.code));
+    if ([...familyCodes].some((code) => confirmed.has(code))) {
+      continue;
+    }
+    if (strongerExistingCodeSets.some((codes) => [...codes].some((code) => familyCodes.has(code)))) {
+      continue;
+    }
+    const familyName = String(family?.familyName || codeEntries[0].name || "診療行為").trim();
+    const matchedDiseases = uniqueStrings(asArray(family?.matchedDiseases));
+    const diseaseText = matchedDiseases.length ? `病名「${matchedDiseases.join("、")}」` : "入力された病名";
+    const common = {
+      title: `${familyName}の算定確認`,
+      reason: `${diseaseText}は${familyName}の対象疾患です。管理・指導の実施記録がある場合に算定できます。`,
+      conditionText: "管理・指導の実施事実と診療録、同月算定履歴、施設基準、患者・施設に合う算定区分を確認してください。",
+      basis: "disease_indication_candidate",
+      evidence: matchedDiseases.join("、"),
+      actionType: "confirm_required",
+      orderType: "procedure",
+      source: "clinical_billing_opportunity:disease_indication",
+      sortOrder: 35,
+      diseaseIndication: {
+        familyName,
+        matchedDiseases,
+        codes: codeEntries
+      }
+    };
+
+    if (codeEntries.length === 1) {
+      const item = codeEntries[0];
+      const proposalId = `disease_link_${item.code}`;
+      addedProposals.push({
+        proposalId,
+        ...common,
+        potentialPoints: item.points,
+        code: item.code,
+        codeCandidates: [],
+        candidateLine: candidateLineFromProcedureCandidate({
+          proposalId,
+          reason: common.reason,
+          item: { ...item, kind: "procedure" },
+          title: familyName
+        })
+      });
+    } else {
+      addedProposals.push({
+        proposalId: `disease_link_choice_${candidateIdPart(familyName)}`,
+        ...common,
+        potentialPoints: 0,
+        code: "",
+        codeCandidates: [...familyCodes].sort(),
+        candidateLine: null
+      });
+    }
+    diseaseCodeSets.push(familyCodes);
+  }
+
+  const replacedProposalIds = [];
+  const retainedProposals = existing.filter((proposal) => {
+    if (!replaceableByDiseaseIndicationProposal(proposal)) {
+      return true;
+    }
+    const existingCodes = proposalCandidateCodes(proposal);
+    const overlapsDiseaseCandidate = diseaseCodeSets.some((codes) => (
+      [...existingCodes].some((code) => codes.has(code))
+    ));
+    if (overlapsDiseaseCandidate) {
+      replacedProposalIds.push(String(proposal?.proposalId || ""));
+      return false;
+    }
+    return true;
+  });
+
+  return {
+    candidateProposals: [...retainedProposals, ...addedProposals],
+    addedProposals,
+    replacedProposalIds: replacedProposalIds.filter(Boolean)
+  };
+}
+
+function replaceableByDiseaseIndicationProposal(proposal = {}) {
+  return String(proposal?.source || "").startsWith("clinical_billing_knowledge:");
+}
+
+function uniqueProcedureCandidateEntries(values = []) {
+  const byCode = new Map();
+  for (const value of asArray(values)) {
+    const code = String(value?.code || "").trim();
+    const name = String(value?.name || "").trim();
+    if (!code || !name || byCode.has(code)) {
+      continue;
+    }
+    byCode.set(code, { code, name, points: Number(value?.points || 0) });
+  }
+  return [...byCode.values()].sort((a, b) => Number(b.points || 0) - Number(a.points || 0) || a.code.localeCompare(b.code));
+}
+
+function proposalCandidateCodes(proposal = {}) {
+  return new Set(uniqueStrings([
+    proposal?.code,
+    proposal?.candidateLine?.code,
+    ...asArray(proposal?.codeCandidates)
+  ]));
+}
+
+function diseaseIndicationSetting(session = {}, text = "") {
+  if (isInpatientEncounter(session, text)) {
+    return "inpatient";
+  }
+  const setting = String(session?.setting || "").trim();
+  return ["home_visit", "house_call"].includes(setting) ? setting : "outpatient";
+}
+
+function patientSexForDiseaseIndicationScan(session = {}) {
+  return String(
+    session?.patientSnapshot?.sex
+    || session?.patientSnapshot?.gender
+    || session?.patient?.sex
+    || session?.patient?.gender
+    || session?.patientSex
+    || ""
+  ).trim();
 }
 
 // matchedText の全出現位置(最大6箇所)を節単位で判定し、最初の肯定節を返す。

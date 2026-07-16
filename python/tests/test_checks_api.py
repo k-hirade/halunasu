@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from medical_fee_calculation.checks_api import check_lookup, resolve_diseases
+from medical_fee_calculation.checks_api import check_lookup, disease_act_candidates, resolve_diseases
 from medical_fee_calculation.db import connect, initialize_schema
 
 
@@ -156,6 +156,106 @@ class ChecksApiTest(unittest.TestCase):
             self.assertEqual(exclusions[0]["baseCode"], "114001110")
             self.assertEqual(exclusions[0]["excludedCode"], "112011010")
             self.assertEqual(exclusions[0]["ruleKind"], "1")
+
+    def test_disease_act_candidates_resolves_filters_and_groups_families(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "master.sqlite"
+            conn = connect(db_path)
+            try:
+                initialize_schema(conn)
+                conn.execute(
+                    "INSERT INTO master_sources "
+                    "(id, source_type, source_version, raw_path, checksum_sha256, encoding, row_count, imported_at) "
+                    "VALUES (1, 'payer_check_master', 'test', 'check', 'check', 'cp932', 10, '2026-06-01T00:00:00Z')"
+                )
+                conn.execute(
+                    "INSERT INTO master_sources "
+                    "(id, source_type, source_version, raw_path, checksum_sha256, encoding, row_count, imported_at) "
+                    "VALUES (2, 'medical_procedure_master', 'test', 'procedure', 'procedure', 'cp932', 10, '2026-06-02T00:00:00Z')"
+                )
+                conn.executemany(
+                    "INSERT INTO diseases (source_id, code, name, effective_to) VALUES (1,?,?, '99999999')",
+                    [
+                        ("D_COPD", "慢性閉塞性肺疾患"),
+                        ("D_BRONCH", "気管支炎"),
+                    ],
+                )
+                conn.execute(
+                    "INSERT INTO disease_modifiers (source_id, code, name, kubun) VALUES (1,'8002','の疑い','8')"
+                )
+                indication_rows = [
+                    ("113001810", "D_COPD", "0", 0, 999, "2", "0"),
+                    ("113001910", "D_COPD", "0", 0, 999, "2", "0"),
+                    ("114099910", "D_COPD", "0", 0, 999, "2", "0"),  # 加算は除外
+                    ("113777710", "D_COPD", "1", 0, 999, "2", "0"),  # 男性のみ
+                    ("113777810", "D_COPD", "0", 0, 17, "2", "0"),   # 小児のみ
+                    ("113777910", "D_COPD", "0", 0, 999, "1", "0"),  # 入院のみ
+                    ("114100010", "D_BRONCH", "0", 0, 999, "2", "1"), # 確定のみ
+                    ("114100110", "D_BRONCH", "0", 0, 999, "2", "2"), # 疑いのみ
+                    ("114100210", "D_BRONCH", "0", 0, 999, "2", "2"), # 期限切れ
+                ]
+                conn.executemany(
+                    "INSERT INTO cc_act_indications "
+                    "(source_id, act_code, disease_code, sex, age_min, age_max, nyugai, utagai) "
+                    "VALUES (1,?,?,?,?,?,?,?)",
+                    indication_rows,
+                )
+                procedure_rows = [
+                    ("113001810", "特定疾患療養管理料（診療所）", 225, "20260601", "99999999"),
+                    ("113001910", "特定疾患療養管理料（病院１００床未満）", 147, "20260601", "99999999"),
+                    ("114099910", "在宅療養管理加算", 50, "20260601", "99999999"),
+                    ("113777710", "男性限定管理料", 100, "20260601", "99999999"),
+                    ("113777810", "小児限定管理料", 100, "20260601", "99999999"),
+                    ("113777910", "入院限定管理料", 100, "20260601", "99999999"),
+                    ("114100010", "気管支炎確定検査", 120, "20260601", "99999999"),
+                    ("114100110", "気管支炎疑い検査", 110, "20260601", "99999999"),
+                    ("114100210", "旧気管支炎検査", 90, "20250101", "20251231"),
+                ]
+                conn.executemany(
+                    "INSERT INTO medical_procedures "
+                    "(source_id, code, short_name, points, effective_from, effective_to, raw_row_json) "
+                    "VALUES (2,?,?,?,?,?, '[]')",
+                    procedure_rows,
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            result = disease_act_candidates({
+                "db_path": str(db_path),
+                "diagnoses": [
+                    {"name": "慢性閉塞性肺疾患", "suspected": False},
+                    {"name": "気管支炎の疑い", "suspected": True},
+                    {"name": "存在しない病名", "suspected": False},
+                ],
+                "setting": "outpatient",
+                "patient_age": 76,
+                "patient_sex": "female",
+                "service_date": "2026-06-15",
+                "act_code_prefixes": ["113", "114"],
+                "limit": 12,
+            })
+
+        by_family = {item["familyName"]: item for item in result["candidates"]}
+        management = by_family["特定疾患療養管理料"]
+        self.assertEqual(
+            [item["code"] for item in management["codes"]],
+            ["113001810", "113001910"],
+        )
+        self.assertEqual(management["matchedDiseases"], ["慢性閉塞性肺疾患"])
+        self.assertIn("気管支炎疑い検査", by_family)
+        all_codes = {
+            code["code"]
+            for candidate in result["candidates"]
+            for code in candidate["codes"]
+        }
+        self.assertNotIn("114099910", all_codes)  # 加算
+        self.assertNotIn("113777710", all_codes)  # 性別不一致
+        self.assertNotIn("113777810", all_codes)  # 年齢不一致
+        self.assertNotIn("113777910", all_codes)  # 入外不一致
+        self.assertNotIn("114100010", all_codes)  # 疑い病名に対する確定のみ行
+        self.assertNotIn("114100210", all_codes)  # 有効期間外
+        self.assertEqual(result["unresolvedNames"], ["存在しない病名"])
 
 
 if __name__ == "__main__":

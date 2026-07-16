@@ -3,11 +3,14 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { dictionaryScanCandidateProposals } from "../src/clinical-calculation-input.js";
+import {
+  dictionaryScanCandidateProposals,
+  mergeDiseaseIndicationCandidateProposals
+} from "../src/clinical-calculation-input.js";
 import { PythonFeeCalculator } from "../src/python-calculator.js";
 
 // 反例コーパス回帰: 実運用で見つかった「候補に出なかった/出てはいけない」ケースを、
-// LLM抜きの決定論レーン(マスタ名称辞書スキャン)で常時回帰する。
+// LLM抜きの決定論レーン(マスタ名称辞書スキャン・病名適応逆引き)で常時回帰する。
 // 実マスタDBが無い環境(CI等)ではスキップする。
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const masterDbPath = process.env.FEE_MASTER_DB_PATH
@@ -23,14 +26,30 @@ test("反例コーパス: 決定論レーンで期待候補が出て、禁止候
     workerMode: false
   });
   for (const item of corpus.cases) {
-    const result = await dictionaryScanCandidateProposals({
+    const dictionaryResult = await dictionaryScanCandidateProposals({
       feeCalculator,
       text: item.clinicalText,
       knownCodes: []
     });
+    let proposals = dictionaryResult.proposals;
+    if (Array.isArray(item.diagnoses) && item.diagnoses.length) {
+      const diseaseLookup = await feeCalculator.diseaseActCandidates({
+        diagnoses: item.diagnoses,
+        setting: item.setting || "outpatient",
+        patient_age: item.patientAge ?? null,
+        patient_sex: item.patientSex || "",
+        service_date: item.serviceDate || "2026-06-15",
+        act_code_prefixes: ["113", "114"],
+        limit: 12
+      });
+      proposals = mergeDiseaseIndicationCandidateProposals({
+        existingProposals: proposals,
+        lookupResult: diseaseLookup
+      }).candidateProposals;
+    }
     // 同一別名の複数コードは codeCandidates 付きの曖昧候補1件に統合されるため、
     // 「候補として見える」判定は code と codeCandidates の和で行う。
-    const codes = result.proposals.flatMap((proposal) => [
+    const codes = proposals.flatMap((proposal) => [
       String(proposal.code || ""),
       ...(Array.isArray(proposal.codeCandidates) ? proposal.codeCandidates.map(String) : [])
     ]).filter(Boolean);

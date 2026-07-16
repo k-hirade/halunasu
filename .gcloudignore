@@ -32,5 +32,6 @@ python/data/*
 !python/data/master/
 python/data/master/*
 !python/data/master/*.sqlite.gz
+!python/data/master/*.manifest.json
 !python/medical_fee_calculation/
 !python/medical_fee_calculation/**

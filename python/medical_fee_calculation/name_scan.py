@@ -169,7 +169,7 @@ def _scan_aliases(name: str) -> list[str]:
 
     add(name)
     # 括弧修飾を除いた核名称
-    core = _strip_parens(name)
+    core = strip_parenthetical_qualifiers(name)
     add(core)
     # 語尾を反復的に畳む(名詞核へ寄せる)。核名称からも畳む。
     for base in (name, core):
@@ -183,7 +183,8 @@ def _scan_aliases(name: str) -> list[str]:
     return aliases
 
 
-def _strip_parens(name: str) -> str:
+def strip_parenthetical_qualifiers(name: str) -> str:
+    """全角/半角の括弧修飾を除き、診療行為の核名称を返す。"""
     result: list[str] = []
     depth = 0
     for char in name:

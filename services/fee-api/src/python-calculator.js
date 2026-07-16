@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync } from "node:fs";
-import { rename, unlink } from "node:fs/promises";
+import { readFile, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import { createGunzip } from "node:zlib";
 const MODULE_NAME = "medical_fee_calculation.api";
 const MASTER_SEARCH_MODULE_NAME = "medical_fee_calculation.master_search";
 const MASTER_BROWSER_MODULE_NAME = "medical_fee_calculation.master_browser";
+const MASTER_CONTENT_MODULE_NAME = "medical_fee_calculation.master_content";
 const WORKER_MODULE_NAME = "medical_fee_calculation.worker";
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const DEFAULT_MASTER_SEARCH_CACHE_MAX_ENTRIES = 2000;
@@ -21,6 +22,8 @@ const WORKER_MAX_DISPATCH_ATTEMPTS = 2;
 
 export function createFeeCalculatorFromEnv(env = process.env) {
   const gzipPath = env.FEE_MASTER_DB_GZIP_PATH || env.MEDICAL_FEE_MASTER_DB_GZIP_PATH || "";
+  const manifestPath = env.FEE_MASTER_DB_MANIFEST_PATH
+    || (gzipPath ? path.join(path.dirname(gzipPath), "standard-master.manifest.json") : "");
   const masterDbPath = env.FEE_MASTER_DB_PATH
     || env.MEDICAL_FEE_MASTER_DB_PATH
     || (gzipPath ? path.join("/tmp", "halunasu-fee-master", path.basename(gzipPath).replace(/\.gz$/u, "")) : "");
@@ -30,6 +33,8 @@ export function createFeeCalculatorFromEnv(env = process.env) {
     pythonPath: env.FEE_PYTHONPATH || env.PYTHONPATH || path.join(ROOT_DIR, "python"),
     masterDbPath,
     masterDbGzipPath: gzipPath,
+    masterDbManifestPath: manifestPath,
+    masterContentCheckMode: env.FEE_MASTER_CONTENT_CHECK || "strict",
     timeoutMs: Number(env.FEE_CALCULATOR_TIMEOUT_MS || 30000),
     workerMode: env.FEE_PYTHON_WORKER_MODE === "spawn" || env.FEE_PYTHON_WORKER === "0" ? false : true,
     masterSearchCacheMaxEntries: positiveInteger(env.FEE_MASTER_SEARCH_CACHE_MAX_ENTRIES, DEFAULT_MASTER_SEARCH_CACHE_MAX_ENTRIES),
@@ -47,9 +52,16 @@ export class PythonFeeCalculator {
     this.pythonPath = options.pythonPath || path.join(ROOT_DIR, "python");
     this.masterDbPath = options.masterDbPath;
     this.masterDbGzipPath = options.masterDbGzipPath || "";
+    this.masterDbManifestPath = options.masterDbManifestPath || "";
+    this.masterContentCheckMode = String(options.masterContentCheckMode || "strict").trim().toLowerCase() === "warn"
+      ? "warn"
+      : "strict";
+    this.logger = options.logger || console;
     this.timeoutMs = options.timeoutMs || 30000;
     this.workerMode = options.workerMode !== false;
     this.masterDbPreparePromise = null;
+    this.masterContentCheckPromise = null;
+    this.masterContentCheck = null;
     this.worker = null;
     this.workerStdoutBuffer = "";
     this.workerStderrBuffer = "";
@@ -198,6 +210,27 @@ export class PythonFeeCalculator {
     });
   }
 
+  // 病名→適応診療行為を支払基金チェックマスタから逆引きする。
+  // 自動算定ではなく、管理・指導の実施確認が必要な候補レーン専用。
+  async diseaseActCandidates(payload = {}) {
+    await this.ensureMasterDbReady();
+    const request = { ...payload, db_path: this.masterDbPath };
+    const timeoutMs = Math.min(this.timeoutMs, 10000);
+    if (this.workerMode) {
+      return this.runWorkerJson({ ...request, op: "disease_act_candidates" }, {
+        requestIdPrefix: "fee_disease_act_candidates",
+        timeoutMs
+      });
+    }
+    return runPythonJson({
+      moduleName: "medical_fee_calculation.checks_api",
+      pythonBin: this.pythonBin,
+      pythonPath: this.pythonPath,
+      timeoutMs,
+      payload: { ...request, op: "disease_act_candidates" }
+    });
+  }
+
   // 既存レセ(UKE/レセコンCSV)を baselineClaims に変換する(Python adapter経由)。マスタDB不要。
   async parseBaseline(payload = {}) {
     return runPythonJson({
@@ -222,6 +255,9 @@ export class PythonFeeCalculator {
       masterDbGzipPath: this.masterDbGzipPath || null,
       masterDbGzipPathExists,
       masterDbGzipBytes: masterDbGzipPathExists ? statSync(this.masterDbGzipPath).size : null,
+      masterDbManifestPath: this.masterDbManifestPath || null,
+      masterDbManifestPathExists: this.masterDbManifestPath ? existsSync(this.masterDbManifestPath) : false,
+      masterContentCheckMode: this.masterContentCheckMode,
       timeoutMs: this.timeoutMs,
       workerMode: this.workerMode ? "persistent" : "spawn",
       workerRunning: Boolean(this.worker),
@@ -232,8 +268,14 @@ export class PythonFeeCalculator {
   }
 
   async readinessDetailed() {
+    if (this.masterDbPath || this.masterDbGzipPath) {
+      await this.ensureMasterDbReady();
+    }
     const base = this.readiness();
-    const detailed = { ...base };
+    const detailed = {
+      ...base,
+      masterContent: this.masterContentCheck || null
+    };
     if (base.masterDbPathExists) {
       detailed.masterDbChecksumSha256 = await this.fileSha256(this.masterDbPath);
     }
@@ -283,32 +325,139 @@ export class PythonFeeCalculator {
   }
 
   async ensureMasterDbReady() {
-    if (this.masterDbPath && existsSync(this.masterDbPath)) {
-      return;
-    }
     if (!this.masterDbPath) {
       const error = new Error("FEE_MASTER_DB_PATH is required for medical fee calculation");
       error.name = "ConfigurationError";
       error.statusCode = 503;
       throw error;
     }
-    if (!this.masterDbGzipPath) {
-      const error = new Error(`Fee master DB not found: ${this.masterDbPath}`);
-      error.name = "ConfigurationError";
-      error.statusCode = 503;
+    if (!existsSync(this.masterDbPath)) {
+      if (!this.masterDbGzipPath) {
+        throw configurationError(`Fee master DB not found: ${this.masterDbPath}`);
+      }
+      if (!existsSync(this.masterDbGzipPath)) {
+        throw configurationError(`Fee master gzip not found: ${this.masterDbGzipPath}`);
+      }
+
+      if (!this.masterDbPreparePromise) {
+        this.masterDbPreparePromise = this.expandMasterDbGzip();
+      }
+      await this.masterDbPreparePromise;
+    }
+    await this.ensureMasterContentReady();
+  }
+
+  async ensureMasterContentReady() {
+    if (!this.masterDbManifestPath) {
+      return;
+    }
+    if (!this.masterContentCheckPromise) {
+      this.masterContentCheckPromise = this.inspectMasterContent();
+    }
+    const result = await this.masterContentCheckPromise;
+    this.masterContentCheck = result;
+    if (!result.ok && this.masterContentCheckMode === "strict") {
+      const failures = result.failedTables
+        .map((entry) => `${entry.table}(${entry.actual}/${entry.expected})`)
+        .join(", ");
+      const error = configurationError(`Fee master content validation failed: ${failures}`);
+      error.masterContent = result;
       throw error;
     }
-    if (!existsSync(this.masterDbGzipPath)) {
-      const error = new Error(`Fee master gzip not found: ${this.masterDbGzipPath}`);
-      error.name = "ConfigurationError";
-      error.statusCode = 503;
-      throw error;
+  }
+
+  async inspectMasterContent() {
+    const checkedAt = new Date().toISOString();
+    if (!existsSync(this.masterDbManifestPath)) {
+      const result = {
+        ok: true,
+        failedTables: [],
+        checkedAt,
+        manifestSha: null,
+        manifestMissing: true
+      };
+      this.logger.warn?.(JSON.stringify({
+        event: "fee.master_content_manifest_missing",
+        manifestPath: this.masterDbManifestPath
+      }));
+      return result;
     }
 
-    if (!this.masterDbPreparePromise) {
-      this.masterDbPreparePromise = this.expandMasterDbGzip();
+    let manifest;
+    try {
+      manifest = JSON.parse(await readFile(this.masterDbManifestPath, "utf8"));
+    } catch (error) {
+      return this.masterContentFailure("__manifest__", 0, 1, checkedAt, null, error.message);
     }
-    await this.masterDbPreparePromise;
+    const expectedTables = manifest?.tables;
+    if (!expectedTables || typeof expectedTables !== "object" || Array.isArray(expectedTables)) {
+      return this.masterContentFailure("__manifest__", 0, 1, checkedAt, manifest?.sha256 || null, "tables is required");
+    }
+    const expectedEntries = Object.entries(expectedTables)
+      .map(([table, count]) => [String(table || "").trim(), Number(count)])
+      .filter(([table, count]) => table && Number.isFinite(count) && count >= 0);
+    if (!expectedEntries.length || expectedEntries.length !== Object.keys(expectedTables).length) {
+      return this.masterContentFailure("__manifest__", 0, 1, checkedAt, manifest?.sha256 || null, "tables contains invalid counts");
+    }
+
+    let actual;
+    try {
+      actual = await runPythonJson({
+        moduleName: MASTER_CONTENT_MODULE_NAME,
+        pythonBin: this.pythonBin,
+        pythonPath: this.pythonPath,
+        timeoutMs: Math.max(this.timeoutMs, 120000),
+        payload: {
+          db_path: this.masterDbPath,
+          tables: expectedEntries.map(([table]) => table)
+        }
+      });
+    } catch (error) {
+      return this.masterContentFailure("__database__", 0, 1, checkedAt, manifest?.sha256 || null, error.message);
+    }
+
+    const failedTables = expectedEntries.flatMap(([table, expected]) => {
+      const actualCount = Number(actual?.tables?.[table] || 0);
+      if (actualCount >= expected * 0.5) {
+        return [];
+      }
+      return [{
+        table,
+        actual: actualCount,
+        expected,
+        minimum: Math.ceil(expected * 0.5)
+      }];
+    });
+    const result = {
+      ok: failedTables.length === 0,
+      failedTables,
+      checkedAt,
+      manifestSha: String(manifest?.sha256 || "").trim() || null
+    };
+    if (!result.ok) {
+      this.logMasterContentFailure(result);
+    }
+    return result;
+  }
+
+  masterContentFailure(table, actual, expected, checkedAt, manifestSha, reason) {
+    const result = {
+      ok: false,
+      failedTables: [{ table, actual, expected, minimum: Math.ceil(expected * 0.5), reason }],
+      checkedAt,
+      manifestSha: String(manifestSha || "").trim() || null
+    };
+    this.logMasterContentFailure(result);
+    return result;
+  }
+
+  logMasterContentFailure(result) {
+    this.logger.error?.(JSON.stringify({
+      event: "fee.master_content_validation_failed",
+      mode: this.masterContentCheckMode,
+      failedTables: result.failedTables,
+      manifestSha: result.manifestSha
+    }));
   }
 
   async expandMasterDbGzip() {
@@ -573,6 +722,13 @@ function feeCalculationTimeoutError() {
   const error = new Error("medical fee calculation timed out");
   error.name = "FeeCalculationTimeoutError";
   error.statusCode = 504;
+  return error;
+}
+
+function configurationError(message) {
+  const error = new Error(message);
+  error.name = "ConfigurationError";
+  error.statusCode = 503;
   return error;
 }
 

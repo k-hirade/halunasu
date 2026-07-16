@@ -467,9 +467,18 @@ function aggregateMonthlyCandidateLines(sessions = [], {
         continue;
       }
       const code = String(proposal.code || proposal.candidateLine?.code || "").trim();
-      const points = Number(proposal.potentialPoints || proposal.candidateLine?.totalPoints || 0);
-      // コード未確定の知識ルール候補(難病外来指導管理料1/2等)は ruleId で同一視する。
+      const codeCandidates = uniqueSortedStrings(
+        Array.isArray(proposal.codeCandidates) ? proposal.codeCandidates : []
+      );
+      // コード未確定の候補に特定区分の点数を表示しない。生成元が誤って点数を
+      // 渡した場合も、月次合計へ混入させない。
+      const points = code
+        ? Number(proposal.potentialPoints || proposal.candidateLine?.totalPoints || 0)
+        : 0;
+      // 完全に同じコード候補集合だけをレーン横断で統合する。部分一致する集合は
+      // 意味が異なる可能性があるため、別候補のまま保持する。
       const key = code
+        || (codeCandidates.length ? `choice:${codeCandidates.join("/")}` : "")
         || (proposal.ruleId ? `rule:${proposal.ruleId}` : `proposal:${proposal.proposalId || proposal.title || ""}`);
       const serviceDate = String(session.serviceDate || "");
       const existing = map.get(key);
@@ -480,7 +489,7 @@ function aggregateMonthlyCandidateLines(sessions = [], {
         existing.proposalMonthlyLimit ||= normalizeProposalMonthlyLimit(proposal.monthlyLimit);
         existing.codeCandidates = uniqueSortedStrings([
           ...(existing.codeCandidates || []),
-          ...(Array.isArray(proposal.codeCandidates) ? proposal.codeCandidates : [])
+          ...codeCandidates
         ]);
       } else {
         map.set(key, {
@@ -498,7 +507,7 @@ function aggregateMonthlyCandidateLines(sessions = [], {
           serviceDates: serviceDate ? [serviceDate] : [],
           proposalIds: [proposal.proposalId || null],
           proposalMonthlyLimit: normalizeProposalMonthlyLimit(proposal.monthlyLimit),
-          codeCandidates: Array.isArray(proposal.codeCandidates) ? proposal.codeCandidates.filter(Boolean) : []
+          codeCandidates
         });
       }
     }

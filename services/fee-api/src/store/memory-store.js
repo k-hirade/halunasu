@@ -59,8 +59,12 @@ export class MemoryFeeStore {
       return [];
     }
     const limit = Math.max(1, Number.parseInt(options.limit, 10) || 5000);
+    const patientFilter = monthlyPatientFilter(options);
     return sortByCreatedAt([...this.sessionsForOrg(orgId).values()])
       .filter((session) => sessionClaimMonth(session) === month)
+      .filter((session) => (
+        patientFilter === null || patientFilter.has(String(session.patientId || "").trim())
+      ))
       .slice(0, limit);
   }
 
@@ -446,6 +450,22 @@ function sortByCreatedAtDesc(items) {
 function sessionClaimMonth(session = {}) {
   const raw = String(session.claimMonth || (session.serviceDate ? String(session.serviceDate).slice(0, 7) : "") || "").trim();
   return raw ? raw.slice(0, 7) : "";
+}
+
+function monthlyPatientFilter(options = {}) {
+  const patientId = String(options.patientId || "").trim();
+  if (patientId) {
+    return new Set([patientId]);
+  }
+  const patientIds = [...new Set(
+    (Array.isArray(options.patientIds) ? options.patientIds : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )];
+  if (!patientIds.length || patientIds.length > 100) {
+    return null;
+  }
+  return new Set(patientIds);
 }
 
 export function normalizeListOptions(options = {}) {

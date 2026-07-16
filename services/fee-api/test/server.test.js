@@ -26,6 +26,28 @@ test("readyz reports fee master readiness", async () => {
   assert.equal(response.body.feeCalculator.masterDbPathExists, true);
 });
 
+test("readyz propagates strict fee master content failures as unavailable", async () => {
+  const stores = createStores();
+  stores.feeCalculator.readinessDetailed = async () => {
+    const error = new Error("Fee master content validation failed: diseases(0/27684)");
+    error.name = "ConfigurationError";
+    error.statusCode = 503;
+    error.masterContent = {
+      ok: false,
+      failedTables: [{ table: "diseases", actual: 0, expected: 27684, minimum: 13842 }],
+      checkedAt: "2026-07-16T00:00:00Z",
+      manifestSha: "fixture-sha"
+    };
+    throw error;
+  };
+
+  const response = await request(stores, "GET", "/readyz");
+
+  assert.equal(response.statusCode, 503);
+  assert.equal(response.body.status, "not_ready");
+  assert.equal(response.body.feeCalculator.masterContent.failedTables[0].table, "diseases");
+});
+
 test("searches fee master through authenticated fee route", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -491,6 +513,7 @@ test("reconnects clinical text to legacy outpatient calculation input", async ()
   assert.equal(calculation.statusCode, 201);
   assert.equal(calculation.body.calculationResult.totalPoints, 420);
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "initial");
+  assert.ok(!calculation.body.calculationResult.candidateProposals.some((proposal) => proposal.code === "112011010"));
   assert.deepEqual(
     receivedInput.calculationOptions.imaging_orders.map((order) => order.kind).sort(),
     ["simple_radiography"]
@@ -575,6 +598,7 @@ test("structured inpatient sessions suppress outpatient basic and infer inpatien
 
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.outpatient_basic, undefined);
+  assert.ok(!calculation.body.calculationResult.candidateProposals.some((proposal) => proposal.code === "112011010"));
   assert.deepEqual(receivedInput.calculationOptions.inpatient_basic, {
     basic_fee_code: "190117710",
     basic_fee_days: 2,
@@ -3554,6 +3578,12 @@ test("routes non-billable lab review contexts to specific review topics without 
     masterSearches.push(input);
     return { query: input.query, type: input.type, items: [] };
   };
+  const assertNoUnexpectedMasterSearches = () => {
+    const unexpectedQueries = masterSearches
+      .map((search) => String(search.query || ""))
+      .filter((query) => !query.includes("外来管理加算"));
+    assert.deepEqual(unexpectedQueries, []);
+  };
   stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
     receivedInput = calculationInput;
     return {
@@ -3608,7 +3638,7 @@ test("routes non-billable lab review contexts to specific review topics without 
   );
   assert.equal(calculation.statusCode, 201);
   assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
-  assert.equal(masterSearches.length, 0);
+  assertNoUnexpectedMasterSearches();
   assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "同月内検査確認"));
 
   masterSearches.length = 0;
@@ -3644,7 +3674,7 @@ test("routes non-billable lab review contexts to specific review topics without 
   );
   assert.equal(calculation.statusCode, 201);
   assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
-  assert.equal(masterSearches.length, 0);
+  assertNoUnexpectedMasterSearches();
   assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "同月内検査確認"));
 
   masterSearches.length = 0;
@@ -3680,7 +3710,7 @@ test("routes non-billable lab review contexts to specific review topics without 
   );
   assert.equal(calculation.statusCode, 201);
   assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
-  assert.equal(masterSearches.length, 0);
+  assertNoUnexpectedMasterSearches();
   assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "同月内検査確認"), false);
 
   masterSearches.length = 0;
@@ -3716,7 +3746,7 @@ test("routes non-billable lab review contexts to specific review topics without 
   );
   assert.equal(calculation.statusCode, 201);
   assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
-  assert.equal(masterSearches.length, 0);
+  assertNoUnexpectedMasterSearches();
   assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "検査コード確認"));
 
   masterSearches.length = 0;
@@ -3757,7 +3787,7 @@ test("routes non-billable lab review contexts to specific review topics without 
   );
   assert.equal(calculation.statusCode, 201);
   assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
-  assert.equal(masterSearches.length, 0);
+  assertNoUnexpectedMasterSearches();
   assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "同月内検査確認"));
   assert.ok(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "検査コード確認"));
 
@@ -3794,7 +3824,7 @@ test("routes non-billable lab review contexts to specific review topics without 
   );
   assert.equal(calculation.statusCode, 201);
   assert.deepEqual(receivedInput.calculationOptions.procedure_codes || [], []);
-  assert.equal(masterSearches.length, 0);
+  assertNoUnexpectedMasterSearches();
   assert.equal(calculation.body.calculationResult.reviewIssues.some((issue) => issue.topicLabel === "同月内検査確認"), false);
 
   clinicalEvents = [{
@@ -4178,6 +4208,12 @@ test("infers revisit basic fee from prior patient fee sessions", async () => {
 
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+  const outpatientManagement = calculation.body.calculationResult.candidateProposals
+    .find((proposal) => proposal.code === "112011010");
+  assert.ok(outpatientManagement, "管理説明の抽出がなくても外来再診なら候補を提示する");
+  assert.equal(outpatientManagement.potentialPoints, 0, "マスタ検索失敗時は固定52点を表示しない");
+  assert.equal(outpatientManagement.actionType, "confirm_required");
+  assert.ok(!outpatientManagement.evidence);
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("患者履歴が完全ではない")));
   assert.equal(calculation.body.feeSession.calculationProgress.metrics.patientHistory.priorSessionCount, 1);
 });
@@ -8423,6 +8459,12 @@ test("runs clinic diagnosis on ingested receipts with claim checks and audit eve
 test("runs baseline diagnosis with month-scoped sessions and records audit event", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore, { globalRoles: [], productRoles: { fee: ["medical_clerk"] } });
+  const listSessionsForClaimMonth = stores.feeStore.listSessionsForClaimMonth.bind(stores.feeStore);
+  let baselineQueryOptions = null;
+  stores.feeStore.listSessionsForClaimMonth = (orgId, claimMonth, options) => {
+    baselineQueryOptions = options;
+    return listSessionsForClaimMonth(orgId, claimMonth, options);
+  };
   const june = stores.feeStore.createSession({
     orgId: "org_001",
     patientId: "patA",
@@ -8460,8 +8502,48 @@ test("runs baseline diagnosis with month-scoped sessions and records audit event
   assert.equal(response.body.patientCount, 1);
   assert.equal(response.body.summary.missingCandidateCount, 0);
   assert.equal(response.body.summary.needsReviewCount, 0);
+  assert.equal(response.body.diagnosisMetrics.schemaVersion, 1);
+  assert.equal(response.body.diagnosisMetrics.sessionCount, 1);
+  assert.equal(response.body.diagnosisMetrics.baselineClaimCount, 1);
+  assert.deepEqual(baselineQueryOptions.patientIds, ["patA"]);
+  for (const stage of [
+    "baselineClaimsFromDiagnosisBody",
+    "listSessionsForBaselineDiagnosis",
+    "buildMonthlyBaselineDiagnosis",
+    "audit"
+  ]) {
+    assert.equal(typeof response.body.diagnosisMetrics.stageDurationsMs[stage], "number");
+  }
+  assert.equal(typeof response.body.diagnosisMetrics.totalDurationMs, "number");
   const auditEvents = stores.platformStore.listAuditEvents("org_001");
   assert.ok(auditEvents.some((event) => event.eventType === "fee.baseline_diagnosis_run" && event.safePayload.claimMonth === "2026-06"));
+});
+
+test("baseline diagnosis does not treat imported receipt patient IDs as internal IDs", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore, { globalRoles: [], productRoles: { fee: ["medical_clerk"] } });
+  const listSessionsForClaimMonth = stores.feeStore.listSessionsForClaimMonth.bind(stores.feeStore);
+  let baselineQueryOptions = null;
+  stores.feeStore.listSessionsForClaimMonth = (orgId, claimMonth, options) => {
+    baselineQueryOptions = options;
+    return listSessionsForClaimMonth(orgId, claimMonth, options);
+  };
+  stores.feeCalculator.parseBaseline = async () => ({
+    baselineClaims: [{
+      patientId: "external-receipt-001",
+      claimMonth: "2026-06",
+      lines: [{ code: "112007410", name: "再診料", points: 76, count: 1 }]
+    }]
+  });
+
+  const response = await request(stores, "POST", "/v1/fee/baseline-diagnosis", {
+    claimMonth: "2026-06",
+    baselineFormat: "uke",
+    baselineContentBase64: Buffer.from("dummy", "utf8").toString("base64")
+  }, headers, { env: "stg" });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(Object.hasOwn(baselineQueryOptions, "patientIds"), false);
 });
 
 test("runs recalculation diff diagnosis from uploaded claim payloads without monthly sessions", async () => {
@@ -8519,6 +8601,21 @@ test("runs recalculation diff diagnosis from uploaded claim payloads without mon
   assert.equal(response.body.summary.missingCandidateCount, 1);
   assert.equal(response.body.diagnoses[0].findings[0].code, "113001810");
   assert.equal(response.body.diagnoses[0].findings.some((finding) => finding.code === "999999999"), false);
+  assert.equal(response.body.diagnosisMetrics.schemaVersion, 1);
+  assert.equal(response.body.diagnosisMetrics.sessionCount, 1);
+  assert.equal(response.body.diagnosisMetrics.calculationPayloadCount, 1);
+  for (const stage of [
+    "parseRecalculationDiffDataset",
+    "baselineClaimsFromDiagnosisBody",
+    "prepareCalculationPayloads",
+    "calculateRecalculationDiffSessions",
+    "buildMonthlyBaselineDiagnosis",
+    "buildRecalculationDiffDiagnostics",
+    "audit"
+  ]) {
+    assert.equal(typeof response.body.diagnosisMetrics.stageDurationsMs[stage], "number");
+  }
+  assert.equal(typeof response.body.diagnosisMetrics.totalDurationMs, "number");
   const auditEvents = stores.platformStore.listAuditEvents("org_001");
   assert.ok(auditEvents.some((event) => event.eventType === "fee.recalculation_diff_diagnosis_run" && event.safePayload.calculationPayloadCount === 1));
 });
@@ -8957,6 +9054,12 @@ test("monthly summary rejects overflow instead of silently truncating sessions",
 test("monthly summary includes legacy sessions whose claimMonth is missing", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
+  const listSessionsForClaimMonth = stores.feeStore.listSessionsForClaimMonth.bind(stores.feeStore);
+  let monthlySummaryQueryOptions = null;
+  stores.feeStore.listSessionsForClaimMonth = (orgId, claimMonth, options) => {
+    monthlySummaryQueryOptions = options;
+    return listSessionsForClaimMonth(orgId, claimMonth, options);
+  };
   const legacy = stores.feeStore.createSession({
     orgId: "org_001",
     patientId: "pat_legacy",
@@ -8981,6 +9084,59 @@ test("monthly summary includes legacy sessions whose claimMonth is missing", asy
   assert.equal(response.body.sessionCount, 1);
   assert.equal(response.body.patients[0].patientId, "pat_legacy");
   assert.equal(response.body.patients[0].sessions[0].claimMonth, "2026-06");
+  assert.equal(Object.hasOwn(monthlySummaryQueryOptions, "patientId"), false);
+  assert.equal(Object.hasOwn(monthlySummaryQueryOptions, "patientIds"), false);
+});
+
+test("monthly receipt reports stage performance without changing the receipt payload", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const listSessionsForClaimMonth = stores.feeStore.listSessionsForClaimMonth.bind(stores.feeStore);
+  let monthlyReceiptQueryOptions = null;
+  stores.feeStore.listSessionsForClaimMonth = (orgId, claimMonth, options) => {
+    monthlyReceiptQueryOptions = options;
+    return listSessionsForClaimMonth(orgId, claimMonth, options);
+  };
+  const session = stores.feeStore.createSession({
+    orgId: "org_001",
+    patientId: "pat_monthly_metrics",
+    facilityId: "fac_001",
+    createdByMemberId: "mem_001",
+    serviceDate: "2026-06-02"
+  });
+  stores.feeStore.saveCalculation("org_001", session.feeSessionId, {
+    provider: "test",
+    status: "completed",
+    lineItems: [
+      { code: "112007410", name: "再診料", points: 76, quantity: 1, totalPoints: 76, status: "confirmed" }
+    ]
+  });
+  stores.feeCalculator.checkLookup = async () => ({
+    actFrequencyLimits: {},
+    actExclusions: []
+  });
+
+  const response = await request(
+    stores,
+    "GET",
+    "/v1/fee/monthly-receipt?claimMonth=2026-06&patientId=pat_monthly_metrics",
+    undefined,
+    headers
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.receiptDraft.totalPoints, 76);
+  assert.equal(monthlyReceiptQueryOptions.patientId, "pat_monthly_metrics");
+  assert.equal(response.body.monthlyMetrics.schemaVersion, 1);
+  assert.equal(response.body.monthlyMetrics.sessionCount, 1);
+  for (const stage of [
+    "listSessionsForMonthlyView",
+    "monthlyCandidateConstraints",
+    "buildMonthlyReceiptDraft"
+  ]) {
+    assert.equal(typeof response.body.monthlyMetrics.stageDurationsMs[stage], "number");
+  }
+  assert.equal(typeof response.body.monthlyMetrics.totalDurationMs, "number");
 });
 
 test("exports a receipt CSV with billing summary", async () => {
@@ -9155,6 +9311,7 @@ test("施設恒常算定ルール: 届出キー・confirm/candidate・在宅受�
   assert.ok(!receivedInput.calculationOptions.facility_standard_keys.includes("expired_key"));
   // 在宅受診区分では外来基本料を自動算定しない
   assert.equal(receivedInput.calculationOptions.outpatient_basic, undefined);
+  assert.ok(!calculation.body.calculationResult.candidateProposals.some((proposal) => proposal.code === "112011010"));
 
   // candidateルール: 承認待ち候補として提示される
   const facilityProposal = calculation.body.calculationResult.candidateProposals

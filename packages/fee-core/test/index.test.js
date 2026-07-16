@@ -1449,7 +1449,7 @@ test("monthly receipt aggregates pending candidate proposals into a second tier"
   assert.equal(receipt.candidateTotalPoints, 200 + 890);
 });
 
-test("コード未確定の知識ルール候補は ruleId で畳まれ monthlyLimit フォールバックが効く", () => {
+test("同一codeCandidates集合のコード未確定候補はレーンを越えて0点の1行に畳まれる", () => {
   function sessionWithProposal(feeSessionId, serviceDate, proposal) {
     return applyCalculationResult(buildFeeSession({
       orgId: "org_123",
@@ -1468,18 +1468,27 @@ test("コード未確定の知識ルール候補は ruleId で畳まれ monthlyL
   }
 
   // 難病外来指導管理料: マスタに1/2があり曖昧なため code 無し。evidenceが受診ごとに違い proposalId も異なる。
-  const proposal = (suffix, evidence) => ({
-    proposalId: `management_signal_B001_intractable_${suffix}`,
+  const codeCandidates = ["113009310", "113009410"];
+  const knowledgeProposal = {
+    proposalId: "management_signal_B001_intractable_a",
     ruleId: "B001_intractable_disease_guidance_signal",
     title: "難病外来指導管理料の確認",
     potentialPoints: 270,
     monthlyLimit: { unit: "月", maxCount: 1 },
-    evidence
-  });
+    codeCandidates,
+    evidence: "多発性硬化症で継続管理"
+  };
+  const dictionaryProposal = {
+    proposalId: "dict_scan_choice_intractable_b",
+    title: "難病外来指導管理料の確認",
+    potentialPoints: 0,
+    codeCandidates: [...codeCandidates].reverse(),
+    evidence: "難病の療養指導を実施"
+  };
 
   const receipt = buildMonthlyReceiptDraft([
-    sessionWithProposal("fee_r1", "2026-06-13", proposal("a", "多発性硬化症で継続管理")),
-    sessionWithProposal("fee_r2", "2026-06-27", proposal("b", "難病の療養指導を実施"))
+    sessionWithProposal("fee_r1", "2026-06-13", knowledgeProposal),
+    sessionWithProposal("fee_r2", "2026-06-27", dictionaryProposal)
   ], { patientId: "pat_rule", claimMonth: "2026-06" });
 
   assert.equal(receipt.candidateLines.length, 1);
@@ -1488,9 +1497,12 @@ test("コード未確定の知識ルール候補は ruleId で畳まれ monthlyL
   assert.equal(line.occurrenceCount, 2);
   assert.equal(line.quantity, 1); // ルール側 monthlyLimit で月1回に畳む
   assert.equal(line.suppressedOccurrenceCount, 1);
-  assert.equal(line.totalPoints, 270);
+  assert.equal(line.points, 0);
+  assert.equal(line.totalPoints, 0);
+  assert.deepEqual(line.codeCandidates, codeCandidates);
+  assert.deepEqual(line.proposalIds, [knowledgeProposal.proposalId, dictionaryProposal.proposalId]);
   assert.deepEqual(line.frequencyLimits, [{ unit: "月", unitCode: "", maxCount: 1 }]);
-  assert.equal(receipt.candidateTotalPoints, 270);
+  assert.equal(receipt.candidateTotalPoints, 0);
 });
 
 test("エンジン自動整合で除外された行は承認までレセ合計に入らない", () => {

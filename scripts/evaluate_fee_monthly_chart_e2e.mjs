@@ -318,6 +318,7 @@ async function runRepetition({
   requestTimings.push(timingRecord("monthly_receipt", 0, monthlyResponse));
   assertResponse(monthlyResponse, "monthly receipt");
   const monthly = sanitizeMonthlyReceipt(monthlyResponse.body?.receiptDraft || {});
+  const monthlyMetrics = sanitizeEndpointStageMetrics(monthlyResponse.body?.monthlyMetrics);
 
   const mappedBaseline = {
     ...baselineClaim,
@@ -389,6 +390,7 @@ async function runRepetition({
       issueCount: sessions.reduce((sum, item) => sum + item.candidateSurface.issueCount, 0)
     },
     monthly,
+    monthlyMetrics,
     comparison,
     detection: {
       matchedCodeCount: detection.matchedCodeCount,
@@ -397,6 +399,7 @@ async function runRepetition({
       rows: detection.rows.filter((row) => row.status !== "engine_only")
     },
     endpointComparison: sanitizeEndpointDiagnosis(targetDiagnosis),
+    baselineDiagnosisMetrics: sanitizeEndpointStageMetrics(diagnosisResponse.body?.diagnosisMetrics),
     performance: summarizePerformance(requestTimings, sessions),
     requestTimings
   };
@@ -502,6 +505,7 @@ function sanitizeActionItem(item) {
 function sanitizeCalculationMetrics(metrics) {
   const clinical = metrics.clinicalStructuring || {};
   const ruleBased = metrics.ruleBasedClinicalInference || {};
+  const diseaseIndication = metrics.diseaseIndicationScan || {};
   return {
     stageTimings: (metrics.stageTimings || []).map((item) => ({
       stage: item.stage || item.name || "",
@@ -512,8 +516,33 @@ function sanitizeCalculationMetrics(metrics) {
     firstOutputTextMs: clinical.firstOutputTextMs ?? null,
     ruleBasedInferenceMs: Number(ruleBased.durationMs || 0),
     masterLookupMs: Number((clinical.masterLookupDurationMs || 0) + (ruleBased.masterLookupDurationMs || 0)),
-    masterLookupCount: Number((clinical.masterLookupCount || 0) + (ruleBased.masterLookupCount || 0))
+    masterLookupCount: Number((clinical.masterLookupCount || 0) + (ruleBased.masterLookupCount || 0)),
+    diseaseIndicationScanMs: Number(diseaseIndication.durationMs || 0),
+    diseaseIndicationResolvedDiagnosisCount: Number(diseaseIndication.resolvedDiagnosisCount || 0),
+    diseaseIndicationCandidateCount: Number(diseaseIndication.candidateCount || 0),
+    diseaseIndicationUnresolvedCount: Number(diseaseIndication.unresolvedCount || 0),
+    diseaseIndicationFailed: diseaseIndication.failed === true || undefined
   };
+}
+
+function sanitizeEndpointStageMetrics(metrics) {
+  if (!metrics || typeof metrics !== "object") {
+    return null;
+  }
+  const stageDurationsMs = Object.fromEntries(
+    Object.entries(metrics.stageDurationsMs || {})
+      .map(([stage, durationMs]) => [String(stage), Number(durationMs)])
+      .filter(([stage, durationMs]) => stage && Number.isFinite(durationMs))
+      .sort(([left], [right]) => left.localeCompare(right))
+  );
+  return compactObject({
+    schemaVersion: Number(metrics.schemaVersion || 1),
+    totalDurationMs: Number(metrics.totalDurationMs || 0),
+    sessionCount: Number.isFinite(Number(metrics.sessionCount)) ? Number(metrics.sessionCount) : undefined,
+    baselineClaimCount: Number.isFinite(Number(metrics.baselineClaimCount)) ? Number(metrics.baselineClaimCount) : undefined,
+    calculationPayloadCount: Number.isFinite(Number(metrics.calculationPayloadCount)) ? Number(metrics.calculationPayloadCount) : undefined,
+    stageDurationsMs
+  });
 }
 
 function compareAggregates(baselineLines, engineLines) {
@@ -582,6 +611,8 @@ function summarizeRepeats(repeats) {
   const calculateTimings = repeats.flatMap((item) => item.requestTimings)
     .filter((item) => item.operation === "calculate")
     .map((item) => item.durationMs);
+  const diseaseIndicationTimings = repeats.flatMap((item) => item.visits)
+    .map((visit) => visit.calculationMetrics.diseaseIndicationScanMs);
   const allOpenAi = repeats.flatMap((item) => item.visits.map((visit) => visit.extraction.source === "openai"));
   return {
     repeatCount: repeats.length,
@@ -605,7 +636,8 @@ function summarizeRepeats(repeats) {
     bothDeltaCounts: repeats.map((item) => item.comparison.bothDeltaCount),
     baselineTotalPoints: repeats[0]?.baseline.totalPoints || 0,
     monthlyTotalPoints: repeats.map((item) => item.monthly.totalPoints),
-    calculateRequestMs: distribution(calculateTimings)
+    calculateRequestMs: distribution(calculateTimings),
+    diseaseIndicationScanMs: distribution(diseaseIndicationTimings)
   };
 }
 
@@ -637,11 +669,13 @@ function summarizePerformance(requestTimings, sessions) {
   const calculations = requestTimings.filter((item) => item.operation === "calculate").map((item) => item.durationMs);
   const clinical = sessions.map((item) => item.calculationMetrics.clinicalStructuringMs);
   const provider = sessions.map((item) => item.calculationMetrics.openAiProviderMs);
+  const diseaseIndication = sessions.map((item) => item.calculationMetrics.diseaseIndicationScanMs);
   return {
     totalClientMs: round(requestTimings.reduce((sum, item) => sum + item.durationMs, 0), 2),
     calculateRequestMs: distribution(calculations),
     clinicalStructuringMs: distribution(clinical),
-    openAiProviderMs: distribution(provider)
+    openAiProviderMs: distribution(provider),
+    diseaseIndicationScanMs: distribution(diseaseIndication)
   };
 }
 
@@ -926,5 +960,5 @@ function round(value, digits = 3) {
 }
 
 function printHelp() {
-  process.stdout.write(`Fee monthly chart-to-receipt E2E (STG only)\n\nUsage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\nOptions:\n  --patient-dir PATH       Patient dataset directory\n  --claim-month YYYY-MM    Defaults to manifest claimMonth\n  --repeat N               Independent patient runs. Default: 3\n  --output-dir PATH        Default: /private/tmp/<run-id>\n  --organization-code ID   Default: nishiyama-demo-stg\n  --login-id ID            Default: nishiyama-admin\n  --password-file PATH     Default: .secrets/nishiyama-demo-password.txt\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --seed-known-prior-history\n                            Seed patients.csv start_date as prior visit history\n  --dry-run                Validate and summarize inputs without network calls\n  --help                   Show this help\n`);
+  process.stdout.write(`Fee monthly chart-to-receipt E2E (STG only)\n\nUsage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\nOptions:\n  --patient-dir PATH       Patient dataset directory\n  --claim-month YYYY-MM    Defaults to manifest claimMonth\n  --repeat N               Independent patient runs. Default: 3\n  --output-dir PATH        Default: /private/tmp/<run-id>\n  --organization-code ID   Default: nishiyama-demo-stg\n  --login-id ID            Default: nishiyama-admin\n  --password-file PATH     Default: .secrets/nishiyama-demo-password.txt\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --seed-known-prior-history\n                            Seed patients.csv start_date as prior visit history\n  --encounter-setting TYPE Encounter setting (outpatient/home_visit/house_call/inpatient)\n  --dry-run                Validate and summarize inputs without network calls\n  --help                   Show this help\n`);
 }

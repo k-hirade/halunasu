@@ -34,3 +34,4 @@ python/data/*
 !python/data/master/
 python/data/master/*
 !python/data/master/standard-master.sqlite.gz
+!python/data/master/standard-master.manifest.json

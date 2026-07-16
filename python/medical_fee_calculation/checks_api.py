@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from medical_fee_calculation.db import connect, initialize_schema
+from medical_fee_calculation.name_scan import strip_parenthetical_qualifiers
 
 # 傷病名を条件としない特殊コード(支払基金チェックマスタ)。適応判定の対象外。
 NON_DISEASE_CODES = frozenset({"0000000", "0000001", "0000002", "0000003"})
@@ -360,6 +361,223 @@ def resolve_diseases(payload: dict[str, Any]) -> dict[str, Any]:
         conn.close()
 
 
+def disease_act_candidates(payload: dict[str, Any]) -> dict[str, Any]:
+    """病名から支払基金チェックマスタの適応診療行為を決定論的に逆引きする。
+
+    ``nyugai`` / ``utagai`` の値意味は、支払基金「コンピュータチェック対象
+    事例ファイル仕様書」に基づいて実ファイル検証済みの移植元
+    ``services/recept-checker/receipt_checker/rules/r05_act_indication.py`` に従う。
+    nyugai は 0=共通・1=入院・2=入院外、utagai は
+    0=確定/疑い可・1=確定のみ・2=疑いのみである。
+
+    これは自動算定ではなく確認候補の生成用であり、対象病名だけで実施事実を
+    確定しない。
+    """
+    db_path = payload.get("db_path") or os.environ.get("FEE_MASTER_DB_PATH")
+    if not db_path:
+        raise ValueError("db_path or FEE_MASTER_DB_PATH is required")
+
+    diagnoses = payload.get("diagnoses")
+    diagnoses = diagnoses if isinstance(diagnoses, list) else []
+    prefixes = _clean_act_prefixes(payload.get("act_code_prefixes"))
+    if not diagnoses or not prefixes:
+        return {"candidates": [], "unresolvedNames": [], "resolvedNames": []}
+
+    setting = str(payload.get("setting") or "").strip().lower()
+    patient_age = _optional_float(payload.get("patient_age"))
+    patient_sex = _normalize_patient_sex(payload.get("patient_sex"))
+    service_date = _date_key(payload.get("service_date"))
+    limit = max(1, min(int(payload.get("limit") or 12), 50))
+
+    conn = connect(Path(str(db_path)))
+    try:
+        initialize_schema(conn)
+        modifiers = _load_modifiers(conn)
+        resolved_diagnoses: list[dict[str, Any]] = []
+        unresolved_names: list[str] = []
+        seen_names: set[str] = set()
+        for raw in diagnoses:
+            diagnosis = raw if isinstance(raw, dict) else {"name": raw}
+            name = str(diagnosis.get("name") or diagnosis.get("displayName") or "").strip()
+            if not name or name in seen_names:
+                continue
+            seen_names.add(name)
+            resolution = _resolve_one_disease(conn, modifiers, name)
+            code = str(resolution.get("code") or "").strip()
+            if not code:
+                unresolved_names.append(name)
+                continue
+            suspected = bool(
+                diagnosis.get("suspected") is True
+                or str(diagnosis.get("status") or "").strip().lower() == "suspected"
+                or resolution.get("suspected") is True
+                or name.endswith("の疑い")
+            )
+            resolved_diagnoses.append({"name": name, "code": code, "suspected": suspected})
+
+        if not resolved_diagnoses:
+            return {
+                "candidates": [],
+                "unresolvedNames": sorted(unresolved_names),
+                "resolvedNames": [],
+            }
+
+        disease_codes = sorted({item["code"] for item in resolved_diagnoses})
+        disease_placeholders = ",".join("?" for _ in disease_codes)
+        prefix_sql = " OR ".join("act_code LIKE ?" for _ in prefixes)
+        rows = conn.execute(
+            f"""
+            SELECT DISTINCT act_code, disease_code, sex, age_min, age_max, nyugai, utagai
+            FROM cc_act_indications
+            WHERE disease_code IN ({disease_placeholders})
+              AND disease_code NOT IN ('0000000','0000001','0000002','0000003')
+              AND ({prefix_sql})
+            """,
+            [*disease_codes, *(f"{prefix}%" for prefix in prefixes)],
+        ).fetchall()
+
+        diagnoses_by_code: dict[str, list[dict[str, Any]]] = {}
+        for diagnosis in resolved_diagnoses:
+            diagnoses_by_code.setdefault(diagnosis["code"], []).append(diagnosis)
+
+        matched_by_act: dict[str, set[str]] = {}
+        for row in rows:
+            if not _act_indication_patient_matches(row, patient_sex, patient_age, setting):
+                continue
+            for diagnosis in diagnoses_by_code.get(str(row["disease_code"] or ""), []):
+                if not _act_indication_suspicion_matches(str(row["utagai"] or ""), diagnosis["suspected"]):
+                    continue
+                act_code = str(row["act_code"] or "").strip()
+                if act_code:
+                    matched_by_act.setdefault(act_code, set()).add(diagnosis["name"])
+
+        procedure_rows = _procedure_rows_for_candidates(conn, sorted(matched_by_act), service_date)
+        families: dict[str, dict[str, Any]] = {}
+        for row in procedure_rows:
+            code = str(row["code"] or "").strip()
+            name = str(row["short_name"] or "").strip()
+            if not code or not name or "加算" in name:
+                continue
+            family_name = strip_parenthetical_qualifiers(name).strip() or name
+            family = families.setdefault(family_name, {
+                "familyName": family_name,
+                "codes": {},
+                "matchedDiseases": set(),
+            })
+            family["codes"][code] = {
+                "code": code,
+                "name": name,
+                "points": float(row["points"] or 0),
+            }
+            family["matchedDiseases"].update(matched_by_act.get(code, set()))
+
+        candidates: list[dict[str, Any]] = []
+        for family_name in sorted(families):
+            family = families[family_name]
+            codes = sorted(
+                family["codes"].values(),
+                key=lambda item: (-float(item["points"] or 0), item["code"]),
+            )[:8]
+            candidates.append({
+                "familyName": family_name,
+                "codes": codes,
+                "matchedDiseases": sorted(family["matchedDiseases"]),
+            })
+            if len(candidates) >= limit:
+                break
+
+        return {
+            "candidates": candidates,
+            "unresolvedNames": sorted(unresolved_names),
+            "resolvedNames": sorted(item["name"] for item in resolved_diagnoses),
+        }
+    finally:
+        conn.close()
+
+
+def _clean_act_prefixes(value: Any) -> list[str]:
+    values = value if isinstance(value, list) else []
+    return sorted({str(item or "").strip() for item in values if str(item or "").strip().isdigit()})[:12]
+
+
+def _optional_float(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
+
+
+def _normalize_patient_sex(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"1", "male", "m", "男", "男性"}:
+        return "1"
+    if normalized in {"2", "female", "f", "女", "女性"}:
+        return "2"
+    return ""
+
+
+def _act_indication_patient_matches(row: Any, patient_sex: str, patient_age: float | None, setting: str) -> bool:
+    row_sex = str(row["sex"] or "0").strip() or "0"
+    if patient_sex and row_sex not in {"0", patient_sex}:
+        return False
+    age_min = _optional_float(row["age_min"])
+    age_max = _optional_float(row["age_max"])
+    if patient_age is not None:
+        if age_min is not None and age_min > 0 and patient_age < age_min:
+            return False
+        if age_max is not None and age_max < 999 and patient_age > age_max:
+            return False
+    nyugai = str(row["nyugai"] or "0").strip() or "0"
+    if nyugai == "1" and setting != "inpatient":
+        return False
+    if nyugai == "2" and setting == "inpatient":
+        return False
+    return True
+
+
+def _act_indication_suspicion_matches(utagai: str, suspected: bool) -> bool:
+    normalized = str(utagai or "0").strip() or "0"
+    if suspected:
+        return normalized in {"0", "2"}
+    return normalized in {"0", "1"}
+
+
+def _date_key(value: Any) -> str:
+    return "".join(char for char in str(value or "") if char.isdigit())[:8]
+
+
+def _procedure_rows_for_candidates(conn: Any, codes: list[str], service_date: str) -> list[Any]:
+    if not codes:
+        return []
+    placeholders = ",".join("?" for _ in codes)
+    rows = conn.execute(
+        f"""
+        SELECT code, short_name, points, effective_from, effective_to
+        FROM medical_procedures
+        WHERE source_id = (
+            SELECT id FROM master_sources
+            WHERE source_type = 'medical_procedure_master'
+            ORDER BY imported_at DESC, id DESC LIMIT 1
+        )
+          AND code IN ({placeholders})
+        """,
+        codes,
+    ).fetchall()
+    if not service_date:
+        return list(rows)
+    result = []
+    for row in rows:
+        effective_from = _date_key(row["effective_from"])
+        effective_to = _date_key(row["effective_to"])
+        if effective_from and service_date < effective_from:
+            continue
+        if effective_to and effective_to != "99999999" and service_date > effective_to:
+            continue
+        result.append(row)
+    return result
+
+
 def _load_modifiers(conn: Any) -> list[tuple[str, str]]:
     rows = conn.execute(
         "SELECT code, name FROM disease_modifiers WHERE name IS NOT NULL AND name <> '' "
@@ -455,6 +673,8 @@ def main() -> None:
         op = str(payload.get("op") or payload.get("operation") or "check_lookup").strip()
         if op == "resolve_diseases":
             result = resolve_diseases(payload)
+        elif op == "disease_act_candidates":
+            result = disease_act_candidates(payload)
         else:
             result = check_lookup(payload)
     except Exception as exc:  # noqa: BLE001 - command boundary returns structured failure.

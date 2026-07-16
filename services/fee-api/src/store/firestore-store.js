@@ -115,22 +115,23 @@ export class FirestoreFeeStore {
     }
     const limit = Math.max(1, Number.parseInt(options.limit, 10) || 5000);
     const collection = this.orgCollection(orgId, collections.feeSessions);
-    const [claimMonthSnapshot, serviceDateSnapshot] = await Promise.all([
-      collection
-        .where("claimMonth", "==", month)
-        .limit(limit)
-        .get(),
-      collection
+    const patientFilters = monthlyPatientQueryFilters(options);
+    const snapshots = await Promise.all(patientFilters.flatMap((patientFilter) => {
+      let claimMonthQuery = collection.where("claimMonth", "==", month);
+      let serviceDateQuery = collection
         .where("serviceDate", ">=", `${month}-01`)
-        .where("serviceDate", "<", nextClaimMonthStart(month))
-        .orderBy("serviceDate", "asc")
-        .limit(limit)
-        .get()
-    ]);
-    return mergeMonthlySessionSnapshots([
-      claimMonthSnapshot,
-      serviceDateSnapshot
-    ], month).sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || "")));
+        .where("serviceDate", "<", nextClaimMonthStart(month));
+      if (patientFilter) {
+        claimMonthQuery = claimMonthQuery.where("patientId", patientFilter.operator, patientFilter.value);
+        serviceDateQuery = serviceDateQuery.where("patientId", patientFilter.operator, patientFilter.value);
+      }
+      return [
+        claimMonthQuery.limit(limit).get(),
+        serviceDateQuery.orderBy("serviceDate", "asc").limit(limit).get()
+      ];
+    }));
+    return mergeMonthlySessionSnapshots(snapshots, month)
+      .sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || "")));
   }
 
   async listSessionsByBoundedScan(baseQuery, listOptions) {
@@ -610,6 +611,26 @@ function nextClaimMonthStart(month = "") {
   const nextYear = monthNumber === 12 ? year + 1 : year;
   const nextMonth = monthNumber === 12 ? 1 : monthNumber + 1;
   return `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
+}
+
+function monthlyPatientQueryFilters(options = {}) {
+  const patientId = String(options.patientId || "").trim();
+  if (patientId) {
+    return [{ operator: "==", value: patientId }];
+  }
+  const patientIds = [...new Set(
+    (Array.isArray(options.patientIds) ? options.patientIds : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )];
+  if (!patientIds.length || patientIds.length > 100) {
+    return [null];
+  }
+  const filters = [];
+  for (let index = 0; index < patientIds.length; index += 25) {
+    filters.push({ operator: "in", value: patientIds.slice(index, index + 25) });
+  }
+  return filters;
 }
 
 function sanitizeForFirestore(value) {

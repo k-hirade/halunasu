@@ -79,7 +79,7 @@ deploy_service() {
   local build_ignore_file=".gcloudignore"
   if [[ "${service}" == fee-api-* ]]; then
     build_ignore_file=".gcloudignore.fee-api"
-    service_memory="${FEE_MEMORY:-2Gi}"
+    service_memory="${FEE_MEMORY:-4Gi}"
     service_timeout="${FEE_TIMEOUT:-180}"
     service_max_instances="${FEE_MAX_INSTANCES:-3}"
   fi
@@ -321,6 +321,7 @@ deploy_env() {
     "PLATFORM_STORE_BACKEND=firestore" \
     "FEE_MASTER_DB_PATH=/tmp/halunasu-fee-master/standard-master.sqlite" \
     "FEE_MASTER_DB_GZIP_PATH=/app/python/data/master/standard-master.sqlite.gz" \
+    "FEE_MASTER_DB_MANIFEST_PATH=/app/python/data/master/standard-master.manifest.json" \
     "FEE_MASTER_DB_PREPARE_ON_START=true" \
     "OPENAI_FEE_CLINICAL_MODEL=${OPENAI_FEE_CLINICAL_MODEL:-gpt-5.4-nano}" \
     "OPENAI_FEE_CLINICAL_REASONING_EFFORT=${OPENAI_FEE_CLINICAL_REASONING_EFFORT:-low}" \

@@ -126,13 +126,30 @@ async function routeFeeApiRequest(input = {}) {
   }
 
   if (method === "GET" && url.pathname === "/readyz") {
+    let feeReadiness;
+    try {
+      feeReadiness = await feeCalculatorReadiness(feeCalculator);
+    } catch (error) {
+      if (!error?.masterContent) {
+        throw error;
+      }
+      logFeeApiError(error, { stage: "readyz", method, path: url.pathname });
+      return {
+        statusCode: 503,
+        body: {
+          status: "not_ready",
+          service: "fee-api",
+          feeCalculator: { masterContent: error.masterContent }
+        }
+      };
+    }
     return ok({
       status: "ok",
       service: "fee-api",
       env: input.env || "local",
       projectId: input.projectId || "medical-core-stg",
       region: input.region || "asia-northeast1",
-      feeCalculator: await feeCalculatorReadiness(feeCalculator),
+      feeCalculator: feeReadiness,
       startedAt: input.startedAt instanceof Date
         ? input.startedAt.toISOString()
         : new Date().toISOString()
@@ -446,73 +463,91 @@ async function routeFeeApiRequest(input = {}) {
     }
     requireBaselineDiagnosisContext(context);
     requireMutationCsrf(input, context.session);
+    const performanceStartedAt = Date.now();
+    const stageTimings = [];
     const body = input.body || {};
-    const dataset = parseRecalculationDiffDatasetFromBody(body);
+    const dataset = await measureStage(stageTimings, "parseRecalculationDiffDataset", () => (
+      parseRecalculationDiffDatasetFromBody(body)
+    ));
     const claimMonth = resolveRecalculationDiffClaimMonth(body, dataset);
     if (!/^\d{4}-\d{2}$/u.test(claimMonth)) {
       throw requestValidationError("claimMonth must use YYYY-MM");
     }
     const diagnosisBody = mergeRecalculationDiffDatasetIntoBody({ ...body, claimMonth }, dataset);
-    const baseline = await baselineClaimsFromDiagnosisBody({
-      body: diagnosisBody,
-      claimMonth,
-      feeCalculator,
-      processEnv: input.processEnv || process.env
-    });
+    const baseline = await measureStage(stageTimings, "baselineClaimsFromDiagnosisBody", () => (
+      baselineClaimsFromDiagnosisBody({
+        body: diagnosisBody,
+        claimMonth,
+        feeCalculator,
+        processEnv: input.processEnv || process.env
+      })
+    ));
     const calculationPayloadLimit = recalculationDiffPayloadLimit(input.processEnv || process.env);
-    let calculationPayloads = normalizeCalculationPayloadsForRecalculationDiff(diagnosisBody, {
-      claimMonth,
-      limit: calculationPayloadLimit
+    const preparedPayloads = await measureStage(stageTimings, "prepareCalculationPayloads", () => {
+      let calculationPayloads = normalizeCalculationPayloadsForRecalculationDiff(diagnosisBody, {
+        claimMonth,
+        limit: calculationPayloadLimit
+      });
+      const generatedPayloads = calculationPayloads.length
+        ? { payloads: [], warnings: [], stats: {} }
+        : buildCalculationPayloadsFromRecalculationDiffDataset(dataset, { claimMonth });
+      if (!calculationPayloads.length) {
+        calculationPayloads = generatedPayloads.payloads;
+      }
+      if (calculationPayloads.length > calculationPayloadLimit) {
+        throw requestValidationError(`recalculation diff diagnosis is limited to ${calculationPayloadLimit} calculation payloads`);
+      }
+      if (!calculationPayloads.length) {
+        throw requestValidationError("再算定元データを取り込めませんでした。再算定用JSON/JSONL、または患者・カルテ・オーダー・病名ファイルの患者IDと診療日を確認してください。");
+      }
+      return { calculationPayloads, generatedPayloads };
     });
-    const generatedPayloads = calculationPayloads.length
-      ? { payloads: [], warnings: [], stats: {} }
-      : buildCalculationPayloadsFromRecalculationDiffDataset(dataset, { claimMonth });
-    if (!calculationPayloads.length) {
-      calculationPayloads = generatedPayloads.payloads;
-    }
-    if (calculationPayloads.length > calculationPayloadLimit) {
-      throw requestValidationError(`recalculation diff diagnosis is limited to ${calculationPayloadLimit} calculation payloads`);
-    }
-    if (!calculationPayloads.length) {
-      throw requestValidationError("再算定元データを取り込めませんでした。再算定用JSON/JSONL、または患者・カルテ・オーダー・病名ファイルの患者IDと診療日を確認してください。");
-    }
-    const sessions = await calculateRecalculationDiffSessions({
-      feeCalculator,
-      calculationPayloads,
-      claimMonth
+    const { calculationPayloads, generatedPayloads } = preparedPayloads;
+    const sessions = await measureStage(stageTimings, "calculateRecalculationDiffSessions", () => (
+      calculateRecalculationDiffSessions({
+        feeCalculator,
+        calculationPayloads,
+        claimMonth
+      })
+    ));
+    const diagnosis = await measureStage(stageTimings, "buildMonthlyBaselineDiagnosis", () => (
+      buildMonthlyBaselineDiagnosis({
+        sessions,
+        baselineClaims: baseline.baselineClaims,
+        claimMonth,
+        knownUnsupportedCodes: Array.isArray(diagnosisBody.knownUnsupportedCodes ?? diagnosisBody.known_unsupported_codes) ? (diagnosisBody.knownUnsupportedCodes ?? diagnosisBody.known_unsupported_codes) : [],
+        codeMap: isPlainObject(diagnosisBody.codeMap ?? diagnosisBody.code_map) ? (diagnosisBody.codeMap ?? diagnosisBody.code_map) : null
+      })
+    ));
+    const diagnosisDetails = await measureStage(stageTimings, "buildRecalculationDiffDiagnostics", () => {
+      const reproductionFailures = buildRecalculationReproductionFailures({
+        calculationPayloads,
+        sessions,
+        dataset,
+        claimMonth
+      });
+      const diagnostics = buildRecalculationDiffDiagnostics({
+        baseline,
+        calculationPayloads,
+        sessions,
+        dataset,
+        claimMonth,
+        reproductionFailures
+      });
+      const ingestion = recalculationDiffIngestionSummary({
+        baseline,
+        calculationPayloads,
+        dataset,
+        generatedPayloads
+      });
+      return { reproductionFailures, diagnostics, ingestion };
     });
-    const diagnosis = buildMonthlyBaselineDiagnosis({
-      sessions,
-      baselineClaims: baseline.baselineClaims,
-      claimMonth,
-      knownUnsupportedCodes: Array.isArray(diagnosisBody.knownUnsupportedCodes ?? diagnosisBody.known_unsupported_codes) ? (diagnosisBody.knownUnsupportedCodes ?? diagnosisBody.known_unsupported_codes) : [],
-      codeMap: isPlainObject(diagnosisBody.codeMap ?? diagnosisBody.code_map) ? (diagnosisBody.codeMap ?? diagnosisBody.code_map) : null
-    });
-    const reproductionFailures = buildRecalculationReproductionFailures({
-      calculationPayloads,
-      sessions,
-      dataset,
-      claimMonth
-    });
-    const diagnostics = buildRecalculationDiffDiagnostics({
-      baseline,
-      calculationPayloads,
-      sessions,
-      dataset,
-      claimMonth,
-      reproductionFailures
-    });
+    const { reproductionFailures, diagnostics, ingestion } = diagnosisDetails;
     diagnosis.summary = {
       ...(diagnosis.summary || {}),
       reproductionFailureCount: reproductionFailures.length
     };
-    const ingestion = recalculationDiffIngestionSummary({
-      baseline,
-      calculationPayloads,
-      dataset,
-      generatedPayloads
-    });
-    await platformStore.createAuditEvent(context.session.orgId, {
+    await measureStage(stageTimings, "audit", () => platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.recalculation_diff_diagnosis_run",
       actorMemberId: context.session.memberId,
       actorLoginId: context.session.loginId,
@@ -531,8 +566,18 @@ async function routeFeeApiRequest(input = {}) {
         homeCareUnsupportedCount: diagnostics.recalculationAccuracy?.homeCareUnsupportedCount || 0,
         datasetWarningCount: ingestion.warningCount || 0
       }
+    }));
+    const diagnosisMetrics = buildEndpointStageMetrics(stageTimings, performanceStartedAt, {
+      sessionCount: sessions.length,
+      baselineClaimCount: baseline.baselineClaims.length,
+      calculationPayloadCount: calculationPayloads.length
     });
-    return ok({ ...diagnosis, ingestion, reproductionFailures, diagnostics });
+    logFeeEndpointPerformance("fee.recalculation_diff_diagnosis.performance", {
+      orgId: context.session.orgId,
+      claimMonth,
+      metrics: diagnosisMetrics
+    });
+    return ok({ ...diagnosis, ingestion, reproductionFailures, diagnostics, diagnosisMetrics });
   }
 
   // 導入前 一括レセプト差分診断: 既存レセ(baselineClaims) と 当社算定(セッション) を患者×月で突合
@@ -542,29 +587,38 @@ async function routeFeeApiRequest(input = {}) {
     }
     requireBaselineDiagnosisContext(context);
     requireMutationCsrf(input, context.session);
+    const performanceStartedAt = Date.now();
+    const stageTimings = [];
     const body = input.body || {};
     const claimMonth = String(body.claimMonth ?? body.claim_month ?? "").trim();
     if (!/^\d{4}-\d{2}$/u.test(claimMonth)) {
       throw requestValidationError("claimMonth must use YYYY-MM");
     }
-    const baseline = await baselineClaimsFromDiagnosisBody({
-      body,
-      claimMonth,
-      feeCalculator,
-      processEnv: input.processEnv || process.env
-    });
-    const sessionList = await listSessionsForBaselineDiagnosis(feeStore, context.session.orgId, {
-      claimMonth,
-      limit: baselineDiagnosisSessionLimit(input.processEnv || process.env)
-    });
-    const diagnosis = buildMonthlyBaselineDiagnosis({
-      sessions: sessionList,
-      baselineClaims: baseline.baselineClaims,
-      claimMonth,
-      knownUnsupportedCodes: Array.isArray(body.knownUnsupportedCodes ?? body.known_unsupported_codes) ? (body.knownUnsupportedCodes ?? body.known_unsupported_codes) : [],
-      codeMap: isPlainObject(body.codeMap ?? body.code_map) ? (body.codeMap ?? body.code_map) : null
-    });
-    await platformStore.createAuditEvent(context.session.orgId, {
+    const baseline = await measureStage(stageTimings, "baselineClaimsFromDiagnosisBody", () => (
+      baselineClaimsFromDiagnosisBody({
+        body,
+        claimMonth,
+        feeCalculator,
+        processEnv: input.processEnv || process.env
+      })
+    ));
+    const sessionList = await measureStage(stageTimings, "listSessionsForBaselineDiagnosis", () => (
+      listSessionsForBaselineDiagnosis(feeStore, context.session.orgId, {
+        claimMonth,
+        limit: baselineDiagnosisSessionLimit(input.processEnv || process.env),
+        patientIds: baselineInternalPatientIds(baseline)
+      })
+    ));
+    const diagnosis = await measureStage(stageTimings, "buildMonthlyBaselineDiagnosis", () => (
+      buildMonthlyBaselineDiagnosis({
+        sessions: sessionList,
+        baselineClaims: baseline.baselineClaims,
+        claimMonth,
+        knownUnsupportedCodes: Array.isArray(body.knownUnsupportedCodes ?? body.known_unsupported_codes) ? (body.knownUnsupportedCodes ?? body.known_unsupported_codes) : [],
+        codeMap: isPlainObject(body.codeMap ?? body.code_map) ? (body.codeMap ?? body.code_map) : null
+      })
+    ));
+    await measureStage(stageTimings, "audit", () => platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.baseline_diagnosis_run",
       actorMemberId: context.session.memberId,
       actorLoginId: context.session.loginId,
@@ -580,8 +634,17 @@ async function routeFeeApiRequest(input = {}) {
         needsReviewCount: diagnosis.summary?.needsReviewCount || 0,
         considerCount: diagnosis.summary?.considerCount || 0
       }
+    }));
+    const diagnosisMetrics = buildEndpointStageMetrics(stageTimings, performanceStartedAt, {
+      sessionCount: sessionList.length,
+      baselineClaimCount: baseline.baselineClaims.length
     });
-    return ok(diagnosis);
+    logFeeEndpointPerformance("fee.baseline_diagnosis.performance", {
+      orgId: context.session.orgId,
+      claimMonth,
+      metrics: diagnosisMetrics
+    });
+    return ok({ ...diagnosis, diagnosisMetrics });
   }
 
   // STG限定 売上改善診断(導入前コンサル): 既存レセ(UKE/CSV・匿名化済み)に決定論点検
@@ -643,14 +706,33 @@ async function routeFeeApiRequest(input = {}) {
 
   // 患者×請求月で集計した月次レセプト案(プレビューのb=月次集計)
   if (method === "GET" && matches(parts, ["v1", "fee", "monthly-receipt"])) {
+    const performanceStartedAt = Date.now();
+    const stageTimings = [];
     const claimMonth = url.searchParams.get("claimMonth") || "";
     const patientId = url.searchParams.get("patientId") || "";
-    const sessionList = await listSessionsForMonthlyView(feeStore, context.session.orgId, claimMonth, {
-      processEnv: input.processEnv || process.env
+    const sessionList = await measureStage(stageTimings, "listSessionsForMonthlyView", () => (
+      listSessionsForMonthlyView(feeStore, context.session.orgId, claimMonth, {
+        processEnv: input.processEnv || process.env,
+        patientId
+      })
+    ));
+    const constraints = await measureStage(stageTimings, "monthlyCandidateConstraints", () => (
+      monthlyCandidateConstraints(feeCalculator, sessionList, { patientId, claimMonth })
+    ));
+    const receiptDraft = await measureStage(stageTimings, "buildMonthlyReceiptDraft", () => (
+      buildMonthlyReceiptDraft(sessionList, { patientId, claimMonth, ...constraints })
+    ));
+    const monthlyMetrics = buildEndpointStageMetrics(stageTimings, performanceStartedAt, {
+      sessionCount: sessionList.length
     });
-    const constraints = await monthlyCandidateConstraints(feeCalculator, sessionList, { patientId, claimMonth });
+    logFeeEndpointPerformance("fee.monthly_receipt.performance", {
+      orgId: context.session.orgId,
+      claimMonth,
+      metrics: monthlyMetrics
+    });
     return ok({
-      receiptDraft: buildMonthlyReceiptDraft(sessionList, { patientId, claimMonth, ...constraints })
+      receiptDraft,
+      monthlyMetrics
     });
   }
 
@@ -2776,9 +2858,13 @@ function asArrayValue(value) {
 async function listSessionsForMonthlyView(feeStore, orgId, claimMonth, options = {}) {
   const month = String(claimMonth || "").trim();
   const limit = monthlyViewSessionLimit(options.processEnv || process.env);
+  const patientId = String(options.patientId || "").trim();
+  const patientIds = patientId ? [] : uniqueStrings(options.patientIds || []);
   if (month && typeof feeStore.listSessionsForClaimMonth === "function") {
     const sessions = await feeStore.listSessionsForClaimMonth(orgId, month, {
-      limit: limit + 1
+      limit: limit + 1,
+      ...(patientId ? { patientId } : {}),
+      ...(!patientId && patientIds.length ? { patientIds } : {})
     });
     const sessionList = Array.isArray(sessions) ? sessions : [];
     if (sessionList.length > limit) {
@@ -2787,7 +2873,13 @@ async function listSessionsForMonthlyView(feeStore, orgId, claimMonth, options =
     return sessionList;
   }
   const sessions = await feeStore.listSessions(orgId);
-  const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+  let sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
+  if (patientId) {
+    sessionList = sessionList.filter((session) => String(session.patientId || "").trim() === patientId);
+  } else if (patientIds.length && patientIds.length <= 100) {
+    const patientIdSet = new Set(patientIds);
+    sessionList = sessionList.filter((session) => patientIdSet.has(String(session.patientId || "").trim()));
+  }
   if (month) {
     return sessionList.filter((session) => baselineSessionClaimMonth(session) === month);
   }
@@ -2797,8 +2889,12 @@ async function listSessionsForMonthlyView(feeStore, orgId, claimMonth, options =
 async function listSessionsForBaselineDiagnosis(feeStore, orgId, options = {}) {
   const claimMonth = String(options.claimMonth || "").trim();
   const limit = Math.max(1, Number.parseInt(options.limit, 10) || DEFAULT_BASELINE_DIAGNOSIS_SESSION_LIMIT);
+  const patientIds = uniqueStrings(options.patientIds || []);
   if (typeof feeStore.listSessionsForClaimMonth === "function") {
-    const sessions = await feeStore.listSessionsForClaimMonth(orgId, claimMonth, { limit: limit + 1 });
+    const sessions = await feeStore.listSessionsForClaimMonth(orgId, claimMonth, {
+      limit: limit + 1,
+      ...(patientIds.length ? { patientIds } : {})
+    });
     if (sessions.length > limit) {
       throw requestValidationError(`baseline diagnosis is limited to ${limit} sessions per claimMonth`);
     }
@@ -2807,11 +2903,35 @@ async function listSessionsForBaselineDiagnosis(feeStore, orgId, options = {}) {
 
   const sessions = await feeStore.listSessions(orgId);
   const sessionList = Array.isArray(sessions) ? sessions : (sessions.feeSessions || []);
-  const filtered = sessionList.filter((session) => baselineSessionClaimMonth(session) === claimMonth);
+  const patientIdSet = patientIds.length && patientIds.length <= 100 ? new Set(patientIds) : null;
+  const filtered = sessionList
+    .filter((session) => baselineSessionClaimMonth(session) === claimMonth)
+    .filter((session) => !patientIdSet || patientIdSet.has(String(session.patientId || "").trim()));
   if (filtered.length > limit) {
     throw requestValidationError(`baseline diagnosis is limited to ${limit} sessions per claimMonth`);
   }
   return filtered;
+}
+
+function baselineInternalPatientIds(baseline = {}) {
+  const claims = Array.isArray(baseline.baselineClaims) ? baseline.baselineClaims : [];
+  if (!claims.length) {
+    return [];
+  }
+  const patientIds = claims.map((claim) => {
+    const explicitInternalId = String(claim.internalPatientId ?? claim.internal_patient_id ?? "").trim();
+    if (explicitInternalId) {
+      return explicitInternalId;
+    }
+    // UKE/CSVのpatientIdはレセコン側の外部IDであり、FeeのpatientIdとは限らない。
+    return baseline.baselineContentProvided
+      ? ""
+      : String(claim.patientId ?? claim.patient_id ?? "").trim();
+  });
+  if (patientIds.some((patientId) => !patientId)) {
+    return [];
+  }
+  return uniqueStrings(patientIds);
 }
 
 function normalizeBaselineClaimsForDiagnosis(claims = [], options = {}) {
@@ -4349,6 +4469,31 @@ async function measureStage(stageTimings, stage, fn) {
   }
 }
 
+function buildEndpointStageMetrics(stageTimings = [], startedAt = Date.now(), counts = {}) {
+  const stageDurationsMs = {};
+  for (const entry of safeStageTimings(stageTimings)) {
+    stageDurationsMs[entry.stage] = (stageDurationsMs[entry.stage] || 0) + entry.durationMs;
+  }
+  return {
+    schemaVersion: 1,
+    stageDurationsMs,
+    totalDurationMs: Math.max(0, Date.now() - startedAt),
+    ...Object.fromEntries(
+      Object.entries(counts).filter(([, value]) => Number.isFinite(Number(value)))
+        .map(([key, value]) => [key, Number(value)])
+    )
+  };
+}
+
+function logFeeEndpointPerformance(event, { orgId = "", claimMonth = "", metrics = {} } = {}) {
+  console.info(JSON.stringify({
+    event,
+    orgId,
+    claimMonth,
+    ...metrics
+  }));
+}
+
 async function loadPriorFeeSessionsForPatient({
   feeStore,
   orgId,
@@ -5443,7 +5588,7 @@ export function receiptAnnotationContext(session = {}, receiptPolicy = {}) {
 }
 
 async function loadMonthlyReceiptForExport({ feeStore, orgId, patientId, claimMonth, now, processEnv = process.env }) {
-  const sessionList = await listSessionsForMonthlyView(feeStore, orgId, claimMonth, { processEnv });
+  const sessionList = await listSessionsForMonthlyView(feeStore, orgId, claimMonth, { processEnv, patientId });
   const month = String(claimMonth || "").slice(0, 7);
   const monthOf = (session) => String(session.claimMonth || String(session.serviceDate || "").slice(0, 7));
   const base = sessionList.find((session) => session

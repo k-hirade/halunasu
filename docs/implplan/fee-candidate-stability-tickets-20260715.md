@@ -296,3 +296,27 @@ T1〜T4 デプロイ後、次の条件で5患者(1001/1004/1006/1007/1012)×3反
    - T3/T4 は候補レーンのみの変更なので確定点数(エンジン純度)は不変のはず。変わったら設計違反。
 3. 反例コーパス(`services/fee-api/test/counterexamples.test.js`)パス。
 4. コミット粒度は T1+T2(小・同方針)/ T3 / T4 / T5 を分けることを推奨。
+
+---
+
+## 実装・検証状況 (2026-07-15)
+
+- T1/T2: 実装済み。同一 `codeCandidates` 集合を月次で1行へ統合し、コード未確定候補は生成元にかかわらず0点とした。知識ルールJSONの固定点数も削除済み。
+- T3: 実装済み。外来再診ではLLMの管理説明抽出に依存せず、外来管理加算を常に確認候補として提示する。マスタ検索失敗時は0点。
+- T4: 実装済み。`cc_act_indications(disease_code)` のインデックス、Python逆引きAPI、Node候補レーンを追加した。実施イベント・辞書照合由来の強い既存候補は保持し、LLM依存の知識候補だけを病名駆動候補へ置換する。
+- T5: 実装済み。月次レセプト、既存レセ差分診断、再算定差分診断に段階別時間を追加し、構造化ログと評価JSONへ記録する。
+- T6: 2026-07-16に指定5患者×3反復を試行したが、STG応答にT1/T2/T4/T5未反映の証拠があり、
+  デプロイ後の受け入れ測定としては無効。結果は
+  `docs/20260716_fee_candidate_stability_t6_stg_remeasurement_20260716_022220/`に保存した。
+  その後revision `fee-api-stg-00159-qzl`で3患者を再測定し、T1/T2/T5の反映を確認した。
+  ただしCloud Run同梱の`standard-master.sqlite.gz`で`diseases`、`disease_modifiers`、
+  `cc_act_indications`が0件だったため、T4は全24算定で候補0件となった。結果は
+  `docs/20260716_fee_candidate_stability_t6_postdeploy_stg_20260716_025709/`に保存した。
+  完全DBからgzipを再生成して再測定するため、T6は未完了のままとする。
+
+ローカル完了ゲート:
+
+- fee-api: 176/176、fee-core: 53/53、fee-contracts: 10/10、medical-core: 78/78、Python: 44/44。
+- seed-300 engine gold: exact 150/150。
+- fee-soap-e2e-v2 engine gold: exact 138/138。
+- 反例コーパス: pass。膵臓癌・がん性疼痛の病名駆動候補を実マスタで確認済み。

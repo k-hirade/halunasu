@@ -1,6 +1,6 @@
 {
-  "version": "counterexamples-v1",
-  "description": "実運用・評価で見つかった『カルテに記載があるのに候補に出なかった/出てはいけないのに出た』最小再現ケース。LLM抜きの決定論レーン(辞書スキャン)で回帰検証する。新しい失敗を見つけたら、ここに最小ケースを追加する。",
+  "version": "counterexamples-v2",
+  "description": "実運用・評価で見つかった『カルテまたは病名から候補に出るべきなのに出なかった/出てはいけないのに出た』最小再現ケース。LLM抜きの決定論レーン(辞書スキャン・病名適応逆引き)で回帰検証する。新しい失敗を見つけたら、ここに最小ケースを追加する。",
   "cases": [
     {
       "caseId": "doc-fee-sick-leave-certificate",
@@ -49,6 +49,30 @@
       "clinicalText": "P）CT撮影は行わず、はり・きゅうの療養費同意書を交付。",
       "expectedCandidateCodes": [
         "113004310"
+      ],
+      "forbiddenCandidateCodes": []
+    },
+    {
+      "caseId": "disease-driven-pancreatic-cancer-management",
+      "addedAt": "2026-07-15",
+      "source": "候補安定化T4: LLMイベント抽出なしでも病名から管理料対象を逆引きする",
+      "clinicalText": "A）膵臓癌末期、がん性疼痛。",
+      "diagnoses": [
+        {
+          "name": "膵臓癌",
+          "suspected": false
+        },
+        {
+          "name": "がん性疼痛",
+          "suspected": false
+        }
+      ],
+      "setting": "outpatient",
+      "patientAge": 68,
+      "patientSex": "male",
+      "serviceDate": "2026-06-15",
+      "expectedCandidateCodes": [
+        "113001810"
       ],
       "forbiddenCandidateCodes": []
     }
