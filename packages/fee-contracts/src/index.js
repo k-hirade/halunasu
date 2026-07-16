@@ -255,7 +255,7 @@ export function defaultFeeSettings(input = {}) {
     autoBillingRules: [],
     receiptPolicy: {
       ukeEncoding: "shift_jis",
-      blockExportOnErrors: false,
+      blockExportOnErrors: true,
       connectorSpecVerified: false,
       defaultReceiptScope: "service_date",
       validationSeverity: { ...defaultReceiptValidationSeverity },

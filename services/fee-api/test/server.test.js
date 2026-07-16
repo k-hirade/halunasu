@@ -139,6 +139,7 @@ test("creates Platform patients and product-owned fee sessions", async () => {
     undefined,
     headers
   );
+  const lineReviewItem = reviewItems.body.reviewItems.find((item) => item.sourceType === "line_item");
   const detail = await request(
     stores,
     "GET",
@@ -149,7 +150,7 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   const decision = await request(
     stores,
     "PATCH",
-    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/review-items/${encodeURIComponent(reviewItems.body.reviewItems[0].reviewItemId)}`,
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/review-items/${encodeURIComponent(lineReviewItem.reviewItemId)}`,
     { status: "approved", note: "確認済み" },
     headers
   );
@@ -159,7 +160,7 @@ test("creates Platform patients and product-owned fee sessions", async () => {
     `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/review-items`,
     {
       decisions: [
-        { reviewItemId: reviewItems.body.reviewItems[0].reviewItemId, status: "approved" }
+        { reviewItemId: lineReviewItem.reviewItemId, status: "approved" }
       ]
     },
     headers
@@ -185,16 +186,17 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.equal(detail.body.feeSession.orders[0].standardCode, "620000001");
   assert.equal(detail.body.feeSession.orders[0].standardName, "カルボシステイン錠");
   assert.equal(calculation.body.feeSession.status, "needs_review");
-  assert.equal(calculation.body.receiptDraft.totalPoints, 137);
+  assert.equal(calculation.body.receiptDraft.totalPoints, 0);
+  assert.equal(calculation.body.receiptDraft.pendingLineCount, 1);
   assert.ok(calculation.body.reviewItems.length >= 1);
-  assert.equal(receiptDraft.body.receiptDraft.totalPoints, 137);
+  assert.equal(receiptDraft.body.receiptDraft.totalPoints, 0);
   assert.ok(reviewItems.body.reviewItems.length >= 1);
-  assert.equal(detail.body.receiptDraft.totalPoints, 137);
+  assert.equal(detail.body.receiptDraft.totalPoints, 0);
   assert.ok(detail.body.reviewItems.length >= 1);
-  assert.equal(decision.body.feeSession.reviewDecisions[reviewItems.body.reviewItems[0].reviewItemId].status, "approved");
+  assert.equal(decision.body.feeSession.reviewDecisions[lineReviewItem.reviewItemId].status, "approved");
   assert.equal(decision.body.receiptDraft.totalPoints, 137);
   assert.equal(batchDecision.statusCode, 200);
-  assert.equal(batchDecision.body.feeSession.reviewDecisions[reviewItems.body.reviewItems[0].reviewItemId].status, "approved");
+  assert.equal(batchDecision.body.feeSession.reviewDecisions[lineReviewItem.reviewItemId].status, "approved");
   assert.equal(listed.body.feeSessions.length, 1);
   assert.equal(listed.body.page, 1);
   assert.equal(listed.body.totalCount, 1);
@@ -8111,6 +8113,248 @@ test("enqueues calculation jobs to Cloud Tasks when configured", async () => {
   assert.equal(payload.calculationJobId, job.body.calculationJob.calculationJobId);
 });
 
+test("an active asynchronous calculation blocks duplicate jobs, PATCH, and synchronous calculation", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "排他 制御" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "O: CRPを実施。"
+  }, headers);
+  const feeSessionId = session.body.feeSession.feeSessionId;
+  const enqueueOptions = {
+    processEnv: {
+      FEE_CALCULATION_CLOUD_TASKS_QUEUE: "fee-calculation",
+      FEE_CALCULATION_WORKER_URL: "https://fee-api.test/v1/fee/internal/calculation-jobs/run",
+      FEE_CALCULATION_WORKER_TOKEN: "worker-secret"
+    },
+    cloudTasksClient: { async createTask() { return { name: "task_fee_exclusive" }; } }
+  };
+  const first = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${feeSessionId}/calculation-jobs`,
+    {},
+    headers,
+    enqueueOptions
+  );
+  const [duplicate, patchResponse, synchronous] = await Promise.all([
+    request(
+      stores,
+      "POST",
+      `/v1/fee/sessions/${feeSessionId}/calculation-jobs`,
+      {},
+      headers,
+      enqueueOptions
+    ),
+    request(stores, "PATCH", `/v1/fee/sessions/${feeSessionId}`, {
+      clinicalText: "O: stale workerが参照していない新しい入力。"
+    }, headers),
+    request(stores, "POST", `/v1/fee/sessions/${feeSessionId}/calculate`, {}, headers)
+  ]);
+  const stored = stores.feeStore.getSession("org_001", feeSessionId);
+
+  assert.equal(first.statusCode, 202);
+  assert.equal(duplicate.statusCode, 409);
+  assert.equal(patchResponse.statusCode, 409);
+  assert.equal(synchronous.statusCode, 409);
+  assert.equal(stores.feeStore.calculationJobsForOrg("org_001").size, 1);
+  assert.equal(stored.clinicalText, "O: CRPを実施。");
+  assert.equal(stored.activeCalculationJobId, first.body.calculationJob.calculationJobId);
+  assert.equal(stored.latestCalculationJobId, first.body.calculationJob.calculationJobId);
+});
+
+test("a synchronous calculation failure releases the calculating state", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "同期 失敗" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "O: CRPを実施。"
+  }, headers);
+  stores.feeCalculator.calculate = async () => {
+    throw new Error("calculator failed");
+  };
+
+  const response = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers
+  );
+  const stored = stores.feeStore.getSession("org_001", session.body.feeSession.feeSessionId);
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(stored.status, "failed");
+  assert.equal(stored.activeCalculationJobId, null);
+  assert.equal(stored.latestCalculationJobId, null);
+  assert.equal(stored.calculationProgress.phase, "failed");
+});
+
+test("a rejected concurrent synchronous calculation cannot fail the active calculation", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "同期 排他" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "O: CRPを実施。"
+  }, headers);
+  const feeSessionId = session.body.feeSession.feeSessionId;
+  const originalCalculate = stores.feeCalculator.calculate.bind(stores.feeCalculator);
+  let calculateCount = 0;
+  let releaseCalculation;
+  let markCalculationStarted;
+  const gate = new Promise((resolve) => { releaseCalculation = resolve; });
+  const started = new Promise((resolve) => { markCalculationStarted = resolve; });
+  stores.feeCalculator.calculate = async (...args) => {
+    calculateCount += 1;
+    markCalculationStarted();
+    await gate;
+    return originalCalculate(...args);
+  };
+
+  const firstPromise = request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${feeSessionId}/calculate`,
+    {},
+    headers
+  );
+  await started;
+  const second = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${feeSessionId}/calculate`,
+    {},
+    headers
+  );
+  const duringFirst = stores.feeStore.getSession("org_001", feeSessionId);
+
+  assert.equal(second.statusCode, 409);
+  assert.equal(duringFirst.status, "calculating");
+  assert.equal(calculateCount, 1);
+
+  releaseCalculation();
+  const first = await firstPromise;
+  const completed = stores.feeStore.getSession("org_001", feeSessionId);
+  assert.equal(first.statusCode, 201);
+  assert.notEqual(completed.status, "calculating");
+  assert.equal(completed.calculationSummary.totalPoints, 137);
+});
+
+test("an immediately dispatched calculation task cannot be reset to queued", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "即時 実行" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "O: CRPを実施。"
+  }, headers);
+  let workerResponse = null;
+  const job = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculation-jobs`,
+    {},
+    headers,
+    {
+      processEnv: {
+        FEE_CALCULATION_CLOUD_TASKS_QUEUE: "fee-calculation",
+        FEE_CALCULATION_WORKER_URL: "https://fee-api.test/v1/fee/internal/calculation-jobs/run",
+        FEE_CALCULATION_WORKER_TOKEN: "worker-secret"
+      },
+      cloudTasksClient: {
+        async createTask(requestBody) {
+          const payload = JSON.parse(Buffer.from(requestBody.task.httpRequest.body, "base64").toString("utf8"));
+          workerResponse = await request(
+            stores,
+            "POST",
+            "/v1/fee/internal/calculation-jobs/run",
+            payload,
+            { "x-fee-worker-token": "worker-secret" },
+            { processEnv: { FEE_CALCULATION_WORKER_TOKEN: "worker-secret" } }
+          );
+          return { name: "task_fee_immediate" };
+        }
+      }
+    }
+  );
+  const detail = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/detail`,
+    undefined,
+    headers
+  );
+
+  assert.equal(workerResponse.statusCode, 200);
+  assert.equal(workerResponse.body.calculationJob.status, "succeeded");
+  assert.equal(job.statusCode, 202);
+  assert.equal(job.body.calculationJob.status, "succeeded");
+  assert.equal(job.body.calculationJob.enqueueStatus, "queued");
+  assert.notEqual(detail.body.feeSession.status, "calculating");
+  assert.equal(detail.body.feeSession.activeCalculationJobId, null);
+});
+
+test("an enqueue error reported after immediate dispatch cannot regress the completed job or session", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "遅延 エラー" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "O: CRPを実施。"
+  }, headers);
+  let workerResponse = null;
+  const job = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculation-jobs`,
+    {},
+    headers,
+    {
+      processEnv: {
+        FEE_CALCULATION_CLOUD_TASKS_QUEUE: "fee-calculation",
+        FEE_CALCULATION_WORKER_URL: "https://fee-api.test/v1/fee/internal/calculation-jobs/run",
+        FEE_CALCULATION_WORKER_TOKEN: "worker-secret"
+      },
+      cloudTasksClient: {
+        async createTask(requestBody) {
+          const payload = JSON.parse(Buffer.from(requestBody.task.httpRequest.body, "base64").toString("utf8"));
+          workerResponse = await request(
+            stores,
+            "POST",
+            "/v1/fee/internal/calculation-jobs/run",
+            payload,
+            { "x-fee-worker-token": "worker-secret" },
+            { processEnv: { FEE_CALCULATION_WORKER_TOKEN: "worker-secret" } }
+          );
+          throw new Error("Cloud Tasks response was lost after dispatch");
+        }
+      }
+    }
+  );
+  const stored = stores.feeStore.getSession("org_001", session.body.feeSession.feeSessionId);
+  const storedJob = stores.feeStore.getCalculationJob(
+    "org_001",
+    session.body.feeSession.feeSessionId,
+    job.body.calculationJob.calculationJobId
+  );
+
+  assert.equal(workerResponse.statusCode, 200);
+  assert.equal(job.statusCode, 202);
+  assert.equal(job.body.calculationJob.status, "succeeded");
+  assert.equal(storedJob.status, "succeeded");
+  assert.notEqual(stored.status, "calculating");
+  assert.equal(stored.activeCalculationJobId, null);
+  assert.equal(stored.calculationSummary.totalPoints, 137);
+});
+
 test("enqueues calculation jobs to Pub/Sub when configured", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -8215,8 +8459,154 @@ test("runs queued calculation jobs through the internal worker route", async () 
   assert.equal(worker.body.calculationJob.resultSummary.totalPoints, 137);
   assert.equal(fetched.body.calculationJob.status, "succeeded");
   assert.equal(detail.body.feeSession.calculationSummary.totalPoints, 137);
-  assert.equal(detail.body.receiptDraft.totalPoints, 137);
+  assert.equal(detail.body.receiptDraft.totalPoints, 0);
+  assert.equal(detail.body.receiptDraft.pendingLineCount, 1);
   assert.notEqual(detail.body.feeSession.status, "calculating");
+});
+
+test("calculation job worker executes once while an active lease is held", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "重複 実行" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "O: CRPを実施。"
+  }, headers);
+  const job = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculation-jobs`,
+    {},
+    headers,
+    {
+      processEnv: {
+        FEE_CALCULATION_CLOUD_TASKS_QUEUE: "fee-calculation",
+        FEE_CALCULATION_WORKER_URL: "https://fee-api.test/v1/fee/internal/calculation-jobs/run",
+        FEE_CALCULATION_WORKER_TOKEN: "worker-secret"
+      },
+      cloudTasksClient: { async createTask() { return { name: "task_fee_lease" }; } }
+    }
+  );
+  const originalCalculate = stores.feeCalculator.calculate.bind(stores.feeCalculator);
+  let calculateCount = 0;
+  let releaseCalculation;
+  let markCalculationStarted;
+  const calculationGate = new Promise((resolve) => { releaseCalculation = resolve; });
+  const calculationStarted = new Promise((resolve) => { markCalculationStarted = resolve; });
+  stores.feeCalculator.calculate = async (...args) => {
+    calculateCount += 1;
+    markCalculationStarted();
+    await calculationGate;
+    return originalCalculate(...args);
+  };
+  const workerPayload = {
+    orgId: "org_001",
+    feeSessionId: session.body.feeSession.feeSessionId,
+    calculationJobId: job.body.calculationJob.calculationJobId
+  };
+  const workerOptions = {
+    processEnv: {
+      FEE_CALCULATION_WORKER_TOKEN: "worker-secret",
+      FEE_CALCULATION_JOB_LEASE_SECONDS: "600"
+    }
+  };
+
+  const firstWorkerPromise = request(
+    stores,
+    "POST",
+    "/v1/fee/internal/calculation-jobs/run",
+    workerPayload,
+    { "x-fee-worker-token": "worker-secret" },
+    workerOptions
+  );
+  await calculationStarted;
+  const duplicateWorker = await request(
+    stores,
+    "POST",
+    "/v1/fee/internal/calculation-jobs/run",
+    workerPayload,
+    { "x-fee-worker-token": "worker-secret" },
+    workerOptions
+  );
+  assert.equal(duplicateWorker.statusCode, 409);
+  assert.equal(duplicateWorker.headers["retry-after"], "5");
+  assert.equal(duplicateWorker.body.alreadyRunning, true);
+  assert.equal(calculateCount, 1);
+
+  releaseCalculation();
+  const firstWorker = await firstWorkerPromise;
+  assert.equal(firstWorker.statusCode, 200);
+  assert.equal(firstWorker.body.calculationJob.status, "succeeded");
+  const completedRetry = await request(
+    stores,
+    "POST",
+    "/v1/fee/internal/calculation-jobs/run",
+    workerPayload,
+    { "x-fee-worker-token": "worker-secret" },
+    workerOptions
+  );
+  assert.equal(completedRetry.statusCode, 200);
+  assert.equal(completedRetry.body.alreadyCompleted, true);
+  assert.equal(calculateCount, 1);
+});
+
+test("stale calculation worker cannot save a session after its lease is reclaimed", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patient: { displayName: "Lease 競合" },
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "O: CRPを実施。"
+  }, headers);
+  const feeSessionId = session.body.feeSession.feeSessionId;
+  const created = stores.feeStore.createCalculationJob("org_001", feeSessionId, {
+    calculationInput: {},
+    createdByMemberId: "mem_001"
+  });
+  const calculationJobId = created.calculationJob.calculationJobId;
+
+  const originalUpdateCalculationJob = stores.feeStore.updateCalculationJob.bind(stores.feeStore);
+  let reclaimed = false;
+  stores.feeStore.updateCalculationJob = (...args) => {
+    const result = originalUpdateCalculationJob(...args);
+    const patch = args[3] || {};
+    if (!reclaimed && patch.phase === "aggregate") {
+      reclaimed = true;
+      const reclaimedAt = new Date("2026-05-28T00:06:00.000Z");
+      stores.feeStore.now = () => reclaimedAt;
+      stores.feeStore.claimCalculationJob("org_001", feeSessionId, calculationJobId, {
+        leaseToken: "replacement_worker_lease",
+        leaseExpiresAt: "2026-05-28T00:11:00.000Z",
+        now: reclaimedAt
+      });
+    }
+    return result;
+  };
+
+  const worker = await request(
+    stores,
+    "POST",
+    "/v1/fee/internal/calculation-jobs/run",
+    { orgId: "org_001", feeSessionId, calculationJobId },
+    { "x-fee-worker-token": "worker-secret" },
+    {
+      processEnv: {
+        FEE_CALCULATION_WORKER_TOKEN: "worker-secret",
+        FEE_CALCULATION_JOB_LEASE_SECONDS: "300"
+      }
+    }
+  );
+  const storedSession = stores.feeStore.getSession("org_001", feeSessionId);
+  const storedJob = stores.feeStore.getCalculationJob("org_001", feeSessionId, calculationJobId);
+
+  assert.equal(reclaimed, true);
+  assert.equal(worker.statusCode, 409);
+  assert.equal(storedSession.calculationResult, null);
+  assert.equal(storedSession.status, "calculating");
+  assert.equal(storedJob.status, "running");
+  assert.equal(storedJob.leaseToken, "replacement_worker_lease");
 });
 
 test("runs Pub/Sub push calculation job payloads through the internal worker route", async () => {
@@ -8279,6 +8669,37 @@ test("rejects fee access without product entitlement", async () => {
   const response = await request(stores, "GET", "/v1/fee/context", undefined, headers);
 
   assert.equal(response.statusCode, 403);
+});
+
+test("allows viewer reads but rejects fee writes", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore, {
+    globalRoles: [],
+    productRoles: { fee: ["viewer"] }
+  });
+
+  const [context, sessions] = await Promise.all([
+    request(stores, "GET", "/v1/fee/context", undefined, headers),
+    request(stores, "GET", "/v1/fee/sessions", undefined, headers)
+  ]);
+  assert.equal(context.statusCode, 200);
+  assert.equal(sessions.statusCode, 200);
+
+  const writes = await Promise.all([
+    request(stores, "POST", "/v1/fee/patients", {}, headers),
+    request(stores, "POST", "/v1/fee/sessions", {}, headers),
+    request(stores, "PATCH", "/v1/fee/sessions/fee_session_001", {}, headers),
+    request(stores, "PATCH", "/v1/fee/sessions/fee_session_001/review-items", {}, headers),
+    request(stores, "POST", "/v1/fee/sessions/fee_session_001/calculation-jobs", {}, headers),
+    request(stores, "POST", "/v1/fee/sessions/fee_session_001/calculate", {}, headers),
+    request(stores, "POST", "/v1/fee/monthly-bulk-jobs", {}, headers),
+    request(stores, "PATCH", "/v1/fee/monthly-bulk-jobs/monthly_bulk_job_001", {}, headers)
+  ]);
+
+  for (const response of writes) {
+    assert.equal(response.statusCode, 403);
+    assert.equal(response.body.message, "Fee write access is required");
+  }
 });
 
 test("fee-api no longer contains OPERATOR_ACCOUNTS_JSON production path", () => {
@@ -9161,6 +9582,31 @@ test("exports a receipt CSV with billing summary", async () => {
     `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
     {}, headers
   );
+  const blocked = await request(
+    stores, "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/receipt.csv`,
+    undefined, headers
+  );
+  assert.equal(blocked.statusCode, 409);
+  assert.ok(blocked.body.receiptExportValidation.issues.some((issue) => issue.field === "receiptDraft.pendingReviewCount"));
+  await request(stores, "PATCH", "/v1/fee/settings/fac_001", {
+    receiptPolicy: { connectorSpecVerified: true }
+  }, headers);
+  const review = await request(
+    stores, "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/review-items`,
+    undefined, headers
+  );
+  await request(
+    stores, "PATCH",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/review-items`,
+    {
+      decisions: review.body.reviewItems
+        .filter((item) => item.sourceType === "line_item")
+        .map((item) => ({ reviewItemId: item.reviewItemId, status: "approved" }))
+    },
+    headers
+  );
   const csv = await request(
     stores, "GET",
     `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/receipt.csv`,
@@ -9204,6 +9650,24 @@ test("exports a receipt UKE in Shift_JIS by default and UTF-8 on request", async
     orders: [{ orderId: "ord_1", orderType: "drug", localName: "カルボシステイン錠", quantity: 2 }]
   }, headers);
   await request(stores, "POST", `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`, {}, headers);
+
+  const blocked = await request(stores, "GET", `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/receipt.uke`, undefined, headers);
+  assert.equal(blocked.statusCode, 409);
+  await request(stores, "PATCH", "/v1/fee/settings/fac_001", {
+    receiptPolicy: { connectorSpecVerified: true }
+  }, headers);
+  const review = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/review-items`,
+    undefined,
+    headers
+  );
+  await request(stores, "PATCH", `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/review-items`, {
+    decisions: review.body.reviewItems
+      .filter((item) => item.sourceType === "line_item")
+      .map((item) => ({ reviewItemId: item.reviewItemId, status: "approved" }))
+  }, headers);
 
   const sjis = await request(stores, "GET", `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/receipt.uke`, undefined, headers);
   assert.equal(sjis.statusCode, 200);
@@ -9401,4 +9865,133 @@ test("既存レセ一括取込が外部請求履歴になり、初診/再診判�
   );
   assert.equal(calculation.statusCode, 201);
   assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+});
+
+test("receipt export blocks an uncalculated session after connector verification", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "未算定 単体",
+    birthDate: "1970-01-01",
+    sex: "male",
+    insurance: {
+      insurerType: "shaho",
+      insurerNumber: "01130012",
+      insuredSymbol: "12",
+      insuredNumber: "3456"
+    }
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    serviceDate: "2026-05-28"
+  }, headers);
+  await request(stores, "PATCH", "/v1/fee/settings/fac_001", {
+    receiptPolicy: { connectorSpecVerified: true }
+  }, headers);
+
+  const response = await request(
+    stores,
+    "GET",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/receipt.csv`,
+    undefined,
+    headers
+  );
+
+  assert.equal(response.statusCode, 409);
+  assert.ok(response.body.receiptExportValidation.issues.some((issue) => (
+    issue.field === "receiptDraft.status" && issue.severity === "error"
+  )));
+});
+
+test("monthly receipt export blocks when the patient month contains an uncalculated session", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "未算定 月次",
+    birthDate: "1970-01-01",
+    sex: "female",
+    insurance: {
+      insurerType: "shaho",
+      insurerNumber: "01130012",
+      insuredSymbol: "12",
+      insuredNumber: "3456"
+    }
+  }, headers);
+  const calculatedSession = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    serviceDate: "2026-05-07"
+  }, headers);
+  await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    serviceDate: "2026-05-21"
+  }, headers);
+  stores.feeStore.saveCalculation("org_001", calculatedSession.body.feeSession.feeSessionId, {
+    provider: "test",
+    status: "completed",
+    totalPoints: 76,
+    lineItems: [{
+      lineId: "confirmed_revisit",
+      code: "112007410",
+      name: "再診料",
+      orderType: "basic",
+      points: 76,
+      quantity: 1,
+      totalPoints: 76,
+      status: "confirmed"
+    }]
+  });
+  await request(stores, "PATCH", "/v1/fee/settings/fac_001", {
+    receiptPolicy: { connectorSpecVerified: true }
+  }, headers);
+
+  const params = new URLSearchParams({
+    patientId: patient.body.patient.patientId,
+    claimMonth: "2026-05"
+  });
+  const response = await request(
+    stores,
+    "GET",
+    `/v1/fee/monthly-receipt.csv?${params.toString()}`,
+    undefined,
+    headers
+  );
+
+  assert.equal(response.statusCode, 409);
+  assert.ok(response.body.receiptExportValidation.issues.some((issue) => (
+    issue.field === "receiptDraft.uncalculatedSessionCount" && issue.severity === "error"
+  )));
+});
+
+test("recalculation clears prior candidate approvals before receipt export", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "再算定 承認リセット"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-05-28",
+    orders: [{ orderId: "ord_1", orderType: "lab", localName: "血液検査" }]
+  }, headers);
+  const sessionPath = `/v1/fee/sessions/${session.body.feeSession.feeSessionId}`;
+  const first = await request(stores, "POST", `${sessionPath}/calculate`, {}, headers);
+  const lineReviewItem = first.body.reviewItems.find((item) => item.sourceType === "line_item");
+  assert.ok(lineReviewItem);
+  const approved = await request(stores, "PATCH", `${sessionPath}/review-items/${lineReviewItem.reviewItemId}`, {
+    status: "approved"
+  }, headers);
+  assert.equal(approved.body.receiptDraft.totalPoints, 137);
+
+  const recalculated = await request(stores, "POST", `${sessionPath}/calculate`, {}, headers);
+
+  assert.deepEqual(recalculated.body.feeSession.reviewDecisions, {});
+  assert.equal(recalculated.body.receiptDraft.totalPoints, 0);
+  assert.equal(recalculated.body.receiptDraft.pendingReviewCount, 1);
 });

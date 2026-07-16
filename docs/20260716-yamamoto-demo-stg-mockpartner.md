@@ -148,3 +148,8 @@ npm run eval:fee-monthly-chart-e2e -- \
 [20260716-yamamoto-demo-stg-5patients-20260716_205643](./20260716-yamamoto-demo-stg-5patients-20260716_205643/README.md)
 を参照する。5患者・15受診は完走し、既存UKE 32コードに対する確定一致は6コード、候補込み検知は
 13コードだった。
+
+続いて患者`1002 / 1003 / 1005`を各1反復で実行した。結果は
+[20260716-yamamoto-demo-stg-additional-3patients-20260716_211245](./20260716-yamamoto-demo-stg-additional-3patients-20260716_211245/README.md)
+を参照する。3患者・7受診は完走し、既存UKE 21コードに対する確定一致は2コード、候補込み一致は
+5コードだった。これによりYamamoto施設で算定済みのmock_partner患者は8人となった。

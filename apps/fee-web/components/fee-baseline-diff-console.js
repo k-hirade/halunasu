@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toUserFacingErrorMessage } from "@halunasu/web-ui/user-facing-error";
 import { getStoredPlatformAccessToken, usePlatformAuth } from "./platform-auth";
+import { tokyoClaimMonth } from "../lib/tokyo-date";
 import {
   BASELINE_COLUMN_FIELDS,
   BASELINE_UKE_FIELDS,
@@ -21,7 +22,7 @@ import {
 } from "../lib/baseline-diff";
 
 function defaultClaimMonth() {
-  return new Date().toISOString().slice(0, 7);
+  return tokyoClaimMonth();
 }
 
 function useFeeApi() {

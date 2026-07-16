@@ -7,6 +7,7 @@ import { useAdminNav } from "./admin-nav-context";
 import { getStoredPlatformAccessToken, usePlatformAuth } from "./platform-auth";
 import { FeeBaselineDiffConsole } from "./fee-baseline-diff-console";
 import { isFeeUploadToolsAllowed } from "../lib/baseline-diff";
+import { tokyoDateKey } from "../lib/tokyo-date";
 
 const ADMIN_SECTIONS = [
   {
@@ -414,7 +415,7 @@ function FeeSettingsPanel({ data, initialGroup = "billing" }) {
       const cleanedStandards = facilityStandards.filter((entry) => (entry.key || entry.name));
       // 算定の正は有効期間付きの fee設定(facilityStandards)。platform側キーは
       // 設定未登録施設の移行用フォールバックのため、本日時点で有効な届出だけを平坦化する。
-      const today = new Date().toISOString().slice(0, 10);
+      const today = tokyoDateKey();
       const facilityStandardKeys = cleanedStandards
         .filter((entry) => entry.status === "active" && entry.key)
         .filter((entry) => !entry.claimStartDate || entry.claimStartDate <= today)
@@ -680,14 +681,11 @@ function FeeSettingsPanel({ data, initialGroup = "billing" }) {
               <SettingRow label="接続先レセコンの仕様を確認済み" help="CSV/UKE/APIの取込仕様を検証済みとして扱います。">
                 <ToggleInput checked={receiptPolicy.connectorSpecVerified === true} onChange={(checked) => updateReceiptPolicy({ connectorSpecVerified: checked })} />
               </SettingRow>
-              <SettingRow label="必須エラー時は出力を止める" help="出力前チェックの必須エラーがある場合、CSV/UKE出力をブロックします。">
-                <ToggleInput checked={receiptPolicy.blockExportOnErrors === true} onChange={(checked) => updateReceiptPolicy({ blockExportOnErrors: checked })} />
-              </SettingRow>
             </SettingsSection>
           ) : null}
 
           {currentSectionId === "receipt-validation" ? (
-            <SettingsSection title="出力前チェック" help="提出前に不足項目を検出する重大度です。「必須エラー」は出力停止の対象にできます。">
+            <SettingsSection title="出力前チェック" help="提出前に不足項目を検出する重大度です。「必須エラー」はCSV/UKE出力を停止します。">
               {RECEIPT_VALIDATION_GROUPS.map(([groupLabel, fields]) => (
                 <div className="fee-severity-group" key={groupLabel}>
                   <div className="fee-severity-group-top">
@@ -1020,7 +1018,7 @@ function defaultSettingsForFacility(facilityId = "default") {
     facilityStandards: [],
     receiptPolicy: {
       ukeEncoding: "shift_jis",
-      blockExportOnErrors: false,
+      blockExportOnErrors: true,
       connectorSpecVerified: false,
       defaultReceiptScope: "service_date",
       validationSeverity: {
@@ -1214,7 +1212,7 @@ function downloadCurrentMasterCsv(data, currentType) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `fee-master-${currentType.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+  anchor.download = `fee-master-${currentType.id}-${tokyoDateKey()}.csv`;
   anchor.click();
   URL.revokeObjectURL(url);
 }

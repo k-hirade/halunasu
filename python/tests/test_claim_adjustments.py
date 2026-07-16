@@ -74,7 +74,8 @@ class ElectronicConsistencyTest(unittest.TestCase):
         adjusted, messages = apply_electronic_consistency(lines, _rules(breaches=[
             FrequencyLimitBreach(source_id=1, procedure_code="C", procedure_name="がん性疼痛緩和指導管理料",
                                  limit_code="131", limit_name="月", scope="same_month",
-                                 matched_from="history", matched_service_date=date(2026, 6, 3)),
+                                 matched_from="procedure_history_event", matched_service_date=date(2026, 6, 3),
+                                 limit_count=1, history_occurrences=1, current_quantity=1),
         ]))
         self.assertTrue(adjusted[0].excluded_from_total)
         self.assertIn("算定回数上限", messages[0].message)

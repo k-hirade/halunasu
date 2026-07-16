@@ -42,6 +42,7 @@ const SESSION_SUMMARY_FIELDS = [
   "sourceSystem",
   "latestCalculationId",
   "activeCalculationJobId",
+  "latestCalculationJobId",
   "calculationSummary",
   "createdAt",
   "updatedAt",
@@ -52,6 +53,7 @@ const PATIENT_HISTORY_FIELDS = [
   ...SESSION_SUMMARY_FIELDS,
   "diagnoses",
   "calculationResult",
+  "reviewDecisions",
   "calculationOptions",
   "calculationOptionsSource"
 ];
@@ -259,35 +261,23 @@ export class FirestoreFeeStore {
     return statusView;
   }
 
-  async updateSession(orgId, feeSessionId, patch) {
-    const current = await this.getSession(orgId, feeSessionId);
-    if (!current) {
-      throw notFoundError("fee session not found");
-    }
-
-    const updated = sanitizeForFirestore(applyFeeSessionPatch(current, patch, {
-      now: this.timestamp()
-    }));
-    await this.writeSessionPatch(orgId, feeSessionId, current, updated);
-    await this.writeSessionStatusView(orgId, feeSessionId, updated);
+  async updateSession(orgId, feeSessionId, patch, options = {}) {
+    const now = this.timestamp();
+    const { updated } = await this.mutateSession(orgId, feeSessionId, (current) => (
+      applyFeeSessionPatch(current, patch, { now })
+    ), options);
 
     return {
       feeSession: updated
     };
   }
 
-  async saveCalculation(orgId, feeSessionId, calculationResult) {
-    const current = await this.getSession(orgId, feeSessionId);
-    if (!current) {
-      throw notFoundError("fee session not found");
-    }
-
-    const updated = sanitizeForFirestore(applyCalculationResult(current, calculationResult, {
-      calculationId: this.idFactory("calc"),
-      now: this.timestamp()
-    }));
-    await this.writeSessionPatch(orgId, feeSessionId, current, updated);
-    await this.writeSessionStatusView(orgId, feeSessionId, updated);
+  async saveCalculation(orgId, feeSessionId, calculationResult, options = {}) {
+    const now = this.timestamp();
+    const calculationId = this.idFactory("calc");
+    const { updated } = await this.mutateSession(orgId, feeSessionId, (current) => (
+      applyCalculationResult(current, calculationResult, { calculationId, now })
+    ), options);
 
     return {
       feeSession: updated,
@@ -316,16 +306,10 @@ export class FirestoreFeeStore {
   }
 
   async decideReviewItem(orgId, feeSessionId, reviewItemId, input) {
-    const current = await this.getSession(orgId, feeSessionId);
-    if (!current) {
-      throw notFoundError("fee session not found");
-    }
-
-    const updated = sanitizeForFirestore(applyReviewDecision(current, reviewItemId, input, {
-      now: this.timestamp()
-    }));
-    await this.writeSessionPatch(orgId, feeSessionId, current, updated);
-    await this.writeSessionStatusView(orgId, feeSessionId, updated);
+    const now = this.timestamp();
+    const { updated } = await this.mutateSession(orgId, feeSessionId, (current) => (
+      applyReviewDecision(current, reviewItemId, input, { now })
+    ));
 
     return {
       feeSession: updated,
@@ -334,21 +318,15 @@ export class FirestoreFeeStore {
   }
 
   async decideReviewItems(orgId, feeSessionId, decisions = []) {
-    const current = await this.getSession(orgId, feeSessionId);
-    if (!current) {
-      throw notFoundError("fee session not found");
-    }
-
     const now = this.timestamp();
-    let updated = current;
-    for (const decision of Array.isArray(decisions) ? decisions : []) {
-      updated = applyReviewDecision(updated, decision.reviewItemId, decision, {
-        now
-      });
-    }
-    updated = sanitizeForFirestore(updated);
-    await this.writeSessionPatch(orgId, feeSessionId, current, updated);
-    await this.writeSessionStatusView(orgId, feeSessionId, updated);
+    const normalizedDecisions = Array.isArray(decisions) ? decisions : [];
+    const { updated } = await this.mutateSession(orgId, feeSessionId, (current) => {
+      let next = current;
+      for (const decision of normalizedDecisions) {
+        next = applyReviewDecision(next, decision.reviewItemId, decision, { now });
+      }
+      return next;
+    });
 
     return {
       feeSession: updated,
@@ -357,10 +335,7 @@ export class FirestoreFeeStore {
   }
 
   async createCalculationJob(orgId, feeSessionId, input = {}) {
-    const current = await this.getSession(orgId, feeSessionId);
-    if (!current) {
-      throw notFoundError("fee session not found");
-    }
+    requireFirestoreTransactions(this.db);
     const now = this.timestamp();
     const calculationJobId = this.idFactory("fee_calc_job");
     const job = sanitizeForFirestore({
@@ -380,26 +355,123 @@ export class FirestoreFeeStore {
       updatedAt: now,
       schemaVersion: 1
     });
-    await this.calculationJobDoc(orgId, feeSessionId, calculationJobId).set(job);
-    return { calculationJob: job };
+    const sessionRef = this.doc(feeSessionPath(orgId, feeSessionId));
+    const jobRef = this.calculationJobDoc(orgId, feeSessionId, calculationJobId);
+    const statusRef = this.sessionStatusViewDoc(orgId, feeSessionId);
+    return this.db.runTransaction(async (transaction) => {
+      const current = docDataOrNull(await transaction.get(sessionRef));
+      if (!current) {
+        throw notFoundError("fee session not found");
+      }
+      assertNoActiveSessionCalculation(current);
+      const updatedSession = sanitizeForFirestore(applyFeeSessionPatch(current, {
+        status: "calculating",
+        activeCalculationJobId: calculationJobId,
+        latestCalculationJobId: calculationJobId,
+        ...(input.calculationProgress ? { calculationProgress: input.calculationProgress } : {})
+      }, { now }));
+      const sessionPatch = changedTopLevelFields(current, updatedSession);
+      transaction.set(jobRef, job);
+      if (Object.keys(sessionPatch).length) {
+        transaction.update(sessionRef, sanitizeForFirestore(sessionPatch));
+      }
+      transaction.set(statusRef, sanitizeForFirestore(sessionStatusView(updatedSession)));
+      return { calculationJob: job, feeSession: updatedSession };
+    });
   }
 
   async getCalculationJob(orgId, feeSessionId, calculationJobId) {
     return docDataOrNull(await this.calculationJobDoc(orgId, feeSessionId, calculationJobId).get());
   }
 
-  async updateCalculationJob(orgId, feeSessionId, calculationJobId, patch = {}) {
-    const current = await this.getCalculationJob(orgId, feeSessionId, calculationJobId);
-    if (!current) {
-      throw notFoundError("fee calculation job not found");
+  async claimCalculationJob(orgId, feeSessionId, calculationJobId, input = {}) {
+    requireFirestoreTransactions(this.db);
+    const now = timestampValue(input.now, this.timestamp());
+    const leaseToken = String(input.leaseToken || "").trim();
+    const leaseExpiresAt = timestampValue(input.leaseExpiresAt, now);
+    if (!leaseToken) {
+      throw new TypeError("leaseToken is required");
     }
-    const updated = sanitizeForFirestore({
-      ...current,
-      ...patch,
-      updatedAt: this.timestamp()
+
+    const jobRef = this.calculationJobDoc(orgId, feeSessionId, calculationJobId);
+    const sessionRef = this.doc(feeSessionPath(orgId, feeSessionId));
+    const statusRef = this.sessionStatusViewDoc(orgId, feeSessionId);
+    return this.db.runTransaction(async (transaction) => {
+      const [jobSnapshot, sessionSnapshot] = await Promise.all([
+        transaction.get(jobRef),
+        transaction.get(sessionRef)
+      ]);
+      const current = docDataOrNull(jobSnapshot);
+      const session = docDataOrNull(sessionSnapshot);
+      if (!current) {
+        throw notFoundError("fee calculation job not found");
+      }
+      if (!session) {
+        throw notFoundError("fee session not found");
+      }
+      if (current.status === "succeeded") {
+        return {
+          calculationJob: current,
+          claimed: false,
+          alreadyCompleted: true
+        };
+      }
+      assertCalculationJobCanClaimSession(session, calculationJobId);
+      if (current.status === "running" && isActiveLease(current, now)) {
+        return {
+          calculationJob: current,
+          claimed: false,
+          alreadyRunning: true
+        };
+      }
+
+      const calculationJob = sanitizeForFirestore({
+        ...current,
+        status: "running",
+        phase: input.phase || "extract",
+        attemptCount: Number(current.attemptCount || 0) + 1,
+        startedAt: current.startedAt || now,
+        lastAttemptAt: now,
+        leaseToken,
+        leaseExpiresAt,
+        updatedAt: now
+      });
+      const updatedSession = sanitizeForFirestore(applyFeeSessionPatch(session, {
+        status: "calculating",
+        activeCalculationJobId: calculationJobId
+      }, { now }));
+      const sessionPatch = changedTopLevelFields(session, updatedSession);
+      transaction.set(jobRef, calculationJob);
+      if (Object.keys(sessionPatch).length) {
+        transaction.update(sessionRef, sanitizeForFirestore(sessionPatch));
+      }
+      transaction.set(statusRef, sanitizeForFirestore(sessionStatusView(updatedSession)));
+      return {
+        calculationJob,
+        feeSession: updatedSession,
+        claimed: true
+      };
     });
-    await this.calculationJobDoc(orgId, feeSessionId, calculationJobId).set(updated);
-    return { calculationJob: updated };
+  }
+
+  async updateCalculationJob(orgId, feeSessionId, calculationJobId, patch = {}, options = {}) {
+    const hasExpectedLeaseToken = Object.hasOwn(options || {}, "expectedLeaseToken");
+    const expectedLeaseToken = hasExpectedLeaseToken
+      ? String(options.expectedLeaseToken || "")
+      : null;
+    return this.mutateCalculationJob(orgId, feeSessionId, calculationJobId, (current) => {
+      assertCalculationJobExpectedState(current, options);
+      if (hasExpectedLeaseToken) {
+        assertActiveCalculationJobLease(current, expectedLeaseToken, this.timestamp());
+      }
+      return {
+        calculationJob: {
+          ...current,
+          ...patch,
+          updatedAt: this.timestamp()
+        }
+      };
+    });
   }
 
   async createMonthlyBulkJob(orgId, input = {}) {
@@ -555,6 +627,84 @@ export class FirestoreFeeStore {
     await this.sessionStatusViewDoc(orgId, feeSessionId).set(sanitizeForFirestore(sessionStatusView(session)));
   }
 
+  async mutateSession(orgId, feeSessionId, mutator, options = {}) {
+    requireFirestoreTransactions(this.db);
+    const sessionRef = this.doc(feeSessionPath(orgId, feeSessionId));
+    const statusRef = this.sessionStatusViewDoc(orgId, feeSessionId);
+    const calculationJobId = String(options.calculationJobId || "").trim();
+    const hasExpectedLeaseToken = Object.hasOwn(options || {}, "expectedLeaseToken");
+    const hasExpectedCalculationJobStatus = Object.hasOwn(options || {}, "expectedCalculationJobStatus");
+    const jobRef = calculationJobId
+      ? this.calculationJobDoc(orgId, feeSessionId, calculationJobId)
+      : null;
+    if (hasExpectedLeaseToken && !jobRef) {
+      throw new TypeError("calculationJobId is required with expectedLeaseToken");
+    }
+    if (hasExpectedCalculationJobStatus && !jobRef) {
+      throw new TypeError("calculationJobId is required with expectedCalculationJobStatus");
+    }
+
+    return this.db.runTransaction(async (transaction) => {
+      const [sessionSnapshot, jobSnapshot] = await Promise.all([
+        transaction.get(sessionRef),
+        jobRef ? transaction.get(jobRef) : Promise.resolve(null)
+      ]);
+      const current = docDataOrNull(sessionSnapshot);
+      if (!current) {
+        throw notFoundError("fee session not found");
+      }
+      const calculationJob = docDataOrNull(jobSnapshot);
+      if (hasExpectedCalculationJobStatus) {
+        assertCalculationJobExpectedState(calculationJob, {
+          expectedStatus: options.expectedCalculationJobStatus
+        });
+      }
+      if (hasExpectedLeaseToken) {
+        assertCalculationSessionLease(current, calculationJob, calculationJobId, options, this.timestamp());
+      } else {
+        assertUnleasedSessionMutationAllowed(current, options);
+      }
+      const mutated = mutator(current);
+      const updated = sanitizeForFirestore(hasExpectedLeaseToken
+        ? {
+          ...mutated,
+          latestCalculationJobId: current.latestCalculationJobId || null
+        }
+        : mutated);
+      const patch = changedTopLevelFields(current, updated);
+      if (Object.keys(patch).length) {
+        transaction.update(sessionRef, sanitizeForFirestore(patch));
+      }
+      transaction.set(statusRef, sanitizeForFirestore(sessionStatusView(updated)));
+      return { current, updated };
+    });
+  }
+
+  async mutateCalculationJob(orgId, feeSessionId, calculationJobId, mutator) {
+    requireFirestoreTransactions(this.db);
+    const jobRef = this.calculationJobDoc(orgId, feeSessionId, calculationJobId);
+    const runMutation = async (current, write) => {
+      if (!current) {
+        throw notFoundError("fee calculation job not found");
+      }
+      const result = mutator(current);
+      const updated = result.calculationJob === current
+        ? current
+        : sanitizeForFirestore(result.calculationJob);
+      if (updated !== current) {
+        await write(updated);
+      }
+      return { ...result, calculationJob: updated };
+    };
+
+    return this.db.runTransaction(async (transaction) => (
+      runMutation(
+        docDataOrNull(await transaction.get(jobRef)),
+        (updated) => transaction.set(jobRef, updated)
+      )
+    ));
+  }
+
   timestamp() {
     return this.now().toISOString();
   }
@@ -652,6 +802,139 @@ function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function timestampValue(value, fallback) {
+  const date = value instanceof Date ? value : new Date(value || fallback);
+  return Number.isNaN(date.getTime()) ? fallback : date.toISOString();
+}
+
+function isActiveLease(job = {}, now) {
+  const expiresAt = Date.parse(String(job.leaseExpiresAt || ""));
+  const nowMs = Date.parse(String(now || ""));
+  return Boolean(job.leaseToken) && Number.isFinite(expiresAt) && Number.isFinite(nowMs) && expiresAt > nowMs;
+}
+
+function assertActiveCalculationJobLease(job, expectedLeaseToken, now) {
+  if (
+    !job
+    || job.status !== "running"
+    || String(job.leaseToken || "") !== String(expectedLeaseToken || "")
+    || !isActiveLease(job, now)
+  ) {
+    throw calculationJobLeaseConflictError();
+  }
+}
+
+function assertCalculationJobExpectedState(job, options = {}) {
+  if (!job) {
+    throw calculationJobStateConflictError();
+  }
+  if (
+    Object.hasOwn(options || {}, "expectedStatus")
+    && String(job.status || "") !== String(options.expectedStatus || "")
+  ) {
+    throw calculationJobStateConflictError();
+  }
+  if (
+    Object.hasOwn(options || {}, "expectedEnqueueStatus")
+    && String(job.enqueueStatus || "") !== String(options.expectedEnqueueStatus || "")
+  ) {
+    throw calculationJobStateConflictError();
+  }
+}
+
+function assertCalculationSessionLease(session, job, calculationJobId, options, now) {
+  assertActiveCalculationJobLease(job, options.expectedLeaseToken, now);
+  const activeCalculationJobId = String(session.activeCalculationJobId || "").trim();
+  const latestCalculationJobId = String(session.latestCalculationJobId || "").trim();
+  if (
+    (latestCalculationJobId && latestCalculationJobId !== calculationJobId)
+    || (!latestCalculationJobId && activeCalculationJobId !== calculationJobId)
+  ) {
+    throw calculationJobLeaseConflictError();
+  }
+  const allowsClearedActiveJob = options.allowClearedActiveCalculationJob === true;
+  if (
+    activeCalculationJobId !== calculationJobId
+    && !(allowsClearedActiveJob && !activeCalculationJobId)
+  ) {
+    throw calculationJobLeaseConflictError();
+  }
+}
+
+function assertNoActiveSessionCalculation(session = {}) {
+  if (session.activeCalculationJobId || session.status === "calculating") {
+    throw feeSessionCalculationConflictError();
+  }
+}
+
+function assertCalculationJobCanClaimSession(session = {}, calculationJobId) {
+  const activeCalculationJobId = String(session.activeCalculationJobId || "").trim();
+  const latestCalculationJobId = String(session.latestCalculationJobId || "").trim();
+  if (
+    (latestCalculationJobId && latestCalculationJobId !== calculationJobId)
+    || (!latestCalculationJobId && activeCalculationJobId !== calculationJobId)
+  ) {
+    throw feeSessionCalculationConflictError("a newer fee calculation job owns this session");
+  }
+  if (activeCalculationJobId && activeCalculationJobId !== calculationJobId) {
+    throw feeSessionCalculationConflictError("another fee calculation job owns this session");
+  }
+  if (!activeCalculationJobId && session.status === "calculating") {
+    throw feeSessionCalculationConflictError();
+  }
+}
+
+function assertUnleasedSessionMutationAllowed(session = {}, options = {}) {
+  const expectedActiveCalculationJobId = String(options.expectedActiveCalculationJobId || "").trim();
+  const activeCalculationJobId = String(session.activeCalculationJobId || "").trim();
+  if (expectedActiveCalculationJobId) {
+    if (activeCalculationJobId !== expectedActiveCalculationJobId) {
+      throw feeSessionCalculationConflictError();
+    }
+    return;
+  }
+  if (activeCalculationJobId) {
+    throw feeSessionCalculationConflictError();
+  }
+  if (session.status === "calculating" && options.allowCalculatingSessionMutation !== true) {
+    throw feeSessionCalculationConflictError();
+  }
+}
+
+function requireFirestoreTransactions(db) {
+  if (typeof db?.runTransaction === "function") {
+    return;
+  }
+  const error = new Error("Firestore transactions are required for fee session and calculation job mutations");
+  error.name = "ConfigurationError";
+  error.statusCode = 500;
+  throw error;
+}
+
+function calculationJobLeaseConflictError() {
+  const error = new Error("fee calculation job lease is no longer owned by this worker");
+  error.name = "ConflictError";
+  error.statusCode = 409;
+  error.code = "FEE_CALCULATION_JOB_LEASE_CONFLICT";
+  return error;
+}
+
+function calculationJobStateConflictError() {
+  const error = new Error("fee calculation job state changed before the requested update");
+  error.name = "ConflictError";
+  error.statusCode = 409;
+  error.code = "FEE_CALCULATION_JOB_STATE_CONFLICT";
+  return error;
+}
+
+function feeSessionCalculationConflictError(message = "fee session calculation is already in progress") {
+  const error = new Error(message);
+  error.name = "ConflictError";
+  error.statusCode = 409;
+  error.code = "FEE_SESSION_CALCULATION_CONFLICT";
+  return error;
+}
+
 async function countQuery(query) {
   if (typeof query.count === "function") {
     const snapshot = await query.count().get();
@@ -663,7 +946,7 @@ async function countQuery(query) {
 }
 
 function docDataOrNull(snapshot) {
-  return snapshot.exists ? snapshot.data() : null;
+  return snapshot?.exists ? snapshot.data() : null;
 }
 
 function sessionStatusView(session = {}) {
@@ -675,6 +958,7 @@ function sessionStatusView(session = {}) {
     calculationSummary: session.calculationSummary || null,
     latestCalculationId: session.latestCalculationId || null,
     activeCalculationJobId: session.activeCalculationJobId || null,
+    latestCalculationJobId: session.latestCalculationJobId || null,
     updatedAt: session.updatedAt || null
   };
 }

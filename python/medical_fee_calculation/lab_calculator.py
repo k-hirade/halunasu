@@ -438,6 +438,7 @@ def _claim_level_electronic_messages(
             same_week_history_codes=history.same_week_history_codes,
             same_month_history_codes=history.same_month_history_codes,
             procedure_history_events=history.procedure_history_events,
+            current_code_quantities=_current_code_quantities(all_lines),
         ),
     )
 
@@ -473,7 +474,7 @@ def _claim_level_electronic_messages(
                 message=(
                     f"frequency_limit_breach: {breach.procedure_code} {breach.procedure_name} "
                     f"は{breach.limit_name}単位の算定回数制限があり、"
-                    f"{_format_frequency_breach_match(breach.matched_from, breach.matched_service_date)}に同一コードがある"
+                    f"{_format_frequency_breach_detail(breach)}"
                 ),
                 source="electronic_frequency_limit",
             )
@@ -1022,7 +1023,7 @@ def _frequency_limit_breach_warnings(
             reason=(
                 f"frequency_limit_breach: {breach.procedure_code} {breach.procedure_name} "
                 f"は{breach.limit_name}単位の算定回数制限があり、"
-                f"{_format_frequency_breach_match(breach.matched_from, breach.matched_service_date)}に同一コードがある"
+                f"{_format_frequency_breach_detail(breach)}"
             ),
         )
         for breach in electronic_rules.frequency_limit_breaches
@@ -1036,3 +1037,63 @@ def _format_frequency_breach_match(
     if matched_service_date is None:
         return matched_from
     return f"{matched_from}({matched_service_date.isoformat()})"
+
+
+def _format_frequency_breach_detail(breach: object) -> str:
+    if not bool(getattr(breach, "occurrence_count_known", True)):
+        if bool(getattr(breach, "limit_exceeded_certain", False)):
+            limit_count = int(getattr(breach, "limit_count", 0) or 0)
+            current_quantity = float(getattr(breach, "current_quantity", 1.0) or 0)
+            quantity_text = (
+                str(int(current_quantity))
+                if current_quantity.is_integer()
+                else str(current_quantity)
+            )
+            return (
+                f"上限{limit_count}回に対し期間内履歴1回以上・"
+                f"当該請求{quantity_text}回"
+            )
+        matched = _format_frequency_breach_match(
+            str(getattr(breach, "matched_from", "history")),
+            getattr(breach, "matched_service_date", None),
+        )
+        return f"{matched}に同一コードがあるが履歴件数は不明"
+
+    limit_count = int(getattr(breach, "limit_count", 0) or 0)
+    history_occurrences = float(getattr(breach, "history_occurrences", 0) or 0)
+    history_occurrences_text = (
+        str(int(history_occurrences))
+        if history_occurrences.is_integer()
+        else str(history_occurrences)
+    )
+    current_quantity = float(getattr(breach, "current_quantity", 1.0) or 0)
+    quantity_text = (
+        str(int(current_quantity))
+        if current_quantity.is_integer()
+        else str(current_quantity)
+    )
+    return (
+        f"上限{limit_count}回に対し期間内履歴{history_occurrences_text}回・"
+        f"当該請求{quantity_text}回"
+    )
+
+
+def _current_code_quantities(
+    lines: tuple[CalculationLine, ...],
+) -> dict[str, float]:
+    quantities: dict[str, float] = {}
+    counted_statuses = {
+        ClaimItemStatus.CONFIRMED,
+        ClaimItemStatus.CANDIDATE,
+        ClaimItemStatus.NEEDS_REVIEW,
+    }
+    for line in lines:
+        code = str(line.code or "").strip()
+        if not code or line.status not in counted_statuses or line.excluded_from_total:
+            continue
+        try:
+            quantity = max(0.0, float(line.quantity))
+        except (TypeError, ValueError):
+            quantity = 1.0
+        quantities[code] = quantities.get(code, 0.0) + quantity
+    return quantities

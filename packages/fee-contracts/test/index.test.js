@@ -5,11 +5,18 @@ import {
   validateCreateFeeSessionInput,
   validateUpdateFeeSessionInput,
   validateCreateFeeCalculationInput,
+  defaultFeeSettings,
   validateUpdateFeeSettingsInput,
   hasPerformedBloodCollectionEvidence,
   hasPerformedBloodCollectionEvidenceInText,
   isClinicalDateRatioFalsePositiveContext
 } from "../src/index.js";
+
+test("defaults receipt exports to fail closed", () => {
+  const settings = defaultFeeSettings({ facilityId: "fac_001" });
+  assert.equal(settings.receiptPolicy.blockExportOnErrors, true);
+  assert.equal(settings.receiptPolicy.connectorSpecVerified, false);
+});
 
 test("normalizes fee session input to Platform identifiers", () => {
   const normalized = validateCreateFeeSessionInput({

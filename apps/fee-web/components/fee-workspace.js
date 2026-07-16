@@ -4,6 +4,7 @@ import { clinicalAutoCalculationOptionKeys } from "@halunasu/fee-contracts";
 import { toUserFacingErrorMessage } from "@halunasu/web-ui/user-facing-error";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { tokyoClaimMonth, tokyoDateKey } from "../lib/tokyo-date";
 import { getStoredPlatformAccessToken, usePlatformAuth } from "./platform-auth";
 
 const FEE_SESSION_PAGE_SIZE = 20;
@@ -920,6 +921,7 @@ function FeeSessionDetailView({ sessionId }) {
   const [masterItems, setMasterItems] = useState([]);
   const [selectedMasterIndex, setSelectedMasterIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [candidateDetail, setCandidateDetail] = useState(null);
@@ -1042,6 +1044,7 @@ function FeeSessionDetailView({ sessionId }) {
 
   const loadAll = useCallback(async ({ forceBootstrap = false } = {}) => {
     setLoading(true);
+    setLoadError("");
     try {
       const [, detail] = await Promise.all([
         loadBootstrap({ force: forceBootstrap }),
@@ -1049,11 +1052,14 @@ function FeeSessionDetailView({ sessionId }) {
       ]);
       applyDetail(detail);
     } catch (error) {
-      addToast(toUserFacingErrorMessage(error, "算定詳細を読み込めませんでした。"), "error");
+      setFeeSession(null);
+      setReceiptDraft(null);
+      setCandidateWorkbench(null);
+      setLoadError(toUserFacingErrorMessage(error, "算定詳細を読み込めませんでした。"));
     } finally {
       setLoading(false);
     }
-  }, [addToast, applyDetail, feeApi, loadBootstrap, sessionId]);
+  }, [applyDetail, feeApi, loadBootstrap, sessionId]);
 
   useEffect(() => {
     loadAll();
@@ -1300,6 +1306,9 @@ function FeeSessionDetailView({ sessionId }) {
   }
 
   const saveDetails = useCallback(async (options = {}) => {
+    if (!feeSession) {
+      throw new Error("算定詳細が読み込まれていないため保存できません。");
+    }
     const rowsForPayload = Array.isArray(options.orderRowsOverride) ? options.orderRowsOverride : orderRows;
     const formForPayload = options.formOverride || form;
     const body = buildFeeSessionPayload({
@@ -1716,6 +1725,25 @@ function FeeSessionDetailView({ sessionId }) {
           <a className="btn btn--ghost" href="/sessions">一覧へ戻る</a>
         </header>
         <SessionSkeleton />
+      </main>
+    );
+  }
+
+  if (loadError || !feeSession) {
+    return (
+      <main className="fee-shell">
+        <header className="fee-page-head">
+          <div>
+            <span className="label">算定記録</span>
+            <h1>算定詳細を表示できません</h1>
+            <p>患者・診療情報は読み込まれていません。</p>
+          </div>
+          <a className="btn btn--ghost" href="/sessions">一覧へ戻る</a>
+        </header>
+        <section className="fee-error-state" role="alert">
+          <p>{loadError || "算定詳細が見つかりませんでした。"}</p>
+          <button className="btn btn--primary" onClick={() => loadAll({ forceBootstrap: true })} type="button">再読み込み</button>
+        </section>
       </main>
     );
   }
@@ -4802,9 +4830,17 @@ function useFeeReceiptBlobDownload() {
     if (accessToken) {
       headers.authorization = `Bearer ${accessToken}`;
     }
-    const response = await fetch(`${baseUrl}${path}`, { method: "GET", headers, credentials: "include" });
+    const validationSeparator = path.includes("?") ? "&" : "?";
+    const response = await fetch(`${baseUrl}${path}${validationSeparator}validate=true`, { method: "GET", headers, credentials: "include" });
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.message || payload.error || `HTTP ${response.status}`);
+    }
+    if (response.headers.get("x-halunasu-export-status") !== "ready_for_review") {
+      throw new Error("出力前の必須確認が完了していません。");
+    }
+    if (response.headers.get("x-halunasu-connector-status") !== "spec-verified") {
+      throw new Error("接続先レセコンの仕様確認が完了していません。");
     }
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
@@ -4909,7 +4945,7 @@ function buildFeeSessionPayload({
 }
 
 function defaultFeeForm() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = tokyoDateKey();
   return {
     patientId: "",
     facilityId: "",
@@ -4929,7 +4965,7 @@ function hasDiagnosisInput(value) {
 }
 
 function defaultClaimMonth() {
-  return new Date().toISOString().slice(0, 7);
+  return tokyoClaimMonth();
 }
 
 function monthlyPatientKey(patient = {}) {
@@ -6201,10 +6237,8 @@ function getTokyoDayKey(value) {
 }
 
 function formatSessionGroupLabel(dayKey) {
-  const todayKey = getTokyoDayKey(new Date().toISOString());
-  const yesterdayDate = new Date();
-  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-  const yesterdayKey = getTokyoDayKey(yesterdayDate.toISOString());
+  const todayKey = getTokyoDayKey(new Date());
+  const yesterdayKey = getTokyoDayKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
   if (dayKey === todayKey) return "今日";
   if (dayKey === yesterdayKey) return "昨日";
   return dayKey;

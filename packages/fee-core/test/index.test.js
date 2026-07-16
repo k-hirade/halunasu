@@ -34,7 +34,7 @@ test("aggregates a monthly receipt across a patient's visits", () => {
       provider: "test",
       status: "completed",
       totalPoints,
-      lineItems,
+      lineItems: lineItems.map((line) => ({ status: "confirmed", ...line })),
       warnings: []
     }, { calculationId: `calc_${feeSessionId}`, now: new Date(`${serviceDate}T00:01:00.000Z`) });
   }
@@ -63,6 +63,7 @@ test("aggregates a monthly receipt across a patient's visits", () => {
   assert.equal(receipt.scope, "monthly");
   assert.equal(receipt.actualDays, 2);
   assert.equal(receipt.sessionCount, 2);
+  assert.equal(receipt.uncalculatedSessionCount, 0);
   assert.equal(receipt.totalPoints, 206);
   assert.equal(receipt.receiptType, "medical_outpatient");
   assert.deepEqual(receipt.receiptTypes, ["medical_outpatient"]);
@@ -354,11 +355,60 @@ test("builds receipt drafts and resolves review items", () => {
     now: "2026-05-28T00:12:00.000Z"
   });
 
-  assert.equal(receiptDraft.totalPoints, 88);
-  assert.equal(receiptDraft.lineGroups.length, 1);
+  const approvedReceiptDraft = buildReceiptDraft(decided);
+  assert.equal(receiptDraft.totalPoints, 0);
+  assert.equal(receiptDraft.pendingReviewCount, 1);
+  assert.equal(receiptDraft.lineGroups.length, 0);
+  assert.equal(approvedReceiptDraft.totalPoints, 88);
   assert.equal(receiptDraft.lines[0].supportLevel, "review_required");
   assert.ok(reviewItems.length >= 1);
   assert.equal(decided.reviewDecisions[reviewItems[0].reviewItemId].status, "approved");
+});
+
+test("new calculation results invalidate decisions from the previous calculation", () => {
+  const session = buildFeeSession({
+    orgId: "org_123",
+    patientId: "pat_review_reset",
+    facilityId: "fac_123",
+    createdByMemberId: "mem_123",
+    serviceDate: "2026-06-08"
+  }, {
+    feeSessionId: "fee_review_reset",
+    now: "2026-06-08T00:00:00.000Z"
+  });
+  const firstCalculation = applyCalculationResult(session, {
+    status: "completed",
+    lineItems: [{
+      lineId: "stable_line",
+      code: "160000410",
+      name: "検査候補",
+      points: 80,
+      quantity: 1,
+      totalPoints: 80,
+      status: "candidate"
+    }]
+  }, { calculationId: "calc_first", now: "2026-06-08T00:01:00.000Z" });
+  const approved = applyReviewDecision(firstCalculation, "line_stable_line", {
+    status: "approved"
+  }, { now: "2026-06-08T00:02:00.000Z" });
+
+  const recalculated = applyCalculationResult(approved, {
+    status: "completed",
+    lineItems: [{
+      lineId: "stable_line",
+      code: "160000410",
+      name: "検査候補",
+      points: 120,
+      quantity: 1,
+      totalPoints: 120,
+      status: "candidate"
+    }]
+  }, { calculationId: "calc_second", now: "2026-06-08T00:03:00.000Z" });
+  const receiptDraft = buildReceiptDraft(recalculated);
+
+  assert.deepEqual(recalculated.reviewDecisions, {});
+  assert.equal(receiptDraft.totalPoints, 0);
+  assert.equal(receiptDraft.pendingReviewCount, 1);
 });
 
 test("builds target-specific warning review titles", () => {
@@ -399,7 +449,7 @@ test("excludes rejected line items from receipt totals", () => {
         orderType: "basic",
         points: 291,
         totalPoints: 291,
-        status: "candidate",
+        status: "confirmed",
         source: "outpatient_basic_fee"
       },
       {
@@ -409,7 +459,7 @@ test("excludes rejected line items from receipt totals", () => {
         orderType: "lab",
         points: 100,
         totalPoints: 100,
-        status: "candidate",
+        status: "confirmed",
         source: "medical_procedure_master"
       }
     ]
@@ -506,7 +556,7 @@ test("builds structured candidate workbench buckets from receipt and review data
         orderType: "basic",
         points: 75,
         totalPoints: 75,
-        status: "candidate",
+        status: "confirmed",
         source: "outpatient_basic_fee"
       },
       {
@@ -580,8 +630,8 @@ test("attaches visit-fee review warnings to the basic fee line", () => {
 
   assert.equal(workbench.proposals.length, 0);
   assert.equal(workbench.issues.length, 0);
-  assert.equal(workbench.includedLines[0].attentionNotes.length, 1);
-  assert.match(workbench.includedLines[0].attentionNotes[0], /過去病名と今回病名/u);
+  assert.equal(workbench.pendingLines[0].attentionNotes.length, 1);
+  assert.match(workbench.pendingLines[0].attentionNotes[0], /過去病名と今回病名/u);
 });
 
 test("adopts structured increase proposals into receipt totals", () => {
@@ -603,7 +653,7 @@ test("adopts structured increase proposals into receipt totals", () => {
       orderType: "basic",
       points: 75,
       totalPoints: 75,
-      status: "candidate",
+      status: "confirmed",
       source: "outpatient_basic_fee"
     }],
     candidateProposals: [{
@@ -668,7 +718,7 @@ test("adopts confirm-required proposals with candidate lines after manual confir
       orderType: "basic",
       points: 75,
       totalPoints: 75,
-      status: "candidate",
+      status: "confirmed",
       source: "outpatient_basic_fee"
     }],
     candidateProposals: [{
@@ -733,7 +783,7 @@ test("adopts review-only proposals with candidate lines after manual confirmatio
       orderType: "basic",
       points: 75,
       totalPoints: 75,
-      status: "candidate",
+      status: "confirmed",
       source: "outpatient_basic_fee"
     }],
     candidateProposals: [{
@@ -807,7 +857,7 @@ test("keeps rejected candidate proposals visible so they can be approved later",
       orderType: "basic",
       points: 75,
       totalPoints: 75,
-      status: "candidate",
+      status: "confirmed",
       source: "outpatient_basic_fee"
     }],
     candidateProposals: [{
@@ -1146,7 +1196,7 @@ test("buildReceiptDraft embeds a billing summary", () => {
     serviceDate: "2026-06-01",
     patientSnapshot: { birthDate: "1980-05-01" },
     insuranceSnapshot: { insurance: {} },
-    calculationResult: { status: "ready", totalPoints: 100, lineItems: [{ lineId: "l1", name: "再診料", orderType: "basic", points: 100, quantity: 1, totalPoints: 100 }] }
+    calculationResult: { status: "ready", totalPoints: 100, lineItems: [{ lineId: "l1", name: "再診料", orderType: "basic", points: 100, quantity: 1, totalPoints: 100, status: "confirmed" }] }
   });
   assert.ok(draft.billing);
   assert.equal(draft.billing.totalFee, draft.totalPoints * 10);
@@ -1169,8 +1219,8 @@ function ukeFixtureDraft() {
       status: "ready",
       totalPoints: 288,
       lineItems: [
-        { lineId: "l1", code: "112007410", name: "再診料", orderType: "basic", points: 75, quantity: 1, totalPoints: 75 },
-        { lineId: "l2", code: "620000123", name: "内服薬", orderType: "drug", points: 13, quantity: 1, totalPoints: 13 }
+        { lineId: "l1", code: "112007410", name: "再診料", orderType: "basic", points: 75, quantity: 1, totalPoints: 75, status: "confirmed" },
+        { lineId: "l2", code: "620000123", name: "内服薬", orderType: "drug", points: 13, quantity: 1, totalPoints: 13, status: "confirmed" }
       ]
     }
   });
@@ -1220,6 +1270,7 @@ test("buildReceiptDenshin appends comment and symptom-detail records when provid
 test("buildReceiptExportValidation reports required UKE draft fields", () => {
   const draft = ukeFixtureDraft();
   const validation = buildReceiptExportValidation(draft, {
+    connectorSpecVerified: true,
     comments: [{ shinryoIdentification: "60", code: "830000001", text: "コメント" }],
     symptomDetails: [{ kubun: "01", text: "詳記" }]
   });
@@ -1236,6 +1287,97 @@ test("buildReceiptExportValidation reports required UKE draft fields", () => {
   assert.ok(invalid.issues.some((issue) => issue.field === "facility.medicalInstitutionCode" && issue.severity === "error"));
   assert.ok(invalid.issues.some((issue) => issue.field === "patient.displayName" && issue.severity === "error"));
   assert.ok(invalid.issues.some((issue) => issue.field === "insurance.insurerNumber" && issue.severity === "error"));
+});
+
+test("buildReceiptExportValidation blocks pending candidates and unverified connectors", () => {
+  const pending = buildReceiptExportValidation({
+    ...ukeFixtureDraft(),
+    pendingReviewCount: 1
+  }, { connectorSpecVerified: true });
+  assert.equal(pending.exportStatus, "draft");
+  assert.ok(pending.issues.some((issue) => issue.field === "receiptDraft.pendingReviewCount" && issue.severity === "error"));
+
+  const unverified = buildReceiptExportValidation(ukeFixtureDraft(), { connectorSpecVerified: false });
+  assert.equal(unverified.exportStatus, "draft");
+  assert.ok(unverified.issues.some((issue) => issue.field === "connector.targetSpec" && issue.severity === "error"));
+});
+
+test("buildReceiptExportValidation blocks uncalculated receipt drafts", () => {
+  const validation = buildReceiptExportValidation({
+    ...ukeFixtureDraft(),
+    status: "not_calculated",
+    uncalculatedSessionCount: 1
+  }, { connectorSpecVerified: true });
+
+  assert.equal(validation.exportStatus, "draft");
+  assert.ok(validation.issues.some((issue) => issue.field === "receiptDraft.status" && issue.severity === "error"));
+  assert.ok(validation.issues.some((issue) => issue.field === "receiptDraft.uncalculatedSessionCount" && issue.severity === "error"));
+});
+
+test("monthly receipt tracks uncalculated visits in the claim scope", () => {
+  const calculated = applyCalculationResult(buildFeeSession({
+    orgId: "org_123",
+    patientId: "pat_month_pending",
+    facilityId: "fac_123",
+    createdByMemberId: "mem_123",
+    serviceDate: "2026-06-03"
+  }, { feeSessionId: "fee_month_calculated", now: "2026-06-03T00:00:00.000Z" }), {
+    status: "completed",
+    lineItems: [{ code: "112007410", name: "再診料", totalPoints: 76, status: "confirmed" }]
+  });
+  const uncalculated = buildFeeSession({
+    orgId: "org_123",
+    patientId: "pat_month_pending",
+    facilityId: "fac_123",
+    createdByMemberId: "mem_123",
+    serviceDate: "2026-06-10"
+  }, { feeSessionId: "fee_month_uncalculated", now: "2026-06-10T00:00:00.000Z" });
+
+  const receiptDraft = buildMonthlyReceiptDraft([calculated, uncalculated], {
+    patientId: "pat_month_pending",
+    claimMonth: "2026-06"
+  });
+  const validation = buildReceiptExportValidation(receiptDraft, { connectorSpecVerified: true });
+
+  assert.equal(receiptDraft.sessionCount, 1);
+  assert.equal(receiptDraft.uncalculatedSessionCount, 1);
+  assert.ok(validation.issues.some((issue) => (
+    issue.field === "receiptDraft.uncalculatedSessionCount" && issue.severity === "error"
+  )));
+});
+
+test("monthly receipt excludes sessions explicitly marked outside the claim scope", () => {
+  const session = ({ feeSessionId, serviceDate, totalPoints = null, excluded = false }) => {
+    const built = buildFeeSession({
+      orgId: "org_123",
+      patientId: "pat_month_excluded",
+      facilityId: "fac_123",
+      createdByMemberId: "mem_123",
+      serviceDate,
+      ...(excluded ? { monthlyClaimWork: { status: "excluded" } } : {})
+    }, { feeSessionId, now: `${serviceDate}T00:00:00.000Z` });
+    return totalPoints === null ? built : applyCalculationResult(built, {
+      status: "completed",
+      lineItems: [{
+        code: feeSessionId,
+        name: feeSessionId,
+        points: totalPoints,
+        quantity: 1,
+        totalPoints,
+        status: "confirmed"
+      }]
+    });
+  };
+  const receiptDraft = buildMonthlyReceiptDraft([
+    session({ feeSessionId: "included", serviceDate: "2026-06-03", totalPoints: 76 }),
+    session({ feeSessionId: "excluded_calculated", serviceDate: "2026-06-10", totalPoints: 500, excluded: true }),
+    session({ feeSessionId: "excluded_uncalculated", serviceDate: "2026-06-17", excluded: true })
+  ], { patientId: "pat_month_excluded", claimMonth: "2026-06" });
+
+  assert.equal(receiptDraft.sessionCount, 1);
+  assert.equal(receiptDraft.uncalculatedSessionCount, 0);
+  assert.equal(receiptDraft.totalPoints, 76);
+  assert.deepEqual(receiptDraft.lines.map((line) => line.code), ["included"]);
 });
 
 test("buildReceiptExportValidation applies facility receipt validation severity policy", () => {
@@ -1360,7 +1502,7 @@ test("monthly receipt aggregates pending candidate proposals into a second tier"
       provider: "test",
       status: "completed",
       totalPoints: lineItems.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0),
-      lineItems,
+      lineItems: lineItems.map((line) => ({ status: "confirmed", ...line })),
       candidateProposals,
       warnings: []
     }, { calculationId: `calc_${feeSessionId}`, now: new Date(`${serviceDate}T00:01:00.000Z`) });
@@ -1517,7 +1659,7 @@ test("エンジン自動整合で除外された行は承認までレセ合計�
     status: "completed",
     totalPoints: 890,
     lineItems: [
-      { code: "114001110", name: "在宅患者訪問診療料（１）１", orderType: "procedure", points: 890, totalPoints: 890, quantity: 1, status: "needs_review" },
+      { code: "114001110", name: "在宅患者訪問診療料（１）１", orderType: "procedure", points: 890, totalPoints: 890, quantity: 1, status: "confirmed" },
       { code: "112011010", name: "外来管理加算", orderType: "basic", points: 52, totalPoints: 52, quantity: 1, status: "needs_review", excludedFromTotal: true, reason: "併算定不可(背反)のため合計から除外" }
     ],
     warnings: []

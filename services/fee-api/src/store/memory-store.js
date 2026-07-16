@@ -112,15 +112,16 @@ export class MemoryFeeStore {
     return sessionStatusView(session, activeJob);
   }
 
-  updateSession(orgId, feeSessionId, patch) {
+  updateSession(orgId, feeSessionId, patch, options = {}) {
     const current = this.getSession(orgId, feeSessionId);
     if (!current) {
       throw notFoundError("fee session not found");
     }
+    this.assertSessionMutationAllowed(orgId, feeSessionId, current, options);
 
-    const updated = applyFeeSessionPatch(current, patch, {
+    const updated = preserveLatestCalculationJobReservation(current, applyFeeSessionPatch(current, patch, {
       now: this.timestamp()
-    });
+    }), options);
     this.sessionsForOrg(orgId).set(feeSessionId, updated);
 
     return {
@@ -128,16 +129,17 @@ export class MemoryFeeStore {
     };
   }
 
-  saveCalculation(orgId, feeSessionId, calculationResult) {
+  saveCalculation(orgId, feeSessionId, calculationResult, options = {}) {
     const current = this.getSession(orgId, feeSessionId);
     if (!current) {
       throw notFoundError("fee session not found");
     }
+    this.assertSessionMutationAllowed(orgId, feeSessionId, current, options);
 
-    const updated = applyCalculationResult(current, calculationResult, {
+    const updated = preserveLatestCalculationJobReservation(current, applyCalculationResult(current, calculationResult, {
       calculationId: this.idFactory("calc"),
       now: this.timestamp()
-    });
+    }), options);
     this.sessionsForOrg(orgId).set(feeSessionId, updated);
 
     return {
@@ -171,6 +173,7 @@ export class MemoryFeeStore {
     if (!current) {
       throw notFoundError("fee session not found");
     }
+    assertNoActiveSessionCalculation(current);
 
     const updated = applyReviewDecision(current, reviewItemId, input, {
       now: this.timestamp()
@@ -188,6 +191,7 @@ export class MemoryFeeStore {
     if (!current) {
       throw notFoundError("fee session not found");
     }
+    assertNoActiveSessionCalculation(current);
 
     const now = this.timestamp();
     let updated = current;
@@ -209,6 +213,7 @@ export class MemoryFeeStore {
     if (!current) {
       throw notFoundError("fee session not found");
     }
+    assertNoActiveSessionCalculation(current);
     const now = this.timestamp();
     const calculationJobId = this.idFactory("fee_calc_job");
     const job = {
@@ -228,18 +233,72 @@ export class MemoryFeeStore {
       updatedAt: now,
       schemaVersion: 1
     };
+    const updatedSession = applyFeeSessionPatch(current, {
+      status: "calculating",
+      activeCalculationJobId: calculationJobId,
+      latestCalculationJobId: calculationJobId,
+      ...(input.calculationProgress ? { calculationProgress: input.calculationProgress } : {})
+    }, { now });
     this.calculationJobsForOrg(orgId).set(calculationJobKey(feeSessionId, calculationJobId), job);
-    return { calculationJob: job };
+    this.sessionsForOrg(orgId).set(feeSessionId, updatedSession);
+    return { calculationJob: job, feeSession: updatedSession };
   }
 
   getCalculationJob(orgId, feeSessionId, calculationJobId) {
     return this.calculationJobsForOrg(orgId).get(calculationJobKey(feeSessionId, calculationJobId)) || null;
   }
 
-  updateCalculationJob(orgId, feeSessionId, calculationJobId, patch = {}) {
+  claimCalculationJob(orgId, feeSessionId, calculationJobId, input = {}) {
     const current = this.getCalculationJob(orgId, feeSessionId, calculationJobId);
     if (!current) {
       throw notFoundError("fee calculation job not found");
+    }
+    const now = timestampValue(input.now, this.timestamp());
+    const leaseToken = String(input.leaseToken || "").trim();
+    const leaseExpiresAt = timestampValue(input.leaseExpiresAt, now);
+    if (!leaseToken) {
+      throw new TypeError("leaseToken is required");
+    }
+    if (current.status === "succeeded") {
+      return { calculationJob: current, claimed: false, alreadyCompleted: true };
+    }
+    const session = this.getSession(orgId, feeSessionId);
+    if (!session) {
+      throw notFoundError("fee session not found");
+    }
+    assertCalculationJobCanClaimSession(session, calculationJobId);
+    if (current.status === "running" && isActiveLease(current, now)) {
+      return { calculationJob: current, claimed: false, alreadyRunning: true };
+    }
+
+    const updated = {
+      ...current,
+      status: "running",
+      phase: input.phase || "extract",
+      attemptCount: Number(current.attemptCount || 0) + 1,
+      startedAt: current.startedAt || now,
+      lastAttemptAt: now,
+      leaseToken,
+      leaseExpiresAt,
+      updatedAt: now
+    };
+    this.calculationJobsForOrg(orgId).set(calculationJobKey(feeSessionId, calculationJobId), updated);
+    const updatedSession = applyFeeSessionPatch(session, {
+      status: "calculating",
+      activeCalculationJobId: calculationJobId
+    }, { now });
+    this.sessionsForOrg(orgId).set(feeSessionId, updatedSession);
+    return { calculationJob: updated, feeSession: updatedSession, claimed: true };
+  }
+
+  updateCalculationJob(orgId, feeSessionId, calculationJobId, patch = {}, options = {}) {
+    const current = this.getCalculationJob(orgId, feeSessionId, calculationJobId);
+    if (!current) {
+      throw notFoundError("fee calculation job not found");
+    }
+    assertCalculationJobExpectedState(current, options);
+    if (Object.hasOwn(options || {}, "expectedLeaseToken")) {
+      assertActiveCalculationJobLease(current, options.expectedLeaseToken, this.timestamp());
     }
     const updated = {
       ...current,
@@ -365,6 +424,43 @@ export class MemoryFeeStore {
     return this.calculationJobsByOrg.get(orgId);
   }
 
+  assertSessionMutationAllowed(orgId, feeSessionId, session, options = {}) {
+    if (Object.hasOwn(options || {}, "expectedCalculationJobStatus")) {
+      const calculationJobId = String(options.calculationJobId || "").trim();
+      if (!calculationJobId) {
+        throw new TypeError("calculationJobId is required with expectedCalculationJobStatus");
+      }
+      assertCalculationJobExpectedState(
+        this.getCalculationJob(orgId, feeSessionId, calculationJobId),
+        { expectedStatus: options.expectedCalculationJobStatus }
+      );
+    }
+    if (!Object.hasOwn(options || {}, "expectedLeaseToken")) {
+      assertUnleasedSessionMutationAllowed(session, options);
+      return;
+    }
+    const calculationJobId = String(options.calculationJobId || "").trim();
+    if (!calculationJobId) {
+      throw new TypeError("calculationJobId is required with expectedLeaseToken");
+    }
+    const job = this.getCalculationJob(orgId, feeSessionId, calculationJobId);
+    assertActiveCalculationJobLease(job, options.expectedLeaseToken, this.timestamp());
+    const activeCalculationJobId = String(session.activeCalculationJobId || "").trim();
+    const latestCalculationJobId = String(session.latestCalculationJobId || "").trim();
+    if (
+      (latestCalculationJobId && latestCalculationJobId !== calculationJobId)
+      || (!latestCalculationJobId && activeCalculationJobId !== calculationJobId)
+    ) {
+      throw calculationJobLeaseConflictError();
+    }
+    if (
+      activeCalculationJobId !== calculationJobId
+      && !(options.allowClearedActiveCalculationJob === true && !activeCalculationJobId)
+    ) {
+      throw calculationJobLeaseConflictError();
+    }
+  }
+
   monthlyBulkJobsForOrg(orgId) {
     if (!this.monthlyBulkJobsByOrg.has(orgId)) {
       this.monthlyBulkJobsByOrg.set(orgId, new Map());
@@ -419,6 +515,120 @@ function calculationJobKey(feeSessionId, calculationJobId) {
   return `${feeSessionId}::${calculationJobId}`;
 }
 
+function timestampValue(value, fallback) {
+  const date = value instanceof Date ? value : new Date(value || fallback);
+  return Number.isNaN(date.getTime()) ? fallback : date.toISOString();
+}
+
+function isActiveLease(job = {}, now) {
+  const expiresAt = Date.parse(String(job.leaseExpiresAt || ""));
+  const nowMs = Date.parse(String(now || ""));
+  return Boolean(job.leaseToken) && Number.isFinite(expiresAt) && Number.isFinite(nowMs) && expiresAt > nowMs;
+}
+
+function assertActiveCalculationJobLease(job, expectedLeaseToken, now) {
+  if (
+    !job
+    || job.status !== "running"
+    || String(job.leaseToken || "") !== String(expectedLeaseToken || "")
+    || !isActiveLease(job, now)
+  ) {
+    throw calculationJobLeaseConflictError();
+  }
+}
+
+function assertCalculationJobExpectedState(job, options = {}) {
+  if (!job) {
+    throw calculationJobStateConflictError();
+  }
+  if (
+    Object.hasOwn(options || {}, "expectedStatus")
+    && String(job.status || "") !== String(options.expectedStatus || "")
+  ) {
+    throw calculationJobStateConflictError();
+  }
+  if (
+    Object.hasOwn(options || {}, "expectedEnqueueStatus")
+    && String(job.enqueueStatus || "") !== String(options.expectedEnqueueStatus || "")
+  ) {
+    throw calculationJobStateConflictError();
+  }
+}
+
+function assertNoActiveSessionCalculation(session = {}) {
+  if (session.activeCalculationJobId || session.status === "calculating") {
+    throw feeSessionCalculationConflictError();
+  }
+}
+
+function assertCalculationJobCanClaimSession(session = {}, calculationJobId) {
+  const activeCalculationJobId = String(session.activeCalculationJobId || "").trim();
+  const latestCalculationJobId = String(session.latestCalculationJobId || "").trim();
+  if (
+    (latestCalculationJobId && latestCalculationJobId !== calculationJobId)
+    || (!latestCalculationJobId && activeCalculationJobId !== calculationJobId)
+  ) {
+    throw feeSessionCalculationConflictError("a newer fee calculation job owns this session");
+  }
+  if (activeCalculationJobId && activeCalculationJobId !== calculationJobId) {
+    throw feeSessionCalculationConflictError("another fee calculation job owns this session");
+  }
+  if (!activeCalculationJobId && session.status === "calculating") {
+    throw feeSessionCalculationConflictError();
+  }
+}
+
+function assertUnleasedSessionMutationAllowed(session = {}, options = {}) {
+  const expectedActiveCalculationJobId = String(options.expectedActiveCalculationJobId || "").trim();
+  const activeCalculationJobId = String(session.activeCalculationJobId || "").trim();
+  if (expectedActiveCalculationJobId) {
+    if (activeCalculationJobId !== expectedActiveCalculationJobId) {
+      throw feeSessionCalculationConflictError();
+    }
+    return;
+  }
+  if (activeCalculationJobId) {
+    throw feeSessionCalculationConflictError();
+  }
+  if (session.status === "calculating" && options.allowCalculatingSessionMutation !== true) {
+    throw feeSessionCalculationConflictError();
+  }
+}
+
+function preserveLatestCalculationJobReservation(current = {}, updated = {}, options = {}) {
+  if (!Object.hasOwn(options || {}, "expectedLeaseToken")) {
+    return updated;
+  }
+  return {
+    ...updated,
+    latestCalculationJobId: current.latestCalculationJobId || null
+  };
+}
+
+function calculationJobLeaseConflictError() {
+  const error = new Error("fee calculation job lease is no longer owned by this worker");
+  error.name = "ConflictError";
+  error.statusCode = 409;
+  error.code = "FEE_CALCULATION_JOB_LEASE_CONFLICT";
+  return error;
+}
+
+function calculationJobStateConflictError() {
+  const error = new Error("fee calculation job state changed before the requested update");
+  error.name = "ConflictError";
+  error.statusCode = 409;
+  error.code = "FEE_CALCULATION_JOB_STATE_CONFLICT";
+  return error;
+}
+
+function feeSessionCalculationConflictError(message = "fee session calculation is already in progress") {
+  const error = new Error(message);
+  error.name = "ConflictError";
+  error.statusCode = 409;
+  error.code = "FEE_SESSION_CALCULATION_CONFLICT";
+  return error;
+}
+
 function sessionStatusView(session = {}, activeJob = null) {
   return {
     feeSessionId: session.feeSessionId || session.sessionId || "",
@@ -428,6 +638,7 @@ function sessionStatusView(session = {}, activeJob = null) {
     calculationSummary: session.calculationSummary || null,
     latestCalculationId: session.latestCalculationId || null,
     activeCalculationJobId: session.activeCalculationJobId || null,
+    latestCalculationJobId: session.latestCalculationJobId || null,
     updatedAt: session.updatedAt || null
   };
 }
@@ -502,6 +713,7 @@ export function toSessionSummary(session = {}) {
     setting: session.setting,
     sourceSystem: session.sourceSystem || null,
     latestCalculationId: session.latestCalculationId || null,
+    latestCalculationJobId: session.latestCalculationJobId || null,
     calculationSummary: session.calculationSummary || summarizeCalculationResult(session.calculationResult),
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,

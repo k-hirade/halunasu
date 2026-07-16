@@ -61,6 +61,7 @@ export function buildFeeSession(input = {}, options = {}) {
     calculationOptionsAutoKeys: Array.isArray(input.calculationOptionsAutoKeys) ? input.calculationOptionsAutoKeys : [],
     calculationProgress: isPlainObject(input.calculationProgress) ? input.calculationProgress : null,
     activeCalculationJobId: input.activeCalculationJobId || null,
+    latestCalculationJobId: input.latestCalculationJobId || null,
     monthlyClaimWork: isPlainObject(input.monthlyClaimWork) ? input.monthlyClaimWork : null,
     receiptAnnotations: isPlainObject(input.receiptAnnotations) ? input.receiptAnnotations : null,
     sourceSystem: input.sourceSystem || null,
@@ -115,6 +116,9 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
       activeCalculationJobId: hasOwn(patch, "activeCalculationJobId")
         ? patch.activeCalculationJobId || null
         : undefined,
+      latestCalculationJobId: hasOwn(patch, "latestCalculationJobId")
+        ? patch.latestCalculationJobId || null
+        : undefined,
       monthlyClaimWork: hasOwn(patch, "monthlyClaimWork")
         ? isPlainObject(patch.monthlyClaimWork) ? patch.monthlyClaimWork : null
         : undefined,
@@ -155,6 +159,10 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
     next.calculationProgress = null;
   }
 
+  if (changedCalculationInput) {
+    next.latestCalculationJobId = null;
+  }
+
   if (patch.status === "calculating") {
     next.calculationResult = null;
     next.calculationSummary = null;
@@ -190,6 +198,7 @@ export function applyCalculationResult(current = {}, calculationResult = {}, opt
         totalPoints: normalizedResult.totalPoints,
         lineItemCount: normalizedResult.lineItems.length
       },
+    reviewDecisions: {},
     activeCalculationJobId: null,
     updatedAt: now
   };
@@ -308,6 +317,11 @@ export function buildReceiptDraft(session = {}, options = {}) {
     });
   const lines = [...baseLines, ...adoptedProposalLines];
   const includedLines = lines.filter((line) => line.includedInTotal !== false);
+  const pendingLineCount = baseLines.filter((line) => line.inclusionStatus === "pending").length;
+  const pendingProposalCount = candidateProposals.filter((proposal) => {
+    const status = proposalDecision(proposal, decisions)?.status || "";
+    return status !== "approved" && status !== "rejected";
+  }).length;
   const totalPoints = Number(includedLines.reduce((sum, line) => sum + line.totalPoints, 0));
   const receiptType = receiptTypeFromSession(session);
 
@@ -334,6 +348,9 @@ export function buildReceiptDraft(session = {}, options = {}) {
     status: calculation.status ? "ready" : "not_calculated",
     exportStatus: "draft",
     totalPoints,
+    pendingReviewCount: pendingLineCount + pendingProposalCount,
+    pendingLineCount,
+    pendingProposalCount,
     billing: buildBillingSummary(session, { totalPoints }),
     lines,
     lineOccurrences: includedLines.map((line, index) => receiptLineOccurrenceFromLine(line, session, index)),
@@ -355,16 +372,24 @@ export function buildMonthlyReceiptDraft(sessions = [], options = {}) {
   const patientId = options.patientId || null;
   const claimMonth = String(options.claimMonth || "").slice(0, 7);
   const monthOf = (session) => String(session.claimMonth || String(session.serviceDate || "").slice(0, 7));
-  const relevant = (Array.isArray(sessions) ? sessions : [])
-    .filter((session) => session && session.calculationResult && session.calculationResult.status)
+  const scopedSessions = (Array.isArray(sessions) ? sessions : [])
+    .filter(Boolean)
     .filter((session) => !patientId || session.patientId === patientId)
     .filter((session) => !claimMonth || monthOf(session) === claimMonth)
+    .filter((session) => String(session.monthlyClaimWork?.status || "") !== "excluded");
+  const relevant = scopedSessions
+    .filter((session) => session.calculationResult && session.calculationResult.status)
     .sort((a, b) => String(a.serviceDate || "").localeCompare(String(b.serviceDate || "")));
+  const uncalculatedSessionCount = scopedSessions.length - relevant.length;
 
   const lineMap = new Map();
   const lineOccurrences = [];
+  let pendingLineCount = 0;
+  let pendingProposalCount = 0;
   for (const session of relevant) {
     const draft = buildReceiptDraft(session, { now: options.now });
+    pendingLineCount += Number(draft.pendingLineCount || 0);
+    pendingProposalCount += Number(draft.pendingProposalCount || 0);
     for (const line of Array.isArray(draft.lines) ? draft.lines : []) {
       if (line.includedInTotal === false) {
         continue;
@@ -430,7 +455,11 @@ export function buildMonthlyReceiptDraft(sessions = [], options = {}) {
     status: relevant.length ? "ready" : "not_calculated",
     actualDays: serviceDates.length,
     sessionCount: relevant.length,
+    uncalculatedSessionCount,
     totalPoints,
+    pendingReviewCount: pendingLineCount + pendingProposalCount,
+    pendingLineCount,
+    pendingProposalCount,
     billing: buildBillingSummary(base, { totalPoints }),
     diagnoses: mergeMonthlyDiagnoses(relevant),
     receiptAnnotations: mergeMonthlyReceiptAnnotations(relevant),
@@ -635,7 +664,7 @@ export function buildReceiptExportValidation(receiptDraft = {}, context = {}) {
   addReceiptValidationIssue(issues, !insurance.insurerNumber, "insurance.insurerNumber", severityFor("insuranceInsurerNumber", "error"), "保険者番号が未設定です。");
   addReceiptValidationIssue(issues, !insurance.insuredSymbol, "insurance.insuredSymbol", severityFor("insuranceInsuredSymbol", "warning"), "被保険者記号が未設定です。");
   addReceiptValidationIssue(issues, !insurance.insuredNumber, "insurance.insuredNumber", severityFor("insuranceInsuredNumber", "warning"), "被保険者番号が未設定です。");
-  addReceiptValidationIssue(issues, !context.connectorSpecVerified, "connector.targetSpec", "warning", "接続先レセコンのCSV/UKE/API仕様が未設定です。実請求前に接続先仕様を確認してください。");
+  addReceiptValidationIssue(issues, !context.connectorSpecVerified, "connector.targetSpec", "error", "接続先レセコンのCSV/UKE/API仕様が未設定です。実請求前に接続先仕様を確認してください。");
 
   for (const [index, publicEntry] of publicInsurance.entries()) {
     addReceiptValidationIssue(issues, !publicEntry.payerNumber, `publicInsurance[${index}].payerNumber`, severityFor("publicInsurancePayerNumber", "error"), "公費負担者番号が未設定です。");
@@ -645,7 +674,21 @@ export function buildReceiptExportValidation(receiptDraft = {}, context = {}) {
   const lines = Array.isArray(receiptDraft.lineGroups)
     ? receiptDraft.lineGroups.flatMap((group) => Array.isArray(group.lines) ? group.lines : [])
     : [];
-  addReceiptValidationIssue(issues, receiptDraft.status !== "ready", "receiptDraft.status", "warning", "レセプト案が未算定状態です。");
+  addReceiptValidationIssue(issues, receiptDraft.status !== "ready", "receiptDraft.status", "error", "レセプト案が未算定状態です。");
+  addReceiptValidationIssue(
+    issues,
+    Number(receiptDraft.uncalculatedSessionCount || 0) > 0,
+    "receiptDraft.uncalculatedSessionCount",
+    "error",
+    `未算定の受診が${Number(receiptDraft.uncalculatedSessionCount || 0)}件あるため、月次レセプトを出力できません。`
+  );
+  addReceiptValidationIssue(
+    issues,
+    Number(receiptDraft.pendingReviewCount || 0) > 0,
+    "receiptDraft.pendingReviewCount",
+    "error",
+    `未確認の算定候補が${Number(receiptDraft.pendingReviewCount || 0)}件あります。採用または却下を確定してください。`
+  );
   for (const [index, line] of lines.entries()) {
     addReceiptValidationIssue(issues, !line.code, `lines[${index}].code`, severityFor("lineCode", "warning"), "診療行為・薬剤・材料コードが未設定の明細があります。");
     addReceiptValidationIssue(issues, Number(line.points || 0) <= 0, `lines[${index}].points`, severityFor("linePoints", "warning"), "点数が0以下の明細があります。");
@@ -2094,14 +2137,17 @@ function lineDecision(line = {}, decisions = {}) {
   return decisions[lineReviewItemId(line)] || null;
 }
 
-function lineInclusionStatus(line = {}, decisions = {}) {
-  const status = lineDecision(line, decisions)?.status;
-  if (status === "rejected") return "excluded";
-  if (status === "edited") return "pending";
+export function lineInclusionStatus(line = {}, decisions = {}) {
+  const decisionStatus = lineDecision(line, decisions)?.status;
+  if (decisionStatus === "rejected") return "excluded";
+  if (decisionStatus === "edited") return "pending";
+  if (decisionStatus === "approved") return "included";
+  const status = String(line.status || "candidate").toLowerCase();
+  if (status === "rejected" || status === "blocked") return "excluded";
   // エンジンの自動整合(背反・回数・包括・年齢)で除外された行は、
   // 人が承認するまで合計に入れない(承認で再算入できる)。
-  if (line.excludedFromTotal) {
-    return status === "approved" ? "included" : "pending";
+  if (line.excludedFromTotal || line.reviewRequired === true || ["candidate", "needs_review"].includes(status)) {
+    return "pending";
   }
   return "included";
 }

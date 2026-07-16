@@ -51,12 +51,12 @@ export class LazyFirestoreFeeStore {
     return this.call("getSessionStatus", orgId, feeSessionId);
   }
 
-  async updateSession(orgId, feeSessionId, patch) {
-    return this.call("updateSession", orgId, feeSessionId, patch);
+  async updateSession(orgId, feeSessionId, patch, options) {
+    return this.call("updateSession", orgId, feeSessionId, patch, options);
   }
 
-  async saveCalculation(orgId, feeSessionId, calculationResult) {
-    return this.call("saveCalculation", orgId, feeSessionId, calculationResult);
+  async saveCalculation(orgId, feeSessionId, calculationResult, options) {
+    return this.call("saveCalculation", orgId, feeSessionId, calculationResult, options);
   }
 
   async getReceiptDraft(orgId, feeSessionId) {
@@ -83,8 +83,12 @@ export class LazyFirestoreFeeStore {
     return this.call("getCalculationJob", orgId, feeSessionId, calculationJobId);
   }
 
-  async updateCalculationJob(orgId, feeSessionId, calculationJobId, patch) {
-    return this.call("updateCalculationJob", orgId, feeSessionId, calculationJobId, patch);
+  async claimCalculationJob(orgId, feeSessionId, calculationJobId, input) {
+    return this.call("claimCalculationJob", orgId, feeSessionId, calculationJobId, input);
+  }
+
+  async updateCalculationJob(orgId, feeSessionId, calculationJobId, patch, options) {
+    return this.call("updateCalculationJob", orgId, feeSessionId, calculationJobId, patch, options);
   }
 
   async createMonthlyBulkJob(orgId, input) {

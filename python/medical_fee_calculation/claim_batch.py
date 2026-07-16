@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass
@@ -2305,7 +2306,16 @@ def _parse_procedure_history_events(value: Any) -> tuple[ProcedureHistoryEvent, 
             raise ValueError(
                 "procedure_history_events[].procedure_code and service_date are required"
             )
-        events.append(ProcedureHistoryEvent(procedure_code=procedure_code, service_date=service_date))
+        quantity = _float_value(item.get("quantity"), default=1.0)
+        if not math.isfinite(quantity) or quantity <= 0:
+            raise ValueError("procedure_history_events[].quantity must be a positive number")
+        events.append(
+            ProcedureHistoryEvent(
+                procedure_code=procedure_code,
+                service_date=service_date,
+                quantity=quantity,
+            )
+        )
     return tuple(events)
 
 

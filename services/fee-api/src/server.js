@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { inflateRawSync } from "node:zlib";
 import {
+  forbiddenError,
+  hasProductAccess,
   requirePlatformCsrf,
   requireProductContext
 } from "../../../packages/auth-client/src/index.js";
@@ -27,6 +29,7 @@ import {
   buildMonthlyBaselineDiagnosis,
   buildReceiptExportValidation,
   buildReviewItems,
+  lineInclusionStatus,
   serializeUke
 } from "../../../packages/fee-core/src/index.js";
 import {
@@ -47,6 +50,7 @@ import { createFeeStoreFromEnv } from "./store/create-store.js";
 
 const PRODUCT_ID = "fee";
 const FEE_PRODUCT_ROLES = ["admin", "doctor", "nurse", "medical_clerk", "viewer"];
+const FEE_WRITE_ROLES = ["admin", "doctor", "nurse", "medical_clerk"];
 const DEFAULT_OPENAI_FEE_CLINICAL_TIMEOUT_MS = 60000;
 const DEFAULT_FACILITY_PROFILE_CACHE_TTL_MS = 60_000;
 const DEFAULT_ORDER_ENRICH_CONCURRENCY = 4;
@@ -167,16 +171,27 @@ async function routeFeeApiRequest(input = {}) {
   if (method === "POST" && matches(parts, ["v1", "fee", "internal", "calculation-jobs", "run"])) {
     requireCalculationWorkerAuth(input);
     const payload = decodeCalculationJobWorkerPayload(input.body || {});
-    return ok(await runFeeCalculationJob({
+    const result = await runFeeCalculationJob({
       input,
       platformStore,
       feeStore,
       feeCalculator,
       payload
-    }));
+    });
+    if (result.alreadyRunning) {
+      return {
+        statusCode: 409,
+        headers: { "retry-after": "5" },
+        body: result
+      };
+    }
+    return ok(result);
   }
 
   const context = await requireFeeContext(input, platformStore);
+  if (["POST", "PATCH", "PUT", "DELETE"].includes(method)) {
+    requireFeeWriteAccess(context);
+  }
 
   if (method === "GET" && matches(parts, ["v1", "fee", "context"])) {
     return ok({ context: contextView(context) });
@@ -1171,13 +1186,15 @@ async function routeFeeApiRequest(input = {}) {
         calculationInput
       }));
     } catch (error) {
-      await markFeeCalculationFailed({
-        context,
-        feeStore,
-        feeSessionId: parts[3],
-        error,
-        now: input.now || new Date()
-      });
+      if (!isFeeSessionCalculationConflict(error)) {
+        await markFeeCalculationFailed({
+          context,
+          feeStore,
+          feeSessionId: parts[3],
+          error,
+          now: input.now || new Date()
+        });
+      }
       throw error;
     }
   }
@@ -1192,6 +1209,13 @@ async function requireFeeContext(input, platformStore) {
     productLabel: "Fee",
     allowedProductRoles: FEE_PRODUCT_ROLES
   });
+}
+
+function requireFeeWriteAccess(context) {
+  const allowed = hasProductAccess(context.session, PRODUCT_ID, FEE_WRITE_ROLES);
+  if (!allowed) {
+    throw forbiddenError("Fee write access is required");
+  }
 }
 
 function requireFeeAdminContext(context = {}) {
@@ -3030,7 +3054,11 @@ async function createFeeCalculationJob({
   current,
   calculationInput
 }) {
-  if (typeof feeStore.createCalculationJob !== "function") {
+  if (
+    typeof feeStore.createCalculationJob !== "function"
+    || typeof feeStore.updateCalculationJob !== "function"
+    || typeof feeStore.getCalculationJob !== "function"
+  ) {
     const error = new Error("fee calculation jobs are not supported by this store");
     error.name = "NotImplementedError";
     error.statusCode = 501;
@@ -3043,50 +3071,91 @@ async function createFeeCalculationJob({
     prepared: {},
     capturedAt: input.now || new Date()
   });
+  const queuedProgress = feeCalculationProgress({
+    phase: "queued",
+    percent: 1,
+    message: "算定ジョブを受け付けました。",
+    session: current,
+    now: input.now || new Date()
+  });
   const createdJob = await feeStore.createCalculationJob(context.session.orgId, feeSessionId, {
     status: "queued",
     phase: "queued",
     calculationInput,
     inputSnapshot,
+    calculationProgress: queuedProgress,
     createdByMemberId: context.session.memberId
   });
+  const calculationJobId = createdJob.calculationJob.calculationJobId;
   const enqueue = await enqueueFeeCalculationJob({
     input,
     context,
     calculationJob: createdJob.calculationJob
   });
-  const updatedJob = typeof feeStore.updateCalculationJob === "function"
-    ? await feeStore.updateCalculationJob(context.session.orgId, feeSessionId, createdJob.calculationJob.calculationJobId, {
-      status: enqueue.status || createdJob.calculationJob.status,
-      phase: enqueue.phase || createdJob.calculationJob.phase,
+  const jobWasQueued = enqueue.status === "queued";
+  const failedProgress = feeCalculationProgress({
+    phase: "failed",
+    percent: 0,
+    message: "算定ジョブをキューに投入できませんでした。Cloud Tasks または Pub/Sub の設定を確認してください。",
+    session: current,
+    now: input.now || new Date()
+  });
+  let enqueueFailureTransitioned = false;
+  let updatedJob;
+  try {
+    updatedJob = await feeStore.updateCalculationJob(context.session.orgId, feeSessionId, calculationJobId, {
+      ...(jobWasQueued ? {} : {
+        status: enqueue.status || "enqueue_failed",
+        phase: enqueue.phase || "enqueue",
+        progress: failedProgress
+      }),
       enqueueStatus: enqueue.enqueueStatus,
       enqueueProvider: enqueue.enqueueProvider,
-      enqueueMessage: enqueue.enqueueMessage,
-      progress: feeCalculationProgress({
-        phase: ["queued", "waiting_for_worker"].includes(enqueue.status || createdJob.calculationJob.status) ? "queued" : "failed",
-        percent: ["queued", "waiting_for_worker"].includes(enqueue.status || createdJob.calculationJob.status) ? 1 : 0,
-        message: ["queued", "waiting_for_worker"].includes(enqueue.status || createdJob.calculationJob.status)
-          ? "算定ジョブを受け付けました。"
-          : "算定ジョブをキューに投入できませんでした。Cloud Tasks または Pub/Sub の設定を確認してください。",
-        session: current,
-        now: input.now || new Date()
-      })
-    })
-    : createdJob;
-  const jobWasQueued = ["queued", "waiting_for_worker"].includes(updatedJob.calculationJob.status);
-  await feeStore.updateSession(context.session.orgId, feeSessionId, {
-    ...(jobWasQueued ? { status: "calculating" } : {}),
-    activeCalculationJobId: jobWasQueued ? updatedJob.calculationJob.calculationJobId : null,
-    ...(jobWasQueued ? {} : {
-      calculationProgress: updatedJob.calculationJob.progress || feeCalculationProgress({
-        phase: "failed",
-        percent: 0,
-        message: "算定ジョブをキューに投入できませんでした。Cloud Tasks または Pub/Sub の設定を確認してください。",
-        session: current,
-        now: input.now || new Date()
-      })
-    })
-  });
+      enqueueMessage: enqueue.enqueueMessage
+    }, {
+      expectedEnqueueStatus: "pending",
+      ...(jobWasQueued ? {} : { expectedStatus: "queued" })
+    });
+    enqueueFailureTransitioned = !jobWasQueued;
+  } catch (error) {
+    if (!isCalculationJobStateConflict(error)) {
+      throw error;
+    }
+    const calculationJob = await feeStore.getCalculationJob(
+      context.session.orgId,
+      feeSessionId,
+      calculationJobId
+    );
+    if (!calculationJob) {
+      throw error;
+    }
+    updatedJob = { calculationJob };
+  }
+  if (enqueueFailureTransitioned) {
+    try {
+      await feeStore.updateSession(context.session.orgId, feeSessionId, {
+        status: current.status,
+        activeCalculationJobId: null,
+        calculationProgress: updatedJob.calculationJob.progress || failedProgress
+      }, {
+        expectedActiveCalculationJobId: calculationJobId,
+        calculationJobId,
+        expectedCalculationJobStatus: updatedJob.calculationJob.status
+      });
+    } catch (error) {
+      if (!isFeeCalculationStateConflict(error)) {
+        throw error;
+      }
+      const calculationJob = await feeStore.getCalculationJob(
+        context.session.orgId,
+        feeSessionId,
+        calculationJobId
+      );
+      if (calculationJob) {
+        updatedJob = { calculationJob };
+      }
+    }
+  }
   await platformStore.createAuditEvent(context.session.orgId, {
     eventType: "fee.calculation_job_created",
     actorMemberId: context.session.memberId,
@@ -3516,28 +3585,31 @@ async function runFeeCalculationJob({
     error.statusCode = 400;
     throw error;
   }
-  const job = typeof feeStore.getCalculationJob === "function"
-    ? await feeStore.getCalculationJob(orgId, feeSessionId, calculationJobId)
-    : null;
-  if (!job) {
-    const error = new Error("fee calculation job not found");
-    error.name = "NotFoundError";
-    error.statusCode = 404;
+  const now = input.now || new Date();
+  const leaseToken = crypto.randomUUID();
+  const leaseExpiresAt = timestampForSnapshot(new Date(
+    new Date(now).getTime() + calculationJobLeaseDurationMs(input.processEnv || process.env)
+  ));
+  if (typeof feeStore.claimCalculationJob !== "function") {
+    const error = new Error("atomic fee calculation job claims are required");
+    error.name = "ConfigurationError";
+    error.statusCode = 500;
     throw error;
   }
-  if (job.status === "succeeded") {
-    return { calculationJob: job, alreadyCompleted: true };
+  const claim = await feeStore.claimCalculationJob(orgId, feeSessionId, calculationJobId, {
+    leaseToken,
+    leaseExpiresAt,
+    now,
+    phase: "extract"
+  });
+  if (!claim.claimed) {
+    return {
+      calculationJob: claim.calculationJob,
+      ...(claim.alreadyCompleted ? { alreadyCompleted: true } : {}),
+      ...(claim.alreadyRunning ? { alreadyRunning: true } : {})
+    };
   }
-  const now = input.now || new Date();
-  const runningJob = typeof feeStore.updateCalculationJob === "function"
-    ? (await feeStore.updateCalculationJob(orgId, feeSessionId, calculationJobId, {
-      status: "running",
-      phase: "extract",
-      attemptCount: Number(job.attemptCount || 0) + 1,
-      startedAt: job.startedAt || timestampForSnapshot(now),
-      lastAttemptAt: timestampForSnapshot(now)
-    })).calculationJob
-    : job;
+  const runningJob = claim.calculationJob;
   const current = await feeStore.getSession(orgId, feeSessionId);
   if (!current) {
     const error = new Error("fee session not found");
@@ -3562,12 +3634,15 @@ async function runFeeCalculationJob({
       feeSessionId,
       current,
       calculationInput: isPlainObject(runningJob.calculationInput) ? runningJob.calculationInput : {},
-      calculationJobId
+      calculationJobId,
+      calculationJobLeaseToken: leaseToken
     });
     const completedJob = typeof feeStore.updateCalculationJob === "function"
       ? (await feeStore.updateCalculationJob(orgId, feeSessionId, calculationJobId, {
         status: "succeeded",
         phase: "complete",
+        leaseToken: null,
+        leaseExpiresAt: null,
         completedAt: timestampForSnapshot(input.now || new Date()),
         progress: result.feeSession?.calculationProgress || null,
         resultSummary: {
@@ -3575,7 +3650,7 @@ async function runFeeCalculationJob({
           totalPoints: Number(result.calculationResult?.totalPoints || 0),
           feeSessionStatus: result.feeSession?.status || null
         }
-      })).calculationJob
+      }, calculationJobLeaseUpdateOptions(leaseToken))).calculationJob
       : runningJob;
     return {
       calculationJob: completedJob,
@@ -3584,26 +3659,86 @@ async function runFeeCalculationJob({
       candidateWorkbench: result.candidateWorkbench
     };
   } catch (error) {
-    if (typeof feeStore.updateCalculationJob === "function") {
-      await feeStore.updateCalculationJob(orgId, feeSessionId, calculationJobId, {
-        status: "failed",
-        phase: "failed",
-        completedAt: timestampForSnapshot(input.now || new Date()),
-        error: {
-          name: error.name || "Error",
-          message: safeLogError(error)
-        }
-      });
-    }
     await markFeeCalculationFailed({
       context,
       feeStore,
       feeSessionId,
       error,
-      now: input.now || new Date()
+      now: input.now || new Date(),
+      calculationJobId,
+      calculationJobLeaseToken: leaseToken
     });
+    if (typeof feeStore.updateCalculationJob === "function") {
+      try {
+        await feeStore.updateCalculationJob(orgId, feeSessionId, calculationJobId, {
+          status: "failed",
+          phase: "failed",
+          leaseToken: null,
+          leaseExpiresAt: null,
+          completedAt: timestampForSnapshot(input.now || new Date()),
+          error: {
+            name: error.name || "Error",
+            message: safeLogError(error)
+          }
+        }, calculationJobLeaseUpdateOptions(leaseToken));
+      } catch (updateError) {
+        if (!isCalculationJobLeaseConflict(updateError)) {
+          logFeeApiError(updateError, {
+            stage: "calculation_job_failure_update",
+            orgId,
+            feeSessionId,
+            calculationJobId
+          });
+        }
+      }
+    }
     throw error;
   }
+}
+
+function calculationJobLeaseDurationMs(env = {}) {
+  const requestedSeconds = Number.parseInt(env.FEE_CALCULATION_JOB_LEASE_SECONDS || "1800", 10);
+  const seconds = Number.isFinite(requestedSeconds)
+    ? Math.min(7200, Math.max(300, requestedSeconds))
+    : 1800;
+  return seconds * 1000;
+}
+
+function calculationJobLeaseUpdateOptions(leaseToken) {
+  return leaseToken ? { expectedLeaseToken: leaseToken } : {};
+}
+
+function calculationSessionLeaseUpdateOptions(calculationJobId, leaseToken, options = {}) {
+  if (calculationJobId && leaseToken) {
+    return {
+      calculationJobId,
+      expectedLeaseToken: leaseToken,
+      ...(options.allowClearedActiveCalculationJob === true
+        ? { allowClearedActiveCalculationJob: true }
+        : {})
+    };
+  }
+  return options.allowCalculatingSessionMutation === true
+    ? { allowCalculatingSessionMutation: true }
+    : {};
+}
+
+function isCalculationJobLeaseConflict(error) {
+  return error?.code === "FEE_CALCULATION_JOB_LEASE_CONFLICT"
+    || (error?.name === "ConflictError" && error?.statusCode === 409);
+}
+
+function isCalculationJobStateConflict(error) {
+  return error?.code === "FEE_CALCULATION_JOB_STATE_CONFLICT";
+}
+
+function isFeeCalculationStateConflict(error) {
+  return isCalculationJobStateConflict(error)
+    || isFeeSessionCalculationConflict(error);
+}
+
+function isFeeSessionCalculationConflict(error) {
+  return error?.code === "FEE_SESSION_CALCULATION_CONFLICT";
 }
 
 async function updateFeeCalculationProgress({
@@ -3611,17 +3746,24 @@ async function updateFeeCalculationProgress({
   orgId,
   feeSessionId,
   calculationJobId = null,
+  calculationJobLeaseToken = null,
   session = {},
   sessionPatch = null,
+  allowCalculatingSessionMutation = false,
   progress
 }) {
   if (calculationJobId && typeof feeStore.updateCalculationJob === "function") {
     await feeStore.updateCalculationJob(orgId, feeSessionId, calculationJobId, {
       phase: progress?.phase || "running",
       progress
-    });
+    }, calculationJobLeaseUpdateOptions(calculationJobLeaseToken));
     if (sessionPatch && Object.keys(sessionPatch).length) {
-      const result = await feeStore.updateSession(orgId, feeSessionId, sessionPatch);
+      const result = await feeStore.updateSession(
+        orgId,
+        feeSessionId,
+        sessionPatch,
+        calculationSessionLeaseUpdateOptions(calculationJobId, calculationJobLeaseToken)
+      );
       return { feeSession: result.feeSession };
     }
     return { feeSession: session };
@@ -3630,7 +3772,9 @@ async function updateFeeCalculationProgress({
   return feeStore.updateSession(orgId, feeSessionId, {
     ...(sessionPatch || {}),
     calculationProgress: progress
-  });
+  }, calculationSessionLeaseUpdateOptions(calculationJobId, calculationJobLeaseToken, {
+    allowCalculatingSessionMutation
+  }));
 }
 
 async function calculateFeeSessionNow({
@@ -3642,7 +3786,8 @@ async function calculateFeeSessionNow({
   feeSessionId,
   current,
   calculationInput,
-  calculationJobId = null
+  calculationJobId = null,
+  calculationJobLeaseToken = null
 }) {
   const overallStartedAt = Date.now();
   const stageTimings = [];
@@ -3652,8 +3797,12 @@ async function calculateFeeSessionNow({
     orgId: context.session.orgId,
     feeSessionId,
     calculationJobId,
+    calculationJobLeaseToken,
     session: current,
-    sessionPatch: { status: "calculating" },
+    sessionPatch: {
+      status: "calculating",
+      ...(calculationJobId ? {} : { latestCalculationJobId: null })
+    },
     progress: feeCalculationProgress({
       phase: "extract",
       percent: 10,
@@ -3672,14 +3821,18 @@ async function calculateFeeSessionNow({
     session: calculating.feeSession,
     calculationInput,
     previousCalculationResult,
-    stageTimings
+    stageTimings,
+    calculationJobId,
+    calculationJobLeaseToken
   });
   const progressed = await updateFeeCalculationProgress({
     feeStore,
     orgId: context.session.orgId,
     feeSessionId,
     calculationJobId,
+    calculationJobLeaseToken,
     session: calculationSession,
+    allowCalculatingSessionMutation: true,
     progress: feeCalculationProgress({
       phase: "calculate",
       percent: 55,
@@ -3702,7 +3855,8 @@ async function calculateFeeSessionNow({
     prepared,
     initialStageTimings: stageTimings,
     overallStartedAt,
-    calculationJobId
+    calculationJobId,
+    calculationJobLeaseToken
   });
 }
 
@@ -3717,7 +3871,9 @@ async function prepareFeeSessionForCalculation({
   calculationInput,
   previousCalculationResult = null,
   stageTimings,
-  status = null
+  status = null,
+  calculationJobId = null,
+  calculationJobLeaseToken = null
 }) {
   const prepared = await timedCalculationStage({
     stage: "prepare",
@@ -3748,7 +3904,14 @@ async function prepareFeeSessionForCalculation({
       orgId: context.session.orgId,
       feeSessionId,
       stageTimings,
-      fn: () => feeStore.updateSession(context.session.orgId, feeSessionId, patch),
+      fn: () => feeStore.updateSession(
+        context.session.orgId,
+        feeSessionId,
+        patch,
+        calculationSessionLeaseUpdateOptions(calculationJobId, calculationJobLeaseToken, {
+          allowCalculatingSessionMutation: true
+        })
+      ),
       detail: () => ({
         patchKeys: Object.keys(patch || {})
       })
@@ -3770,7 +3933,8 @@ async function calculatePreparedFeeSessionNow({
   prepared,
   initialStageTimings = [],
   overallStartedAt = Date.now(),
-  calculationJobId = null
+  calculationJobId = null,
+  calculationJobLeaseToken = null
 }) {
   const stageTimings = [...initialStageTimings];
   const calculationInputForSession = buildCalculationInputForSession(calculationSession, calculationInput, prepared);
@@ -3803,7 +3967,9 @@ async function calculatePreparedFeeSessionNow({
     orgId: context.session.orgId,
     feeSessionId,
     calculationJobId,
+    calculationJobLeaseToken,
     session: calculationSession,
+    allowCalculatingSessionMutation: true,
     progress: feeCalculationProgress({
       phase: "aggregate",
       percent: 85,
@@ -3859,7 +4025,10 @@ async function calculatePreparedFeeSessionNow({
           calculationResult,
           now: input.now || new Date()
         })
-      }, prepared.reviewWarnings)
+      }, prepared.reviewWarnings),
+      calculationSessionLeaseUpdateOptions(calculationJobId, calculationJobLeaseToken, {
+        allowCalculatingSessionMutation: true
+      })
     )
   });
   await timedCalculationStage({
@@ -3898,6 +4067,7 @@ async function calculatePreparedFeeSessionNow({
     orgId: context.session.orgId,
     feeSessionId,
     calculationJobId,
+    calculationJobLeaseToken,
     feeSession: result.feeSession,
     performance
   });
@@ -3952,7 +4122,9 @@ async function markFeeCalculationFailed({
   feeStore,
   feeSessionId,
   error,
-  now
+  now,
+  calculationJobId = null,
+  calculationJobLeaseToken = null
 }) {
   try {
     await feeStore.updateSession(context.session.orgId, feeSessionId, {
@@ -3965,9 +4137,17 @@ async function markFeeCalculationFailed({
         error,
         now
       })
-    });
-  } catch {
+    }, calculationSessionLeaseUpdateOptions(calculationJobId, calculationJobLeaseToken, {
+      allowClearedActiveCalculationJob: true,
+      allowCalculatingSessionMutation: true
+    }));
+    return true;
+  } catch (updateError) {
+    if (isCalculationJobLeaseConflict(updateError)) {
+      return false;
+    }
     // Preserve the original calculation error.
+    return true;
   }
 }
 
@@ -5005,8 +5185,7 @@ export function buildPriorHistoryOptions(priorSessions = [], { serviceDate = "",
   const sameDayCodes = new Set();
   const sameWeekCodes = new Set();
   const judgementGroups = new Set();
-  const events = [];
-  const seenEvents = new Set();
+  const eventsByCodeAndDate = new Map();
   let labManagementSameMonth = false;
   let medicationManagementSameMonth = false;
   let chronicDiseaseManagementSameMonth = false;
@@ -5023,14 +5202,17 @@ export function buildPriorHistoryOptions(priorSessions = [], { serviceDate = "",
       : [];
     for (const line of lineItems) {
       const code = String(line?.code || "").trim();
-      if (!code || !isHistoryCountableLine(line)) {
+      if (!code || !isHistoryCountableLine(line, prior?.reviewDecisions)) {
         continue;
       }
       const eventKey = `${code}|${priorDate}`;
-      if (!seenEvents.has(eventKey)) {
-        seenEvents.add(eventKey);
-        events.push({ procedure_code: code, service_date: priorDate });
-      }
+      const event = eventsByCodeAndDate.get(eventKey) || {
+        procedure_code: code,
+        service_date: priorDate,
+        quantity: 0
+      };
+      event.quantity += historyLineQuantity(line);
+      eventsByCodeAndDate.set(eventKey, event);
       if (currentMonth && priorDate.slice(0, 7) === currentMonth) {
         sameMonthCodes.add(code);
         const classification = classifyHistoryLine(line);
@@ -5057,12 +5239,13 @@ export function buildPriorHistoryOptions(priorSessions = [], { serviceDate = "",
           rapidLabSameDay = true;
         }
       }
-      if (serviceDate && isSameIsoWeek(priorDate, serviceDate)) {
+      if (serviceDate && isSameBillingWeek(priorDate, serviceDate)) {
         sameWeekCodes.add(code);
       }
     }
   }
 
+  const events = [...eventsByCodeAndDate.values()];
   if (!events.length && !sameMonthCodes.size && !sameDayCodes.size && !sameWeekCodes.size) {
     return null;
   }
@@ -5115,15 +5298,13 @@ function judgementGroupForText(text = "") {
 }
 
 // 明確に算定しないと判断された行は履歴に含めない(過大な制限検知を避ける)
-function isHistoryCountableLine(line = {}) {
-  const status = String(line?.status || "").toLowerCase();
-  if (status === "rejected" || status === "blocked") {
-    return false;
-  }
-  if (line?.includedInTotal === false) {
-    return false;
-  }
-  return true;
+function isHistoryCountableLine(line = {}, reviewDecisions = {}) {
+  return lineInclusionStatus(line, reviewDecisions) === "included";
+}
+
+function historyLineQuantity(line = {}) {
+  const quantity = Number(line?.quantity ?? line?.count ?? 1);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
 }
 
 // 履歴を calculationOptions.history へマージする。明示指定(gold等)があればそれを優先。
@@ -5263,6 +5444,7 @@ async function persistFeeCalculationPerformance({
   orgId,
   feeSessionId,
   calculationJobId = null,
+  calculationJobLeaseToken = null,
   feeSession = {},
   performance = {}
 } = {}) {
@@ -5284,11 +5466,18 @@ async function persistFeeCalculationPerformance({
       await feeStore.updateCalculationJob(orgId, feeSessionId, calculationJobId, {
         phase: "complete",
         progress
-      });
+      }, calculationJobLeaseUpdateOptions(calculationJobLeaseToken));
     }
     let updatedSession = null;
     if (typeof feeStore.updateSession === "function") {
-      const result = await feeStore.updateSession(orgId, feeSessionId, { calculationProgress: progress });
+      const result = await feeStore.updateSession(
+        orgId,
+        feeSessionId,
+        { calculationProgress: progress },
+        calculationSessionLeaseUpdateOptions(calculationJobId, calculationJobLeaseToken, {
+          allowClearedActiveCalculationJob: true
+        })
+      );
       updatedSession = result?.feeSession || null;
     }
     return { progress, feeSession: updatedSession };
@@ -5625,11 +5814,8 @@ function withReceiptExportValidation(receiptDraft = {}, session = {}, feeSetting
   };
 }
 
-function shouldBlockReceiptExport(url, validation = {}, exportContext = {}) {
-  if (Number(validation.blockingIssueCount || 0) <= 0) {
-    return false;
-  }
-  return url.searchParams.get("validate") === "true" || exportContext.receiptPolicy?.blockExportOnErrors === true;
+function shouldBlockReceiptExport(_url, validation = {}, _exportContext = {}) {
+  return Number(validation.blockingIssueCount || 0) > 0;
 }
 
 function receiptExportValidationFailed(validation = {}) {
@@ -7089,21 +7275,22 @@ function compactObject(value = {}) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
 
-function isSameIsoWeek(left = "", right = "") {
+function isSameBillingWeek(left = "", right = "") {
   const leftDate = parseIsoDate(left);
   const rightDate = parseIsoDate(right);
   if (!leftDate || !rightDate) {
     return false;
   }
-  const leftMonday = isoWeekMonday(leftDate);
-  const rightMonday = isoWeekMonday(rightDate);
-  return leftMonday.getTime() === rightMonday.getTime();
+  const leftSunday = billingWeekSunday(leftDate);
+  const rightSunday = billingWeekSunday(rightDate);
+  return leftSunday.getTime() === rightSunday.getTime();
 }
 
-function isoWeekMonday(date) {
+// 厚労省の診療報酬上の「週」は日曜日から土曜日までを単位とする。
+// https://www.mhlw.go.jp/web/t_doc?dataId=00tc4894&dataType=1&pageNo=1
+function billingWeekSunday(date) {
   const normalized = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const day = normalized.getUTCDay() || 7;
-  normalized.setUTCDate(normalized.getUTCDate() - day + 1);
+  normalized.setUTCDate(normalized.getUTCDate() - normalized.getUTCDay());
   return normalized;
 }
 
@@ -7672,6 +7859,8 @@ function feeSessionStatusView(session = {}) {
     calculationProgress: session.calculationProgress || null,
     calculationSummary: session.calculationSummary || null,
     latestCalculationId: session.latestCalculationId || null,
+    activeCalculationJobId: session.activeCalculationJobId || null,
+    latestCalculationJobId: session.latestCalculationJobId || null,
     updatedAt: session.updatedAt || null
   };
 }

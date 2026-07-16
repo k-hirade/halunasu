@@ -259,15 +259,34 @@ def apply_electronic_consistency(
             "electronic_exclusion_consistency",
         )
 
-    # 回数上限超過(履歴により上限到達済み)
+    # 回数上限超過。set形式の履歴は原則警告に留めるが、「最低1回」という下限だけで
+    # 超過を確定できる場合は自動降格する。
     for breach in electronic_rules.frequency_limit_breaches:
+        if not breach.limit_exceeded_certain:
+            continue
         index = counted(breach.procedure_code)
         if index is None:
             continue
+        current_quantity = float(breach.current_quantity or 0)
+        current_quantity_text = (
+            str(int(current_quantity))
+            if current_quantity.is_integer()
+            else str(current_quantity)
+        )
+        history_occurrences = float(breach.history_occurrences or 0)
+        history_occurrences_text = (
+            str(int(history_occurrences))
+            if history_occurrences.is_integer()
+            else str(history_occurrences)
+        )
+        if not breach.occurrence_count_known:
+            history_occurrences_text += "以上"
         demote(
             index,
-            f"算定回数上限のため合計から除外: {breach.procedure_name}は{breach.limit_name}の上限に達しています"
-            f"(直近: {breach.matched_service_date or '同一期間内'})。要件を満たす場合は確認のうえ採用してください。",
+            f"算定回数上限のため合計から除外: {breach.procedure_name}は{breach.limit_name}の"
+            f"上限{breach.limit_count}回を超えます(期間内履歴{history_occurrences_text}回・"
+            f"当該請求{current_quantity_text}回、直近: {breach.matched_service_date or '同一期間内'})。"
+            "要件を満たす場合は確認のうえ採用してください。",
             "electronic_frequency_consistency",
         )
 

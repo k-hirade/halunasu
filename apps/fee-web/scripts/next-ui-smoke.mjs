@@ -4,6 +4,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright";
+import { tokyoClaimMonth, tokyoDateKey } from "../lib/tokyo-date.js";
+
+assert.equal(tokyoDateKey("2026-07-15T15:30:00.000Z"), "2026-07-16");
+assert.equal(tokyoClaimMonth("2026-06-30T15:30:00.000Z"), "2026-07");
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const port = await findOpenPort();
@@ -243,6 +247,25 @@ try {
       false,
       "unedited same-day treatment annotation must not be persisted into the original chart text"
     );
+
+    let detailLoadFailureRequests = 0;
+    await page.route("**/api/fee/v1/fee/sessions/fee_load_error/detail**", (route) => {
+      detailLoadFailureRequests += 1;
+      return route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "fee_detail_unavailable", message: "算定詳細を取得できません。" })
+      });
+    });
+    await page.goto(`${baseUrl}/sessions/fee_load_error`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "算定詳細を表示できません" }).waitFor();
+    const detailLoadAlert = page.locator(".fee-error-state[role=alert]");
+    await detailLoadAlert.waitFor();
+    assert.ok((await detailLoadAlert.textContent()).trim().length > 0);
+    assert.equal(await page.getByRole("button", { name: "カルテから算定候補を作成" }).count(), 0);
+    assert.equal(await page.locator(".clinical-text-editable").count(), 0);
+    await page.getByRole("button", { name: "再読み込み" }).click();
+    await waitForCondition(() => detailLoadFailureRequests >= 2, "detail retry request");
     await browser.close();
   } catch (error) {
     await browser.close().catch(() => null);
