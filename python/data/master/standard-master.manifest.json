@@ -1,0 +1,245 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-16T05:00:13.404819Z",
+  "sha256": "6b408ef8aa8935a00e13d40c0e7e31e25040a89934a33c6d0e7a8957fe279765",
+  "sourceVersions": [
+    {
+      "sourceType": "chugoku_shikoku_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:09:55+00:00"
+    },
+    {
+      "sourceType": "chugoku_shikoku_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:09:40+00:00"
+    },
+    {
+      "sourceType": "comment_master",
+      "sourceVersion": "2026-06-15",
+      "importedAt": "2026-06-15T10:07:03+00:00"
+    },
+    {
+      "sourceType": "comment_related_table",
+      "sourceVersion": "2026-06-15",
+      "importedAt": "2026-06-15T10:07:03+00:00"
+    },
+    {
+      "sourceType": "drug_master",
+      "sourceVersion": "2026-06-15",
+      "importedAt": "2026-06-15T10:07:03+00:00"
+    },
+    {
+      "sourceType": "hokkaido_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:07:11+00:00"
+    },
+    {
+      "sourceType": "hokkaido_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:07:07+00:00"
+    },
+    {
+      "sourceType": "kanto_shinetsu_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:08:00+00:00"
+    },
+    {
+      "sourceType": "kanto_shinetsu_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:08:08+00:00"
+    },
+    {
+      "sourceType": "kanto_shinetsu_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:08:10+00:00"
+    },
+    {
+      "sourceType": "kanto_shinetsu_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:07:28+00:00"
+    },
+    {
+      "sourceType": "kinki_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:09:24+00:00"
+    },
+    {
+      "sourceType": "kinki_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:09:29+00:00"
+    },
+    {
+      "sourceType": "kinki_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:09:33+00:00"
+    },
+    {
+      "sourceType": "kinki_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:08:42+00:00"
+    },
+    {
+      "sourceType": "kyushu_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:33+00:00"
+    },
+    {
+      "sourceType": "kyushu_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:39+00:00"
+    },
+    {
+      "sourceType": "kyushu_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:48+00:00"
+    },
+    {
+      "sourceType": "kyushu_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:53+00:00"
+    },
+    {
+      "sourceType": "kyushu_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:59+00:00"
+    },
+    {
+      "sourceType": "kyushu_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:11:03+00:00"
+    },
+    {
+      "sourceType": "kyushu_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:11:10+00:00"
+    },
+    {
+      "sourceType": "kyushu_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:11:16+00:00"
+    },
+    {
+      "sourceType": "kyushu_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:11+00:00"
+    },
+    {
+      "sourceType": "kyushu_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:12+00:00"
+    },
+    {
+      "sourceType": "kyushu_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:13+00:00"
+    },
+    {
+      "sourceType": "kyushu_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:14+00:00"
+    },
+    {
+      "sourceType": "kyushu_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:15+00:00"
+    },
+    {
+      "sourceType": "kyushu_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:16+00:00"
+    },
+    {
+      "sourceType": "kyushu_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:17+00:00"
+    },
+    {
+      "sourceType": "kyushu_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:18+00:00"
+    },
+    {
+      "sourceType": "medical_electronic_fee_table",
+      "sourceVersion": "2026-06-15",
+      "importedAt": "2026-06-15T10:07:04+00:00"
+    },
+    {
+      "sourceType": "medical_procedure_master",
+      "sourceVersion": "2026-06-15",
+      "importedAt": "2026-06-15T10:07:02+00:00"
+    },
+    {
+      "sourceType": "payer_check_master",
+      "sourceVersion": "令和8年度版",
+      "importedAt": "2026-07-16T13:11:29"
+    },
+    {
+      "sourceType": "shikoku_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:00+00:00"
+    },
+    {
+      "sourceType": "shikoku_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:06+00:00"
+    },
+    {
+      "sourceType": "shikoku_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:10:00+00:00"
+    },
+    {
+      "sourceType": "specific_material_master",
+      "sourceVersion": "2026-06-15",
+      "importedAt": "2026-06-15T10:07:03+00:00"
+    },
+    {
+      "sourceType": "tohoku_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:07:13+00:00"
+    },
+    {
+      "sourceType": "tohoku_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:07:14+00:00"
+    },
+    {
+      "sourceType": "tohoku_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:07:13+00:00"
+    },
+    {
+      "sourceType": "tohoku_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:07:13+00:00"
+    },
+    {
+      "sourceType": "tokai_hokuriku_facility_standards_medical",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:08:32+00:00"
+    },
+    {
+      "sourceType": "tokai_hokuriku_hospital_registry",
+      "sourceVersion": "2026-05-01",
+      "importedAt": "2026-06-15T10:08:15+00:00"
+    }
+  ],
+  "tables": {
+    "medical_procedures": 11746,
+    "electronic_exclusions": 77342,
+    "electronic_bundles": 248264,
+    "electronic_frequency_limits": 5928,
+    "comment_links": 18201,
+    "diseases": 27684,
+    "disease_modifiers": 2390,
+    "cc_act_indications": 218375,
+    "cc_drug_indications": 1234290,
+    "cc_drug_contra_disease": 87,
+    "cc_drug_interactions": 4208,
+    "cc_drug_dose_groups": 10757,
+    "drugs": 18495,
+    "comments": 4593,
+    "specific_materials": 1395,
+    "hospital_facility_standards": 1238320
+  }
+}

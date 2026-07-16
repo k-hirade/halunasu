@@ -21,6 +21,7 @@
     "deploy:firestore:apply": "scripts/p17_deploy_firestore_security_and_indexes.sh --apply",
     "seed:core-account": "node scripts/p15_seed_core_account.mjs",
     "seed:nishiyama-demo": "node scripts/seed_nishiyama_demo.mjs",
+    "seed:yamamoto-demo-stg": "node scripts/p15_seed_core_account.mjs --env stg --organization-code yamamoto-demo-stg --organization-name 'Yamamoto Demo STG' --login-ids yamamoto-admin,yamamoto-clerk,yamamoto-doctor --products fee --facility-name yamamoto-demo-stg --department-name '医事課' --member-role-profile fee-demo --member-display-prefix 'Yamamoto Demo' --fee-project-id halunasu-fee-stg --fee-settings-file samples/yamamoto-demo-stg/fee-settings.json --skip-demo-patient --generate-password-file .secrets/yamamoto-demo-stg-password.txt",
     "start:local-architecture-inspector": "npm run --prefix tools/local-architecture-inspector start",
     "dev:local-architecture-inspector": "npm run --prefix tools/local-architecture-inspector dev",
     "scan:local-architecture-inspector": "npm run --prefix tools/local-architecture-inspector scan",

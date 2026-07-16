@@ -8,6 +8,7 @@ import { dirname } from "node:path";
 import { hashPassword } from "../services/platform-api/src/auth/password.js";
 import {
   departmentPath,
+  feeSettingsPath,
   facilityPath,
   loginIdentityPath,
   memberPath,
@@ -44,6 +45,13 @@ const products = csv(args.get("products") || "charting,fee,referral");
 const facilityStandardKeys = csv(args.get("facility-standard-keys") || args.get("facilityStandardKeys"));
 const facilityName = args.get("facility-name") || organizationName;
 const departmentName = args.get("department-name") || "General";
+const memberRoleProfile = args.get("member-role-profile") || "admin";
+const memberDisplayPrefix = args.get("member-display-prefix") || organizationName;
+const feeProjectId = args.get("fee-project-id") || "";
+const feeSettingsFile = args.get("fee-settings-file") || "";
+const feeSettingsTemplate = feeSettingsFile
+  ? JSON.parse(await readFile(isAbsolute(feeSettingsFile) ? feeSettingsFile : join(root, feeSettingsFile), "utf8"))
+  : null;
 const seedDemoPatient = args.get("skip-demo-patient") !== "true";
 const envs = targetEnv === "all" ? Object.keys(projectByEnv) : [targetEnv];
 const accessToken = getAccessToken();
@@ -51,6 +59,18 @@ const password = await resolvePassword();
 
 if (loginIds.length === 0) {
   throw new Error("Missing --login-id or --login-ids");
+}
+if (!["admin", "fee-demo"].includes(memberRoleProfile)) {
+  throw new Error(`Unsupported --member-role-profile: ${memberRoleProfile}`);
+}
+if (memberRoleProfile === "fee-demo" && (products.length !== 1 || products[0] !== "fee")) {
+  throw new Error("--member-role-profile fee-demo requires --products fee");
+}
+if (Boolean(feeProjectId) !== Boolean(feeSettingsTemplate)) {
+  throw new Error("--fee-project-id and --fee-settings-file must be specified together");
+}
+if (feeProjectId && envs.length !== 1) {
+  throw new Error("fee settings seed requires a single --env target");
 }
 for (const env of envs) {
   if (!projectByEnv[env]) {
@@ -77,6 +97,10 @@ for (const env of envs) {
     facilityStandardKeys,
     facilityName,
     departmentName,
+    memberRoleProfile,
+    memberDisplayPrefix,
+    feeProjectId,
+    feeSettingsTemplate,
     seedDemoPatient
   });
 }
@@ -98,6 +122,7 @@ async function seedEnv(input) {
     department,
     actions
   });
+  await ensureFeeSettings({ input, organization: organizationWithDefaults, facility, actions });
   await ensureEntitlements({ input, organization: organizationWithDefaults, actions });
   await ensureDemoPatient({ input, organization: organizationWithDefaults, actions });
 
@@ -117,6 +142,27 @@ async function seedEnv(input) {
     facilityId: facility.facilityId,
     departmentId: department.departmentId
   });
+}
+
+async function ensureFeeSettings({ input, organization, facility, actions }) {
+  if (!input.feeProjectId || !input.feeSettingsTemplate) {
+    return;
+  }
+  const path = feeSettingsPath(organization.orgId, facility.facilityId);
+  const current = await getDoc(input.feeProjectId, path);
+  const now = timestamp();
+  const settings = compactObject({
+    ...input.feeSettingsTemplate,
+    orgId: organization.orgId,
+    facilityId: facility.facilityId,
+    schemaVersion: Number(input.feeSettingsTemplate.schemaVersion || 1),
+    createdAt: current?.createdAt || now,
+    updatedAt: now
+  });
+  actions.push(`upsert fee settings ${input.feeProjectId}/${facility.facilityId}`);
+  if (input.apply) {
+    await setDoc(input.feeProjectId, path, settings);
+  }
 }
 
 async function ensureOrganization({ input, actions }) {
@@ -193,14 +239,15 @@ async function ensureMember({ input, organization, loginId, actions }) {
   const members = await listDocs(input.projectId, organizationPath(organization.orgId), "members");
   const existing = members.find((member) => member.loginId === loginId) || null;
   const now = timestamp();
+  const access = memberAccessForSeed(input, loginId);
   const memberBase = compactObject({
     orgId: organization.orgId,
     loginId,
-    displayName: loginId,
+    displayName: access.displayName,
     email: input.emailDomain ? `${loginId}@${input.emailDomain}` : null,
     status: "active",
-    globalRoles: ["org_admin", "billing_admin"],
-    productRoles: Object.fromEntries(input.products.map((product) => [product, ["admin"]])),
+    globalRoles: access.globalRoles,
+    productRoles: access.productRoles,
     facilityIds: [],
     departmentIds: [],
     updatedAt: now,
@@ -234,6 +281,40 @@ async function ensureMember({ input, organization, loginId, actions }) {
   }
   await ensureLoginIdentity({ input, organization, member, actions });
   return member;
+}
+
+function memberAccessForSeed(input, loginId) {
+  if (input.memberRoleProfile !== "fee-demo") {
+    return {
+      displayName: loginId,
+      globalRoles: ["org_admin", "billing_admin"],
+      productRoles: Object.fromEntries(input.products.map((product) => [product, ["admin"]]))
+    };
+  }
+
+  const prefix = String(input.memberDisplayPrefix || input.organizationName || "Demo").trim();
+  if (loginId.endsWith("-clerk")) {
+    return {
+      displayName: `${prefix} 医事課`,
+      globalRoles: [],
+      productRoles: { fee: ["medical_clerk"] }
+    };
+  }
+  if (loginId.endsWith("-doctor")) {
+    return {
+      displayName: `${prefix} 医師`,
+      globalRoles: [],
+      productRoles: { fee: ["doctor"] }
+    };
+  }
+  if (loginId.endsWith("-admin")) {
+    return {
+      displayName: `${prefix} 管理者`,
+      globalRoles: ["org_admin", "billing_admin"],
+      productRoles: { fee: ["admin"] }
+    };
+  }
+  throw new Error(`fee-demo login ID must end with -admin, -clerk, or -doctor: ${loginId}`);
 }
 
 async function ensureLoginIdentity({ input, organization, member, actions }) {
@@ -668,6 +749,6 @@ function sameStringSet(left = [], right = []) {
 }
 
 function printUsage() {
-  console.log("Usage: npm run seed:core-account -- --env stg|prod|all --organization-code CODE --login-ids ID1,ID2 [--facility-standard-keys KEY1,KEY2] [--apply]");
+  console.log("Usage: npm run seed:core-account -- --env stg|prod|all --organization-code CODE --login-ids ID1,ID2 [--facility-standard-keys KEY1,KEY2] [--member-role-profile admin|fee-demo] [--fee-project-id PROJECT --fee-settings-file FILE] [--apply]");
   console.log("Set HALUNASU_SEED_PASSWORD, --password-file, or --generate-password-file for --apply.");
 }

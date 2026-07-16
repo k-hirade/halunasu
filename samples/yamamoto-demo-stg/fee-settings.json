@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "effectiveFrom": "2026-06-01",
+  "historyPolicy": {
+    "externalHistoryEnabled": false,
+    "historyCompleteness": "unknown",
+    "defaultLookbackMonths": 12
+  },
+  "initialRevisitPolicy": {
+    "requireReviewWhenNoHistory": true
+  },
+  "receiptPolicy": {
+    "connectorSpecVerified": false,
+    "annotationDefaults": {
+      "commentShinryoIdentification": "",
+      "symptomDetailKubun": ""
+    },
+    "validationSeverity": {
+      "commentText": "error",
+      "lineCode": "warning",
+      "insuranceInsuredSymbol": "warning",
+      "publicInsuranceRecipientNumber": "error",
+      "publicInsurancePayerNumber": "error",
+      "claimMonth": "error",
+      "serviceDate": "error",
+      "symptomDetailKubun": "warning",
+      "patientBirthDate": "warning",
+      "patientDisplayName": "error",
+      "linePoints": "warning",
+      "insuranceInsuredNumber": "warning",
+      "facilityPrefectureCode": "warning",
+      "patientSex": "warning",
+      "commentShinryoIdentification": "warning",
+      "lineOrderType": "warning",
+      "insuranceInsurerNumber": "error",
+      "facilityMedicalInstitutionCode": "error",
+      "commentCode": "warning",
+      "symptomDetailText": "error"
+    },
+    "ukeEncoding": "shift_jis",
+    "defaultReceiptScope": "service_date",
+    "blockExportOnErrors": false
+  },
+  "facilityStandards": [
+    {
+      "key": "zaitaku_data_teishutsu_kasan",
+      "name": "在宅データ提出加算",
+      "status": "active",
+      "claimStartDate": "2026-01-01",
+      "effectiveTo": "",
+      "acceptanceNumber": ""
+    },
+    {
+      "key": "base_up_hyoka_1",
+      "name": "外来・在宅ベースアップ評価料（１）",
+      "status": "active",
+      "claimStartDate": "2026-01-01",
+      "effectiveTo": "",
+      "acceptanceNumber": ""
+    }
+  ],
+  "autoBillingRules": [
+    {
+      "ruleId": "home_visit_fee",
+      "title": "在宅患者訪問診療料（１）１（同一建物居住者以外）",
+      "code": "114001110",
+      "status": "active",
+      "action": "confirm",
+      "settings": ["home_visit"],
+      "requiredFacilityStandardKey": "",
+      "potentialPoints": 0,
+      "note": "訪問診療(同一建物居住者以外)の受診には訪問診療料を算定する"
+    },
+    {
+      "ruleId": "home_visit_baseup",
+      "title": "外来・在宅ベースアップ評価料（１）３（訪問診療時）イ",
+      "code": "180725910",
+      "status": "active",
+      "action": "confirm",
+      "settings": ["home_visit"],
+      "requiredFacilityStandardKey": "base_up_hyoka_1",
+      "potentialPoints": 0,
+      "note": "ベースアップ評価料(１)届出中のため訪問診療時に算定する"
+    },
+    {
+      "ruleId": "zaitaku_data_addon",
+      "title": "在宅データ提出加算（在医総管・施医総管）",
+      "code": "114057970",
+      "status": "active",
+      "action": "candidate",
+      "settings": ["home_visit"],
+      "requiredFacilityStandardKey": "zaitaku_data_teishutsu_kasan",
+      "potentialPoints": 50,
+      "note": "在医総管の算定月に月1回。要件確認のうえ採用してください"
+    }
+  ]
+}

@@ -10,9 +10,9 @@ const defaults = {
   patientDir: "tmp/dataset_recalculation_diff_diagnosis/20260705_102303_mock_homis_uke_recalculation_diff/patient_sources/1001",
   platformBaseUrl: "https://platform-api-stg-lp2t3inhza-an.a.run.app",
   feeBaseUrl: "https://fee-api-stg-wmfrwcpzkq-an.a.run.app",
-  organizationCode: "nishiyama-demo-stg",
-  loginId: "nishiyama-admin",
-  passwordFile: ".secrets/nishiyama-demo-password.txt",
+  organizationCode: "yamamoto-demo-stg",
+  loginId: "yamamoto-admin",
+  passwordFile: ".secrets/yamamoto-demo-stg-password.txt",
   repeat: 3,
   timeoutMs: 180_000
 };
@@ -137,6 +137,11 @@ const api = createFeeApiClient({
   timeoutMs: args.timeoutMs,
   runId
 });
+const feeSettingsResponse = await api.request("GET", "/v1/fee/settings", undefined, { tag: "fee-settings" });
+assertResponse(feeSettingsResponse, "fee settings");
+const feeSettingsAudit = sanitizeFeeSettingsForReport(
+  feeSettingsResponse.body?.settings?.[context.facilityId] || {}
+);
 
 const repeats = [];
 for (let repeatIndex = 1; repeatIndex <= args.repeat; repeatIndex += 1) {
@@ -176,7 +181,8 @@ const result = {
     organizationCode: args.organizationCode,
     facilityRef: opaqueRef(context.facilityId),
     departmentRef: opaqueRef(context.departmentId),
-    facilityStandardKeys: context.facilityStandardKeys
+    facilityStandardKeys: context.facilityStandardKeys,
+    feeSettings: feeSettingsAudit
   },
   security: {
     chartTextIncluded: false,
@@ -784,6 +790,31 @@ function resolveFacilityContext(bootstrap, options) {
   };
 }
 
+function sanitizeFeeSettingsForReport(settings = {}) {
+  return {
+    persisted: Boolean(settings.orgId && settings.createdAt),
+    effectiveFrom: String(settings.effectiveFrom || ""),
+    facilityStandards: (Array.isArray(settings.facilityStandards) ? settings.facilityStandards : []).map((entry) => ({
+      key: String(entry?.key || ""),
+      status: String(entry?.status || ""),
+      claimStartDate: String(entry?.claimStartDate || ""),
+      effectiveTo: String(entry?.effectiveTo || "")
+    })),
+    autoBillingRules: (Array.isArray(settings.autoBillingRules) ? settings.autoBillingRules : []).map((rule) => ({
+      ruleId: String(rule?.ruleId || ""),
+      code: String(rule?.code || ""),
+      status: String(rule?.status || ""),
+      action: String(rule?.action || ""),
+      requiredFacilityStandardKey: String(rule?.requiredFacilityStandardKey || "")
+    })),
+    historyPolicy: {
+      externalHistoryEnabled: Boolean(settings.historyPolicy?.externalHistoryEnabled),
+      historyCompleteness: String(settings.historyPolicy?.historyCompleteness || ""),
+      defaultLookbackMonths: Number(settings.historyPolicy?.defaultLookbackMonths || 0)
+    }
+  };
+}
+
 function parseCsv(text) {
   const rows = parseCsvRows(text);
   const headers = rows.shift() || [];
@@ -960,5 +991,5 @@ function round(value, digits = 3) {
 }
 
 function printHelp() {
-  process.stdout.write(`Fee monthly chart-to-receipt E2E (STG only)\n\nUsage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\nOptions:\n  --patient-dir PATH       Patient dataset directory\n  --claim-month YYYY-MM    Defaults to manifest claimMonth\n  --repeat N               Independent patient runs. Default: 3\n  --output-dir PATH        Default: /private/tmp/<run-id>\n  --organization-code ID   Default: nishiyama-demo-stg\n  --login-id ID            Default: nishiyama-admin\n  --password-file PATH     Default: .secrets/nishiyama-demo-password.txt\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --seed-known-prior-history\n                            Seed patients.csv start_date as prior visit history\n  --encounter-setting TYPE Encounter setting (outpatient/home_visit/house_call/inpatient)\n  --dry-run                Validate and summarize inputs without network calls\n  --help                   Show this help\n`);
+  process.stdout.write(`Fee monthly chart-to-receipt E2E (STG only)\n\nUsage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\nOptions:\n  --patient-dir PATH       Patient dataset directory\n  --claim-month YYYY-MM    Defaults to manifest claimMonth\n  --repeat N               Independent patient runs. Default: 3\n  --output-dir PATH        Default: /private/tmp/<run-id>\n  --organization-code ID   Default: yamamoto-demo-stg\n  --login-id ID            Default: yamamoto-admin\n  --password-file PATH     Default: .secrets/yamamoto-demo-stg-password.txt\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --seed-known-prior-history\n                            Seed patients.csv start_date as prior visit history\n  --encounter-setting TYPE Encounter setting (outpatient/home_visit/house_call/inpatient)\n  --dry-run                Validate and summarize inputs without network calls\n  --help                   Show this help\n`);
 }
