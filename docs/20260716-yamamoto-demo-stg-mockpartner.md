@@ -141,3 +141,10 @@ npm run eval:fee-monthly-chart-e2e -- \
 スモーク結果は一時ファイル
 `/private/tmp/yamamoto-demo-stg-smoke-with-settings-20260716/result.json`へ保存した。恒久評価結果は従来どおり、
 患者別ディレクトリを持つ新規Docsへ記録する。
+
+## 5患者評価
+
+同日、患者`1001 / 1004 / 1006 / 1007 / 1012`を各1反復で実行した。結果は
+[20260716-yamamoto-demo-stg-5patients-20260716_205643](./20260716-yamamoto-demo-stg-5patients-20260716_205643/README.md)
+を参照する。5患者・15受診は完走し、既存UKE 32コードに対する確定一致は6コード、候補込み検知は
+13コードだった。
