@@ -4,7 +4,9 @@ import {
   departmentSnapshot,
   facilitySnapshot,
   memberSnapshot,
+  memberRequiresMfa,
   normalizeOrganizationCode,
+  resolveMfaState,
   validateCreateAuditEventInput,
   validateCreateDataRequestInput,
   validateCreateDepartmentInput,
@@ -59,6 +61,23 @@ test("validates member roles", () => {
   assert.deepEqual(input.globalRoles, ["doctor"]);
   assert.deepEqual(input.productRoles, { charting: ["doctor"] });
   assert.equal(input.defaultRecordingSource, "local_browser");
+});
+
+test("resolves one MFA policy for every privileged Platform role", () => {
+  for (const role of ["platform_admin", "org_owner", "org_admin", "it_admin", "billing_admin"]) {
+    assert.equal(memberRequiresMfa({ globalRoles: [role] }), true, `${role} must require MFA`);
+  }
+  assert.equal(memberRequiresMfa({ globalRoles: ["doctor"] }), false);
+  assert.equal(memberRequiresMfa({ globalRoles: [], productRoles: { fee: ["admin"] } }), true);
+  assert.equal(memberRequiresMfa({ globalRoles: [], productRoles: { fee: ["medical_clerk"] } }), false);
+  assert.deepEqual(
+    resolveMfaState({ mfaRequired: false, mfaEnrolled: false }, { globalRoles: ["org_owner"] }),
+    { required: true, enrolled: false }
+  );
+  assert.deepEqual(
+    resolveMfaState({ mfaRequired: true, mfaEnrolled: true }, { globalRoles: [] }),
+    { required: true, enrolled: true }
+  );
 });
 
 test("validates login input", () => {

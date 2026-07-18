@@ -11,6 +11,7 @@
     "./user-facing-error": "./src/user-facing-error.js",
     "./proxy-utils": "./src/proxy-utils.js",
     "./platform-auth": "./src/platform-auth.js",
+    "./platform-auth-state": "./src/platform-auth-state.js",
     "./login-views": "./src/login-views.js"
   },
   "files": [

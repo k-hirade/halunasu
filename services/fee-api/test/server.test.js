@@ -17,6 +17,34 @@ test("requires Platform session for fee routes", async () => {
   assert.equal(response.statusCode, 401);
 });
 
+test("rejects a privileged Platform session before MFA enrollment", async () => {
+  const stores = createStores();
+  const identity = stores.platformStore.getLoginIdentity("clinic", "admin@example.com");
+  const { token } = createSignedSession({
+    orgId: identity.orgId,
+    memberId: identity.memberId,
+    organizationCode: identity.organizationCode,
+    loginId: identity.loginId,
+    tokenVersion: identity.tokenVersion,
+    globalRoles: ["org_admin"],
+    productRoles: { fee: ["admin"] },
+    mfaRequired: true,
+    mfaEnrolled: false,
+    mfaVerified: false,
+    csrfToken: "csrf_pending"
+  }, {
+    now: new Date("2026-05-28T00:00:00.000Z"),
+    sessionSecret: "test-session-secret"
+  });
+
+  const response = await request(stores, "GET", "/v1/fee/context", undefined, {
+    authorization: `Bearer ${token}`
+  });
+
+  assert.equal(response.statusCode, 403);
+  assert.equal(response.body.error, "mfa_enrollment_required");
+});
+
 test("readyz reports fee master readiness", async () => {
   const response = await request(createStores(), "GET", "/readyz");
 
@@ -9355,7 +9383,7 @@ function createStores(options = {}) {
 
 async function signedHeaders(platformStore, options = {}) {
   const loginId = options.loginId || "admin@example.com";
-  const identity = platformStore.getLoginIdentity("clinic", loginId);
+  const identity = ensureTestMfaEnrollment(platformStore, platformStore.getLoginIdentity("clinic", loginId));
   const { token, session } = createSignedSession({
     orgId: identity.orgId,
     memberId: identity.memberId,
@@ -9364,6 +9392,9 @@ async function signedHeaders(platformStore, options = {}) {
     tokenVersion: identity.tokenVersion,
     globalRoles: options.globalRoles || ["org_admin"],
     productRoles: options.productRoles || { fee: ["admin"] },
+    mfaRequired: Boolean(identity.mfaRequired),
+    mfaEnrolled: Boolean(identity.mfaEnrolled),
+    mfaVerified: Boolean(identity.mfaRequired && identity.mfaEnrolled),
     csrfToken: "csrf_test"
   }, {
     now: new Date("2026-05-28T00:00:00.000Z"),
@@ -9377,7 +9408,10 @@ async function signedHeaders(platformStore, options = {}) {
 }
 
 async function signedBearerHeaders(platformStore) {
-  const identity = platformStore.getLoginIdentity("clinic", "admin@example.com");
+  const identity = ensureTestMfaEnrollment(
+    platformStore,
+    platformStore.getLoginIdentity("clinic", "admin@example.com")
+  );
   const { token } = createSignedSession({
     orgId: identity.orgId,
     memberId: identity.memberId,
@@ -9386,6 +9420,9 @@ async function signedBearerHeaders(platformStore) {
     tokenVersion: identity.tokenVersion,
     globalRoles: ["org_admin"],
     productRoles: { fee: ["admin"] },
+    mfaRequired: Boolean(identity.mfaRequired),
+    mfaEnrolled: Boolean(identity.mfaEnrolled),
+    mfaVerified: Boolean(identity.mfaRequired && identity.mfaEnrolled),
     csrfToken: "csrf_test"
   }, {
     now: new Date("2026-05-28T00:00:00.000Z"),
@@ -9395,6 +9432,14 @@ async function signedBearerHeaders(platformStore) {
   return {
     authorization: `Bearer ${token}`
   };
+}
+
+function ensureTestMfaEnrollment(platformStore, identity) {
+  if (!identity?.mfaRequired || identity.mfaEnrolled) {
+    return identity;
+  }
+  const pending = platformStore.beginMfaEnrollment(identity, "MZXW6YTBOI======");
+  return platformStore.completeMfaEnrollment(pending);
 }
 
 function request(stores, method, path, body, headers = {}, overrides = {}) {

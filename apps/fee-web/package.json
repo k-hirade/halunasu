@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "test": "npm run test:next-ui && npm run build",
-    "test:next-ui": "node scripts/next-ui-smoke.mjs"
+    "test:next-ui": "npm run test:auth-ui && node scripts/next-ui-smoke.mjs",
+    "test:auth-ui": "node scripts/auth-ui-smoke.mjs"
   },
   "dependencies": {
     "@halunasu/fee-contracts": "file:../../packages/fee-contracts",

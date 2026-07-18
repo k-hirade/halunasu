@@ -16,6 +16,34 @@ test("requires Platform session for referral routes", async () => {
   assert.equal(response.statusCode, 401);
 });
 
+test("rejects a privileged Platform session before MFA enrollment", async () => {
+  const stores = createStores();
+  const identity = stores.platformStore.getLoginIdentity("clinic", "admin@example.com");
+  const { token } = createSignedSession({
+    orgId: identity.orgId,
+    memberId: identity.memberId,
+    organizationCode: identity.organizationCode,
+    loginId: identity.loginId,
+    tokenVersion: identity.tokenVersion,
+    globalRoles: ["org_admin"],
+    productRoles: { referral: ["admin"] },
+    mfaRequired: true,
+    mfaEnrolled: false,
+    mfaVerified: false,
+    csrfToken: "csrf_pending"
+  }, {
+    now: new Date("2026-05-28T00:00:00.000Z"),
+    sessionSecret: "test-session-secret"
+  });
+
+  const response = await request(stores, "GET", "/v1/referral/context", undefined, {
+    authorization: `Bearer ${token}`
+  });
+
+  assert.equal(response.statusCode, 403);
+  assert.equal(response.body.error, "mfa_enrollment_required");
+});
+
 test("creates Platform patients and product-owned referral drafts", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -281,7 +309,12 @@ function createStores(options = {}) {
 }
 
 async function signedHeaders(platformStore, overrides = {}) {
-  const identity = platformStore.getLoginIdentity("clinic", "admin@example.com");
+  const initialIdentity = platformStore.getLoginIdentity("clinic", "admin@example.com");
+  const identity = initialIdentity.mfaRequired && !initialIdentity.mfaEnrolled
+    ? platformStore.completeMfaEnrollment(
+      platformStore.beginMfaEnrollment(initialIdentity, "MZXW6YTBOI======")
+    )
+    : initialIdentity;
   const { token, session } = createSignedSession({
     orgId: identity.orgId,
     memberId: identity.memberId,
@@ -290,6 +323,9 @@ async function signedHeaders(platformStore, overrides = {}) {
     tokenVersion: identity.tokenVersion,
     globalRoles: overrides.globalRoles ?? ["org_admin"],
     productRoles: overrides.productRoles ?? { referral: ["admin"] },
+    mfaRequired: Boolean(identity.mfaRequired),
+    mfaEnrolled: Boolean(identity.mfaEnrolled),
+    mfaVerified: Boolean(identity.mfaRequired && identity.mfaEnrolled),
     csrfToken: "csrf_test"
   }, {
     now: new Date("2026-05-28T00:00:00.000Z"),

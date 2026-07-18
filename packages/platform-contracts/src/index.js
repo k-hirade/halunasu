@@ -25,8 +25,35 @@ export const signupApplicationStatuses = Object.freeze(["submitted", "email_veri
 export const dataRequestTypes = Object.freeze(["access", "export", "deletion", "correction"]);
 export const dataRequestStatuses = Object.freeze(["submitted", "reviewing", "completed", "rejected", "cancelled"]);
 export const recordingSources = Object.freeze(["linked_mobile", "local_browser"]);
+export const mfaRequiredGlobalRoles = Object.freeze([
+  "platform_admin",
+  "org_owner",
+  "org_admin",
+  "it_admin",
+  "billing_admin"
+]);
 // 保険種別: 社保 / 国保 / 後期高齢 / 自費 / その他
 export const insurerTypes = Object.freeze(["shaho", "kokuho", "kouki", "jihi", "other"]);
+
+export function memberRequiresMfa(member = {}) {
+  const roles = Array.isArray(member.globalRoles) ? member.globalRoles : [];
+  if (roles.some((role) => mfaRequiredGlobalRoles.includes(role))) {
+    return true;
+  }
+  const productRoles = member.productRoles && typeof member.productRoles === "object"
+    ? Object.values(member.productRoles)
+    : [];
+  return productRoles.some((productRoleList) => (
+    Array.isArray(productRoleList) && productRoleList.includes("admin")
+  ));
+}
+
+export function resolveMfaState(identity = {}, member = {}) {
+  return {
+    required: Boolean(identity.mfaRequired) || memberRequiresMfa(member),
+    enrolled: Boolean(identity.mfaEnrolled)
+  };
+}
 
 export function normalizeOrganizationCode(value) {
   return requiredString(value, "organizationCode")

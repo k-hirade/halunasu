@@ -4,6 +4,7 @@ import { inflateRawSync } from "node:zlib";
 import {
   forbiddenError,
   hasProductAccess,
+  publicAuthErrorCode,
   requirePlatformCsrf,
   requireProductContext
 } from "../../../packages/auth-client/src/index.js";
@@ -7489,7 +7490,9 @@ function errorResponse(error) {
   return {
     statusCode,
     body: {
-      error: isServerError ? serverErrorCode(statusCode) : toErrorCode(error.name),
+      error: isServerError
+        ? serverErrorCode(statusCode)
+        : (publicAuthErrorCode(error) || toErrorCode(error.name)),
       message: isServerError
         ? (SERVER_ERROR_MESSAGES[statusCode] || "サーバでエラーが発生しました。時間をおいて再度お試しください。")
         : error.message,

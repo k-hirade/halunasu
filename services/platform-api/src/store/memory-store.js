@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import {
+  memberRequiresMfa,
   normalizeLoginId,
   normalizeOrganizationCode,
   validateCreateAuditEventInput,
@@ -376,7 +377,7 @@ export class MemoryPlatformStore {
         tokenVersion: input.password !== undefined
           ? Number(identity.tokenVersion || 0) + 1
           : identity.tokenVersion,
-        mfaRequired: hasPrivilegedRole(updated),
+        mfaRequired: memberRequiresMfa(updated),
         updatedAt: this.timestamp()
       });
       this.loginIdentities.set(identity.identityKey, updatedIdentity);
@@ -486,7 +487,7 @@ export class MemoryPlatformStore {
       mfaSecretEncrypted: undefined,
       mfaPendingSecretEncrypted: undefined,
       mfaEnrolled: false,
-      mfaRequired: hasPrivilegedRole(member),
+      mfaRequired: memberRequiresMfa(member),
       tokenVersion: Number(identity.tokenVersion || 0) + 1,
       updatedAt: this.timestamp()
     });
@@ -1188,7 +1189,7 @@ function createLoginIdentity({ organization, member, password, now }) {
     passwordHash: hashPassword(password),
     passwordUpdatedAt: now,
     tokenVersion: 1,
-    mfaRequired: hasPrivilegedRole(member),
+    mfaRequired: memberRequiresMfa(member),
     mfaEnrolled: false,
     status: "active",
     failedLoginCount: 0,
@@ -1196,14 +1197,6 @@ function createLoginIdentity({ organization, member, password, now }) {
     updatedAt: now,
     schemaVersion: 1
   };
-}
-
-function hasPrivilegedRole(member) {
-  return member.globalRoles.includes("org_admin")
-    || member.globalRoles.includes("org_owner")
-    || member.globalRoles.includes("it_admin")
-    || member.globalRoles.includes("billing_admin")
-    || member.globalRoles.includes("platform_admin");
 }
 
 function activeIdentityStatus(currentStatus) {

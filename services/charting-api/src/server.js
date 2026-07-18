@@ -1,5 +1,6 @@
 import http from "node:http";
 import {
+  publicAuthErrorCode,
   requirePlatformCsrf,
   requireProductContext
 } from "../../../packages/auth-client/src/index.js";
@@ -386,7 +387,9 @@ function errorResponse(error) {
   return {
     statusCode,
     body: {
-      error: statusCode === 500 ? "internal_error" : toErrorCode(error.name),
+      error: statusCode === 500
+        ? "internal_error"
+        : (publicAuthErrorCode(error) || toErrorCode(error.name)),
       message: statusCode === 500 ? "Internal server error" : error.message,
       field: error.field
     }

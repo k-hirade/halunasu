@@ -8,6 +8,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { toUserFacingErrorMessage } from "./user-facing-error.js";
 import { LoginFormView, MfaFormView } from "./login-views.js";
+import {
+  isPlatformSessionFullyAuthenticated,
+  platformSessionAuthAction
+} from "./platform-auth-state.js";
 
 const PlatformAuthContext = createContext(null);
 const ACCESS_TOKEN_STORAGE_KEY = "halunasu_platform_access_token";
@@ -94,23 +98,33 @@ export function PlatformAuthProvider({ children, platformBaseUrl, brand }) {
     const bearer = payload.accessToken || accessToken;
     setAccessToken(bearer || "");
     writeAccessToken(bearer || "");
-    const enrollment = await api("/v1/auth/mfa/enroll", {
-      method: "POST",
-      csrf: true,
+    const enrollment = await requestMfaEnrollment({
+      platformBaseUrl,
       csrfToken: token,
-      accessToken: bearer,
-      body: {}
+      accessToken: bearer
     });
     setSession(payload.session || null);
     setCsrfToken(token);
     setMfa({ mode: "enroll", challenge: enrollment.mfa || null });
     setErrorMessage("");
     setStatus("mfa");
-  }, [accessToken, api]);
+  }, [accessToken, platformBaseUrl]);
 
   const continueAfterLogin = useCallback(async (payload) => {
-    if (shouldPromptMfaEnrollment(payload.session)) {
+    const action = platformSessionAuthAction(payload.session);
+    if (action === "enroll") {
       await beginMfaEnrollment(payload);
+      return;
+    }
+    if (action === "reauthenticate") {
+      setSession(null);
+      setCsrfToken("");
+      setAccessToken("");
+      writeAccessToken("");
+      setPendingLogin(null);
+      setMfa({ mode: "", challenge: null });
+      setErrorMessage("ログイン用パスワードと認証アプリの6桁コードを入力し直してください。");
+      setStatus("unauthenticated");
       return;
     }
     finishLogin(payload);
@@ -131,11 +145,11 @@ export function PlatformAuthProvider({ children, platformBaseUrl, brand }) {
         return;
       }
 
-      setSession(payload.session);
-      setCsrfToken(payload.csrfToken || readPlatformCsrfCookie());
-      setAccessToken(payload.accessToken || accessToken || "");
-      writeAccessToken(payload.accessToken || accessToken || "");
-      setStatus("authenticated");
+      await continueAfterLogin({
+        ...payload,
+        csrfToken: payload.csrfToken || readPlatformCsrfCookie(),
+        accessToken: payload.accessToken || accessToken || ""
+      });
     } catch (error) {
       setSession(null);
       setCsrfToken("");
@@ -146,7 +160,7 @@ export function PlatformAuthProvider({ children, platformBaseUrl, brand }) {
         setErrorMessage("セッションの復元に失敗しました。再ログインしてください。");
       }
     }
-  }, [accessToken, api]);
+  }, [accessToken, api, continueAfterLogin]);
 
   useEffect(() => {
     let cancelled = false;
@@ -184,10 +198,40 @@ export function PlatformAuthProvider({ children, platformBaseUrl, brand }) {
           return;
         }
 
+        const restoredAccessToken = payload.accessToken || storedAccessToken || "";
+        const restoredCsrfToken = payload.csrfToken || readPlatformCsrfCookie();
+        const action = platformSessionAuthAction(payload.session);
+        if (action === "enroll") {
+          const enrollment = await requestMfaEnrollment({
+            platformBaseUrl,
+            csrfToken: restoredCsrfToken,
+            accessToken: restoredAccessToken
+          });
+          if (hydrateGeneration !== authMutationRef.current || cancelled) {
+            return;
+          }
+          setSession(payload.session);
+          setCsrfToken(restoredCsrfToken);
+          setAccessToken(restoredAccessToken);
+          writeAccessToken(restoredAccessToken);
+          setMfa({ mode: "enroll", challenge: enrollment.mfa || null });
+          setStatus("mfa");
+          return;
+        }
+        if (action === "reauthenticate") {
+          setSession(null);
+          setCsrfToken("");
+          setAccessToken("");
+          writeAccessToken("");
+          setErrorMessage("ログイン用パスワードと認証アプリの6桁コードを入力し直してください。");
+          setStatus("unauthenticated");
+          return;
+        }
+
         setSession(payload.session);
-        setCsrfToken(payload.csrfToken || readPlatformCsrfCookie());
-        setAccessToken(payload.accessToken || storedAccessToken || "");
-        writeAccessToken(payload.accessToken || storedAccessToken || "");
+        setCsrfToken(restoredCsrfToken);
+        setAccessToken(restoredAccessToken);
+        writeAccessToken(restoredAccessToken);
         setStatus("authenticated");
       } catch {
         if (hydrateGeneration !== authMutationRef.current) {
@@ -356,6 +400,10 @@ export function AuthGate({ children }) {
     return <MfaGate />;
   }
 
+  if (!isPlatformSessionFullyAuthenticated(auth.session)) {
+    return <LoginGate />;
+  }
+
   return children;
 }
 
@@ -505,10 +553,27 @@ function readPlatformCsrfCookie() {
   return "";
 }
 
-function shouldPromptMfaEnrollment(session) {
-  if (!session || session.mfaVerified) {
-    return false;
+async function requestMfaEnrollment({ platformBaseUrl, csrfToken, accessToken }) {
+  const headers = { "content-type": "application/json" };
+  if (accessToken) {
+    headers.authorization = `Bearer ${accessToken}`;
   }
-  const roles = Array.isArray(session.globalRoles) ? session.globalRoles : [];
-  return roles.includes("org_admin") || roles.includes("billing_admin") || roles.includes("platform_admin");
+  if (csrfToken) {
+    headers["x-csrf-token"] = csrfToken;
+  }
+
+  const response = await fetch(`${platformBaseUrl}/v1/auth/mfa/enroll`, {
+    method: "POST",
+    headers,
+    credentials: "include",
+    body: "{}"
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.message || payload.error || `HTTP ${response.status}`);
+    error.code = payload.error || payload.code || "";
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
 }

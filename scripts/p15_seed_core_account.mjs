@@ -18,6 +18,7 @@ import {
   productEntitlementPath
 } from "../packages/firestore-schema/src/index.js";
 import {
+  memberRequiresMfa,
   normalizeLoginId,
   normalizeOrganizationCode
 } from "../packages/platform-contracts/src/index.js";
@@ -327,7 +328,7 @@ async function ensureLoginIdentity({ input, organization, member, actions }) {
     loginId: member.loginId,
     orgId: organization.orgId,
     memberId: member.memberId,
-    mfaRequired: hasPrivilegedRole(member),
+    mfaRequired: memberRequiresMfa(member),
     status: "active",
     failedLoginCount: 0,
     updatedAt: now,
@@ -688,13 +689,6 @@ function printSummary(input, actions, result = {}) {
     console.log(JSON.stringify(result));
   }
   console.log();
-}
-
-function hasPrivilegedRole(member) {
-  const roles = member.globalRoles || [];
-  return roles.includes("org_admin")
-    || roles.includes("billing_admin")
-    || roles.includes("platform_admin");
 }
 
 function createId(prefix) {

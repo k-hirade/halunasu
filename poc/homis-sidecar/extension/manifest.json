@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "halunasu 算定サイドカー (PoC)",
+  "version": "0.1.0",
+  "description": "疑似HOMIS(bomis)の画面からカルテを読み取り、ローカルブリッジ経由で診療報酬算定を実行するPoC。localhost専用。",
+  "permissions": ["sidePanel", "tabs"],
+  "host_permissions": [
+    "http://localhost:8899/*",
+    "http://127.0.0.1:8899/*",
+    "http://127.0.0.1:8901/*"
+  ],
+  "background": { "service_worker": "sw.js" },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:8899/homic/*", "http://127.0.0.1:8899/homic/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": { "default_path": "sidepanel.html" },
+  "action": { "default_title": "halunasu 算定パネルを開く" }
+}

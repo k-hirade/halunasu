@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { resolveMfaState } from "../../platform-contracts/src/index.js";
 
 export const SESSION_COOKIE_NAME = "halunasu_session";
 export const CSRF_COOKIE_NAME = "halunasu_csrf";
@@ -11,6 +12,7 @@ const PRODUCT_CONTEXT_CACHE_TTL_MS = Math.max(
   Number.parseInt(process.env.PRODUCT_CONTEXT_CACHE_TTL_MS || "3000", 10) || 0
 );
 const PRODUCT_CONTEXT_CACHE_MAX_ENTRIES = 1000;
+const PUBLIC_AUTH_ERROR_CODES = new Set(["mfa_required", "mfa_enrollment_required"]);
 const productContextCache = new Map();
 
 export function verifyPlatformSessionFromHeaders(headers = {}, options = {}) {
@@ -114,6 +116,7 @@ export async function requireProductContext(input = {}, options = {}) {
   const cacheKey = productContextCacheKey(session, productId);
   const cached = getCachedProductContext(input, cacheKey);
   if (cached) {
+    requireVerifiedMfa(cached);
     return cached;
   }
 
@@ -127,22 +130,53 @@ export async function requireProductContext(input = {}, options = {}) {
     throw unauthorizedError("Invalid session");
   }
 
+  const effectiveSession = {
+    ...session,
+    globalRoles: Array.isArray(member.globalRoles) ? member.globalRoles : [],
+    productRoles: member.productRoles && typeof member.productRoles === "object"
+      ? member.productRoles
+      : {}
+  };
+  const mfaState = resolveMfaState(identity, member);
+  const mfaContext = {
+    session: effectiveSession,
+    identity,
+    member,
+    mfaRequired: mfaState.required,
+    mfaEnrolled: mfaState.enrolled
+  };
+  requireVerifiedMfa(mfaContext);
+
   const entitlement = await platformStore.getProductEntitlement(session.orgId, productId);
   const entitlementAllowsUse = entitlementAllowsProductUse(entitlement, input.now);
-  const roleAllowsUse = hasProductAccess(session, productId, allowedProductRoles, globalRoles);
+  const roleAllowsUse = hasProductAccess(effectiveSession, productId, allowedProductRoles, globalRoles);
   if (!entitlementAllowsUse || !roleAllowsUse) {
     throw forbiddenError(`${productLabel} product access is required`);
   }
 
   const context = {
-    session,
+    session: effectiveSession,
     identity,
     member,
+    mfaRequired: mfaState.required,
+    mfaEnrolled: mfaState.enrolled,
     entitlement,
     productId
   };
   setCachedProductContext(input, cacheKey, context);
   return context;
+}
+
+function requireVerifiedMfa(context) {
+  if (!context.mfaRequired || (context.mfaEnrolled && context.session.mfaVerified === true)) {
+    return;
+  }
+
+  const error = forbiddenError(context.mfaEnrolled
+    ? "MFA verification is required"
+    : "MFA enrollment is required");
+  error.code = context.mfaEnrolled ? "mfa_required" : "mfa_enrollment_required";
+  throw error;
 }
 
 export function entitlementAllowsProductUse(entitlement = {}, nowInput = new Date()) {
@@ -197,6 +231,11 @@ export function forbiddenError(message = "Forbidden") {
   return error;
 }
 
+export function publicAuthErrorCode(error = {}) {
+  const code = typeof error.code === "string" ? error.code : "";
+  return PUBLIC_AUTH_ERROR_CODES.has(code) ? code : "";
+}
+
 function bearerTokenFromHeaders(headers = {}) {
   const value = headerValue(headers, "authorization");
   if (!value || !value.startsWith("Bearer ")) {
@@ -230,6 +269,9 @@ function productContextCacheKey(session = {}, productId = "") {
     session.organizationCode,
     session.loginId,
     Number(session.tokenVersion || 0),
+    session.issuedAt,
+    Boolean(session.mfaVerified),
+    session.csrfToken,
     session.expiresAt
   ].join(":");
 }

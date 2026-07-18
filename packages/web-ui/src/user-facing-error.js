@@ -12,6 +12,9 @@ export function toUserFacingErrorMessage(error, fallbackMessage = DEFAULT_ERROR_
   const lower = text.toLowerCase();
   const normalizedCode = code.toLowerCase();
 
+  if (normalizedCode === "mfa_enrollment_required" || lower.includes("mfa enrollment is required")) {
+    return "2段階認証の登録を完了してください。";
+  }
   if (normalizedCode === "mfa_required" || lower.includes("mfa code is required")) {
     return "2段階認証コードを入力してください。";
   }

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { toUserFacingErrorMessage } from "../src/user-facing-error.js";
 
 test("maps known auth/credential errors", () => {
+  assert.equal(toUserFacingErrorMessage({ code: "mfa_enrollment_required" }), "2段階認証の登録を完了してください。");
   assert.equal(toUserFacingErrorMessage({ code: "mfa_required" }), "2段階認証コードを入力してください。");
   assert.equal(toUserFacingErrorMessage("Invalid MFA code"), "2段階認証コードが正しくありません。");
   assert.equal(

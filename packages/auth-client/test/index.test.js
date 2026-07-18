@@ -9,6 +9,7 @@ import {
   hasGlobalRole,
   hasProductAccess,
   hasProductRole,
+  publicAuthErrorCode,
   requirePlatformCsrf,
   requireProductContext,
   verifyPlatformSessionFromHeaders
@@ -86,6 +87,8 @@ test("builds shared product context with entitlement and token version checks", 
       memberId: "mem_123",
       orgId: "org_123",
       displayName: "Doctor",
+      globalRoles: [],
+      productRoles: { charting: ["doctor"] },
       status: "active"
     }),
     getProductEntitlement: async () => ({
@@ -108,6 +111,158 @@ test("builds shared product context with entitlement and token version checks", 
   assert.equal(context.session.orgId, "org_123");
   assert.equal(context.member.memberId, "mem_123");
   assert.equal(context.entitlement.status, "trialing");
+});
+
+test("uses current member roles instead of stale roles in the signed session", async () => {
+  const { token } = createSignedSession({
+    orgId: "org_roles",
+    memberId: "mem_roles",
+    organizationCode: "clinic-roles",
+    loginId: "former-doctor@example.com",
+    tokenVersion: 1,
+    globalRoles: [],
+    productRoles: { charting: ["doctor"] },
+    csrfToken: "csrf_roles"
+  }, {
+    now: new Date("2026-05-28T00:00:00.000Z"),
+    sessionSecret: "secret"
+  });
+  const platformStore = {
+    getLoginIdentity: async () => ({
+      organizationCode: "clinic-roles",
+      loginId: "former-doctor@example.com",
+      orgId: "org_roles",
+      memberId: "mem_roles",
+      tokenVersion: 1,
+      status: "active"
+    }),
+    getMember: async () => ({
+      memberId: "mem_roles",
+      orgId: "org_roles",
+      globalRoles: [],
+      productRoles: { charting: ["viewer"] },
+      status: "active"
+    }),
+    getProductEntitlement: async () => ({ productId: "charting", status: "enabled" })
+  };
+
+  await assert.rejects(
+    () => requireProductContext({
+      headers: { authorization: `Bearer ${token}` },
+      now: new Date("2026-05-28T00:01:00.000Z"),
+      sessionSecret: "secret"
+    }, {
+      platformStore,
+      productId: "charting",
+      productLabel: "Charting",
+      allowedProductRoles: ["doctor"]
+    }),
+    /Charting product access is required/
+  );
+});
+
+test("rejects product API access until required MFA enrollment is verified", async () => {
+  const { token } = createSignedSession({
+    orgId: "org_mfa",
+    memberId: "mem_mfa",
+    organizationCode: "clinic-mfa",
+    loginId: "admin@example.com",
+    tokenVersion: 1,
+    globalRoles: ["org_admin"],
+    productRoles: { fee: ["admin"] },
+    mfaRequired: true,
+    mfaEnrolled: false,
+    mfaVerified: false,
+    csrfToken: "csrf_mfa"
+  }, {
+    now: new Date("2026-05-28T00:00:00.000Z"),
+    sessionSecret: "secret"
+  });
+  const platformStore = {
+    getLoginIdentity: async () => ({
+      organizationCode: "clinic-mfa",
+      loginId: "admin@example.com",
+      orgId: "org_mfa",
+      memberId: "mem_mfa",
+      tokenVersion: 1,
+      mfaRequired: true,
+      mfaEnrolled: false,
+      status: "active"
+    }),
+    getMember: async () => ({
+      memberId: "mem_mfa",
+      orgId: "org_mfa",
+      globalRoles: ["org_admin"],
+      status: "active"
+    }),
+    getProductEntitlement: async () => ({ productId: "fee", status: "enabled" })
+  };
+
+  await assert.rejects(
+    () => requireProductContext({
+      headers: { authorization: `Bearer ${token}` },
+      now: new Date("2026-05-28T00:01:00.000Z"),
+      sessionSecret: "secret"
+    }, {
+      platformStore,
+      productId: "fee",
+      productLabel: "Fee",
+      allowedProductRoles: ["admin"]
+    }),
+    (error) => error.statusCode === 403 && error.code === "mfa_enrollment_required"
+  );
+});
+
+test("accepts product API access after required MFA is enrolled and verified", async () => {
+  const { token } = createSignedSession({
+    orgId: "org_mfa",
+    memberId: "mem_mfa",
+    organizationCode: "clinic-mfa",
+    loginId: "admin@example.com",
+    tokenVersion: 2,
+    globalRoles: ["org_admin"],
+    productRoles: { fee: ["admin"] },
+    mfaRequired: true,
+    mfaEnrolled: true,
+    mfaVerified: true,
+    csrfToken: "csrf_mfa"
+  }, {
+    now: new Date("2026-05-28T00:00:00.000Z"),
+    sessionSecret: "secret"
+  });
+  const platformStore = {
+    getLoginIdentity: async () => ({
+      organizationCode: "clinic-mfa",
+      loginId: "admin@example.com",
+      orgId: "org_mfa",
+      memberId: "mem_mfa",
+      tokenVersion: 2,
+      mfaRequired: true,
+      mfaEnrolled: true,
+      status: "active"
+    }),
+    getMember: async () => ({
+      memberId: "mem_mfa",
+      orgId: "org_mfa",
+      globalRoles: ["org_admin"],
+      status: "active"
+    }),
+    getProductEntitlement: async () => ({ productId: "fee", status: "enabled" })
+  };
+
+  const context = await requireProductContext({
+    headers: { authorization: `Bearer ${token}` },
+    now: new Date("2026-05-28T00:01:00.000Z"),
+    sessionSecret: "secret"
+  }, {
+    platformStore,
+    productId: "fee",
+    productLabel: "Fee",
+    allowedProductRoles: ["admin"]
+  });
+
+  assert.equal(context.mfaRequired, true);
+  assert.equal(context.mfaEnrolled, true);
 });
 
 test("rejects shared product context without entitlement", async () => {
@@ -201,4 +356,11 @@ test("builds forbidden errors with status code", () => {
 
   assert.equal(error.statusCode, 403);
   assert.equal(error.message, "nope");
+});
+
+test("exposes only public MFA error codes", () => {
+  assert.equal(publicAuthErrorCode({ code: "mfa_required" }), "mfa_required");
+  assert.equal(publicAuthErrorCode({ code: "mfa_enrollment_required" }), "mfa_enrollment_required");
+  assert.equal(publicAuthErrorCode({ code: "FEE_CALCULATION_JOB_LEASE_CONFLICT" }), "");
+  assert.equal(publicAuthErrorCode({ code: "ENOENT" }), "");
 });

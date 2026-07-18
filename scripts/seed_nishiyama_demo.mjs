@@ -13,7 +13,10 @@ import {
   organizationPath,
   patientPath
 } from "../packages/firestore-schema/src/index.js";
-import { normalizeOrganizationCode } from "../packages/platform-contracts/src/index.js";
+import {
+  memberRequiresMfa,
+  normalizeOrganizationCode
+} from "../packages/platform-contracts/src/index.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const sampleRoot = join(root, "samples", "nishiyama-demo");
@@ -124,7 +127,7 @@ async function seedEnv(env) {
       if (identity) {
         await setDoc(projectId, accessToken, identityPath, {
           ...identity,
-          mfaRequired: Boolean(patched.globalRoles?.length),
+          mfaRequired: memberRequiresMfa({ ...member, ...patched }),
           updatedAt: now
         });
       }

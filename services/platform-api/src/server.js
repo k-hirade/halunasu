@@ -1,7 +1,9 @@
 import http from "node:http";
 import QRCode from "qrcode";
 import {
+  memberRequiresMfa,
   normalizeOrganizationCode,
+  resolveMfaState,
   validateLoginInput
 } from "../../../packages/platform-contracts/src/index.js";
 import { createOtpAuthUrl, generateMfaSecret, verifyTotpCode } from "./auth/mfa.js";
@@ -41,6 +43,7 @@ const SESSION_CONTEXT_CACHE_TTL_MS = Math.max(
 );
 const SESSION_CONTEXT_CACHE_MAX_ENTRIES = 1000;
 const DEFAULT_REQUEST_BODY_LIMIT_BYTES = 1024 * 1024;
+const MFA_ENROLLMENT_SESSION_TTL_SECONDS = 10 * 60;
 const sessionContextCache = new Map();
 
 export function createPlatformApiServer(options = {}) {
@@ -212,12 +215,12 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "GET" && matches(parts, ["v1", "auth", "session"])) {
-    const context = await requireSession(input, store);
+    const context = await requireSession(input, store, { allowPendingMfa: true });
     return ok({ authenticated: true, session: sessionView(context), accessToken: context.accessToken || null });
   }
 
   if (method === "POST" && matches(parts, ["v1", "auth", "logout"])) {
-    const context = await requireSession(input, store);
+    const context = await requireSession(input, store, { allowPendingMfa: true });
     requireCsrf(input, context.session);
     await store.revokeMemberSessions(context.identity);
     clearSessionContextCache();
@@ -235,7 +238,7 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "POST" && matches(parts, ["v1", "auth", "mfa", "enroll"])) {
-    const context = await requireSession(input, store);
+    const context = await requireSession(input, store, { allowPendingMfa: true });
     requireCsrf(input, context.session);
     requirePrivilegedMember(context.member);
 
@@ -245,6 +248,7 @@ async function routePlatformApiRequest(input = {}) {
       secret
     });
     await store.beginMfaEnrollment(context.identity, secret);
+    clearSessionContextCache();
     await store.createAuditEvent(context.session.orgId, {
       eventType: "auth.mfa_enrollment_started",
       actorMemberId: context.session.memberId,
@@ -334,12 +338,19 @@ async function routePlatformApiRequest(input = {}) {
   }
 
   if (method === "POST" && matches(parts, ["v1", "auth", "mfa", "verify"])) {
-    const context = await requireSession(input, store);
+    const context = await requireSession(input, store, { allowPendingMfa: true });
     requireCsrf(input, context.session);
+    await consumeMfaVerificationRateLimit(input, store, context);
 
     const code = requiredBodyString(input.body, "code");
     const secret = resolveIdentityMfaSecret(context.identity, { pending: true });
     if (!secret || !verifyTotpCode(secret, code, { now: input.now })) {
+      await store.createAuditEvent(context.session.orgId, {
+        eventType: "auth.mfa_verification_failed",
+        actorMemberId: context.session.memberId,
+        actorLoginId: context.session.loginId,
+        safePayload: { status: "invalid_code" }
+      });
       throw unauthorizedError("Invalid MFA code");
     }
 
@@ -747,7 +758,8 @@ async function login(input, store) {
     throw unauthorizedError("Invalid credentials");
   }
 
-  if (identity.mfaRequired && identity.mfaEnrolled) {
+  const mfaState = resolveMfaState(identity, member);
+  if (mfaState.required && mfaState.enrolled) {
     if (!credentials.mfaCode) {
       const error = unauthorizedError("MFA code is required");
       error.code = "mfa_required";
@@ -757,6 +769,12 @@ async function login(input, store) {
     const mfaSecret = resolveIdentityMfaSecret(identity);
     if (!mfaSecret || !verifyTotpCode(mfaSecret, credentials.mfaCode, { now: input.now })) {
       await store.recordLoginFailure(identity);
+      await store.createAuditEvent(identity.orgId, {
+        eventType: "auth.login_failed",
+        actorMemberId: identity.memberId,
+        actorLoginId: identity.loginId,
+        safePayload: { status: "invalid_mfa" }
+      });
       throw unauthorizedError("Invalid MFA code");
     }
   }
@@ -766,7 +784,7 @@ async function login(input, store) {
     eventType: "auth.login_succeeded",
     actorMemberId: identity.memberId,
     actorLoginId: identity.loginId,
-    safePayload: { mfaVerified: Boolean(identity.mfaRequired && identity.mfaEnrolled) }
+    safePayload: { mfaVerified: Boolean(mfaState.required && mfaState.enrolled) }
   });
 
   const sessionResponse = createSessionResponse({
@@ -774,7 +792,7 @@ async function login(input, store) {
     identity: refreshedIdentity,
     member,
     organizationCode: credentials.organizationCode,
-    mfaVerified: Boolean(identity.mfaRequired && identity.mfaEnrolled)
+    mfaVerified: Boolean(mfaState.required && mfaState.enrolled)
   });
 
   return ok({
@@ -790,6 +808,21 @@ async function consumeLoginRateLimit(input, store, credentials) {
     {
       limit: input.loginRateLimit?.limit || 10,
       windowSeconds: input.loginRateLimit?.windowSeconds || 5 * 60
+    }
+  );
+}
+
+async function consumeMfaVerificationRateLimit(input, store, context) {
+  await store.consumeRateLimit(
+    rateLimitKey(
+      "mfa-verification",
+      input,
+      context.session.organizationCode,
+      context.session.loginId
+    ),
+    {
+      limit: input.mfaRateLimit?.limit || 10,
+      windowSeconds: input.mfaRateLimit?.windowSeconds || 5 * 60
     }
   );
 }
@@ -812,13 +845,15 @@ async function consumeSignupRateLimit(input, store) {
   );
 }
 
-async function requireSession(input, store) {
+async function requireSession(input, store, options = {}) {
   const token = sessionTokenFromHeaders(input.headers || {}, cookieOptions(input));
   const session = verifySignedSession(token, sessionOptions(input));
   const cacheKey = sessionContextCacheKey(session);
   const cached = getCachedSessionContext(input, cacheKey);
   if (cached) {
-    return { ...cached, accessToken: token };
+    const context = { ...cached, session, accessToken: token };
+    requireVerifiedMfa(context, options);
+    return context;
   }
 
   const identity = await store.getLoginIdentity(session.organizationCode, session.loginId);
@@ -836,9 +871,33 @@ async function requireSession(input, store) {
     throw unauthorizedError("Invalid session");
   }
 
-  const context = { session, identity, member, accessToken: token };
+  const mfaState = resolveMfaState(identity, member);
+  const context = {
+    session,
+    identity,
+    member,
+    accessToken: token,
+    mfaRequired: mfaState.required,
+    mfaEnrolled: mfaState.enrolled
+  };
   setCachedSessionContext(input, cacheKey, context);
+  requireVerifiedMfa(context, options);
   return context;
+}
+
+function requireVerifiedMfa(context, options = {}) {
+  if (!context.mfaRequired || (context.mfaEnrolled && context.session.mfaVerified === true)) {
+    return;
+  }
+  if (options.allowPendingMfa) {
+    return;
+  }
+
+  const error = forbiddenError(context.mfaEnrolled
+    ? "MFA verification is required"
+    : "MFA enrollment is required");
+  error.code = context.mfaEnrolled ? "mfa_required" : "mfa_enrollment_required";
+  throw error;
 }
 
 async function optionalSession(input, store) {
@@ -1148,13 +1207,7 @@ function requireMaintenanceSecret(input) {
 }
 
 function requirePrivilegedMember(member) {
-  if (
-    member.globalRoles.includes("org_admin")
-    || member.globalRoles.includes("org_owner")
-    || member.globalRoles.includes("it_admin")
-    || member.globalRoles.includes("billing_admin")
-    || member.globalRoles.includes("platform_admin")
-  ) {
+  if (memberRequiresMfa(member)) {
     return;
   }
 
@@ -1192,6 +1245,16 @@ function forbiddenError(message = "Forbidden") {
 }
 
 function createSessionResponse({ input, identity, member, organizationCode, mfaVerified }) {
+  const mfaState = resolveMfaState(identity, member);
+  const responseInput = mfaState.required && !mfaState.enrolled
+    ? {
+      ...input,
+      sessionTtlSeconds: Math.min(
+        Number(input.sessionTtlSeconds) || MFA_ENROLLMENT_SESSION_TTL_SECONDS,
+        MFA_ENROLLMENT_SESSION_TTL_SECONDS
+      )
+    }
+    : input;
   const csrfToken = createCsrfToken();
   const { token, session } = createSignedSession({
     orgId: identity.orgId,
@@ -1201,9 +1264,11 @@ function createSessionResponse({ input, identity, member, organizationCode, mfaV
     tokenVersion: identity.tokenVersion,
     globalRoles: member.globalRoles,
     productRoles: member.productRoles,
-    mfaVerified,
+    mfaRequired: mfaState.required,
+    mfaEnrolled: mfaState.enrolled,
+    mfaVerified: Boolean(mfaState.required && mfaState.enrolled && mfaVerified),
     csrfToken
-  }, sessionOptions(input));
+  }, sessionOptions(responseInput));
 
   return {
     csrfToken,
@@ -1211,15 +1276,19 @@ function createSessionResponse({ input, identity, member, organizationCode, mfaV
     sessionView: publicSessionView(session),
     headers: {
       "set-cookie": [
-        sessionCookieHeader(token, cookieOptions(input)),
-        csrfCookieHeader(csrfToken, cookieOptions(input))
+        sessionCookieHeader(token, cookieOptions(responseInput)),
+        csrfCookieHeader(csrfToken, cookieOptions(responseInput))
       ]
     }
   };
 }
 
 function sessionView(context) {
-  return publicSessionView(context.session);
+  return publicSessionView({
+    ...context.session,
+    mfaRequired: context.mfaRequired,
+    mfaEnrolled: context.mfaEnrolled
+  });
 }
 
 function publicSessionView(session) {
@@ -1230,6 +1299,8 @@ function publicSessionView(session) {
     loginId: session.loginId,
     globalRoles: session.globalRoles || [],
     productRoles: session.productRoles || {},
+    mfaRequired: Boolean(session.mfaRequired),
+    mfaEnrolled: Boolean(session.mfaEnrolled),
     mfaVerified: Boolean(session.mfaVerified),
     issuedAt: session.issuedAt,
     expiresAt: session.expiresAt
@@ -1627,6 +1698,9 @@ function sessionContextCacheKey(session = {}) {
     session.organizationCode,
     session.loginId,
     Number(session.tokenVersion || 0),
+    session.issuedAt,
+    Boolean(session.mfaVerified),
+    session.csrfToken,
     session.expiresAt
   ].join(":");
 }

@@ -437,6 +437,9 @@ test("logs in, checks session, enrolls MFA, and logs out", async () => {
   const bearerSession = await request(store, "GET", "/v1/auth/session", undefined, {
     authorization: `Bearer ${login.body.accessToken}`
   });
+  const protectedBeforeMfa = await request(store, "GET", `/v1/organizations/${orgId}`, undefined, {
+    authorization: `Bearer ${login.body.accessToken}`
+  });
   const mfaEnroll = await request(store, "POST", "/v1/auth/mfa/enroll", {}, {
     cookie: loginCookie,
     "x-csrf-token": csrfToken
@@ -444,11 +447,18 @@ test("logs in, checks session, enrolls MFA, and logs out", async () => {
   const mfaCode = createTotpCode(mfaEnroll.body.mfa.secret, {
     now: new Date("2026-05-27T00:00:00.000Z")
   });
+  const invalidMfaVerify = await request(store, "POST", "/v1/auth/mfa/verify", { code: "not-a-code" }, {
+    cookie: loginCookie,
+    "x-csrf-token": csrfToken
+  });
   const mfaVerify = await request(store, "POST", "/v1/auth/mfa/verify", { code: mfaCode }, {
     cookie: loginCookie,
     "x-csrf-token": csrfToken
   });
   const verifiedCookie = cookieHeaderFromSetCookie(mfaVerify.headers["set-cookie"]);
+  const protectedAfterMfa = await request(store, "GET", `/v1/organizations/${orgId}`, undefined, {
+    cookie: verifiedCookie
+  });
   const logout = await request(store, "POST", "/v1/auth/logout", {}, {
     cookie: verifiedCookie,
     "x-csrf-token": mfaVerify.body.csrfToken
@@ -456,22 +466,118 @@ test("logs in, checks session, enrolls MFA, and logs out", async () => {
   const afterLogout = await request(store, "GET", "/v1/auth/session", undefined, {
     cookie: verifiedCookie
   });
+  const auditEvents = store.listAuditEvents(orgId);
 
   assert.equal(login.statusCode, 200);
   assert.equal(login.body.session.loginId, "admin");
+  assert.equal(login.body.session.mfaRequired, true);
+  assert.equal(login.body.session.mfaEnrolled, false);
+  assert.equal(login.body.session.mfaVerified, false);
+  assert.equal(
+    Date.parse(login.body.session.expiresAt) - Date.parse(login.body.session.issuedAt),
+    10 * 60 * 1000
+  );
   assert.match(login.body.accessToken, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
   assert.equal(session.statusCode, 200);
   assert.match(session.body.session.memberId, /^mem_/);
+  assert.equal(session.body.session.mfaRequired, true);
+  assert.equal(session.body.session.mfaEnrolled, false);
   assert.equal(bearerSession.statusCode, 200);
   assert.equal(bearerSession.body.session.memberId, session.body.session.memberId);
   assert.equal(bearerSession.body.accessToken, login.body.accessToken);
+  assert.equal(protectedBeforeMfa.statusCode, 403);
+  assert.equal(protectedBeforeMfa.body.error, "mfa_enrollment_required");
   assert.equal(mfaEnroll.statusCode, 201);
   assert.match(mfaEnroll.body.mfa.otpauthUrl, /^otpauth:\/\/totp\//);
   assert.match(mfaEnroll.body.mfa.qrCodeDataUrl, /^data:image\/png;base64,/);
+  assert.equal(invalidMfaVerify.statusCode, 401);
+  assert.equal(invalidMfaVerify.body.message, "Invalid MFA code");
   assert.equal(mfaVerify.statusCode, 200);
   assert.equal(mfaVerify.body.mfa.enrolled, true);
+  assert.equal(mfaVerify.body.session.mfaRequired, true);
+  assert.equal(mfaVerify.body.session.mfaEnrolled, true);
+  assert.equal(mfaVerify.body.session.mfaVerified, true);
+  assert.equal(protectedAfterMfa.statusCode, 200);
   assert.equal(logout.statusCode, 200);
   assert.equal(afterLogout.statusCode, 401);
+  assert.ok(auditEvents.some((event) => (
+    event.eventType === "auth.mfa_verification_failed"
+    && event.safePayload.status === "invalid_code"
+  )));
+});
+
+test("allows non-privileged members to use their session without MFA", async () => {
+  const store = createTestStore();
+  const organization = store.createOrganization({
+    organizationCode: "Clinic Staff",
+    displayName: "Clinic Staff"
+  });
+  store.createMember(organization.orgId, {
+    loginId: "clerk",
+    displayName: "Clerk",
+    globalRoles: ["staff"],
+    productRoles: { fee: ["clerk"] },
+    password: "correct horse battery staple"
+  });
+
+  const login = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: "clinic-staff",
+    loginId: "clerk",
+    password: "correct horse battery staple"
+  });
+  const organizationRead = await request(
+    store,
+    "GET",
+    `/v1/organizations/${organization.orgId}`,
+    undefined,
+    { authorization: `Bearer ${login.body.accessToken}` }
+  );
+
+  assert.equal(login.statusCode, 200);
+  assert.equal(login.body.session.mfaRequired, false);
+  assert.equal(login.body.session.mfaEnrolled, false);
+  assert.equal(login.body.session.mfaVerified, false);
+  assert.equal(organizationRead.statusCode, 200);
+});
+
+test("requires MFA enrollment for product administrators without a global admin role", async () => {
+  const store = createTestStore();
+  const organization = store.createOrganization({
+    organizationCode: "Clinic Product Admin",
+    displayName: "Clinic Product Admin"
+  });
+  store.createMember(organization.orgId, {
+    loginId: "fee-admin",
+    displayName: "Fee Admin",
+    globalRoles: ["staff"],
+    productRoles: { fee: ["admin"] },
+    password: "correct horse battery staple"
+  });
+
+  const login = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: "clinic-product-admin",
+    loginId: "fee-admin",
+    password: "correct horse battery staple"
+  });
+  const cookie = cookieHeaderFromSetCookie(login.headers["set-cookie"]);
+  const protectedBeforeMfa = await request(
+    store,
+    "GET",
+    `/v1/organizations/${organization.orgId}`,
+    undefined,
+    { cookie }
+  );
+  const enrollment = await request(store, "POST", "/v1/auth/mfa/enroll", {}, {
+    cookie,
+    "x-csrf-token": login.body.csrfToken
+  });
+
+  assert.equal(login.statusCode, 200);
+  assert.equal(login.body.session.mfaRequired, true);
+  assert.equal(login.body.session.mfaEnrolled, false);
+  assert.equal(protectedBeforeMfa.statusCode, 403);
+  assert.equal(protectedBeforeMfa.body.error, "mfa_enrollment_required");
+  assert.equal(enrollment.statusCode, 201);
 });
 
 test("organization admin can reset member MFA enrollment", async () => {
@@ -926,10 +1032,110 @@ test("requires MFA code after enrollment", async () => {
     password: "correct horse battery staple",
     mfaCode: code
   });
+  const withInvalidMfa = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: "clinic-mfa",
+    loginId: "admin",
+    password: "correct horse battery staple",
+    mfaCode: "not-a-code"
+  });
+  const auditEvents = store.listAuditEvents(orgId);
 
   assert.equal(missingMfa.statusCode, 401);
   assert.equal(missingMfa.body.error, "mfa_required");
+  assert.equal(withInvalidMfa.statusCode, 401);
+  assert.equal(withInvalidMfa.body.message, "Invalid MFA code");
   assert.equal(withMfa.statusCode, 200);
+  assert.equal(withMfa.body.session.mfaEnrolled, true);
+  assert.equal(withMfa.body.session.mfaVerified, true);
+  assert.ok(auditEvents.some((event) => (
+    event.eventType === "auth.login_failed"
+    && event.safePayload.status === "invalid_mfa"
+  )));
+});
+
+test("verifies a newly enrolled MFA secret with the production session cache enabled", async () => {
+  const store = createTestStore();
+  const organization = store.createOrganization({
+    organizationCode: "Cached MFA Clinic",
+    displayName: "Cached MFA Clinic"
+  });
+  store.createMember(organization.orgId, {
+    loginId: "admin",
+    displayName: "Admin",
+    globalRoles: ["org_admin"],
+    password: "correct horse battery staple"
+  });
+  const runtimeOptions = { env: "stg", secureCookies: false };
+  const login = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: "cached-mfa-clinic",
+    loginId: "admin",
+    password: "correct horse battery staple"
+  }, {}, runtimeOptions);
+  const cookie = cookieHeaderFromSetCookie(login.headers["set-cookie"]);
+  const headers = {
+    cookie,
+    "x-csrf-token": login.body.csrfToken
+  };
+  const enroll = await request(
+    store,
+    "POST",
+    "/v1/auth/mfa/enroll",
+    {},
+    headers,
+    runtimeOptions
+  );
+  const code = createTotpCode(enroll.body.mfa.secret, {
+    now: new Date("2026-05-27T00:00:00.000Z")
+  });
+  const verified = await request(
+    store,
+    "POST",
+    "/v1/auth/mfa/verify",
+    { code },
+    headers,
+    runtimeOptions
+  );
+
+  assert.equal(enroll.statusCode, 201);
+  assert.equal(verified.statusCode, 200);
+  assert.equal(verified.body.session.mfaEnrolled, true);
+  assert.equal(verified.body.session.mfaVerified, true);
+});
+
+test("rate limits MFA enrollment verification attempts", async () => {
+  const store = createTestStore();
+  const organization = store.createOrganization({
+    organizationCode: "Clinic MFA Limit",
+    displayName: "Clinic MFA Limit"
+  });
+  store.createMember(organization.orgId, {
+    loginId: "admin",
+    displayName: "Admin",
+    globalRoles: ["org_admin"],
+    password: "correct horse battery staple"
+  });
+  const login = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: "clinic-mfa-limit",
+    loginId: "admin",
+    password: "correct horse battery staple"
+  });
+  const cookie = cookieHeaderFromSetCookie(login.headers["set-cookie"]);
+  await request(store, "POST", "/v1/auth/mfa/enroll", {}, {
+    cookie,
+    "x-csrf-token": login.body.csrfToken
+  });
+  const requestOptions = { mfaRateLimit: { limit: 1, windowSeconds: 300 } };
+  const first = await request(store, "POST", "/v1/auth/mfa/verify", { code: "not-a-code" }, {
+    cookie,
+    "x-csrf-token": login.body.csrfToken
+  }, requestOptions);
+  const second = await request(store, "POST", "/v1/auth/mfa/verify", { code: "not-a-code" }, {
+    cookie,
+    "x-csrf-token": login.body.csrfToken
+  }, requestOptions);
+
+  assert.equal(first.statusCode, 401);
+  assert.equal(second.statusCode, 429);
 });
 
 test("stores Platform MFA secrets encrypted while preserving login verification", async () => {
@@ -1292,7 +1498,22 @@ async function createAuthenticatedMember(store, options = {}) {
     loginId: member.loginId,
     password: options.password || "correct horse battery staple"
   });
-  const cookie = cookieHeaderFromSetCookie(login.headers["set-cookie"]);
+  let authenticatedResponse = login;
+  if (login.body.session?.mfaRequired) {
+    const pendingCookie = cookieHeaderFromSetCookie(login.headers["set-cookie"]);
+    const enroll = await request(store, "POST", "/v1/auth/mfa/enroll", {}, {
+      cookie: pendingCookie,
+      "x-csrf-token": login.body.csrfToken
+    });
+    const code = createTotpCode(enroll.body.mfa.secret, {
+      now: new Date("2026-05-27T00:00:00.000Z")
+    });
+    authenticatedResponse = await request(store, "POST", "/v1/auth/mfa/verify", { code }, {
+      cookie: pendingCookie,
+      "x-csrf-token": login.body.csrfToken
+    });
+  }
+  const cookie = cookieHeaderFromSetCookie(authenticatedResponse.headers["set-cookie"]);
 
   return {
     organization,
@@ -1300,7 +1521,7 @@ async function createAuthenticatedMember(store, options = {}) {
     login,
     headers: {
       cookie,
-      "x-csrf-token": login.body.csrfToken
+      "x-csrf-token": authenticatedResponse.body.csrfToken
     }
   };
 }
@@ -1323,6 +1544,7 @@ function request(store, method, path, body, headers = {}, options = {}) {
     cookieDomain: options.cookieDomain,
     sessionCookieName: options.sessionCookieName,
     csrfCookieName: options.csrfCookieName,
+    mfaRateLimit: options.mfaRateLimit,
     loginRateLimit: options.loginRateLimit,
     signupRateLimit: options.signupRateLimit,
     stripeClient: options.stripeClient,
