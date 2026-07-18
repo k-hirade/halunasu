@@ -1477,106 +1477,200 @@ test("returns validation and conflict errors as responses", async () => {
   assert.equal(duplicate.body.error, "conflict");
 });
 
-test("issues a short-lived MFA-bound token scoped only to HOMIS Sidecar", async () => {
+test("sidecar device authorization issues and refreshes an MFA-bound scoped token", async () => {
   const store = createTestStore();
-  const extensionId = "abcdefghijklmnopabcdefghijklmnop";
-  const verifier = "sidecar-proof-verifier-0123456789ABCDEFGHIJK";
-  const codeChallenge = crypto.createHash("sha256").update(verifier).digest("base64url");
-  const { organization, member, headers } = await createAuthenticatedMember(store, {
-    organizationCode: "Sidecar Clinic",
-    globalRoles: [],
-    productRoles: { homis_sidecar: ["medical_clerk"] }
-  });
-  store.upsertProductEntitlement(organization.orgId, {
-    productId: "homis_sidecar",
-    status: "enabled"
-  });
-
-  const response = await request(store, "POST", "/v1/auth/sidecar-token", {
-    extensionId,
-    deviceId: "sidecar_device_0001",
-    codeChallenge
-  }, headers, {
-    sidecarEnabled: true,
-    sidecarAllowedExtensionIds: [extensionId]
-  });
-  const session = verifySignedSession(response.body.accessToken, {
-    now: new Date("2026-05-27T00:00:00.000Z"),
+  const fixture = await createApprovedSidecarDevice(store, { organizationCode: "Sidecar Clinic" });
+  const issued = await request(store, "POST", "/v1/auth/sidecar-token", {
+    deviceAuthId: fixture.deviceAuthId,
+    deviceId: fixture.deviceId,
+    codeChallenge: fixture.codeChallenge
+  }, {}, fixture.apiOptions);
+  const session = verifySignedSession(issued.body.accessToken, {
+    now: fixture.now,
     sessionSecret: "test-session-secret"
   });
 
-  assert.equal(response.statusCode, 201);
+  assert.equal(issued.statusCode, 201);
+  assert.match(issued.body.grantId, /^sgr_[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+  assert.equal(issued.body.sidecarContext.facilityId, fixture.facility.facilityId);
   assert.equal(session.tokenType, "scoped_product_access");
   assert.equal(session.productId, "homis_sidecar");
   assert.equal(session.audience, "fee-api");
   assert.deepEqual(session.scopes, ["sidecar:calculate"]);
-  assert.equal(session.extensionId, extensionId);
-  assert.equal(session.deviceId, "sidecar_device_0001");
-  assert.equal(session.proofKeyChallenge, codeChallenge);
+  assert.equal(session.extensionId, fixture.extensionId);
+  assert.equal(session.deviceId, fixture.deviceId);
+  assert.equal(session.proofKeyChallenge, fixture.codeChallenge);
   assert.equal(Date.parse(session.expiresAt) - Date.parse(session.issuedAt), 5 * 60 * 1000);
-  assert.ok(store.listAuditEvents(organization.orgId).some((event) => (
+
+  const refreshVerifier = "sidecar-refresh-verifier-0123456789ABCDEFGHIJ";
+  const refreshChallenge = crypto.createHash("sha256").update(refreshVerifier).digest("base64url");
+  const refreshed = await request(store, "POST", "/v1/auth/sidecar-token", {
+    grantId: issued.body.grantId,
+    deviceId: fixture.deviceId,
+    codeChallenge: refreshChallenge
+  }, {}, fixture.apiOptions);
+  assert.equal(refreshed.statusCode, 201);
+  assert.equal(refreshed.body.grantId, issued.body.grantId);
+  const refreshedSession = verifySignedSession(refreshed.body.accessToken, {
+    now: fixture.now,
+    sessionSecret: "test-session-secret"
+  });
+  assert.equal(refreshedSession.proofKeyChallenge, refreshChallenge);
+  const audits = store.listAuditEvents(fixture.organization.orgId);
+  assert.ok(audits.some((event) => event.eventType === "auth.sidecar_device_approved"));
+  assert.ok(audits.some((event) => (
     event.eventType === "auth.sidecar_token_issued"
-    && event.actorMemberId === member.memberId
-    && !JSON.stringify(event.safePayload).includes(verifier)
+    && event.safePayload.authMode === "device_poll"
+  )));
+  assert.ok(audits.some((event) => (
+    event.eventType === "auth.sidecar_token_issued"
+    && event.safePayload.authMode === "grant_refresh"
+    && !JSON.stringify(event.safePayload).includes(refreshVerifier)
   )));
 });
 
-test("fails closed for sidecar token issuance without MFA or for a revoked device", async () => {
+test("sidecar token poll reports authorization_pending before approval", async () => {
   const store = createTestStore();
-  const extensionId = "abcdefghijklmnopabcdefghijklmnop";
-  const verifier = "sidecar-proof-verifier-0123456789ABCDEFGHIJK";
-  const organization = store.createOrganization({
-    organizationCode: "Sidecar Pending",
-    displayName: "Sidecar Pending"
+  const fixture = await createSidecarDeviceAuthorization(store);
+  const pending = await request(store, "POST", "/v1/auth/sidecar-token", {
+    deviceAuthId: fixture.deviceAuthId,
+    deviceId: fixture.deviceId,
+    codeChallenge: fixture.codeChallenge
+  }, {}, fixture.apiOptions);
+  assert.equal(pending.statusCode, 400);
+  assert.equal(pending.body.error, "authorization_pending");
+});
+
+test("sidecar token poll rejects a denied authorization", async () => {
+  const store = createTestStore();
+  const fixture = await createApprovedSidecarDevice(store, {
+    organizationCode: "Sidecar Denied",
+    decision: "deny"
   });
-  const member = store.createMember(organization.orgId, {
-    loginId: "clerk",
-    displayName: "Clerk",
-    globalRoles: [],
-    productRoles: { homis_sidecar: ["medical_clerk"] },
-    password: "correct horse battery staple"
+  const denied = await request(store, "POST", "/v1/auth/sidecar-token", {
+    deviceAuthId: fixture.deviceAuthId,
+    deviceId: fixture.deviceId,
+    codeChallenge: fixture.codeChallenge
+  }, {}, fixture.apiOptions);
+  assert.equal(denied.statusCode, 403);
+  assert.equal(denied.body.error, "access_denied");
+});
+
+test("sidecar user code cannot be approved after its ten minute lifetime", async () => {
+  const store = createTestStore();
+  const fixture = await createSidecarDeviceAuthorization(store);
+  const { headers } = await createSidecarApprover(store, "Sidecar Expired");
+  const expired = await request(store, "POST", "/v1/auth/sidecar-device-authorizations/lookup", {
+    userCode: fixture.userCode
+  }, headers, {
+    ...fixture.apiOptions,
+    now: new Date("2026-05-27T00:11:00.000Z")
   });
-  store.upsertProductEntitlement(organization.orgId, {
-    productId: "homis_sidecar",
-    status: "enabled"
-  });
-  const login = await request(store, "POST", "/v1/auth/login", {
-    organizationCode: organization.organizationCode,
-    loginId: member.loginId,
-    password: "correct horse battery staple"
-  });
-  const pendingHeaders = {
-    cookie: cookieHeaderFromSetCookie(login.headers["set-cookie"]),
-    "x-csrf-token": login.body.csrfToken
-  };
-  const tokenBody = {
-    extensionId,
-    deviceId: "sidecar_device_0002",
-    codeChallenge: crypto.createHash("sha256").update(verifier).digest("base64url")
-  };
-  const pending = await request(store, "POST", "/v1/auth/sidecar-token", tokenBody, pendingHeaders, {
+  assert.equal(expired.statusCode, 400);
+  assert.equal(expired.body.error, "expired_token");
+});
+
+test("sidecar grant refresh is rejected immediately after organization revocation", async () => {
+  const store = createTestStore();
+  const fixture = await createApprovedSidecarDevice(store, { organizationCode: "Sidecar Revoke" });
+  const issued = await request(store, "POST", "/v1/auth/sidecar-token", {
+    deviceAuthId: fixture.deviceAuthId,
+    deviceId: fixture.deviceId,
+    codeChallenge: fixture.codeChallenge
+  }, {}, fixture.apiOptions);
+  const grants = await request(store, "GET", "/v1/auth/sidecar-grants", undefined, fixture.headers, fixture.apiOptions);
+  assert.equal(grants.statusCode, 200);
+  assert.equal(grants.body.sidecarGrants.length, 1);
+  assert.equal(Object.hasOwn(grants.body.sidecarGrants[0], "grantSecretHash"), false);
+  const grantRecordId = grants.body.sidecarGrants[0].grantRecordId;
+  const revoked = await request(
+    store,
+    "POST",
+    `/v1/auth/sidecar-grants/${grantRecordId}/revoke`,
+    {},
+    fixture.headers,
+    fixture.apiOptions
+  );
+  assert.equal(revoked.statusCode, 200);
+  const refresh = await request(store, "POST", "/v1/auth/sidecar-token", {
+    grantId: issued.body.grantId,
+    deviceId: fixture.deviceId,
+    codeChallenge: fixture.codeChallenge
+  }, {}, fixture.apiOptions);
+  assert.equal(refresh.statusCode, 401);
+  assert.equal(refresh.body.error, "invalid_grant");
+});
+
+test("sidecar device authorization rejects extensions outside the allowlist", async () => {
+  const store = createTestStore();
+  const response = await request(store, "POST", "/v1/auth/sidecar-device-authorizations", {
+    extensionId: "ponmlkjihgfedcbaponmlkjihgfedcba",
+    deviceId: "sidecar_device_allowlist_01",
+    codeChallenge: sidecarTestCodeChallenge()
+  }, {}, {
     sidecarEnabled: true,
-    sidecarAllowedExtensionIds: [extensionId]
+    sidecarAllowedExtensionIds: ["abcdefghijklmnopabcdefghijklmnop"]
   });
+  assert.equal(response.statusCode, 403);
+});
 
-  assert.equal(pending.statusCode, 403);
-  assert.equal(pending.body.error, "mfa_enrollment_required");
-
-  const enroll = await request(store, "POST", "/v1/auth/mfa/enroll", {}, pendingHeaders);
-  const code = createTotpCode(enroll.body.mfa.secret, { now: new Date("2026-05-27T00:00:00.000Z") });
-  const verified = await request(store, "POST", "/v1/auth/mfa/verify", { code }, pendingHeaders);
-  const verifiedHeaders = {
-    cookie: cookieHeaderFromSetCookie(verified.headers["set-cookie"]),
-    "x-csrf-token": verified.body.csrfToken
-  };
-  const revoked = await request(store, "POST", "/v1/auth/sidecar-token", tokenBody, verifiedHeaders, {
-    sidecarEnabled: true,
-    sidecarAllowedExtensionIds: [extensionId],
-    sidecarRevokedDeviceIds: [tokenBody.deviceId]
+test("sidecar approval rejects an organization without the product entitlement", async () => {
+  const store = createTestStore();
+  const fixture = await createSidecarDeviceAuthorization(store);
+  const { organization, headers } = await createAuthenticatedMember(store, {
+    organizationCode: "Sidecar No Entitlement",
+    globalRoles: ["org_admin"]
   });
+  store.createFacility(organization.orgId, { displayName: "Main Clinic" });
+  const response = await request(
+    store,
+    "POST",
+    `/v1/auth/sidecar-device-authorizations/${fixture.deviceAuthId}/approve`,
+    { userCode: fixture.userCode },
+    headers,
+    fixture.apiOptions
+  );
+  assert.equal(response.statusCode, 403);
+  assert.match(response.body.message, /product access/);
+});
 
-  assert.equal(revoked.statusCode, 403);
-  assert.match(revoked.body.message, /revoked/);
+test("sidecar token issuance rechecks current entitlement", async () => {
+  const store = createTestStore();
+  const fixture = await createApprovedSidecarDevice(store, { organizationCode: "Sidecar Entitlement" });
+  store.updateProductEntitlement(fixture.organization.orgId, "homis_sidecar", { status: "disabled" });
+  const response = await request(store, "POST", "/v1/auth/sidecar-token", {
+    deviceAuthId: fixture.deviceAuthId,
+    deviceId: fixture.deviceId,
+    codeChallenge: fixture.codeChallenge
+  }, {}, fixture.apiOptions);
+  assert.equal(response.statusCode, 401);
+  assert.equal(response.body.error, "invalid_grant");
+});
+
+test("sidecar token issuance and refresh share the ten per five minute limit", async () => {
+  const store = createTestStore();
+  const fixture = await createApprovedSidecarDevice(store, { organizationCode: "Sidecar Rate" });
+  const issued = await request(store, "POST", "/v1/auth/sidecar-token", {
+    deviceAuthId: fixture.deviceAuthId,
+    deviceId: fixture.deviceId,
+    codeChallenge: fixture.codeChallenge
+  }, {}, fixture.apiOptions);
+  assert.equal(issued.statusCode, 201);
+  for (let index = 0; index < 9; index += 1) {
+    const refreshed = await request(store, "POST", "/v1/auth/sidecar-token", {
+      grantId: issued.body.grantId,
+      deviceId: fixture.deviceId,
+      codeChallenge: fixture.codeChallenge
+    }, {}, fixture.apiOptions);
+    assert.equal(refreshed.statusCode, 201);
+  }
+  const limited = await request(store, "POST", "/v1/auth/sidecar-token", {
+    grantId: issued.body.grantId,
+    deviceId: fixture.deviceId,
+    codeChallenge: fixture.codeChallenge
+  }, {}, fixture.apiOptions);
+  assert.equal(limited.statusCode, 429);
+  assert.ok(limited.body.resetAt);
 });
 
 test("platform sidecar runtime requires encryption and extension configuration", () => {
@@ -1617,11 +1711,89 @@ test("platform sidecar runtime requires encryption and extension configuration",
   }));
 });
 
-function createTestStore() {
+async function createSidecarDeviceAuthorization(store, options = {}) {
+  const extensionId = options.extensionId || "abcdefghijklmnopabcdefghijklmnop";
+  const deviceId = options.deviceId || "sidecar_device_authorized_01";
+  const codeChallenge = options.codeChallenge || sidecarTestCodeChallenge();
+  const apiOptions = {
+    sidecarEnabled: true,
+    sidecarAllowedExtensionIds: [extensionId],
+    ...options.apiOptions
+  };
+  const response = await request(store, "POST", "/v1/auth/sidecar-device-authorizations", {
+    extensionId,
+    deviceId,
+    codeChallenge
+  }, {}, apiOptions);
+  assert.equal(response.statusCode, 201);
+  assert.equal(response.body.pollIntervalSeconds, 5);
+  return {
+    extensionId,
+    deviceId,
+    codeChallenge,
+    apiOptions,
+    deviceAuthId: response.body.deviceAuthId,
+    userCode: response.body.userCode,
+    expiresAt: response.body.expiresAt,
+    now: new Date("2026-05-27T00:00:00.000Z")
+  };
+}
+
+async function createSidecarApprover(store, organizationCode = "Sidecar Approver") {
+  const authenticated = await createAuthenticatedMember(store, {
+    organizationCode,
+    globalRoles: ["org_admin"],
+    productRoles: { homis_sidecar: ["admin"], fee: ["admin"] }
+  });
+  const facility = store.createFacility(authenticated.organization.orgId, {
+    displayName: "Main Clinic"
+  });
+  const department = store.createDepartment(authenticated.organization.orgId, {
+    facilityId: facility.facilityId,
+    displayName: "Medical Affairs"
+  });
+  store.updateOrganization(authenticated.organization.orgId, {
+    defaultFacilityId: facility.facilityId,
+    defaultDepartmentId: department.departmentId
+  });
+  store.upsertProductEntitlement(authenticated.organization.orgId, {
+    productId: "homis_sidecar",
+    status: "enabled"
+  });
+  return { ...authenticated, facility, department };
+}
+
+async function createApprovedSidecarDevice(store, options = {}) {
+  const authorization = await createSidecarDeviceAuthorization(store, options);
+  const approver = await createSidecarApprover(
+    store,
+    options.organizationCode || "Sidecar Approved"
+  );
+  const action = options.decision === "deny" ? "deny" : "approve";
+  const decision = await request(
+    store,
+    "POST",
+    `/v1/auth/sidecar-device-authorizations/${authorization.deviceAuthId}/${action}`,
+    { userCode: authorization.userCode },
+    approver.headers,
+    authorization.apiOptions
+  );
+  assert.equal(decision.statusCode, 200);
+  assert.equal(decision.body.deviceAuthorization.status, action === "approve" ? "approved" : "denied");
+  return { ...authorization, ...approver };
+}
+
+function sidecarTestCodeChallenge() {
+  return crypto.createHash("sha256")
+    .update("sidecar-proof-verifier-0123456789ABCDEFGHIJK")
+    .digest("base64url");
+}
+
+function createTestStore(options = {}) {
   let counter = 0;
   let tokenCounter = 0;
   return new MemoryPlatformStore({
-    now: () => new Date("2026-05-27T00:00:00.000Z"),
+    now: options.now || (() => new Date("2026-05-27T00:00:00.000Z")),
     idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`,
     tokenFactory: (prefix) => `${prefix}_${String(++tokenCounter).padStart(3, "0")}`
   });
@@ -1703,7 +1875,10 @@ function request(store, method, path, body, headers = {}, options = {}) {
     sidecarEnabled: options.sidecarEnabled,
     sidecarAllowedExtensionIds: options.sidecarAllowedExtensionIds,
     sidecarRevokedDeviceIds: options.sidecarRevokedDeviceIds,
-    sidecarTokenRateLimit: options.sidecarTokenRateLimit
+    sidecarTokenRateLimit: options.sidecarTokenRateLimit,
+    sidecarDeviceAuthorizationRateLimit: options.sidecarDeviceAuthorizationRateLimit,
+    sidecarPollRateLimit: options.sidecarPollRateLimit,
+    sidecarGrantTtlHours: options.sidecarGrantTtlHours
   });
 }
 

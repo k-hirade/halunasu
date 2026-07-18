@@ -1548,18 +1548,25 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
     status: "needs_review",
     candidateOnly: true
   }));
-  const proposalCandidates = (Array.isArray(calculation.candidateProposals) ? calculation.candidateProposals : []).map((proposal) => ({
-    candidateId: proposal.proposalId || proposal.candidateId || proposal.code || null,
-    sourceType: "proposal",
-    code: proposal.code || null,
-    name: proposal.name || proposal.title || null,
-    orderType: proposal.orderType || null,
-    points: Number(proposal.points || proposal.potentialPoints || 0),
-    quantity: Number(proposal.quantity || 1),
-    estimatedTotalPoints: Number(proposal.totalPoints || proposal.potentialPoints || proposal.points || 0),
-    status: "needs_review",
-    candidateOnly: true
-  }));
+  const proposalCandidates = (Array.isArray(calculation.candidateProposals) ? calculation.candidateProposals : []).map((proposal) => {
+    const codeCandidates = [...new Set((Array.isArray(proposal.codeCandidates) ? proposal.codeCandidates : [])
+      .map((code) => String(code || "").trim())
+      .filter(Boolean))];
+    return {
+      candidateId: proposal.proposalId || proposal.candidateId || proposal.code || null,
+      sourceType: "proposal",
+      code: proposal.code || null,
+      codeCandidates,
+      requiresSelection: !proposal.code && codeCandidates.length > 0,
+      name: proposal.name || proposal.title || null,
+      orderType: proposal.orderType || null,
+      points: Number(proposal.points || proposal.potentialPoints || 0),
+      quantity: Number(proposal.quantity || 1),
+      estimatedTotalPoints: Number(proposal.totalPoints || proposal.potentialPoints || proposal.points || 0),
+      status: "needs_review",
+      candidateOnly: true
+    };
+  });
   return {
     contractVersion: SIDECAR_CONTRACT_VERSION,
     sidecarDraft: {

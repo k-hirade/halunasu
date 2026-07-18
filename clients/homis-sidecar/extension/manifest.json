@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "ハルナス HOMIS算定サイドカー",
+  "version": "0.1.0",
+  "description": "HOMISの表示中カルテから診療報酬の算定案を作成します。",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA/W9BNO/d9kAWfk55Jlkcq5iCwRWd3sN0XopgN+Bgy1akpiqUB3sYrc+gx7xTl31X6Jm12pVOXGplOVZadwm8LO+Vuv9pCuBD6Ue++hqvIIVrpWXQCbaMzcFmKLmBZyZKE+5tTtHuyaXbcpje80WGtGWtMK1jma/fJOPy5miCkRwnQNl1WfJLdSm+TmvwtP9dow3lDYtpMuyqreJoyZtrOzmuQ2bmcsx7bBRr9YnPMqxJIgBmT7ClwzBhYoGp/+rqVR/DzU+hS/zdxFub/9YfjMAxN4dKEX+29xuYJv/oVj8liHP0FtyDBh76FHiwL0kAAi2UyRaxxpbk2XOkzLlxOwIDAQAB",
+  "permissions": ["sidePanel", "tabs", "storage"],
+  "host_permissions": [
+    "http://localhost:8899/*",
+    "http://127.0.0.1:8899/*",
+    "https://platform-api-stg-lp2t3inhza-an.a.run.app/*",
+    "https://fee-api-stg-wmfrwcpzkq-an.a.run.app/*"
+  ],
+  "background": { "service_worker": "sw.js" },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:8899/homic/*", "http://127.0.0.1:8899/homic/*"],
+      "js": ["lib/contract.js", "lib/proof.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": { "default_path": "sidepanel.html" },
+  "action": { "default_title": "HOMIS算定サイドカーを開く" }
+}

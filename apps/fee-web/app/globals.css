@@ -426,6 +426,175 @@ body {
   gap: 28px;
 }
 
+.sidecar-approval-page {
+  width: min(1040px, calc(100% - 32px));
+  margin: 48px auto 56px;
+  display: grid;
+  gap: 24px;
+}
+
+.sidecar-approval-section {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sidecar-approval-section-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sidecar-approval-section-head h2,
+.sidecar-approval-section-head p {
+  margin: 0;
+}
+
+.sidecar-approval-section-head h2 {
+  font-size: 1.15rem;
+}
+
+.sidecar-approval-section-head p {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.sidecar-code-form {
+  display: grid;
+  gap: 8px;
+  max-width: 520px;
+}
+
+.sidecar-code-form label {
+  font-weight: 800;
+}
+
+.sidecar-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.sidecar-code-row input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong, var(--line));
+  border-radius: 6px;
+  font: inherit;
+  letter-spacing: 0;
+}
+
+.sidecar-device-review {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--soft-accent);
+}
+
+.sidecar-device-review dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 20px;
+  margin: 0;
+}
+
+.sidecar-device-review dl div {
+  min-width: 0;
+}
+
+.sidecar-device-review dt {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.sidecar-device-review dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.sidecar-decision-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.sidecar-feedback {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.sidecar-feedback.is-success {
+  color: #075f54;
+  background: #e7f6f2;
+  border: 1px solid #8bcfc4;
+}
+
+.sidecar-feedback.is-error {
+  color: #a32121;
+  background: #fff0f0;
+  border: 1px solid #efb0b0;
+}
+
+.sidecar-grant-list {
+  border-top: 1px solid var(--line);
+}
+
+.sidecar-grant-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.sidecar-grant-row > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.sidecar-grant-row strong {
+  overflow-wrap: anywhere;
+}
+
+.sidecar-grant-row small,
+.sidecar-empty-state {
+  color: var(--muted);
+}
+
+.sidecar-empty-state {
+  margin: 0;
+  padding: 18px 0;
+}
+
+@media (max-width: 700px) {
+  .sidecar-approval-page {
+    margin-top: 24px;
+  }
+
+  .sidecar-code-row,
+  .sidecar-device-review dl,
+  .sidecar-grant-row {
+    grid-template-columns: 1fr;
+  }
+
+  .sidecar-code-row .btn,
+  .sidecar-grant-row .btn {
+    width: 100%;
+  }
+}
+
 /* 算定セッション詳細だけ全幅(左右20px)。カルテ作成(SOAP)のワークスペースと同じ挙動。 */
 .fee-shell--detail {
   width: 100%;

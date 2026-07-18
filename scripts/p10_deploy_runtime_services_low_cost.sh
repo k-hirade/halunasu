@@ -193,6 +193,7 @@ deploy_env() {
   local sidecar_allowed_selector_contract_versions="${HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS:-}"
   local sidecar_revoked_device_ids="${HOMIS_SIDECAR_REVOKED_DEVICE_IDS:-}"
   local sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS:-30}"
+  local sidecar_grant_ttl_hours="${HOMIS_SIDECAR_GRANT_TTL_HOURS:-720}"
 
   if [[ "${env}" == "stg" ]]; then
     session_cookie_name="halunasu_stg_session"
@@ -202,12 +203,14 @@ deploy_env() {
     sidecar_allowed_selector_contract_versions="${HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS_STG:-${sidecar_allowed_selector_contract_versions}}"
     sidecar_revoked_device_ids="${HOMIS_SIDECAR_REVOKED_DEVICE_IDS_STG:-${sidecar_revoked_device_ids}}"
     sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS_STG:-${sidecar_draft_retention_days}}"
+    sidecar_grant_ttl_hours="${HOMIS_SIDECAR_GRANT_TTL_HOURS_STG:-${sidecar_grant_ttl_hours}}"
   else
     sidecar_enabled="${HOMIS_SIDECAR_ENABLED_PROD:-${sidecar_enabled}}"
     sidecar_allowed_extension_ids="${HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS_PROD:-${sidecar_allowed_extension_ids}}"
     sidecar_allowed_selector_contract_versions="${HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS_PROD:-${sidecar_allowed_selector_contract_versions}}"
     sidecar_revoked_device_ids="${HOMIS_SIDECAR_REVOKED_DEVICE_IDS_PROD:-${sidecar_revoked_device_ids}}"
     sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS_PROD:-${sidecar_draft_retention_days}}"
+    sidecar_grant_ttl_hours="${HOMIS_SIDECAR_GRANT_TTL_HOURS_PROD:-${sidecar_grant_ttl_hours}}"
   fi
 
   if [[ "${sidecar_enabled}" == "true" ]]; then
@@ -230,6 +233,11 @@ deploy_env() {
     if [[ ! "${sidecar_draft_retention_days}" =~ ^[0-9]+$ ]] \
       || (( sidecar_draft_retention_days < 1 || sidecar_draft_retention_days > 90 )); then
       echo "HOMIS Sidecar retention for ${env} must be an integer from 1 to 90 days." >&2
+      return 1
+    fi
+    if [[ ! "${sidecar_grant_ttl_hours}" =~ ^[0-9]+$ ]] \
+      || (( sidecar_grant_ttl_hours < 1 || sidecar_grant_ttl_hours > 8760 )); then
+      echo "HOMIS Sidecar grant TTL for ${env} must be an integer from 1 to 8760 hours." >&2
       return 1
     fi
     if [[ "${APPLY}" == "true" ]] && ! secret_exists "${core_project}" "APP_FIELD_ENCRYPTION_KEY"; then
@@ -265,6 +273,7 @@ deploy_env() {
     "HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS=${sidecar_allowed_extension_ids}" \
     "HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS=${sidecar_allowed_selector_contract_versions}" \
     "HOMIS_SIDECAR_REVOKED_DEVICE_IDS=${sidecar_revoked_device_ids}" \
+    "HOMIS_SIDECAR_GRANT_TTL_HOURS=${sidecar_grant_ttl_hours}" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
   fi

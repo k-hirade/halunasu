@@ -34,6 +34,7 @@ try {
     await verifyUnregisteredReloadShowsEnrollment(browser);
     await verifyEnrolledLoginShowsSixDigitChallenge(browser);
     await verifyNonPrivilegedSessionCanSkipMfa(browser);
+    await verifySidecarApprovalPage(browser);
   } finally {
     await browser.close();
   }
@@ -164,6 +165,59 @@ async function verifyNonPrivilegedSessionCanSkipMfa(browser) {
   await page.getByRole("heading", { name: "算定一覧" }).waitFor();
   assert.equal(await page.getByRole("heading", { name: "認証アプリを登録" }).count(), 0);
   assert.equal(await page.getByRole("heading", { name: "確認コード" }).count(), 0);
+  await context.close();
+}
+
+async function verifySidecarApprovalPage(browser) {
+  const context = await browser.newContext();
+  await context.addCookies([{ name: "halunasu_csrf", value: "sidecar-csrf-token", url: baseUrl }]);
+  const page = await context.newPage();
+  const deviceAuthorization = {
+    deviceAuthId: "sda_test_device_authorization",
+    extensionId: "nhbmaniknlcaaelpaoogepmkhphmmjof",
+    deviceId: "hsc_test_device_identifier",
+    status: "pending",
+    expiresAt: "2026-07-18T12:00:00.000Z"
+  };
+  let approvalCount = 0;
+
+  await page.route("**/api/platform/v1/auth/session", (route) => json(route, 200, {
+    authenticated: true,
+    session: {
+      orgId: "org_sidecar",
+      memberId: "mem_sidecar_admin",
+      organizationCode: "yamamoto-demo-stg",
+      loginId: "yamamoto-admin",
+      globalRoles: ["org_admin"],
+      productRoles: { fee: ["admin"], homis_sidecar: ["admin"] },
+      mfaRequired: true,
+      mfaEnrolled: true,
+      mfaVerified: true
+    }
+  }));
+  await page.route("**/api/platform/v1/auth/sidecar-grants", (route) => json(route, 200, {
+    sidecarGrants: []
+  }));
+  await page.route("**/api/platform/v1/auth/sidecar-device-authorizations/lookup", async (route) => {
+    assert.equal(route.request().headers()["x-csrf-token"], "sidecar-csrf-token");
+    assert.deepEqual(JSON.parse(route.request().postData() || "{}"), { userCode: "ABCD-EFGH" });
+    return json(route, 200, { deviceAuthorization });
+  });
+  await page.route("**/api/platform/v1/auth/sidecar-device-authorizations/*/approve", async (route) => {
+    approvalCount += 1;
+    assert.equal(route.request().headers()["x-csrf-token"], "sidecar-csrf-token");
+    assert.deepEqual(JSON.parse(route.request().postData() || "{}"), { userCode: "ABCD-EFGH" });
+    return json(route, 200, {
+      deviceAuthorization: { ...deviceAuthorization, status: "approved" }
+    });
+  });
+
+  await page.goto(`${baseUrl}/settings/sidecar-approvals?code=ABCD-EFGH`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: "HOMIS連携端末" }).waitFor();
+  await page.getByText("hsc_test_device_identifier", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "承認", exact: true }).click();
+  await page.getByText("この端末を承認しました。", { exact: true }).waitFor();
+  assert.equal(approvalCount, 1);
   await context.close();
 }
 

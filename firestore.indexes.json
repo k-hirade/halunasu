@@ -157,6 +157,18 @@
   ],
   "fieldOverrides": [
     {
+      "collectionGroup": "sidecar_device_authorizations",
+      "fieldPath": "purgeAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sidecar_device_grants",
+      "fieldPath": "purgeAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
       "collectionGroup": "sidecar_calculation_drafts",
       "fieldPath": "purgeAt",
       "ttl": true,

@@ -1,6 +1,9 @@
 # Keep Cloud Build uploads small while preserving all service runtime inputs.
 *
 
+# Browser clients are deployed separately and never enter Cloud Run build contexts.
+clients/
+
 !cloudbuild.platform-api.yaml
 !cloudbuild.node-service.yaml
 !package.json

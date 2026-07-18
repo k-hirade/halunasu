@@ -44,6 +44,8 @@ export class MemoryPlatformStore {
     this.passwordSetupTokens = new Map();
     this.stripeEventReceipts = new Map();
     this.rateLimits = new Map();
+    this.sidecarDeviceAuthorizations = new Map();
+    this.sidecarDeviceGrants = new Map();
     this.loginIdentities = new Map();
     this.membersByOrg = new Map();
     this.facilitiesByOrg = new Map();
@@ -686,6 +688,100 @@ export class MemoryPlatformStore {
 
     this.productEntitlementsForOrg(orgId).set(productId, updated);
     return updated;
+  }
+
+  createSidecarDeviceAuthorization(input = {}) {
+    const deviceAuthId = requiredString(input.deviceAuthId, "deviceAuthId");
+    if (this.sidecarDeviceAuthorizations.has(deviceAuthId)) {
+      throw conflictError("sidecar device authorization already exists", "deviceAuthId");
+    }
+    const record = compactObject({ ...input, deviceAuthId, schemaVersion: 1 });
+    this.sidecarDeviceAuthorizations.set(deviceAuthId, record);
+    return structuredClone(record);
+  }
+
+  getSidecarDeviceAuthorization(deviceAuthId) {
+    const record = this.sidecarDeviceAuthorizations.get(deviceAuthId);
+    return record ? structuredClone(record) : null;
+  }
+
+  findSidecarDeviceAuthorizationByUserCodeHash(userCodeHash) {
+    return [...this.sidecarDeviceAuthorizations.values()]
+      .filter((record) => record.userCodeHash === userCodeHash)
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+      .map((record) => structuredClone(record))[0] || null;
+  }
+
+  decideSidecarDeviceAuthorization(deviceAuthId, input = {}) {
+    const current = this.getSidecarDeviceAuthorization(deviceAuthId);
+    if (!current) {
+      throw notFoundError("sidecar device authorization not found");
+    }
+    if (current.status !== "pending") {
+      throw conflictError("sidecar device authorization is no longer pending", "deviceAuthId");
+    }
+    const updated = compactObject({ ...current, ...input, deviceAuthId, schemaVersion: 1 });
+    this.sidecarDeviceAuthorizations.set(deviceAuthId, updated);
+    return structuredClone(updated);
+  }
+
+  consumeSidecarDeviceAuthorization(deviceAuthId, input = {}) {
+    const current = this.getSidecarDeviceAuthorization(deviceAuthId);
+    if (!current) {
+      throw notFoundError("sidecar device authorization not found");
+    }
+    if (current.status !== "approved") {
+      throw conflictError("sidecar device authorization cannot be consumed", "deviceAuthId");
+    }
+    if (current.deviceId !== input.deviceId || current.initialCodeChallenge !== input.codeChallenge) {
+      throw conflictError("sidecar device authorization binding changed", "deviceAuthId");
+    }
+    const grant = compactObject({ ...input.grant, schemaVersion: 1 });
+    if (this.sidecarDeviceGrants.has(grant.grantRecordId)) {
+      throw conflictError("sidecar device grant already exists", "grantRecordId");
+    }
+    const consumed = compactObject({
+      ...current,
+      status: "consumed",
+      consumedAt: input.consumedAt,
+      updatedAt: input.consumedAt,
+      grantRecordId: grant.grantRecordId,
+      schemaVersion: 1
+    });
+    this.sidecarDeviceAuthorizations.set(deviceAuthId, consumed);
+    this.sidecarDeviceGrants.set(grant.grantRecordId, grant);
+    return { authorization: structuredClone(consumed), grant: structuredClone(grant) };
+  }
+
+  getSidecarDeviceGrant(grantRecordId) {
+    const grant = this.sidecarDeviceGrants.get(grantRecordId);
+    return grant ? structuredClone(grant) : null;
+  }
+
+  listSidecarDeviceGrants(orgId) {
+    this.requireOrganization(orgId);
+    return [...this.sidecarDeviceGrants.values()]
+      .filter((grant) => grant.orgId === orgId)
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+      .map((grant) => structuredClone(grant));
+  }
+
+  revokeSidecarDeviceGrant(orgId, grantRecordId, input = {}) {
+    this.requireOrganization(orgId);
+    const current = this.getSidecarDeviceGrant(grantRecordId);
+    if (!current || current.orgId !== orgId) {
+      throw notFoundError("sidecar device grant not found");
+    }
+    const updated = compactObject({
+      ...current,
+      status: "revoked",
+      revokedAt: input.revokedAt,
+      revokedByMemberId: input.revokedByMemberId,
+      updatedAt: input.revokedAt,
+      schemaVersion: 1
+    });
+    this.sidecarDeviceGrants.set(grantRecordId, updated);
+    return structuredClone(updated);
   }
 
   createAuditEvent(orgId, input) {

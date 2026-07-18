@@ -183,6 +183,38 @@ export class LazyFirestorePlatformStore {
     return this.call("updateProductEntitlement", orgId, productId, input);
   }
 
+  async createSidecarDeviceAuthorization(input) {
+    return this.call("createSidecarDeviceAuthorization", input);
+  }
+
+  async getSidecarDeviceAuthorization(deviceAuthId) {
+    return this.call("getSidecarDeviceAuthorization", deviceAuthId);
+  }
+
+  async findSidecarDeviceAuthorizationByUserCodeHash(userCodeHash) {
+    return this.call("findSidecarDeviceAuthorizationByUserCodeHash", userCodeHash);
+  }
+
+  async decideSidecarDeviceAuthorization(deviceAuthId, input) {
+    return this.call("decideSidecarDeviceAuthorization", deviceAuthId, input);
+  }
+
+  async consumeSidecarDeviceAuthorization(deviceAuthId, input) {
+    return this.call("consumeSidecarDeviceAuthorization", deviceAuthId, input);
+  }
+
+  async getSidecarDeviceGrant(grantRecordId) {
+    return this.call("getSidecarDeviceGrant", grantRecordId);
+  }
+
+  async listSidecarDeviceGrants(orgId) {
+    return this.call("listSidecarDeviceGrants", orgId);
+  }
+
+  async revokeSidecarDeviceGrant(orgId, grantRecordId, input) {
+    return this.call("revokeSidecarDeviceGrant", orgId, grantRecordId, input);
+  }
+
   async createAuditEvent(orgId, input) {
     return this.call("createAuditEvent", orgId, input);
   }

@@ -37,6 +37,8 @@ import {
   patientPath,
   productEntitlementPath,
   rateLimitPath,
+  sidecarDeviceAuthorizationPath,
+  sidecarDeviceGrantPath,
   signupEmailTokenPath,
   signupApplicationPath,
   stripeEventReceiptPath
@@ -781,6 +783,122 @@ export class FirestorePlatformStore {
     });
 
     await this.doc(productEntitlementPath(orgId, productId)).set(updated);
+    return updated;
+  }
+
+  async createSidecarDeviceAuthorization(input = {}) {
+    const deviceAuthId = requiredString(input.deviceAuthId, "deviceAuthId");
+    const record = compactObject({ ...input, deviceAuthId, schemaVersion: 1 });
+    try {
+      await this.doc(sidecarDeviceAuthorizationPath(deviceAuthId)).create(record);
+    } catch (error) {
+      if (Number(error?.code) === 6 || String(error?.code) === "already-exists") {
+        throw conflictError("sidecar device authorization already exists", "deviceAuthId");
+      }
+      throw error;
+    }
+    return record;
+  }
+
+  async getSidecarDeviceAuthorization(deviceAuthId) {
+    return docDataOrNull(await this.doc(sidecarDeviceAuthorizationPath(deviceAuthId)).get());
+  }
+
+  async findSidecarDeviceAuthorizationByUserCodeHash(userCodeHash) {
+    const snapshot = await this.db.collection(collections.sidecarDeviceAuthorizations)
+      .where("userCodeHash", "==", userCodeHash)
+      .limit(1)
+      .get();
+    return docsFromSnapshot(snapshot)[0] || null;
+  }
+
+  async decideSidecarDeviceAuthorization(deviceAuthId, input = {}) {
+    let updated;
+    await this.db.runTransaction(async (transaction) => {
+      const ref = this.doc(sidecarDeviceAuthorizationPath(deviceAuthId));
+      const current = docDataOrNull(await transaction.get(ref));
+      if (!current) {
+        throw notFoundError("sidecar device authorization not found");
+      }
+      if (current.status !== "pending") {
+        throw conflictError("sidecar device authorization is no longer pending", "deviceAuthId");
+      }
+      updated = compactObject({ ...current, ...input, deviceAuthId, schemaVersion: 1 });
+      transaction.set(ref, updated);
+    });
+    return updated;
+  }
+
+  async consumeSidecarDeviceAuthorization(deviceAuthId, input = {}) {
+    let result;
+    await this.db.runTransaction(async (transaction) => {
+      const authorizationRef = this.doc(sidecarDeviceAuthorizationPath(deviceAuthId));
+      const grant = compactObject({ ...input.grant, schemaVersion: 1 });
+      const grantRef = this.doc(sidecarDeviceGrantPath(grant.grantRecordId));
+      const [authorizationSnapshot, grantSnapshot] = await Promise.all([
+        transaction.get(authorizationRef),
+        transaction.get(grantRef)
+      ]);
+      const current = docDataOrNull(authorizationSnapshot);
+      if (!current) {
+        throw notFoundError("sidecar device authorization not found");
+      }
+      if (current.status !== "approved") {
+        throw conflictError("sidecar device authorization cannot be consumed", "deviceAuthId");
+      }
+      if (current.deviceId !== input.deviceId || current.initialCodeChallenge !== input.codeChallenge) {
+        throw conflictError("sidecar device authorization binding changed", "deviceAuthId");
+      }
+      if (grantSnapshot.exists) {
+        throw conflictError("sidecar device grant already exists", "grantRecordId");
+      }
+      const consumed = compactObject({
+        ...current,
+        status: "consumed",
+        consumedAt: input.consumedAt,
+        updatedAt: input.consumedAt,
+        grantRecordId: grant.grantRecordId,
+        schemaVersion: 1
+      });
+      transaction.set(authorizationRef, consumed);
+      transaction.set(grantRef, grant);
+      result = { authorization: consumed, grant };
+    });
+    return result;
+  }
+
+  async getSidecarDeviceGrant(grantRecordId) {
+    return docDataOrNull(await this.doc(sidecarDeviceGrantPath(grantRecordId)).get());
+  }
+
+  async listSidecarDeviceGrants(orgId) {
+    await this.requireOrganization(orgId);
+    const snapshot = await this.db.collection(collections.sidecarDeviceGrants)
+      .where("orgId", "==", orgId)
+      .get();
+    return docsFromSnapshot(snapshot)
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
+  }
+
+  async revokeSidecarDeviceGrant(orgId, grantRecordId, input = {}) {
+    await this.requireOrganization(orgId);
+    let updated;
+    await this.db.runTransaction(async (transaction) => {
+      const ref = this.doc(sidecarDeviceGrantPath(grantRecordId));
+      const current = docDataOrNull(await transaction.get(ref));
+      if (!current || current.orgId !== orgId) {
+        throw notFoundError("sidecar device grant not found");
+      }
+      updated = compactObject({
+        ...current,
+        status: "revoked",
+        revokedAt: input.revokedAt,
+        revokedByMemberId: input.revokedByMemberId,
+        updatedAt: input.revokedAt,
+        schemaVersion: 1
+      });
+      transaction.set(ref, updated);
+    });
     return updated;
   }
 

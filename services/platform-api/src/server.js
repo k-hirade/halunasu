@@ -1,4 +1,5 @@
 import http from "node:http";
+import crypto from "node:crypto";
 import QRCode from "qrcode";
 import {
   memberRequiresMfa,
@@ -46,6 +47,10 @@ const SESSION_CONTEXT_CACHE_MAX_ENTRIES = 1000;
 const DEFAULT_REQUEST_BODY_LIMIT_BYTES = 1024 * 1024;
 const MFA_ENROLLMENT_SESSION_TTL_SECONDS = 10 * 60;
 const SIDECAR_ACCESS_TOKEN_TTL_SECONDS = 5 * 60;
+const SIDECAR_DEVICE_AUTH_TTL_SECONDS = 10 * 60;
+const SIDECAR_DEVICE_POLL_INTERVAL_SECONDS = 5;
+const SIDECAR_DEFAULT_GRANT_TTL_HOURS = 720;
+const SIDECAR_USER_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const SIDECAR_PRODUCT_ID = productIds.homisSidecar;
 const SIDECAR_ALLOWED_ROLES = Object.freeze(["admin", "doctor", "nurse", "medical_clerk"]);
 const sessionContextCache = new Map();
@@ -233,67 +238,38 @@ async function routePlatformApiRequest(input = {}) {
     return ok({ authenticated: true, session: sessionView(context), accessToken: context.accessToken || null });
   }
 
-  if (method === "POST" && matches(parts, ["v1", "auth", "sidecar-token"])) {
-    requireSidecarFeature(input);
-    const context = await requireSession(input, store);
-    requireCsrf(input, context.session);
-    await consumeSidecarTokenRateLimit(input, store, context);
-    const entitlement = await store.getProductEntitlement(context.session.orgId, SIDECAR_PRODUCT_ID);
-    if (!entitlementAllowsUse(entitlement, input.now) || !memberCanUseSidecar(context.member)) {
-      throw forbiddenError("HOMIS Sidecar product access is required");
-    }
-    if (!context.mfaEnrolled || context.session.mfaVerified !== true) {
-      const error = forbiddenError(context.mfaEnrolled
-        ? "MFA verification is required"
-        : "MFA enrollment is required");
-      error.code = context.mfaEnrolled ? "mfa_required" : "mfa_enrollment_required";
-      throw error;
-    }
+  if (method === "POST" && matches(parts, ["v1", "auth", "sidecar-device-authorizations"])) {
+    return startSidecarDeviceAuthorization(input, store);
+  }
 
-    const tokenInput = validateSidecarTokenRequest(input);
-    const now = input.now instanceof Date ? input.now : new Date(input.now || Date.now());
-    const { token, session } = createSignedSession({
-      orgId: context.identity.orgId,
-      memberId: context.identity.memberId,
-      organizationCode: context.session.organizationCode,
-      loginId: context.identity.loginId,
-      tokenVersion: context.identity.tokenVersion,
-      globalRoles: context.member.globalRoles,
-      productRoles: context.member.productRoles,
-      mfaRequired: true,
-      mfaEnrolled: true,
-      mfaVerified: true,
-      tokenType: "scoped_product_access",
-      productId: SIDECAR_PRODUCT_ID,
-      audience: "fee-api",
-      scopes: ["sidecar:calculate"],
-      extensionId: tokenInput.extensionId,
-      deviceId: tokenInput.deviceId,
-      proofKeyChallenge: tokenInput.codeChallenge
-    }, {
-      ...sessionOptions(input),
-      now,
-      ttlSeconds: SIDECAR_ACCESS_TOKEN_TTL_SECONDS
-    });
-    await store.createAuditEvent(context.session.orgId, {
-      eventType: "auth.sidecar_token_issued",
-      actorMemberId: context.session.memberId,
-      actorLoginId: context.session.loginId,
-      productId: SIDECAR_PRODUCT_ID,
-      targetType: "sidecar_device",
-      targetId: tokenInput.deviceId,
-      safePayload: {
-        extensionId: tokenInput.extensionId,
-        expiresAt: session.expiresAt,
-        scopes: session.scopes
-      }
-    });
-    return created({
-      accessToken: token,
-      tokenType: "Bearer",
-      expiresAt: session.expiresAt,
-      scopes: session.scopes
-    });
+  if (method === "POST" && matches(parts, ["v1", "auth", "sidecar-device-authorizations", "lookup"])) {
+    return lookupSidecarDeviceAuthorization(input, store);
+  }
+
+  if (
+    method === "POST"
+    && parts.length === 5
+    && matches(parts.slice(0, 3), ["v1", "auth", "sidecar-device-authorizations"])
+    && ["approve", "deny"].includes(parts[4])
+  ) {
+    return decideSidecarDeviceAuthorization(input, store, parts[3], parts[4]);
+  }
+
+  if (method === "GET" && matches(parts, ["v1", "auth", "sidecar-grants"])) {
+    return listSidecarDeviceGrants(input, store);
+  }
+
+  if (
+    method === "POST"
+    && parts.length === 5
+    && matches(parts.slice(0, 3), ["v1", "auth", "sidecar-grants"])
+    && parts[4] === "revoke"
+  ) {
+    return revokeSidecarDeviceGrant(input, store, parts[3]);
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "auth", "sidecar-token"])) {
+    return exchangeSidecarToken(input, store);
   }
 
   if (method === "POST" && matches(parts, ["v1", "auth", "logout"])) {
@@ -904,9 +880,9 @@ async function consumeMfaVerificationRateLimit(input, store, context) {
   );
 }
 
-async function consumeSidecarTokenRateLimit(input, store, context) {
+async function consumeSidecarTokenRateLimit(input, store, deviceId) {
   await store.consumeRateLimit(
-    rateLimitKey("sidecar-token", input, context.session.orgId, context.session.memberId),
+    rateLimitKey("sidecar-token", input, deviceId),
     {
       limit: input.sidecarTokenRateLimit?.limit || 10,
       windowSeconds: input.sidecarTokenRateLimit?.windowSeconds || 5 * 60
@@ -914,14 +890,331 @@ async function consumeSidecarTokenRateLimit(input, store, context) {
   );
 }
 
-function validateSidecarTokenRequest(input = {}) {
+async function consumeSidecarDeviceAuthorizationRateLimit(input, store, deviceId) {
+  await store.consumeRateLimit(
+    rateLimitKey("sidecar-device-authorization", input, deviceId),
+    {
+      limit: input.sidecarDeviceAuthorizationRateLimit?.limit || 5,
+      windowSeconds: input.sidecarDeviceAuthorizationRateLimit?.windowSeconds || 10 * 60
+    }
+  );
+}
+
+async function consumeSidecarPollRateLimit(input, store, deviceId) {
+  await store.consumeRateLimit(
+    rateLimitKey("sidecar-device-poll", input, deviceId),
+    {
+      limit: input.sidecarPollRateLimit?.limit || 130,
+      windowSeconds: input.sidecarPollRateLimit?.windowSeconds || 10 * 60
+    }
+  );
+}
+
+async function startSidecarDeviceAuthorization(input, store) {
+  requireSidecarFeature(input);
+  const tokenInput = validateSidecarDeviceRequest(input.body || {}, input);
+  await consumeSidecarDeviceAuthorizationRateLimit(input, store, tokenInput.deviceId);
+  const now = sidecarNow(input);
+  const expiresAt = new Date(now.getTime() + SIDECAR_DEVICE_AUTH_TTL_SECONDS * 1000).toISOString();
+  let userCode;
+  let userCodeHash;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    userCode = generateSidecarUserCode();
+    userCodeHash = sidecarUserCodeHash(input, userCode);
+    if (!await store.findSidecarDeviceAuthorizationByUserCodeHash(userCodeHash)) {
+      break;
+    }
+    userCode = null;
+  }
+  if (!userCode) {
+    throw new Error("Unable to allocate a sidecar user code");
+  }
+  const deviceAuthId = `sda_${crypto.randomBytes(18).toString("base64url")}`;
+  await store.createSidecarDeviceAuthorization({
+    deviceAuthId,
+    userCodeHash,
+    extensionId: tokenInput.extensionId,
+    deviceId: tokenInput.deviceId,
+    initialCodeChallenge: tokenInput.codeChallenge,
+    status: "pending",
+    expiresAt,
+    purgeAt: new Date(expiresAt),
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString()
+  });
+  return created({
+    deviceAuthId,
+    userCode: formatSidecarUserCode(userCode),
+    expiresAt,
+    pollIntervalSeconds: SIDECAR_DEVICE_POLL_INTERVAL_SECONDS
+  });
+}
+
+async function lookupSidecarDeviceAuthorization(input, store) {
+  requireSidecarFeature(input);
+  await requireSidecarApprovalContext(input, store, { csrf: true });
+  const authorization = await findSidecarAuthorizationBySubmittedCode(input, store);
+  assertSidecarAuthorizationNotExpired(authorization, input);
+  return ok({ deviceAuthorization: sidecarDeviceAuthorizationView(authorization) });
+}
+
+async function decideSidecarDeviceAuthorization(input, store, deviceAuthId, action) {
+  requireSidecarFeature(input);
+  const context = await requireSidecarApprovalContext(input, store, { csrf: true });
+  const authorization = await findSidecarAuthorizationBySubmittedCode(input, store);
+  if (authorization.deviceAuthId !== deviceAuthId) {
+    throw invalidSidecarAuthorizationError();
+  }
+  assertSidecarAuthorizationPending(authorization, input);
+  const now = sidecarNow(input).toISOString();
+  const decision = action === "approve" ? "approved" : "denied";
+  const facilityContext = decision === "approved"
+    ? await resolveSidecarFacilityContext(store, context.session.orgId)
+    : {};
+  const updated = await store.decideSidecarDeviceAuthorization(deviceAuthId, {
+    status: decision,
+    orgId: context.session.orgId,
+    organizationCode: context.session.organizationCode,
+    memberId: context.session.memberId,
+    loginId: context.session.loginId,
+    facilityId: facilityContext.facilityId,
+    departmentId: facilityContext.departmentId,
+    decidedAt: now,
+    decidedByMemberId: context.session.memberId,
+    updatedAt: now
+  });
+  await store.createAuditEvent(context.session.orgId, {
+    eventType: `auth.sidecar_device_${decision}`,
+    actorMemberId: context.session.memberId,
+    actorLoginId: context.session.loginId,
+    productId: SIDECAR_PRODUCT_ID,
+    targetType: "sidecar_device",
+    targetId: authorization.deviceId,
+    safePayload: {
+      deviceAuthId,
+      extensionId: authorization.extensionId,
+      facilityId: facilityContext.facilityId || null,
+      departmentId: facilityContext.departmentId || null,
+      expiresAt: authorization.expiresAt
+    }
+  });
+  return ok({ deviceAuthorization: sidecarDeviceAuthorizationView(updated) });
+}
+
+async function listSidecarDeviceGrants(input, store) {
+  requireSidecarFeature(input);
+  const context = await requireSidecarApprovalContext(input, store);
+  const grants = await store.listSidecarDeviceGrants(context.session.orgId);
+  return ok({ sidecarGrants: grants.map(sidecarDeviceGrantView) });
+}
+
+async function revokeSidecarDeviceGrant(input, store, grantRecordId) {
+  requireSidecarFeature(input);
+  const context = await requireSidecarApprovalContext(input, store, { csrf: true });
+  const now = sidecarNow(input).toISOString();
+  const grant = await store.revokeSidecarDeviceGrant(context.session.orgId, grantRecordId, {
+    revokedAt: now,
+    revokedByMemberId: context.session.memberId
+  });
+  await store.createAuditEvent(context.session.orgId, {
+    eventType: "auth.sidecar_device_revoked",
+    actorMemberId: context.session.memberId,
+    actorLoginId: context.session.loginId,
+    productId: SIDECAR_PRODUCT_ID,
+    targetType: "sidecar_device",
+    targetId: grant.deviceId,
+    safePayload: {
+      grantRecordId,
+      extensionId: grant.extensionId,
+      revokedAt: now
+    }
+  });
+  return ok({ sidecarGrant: sidecarDeviceGrantView(grant) });
+}
+
+async function exchangeSidecarToken(input, store) {
+  requireSidecarFeature(input);
   const body = input.body || {};
+  const deviceId = validateSidecarDeviceId(body.deviceId);
+  const codeChallenge = validateSidecarCodeChallenge(body.codeChallenge);
+  if (body.deviceAuthId && !body.grantId) {
+    return exchangeApprovedSidecarAuthorization(input, store, {
+      deviceAuthId: requiredBodyString(body, "deviceAuthId"),
+      deviceId,
+      codeChallenge
+    });
+  }
+  if (body.grantId && !body.deviceAuthId) {
+    return refreshSidecarGrant(input, store, {
+      grantId: requiredBodyString(body, "grantId"),
+      deviceId,
+      codeChallenge
+    });
+  }
+  const error = new Error("Exactly one of deviceAuthId or grantId is required");
+  error.name = "ValidationError";
+  error.statusCode = 400;
+  throw error;
+}
+
+async function exchangeApprovedSidecarAuthorization(input, store, tokenInput) {
+  await consumeSidecarPollRateLimit(input, store, tokenInput.deviceId);
+  const authorization = await store.getSidecarDeviceAuthorization(tokenInput.deviceAuthId);
+  if (!authorization) {
+    throw invalidSidecarAuthorizationError();
+  }
+  assertSidecarAuthorizationBinding(authorization, tokenInput);
+  assertSidecarAuthorizationNotExpired(authorization, input);
+  if (authorization.status === "pending") {
+    throw sidecarProtocolError("authorization_pending", "Device authorization is pending", 400);
+  }
+  if (authorization.status === "denied") {
+    throw sidecarProtocolError("access_denied", "Device authorization was denied", 403);
+  }
+  if (authorization.status !== "approved") {
+    throw invalidSidecarAuthorizationError();
+  }
+  validateAllowedSidecarDevice(input, authorization.extensionId, authorization.deviceId);
+  const principal = await loadSidecarPrincipal(store, authorization, input);
+  await consumeSidecarTokenRateLimit(input, store, tokenInput.deviceId);
+  const now = sidecarNow(input);
+  const grantRecordId = `sgr_${crypto.randomBytes(18).toString("base64url")}`;
+  const grantSecret = crypto.randomBytes(32).toString("base64url");
+  const grantExpiresAt = new Date(now.getTime() + sidecarGrantTtlHours(input) * 60 * 60 * 1000).toISOString();
+  const grant = {
+    grantRecordId,
+    grantSecretHash: digestSidecarSecret(grantSecret),
+    orgId: authorization.orgId,
+    organizationCode: authorization.organizationCode,
+    memberId: authorization.memberId,
+    loginId: authorization.loginId,
+    facilityId: authorization.facilityId,
+    departmentId: authorization.departmentId,
+    extensionId: authorization.extensionId,
+    deviceId: authorization.deviceId,
+    status: "active",
+    expiresAt: grantExpiresAt,
+    purgeAt: new Date(grantExpiresAt),
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString()
+  };
+  await store.consumeSidecarDeviceAuthorization(tokenInput.deviceAuthId, {
+    deviceId: tokenInput.deviceId,
+    codeChallenge: tokenInput.codeChallenge,
+    consumedAt: now.toISOString(),
+    grant
+  });
+  return issueSidecarScopedToken(input, store, principal, {
+    extensionId: authorization.extensionId,
+    deviceId: authorization.deviceId,
+    codeChallenge: tokenInput.codeChallenge,
+    facilityId: authorization.facilityId,
+    departmentId: authorization.departmentId,
+    grantId: `${grantRecordId}.${grantSecret}`,
+    grantRecordId,
+    grantExpiresAt,
+    authMode: "device_poll"
+  });
+}
+
+async function refreshSidecarGrant(input, store, tokenInput) {
+  const parsedGrant = parseSidecarGrantId(tokenInput.grantId);
+  const grant = await store.getSidecarDeviceGrant(parsedGrant.grantRecordId);
+  if (!grant || !sidecarSecretMatches(parsedGrant.secret, grant.grantSecretHash)) {
+    throw invalidSidecarGrantError();
+  }
+  if (grant.status !== "active" || Date.parse(grant.expiresAt) <= sidecarNow(input).getTime()) {
+    throw invalidSidecarGrantError();
+  }
+  if (grant.deviceId !== tokenInput.deviceId) {
+    throw invalidSidecarGrantError();
+  }
+  validateAllowedSidecarDevice(input, grant.extensionId, grant.deviceId);
+  const principal = await loadSidecarPrincipal(store, grant, input);
+  await consumeSidecarTokenRateLimit(input, store, tokenInput.deviceId);
+  return issueSidecarScopedToken(input, store, principal, {
+    extensionId: grant.extensionId,
+    deviceId: grant.deviceId,
+    codeChallenge: tokenInput.codeChallenge,
+    facilityId: grant.facilityId,
+    departmentId: grant.departmentId,
+    grantId: tokenInput.grantId,
+    grantRecordId: grant.grantRecordId,
+    grantExpiresAt: grant.expiresAt,
+    authMode: "grant_refresh"
+  });
+}
+
+async function issueSidecarScopedToken(input, store, principal, tokenInput) {
+  const now = sidecarNow(input);
+  const { token, session } = createSignedSession({
+    orgId: principal.identity.orgId,
+    memberId: principal.identity.memberId,
+    organizationCode: principal.organizationCode,
+    loginId: principal.identity.loginId,
+    tokenVersion: principal.identity.tokenVersion,
+    globalRoles: principal.member.globalRoles,
+    productRoles: principal.member.productRoles,
+    mfaRequired: true,
+    mfaEnrolled: true,
+    mfaVerified: true,
+    tokenType: "scoped_product_access",
+    productId: SIDECAR_PRODUCT_ID,
+    audience: "fee-api",
+    scopes: ["sidecar:calculate"],
+    extensionId: tokenInput.extensionId,
+    deviceId: tokenInput.deviceId,
+    proofKeyChallenge: tokenInput.codeChallenge,
+    facilityId: tokenInput.facilityId,
+    departmentId: tokenInput.departmentId || null
+  }, {
+    ...sessionOptions(input),
+    now,
+    ttlSeconds: SIDECAR_ACCESS_TOKEN_TTL_SECONDS
+  });
+  await store.createAuditEvent(principal.identity.orgId, {
+    eventType: "auth.sidecar_token_issued",
+    actorMemberId: principal.identity.memberId,
+    actorLoginId: principal.identity.loginId,
+    productId: SIDECAR_PRODUCT_ID,
+    targetType: "sidecar_device",
+    targetId: tokenInput.deviceId,
+    safePayload: {
+      authMode: tokenInput.authMode,
+      extensionId: tokenInput.extensionId,
+      grantRecordId: tokenInput.grantRecordId,
+      expiresAt: session.expiresAt,
+      scopes: session.scopes
+    }
+  });
+  return created({
+    accessToken: token,
+    tokenType: "Bearer",
+    expiresAt: session.expiresAt,
+    scopes: session.scopes,
+    grantId: tokenInput.grantId,
+    grantExpiresAt: tokenInput.grantExpiresAt,
+    sidecarContext: {
+      facilityId: tokenInput.facilityId,
+      departmentId: tokenInput.departmentId || null
+    }
+  });
+}
+
+function validateSidecarDeviceRequest(body = {}, input = {}) {
   const extensionId = requiredBodyString(body, "extensionId");
   const allowedExtensionIds = sidecarAllowedExtensionIds(input);
   if (!/^[a-p]{32}$/.test(extensionId) || !allowedExtensionIds.includes(extensionId)) {
     throw forbiddenError("Sidecar extension is not allowed");
   }
-  const deviceId = requiredBodyString(body, "deviceId");
+  const deviceId = validateSidecarDeviceId(body.deviceId);
+  const codeChallenge = validateSidecarCodeChallenge(body.codeChallenge);
+  validateAllowedSidecarDevice(input, extensionId, deviceId);
+  return { extensionId, deviceId, codeChallenge };
+}
+
+function validateSidecarDeviceId(value) {
+  const deviceId = requiredBodyString({ deviceId: value }, "deviceId");
   if (!/^[A-Za-z0-9_-]{16,128}$/.test(deviceId)) {
     const error = new Error("deviceId must be a stable 16-128 character identifier");
     error.name = "ValidationError";
@@ -929,10 +1222,11 @@ function validateSidecarTokenRequest(input = {}) {
     error.field = "deviceId";
     throw error;
   }
-  if (sidecarRevokedDeviceIds(input).includes(deviceId)) {
-    throw forbiddenError("Sidecar device is revoked");
-  }
-  const codeChallenge = requiredBodyString(body, "codeChallenge");
+  return deviceId;
+}
+
+function validateSidecarCodeChallenge(value) {
+  const codeChallenge = requiredBodyString({ codeChallenge: value }, "codeChallenge");
   if (!/^[A-Za-z0-9_-]{43}$/.test(codeChallenge)) {
     const error = new Error("codeChallenge must be an S256 proof key challenge");
     error.name = "ValidationError";
@@ -940,7 +1234,230 @@ function validateSidecarTokenRequest(input = {}) {
     error.field = "codeChallenge";
     throw error;
   }
-  return { extensionId, deviceId, codeChallenge };
+  return codeChallenge;
+}
+
+function validateAllowedSidecarDevice(input, extensionId, deviceId) {
+  if (!/^[a-p]{32}$/.test(extensionId) || !sidecarAllowedExtensionIds(input).includes(extensionId)) {
+    throw forbiddenError("Sidecar extension is not allowed");
+  }
+  if (sidecarRevokedDeviceIds(input).includes(deviceId)) {
+    throw forbiddenError("Sidecar device is revoked");
+  }
+}
+
+async function requireSidecarApprovalContext(input, store, options = {}) {
+  const context = await requireSession(input, store);
+  if (options.csrf) {
+    requireCsrf(input, context.session);
+  }
+  if (!memberCanApproveSidecar(context.member)) {
+    throw forbiddenError("Organization admin or fee admin role is required");
+  }
+  const entitlement = await store.getProductEntitlement(context.session.orgId, SIDECAR_PRODUCT_ID);
+  if (!entitlementAllowsUse(entitlement, input.now)) {
+    throw forbiddenError("HOMIS Sidecar product access is required");
+  }
+  if (!context.mfaEnrolled || context.session.mfaVerified !== true) {
+    const error = forbiddenError(context.mfaEnrolled
+      ? "MFA verification is required"
+      : "MFA enrollment is required");
+    error.code = context.mfaEnrolled ? "mfa_required" : "mfa_enrollment_required";
+    throw error;
+  }
+  return context;
+}
+
+function memberCanApproveSidecar(member = {}) {
+  return (member.globalRoles || []).some((role) => ["platform_admin", "org_owner", "org_admin"].includes(role))
+    || (member.productRoles?.[productIds.fee] || []).includes("admin");
+}
+
+async function findSidecarAuthorizationBySubmittedCode(input, store) {
+  const userCode = normalizeSidecarUserCode(requiredBodyString(input.body || {}, "userCode"));
+  const authorization = await store.findSidecarDeviceAuthorizationByUserCodeHash(
+    sidecarUserCodeHash(input, userCode)
+  );
+  if (!authorization) {
+    throw invalidSidecarAuthorizationError();
+  }
+  return authorization;
+}
+
+async function resolveSidecarFacilityContext(store, orgId) {
+  const organization = await store.getOrganization(orgId);
+  const [facilities, departments] = await Promise.all([
+    store.listFacilities(orgId),
+    store.listDepartments(orgId)
+  ]);
+  const facility = facilities.find((item) => item.facilityId === organization?.defaultFacilityId)
+    || facilities.find((item) => item.status !== "inactive")
+    || facilities[0];
+  if (!facility) {
+    const error = new Error("A facility must be configured before approving a sidecar device");
+    error.name = "ConflictError";
+    error.statusCode = 409;
+    error.code = "sidecar_facility_required";
+    throw error;
+  }
+  const department = departments.find((item) => item.departmentId === organization?.defaultDepartmentId)
+    || departments.find((item) => item.facilityId === facility.facilityId && item.status !== "inactive")
+    || departments.find((item) => item.facilityId === facility.facilityId)
+    || null;
+  return { facilityId: facility.facilityId, departmentId: department?.departmentId || null };
+}
+
+async function loadSidecarPrincipal(store, binding, input) {
+  const identity = await store.getLoginIdentity(binding.organizationCode, binding.loginId);
+  if (!identity || identity.status !== "active" || identity.orgId !== binding.orgId || identity.memberId !== binding.memberId) {
+    throw invalidSidecarGrantError();
+  }
+  const member = await store.getMember(binding.orgId, binding.memberId);
+  if (!member || member.status !== "active" || !memberCanUseSidecar(member)) {
+    throw invalidSidecarGrantError();
+  }
+  const mfaState = resolveMfaState(identity, member);
+  if (!mfaState.required || !mfaState.enrolled) {
+    throw invalidSidecarGrantError();
+  }
+  const entitlement = await store.getProductEntitlement(binding.orgId, SIDECAR_PRODUCT_ID);
+  if (!entitlementAllowsUse(entitlement, input.now)) {
+    throw invalidSidecarGrantError();
+  }
+  return { identity, member, organizationCode: binding.organizationCode };
+}
+
+function assertSidecarAuthorizationBinding(authorization, tokenInput) {
+  if (
+    authorization.deviceId !== tokenInput.deviceId
+    || authorization.initialCodeChallenge !== tokenInput.codeChallenge
+  ) {
+    throw invalidSidecarAuthorizationError();
+  }
+}
+
+function assertSidecarAuthorizationPending(authorization, input) {
+  assertSidecarAuthorizationNotExpired(authorization, input);
+  if (authorization.status !== "pending") {
+    throw sidecarProtocolError("invalid_device_authorization", "Device authorization is no longer pending", 409);
+  }
+}
+
+function assertSidecarAuthorizationNotExpired(authorization, input) {
+  if (!authorization || Date.parse(authorization.expiresAt) <= sidecarNow(input).getTime()) {
+    throw sidecarProtocolError("expired_token", "Device authorization expired", 400);
+  }
+}
+
+function sidecarDeviceAuthorizationView(authorization = {}) {
+  return {
+    deviceAuthId: authorization.deviceAuthId,
+    extensionId: authorization.extensionId,
+    deviceId: authorization.deviceId,
+    status: authorization.status,
+    expiresAt: authorization.expiresAt,
+    facilityId: authorization.facilityId || null,
+    departmentId: authorization.departmentId || null
+  };
+}
+
+function sidecarDeviceGrantView(grant = {}) {
+  return {
+    grantRecordId: grant.grantRecordId,
+    extensionId: grant.extensionId,
+    deviceId: grant.deviceId,
+    status: grant.status,
+    facilityId: grant.facilityId || null,
+    departmentId: grant.departmentId || null,
+    approvedMemberId: grant.memberId,
+    approvedLoginId: grant.loginId,
+    createdAt: grant.createdAt,
+    expiresAt: grant.expiresAt,
+    revokedAt: grant.revokedAt || null
+  };
+}
+
+function generateSidecarUserCode() {
+  let code = "";
+  for (let index = 0; index < 8; index += 1) {
+    code += SIDECAR_USER_CODE_ALPHABET[crypto.randomInt(SIDECAR_USER_CODE_ALPHABET.length)];
+  }
+  return code;
+}
+
+function normalizeSidecarUserCode(value) {
+  const normalized = String(value || "").toUpperCase().replace(/[-\s]/g, "");
+  if (!new RegExp(`^[${SIDECAR_USER_CODE_ALPHABET}]{8}$`).test(normalized)) {
+    const error = new Error("userCode must be an 8 character device code");
+    error.name = "ValidationError";
+    error.statusCode = 400;
+    error.field = "userCode";
+    throw error;
+  }
+  return normalized;
+}
+
+function formatSidecarUserCode(userCode) {
+  return `${userCode.slice(0, 4)}-${userCode.slice(4)}`;
+}
+
+function sidecarUserCodeHash(input, userCode) {
+  const secret = input.sessionSecret
+    || input.processEnv?.APP_SESSION_SIGNING_SECRET
+    || process.env.APP_SESSION_SIGNING_SECRET
+    || "local-sidecar-user-code-pepper";
+  return crypto.createHmac("sha256", secret).update(normalizeSidecarUserCode(userCode)).digest("base64url");
+}
+
+function digestSidecarSecret(secret) {
+  return crypto.createHash("sha256").update(secret).digest("base64url");
+}
+
+function sidecarSecretMatches(secret, expectedHash) {
+  const actual = Buffer.from(digestSidecarSecret(secret));
+  const expected = Buffer.from(String(expectedHash || ""));
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+
+function parseSidecarGrantId(grantId) {
+  const separator = grantId.indexOf(".");
+  const grantRecordId = separator > 0 ? grantId.slice(0, separator) : "";
+  const secret = separator > 0 ? grantId.slice(separator + 1) : "";
+  if (!/^sgr_[A-Za-z0-9_-]{20,}$/.test(grantRecordId) || !/^[A-Za-z0-9_-]{40,}$/.test(secret)) {
+    throw invalidSidecarGrantError();
+  }
+  return { grantRecordId, secret };
+}
+
+function sidecarGrantTtlHours(input = {}) {
+  const configured = input.sidecarGrantTtlHours
+    ?? input.processEnv?.HOMIS_SIDECAR_GRANT_TTL_HOURS
+    ?? process.env.HOMIS_SIDECAR_GRANT_TTL_HOURS
+    ?? SIDECAR_DEFAULT_GRANT_TTL_HOURS;
+  const parsed = Number.parseInt(String(configured), 10);
+  return Number.isFinite(parsed) && parsed >= 1 && parsed <= 24 * 365
+    ? parsed
+    : SIDECAR_DEFAULT_GRANT_TTL_HOURS;
+}
+
+function sidecarNow(input = {}) {
+  return input.now instanceof Date ? input.now : new Date(input.now || Date.now());
+}
+
+function invalidSidecarAuthorizationError() {
+  return sidecarProtocolError("invalid_device_authorization", "Invalid device authorization", 400);
+}
+
+function invalidSidecarGrantError() {
+  return sidecarProtocolError("invalid_grant", "Invalid or expired sidecar grant", 401);
+}
+
+function sidecarProtocolError(code, message, statusCode) {
+  const error = new Error(message);
+  error.name = "SidecarAuthorizationError";
+  error.statusCode = statusCode;
+  error.code = code;
+  return error;
 }
 
 function memberCanUseSidecar(member = {}) {
@@ -948,7 +1465,8 @@ function memberCanUseSidecar(member = {}) {
     ? member.productRoles[SIDECAR_PRODUCT_ID]
     : [];
   return roles.some((role) => SIDECAR_ALLOWED_ROLES.includes(role))
-    || (member.globalRoles || []).some((role) => ["platform_admin", "org_admin"].includes(role));
+    || (member.globalRoles || []).some((role) => ["platform_admin", "org_owner", "org_admin"].includes(role))
+    || (member.productRoles?.[productIds.fee] || []).includes("admin");
 }
 
 function entitlementAllowsUse(entitlement = {}, nowInput = new Date()) {
@@ -1018,6 +1536,13 @@ export function assertSidecarRuntimeConfiguration(input = {}) {
   }
   if (sidecarAllowedExtensionIds(input).some((extensionId) => !/^[a-p]{32}$/.test(extensionId))) {
     throw new Error("HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS contains an invalid Chrome extension ID");
+  }
+  const configuredGrantTtl = input.processEnv?.HOMIS_SIDECAR_GRANT_TTL_HOURS;
+  if (configuredGrantTtl !== undefined) {
+    const grantTtlHours = Number.parseInt(String(configuredGrantTtl), 10);
+    if (!/^\d+$/.test(String(configuredGrantTtl)) || grantTtlHours < 1 || grantTtlHours > 8760) {
+      throw new Error("HOMIS_SIDECAR_GRANT_TTL_HOURS must be an integer from 1 to 8760");
+    }
   }
 }
 
@@ -2092,7 +2617,7 @@ function corsHeaders(input) {
   }
 
   const origin = headerValue(input.headers || {}, "origin");
-  if (!origin || !isAllowedWebOrigin(origin)) {
+  if (!origin || !isAllowedWebOrigin(origin, input)) {
     return {};
   }
 
@@ -2105,9 +2630,10 @@ function corsHeaders(input) {
   };
 }
 
-function isAllowedWebOrigin(origin) {
+function isAllowedWebOrigin(origin, input = {}) {
   return defaultAllowedWebOrigins().includes(origin)
     || configuredAllowedWebOrigins().includes(origin)
+    || sidecarAllowedExtensionIds(input).some((extensionId) => origin === `chrome-extension://${extensionId}`)
     || /^https:\/\/[a-z0-9-]+--halunasu-[a-z0-9-]+\.netlify\.app$/.test(origin)
     || /^http:\/\/localhost(:\d+)?$/.test(origin)
     || /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin);

@@ -135,10 +135,32 @@ for project in "${PROJECTS[@]}"; do
         printf '%s\n' "${output}"
       fi
     done < <(jq -c '.indexes[]' firestore.indexes.json)
+
+    echo "Deploying Firestore TTL policies to ${project}"
+    while IFS=$'\t' read -r collection_group field_path; do
+      [[ -z "${collection_group}" || -z "${field_path}" ]] && continue
+      if ! output="$(gcloud firestore fields ttls update "${field_path}" \
+        --project "${project}" \
+        --database="(default)" \
+        --collection-group="${collection_group}" \
+        --enable-ttl \
+        --async \
+        --quiet 2>&1)"; then
+        if [[ "${output}" == *"already enabled"* || "${output}" == *"ALREADY_EXISTS"* ]]; then
+          echo "TTL already enabled for ${project}/${collection_group}.${field_path}"
+        else
+          printf '%s\n' "${output}" >&2
+          exit 1
+        fi
+      else
+        printf '%s\n' "${output}"
+      fi
+    done < <(jq -r '.fieldOverrides[]? | select(.ttl == true) | [.collectionGroup, .fieldPath] | @tsv' firestore.indexes.json)
   else
     echo "gcloud auth print-access-token >/dev/null"
     echo "curl -sS -X POST https://firebaserules.googleapis.com/v1/projects/${project}/rulesets ..."
     echo "curl -sS -X PATCH https://firebaserules.googleapis.com/v1/projects/${project}/releases/cloud.firestore?updateMask=rulesetName ..."
     echo "jq -c '.indexes[]' firestore.indexes.json | while read index; do gcloud firestore indexes composite create --project ${project} ...; done"
+    echo "jq -r '.fieldOverrides[]? | select(.ttl == true)' firestore.indexes.json | while read ttl; do gcloud firestore fields ttls update --project ${project} ... --enable-ttl; done"
   fi
 done

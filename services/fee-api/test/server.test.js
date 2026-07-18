@@ -9336,7 +9336,17 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
         status: "confirmed",
         reviewRequired: false,
         coverage: { supportLevel: "confirmed", reviewRequired: false }
-      }))
+      })),
+      candidateProposals: [
+        ...(Array.isArray(calculated.candidateProposals) ? calculated.candidateProposals : []),
+        {
+          proposalId: "ambiguous_home_oxygen",
+          title: "在宅酸素療法指導管理料の区分確認",
+          orderType: "procedure",
+          potentialPoints: 0,
+          codeCandidates: ["114009210", "114009310"]
+        }
+      ]
     };
   };
   const sidecarHeaders = await signedSidecarHeaders(stores);
@@ -9359,6 +9369,11 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.ok(first.body.sidecarDraft.calculation.candidates.every((candidate) => (
     candidate.candidateOnly === true && candidate.status === "needs_review"
   )));
+  const ambiguousCandidate = first.body.sidecarDraft.calculation.candidates
+    .find((candidate) => candidate.candidateId === "ambiguous_home_oxygen");
+  assert.deepEqual(ambiguousCandidate.codeCandidates, ["114009210", "114009310"]);
+  assert.equal(ambiguousCandidate.requiresSelection, true);
+  assert.equal(ambiguousCandidate.estimatedTotalPoints, 0);
   assert.equal(Object.hasOwn(first.body, "receiptDraft"), false);
   assert.equal(first.headers["access-control-allow-origin"], `chrome-extension://${TEST_SIDECAR_EXTENSION_ID}`);
   assert.equal(stores.feeStore.listSessions("org_001").length, 0);

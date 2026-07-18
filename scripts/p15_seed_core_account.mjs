@@ -64,8 +64,11 @@ if (loginIds.length === 0) {
 if (!["admin", "fee-demo"].includes(memberRoleProfile)) {
   throw new Error(`Unsupported --member-role-profile: ${memberRoleProfile}`);
 }
-if (memberRoleProfile === "fee-demo" && (products.length !== 1 || products[0] !== "fee")) {
-  throw new Error("--member-role-profile fee-demo requires --products fee");
+if (memberRoleProfile === "fee-demo" && (
+  !products.includes("fee")
+  || products.some((product) => !["fee", "homis_sidecar"].includes(product))
+)) {
+  throw new Error("--member-role-profile fee-demo requires fee and only supports optional homis_sidecar");
 }
 if (Boolean(feeProjectId) !== Boolean(feeSettingsTemplate)) {
   throw new Error("--fee-project-id and --fee-settings-file must be specified together");
@@ -298,24 +301,31 @@ function memberAccessForSeed(input, loginId) {
     return {
       displayName: `${prefix} 医事課`,
       globalRoles: [],
-      productRoles: { fee: ["medical_clerk"] }
+      productRoles: feeDemoProductRoles(input, ["medical_clerk"], ["medical_clerk"])
     };
   }
   if (loginId.endsWith("-doctor")) {
     return {
       displayName: `${prefix} 医師`,
       globalRoles: [],
-      productRoles: { fee: ["doctor"] }
+      productRoles: feeDemoProductRoles(input, ["doctor"], ["doctor"])
     };
   }
   if (loginId.endsWith("-admin")) {
     return {
       displayName: `${prefix} 管理者`,
       globalRoles: ["org_admin", "billing_admin"],
-      productRoles: { fee: ["admin"] }
+      productRoles: feeDemoProductRoles(input, ["admin"], ["admin"])
     };
   }
   throw new Error(`fee-demo login ID must end with -admin, -clerk, or -doctor: ${loginId}`);
+}
+
+function feeDemoProductRoles(input, feeRoles, sidecarRoles) {
+  return {
+    fee: feeRoles,
+    ...(input.products.includes("homis_sidecar") ? { homis_sidecar: sidecarRoles } : {})
+  };
 }
 
 async function ensureLoginIdentity({ input, organization, member, actions }) {

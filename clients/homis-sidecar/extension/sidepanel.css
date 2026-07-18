@@ -1,0 +1,297 @@
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  color: #142033;
+  background: #f5f7fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 340px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 14px 16px;
+  color: #fff;
+  background: #0d4d4d;
+}
+
+.app-header strong {
+  font-size: 16px;
+}
+
+.app-header span {
+  color: #cae3df;
+  font-size: 12px;
+}
+
+main {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.panel-section {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid #dce3ea;
+  border-radius: 8px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1,
+h2 {
+  font-size: 15px;
+}
+
+h3 {
+  font-size: 13px;
+}
+
+.muted {
+  color: #617083;
+  line-height: 1.55;
+}
+
+.status-badge,
+.candidate-badge {
+  padding: 3px 8px;
+  border: 1px solid #b9c5d1;
+  border-radius: 999px;
+  color: #526175;
+  background: #f7f9fb;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.status-badge.connected {
+  color: #08665a;
+  border-color: #78bfb4;
+  background: #eaf7f4;
+}
+
+.candidate-badge {
+  color: #7d5000;
+  border-color: #dfbc78;
+  background: #fff7e8;
+}
+
+.button {
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button.primary {
+  color: #fff;
+  background: #0a8d80;
+}
+
+.button.secondary {
+  color: #172438;
+  background: #f4f6f8;
+  border-color: #cdd6df;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.device-code {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #b8d9d4;
+  border-radius: 6px;
+  background: #edf8f6;
+  text-align: center;
+}
+
+.device-code strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 25px;
+  letter-spacing: 0;
+}
+
+.device-code small {
+  color: #526175;
+}
+
+.chart-preview {
+  display: grid;
+  gap: 10px;
+}
+
+.chart-preview dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.chart-preview dl div {
+  min-width: 0;
+}
+
+.chart-preview dt {
+  color: #667488;
+  font-size: 11px;
+}
+
+.chart-preview dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.chart-preview pre {
+  max-height: 170px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+  background: #f7f9fb;
+  border: 1px solid #e0e6ec;
+  border-radius: 6px;
+}
+
+.setting-control {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.setting-control legend {
+  margin-bottom: 7px;
+  font-weight: 700;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid #bdc8d3;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segmented-control label {
+  min-width: 0;
+}
+
+.segmented-control input {
+  position: absolute;
+  opacity: 0;
+}
+
+.segmented-control span {
+  display: grid;
+  min-height: 38px;
+  padding: 7px 4px;
+  place-items: center;
+  border-right: 1px solid #bdc8d3;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.segmented-control label:last-child span {
+  border-right: 0;
+}
+
+.segmented-control input:checked + span {
+  color: #fff;
+  background: #0d7670;
+}
+
+.segmented-control input:focus-visible + span {
+  outline: 2px solid #1d68bd;
+  outline-offset: -2px;
+}
+
+.total-points {
+  font-size: 24px;
+}
+
+.result-group {
+  display: grid;
+  gap: 7px;
+}
+
+.candidate-list,
+.issue-list {
+  display: grid;
+  gap: 7px;
+}
+
+.candidate-row,
+.issue-row {
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+  border: 1px solid #dfe5eb;
+  border-radius: 6px;
+}
+
+.candidate-row header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.candidate-row small,
+.issue-row,
+details {
+  color: #5c6b7e;
+  font-size: 12px;
+}
+
+details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.issue-list {
+  margin-top: 8px;
+}
+
+.status-message {
+  min-height: 20px;
+  color: #526175;
+  line-height: 1.45;
+}
+
+.status-message.error {
+  color: #a62323;
+}

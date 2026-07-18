@@ -18,6 +18,8 @@ import {
   productEntitlementPath,
   rateLimitPath,
   referralPath,
+  sidecarDeviceAuthorizationPath,
+  sidecarDeviceGrantPath,
   signupEmailTokenPath,
   signupApplicationPath
 } from "../src/index.js";
@@ -57,6 +59,11 @@ test("builds platform document paths", () => {
   assert.equal(passwordSetupTokenPath("setup_123"), "password_setup_tokens/setup_123");
   assert.equal(rateLimitPath("login:local:clinic:admin"), "rate_limits/login:local:clinic:admin");
   assert.equal(
+    sidecarDeviceAuthorizationPath("sda_123"),
+    "sidecar_device_authorizations/sda_123"
+  );
+  assert.equal(sidecarDeviceGrantPath("sgr_123"), "sidecar_device_grants/sgr_123");
+  assert.equal(
     patientAliasPath("org_123", "pat_456", "alias_789"),
     "organizations/org_123/patients/pat_456/aliases/alias_789"
   );
@@ -76,4 +83,6 @@ test("exports canonical collection names", () => {
   assert.equal(collections.organizations, "organizations");
   assert.equal(collections.patients, "patients");
   assert.equal(collections.sidecarCalculationDrafts, "sidecar_calculation_drafts");
+  assert.equal(collections.sidecarDeviceAuthorizations, "sidecar_device_authorizations");
+  assert.equal(collections.sidecarDeviceGrants, "sidecar_device_grants");
 });

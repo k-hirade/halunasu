@@ -256,7 +256,12 @@ test("validates product entitlements and audit events", () => {
       birthDate: "1970-01-01",
       memberId: "mem_123",
       warningCodes: ["meisaisho_hakko_facility_type_unconfirmed"],
-      meisaishoHakkoFacilityTypeStatus: "missing"
+      meisaishoHakkoFacilityTypeStatus: "missing",
+      authMode: "device_poll",
+      deviceAuthId: "sda_123",
+      extensionId: "nhbmaniknlcaaelpaoogepmkhphmmjof",
+      grantRecordId: "sgr_123",
+      scopes: ["sidecar:calculate"]
     }
   });
 
@@ -266,6 +271,11 @@ test("validates product entitlements and audit events", () => {
   assert.equal(auditEvent.safePayload.memberId, "mem_123");
   assert.deepEqual(auditEvent.safePayload.warningCodes, ["meisaisho_hakko_facility_type_unconfirmed"]);
   assert.equal(auditEvent.safePayload.meisaishoHakkoFacilityTypeStatus, "missing");
+  assert.equal(auditEvent.safePayload.authMode, "device_poll");
+  assert.equal(auditEvent.safePayload.deviceAuthId, "sda_123");
+  assert.equal(auditEvent.safePayload.extensionId, "nhbmaniknlcaaelpaoogepmkhphmmjof");
+  assert.equal(auditEvent.safePayload.grantRecordId, "sgr_123");
+  assert.deepEqual(auditEvent.safePayload.scopes, ["sidecar:calculate"]);
   assert.equal(auditEvent.safePayload.displayName, undefined);
   assert.equal(auditEvent.safePayload.birthDate, undefined);
 });

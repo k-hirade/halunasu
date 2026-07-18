@@ -157,7 +157,8 @@ for (let repeatIndex = 1; repeatIndex <= args.repeat; repeatIndex += 1) {
     baselineClaim,
     context,
     seedKnownPriorHistory: args.seedKnownPriorHistory,
-    encounterSetting: args.encounterSetting
+    encounterSetting: args.encounterSetting,
+    approveCalculatedLines: args.approveCalculatedLines
   });
   repeats.push(repetition);
   process.stdout.write(
@@ -196,7 +197,8 @@ const result = {
   evaluationOptions: {
     repeat: args.repeat,
     seedKnownPriorHistory: args.seedKnownPriorHistory,
-    encounterSetting: args.encounterSetting
+    encounterSetting: args.encounterSetting,
+    approveCalculatedLines: args.approveCalculatedLines
   },
   summary: summarizeRepeats(repeats),
   repeats
@@ -218,7 +220,8 @@ async function runRepetition({
   baselineClaim,
   context,
   seedKnownPriorHistory,
-  encounterSetting = "outpatient"
+  encounterSetting = "outpatient",
+  approveCalculatedLines = false
 }) {
   const requestTimings = [];
   const sessions = [];
@@ -304,6 +307,30 @@ async function runRepetition({
     requestTimings.push(timingRecord("calculate", chartIndex + 1, calculate));
     assertResponse(calculate, `calculate session ${chartIndex + 1}`);
 
+    let approvedLineCount = 0;
+    if (approveCalculatedLines) {
+      const reviewItemsResponse = await api.request(
+        "GET",
+        `/v1/fee/sessions/${encodeURIComponent(feeSessionId)}/review-items`,
+        undefined,
+        { tag: `r${repeatIndex}-v${chartIndex + 1}-review-items` }
+      );
+      requestTimings.push(timingRecord("review_items", chartIndex + 1, reviewItemsResponse));
+      assertResponse(reviewItemsResponse, `review items ${chartIndex + 1}`);
+      const decisions = approvableCalculatedLineDecisions(reviewItemsResponse.body?.reviewItems);
+      if (decisions.length) {
+        const approveResponse = await api.request(
+          "PATCH",
+          `/v1/fee/sessions/${encodeURIComponent(feeSessionId)}/review-items`,
+          { decisions },
+          { csrf: true, tag: `r${repeatIndex}-v${chartIndex + 1}-approve-lines` }
+        );
+        requestTimings.push(timingRecord("approve_lines", chartIndex + 1, approveResponse));
+        assertResponse(approveResponse, `approve calculated lines ${chartIndex + 1}`);
+        approvedLineCount = decisions.length;
+      }
+    }
+
     const detail = await api.request(
       "GET",
       `/v1/fee/sessions/${encodeURIComponent(feeSessionId)}/detail`,
@@ -312,7 +339,7 @@ async function runRepetition({
     );
     requestTimings.push(timingRecord("detail", chartIndex + 1, detail));
     assertResponse(detail, `session detail ${chartIndex + 1}`);
-    sessions.push(sanitizeSessionDetail(detail.body || {}, chart, feeSessionId));
+    sessions.push(sanitizeSessionDetail(detail.body || {}, chart, feeSessionId, { approvedLineCount }));
   }
 
   const monthlyResponse = await api.request(
@@ -411,7 +438,7 @@ async function runRepetition({
   };
 }
 
-function sanitizeSessionDetail(body, chart, feeSessionId) {
+function sanitizeSessionDetail(body, chart, feeSessionId, { approvedLineCount = 0 } = {}) {
   const feeSession = body.feeSession || {};
   const calculation = feeSession.calculationResult || {};
   const workbench = body.candidateWorkbench || {};
@@ -425,6 +452,7 @@ function sanitizeSessionDetail(body, chart, feeSessionId) {
     serviceDate: String(chart.service_date || feeSession.serviceDate || ""),
     chartHash: sha256(String(chart.clinical_text || "")),
     totalPoints: Number(calculation.totalPoints || 0),
+    approvedLineCount: Number(approvedLineCount || 0),
     diagnoses: (feeSession.diagnoses || []).map((item) => String(item.name || item)).filter(Boolean),
     candidateSurface: {
       lines: aggregateLines(lineSource),
@@ -447,6 +475,19 @@ function sanitizeSessionDetail(body, chart, feeSessionId) {
     },
     calculationMetrics: sanitizeCalculationMetrics(metrics)
   };
+}
+
+function approvableCalculatedLineDecisions(reviewItems = []) {
+  return (Array.isArray(reviewItems) ? reviewItems : [])
+    .filter((item) => item?.sourceType === "line_item")
+    .filter((item) => item?.hiddenFromWorkspace !== true)
+    .filter((item) => item?.lineItem?.excludedFromTotal !== true)
+    .filter((item) => !["blocked", "rejected"].includes(String(item?.lineItem?.status || "").toLowerCase()))
+    .map((item) => ({
+      reviewItemId: String(item.reviewItemId || ""),
+      status: "approved"
+    }))
+    .filter((decision) => decision.reviewItemId);
 }
 
 function sanitizeMonthlyReceipt(receipt) {
@@ -868,6 +909,7 @@ function parseArgs(argv) {
     departmentId: "",
     password: process.env.FEE_E2E_PASSWORD || "",
     seedKnownPriorHistory: false,
+    approveCalculatedLines: false,
     encounterSetting: "outpatient",
     dryRun: false,
     help: false
@@ -891,6 +933,7 @@ function parseArgs(argv) {
     else if (arg === "--facility-id") parsed.facilityId = next(index++, arg);
     else if (arg === "--department-id") parsed.departmentId = next(index++, arg);
     else if (arg === "--seed-known-prior-history") parsed.seedKnownPriorHistory = true;
+    else if (arg === "--approve-calculated-lines") parsed.approveCalculatedLines = true;
     else if (arg === "--encounter-setting") parsed.encounterSetting = next(index++, arg);
     else if (arg === "--dry-run") parsed.dryRun = true;
     else if (arg === "--help" || arg === "-h") parsed.help = true;
@@ -991,5 +1034,5 @@ function round(value, digits = 3) {
 }
 
 function printHelp() {
-  process.stdout.write(`Fee monthly chart-to-receipt E2E (STG only)\n\nUsage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\nOptions:\n  --patient-dir PATH       Patient dataset directory\n  --claim-month YYYY-MM    Defaults to manifest claimMonth\n  --repeat N               Independent patient runs. Default: 3\n  --output-dir PATH        Default: /private/tmp/<run-id>\n  --organization-code ID   Default: yamamoto-demo-stg\n  --login-id ID            Default: yamamoto-admin\n  --password-file PATH     Default: .secrets/yamamoto-demo-stg-password.txt\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --seed-known-prior-history\n                            Seed patients.csv start_date as prior visit history\n  --encounter-setting TYPE Encounter setting (outpatient/home_visit/house_call/inpatient)\n  --dry-run                Validate and summarize inputs without network calls\n  --help                   Show this help\n`);
+  process.stdout.write(`Fee monthly chart-to-receipt E2E (STG only)\n\nUsage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\nOptions:\n  --patient-dir PATH       Patient dataset directory\n  --claim-month YYYY-MM    Defaults to manifest claimMonth\n  --repeat N               Independent patient runs. Default: 3\n  --output-dir PATH        Default: /private/tmp/<run-id>\n  --organization-code ID   Default: yamamoto-demo-stg\n  --login-id ID            Default: yamamoto-admin\n  --password-file PATH     Default: .secrets/yamamoto-demo-stg-password.txt\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --seed-known-prior-history\n                            Seed patients.csv start_date as prior visit history\n  --approve-calculated-lines\n                            Approve non-blocked calculated line items before monthly aggregation\n  --encounter-setting TYPE Encounter setting (outpatient/home_visit/house_call/inpatient)\n  --dry-run                Validate and summarize inputs without network calls\n  --help                   Show this help\n`);
 }

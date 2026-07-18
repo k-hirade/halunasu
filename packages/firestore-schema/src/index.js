@@ -7,6 +7,8 @@ export const collections = Object.freeze({
   passwordSetupTokens: "password_setup_tokens",
   stripeEventReceipts: "stripe_event_receipts",
   rateLimits: "rate_limits",
+  sidecarDeviceAuthorizations: "sidecar_device_authorizations",
+  sidecarDeviceGrants: "sidecar_device_grants",
   members: "members",
   facilities: "facilities",
   departments: "departments",
@@ -49,6 +51,17 @@ export function stripeEventReceiptPath(eventId) {
 
 export function rateLimitPath(key) {
   return joinPath(collections.rateLimits, segment(key, "key"));
+}
+
+export function sidecarDeviceAuthorizationPath(deviceAuthId) {
+  return joinPath(
+    collections.sidecarDeviceAuthorizations,
+    segment(deviceAuthId, "deviceAuthId")
+  );
+}
+
+export function sidecarDeviceGrantPath(grantRecordId) {
+  return joinPath(collections.sidecarDeviceGrants, segment(grantRecordId, "grantRecordId"));
 }
 
 export function loginIdentityKey(organizationCode, loginId) {
