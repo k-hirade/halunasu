@@ -57,6 +57,14 @@
       "claimStartDate": "2026-01-01",
       "effectiveTo": "",
       "acceptanceNumber": ""
+    },
+    {
+      "key": "meisaisho_hakko_taisei",
+      "name": "明細書発行体制等加算（デモ: 基準充足開始日は推定値）",
+      "status": "active",
+      "claimStartDate": "2026-06-01",
+      "effectiveTo": "",
+      "acceptanceNumber": ""
     }
   ],
   "autoBillingRules": [

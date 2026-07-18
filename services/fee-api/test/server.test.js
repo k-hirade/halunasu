@@ -8795,6 +8795,62 @@ test("updates facility fee settings and records audit event", async () => {
   assert.ok(auditEvents.some((event) => event.eventType === "fee.settings_updated"));
 });
 
+test("limits active meisaisho issuance settings to confirmed or reviewable clinic facilities", async () => {
+  const clinicStores = createStores({ facilityType: "clinic" });
+  const clinicHeaders = await signedHeaders(clinicStores.platformStore);
+  const clinicResponse = await request(clinicStores, "PATCH", "/v1/fee/settings/fac_001", {
+    facilityStandards: [{
+      key: "meisaisho_hakko_taisei",
+      name: "明細書発行体制等加算",
+      status: "active",
+      claimStartDate: "2026-06-01"
+    }]
+  }, clinicHeaders);
+
+  assert.equal(clinicResponse.statusCode, 200);
+  assert.deepEqual(clinicResponse.body.warnings, []);
+  const defaultResponse = await request(clinicStores, "PATCH", "/v1/fee/settings/default", {
+    facilityStandards: [{ key: "meisaisho_hakko_taisei", status: "active" }]
+  }, clinicHeaders);
+  assert.equal(defaultResponse.statusCode, 400);
+  assert.match(defaultResponse.body.message, /実在する施設単位/u);
+
+  const hospitalStores = createStores({ facilityType: "hospital" });
+  const hospitalHeaders = await signedHeaders(hospitalStores.platformStore);
+  const hospitalResponse = await request(hospitalStores, "PATCH", "/v1/fee/settings/fac_001", {
+    facilityStandards: [{
+      key: "meisaisho_hakko_taisei",
+      name: "明細書発行体制等加算",
+      status: "active",
+      claimStartDate: "2026-06-01"
+    }]
+  }, hospitalHeaders);
+
+  assert.equal(hospitalResponse.statusCode, 400);
+  assert.match(hospitalResponse.body.message, /診療所のみ設定できます/u);
+  assert.equal(await hospitalStores.feeStore.getFeeSettings("org_001", "fac_001"), null);
+
+  const missingTypeStores = createStores();
+  const missingTypeHeaders = await signedHeaders(missingTypeStores.platformStore);
+  const missingTypeResponse = await request(missingTypeStores, "PATCH", "/v1/fee/settings/fac_001", {
+    facilityStandards: [{
+      key: "meisaisho_hakko_taisei",
+      name: "明細書発行体制等加算",
+      status: "active",
+      claimStartDate: "2026-06-01"
+    }]
+  }, missingTypeHeaders);
+
+  assert.equal(missingTypeResponse.statusCode, 200);
+  assert.equal(missingTypeResponse.body.warnings.length, 1);
+  assert.equal(missingTypeResponse.body.warnings[0].code, "meisaisho_hakko_facility_type_unconfirmed");
+  assert.match(missingTypeResponse.body.warnings[0].message, /診療所であることを確認/u);
+  const auditEvent = missingTypeStores.platformStore.listAuditEvents("org_001")
+    .find((event) => event.eventType === "fee.settings_updated");
+  assert.deepEqual(auditEvent.safePayload.warningCodes, ["meisaisho_hakko_facility_type_unconfirmed"]);
+  assert.equal(auditEvent.safePayload.meisaishoHakkoFacilityTypeStatus, "missing");
+});
+
 test("imports external billing history for a patient", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
@@ -9431,6 +9487,72 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(adoptedList.body.sidecarDrafts[0].lifecycleStatus, "adopted");
 });
 
+test("sidecar calculation inherits effective facility standards for meisaisho candidates", async () => {
+  async function calculateWithFacilityStandards(facilityStandards) {
+    const stores = createStores({ facilityType: "clinic" });
+    stores.feeStore.updateFeeSettings("org_001", "fac_001", {
+      facilityId: "fac_001",
+      facilityStandards
+    });
+    stores.feeCalculator.calculate = async (_feeSession, calculationInput = {}) => {
+      const facilityKeys = calculationInput.calculationOptions?.facility_standard_keys || [];
+      const includesMeisaisho = facilityKeys.includes("meisaisho_hakko_taisei");
+      return {
+        provider: "test_fee_engine",
+        source: "test",
+        status: "completed",
+        totalPoints: includesMeisaisho ? 1 : 0,
+        lineItems: includesMeisaisho ? [{
+          lineId: "line_meisaisho_hakko",
+          code: "112015770",
+          name: "明細書発行体制等加算",
+          orderType: "procedure",
+          points: 1,
+          quantity: 1,
+          totalPoints: 1,
+          status: "candidate",
+          source: "outpatient_meisaisho_hakko_add_on"
+        }] : [],
+        warnings: []
+      };
+    };
+    const headers = await signedSidecarHeaders(stores);
+    const response = await request(
+      stores,
+      "POST",
+      "/v1/integrations/sidecar/calculate",
+      {
+        ...sidecarCalculationBody(),
+        sourceRecordId: "homis-record-20260603-revisit",
+        sourceRecordDisplayId: "1001-0603",
+        serviceDate: "2026-06-03",
+        setting: "outpatient",
+        clinicalText: "S: 変化なし。O: 定期再診。P: 経過観察。",
+        extractionProof: {
+          ...sidecarCalculationBody().extractionProof,
+          sourceRecordIdBefore: "homis-record-20260603-revisit",
+          sourceRecordIdAfter: "homis-record-20260603-revisit"
+        }
+      },
+      headers,
+      sidecarRequestOptions()
+    );
+    assert.equal(response.statusCode, 201);
+    return response.body.sidecarDraft.calculation.candidates;
+  }
+
+  const eligibleCandidates = await calculateWithFacilityStandards([{
+    key: "meisaisho_hakko_taisei",
+    status: "active",
+    claimStartDate: "2026-06-01"
+  }]);
+  assert.equal(eligibleCandidates.find((candidate) => candidate.code === "112015770")?.estimatedTotalPoints, 1);
+  assert.equal(eligibleCandidates.find((candidate) => candidate.code === "112015770")?.candidateOnly, true);
+
+  const ineligibleCandidates = await calculateWithFacilityStandards([]);
+  assert.equal(ineligibleCandidates.some((candidate) => candidate.code === "112015770"), false);
+});
+
 test("sidecar integration fails closed on extraction races and token boundary violations", async () => {
   const stores = createStores();
   const sidecarHeaders = await signedSidecarHeaders(stores);
@@ -9682,6 +9804,7 @@ function createStores(options = {}) {
   });
   platformStore.createFacility(organization.orgId, {
     displayName: "春ナスクリニック",
+    facilityType: options.facilityType,
     medicalInstitutionCode: "1312345",
     regionalBureau: "kanto-shinetsu",
     prefecture: "tokyo",

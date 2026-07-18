@@ -48,6 +48,8 @@ export const feeNewDiseaseInitialHandlings = Object.freeze(["candidate_requires_
 export const feeReviewPolicyModes = Object.freeze(["standard", "conservative", "review_heavy"]);
 export const feeReceiptExportEncodings = Object.freeze(["shift_jis", "utf-8"]);
 export const feeFacilityStandardStatuses = Object.freeze(["active", "pending", "expired", "withdrawn"]);
+const MEISAISHO_HAKKO_STANDARD_KEY = "meisaisho_hakko_taisei";
+const DENSHITEKI_SHINRYO_JOHO_RENKEI_STANDARD_KEY = "denshiteki_shinryo_joho_renkei_taisei";
 // 恒常算定ルールの動作: confirm=算定入力へ自動追加(エンジンがマスタ照合・制約チェック),
 // candidate=承認待ち候補として提示(合計に入らない)。
 export const feeAutoBillingRuleActions = Object.freeze(["confirm", "candidate"]);
@@ -410,12 +412,14 @@ export function validateUpdateFeeSettingsInput(input = {}) {
   const autoBillingRulesInput = hasOwn(input, "autoBillingRules") || hasOwn(input, "auto_billing_rules")
     ? (input.autoBillingRules ?? input.auto_billing_rules)
     : (current.autoBillingRules ?? current.auto_billing_rules);
+  const facilityStandards = normalizeFacilityStandards(facilityStandardsInput);
+  validateExclusiveFacilityStandards(facilityStandards);
   return {
     facilityId: optionalString(input.facilityId ?? input.facility_id ?? current.facilityId ?? current.facility_id) || base.facilityId,
     effectiveFrom: optionalDate(input.effectiveFrom ?? input.effective_from ?? current.effectiveFrom ?? current.effective_from, "effectiveFrom") || base.effectiveFrom,
     historyPolicy: normalizeHistoryPolicy(baseHistoryPolicy),
     initialRevisitPolicy: normalizeInitialRevisitPolicy(baseInitialRevisitPolicy),
-    facilityStandards: normalizeFacilityStandards(facilityStandardsInput),
+    facilityStandards,
     autoBillingRules: normalizeAutoBillingRules(autoBillingRulesInput),
     receiptPolicy: normalizeReceiptPolicy(baseReceiptPolicy)
   };
@@ -542,6 +546,23 @@ function normalizeFacilityStandards(input) {
       };
     })
     .filter((entry) => entry.key || entry.name);
+}
+
+function validateExclusiveFacilityStandards(facilityStandards) {
+  const activeKeys = new Set(
+    facilityStandards
+      .filter((entry) => entry.status === "active")
+      .map((entry) => entry.key)
+  );
+  if (
+    activeKeys.has(MEISAISHO_HAKKO_STANDARD_KEY)
+    && activeKeys.has(DENSHITEKI_SHINRYO_JOHO_RENKEI_STANDARD_KEY)
+  ) {
+    throw validationError(
+      "meisaisho_hakko_taisei and denshiteki_shinryo_joho_renkei_taisei cannot both be active",
+      "facilityStandards"
+    );
+  }
 }
 
 function mergeReceiptPolicy(base = {}, current = {}, input = {}) {

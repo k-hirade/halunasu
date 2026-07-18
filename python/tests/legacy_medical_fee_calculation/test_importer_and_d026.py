@@ -386,6 +386,17 @@ class ImporterAndD026Test(unittest.TestCase):
                 judgement_group="0",
             ),
             procedure_row(
+                code="112015770",
+                name="明細書発行体制等加算",
+                points="1.00",
+                chapter="1",
+                part="01",
+                section="001",
+                item="000",
+                judgement_kind="0",
+                judgement_group="0",
+            ),
+            procedure_row(
                 code="112011010",
                 name="外来管理加算",
                 points="52.00",
@@ -1308,6 +1319,89 @@ class ImporterAndD026Test(unittest.TestCase):
         self.assertEqual([line.code for line in result.lines], ["180820010"])
         self.assertEqual(result.lines[0].total_points, 2.0)
         self.assertEqual(result.messages, ())
+
+    def test_calculate_outpatient_basic_derived_add_ons_adds_meisaisho_hakko_for_eligible_revisit(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            ("112007410",),
+            date(2026, 6, 3),
+            is_outpatient=True,
+            facility_standard_keys=frozenset({"meisaisho_hakko_taisei"}),
+            source_id=self.source_id,
+        )
+
+        meisaisho_lines = [line for line in result.lines if line.code == "112015770"]
+        self.assertEqual(len(meisaisho_lines), 1)
+        self.assertEqual(meisaisho_lines[0].total_points, 1.0)
+        self.assertEqual(meisaisho_lines[0].source, "outpatient_meisaisho_hakko_add_on")
+
+    def test_calculate_outpatient_basic_derived_add_ons_does_not_add_meisaisho_hakko_for_initial_visit(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            ("111000110",),
+            date(2026, 6, 3),
+            is_outpatient=True,
+            facility_standard_keys=frozenset({"meisaisho_hakko_taisei"}),
+            source_id=self.source_id,
+        )
+
+        self.assertNotIn("112015770", [line.code for line in result.lines])
+
+    def test_calculate_outpatient_basic_derived_add_ons_does_not_add_meisaisho_hakko_for_outpatient_clinic_fee(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            ("112011310",),
+            date(2026, 6, 3),
+            is_outpatient=True,
+            facility_standard_keys=frozenset({"meisaisho_hakko_taisei"}),
+            source_id=self.source_id,
+        )
+
+        self.assertNotIn("112015770", [line.code for line in result.lines])
+
+    def test_calculate_outpatient_basic_derived_add_ons_does_not_add_meisaisho_hakko_for_second_department_revisit(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            ("112015810",),
+            date(2026, 6, 3),
+            is_outpatient=True,
+            facility_standard_keys=frozenset({"meisaisho_hakko_taisei"}),
+            source_id=self.source_id,
+        )
+
+        self.assertNotIn("112015770", [line.code for line in result.lines])
+
+    def test_calculate_outpatient_basic_derived_add_ons_silently_skips_meisaisho_hakko_without_standard(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            ("112007410",),
+            date(2026, 6, 3),
+            is_outpatient=True,
+            source_id=self.source_id,
+        )
+
+        self.assertNotIn("112015770", [line.code for line in result.lines])
+        self.assertEqual(result.messages, ())
+
+    def test_calculate_outpatient_basic_derived_add_ons_silently_skips_meisaisho_hakko_with_prohibited_standard(self) -> None:
+        result = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            ("112007410",),
+            date(2026, 6, 3),
+            is_outpatient=True,
+            facility_standard_keys=frozenset(
+                {
+                    "meisaisho_hakko_taisei",
+                    "denshiteki_shinryo_joho_renkei_taisei",
+                }
+            ),
+            source_id=self.source_id,
+        )
+
+        self.assertNotIn("112015770", [line.code for line in result.lines])
+        self.assertEqual(result.messages, ())
+
+    # 電話等再診(112007950)は、H3の電話再診区分実装時に適用可否を確定して追加する。
 
     def test_calculate_outpatient_basic_derived_add_ons_adds_initial_infant_add_on_from_age(self) -> None:
         result = calculate_outpatient_basic_derived_add_ons(

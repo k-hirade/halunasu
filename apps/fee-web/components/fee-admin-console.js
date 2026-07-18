@@ -421,21 +421,30 @@ function FeeSettingsPanel({ data, initialGroup = "billing" }) {
         .filter((entry) => !entry.claimStartDate || entry.claimStartDate <= today)
         .filter((entry) => !entry.effectiveTo || entry.effectiveTo >= today)
         .map((entry) => entry.key);
-      if (selectedFacility?.facilityId) {
-        const facilityResponse = await feeApi(`/v1/fee/facilities/${encodeURIComponent(selectedFacility.facilityId)}`, {
-          method: "PATCH",
-          body: { facilityStandardKeys }
-        });
-        selectedFacility.facilityStandardKeys = facilityResponse.facility?.facilityStandardKeys || facilityStandardKeys;
-      }
       const settingsResponse = await feeApi(`/v1/fee/settings/${encodeURIComponent(selectedFacilityId || "default")}`, {
         method: "PATCH",
         body: { ...draft, facilityStandards: cleanedStandards }
       });
+      const warningMessages = (Array.isArray(settingsResponse.warnings) ? settingsResponse.warnings : [])
+        .map((warning) => String(warning?.message || warning || "").trim())
+        .filter(Boolean);
+      if (selectedFacility?.facilityId) {
+        try {
+          const facilityResponse = await feeApi(`/v1/fee/facilities/${encodeURIComponent(selectedFacility.facilityId)}`, {
+            method: "PATCH",
+            body: { facilityStandardKeys }
+          });
+          selectedFacility.facilityStandardKeys = facilityResponse.facility?.facilityStandardKeys || facilityStandardKeys;
+        } catch {
+          warningMessages.push("算定設定は保存しましたが、施設情報への同期に失敗しました。管理者に確認してください。");
+        }
+      }
       setDraft(settingsResponse.settings || draft);
       setFacilityStandards(initialFacilityStandards(settingsResponse.settings || draft, selectedFacility));
       setDirty(false);
-      setSavedMessage("保存しました。次回算定からこの設定を参照します。");
+      setSavedMessage(warningMessages.length
+        ? `保存しました。${warningMessages.join(" ")}`
+        : "保存しました。次回算定からこの設定を参照します。");
     } catch (error) {
       setErrorMessage(toUserFacingErrorMessage(error, "算定設定を保存できませんでした。"));
     } finally {

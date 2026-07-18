@@ -66,6 +66,16 @@ const DEFAULT_MONTHLY_VIEW_SESSION_LIMIT = 50_000;
 const DEFAULT_BASELINE_DIAGNOSIS_SESSION_LIMIT = 5000;
 const DEFAULT_BASELINE_DIAGNOSIS_CLAIM_LIMIT = 5000;
 const DEFAULT_RECALCULATION_DIFF_PAYLOAD_LIMIT = 200;
+const MEISAISHO_HAKKO_STANDARD_KEY = "meisaisho_hakko_taisei";
+const MEISAISHO_HAKKO_CLINIC_FACILITY_TYPES = new Set([
+  "clinic",
+  "medical_clinic",
+  "dental_clinic",
+  "medical_office",
+  "診療所",
+  "歯科診療所",
+  "クリニック"
+]);
 const facilityProfileCache = new Map();
 const facilityProfileStoreIds = new WeakMap();
 let facilityProfileStoreIdCounter = 0;
@@ -603,6 +613,12 @@ async function routeFeeApiRequest(input = {}) {
       facilityId,
       current: current || {}
     });
+    const facilityValidation = await validateMeisaishoHakkoFacilitySettings({
+      platformStore,
+      orgId: context.session.orgId,
+      facilityId,
+      settings
+    });
     const saved = typeof feeStore.updateFeeSettings === "function"
       ? await feeStore.updateFeeSettings(context.session.orgId, facilityId, settings)
       : settings;
@@ -615,10 +631,12 @@ async function routeFeeApiRequest(input = {}) {
       productId: PRODUCT_ID,
       safePayload: {
         facilityId,
-        changedFields: Object.keys(input.body || {}).sort()
+        changedFields: Object.keys(input.body || {}).sort(),
+        warningCodes: facilityValidation.warnings.map((warning) => warning.code),
+        meisaishoHakkoFacilityTypeStatus: facilityValidation.facilityTypeStatus
       }
     });
-    return ok({ settings: saved });
+    return ok({ settings: saved, warnings: facilityValidation.warnings });
   }
 
   if (method === "GET" && matches(parts, ["v1", "fee", "sessions"])) {
@@ -1862,6 +1880,65 @@ function requestValidationError(message) {
   error.name = "ValidationError";
   error.statusCode = 400;
   return error;
+}
+
+async function validateMeisaishoHakkoFacilitySettings({
+  platformStore,
+  orgId,
+  facilityId,
+  settings = {}
+} = {}) {
+  const hasActiveStandard = (Array.isArray(settings.facilityStandards) ? settings.facilityStandards : [])
+    .some((entry) => entry?.key === MEISAISHO_HAKKO_STANDARD_KEY && entry?.status === "active");
+  if (!hasActiveStandard) {
+    return { facilityTypeStatus: "not_applicable", warnings: [] };
+  }
+
+  const facility = typeof platformStore?.getFacility === "function"
+    ? await platformStore.getFacility(orgId, facilityId)
+    : null;
+  if (!facility) {
+    throw requestValidationError(
+      "明細書発行体制等加算は実在する施設単位で設定してください。共通設定には登録できません。"
+    );
+  }
+  const rawFacilityType = String(facility?.facilityType || facility?.facility_type || "").trim();
+  const facilityType = normalizeFacilityType(rawFacilityType);
+
+  if (isHospitalFacilityType(facilityType)) {
+    throw requestValidationError(
+      "明細書発行体制等加算は診療所のみ設定できます。施設種別が病院のため登録できません。"
+    );
+  }
+  if (MEISAISHO_HAKKO_CLINIC_FACILITY_TYPES.has(facilityType)) {
+    return { facilityTypeStatus: "clinic_confirmed", warnings: [] };
+  }
+
+  return {
+    facilityTypeStatus: rawFacilityType ? "unrecognized" : "missing",
+    warnings: [{
+      code: "meisaisho_hakko_facility_type_unconfirmed",
+      field: "facilityType",
+      message: rawFacilityType
+        ? "明細書発行体制等加算を設定しました。施設種別を診療所として確認できないため、登録内容を確認してください。"
+        : "明細書発行体制等加算を設定しました。施設種別が未設定のため、診療所であることを確認してください。"
+    }]
+  };
+}
+
+function normalizeFacilityType(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/gu, "_");
+}
+
+function isHospitalFacilityType(facilityType) {
+  return facilityType === "hospital"
+    || facilityType.startsWith("hospital_")
+    || facilityType.endsWith("_hospital")
+    || facilityType.includes("病院");
 }
 
 async function baselineClaimsFromDiagnosisBody({ body = {}, claimMonth = "", feeCalculator, processEnv = process.env } = {}) {

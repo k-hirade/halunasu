@@ -254,7 +254,9 @@ test("validates product entitlements and audit events", () => {
       changedFields: ["displayName"],
       displayName: "Yamada Taro",
       birthDate: "1970-01-01",
-      memberId: "mem_123"
+      memberId: "mem_123",
+      warningCodes: ["meisaisho_hakko_facility_type_unconfirmed"],
+      meisaishoHakkoFacilityTypeStatus: "missing"
     }
   });
 
@@ -262,6 +264,8 @@ test("validates product entitlements and audit events", () => {
   assert.equal(entitlement.startsAt, "2026-05-27T00:00:00.000Z");
   assert.deepEqual(auditEvent.safePayload.changedFields, ["displayName"]);
   assert.equal(auditEvent.safePayload.memberId, "mem_123");
+  assert.deepEqual(auditEvent.safePayload.warningCodes, ["meisaisho_hakko_facility_type_unconfirmed"]);
+  assert.equal(auditEvent.safePayload.meisaishoHakkoFacilityTypeStatus, "missing");
   assert.equal(auditEvent.safePayload.displayName, undefined);
   assert.equal(auditEvent.safePayload.birthDate, undefined);
 });

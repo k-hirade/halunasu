@@ -1733,6 +1733,7 @@ def _source_based_gold_review_classification(
     if sources & {
         "outpatient_basic_fee",
         "outpatient_price_support_add_on",
+        "outpatient_meisaisho_hakko_add_on",
         "outpatient_pediatric_add_on",
         "outpatient_management_add_on",
     }:
@@ -2619,6 +2620,7 @@ def _default_line_coverage_chapter(line: CalculationLine) -> str:
     return {
         "outpatient_basic_fee": "A_basic_fee",
         "outpatient_price_support_add_on": "A_basic_fee",
+        "outpatient_meisaisho_hakko_add_on": "A_basic_fee",
         "outpatient_pediatric_add_on": "A_basic_fee",
         "outpatient_management_add_on": "A_basic_fee",
         "inpatient_basic_fee": "A_inpatient_fee",

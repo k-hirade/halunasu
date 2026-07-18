@@ -28,6 +28,8 @@ class BasicFeeDerivedAddOnRule:
     effective_from: date
     reason: str
     required_facility_standard_key: str | None = None
+    prohibited_facility_standard_keys: frozenset[str] = frozenset()
+    silent_when_missing_standard: bool = False
     required_patient_age_lt: int | None = None
 
 
@@ -84,6 +86,14 @@ OUTPATIENT_PRICE_SUPPORT_ADD_ON_VISIT_HOME_CODE = "180820110"
 OUTPATIENT_INFANT_ADD_ON_INITIAL_CODE = "111000370"
 OUTPATIENT_INFANT_ADD_ON_REVISIT_CODE = "112000970"
 OUTPATIENT_INFANT_ADD_ON_CLINIC_CODE = "112006270"
+MEISAISHO_HAKKO_TRIGGER_CODES = frozenset(
+    {
+        "112007410",  # 再診料
+        "112008350",  # 同日再診料
+        "112024210",  # 再診料（情報通信機器）
+        "112024950",  # 同日再診料（情報通信機器）
+    }
+)
 OUTPATIENT_BASIC_DERIVED_ADD_ON_RULES = (
     BasicFeeDerivedAddOnRule(
         rule_id="outpatient_price_support_initial",
@@ -100,6 +110,23 @@ OUTPATIENT_BASIC_DERIVED_ADD_ON_RULES = (
         source="outpatient_price_support_add_on",
         effective_from=date(2026, 6, 1),
         reason="Outpatient/home price support add-on derived from a revisit or outpatient clinic basic fee",
+    ),
+    # A001再診料 注11 / 令和8年度医科点数表:
+    # https://www.mhlw.go.jp/content/12400000/001686842.pdf
+    # 診療所・電子請求・明細書無償交付等の基準 / 令和8年度施設基準通知:
+    # https://www.mhlw.go.jp/content/12400000/001686836.pdf
+    BasicFeeDerivedAddOnRule(
+        rule_id="outpatient_meisaisho_hakko_revisit",
+        add_on_code="112015770",
+        trigger_codes=MEISAISHO_HAKKO_TRIGGER_CODES,
+        source="outpatient_meisaisho_hakko_add_on",
+        effective_from=date(2026, 6, 1),
+        reason="Meisaisho issuance add-on derived from a revisit basic fee (facility standard required)",
+        required_facility_standard_key="meisaisho_hakko_taisei",
+        prohibited_facility_standard_keys=frozenset(
+            {"denshiteki_shinryo_joho_renkei_taisei"}
+        ),
+        silent_when_missing_standard=True,
     ),
     BasicFeeDerivedAddOnRule(
         rule_id="outpatient_infant_initial",
@@ -277,18 +304,21 @@ def calculate_outpatient_basic_derived_add_ons(
             continue
         if rule.add_on_code in existing_codes or any(line.code == rule.add_on_code for line in lines):
             continue
+        if facility_keys.intersection(rule.prohibited_facility_standard_keys):
+            continue
         if rule.required_facility_standard_key and rule.required_facility_standard_key not in facility_keys:
-            messages.append(
-                CalculationMessage(
-                    status=ClaimItemStatus.NEEDS_REVIEW,
-                    code=rule.add_on_code,
-                    message=(
-                        f"Basic-fee derived add-on skipped: facility standard "
-                        f"{rule.required_facility_standard_key} is required"
-                    ),
-                    source=rule.source,
+            if not rule.silent_when_missing_standard:
+                messages.append(
+                    CalculationMessage(
+                        status=ClaimItemStatus.NEEDS_REVIEW,
+                        code=rule.add_on_code,
+                        message=(
+                            f"Basic-fee derived add-on skipped: facility standard "
+                            f"{rule.required_facility_standard_key} is required"
+                        ),
+                        source=rule.source,
+                    )
                 )
-            )
             continue
 
         row = _find_medical_procedure(conn, rule.add_on_code, service_date, source_id)

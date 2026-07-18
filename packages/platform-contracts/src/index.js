@@ -766,6 +766,7 @@ function sanitizeSafePayload(value) {
     "facilityId",
     "feeSessionId",
     "loginIdentityCreated",
+    "meisaishoHakkoFacilityTypeStatus",
     "memberId",
     "mfaVerified",
     "missingCandidateCount",
@@ -785,6 +786,7 @@ function sanitizeSafePayload(value) {
     "targetId",
     "targetType",
     "totalPoints",
+    "warningCodes",
     // 売上改善診断(clinic-diagnosis)の集計(件数のみ・PHIなし)
     "assessmentRiskCount",
     "billingMissCount",

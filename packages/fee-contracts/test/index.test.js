@@ -325,6 +325,31 @@ test("normalizes structured facility standards and drops unused policy fields", 
   assert.equal(normalized.initialRevisitPolicy.priorHistoryBehavior, undefined);
 });
 
+test("rejects mutually exclusive active detail-issuance facility standards", () => {
+  assert.throws(
+    () => validateUpdateFeeSettingsInput({
+      facilityId: "fac_001",
+      facilityStandards: [
+        { key: "meisaisho_hakko_taisei", status: "active" },
+        { key: "denshiteki_shinryo_joho_renkei_taisei", status: "active" }
+      ]
+    }),
+    (error) => (
+      error?.name === "ValidationError"
+      && error?.field === "facilityStandards"
+    )
+  );
+
+  const historical = validateUpdateFeeSettingsInput({
+    facilityId: "fac_001",
+    facilityStandards: [
+      { key: "meisaisho_hakko_taisei", status: "expired" },
+      { key: "denshiteki_shinryo_joho_renkei_taisei", status: "active" }
+    ]
+  });
+  assert.equal(historical.facilityStandards.length, 2);
+});
+
 test("detects performed blood collection using the shared strict predicate", () => {
   assert.equal(hasPerformedBloodCollectionEvidenceInText("O: 静脈採血を実施し、血液検体を提出した。"), true);
   assert.equal(hasPerformedBloodCollectionEvidenceInText("O: 静脈採血でCRP 0.3mg/dLを確認した。"), true);
