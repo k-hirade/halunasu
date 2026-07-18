@@ -193,6 +193,11 @@ try {
     assert.equal(await page.getByText("詳細条件 JSON").count(), 0, "claimContext JSON editor must be removed from the UI");
     assert.equal(await page.getByText("算定オプション JSON").count(), 0, "calculationOptions JSON editor must be removed from the UI");
     assert.equal(await page.locator(".fee-session-action-footer").isVisible(), true, "detail actions must be available in the session footer");
+    assert.equal(
+      await page.getByText("再計算すると候補の採用・確認状態はリセットされます。").count(),
+      1,
+      "recalculation must disclose that candidate decisions are reset"
+    );
     assert.equal(await page.getByRole("tab", { name: "レセプト案" }).count(), 0, "receipt draft tab must be removed from session detail");
     assert.equal(await page.getByRole("tab", { name: "算定作業" }).count(), 0, "work tab must be removed from session detail");
     assert.equal(await page.getByRole("button", { name: "コピー" }).count(), 0, "receipt draft export actions must not be shown in session detail");

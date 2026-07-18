@@ -86,6 +86,7 @@ class ElectronicRuleContext:
     same_month_history_codes: frozenset[str] = field(default_factory=frozenset)
     procedure_history_events: tuple[ProcedureHistoryEvent, ...] = ()
     current_code_quantities: Mapping[str, float] = field(default_factory=dict)
+    multi_day_claim: bool = False
 
 
 @dataclass(frozen=True)
@@ -404,12 +405,13 @@ def _find_frequency_limit_breaches(
         current_quantity = _current_code_quantity(limit.procedure_code, context)
 
         # procedure_history_events はコードx診療日で集約され、quantityにその日の
-        # 算定回数合計を持つ。古いpayloadはquantity省略時に1回として後方互換で扱う。
-        exact_breach = (
-            limit.limit_count > 0
+        # 算定回数合計を持つ。履歴がある場合だけ、履歴+当該請求数量を確定回数として扱う。
+        history_based_breach = (
+            bool(matching_events)
+            and limit.limit_count > 0
             and history_occurrences + current_quantity > limit.limit_count
         )
-        if exact_breach:
+        if history_based_breach:
             breaches.append(
                 FrequencyLimitBreach(
                     source_id=limit.source_id,
@@ -418,16 +420,8 @@ def _find_frequency_limit_breaches(
                     limit_code=limit.limit_code,
                     limit_name=limit.limit_name,
                     scope=_frequency_limit_scope(limit.limit_name),
-                    matched_from=(
-                        "procedure_history_event"
-                        if matching_events
-                        else "current_claim_quantity"
-                    ),
-                    matched_service_date=(
-                        max(event.service_date for event in matching_events)
-                        if matching_events
-                        else None
-                    ),
+                    matched_from="procedure_history_event",
+                    matched_service_date=max(event.service_date for event in matching_events),
                     limit_count=limit.limit_count,
                     history_occurrences=history_occurrences,
                     current_quantity=current_quantity,
@@ -436,9 +430,37 @@ def _find_frequency_limit_breaches(
                 )
             )
 
-        # 同じ期間のイベント履歴を数えられた場合と、現在数量だけで既に超過した場合は、
+        # 単日クレーム内の数量だけで上限を超える場合は、複数部位など正当な数量を
+        # 区別できないため警告に留める。入院等の複数日クレームでは数量が日数を
+        # 表すため、この判定自体を行わない。
+        current_quantity_breach = (
+            not matching_events
+            and not context.multi_day_claim
+            and limit.limit_count > 0
+            and current_quantity > limit.limit_count
+        )
+        if current_quantity_breach:
+            breaches.append(
+                FrequencyLimitBreach(
+                    source_id=limit.source_id,
+                    procedure_code=limit.procedure_code,
+                    procedure_name=limit.procedure_name,
+                    limit_code=limit.limit_code,
+                    limit_name=limit.limit_name,
+                    scope=_frequency_limit_scope(limit.limit_name),
+                    matched_from="current_claim_quantity",
+                    matched_service_date=None,
+                    limit_count=limit.limit_count,
+                    history_occurrences=history_occurrences,
+                    current_quantity=current_quantity,
+                    occurrence_count_known=True,
+                    limit_exceeded_certain=False,
+                )
+            )
+
+        # 同じ期間のイベント履歴を数えられた場合と、現在数量だけで警告した場合は、
         # set形式の存在情報を重ねず二重警告を避ける。
-        if not matching_events and not exact_breach:
+        if not matching_events and not current_quantity_breach:
             set_based_breach = _find_set_based_frequency_breach(limit, context)
             if set_based_breach is not None:
                 breaches.append(set_based_breach)

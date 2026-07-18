@@ -1901,6 +1901,7 @@ function FeeSessionDetailView({ sessionId }) {
 function SessionActionFooter({ busy, calculate, isCalculating, onRefresh, onSaveReviewDecisions, pendingReviewDecisionCount = 0 }) {
   return (
     <footer className="fee-session-action-footer">
+      <p className="fee-session-recalculation-note">再計算すると候補の採用・確認状態はリセットされます。</p>
       <div className="source-action-buttons">
         {pendingReviewDecisionCount ? (
           <button className="btn btn--primary" disabled={busy || isCalculating} onClick={() => onSaveReviewDecisions()} type="button">

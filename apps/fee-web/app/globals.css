@@ -2075,6 +2075,13 @@ body:has(.fee-shell--detail) {
   padding: 12px 20px;
 }
 
+.fee-session-recalculation-note {
+  margin: 0 auto 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .source-action-buttons,
 .receipt-pane-actions {
   display: flex;
@@ -5224,6 +5231,7 @@ body:has(.fee-shell--detail) {
     min-height: 100dvh;
     margin-top: 0;
     padding-inline: 12px;
+    padding-bottom: 112px;
     overflow: visible;
   }
 
@@ -5367,6 +5375,10 @@ body:has(.fee-shell--detail) {
     padding: 10px 12px;
     flex-wrap: wrap;
     gap: 8px;
+  }
+
+  .fee-session-recalculation-note {
+    flex: 1 0 100%;
   }
 
   .fee-session-action-footer .source-action-buttons {

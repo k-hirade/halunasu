@@ -83,6 +83,7 @@ class ElectronicFrequencyLimitTest(unittest.TestCase):
         same_week_codes: frozenset[str] = frozenset(),
         same_day_codes: frozenset[str] = frozenset(),
         quantity: float | None = None,
+        multi_day_claim: bool = False,
     ):
         quantities = {} if quantity is None else {code: quantity}
         return check_electronic_rules(
@@ -95,6 +96,7 @@ class ElectronicFrequencyLimitTest(unittest.TestCase):
                 same_week_history_codes=same_week_codes,
                 same_day_history_codes=same_day_codes,
                 current_code_quantities=quantities,
+                multi_day_claim=multi_day_claim,
             ),
         )
 
@@ -203,6 +205,51 @@ class ElectronicFrequencyLimitTest(unittest.TestCase):
         )
         self.assertTrue(adjusted[0].excluded_from_total)
 
+    def test_multi_day_claim_skips_current_quantity_only_breach(self) -> None:
+        result = self._check(
+            "DAY1",
+            quantity=12,
+            multi_day_claim=True,
+        )
+
+        self.assertEqual(result.frequency_limit_breaches, ())
+        adjusted, messages = apply_electronic_consistency(
+            (_line("DAY1", quantity=12),),
+            result,
+        )
+        self.assertFalse(adjusted[0].excluded_from_total)
+        self.assertEqual(messages, ())
+
+    def test_single_day_current_quantity_only_breach_warns_without_demotion(self) -> None:
+        result = self._check("DAY1", quantity=2)
+
+        self.assertEqual(len(result.frequency_limit_breaches), 1)
+        breach = result.frequency_limit_breaches[0]
+        self.assertEqual(breach.matched_from, "current_claim_quantity")
+        self.assertTrue(breach.occurrence_count_known)
+        self.assertFalse(breach.limit_exceeded_certain)
+        adjusted, messages = apply_electronic_consistency(
+            (_line("DAY1", quantity=2),),
+            result,
+        )
+        self.assertFalse(adjusted[0].excluded_from_total)
+        self.assertEqual(messages, ())
+
+    def test_multi_day_claim_keeps_history_based_demotion(self) -> None:
+        result = self._check(
+            "WEEK3",
+            events=(ProcedureHistoryEvent("WEEK3", date(2026, 6, 9), quantity=3),),
+            multi_day_claim=True,
+        )
+
+        self.assertEqual(len(result.frequency_limit_breaches), 1)
+        self.assertTrue(result.frequency_limit_breaches[0].limit_exceeded_certain)
+        adjusted, _messages = apply_electronic_consistency(
+            (_line("WEEK3"),),
+            result,
+        )
+        self.assertTrue(adjusted[0].excluded_from_total)
+
     def test_zero_limit_count_does_not_create_event_based_breach(self) -> None:
         result = self._check(
             "ZERO",
@@ -215,7 +262,8 @@ class ElectronicFrequencyLimitTest(unittest.TestCase):
     def test_claim_level_aggregates_same_code_line_quantities(self) -> None:
         claim_context = SimpleNamespace(
             procedure_codes=("WEEK3",),
-            encounter=SimpleNamespace(service_date=date(2026, 6, 10)),
+            encounter=SimpleNamespace(service_date=date(2026, 6, 10), is_outpatient=True),
+            inpatient_basic=SimpleNamespace(basic_fee_days=1),
             master_sources=SimpleNamespace(
                 electronic_fee_source_id=1,
                 comment_source_id=None,
@@ -240,7 +288,9 @@ class ElectronicFrequencyLimitTest(unittest.TestCase):
         self.assertEqual(len(rules.frequency_limit_breaches), 1)
         self.assertEqual(rules.frequency_limit_breaches[0].current_quantity, 4)
         self.assertEqual(rules.frequency_limit_breaches[0].matched_from, "current_claim_quantity")
-        self.assertIn("上限3回", messages[0].message)
+        self.assertFalse(rules.frequency_limit_breaches[0].limit_exceeded_certain)
+        self.assertIn("当該請求内の数量4回", messages[0].message)
+        self.assertIn("複数部位等の正当な理由", messages[0].message)
 
     def test_history_event_parser_preserves_quantity_and_defaults_to_one(self) -> None:
         events = _parse_procedure_history_events([

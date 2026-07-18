@@ -411,6 +411,63 @@ test("new calculation results invalidate decisions from the previous calculation
   assert.equal(receiptDraft.pendingReviewCount, 1);
 });
 
+test("recalculation returns a previously approved proposal to monthly pending candidates", () => {
+  const proposal = {
+    proposalId: "stable_monthly_proposal",
+    title: "検査候補",
+    code: "160000410",
+    potentialPoints: 120,
+    candidateLine: {
+      code: "160000410",
+      name: "検査候補",
+      orderType: "lab",
+      points: 120,
+      quantity: 1,
+      totalPoints: 120
+    }
+  };
+  const session = buildFeeSession({
+    orgId: "org_123",
+    patientId: "pat_review_reset_monthly",
+    facilityId: "fac_123",
+    createdByMemberId: "mem_123",
+    serviceDate: "2026-06-08"
+  }, {
+    feeSessionId: "fee_review_reset_monthly",
+    now: "2026-06-08T00:00:00.000Z"
+  });
+  const firstCalculation = applyCalculationResult(session, {
+    status: "completed",
+    candidateProposals: [proposal],
+    lineItems: []
+  }, { calculationId: "calc_monthly_first", now: "2026-06-08T00:01:00.000Z" });
+  const approved = applyReviewDecision(firstCalculation, "proposal_stable_monthly_proposal", {
+    status: "approved"
+  }, { now: "2026-06-08T00:02:00.000Z" });
+  const approvedMonthly = buildMonthlyReceiptDraft([approved], {
+    patientId: "pat_review_reset_monthly",
+    claimMonth: "2026-06"
+  });
+
+  const recalculated = applyCalculationResult(approved, {
+    status: "completed",
+    candidateProposals: [proposal],
+    lineItems: []
+  }, { calculationId: "calc_monthly_second", now: "2026-06-08T00:03:00.000Z" });
+  const recalculatedMonthly = buildMonthlyReceiptDraft([recalculated], {
+    patientId: "pat_review_reset_monthly",
+    claimMonth: "2026-06"
+  });
+
+  assert.equal(approvedMonthly.candidateLines.length, 0);
+  assert.equal(approvedMonthly.totalPoints, 120);
+  assert.deepEqual(recalculated.reviewDecisions, {});
+  assert.equal(recalculatedMonthly.totalPoints, 0);
+  assert.equal(recalculatedMonthly.candidateLines.length, 1);
+  assert.equal(recalculatedMonthly.candidateLines[0].code, "160000410");
+  assert.equal(recalculatedMonthly.candidateTotalPoints, 120);
+});
+
 test("builds target-specific warning review titles", () => {
   const reviewItems = buildReviewItems({
     calculationResult: {

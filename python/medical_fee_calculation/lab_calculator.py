@@ -80,6 +80,7 @@ class LabCalculationContext:
     same_week_history_codes: frozenset[str] = field(default_factory=frozenset)
     same_month_history_codes: frozenset[str] = field(default_factory=frozenset)
     procedure_history_events: tuple[ProcedureHistoryEvent, ...] = ()
+    multi_day_claim: bool = False
     collection_fee_inputs: tuple[str, ...] = ()
     already_billed_collection_fee_codes_same_day: frozenset[str] = field(default_factory=frozenset)
     collection_fee_history_complete: bool = True
@@ -439,6 +440,7 @@ def _claim_level_electronic_messages(
             same_month_history_codes=history.same_month_history_codes,
             procedure_history_events=history.procedure_history_events,
             current_code_quantities=_current_code_quantities(all_lines),
+            multi_day_claim=_is_multi_day_claim(claim_context),
         ),
     )
 
@@ -534,6 +536,7 @@ def lab_context_from_claim_context(
         same_week_history_codes=history.same_week_history_codes,
         same_month_history_codes=history.same_month_history_codes,
         procedure_history_events=history.procedure_history_events,
+        multi_day_claim=_is_multi_day_claim(claim_context),
         collection_fee_inputs=lab_options.collection_fee_inputs,
         already_billed_collection_fee_codes_same_day=history.already_billed_collection_fee_codes_same_day,
         collection_fee_history_complete=completeness.collection_fee_history_complete,
@@ -678,6 +681,7 @@ def calculate_lab_claim(
             same_week_history_codes=context.same_week_history_codes,
             same_month_history_codes=context.same_month_history_codes,
             procedure_history_events=context.procedure_history_events,
+            multi_day_claim=context.multi_day_claim,
         ),
     )
 
@@ -1040,6 +1044,20 @@ def _format_frequency_breach_match(
 
 
 def _format_frequency_breach_detail(breach: object) -> str:
+    if str(getattr(breach, "matched_from", "")) == "current_claim_quantity":
+        limit_name = str(getattr(breach, "limit_name", "期間") or "期間")
+        limit_count = int(getattr(breach, "limit_count", 0) or 0)
+        current_quantity = float(getattr(breach, "current_quantity", 1.0) or 0)
+        quantity_text = (
+            str(int(current_quantity))
+            if current_quantity.is_integer()
+            else str(current_quantity)
+        )
+        return (
+            f"当該請求内の数量{quantity_text}回が{limit_name}の上限{limit_count}回を超えています。"
+            "複数部位等の正当な理由がないか確認してください。"
+        )
+
     if not bool(getattr(breach, "occurrence_count_known", True)):
         if bool(getattr(breach, "limit_exceeded_certain", False)):
             limit_count = int(getattr(breach, "limit_count", 0) or 0)
@@ -1097,3 +1115,12 @@ def _current_code_quantities(
             quantity = 1.0
         quantities[code] = quantities.get(code, 0.0) + quantity
     return quantities
+
+
+def _is_multi_day_claim(claim_context: ClaimContext) -> bool:
+    encounter = getattr(claim_context, "encounter", None)
+    inpatient_basic = getattr(claim_context, "inpatient_basic", None)
+    return (
+        not bool(getattr(encounter, "is_outpatient", False))
+        or int(getattr(inpatient_basic, "basic_fee_days", 1) or 1) > 1
+    )
