@@ -265,6 +265,93 @@ test("accepts product API access after required MFA is enrolled and verified", a
   assert.equal(context.mfaEnrolled, true);
 });
 
+test("enforces scoped product tokens in both directions", async () => {
+  const basePayload = {
+    orgId: "org_sidecar",
+    memberId: "mem_sidecar",
+    organizationCode: "clinic-sidecar",
+    loginId: "clerk@example.com",
+    tokenVersion: 3,
+    globalRoles: [],
+    productRoles: { homis_sidecar: ["medical_clerk"], fee: ["medical_clerk"] },
+    mfaRequired: true,
+    mfaEnrolled: true,
+    mfaVerified: true,
+    csrfToken: "csrf_sidecar"
+  };
+  const scoped = createSignedSession({
+    ...basePayload,
+    tokenType: "scoped_product_access",
+    productId: "homis_sidecar",
+    audience: "fee-api",
+    scopes: ["sidecar:calculate"]
+  }, {
+    now: new Date("2026-07-18T00:00:00.000Z"),
+    sessionSecret: "secret"
+  });
+  const ordinary = createSignedSession(basePayload, {
+    now: new Date("2026-07-18T00:00:00.000Z"),
+    sessionSecret: "secret"
+  });
+  const platformStore = {
+    getLoginIdentity: async () => ({
+      organizationCode: "clinic-sidecar",
+      loginId: "clerk@example.com",
+      orgId: "org_sidecar",
+      memberId: "mem_sidecar",
+      tokenVersion: 3,
+      mfaRequired: true,
+      mfaEnrolled: true,
+      status: "active"
+    }),
+    getMember: async () => ({
+      memberId: "mem_sidecar",
+      orgId: "org_sidecar",
+      globalRoles: [],
+      productRoles: { homis_sidecar: ["medical_clerk"], fee: ["medical_clerk"] },
+      status: "active"
+    }),
+    getProductEntitlement: async (_orgId, productId) => ({ productId, status: "enabled" })
+  };
+  const inputFor = (token) => ({
+    headers: { authorization: `Bearer ${token}` },
+    now: new Date("2026-07-18T00:01:00.000Z"),
+    sessionSecret: "secret"
+  });
+
+  const context = await requireProductContext(inputFor(scoped.token), {
+    platformStore,
+    productId: "homis_sidecar",
+    allowedProductRoles: ["medical_clerk"],
+    requireScopedToken: true,
+    tokenType: "scoped_product_access",
+    audience: "fee-api",
+    requiredScope: "sidecar:calculate"
+  });
+  assert.equal(context.productId, "homis_sidecar");
+
+  await assert.rejects(() => requireProductContext(inputFor(ordinary.token), {
+    platformStore,
+    productId: "homis_sidecar",
+    allowedProductRoles: ["medical_clerk"],
+    requireScopedToken: true,
+    requiredScope: "sidecar:calculate"
+  }), /Scoped product token is required/);
+  await assert.rejects(() => requireProductContext(inputFor(scoped.token), {
+    platformStore,
+    productId: "fee",
+    allowedProductRoles: ["medical_clerk"]
+  }), /cannot access this route/);
+  await assert.rejects(() => requireProductContext(inputFor(scoped.token), {
+    platformStore,
+    productId: "homis_sidecar",
+    allowedProductRoles: ["medical_clerk"],
+    requireScopedToken: true,
+    audience: "wrong-api",
+    requiredScope: "sidecar:calculate"
+  }), /audience mismatch/);
+});
+
 test("rejects shared product context without entitlement", async () => {
   const { token } = createSignedSession({
     orgId: "org_123",

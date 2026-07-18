@@ -8,6 +8,7 @@ import {
   departmentPath,
   facilityPath,
   feeSessionPath,
+  sidecarCalculationDraftPath,
   loginIdentityKey,
   loginIdentityPath,
   organizationPath,
@@ -44,6 +45,10 @@ test("builds platform document paths", () => {
     "organizations/org_123/fee_sessions/fee_456"
   );
   assert.equal(
+    sidecarCalculationDraftPath("org_123", "sidecar_456"),
+    "organizations/org_123/sidecar_calculation_drafts/sidecar_456"
+  );
+  assert.equal(
     referralPath("org_123", "ref_456"),
     "organizations/org_123/referrals/ref_456"
   );
@@ -70,4 +75,5 @@ test("rejects invalid path segments", () => {
 test("exports canonical collection names", () => {
   assert.equal(collections.organizations, "organizations");
   assert.equal(collections.patients, "patients");
+  assert.equal(collections.sidecarCalculationDrafts, "sidecar_calculation_drafts");
 });

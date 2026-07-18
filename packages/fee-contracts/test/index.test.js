@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput,
+  validateSidecarCalculationInput,
   validateUpdateFeeSessionInput,
   validateCreateFeeCalculationInput,
   defaultFeeSettings,
@@ -16,6 +17,91 @@ test("defaults receipt exports to fail closed", () => {
   const settings = defaultFeeSettings({ facilityId: "fac_001" });
   assert.equal(settings.receiptPolicy.blockExportOnErrors, true);
   assert.equal(settings.receiptPolicy.connectorSpecVerified, false);
+});
+
+test("validates the sidecar v1 extraction and atomic identity contract", () => {
+  const input = validateSidecarCalculationInput({
+    contractVersion: "v1",
+    facilityId: "fac_001",
+    sourceSystem: "homis",
+    externalPatientId: "1001",
+    sourceRecordId: "record-001",
+    serviceDate: "2026-07-18",
+    setting: "home_visit",
+    encounterTypeSource: "user",
+    clinicalText: "O: 訪問診療を実施。",
+    extractionProof: {
+      patientIdBefore: "1001",
+      patientIdAfter: "1001",
+      sourceRecordIdBefore: "record-001",
+      sourceRecordIdAfter: "record-001",
+      selectorContractVersion: "homis-v1",
+      extractedAt: "2026-07-18T01:00:00.000Z",
+      domMutationDetected: false,
+      contractValidationPassed: true,
+      previewMatched: true,
+      requiredElementCount: 4,
+      matchedRequiredElementCount: 4,
+      clinicalTextNodeCount: 3
+    }
+  });
+
+  assert.equal(input.contractVersion, "v1");
+  assert.equal(input.setting, "home_visit");
+  assert.equal(input.encounterTypeSource, "user");
+  assert.equal(input.extractionProof.domMutationDetected, false);
+  assert.equal(Object.hasOwn(input, "sourceUrl"), false);
+});
+
+test("rejects sidecar source URLs, extraction races, ambiguous encounter types, and unsupported versions", () => {
+  const base = {
+    facilityId: "fac_001",
+    sourceSystem: "homis",
+    externalPatientId: "1001",
+    sourceRecordId: "record-001",
+    serviceDate: "2026-07-18",
+    setting: "home_visit",
+    encounterTypeSource: "dom",
+    clinicalText: "O: 訪問診療を実施。",
+    extractionProof: {
+      patientIdBefore: "1001",
+      patientIdAfter: "1001",
+      sourceRecordIdBefore: "record-001",
+      sourceRecordIdAfter: "record-001",
+      selectorContractVersion: "homis-v1",
+      extractedAt: "2026-07-18T01:00:00.000Z",
+      domMutationDetected: false,
+      contractValidationPassed: true,
+      previewMatched: true,
+      requiredElementCount: 4,
+      matchedRequiredElementCount: 4,
+      clinicalTextNodeCount: 3
+    }
+  };
+
+  assert.throws(() => validateSidecarCalculationInput({ ...base, sourceUrl: "https://example.invalid" }), /sourceUrl/);
+  assert.throws(() => validateSidecarCalculationInput({ ...base, setting: undefined }), /setting is required/);
+  assert.throws(() => validateSidecarCalculationInput({ ...base, contractVersion: "v2" }), /contractVersion/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    extractionProof: { ...base.extractionProof, patientIdAfter: "1002" }
+  }), /changed during extraction/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    extractionProof: { ...base.extractionProof, domMutationDetected: true }
+  }), /DOM changed/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    extractionProof: { ...base.extractionProof, extractedAt: "2026-07-18" }
+  }), /ISO timestamp/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    extractionProof: { ...base.extractionProof, matchedRequiredElementCount: 3 }
+  }), /required chart elements/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    extractionProof: { ...base.extractionProof, previewMatched: false }
+  }), /preview and payload/);
 });
 
 test("normalizes fee session input to Platform identifiers", () => {

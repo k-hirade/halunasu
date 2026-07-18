@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import {
   memberRequiresMfa,
   normalizeOrganizationCode,
+  productIds,
   resolveMfaState,
   validateLoginInput
 } from "../../../packages/platform-contracts/src/index.js";
@@ -44,6 +45,9 @@ const SESSION_CONTEXT_CACHE_TTL_MS = Math.max(
 const SESSION_CONTEXT_CACHE_MAX_ENTRIES = 1000;
 const DEFAULT_REQUEST_BODY_LIMIT_BYTES = 1024 * 1024;
 const MFA_ENROLLMENT_SESSION_TTL_SECONDS = 10 * 60;
+const SIDECAR_ACCESS_TOKEN_TTL_SECONDS = 5 * 60;
+const SIDECAR_PRODUCT_ID = productIds.homisSidecar;
+const SIDECAR_ALLOWED_ROLES = Object.freeze(["admin", "doctor", "nurse", "medical_clerk"]);
 const sessionContextCache = new Map();
 
 export function createPlatformApiServer(options = {}) {
@@ -54,6 +58,12 @@ export function createPlatformApiServer(options = {}) {
   const store = options.store || createPlatformStoreFromEnv();
   const stripeClient = options.stripeClient || createStripeBillingClientFromEnv();
   const signupMailer = options.signupMailer || createSignupMailer();
+  assertSidecarRuntimeConfiguration({
+    env,
+    processEnv: options.processEnv || process.env,
+    sidecarEnabled: options.sidecarEnabled,
+    sidecarAllowedExtensionIds: options.sidecarAllowedExtensionIds
+  });
 
   return http.createServer(async (req, res) => {
     try {
@@ -72,7 +82,11 @@ export function createPlatformApiServer(options = {}) {
         store,
         stripeClient,
         signupMailer,
-        headers: req.headers
+        headers: req.headers,
+        processEnv: options.processEnv,
+        sidecarEnabled: options.sidecarEnabled,
+        sidecarAllowedExtensionIds: options.sidecarAllowedExtensionIds,
+        sidecarRevokedDeviceIds: options.sidecarRevokedDeviceIds
       });
 
       sendJson(res, response.statusCode, response.body, response.headers);
@@ -217,6 +231,69 @@ async function routePlatformApiRequest(input = {}) {
   if (method === "GET" && matches(parts, ["v1", "auth", "session"])) {
     const context = await requireSession(input, store, { allowPendingMfa: true });
     return ok({ authenticated: true, session: sessionView(context), accessToken: context.accessToken || null });
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "auth", "sidecar-token"])) {
+    requireSidecarFeature(input);
+    const context = await requireSession(input, store);
+    requireCsrf(input, context.session);
+    await consumeSidecarTokenRateLimit(input, store, context);
+    const entitlement = await store.getProductEntitlement(context.session.orgId, SIDECAR_PRODUCT_ID);
+    if (!entitlementAllowsUse(entitlement, input.now) || !memberCanUseSidecar(context.member)) {
+      throw forbiddenError("HOMIS Sidecar product access is required");
+    }
+    if (!context.mfaEnrolled || context.session.mfaVerified !== true) {
+      const error = forbiddenError(context.mfaEnrolled
+        ? "MFA verification is required"
+        : "MFA enrollment is required");
+      error.code = context.mfaEnrolled ? "mfa_required" : "mfa_enrollment_required";
+      throw error;
+    }
+
+    const tokenInput = validateSidecarTokenRequest(input);
+    const now = input.now instanceof Date ? input.now : new Date(input.now || Date.now());
+    const { token, session } = createSignedSession({
+      orgId: context.identity.orgId,
+      memberId: context.identity.memberId,
+      organizationCode: context.session.organizationCode,
+      loginId: context.identity.loginId,
+      tokenVersion: context.identity.tokenVersion,
+      globalRoles: context.member.globalRoles,
+      productRoles: context.member.productRoles,
+      mfaRequired: true,
+      mfaEnrolled: true,
+      mfaVerified: true,
+      tokenType: "scoped_product_access",
+      productId: SIDECAR_PRODUCT_ID,
+      audience: "fee-api",
+      scopes: ["sidecar:calculate"],
+      extensionId: tokenInput.extensionId,
+      deviceId: tokenInput.deviceId,
+      proofKeyChallenge: tokenInput.codeChallenge
+    }, {
+      ...sessionOptions(input),
+      now,
+      ttlSeconds: SIDECAR_ACCESS_TOKEN_TTL_SECONDS
+    });
+    await store.createAuditEvent(context.session.orgId, {
+      eventType: "auth.sidecar_token_issued",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      productId: SIDECAR_PRODUCT_ID,
+      targetType: "sidecar_device",
+      targetId: tokenInput.deviceId,
+      safePayload: {
+        extensionId: tokenInput.extensionId,
+        expiresAt: session.expiresAt,
+        scopes: session.scopes
+      }
+    });
+    return created({
+      accessToken: token,
+      tokenType: "Bearer",
+      expiresAt: session.expiresAt,
+      scopes: session.scopes
+    });
   }
 
   if (method === "POST" && matches(parts, ["v1", "auth", "logout"])) {
@@ -825,6 +902,123 @@ async function consumeMfaVerificationRateLimit(input, store, context) {
       windowSeconds: input.mfaRateLimit?.windowSeconds || 5 * 60
     }
   );
+}
+
+async function consumeSidecarTokenRateLimit(input, store, context) {
+  await store.consumeRateLimit(
+    rateLimitKey("sidecar-token", input, context.session.orgId, context.session.memberId),
+    {
+      limit: input.sidecarTokenRateLimit?.limit || 10,
+      windowSeconds: input.sidecarTokenRateLimit?.windowSeconds || 5 * 60
+    }
+  );
+}
+
+function validateSidecarTokenRequest(input = {}) {
+  const body = input.body || {};
+  const extensionId = requiredBodyString(body, "extensionId");
+  const allowedExtensionIds = sidecarAllowedExtensionIds(input);
+  if (!/^[a-p]{32}$/.test(extensionId) || !allowedExtensionIds.includes(extensionId)) {
+    throw forbiddenError("Sidecar extension is not allowed");
+  }
+  const deviceId = requiredBodyString(body, "deviceId");
+  if (!/^[A-Za-z0-9_-]{16,128}$/.test(deviceId)) {
+    const error = new Error("deviceId must be a stable 16-128 character identifier");
+    error.name = "ValidationError";
+    error.statusCode = 400;
+    error.field = "deviceId";
+    throw error;
+  }
+  if (sidecarRevokedDeviceIds(input).includes(deviceId)) {
+    throw forbiddenError("Sidecar device is revoked");
+  }
+  const codeChallenge = requiredBodyString(body, "codeChallenge");
+  if (!/^[A-Za-z0-9_-]{43}$/.test(codeChallenge)) {
+    const error = new Error("codeChallenge must be an S256 proof key challenge");
+    error.name = "ValidationError";
+    error.statusCode = 400;
+    error.field = "codeChallenge";
+    throw error;
+  }
+  return { extensionId, deviceId, codeChallenge };
+}
+
+function memberCanUseSidecar(member = {}) {
+  const roles = Array.isArray(member.productRoles?.[SIDECAR_PRODUCT_ID])
+    ? member.productRoles[SIDECAR_PRODUCT_ID]
+    : [];
+  return roles.some((role) => SIDECAR_ALLOWED_ROLES.includes(role))
+    || (member.globalRoles || []).some((role) => ["platform_admin", "org_admin"].includes(role));
+}
+
+function entitlementAllowsUse(entitlement = {}, nowInput = new Date()) {
+  if (["enabled", "trialing"].includes(entitlement?.status)) {
+    return true;
+  }
+  if (entitlement?.status !== "cancel_scheduled") {
+    return false;
+  }
+  const now = nowInput instanceof Date ? nowInput : new Date(nowInput || Date.now());
+  return Number.isFinite(Date.parse(entitlement.currentPeriodEnd))
+    && Date.parse(entitlement.currentPeriodEnd) > now.getTime();
+}
+
+function sidecarAllowedExtensionIds(input = {}) {
+  const configured = input.sidecarAllowedExtensionIds
+    || input.processEnv?.HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS
+    || process.env.HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS
+    || "";
+  return (Array.isArray(configured) ? configured : String(configured).split(/[;,\s]+/))
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function sidecarRevokedDeviceIds(input = {}) {
+  const configured = input.sidecarRevokedDeviceIds
+    || input.processEnv?.HOMIS_SIDECAR_REVOKED_DEVICE_IDS
+    || process.env.HOMIS_SIDECAR_REVOKED_DEVICE_IDS
+    || "";
+  return (Array.isArray(configured) ? configured : String(configured).split(/[;,\s]+/))
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function requireSidecarFeature(input = {}) {
+  if (sidecarFeatureEnabled(input)) {
+    return;
+  }
+  const error = new Error("Route not found");
+  error.name = "NotFoundError";
+  error.statusCode = 404;
+  throw error;
+}
+
+function sidecarFeatureEnabled(input = {}) {
+  if (typeof input.sidecarEnabled === "boolean") {
+    return input.sidecarEnabled;
+  }
+  const configured = input.processEnv?.HOMIS_SIDECAR_ENABLED
+    ?? process.env.HOMIS_SIDECAR_ENABLED;
+  return String(configured || "").trim().toLowerCase() === "true";
+}
+
+export function assertSidecarRuntimeConfiguration(input = {}) {
+  if (input.sidecarEnabled !== true && String(input.processEnv?.HOMIS_SIDECAR_ENABLED || "").toLowerCase() !== "true") {
+    return;
+  }
+  const env = String(input.env || "local").toLowerCase();
+  if (["local", "test", "development"].includes(env)) {
+    return;
+  }
+  if (!String(input.processEnv?.APP_FIELD_ENCRYPTION_KEY || "").trim()) {
+    throw new Error("APP_FIELD_ENCRYPTION_KEY is required when HOMIS Sidecar is enabled");
+  }
+  if (!sidecarAllowedExtensionIds(input).length) {
+    throw new Error("HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS is required when HOMIS Sidecar is enabled");
+  }
+  if (sidecarAllowedExtensionIds(input).some((extensionId) => !/^[a-p]{32}$/.test(extensionId))) {
+    throw new Error("HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS contains an invalid Chrome extension ID");
+  }
 }
 
 async function consumeSignupRateLimit(input, store) {

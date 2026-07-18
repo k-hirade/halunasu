@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
@@ -8,7 +9,7 @@ import {
 import { createSignedSession } from "../../platform-api/src/auth/session.js";
 import { MemoryPlatformStore } from "../../platform-api/src/store/memory-store.js";
 import { buildClinicalChecklistMenu } from "../src/clinical-calculation-input.js";
-import { handleFeeApiRequest } from "../src/server.js";
+import { assertFeeSidecarRuntimeConfiguration, handleFeeApiRequest } from "../src/server.js";
 import { MemoryFeeStore } from "../src/store/memory-store.js";
 
 test("requires Platform session for fee routes", async () => {
@@ -8701,7 +8702,15 @@ test("rejects fee access without product entitlement", async () => {
 
 test("allows viewer reads but rejects fee writes", async () => {
   const stores = createStores();
+  stores.platformStore.createMember("org_001", {
+    loginId: "viewer@example.com",
+    displayName: "Viewer",
+    globalRoles: [],
+    productRoles: { fee: ["viewer"] },
+    password: "viewer password"
+  });
   const headers = await signedHeaders(stores.platformStore, {
+    loginId: "viewer@example.com",
     globalRoles: [],
     productRoles: { fee: ["viewer"] }
   });
@@ -9259,6 +9268,318 @@ test("baseline diagnosis is unavailable outside stg and rejects empty parsed upl
   assert.match(emptyUpload.body.message, /既存レセを取り込めません/);
 });
 
+test("sidecar calculation remains candidate-only and isolated until explicit adoption", async () => {
+  const stores = createStores();
+  const originalCalculate = stores.feeCalculator.calculate;
+  stores.feeCalculator.calculate = async (feeSession) => {
+    const calculated = await originalCalculate(feeSession);
+    return {
+      ...calculated,
+      lineItems: calculated.lineItems.map((line) => ({
+        ...line,
+        status: "confirmed",
+        reviewRequired: false,
+        coverage: { supportLevel: "confirmed", reviewRequired: false }
+      }))
+    };
+  };
+  const sidecarHeaders = await signedSidecarHeaders(stores);
+  const requestBody = sidecarCalculationBody();
+  const first = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    requestBody,
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+
+  assert.equal(first.statusCode, 201);
+  assert.equal(first.body.contractVersion, "v1");
+  assert.equal(first.body.sidecarDraft.candidateOnly, true);
+  assert.equal(first.body.sidecarDraft.calculation.candidateOnly, true);
+  assert.equal(first.body.sidecarDraft.calculation.status, "needs_review");
+  assert.ok(first.body.sidecarDraft.calculation.candidates.length > 0);
+  assert.ok(first.body.sidecarDraft.calculation.candidates.every((candidate) => (
+    candidate.candidateOnly === true && candidate.status === "needs_review"
+  )));
+  assert.equal(Object.hasOwn(first.body, "receiptDraft"), false);
+  assert.equal(first.headers["access-control-allow-origin"], `chrome-extension://${TEST_SIDECAR_EXTENSION_ID}`);
+  assert.equal(stores.feeStore.listSessions("org_001").length, 0);
+  assert.equal(stores.feeStore.listSessionsForClaimMonth("org_001", "2026-05").length, 0);
+
+  const firstDraftId = first.body.sidecarDraft.sidecarDraftId;
+  const storedFirst = stores.feeStore.getSidecarCalculationDraft("org_001", firstDraftId);
+  assert.equal(storedFirst.recordType, "sidecar_calculation_draft");
+  assert.equal(storedFirst.calculationResult.lineItems[0].status, "candidate");
+  assert.equal(storedFirst.calculationResult.lineItems[0].reviewRequired, true);
+
+  const second = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    {
+      ...requestBody,
+      clinicalText: `${requestBody.clinicalText}\nP: 継続して観察する。`
+    },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(second.statusCode, 200);
+  assert.equal(second.body.sidecarDraft.sidecarDraftId, firstDraftId);
+  assert.equal(second.body.sidecarDraft.sourceRevision, 2);
+  assert.equal(stores.feeStore.sidecarDraftsForOrg("org_001").size, 1);
+  assert.equal(stores.feeStore.listSessions("org_001").length, 0);
+
+  const draftList = await request(
+    stores,
+    "GET",
+    "/v1/fee/sidecar-drafts?status=draft&page=1&pageSize=20",
+    undefined,
+    await signedHeaders(stores.platformStore),
+    { sidecarEnabled: true }
+  );
+  assert.equal(draftList.statusCode, 200);
+  assert.equal(draftList.body.totalCount, 1);
+  assert.equal(draftList.body.sidecarDrafts[0].sidecarDraftId, firstDraftId);
+  assert.equal(draftList.body.sidecarDrafts[0].calculation.candidateOnly, true);
+  assert.ok(draftList.body.sidecarDrafts[0].calculation.candidateCount > 0);
+  assert.equal(Object.hasOwn(draftList.body.sidecarDrafts[0], "clinicalText"), false);
+
+  const wrongPatient = stores.platformStore.createPatient("org_001", {
+    displayName: "別患者",
+    primaryPatientNumber: "9999"
+  });
+  const feeHeaders = await signedHeaders(stores.platformStore);
+  const mismatchedAdoption = await request(
+    stores,
+    "POST",
+    `/v1/fee/sidecar-drafts/${firstDraftId}/adopt`,
+    { patientId: wrongPatient.patientId },
+    feeHeaders,
+    { sidecarEnabled: true }
+  );
+  assert.equal(mismatchedAdoption.statusCode, 400);
+  assert.equal(stores.feeStore.listSessions("org_001").length, 0);
+
+  const legacyOnlyPatient = stores.platformStore.createPatient("org_001", {
+    displayName: "旧識別子だけの患者",
+    externalPatientIds: ["1001"]
+  });
+  const legacyAdoption = await request(
+    stores,
+    "POST",
+    `/v1/fee/sidecar-drafts/${firstDraftId}/adopt`,
+    { patientId: legacyOnlyPatient.patientId },
+    feeHeaders,
+    { sidecarEnabled: true }
+  );
+  assert.equal(legacyAdoption.statusCode, 400);
+  assert.equal(stores.feeStore.listSessions("org_001").length, 0);
+
+  const patient = stores.platformStore.createPatient("org_001", {
+    displayName: "採用先患者",
+    primaryPatientNumber: "1001",
+    patientIdentifiers: [{
+      sourceSystem: "homis",
+      facilityId: "fac_001",
+      patientNumber: "1001"
+    }]
+  });
+  const adopted = await request(
+    stores,
+    "POST",
+    `/v1/fee/sidecar-drafts/${firstDraftId}/adopt`,
+    { patientId: patient.patientId },
+    feeHeaders,
+    { sidecarEnabled: true }
+  );
+  const adoptedAgain = await request(
+    stores,
+    "POST",
+    `/v1/fee/sidecar-drafts/${firstDraftId}/adopt`,
+    { patientId: patient.patientId },
+    feeHeaders,
+    { sidecarEnabled: true }
+  );
+
+  assert.equal(adopted.statusCode, 201);
+  assert.equal(adopted.body.feeSession.sourceSystem, "homis_sidecar_adopted");
+  assert.equal(adopted.body.feeSession.calculationResult, null);
+  assert.equal(adopted.body.sidecarDraft.lifecycleStatus, "adopted");
+  assert.equal(adoptedAgain.statusCode, 200);
+  assert.equal(adoptedAgain.body.alreadyAdopted, true);
+  assert.equal(adoptedAgain.body.feeSession.feeSessionId, adopted.body.feeSession.feeSessionId);
+  assert.equal(stores.feeStore.listSessions("org_001").length, 1);
+  assert.equal(stores.feeStore.listSessionsForClaimMonth("org_001", "2026-05").length, 1);
+  assert.equal(stores.feeStore.listPriorSidecarDraftsForPatient(
+    "org_001",
+    storedFirst.patientId,
+    { beforeServiceDate: "2026-05-29" }
+  ).length, 1);
+
+  const adoptedList = await request(
+    stores,
+    "GET",
+    "/v1/fee/sidecar-drafts?status=adopted",
+    undefined,
+    feeHeaders,
+    { sidecarEnabled: true }
+  );
+  assert.equal(adoptedList.statusCode, 200);
+  assert.equal(adoptedList.body.totalCount, 1);
+  assert.equal(adoptedList.body.sidecarDrafts[0].lifecycleStatus, "adopted");
+});
+
+test("sidecar integration fails closed on extraction races and token boundary violations", async () => {
+  const stores = createStores();
+  const sidecarHeaders = await signedSidecarHeaders(stores);
+  const validBody = sidecarCalculationBody();
+  const mismatched = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    {
+      ...validBody,
+      extractionProof: {
+        ...validBody.extractionProof,
+        patientIdAfter: "different-patient"
+      }
+    },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  const mutationDetected = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    {
+      ...validBody,
+      extractionProof: {
+        ...validBody.extractionProof,
+        domMutationDetected: true
+      }
+    },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  const forbiddenSourceUrl = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    { ...validBody, sourceUrl: "https://homis.example/patient/1001" },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  const staleExtraction = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    {
+      ...validBody,
+      extractionProof: {
+        ...validBody.extractionProof,
+        extractedAt: "2026-05-27T00:00:00.000Z"
+      }
+    },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  const wrongProofKey = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    validBody,
+    { ...sidecarHeaders, "x-sidecar-code-verifier": "x".repeat(43) },
+    sidecarRequestOptions()
+  );
+  const ordinaryToken = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    validBody,
+    await signedBearerHeaders(stores.platformStore),
+    sidecarRequestOptions()
+  );
+  const scopedTokenOnFeeRoute = await request(
+    stores,
+    "GET",
+    "/v1/fee/context",
+    undefined,
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  const revokedDevice = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    validBody,
+    sidecarHeaders,
+    sidecarRequestOptions({ sidecarRevokedDeviceIds: [TEST_SIDECAR_DEVICE_ID] })
+  );
+
+  assert.equal(mismatched.statusCode, 400);
+  assert.equal(mutationDetected.statusCode, 400);
+  assert.equal(forbiddenSourceUrl.statusCode, 400);
+  assert.equal(staleExtraction.statusCode, 400);
+  assert.equal(wrongProofKey.statusCode, 403);
+  assert.equal(ordinaryToken.statusCode, 403);
+  assert.equal(scopedTokenOnFeeRoute.statusCode, 403);
+  assert.equal(revokedDevice.statusCode, 403);
+  assert.equal(stores.feeStore.sidecarDraftsForOrg("org_001").size, 0);
+  assert.equal(stores.feeStore.listSessions("org_001").length, 0);
+});
+
+test("fee sidecar runtime configuration fails closed outside test environments", () => {
+  assert.doesNotThrow(() => assertFeeSidecarRuntimeConfiguration({
+    env: "prod",
+    processEnv: { HOMIS_SIDECAR_ENABLED: "false" }
+  }));
+  assert.throws(() => assertFeeSidecarRuntimeConfiguration({
+    env: "prod",
+    processEnv: { HOMIS_SIDECAR_ENABLED: "true" }
+  }), /ALLOWED_EXTENSION_IDS/);
+  assert.throws(() => assertFeeSidecarRuntimeConfiguration({
+    env: "prod",
+    processEnv: {
+      HOMIS_SIDECAR_ENABLED: "true",
+      HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS: "invalid",
+      HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS: "homis-test-v1"
+    }
+  }), /invalid Chrome extension ID/);
+  assert.throws(() => assertFeeSidecarRuntimeConfiguration({
+    env: "prod",
+    processEnv: {
+      HOMIS_SIDECAR_ENABLED: "true",
+      HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS: TEST_SIDECAR_EXTENSION_ID,
+      HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS: "homis-test-v1",
+      HOMIS_SIDECAR_DRAFT_RETENTION_DAYS: "0"
+    }
+  }), /1 to 90/);
+  assert.doesNotThrow(() => assertFeeSidecarRuntimeConfiguration({
+    env: "prod",
+    processEnv: {
+      HOMIS_SIDECAR_ENABLED: "true",
+      HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS: TEST_SIDECAR_EXTENSION_ID,
+      HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS: "homis-test-v1"
+    }
+  }));
+});
+
+test("fee sidecar draft routes are hidden when the feature is disabled", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const response = await request(
+    stores,
+    "GET",
+    "/v1/fee/sidecar-drafts",
+    undefined,
+    headers,
+    { sidecarEnabled: false }
+  );
+  assert.equal(response.statusCode, 404);
+});
+
 function createStores(options = {}) {
   let counter = 0;
   const platformCounters = new Map();
@@ -9381,6 +9702,101 @@ function createStores(options = {}) {
   return { platformStore, feeStore, feeCalculator };
 }
 
+const TEST_SIDECAR_EXTENSION_ID = "abcdefghijklmnopabcdefghijklmnop";
+const TEST_SIDECAR_DEVICE_ID = "sidecar_device_0001";
+const TEST_SIDECAR_VERIFIER = "sidecar-proof-verifier-0123456789ABCDEFGHIJK";
+
+async function signedSidecarHeaders(stores) {
+  const identity = stores.platformStore.getLoginIdentity("clinic", "admin@example.com");
+  stores.platformStore.updateMember(identity.orgId, identity.memberId, {
+    productRoles: {
+      fee: ["admin"],
+      homis_sidecar: ["medical_clerk"]
+    }
+  });
+  stores.platformStore.upsertProductEntitlement(identity.orgId, {
+    productId: "homis_sidecar",
+    status: "enabled"
+  });
+  const enrolledIdentity = ensureTestMfaEnrollment(
+    stores.platformStore,
+    stores.platformStore.getLoginIdentity("clinic", "admin@example.com")
+  );
+  const { token } = createSignedSession({
+    orgId: enrolledIdentity.orgId,
+    memberId: enrolledIdentity.memberId,
+    organizationCode: enrolledIdentity.organizationCode,
+    loginId: enrolledIdentity.loginId,
+    tokenVersion: enrolledIdentity.tokenVersion,
+    globalRoles: ["org_admin"],
+    productRoles: {
+      fee: ["admin"],
+      homis_sidecar: ["medical_clerk"]
+    },
+    mfaRequired: true,
+    mfaEnrolled: true,
+    mfaVerified: true,
+    tokenType: "scoped_product_access",
+    productId: "homis_sidecar",
+    audience: "fee-api",
+    scopes: ["sidecar:calculate"],
+    extensionId: TEST_SIDECAR_EXTENSION_ID,
+    deviceId: TEST_SIDECAR_DEVICE_ID,
+    proofKeyChallenge: crypto.createHash("sha256").update(TEST_SIDECAR_VERIFIER).digest("base64url")
+  }, {
+    now: new Date("2026-05-28T00:00:00.000Z"),
+    ttlSeconds: 5 * 60,
+    sessionSecret: "test-session-secret"
+  });
+  return {
+    authorization: `Bearer ${token}`,
+    origin: `chrome-extension://${TEST_SIDECAR_EXTENSION_ID}`,
+    "x-sidecar-code-verifier": TEST_SIDECAR_VERIFIER
+  };
+}
+
+function sidecarCalculationBody() {
+  return {
+    contractVersion: "v1",
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    sourceSystem: "homis",
+    externalPatientId: "1001",
+    sourceRecordId: "homis-record-20260528-0001",
+    sourceRecordDisplayId: "1001-0528",
+    serviceDate: "2026-05-28",
+    receptionTime: "10:30",
+    setting: "home_visit",
+    encounterTypeSource: "user",
+    clinicalText: "S: 呼吸苦なし。O: 在宅酸素療法を継続。P: 経過観察。",
+    orders: [],
+    diagnoses: [{ name: "慢性呼吸不全" }],
+    extractionProof: {
+      patientIdBefore: "1001",
+      patientIdAfter: "1001",
+      sourceRecordIdBefore: "homis-record-20260528-0001",
+      sourceRecordIdAfter: "homis-record-20260528-0001",
+      selectorContractVersion: "homis-test-v1",
+      extractedAt: "2026-05-28T00:00:00.000Z",
+      domMutationDetected: false,
+      contractValidationPassed: true,
+      previewMatched: true,
+      requiredElementCount: 4,
+      matchedRequiredElementCount: 4,
+      clinicalTextNodeCount: 3
+    }
+  };
+}
+
+function sidecarRequestOptions(overrides = {}) {
+  return {
+    sidecarEnabled: true,
+    sidecarAllowedExtensionIds: [TEST_SIDECAR_EXTENSION_ID],
+    sidecarAllowedSelectorContractVersions: ["homis-test-v1"],
+    ...overrides
+  };
+}
+
 async function signedHeaders(platformStore, options = {}) {
   const loginId = options.loginId || "admin@example.com";
   const identity = ensureTestMfaEnrollment(platformStore, platformStore.getLoginIdentity("clinic", loginId));
@@ -9461,6 +9877,11 @@ function request(stores, method, path, body, headers = {}, overrides = {}) {
     projectId: "medical-core-stg",
     region: "asia-northeast1",
     processEnv: overrides.processEnv,
+    sidecarEnabled: overrides.sidecarEnabled,
+    sidecarAllowedExtensionIds: overrides.sidecarAllowedExtensionIds,
+    sidecarAllowedSelectorContractVersions: overrides.sidecarAllowedSelectorContractVersions,
+    sidecarRevokedDeviceIds: overrides.sidecarRevokedDeviceIds,
+    sidecarRateLimit: overrides.sidecarRateLimit,
     startedAt: new Date("2026-05-28T00:00:00.000Z"),
     now: new Date("2026-05-28T00:00:00.000Z"),
     sessionSecret: "test-session-secret"

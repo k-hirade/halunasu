@@ -1,7 +1,8 @@
 export const productIds = Object.freeze({
   charting: "charting",
   fee: "fee",
-  referral: "referral"
+  referral: "referral",
+  homisSidecar: "homis_sidecar"
 });
 
 export const organizationStatuses = Object.freeze(["active", "trialing", "suspended", "closed"]);
@@ -43,9 +44,14 @@ export function memberRequiresMfa(member = {}) {
   const productRoles = member.productRoles && typeof member.productRoles === "object"
     ? Object.values(member.productRoles)
     : [];
-  return productRoles.some((productRoleList) => (
+  if (productRoles.some((productRoleList) => (
     Array.isArray(productRoleList) && productRoleList.includes("admin")
-  ));
+  ))) {
+    return true;
+  }
+
+  return Array.isArray(member.productRoles?.[productIds.homisSidecar])
+    && member.productRoles[productIds.homisSidecar].length > 0;
 }
 
 export function resolveMfaState(identity = {}, member = {}) {

@@ -36,6 +36,12 @@ const DEFAULT_PRODUCTS = Object.freeze({
     displayName: "紹介状作成",
     status: "planned",
     signupSelectable: false
+  }),
+  homis_sidecar: Object.freeze({
+    productId: "homis_sidecar",
+    displayName: "HOMIS算定サイドカー",
+    status: "planned",
+    signupSelectable: false
   })
 });
 

@@ -12,6 +12,7 @@ import {
   validateCreateFeeCalculationInput,
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput,
+  validateSidecarCalculationInput,
   defaultFeeSettings,
   validateUpdateFeeSettingsInput,
   validateUpdateFeeSessionInput
@@ -38,6 +39,7 @@ import {
   facilitySnapshot,
   insuranceSnapshot,
   patientSnapshot,
+  productIds,
   validatePatchFacilityInput
 } from "../../../packages/platform-contracts/src/index.js";
 import {
@@ -50,6 +52,10 @@ import { createFeeCalculatorFromEnv } from "./python-calculator.js";
 import { createFeeStoreFromEnv } from "./store/create-store.js";
 
 const PRODUCT_ID = "fee";
+const SIDECAR_PRODUCT_ID = productIds.homisSidecar;
+const SIDECAR_TOKEN_SCOPE = "sidecar:calculate";
+const SIDECAR_CONTRACT_VERSION = "v1";
+const SIDECAR_PRODUCT_ROLES = ["admin", "doctor", "nurse", "medical_clerk"];
 const FEE_PRODUCT_ROLES = ["admin", "doctor", "nurse", "medical_clerk", "viewer"];
 const FEE_WRITE_ROLES = ["admin", "doctor", "nurse", "medical_clerk"];
 const DEFAULT_OPENAI_FEE_CLINICAL_TIMEOUT_MS = 60000;
@@ -72,6 +78,13 @@ export function createFeeApiServer(options = {}) {
   const platformStore = options.platformStore || createPlatformStoreFromEnv();
   const feeStore = options.feeStore || createFeeStoreFromEnv();
   const feeCalculator = options.feeCalculator || createFeeCalculatorFromEnv();
+  assertFeeSidecarRuntimeConfiguration({
+    env,
+    processEnv: options.processEnv || process.env,
+    sidecarEnabled: options.sidecarEnabled,
+    sidecarAllowedExtensionIds: options.sidecarAllowedExtensionIds,
+    sidecarAllowedSelectorContractVersions: options.sidecarAllowedSelectorContractVersions
+  });
 
   return http.createServer(async (req, res) => {
     try {
@@ -89,7 +102,12 @@ export function createFeeApiServer(options = {}) {
         feeStore,
         feeCalculator,
         now: options.now,
-        sessionSecret: options.sessionSecret
+        sessionSecret: options.sessionSecret,
+        processEnv: options.processEnv,
+        sidecarEnabled: options.sidecarEnabled,
+        sidecarAllowedExtensionIds: options.sidecarAllowedExtensionIds,
+        sidecarAllowedSelectorContractVersions: options.sidecarAllowedSelectorContractVersions,
+        sidecarRevokedDeviceIds: options.sidecarRevokedDeviceIds
       });
 
       writeResponse(res, response);
@@ -161,8 +179,70 @@ async function routeFeeApiRequest(input = {}) {
     });
   }
 
-  if (method === "OPTIONS" && url.pathname.startsWith("/v1/fee/")) {
+  if (method === "OPTIONS" && (
+    url.pathname.startsWith("/v1/fee/")
+    || url.pathname.startsWith("/v1/integrations/sidecar/")
+  )) {
     return noContent();
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "integrations", "sidecar", "calculate"])) {
+    requireSidecarFeature(input);
+    const context = await requireSidecarContext(input, platformStore);
+    await consumeSidecarCalculationRateLimit(input, platformStore, context);
+    const normalized = validateSidecarCalculationInput(input.body || {});
+    requireAllowedSidecarSelectorContract(input, normalized.extractionProof.selectorContractVersion);
+    assertFreshSidecarExtraction(normalized.extractionProof, input.now || new Date());
+    const facility = await requireFacility(context, platformStore, normalized.facilityId);
+    const department = await resolveDepartment(context, platformStore, normalized.departmentId);
+    const identity = sidecarSourceIdentity(context.session.orgId, normalized);
+    const sourceRevisionHash = sidecarSourceRevisionHash(normalized);
+    const now = input.now instanceof Date ? input.now : new Date(input.now || Date.now());
+    const upserted = await feeStore.upsertSidecarCalculationDraft({
+      ...normalized,
+      orgId: context.session.orgId,
+      sidecarDraftId: identity.sidecarDraftId,
+      sidecarPatientKey: identity.sidecarPatientKey,
+      externalSourceSystem: normalized.sourceSystem,
+      idempotencyKeyHash: identity.idempotencyKeyHash,
+      sourceRevisionHash,
+      facilitySnapshot: facilitySnapshot(facility, now),
+      departmentSnapshot: department ? departmentSnapshot(department, now) : null,
+      patientSnapshot: {
+        patientId: identity.sidecarPatientKey,
+        displayName: `HOMIS患者 ${normalized.externalPatientId}`,
+        sex: "unknown",
+        capturedAt: now.toISOString()
+      },
+      createdByMemberId: context.session.memberId,
+      lastCalculatedByMemberId: context.session.memberId,
+      expiresAt: sidecarDraftExpiry(now, input.processEnv || process.env)
+    });
+    const draftStore = sidecarDraftCalculationStore(feeStore);
+    try {
+      const calculation = await calculateFeeSessionNow({
+        context,
+        feeCalculator,
+        feeStore: draftStore,
+        platformStore,
+        input,
+        feeSessionId: upserted.sidecarDraft.sidecarDraftId,
+        current: upserted.sidecarDraft,
+        calculationInput: validateCreateFeeCalculationInput({})
+      });
+      return upserted.created
+        ? created(sidecarCalculationResponse(calculation.feeSession))
+        : ok(sidecarCalculationResponse(calculation.feeSession));
+    } catch (error) {
+      await markFeeCalculationFailed({
+        context,
+        feeStore: draftStore,
+        feeSessionId: upserted.sidecarDraft.sidecarDraftId,
+        error,
+        now
+      });
+      throw error;
+    }
   }
 
   if (!url.pathname.startsWith("/v1/fee/")) {
@@ -196,6 +276,88 @@ async function routeFeeApiRequest(input = {}) {
 
   if (method === "GET" && matches(parts, ["v1", "fee", "context"])) {
     return ok({ context: contextView(context) });
+  }
+
+  if (method === "GET" && matches(parts, ["v1", "fee", "sidecar-drafts"])) {
+    requireSidecarFeature(input);
+    const result = await feeStore.listSidecarCalculationDrafts(
+      context.session.orgId,
+      sidecarDraftListOptionsFromUrl(url)
+    );
+    return ok({
+      ...result,
+      sidecarDrafts: (Array.isArray(result.sidecarDrafts) ? result.sidecarDrafts : [])
+        .map(sidecarDraftListItemView)
+    });
+  }
+
+  if (method === "GET" && isSidecarDraftDocument(parts)) {
+    requireSidecarFeature(input);
+    const sidecarDraft = await feeStore.getSidecarCalculationDraft(context.session.orgId, parts[3]);
+    if (!sidecarDraft) {
+      return notFound("sidecar calculation draft not found");
+    }
+    return ok({ sidecarDraft: sidecarDraftDetailView(sidecarDraft) });
+  }
+
+  if (method === "POST" && isSidecarDraftAdoptionRoute(parts)) {
+    requireSidecarFeature(input);
+    requireMutationCsrf(input, context.session);
+    const sidecarDraft = await feeStore.getSidecarCalculationDraft(context.session.orgId, parts[3]);
+    if (!sidecarDraft) {
+      return notFound("sidecar calculation draft not found");
+    }
+    const patientId = String(input.body?.patientId || "").trim();
+    if (!patientId) {
+      throw requestValidationError("patientId is required to adopt a sidecar draft");
+    }
+    const patient = await resolveFeePatient(context, platformStore, { patientId });
+    const patientMatch = sidecarPatientMatch(patient, sidecarDraft);
+    if (!patientMatch.matched) {
+      throw requestValidationError("selected patient does not match the HOMIS patient identifier");
+    }
+    const facility = await requireFacility(context, platformStore, sidecarDraft.facilityId);
+    const department = await resolveDepartment(context, platformStore, sidecarDraft.departmentId);
+    const now = input.now instanceof Date ? input.now : new Date(input.now || Date.now());
+    const adopted = await feeStore.adoptSidecarCalculationDraft(context.session.orgId, parts[3], {
+      orgId: context.session.orgId,
+      patientId: patient.patientId,
+      patientRef: patient.patientId,
+      patientSnapshot: patientSnapshot(patient, now),
+      insuranceSnapshot: insuranceSnapshot(patient, sidecarDraft.serviceDate || null, now),
+      facilityId: facility.facilityId,
+      facilitySnapshot: facilitySnapshot(facility, now),
+      departmentId: department?.departmentId || null,
+      departmentSnapshot: department ? departmentSnapshot(department, now) : null,
+      serviceDate: sidecarDraft.serviceDate,
+      claimMonth: sidecarDraft.claimMonth,
+      setting: sidecarDraft.setting,
+      receptionTime: sidecarDraft.receptionTime,
+      clinicalText: sidecarDraft.clinicalText,
+      orders: sidecarDraft.orders,
+      diagnoses: sidecarDraft.diagnoses,
+      diagnosesSource: sidecarDraft.diagnosesSource,
+      sourceSystem: "homis_sidecar_adopted",
+      createdByMemberId: context.session.memberId
+    });
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.sidecar_draft_adopted",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "fee_session",
+      targetId: adopted.feeSession?.feeSessionId || parts[3],
+      productId: PRODUCT_ID,
+      safePayload: {
+        sidecarDraftId: parts[3],
+        feeSessionId: adopted.feeSession?.feeSessionId || null,
+        patientId: adopted.feeSession?.patientId || patient.patientId,
+        patientMatchBasis: patientMatch.basis,
+        alreadyAdopted: adopted.alreadyAdopted === true
+      }
+    });
+    return adopted.alreadyAdopted
+      ? ok({ feeSession: adopted.feeSession, sidecarDraft: sidecarDraftSummaryView(adopted.sidecarDraft), alreadyAdopted: true })
+      : created({ feeSession: adopted.feeSession, sidecarDraft: sidecarDraftSummaryView(adopted.sidecarDraft), alreadyAdopted: false });
   }
 
   if (method === "GET" && matches(parts, ["v1", "fee", "bootstrap"])) {
@@ -1210,6 +1372,363 @@ async function requireFeeContext(input, platformStore) {
     productLabel: "Fee",
     allowedProductRoles: FEE_PRODUCT_ROLES
   });
+}
+
+async function requireSidecarContext(input, platformStore) {
+  const authorization = headerValue(input.headers || {}, "authorization");
+  if (!authorization.startsWith("Bearer ")) {
+    const error = new Error("Sidecar bearer token is required");
+    error.name = "UnauthorizedError";
+    error.statusCode = 401;
+    throw error;
+  }
+  const context = await requireProductContext(input, {
+    platformStore,
+    productId: SIDECAR_PRODUCT_ID,
+    productLabel: "HOMIS Sidecar",
+    allowedProductRoles: SIDECAR_PRODUCT_ROLES,
+    requireScopedToken: true,
+    tokenType: "scoped_product_access",
+    audience: "fee-api",
+    requiredScope: SIDECAR_TOKEN_SCOPE
+  });
+  if (!sidecarAllowedExtensionIds(input).includes(String(context.session.extensionId || ""))) {
+    throw forbiddenError("Sidecar extension is not allowed");
+  }
+  if (sidecarRevokedDeviceIds(input).includes(String(context.session.deviceId || ""))) {
+    throw forbiddenError("Sidecar device is revoked");
+  }
+  const verifier = headerValue(input.headers || {}, "x-sidecar-code-verifier");
+  if (!/^[A-Za-z0-9._~-]{43,128}$/.test(verifier)) {
+    throw forbiddenError("Sidecar proof key is required");
+  }
+  const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
+  if (!safeStringEqual(challenge, context.session.proofKeyChallenge)) {
+    throw forbiddenError("Sidecar proof key mismatch");
+  }
+  const origin = headerValue(input.headers || {}, "origin");
+  const expectedOrigin = `chrome-extension://${context.session.extensionId || ""}`;
+  if (origin && origin !== expectedOrigin) {
+    throw forbiddenError("Sidecar extension origin mismatch");
+  }
+  if (!origin && !isTestEnvironment(input.env)) {
+    throw forbiddenError("Sidecar extension origin is required");
+  }
+  return context;
+}
+
+async function consumeSidecarCalculationRateLimit(input, platformStore, context) {
+  if (typeof platformStore.consumeRateLimit !== "function") {
+    return;
+  }
+  await platformStore.consumeRateLimit(
+    `sidecar-calculate:${context.session.orgId}:${context.session.memberId}:${context.session.deviceId || "unknown"}`,
+    {
+      limit: Number(input.sidecarRateLimit?.limit || 20),
+      windowSeconds: Number(input.sidecarRateLimit?.windowSeconds || 60)
+    }
+  );
+}
+
+function safeStringEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left || ""));
+  const rightBuffer = Buffer.from(String(right || ""));
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function sidecarSourceIdentity(orgId, input = {}) {
+  const keyMaterial = [
+    orgId,
+    input.facilityId,
+    input.sourceSystem,
+    input.externalPatientId,
+    input.sourceRecordId
+  ].map((value) => String(value || "").trim()).join("\u001f");
+  const idempotencyKeyHash = crypto.createHash("sha256").update(keyMaterial).digest("hex");
+  const patientHash = crypto.createHash("sha256")
+    .update([orgId, input.facilityId, input.sourceSystem, input.externalPatientId].join("\u001f"))
+    .digest("hex");
+  return {
+    idempotencyKeyHash,
+    sidecarDraftId: `sidecar_${idempotencyKeyHash.slice(0, 26)}`,
+    sidecarPatientKey: `sidecar_patient_${patientHash.slice(0, 26)}`
+  };
+}
+
+function sidecarSourceRevisionHash(input = {}) {
+  return crypto.createHash("sha256").update(JSON.stringify({
+    contractVersion: input.contractVersion || SIDECAR_CONTRACT_VERSION,
+    serviceDate: input.serviceDate,
+    receptionTime: input.receptionTime || null,
+    setting: input.setting,
+    encounterTypeSource: input.encounterTypeSource,
+    clinicalText: input.clinicalText,
+    orders: input.orders || [],
+    diagnoses: input.diagnoses || []
+  })).digest("hex");
+}
+
+function assertFreshSidecarExtraction(proof = {}, nowInput = new Date()) {
+  const now = nowInput instanceof Date ? nowInput : new Date(nowInput || Date.now());
+  const extractedAt = Date.parse(proof.extractedAt || "");
+  const maxAgeMs = 15 * 60 * 1000;
+  if (!Number.isFinite(extractedAt) || extractedAt > now.getTime() + 60_000 || now.getTime() - extractedAt > maxAgeMs) {
+    throw requestValidationError("extractionProof is stale; extract the displayed chart again");
+  }
+}
+
+function sidecarDraftExpiry(now, env = process.env) {
+  const days = sidecarDraftRetentionDays(env);
+  return new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function sidecarDraftRetentionDays(env = process.env) {
+  const raw = String(env.HOMIS_SIDECAR_DRAFT_RETENTION_DAYS || "30").trim();
+  if (!/^\d+$/.test(raw)) {
+    throw sidecarConfigurationError("HOMIS_SIDECAR_DRAFT_RETENTION_DAYS must be an integer from 1 to 90");
+  }
+  const days = Number.parseInt(raw, 10);
+  if (days < 1 || days > 90) {
+    throw sidecarConfigurationError("HOMIS_SIDECAR_DRAFT_RETENTION_DAYS must be an integer from 1 to 90");
+  }
+  return days;
+}
+
+function sidecarConfigurationError(message) {
+  const error = new Error(message);
+  error.name = "ConfigurationError";
+  error.statusCode = 500;
+  return error;
+}
+
+function sidecarDraftCalculationStore(feeStore) {
+  return {
+    getFeeSettings: (...args) => feeStore.getFeeSettings(...args),
+    updateSession: (orgId, sidecarDraftId, patch) => (
+      feeStore.updateSidecarCalculationDraft(orgId, sidecarDraftId, patch)
+    ),
+    saveCalculation: (orgId, sidecarDraftId, calculationResult) => (
+      feeStore.saveSidecarCalculation(orgId, sidecarDraftId, calculationResult)
+    ),
+    listPriorSessionsForPatient: (orgId, patientId, options) => (
+      feeStore.listPriorSidecarDraftsForPatient(orgId, patientId, options)
+    )
+  };
+}
+
+function sidecarCalculationResponse(sidecarDraft = {}) {
+  const calculation = sidecarDraft.calculationResult || {};
+  const lineCandidates = (Array.isArray(calculation.lineItems) ? calculation.lineItems : []).map((line) => ({
+    candidateId: line.lineId || line.code || null,
+    sourceType: "calculated_line",
+    code: line.code || null,
+    name: line.name || null,
+    orderType: line.orderType || null,
+    points: Number(line.points || 0),
+    quantity: Number(line.quantity || 1),
+    estimatedTotalPoints: Number(line.totalPoints || 0),
+    status: "needs_review",
+    candidateOnly: true
+  }));
+  const proposalCandidates = (Array.isArray(calculation.candidateProposals) ? calculation.candidateProposals : []).map((proposal) => ({
+    candidateId: proposal.proposalId || proposal.candidateId || proposal.code || null,
+    sourceType: "proposal",
+    code: proposal.code || null,
+    name: proposal.name || proposal.title || null,
+    orderType: proposal.orderType || null,
+    points: Number(proposal.points || proposal.potentialPoints || 0),
+    quantity: Number(proposal.quantity || 1),
+    estimatedTotalPoints: Number(proposal.totalPoints || proposal.potentialPoints || proposal.points || 0),
+    status: "needs_review",
+    candidateOnly: true
+  }));
+  return {
+    contractVersion: SIDECAR_CONTRACT_VERSION,
+    sidecarDraft: {
+      ...sidecarDraftSummaryView(sidecarDraft),
+      serviceDate: sidecarDraft.serviceDate || null,
+      setting: sidecarDraft.setting || null,
+      encounterTypeSource: sidecarDraft.encounterTypeSource || null,
+      sourceRecordDisplayId: sidecarDraft.sourceRecordDisplayId || null,
+      sourceRevision: Number(sidecarDraft.sourceRevision || 1),
+      calculation: {
+        status: "needs_review",
+        candidateOnly: true,
+        estimatedTotalPoints: Number(calculation.totalPoints || 0),
+        candidates: uniqueSidecarCandidates([...lineCandidates, ...proposalCandidates]),
+        warnings: Array.isArray(calculation.warnings) ? calculation.warnings : [],
+        reviewIssues: Array.isArray(calculation.reviewIssues) ? calculation.reviewIssues : []
+      }
+    }
+  };
+}
+
+function uniqueSidecarCandidates(candidates = []) {
+  const seen = new Set();
+  return candidates.filter((candidate) => {
+    const key = [candidate.sourceType, candidate.candidateId, candidate.code, candidate.name].join(":");
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function sidecarDraftSummaryView(sidecarDraft = {}) {
+  return {
+    sidecarDraftId: sidecarDraft.sidecarDraftId,
+    lifecycleStatus: sidecarDraft.lifecycleStatus,
+    candidateOnly: true,
+    externalSourceSystem: sidecarDraft.externalSourceSystem,
+    externalPatientId: sidecarDraft.externalPatientId,
+    sourceRecordId: sidecarDraft.sourceRecordId,
+    sourceRevision: Number(sidecarDraft.sourceRevision || 1),
+    adoptedFeeSessionId: sidecarDraft.adoptedFeeSessionId || null,
+    createdAt: sidecarDraft.createdAt || null,
+    updatedAt: sidecarDraft.updatedAt || null,
+    expiresAt: sidecarDraft.expiresAt || null
+  };
+}
+
+function sidecarDraftListItemView(sidecarDraft = {}) {
+  const calculation = sidecarCalculationResponse(sidecarDraft).sidecarDraft.calculation;
+  return {
+    ...sidecarDraftSummaryView(sidecarDraft),
+    facilityId: sidecarDraft.facilityId || null,
+    serviceDate: sidecarDraft.serviceDate || null,
+    setting: sidecarDraft.setting || null,
+    encounterTypeSource: sidecarDraft.encounterTypeSource || null,
+    sourceRecordDisplayId: sidecarDraft.sourceRecordDisplayId || null,
+    calculation: {
+      status: calculation.status,
+      candidateOnly: true,
+      estimatedTotalPoints: calculation.estimatedTotalPoints,
+      candidateCount: calculation.candidates.length,
+      warningCount: calculation.warnings.length,
+      reviewIssueCount: calculation.reviewIssues.length
+    }
+  };
+}
+
+function sidecarDraftDetailView(sidecarDraft = {}) {
+  return {
+    ...sidecarDraftSummaryView(sidecarDraft),
+    facilityId: sidecarDraft.facilityId || null,
+    departmentId: sidecarDraft.departmentId || null,
+    serviceDate: sidecarDraft.serviceDate || null,
+    setting: sidecarDraft.setting || null,
+    receptionTime: sidecarDraft.receptionTime || null,
+    encounterTypeSource: sidecarDraft.encounterTypeSource || null,
+    clinicalText: sidecarDraft.clinicalText || "",
+    orders: Array.isArray(sidecarDraft.orders) ? sidecarDraft.orders : [],
+    diagnoses: Array.isArray(sidecarDraft.diagnoses) ? sidecarDraft.diagnoses : [],
+    calculation: sidecarCalculationResponse(sidecarDraft).sidecarDraft.calculation
+  };
+}
+
+function isSidecarDraftDocument(parts = []) {
+  return parts.length === 4 && matches(parts.slice(0, 3), ["v1", "fee", "sidecar-drafts"]);
+}
+
+function isSidecarDraftAdoptionRoute(parts = []) {
+  return parts.length === 5
+    && matches(parts.slice(0, 3), ["v1", "fee", "sidecar-drafts"])
+    && parts[4] === "adopt";
+}
+
+function requireSidecarFeature(input = {}) {
+  if (sidecarFeatureEnabled(input)) {
+    return;
+  }
+  const error = new Error("Route not found");
+  error.name = "NotFoundError";
+  error.statusCode = 404;
+  throw error;
+}
+
+function sidecarFeatureEnabled(input = {}) {
+  if (typeof input.sidecarEnabled === "boolean") {
+    return input.sidecarEnabled;
+  }
+  const configured = input.processEnv?.HOMIS_SIDECAR_ENABLED
+    ?? process.env.HOMIS_SIDECAR_ENABLED;
+  return String(configured || "").trim().toLowerCase() === "true";
+}
+
+function sidecarAllowedExtensionIds(input = {}) {
+  const configured = input.sidecarAllowedExtensionIds
+    || input.processEnv?.HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS
+    || process.env.HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS
+    || "";
+  return (Array.isArray(configured) ? configured : String(configured).split(/[;,\s]+/))
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function sidecarAllowedSelectorContractVersions(input = {}) {
+  const configured = input.sidecarAllowedSelectorContractVersions
+    || input.processEnv?.HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS
+    || process.env.HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS
+    || "";
+  return (Array.isArray(configured) ? configured : String(configured).split(/[;,\s]+/))
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function requireAllowedSidecarSelectorContract(input, selectorContractVersion) {
+  if (!sidecarAllowedSelectorContractVersions(input).includes(String(selectorContractVersion || ""))) {
+    throw requestValidationError("selector contract version is not supported");
+  }
+}
+
+function sidecarPatientMatch(patient = {}, sidecarDraft = {}) {
+  const externalPatientId = String(sidecarDraft.externalPatientId || "").trim();
+  const facilityId = String(sidecarDraft.facilityId || "").trim();
+  const sourceSystem = String(sidecarDraft.externalSourceSystem || "homis").trim();
+  const structuredMatch = (Array.isArray(patient.patientIdentifiers) ? patient.patientIdentifiers : []).some((identifier) => (
+    String(identifier?.sourceSystem || "").trim() === sourceSystem
+    && String(identifier?.facilityId || "").trim() === facilityId
+    && String(identifier?.patientNumber || identifier?.value || "").trim() === externalPatientId
+    && String(identifier?.status || "active") === "active"
+  ));
+  if (structuredMatch) {
+    return { matched: true, basis: "patient_identifier" };
+  }
+  return { matched: false, basis: "none" };
+}
+
+function sidecarRevokedDeviceIds(input = {}) {
+  const configured = input.sidecarRevokedDeviceIds
+    || input.processEnv?.HOMIS_SIDECAR_REVOKED_DEVICE_IDS
+    || process.env.HOMIS_SIDECAR_REVOKED_DEVICE_IDS
+    || "";
+  return (Array.isArray(configured) ? configured : String(configured).split(/[;,\s]+/))
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+export function assertFeeSidecarRuntimeConfiguration(input = {}) {
+  if (input.sidecarEnabled !== true && String(input.processEnv?.HOMIS_SIDECAR_ENABLED || "").toLowerCase() !== "true") {
+    return;
+  }
+  const env = String(input.env || "local").toLowerCase();
+  if (["local", "test", "development"].includes(env)) {
+    return;
+  }
+  if (!sidecarAllowedExtensionIds(input).length) {
+    throw new Error("HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS is required when HOMIS Sidecar is enabled");
+  }
+  if (sidecarAllowedExtensionIds(input).some((extensionId) => !/^[a-p]{32}$/.test(extensionId))) {
+    throw new Error("HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS contains an invalid Chrome extension ID");
+  }
+  if (!sidecarAllowedSelectorContractVersions(input).length) {
+    throw new Error("HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS is required when HOMIS Sidecar is enabled");
+  }
+  if (sidecarAllowedSelectorContractVersions(input).some((version) => !/^[A-Za-z0-9._-]{1,128}$/.test(version))) {
+    throw new Error("HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS contains an invalid version");
+  }
+  sidecarDraftRetentionDays(input.processEnv || process.env);
 }
 
 function requireFeeWriteAccess(context) {
@@ -4038,12 +4557,16 @@ async function calculatePreparedFeeSessionNow({
     feeSessionId,
     stageTimings,
     fn: () => platformStore.createAuditEvent(context.session.orgId, {
-      eventType: "fee.calculated",
+      eventType: calculationSession.recordType === "sidecar_calculation_draft"
+        ? "fee.sidecar_draft_calculated"
+        : "fee.calculated",
       actorMemberId: context.session.memberId,
       actorLoginId: context.session.loginId,
-      targetType: "fee_session",
+      targetType: calculationSession.recordType === "sidecar_calculation_draft"
+        ? "sidecar_calculation_draft"
+        : "fee_session",
       targetId: result.feeSession.feeSessionId,
-      productId: PRODUCT_ID,
+      productId: context.productId || PRODUCT_ID,
       safePayload: {
         feeSessionId: result.feeSession.feeSessionId,
         calculationId: result.calculationResult.calculationId,
@@ -7556,7 +8079,7 @@ function withCors(input, response) {
 
 function corsHeaders(input) {
   const origin = headerValue(input.headers || {}, "origin");
-  if (!origin || !isAllowedOrigin(origin, input.env)) {
+  if (!origin || !isAllowedOrigin(origin, input.env, input)) {
     return {};
   }
 
@@ -7564,12 +8087,19 @@ function corsHeaders(input) {
     "access-control-allow-origin": origin,
     "access-control-allow-credentials": "true",
     "access-control-allow-methods": "GET, POST, PATCH, OPTIONS",
-    "access-control-allow-headers": "authorization, content-type, x-csrf-token",
+    "access-control-allow-headers": "authorization, content-type, x-csrf-token, x-sidecar-code-verifier",
     "vary": "Origin"
   };
 }
 
-function isAllowedOrigin(origin, env) {
+function isAllowedOrigin(origin, env, input = {}) {
+  const pathname = new URL(input.path || "/", "http://localhost").pathname;
+  if (pathname.startsWith("/v1/integrations/sidecar/")) {
+    const extensionId = /^chrome-extension:\/\/([a-p]{32})$/.exec(origin)?.[1] || "";
+    if (extensionId && sidecarAllowedExtensionIds(input).includes(extensionId)) {
+      return true;
+    }
+  }
   if (defaultAllowedWebOrigins().includes(origin) || configuredAllowedWebOrigins().includes(origin)) {
     return true;
   }
@@ -7738,6 +8268,18 @@ function feeSessionListOptionsFromUrl(url) {
     pageSize: parsePositiveInteger(url.searchParams.get("pageSize"), 20, 50),
     search: String(url.searchParams.get("q") || url.searchParams.get("search") || "").trim(),
     statuses: feeStatusesFromQuery(url.searchParams)
+  };
+}
+
+function sidecarDraftListOptionsFromUrl(url) {
+  const lifecycleStatus = String(url.searchParams.get("status") || "draft").trim().toLowerCase();
+  if (!["draft", "adopted", "all"].includes(lifecycleStatus)) {
+    throw requestValidationError("status must be draft, adopted, or all");
+  }
+  return {
+    page: parsePositiveInteger(url.searchParams.get("page"), 1),
+    pageSize: parsePositiveInteger(url.searchParams.get("pageSize"), 20, 50),
+    lifecycleStatus
   };
 }
 

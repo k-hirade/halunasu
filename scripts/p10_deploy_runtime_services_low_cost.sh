@@ -188,10 +188,54 @@ deploy_env() {
   local referral_project="$5"
   local session_cookie_name="halunasu_session"
   local csrf_cookie_name="halunasu_csrf"
+  local sidecar_enabled="${HOMIS_SIDECAR_ENABLED:-false}"
+  local sidecar_allowed_extension_ids="${HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS:-}"
+  local sidecar_allowed_selector_contract_versions="${HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS:-}"
+  local sidecar_revoked_device_ids="${HOMIS_SIDECAR_REVOKED_DEVICE_IDS:-}"
+  local sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS:-30}"
 
   if [[ "${env}" == "stg" ]]; then
     session_cookie_name="halunasu_stg_session"
     csrf_cookie_name="halunasu_stg_csrf"
+    sidecar_enabled="${HOMIS_SIDECAR_ENABLED_STG:-${sidecar_enabled}}"
+    sidecar_allowed_extension_ids="${HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS_STG:-${sidecar_allowed_extension_ids}}"
+    sidecar_allowed_selector_contract_versions="${HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS_STG:-${sidecar_allowed_selector_contract_versions}}"
+    sidecar_revoked_device_ids="${HOMIS_SIDECAR_REVOKED_DEVICE_IDS_STG:-${sidecar_revoked_device_ids}}"
+    sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS_STG:-${sidecar_draft_retention_days}}"
+  else
+    sidecar_enabled="${HOMIS_SIDECAR_ENABLED_PROD:-${sidecar_enabled}}"
+    sidecar_allowed_extension_ids="${HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS_PROD:-${sidecar_allowed_extension_ids}}"
+    sidecar_allowed_selector_contract_versions="${HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS_PROD:-${sidecar_allowed_selector_contract_versions}}"
+    sidecar_revoked_device_ids="${HOMIS_SIDECAR_REVOKED_DEVICE_IDS_PROD:-${sidecar_revoked_device_ids}}"
+    sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS_PROD:-${sidecar_draft_retention_days}}"
+  fi
+
+  if [[ "${sidecar_enabled}" == "true" ]]; then
+    if [[ -z "${sidecar_allowed_extension_ids}" ]]; then
+      echo "HOMIS Sidecar is enabled for ${env}, but HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS_${env^^} is empty." >&2
+      return 1
+    fi
+    local sidecar_extension_id
+    while IFS= read -r sidecar_extension_id; do
+      [[ -z "${sidecar_extension_id}" ]] && continue
+      if [[ ! "${sidecar_extension_id}" =~ ^[a-p]{32}$ ]]; then
+        echo "HOMIS Sidecar extension ID '${sidecar_extension_id}' is invalid for ${env}." >&2
+        return 1
+      fi
+    done < <(printf '%s' "${sidecar_allowed_extension_ids}" | tr ',;[:space:]' '\n' | sed '/^$/d')
+    if [[ -z "${sidecar_allowed_selector_contract_versions}" ]]; then
+      echo "HOMIS Sidecar is enabled for ${env}, but HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS_${env^^} is empty." >&2
+      return 1
+    fi
+    if [[ ! "${sidecar_draft_retention_days}" =~ ^[0-9]+$ ]] \
+      || (( sidecar_draft_retention_days < 1 || sidecar_draft_retention_days > 90 )); then
+      echo "HOMIS Sidecar retention for ${env} must be an integer from 1 to 90 days." >&2
+      return 1
+    fi
+    if [[ "${APPLY}" == "true" ]] && ! secret_exists "${core_project}" "APP_FIELD_ENCRYPTION_KEY"; then
+      echo "HOMIS Sidecar is enabled for ${env}, but APP_FIELD_ENCRYPTION_KEY is missing in ${core_project}." >&2
+      return 1
+    fi
   fi
 
   local charting_app_base_url="https://charting.halunasu.com"
@@ -217,6 +261,10 @@ deploy_env() {
     "EMAIL_DELIVERY_PROVIDER=resend" \
     "EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS:-Halunasu <no-reply@mail.halunasu.com>}" \
     "EMAIL_REPLY_TO_ADDRESS=${EMAIL_REPLY_TO_ADDRESS:-info@halunasu.com}" \
+    "HOMIS_SIDECAR_ENABLED=${sidecar_enabled}" \
+    "HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS=${sidecar_allowed_extension_ids}" \
+    "HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS=${sidecar_allowed_selector_contract_versions}" \
+    "HOMIS_SIDECAR_REVOKED_DEVICE_IDS=${sidecar_revoked_device_ids}" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
   fi
@@ -326,6 +374,11 @@ deploy_env() {
     "OPENAI_FEE_CLINICAL_MODEL=${OPENAI_FEE_CLINICAL_MODEL:-gpt-5.4-nano}" \
     "OPENAI_FEE_CLINICAL_REASONING_EFFORT=${OPENAI_FEE_CLINICAL_REASONING_EFFORT:-low}" \
     "OPENAI_FEE_CLINICAL_TIMEOUT_MS=${OPENAI_FEE_CLINICAL_TIMEOUT_MS:-60000}" \
+    "HOMIS_SIDECAR_ENABLED=${sidecar_enabled}" \
+    "HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS=${sidecar_allowed_extension_ids}" \
+    "HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS=${sidecar_allowed_selector_contract_versions}" \
+    "HOMIS_SIDECAR_REVOKED_DEVICE_IDS=${sidecar_revoked_device_ids}" \
+    "HOMIS_SIDECAR_DRAFT_RETENTION_DAYS=${sidecar_draft_retention_days}" \
     "FEE_CALCULATION_CLOUD_TASKS_QUEUE=${fee_calculation_queue_path}" \
     "FEE_CALCULATION_WORKER_URL=${fee_calculation_worker_url}" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \

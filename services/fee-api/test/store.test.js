@@ -599,6 +599,76 @@ test("Firestore atomically reserves the latest job and rejects stale claims and 
   assert.equal(completedSession.calculationResult.totalPoints, 2);
 });
 
+test("Firestore keeps sidecar drafts isolated and adopts exactly once in one transaction", async () => {
+  let counter = 0;
+  const docs = new Map();
+  const db = fakeFirestoreDb(docs);
+  const store = new FirestoreFeeStore({
+    db,
+    now: () => new Date("2026-07-18T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const draftInput = {
+    orgId: "org_123",
+    sidecarDraftId: "sidecar_001",
+    sidecarPatientKey: "sidecar_patient_001",
+    contractVersion: "v1",
+    externalSourceSystem: "homis",
+    externalPatientId: "1001",
+    sourceRecordId: "record-001",
+    idempotencyKeyHash: "a".repeat(64),
+    sourceRevisionHash: "b".repeat(64),
+    encounterTypeSource: "user",
+    extractionProof: { domMutationDetected: false },
+    facilityId: "fac_123",
+    serviceDate: "2026-07-18",
+    setting: "home_visit",
+    clinicalText: "O: 訪問診療を実施。",
+    createdByMemberId: "mem_123",
+    expiresAt: "2026-08-17T00:00:00.000Z"
+  };
+  const created = await store.upsertSidecarCalculationDraft(draftInput);
+  await store.saveSidecarCalculation("org_123", created.sidecarDraft.sidecarDraftId, {
+    provider: "test",
+    status: "completed",
+    totalPoints: 890,
+    lineItems: [{
+      lineId: "line_1",
+      code: "114001110",
+      name: "在宅患者訪問診療料",
+      points: 890,
+      totalPoints: 890,
+      status: "confirmed",
+      reviewRequired: false
+    }]
+  });
+
+  assert.equal([...docs.keys()].some((path) => path.includes("/fee_sessions/")), false);
+  const storedDraft = docs.get("organizations/org_123/sidecar_calculation_drafts/sidecar_001");
+  assert.equal(storedDraft.calculationResult.lineItems[0].status, "candidate");
+  assert.ok(storedDraft.purgeAt instanceof Date);
+  assert.equal(storedDraft.purgeAt.toISOString(), draftInput.expiresAt);
+
+  const sessionInput = {
+    orgId: "org_123",
+    patientId: "pat_123",
+    facilityId: "fac_123",
+    serviceDate: "2026-07-18",
+    setting: "home_visit",
+    clinicalText: storedDraft.clinicalText,
+    createdByMemberId: "mem_123",
+    sourceSystem: "homis_sidecar_adopted"
+  };
+  const adopted = await store.adoptSidecarCalculationDraft("org_123", "sidecar_001", sessionInput);
+  const adoptedAgain = await store.adoptSidecarCalculationDraft("org_123", "sidecar_001", sessionInput);
+
+  assert.equal(adopted.alreadyAdopted, false);
+  assert.equal(adoptedAgain.alreadyAdopted, true);
+  assert.equal(adoptedAgain.feeSession.feeSessionId, adopted.feeSession.feeSessionId);
+  assert.equal([...docs.keys()].filter((path) => /\/fee_sessions\/[^/]+$/.test(path)).length, 1);
+  assert.equal(docs.get("organizations/org_123/sidecar_calculation_drafts/sidecar_001").lifecycleStatus, "adopted");
+});
+
 test("Firestore mutation fails closed when transactions are unavailable", async () => {
   const store = new FirestoreFeeStore({ db: {} });
   await assert.rejects(

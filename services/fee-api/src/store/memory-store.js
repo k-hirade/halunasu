@@ -7,6 +7,12 @@ import {
   buildFeeSession,
   createId
 } from "../../../../packages/fee-core/src/index.js";
+import {
+  applySidecarCalculationResult,
+  applySidecarDraftInput,
+  buildSidecarCalculationDraft,
+  markSidecarDraftAdopted
+} from "../../../../packages/fee-core/src/sidecar-drafts.js";
 
 export class MemoryFeeStore {
   constructor(options = {}) {
@@ -17,6 +23,7 @@ export class MemoryFeeStore {
     this.monthlyBulkJobsByOrg = new Map();
     this.feeSettingsByOrg = new Map();
     this.billingHistoryByOrg = new Map();
+    this.sidecarDraftsByOrg = new Map();
   }
 
   createSession(input) {
@@ -27,6 +34,110 @@ export class MemoryFeeStore {
 
     this.sessionsForOrg(session.orgId).set(session.feeSessionId, session);
     return session;
+  }
+
+  upsertSidecarCalculationDraft(input) {
+    const drafts = this.sidecarDraftsForOrg(input.orgId);
+    const current = drafts.get(input.sidecarDraftId) || null;
+    const draft = current
+      ? applySidecarDraftInput(current, input, { now: this.timestamp() })
+      : buildSidecarCalculationDraft(input, { now: this.timestamp() });
+    drafts.set(draft.sidecarDraftId, draft);
+    return { sidecarDraft: draft, created: !current };
+  }
+
+  getSidecarCalculationDraft(orgId, sidecarDraftId) {
+    return this.sidecarDraftsForOrg(orgId).get(sidecarDraftId) || null;
+  }
+
+  listSidecarCalculationDrafts(orgId, options = {}) {
+    const normalized = normalizeSidecarDraftListOptions(options);
+    const filtered = [...this.sidecarDraftsForOrg(orgId).values()]
+      .filter((draft) => normalized.lifecycleStatus === "all"
+        || draft.lifecycleStatus === normalized.lifecycleStatus)
+      .sort((left, right) => String(right.updatedAt || "").localeCompare(String(left.updatedAt || "")));
+    const totalCount = filtered.length;
+    const totalPages = totalCount > 0 ? Math.ceil(totalCount / normalized.pageSize) : 0;
+    const page = totalPages > 0 ? Math.min(normalized.page, totalPages) : 1;
+    const offset = (page - 1) * normalized.pageSize;
+    return {
+      sidecarDrafts: filtered.slice(offset, offset + normalized.pageSize),
+      page,
+      pageSize: normalized.pageSize,
+      totalCount,
+      totalPages
+    };
+  }
+
+  updateSidecarCalculationDraft(orgId, sidecarDraftId, patch) {
+    const current = this.getSidecarCalculationDraft(orgId, sidecarDraftId);
+    if (!current) {
+      throw notFoundError("sidecar calculation draft not found");
+    }
+    if (current.lifecycleStatus !== "draft") {
+      throw conflictError("adopted sidecar draft cannot be updated");
+    }
+    const updated = applyFeeSessionPatch(current, patch, { now: this.timestamp() });
+    this.sidecarDraftsForOrg(orgId).set(sidecarDraftId, updated);
+    return { feeSession: updated, sidecarDraft: updated };
+  }
+
+  saveSidecarCalculation(orgId, sidecarDraftId, calculationResult) {
+    const current = this.getSidecarCalculationDraft(orgId, sidecarDraftId);
+    if (!current) {
+      throw notFoundError("sidecar calculation draft not found");
+    }
+    const updated = applySidecarCalculationResult(current, calculationResult, {
+      calculationId: this.idFactory("sidecar_calc"),
+      now: this.timestamp()
+    });
+    this.sidecarDraftsForOrg(orgId).set(sidecarDraftId, updated);
+    return {
+      feeSession: updated,
+      sidecarDraft: updated,
+      calculationResult: updated.calculationResult
+    };
+  }
+
+  listPriorSidecarDraftsForPatient(orgId, patientId, options = {}) {
+    const normalizedPatientId = String(patientId || "").trim();
+    const beforeServiceDate = String(options.beforeServiceDate || "").trim();
+    const sinceServiceDate = String(options.sinceServiceDate || "").trim();
+    const includeSameServiceDate = options.includeSameServiceDate === true;
+    const excludeFeeSessionId = String(options.excludeFeeSessionId || "").trim();
+    const limit = Math.min(500, Math.max(1, Number.parseInt(options.limit, 10) || 10));
+    return [...this.sidecarDraftsForOrg(orgId).values()]
+      .filter((draft) => ["draft", "adopted"].includes(draft.lifecycleStatus))
+      .filter((draft) => draft.patientId === normalizedPatientId)
+      .filter((draft) => !excludeFeeSessionId || draft.sidecarDraftId !== excludeFeeSessionId)
+      .filter((draft) => !beforeServiceDate || (includeSameServiceDate
+        ? String(draft.serviceDate || "") <= beforeServiceDate
+        : String(draft.serviceDate || "") < beforeServiceDate))
+      .filter((draft) => !sinceServiceDate || String(draft.serviceDate || "") >= sinceServiceDate)
+      .sort((left, right) => String(right.serviceDate || "").localeCompare(String(left.serviceDate || "")))
+      .slice(0, limit);
+  }
+
+  adoptSidecarCalculationDraft(orgId, sidecarDraftId, sessionInput) {
+    const current = this.getSidecarCalculationDraft(orgId, sidecarDraftId);
+    if (!current) {
+      throw notFoundError("sidecar calculation draft not found");
+    }
+    if (current.adoptedFeeSessionId) {
+      return {
+        sidecarDraft: current,
+        feeSession: this.getSession(orgId, current.adoptedFeeSessionId),
+        alreadyAdopted: true
+      };
+    }
+    const feeSession = buildFeeSession(sessionInput, {
+      feeSessionId: this.idFactory("fee"),
+      now: this.timestamp()
+    });
+    const adopted = markSidecarDraftAdopted(current, feeSession.feeSessionId, { now: this.timestamp() });
+    this.sessionsForOrg(orgId).set(feeSession.feeSessionId, feeSession);
+    this.sidecarDraftsForOrg(orgId).set(sidecarDraftId, adopted);
+    return { sidecarDraft: adopted, feeSession, alreadyAdopted: false };
   }
 
   listSessions(orgId, options) {
@@ -416,6 +527,13 @@ export class MemoryFeeStore {
     return this.sessionsByOrg.get(orgId);
   }
 
+  sidecarDraftsForOrg(orgId) {
+    if (!this.sidecarDraftsByOrg.has(orgId)) {
+      this.sidecarDraftsByOrg.set(orgId, new Map());
+    }
+    return this.sidecarDraftsByOrg.get(orgId);
+  }
+
   calculationJobsForOrg(orgId) {
     if (!this.calculationJobsByOrg.has(orgId)) {
       this.calculationJobsByOrg.set(orgId, new Map());
@@ -691,6 +809,17 @@ export function normalizeListOptions(options = {}) {
     pageSize,
     search: normalizeSearch(options.search || ""),
     statuses
+  };
+}
+
+export function normalizeSidecarDraftListOptions(options = {}) {
+  const lifecycleStatus = ["draft", "adopted", "all"].includes(options.lifecycleStatus)
+    ? options.lifecycleStatus
+    : "draft";
+  return {
+    page: Math.max(1, Number.parseInt(options.page, 10) || 1),
+    pageSize: Math.min(50, Math.max(1, Number.parseInt(options.pageSize, 10) || 20)),
+    lifecycleStatus
   };
 }
 

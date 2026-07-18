@@ -19,6 +19,7 @@ export const collections = Object.freeze({
   feeSettings: "fee_settings",
   feeBillingHistory: "fee_billing_history",
   feeSessions: "fee_sessions",
+  sidecarCalculationDrafts: "sidecar_calculation_drafts",
   referrals: "referrals"
 });
 
@@ -104,6 +105,10 @@ export function chartingEncounterPath(orgId, encounterId) {
 
 export function feeSessionPath(orgId, feeSessionId) {
   return orgDocPath(orgId, collections.feeSessions, feeSessionId, "feeSessionId");
+}
+
+export function sidecarCalculationDraftPath(orgId, sidecarDraftId) {
+  return orgDocPath(orgId, collections.sidecarCalculationDrafts, sidecarDraftId, "sidecarDraftId");
 }
 
 export function feeSettingsPath(orgId, facilityId = "default") {

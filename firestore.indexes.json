@@ -121,7 +121,46 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "sidecar_calculation_drafts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "patientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lifecycleStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "serviceDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "sidecar_calculation_drafts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "lifecycleStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "sidecar_calculation_drafts",
+      "fieldPath": "purgeAt",
+      "ttl": true,
+      "indexes": []
+    }
+  ]
 }

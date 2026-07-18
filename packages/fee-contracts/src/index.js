@@ -1,6 +1,8 @@
 // 受診区分。home_visit(訪問診療)/house_call(往診)は入院外レセだが、
 // 外来基本料(初診・再診・外来管理加算)を自動算定しない。
 export const feeSettings = Object.freeze(["outpatient", "inpatient", "home_visit", "house_call"]);
+export const sidecarEncounterTypeSources = Object.freeze(["dom", "user"]);
+export const sidecarContractVersions = Object.freeze(["v1"]);
 export {
   hasBloodCollectionNegationOrPlanningContext,
   hasPerformedBloodCollectionEvidence,
@@ -135,6 +137,122 @@ export function validateCreateFeeSessionInput(input = {}) {
       : undefined,
     sourceSystem: optionalString(input.sourceSystem ?? input.source_system)
   });
+}
+
+export function validateSidecarCalculationInput(input = {}) {
+  if (!isPlainObject(input)) {
+    throw validationError("request body must be an object", "body");
+  }
+  if (Object.hasOwn(input, "sourceUrl") || Object.hasOwn(input, "source_url")) {
+    throw validationError("sourceUrl must not be sent", "sourceUrl");
+  }
+
+  const externalPatientId = boundedRequiredString(
+    input.externalPatientId ?? input.external_patient_id,
+    "externalPatientId",
+    256
+  );
+  const sourceRecordId = boundedRequiredString(
+    input.sourceRecordId ?? input.source_record_id,
+    "sourceRecordId",
+    256
+  );
+  const clinicalText = optionalMultilineString(input.clinicalText ?? input.clinical_text, 100000);
+  if (!clinicalText) {
+    throw validationError("clinicalText is required", "clinicalText");
+  }
+  const setting = optionalEnum(input.setting, feeSettings, "setting");
+  if (!setting) {
+    throw validationError("setting is required", "setting");
+  }
+  const encounterTypeSource = optionalEnum(
+    input.encounterTypeSource ?? input.encounter_type_source,
+    sidecarEncounterTypeSources,
+    "encounterTypeSource"
+  );
+  if (!encounterTypeSource) {
+    throw validationError("encounterTypeSource is required", "encounterTypeSource");
+  }
+
+  const proof = validateSidecarExtractionProof(
+    input.extractionProof ?? input.extraction_proof,
+    { externalPatientId, sourceRecordId }
+  );
+  return compactObject({
+    contractVersion: optionalEnum(
+      input.contractVersion ?? input.contract_version ?? "v1",
+      sidecarContractVersions,
+      "contractVersion"
+    ),
+    facilityId: boundedRequiredString(input.facilityId ?? input.facility_id, "facilityId", 256),
+    departmentId: optionalString(input.departmentId ?? input.department_id),
+    sourceSystem: optionalEnum(input.sourceSystem ?? input.source_system, ["homis"], "sourceSystem") || "homis",
+    externalPatientId,
+    sourceRecordId,
+    sourceRecordDisplayId: optionalString(input.sourceRecordDisplayId ?? input.source_record_display_id),
+    serviceDate: requiredDate(input.serviceDate ?? input.service_date, "serviceDate"),
+    receptionTime: optionalReceptionTime(input.receptionTime ?? input.reception_time),
+    setting,
+    encounterTypeSource,
+    clinicalText,
+    orders: normalizeFeeOrders(input.orders),
+    diagnoses: normalizeDiagnoses(input.diagnoses),
+    extractionProof: proof
+  });
+}
+
+function validateSidecarExtractionProof(value, expected) {
+  if (!isPlainObject(value)) {
+    throw validationError("extractionProof is required", "extractionProof");
+  }
+  const proof = {
+    patientIdBefore: boundedRequiredString(value.patientIdBefore ?? value.patient_id_before, "extractionProof.patientIdBefore", 256),
+    patientIdAfter: boundedRequiredString(value.patientIdAfter ?? value.patient_id_after, "extractionProof.patientIdAfter", 256),
+    sourceRecordIdBefore: boundedRequiredString(value.sourceRecordIdBefore ?? value.source_record_id_before, "extractionProof.sourceRecordIdBefore", 256),
+    sourceRecordIdAfter: boundedRequiredString(value.sourceRecordIdAfter ?? value.source_record_id_after, "extractionProof.sourceRecordIdAfter", 256),
+    selectorContractVersion: boundedRequiredString(value.selectorContractVersion ?? value.selector_contract_version, "extractionProof.selectorContractVersion", 128),
+    extractedAt: requiredIsoTimestamp(value.extractedAt ?? value.extracted_at, "extractionProof.extractedAt"),
+    domMutationDetected: value.domMutationDetected ?? value.dom_mutation_detected,
+    contractValidationPassed: value.contractValidationPassed ?? value.contract_validation_passed,
+    previewMatched: value.previewMatched ?? value.preview_matched,
+    requiredElementCount: optionalPositiveInteger(
+      value.requiredElementCount ?? value.required_element_count,
+      "extractionProof.requiredElementCount"
+    ),
+    matchedRequiredElementCount: optionalPositiveInteger(
+      value.matchedRequiredElementCount ?? value.matched_required_element_count,
+      "extractionProof.matchedRequiredElementCount"
+    ),
+    clinicalTextNodeCount: optionalPositiveInteger(
+      value.clinicalTextNodeCount ?? value.clinical_text_node_count,
+      "extractionProof.clinicalTextNodeCount"
+    )
+  };
+  if (proof.domMutationDetected !== false) {
+    throw validationError("DOM changed during extraction", "extractionProof.domMutationDetected");
+  }
+  if (
+    proof.patientIdBefore !== expected.externalPatientId
+    || proof.patientIdAfter !== expected.externalPatientId
+    || proof.sourceRecordIdBefore !== expected.sourceRecordId
+    || proof.sourceRecordIdAfter !== expected.sourceRecordId
+  ) {
+    throw validationError("patient or source record changed during extraction", "extractionProof");
+  }
+  if (proof.contractValidationPassed !== true) {
+    throw validationError("selector contract validation failed", "extractionProof.contractValidationPassed");
+  }
+  if (proof.previewMatched !== true) {
+    throw validationError("preview and payload identity do not match", "extractionProof.previewMatched");
+  }
+  if (
+    !proof.requiredElementCount
+    || proof.matchedRequiredElementCount !== proof.requiredElementCount
+    || !proof.clinicalTextNodeCount
+  ) {
+    throw validationError("required chart elements are missing", "extractionProof");
+  }
+  return proof;
 }
 
 export function validateUpdateFeeSessionInput(input = {}) {
@@ -650,6 +768,22 @@ function requiredString(value, field) {
   }
 
   return trimmed;
+}
+
+function boundedRequiredString(value, field, maxLength) {
+  const normalized = requiredString(value, field);
+  if (normalized.length > maxLength) {
+    throw validationError(`${field} must be ${maxLength} characters or less`, field);
+  }
+  return normalized;
+}
+
+function requiredIsoTimestamp(value, field) {
+  const normalized = requiredString(value, field);
+  if (!normalized.includes("T") || !Number.isFinite(Date.parse(normalized))) {
+    throw validationError(`${field} must be an ISO timestamp`, field);
+  }
+  return new Date(normalized).toISOString();
 }
 
 function optionalString(value) {

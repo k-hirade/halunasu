@@ -31,6 +31,34 @@ export class LazyFirestoreFeeStore {
     return this.call("createSession", input);
   }
 
+  async upsertSidecarCalculationDraft(input) {
+    return this.call("upsertSidecarCalculationDraft", input);
+  }
+
+  async getSidecarCalculationDraft(orgId, sidecarDraftId) {
+    return this.call("getSidecarCalculationDraft", orgId, sidecarDraftId);
+  }
+
+  async listSidecarCalculationDrafts(orgId, options) {
+    return this.call("listSidecarCalculationDrafts", orgId, options);
+  }
+
+  async updateSidecarCalculationDraft(orgId, sidecarDraftId, patch) {
+    return this.call("updateSidecarCalculationDraft", orgId, sidecarDraftId, patch);
+  }
+
+  async saveSidecarCalculation(orgId, sidecarDraftId, calculationResult) {
+    return this.call("saveSidecarCalculation", orgId, sidecarDraftId, calculationResult);
+  }
+
+  async listPriorSidecarDraftsForPatient(orgId, patientId, options) {
+    return this.call("listPriorSidecarDraftsForPatient", orgId, patientId, options);
+  }
+
+  async adoptSidecarCalculationDraft(orgId, sidecarDraftId, sessionInput) {
+    return this.call("adoptSidecarCalculationDraft", orgId, sidecarDraftId, sessionInput);
+  }
+
   async listSessions(orgId, options) {
     return this.call("listSessions", orgId, options);
   }

@@ -92,6 +92,9 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
       serviceDate: patch.serviceDate,
       claimMonth: patch.claimMonth || (patch.serviceDate ? String(patch.serviceDate).slice(0, 7) : undefined),
       setting: patch.setting,
+      receptionTime: hasOwn(patch, "receptionTime") || hasOwn(patch, "reception_time")
+        ? patch.receptionTime || patch.reception_time || null
+        : undefined,
       admissionDate: hasOwn(patch, "admissionDate") || hasOwn(patch, "admission_date")
         ? patch.admissionDate || patch.admission_date || null
         : undefined,
@@ -136,6 +139,8 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
     "serviceDate",
     "claimMonth",
     "setting",
+    "receptionTime",
+    "reception_time",
     "admissionDate",
     "admission_date",
     "inpatientBasicDays",

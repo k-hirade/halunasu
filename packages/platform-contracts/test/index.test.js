@@ -5,6 +5,7 @@ import {
   facilitySnapshot,
   memberSnapshot,
   memberRequiresMfa,
+  productIds,
   normalizeOrganizationCode,
   resolveMfaState,
   validateCreateAuditEventInput,
@@ -70,6 +71,8 @@ test("resolves one MFA policy for every privileged Platform role", () => {
   assert.equal(memberRequiresMfa({ globalRoles: ["doctor"] }), false);
   assert.equal(memberRequiresMfa({ globalRoles: [], productRoles: { fee: ["admin"] } }), true);
   assert.equal(memberRequiresMfa({ globalRoles: [], productRoles: { fee: ["medical_clerk"] } }), false);
+  assert.equal(memberRequiresMfa({ globalRoles: [], productRoles: { homis_sidecar: ["medical_clerk"] } }), true);
+  assert.equal(productIds.homisSidecar, "homis_sidecar");
   assert.deepEqual(
     resolveMfaState({ mfaRequired: false, mfaEnrolled: false }, { globalRoles: ["org_owner"] }),
     { required: true, enrolled: false }

@@ -113,6 +113,7 @@ export async function requireProductContext(input = {}, options = {}) {
     sessionSecret: input.sessionSecret,
     sessionCookieName: input.sessionCookieName
   });
+  requireTokenBoundary(session, options);
   const cacheKey = productContextCacheKey(session, productId);
   const cached = getCachedProductContext(input, cacheKey);
   if (cached) {
@@ -165,6 +166,30 @@ export async function requireProductContext(input = {}, options = {}) {
   };
   setCachedProductContext(input, cacheKey, context);
   return context;
+}
+
+function requireTokenBoundary(session = {}, options = {}) {
+  const tokenType = String(session.tokenType || "").trim();
+  if (!tokenType) {
+    if (options.requireScopedToken === true) {
+      throw forbiddenError("Scoped product token is required");
+    }
+    return;
+  }
+
+  if (options.requireScopedToken !== true || tokenType !== String(options.tokenType || "scoped_product_access")) {
+    throw forbiddenError("Scoped product token cannot access this route");
+  }
+  if (String(session.productId || "") !== String(options.productId || "")) {
+    throw forbiddenError("Scoped product token product mismatch");
+  }
+  if (options.audience && String(session.audience || "") !== String(options.audience)) {
+    throw forbiddenError("Scoped product token audience mismatch");
+  }
+  const scopes = Array.isArray(session.scopes) ? session.scopes : [];
+  if (options.requiredScope && !scopes.includes(options.requiredScope)) {
+    throw forbiddenError("Scoped product token scope is required");
+  }
 }
 
 function requireVerifiedMfa(context) {
@@ -272,7 +297,14 @@ function productContextCacheKey(session = {}, productId = "") {
     session.issuedAt,
     Boolean(session.mfaVerified),
     session.csrfToken,
-    session.expiresAt
+    session.expiresAt,
+    session.tokenType,
+    session.productId,
+    session.audience,
+    (Array.isArray(session.scopes) ? session.scopes : []).slice().sort().join(","),
+    session.extensionId,
+    session.deviceId,
+    session.proofKeyChallenge
   ].join(":");
 }
 

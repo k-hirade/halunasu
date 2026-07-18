@@ -3,7 +3,13 @@ import crypto from "node:crypto";
 import { Readable } from "node:stream";
 import { test } from "node:test";
 import { createTotpCode } from "../src/auth/mfa.js";
-import { handlePlatformApiRequest, readRequestBody, resolvePlatformApiResponse } from "../src/server.js";
+import { verifySignedSession } from "../src/auth/session.js";
+import {
+  assertSidecarRuntimeConfiguration,
+  handlePlatformApiRequest,
+  readRequestBody,
+  resolvePlatformApiResponse
+} from "../src/server.js";
 import { MemoryPlatformStore } from "../src/store/memory-store.js";
 
 test("GET /healthz returns ok", async () => {
@@ -1471,6 +1477,146 @@ test("returns validation and conflict errors as responses", async () => {
   assert.equal(duplicate.body.error, "conflict");
 });
 
+test("issues a short-lived MFA-bound token scoped only to HOMIS Sidecar", async () => {
+  const store = createTestStore();
+  const extensionId = "abcdefghijklmnopabcdefghijklmnop";
+  const verifier = "sidecar-proof-verifier-0123456789ABCDEFGHIJK";
+  const codeChallenge = crypto.createHash("sha256").update(verifier).digest("base64url");
+  const { organization, member, headers } = await createAuthenticatedMember(store, {
+    organizationCode: "Sidecar Clinic",
+    globalRoles: [],
+    productRoles: { homis_sidecar: ["medical_clerk"] }
+  });
+  store.upsertProductEntitlement(organization.orgId, {
+    productId: "homis_sidecar",
+    status: "enabled"
+  });
+
+  const response = await request(store, "POST", "/v1/auth/sidecar-token", {
+    extensionId,
+    deviceId: "sidecar_device_0001",
+    codeChallenge
+  }, headers, {
+    sidecarEnabled: true,
+    sidecarAllowedExtensionIds: [extensionId]
+  });
+  const session = verifySignedSession(response.body.accessToken, {
+    now: new Date("2026-05-27T00:00:00.000Z"),
+    sessionSecret: "test-session-secret"
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(session.tokenType, "scoped_product_access");
+  assert.equal(session.productId, "homis_sidecar");
+  assert.equal(session.audience, "fee-api");
+  assert.deepEqual(session.scopes, ["sidecar:calculate"]);
+  assert.equal(session.extensionId, extensionId);
+  assert.equal(session.deviceId, "sidecar_device_0001");
+  assert.equal(session.proofKeyChallenge, codeChallenge);
+  assert.equal(Date.parse(session.expiresAt) - Date.parse(session.issuedAt), 5 * 60 * 1000);
+  assert.ok(store.listAuditEvents(organization.orgId).some((event) => (
+    event.eventType === "auth.sidecar_token_issued"
+    && event.actorMemberId === member.memberId
+    && !JSON.stringify(event.safePayload).includes(verifier)
+  )));
+});
+
+test("fails closed for sidecar token issuance without MFA or for a revoked device", async () => {
+  const store = createTestStore();
+  const extensionId = "abcdefghijklmnopabcdefghijklmnop";
+  const verifier = "sidecar-proof-verifier-0123456789ABCDEFGHIJK";
+  const organization = store.createOrganization({
+    organizationCode: "Sidecar Pending",
+    displayName: "Sidecar Pending"
+  });
+  const member = store.createMember(organization.orgId, {
+    loginId: "clerk",
+    displayName: "Clerk",
+    globalRoles: [],
+    productRoles: { homis_sidecar: ["medical_clerk"] },
+    password: "correct horse battery staple"
+  });
+  store.upsertProductEntitlement(organization.orgId, {
+    productId: "homis_sidecar",
+    status: "enabled"
+  });
+  const login = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: organization.organizationCode,
+    loginId: member.loginId,
+    password: "correct horse battery staple"
+  });
+  const pendingHeaders = {
+    cookie: cookieHeaderFromSetCookie(login.headers["set-cookie"]),
+    "x-csrf-token": login.body.csrfToken
+  };
+  const tokenBody = {
+    extensionId,
+    deviceId: "sidecar_device_0002",
+    codeChallenge: crypto.createHash("sha256").update(verifier).digest("base64url")
+  };
+  const pending = await request(store, "POST", "/v1/auth/sidecar-token", tokenBody, pendingHeaders, {
+    sidecarEnabled: true,
+    sidecarAllowedExtensionIds: [extensionId]
+  });
+
+  assert.equal(pending.statusCode, 403);
+  assert.equal(pending.body.error, "mfa_enrollment_required");
+
+  const enroll = await request(store, "POST", "/v1/auth/mfa/enroll", {}, pendingHeaders);
+  const code = createTotpCode(enroll.body.mfa.secret, { now: new Date("2026-05-27T00:00:00.000Z") });
+  const verified = await request(store, "POST", "/v1/auth/mfa/verify", { code }, pendingHeaders);
+  const verifiedHeaders = {
+    cookie: cookieHeaderFromSetCookie(verified.headers["set-cookie"]),
+    "x-csrf-token": verified.body.csrfToken
+  };
+  const revoked = await request(store, "POST", "/v1/auth/sidecar-token", tokenBody, verifiedHeaders, {
+    sidecarEnabled: true,
+    sidecarAllowedExtensionIds: [extensionId],
+    sidecarRevokedDeviceIds: [tokenBody.deviceId]
+  });
+
+  assert.equal(revoked.statusCode, 403);
+  assert.match(revoked.body.message, /revoked/);
+});
+
+test("platform sidecar runtime requires encryption and extension configuration", () => {
+  const extensionId = "abcdefghijklmnopabcdefghijklmnop";
+  assert.doesNotThrow(() => assertSidecarRuntimeConfiguration({
+    env: "prod",
+    processEnv: { HOMIS_SIDECAR_ENABLED: "false" }
+  }));
+  assert.throws(() => assertSidecarRuntimeConfiguration({
+    env: "prod",
+    processEnv: {
+      HOMIS_SIDECAR_ENABLED: "true",
+      HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS: extensionId
+    }
+  }), /APP_FIELD_ENCRYPTION_KEY/);
+  assert.throws(() => assertSidecarRuntimeConfiguration({
+    env: "prod",
+    processEnv: {
+      HOMIS_SIDECAR_ENABLED: "true",
+      APP_FIELD_ENCRYPTION_KEY: "configured"
+    }
+  }), /ALLOWED_EXTENSION_IDS/);
+  assert.throws(() => assertSidecarRuntimeConfiguration({
+    env: "prod",
+    processEnv: {
+      HOMIS_SIDECAR_ENABLED: "true",
+      HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS: "invalid",
+      APP_FIELD_ENCRYPTION_KEY: "configured"
+    }
+  }), /invalid Chrome extension ID/);
+  assert.doesNotThrow(() => assertSidecarRuntimeConfiguration({
+    env: "prod",
+    processEnv: {
+      HOMIS_SIDECAR_ENABLED: "true",
+      HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS: extensionId,
+      APP_FIELD_ENCRYPTION_KEY: "configured"
+    }
+  }));
+});
+
 function createTestStore() {
   let counter = 0;
   let tokenCounter = 0;
@@ -1553,7 +1699,11 @@ function request(store, method, path, body, headers = {}, options = {}) {
     billingReturnBaseUrl: options.billingReturnBaseUrl,
     signupMailer: options.signupMailer,
     publicLpBaseUrl: options.publicLpBaseUrl,
-    signupTokenPreview: options.signupTokenPreview
+    signupTokenPreview: options.signupTokenPreview,
+    sidecarEnabled: options.sidecarEnabled,
+    sidecarAllowedExtensionIds: options.sidecarAllowedExtensionIds,
+    sidecarRevokedDeviceIds: options.sidecarRevokedDeviceIds,
+    sidecarTokenRateLimit: options.sidecarTokenRateLimit
   });
 }
 

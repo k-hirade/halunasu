@@ -8,10 +8,17 @@ import {
   createId
 } from "../../../../packages/fee-core/src/index.js";
 import {
+  applySidecarCalculationResult,
+  applySidecarDraftInput,
+  buildSidecarCalculationDraft,
+  markSidecarDraftAdopted
+} from "../../../../packages/fee-core/src/sidecar-drafts.js";
+import {
   collections,
   feeBillingHistoryPath,
   feeSettingsPath,
   feeSessionPath,
+  sidecarCalculationDraftPath,
   organizationPath
 } from "../../../../packages/firestore-schema/src/index.js";
 import {
@@ -19,6 +26,7 @@ import {
   matchesStatus,
   monthlyBulkJobProgress,
   normalizeListOptions,
+  normalizeSidecarDraftListOptions,
   notFoundError,
   toSessionSummary
 } from "./memory-store.js";
@@ -78,6 +86,142 @@ export class FirestoreFeeStore {
     await this.doc(feeSessionPath(session.orgId, session.feeSessionId)).set(session);
     await this.writeSessionStatusView(session.orgId, session.feeSessionId, session);
     return session;
+  }
+
+  async upsertSidecarCalculationDraft(input) {
+    requireFirestoreTransactions(this.db);
+    const draftRef = this.doc(sidecarCalculationDraftPath(input.orgId, input.sidecarDraftId));
+    return this.db.runTransaction(async (transaction) => {
+      const current = docDataOrNull(await transaction.get(draftRef));
+      const sidecarDraft = sanitizeForFirestore(withSidecarPurgeTimestamp(current
+        ? applySidecarDraftInput(current, input, { now: this.timestamp() })
+        : buildSidecarCalculationDraft(input, { now: this.timestamp() })));
+      transaction.set(draftRef, sidecarDraft);
+      return { sidecarDraft, created: !current };
+    });
+  }
+
+  async getSidecarCalculationDraft(orgId, sidecarDraftId) {
+    return docDataOrNull(await this.doc(sidecarCalculationDraftPath(orgId, sidecarDraftId)).get());
+  }
+
+  async listSidecarCalculationDrafts(orgId, options = {}) {
+    const normalized = normalizeSidecarDraftListOptions(options);
+    let query = this.orgCollection(orgId, collections.sidecarCalculationDrafts);
+    if (normalized.lifecycleStatus !== "all") {
+      query = query.where("lifecycleStatus", "==", normalized.lifecycleStatus);
+    }
+    query = query.orderBy("updatedAt", "desc");
+    const totalCount = await countQuery(query, "sidecarDraftId");
+    const totalPages = totalCount > 0 ? Math.ceil(totalCount / normalized.pageSize) : 0;
+    const page = totalPages > 0 ? Math.min(normalized.page, totalPages) : 1;
+    const snapshot = await query
+      .offset((page - 1) * normalized.pageSize)
+      .limit(normalized.pageSize)
+      .get();
+    return {
+      sidecarDrafts: docsFromSnapshot(snapshot),
+      page,
+      pageSize: normalized.pageSize,
+      totalCount,
+      totalPages
+    };
+  }
+
+  async updateSidecarCalculationDraft(orgId, sidecarDraftId, patch) {
+    const { updated } = await this.mutateSidecarDraft(orgId, sidecarDraftId, (current) => {
+      if (current.lifecycleStatus !== "draft") {
+        throw conflictError("adopted sidecar draft cannot be updated");
+      }
+      return applyFeeSessionPatch(current, patch, { now: this.timestamp() });
+    });
+    return { feeSession: updated, sidecarDraft: updated };
+  }
+
+  async saveSidecarCalculation(orgId, sidecarDraftId, calculationResult) {
+    const calculationId = this.idFactory("sidecar_calc");
+    const { updated } = await this.mutateSidecarDraft(orgId, sidecarDraftId, (current) => (
+      applySidecarCalculationResult(current, calculationResult, {
+        calculationId,
+        now: this.timestamp()
+      })
+    ));
+    return {
+      feeSession: updated,
+      sidecarDraft: updated,
+      calculationResult: updated.calculationResult
+    };
+  }
+
+  async listPriorSidecarDraftsForPatient(orgId, patientId, options = {}) {
+    const normalizedPatientId = String(patientId || "").trim();
+    if (!normalizedPatientId) {
+      return [];
+    }
+    const beforeServiceDate = String(options.beforeServiceDate || "").trim();
+    const sinceServiceDate = String(options.sinceServiceDate || "").trim();
+    const includeSameServiceDate = options.includeSameServiceDate === true;
+    const excludeFeeSessionId = String(options.excludeFeeSessionId || "").trim();
+    const limit = Math.min(500, Math.max(1, Number.parseInt(options.limit, 10) || 10));
+    try {
+      let query = this.orgCollection(orgId, collections.sidecarCalculationDrafts)
+        .where("patientId", "==", normalizedPatientId)
+        .where("lifecycleStatus", "in", ["draft", "adopted"]);
+      if (beforeServiceDate) {
+        query = query.where("serviceDate", includeSameServiceDate ? "<=" : "<", beforeServiceDate);
+      }
+      if (sinceServiceDate) {
+        query = query.where("serviceDate", ">=", sinceServiceDate);
+      }
+      const snapshot = await query.orderBy("serviceDate", "desc").limit(limit + 1).get();
+      return docsFromSnapshot(snapshot)
+        .filter((draft) => !excludeFeeSessionId || draft.sidecarDraftId !== excludeFeeSessionId)
+        .slice(0, limit);
+    } catch {
+      const snapshot = await this.orgCollection(orgId, collections.sidecarCalculationDrafts)
+        .orderBy("createdAt", "desc")
+        .limit(Math.max(limit, 500))
+        .get();
+      return docsFromSnapshot(snapshot)
+        .filter((draft) => ["draft", "adopted"].includes(draft.lifecycleStatus) && draft.patientId === normalizedPatientId)
+        .filter((draft) => !excludeFeeSessionId || draft.sidecarDraftId !== excludeFeeSessionId)
+        .filter((draft) => !beforeServiceDate || (includeSameServiceDate
+          ? String(draft.serviceDate || "") <= beforeServiceDate
+          : String(draft.serviceDate || "") < beforeServiceDate))
+        .filter((draft) => !sinceServiceDate || String(draft.serviceDate || "") >= sinceServiceDate)
+        .sort((left, right) => String(right.serviceDate || "").localeCompare(String(left.serviceDate || "")))
+        .slice(0, limit);
+    }
+  }
+
+  async adoptSidecarCalculationDraft(orgId, sidecarDraftId, sessionInput) {
+    requireFirestoreTransactions(this.db);
+    const draftRef = this.doc(sidecarCalculationDraftPath(orgId, sidecarDraftId));
+    const candidateFeeSessionId = this.idFactory("fee");
+    return this.db.runTransaction(async (transaction) => {
+      const current = docDataOrNull(await transaction.get(draftRef));
+      if (!current) {
+        throw notFoundError("sidecar calculation draft not found");
+      }
+      if (current.adoptedFeeSessionId) {
+        const existing = docDataOrNull(await transaction.get(this.doc(feeSessionPath(orgId, current.adoptedFeeSessionId))));
+        return { sidecarDraft: current, feeSession: existing, alreadyAdopted: true };
+      }
+      const feeSession = sanitizeForFirestore(buildFeeSession(sessionInput, {
+        feeSessionId: candidateFeeSessionId,
+        now: this.timestamp()
+      }));
+      const adopted = sanitizeForFirestore(withSidecarPurgeTimestamp(markSidecarDraftAdopted(
+        current,
+        feeSession.feeSessionId,
+        { now: this.timestamp() }
+      )));
+      const sessionRef = this.doc(feeSessionPath(orgId, feeSession.feeSessionId));
+      transaction.set(sessionRef, feeSession);
+      transaction.set(this.sessionStatusViewDoc(orgId, feeSession.feeSessionId), sanitizeForFirestore(sessionStatusView(feeSession)));
+      transaction.set(draftRef, adopted);
+      return { sidecarDraft: adopted, feeSession, alreadyAdopted: false };
+    });
   }
 
   async listSessions(orgId, options) {
@@ -680,6 +824,23 @@ export class FirestoreFeeStore {
     });
   }
 
+  async mutateSidecarDraft(orgId, sidecarDraftId, mutator) {
+    requireFirestoreTransactions(this.db);
+    const draftRef = this.doc(sidecarCalculationDraftPath(orgId, sidecarDraftId));
+    return this.db.runTransaction(async (transaction) => {
+      const current = docDataOrNull(await transaction.get(draftRef));
+      if (!current) {
+        throw notFoundError("sidecar calculation draft not found");
+      }
+      const updated = sanitizeForFirestore(withSidecarPurgeTimestamp(mutator(current)));
+      const patch = changedTopLevelFields(current, updated);
+      if (Object.keys(patch).length) {
+        transaction.update(draftRef, sanitizeForFirestore(patch));
+      }
+      return { current, updated };
+    });
+  }
+
   async mutateCalculationJob(orgId, feeSessionId, calculationJobId, mutator) {
     requireFirestoreTransactions(this.db);
     const jobRef = this.calculationJobDoc(orgId, feeSessionId, calculationJobId);
@@ -787,6 +948,9 @@ function sanitizeForFirestore(value) {
   if (Array.isArray(value)) {
     return value.map((item) => sanitizeForFirestore(item));
   }
+  if (value instanceof Date || isFirestoreTimestamp(value)) {
+    return value;
+  }
   if (!isPlainObject(value)) {
     return value;
   }
@@ -796,6 +960,27 @@ function sanitizeForFirestore(value) {
       .filter(([, item]) => item !== undefined)
       .map(([key, item]) => [key, sanitizeForFirestore(item)])
   );
+}
+
+function withSidecarPurgeTimestamp(sidecarDraft = {}) {
+  const expiresAtMs = Date.parse(String(sidecarDraft.expiresAt || ""));
+  if (!Number.isFinite(expiresAtMs)) {
+    const error = new Error("sidecar calculation draft requires a valid expiration timestamp");
+    error.name = "ConfigurationError";
+    error.statusCode = 500;
+    throw error;
+  }
+  return {
+    ...sidecarDraft,
+    purgeAt: new Date(expiresAtMs)
+  };
+}
+
+function isFirestoreTimestamp(value) {
+  return value !== null
+    && typeof value === "object"
+    && typeof value.toDate === "function"
+    && typeof value.toMillis === "function";
 }
 
 function isPlainObject(value) {
@@ -901,6 +1086,13 @@ function assertUnleasedSessionMutationAllowed(session = {}, options = {}) {
   }
 }
 
+function conflictError(message) {
+  const error = new Error(message);
+  error.name = "ConflictError";
+  error.statusCode = 409;
+  return error;
+}
+
 function requireFirestoreTransactions(db) {
   if (typeof db?.runTransaction === "function") {
     return;
@@ -935,13 +1127,13 @@ function feeSessionCalculationConflictError(message = "fee session calculation i
   return error;
 }
 
-async function countQuery(query) {
+async function countQuery(query, identifierField = "feeSessionId") {
   if (typeof query.count === "function") {
     const snapshot = await query.count().get();
     return Number(snapshot.data().count || 0);
   }
 
-  const snapshot = await query.select("feeSessionId").get();
+  const snapshot = await query.select(identifierField).get();
   return snapshot.size;
 }
 
