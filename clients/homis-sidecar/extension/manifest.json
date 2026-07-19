@@ -8,13 +8,18 @@
   "host_permissions": [
     "http://localhost:8899/*",
     "http://127.0.0.1:8899/*",
+    "http://0.0.0.0:8899/*",
     "https://platform-api-stg-lp2t3inhza-an.a.run.app/*",
     "https://fee-api-stg-wmfrwcpzkq-an.a.run.app/*"
   ],
   "background": { "service_worker": "sw.js" },
   "content_scripts": [
     {
-      "matches": ["http://localhost:8899/homic/*", "http://127.0.0.1:8899/homic/*"],
+      "matches": [
+        "http://localhost:8899/homic/*",
+        "http://127.0.0.1:8899/homic/*",
+        "http://0.0.0.0:8899/homic/*"
+      ],
       "js": ["lib/contract.js", "lib/proof.js", "content.js"],
       "run_at": "document_idle"
     }

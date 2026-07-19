@@ -156,6 +156,9 @@
       : "初回のみ、この端末を施設アカウントへ接続します。";
     elements["connect-button"].hidden = connected;
     elements["calculation-section"].hidden = !connected;
+    if (connected) {
+      elements["device-code-area"].hidden = true;
+    }
   }
 
   function renderPreview(extraction) {
@@ -261,6 +264,9 @@
   }
 
   function errorMessage(error) {
+    if (/Receiving end does not exist|Could not establish connection/i.test(String(error?.message || ""))) {
+      return "カルテ画面と接続できません。拡張機能とカルテ画面を再読み込みしてください。";
+    }
     if (error.code === "selector_contract_mismatch") {
       return "画面の形式が想定と異なります（契約 homis-mock-v2）。";
     }
