@@ -29,6 +29,9 @@ test("validates the sidecar v1 extraction and atomic identity contract", () => {
     serviceDate: "2026-07-18",
     setting: "home_visit",
     encounterTypeSource: "user",
+    sameBuilding: false,
+    sameBuildingSource: "user",
+    singleBuildingPatientCount: 1,
     clinicalText: "O: 訪問診療を実施。",
     extractionProof: {
       patientIdBefore: "1001",
@@ -49,8 +52,89 @@ test("validates the sidecar v1 extraction and atomic identity contract", () => {
   assert.equal(input.contractVersion, "v1");
   assert.equal(input.setting, "home_visit");
   assert.equal(input.encounterTypeSource, "user");
+  assert.equal(input.sameBuilding, false);
+  assert.equal(input.sameBuildingSource, "user");
+  assert.equal(input.singleBuildingPatientCount, 1);
   assert.equal(input.extractionProof.domMutationDetected, false);
   assert.equal(Object.hasOwn(input, "sourceUrl"), false);
+});
+
+test("validates three-state same-building sidecar inputs without treating unknown as outside", () => {
+  const base = {
+    contractVersion: "v1",
+    facilityId: "fac_001",
+    sourceSystem: "homis",
+    externalPatientId: "1001",
+    sourceRecordId: "record-001",
+    serviceDate: "2026-07-18",
+    setting: "home_visit",
+    encounterTypeSource: "dom",
+    clinicalText: "O: 訪問診療を実施。",
+    extractionProof: {
+      patientIdBefore: "1001",
+      patientIdAfter: "1001",
+      sourceRecordIdBefore: "record-001",
+      sourceRecordIdAfter: "record-001",
+      selectorContractVersion: "homis-v3",
+      extractedAt: "2026-07-18T01:00:00.000Z",
+      domMutationDetected: false,
+      contractValidationPassed: true,
+      previewMatched: true,
+      requiredElementCount: 4,
+      matchedRequiredElementCount: 4,
+      clinicalTextNodeCount: 3
+    }
+  };
+
+  const unknown = validateSidecarCalculationInput(base);
+  assert.equal(unknown.sameBuilding, null);
+  assert.equal(unknown.sameBuildingSource, null);
+  assert.equal(unknown.singleBuildingPatientCount, null);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    sameBuilding: true,
+    sameBuildingSource: null
+  }), /sameBuildingSource is required/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    sameBuilding: null,
+    sameBuildingSource: "user"
+  }), /must be null/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    sameBuilding: "false",
+    sameBuildingSource: "user"
+  }), /boolean or null/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    sameBuilding: false,
+    sameBuildingSource: "dom",
+    singleBuildingPatientCount: 0
+  }), /positive number/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    sameBuilding: true,
+    sameBuildingSource: "dom",
+    singleBuildingPatientCount: 1
+  }), /must be at least 2/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    sameBuilding: true,
+    sameBuildingSource: "dom",
+    singleBuildingPatientCount: null
+  }), /must be at least 2/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    sameBuilding: false,
+    sameBuildingSource: "dom",
+    singleBuildingPatientCount: 4
+  }), /must be 1/);
+  assert.doesNotThrow(() => validateSidecarCalculationInput({
+    ...base,
+    sameBuilding: false,
+    sameBuildingSource: "user",
+    singleBuildingPatientCount: 4
+  }));
 });
 
 test("rejects sidecar source URLs, extraction races, ambiguous encounter types, and unsupported versions", () => {
@@ -128,6 +212,11 @@ test("normalizes fee session input to Platform identifiers", () => {
     },
     calculation_options: {
       facility_standard_keys: ["検体検査管理加算1"]
+    },
+    encounter_details: {
+      same_building: true,
+      same_building_source: "dom",
+      single_building_patient_count: 4
     }
   });
 
@@ -138,6 +227,11 @@ test("normalizes fee session input to Platform identifiers", () => {
   assert.equal(normalized.claimMonth, "2026-05");
   assert.equal(normalized.orders[0].orderType, "material");
   assert.equal(normalized.orders[0].quantity, 3);
+  assert.deepEqual(normalized.encounterDetails, {
+    sameBuilding: true,
+    sameBuildingSource: "dom",
+    singleBuildingPatientCount: 4
+  });
   assert.equal(normalized.orders[0].sourceSystem, undefined);
   assert.deepEqual(normalized.claimContext.material_inputs, [{ code: "710000001", quantity: 3 }]);
   assert.deepEqual(normalized.calculationOptions.facility_standard_keys, ["検体検査管理加算1"]);

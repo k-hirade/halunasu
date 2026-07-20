@@ -122,6 +122,9 @@ export function validateCreateFeeSessionInput(input = {}) {
     serviceDate,
     claimMonth: optionalClaimMonth(input.claimMonth ?? input.claim_month) || (serviceDate ? serviceDate.slice(0, 7) : undefined),
     setting: optionalEnum(input.setting, feeSettings, "setting") || "outpatient",
+    encounterDetails: hasOwn(input, "encounterDetails") || hasOwn(input, "encounter_details")
+      ? normalizeFeeEncounterDetails(input.encounterDetails ?? input.encounter_details)
+      : undefined,
     receptionTime: optionalReceptionTime(input.receptionTime ?? input.reception_time),
     admissionDate: optionalDate(input.admissionDate ?? input.admission_date, "admissionDate"),
     inpatientBasicDays: optionalPositiveInteger(input.inpatientBasicDays ?? input.inpatient_basic_days, "inpatientBasicDays"),
@@ -180,6 +183,17 @@ export function validateSidecarCalculationInput(input = {}) {
     input.extractionProof ?? input.extraction_proof,
     { externalPatientId, sourceRecordId }
   );
+  const encounterDetails = normalizeFeeEncounterDetails({
+    sameBuilding: hasOwn(input, "sameBuilding") || hasOwn(input, "same_building")
+      ? (input.sameBuilding ?? input.same_building)
+      : null,
+    sameBuildingSource: hasOwn(input, "sameBuildingSource") || hasOwn(input, "same_building_source")
+      ? (input.sameBuildingSource ?? input.same_building_source)
+      : null,
+    singleBuildingPatientCount: hasOwn(input, "singleBuildingPatientCount") || hasOwn(input, "single_building_patient_count")
+      ? (input.singleBuildingPatientCount ?? input.single_building_patient_count)
+      : null
+  });
   return compactObject({
     contractVersion: optionalEnum(
       input.contractVersion ?? input.contract_version ?? "v1",
@@ -196,6 +210,9 @@ export function validateSidecarCalculationInput(input = {}) {
     receptionTime: optionalReceptionTime(input.receptionTime ?? input.reception_time),
     setting,
     encounterTypeSource,
+    sameBuilding: encounterDetails.sameBuilding,
+    sameBuildingSource: encounterDetails.sameBuildingSource,
+    singleBuildingPatientCount: encounterDetails.singleBuildingPatientCount,
     clinicalText,
     orders: normalizeFeeOrders(input.orders),
     diagnoses: normalizeDiagnoses(input.diagnoses),
@@ -279,6 +296,9 @@ export function validateUpdateFeeSessionInput(input = {}) {
         ? serviceDate.slice(0, 7)
         : undefined,
     setting: optionalEnum(input.setting, feeSettings, "setting"),
+    encounterDetails: hasOwn(input, "encounterDetails") || hasOwn(input, "encounter_details")
+      ? normalizeFeeEncounterDetails(input.encounterDetails ?? input.encounter_details)
+      : undefined,
     receptionTime: hasOwn(input, "receptionTime") || hasOwn(input, "reception_time")
       ? optionalReceptionTime(input.receptionTime ?? input.reception_time)
       : undefined,
@@ -443,6 +463,8 @@ function normalizeAutoBillingRules(input) {
         ruleId: optionalString(value.ruleId ?? value.rule_id) || `facility_rule_${index + 1}`,
         title: optionalString(value.title ?? value.name) || "",
         code,
+        sameBuildingCode: optionalString(value.sameBuildingCode ?? value.same_building_code) || "",
+        sameBuildingTitle: optionalString(value.sameBuildingTitle ?? value.same_building_title) || "",
         action: optionalEnum(value.action, feeAutoBillingRuleActions, "autoBillingRules.action") || "candidate",
         settings,
         requiredFacilityStandardKey: optionalString(value.requiredFacilityStandardKey ?? value.required_facility_standard_key) || "",
@@ -452,6 +474,72 @@ function normalizeAutoBillingRules(input) {
       };
     })
     .filter((entry) => entry.code);
+}
+
+export function normalizeFeeEncounterDetails(input) {
+  if (input === undefined) {
+    return undefined;
+  }
+  if (input === null) {
+    return null;
+  }
+  if (!isPlainObject(input)) {
+    throw validationError("encounterDetails must be an object", "encounterDetails");
+  }
+
+  const sameBuilding = nullableBoolean(
+    input.sameBuilding ?? input.same_building,
+    "encounterDetails.sameBuilding"
+  );
+  const sameBuildingSource = nullableEnum(
+    input.sameBuildingSource ?? input.same_building_source,
+    sidecarEncounterTypeSources,
+    "encounterDetails.sameBuildingSource"
+  );
+  const singleBuildingPatientCount = nullablePositiveInteger(
+    input.singleBuildingPatientCount ?? input.single_building_patient_count,
+    "encounterDetails.singleBuildingPatientCount"
+  );
+
+  if (sameBuilding !== null && !sameBuildingSource) {
+    throw validationError(
+      "encounterDetails.sameBuildingSource is required when sameBuilding is known",
+      "encounterDetails.sameBuildingSource"
+    );
+  }
+  if (sameBuilding === null && sameBuildingSource !== null) {
+    throw validationError(
+      "encounterDetails.sameBuildingSource must be null when sameBuilding is unknown",
+      "encounterDetails.sameBuildingSource"
+    );
+  }
+  if (
+    sameBuildingSource === "dom"
+    && sameBuilding === true
+    && (singleBuildingPatientCount === null || singleBuildingPatientCount < 2)
+  ) {
+    throw validationError(
+      "encounterDetails.singleBuildingPatientCount must be at least 2 for a DOM-derived same-building decision",
+      "encounterDetails.singleBuildingPatientCount"
+    );
+  }
+  if (
+    sameBuildingSource === "dom"
+    && sameBuilding === false
+    && singleBuildingPatientCount !== null
+    && singleBuildingPatientCount !== 1
+  ) {
+    throw validationError(
+      "encounterDetails.singleBuildingPatientCount must be 1 for a DOM-derived outside decision",
+      "encounterDetails.singleBuildingPatientCount"
+    );
+  }
+
+  return {
+    sameBuilding,
+    sameBuildingSource,
+    singleBuildingPatientCount
+  };
 }
 
 export function validateReviewDecisionInput(input = {}) {
@@ -897,6 +985,23 @@ function optionalEnum(value, allowed, field) {
   return value;
 }
 
+function nullableEnum(value, allowed, field) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  return optionalEnum(value, allowed, field) || null;
+}
+
+function nullableBoolean(value, field) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value !== "boolean") {
+    throw validationError(`${field} must be a boolean or null`, field);
+  }
+  return value;
+}
+
 function optionalPlainObject(value, field) {
   if (value === undefined || value === null) {
     return undefined;
@@ -960,6 +1065,13 @@ function optionalPositiveInteger(value, field) {
     throw validationError(`${field} must be a positive integer`, field);
   }
   return number;
+}
+
+function nullablePositiveInteger(value, field) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  return optionalPositiveInteger(value, field) ?? null;
 }
 
 function normalizeStringArray(value) {

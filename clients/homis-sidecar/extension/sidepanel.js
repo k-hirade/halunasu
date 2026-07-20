@@ -2,13 +2,19 @@
   "use strict";
 
   const api = global.HalunasuSidecarApi;
+  const SETTING_LABELS = { home_visit: "定期訪問", house_call: "往診", outpatient: "外来" };
   let preview = null;
   let pollingGeneration = 0;
+  let lastCalculationContext = null;
+  let sameBuildingSource = null;
 
   const elements = Object.fromEntries([
-    "connection-badge", "connection-copy", "connect-button", "device-code-area", "device-code",
+    "connection-badge", "connection-copy", "connect-button", "connection-section",
+    "device-code-area", "device-code",
     "approval-link", "calculation-section", "extract-button", "chart-preview", "preview-patient",
-    "preview-date", "preview-record", "preview-text", "setting-control", "calculate-button",
+    "preview-date", "preview-record", "preview-text", "preview-details", "setting-control",
+    "same-building-control", "same-building-copy",
+    "calculate-button",
     "result-section", "total-points", "revision-copy", "line-candidates", "proposal-candidates",
     "issue-count", "issues", "status-message"
   ].map((id) => [id, document.getElementById(id)]));
@@ -20,7 +26,7 @@
     try {
       const connected = await api.connectWithStoredGrant();
       setConnected(Boolean(connected));
-      setStatus(connected ? "接続済みです。表示中のカルテを読み取れます。" : "端末を接続してください。");
+      setStatus(connected ? "" : "端末を接続してください。");
     } catch (error) {
       setConnected(false);
       setStatus(errorMessage(error), true);
@@ -58,12 +64,14 @@
       preview = response;
       renderPreview(response);
       elements["setting-control"].disabled = false;
+      elements["same-building-control"].disabled = false;
       updateCalculateButton();
       setStatus("読み取りました。受診区分を選択してください。");
     } catch (error) {
       preview = null;
       elements["chart-preview"].hidden = true;
       elements["setting-control"].disabled = true;
+      elements["same-building-control"].disabled = true;
       updateCalculateButton();
       setStatus(errorMessage(error), true);
     } finally {
@@ -73,6 +81,13 @@
 
   document.querySelectorAll('input[name="setting"]').forEach((input) => {
     input.addEventListener("change", updateCalculateButton);
+  });
+
+  document.querySelectorAll('input[name="same-building"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      sameBuildingSource = input.value === "unknown" ? null : "user";
+      renderSameBuildingCopy(preview, selectedSameBuilding());
+    });
   });
 
   elements["calculate-button"].addEventListener("click", async () => {
@@ -90,6 +105,7 @@
       if (!prepared?.ok) {
         throw responseError(prepared);
       }
+      const sameBuilding = selectedSameBuilding();
       const result = await api.calculate({
         contractVersion: "v1",
         sourceSystem: "homis",
@@ -100,16 +116,26 @@
         receptionTime: prepared.receptionTime || undefined,
         setting,
         encounterTypeSource: "user",
+        sameBuilding: sameBuilding.value,
+        sameBuildingSource: sameBuilding.source,
+        singleBuildingPatientCount: prepared.singleBuildingPatientCount ?? null,
         clinicalText: prepared.clinicalText,
         extractionProof: prepared.extractionProof
       });
+      lastCalculationContext = {
+        externalPatientId: prepared.externalPatientId,
+        serviceDate: prepared.serviceDate,
+        settingLabel: SETTING_LABELS[setting] || setting,
+        sameBuildingLabel: sameBuilding.label
+      };
       renderResult(result.sidecarDraft);
-      setStatus("算定案を作成しました。内容はすべて承認前です。");
+      setStatus("");
     } catch (error) {
       if (["preview_changed", "chart_changed_during_extraction"].includes(error.code)) {
         preview = null;
         elements["chart-preview"].hidden = true;
         elements["setting-control"].disabled = true;
+        elements["same-building-control"].disabled = true;
       }
       if ([401, 403].includes(error.status)) {
         setConnected(false);
@@ -151,9 +177,8 @@
   function setConnected(connected) {
     elements["connection-badge"].textContent = connected ? "接続済み" : "未接続";
     elements["connection-badge"].classList.toggle("connected", connected);
-    elements["connection-copy"].textContent = connected
-      ? "この端末は施設アカウントに接続されています。"
-      : "初回のみ、この端末を施設アカウントへ接続します。";
+    // 接続済みなら接続セクション自体を畳む(常時表示する価値のある情報ではない)。
+    elements["connection-section"].hidden = connected;
     elements["connect-button"].hidden = connected;
     elements["calculation-section"].hidden = !connected;
     if (connected) {
@@ -166,6 +191,8 @@
     elements["preview-date"].textContent = extraction.serviceDate;
     elements["preview-record"].textContent = extraction.sourceRecordDisplayId || extraction.sourceRecordId;
     elements["preview-text"].textContent = extraction.clinicalText;
+    elements["preview-details"].open = false;
+    selectExtractedSameBuilding(extraction);
     elements["chart-preview"].hidden = false;
   }
 
@@ -173,7 +200,12 @@
     const calculation = sidecarDraft.calculation || {};
     const candidates = Array.isArray(calculation.candidates) ? calculation.candidates : [];
     elements["total-points"].textContent = `${Number(calculation.estimatedTotalPoints || 0).toLocaleString("ja-JP")}点`;
-    elements["revision-copy"].textContent = `再計算番号 ${Number(sidecarDraft.sourceRevision || 1)}。同じカルテを再度実行すると内容を更新します。`;
+    elements["revision-copy"].textContent = [
+      lastCalculationContext
+        ? `患者${lastCalculationContext.externalPatientId} / ${lastCalculationContext.serviceDate} / ${lastCalculationContext.settingLabel} / ${lastCalculationContext.sameBuildingLabel}`
+        : "",
+      `再計算 ${Number(sidecarDraft.sourceRevision || 1)}回目`
+    ].filter(Boolean).join(" ・ ");
     renderCandidates(elements["line-candidates"], candidates.filter((item) => item.sourceType === "calculated_line"));
     renderCandidates(elements["proposal-candidates"], candidates.filter((item) => item.sourceType === "proposal"));
     const issues = [
@@ -199,14 +231,23 @@
         ? "点数未確定"
         : `${Number(candidate.estimatedTotalPoints || 0).toLocaleString("ja-JP")}点`;
       header.append(name, points);
-      const detail = document.createElement("small");
-      detail.textContent = [
-        candidate.code,
-        candidate.codeCandidates?.length ? `区分選択が必要（${candidate.codeCandidates.join(" / ")}）` : ""
-      ]
-        .filter(Boolean)
-        .join(" / ");
-      row.append(header, detail);
+      row.append(header);
+      if (candidate.requiresSelection && candidate.codeCandidates?.length) {
+        // コードの羅列はパネルを圧迫するため件数だけ見せ、必要なときに展開する。
+        const choices = document.createElement("details");
+        choices.className = "code-details";
+        const summary = document.createElement("summary");
+        summary.textContent = `${candidate.codeCandidates.length}件の区分から選択が必要`;
+        const list = document.createElement("small");
+        list.textContent = candidate.codeCandidates.join(" / ");
+        choices.append(summary, list);
+        row.append(choices);
+      } else if (candidate.code) {
+        const detail = document.createElement("small");
+        detail.className = "candidate-code";
+        detail.textContent = candidate.code;
+        row.append(detail);
+      }
       return row;
     }) : [createTextRow("candidate-row", "候補はありません。")];
     replaceChildren(container, rows);
@@ -242,6 +283,48 @@
     return document.querySelector('input[name="setting"]:checked')?.value || "";
   }
 
+  function selectedSameBuilding() {
+    const value = document.querySelector('input[name="same-building"]:checked')?.value || "unknown";
+    if (value === "same") {
+      return { value: true, source: sameBuildingSource || "user", label: "同一建物" };
+    }
+    if (value === "outside") {
+      return { value: false, source: sameBuildingSource || "user", label: "同一建物以外" };
+    }
+    return { value: null, source: null, label: "同一建物区分未確認" };
+  }
+
+  function selectExtractedSameBuilding(extraction = {}) {
+    const value = extraction.sameBuilding === true
+      ? "same"
+      : extraction.sameBuilding === false
+        ? "outside"
+        : "unknown";
+    const input = document.querySelector(`input[name="same-building"][value="${value}"]`);
+    if (input) {
+      input.checked = true;
+    }
+    sameBuildingSource = extraction.sameBuildingSource || null;
+    renderSameBuildingCopy(extraction, selectedSameBuilding());
+  }
+
+  function renderSameBuildingCopy(extraction = {}, selection = selectedSameBuilding()) {
+    const count = Number(extraction?.singleBuildingPatientCount || 0);
+    if (selection.source === "user") {
+      elements["same-building-copy"].textContent = `手動選択: ${selection.label}`;
+      return;
+    }
+    if (count > 0) {
+      elements["same-building-copy"].textContent = `画面の単一建物 ${count}名から「${selection.label}」と判定しました。`;
+      return;
+    }
+    if (extraction?.privateResidence === true) {
+      elements["same-building-copy"].textContent = "画面の個人宅表示から「同一建物以外」と判定しました。";
+      return;
+    }
+    elements["same-building-copy"].textContent = "画面から判定できません。未確認のままでは該当明細を合計に含めません。";
+  }
+
   function updateCalculateButton() {
     elements["calculate-button"].disabled = !preview || !selectedSetting();
   }
@@ -268,7 +351,7 @@
       return "カルテ画面と接続できません。拡張機能とカルテ画面を再読み込みしてください。";
     }
     if (error.code === "selector_contract_mismatch") {
-      return "画面の形式が想定と異なります（契約 homis-mock-v2）。";
+      return "画面の形式が想定と異なります（契約 homis-mock-v3）。";
     }
     if (["preview_changed", "chart_changed_during_extraction"].includes(error.code)) {
       return "カルテが切り替わりました。画面を再読み取りしてください。";

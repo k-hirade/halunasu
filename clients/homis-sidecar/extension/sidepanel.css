@@ -244,6 +244,15 @@ h3 {
   outline-offset: -2px;
 }
 
+.same-building-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.control-note {
+  margin-top: 7px;
+  font-size: 11px;
+}
+
 .total-points {
   font-size: 24px;
 }
@@ -298,4 +307,53 @@ details summary {
 
 .status-message.error {
   color: #a62323;
+}
+
+/* --- 2026-07-20 UI簡素化: 情報の集約と折りたたみ --- */
+
+.app-header .header-badge {
+  margin-left: auto;
+  color: #0d4d4d;
+}
+
+.chart-preview dl {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.button.compact {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.soap-details summary,
+.code-details summary {
+  color: #33566e;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.soap-details[open] summary {
+  margin-bottom: 6px;
+}
+
+.code-details {
+  margin-top: 4px;
+}
+
+.code-details small {
+  display: block;
+  margin-top: 4px;
+  color: #667488;
+  overflow-wrap: anywhere;
+}
+
+.candidate-code {
+  color: #8a97a8;
+  font-size: 11px;
+}
+
+.result-meta {
+  margin-top: -6px;
+  font-size: 12px;
 }

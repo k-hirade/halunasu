@@ -1,7 +1,7 @@
 (function registerSidecarContract(global) {
   "use strict";
 
-  const VERSION = "homis-mock-v2";
+  const VERSION = "homis-mock-v3";
   const REQUIRED_ELEMENT_COUNT = 5;
 
   function readIdentity(documentRef, options = {}) {
@@ -45,6 +45,7 @@
     const metaText = [...container.querySelectorAll(".karte-meta .kv")]
       .map(text)
       .join(" ");
+    const residence = readResidenceDetails(documentRef, container, metaText);
     return {
       externalPatientId: identity.patientId,
       sourceRecordId: identity.sourceRecordId,
@@ -52,10 +53,34 @@
       serviceDate,
       receptionTime: (dateLabel.match(/(\d{1,2}:\d{2})/) || [])[1] || "",
       clinicalText: soapNodes.map(text).join("\n"),
+      ...residence,
       selectorContractVersion: VERSION,
       requiredElementCount: REQUIRED_ELEMENT_COUNT,
       matchedRequiredElementCount,
       clinicalTextNodeCount: soapNodes.length
+    };
+  }
+
+  function readResidenceDetails(documentRef, container, metaText = "") {
+    const facilityResidence = Boolean(documentRef.querySelector(".patient-header .badge.facility"));
+    const privateResidence = Boolean(documentRef.querySelector(".patient-header .badge.home"));
+    const attributeValue = container?.getAttribute("data-single-building-patient-count") || "";
+    const visibleValue = (String(metaText || "").match(/単一建物[：:]\s*(\d+)/u) || [])[1] || "";
+    const parsedCount = Number.parseInt(attributeValue || visibleValue, 10);
+    const singleBuildingPatientCount = Number.isInteger(parsedCount) && parsedCount > 0
+      ? parsedCount
+      : null;
+    const sameBuilding = singleBuildingPatientCount !== null
+      ? singleBuildingPatientCount >= 2
+      : privateResidence
+        ? false
+        : null;
+    return {
+      facilityResidence,
+      privateResidence,
+      singleBuildingPatientCount,
+      sameBuilding,
+      sameBuildingSource: sameBuilding === null ? null : "dom"
     };
   }
 
@@ -83,6 +108,7 @@
     VERSION,
     REQUIRED_ELEMENT_COUNT,
     extractContractSnapshot,
+    readResidenceDetails,
     readIdentity
   });
 })(globalThis);

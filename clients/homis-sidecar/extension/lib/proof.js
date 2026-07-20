@@ -20,7 +20,13 @@
 
   async function previewFingerprint(extraction) {
     const clinicalTextHash = await textFingerprint(extraction.clinicalText);
-    return [extraction.externalPatientId, extraction.sourceRecordId, clinicalTextHash].join(":");
+    const determinantHash = await textFingerprint(JSON.stringify({
+      facilityResidence: extraction.facilityResidence === true,
+      privateResidence: extraction.privateResidence === true,
+      singleBuildingPatientCount: extraction.singleBuildingPatientCount ?? null,
+      sameBuilding: extraction.sameBuilding ?? null
+    }));
+    return [extraction.externalPatientId, extraction.sourceRecordId, clinicalTextHash, determinantHash].join(":");
   }
 
   function buildExtractionProof(extraction, input = {}) {

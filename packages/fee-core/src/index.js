@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import {
+  normalizeFeeEncounterDetails,
   validateReviewDecisionInput
 } from "../../fee-contracts/src/index.js";
 import { estimateReceiptYen } from "./receipt-utils.js";
@@ -46,6 +47,7 @@ export function buildFeeSession(input = {}, options = {}) {
     serviceDate,
     claimMonth: input.claimMonth || serviceDate.slice(0, 7),
     setting: input.setting || "outpatient",
+    encounterDetails: normalizeFeeEncounterDetails(input.encounterDetails ?? input.encounter_details) || null,
     receptionTime: input.receptionTime || input.reception_time || null,
     admissionDate: input.admissionDate || input.admission_date || null,
     inpatientBasicDays: input.inpatientBasicDays || input.inpatient_basic_days || null,
@@ -92,6 +94,9 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
       serviceDate: patch.serviceDate,
       claimMonth: patch.claimMonth || (patch.serviceDate ? String(patch.serviceDate).slice(0, 7) : undefined),
       setting: patch.setting,
+      encounterDetails: hasOwn(patch, "encounterDetails") || hasOwn(patch, "encounter_details")
+        ? normalizeFeeEncounterDetails(patch.encounterDetails ?? patch.encounter_details) || null
+        : undefined,
       receptionTime: hasOwn(patch, "receptionTime") || hasOwn(patch, "reception_time")
         ? patch.receptionTime || patch.reception_time || null
         : undefined,
@@ -139,6 +144,8 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
     "serviceDate",
     "claimMonth",
     "setting",
+    "encounterDetails",
+    "encounter_details",
     "receptionTime",
     "reception_time",
     "admissionDate",

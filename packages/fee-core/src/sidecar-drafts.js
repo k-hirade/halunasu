@@ -55,6 +55,7 @@ export function applySidecarDraftInput(current = {}, input = {}, options = {}) {
       serviceDate: input.serviceDate,
       claimMonth: String(input.serviceDate || "").slice(0, 7),
       setting: input.setting,
+      encounterDetails: input.encounterDetails,
       receptionTime: input.receptionTime,
       clinicalText: input.clinicalText,
       orders: input.orders,

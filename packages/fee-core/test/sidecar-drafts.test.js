@@ -20,6 +20,11 @@ function draftInput(overrides = {}) {
     idempotencyKeyHash: "a".repeat(64),
     sourceRevisionHash: "b".repeat(64),
     encounterTypeSource: "user",
+    encounterDetails: {
+      sameBuilding: false,
+      sameBuildingSource: "user",
+      singleBuildingPatientCount: 1
+    },
     extractionProof: { domMutationDetected: false },
     facilityId: "fac_001",
     serviceDate: "2026-07-18",
@@ -48,8 +53,36 @@ test("sidecar draft revisions the same immutable record instead of creating a fe
   assert.equal(revised.sidecarDraftId, current.sidecarDraftId);
   assert.equal(revised.sourceRecordId, current.sourceRecordId);
   assert.equal(revised.sourceRevision, 2);
+  assert.deepEqual(revised.encounterDetails, {
+    sameBuilding: false,
+    sameBuildingSource: "user",
+    singleBuildingPatientCount: 1
+  });
   assert.match(revised.clinicalText, /継続/);
   assert.throws(() => applySidecarDraftInput(current, draftInput({ sourceRecordId: "record-002" })), /identity mismatch/);
+});
+
+test("sidecar draft persists a same-building override as calculation input", () => {
+  const current = buildSidecarCalculationDraft(draftInput(), {
+    now: new Date("2026-07-18T00:00:00.000Z")
+  });
+  const revised = applySidecarDraftInput(current, draftInput({
+    sourceRevisionHash: "d".repeat(64),
+    encounterDetails: {
+      sameBuilding: true,
+      sameBuildingSource: "user",
+      singleBuildingPatientCount: 4
+    }
+  }), {
+    now: new Date("2026-07-18T00:01:00.000Z")
+  });
+
+  assert.equal(revised.sourceRevision, 2);
+  assert.deepEqual(revised.encounterDetails, {
+    sameBuilding: true,
+    sameBuildingSource: "user",
+    singleBuildingPatientCount: 4
+  });
 });
 
 test("sidecar calculation cannot persist confirmed lines and cannot recalculate after adoption", () => {

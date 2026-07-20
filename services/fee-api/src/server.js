@@ -207,6 +207,11 @@ async function routeFeeApiRequest(input = {}) {
     const department = await resolveDepartment(context, platformStore, normalized.departmentId);
     const identity = sidecarSourceIdentity(context.session.orgId, normalized);
     const sourceRevisionHash = sidecarSourceRevisionHash(normalized);
+    const encounterDetails = {
+      sameBuilding: normalized.sameBuilding,
+      sameBuildingSource: normalized.sameBuildingSource,
+      singleBuildingPatientCount: normalized.singleBuildingPatientCount
+    };
     const now = input.now instanceof Date ? input.now : new Date(input.now || Date.now());
     const upserted = await feeStore.upsertSidecarCalculationDraft({
       ...normalized,
@@ -216,6 +221,7 @@ async function routeFeeApiRequest(input = {}) {
       externalSourceSystem: normalized.sourceSystem,
       idempotencyKeyHash: identity.idempotencyKeyHash,
       sourceRevisionHash,
+      encounterDetails,
       facilitySnapshot: facilitySnapshot(facility, now),
       departmentSnapshot: department ? departmentSnapshot(department, now) : null,
       patientSnapshot: {
@@ -342,6 +348,7 @@ async function routeFeeApiRequest(input = {}) {
       serviceDate: sidecarDraft.serviceDate,
       claimMonth: sidecarDraft.claimMonth,
       setting: sidecarDraft.setting,
+      encounterDetails: sidecarDraft.encounterDetails,
       receptionTime: sidecarDraft.receptionTime,
       clinicalText: sidecarDraft.clinicalText,
       orders: sidecarDraft.orders,
@@ -1480,6 +1487,9 @@ function sidecarSourceRevisionHash(input = {}) {
     receptionTime: input.receptionTime || null,
     setting: input.setting,
     encounterTypeSource: input.encounterTypeSource,
+    sameBuilding: input.sameBuilding ?? null,
+    sameBuildingSource: input.sameBuildingSource || null,
+    singleBuildingPatientCount: input.singleBuildingPatientCount ?? null,
     clinicalText: input.clinicalText,
     orders: input.orders || [],
     diagnoses: input.diagnoses || []
@@ -1574,6 +1584,7 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
       serviceDate: sidecarDraft.serviceDate || null,
       setting: sidecarDraft.setting || null,
       encounterTypeSource: sidecarDraft.encounterTypeSource || null,
+      encounterDetails: sidecarDraft.encounterDetails || null,
       sourceRecordDisplayId: sidecarDraft.sourceRecordDisplayId || null,
       sourceRevision: Number(sidecarDraft.sourceRevision || 1),
       calculation: {
@@ -1624,6 +1635,7 @@ function sidecarDraftListItemView(sidecarDraft = {}) {
     serviceDate: sidecarDraft.serviceDate || null,
     setting: sidecarDraft.setting || null,
     encounterTypeSource: sidecarDraft.encounterTypeSource || null,
+    encounterDetails: sidecarDraft.encounterDetails || null,
     sourceRecordDisplayId: sidecarDraft.sourceRecordDisplayId || null,
     calculation: {
       status: calculation.status,
@@ -1645,6 +1657,7 @@ function sidecarDraftDetailView(sidecarDraft = {}) {
     setting: sidecarDraft.setting || null,
     receptionTime: sidecarDraft.receptionTime || null,
     encounterTypeSource: sidecarDraft.encounterTypeSource || null,
+    encounterDetails: sidecarDraft.encounterDetails || null,
     clinicalText: sidecarDraft.clinicalText || "",
     orders: Array.isArray(sidecarDraft.orders) ? sidecarDraft.orders : [],
     diagnoses: Array.isArray(sidecarDraft.diagnoses) ? sidecarDraft.diagnoses : [],
@@ -4655,7 +4668,8 @@ async function calculatePreparedFeeSessionNow({
         feeSessionId: result.feeSession.feeSessionId,
         calculationId: result.calculationResult.calculationId,
         provider: result.calculationResult.provider,
-        totalPoints: result.calculationResult.totalPoints
+        totalPoints: result.calculationResult.totalPoints,
+        encounterDetails: calculationSession.encounterDetails || null
       }
     })
   });
@@ -7087,6 +7101,7 @@ function applyAutoBillingRulesToPreparation(prepared = {}, {
   const setting = String(session.setting || "outpatient");
   const keys = new Set((facilityStandardKeys || []).map((key) => String(key || "")).filter(Boolean));
   const applied = [];
+  const unresolvedVariants = [];
   const confirmCodes = [];
   const confirmWarnings = [];
   const candidateProposals = [];
@@ -7100,30 +7115,60 @@ function applyAutoBillingRulesToPreparation(prepared = {}, {
     if (rule.requiredFacilityStandardKey && !keys.has(rule.requiredFacilityStandardKey)) {
       continue;
     }
-    applied.push({ ruleId: rule.ruleId, code: rule.code, action: rule.action });
+    const hasSameBuildingVariant = Boolean(String(rule.sameBuildingCode || "").trim());
+    const sameBuilding = typeof session.encounterDetails?.sameBuilding === "boolean"
+      ? session.encounterDetails.sameBuilding
+      : null;
+    if (hasSameBuildingVariant && sameBuilding === null) {
+      unresolvedVariants.push({
+        ruleId: rule.ruleId,
+        outsideCode: String(rule.code),
+        sameBuildingCode: String(rule.sameBuildingCode),
+        action: rule.action
+      });
+      continue;
+    }
+    const selectedCode = hasSameBuildingVariant && sameBuilding === true
+      ? String(rule.sameBuildingCode)
+      : String(rule.code);
+    const selectedTitle = hasSameBuildingVariant && sameBuilding === true
+      ? String(rule.sameBuildingTitle || rule.title || selectedCode)
+      : String(rule.title || selectedCode);
+    applied.push({
+      ruleId: rule.ruleId,
+      code: selectedCode,
+      action: rule.action,
+      sameBuilding,
+      variant: hasSameBuildingVariant ? (sameBuilding ? "same_building" : "outside_same_building") : "default"
+    });
     if (rule.action === "confirm") {
-      confirmCodes.push(String(rule.code));
+      confirmCodes.push(selectedCode);
       confirmWarnings.push(
-        `施設恒常算定ルール: ${rule.title || rule.code}(${rule.code})を施設設定に基づき算定へ自動追加しました。今回の受診での実施事実と算定要件を確認してください。`
+        `施設恒常算定ルール: ${selectedTitle}(${selectedCode})を施設設定に基づき算定へ自動追加しました。今回の受診での実施事実と算定要件を確認してください。`
       );
     } else {
       candidateProposals.push({
-        proposalId: `facility_rule_${rule.ruleId}_${rule.code}`,
+        proposalId: `facility_rule_${rule.ruleId}_${selectedCode}`,
         ruleId: `facility_rule_${rule.ruleId}`,
-        title: rule.title ? `${rule.title}の算定確認` : `施設ルール候補 ${rule.code}`,
+        title: selectedTitle ? `${selectedTitle}の算定確認` : `施設ルール候補 ${selectedCode}`,
         reason: rule.note || "施設の恒常算定ルールにより候補提示しています。実施事実と算定要件を確認してください。",
         conditionText: "施設設定に基づく候補です。今回の受診で要件を満たす場合に採用してください。",
         basis: "facility_auto_billing_rule",
-        code: String(rule.code),
+        code: selectedCode,
         potentialPoints: Number(rule.potentialPoints || 0),
         orderType: "procedure",
         source: "facility_auto_billing_rule"
       });
     }
   }
-  if (!applied.length) {
+  if (!applied.length && !unresolvedVariants.length) {
     return prepared;
   }
+  const unresolvedWarnings = unresolvedVariants.length
+    ? [
+      "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+    ]
+    : [];
   const currentOptions = isPlainObject(prepared.calculationOptions) ? prepared.calculationOptions : {};
   const calculationOptions = confirmCodes.length
     ? {
@@ -7148,16 +7193,48 @@ function applyAutoBillingRulesToPreparation(prepared = {}, {
     // confirmで自動追加した明細は、確認画面で出所が分かるよう警告として明示する。
     reviewWarnings: [
       ...(Array.isArray(prepared.reviewWarnings) ? prepared.reviewWarnings : []),
-      ...confirmWarnings
+      ...confirmWarnings,
+      ...unresolvedWarnings
     ],
+    clinicalExtraction: appendClinicalExtractionTrace(
+      prepared.clinicalExtraction,
+      autoBillingRuleTraceEvents(applied, unresolvedVariants, session.encounterDetails)
+    ),
     metrics: {
       ...(prepared.metrics || {}),
       autoBillingRules: {
         appliedCount: applied.length,
-        applied
+        applied,
+        unresolvedVariantCount: unresolvedVariants.length,
+        unresolvedVariants,
+        encounterDetails: session.encounterDetails || null
       }
     }
   };
+}
+
+function autoBillingRuleTraceEvents(applied = [], unresolvedVariants = [], encounterDetails = null) {
+  return [
+    ...applied.map((entry) => ({
+      traceId: `trace_auto_billing_rule_${entry.ruleId}_${entry.code}`,
+      stage: "facility_auto_billing_rule",
+      outcome: "applied",
+      ruleId: entry.ruleId,
+      selectedCode: entry.code,
+      action: entry.action,
+      variant: entry.variant,
+      encounterDetails: encounterDetails || null
+    })),
+    ...unresolvedVariants.map((entry) => ({
+      traceId: `trace_auto_billing_rule_${entry.ruleId}_same_building_unresolved`,
+      stage: "facility_auto_billing_rule",
+      outcome: "needs_review",
+      ruleId: entry.ruleId,
+      candidateCodes: [entry.outsideCode, entry.sameBuildingCode],
+      reason: "same_building_unknown",
+      encounterDetails: encounterDetails || null
+    }))
+  ];
 }
 
 function applyFacilityProfileToPreparation(prepared = {}, facilityProfile = {}, context = {}) {
@@ -7391,6 +7468,7 @@ function buildFeeCalculationInputSnapshot({
     serviceDate: session.serviceDate || "",
     claimMonth: session.claimMonth || "",
     setting: session.setting || "outpatient",
+    encounterDetails: session.encounterDetails || null,
     admissionDate: session.admissionDate || null,
     inpatientBasicDays: session.inpatientBasicDays || null,
     clinicalText,

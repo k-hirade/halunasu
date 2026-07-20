@@ -63,6 +63,11 @@
       serviceDate: extraction.serviceDate,
       receptionTime: extraction.receptionTime,
       clinicalText: extraction.clinicalText,
+      facilityResidence: extraction.facilityResidence,
+      privateResidence: extraction.privateResidence,
+      singleBuildingPatientCount: extraction.singleBuildingPatientCount,
+      sameBuilding: extraction.sameBuilding,
+      sameBuildingSource: extraction.sameBuildingSource,
       previewFingerprint: extraction.previewFingerprint,
       extractionProof: proof.buildExtractionProof(extraction, {
         identityBefore: extraction.identityBefore,

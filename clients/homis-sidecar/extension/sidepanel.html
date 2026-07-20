@@ -10,12 +10,12 @@
   <header class="app-header">
     <strong>ハルナス</strong>
     <span>HOMIS算定サイドカー</span>
+    <span class="status-badge header-badge" id="connection-badge">未接続</span>
   </header>
   <main>
-    <section class="panel-section" aria-labelledby="connection-heading">
+    <section class="panel-section" id="connection-section" aria-labelledby="connection-heading">
       <div class="section-heading">
         <h1 id="connection-heading">接続</h1>
-        <span class="status-badge" id="connection-badge">未接続</span>
       </div>
       <p class="muted" id="connection-copy">初回のみ、この端末を施設アカウントへ接続します。</p>
       <button class="button primary" id="connect-button" type="button">接続を開始</button>
@@ -30,15 +30,18 @@
     <section class="panel-section" id="calculation-section" aria-labelledby="calculation-heading" hidden>
       <div class="section-heading">
         <h2 id="calculation-heading">表示中のカルテ</h2>
+        <button class="button secondary compact" id="extract-button" type="button">画面から読み取る</button>
       </div>
-      <button class="button secondary" id="extract-button" type="button">画面から読み取る</button>
       <div class="chart-preview" id="chart-preview" hidden>
         <dl>
           <div><dt>患者ID</dt><dd id="preview-patient"></dd></div>
           <div><dt>診療日</dt><dd id="preview-date"></dd></div>
           <div><dt>カルテID</dt><dd id="preview-record"></dd></div>
         </dl>
-        <pre id="preview-text"></pre>
+        <details class="soap-details" id="preview-details">
+          <summary>カルテ本文を確認</summary>
+          <pre id="preview-text"></pre>
+        </details>
       </div>
       <fieldset class="setting-control" id="setting-control" disabled>
         <legend>受診区分</legend>
@@ -47,6 +50,15 @@
           <label><input name="setting" type="radio" value="house_call"><span>往診</span></label>
           <label><input name="setting" type="radio" value="outpatient"><span>外来</span></label>
         </div>
+      </fieldset>
+      <fieldset class="setting-control" id="same-building-control" disabled>
+        <legend>同一建物区分</legend>
+        <div class="segmented-control same-building-options">
+          <label><input name="same-building" type="radio" value="unknown"><span>未確認</span></label>
+          <label><input name="same-building" type="radio" value="same"><span>同一建物</span></label>
+          <label><input name="same-building" type="radio" value="outside"><span>同一建物以外</span></label>
+        </div>
+        <p class="muted control-note" id="same-building-copy"></p>
       </fieldset>
       <button class="button primary" id="calculate-button" type="button" disabled>算定案を作成</button>
     </section>
@@ -57,7 +69,7 @@
         <span class="candidate-badge">承認前</span>
       </div>
       <strong class="total-points" id="total-points"></strong>
-      <p class="muted" id="revision-copy"></p>
+      <p class="muted result-meta" id="revision-copy"></p>
       <div class="result-group">
         <h3>明細からの候補</h3>
         <div class="candidate-list" id="line-candidates"></div>
