@@ -1,0 +1,713 @@
+{
+  "schemaVersion": "fee-longitudinal-l7-summary.v2",
+  "generatedAt": "2026-07-22T11:46:33.887Z",
+  "runId": "20260722-longitudinal-l7-rerun-20260722_202259",
+  "readiness": {
+    "before": {
+      "status": "ok",
+      "revision": "fee-api-stg-00169-6qx",
+      "extractionMemoEnabled": true,
+      "emptyExtractionRetryEnabled": true
+    },
+    "after": {
+      "status": "ok",
+      "revision": "fee-api-stg-00169-6qx",
+      "extractionMemoEnabled": true,
+      "emptyExtractionRetryEnabled": true
+    },
+    "sameRevision": true
+  },
+  "evaluation": {
+    "organizationCode": "fee-longitudinal-e2e-stg",
+    "facilityRef": "df0241fe794d",
+    "departmentRef": "9451b40eaad2",
+    "encounterSettingModeCounts": {
+      "derived": 5
+    },
+    "inputVisitSettingCounts": {
+      "home_visit": 19,
+      "outpatient": 1
+    },
+    "seedKnownPriorHistory": true,
+    "repeatCount": 3,
+    "visitCountPerRepeat": 4,
+    "patientCount": 5,
+    "calculateCount": 60
+  },
+  "patients": [
+    {
+      "patientId": "1002",
+      "inputAudit": {
+        "claimMonth": "2026-06",
+        "visits": [
+          {
+            "serviceDate": "2026-06-02",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 4
+          },
+          {
+            "serviceDate": "2026-06-09",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 4
+          },
+          {
+            "serviceDate": "2026-06-16",
+            "visitType": "電話",
+            "setting": "outpatient",
+            "sameBuilding": null,
+            "singleBuildingPatientCount": null
+          },
+          {
+            "serviceDate": "2026-06-23",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 4
+          }
+        ]
+      },
+      "uke": {
+        "codeCount": 10,
+        "totalPoints": 11313
+      },
+      "monthlyConfirmedPoints": [
+        781,
+        829,
+        781
+      ],
+      "monthlyCandidatePoints": [
+        654,
+        654,
+        352
+      ],
+      "exactMatchedCodes": [
+        3,
+        3,
+        3
+      ],
+      "detectedCodes": [
+        4,
+        4,
+        4
+      ],
+      "sessionCandidateSetStable": false,
+      "monthlyConfirmedPointsStable": false,
+      "monthlyCandidatePointsStable": false,
+      "reviewIssueCounts": [
+        26,
+        24,
+        27
+      ],
+      "reviewIssuesStable": false,
+      "extraction": {
+        "eventCounts": [
+          [
+            4,
+            5,
+            3,
+            5
+          ],
+          [
+            3,
+            3,
+            6,
+            3
+          ],
+          [
+            4,
+            4,
+            3,
+            5
+          ]
+        ],
+        "maxSpread": 3,
+        "stableVisitCount": 0,
+        "modeCounts": {
+          "full": 12
+        }
+      },
+      "emptyExtractionGuard": {
+        "triggeredVisitCount": 0,
+        "recoveredVisitCount": 0,
+        "unrecoveredVisitCount": 0
+      },
+      "longitudinalContext": {
+        "memoEnabledVisitCount": 12,
+        "memoUsedVisitCount": 0,
+        "memoHitLineRatio": {
+          "count": 12,
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "max": 0
+        },
+        "historyCompletenessCounts": {
+          "partial": 12
+        },
+        "historyUnavailableCount": 0
+      },
+      "openAi": {
+        "callCount": 12,
+        "inputTokens": 70107,
+        "cachedInputTokens": 60416,
+        "outputTokens": 16907
+      },
+      "calculateRequestMs": {
+        "count": 12,
+        "min": 8988.63,
+        "median": 11751.72,
+        "mean": 11570.87,
+        "max": 14362.96
+      }
+    },
+    {
+      "patientId": "1004",
+      "inputAudit": {
+        "claimMonth": "2026-06",
+        "visits": [
+          {
+            "serviceDate": "2026-06-04",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 6
+          },
+          {
+            "serviceDate": "2026-06-11",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 6
+          },
+          {
+            "serviceDate": "2026-06-18",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 6
+          },
+          {
+            "serviceDate": "2026-06-25",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 6
+          }
+        ]
+      },
+      "uke": {
+        "codeCount": 6,
+        "totalPoints": 3486
+      },
+      "monthlyConfirmedPoints": [
+        936,
+        936,
+        936
+      ],
+      "monthlyCandidatePoints": [
+        62,
+        62,
+        62
+      ],
+      "exactMatchedCodes": [
+        2,
+        2,
+        2
+      ],
+      "detectedCodes": [
+        3,
+        3,
+        3
+      ],
+      "sessionCandidateSetStable": true,
+      "monthlyConfirmedPointsStable": true,
+      "monthlyCandidatePointsStable": true,
+      "reviewIssueCounts": [
+        29,
+        27,
+        23
+      ],
+      "reviewIssuesStable": false,
+      "extraction": {
+        "eventCounts": [
+          [
+            5,
+            5,
+            4,
+            5
+          ],
+          [
+            3,
+            3,
+            4,
+            0
+          ],
+          [
+            3,
+            3,
+            1,
+            4
+          ]
+        ],
+        "maxSpread": 5,
+        "stableVisitCount": 0,
+        "modeCounts": {
+          "full": 12
+        }
+      },
+      "emptyExtractionGuard": {
+        "triggeredVisitCount": 0,
+        "recoveredVisitCount": 0,
+        "unrecoveredVisitCount": 0
+      },
+      "longitudinalContext": {
+        "memoEnabledVisitCount": 12,
+        "memoUsedVisitCount": 0,
+        "memoHitLineRatio": {
+          "count": 12,
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "max": 0
+        },
+        "historyCompletenessCounts": {
+          "partial": 12
+        },
+        "historyUnavailableCount": 0
+      },
+      "openAi": {
+        "callCount": 12,
+        "inputTokens": 69927,
+        "cachedInputTokens": 54272,
+        "outputTokens": 15261
+      },
+      "calculateRequestMs": {
+        "count": 12,
+        "min": 4011.23,
+        "median": 11639.29,
+        "mean": 11078.73,
+        "max": 15004.18
+      }
+    },
+    {
+      "patientId": "1006",
+      "inputAudit": {
+        "claimMonth": "2026-06",
+        "visits": [
+          {
+            "serviceDate": "2026-06-03",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": false,
+            "singleBuildingPatientCount": null
+          },
+          {
+            "serviceDate": "2026-06-10",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": false,
+            "singleBuildingPatientCount": null
+          },
+          {
+            "serviceDate": "2026-06-17",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": false,
+            "singleBuildingPatientCount": null
+          },
+          {
+            "serviceDate": "2026-06-24",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": false,
+            "singleBuildingPatientCount": null
+          }
+        ]
+      },
+      "uke": {
+        "codeCount": 6,
+        "totalPoints": 4326
+      },
+      "monthlyConfirmedPoints": [
+        3876,
+        3876,
+        3876
+      ],
+      "monthlyCandidatePoints": [
+        250,
+        250,
+        250
+      ],
+      "exactMatchedCodes": [
+        2,
+        2,
+        2
+      ],
+      "detectedCodes": [
+        4,
+        4,
+        4
+      ],
+      "sessionCandidateSetStable": true,
+      "monthlyConfirmedPointsStable": true,
+      "monthlyCandidatePointsStable": true,
+      "reviewIssueCounts": [
+        38,
+        47,
+        36
+      ],
+      "reviewIssuesStable": false,
+      "extraction": {
+        "eventCounts": [
+          [
+            4,
+            3,
+            5,
+            5
+          ],
+          [
+            5,
+            4,
+            5,
+            6
+          ],
+          [
+            5,
+            4,
+            4,
+            5
+          ]
+        ],
+        "maxSpread": 1,
+        "stableVisitCount": 0,
+        "modeCounts": {
+          "full": 12
+        }
+      },
+      "emptyExtractionGuard": {
+        "triggeredVisitCount": 0,
+        "recoveredVisitCount": 0,
+        "unrecoveredVisitCount": 0
+      },
+      "longitudinalContext": {
+        "memoEnabledVisitCount": 12,
+        "memoUsedVisitCount": 0,
+        "memoHitLineRatio": {
+          "count": 12,
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "max": 0
+        },
+        "historyCompletenessCounts": {
+          "partial": 12
+        },
+        "historyUnavailableCount": 0
+      },
+      "openAi": {
+        "callCount": 12,
+        "inputTokens": 70794,
+        "cachedInputTokens": 54272,
+        "outputTokens": 18506
+      },
+      "calculateRequestMs": {
+        "count": 12,
+        "min": 10560.8,
+        "median": 12584.6,
+        "mean": 13460.94,
+        "max": 18221.95
+      }
+    },
+    {
+      "patientId": "1010",
+      "inputAudit": {
+        "claimMonth": "2026-06",
+        "visits": [
+          {
+            "serviceDate": "2026-06-07",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 5
+          },
+          {
+            "serviceDate": "2026-06-14",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 5
+          },
+          {
+            "serviceDate": "2026-06-21",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 5
+          },
+          {
+            "serviceDate": "2026-06-28",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 5
+          }
+        ]
+      },
+      "uke": {
+        "codeCount": 3,
+        "totalPoints": 986
+      },
+      "monthlyConfirmedPoints": [
+        936,
+        936,
+        936
+      ],
+      "monthlyCandidatePoints": [
+        50,
+        50,
+        50
+      ],
+      "exactMatchedCodes": [
+        2,
+        2,
+        2
+      ],
+      "detectedCodes": [
+        3,
+        3,
+        3
+      ],
+      "sessionCandidateSetStable": true,
+      "monthlyConfirmedPointsStable": true,
+      "monthlyCandidatePointsStable": true,
+      "reviewIssueCounts": [
+        32,
+        40,
+        40
+      ],
+      "reviewIssuesStable": false,
+      "extraction": {
+        "eventCounts": [
+          [
+            0,
+            9,
+            7,
+            4
+          ],
+          [
+            3,
+            6,
+            4,
+            5
+          ],
+          [
+            14,
+            7,
+            4,
+            5
+          ]
+        ],
+        "maxSpread": 14,
+        "stableVisitCount": 0,
+        "modeCounts": {
+          "full": 12
+        }
+      },
+      "emptyExtractionGuard": {
+        "triggeredVisitCount": 0,
+        "recoveredVisitCount": 0,
+        "unrecoveredVisitCount": 0
+      },
+      "longitudinalContext": {
+        "memoEnabledVisitCount": 12,
+        "memoUsedVisitCount": 0,
+        "memoHitLineRatio": {
+          "count": 12,
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "max": 0
+        },
+        "historyCompletenessCounts": {
+          "partial": 12
+        },
+        "historyUnavailableCount": 0
+      },
+      "openAi": {
+        "callCount": 12,
+        "inputTokens": 71127,
+        "cachedInputTokens": 55296,
+        "outputTokens": 20426
+      },
+      "calculateRequestMs": {
+        "count": 12,
+        "min": 5654.2,
+        "median": 13463.05,
+        "mean": 13928.32,
+        "max": 25567.85
+      }
+    },
+    {
+      "patientId": "1011",
+      "inputAudit": {
+        "claimMonth": "2026-06",
+        "visits": [
+          {
+            "serviceDate": "2026-06-06",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 6
+          },
+          {
+            "serviceDate": "2026-06-13",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 6
+          },
+          {
+            "serviceDate": "2026-06-20",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 6
+          },
+          {
+            "serviceDate": "2026-06-27",
+            "visitType": "定期",
+            "setting": "home_visit",
+            "sameBuilding": true,
+            "singleBuildingPatientCount": 6
+          }
+        ]
+      },
+      "uke": {
+        "codeCount": 5,
+        "totalPoints": 1386
+      },
+      "monthlyConfirmedPoints": [
+        936,
+        936,
+        936
+      ],
+      "monthlyCandidatePoints": [
+        50,
+        50,
+        50
+      ],
+      "exactMatchedCodes": [
+        2,
+        2,
+        2
+      ],
+      "detectedCodes": [
+        3,
+        3,
+        3
+      ],
+      "sessionCandidateSetStable": true,
+      "monthlyConfirmedPointsStable": true,
+      "monthlyCandidatePointsStable": true,
+      "reviewIssueCounts": [
+        36,
+        33,
+        27
+      ],
+      "reviewIssuesStable": false,
+      "extraction": {
+        "eventCounts": [
+          [
+            4,
+            7,
+            5,
+            0
+          ],
+          [
+            4,
+            5,
+            4,
+            4
+          ],
+          [
+            4,
+            2,
+            3,
+            3
+          ]
+        ],
+        "maxSpread": 5,
+        "stableVisitCount": 1,
+        "modeCounts": {
+          "full": 12
+        }
+      },
+      "emptyExtractionGuard": {
+        "triggeredVisitCount": 0,
+        "recoveredVisitCount": 0,
+        "unrecoveredVisitCount": 0
+      },
+      "longitudinalContext": {
+        "memoEnabledVisitCount": 12,
+        "memoUsedVisitCount": 0,
+        "memoHitLineRatio": {
+          "count": 12,
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "max": 0
+        },
+        "historyCompletenessCounts": {
+          "partial": 12
+        },
+        "historyUnavailableCount": 0
+      },
+      "openAi": {
+        "callCount": 12,
+        "inputTokens": 69465,
+        "cachedInputTokens": 55296,
+        "outputTokens": 15908
+      },
+      "calculateRequestMs": {
+        "count": 12,
+        "min": 4716.98,
+        "median": 11328.01,
+        "mean": 11070.49,
+        "max": 14694.51
+      }
+    }
+  ],
+  "aggregate": {
+    "memoEnabledVisitCount": 60,
+    "memoUsedVisitCount": 0,
+    "historyUnavailableCount": 0,
+    "stableMonthlyConfirmedPatientCount": 4,
+    "stableMonthlyCandidatePatientCount": 4,
+    "stableReviewIssuePatientCount": 0,
+    "extractionModeCounts": {
+      "full": 60
+    },
+    "emptyExtractionGuard": {
+      "triggeredVisitCount": 0,
+      "recoveredVisitCount": 0,
+      "unrecoveredVisitCount": 0
+    },
+    "openAiCallCount": 60,
+    "openAiInputTokens": 351420,
+    "cachedInputTokens": 279552,
+    "cacheHitRatio": 0.7954925729895851,
+    "openAiOutputTokens": 87008,
+    "calculateRequestMs": {
+      "count": 60,
+      "min": 4011.23,
+      "median": 11960.15,
+      "mean": 12221.87,
+      "max": 25567.85
+    },
+    "observedVisitCount": 60
+  }
+}

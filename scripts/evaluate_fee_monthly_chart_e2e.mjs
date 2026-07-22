@@ -4,6 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import {
+  deriveMonthlyChartEncounterPlans,
+  encounterPlanAuditRows,
+  sanitizeEmptyExtractionGuard,
+  summarizeExtractionObservability
+} from "./lib/fee-monthly-chart-evaluation.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const defaults = {
@@ -72,6 +78,16 @@ const charts = fs.readFileSync(path.join(patientDir, "charts.jsonl"), "utf8")
 if (!charts.length) {
   throw new Error(`charts.jsonl did not contain ${externalPatientId} / ${claimMonth}`);
 }
+const encounterPlans = deriveMonthlyChartEncounterPlans({
+  charts,
+  patient,
+  encounterSettingOverride: args.encounterSetting
+});
+if (args.encounterSetting) {
+  process.stderr.write(
+    `WARNING: --encounter-setting=${args.encounterSetting} overrides visit_type/status for all ${charts.length} charts.\n`
+  );
+}
 
 const ukePath = path.join(patientDir, manifest.files?.baselineReceipt || "RECEIPTC.UKE");
 const baselineClaims = parseUke(ukePath, claimMonth);
@@ -89,7 +105,8 @@ const inputAudit = {
   baselineOccurrenceCount: aggregateLines(baselineClaim.lines).reduce((sum, line) => sum + line.count, 0),
   baselineTotalPoints: baselineTotalPoints(baselineClaim),
   prohibitedCalculationInputs: ["orders.csv", "receipt/UKE codes", "expectedClaimContext"],
-  calculationPayloadKeys: []
+  calculationPayloadKeys: [],
+  visits: encounterPlanAuditRows(encounterPlans)
 };
 
 if (args.dryRun) {
@@ -153,11 +170,11 @@ for (let repeatIndex = 1; repeatIndex <= args.repeat; repeatIndex += 1) {
     patient,
     externalPatientId,
     charts,
+    encounterPlans,
     claimMonth,
     baselineClaim,
     context,
     seedKnownPriorHistory: args.seedKnownPriorHistory,
-    encounterSetting: args.encounterSetting,
     approveCalculatedLines: args.approveCalculatedLines
   });
   repeats.push(repetition);
@@ -197,7 +214,8 @@ const result = {
   evaluationOptions: {
     repeat: args.repeat,
     seedKnownPriorHistory: args.seedKnownPriorHistory,
-    encounterSetting: args.encounterSetting,
+    encounterSettingMode: args.encounterSetting ? "override" : "derived",
+    encounterSettingOverride: args.encounterSetting || null,
     approveCalculatedLines: args.approveCalculatedLines
   },
   summary: summarizeRepeats(repeats),
@@ -216,13 +234,16 @@ async function runRepetition({
   patient,
   externalPatientId,
   charts,
+  encounterPlans,
   claimMonth,
   baselineClaim,
   context,
   seedKnownPriorHistory,
-  encounterSetting = "outpatient",
   approveCalculatedLines = false
 }) {
+  if (!Array.isArray(encounterPlans) || encounterPlans.length !== charts.length) {
+    throw new Error("encounter plan count must match chart count");
+  }
   const requestTimings = [];
   const sessions = [];
   let internalPatientId = "";
@@ -271,6 +292,7 @@ async function runRepetition({
 
   for (let chartIndex = 0; chartIndex < charts.length; chartIndex += 1) {
     const chart = charts[chartIndex];
+    const encounterPlan = encounterPlans[chartIndex];
     const createPayload = compactObject({
       ...(internalPatientId ? { patientId: internalPatientId } : { patient: patientInput }),
       patientRef: `mock-homis-${externalPatientId}`,
@@ -278,7 +300,8 @@ async function runRepetition({
       departmentId: context.departmentId,
       serviceDate: String(chart.service_date || ""),
       claimMonth,
-      setting: encounterSetting,
+      setting: encounterPlan.setting,
+      encounterDetails: encounterPlan.encounterDetails,
       clinicalText: String(chart.clinical_text || ""),
       sourceSystem: `fee_monthly_chart_e2e:${runId}:r${repeatIndex}`
     });
@@ -557,6 +580,7 @@ function sanitizeCalculationMetrics(metrics) {
   const extractionMemo = metrics.extractionMemo || performance.extractionMemo || {};
   const patientHistory = metrics.patientHistory || performance.patientHistory || {};
   const openAiUsage = sanitizeOpenAiUsage(clinical.usage || performance.openAiUsage);
+  const emptyExtractionGuard = sanitizeEmptyExtractionGuard(clinical.emptyExtractionGuard);
   return {
     stageTimings: (metrics.stageTimings || []).map((item) => ({
       stage: item.stage || item.name || "",
@@ -574,6 +598,8 @@ function sanitizeCalculationMetrics(metrics) {
     diseaseIndicationCandidateCount: Number(diseaseIndication.candidateCount || 0),
     diseaseIndicationUnresolvedCount: Number(diseaseIndication.unresolvedCount || 0),
     diseaseIndicationFailed: diseaseIndication.failed === true || undefined,
+    extractionMode: String(clinical.extractionMode || "").trim() || null,
+    emptyExtractionGuard,
     extractionMemo: {
       enabled: extractionMemo.enabled === true,
       used: extractionMemo.used === true,
@@ -720,6 +746,7 @@ function summarizeRepeats(repeats) {
   }, {});
   const memoHitRatios = visits.map((visit) => visit.calculationMetrics.extractionMemo?.memoHitLineRatio || 0);
   const openAiUsage = visits.map((visit) => visit.calculationMetrics.openAiUsage).filter(Boolean);
+  const extractionObservability = summarizeExtractionObservability(visits);
   return {
     repeatCount: repeats.length,
     visitCountPerRepeat: repeats[0]?.visits.length || 0,
@@ -732,6 +759,8 @@ function summarizeRepeats(repeats) {
     // 抽出安定性: 同一カルテの反復間でイベント数がどれだけ揺れたか(受診ごとの min/max/spread)。
     // spread が大きい受診は抽出揺れが確定点数へ波及するリスクの監視対象。
     extractionStability: summarizeExtractionStability(repeats),
+    extractionModeCounts: extractionObservability.extractionModeCounts,
+    emptyExtractionGuard: extractionObservability.emptyExtractionGuard,
     longitudinalContext: {
       memoEnabledVisitCount: visits.filter((visit) => visit.calculationMetrics.extractionMemo?.enabled).length,
       memoUsedVisitCount: visits.filter((visit) => visit.calculationMetrics.extractionMemo?.used).length,
@@ -1005,7 +1034,7 @@ function parseArgs(argv) {
     mfaCode: process.env.FEE_E2E_MFA_CODE || "",
     seedKnownPriorHistory: false,
     approveCalculatedLines: false,
-    encounterSetting: "outpatient",
+    encounterSetting: "",
     dryRun: false,
     help: false
   };
@@ -1130,5 +1159,5 @@ function round(value, digits = 3) {
 }
 
 function printHelp() {
-  process.stdout.write(`Fee monthly chart-to-receipt E2E (STG only)\n\nUsage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\nOptions:\n  --patient-dir PATH       Patient dataset directory\n  --claim-month YYYY-MM    Defaults to manifest claimMonth\n  --repeat N               Independent patient runs. Default: 3\n  --output-dir PATH        Default: /private/tmp/<run-id>\n  --organization-code ID   Default: yamamoto-demo-stg\n  --login-id ID            Default: yamamoto-admin\n  --password-file PATH     Default: .secrets/yamamoto-demo-stg-password.txt\n  --mfa-code CODE          Current 6-digit MFA code (or FEE_E2E_MFA_CODE)\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --seed-known-prior-history\n                            Seed patients.csv start_date as prior visit history\n  --approve-calculated-lines\n                            Approve non-blocked calculated line items before monthly aggregation\n  --encounter-setting TYPE Encounter setting (outpatient/home_visit/house_call/inpatient)\n  --dry-run                Validate and summarize inputs without network calls\n  --help                   Show this help\n`);
+  process.stdout.write(`Fee monthly chart-to-receipt E2E (STG only)\n\nUsage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\nOptions:\n  --patient-dir PATH       Patient dataset directory\n  --claim-month YYYY-MM    Defaults to manifest claimMonth\n  --repeat N               Independent patient runs. Default: 3\n  --output-dir PATH        Default: /private/tmp/<run-id>\n  --organization-code ID   Default: yamamoto-demo-stg\n  --login-id ID            Default: yamamoto-admin\n  --password-file PATH     Default: .secrets/yamamoto-demo-stg-password.txt\n  --mfa-code CODE          Current 6-digit MFA code (or FEE_E2E_MFA_CODE)\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --seed-known-prior-history\n                            Seed patients.csv start_date as prior visit history\n  --approve-calculated-lines\n                            Approve non-blocked calculated line items before monthly aggregation\n  --encounter-setting TYPE Override every chart setting (outpatient/home_visit/house_call/inpatient)\n                            Default: derive each visit from charts.jsonl visit_type/status\n  --dry-run                Validate and summarize inputs without network calls\n  --help                   Show this help\n`);
 }

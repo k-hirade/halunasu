@@ -159,3 +159,57 @@ M1+M2(ハーネス修正、同一PR可) → M3(1011検証) → M6(本再走) →
 M5(要否判定) → M7(別課題転記) → M8(任意)。
 
 M6の1群・2群がともに合格した時点で、親チケットL7を合格とし、Phase 1をクローズする。
+
+---
+
+## 実装状況 (2026-07-22)
+
+### ローカル完了
+
+- M1: `charts.jsonl`の受診単位で`setting`を導出し、在宅受診には`patients.csv`由来の
+  `encounterDetails`を付与する実装へ変更した。未知区分・区分矛盾・解釈不能な施設情報は
+  API送信前にエラーとする。`--encounter-setting`は明示上書きとして維持し、指定時は警告する。
+- M1: `inputAudit.visits`へ`serviceDate / visitType / setting / sameBuilding /
+  singleBuildingPatientCount`を追加した。本文は含めない。
+- M2: per-visitの`calculationMetrics`へ`extractionMode`と`emptyExtractionGuard`を追加し、
+  月次summaryへ抽出モード件数とガードの発火・回復・未回復件数を追加した。
+- M2: 複数患者の月次結果を集約する`eval:fee-longitudinal-l7-summary`を追加し、出力schemaを
+  `fee-longitudinal-l7-summary.v2`とした。同一患者のresultが複数見つかった場合は自動選択せず停止する。
+- M7: 初回L7 Runの抽出揺れを
+  `docs/implplan/fee-candidate-stability-tickets-20260715.md`へ転記した。
+
+実fixtureのdry-runでは、1002が`home_visit×3 + outpatient×1`、施設受診が
+`sameBuilding=true / singleBuildingPatientCount=4`、1006が全在宅受診で
+`sameBuilding=false`になることを確認した。`@halunasu/fee-api`は250/250テストpass。
+
+### STG再測定完了
+
+結果は`docs/20260722-longitudinal-l7-rerun-20260722_202259/`へ保存した。
+1002 / 1004 / 1006 / 1010 / 1011を各3反復し、計60算定を同一revision
+`fee-api-stg-00169-6qx`で完走した。
+
+- M3: 1011専用Runと正式Runのどちらも空抽出ガード発火は0件だった。イベント0の本文は
+  「吸引管理を継続」という管理方針で、当日の喀痰吸引実施を示す決定論シグナルではない。
+  過大検知を避けるためガード条件は拡張しない。
+- M4: 1002の電話カルテは`outpatient`で処理され、訪問診療料の誤追加は止まった。一方、
+  `112007950`電話等再診料は未検知で、`encounterDetails.visitKind=telephone_revisit`と
+  電話等再診料候補化が未実装であることを確認した。H3へ実測結果を引き継ぐ。
+- M5: `memoUsedVisitCount=0`、`memoHitLineRatio=0`が60/60受診で確認できたため、
+  メモ無効対照Runは省略した。今回の全行置換mockではメモが結果へ関与していない。
+- M6第1群: 受診区分・同一建物入力、監査情報、非0点の月次確定、同一建物区分の保留0件を確認し合格。
+- M6第2群: `historyUnavailableCount=0`、UKE確定一致2〜3コード・候補込み検知3〜4コードで、
+  初回Runおよび旧正条件Run比で維持または改善し合格。
+- M6第3群: 確認事項集合は0/5患者、イベント数は1/20受診のみ安定だった。M7へ分離した。
+- M8: 任意のため未着手。実顧客カルテのcopy-forward率を測るまでPROD有効化判断には使わない。
+
+以上からM6第1群・第2群は合格し、L7を合格としてPhase 1をクローズする。
+各患者の`result.json`とreadyz前後、v2集計、判定根拠は同ディレクトリのREADMEを参照する。
+
+再集計は次で実行できる。
+
+```bash
+npm run eval:fee-longitudinal-l7-summary -- \
+  --run-dir docs/<L7再測定ディレクトリ>
+```
+
+同じ患者に予備Runと正式Runが共存する場合は、正式な`result.json`だけを`--result`で患者数分明示する。

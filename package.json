@@ -48,6 +48,7 @@
     "eval:fee-soap-e2e-v2:stg:random": "node scripts/run_fee_soap_e2e_v2_stg_random.mjs",
     "eval:fee-monthly-chart-e2e": "node scripts/evaluate_fee_monthly_chart_e2e.mjs",
     "eval:fee-longitudinal-context": "node scripts/evaluate_fee_longitudinal_context.mjs",
+    "eval:fee-longitudinal-l7-summary": "node scripts/summarize_fee_longitudinal_l7.mjs",
     "audit:fee-checklist-recall": "node scripts/audit_fee_checklist_menu_recall.mjs",
     "audit:fee-checklist-recall:v2": "node scripts/audit_fee_checklist_menu_recall.mjs --dataset data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json",
     "audit:fee-checklist-recall:v2:strict": "node scripts/audit_fee_checklist_menu_recall.mjs --dataset data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json --strict",
