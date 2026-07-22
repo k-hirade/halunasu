@@ -15,6 +15,8 @@ export function captureFeeEvaluationSurface(detailBody = {}) {
   const performance = metrics.performance || feeSession.calculationProgress?.performance || {};
   const clinical = metrics.clinicalStructuring || {};
   const extractionMemo = metrics.extractionMemo || performance.extractionMemo || {};
+  const performanceClinical = performance.clinical || {};
+  const emptyExtractionGuard = clinical.emptyExtractionGuard || performance.emptyExtractionGuard || {};
   const patientHistory = metrics.patientHistory || performance.patientHistory || {};
   const extraction = calculation.clinicalExtraction || {};
   const trace = Array.isArray(extraction.trace) ? extraction.trace : [];
@@ -30,8 +32,18 @@ export function captureFeeEvaluationSurface(detailBody = {}) {
     visitFacts: extraction.visitFacts || null,
     extraction: {
       source: extraction.source || clinical.source || null,
+      mode: clinical.extractionMode || performanceClinical.extractionMode || null,
       promptVersion: extraction.promptVersion || clinical.promptVersion || null,
       clinicalEventCount: Number(extraction.clinicalEventCount || 0),
+      emptyExtractionGuard: {
+        enabled: emptyExtractionGuard.enabled === true,
+        triggered: emptyExtractionGuard.triggered === true,
+        reasonCodes: uniqueStrings(emptyExtractionGuard.reasonCodes),
+        retryAttempted: emptyExtractionGuard.retryAttempted === true,
+        recovered: emptyExtractionGuard.recovered === true,
+        initialEventCount: finiteNumber(emptyExtractionGuard.initialEventCount, 0),
+        finalEventCount: finiteNumber(emptyExtractionGuard.finalEventCount, 0)
+      },
       memo: {
         enabled: extractionMemo.enabled === true,
         used: extractionMemo.used === true,
@@ -66,10 +78,40 @@ export function captureFeeEvaluationSurface(detailBody = {}) {
   };
 }
 
+export function validateLongitudinalPreflight(body = {}, { skipMemoPreflight = false } = {}) {
+  const environment = String(body?.env || "").trim().toLowerCase();
+  const runtimeFeatures = body?.runtimeFeatures || {};
+  const cloudRunRevision = String(body?.runtime?.cloudRunRevision || "").trim();
+  if (environment !== "stg") {
+    throw new Error(`fee-api readyz preflight expected env=stg but received ${environment || "unknown"}`);
+  }
+  if (!cloudRunRevision) {
+    throw new Error("fee-api readyz preflight did not expose a Cloud Run revision");
+  }
+  if (!skipMemoPreflight && runtimeFeatures.extractionMemoEnabled !== true) {
+    throw new Error("FEE_EXTRACTION_MEMO is disabled on the target revision; aborting before calculation requests");
+  }
+  if (runtimeFeatures.emptyExtractionRetryEnabled !== true) {
+    throw new Error("FEE_EMPTY_EXTRACTION_RETRY is disabled on the target revision; aborting Phase 1 closeout measurement");
+  }
+  return {
+    environment,
+    cloudRunService: String(body?.runtime?.cloudRunService || "") || null,
+    cloudRunRevision,
+    runtimeFeatures: {
+      extractionMemoEnabled: runtimeFeatures.extractionMemoEnabled === true,
+      emptyExtractionRetryEnabled: runtimeFeatures.emptyExtractionRetryEnabled === true,
+      extractionSnapshotRetentionDays: Number(runtimeFeatures.extractionSnapshotRetentionDays || 0)
+    },
+    memoCheckSkipped: skipMemoPreflight === true
+  };
+}
+
 export function evaluateLongitudinalEquivalence({
   memoRuns = {},
   controls = [],
-  allowKnownVisitFactsCandidateDifferences = false
+  allowKnownVisitFactsCandidateDifferences = false,
+  allowMemoUnusedLlmVariability = false
 } = {}) {
   if (!Array.isArray(controls) || controls.length < 2) {
     throw new Error("longitudinal equivalence requires at least two full-extraction controls");
@@ -80,17 +122,20 @@ export function evaluateLongitudinalEquivalence({
       run,
       controls,
       controlVariability,
-      allowKnownVisitFactsCandidateDifferences
+      allowKnownVisitFactsCandidateDifferences,
+      allowMemoUnusedLlmVariability
     })])
   );
   const verdicts = Object.values(paths).map((item) => item.overallVerdict);
   const overallVerdict = verdicts.includes("fail")
     ? "fail"
-    : verdicts.includes("inconclusive_control_variability")
-      ? "inconclusive_control_variability"
-      : verdicts.includes("pass_with_known_limit")
-        ? "pass_with_known_limit"
-        : "pass";
+    : verdicts.includes("inconclusive_llm_variability")
+      ? "inconclusive_llm_variability"
+      : verdicts.includes("inconclusive_control_variability")
+        ? "inconclusive_control_variability"
+        : verdicts.includes("pass_with_known_limit")
+          ? "pass_with_known_limit"
+          : "pass";
   return { overallVerdict, controlVariability, paths };
 }
 
@@ -184,7 +229,13 @@ function analyzeControlVariability(controls) {
   };
 }
 
-function evaluateMemoPath({ run, controls, controlVariability, allowKnownVisitFactsCandidateDifferences }) {
+function evaluateMemoPath({
+  run,
+  controls,
+  controlVariability,
+  allowKnownVisitFactsCandidateDifferences,
+  allowMemoUnusedLlmVariability
+}) {
   const confirmedDifferences = controls.map((control, index) => ({
     control: index + 1,
     ...setDifference(run?.confirmedLines, control.confirmedLines)
@@ -217,15 +268,35 @@ function evaluateMemoPath({ run, controls, controlVariability, allowKnownVisitFa
       ? "pass_with_known_limit"
       : "fail";
   }
-  const overallVerdict = [confirmedVerdict, candidateVerdict].includes("fail")
+  let overallVerdict = [confirmedVerdict, candidateVerdict].includes("fail")
     ? "fail"
     : [confirmedVerdict, candidateVerdict].includes("inconclusive_control_variability")
       ? "inconclusive_control_variability"
       : [confirmedVerdict, candidateVerdict].includes("pass_with_known_limit")
         ? "pass_with_known_limit"
         : "pass";
+  const controlClinicalEventCounts = controls.map((control) => Number(control?.extraction?.clinicalEventCount || 0));
+  const stableControlClinicalEventCount = new Set(controlClinicalEventCounts).size === 1
+    ? controlClinicalEventCounts[0]
+    : null;
+  const attributableToMemoUnusedLlmVariability = (
+    overallVerdict === "fail"
+    && allowMemoUnusedLlmVariability === true
+    && run?.extraction?.memo?.used === false
+    && run?.openAi?.callObserved === true
+    && controlVariability.confirmedStable
+    && controlVariability.candidateStable
+    && stableControlClinicalEventCount !== null
+    && Number(run?.extraction?.clinicalEventCount || 0) !== stableControlClinicalEventCount
+  );
+  if (attributableToMemoUnusedLlmVariability) {
+    overallVerdict = "inconclusive_llm_variability";
+  }
   return {
     overallVerdict,
+    attribution: attributableToMemoUnusedLlmVariability
+      ? "memo_unused_full_extraction_llm_variability"
+      : null,
     confirmed: { verdict: confirmedVerdict, differences: confirmedDifferences },
     candidates: {
       verdict: candidateVerdict,

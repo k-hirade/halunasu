@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   buildClinicalCalculationPreparation,
   convertClinicalCalculationEvents,
+  detectEmptyExtractionContradiction,
   diagnosesForDiseaseIndicationScan,
   dictionaryScanCandidateProposals,
   mergeDiseaseIndicationCandidateProposals
@@ -844,16 +845,198 @@ test("line_review欠落が再抽出でも埋まらなければ line_review_incom
   assert.ok(incomplete.messageForStaff.includes("超音波検査"), "欠落行の本文が示される");
 });
 
+test("空抽出ガード: 肯定的な辞書シグナルがあれば全文を1回再抽出して回復する", async () => {
+  const text = "P）休業に伴う傷病手当金意見書を作成・交付した。";
+  let callCount = 0;
+  const prep = await buildClinicalCalculationPreparation({
+    session: {
+      feeSessionId: "f", orgId: "o", patientId: "p", serviceDate: "2026-06-13", setting: "outpatient",
+      clinicalText: text
+    },
+    calculationInput: {},
+    feeCalculator: {
+      async scanMasterNames() {
+        return {
+          matches: [{
+            code: "180000710",
+            name: "傷病手当金意見書交付料",
+            points: 100,
+            role: "base",
+            matchedText: "傷病手当金意見書"
+          }]
+        };
+      },
+      async searchMaster() { return { items: [] }; }
+    },
+    openAiApiKey: "dummy",
+    emptyExtractionRetryEnabled: true,
+    clinicalFactsExtractor: async ({ preprocessedLines, scope }) => {
+      callCount += 1;
+      return {
+        visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+        diagnoses: [],
+        line_review: preprocessedLines.map((line) => ({
+          line_id: line.lineId,
+          has_billable_act: callCount === 2
+        })),
+        clinical_events: callCount === 2
+          ? [{
+            clinical_event_id: "ev_document_1",
+            type: "management",
+            name: "傷病手当金意見書の作成・交付",
+            action_status: "performed",
+            temporal_relation: "current",
+            provider_ownership: "own",
+            evidence: text,
+            evidence_line_ids: [preprocessedLines[0].lineId],
+            search_queries: ["傷病手当金意見書交付料"]
+          }]
+          : [],
+        excluded_events: [],
+        missing_information: [],
+        review_flags: [],
+        usage: {
+          input_tokens: 100,
+          output_tokens: 10,
+          input_tokens_details: { cached_tokens: callCount === 2 ? 20 : 0 }
+        },
+        scope
+      };
+    }
+  });
+
+  assert.equal(callCount, 2, "空抽出時の追加呼出しは1回だけ");
+  assert.equal(prep.metrics.clinicalStructuring.semanticRetryCount, 1);
+  assert.equal(prep.metrics.clinicalStructuring.emptyExtractionGuard.triggered, true);
+  assert.equal(prep.metrics.clinicalStructuring.emptyExtractionGuard.recovered, true);
+  assert.equal(prep.metrics.clinicalStructuring.emptyExtractionGuard.finalEventCount, 1);
+  assert.equal(prep.metrics.clinicalStructuring.extractionMode, "full_with_retry");
+  assert.equal(prep.metrics.clinicalStructuring.usage.input_tokens, 200);
+  assert.equal(prep.metrics.clinicalStructuring.usage.input_tokens_details.cached_tokens, 20);
+  assert.ok(prep.clinicalExtraction.trace.some((entry) => (
+    entry.stage === "empty_extraction_guard" && entry.outcome === "recovered"
+  )));
+  assert.equal(
+    prep.reviewIssues.some((issue) => issue.issueCode === "empty_clinical_extraction"),
+    false
+  );
+});
+
+test("空抽出ガード: 否定文脈の辞書一致では再抽出しない", async () => {
+  const text = "O）CT検査は行わず、経過観察とした。";
+  let callCount = 0;
+  const prep = await buildClinicalCalculationPreparation({
+    session: {
+      feeSessionId: "f", orgId: "o", patientId: "p", serviceDate: "2026-06-13", setting: "outpatient",
+      clinicalText: text
+    },
+    calculationInput: {},
+    feeCalculator: {
+      async scanMasterNames() {
+        return {
+          matches: [{
+            code: "170000000",
+            name: "CT検査",
+            points: 1000,
+            role: "base",
+            matchedText: "CT検査"
+          }]
+        };
+      },
+      async searchMaster() { return { items: [] }; }
+    },
+    openAiApiKey: "dummy",
+    emptyExtractionRetryEnabled: true,
+    clinicalFactsExtractor: async ({ preprocessedLines }) => {
+      callCount += 1;
+      return {
+        diagnoses: [],
+        line_review: preprocessedLines.map((line) => ({ line_id: line.lineId, has_billable_act: false })),
+        clinical_events: [], excluded_events: [], missing_information: [], review_flags: []
+      };
+    }
+  });
+
+  assert.equal(callCount, 1);
+  assert.equal(prep.metrics.clinicalStructuring.emptyExtractionGuard.triggered, false);
+  assert.equal(prep.metrics.clinicalStructuring.semanticRetryCount, 0);
+});
+
+test("空抽出ガード: session入力だけでは発火せず今回本文への肯定記載を要求する", async () => {
+  const session = {
+    orders: [{ localName: "アムロジピン錠5mg" }],
+    diagnoses: [{ name: "高血圧症" }]
+  };
+  const feeCalculator = { async scanMasterNames() { return { matches: [] }; } };
+  const absent = await detectEmptyExtractionContradiction({
+    text: "S）体調について家族から相談を受けた。",
+    session,
+    facts: { diagnoses: [], clinical_events: [] },
+    feeCalculator
+  });
+  assert.equal(absent.triggered, false, "別入力に値があるだけでは無駄な再抽出をしない");
+
+  const current = await detectEmptyExtractionContradiction({
+    text: "A）高血圧症。P）アムロジピン錠5mgを継続処方した。",
+    session,
+    facts: { diagnoses: [], clinical_events: [] },
+    feeCalculator
+  });
+  assert.equal(current.triggered, true);
+  assert.deepEqual(current.reasonCodes, ["current_order_mentioned", "current_diagnosis_mentioned"]);
+});
+
+test("空抽出ガード: 再抽出も空なら確認事項を出し、line_review再試行を追加しない", async () => {
+  const text = "P）傷病手当金意見書を作成・交付した。";
+  let callCount = 0;
+  const prep = await buildClinicalCalculationPreparation({
+    session: {
+      feeSessionId: "f", orgId: "o", patientId: "p", serviceDate: "2026-06-13", setting: "outpatient",
+      clinicalText: text
+    },
+    calculationInput: {},
+    feeCalculator: {
+      async scanMasterNames() {
+        return {
+          matches: [{
+            code: "180000710",
+            name: "傷病手当金意見書交付料",
+            points: 100,
+            role: "base",
+            matchedText: "傷病手当金意見書"
+          }]
+        };
+      },
+      async searchMaster() { return { items: [] }; }
+    },
+    openAiApiKey: "dummy",
+    emptyExtractionRetryEnabled: true,
+    clinicalFactsExtractor: async () => {
+      callCount += 1;
+      return {
+        diagnoses: [], line_review: [], clinical_events: [], excluded_events: [], missing_information: [], review_flags: []
+      };
+    }
+  });
+
+  assert.equal(callCount, 2, "空抽出とline_review欠落が重なっても追加呼出しは1回だけ");
+  assert.equal(prep.metrics.clinicalStructuring.semanticRetryCount, 1);
+  assert.equal(prep.metrics.clinicalStructuring.lineReviewRetryCount, 0);
+  assert.equal(prep.metrics.clinicalStructuring.emptyExtractionGuard.recovered, false);
+  assert.ok(prep.reviewIssues.some((issue) => issue.issueCode === "empty_clinical_extraction"));
+  assert.ok(prep.reviewIssues.some((issue) => issue.issueCode === "line_review_incomplete"));
+});
+
 test("mergeOpenAiUsage: 複数サンプルの数値usageを合算する", async () => {
   const { mergeOpenAiUsage } = await import("../src/clinical-calculation-input.js");
   assert.equal(mergeOpenAiUsage(), null);
   const merged = mergeOpenAiUsage(
     { input_tokens: 10, output_tokens: 5, input_tokens_details: { cached_tokens: 3 } },
-    { input_tokens: 7, output_tokens: 2 }
+    { input_tokens: 7, output_tokens: 2, input_tokens_details: { cached_tokens: 4 } }
   );
   assert.equal(merged.input_tokens, 17);
   assert.equal(merged.output_tokens, 7);
-  assert.deepEqual(merged.input_tokens_details, { cached_tokens: 3 });
+  assert.deepEqual(merged.input_tokens_details, { cached_tokens: 7 });
 });
 
 test("複数サンプル抽出: 1件失敗しても成功サンプルで継続し縮退しない", async (t) => {

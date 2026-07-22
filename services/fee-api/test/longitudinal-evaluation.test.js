@@ -5,11 +5,41 @@ import {
   evaluateLongitudinalEquivalence,
   evaluateMemoAcceptance,
   normalizeCandidateItems,
-  normalizeConfirmedLines
+  normalizeConfirmedLines,
+  validateLongitudinalPreflight
 } from "../../../scripts/lib/fee-longitudinal-evaluation.mjs";
 
 const confirmed = [{ code: "114001110", name: "在宅患者訪問診療料", quantity: 1, totalPoints: 890 }];
 const candidate = [{ kind: "proposal", code: "114057970", codeCandidates: [], title: "在宅データ提出加算", points: 50 }];
+
+test("longitudinal preflight requires STG revision and both closeout feature flags", () => {
+  const body = {
+    env: "stg",
+    runtime: { cloudRunService: "fee-api-stg", cloudRunRevision: "fee-api-stg-00169-test" },
+    runtimeFeatures: {
+      extractionMemoEnabled: true,
+      emptyExtractionRetryEnabled: true,
+      extractionSnapshotRetentionDays: 30
+    }
+  };
+  const validated = validateLongitudinalPreflight(body);
+  assert.equal(validated.cloudRunRevision, "fee-api-stg-00169-test");
+  assert.equal(validated.memoCheckSkipped, false);
+
+  assert.throws(() => validateLongitudinalPreflight({
+    ...body,
+    runtimeFeatures: { ...body.runtimeFeatures, extractionMemoEnabled: false }
+  }), /FEE_EXTRACTION_MEMO/u);
+  const baseline = validateLongitudinalPreflight({
+    ...body,
+    runtimeFeatures: { ...body.runtimeFeatures, extractionMemoEnabled: false }
+  }, { skipMemoPreflight: true });
+  assert.equal(baseline.memoCheckSkipped, true);
+  assert.throws(() => validateLongitudinalPreflight({
+    ...body,
+    runtimeFeatures: { ...body.runtimeFeatures, emptyExtractionRetryEnabled: false }
+  }), /FEE_EMPTY_EXTRACTION_RETRY/u);
+});
 
 test("longitudinal equivalence requires exact confirmed lines and stable candidates", () => {
   const run = { confirmedLines: confirmed, candidateItems: candidate };
@@ -79,6 +109,29 @@ test("control instability is reported as inconclusive instead of a memo regressi
   assert.equal(result.paths.crossSession.candidates.verdict, "inconclusive_control_variability");
 });
 
+test("memo未使用の全文抽出差分はメモ回帰ではなくLLM揺れとして帰属できる", () => {
+  const control = {
+    confirmedLines: confirmed,
+    candidateItems: candidate,
+    extraction: { clinicalEventCount: 3 }
+  };
+  const fullExtractionMiss = {
+    confirmedLines: [],
+    candidateItems: [],
+    extraction: { clinicalEventCount: 0, memo: { used: false } },
+    openAi: { callObserved: true }
+  };
+  const result = evaluateLongitudinalEquivalence({
+    memoRuns: { crossSession: fullExtractionMiss },
+    controls: [control, control, control],
+    allowMemoUnusedLlmVariability: true
+  });
+
+  assert.equal(result.overallVerdict, "inconclusive_llm_variability");
+  assert.equal(result.paths.crossSession.attribution, "memo_unused_full_extraction_llm_variability");
+  assert.equal(result.paths.crossSession.confirmed.verdict, "fail", "意味差分そのものは隠さない");
+});
+
 test("memo acceptance verifies line counts, trace, history, and zero OpenAI calls", () => {
   const result = evaluateMemoAcceptance({
     extraction: { memo: { used: true, memoHitLineRatio: 1, continuedLineCount: 4, newLineCount: 0, removedLineCount: 1, traceRecorded: true } },
@@ -112,6 +165,45 @@ test("partial memo extraction still records the OpenAI call for new lines", () =
   };
   const captured = captureFeeEvaluationSurface(surface);
   assert.equal(captured.openAi.callObserved, true);
+});
+
+test("evaluation surface captures extraction mode, cache tokens, and empty extraction guard", () => {
+  const surface = {
+    feeSession: {
+      calculationProgress: {
+        metrics: {
+          clinicalStructuring: {
+            source: "openai",
+            extractionMode: "full_with_retry",
+            openAiCallCount: 2,
+            usage: {
+              input_tokens: 120,
+              output_tokens: 20,
+              input_tokens_details: { cached_tokens: 80 }
+            },
+            emptyExtractionGuard: {
+              enabled: true,
+              triggered: true,
+              reasonCodes: ["positive_dictionary_match"],
+              retryAttempted: true,
+              recovered: true,
+              initialEventCount: 0,
+              finalEventCount: 1
+            }
+          }
+        }
+      },
+      calculationResult: { totalPoints: 0, clinicalExtraction: {} }
+    },
+    candidateWorkbench: {}
+  };
+
+  const captured = captureFeeEvaluationSurface(surface);
+  assert.equal(captured.extraction.mode, "full_with_retry");
+  assert.equal(captured.extraction.emptyExtractionGuard.triggered, true);
+  assert.equal(captured.extraction.emptyExtractionGuard.recovered, true);
+  assert.equal(captured.openAi.callCount, 2);
+  assert.equal(captured.openAi.usage.cachedInputTokens, 80);
 });
 
 test("memo wrapper duration without usage is not counted as an OpenAI call", () => {

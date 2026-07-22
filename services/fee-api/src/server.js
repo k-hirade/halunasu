@@ -165,6 +165,7 @@ async function routeFeeApiRequest(input = {}) {
   }
 
   if (method === "GET" && url.pathname === "/readyz") {
+    const runtimeEnv = input.processEnv || process.env;
     let feeReadiness;
     try {
       feeReadiness = await feeCalculatorReadiness(feeCalculator);
@@ -188,6 +189,15 @@ async function routeFeeApiRequest(input = {}) {
       env: input.env || "local",
       projectId: input.projectId || "medical-core-stg",
       region: input.region || "asia-northeast1",
+      runtime: {
+        cloudRunService: runtimeEnv.K_SERVICE || null,
+        cloudRunRevision: runtimeEnv.K_REVISION || null
+      },
+      runtimeFeatures: {
+        extractionMemoEnabled: feeExtractionMemoEnabled(runtimeEnv),
+        emptyExtractionRetryEnabled: feeEmptyExtractionRetryEnabled(runtimeEnv),
+        extractionSnapshotRetentionDays: extractionSnapshotRetentionDays(runtimeEnv)
+      },
       feeCalculator: feeReadiness,
       startedAt: input.startedAt instanceof Date
         ? input.startedAt.toISOString()
@@ -1556,7 +1566,16 @@ function feeExtractionMemoEnabled(env = process.env) {
   return String(env.FEE_EXTRACTION_MEMO || "false").trim().toLowerCase() === "true";
 }
 
+function feeEmptyExtractionRetryEnabled(env = process.env) {
+  return String(env.FEE_EMPTY_EXTRACTION_RETRY || "false").trim().toLowerCase() === "true";
+}
+
 function extractionSnapshotExpiry(now, env = process.env) {
+  const days = extractionSnapshotRetentionDays(env);
+  return new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function extractionSnapshotRetentionDays(env = process.env) {
   const raw = String(env.FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS || env.HOMIS_SIDECAR_DRAFT_RETENTION_DAYS || "30").trim();
   if (!/^\d+$/.test(raw)) {
     throw sidecarConfigurationError("FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS must be an integer from 1 to 90");
@@ -1565,7 +1584,7 @@ function extractionSnapshotExpiry(now, env = process.env) {
   if (days < 1 || days > 90) {
     throw sidecarConfigurationError("FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS must be an integer from 1 to 90");
   }
-  return new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+  return days;
 }
 
 function sidecarConfigurationError(message) {
@@ -6251,6 +6270,8 @@ function buildFeeCalculationPerformanceSnapshot({
       source: clinical.source || null,
       model: clinical.model || null,
       reasoningEffort: clinical.reasoningEffort || null,
+      extractionMode: clinical.extractionMode || null,
+      semanticRetryCount: numberOrNull(clinical.semanticRetryCount),
       promptVersion: clinical.promptVersion || null,
       ruleSetVersion: clinical.ruleSetVersion || null,
       registryVersion: clinical.registryVersion || null,
@@ -6269,6 +6290,17 @@ function buildFeeCalculationPerformanceSnapshot({
       newLineCount: numberOrNull(extractionMemo.newLineCount),
       removedLineCount: numberOrNull(extractionMemo.removedLineCount),
       visitFactsSource: extractionMemo.visitFactsSource || null
+    }),
+    emptyExtractionGuard: compactObject({
+      enabled: clinical.emptyExtractionGuard?.enabled === true,
+      triggered: clinical.emptyExtractionGuard?.triggered === true,
+      reasonCodes: Array.isArray(clinical.emptyExtractionGuard?.reasonCodes)
+        ? clinical.emptyExtractionGuard.reasonCodes
+        : [],
+      retryAttempted: clinical.emptyExtractionGuard?.retryAttempted === true,
+      recovered: clinical.emptyExtractionGuard?.recovered === true,
+      initialEventCount: numberOrNull(clinical.emptyExtractionGuard?.initialEventCount),
+      finalEventCount: numberOrNull(clinical.emptyExtractionGuard?.finalEventCount)
     }),
     patientHistory: compactObject({
       completeness: patientHistory.completeness || null,
@@ -6769,6 +6801,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     priorBillingHistoryResult
   );
   const extractionMemoEnabled = feeExtractionMemoEnabled(input.processEnv || process.env);
+  const emptyExtractionRetryEnabled = feeEmptyExtractionRetryEnabled(input.processEnv || process.env);
   const extractionSnapshotResult = await measureStage(stageTimings, "extractionSnapshot", () => loadLatestExtractionSnapshot({
     feeStore: input.feeStore,
     orgId: input.orgId || baseSession.orgId,
@@ -6821,6 +6854,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       feeSettings,
       extractionSnapshot: extractionSnapshotResult.snapshot,
       extractionMemoEnabled,
+      emptyExtractionRetryEnabled,
       historyCompleteness: memoHistoryCompleteness,
       clinicalFactsExtractor: input.clinicalFactsExtractor
     }));

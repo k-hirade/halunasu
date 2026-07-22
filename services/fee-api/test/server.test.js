@@ -53,6 +53,34 @@ test("readyz reports fee master readiness", async () => {
   assert.equal(response.body.feeCalculator.provider, "test_fee_engine");
   assert.equal(response.body.feeCalculator.masterDbConfigured, true);
   assert.equal(response.body.feeCalculator.masterDbPathExists, true);
+  assert.equal(response.body.runtimeFeatures.extractionMemoEnabled, false);
+  assert.equal(response.body.runtimeFeatures.emptyExtractionRetryEnabled, false);
+  assert.equal(response.body.runtimeFeatures.extractionSnapshotRetentionDays, 30);
+});
+
+test("readyz exposes deployed extraction feature flags and revision", async () => {
+  const response = await request(createStores(), "GET", "/readyz", undefined, {}, {
+    env: "stg",
+    processEnv: {
+      FEE_EXTRACTION_MEMO: "true",
+      FEE_EMPTY_EXTRACTION_RETRY: "true",
+      FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS: "45",
+      K_SERVICE: "fee-api-stg",
+      K_REVISION: "fee-api-stg-00169-test"
+    }
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.env, "stg");
+  assert.deepEqual(response.body.runtime, {
+    cloudRunService: "fee-api-stg",
+    cloudRunRevision: "fee-api-stg-00169-test"
+  });
+  assert.deepEqual(response.body.runtimeFeatures, {
+    extractionMemoEnabled: true,
+    emptyExtractionRetryEnabled: true,
+    extractionSnapshotRetentionDays: 45
+  });
 });
 
 test("readyz propagates strict fee master content failures as unavailable", async () => {

@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import {
   captureFeeEvaluationSurface,
   evaluateLongitudinalEquivalence,
-  evaluateMemoAcceptance
+  evaluateMemoAcceptance,
+  validateLongitudinalPreflight
 } from "./lib/fee-longitudinal-evaluation.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -63,6 +64,8 @@ if (args.dryRun) {
   process.exit(0);
 }
 
+const preflight = await readEvaluationPreflight(args);
+
 const runId = `fee-longitudinal-${dateStamp(new Date())}-${crypto.randomBytes(3).toString("hex")}`;
 const outputDir = path.resolve(repoRoot, args.outputDir || path.join("/private/tmp", runId));
 fs.mkdirSync(outputDir, { recursive: true });
@@ -105,13 +108,14 @@ for (let index = 0; index < scenarios.length; index += 1) {
   process.stdout.write(`[${index + 1}/${scenarios.length}] ${scenario.id}: ${result.verdict}\n`);
 }
 
-const allRuns = scenarioResults.flatMap((scenario) => [
-  scenario.base,
-  ...Object.values(scenario.memoRuns),
-  ...scenario.controls
-].filter(Boolean));
+const allRuns = scenarioResults.flatMap(scenarioRuns);
 const revisions = uniqueStrings(allRuns.map((run) => run.runtime?.cloudRunRevision));
 const historyUnavailableCount = allRuns.filter((run) => run.patientHistory?.completeness === "unavailable").length;
+const preflightRevisionMatch = Boolean(
+  preflight.cloudRunRevision
+  && revisions.length === 1
+  && revisions[0] === preflight.cloudRunRevision
+);
 const result = {
   schemaVersion: "fee-longitudinal-context-eval.v1",
   generatedAt: new Date().toISOString(),
@@ -129,12 +133,14 @@ const result = {
     organizationCode: args.organizationCode,
     facilityRef: opaqueRef(context.facilityId),
     departmentRef: opaqueRef(context.departmentId),
+    preflight,
     cloudRunRevisions: revisions,
-    sameRevisionObserved: revisions.length === 1
+    sameRevisionObserved: revisions.length === 1,
+    preflightRevisionMatch
   },
   methodology: {
     controlRepeats: args.controlRepeats,
-    fullExtractionControl: "fresh synthetic patient with an uncalculated prior visit and the same target text",
+    fullExtractionControl: "fresh synthetic patient with a calculated, billing-equivalent prior visit whose line keys differ from the target",
     confirmedLineCriterion: "exact code/name/quantity/totalPoints equality against every stable full-extraction control",
     candidateCriterion: "set equality; only documented prescription-related visit_facts differences may be accepted and every difference is recorded",
     historyFailurePolicy: "no failure is injected into STG; unit tests cover fail-closed behavior and STG must report zero unavailable histories",
@@ -143,7 +149,9 @@ const result = {
   summary: summarizeResults(scenarioResults, {
     historyUnavailableCount,
     revisions,
-    controlRepeats: args.controlRepeats
+    controlRepeats: args.controlRepeats,
+    preflight,
+    preflightRevisionMatch
   }),
   scenarios: scenarioResults
 };
@@ -203,7 +211,8 @@ async function runScenario({ api, runId, scenario, context, args: options, fixtu
   const equivalence = evaluateLongitudinalEquivalence({
     memoRuns,
     controls,
-    allowKnownVisitFactsCandidateDifferences: scenario.allowKnownVisitFactsCandidateDifferences
+    allowKnownVisitFactsCandidateDifferences: scenario.allowKnownVisitFactsCandidateDifferences,
+    allowMemoUnusedLlmVariability: scenario.expectedMemo?.crossSession?.memoUsed === false
   });
   const memoAcceptance = Object.fromEntries(Object.entries(memoRuns).map(([name, run]) => [
     name,
@@ -239,9 +248,10 @@ async function runFullExtractionControl({ api, runId, scenario, context, options
     serviceDate: scenario.baseDate,
     claimMonth: scenario.baseDate.slice(0, 7),
     setting: options.setting,
-    clinicalText: "",
+    clinicalText: scenario.baseText,
     sourceSystem: `fee_longitudinal_control:${runId}:${scenario.id}:${controlIndex}`
   }, `${scenario.id}-c${controlIndex}-prior`);
+  const controlPrior = await calculateAndRead(api, prior.feeSessionId, `${scenario.id}-control-${controlIndex}-prior`);
   const target = await createSession(api, {
     patientId: prior.patientId,
     patientRef: `longitudinal-control-${sourceFixture.externalPatientId}`,
@@ -250,10 +260,11 @@ async function runFullExtractionControl({ api, runId, scenario, context, options
     serviceDate: scenario.targetDate,
     claimMonth: scenario.targetDate.slice(0, 7),
     setting: options.setting,
-    clinicalText: scenario.targetText,
+    clinicalText: lineKeyDivergentEquivalentText(scenario.targetText),
     sourceSystem: `fee_longitudinal_control:${runId}:${scenario.id}:${controlIndex}`
   }, `${scenario.id}-c${controlIndex}-target`);
-  return calculateAndRead(api, target.feeSessionId, `${scenario.id}-control-${controlIndex}`);
+  const targetResult = await calculateAndRead(api, target.feeSessionId, `${scenario.id}-control-${controlIndex}`);
+  return { ...targetResult, controlPrior };
 }
 
 async function createSession(api, payload, tag) {
@@ -291,7 +302,10 @@ async function calculateAndRead(api, feeSessionId, tag) {
 function buildScenarios(charts) {
   const original = String(charts[0]?.clinical_text || "").trim();
   const distinct = String(charts[1]?.clinical_text || "").trim();
+  const baseDate = fixtureServiceDate(charts[0]?.service_date, "first chart");
+  const targetDate = fixtureServiceDate(charts[1]?.service_date, "second chart");
   if (!original || !distinct) throw new Error("fixture requires at least two charts for the all-new scenario");
+  if (targetDate <= baseDate) throw new Error("fixture chart dates must be strictly increasing");
   const partial = replaceSoapLine(original, "P", "P）現行処方を継続。体重と血圧を毎日記録し、息切れ増悪時は連絡するよう再指導。次回は4週後の定期訪問予定。");
   const outsidePrescription = replaceSoapLine(
     original,
@@ -308,8 +322,8 @@ function buildScenarios(charts) {
       mutation: "none",
       baseText: original,
       targetText: original,
-      baseDate: "2026-05-25",
-      targetDate: "2026-06-25",
+      baseDate,
+      targetDate,
       measureSameSession: true,
       allowKnownVisitFactsCandidateDifferences: false,
       expectedMemo: {
@@ -323,8 +337,8 @@ function buildScenarios(charts) {
       mutation: "replace P line",
       baseText: original,
       targetText: partial,
-      baseDate: "2026-05-25",
-      targetDate: "2026-06-25",
+      baseDate,
+      targetDate,
       measureSameSession: false,
       allowKnownVisitFactsCandidateDifferences: false,
       expectedMemo: {
@@ -337,8 +351,8 @@ function buildScenarios(charts) {
       mutation: "replace P line with outside prescription",
       baseText: original,
       targetText: outsidePrescription,
-      baseDate: "2026-05-25",
-      targetDate: "2026-06-25",
+      baseDate,
+      targetDate,
       measureSameSession: false,
       allowKnownVisitFactsCandidateDifferences: true,
       expectedMemo: {
@@ -352,8 +366,8 @@ function buildScenarios(charts) {
       removedActPattern: "創傷処置",
       baseText: withAct,
       targetText: original,
-      baseDate: "2026-05-25",
-      targetDate: "2026-06-25",
+      baseDate,
+      targetDate,
       measureSameSession: false,
       allowKnownVisitFactsCandidateDifferences: false,
       expectedMemo: {
@@ -366,8 +380,8 @@ function buildScenarios(charts) {
       mutation: "replace all SOAP lines with the next mock visit",
       baseText: original,
       targetText: distinct,
-      baseDate: "2026-05-25",
-      targetDate: "2026-06-25",
+      baseDate,
+      targetDate,
       measureSameSession: false,
       allowKnownVisitFactsCandidateDifferences: false,
       expectedMemo: {
@@ -392,9 +406,20 @@ function memoExpectation({ ratio, continued, added, removed, memoUsed = true, no
 
 function scenarioSpecificChecks(scenario, { base, memoRuns, controls }) {
   const cross = memoRuns.crossSession;
+  const controlPriors = controls.map((run) => run.controlPrior).filter(Boolean);
   const checks = {
-    stgHistoryAvailable: [base, ...Object.values(memoRuns), ...controls]
-      .every((run) => run.patientHistory?.completeness !== "unavailable")
+    stgHistoryAvailable: [base, ...Object.values(memoRuns), ...controls, ...controlPriors]
+      .every((run) => run.patientHistory?.completeness !== "unavailable"),
+    controlsHaveCalculatedPrior: controlPriors.length === controls.length,
+    controlsHaveEquivalentPriorBilling: controlPriors.every((run) => (
+      billingSurfaceSignature(run) === billingSurfaceSignature(base)
+    )),
+    controlsUseFullExtraction: controls.every((run) => (
+      run.extraction?.memo?.used === false && run.openAi?.callObserved === true
+    )),
+    controlsHaveEquivalentHistoryDepth: controls.every((run) => (
+      run.patientHistory?.priorSessionCount === cross.patientHistory?.priorSessionCount
+    ))
   };
   const observations = {};
   if (scenario.id === "removed_performed_act") {
@@ -415,9 +440,26 @@ function scenarioSpecificChecks(scenario, { base, memoRuns, controls }) {
   return { pass: Object.values(checks).every(Boolean), checks, observations };
 }
 
+function scenarioRuns(scenario = {}) {
+  return [
+    scenario.base,
+    ...Object.values(scenario.memoRuns || {}),
+    ...(scenario.controls || []).flatMap((run) => [run?.controlPrior, run])
+  ].filter(Boolean);
+}
+
+function billingSurfaceSignature(run = {}) {
+  return JSON.stringify({
+    totalPoints: Number(run.totalPoints || 0),
+    confirmedLines: run.confirmedLines || []
+  });
+}
+
 function scenarioAudit(scenario) {
   return {
     id: scenario.id,
+    baseDate: scenario.baseDate,
+    targetDate: scenario.targetDate,
     baseHash: sha256(scenario.baseText),
     targetHash: sha256(scenario.targetText),
     baseLineCount: soapLineCount(scenario.baseText),
@@ -427,32 +469,106 @@ function scenarioAudit(scenario) {
   };
 }
 
-function summarizeResults(scenarios, { historyUnavailableCount, revisions, controlRepeats }) {
-  const runs = scenarios.flatMap((scenario) => [scenario.base, ...Object.values(scenario.memoRuns), ...scenario.controls]);
+function summarizeResults(scenarios, {
+  historyUnavailableCount,
+  revisions,
+  controlRepeats,
+  preflight,
+  preflightRevisionMatch
+}) {
+  const runs = scenarios.flatMap(scenarioRuns);
   const memoRuns = scenarios.flatMap((scenario) => Object.values(scenario.memoRuns));
-  const controls = scenarios.flatMap((scenario) => scenario.controls);
+  const controlTargets = scenarios.flatMap((scenario) => scenario.controls);
+  const controlPriors = controlTargets.map((run) => run.controlPrior).filter(Boolean);
+  const observedAcceptancePass = scenarios.every((scenario) => (
+    Object.values(scenario.memoAcceptance).every((item) => item.pass) && scenario.scenarioChecks.pass
+  ));
+  const memoAcceptanceEligible = preflight.memoCheckSkipped !== true
+    && preflight.runtimeFeatures?.extractionMemoEnabled === true;
+  const guardRuns = runs.filter((run) => run.extraction?.emptyExtractionGuard?.triggered === true);
   return {
     scenarioCount: scenarios.length,
     verdictCounts: countBy(scenarios.map((scenario) => scenario.verdict)),
-    allAcceptanceChecksPassed: scenarios.every((scenario) => (
-      Object.values(scenario.memoAcceptance).every((item) => item.pass) && scenario.scenarioChecks.pass
-    )),
+    memoAcceptanceEligible,
+    observedAcceptanceChecksPassed: observedAcceptancePass,
+    allAcceptanceChecksPassed: memoAcceptanceEligible ? observedAcceptancePass : null,
     allEquivalenceChecksPassed: scenarios.every((scenario) => (
       ["pass", "pass_with_known_limit"].includes(scenario.equivalence?.overallVerdict)
     )),
     controlRepeats,
-    controlOpenAiCallCount: controls.filter((run) => run.openAi?.callObserved).length,
-    memoPathOpenAiCallCount: memoRuns.filter((run) => run.openAi?.callObserved).length,
+    controlOpenAiCallCount: [...controlPriors, ...controlTargets].reduce((sum, run) => (
+      sum + Number(run.openAi?.callCount || 0)
+    ), 0),
+    controlPriorOpenAiCallCount: controlPriors.reduce((sum, run) => sum + Number(run.openAi?.callCount || 0), 0),
+    controlTargetOpenAiCallCount: controlTargets.reduce((sum, run) => sum + Number(run.openAi?.callCount || 0), 0),
+    memoPathOpenAiCallCount: memoRuns.reduce((sum, run) => sum + Number(run.openAi?.callCount || 0), 0),
     memoUsedRunCount: memoRuns.filter((run) => run.extraction?.memo?.used).length,
     averageMemoHitLineRatio: round(mean(memoRuns.map((run) => run.extraction?.memo?.memoHitLineRatio || 0))),
+    emptyExtractionGuard: {
+      triggeredRunCount: guardRuns.length,
+      retryAttemptedRunCount: guardRuns.filter((run) => run.extraction?.emptyExtractionGuard?.retryAttempted).length,
+      recoveredRunCount: guardRuns.filter((run) => run.extraction?.emptyExtractionGuard?.recovered).length,
+      unrecoveredRunCount: guardRuns.filter((run) => !run.extraction?.emptyExtractionGuard?.recovered).length
+    },
     historyUnavailableCount,
     historyUnavailablePass: historyUnavailableCount === 0,
     cloudRunRevisions: revisions,
     sameRevisionObserved: revisions.length === 1,
+    preflightRevisionMatch,
+    phase1CloseoutMeasurementEligible: memoAcceptanceEligible
+      && preflight.runtimeFeatures?.emptyExtractionRetryEnabled === true
+      && preflightRevisionMatch,
     calculateRequestMs: distribution(runs.map((run) => run.requestDurationMs)),
     openAiInputTokens: runs.reduce((sum, run) => sum + Number(run.openAi?.usage?.inputTokens || 0), 0),
-    openAiOutputTokens: runs.reduce((sum, run) => sum + Number(run.openAi?.usage?.outputTokens || 0), 0)
+    openAiCachedInputTokens: runs.reduce((sum, run) => sum + Number(run.openAi?.usage?.cachedInputTokens || 0), 0),
+    openAiOutputTokens: runs.reduce((sum, run) => sum + Number(run.openAi?.usage?.outputTokens || 0), 0),
+    openAiByExtractionMode: summarizeOpenAiByExtractionMode(runs)
   };
+}
+
+function summarizeOpenAiByExtractionMode(runs = []) {
+  const grouped = new Map();
+  for (const run of runs) {
+    const mode = String(run.extraction?.mode || inferExtractionMode(run));
+    const current = grouped.get(mode) || {
+      runCount: 0,
+      openAiCallCount: 0,
+      providerDurationMs: 0,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      requestDurations: []
+    };
+    current.runCount += 1;
+    current.openAiCallCount += Number(run.openAi?.callCount || 0);
+    current.providerDurationMs += Number(run.openAi?.providerDurationMs || 0);
+    current.inputTokens += Number(run.openAi?.usage?.inputTokens || 0);
+    current.cachedInputTokens += Number(run.openAi?.usage?.cachedInputTokens || 0);
+    current.outputTokens += Number(run.openAi?.usage?.outputTokens || 0);
+    current.requestDurations.push(Number(run.requestDurationMs || 0));
+    grouped.set(mode, current);
+  }
+  return Object.fromEntries([...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([mode, item]) => [
+    mode,
+    {
+      runCount: item.runCount,
+      openAiCallCount: item.openAiCallCount,
+      providerDurationMs: round(item.providerDurationMs),
+      inputTokens: item.inputTokens,
+      cachedInputTokens: item.cachedInputTokens,
+      uncachedInputTokens: Math.max(0, item.inputTokens - item.cachedInputTokens),
+      cacheHitRatio: item.inputTokens > 0 ? round(item.cachedInputTokens / item.inputTokens, 4) : 0,
+      outputTokens: item.outputTokens,
+      calculateRequestMs: distribution(item.requestDurations)
+    }
+  ]));
+}
+
+function inferExtractionMode(run = {}) {
+  if (run.extraction?.memo?.used === true && run.openAi?.callObserved === false) return "memo_only";
+  if (run.extraction?.memo?.used === true) return "line_subset";
+  if (run.openAi?.callObserved === true) return "full";
+  return "no_openai";
 }
 
 function renderReadme(result) {
@@ -461,6 +577,9 @@ function renderReadme(result) {
     return `| ${scenario.id} | ${scenario.verdict} | ${formatRatio(cross.extraction?.memo?.memoHitLineRatio)} | ${cross.extraction?.memo?.newLineCount ?? "-"} | ${cross.extraction?.memo?.removedLineCount ?? "-"} | ${cross.openAi?.callObserved ? "あり" : "なし"} |`;
   }).join("\n");
   const exact = result.scenarios.find((scenario) => scenario.id === "exact_copy_forward");
+  const extractionModeRows = Object.entries(result.summary.openAiByExtractionMode || {}).map(([mode, metrics]) => (
+    `| ${mode} | ${metrics.runCount} | ${metrics.openAiCallCount} | ${metrics.inputTokens} | ${metrics.cachedInputTokens} | ${formatRatio(metrics.cacheHitRatio)} | ${metrics.outputTokens} | ${metrics.calculateRequestMs?.median ?? "-"}ms |`
+  )).join("\n") || "| - | 0 | 0 | 0 | 0 | 0% | 0 | - |";
   const exactPathRows = exact
     ? Object.entries(exact.memoRuns).map(([pathName, run]) => {
       const acceptance = exact.memoAcceptance[pathName];
@@ -519,10 +638,10 @@ function renderReadme(result) {
       .filter((entry) => entry[1] !== true)
       .map(([check]) => `${scenario.id}: ${check}`);
     const failedEquivalenceChecks = Object.entries(scenario.equivalence?.paths || {}).flatMap(([pathName, pathResult]) => [
-      ...(pathResult.confirmed?.verdict === "fail"
+      ...(pathResult.overallVerdict === "fail" && pathResult.confirmed?.verdict === "fail"
         ? [`${scenario.id}/${pathName}: confirmed equivalence`]
         : []),
-      ...(pathResult.candidates?.verdict === "fail"
+      ...(pathResult.overallVerdict === "fail" && pathResult.candidates?.verdict === "fail"
         ? [`${scenario.id}/${pathName}: candidate equivalence`]
         : [])
     ]);
@@ -532,7 +651,9 @@ function renderReadme(result) {
   return `# 縦断患者コンテキスト STG再計測\n\n` +
     `- 実行日時: ${result.generatedAt}\n` +
     `- Cloud Run revision: ${result.environment.cloudRunRevisions.join(", ") || "取得できず"}\n` +
-    `- 対照経路: 同一入力を新規の合成患者へ全文投入、各ケース${result.methodology.controlRepeats}回\n` +
+    `- pre-flight revision: ${result.environment.preflight?.cloudRunRevision || "取得できず"}（計測と${result.environment.preflightRevisionMatch ? "一致" : "不一致"}）\n` +
+    `- pre-flight flags: memo=${result.environment.preflight?.runtimeFeatures?.extractionMemoEnabled === true} / emptyRetry=${result.environment.preflight?.runtimeFeatures?.emptyExtractionRetryEnabled === true}\n` +
+    `- 対照経路: 同じ請求履歴を持つ計算済み事前受診を作り、対象受診のみlineKeyを変えて全文抽出、各ケース${result.methodology.controlRepeats}回\n` +
     `- 履歴取得不能: ${result.summary.historyUnavailableCount}件\n\n` +
     `## 合格基準\n\n` +
     `- 確定明細はコード・名称・数量・点数が対照経路と完全一致すること。\n` +
@@ -540,19 +661,25 @@ function renderReadme(result) {
     `- 対照3回自体が揺れた場合は、メモの不具合と断定せず「対照揺れのため判定不能」とする。\n` +
     `- 履歴障害はSTGへ故意に注入しない。fail-closedはユニットテスト、STGはunavailableが0件であることを確認する。\n\n` +
     `## 結果\n\n` +
+    `- メモ受入判定: ${result.summary.memoAcceptanceEligible ? (result.summary.allAcceptanceChecksPassed ? "5ケースすべて合格" : "不合格あり") : "pre-flightをスキップしたため正式判定対象外"}\n` +
+    `- 意味等価性: ${result.summary.allEquivalenceChecksPassed ? "全件合格" : "不一致または判定不能あり"}（メモ未使用のLLM揺れは合格へ読み替えず inconclusive とする）\n\n` +
     `| ケース | 判定 | memoHitLineRatio | 新規行 | 消失行 | OpenAI呼出し |\n` +
     `| --- | --- | ---: | ---: | ---: | --- |\n${rows}\n\n` +
     `## 完全一致再計算の2経路\n\n` +
     `| 経路 | メモ受入 | 全文対照との等価性 | memoHitLineRatio | OpenAI呼出し数 |\n` +
     `| --- | --- | --- | ---: | ---: |\n${exactPathRows}\n\n` +
     `## 対照経路と性能\n\n` +
-    `- 全文対照の実行回数: ${result.summary.controlRepeats}回/ケース（合計${result.summary.controlOpenAiCallCount}呼出し）\n` +
+    `- 全文対照の実行回数: ${result.summary.controlRepeats}回/ケース（事前受診 ${result.summary.controlPriorOpenAiCallCount}呼出し / 対象受診 ${result.summary.controlTargetOpenAiCallCount}呼出し）\n` +
     `- 対照内で確定明細または候補集合が揺れたケース: ${result.scenarios.filter((scenario) => !scenario.equivalence?.controlVariability?.confirmedStable || !scenario.equivalence?.controlVariability?.candidateStable).length}件\n` +
     `- メモ経路のOpenAI呼出し: ${result.summary.memoPathOpenAiCallCount}回\n` +
     `- 等価性判定: ${result.summary.allEquivalenceChecksPassed ? "全件合格" : "不合格あり"}\n` +
     `- calculate応答時間: median ${latency.median ?? "-"}ms / mean ${latency.mean ?? "-"}ms / max ${latency.max ?? "-"}ms\n` +
-    `- OpenAI使用量（全経路）: input ${result.summary.openAiInputTokens} / output ${result.summary.openAiOutputTokens} tokens\n` +
+    `- OpenAI使用量（全経路）: input ${result.summary.openAiInputTokens} / cached ${result.summary.openAiCachedInputTokens} / output ${result.summary.openAiOutputTokens} tokens\n` +
+    `- 空抽出ガード: 発火 ${result.summary.emptyExtractionGuard.triggeredRunCount} / 回復 ${result.summary.emptyExtractionGuard.recoveredRunCount} / 未回復 ${result.summary.emptyExtractionGuard.unrecoveredRunCount}\n` +
     `- 履歴取得不能: ${result.summary.historyUnavailableCount}件\n\n` +
+    `### 抽出経路別OpenAI利用\n\n` +
+    `| 抽出経路 | 実行 | API呼出し | 入力token | cache token | cache率 | 出力token | 応答中央値 |\n` +
+    `| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n${extractionModeRows}\n\n` +
     `## 候補集合の差分\n\n` +
     `${differenceLines.length ? differenceLines.join("\n") : "差分なし。\n"}\n` +
     `## 確定明細の差分\n\n` +
@@ -599,6 +726,27 @@ function surfaceContains(surface, pattern) {
   return text.includes(pattern);
 }
 
+function fixtureServiceDate(value, label) {
+  const date = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(date)) {
+    throw new Error(`${label} requires an ISO service_date`);
+  }
+  return date;
+}
+
+// 対照患者には同じ臨床内容と請求履歴を持たせつつ、対象受診だけlineKeyを変えて
+// 抽出メモを使わせない。SOAP記号直後の空白は意味を変えないがlineKeyには反映される。
+function lineKeyDivergentEquivalentText(text) {
+  const source = String(text || "");
+  const transformed = source.split(/\r?\n/u).map((line) => (
+    line.replace(/^([SOAP][）:：])\s*/u, "$1 ")
+  )).join("\n");
+  if (!transformed || transformed === source) {
+    throw new Error("could not create a line-key-divergent equivalent control text");
+  }
+  return transformed;
+}
+
 function replaceSoapLine(text, section, replacement) {
   const pattern = new RegExp(`^${section}[）:：]`, "u");
   const lines = String(text || "").split(/\r?\n/u);
@@ -637,6 +785,21 @@ function createFeeApiClient({ baseUrl, jar, csrfToken, timeoutMs, runId: id }) {
         }
       });
     }
+  };
+}
+
+async function readEvaluationPreflight(options) {
+  const response = await requestJson(`${options.feeBaseUrl}/readyz`, {
+    timeoutMs: options.timeoutMs
+  });
+  assertResponse(response, "fee-api readyz preflight");
+  const validated = validateLongitudinalPreflight(response.body, {
+    skipMemoPreflight: options.skipMemoPreflight
+  });
+  return {
+    ...validated,
+    checkedAt: new Date().toISOString(),
+    requestDurationMs: Number(response.durationMs || 0)
   };
 }
 
@@ -708,6 +871,7 @@ function parseArgs(argv) {
     departmentId: "",
     password: process.env.FEE_E2E_PASSWORD || "",
     mfaCode: process.env.FEE_E2E_MFA_CODE || "",
+    skipMemoPreflight: false,
     dryRun: false,
     help: false
   };
@@ -730,6 +894,7 @@ function parseArgs(argv) {
     else if (arg === "--facility-id") parsed.facilityId = next(index++, arg);
     else if (arg === "--department-id") parsed.departmentId = next(index++, arg);
     else if (arg === "--setting") parsed.setting = next(index++, arg);
+    else if (arg === "--skip-memo-preflight" || arg === "--allow-memo-disabled") parsed.skipMemoPreflight = true;
     else if (arg === "--dry-run") parsed.dryRun = true;
     else if (arg === "--help" || arg === "-h") parsed.help = true;
     else throw new Error(`unknown option: ${arg}`);
@@ -879,5 +1044,5 @@ function formatRatio(value) {
 }
 
 function printHelp() {
-  process.stdout.write(`Fee longitudinal context evaluation (STG only)\n\nUsage:\n  npm run eval:fee-longitudinal-context -- [options]\n\nOptions:\n  --patient-dir PATH       Mock patient source directory (at least two charts)\n  --output-dir PATH        Output directory (result.json and README.md)\n  --control-repeats N      Full-extraction controls, 2 or 3. Default: 3\n  --organization-code ID   Default: yamamoto-demo-stg\n  --login-id ID            Default: yamamoto-admin\n  --password-file PATH     Default: .secrets/yamamoto-demo-stg-password.txt\n  --mfa-code CODE          Current 6-digit MFA code (or FEE_E2E_MFA_CODE)\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --setting TYPE           Default: home_visit\n  --dry-run                Validate fixtures without network calls\n  --help                   Show this help\n`);
+  process.stdout.write(`Fee longitudinal context evaluation (STG only)\n\nUsage:\n  npm run eval:fee-longitudinal-context -- [options]\n\nOptions:\n  --patient-dir PATH       Mock patient source directory (at least two charts)\n  --output-dir PATH        Output directory (result.json and README.md)\n  --control-repeats N      Full-extraction controls, 2 or 3. Default: 3\n  --organization-code ID   Default: yamamoto-demo-stg\n  --login-id ID            Default: yamamoto-admin\n  --password-file PATH     Default: .secrets/yamamoto-demo-stg-password.txt\n  --mfa-code CODE          Current 6-digit MFA code (or FEE_E2E_MFA_CODE)\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --setting TYPE           Default: home_visit\n  --skip-memo-preflight    Permit a memo-disabled baseline; result is not acceptance-eligible\n  --dry-run                Validate fixtures without network calls\n  --help                   Show this help\n`);
 }

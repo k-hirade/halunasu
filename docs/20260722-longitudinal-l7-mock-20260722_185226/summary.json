@@ -1,0 +1,493 @@
+{
+  "schemaVersion": "fee-longitudinal-l7-summary.v1",
+  "generatedAt": "2026-07-22T10:26:27Z",
+  "runId": "20260722-longitudinal-l7-mock-20260722_185226",
+  "readiness": {
+    "before": {
+      "status": "ok",
+      "revision": "fee-api-stg-00169-6qx",
+      "extractionMemoEnabled": true,
+      "emptyExtractionRetryEnabled": true
+    },
+    "after": {
+      "status": "ok",
+      "revision": "fee-api-stg-00169-6qx",
+      "extractionMemoEnabled": true,
+      "emptyExtractionRetryEnabled": true
+    },
+    "sameRevision": true
+  },
+  "evaluation": {
+    "organizationCode": "fee-longitudinal-e2e-stg",
+    "facilityRef": "df0241fe794d",
+    "departmentRef": "9451b40eaad2",
+    "encounterSetting": "home_visit",
+    "seedKnownPriorHistory": true,
+    "repeatCount": 3,
+    "visitCountPerRepeat": 4,
+    "patientCount": 5,
+    "calculateCount": 60
+  },
+  "patients": [
+    {
+      "patientId": "1002",
+      "uke": {
+        "codeCount": 10,
+        "totalPoints": 11313
+      },
+      "monthlyConfirmedPoints": [
+        0,
+        0,
+        0
+      ],
+      "monthlyCandidatePoints": [
+        352,
+        654,
+        956
+      ],
+      "exactMatchedCodes": [
+        0,
+        0,
+        0
+      ],
+      "detectedCodes": [
+        1,
+        1,
+        1
+      ],
+      "sessionCandidateSetStable": true,
+      "monthlyConfirmedPointsStable": true,
+      "monthlyCandidatePointsStable": false,
+      "reviewIssueCounts": [
+        24,
+        25,
+        21
+      ],
+      "reviewIssuesStable": false,
+      "extraction": {
+        "eventCounts": [
+          [
+            3,
+            4,
+            4,
+            5
+          ],
+          [
+            4,
+            4,
+            5,
+            5
+          ],
+          [
+            3,
+            2,
+            2,
+            4
+          ]
+        ],
+        "maxSpread": 3,
+        "stableVisitCount": 0
+      },
+      "longitudinalContext": {
+        "memoEnabledVisitCount": 12,
+        "memoUsedVisitCount": 0,
+        "memoHitLineRatio": {
+          "count": 12,
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "max": 0
+        },
+        "historyCompletenessCounts": {
+          "partial": 12
+        },
+        "historyUnavailableCount": 0
+      },
+      "openAi": {
+        "callCount": 12,
+        "inputTokens": 70107,
+        "cachedInputTokens": 61440,
+        "outputTokens": 15700
+      },
+      "calculateRequestMs": {
+        "count": 12,
+        "min": 8718.42,
+        "median": 11794.54,
+        "mean": 11291.1,
+        "max": 13405.42
+      }
+    },
+    {
+      "patientId": "1004",
+      "uke": {
+        "codeCount": 6,
+        "totalPoints": 3486
+      },
+      "monthlyConfirmedPoints": [
+        0,
+        0,
+        0
+      ],
+      "monthlyCandidatePoints": [
+        62,
+        62,
+        62
+      ],
+      "exactMatchedCodes": [
+        0,
+        0,
+        0
+      ],
+      "detectedCodes": [
+        1,
+        1,
+        1
+      ],
+      "sessionCandidateSetStable": true,
+      "monthlyConfirmedPointsStable": true,
+      "monthlyCandidatePointsStable": true,
+      "reviewIssueCounts": [
+        17,
+        20,
+        16
+      ],
+      "reviewIssuesStable": false,
+      "extraction": {
+        "eventCounts": [
+          [
+            4,
+            3,
+            6,
+            4
+          ],
+          [
+            3,
+            4,
+            4,
+            5
+          ],
+          [
+            3,
+            6,
+            1,
+            4
+          ]
+        ],
+        "maxSpread": 5,
+        "stableVisitCount": 0
+      },
+      "longitudinalContext": {
+        "memoEnabledVisitCount": 12,
+        "memoUsedVisitCount": 0,
+        "memoHitLineRatio": {
+          "count": 12,
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "max": 0
+        },
+        "historyCompletenessCounts": {
+          "partial": 12
+        },
+        "historyUnavailableCount": 0
+      },
+      "openAi": {
+        "callCount": 12,
+        "inputTokens": 69927,
+        "cachedInputTokens": 57344,
+        "outputTokens": 15756
+      },
+      "calculateRequestMs": {
+        "count": 12,
+        "min": 4291.47,
+        "median": 11342.76,
+        "mean": 11202.54,
+        "max": 14027.86
+      }
+    },
+    {
+      "patientId": "1006",
+      "uke": {
+        "codeCount": 6,
+        "totalPoints": 4326
+      },
+      "monthlyConfirmedPoints": [
+        0,
+        0,
+        0
+      ],
+      "monthlyCandidatePoints": [
+        250,
+        250,
+        250
+      ],
+      "exactMatchedCodes": [
+        0,
+        0,
+        0
+      ],
+      "detectedCodes": [
+        2,
+        2,
+        2
+      ],
+      "sessionCandidateSetStable": true,
+      "monthlyConfirmedPointsStable": true,
+      "monthlyCandidatePointsStable": true,
+      "reviewIssueCounts": [
+        28,
+        39,
+        34
+      ],
+      "reviewIssuesStable": false,
+      "extraction": {
+        "eventCounts": [
+          [
+            4,
+            3,
+            5,
+            9
+          ],
+          [
+            7,
+            4,
+            6,
+            6
+          ],
+          [
+            5,
+            3,
+            5,
+            5
+          ]
+        ],
+        "maxSpread": 4,
+        "stableVisitCount": 0
+      },
+      "longitudinalContext": {
+        "memoEnabledVisitCount": 12,
+        "memoUsedVisitCount": 0,
+        "memoHitLineRatio": {
+          "count": 12,
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "max": 0
+        },
+        "historyCompletenessCounts": {
+          "partial": 12
+        },
+        "historyUnavailableCount": 0
+      },
+      "openAi": {
+        "callCount": 12,
+        "inputTokens": 70794,
+        "cachedInputTokens": 57344,
+        "outputTokens": 19263
+      },
+      "calculateRequestMs": {
+        "count": 12,
+        "min": 10086.15,
+        "median": 12263.53,
+        "mean": 12744.81,
+        "max": 18552.92
+      }
+    },
+    {
+      "patientId": "1010",
+      "uke": {
+        "codeCount": 3,
+        "totalPoints": 986
+      },
+      "monthlyConfirmedPoints": [
+        0,
+        0,
+        0
+      ],
+      "monthlyCandidatePoints": [
+        50,
+        50,
+        50
+      ],
+      "exactMatchedCodes": [
+        0,
+        0,
+        0
+      ],
+      "detectedCodes": [
+        1,
+        1,
+        1
+      ],
+      "sessionCandidateSetStable": true,
+      "monthlyConfirmedPointsStable": true,
+      "monthlyCandidatePointsStable": true,
+      "reviewIssueCounts": [
+        23,
+        23,
+        22
+      ],
+      "reviewIssuesStable": false,
+      "extraction": {
+        "eventCounts": [
+          [
+            5,
+            5,
+            5,
+            3
+          ],
+          [
+            4,
+            4,
+            6,
+            4
+          ],
+          [
+            3,
+            5,
+            5,
+            4
+          ]
+        ],
+        "maxSpread": 2,
+        "stableVisitCount": 0
+      },
+      "longitudinalContext": {
+        "memoEnabledVisitCount": 12,
+        "memoUsedVisitCount": 0,
+        "memoHitLineRatio": {
+          "count": 12,
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "max": 0
+        },
+        "historyCompletenessCounts": {
+          "partial": 12
+        },
+        "historyUnavailableCount": 0
+      },
+      "openAi": {
+        "callCount": 12,
+        "inputTokens": 71127,
+        "cachedInputTokens": 59392,
+        "outputTokens": 17301
+      },
+      "calculateRequestMs": {
+        "count": 12,
+        "min": 9142.3,
+        "median": 11676.84,
+        "mean": 11777.69,
+        "max": 15341.32
+      }
+    },
+    {
+      "patientId": "1011",
+      "uke": {
+        "codeCount": 5,
+        "totalPoints": 1386
+      },
+      "monthlyConfirmedPoints": [
+        0,
+        0,
+        0
+      ],
+      "monthlyCandidatePoints": [
+        50,
+        98,
+        50
+      ],
+      "exactMatchedCodes": [
+        0,
+        0,
+        0
+      ],
+      "detectedCodes": [
+        1,
+        1,
+        1
+      ],
+      "sessionCandidateSetStable": true,
+      "monthlyConfirmedPointsStable": true,
+      "monthlyCandidatePointsStable": false,
+      "reviewIssueCounts": [
+        19,
+        23,
+        20
+      ],
+      "reviewIssuesStable": false,
+      "extraction": {
+        "eventCounts": [
+          [
+            3,
+            6,
+            0,
+            4
+          ],
+          [
+            5,
+            6,
+            3,
+            1
+          ],
+          [
+            3,
+            7,
+            0,
+            4
+          ]
+        ],
+        "maxSpread": 3,
+        "stableVisitCount": 0
+      },
+      "longitudinalContext": {
+        "memoEnabledVisitCount": 12,
+        "memoUsedVisitCount": 0,
+        "memoHitLineRatio": {
+          "count": 12,
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "max": 0
+        },
+        "historyCompletenessCounts": {
+          "partial": 12
+        },
+        "historyUnavailableCount": 0
+      },
+      "openAi": {
+        "callCount": 12,
+        "inputTokens": 69465,
+        "cachedInputTokens": 57344,
+        "outputTokens": 14287
+      },
+      "calculateRequestMs": {
+        "count": 12,
+        "min": 3111.42,
+        "median": 10008.63,
+        "mean": 9905.35,
+        "max": 15203.14
+      }
+    }
+  ],
+  "aggregate": {
+    "memoEnabledVisitCount": 60,
+    "memoUsedVisitCount": 0,
+    "historyUnavailableCount": 0,
+    "stableMonthlyConfirmedPatientCount": 5,
+    "stableMonthlyCandidatePatientCount": 3,
+    "stableReviewIssuePatientCount": 0,
+    "openAiCallCount": 60,
+    "openAiInputTokens": 351420,
+    "cachedInputTokens": 292864,
+    "cacheHitRatio": 0.8333731717033749,
+    "openAiOutputTokens": 82307,
+    "calculateRequestMs": {
+      "count": 60,
+      "min": 3111.42,
+      "median": 11637.9,
+      "mean": 11384.295333333337,
+      "max": 18552.92
+    }
+  }
+}

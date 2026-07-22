@@ -589,6 +589,7 @@ export async function buildClinicalCalculationPreparation({
   feeSettings = null,
   extractionSnapshot = null,
   extractionMemoEnabled = false,
+  emptyExtractionRetryEnabled = false,
   historyCompleteness = "complete",
   clinicalFactsExtractor = null
 } = {}) {
@@ -675,6 +676,7 @@ export async function buildClinicalCalculationPreparation({
       priorSessions,
       extractionSnapshot,
       extractionMemoEnabled,
+      emptyExtractionRetryEnabled,
       historyCompleteness,
       clinicalFactsExtractor
     });
@@ -1619,6 +1621,7 @@ async function inferStructuredClinicalCalculationOptions({
   priorSessions = [],
   extractionSnapshot = null,
   extractionMemoEnabled = false,
+  emptyExtractionRetryEnabled = false,
   historyCompleteness = "complete",
   clinicalFactsExtractor = null
 } = {}) {
@@ -1768,14 +1771,62 @@ async function inferStructuredClinicalCalculationOptions({
       factsResult = await extractWithSamples(extractionRequest);
     }
     let facts = factsResult?.parsed || factsResult || {};
+    let semanticRetryCount = 0;
+    let lineReviewRetryCount = 0;
+    let emptyExtractionEvidence = [];
+    const initialEventCount = clinicalEventsFromClinicalFacts(facts).length;
+    let emptyExtractionGuard = {
+      enabled: emptyExtractionRetryEnabled === true,
+      triggered: false,
+      reasonCodes: [],
+      retryAttempted: false,
+      recovered: false,
+      initialEventCount,
+      finalEventCount: initialEventCount
+    };
+
+    if (emptyExtractionRetryEnabled === true && initialEventCount === 0) {
+      const contradiction = await detectEmptyExtractionContradiction({
+        text,
+        session,
+        facts,
+        feeCalculator,
+        memoPlan
+      });
+      emptyExtractionGuard = {
+        ...emptyExtractionGuard,
+        triggered: contradiction.triggered,
+        reasonCodes: contradiction.reasonCodes
+      };
+      emptyExtractionEvidence = contradiction.evidence;
+      if (contradiction.triggered) {
+        semanticRetryCount = 1;
+        emptyExtractionGuard.retryAttempted = true;
+        const retryResult = await extractOnce({
+          ...extractionRequest,
+          onOutputTextSnapshot: undefined
+        }).catch(() => null);
+        const retryFacts = retryResult?.parsed || retryResult;
+        if (retryFacts && typeof retryFacts === "object") {
+          facts = mergeClinicalFactsSamples([facts, retryFacts]);
+          factsResult = mergeClinicalExtractionResultMetadata(factsResult, retryResult);
+        }
+        const finalEventCount = clinicalEventsFromClinicalFacts(facts).length;
+        emptyExtractionGuard = {
+          ...emptyExtractionGuard,
+          recovered: finalEventCount > 0,
+          finalEventCount
+        };
+      }
+    }
 
     // 契約検証(検証駆動リトライ): LLMに提示した行ID全集合(Node側で確定)と line_review を
     // 完全照合する。LLMの申告だけでは行の丸ごと省略を検出できない。欠落行があれば
     // 「欠落行だけ」を1回再抽出して統合し、なお欠落する行は下流で確認事項として明示する。
     const promptLineIds = promptClinicalLineIds(clinicalTextPreprocessing.lines);
     let lineReviewReconciliation = reconcileLineReview(facts, promptLineIds);
-    let lineReviewRetryCount = 0;
-    if (lineReviewReconciliation.missingIds.length) {
+    if (lineReviewReconciliation.missingIds.length && semanticRetryCount === 0) {
+      semanticRetryCount = 1;
       lineReviewRetryCount = 1;
       const missingSet = new Set(lineReviewReconciliation.missingIds);
       const retryResult = await extractOnce({
@@ -1791,6 +1842,7 @@ async function inferStructuredClinicalCalculationOptions({
       const retryFacts = retryResult?.parsed || retryResult;
       if (retryFacts && typeof retryFacts === "object") {
         facts = mergeClinicalFactsSamples([facts, retryFacts]);
+        factsResult = mergeClinicalExtractionResultMetadata(factsResult, retryResult);
         lineReviewReconciliation = reconcileLineReview(facts, promptLineIds);
       }
     }
@@ -1809,6 +1861,40 @@ async function inferStructuredClinicalCalculationOptions({
       priorSessions,
       lineReviewReconciliation
     });
+    if (emptyExtractionGuard.triggered) {
+      converted.clinicalTrace = [
+        ...asArray(converted.clinicalTrace),
+        clinicalTraceEvent({
+          stage: "empty_extraction_guard",
+          categoryLabel: "空抽出検証",
+          outcome: emptyExtractionGuard.recovered ? "recovered" : "still_empty",
+          selected: {
+            reasonCodes: emptyExtractionGuard.reasonCodes,
+            initialEventCount: emptyExtractionGuard.initialEventCount,
+            finalEventCount: emptyExtractionGuard.finalEventCount,
+            retryAttempted: emptyExtractionGuard.retryAttempted
+          },
+          message: "empty_clinical_extraction_checked"
+        })
+      ];
+      if (!emptyExtractionGuard.recovered) {
+        const message = "AI抽出が空でした。決定論候補のみ提示しています。本文に算定対象の行為がないか確認してください。";
+        converted.reviewIssues = [
+          ...asArray(converted.reviewIssues),
+          withReviewTopic({
+            reviewIssueId: `issue_${candidateIdPart(["empty_extraction_guard", ...emptyExtractionGuard.reasonCodes].join("_"))}`,
+            issueCode: "empty_clinical_extraction",
+            severity: "warning",
+            title: "カルテ抽出結果の確認",
+            messageForStaff: message,
+            evidence: asArray(emptyExtractionEvidence).join(" / ").slice(0, 200),
+            requiredInput: "当日・自院で実施した診療行為、処方、管理・指導内容",
+            source: "empty_extraction_guard"
+          }, "extraction_coverage_check")
+        ];
+        converted.reviewWarnings = [...asArray(converted.reviewWarnings), message];
+      }
+    }
     const memoMetrics = {
       enabled: extractionMemoEnabled === true,
       used: memoUsed,
@@ -1872,6 +1958,13 @@ async function inferStructuredClinicalCalculationOptions({
         responseId: factsResult?.responseId || null,
         usage: factsResult?.usage || null,
         extractionSampleStats: factsResult?.sampleStats || null,
+        extractionMode: openAiCallCount === 0
+          ? "memo_only"
+          : emptyExtractionGuard.retryAttempted
+            ? (memoUsed ? "line_subset_with_full_retry" : "full_with_retry")
+            : memoUsed ? "line_subset" : "full",
+        emptyExtractionGuard,
+        semanticRetryCount,
         lineReviewRetryCount,
         lineReviewMissingCount: lineReviewReconciliation.missingIds.length,
         lineReviewUnknownCount: lineReviewReconciliation.unknownIds.length
@@ -2034,17 +2127,33 @@ export function mergeOpenAiUsage(...usages) {
   if (!filtered.length) {
     return null;
   }
+  return mergeOpenAiUsageObjects(filtered);
+}
+
+function mergeOpenAiUsageObjects(values = []) {
   const merged = {};
-  for (const usage of filtered) {
-    for (const [key, value] of Object.entries(usage)) {
-      if (typeof value === "number") {
-        merged[key] = Number(merged[key] || 0) + value;
+  for (const value of values) {
+    for (const [key, item] of Object.entries(value || {})) {
+      if (typeof item === "number") {
+        merged[key] = Number(merged[key] || 0) + item;
+      } else if (item && typeof item === "object" && !Array.isArray(item)) {
+        merged[key] = mergeOpenAiUsageObjects([merged[key] || {}, item]);
       } else if (merged[key] == null) {
-        merged[key] = value;
+        merged[key] = item;
       }
     }
   }
   return merged;
+}
+
+function mergeClinicalExtractionResultMetadata(primary = {}, retry = {}) {
+  const responseId = uniqueStrings([primary?.responseId, retry?.responseId]).join(",") || null;
+  const usage = mergeOpenAiUsage(primary?.usage, retry?.usage);
+  return {
+    ...(primary && typeof primary === "object" ? primary : {}),
+    ...(responseId ? { responseId } : {}),
+    ...(usage ? { usage } : {})
+  };
 }
 
 function safeClinicalStructuringError(error) {
@@ -3757,6 +3866,105 @@ export function receptionTimeContextWarning(receptionTime = "", serviceDate = ""
 // 保守的に倒す: 疑わしい行の名称ヒットは候補にしない(見落としより誤候補抑制を優先)。
 const DICTIONARY_SCAN_NEGATIVE_CONTEXT = /(なし|無し|未実施|中止|キャンセル|予定|検討中|検討する|希望|拒否|行わない|行わず|せず|しない|指示のみ|説明のみ|他院|紹介先|既往|前回|次回|予約)/u;
 const DICTIONARY_SCAN_MAX_PROPOSALS = 8;
+
+// 「イベント0件」が妥当な記録か、今回本文にある決定論シグナルと矛盾するかを判定する。
+// 外部入力が存在するだけでは発火させず、必ず今回カルテ本文にも肯定記載があることを要求する。
+export async function detectEmptyExtractionContradiction({
+  text = "",
+  session = {},
+  facts = {},
+  feeCalculator,
+  memoPlan = null
+} = {}) {
+  const clinicalText = normalizeClinicalText(text);
+  if (!clinicalText || clinicalEventsFromClinicalFacts(facts).length > 0) {
+    return { triggered: false, reasonCodes: [], evidence: [] };
+  }
+
+  const reasonCodes = [];
+  const evidence = [];
+  const dictionaryResult = await dictionaryScanCandidateProposals({
+    feeCalculator,
+    text: clinicalText,
+    knownCodes: []
+  });
+  if (dictionaryResult.proposals.length) {
+    reasonCodes.push("positive_dictionary_match");
+    evidence.push(...dictionaryResult.proposals
+      .map((proposal) => proposal?.evidence || proposal?.title)
+      .filter(Boolean)
+      .slice(0, 3));
+  }
+
+  const orderMentions = currentClinicalOrderNames(session)
+    .map((name) => positiveCurrentTextMention(clinicalText, name))
+    .filter(Boolean);
+  if (orderMentions.length) {
+    reasonCodes.push("current_order_mentioned");
+    evidence.push(...orderMentions.slice(0, 3));
+  }
+
+  if (!asArray(facts?.diagnoses).length) {
+    const diagnosisMentions = currentClinicalDiagnosisNames(session)
+      .map((name) => positiveCurrentTextMention(clinicalText, name))
+      .filter(Boolean);
+    if (diagnosisMentions.length) {
+      reasonCodes.push("current_diagnosis_mentioned");
+      evidence.push(...diagnosisMentions.slice(0, 3));
+    }
+  }
+
+  const memoBillableLines = asArray(memoPlan?.continued).filter((match) => (
+    match?.previous?.hasBillableAct === true
+  ));
+  if (memoBillableLines.length) {
+    reasonCodes.push("continued_billable_line_without_event");
+    evidence.push(...memoBillableLines
+      .map((match) => match?.current?.text)
+      .filter(Boolean)
+      .slice(0, 3));
+  }
+
+  return {
+    triggered: reasonCodes.length > 0,
+    reasonCodes: uniqueStrings(reasonCodes),
+    evidence: uniqueStrings(evidence).slice(0, 8)
+  };
+}
+
+function currentClinicalOrderNames(session = {}) {
+  const fields = [
+    "localName",
+    "name",
+    "displayName",
+    "orderName",
+    "drugName",
+    "medicationName",
+    "procedureName",
+    "materialName"
+  ];
+  return uniqueStrings(asArray(session?.orders).flatMap((order) => (
+    fields.map((field) => String(order?.[field] || "").trim())
+  )))
+    .filter((name) => name.length >= 2 && !isAutoPlaceholderOrderName(name))
+    .slice(0, 30);
+}
+
+function currentClinicalDiagnosisNames(session = {}) {
+  return uniqueStrings(asArray(session?.diagnoses)
+    .map((diagnosis) => cleanClinicalDiagnosisName(diagnosis?.name || diagnosis?.displayName || diagnosis)))
+    .filter((name) => name.length >= 2)
+    .slice(0, 20);
+}
+
+function positiveCurrentTextMention(text = "", name = "") {
+  const normalizedText = normalizeClinicalText(text);
+  const normalizedName = normalizeClinicalText(name);
+  if (!normalizedText || !normalizedName || !normalizedText.includes(normalizedName)) {
+    return "";
+  }
+  return firstPositiveClauseForMatch(normalizedText, normalizedName) || "";
+}
 
 // 決定論セーフティネット: マスタ名称辞書スキャン結果を確認候補へ変換する。
 // LLM抽出に依存しないため、同じ本文なら毎回同じ候補が出る(揺れゼロの下限保証)。

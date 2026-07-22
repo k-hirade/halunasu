@@ -216,6 +216,7 @@ deploy_env() {
   local sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS:-30}"
   local sidecar_grant_ttl_hours="${HOMIS_SIDECAR_GRANT_TTL_HOURS:-720}"
   local fee_extraction_memo="${FEE_EXTRACTION_MEMO:-false}"
+  local fee_empty_extraction_retry="false"
   local fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS:-30}"
 
   if [[ "${env}" == "stg" ]]; then
@@ -228,6 +229,7 @@ deploy_env() {
     sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS_STG:-${sidecar_draft_retention_days}}"
     sidecar_grant_ttl_hours="${HOMIS_SIDECAR_GRANT_TTL_HOURS_STG:-${sidecar_grant_ttl_hours}}"
     fee_extraction_memo="${FEE_EXTRACTION_MEMO_STG:-${fee_extraction_memo}}"
+    fee_empty_extraction_retry="${FEE_EMPTY_EXTRACTION_RETRY_STG:-true}"
     fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS_STG:-${fee_extraction_snapshot_retention_days}}"
   else
     sidecar_enabled="${HOMIS_SIDECAR_ENABLED_PROD:-${sidecar_enabled}}"
@@ -237,11 +239,16 @@ deploy_env() {
     sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS_PROD:-${sidecar_draft_retention_days}}"
     sidecar_grant_ttl_hours="${HOMIS_SIDECAR_GRANT_TTL_HOURS_PROD:-${sidecar_grant_ttl_hours}}"
     fee_extraction_memo="${FEE_EXTRACTION_MEMO_PROD:-${fee_extraction_memo}}"
+    fee_empty_extraction_retry="${FEE_EMPTY_EXTRACTION_RETRY_PROD:-false}"
     fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS_PROD:-${fee_extraction_snapshot_retention_days}}"
   fi
 
   if [[ "${fee_extraction_memo}" != "true" && "${fee_extraction_memo}" != "false" ]]; then
     echo "FEE_EXTRACTION_MEMO_${env^^} must be true or false." >&2
+    return 1
+  fi
+  if [[ "${fee_empty_extraction_retry}" != "true" && "${fee_empty_extraction_retry}" != "false" ]]; then
+    echo "FEE_EMPTY_EXTRACTION_RETRY_${env^^} must be true or false." >&2
     return 1
   fi
   if [[ ! "${fee_extraction_snapshot_retention_days}" =~ ^[0-9]+$ ]] \
@@ -421,6 +428,7 @@ deploy_env() {
     "OPENAI_FEE_CLINICAL_REASONING_EFFORT=${OPENAI_FEE_CLINICAL_REASONING_EFFORT:-low}" \
     "OPENAI_FEE_CLINICAL_TIMEOUT_MS=${OPENAI_FEE_CLINICAL_TIMEOUT_MS:-60000}" \
     "FEE_EXTRACTION_MEMO=${fee_extraction_memo}" \
+    "FEE_EMPTY_EXTRACTION_RETRY=${fee_empty_extraction_retry}" \
     "FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS=${fee_extraction_snapshot_retention_days}" \
     "HOMIS_SIDECAR_ENABLED=${sidecar_enabled}" \
     "HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS=${sidecar_allowed_extension_ids}" \

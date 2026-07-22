@@ -1,0 +1,3995 @@
+{
+  "schemaVersion": "fee-longitudinal-context-eval.v1",
+  "generatedAt": "2026-07-22T08:15:31.984Z",
+  "runId": "fee-longitudinal-20260722081002438-fb7bb8",
+  "mode": "stg",
+  "source": {
+    "patientDir": "tmp/dataset_recalculation_diff_diagnosis/20260705_102303_mock_homis_uke_recalculation_diff/patient_sources/1001",
+    "patientRef": "1001",
+    "chartCount": 2,
+    "syntheticDataOnly": true
+  },
+  "environment": {
+    "platformBaseUrl": "https://platform-api-stg-lp2t3inhza-an.a.run.app",
+    "feeBaseUrl": "https://fee-api-stg-wmfrwcpzkq-an.a.run.app",
+    "organizationCode": "fee-longitudinal-e2e-stg",
+    "facilityRef": "df0241fe794d",
+    "departmentRef": "9451b40eaad2",
+    "cloudRunRevisions": [
+      "fee-api-stg-00167-mj5"
+    ],
+    "sameRevisionObserved": true
+  },
+  "methodology": {
+    "controlRepeats": 3,
+    "fullExtractionControl": "fresh synthetic patient with an uncalculated prior visit and the same target text",
+    "confirmedLineCriterion": "exact code/name/quantity/totalPoints equality against every stable full-extraction control",
+    "candidateCriterion": "set equality; only documented prescription-related visit_facts differences may be accepted and every difference is recorded",
+    "historyFailurePolicy": "no failure is injected into STG; unit tests cover fail-closed behavior and STG must report zero unavailable histories",
+    "copyForwardMetricMeaning": "controlled upper-bound mechanism performance, not an observed customer copy-forward rate"
+  },
+  "summary": {
+    "scenarioCount": 5,
+    "verdictCounts": {
+      "fail": 5
+    },
+    "allAcceptanceChecksPassed": false,
+    "allEquivalenceChecksPassed": false,
+    "controlRepeats": 3,
+    "controlOpenAiCallCount": 15,
+    "memoPathOpenAiCallCount": 6,
+    "memoUsedRunCount": 0,
+    "averageMemoHitLineRatio": 0,
+    "historyUnavailableCount": 0,
+    "historyUnavailablePass": true,
+    "cloudRunRevisions": [
+      "fee-api-stg-00167-mj5"
+    ],
+    "sameRevisionObserved": true,
+    "calculateRequestMs": {
+      "count": 26,
+      "min": 5448.46,
+      "median": 10063.92,
+      "mean": 11695.72,
+      "max": 60766.6
+    },
+    "openAiInputTokens": 147563,
+    "openAiOutputTokens": 28323
+  },
+  "scenarios": [
+    {
+      "id": "exact_copy_forward",
+      "description": "同一本文を別セッションへ投入し、その同一セッションも再計算する",
+      "mutation": "none",
+      "inputAudit": {
+        "id": "exact_copy_forward",
+        "baseHash": "914f945061afad62b36e98c9c7dcebda584941e82edcc9b1cfd6354e01d8e65e",
+        "targetHash": "914f945061afad62b36e98c9c7dcebda584941e82edcc9b1cfd6354e01d8e65e",
+        "baseLineCount": 4,
+        "targetLineCount": 4,
+        "sameText": true,
+        "mutation": "none"
+      },
+      "verdict": "fail",
+      "base": {
+        "totalPoints": 0,
+        "confirmedLines": [],
+        "candidateItems": [
+          {
+            "kind": "proposal",
+            "code": "",
+            "codeCandidates": [],
+            "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+            "points": 50
+          }
+        ],
+        "reviewIssues": [
+          {
+            "title": "確認事項",
+            "reason": "マスタ適用期間外: 診療日2026-05-25は取込済み診療行為マスタの適用開始(2026-06-01)より前です。診療行為コードが解決できず0点となる可能性があります。対象年度のマスタ取込か診療日を確認してください。"
+          },
+          {
+            "title": "確認事項",
+            "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+          },
+          {
+            "title": "初診/再診確認",
+            "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+          },
+          {
+            "title": "確認事項",
+            "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+          }
+        ],
+        "warnings": [
+          "マスタ適用期間外: 診療日2026-05-25は取込済み診療行為マスタの適用開始(2026-06-01)より前です。診療行為コードが解決できず0点となる可能性があります。対象年度のマスタ取込か診療日を確認してください。",
+          "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+          "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+          "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+          "次回定期訪問（2週後）予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": ""
+        },
+        "extraction": {
+          "source": "openai",
+          "promptVersion": "fee-clinical-events-v14",
+          "clinicalEventCount": 3,
+          "memo": {
+            "enabled": false,
+            "used": false,
+            "reason": "disabled",
+            "memoHitLineRatio": 0,
+            "continuedLineCount": 0,
+            "newLineCount": 4,
+            "removedLineCount": 0,
+            "visitFactsSource": "current_full_extraction",
+            "traceRecorded": true,
+            "trace": {
+              "stage": "extraction_memo",
+              "outcome": "full_extraction",
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction"
+            }
+          }
+        },
+        "patientHistory": {
+          "completeness": "partial",
+          "priorSessionCount": 0,
+          "externalHistoryEventCount": 0,
+          "patientHistoryReason": "loaded",
+          "extractionSnapshotReason": "disabled"
+        },
+        "openAi": {
+          "providerDurationMs": 9759,
+          "callCount": 1,
+          "callObserved": true,
+          "usage": {
+            "inputTokens": 5917,
+            "outputTokens": 1182,
+            "totalTokens": 7099,
+            "cachedInputTokens": 0
+          }
+        },
+        "runtime": {
+          "environment": "stg",
+          "cloudRunService": "fee-api-stg",
+          "cloudRunRevision": "fee-api-stg-00167-mj5"
+        },
+        "sessionRef": "aacb73fc8175",
+        "requestDurationMs": 13905.03
+      },
+      "memoRuns": {
+        "crossSession": {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 減塩・毎日の体重・血圧測定の再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 浮腫・体重増加・息切れ出現時の連絡説明は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            }
+          ],
+          "warnings": [
+            "2週後の定期訪問（再診）予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "対象疾患確認: 減塩・毎日の体重・血圧測定の再指導は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 浮腫・体重増加・息切れ出現時の連絡説明は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 減塩・毎日の体重・血圧測定の再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": ""
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 3,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 8366,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5917,
+              "outputTokens": 1056,
+              "totalTokens": 6973,
+              "cachedInputTokens": 3840
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "b828b5bd2ce9",
+          "requestDurationMs": 10301.09
+        },
+        "sameSession": {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 減塩と毎日の体重・血圧測定の再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 降圧薬・利尿薬を継続は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 浮腫・体重増加・息切れ出現時の連絡指示は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            }
+          ],
+          "warnings": [
+            "2週後の定期訪問予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "対象疾患確認: 降圧薬・利尿薬を継続は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 浮腫・体重増加・息切れ出現時の連絡指示は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 減塩と毎日の体重・血圧測定の再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 降圧薬・利尿薬を継続は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": ""
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 4,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 13230,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5917,
+              "outputTokens": 1635,
+              "totalTokens": 7552,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "b828b5bd2ce9",
+          "requestDurationMs": 14740.34
+        }
+      },
+      "controls": [
+        {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            }
+          ],
+          "warnings": [
+            "2週後の定期訪問予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": ""
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 2,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 7810,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5917,
+              "outputTokens": 1006,
+              "totalTokens": 6923,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "9f90bdf36105",
+          "requestDurationMs": 8734.35
+        },
+        {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 浮腫・体重増加・息切れ出現時の連絡指示は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            }
+          ],
+          "warnings": [
+            "2週後の定期訪問予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "対象疾患確認: 浮腫・体重増加・息切れ出現時の連絡指示は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "根拠確認: 減塩指導・毎日の体重/血圧測定再指導は実施済み候補として抽出されましたが、根拠文が予定・依頼・検討の文脈です。自動算定には入れず、カルテ上の当日・自院・実施済みの根拠を確認してください。",
+            "療養計画確認: 浮腫・体重増加・息切れ出現時の連絡指示は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。",
+            "薬剤「利尿薬」は今回処方として確定できないため、算定候補には入れていません。",
+            "薬剤「降圧薬」は今回処方として確定できないため、算定候補には入れていません。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": ""
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 5,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 11918,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5917,
+              "outputTokens": 1543,
+              "totalTokens": 7460,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "b4a1b1c262ea",
+          "requestDurationMs": 13106.38
+        },
+        {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 減塩および毎日の体重・血圧測定の再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 浮腫・体重増加・息切れ出現時の連絡説明は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            }
+          ],
+          "warnings": [
+            "2週後の定期訪問予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "対象疾患確認: 減塩および毎日の体重・血圧測定の再指導は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 浮腫・体重増加・息切れ出現時の連絡説明は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 減塩および毎日の体重・血圧測定の再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。",
+            "薬剤名・用量の明記がなく、処方（prescribed）としては確定できないため継続指示を管理として扱う。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": ""
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 4,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 10066,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5917,
+              "outputTokens": 1263,
+              "totalTokens": 7180,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "ac99e3025ce2",
+          "requestDurationMs": 11261.52
+        }
+      ],
+      "memoAcceptance": {
+        "crossSession": {
+          "pass": false,
+          "checks": {
+            "memoUsed": false,
+            "memoHitLineRatio": false,
+            "continuedLineCount": false,
+            "newLineCount": false,
+            "removedLineCount": true,
+            "traceRecorded": true,
+            "noOpenAiCall": false,
+            "historyAvailable": true
+          },
+          "observed": {
+            "enabled": false,
+            "used": false,
+            "reason": "disabled",
+            "memoHitLineRatio": 0,
+            "continuedLineCount": 0,
+            "newLineCount": 4,
+            "removedLineCount": 0,
+            "visitFactsSource": "current_full_extraction",
+            "traceRecorded": true,
+            "trace": {
+              "stage": "extraction_memo",
+              "outcome": "full_extraction",
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction"
+            }
+          }
+        },
+        "sameSession": {
+          "pass": false,
+          "checks": {
+            "memoUsed": false,
+            "memoHitLineRatio": false,
+            "continuedLineCount": false,
+            "newLineCount": false,
+            "removedLineCount": true,
+            "traceRecorded": true,
+            "noOpenAiCall": false,
+            "historyAvailable": true
+          },
+          "observed": {
+            "enabled": false,
+            "used": false,
+            "reason": "disabled",
+            "memoHitLineRatio": 0,
+            "continuedLineCount": 0,
+            "newLineCount": 4,
+            "removedLineCount": 0,
+            "visitFactsSource": "current_full_extraction",
+            "traceRecorded": true,
+            "trace": {
+              "stage": "extraction_memo",
+              "outcome": "full_extraction",
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction"
+            }
+          }
+        }
+      },
+      "scenarioChecks": {
+        "pass": true,
+        "checks": {
+          "stgHistoryAvailable": true
+        },
+        "observations": {}
+      },
+      "equivalence": {
+        "overallVerdict": "pass",
+        "controlVariability": {
+          "controlCount": 3,
+          "confirmedStable": true,
+          "candidateStable": true,
+          "confirmedSignatureCount": 1,
+          "candidateSignatureCount": 1,
+          "candidateDifferenceEnvelope": [],
+          "candidatePairDifferences": [
+            {
+              "left": 1,
+              "right": 2,
+              "differenceCount": 0,
+              "items": []
+            },
+            {
+              "left": 1,
+              "right": 3,
+              "differenceCount": 0,
+              "items": []
+            },
+            {
+              "left": 2,
+              "right": 3,
+              "differenceCount": 0,
+              "items": []
+            }
+          ]
+        },
+        "paths": {
+          "crossSession": {
+            "overallVerdict": "pass",
+            "confirmed": {
+              "verdict": "pass",
+              "differences": [
+                {
+                  "control": 1,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 2,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 3,
+                  "differenceCount": 0,
+                  "items": []
+                }
+              ]
+            },
+            "candidates": {
+              "verdict": "pass",
+              "knownVisitFactsLimitOnly": false,
+              "withinControlVariabilityEnvelope": true,
+              "differences": [
+                {
+                  "control": 1,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 2,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 3,
+                  "differenceCount": 0,
+                  "items": []
+                }
+              ]
+            }
+          },
+          "sameSession": {
+            "overallVerdict": "pass",
+            "confirmed": {
+              "verdict": "pass",
+              "differences": [
+                {
+                  "control": 1,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 2,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 3,
+                  "differenceCount": 0,
+                  "items": []
+                }
+              ]
+            },
+            "candidates": {
+              "verdict": "pass",
+              "knownVisitFactsLimitOnly": false,
+              "withinControlVariabilityEnvelope": true,
+              "differences": [
+                {
+                  "control": 1,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 2,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 3,
+                  "differenceCount": 0,
+                  "items": []
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "partial_p_change",
+      "description": "S/O/Aをcopy-forwardしP段落だけ変更する",
+      "mutation": "replace P line",
+      "inputAudit": {
+        "id": "partial_p_change",
+        "baseHash": "914f945061afad62b36e98c9c7dcebda584941e82edcc9b1cfd6354e01d8e65e",
+        "targetHash": "f97e8b59a7c5bedfec51cc1ced825d238cf763f0245821e5bb530e03e8f5f2af",
+        "baseLineCount": 4,
+        "targetLineCount": 4,
+        "sameText": false,
+        "mutation": "replace P line"
+      },
+      "verdict": "fail",
+      "base": {
+        "totalPoints": 0,
+        "confirmedLines": [],
+        "candidateItems": [
+          {
+            "kind": "proposal",
+            "code": "",
+            "codeCandidates": [],
+            "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+            "points": 50
+          }
+        ],
+        "reviewIssues": [
+          {
+            "title": "確認事項",
+            "reason": "マスタ適用期間外: 診療日2026-05-25は取込済み診療行為マスタの適用開始(2026-06-01)より前です。診療行為コードが解決できず0点となる可能性があります。対象年度のマスタ取込か診療日を確認してください。"
+          },
+          {
+            "title": "確認事項",
+            "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+          },
+          {
+            "title": "初診/再診確認",
+            "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+          },
+          {
+            "title": "確認事項",
+            "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+          }
+        ],
+        "warnings": [
+          "2週後の定期訪問予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "マスタ適用期間外: 診療日2026-05-25は取込済み診療行為マスタの適用開始(2026-06-01)より前です。診療行為コードが解決できず0点となる可能性があります。対象年度のマスタ取込か診療日を確認してください。",
+          "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+          "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+          "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": ""
+        },
+        "extraction": {
+          "source": "openai",
+          "promptVersion": "fee-clinical-events-v14",
+          "clinicalEventCount": 4,
+          "memo": {
+            "enabled": false,
+            "used": false,
+            "reason": "disabled",
+            "memoHitLineRatio": 0,
+            "continuedLineCount": 0,
+            "newLineCount": 4,
+            "removedLineCount": 0,
+            "visitFactsSource": "current_full_extraction",
+            "traceRecorded": true,
+            "trace": {
+              "stage": "extraction_memo",
+              "outcome": "full_extraction",
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction"
+            }
+          }
+        },
+        "patientHistory": {
+          "completeness": "partial",
+          "priorSessionCount": 0,
+          "externalHistoryEventCount": 0,
+          "patientHistoryReason": "loaded",
+          "extractionSnapshotReason": "disabled"
+        },
+        "openAi": {
+          "providerDurationMs": 10135,
+          "callCount": 1,
+          "callObserved": true,
+          "usage": {
+            "inputTokens": 5917,
+            "outputTokens": 1395,
+            "totalTokens": 7312,
+            "cachedInputTokens": 4864
+          }
+        },
+        "runtime": {
+          "environment": "stg",
+          "cloudRunService": "fee-api-stg",
+          "cloudRunRevision": "fee-api-stg-00167-mj5"
+        },
+        "sessionRef": "88adce1f1825",
+        "requestDurationMs": 10880.78
+      },
+      "memoRuns": {
+        "crossSession": {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "継続の確認",
+              "reason": "薬剤日数不足: 薬剤「継続」は日数または総量が不足しているため、算定候補には入れていません。"
+            }
+          ],
+          "warnings": [
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "根拠確認: 体重・血圧の毎日記録 指導は実施済み候補として抽出されましたが、根拠文が予定・依頼・検討の文脈です。自動算定には入れず、カルテ上の当日・自院・実施済みの根拠を確認してください。",
+            "根拠確認: 息切れ増悪時の連絡 再指導は実施済み候補として抽出されましたが、根拠文が予定・依頼・検討の文脈です。自動算定には入れず、カルテ上の当日・自院・実施済みの根拠を確認してください。",
+            "次回（4週後）の定期訪問予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "薬剤日数不足: 薬剤「継続」は日数または総量が不足しているため、算定候補には入れていません。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": ""
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 4,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 10713,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5875,
+              "outputTokens": 1207,
+              "totalTokens": 7082,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "b2f00ec93988",
+          "requestDurationMs": 11493.36
+        }
+      },
+      "controls": [
+        {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "抽出縮退: AI構造化に失敗したため、ルールベース抽出のみで算定候補を作成しました。カルテ由来の算定候補・確認事項が欠落している可能性があります。再計算で回復する場合があります。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "を継続の確認",
+              "reason": "薬剤「を継続」は数量または日数が不足しているため、算定候補には入れていません。"
+            }
+          ],
+          "warnings": [
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "抽出縮退: AI構造化に失敗したため、ルールベース抽出のみで算定候補を作成しました。カルテ由来の算定候補・確認事項が欠落している可能性があります。再計算で回復する場合があります。",
+            "病名が入力されていません。査定リスク確認のため、主病名または疑い病名を入力してください。",
+            "薬剤「を継続」は数量または日数が不足しているため、算定候補には入れていません。"
+          ],
+          "visitFacts": null,
+          "extraction": {
+            "source": "rules_fallback",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 0,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": null,
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 0,
+              "removedLineCount": 0,
+              "visitFactsSource": null,
+              "traceRecorded": false,
+              "trace": null
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 60004,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": null
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "2a4b9bf63ba5",
+          "requestDurationMs": 60766.6
+        },
+        {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 体重・血圧の毎日記録と症状増悪時の連絡再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            }
+          ],
+          "warnings": [
+            "4週後の定期訪問予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "対象疾患確認: 体重・血圧の毎日記録と症状増悪時の連絡再指導は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "根拠確認: 現行処方の継続は実施済み候補として抽出されましたが、根拠文が予定・依頼・検討の文脈です。自動算定には入れず、カルテ上の当日・自院・実施済みの根拠を確認してください。",
+            "療養計画確認: 体重・血圧の毎日記録と症状増悪時の連絡再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": "「現行処方を継続」以外に、院外処方箋交付や一般名処方の明示なし"
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 3,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 10101,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5875,
+              "outputTokens": 1369,
+              "totalTokens": 7244,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "eef9a9f44613",
+          "requestDurationMs": 11485.58
+        },
+        {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 体重・血圧の毎日記録と、息切れ増悪時の連絡の再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            }
+          ],
+          "warnings": [
+            "4週後の定期訪問予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "対象疾患確認: 体重・血圧の毎日記録と、息切れ増悪時の連絡の再指導は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 体重・血圧の毎日記録と、息切れ増悪時の連絡の再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": "現行処方を継続（処方箋交付や一般名処方の明記なし）"
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 2,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 7119,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5875,
+              "outputTokens": 950,
+              "totalTokens": 6825,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "59e63297012c",
+          "requestDurationMs": 8100.08
+        }
+      ],
+      "memoAcceptance": {
+        "crossSession": {
+          "pass": false,
+          "checks": {
+            "memoUsed": false,
+            "memoHitLineRatio": false,
+            "continuedLineCount": false,
+            "newLineCount": false,
+            "removedLineCount": false,
+            "traceRecorded": true,
+            "noOpenAiCall": true,
+            "historyAvailable": true
+          },
+          "observed": {
+            "enabled": false,
+            "used": false,
+            "reason": "disabled",
+            "memoHitLineRatio": 0,
+            "continuedLineCount": 0,
+            "newLineCount": 4,
+            "removedLineCount": 0,
+            "visitFactsSource": "current_full_extraction",
+            "traceRecorded": true,
+            "trace": {
+              "stage": "extraction_memo",
+              "outcome": "full_extraction",
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction"
+            }
+          }
+        }
+      },
+      "scenarioChecks": {
+        "pass": true,
+        "checks": {
+          "stgHistoryAvailable": true
+        },
+        "observations": {}
+      },
+      "equivalence": {
+        "overallVerdict": "inconclusive_control_variability",
+        "controlVariability": {
+          "controlCount": 3,
+          "confirmedStable": true,
+          "candidateStable": false,
+          "confirmedSignatureCount": 1,
+          "candidateSignatureCount": 2,
+          "candidateDifferenceEnvelope": [
+            "{\"code\":\"113041810\",\"codeCandidates\":[],\"kind\":\"proposal\",\"points\":660,\"title\":\"生活習慣病管理料１の算定確認\"}",
+            "{\"code\":\"113707610\",\"codeCandidates\":[],\"kind\":\"proposal\",\"points\":90,\"title\":\"プログラム医療機器等指導管理料の算定確認\"}"
+          ],
+          "candidatePairDifferences": [
+            {
+              "left": 1,
+              "right": 2,
+              "differenceCount": 2,
+              "items": [
+                {
+                  "key": "{\"code\":\"113041810\",\"codeCandidates\":[],\"kind\":\"proposal\",\"points\":660,\"title\":\"生活習慣病管理料１の算定確認\"}",
+                  "side": "control_only",
+                  "item": {
+                    "kind": "proposal",
+                    "code": "113041810",
+                    "codeCandidates": [],
+                    "title": "生活習慣病管理料１の算定確認",
+                    "points": 660
+                  }
+                },
+                {
+                  "key": "{\"code\":\"113707610\",\"codeCandidates\":[],\"kind\":\"proposal\",\"points\":90,\"title\":\"プログラム医療機器等指導管理料の算定確認\"}",
+                  "side": "control_only",
+                  "item": {
+                    "kind": "proposal",
+                    "code": "113707610",
+                    "codeCandidates": [],
+                    "title": "プログラム医療機器等指導管理料の算定確認",
+                    "points": 90
+                  }
+                }
+              ]
+            },
+            {
+              "left": 1,
+              "right": 3,
+              "differenceCount": 2,
+              "items": [
+                {
+                  "key": "{\"code\":\"113041810\",\"codeCandidates\":[],\"kind\":\"proposal\",\"points\":660,\"title\":\"生活習慣病管理料１の算定確認\"}",
+                  "side": "control_only",
+                  "item": {
+                    "kind": "proposal",
+                    "code": "113041810",
+                    "codeCandidates": [],
+                    "title": "生活習慣病管理料１の算定確認",
+                    "points": 660
+                  }
+                },
+                {
+                  "key": "{\"code\":\"113707610\",\"codeCandidates\":[],\"kind\":\"proposal\",\"points\":90,\"title\":\"プログラム医療機器等指導管理料の算定確認\"}",
+                  "side": "control_only",
+                  "item": {
+                    "kind": "proposal",
+                    "code": "113707610",
+                    "codeCandidates": [],
+                    "title": "プログラム医療機器等指導管理料の算定確認",
+                    "points": 90
+                  }
+                }
+              ]
+            },
+            {
+              "left": 2,
+              "right": 3,
+              "differenceCount": 0,
+              "items": []
+            }
+          ]
+        },
+        "paths": {
+          "crossSession": {
+            "overallVerdict": "inconclusive_control_variability",
+            "confirmed": {
+              "verdict": "pass",
+              "differences": [
+                {
+                  "control": 1,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 2,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 3,
+                  "differenceCount": 0,
+                  "items": []
+                }
+              ]
+            },
+            "candidates": {
+              "verdict": "inconclusive_control_variability",
+              "knownVisitFactsLimitOnly": false,
+              "withinControlVariabilityEnvelope": true,
+              "differences": [
+                {
+                  "control": 1,
+                  "differenceCount": 2,
+                  "items": [
+                    {
+                      "key": "{\"code\":\"113041810\",\"codeCandidates\":[],\"kind\":\"proposal\",\"points\":660,\"title\":\"生活習慣病管理料１の算定確認\"}",
+                      "side": "memo_only",
+                      "item": {
+                        "kind": "proposal",
+                        "code": "113041810",
+                        "codeCandidates": [],
+                        "title": "生活習慣病管理料１の算定確認",
+                        "points": 660
+                      }
+                    },
+                    {
+                      "key": "{\"code\":\"113707610\",\"codeCandidates\":[],\"kind\":\"proposal\",\"points\":90,\"title\":\"プログラム医療機器等指導管理料の算定確認\"}",
+                      "side": "memo_only",
+                      "item": {
+                        "kind": "proposal",
+                        "code": "113707610",
+                        "codeCandidates": [],
+                        "title": "プログラム医療機器等指導管理料の算定確認",
+                        "points": 90
+                      }
+                    }
+                  ]
+                },
+                {
+                  "control": 2,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 3,
+                  "differenceCount": 0,
+                  "items": []
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "visit_facts_new_outside_prescription",
+      "description": "新規P段落に院外処方箋発行を初めて記載し、全文抽出へ安全にフォールバックする",
+      "mutation": "replace P line with outside prescription",
+      "inputAudit": {
+        "id": "visit_facts_new_outside_prescription",
+        "baseHash": "914f945061afad62b36e98c9c7dcebda584941e82edcc9b1cfd6354e01d8e65e",
+        "targetHash": "c056b2cdf3322d57d073f41a8570fd6a6fe62795f3c279640e4f9cff81839e8a",
+        "baseLineCount": 4,
+        "targetLineCount": 4,
+        "sameText": false,
+        "mutation": "replace P line with outside prescription"
+      },
+      "verdict": "fail",
+      "base": {
+        "totalPoints": 0,
+        "confirmedLines": [],
+        "candidateItems": [
+          {
+            "kind": "proposal",
+            "code": "",
+            "codeCandidates": [],
+            "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+            "points": 50
+          }
+        ],
+        "reviewIssues": [
+          {
+            "title": "確認事項",
+            "reason": "マスタ適用期間外: 診療日2026-05-25は取込済み診療行為マスタの適用開始(2026-06-01)より前です。診療行為コードが解決できず0点となる可能性があります。対象年度のマスタ取込か診療日を確認してください。"
+          },
+          {
+            "title": "確認事項",
+            "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+          },
+          {
+            "title": "初診/再診確認",
+            "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+          },
+          {
+            "title": "確認事項",
+            "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+          }
+        ],
+        "warnings": [
+          "マスタ適用期間外: 診療日2026-05-25は取込済み診療行為マスタの適用開始(2026-06-01)より前です。診療行為コードが解決できず0点となる可能性があります。対象年度のマスタ取込か診療日を確認してください。",
+          "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+          "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+          "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+          "根拠確認: 減塩および毎日の体重・血圧測定の再指導、症状時連絡の説明は実施済み候補として抽出されましたが、根拠文が予定・依頼・検討の文脈です。自動算定には入れず、カルテ上の当日・自院・実施済みの根拠を確認してください。",
+          "次回定期訪問（2週後）の予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "薬剤「継続」は今回処方として確定できないため、算定候補には入れていません。"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": ""
+        },
+        "extraction": {
+          "source": "openai",
+          "promptVersion": "fee-clinical-events-v14",
+          "clinicalEventCount": 4,
+          "memo": {
+            "enabled": false,
+            "used": false,
+            "reason": "disabled",
+            "memoHitLineRatio": 0,
+            "continuedLineCount": 0,
+            "newLineCount": 4,
+            "removedLineCount": 0,
+            "visitFactsSource": "current_full_extraction",
+            "traceRecorded": true,
+            "trace": {
+              "stage": "extraction_memo",
+              "outcome": "full_extraction",
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction"
+            }
+          }
+        },
+        "patientHistory": {
+          "completeness": "partial",
+          "priorSessionCount": 0,
+          "externalHistoryEventCount": 0,
+          "patientHistoryReason": "loaded",
+          "extractionSnapshotReason": "disabled"
+        },
+        "openAi": {
+          "providerDurationMs": 9583,
+          "callCount": 1,
+          "callObserved": true,
+          "usage": {
+            "inputTokens": 5917,
+            "outputTokens": 1360,
+            "totalTokens": 7277,
+            "cachedInputTokens": 4864
+          }
+        },
+        "runtime": {
+          "environment": "stg",
+          "cloudRunService": "fee-api-stg",
+          "cloudRunRevision": "fee-api-stg-00167-mj5"
+        },
+        "sessionRef": "343f3a16e514",
+        "requestDurationMs": 10432.33
+      },
+      "memoRuns": {
+        "crossSession": {
+          "totalPoints": 60,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            },
+            {
+              "kind": "pending_line",
+              "code": "120002910",
+              "codeCandidates": [],
+              "title": "処方箋料（リフィル以外・その他）",
+              "points": 60
+            },
+            {
+              "kind": "proposal",
+              "code": "120005710",
+              "codeCandidates": [],
+              "title": "特定疾患処方管理加算の確認",
+              "points": 56
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "レセプトコメントの確認",
+              "reason": "処方箋料（リフィル以外・その他）: 処方料1を算定しない理由を確認し、該当する場合は理由をレセプトコメントに記載してください。"
+            },
+            {
+              "title": "レセプトコメントの確認",
+              "reason": "処方箋料（リフィル以外・その他）: 複数診療科で処方している場合は、その旨をレセプトコメントに記載してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            }
+          ],
+          "warnings": [
+            "レセプトコメントの確認: 120002910 処方箋料（リフィル以外・その他） に必要なコメント: 820100741 複数診療科で処方",
+            "レセプトコメントの確認: 120002910 処方箋料（リフィル以外・その他） に必要なコメント: 830100194 １を算定しない理由（処方箋料）；",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "根拠確認: 院外処方箋発行は実施済み候補として抽出されましたが、根拠文が予定・依頼・検討の文脈です。自動算定には入れず、カルテ上の当日・自院・実施済みの根拠を確認してください。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "yes",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": "P）院外処方箋を発行。アムロジピン錠5mgを1日1回朝食後30日分、院外処方とした。"
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 2,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 7812,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5879,
+              "outputTokens": 1006,
+              "totalTokens": 6885,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "f969a8711d06",
+          "requestDurationMs": 8913.74
+        }
+      },
+      "controls": [
+        {
+          "totalPoints": 60,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            },
+            {
+              "kind": "pending_line",
+              "code": "120002910",
+              "codeCandidates": [],
+              "title": "処方箋料（リフィル以外・その他）",
+              "points": 60
+            },
+            {
+              "kind": "proposal",
+              "code": "120005710",
+              "codeCandidates": [],
+              "title": "特定疾患処方管理加算の確認",
+              "points": 56
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "レセプトコメントの確認",
+              "reason": "処方箋料（リフィル以外・その他）: 処方料1を算定しない理由を確認し、該当する場合は理由をレセプトコメントに記載してください。"
+            },
+            {
+              "title": "レセプトコメントの確認",
+              "reason": "処方箋料（リフィル以外・その他）: 複数診療科で処方している場合は、その旨をレセプトコメントに記載してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            }
+          ],
+          "warnings": [
+            "レセプトコメントの確認: 120002910 処方箋料（リフィル以外・その他） に必要なコメント: 820100741 複数診療科で処方",
+            "レセプトコメントの確認: 120002910 処方箋料（リフィル以外・その他） に必要なコメント: 830100194 １を算定しない理由（処方箋料）；",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "yes",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": "院外処方箋を発行。アムロジピン錠5mgを…院外処方とした。"
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 1,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 5614,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5879,
+              "outputTokens": 764,
+              "totalTokens": 6643,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "c1f9611f8bd3",
+          "requestDurationMs": 6558.92
+        },
+        {
+          "totalPoints": 60,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            },
+            {
+              "kind": "pending_line",
+              "code": "120002910",
+              "codeCandidates": [],
+              "title": "処方箋料（リフィル以外・その他）",
+              "points": 60
+            },
+            {
+              "kind": "proposal",
+              "code": "120005710",
+              "codeCandidates": [],
+              "title": "特定疾患処方管理加算の確認",
+              "points": 56
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "レセプトコメントの確認",
+              "reason": "処方箋料（リフィル以外・その他）: 処方料1を算定しない理由を確認し、該当する場合は理由をレセプトコメントに記載してください。"
+            },
+            {
+              "title": "レセプトコメントの確認",
+              "reason": "処方箋料（リフィル以外・その他）: 複数診療科で処方している場合は、その旨をレセプトコメントに記載してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            }
+          ],
+          "warnings": [
+            "レセプトコメントの確認: 120002910 処方箋料（リフィル以外・その他） に必要なコメント: 820100741 複数診療科で処方",
+            "レセプトコメントの確認: 120002910 処方箋料（リフィル以外・その他） に必要なコメント: 830100194 １を算定しない理由（処方箋料）；",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "yes",
+            "generic_name_prescription": "no",
+            "prescription_evidence": "P）院外処方箋を発行。"
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 1,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 5360,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5879,
+              "outputTokens": 661,
+              "totalTokens": 6540,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "dcc028c89179",
+          "requestDurationMs": 6140.9
+        },
+        {
+          "totalPoints": 60,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            },
+            {
+              "kind": "pending_line",
+              "code": "120002910",
+              "codeCandidates": [],
+              "title": "処方箋料（リフィル以外・その他）",
+              "points": 60
+            },
+            {
+              "kind": "proposal",
+              "code": "120005710",
+              "codeCandidates": [],
+              "title": "特定疾患処方管理加算の確認",
+              "points": 56
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "レセプトコメントの確認",
+              "reason": "処方箋料（リフィル以外・その他）: 処方料1を算定しない理由を確認し、該当する場合は理由をレセプトコメントに記載してください。"
+            },
+            {
+              "title": "レセプトコメントの確認",
+              "reason": "処方箋料（リフィル以外・その他）: 複数診療科で処方している場合は、その旨をレセプトコメントに記載してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            }
+          ],
+          "warnings": [
+            "レセプトコメントの確認: 120002910 処方箋料（リフィル以外・その他） に必要なコメント: 820100741 複数診療科で処方",
+            "レセプトコメントの確認: 120002910 処方箋料（リフィル以外・その他） に必要なコメント: 830100194 １を算定しない理由（処方箋料）；",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "yes",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": "院外処方箋を発行／院外処方とした。"
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 1,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 5727,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5879,
+              "outputTokens": 765,
+              "totalTokens": 6644,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "ebc724576c4b",
+          "requestDurationMs": 6505.05
+        }
+      ],
+      "memoAcceptance": {
+        "crossSession": {
+          "pass": false,
+          "checks": {
+            "memoUsed": true,
+            "memoHitLineRatio": true,
+            "continuedLineCount": true,
+            "newLineCount": true,
+            "removedLineCount": false,
+            "traceRecorded": true,
+            "noOpenAiCall": true,
+            "historyAvailable": true
+          },
+          "observed": {
+            "enabled": false,
+            "used": false,
+            "reason": "disabled",
+            "memoHitLineRatio": 0,
+            "continuedLineCount": 0,
+            "newLineCount": 4,
+            "removedLineCount": 0,
+            "visitFactsSource": "current_full_extraction",
+            "traceRecorded": true,
+            "trace": {
+              "stage": "extraction_memo",
+              "outcome": "full_extraction",
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction"
+            }
+          }
+        }
+      },
+      "scenarioChecks": {
+        "pass": true,
+        "checks": {
+          "stgHistoryAvailable": true
+        },
+        "observations": {
+          "memoVisitFacts": {
+            "outside_prescription_issued": "yes",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": "P）院外処方箋を発行。アムロジピン錠5mgを1日1回朝食後30日分、院外処方とした。"
+          },
+          "controlVisitFacts": [
+            {
+              "outside_prescription_issued": "yes",
+              "generic_name_prescription": "unknown",
+              "prescription_evidence": "院外処方箋を発行。アムロジピン錠5mgを…院外処方とした。"
+            },
+            {
+              "outside_prescription_issued": "yes",
+              "generic_name_prescription": "no",
+              "prescription_evidence": "P）院外処方箋を発行。"
+            },
+            {
+              "outside_prescription_issued": "yes",
+              "generic_name_prescription": "unknown",
+              "prescription_evidence": "院外処方箋を発行／院外処方とした。"
+            }
+          ],
+          "memoVisitFactsMatchesEveryControl": false
+        }
+      },
+      "equivalence": {
+        "overallVerdict": "pass",
+        "controlVariability": {
+          "controlCount": 3,
+          "confirmedStable": true,
+          "candidateStable": true,
+          "confirmedSignatureCount": 1,
+          "candidateSignatureCount": 1,
+          "candidateDifferenceEnvelope": [],
+          "candidatePairDifferences": [
+            {
+              "left": 1,
+              "right": 2,
+              "differenceCount": 0,
+              "items": []
+            },
+            {
+              "left": 1,
+              "right": 3,
+              "differenceCount": 0,
+              "items": []
+            },
+            {
+              "left": 2,
+              "right": 3,
+              "differenceCount": 0,
+              "items": []
+            }
+          ]
+        },
+        "paths": {
+          "crossSession": {
+            "overallVerdict": "pass",
+            "confirmed": {
+              "verdict": "pass",
+              "differences": [
+                {
+                  "control": 1,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 2,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 3,
+                  "differenceCount": 0,
+                  "items": []
+                }
+              ]
+            },
+            "candidates": {
+              "verdict": "pass",
+              "knownVisitFactsLimitOnly": false,
+              "withinControlVariabilityEnvelope": true,
+              "differences": [
+                {
+                  "control": 1,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 2,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 3,
+                  "differenceCount": 0,
+                  "items": []
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "removed_performed_act",
+      "description": "前回だけに存在した創傷処置行を削除し、時間汚染が無いことを確認する",
+      "mutation": "remove performed wound-treatment line",
+      "inputAudit": {
+        "id": "removed_performed_act",
+        "baseHash": "3b17d1758f56e9f6c5ee6745af104f1539694bd2d78618f755ec7513d14e4a0b",
+        "targetHash": "914f945061afad62b36e98c9c7dcebda584941e82edcc9b1cfd6354e01d8e65e",
+        "baseLineCount": 5,
+        "targetLineCount": 4,
+        "sameText": false,
+        "mutation": "remove performed wound-treatment line"
+      },
+      "verdict": "fail",
+      "base": {
+        "totalPoints": 0,
+        "confirmedLines": [],
+        "candidateItems": [
+          {
+            "kind": "proposal",
+            "code": "",
+            "codeCandidates": [],
+            "title": "「創傷処置」の算定区分確認",
+            "points": 275
+          },
+          {
+            "kind": "proposal",
+            "code": "",
+            "codeCandidates": [],
+            "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+            "points": 50
+          }
+        ],
+        "reviewIssues": [
+          {
+            "title": "確認事項",
+            "reason": "Medical procedure code not found for service date: 140000610"
+          },
+          {
+            "title": "確認事項",
+            "reason": "マスタ適用期間外: 診療日2026-05-25は取込済み診療行為マスタの適用開始(2026-06-01)より前です。診療行為コードが解決できず0点となる可能性があります。対象年度のマスタ取込か診療日を確認してください。"
+          },
+          {
+            "title": "確認事項",
+            "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+          },
+          {
+            "title": "初診/再診確認",
+            "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+          },
+          {
+            "title": "確認事項",
+            "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+          }
+        ],
+        "warnings": [
+          "Medical procedure code not found for service date: 140000610",
+          "マスタ適用期間外: 診療日2026-05-25は取込済み診療行為マスタの適用開始(2026-06-01)より前です。診療行為コードが解決できず0点となる可能性があります。対象年度のマスタ取込か診療日を確認してください。",
+          "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+          "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+          "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+          "施設基準確認: 検体検査管理加算の届出確認が必要です。施設基準が登録されていないため、検体検査管理加算は自動追加していません。"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": ""
+        },
+        "extraction": {
+          "source": "openai",
+          "promptVersion": "fee-clinical-events-v14",
+          "clinicalEventCount": 1,
+          "memo": {
+            "enabled": false,
+            "used": false,
+            "reason": "disabled",
+            "memoHitLineRatio": 0,
+            "continuedLineCount": 0,
+            "newLineCount": 5,
+            "removedLineCount": 0,
+            "visitFactsSource": "current_full_extraction",
+            "traceRecorded": true,
+            "trace": {
+              "stage": "extraction_memo",
+              "outcome": "full_extraction",
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 5,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction"
+            }
+          }
+        },
+        "patientHistory": {
+          "completeness": "partial",
+          "priorSessionCount": 0,
+          "externalHistoryEventCount": 0,
+          "patientHistoryReason": "loaded",
+          "extractionSnapshotReason": "disabled"
+        },
+        "openAi": {
+          "providerDurationMs": 4629,
+          "callCount": 1,
+          "callObserved": true,
+          "usage": {
+            "inputTokens": 6129,
+            "outputTokens": 630,
+            "totalTokens": 6759,
+            "cachedInputTokens": 4864
+          }
+        },
+        "runtime": {
+          "environment": "stg",
+          "cloudRunService": "fee-api-stg",
+          "cloudRunRevision": "fee-api-stg-00167-mj5"
+        },
+        "sessionRef": "7f0957010647",
+        "requestDurationMs": 5448.46
+      },
+      "memoRuns": {
+        "crossSession": {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            }
+          ],
+          "warnings": [
+            "具体的な薬剤名と処方/投与の明示がないため継続の臨床行為として抽出",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "次回：2週後の定期訪問予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": ""
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 5,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 9959,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5917,
+              "outputTokens": 1433,
+              "totalTokens": 7350,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "d6526cef1ffc",
+          "requestDurationMs": 10876.88
+        }
+      },
+      "controls": [
+        {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 減塩および毎日の体重・血圧測定の指導（再指導）は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 浮腫・体重増加・息切れ出現時の連絡指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            }
+          ],
+          "warnings": [
+            "「継続」とのみあり、今回の新規/変更/処方箋交付が明確でないため処方行為としては確定できない",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "定期訪問（次回2週後）予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "対象疾患確認: 減塩および毎日の体重・血圧測定の指導（再指導）は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 浮腫・体重増加・息切れ出現時の連絡指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 減塩および毎日の体重・血圧測定の指導（再指導）は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": "院外処方・一般名処方の記載なし"
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 4,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 9162,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5917,
+              "outputTokens": 1162,
+              "totalTokens": 7079,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "23e8be5e54de",
+          "requestDurationMs": 10274.47
+        },
+        {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 減塩指導および毎日の体重・血圧測定の再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            }
+          ],
+          "warnings": [
+            "2週後の定期訪問予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "「継続」との記載のみで、今日の新規処方/変更/交付が明示されていないため処方行為としては確定しない",
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "対象疾患確認: 減塩指導および毎日の体重・血圧測定の再指導は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 減塩指導および毎日の体重・血圧測定の再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": "院外処方箋交付・一般名処方の記載なし"
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 4,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 8899,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5917,
+              "outputTokens": 1241,
+              "totalTokens": 7158,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "59162b407a11",
+          "requestDurationMs": 9853.38
+        },
+        {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全、陳旧性心筋梗塞」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 減塩と毎日の体重・血圧測定の再指導（家族へ）は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            }
+          ],
+          "warnings": [
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "対象疾患確認: 減塩と毎日の体重・血圧測定の再指導（家族へ）は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "次回定期訪問（2週後）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "療養計画確認: 減塩と毎日の体重・血圧測定の再指導（家族へ）は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。",
+            "継続の記載はあるが、新規処方/変更/当日処方としての根拠（薬剤名や処方箋交付等）が明確でないため、実施行為としての薬剤処方イベントは確定でき"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": ""
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 3,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 8096,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5917,
+              "outputTokens": 1127,
+              "totalTokens": 7044,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "4022a556e438",
+          "requestDurationMs": 8918.29
+        }
+      ],
+      "memoAcceptance": {
+        "crossSession": {
+          "pass": false,
+          "checks": {
+            "memoUsed": false,
+            "memoHitLineRatio": false,
+            "continuedLineCount": false,
+            "newLineCount": false,
+            "removedLineCount": false,
+            "traceRecorded": true,
+            "noOpenAiCall": false,
+            "historyAvailable": true
+          },
+          "observed": {
+            "enabled": false,
+            "used": false,
+            "reason": "disabled",
+            "memoHitLineRatio": 0,
+            "continuedLineCount": 0,
+            "newLineCount": 4,
+            "removedLineCount": 0,
+            "visitFactsSource": "current_full_extraction",
+            "traceRecorded": true,
+            "trace": {
+              "stage": "extraction_memo",
+              "outcome": "full_extraction",
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction"
+            }
+          }
+        }
+      },
+      "scenarioChecks": {
+        "pass": false,
+        "checks": {
+          "stgHistoryAvailable": true,
+          "baseActWasObserved": true,
+          "removedActAbsentFromCurrentSurface": true,
+          "removedLineRecorded": false,
+          "removalTraceRecorded": true
+        },
+        "observations": {}
+      },
+      "equivalence": {
+        "overallVerdict": "pass",
+        "controlVariability": {
+          "controlCount": 3,
+          "confirmedStable": true,
+          "candidateStable": true,
+          "confirmedSignatureCount": 1,
+          "candidateSignatureCount": 1,
+          "candidateDifferenceEnvelope": [],
+          "candidatePairDifferences": [
+            {
+              "left": 1,
+              "right": 2,
+              "differenceCount": 0,
+              "items": []
+            },
+            {
+              "left": 1,
+              "right": 3,
+              "differenceCount": 0,
+              "items": []
+            },
+            {
+              "left": 2,
+              "right": 3,
+              "differenceCount": 0,
+              "items": []
+            }
+          ]
+        },
+        "paths": {
+          "crossSession": {
+            "overallVerdict": "pass",
+            "confirmed": {
+              "verdict": "pass",
+              "differences": [
+                {
+                  "control": 1,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 2,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 3,
+                  "differenceCount": 0,
+                  "items": []
+                }
+              ]
+            },
+            "candidates": {
+              "verdict": "pass",
+              "knownVisitFactsLimitOnly": false,
+              "withinControlVariabilityEnvelope": true,
+              "differences": [
+                {
+                  "control": 1,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 2,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 3,
+                  "differenceCount": 0,
+                  "items": []
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "all_lines_new",
+      "description": "元mockの別受診本文へ全面変更し、全文抽出フォールバックを確認する",
+      "mutation": "replace all SOAP lines with the next mock visit",
+      "inputAudit": {
+        "id": "all_lines_new",
+        "baseHash": "914f945061afad62b36e98c9c7dcebda584941e82edcc9b1cfd6354e01d8e65e",
+        "targetHash": "18e23af98341bce01ee1965c766806883def11a823f2a5b30e4473a716659e98",
+        "baseLineCount": 4,
+        "targetLineCount": 4,
+        "sameText": false,
+        "mutation": "replace all SOAP lines with the next mock visit"
+      },
+      "verdict": "fail",
+      "base": {
+        "totalPoints": 0,
+        "confirmedLines": [],
+        "candidateItems": [
+          {
+            "kind": "proposal",
+            "code": "",
+            "codeCandidates": [],
+            "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+            "points": 50
+          }
+        ],
+        "reviewIssues": [
+          {
+            "title": "確認事項",
+            "reason": "マスタ適用期間外: 診療日2026-05-25は取込済み診療行為マスタの適用開始(2026-06-01)より前です。診療行為コードが解決できず0点となる可能性があります。対象年度のマスタ取込か診療日を確認してください。"
+          },
+          {
+            "title": "確認事項",
+            "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+          },
+          {
+            "title": "初診/再診確認",
+            "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+          },
+          {
+            "title": "確認事項",
+            "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+          },
+          {
+            "title": "療養計画確認",
+            "reason": "療養計画確認: 減塩指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+          },
+          {
+            "title": "療養計画確認",
+            "reason": "療養計画確認: 浮腫・体重増加・息切れ出現時の連絡指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+          },
+          {
+            "title": "療養計画確認",
+            "reason": "療養計画確認: 毎日の体重・血圧測定の再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+          }
+        ],
+        "warnings": [
+          "2週後の定期訪問予定は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+          "「継続」はあるが、当該来院での新規処方/変更/実施の明確な処方記載はないためprescribedとしては不確実。",
+          "マスタ適用期間外: 診療日2026-05-25は取込済み診療行為マスタの適用開始(2026-06-01)より前です。診療行為コードが解決できず0点となる可能性があります。対象年度のマスタ取込か診療日を確認してください。",
+          "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+          "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+          "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+          "対象疾患確認: 減塩指導は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+          "療養計画確認: 毎日の体重・血圧測定の再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。",
+          "療養計画確認: 浮腫・体重増加・息切れ出現時の連絡指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。",
+          "療養計画確認: 減塩指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+        ],
+        "visitFacts": {
+          "outside_prescription_issued": "unknown",
+          "generic_name_prescription": "unknown",
+          "prescription_evidence": ""
+        },
+        "extraction": {
+          "source": "openai",
+          "promptVersion": "fee-clinical-events-v14",
+          "clinicalEventCount": 5,
+          "memo": {
+            "enabled": false,
+            "used": false,
+            "reason": "disabled",
+            "memoHitLineRatio": 0,
+            "continuedLineCount": 0,
+            "newLineCount": 4,
+            "removedLineCount": 0,
+            "visitFactsSource": "current_full_extraction",
+            "traceRecorded": true,
+            "trace": {
+              "stage": "extraction_memo",
+              "outcome": "full_extraction",
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction"
+            }
+          }
+        },
+        "patientHistory": {
+          "completeness": "partial",
+          "priorSessionCount": 0,
+          "externalHistoryEventCount": 0,
+          "patientHistoryReason": "loaded",
+          "extractionSnapshotReason": "disabled"
+        },
+        "openAi": {
+          "providerDurationMs": 10071,
+          "callCount": 1,
+          "callObserved": true,
+          "usage": {
+            "inputTokens": 5917,
+            "outputTokens": 1452,
+            "totalTokens": 7369,
+            "cachedInputTokens": 4864
+          }
+        },
+        "runtime": {
+          "environment": "stg",
+          "cloudRunService": "fee-api-stg",
+          "cloudRunRevision": "fee-api-stg-00167-mj5"
+        },
+        "sessionRef": "5b6a4a219cbc",
+        "requestDurationMs": 11277.99
+      },
+      "memoRuns": {
+        "crossSession": {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "「在宅療養」の算定区分確認",
+              "points": 170
+            },
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 在宅療養の継続に向けた訪問看護との連携は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 体重増加や息切れ増悪時の連絡に関する再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            }
+          ],
+          "warnings": [
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "定期訪問の次回予定（2週後）は今後の予定として抽出されたため、今回の算定候補には入れていません。実施済みの場合は内容を確認してください。",
+            "対象疾患確認: 在宅療養の継続に向けた訪問看護との連携は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 体重増加や息切れ増悪時の連絡に関する再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 在宅療養の継続に向けた訪問看護との連携は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": "処方箋交付/院外処方/一般名処方の記載なし"
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 3,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 7453,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5843,
+              "outputTokens": 1045,
+              "totalTokens": 6888,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "284c3d3d068e",
+          "requestDurationMs": 8992.84
+        }
+      },
+      "controls": [
+        {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "「在宅療養」の算定区分確認",
+              "points": 170
+            },
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "在宅医療未対応",
+              "reason": "在宅医療未対応: 定期訪問（次回2週後）予定は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。"
+            },
+            {
+              "title": "在宅医療未対応",
+              "reason": "在宅医療未対応: 訪問看護と連携した在宅療養の継続は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 体重増加・息切れ増悪時の連絡再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            }
+          ],
+          "warnings": [
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "在宅医療未対応: 定期訪問（次回2週後）予定は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+            "在宅医療未対応: 訪問看護と連携した在宅療養の継続は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+            "対象疾患確認: 体重増加・息切れ増悪時の連絡再指導は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 体重増加・息切れ増悪時の連絡再指導は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。",
+            "薬剤名の明示がなく処方内容の特定ができないため、処方継続の事実のみ抽出"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": ""
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 4,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 8024,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5843,
+              "outputTokens": 1136,
+              "totalTokens": 6979,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "dc8015c5a816",
+          "requestDurationMs": 9299.08
+        },
+        {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "「在宅療養」の算定区分確認",
+              "points": 170
+            },
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 現行処方継続に関する在宅療養管理（体重増加/息切れ増悪時の連絡再指導、訪問看護連携）は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            }
+          ],
+          "warnings": [
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "対象疾患確認: 現行処方継続に関する在宅療養管理（体重増加/息切れ増悪時の連絡再指導、訪問看護連携）は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 現行処方継続に関する在宅療養管理（体重増加/息切れ増悪時の連絡再指導、訪問看護連携）は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": "現行処方継続の記載のみで、院外処方箋交付や一般名処方の明示なし"
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 1,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 6074,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5843,
+              "outputTokens": 863,
+              "totalTokens": 6706,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "42787fd82283",
+          "requestDurationMs": 7278.4
+        },
+        {
+          "totalPoints": 0,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "「在宅療養」の算定区分確認",
+              "points": 170
+            },
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "proposal",
+              "code": "113041810",
+              "codeCandidates": [],
+              "title": "生活習慣病管理料１の算定確認",
+              "points": 660
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            }
+          ],
+          "reviewIssues": [
+            {
+              "title": "在宅医療未対応",
+              "reason": "在宅医療未対応: 次回定期訪問（2週後）は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "療養計画確認",
+              "reason": "療養計画確認: 在宅療養の継続（訪問看護連携）は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+            }
+          ],
+          "warnings": [
+            "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。",
+            "同一建物区分が未確定です。同一日に同一建物で複数患者を診療した場合は同一建物居住者の区分になります。区分を選択して再計算してください。同一建物区分に依存する明細は合計に含めていません。",
+            "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。",
+            "在宅医療未対応: 次回定期訪問（2週後）は在宅医療領域として抽出しました。現行の自動算定では確定算定せず、人手で確認してください。",
+            "対象疾患確認: 在宅療養の継続（訪問看護連携）は管理料・指導料に関係する記載として抽出しました。管理料確認、同月履歴確認、対象疾患、指導・説明の記録、管理主体、施設基準を人手で確認してください。自動算定には入れていません。",
+            "療養計画確認: 在宅療養の継続（訪問看護連携）は管理・指導に関係する記載として抽出しました。療養計画、指導内容、説明記録、同月履歴を人手で確認してください。自動算定には入れていません。"
+          ],
+          "visitFacts": {
+            "outside_prescription_issued": "unknown",
+            "generic_name_prescription": "unknown",
+            "prescription_evidence": ""
+          },
+          "extraction": {
+            "source": "openai",
+            "promptVersion": "fee-clinical-events-v14",
+            "clinicalEventCount": 3,
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 1,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 7542,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5843,
+              "outputTokens": 1072,
+              "totalTokens": 6915,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00167-mj5"
+          },
+          "sessionRef": "f471b0062aef",
+          "requestDurationMs": 8542.96
+        }
+      ],
+      "memoAcceptance": {
+        "crossSession": {
+          "pass": false,
+          "checks": {
+            "memoUsed": true,
+            "memoHitLineRatio": true,
+            "continuedLineCount": true,
+            "newLineCount": true,
+            "removedLineCount": false,
+            "traceRecorded": true,
+            "noOpenAiCall": true,
+            "historyAvailable": true
+          },
+          "observed": {
+            "enabled": false,
+            "used": false,
+            "reason": "disabled",
+            "memoHitLineRatio": 0,
+            "continuedLineCount": 0,
+            "newLineCount": 4,
+            "removedLineCount": 0,
+            "visitFactsSource": "current_full_extraction",
+            "traceRecorded": true,
+            "trace": {
+              "stage": "extraction_memo",
+              "outcome": "full_extraction",
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction"
+            }
+          }
+        }
+      },
+      "scenarioChecks": {
+        "pass": true,
+        "checks": {
+          "stgHistoryAvailable": true
+        },
+        "observations": {}
+      },
+      "equivalence": {
+        "overallVerdict": "pass",
+        "controlVariability": {
+          "controlCount": 3,
+          "confirmedStable": true,
+          "candidateStable": true,
+          "confirmedSignatureCount": 1,
+          "candidateSignatureCount": 1,
+          "candidateDifferenceEnvelope": [],
+          "candidatePairDifferences": [
+            {
+              "left": 1,
+              "right": 2,
+              "differenceCount": 0,
+              "items": []
+            },
+            {
+              "left": 1,
+              "right": 3,
+              "differenceCount": 0,
+              "items": []
+            },
+            {
+              "left": 2,
+              "right": 3,
+              "differenceCount": 0,
+              "items": []
+            }
+          ]
+        },
+        "paths": {
+          "crossSession": {
+            "overallVerdict": "pass",
+            "confirmed": {
+              "verdict": "pass",
+              "differences": [
+                {
+                  "control": 1,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 2,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 3,
+                  "differenceCount": 0,
+                  "items": []
+                }
+              ]
+            },
+            "candidates": {
+              "verdict": "pass",
+              "knownVisitFactsLimitOnly": false,
+              "withinControlVariabilityEnvelope": true,
+              "differences": [
+                {
+                  "control": 1,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 2,
+                  "differenceCount": 0,
+                  "items": []
+                },
+                {
+                  "control": 3,
+                  "differenceCount": 0,
+                  "items": []
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}
