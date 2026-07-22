@@ -16,7 +16,7 @@ const requiredEnvironment = [
 const enabled = process.env.HOMIS_SIDECAR_E2E === "1"
   && requiredEnvironment.every((name) => process.env[name]);
 
-test("patient 1006 can authorize, extract, and calculate through the side panel", {
+test("patient 1006 can authorize, auto-read, and calculate through the side panel", {
   skip: enabled ? false : "Set HOMIS_SIDECAR_E2E=1 and STG credential environment variables"
 }, async () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -31,9 +31,10 @@ test("patient 1006 can authorize, extract, and calculate through the side panel"
     ]
   });
   try {
+    const mockUrl = process.env.HOMIS_SIDECAR_E2E_MOCK_URL
+      || "http://localhost:8899/homic/?pid=patient_detail&patient_id=1006";
     const mockPage = await context.newPage();
-    await mockPage.goto(process.env.HOMIS_SIDECAR_E2E_MOCK_URL
-      || "http://localhost:8899/homic/?pid=patient_detail&patient_id=1006");
+    await mockPage.goto(mockUrl);
     await mockPage.locator("#pdetail_karte[data-record-id]").waitFor();
 
     const extensionId = "nhbmaniknlcaaelpaoogepmkhphmmjof";
@@ -56,9 +57,29 @@ test("patient 1006 can authorize, extract, and calculate through the side panel"
     await approvalPage.getByRole("button", { name: "承認", exact: true }).click();
 
     await panel.locator("#connection-badge").filter({ hasText: "接続済み" }).waitFor({ timeout: 30_000 });
-    await panel.getByRole("button", { name: "画面から読み取る" }).click();
     await panel.locator("#preview-patient").filter({ hasText: "1006" }).waitFor();
-    await panel.getByText("定期訪問", { exact: true }).click();
+    assert.equal(await panel.locator('input[name="setting"][value="home_visit"]').isChecked(), true);
+    assert.match(await panel.locator("#setting-copy").textContent(), /画面の.+定期.+定期訪問/);
+    assert.equal(await panel.locator('input[name="same-building"][value="outside"]').isChecked(), true);
+    assert.match(await panel.locator("#same-building-copy").textContent(), /個人宅.+同一建物以外/);
+
+    await panel.locator("#extract-button").click();
+    await panel.locator("#extract-button").filter({ hasText: "再読み取り" }).waitFor();
+    assert.equal(await panel.locator('input[name="setting"][value="home_visit"]').isChecked(), true);
+    assert.equal(await panel.locator('input[name="same-building"][value="outside"]').isChecked(), true);
+
+    const switchedMockUrl = new URL(mockUrl);
+    switchedMockUrl.searchParams.set("patient_id", "1001");
+    await mockPage.goto(switchedMockUrl.toString());
+    await mockPage.locator("#pdetail_karte[data-record-id]").waitFor();
+    await panel.locator("#preview-patient").filter({ hasText: "1001" }).waitFor();
+
+    await mockPage.goto(mockUrl);
+    await mockPage.locator("#pdetail_karte[data-record-id]").waitFor();
+    await panel.locator("#preview-patient").filter({ hasText: "1006" }).waitFor();
+    assert.equal(await panel.locator('input[name="setting"][value="home_visit"]').isChecked(), true);
+    assert.equal(await panel.locator('input[name="same-building"][value="outside"]').isChecked(), true);
+
     await panel.getByRole("button", { name: "算定案を作成" }).click();
     await panel.locator("#result-section").waitFor({ state: "visible", timeout: 120_000 });
     assert.match(await panel.locator("#total-points").textContent(), /\d[\d,]*点/);
