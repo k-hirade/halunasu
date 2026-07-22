@@ -4,6 +4,13 @@
   const contract = global.HalunasuSidecarContract;
   const proof = global.HalunasuSidecarProof;
   const MAX_EXTRACTION_ATTEMPTS = 3;
+  const AUTO_READ_DEBOUNCE_MS = 180;
+  let observedContainer = null;
+  let observedPanel = null;
+  let chartObserver = null;
+  let panelObserver = null;
+  let rootObserver = null;
+  let chartChangeTimer = null;
 
   async function extractStableChart() {
     let lastError;
@@ -63,6 +70,9 @@
       serviceDate: extraction.serviceDate,
       receptionTime: extraction.receptionTime,
       clinicalText: extraction.clinicalText,
+      encounterType: extraction.encounterType,
+      encounterTypeLabel: extraction.encounterTypeLabel,
+      encounterTypeSource: extraction.encounterTypeSource,
       facilityResidence: extraction.facilityResidence,
       privateResidence: extraction.privateResidence,
       singleBuildingPatientCount: extraction.singleBuildingPatientCount,
@@ -96,6 +106,100 @@
       }));
     return true;
   });
+
+  startChartMonitoring();
+
+  function startChartMonitoring() {
+    syncObservedElements();
+    rootObserver = new MutationObserver(() => {
+      if (syncObservedElements()) {
+        scheduleChartStateNotification();
+      }
+    });
+    rootObserver.observe(document.documentElement || document, { childList: true, subtree: true });
+    scheduleChartStateNotification();
+  }
+
+  function syncObservedElements() {
+    const nextContainer = document.querySelector("#pdetail_karte");
+    const nextPanel = document.querySelector("#karte-panel");
+    let changed = false;
+
+    if (nextContainer !== observedContainer) {
+      chartObserver?.disconnect();
+      observedContainer = nextContainer;
+      chartObserver = observedContainer
+        ? new MutationObserver(scheduleChartStateNotification)
+        : null;
+      chartObserver?.observe(observedContainer, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ["data-record-id", "data-single-building-patient-count"]
+      });
+      changed = true;
+    }
+
+    if (nextPanel !== observedPanel) {
+      panelObserver?.disconnect();
+      observedPanel = nextPanel;
+      panelObserver = observedPanel
+        ? new MutationObserver(scheduleChartStateNotification)
+        : null;
+      panelObserver?.observe(observedPanel, {
+        attributes: true,
+        attributeFilter: ["class", "hidden", "style"]
+      });
+      changed = true;
+    }
+    return changed;
+  }
+
+  function scheduleChartStateNotification() {
+    clearTimeout(chartChangeTimer);
+    chartChangeTimer = setTimeout(notifyChartState, AUTO_READ_DEBOUNCE_MS);
+  }
+
+  function notifyChartState() {
+    const identity = contract.readIdentity(document, { locationHref: location.href });
+    const available = Boolean(
+      observedContainer
+      && identity.patientId
+      && identity.sourceRecordId
+      && !isExplicitlyHidden(observedPanel || observedContainer)
+    );
+    sendRuntimeMessage({
+      type: "halunasu:chart-state-changed",
+      available,
+      patientId: available ? identity.patientId : "",
+      sourceRecordId: available ? identity.sourceRecordId : ""
+    });
+  }
+
+  function isExplicitlyHidden(element) {
+    for (let current = element; current; current = current.parentElement) {
+      if (current.hidden || current.getAttribute?.("aria-hidden") === "true" || current.style?.display === "none") {
+        return true;
+      }
+      if (current === document.body) {
+        break;
+      }
+    }
+    const style = element && typeof global.getComputedStyle === "function"
+      ? global.getComputedStyle(element)
+      : null;
+    return style?.display === "none" || style?.visibility === "hidden";
+  }
+
+  function sendRuntimeMessage(message) {
+    try {
+      const pending = chrome.runtime.sendMessage(message);
+      pending?.catch?.(() => {});
+    } catch {
+      // The side panel can be closed; chart monitoring must remain silent in that case.
+    }
+  }
 
   function delay(milliseconds) {
     return new Promise((resolve) => setTimeout(resolve, milliseconds));

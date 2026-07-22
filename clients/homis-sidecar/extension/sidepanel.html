@@ -30,7 +30,7 @@
     <section class="panel-section" id="calculation-section" aria-labelledby="calculation-heading" hidden>
       <div class="section-heading">
         <h2 id="calculation-heading">表示中のカルテ</h2>
-        <button class="button secondary compact" id="extract-button" type="button">画面から読み取る</button>
+        <button class="button secondary compact" id="extract-button" type="button">再読み取り</button>
       </div>
       <div class="chart-preview" id="chart-preview" hidden>
         <dl>
@@ -50,6 +50,7 @@
           <label><input name="setting" type="radio" value="house_call"><span>往診</span></label>
           <label><input name="setting" type="radio" value="outpatient"><span>外来</span></label>
         </div>
+        <p class="muted control-note" id="setting-copy"></p>
       </fieldset>
       <fieldset class="setting-control" id="same-building-control" disabled>
         <legend>同一建物区分</legend>

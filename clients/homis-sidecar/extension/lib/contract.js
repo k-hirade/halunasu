@@ -3,6 +3,15 @@
 
   const VERSION = "homis-mock-v3";
   const REQUIRED_ELEMENT_COUNT = 5;
+  const ENCOUNTER_TYPES = Object.freeze({
+    "定期": "home_visit",
+    "定期訪問": "home_visit",
+    "訪問診療": "home_visit",
+    "往診": "house_call",
+    "臨時往診": "house_call",
+    "外来": "outpatient",
+    "外来診療": "outpatient"
+  });
 
   function readIdentity(documentRef, options = {}) {
     const href = options.locationHref || global.location?.href || "";
@@ -46,6 +55,7 @@
       .map(text)
       .join(" ");
     const residence = readResidenceDetails(documentRef, container, metaText);
+    const encounter = readEncounterType(container);
     return {
       externalPatientId: identity.patientId,
       sourceRecordId: identity.sourceRecordId,
@@ -53,11 +63,27 @@
       serviceDate,
       receptionTime: (dateLabel.match(/(\d{1,2}:\d{2})/) || [])[1] || "",
       clinicalText: soapNodes.map(text).join("\n"),
+      ...encounter,
       ...residence,
       selectorContractVersion: VERSION,
       requiredElementCount: REQUIRED_ELEMENT_COUNT,
       matchedRequiredElementCount,
       clinicalTextNodeCount: soapNodes.length
+    };
+  }
+
+  function readEncounterType(container) {
+    const statusText = text(container?.querySelector(".karte-head .rec-status"));
+    const statusLabel = statusText
+      .replace(/^診療記録\s*/u, "")
+      .split("「", 1)[0]
+      .trim();
+    const normalizedLabel = statusLabel.replace(/\s+/gu, "");
+    const encounterType = ENCOUNTER_TYPES[normalizedLabel] || null;
+    return {
+      encounterType,
+      encounterTypeLabel: statusLabel || null,
+      encounterTypeSource: encounterType ? "dom" : null
     };
   }
 
@@ -108,6 +134,7 @@
     VERSION,
     REQUIRED_ELEMENT_COUNT,
     extractContractSnapshot,
+    readEncounterType,
     readResidenceDetails,
     readIdentity
   });

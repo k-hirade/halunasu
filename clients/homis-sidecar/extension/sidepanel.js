@@ -3,16 +3,21 @@
 
   const api = global.HalunasuSidecarApi;
   const SETTING_LABELS = { home_visit: "定期訪問", house_call: "往診", outpatient: "外来" };
+  const AUTO_READ_DEBOUNCE_MS = 220;
   let preview = null;
   let pollingGeneration = 0;
+  let extractionGeneration = 0;
+  let autoReadTimer = null;
+  let isConnected = false;
   let lastCalculationContext = null;
+  let encounterTypeSource = null;
   let sameBuildingSource = null;
 
   const elements = Object.fromEntries([
     "connection-badge", "connection-copy", "connect-button", "connection-section",
     "device-code-area", "device-code",
     "approval-link", "calculation-section", "extract-button", "chart-preview", "preview-patient",
-    "preview-date", "preview-record", "preview-text", "preview-details", "setting-control",
+    "preview-date", "preview-record", "preview-text", "preview-details", "setting-control", "setting-copy",
     "same-building-control", "same-building-copy",
     "calculate-button",
     "result-section", "total-points", "revision-copy", "line-candidates", "proposal-candidates",
@@ -27,6 +32,9 @@
       const connected = await api.connectWithStoredGrant();
       setConnected(Boolean(connected));
       setStatus(connected ? "" : "端末を接続してください。");
+      if (connected) {
+        scheduleAutoRead({ delay: 0 });
+      }
     } catch (error) {
       setConnected(false);
       setStatus(errorMessage(error), true);
@@ -53,34 +61,17 @@
   });
 
   elements["extract-button"].addEventListener("click", async () => {
-    setBusy(elements["extract-button"], true, "読み取り中");
-    setStatus("表示中のカルテを確認しています。");
-    elements["result-section"].hidden = true;
-    try {
-      const response = await sendToActiveTab({ type: "halunasu:extract" });
-      if (!response?.ok) {
-        throw responseError(response);
-      }
-      preview = response;
-      renderPreview(response);
-      elements["setting-control"].disabled = false;
-      elements["same-building-control"].disabled = false;
-      updateCalculateButton();
-      setStatus("読み取りました。受診区分を選択してください。");
-    } catch (error) {
-      preview = null;
-      elements["chart-preview"].hidden = true;
-      elements["setting-control"].disabled = true;
-      elements["same-building-control"].disabled = true;
-      updateCalculateButton();
-      setStatus(errorMessage(error), true);
-    } finally {
-      setBusy(elements["extract-button"], false, "画面から読み取る");
-    }
+    clearTimeout(autoReadTimer);
+    const generation = ++extractionGeneration;
+    await readDisplayedChart({ automatic: false, generation });
   });
 
   document.querySelectorAll('input[name="setting"]').forEach((input) => {
-    input.addEventListener("change", updateCalculateButton);
+    input.addEventListener("change", () => {
+      encounterTypeSource = "user";
+      renderEncounterTypeCopy(preview, selectedEncounterType());
+      updateCalculateButton();
+    });
   });
 
   document.querySelectorAll('input[name="same-building"]').forEach((input) => {
@@ -90,21 +81,41 @@
     });
   });
 
+  chrome.runtime.onMessage.addListener((message, sender) => {
+    if (message?.type !== "halunasu:chart-state-changed") {
+      return false;
+    }
+    void handleChartStateChanged(message, sender);
+    return false;
+  });
+
+  chrome.tabs.onActivated.addListener(() => {
+    scheduleAutoRead({ invalidate: true });
+  });
+
+  chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+    if (tab.active && (changeInfo.status === "complete" || changeInfo.url)) {
+      scheduleAutoRead({ invalidate: true });
+    }
+  });
+
   elements["calculate-button"].addEventListener("click", async () => {
-    const setting = selectedSetting();
-    if (!preview || !setting) {
+    const encounterType = selectedEncounterType();
+    if (!preview || !encounterType.value) {
       return;
     }
+    const expectedPreviewFingerprint = preview.previewFingerprint;
     setBusy(elements["calculate-button"], true, "作成中");
     setStatus("表示中のカルテを再確認して算定案を作成しています。");
     try {
       const prepared = await sendToActiveTab({
         type: "halunasu:prepare-calculation",
-        previewFingerprint: preview.previewFingerprint
+        previewFingerprint: expectedPreviewFingerprint
       });
       if (!prepared?.ok) {
         throw responseError(prepared);
       }
+      assertCurrentPreview(expectedPreviewFingerprint);
       const sameBuilding = selectedSameBuilding();
       const result = await api.calculate({
         contractVersion: "v1",
@@ -114,28 +125,26 @@
         sourceRecordDisplayId: prepared.sourceRecordDisplayId || undefined,
         serviceDate: prepared.serviceDate,
         receptionTime: prepared.receptionTime || undefined,
-        setting,
-        encounterTypeSource: "user",
+        setting: encounterType.value,
+        encounterTypeSource: encounterType.source,
         sameBuilding: sameBuilding.value,
         sameBuildingSource: sameBuilding.source,
         singleBuildingPatientCount: prepared.singleBuildingPatientCount ?? null,
         clinicalText: prepared.clinicalText,
         extractionProof: prepared.extractionProof
       });
+      assertCurrentPreview(expectedPreviewFingerprint);
       lastCalculationContext = {
         externalPatientId: prepared.externalPatientId,
         serviceDate: prepared.serviceDate,
-        settingLabel: SETTING_LABELS[setting] || setting,
+        settingLabel: encounterType.label,
         sameBuildingLabel: sameBuilding.label
       };
       renderResult(result.sidecarDraft);
       setStatus("");
     } catch (error) {
       if (["preview_changed", "chart_changed_during_extraction"].includes(error.code)) {
-        preview = null;
-        elements["chart-preview"].hidden = true;
-        elements["setting-control"].disabled = true;
-        elements["same-building-control"].disabled = true;
+        resetChartState();
       }
       if ([401, 403].includes(error.status)) {
         setConnected(false);
@@ -147,6 +156,127 @@
     }
   });
 
+  async function handleChartStateChanged(message, sender) {
+    if (!isConnected || !sender.tab?.id) {
+      return;
+    }
+    const tab = await activeTab();
+    if (!tab?.id || tab.id !== sender.tab.id) {
+      return;
+    }
+    if (!message.available) {
+      clearTimeout(autoReadTimer);
+      extractionGeneration += 1;
+      resetChartState();
+      setStatus("HOMISのカルテ画面を開くと自動で読み取ります。");
+      return;
+    }
+    const identityChanged = Boolean(preview) && (
+      preview.externalPatientId !== message.patientId
+      || preview.sourceRecordId !== message.sourceRecordId
+    );
+    scheduleAutoRead({ invalidate: identityChanged });
+  }
+
+  function scheduleAutoRead(options = {}) {
+    if (!isConnected) {
+      return;
+    }
+    clearTimeout(autoReadTimer);
+    const generation = ++extractionGeneration;
+    if (options.invalidate) {
+      resetChartState();
+      setStatus("表示中のカルテが切り替わりました。読み取り直しています。");
+    }
+    const delayMilliseconds = Number.isFinite(options.delay)
+      ? Math.max(Number(options.delay), 0)
+      : AUTO_READ_DEBOUNCE_MS;
+    autoReadTimer = setTimeout(() => {
+      void readDisplayedChart({ automatic: true, generation });
+    }, delayMilliseconds);
+  }
+
+  async function readDisplayedChart({ automatic, generation }) {
+    setBusy(elements["extract-button"], true, "読み取り中");
+    if (!automatic) {
+      setStatus("表示中のカルテを確認しています。");
+    }
+    try {
+      const response = await sendToActiveTab({ type: "halunasu:extract" });
+      if (generation !== extractionGeneration) {
+        return;
+      }
+      if (!response?.ok) {
+        throw responseError(response);
+      }
+      const unchanged = preview?.previewFingerprint === response.previewFingerprint;
+      if (unchanged) {
+        preview = response;
+        if (!automatic) {
+          setStatus("表示内容に変更はありません。");
+        }
+        return;
+      }
+
+      preview = response;
+      lastCalculationContext = null;
+      elements["result-section"].hidden = true;
+      renderPreview(response);
+      elements["setting-control"].disabled = false;
+      elements["same-building-control"].disabled = false;
+      updateCalculateButton();
+      setStatus(selectedEncounterType().value
+        ? "表示中のカルテを読み取りました。"
+        : "読み取りました。受診区分を選択してください。");
+    } catch (error) {
+      if (generation !== extractionGeneration) {
+        return;
+      }
+      resetChartState();
+      const noReceiver = /Receiving end does not exist|Could not establish connection/i.test(String(error?.message || ""));
+      setStatus(
+        automatic && noReceiver
+          ? "HOMISのカルテ画面を開くと自動で読み取ります。"
+          : errorMessage(error),
+        !(automatic && noReceiver)
+      );
+    } finally {
+      if (generation === extractionGeneration) {
+        setBusy(elements["extract-button"], false, "再読み取り");
+        updateCalculateButton();
+      }
+    }
+  }
+
+  function resetChartState() {
+    preview = null;
+    lastCalculationContext = null;
+    encounterTypeSource = null;
+    sameBuildingSource = null;
+    elements["chart-preview"].hidden = true;
+    elements["result-section"].hidden = true;
+    elements["setting-control"].disabled = true;
+    elements["same-building-control"].disabled = true;
+    document.querySelectorAll('input[name="setting"]').forEach((input) => { input.checked = false; });
+    const unknownSameBuilding = document.querySelector('input[name="same-building"][value="unknown"]');
+    if (unknownSameBuilding) {
+      unknownSameBuilding.checked = true;
+    }
+    elements["setting-copy"].textContent = "";
+    elements["same-building-copy"].textContent = "";
+    setBusy(elements["extract-button"], false, "再読み取り");
+    updateCalculateButton();
+  }
+
+  function assertCurrentPreview(expectedFingerprint) {
+    if (!preview || preview.previewFingerprint !== expectedFingerprint) {
+      throw responseError({
+        code: "preview_changed",
+        error: "表示中のカルテが読み取り時から変わりました。"
+      });
+    }
+  }
+
   async function pollUntilAuthorized(authorization, generation) {
     const expiresAt = Date.parse(authorization.expiresAt);
     const interval = Math.max(Number(authorization.pollIntervalSeconds || 5), 5) * 1000;
@@ -156,7 +286,8 @@
         await api.pollDeviceAuthorization();
         setConnected(true);
         elements["device-code-area"].hidden = true;
-        setStatus("端末を接続しました。表示中のカルテを読み取れます。");
+        setStatus("端末を接続しました。表示中のカルテを確認しています。");
+        scheduleAutoRead({ delay: 0 });
         return;
       } catch (error) {
         if (error.code === "authorization_pending") {
@@ -175,6 +306,7 @@
   }
 
   function setConnected(connected) {
+    isConnected = connected;
     elements["connection-badge"].textContent = connected ? "接続済み" : "未接続";
     elements["connection-badge"].classList.toggle("connected", connected);
     // 接続済みなら接続セクション自体を畳む(常時表示する価値のある情報ではない)。
@@ -183,6 +315,10 @@
     elements["calculation-section"].hidden = !connected;
     if (connected) {
       elements["device-code-area"].hidden = true;
+    } else {
+      clearTimeout(autoReadTimer);
+      extractionGeneration += 1;
+      resetChartState();
     }
   }
 
@@ -192,6 +328,7 @@
     elements["preview-record"].textContent = extraction.sourceRecordDisplayId || extraction.sourceRecordId;
     elements["preview-text"].textContent = extraction.clinicalText;
     elements["preview-details"].open = false;
+    selectExtractedEncounterType(extraction);
     selectExtractedSameBuilding(extraction);
     elements["chart-preview"].hidden = false;
   }
@@ -272,15 +409,54 @@
   }
 
   async function sendToActiveTab(message) {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab = await activeTab();
     if (!tab?.id) {
       throw responseError({ error: "HOMISの患者カルテ画面を開いてください。" });
     }
     return chrome.tabs.sendMessage(tab.id, message);
   }
 
-  function selectedSetting() {
-    return document.querySelector('input[name="setting"]:checked')?.value || "";
+  async function activeTab() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tab || null;
+  }
+
+  function selectedEncounterType() {
+    const value = document.querySelector('input[name="setting"]:checked')?.value || "";
+    return {
+      value,
+      source: value ? (encounterTypeSource || "user") : null,
+      label: SETTING_LABELS[value] || value
+    };
+  }
+
+  function selectExtractedEncounterType(extraction = {}) {
+    document.querySelectorAll('input[name="setting"]').forEach((input) => { input.checked = false; });
+    const input = extraction.encounterType
+      ? document.querySelector(`input[name="setting"][value="${extraction.encounterType}"]`)
+      : null;
+    if (input) {
+      input.checked = true;
+    }
+    encounterTypeSource = input ? (extraction.encounterTypeSource || "dom") : null;
+    renderEncounterTypeCopy(extraction, selectedEncounterType());
+  }
+
+  function renderEncounterTypeCopy(extraction = {}, selection = selectedEncounterType()) {
+    if (selection.source === "user") {
+      elements["setting-copy"].textContent = `手動選択: ${selection.label}`;
+      return;
+    }
+    if (selection.value && extraction.encounterTypeSource === "dom") {
+      const sourceLabel = extraction.encounterTypeLabel || selection.label;
+      elements["setting-copy"].textContent = `画面の「診療記録 ${sourceLabel}」から「${selection.label}」を選択しました。`;
+      return;
+    }
+    if (extraction.encounterTypeLabel) {
+      elements["setting-copy"].textContent = `画面の「${extraction.encounterTypeLabel}」は自動判定の対象外です。受診区分を選択してください。`;
+      return;
+    }
+    elements["setting-copy"].textContent = "画面から判定できません。受診区分を選択してください。";
   }
 
   function selectedSameBuilding() {
@@ -326,7 +502,7 @@
   }
 
   function updateCalculateButton() {
-    elements["calculate-button"].disabled = !preview || !selectedSetting();
+    elements["calculate-button"].disabled = !preview || !selectedEncounterType().value;
   }
 
   function setBusy(button, busy, label) {

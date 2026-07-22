@@ -51,6 +51,25 @@ run_or_print() {
   fi
 }
 
+gcloud_dict_arg() {
+  local delimiter="|"
+  local entry
+  local joined=""
+
+  for entry in "$@"; do
+    if [[ "${entry}" == *"${delimiter}"* ]]; then
+      echo "Cannot encode gcloud dictionary argument: value contains reserved delimiter '${delimiter}'." >&2
+      return 1
+    fi
+    if [[ -n "${joined}" ]]; then
+      joined+="${delimiter}"
+    fi
+    joined+="${entry}"
+  done
+
+  printf '^%s^%s' "${delimiter}" "${joined}"
+}
+
 billing_enabled() {
   gcloud billing projects describe "$1" --format="value(billingEnabled)" --quiet 2>/dev/null || true
 }
@@ -72,6 +91,8 @@ deploy_service() {
   local public="$5"
   shift 5
   local env_vars=("$@")
+  local env_vars_arg
+  env_vars_arg="$(gcloud_dict_arg "${env_vars[@]}")"
   local image="${REGION}-docker.pkg.dev/${project}/${REPOSITORY}/${service}:${TAG}"
   local service_memory="${MEMORY}"
   local service_timeout="${TIMEOUT}"
@@ -165,7 +186,7 @@ deploy_service() {
     --concurrency "${CONCURRENCY}"
     --execution-environment gen2
     --cpu-throttling
-    --set-env-vars "$(IFS=,; echo "${env_vars[*]}")"
+    --set-env-vars "${env_vars_arg}"
     --set-secrets "${secret_vars}"
     --quiet
   )
