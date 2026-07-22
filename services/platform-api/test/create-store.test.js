@@ -62,6 +62,7 @@ test("lazy firestore store exposes platform API surface", () => {
     "createDepartment",
     "updateDepartment",
     "createPatient",
+    "findPatientsByIdentifier",
     "updatePatient",
     "upsertProductEntitlement",
     "updateProductEntitlement",

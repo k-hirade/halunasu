@@ -24,6 +24,7 @@ export class MemoryFeeStore {
     this.feeSettingsByOrg = new Map();
     this.billingHistoryByOrg = new Map();
     this.sidecarDraftsByOrg = new Map();
+    this.extractionSnapshotsByOrg = new Map();
   }
 
   createSession(input) {
@@ -134,7 +135,12 @@ export class MemoryFeeStore {
       feeSessionId: this.idFactory("fee"),
       now: this.timestamp()
     });
-    const adopted = markSidecarDraftAdopted(current, feeSession.feeSessionId, { now: this.timestamp() });
+    const adopted = markSidecarDraftAdopted(current, feeSession.feeSessionId, {
+      now: this.timestamp(),
+      canonicalPatientId: feeSession.canonicalPatientId,
+      canonicalPatientIdSource: feeSession.canonicalPatientIdSource,
+      patientIdentityAliases: feeSession.patientIdentityAliases
+    });
     this.sessionsForOrg(orgId).set(feeSession.feeSessionId, feeSession);
     this.sidecarDraftsForOrg(orgId).set(sidecarDraftId, adopted);
     return { sidecarDraft: adopted, feeSession, alreadyAdopted: false };
@@ -205,6 +211,49 @@ export class MemoryFeeStore {
         || String(right.createdAt || "").localeCompare(String(left.createdAt || ""))
       ))
       .slice(0, limit);
+  }
+
+  getHistoryIdentityCompleteness() {
+    return "complete";
+  }
+
+  saveExtractionSnapshot(orgId, input = {}) {
+    const now = this.timestamp();
+    const snapshot = {
+      ...structuredClone(input),
+      orgId,
+      createdAt: input.createdAt || now,
+      updatedAt: now
+    };
+    this.extractionSnapshotsForOrg(orgId).set(snapshot.snapshotId, snapshot);
+    return structuredClone(snapshot);
+  }
+
+  getLatestExtractionSnapshotForPatient(orgId, patientIds, options = {}) {
+    const allowedIds = new Set((Array.isArray(patientIds) ? patientIds : [patientIds])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean));
+    const beforeServiceDate = String(options.beforeServiceDate || "").trim();
+    const excludeSourceSessionId = String(options.excludeSourceSessionId || "").trim();
+    return [...this.extractionSnapshotsForOrg(orgId).values()]
+      .filter((snapshot) => allowedIds.has(String(snapshot.canonicalPatientId || "").trim()))
+      .filter((snapshot) => !excludeSourceSessionId || snapshot.sourceSessionId !== excludeSourceSessionId)
+      .filter((snapshot) => !beforeServiceDate || String(snapshot.serviceDate || "") <= beforeServiceDate)
+      .sort((left, right) => (
+        String(right.serviceDate || "").localeCompare(String(left.serviceDate || ""))
+        || String(right.extractedAt || "").localeCompare(String(left.extractedAt || ""))
+      ))[0] || null;
+  }
+
+  deleteExtractionSnapshotsForSource(orgId, sourceSessionId) {
+    let deletedCount = 0;
+    for (const [snapshotId, snapshot] of this.extractionSnapshotsForOrg(orgId).entries()) {
+      if (String(snapshot.sourceSessionId || "") === String(sourceSessionId || "")) {
+        this.extractionSnapshotsForOrg(orgId).delete(snapshotId);
+        deletedCount += 1;
+      }
+    }
+    return { deletedCount };
   }
 
   getSession(orgId, feeSessionId) {
@@ -534,6 +583,13 @@ export class MemoryFeeStore {
     return this.sidecarDraftsByOrg.get(orgId);
   }
 
+  extractionSnapshotsForOrg(orgId) {
+    if (!this.extractionSnapshotsByOrg.has(orgId)) {
+      this.extractionSnapshotsByOrg.set(orgId, new Map());
+    }
+    return this.extractionSnapshotsByOrg.get(orgId);
+  }
+
   calculationJobsForOrg(orgId) {
     if (!this.calculationJobsByOrg.has(orgId)) {
       this.calculationJobsByOrg.set(orgId, new Map());
@@ -830,6 +886,9 @@ export function toSessionSummary(session = {}) {
     orgId: session.orgId,
     patientId: session.patientId,
     patientRef: session.patientRef,
+    canonicalPatientId: session.canonicalPatientId || session.patientId || null,
+    canonicalPatientIdSource: session.canonicalPatientIdSource || null,
+    patientIdentityAliases: Array.isArray(session.patientIdentityAliases) ? session.patientIdentityAliases : [],
     patientSnapshot: session.patientSnapshot || null,
     facilityId: session.facilityId,
     facilitySnapshot: session.facilitySnapshot || null,
@@ -841,6 +900,9 @@ export function toSessionSummary(session = {}) {
     claimMonth: session.claimMonth,
     setting: session.setting,
     sourceSystem: session.sourceSystem || null,
+    externalSourceSystem: session.externalSourceSystem || null,
+    externalPatientId: session.externalPatientId || null,
+    sourceRecordId: session.sourceRecordId || null,
     latestCalculationId: session.latestCalculationId || null,
     latestCalculationJobId: session.latestCalculationJobId || null,
     calculationSummary: session.calculationSummary || summarizeCalculationResult(session.calculationResult),

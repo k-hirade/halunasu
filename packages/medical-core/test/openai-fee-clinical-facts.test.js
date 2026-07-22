@@ -215,6 +215,47 @@ test("fee clinical facts schema is valid for OpenAI strict json_schema", async (
   assertStrictObjectSchemasHaveRequiredProperties(requestBody.text.format.schema);
 });
 
+test("line_subset scope sends only target lines and removes visit/checklist fields from the schema", async () => {
+  let requestBody = null;
+  const subsetPayload = {
+    diagnoses: [],
+    line_review: [{ line_id: "O-002", has_billable_act: true }],
+    clinical_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  };
+
+  await withFetch(
+    async (url, options) => {
+      assert.equal(url, "https://api.openai.com/v1/responses");
+      requestBody = JSON.parse(options.body);
+      return jsonResponse({ output_text: JSON.stringify(subsetPayload) });
+    },
+    async () => {
+      await extractFeeClinicalFactsWithOpenAi({
+        apiKey: "test-key",
+        clinicalText: "S: OMITTED PATIENT CONTEXT\nO: 胸部X線を実施。",
+        sessionContext: {},
+        preprocessedLines: [{ lineId: "O-002", section: "O", text: "O: 胸部X線を実施。" }],
+        checklistMenu: [{ menuId: "imaging:chest_xray", label: "胸部X線", kind: "imaging" }],
+        checklistVerificationMode: "inline",
+        scope: "line_subset"
+      });
+    }
+  );
+
+  assert.match(requestBody.input, /O: 胸部X線を実施。/u);
+  assert.equal(requestBody.input.includes("OMITTED PATIENT CONTEXT"), false);
+  assert.match(requestBody.instructions, /LINE SUBSET MODE/u);
+  const schema = requestBody.text.format.schema;
+  assert.equal(requestBody.text.format.name, "fee_clinical_line_subset_facts");
+  assert.equal(schema.properties.visit_type, undefined);
+  assert.equal(schema.properties.visit_facts, undefined);
+  assert.equal(schema.properties.checklist_findings, undefined);
+  assertStrictObjectSchemasHaveRequiredProperties(schema);
+});
+
 test("fee clinical facts schema keeps enough diagnoses and excluded events for complex notes", async () => {
   let requestBody = null;
 

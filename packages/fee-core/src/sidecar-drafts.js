@@ -30,6 +30,13 @@ export function buildSidecarCalculationDraft(input = {}, options = {}) {
     sourceRecordDisplayId: input.sourceRecordDisplayId || null,
     idempotencyKeyHash: requiredString(input.idempotencyKeyHash, "idempotencyKeyHash"),
     sourceRevisionHash: requiredString(input.sourceRevisionHash, "sourceRevisionHash"),
+    canonicalPatientId: input.canonicalPatientId || session.canonicalPatientId,
+    canonicalPatientIdSource: input.canonicalPatientIdSource || session.canonicalPatientIdSource,
+    patientIdentityAliases: Array.isArray(input.patientIdentityAliases)
+      ? input.patientIdentityAliases
+      : session.patientIdentityAliases,
+    canonicalPatientResolutionStatus: input.canonicalPatientResolutionStatus || "not_linked",
+    canonicalPatientLookupCompleteness: input.canonicalPatientLookupCompleteness || "complete",
     sourceRevision: 1,
     encounterTypeSource: requiredString(input.encounterTypeSource, "encounterTypeSource"),
     extractionProof: input.extractionProof || null,
@@ -69,6 +76,17 @@ export function applySidecarDraftInput(current = {}, input = {}, options = {}) {
     sourceRecordDisplayId: input.sourceRecordDisplayId || current.sourceRecordDisplayId || null,
     contractVersion: input.contractVersion || current.contractVersion || "v1",
     sourceRevisionHash: input.sourceRevisionHash,
+    canonicalPatientId: input.canonicalPatientId || current.canonicalPatientId || current.patientId,
+    canonicalPatientIdSource: input.canonicalPatientIdSource || current.canonicalPatientIdSource || "sidecar_patient_key",
+    patientIdentityAliases: Array.isArray(input.patientIdentityAliases)
+      ? input.patientIdentityAliases
+      : current.patientIdentityAliases || [],
+    canonicalPatientResolutionStatus: input.canonicalPatientResolutionStatus
+      || current.canonicalPatientResolutionStatus
+      || "not_linked",
+    canonicalPatientLookupCompleteness: input.canonicalPatientLookupCompleteness
+      || current.canonicalPatientLookupCompleteness
+      || "complete",
     sourceRevision: Number(current.sourceRevision || 1) + (changed ? 1 : 0),
     encounterTypeSource: input.encounterTypeSource,
     extractionProof: input.extractionProof || null,
@@ -125,6 +143,13 @@ export function markSidecarDraftAdopted(current = {}, feeSessionId, options = {}
   return {
     ...current,
     lifecycleStatus: "adopted",
+    canonicalPatientId: options.canonicalPatientId || current.canonicalPatientId || current.patientId,
+    canonicalPatientIdSource: options.canonicalPatientIdSource || current.canonicalPatientIdSource || "patient_id",
+    patientIdentityAliases: Array.isArray(options.patientIdentityAliases)
+      ? options.patientIdentityAliases
+      : current.patientIdentityAliases || [],
+    canonicalPatientResolutionStatus: "resolved",
+    canonicalPatientLookupCompleteness: "complete",
     adoptedFeeSessionId: requiredString(feeSessionId, "feeSessionId"),
     adoptedAt: now,
     updatedAt: now

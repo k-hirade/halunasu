@@ -50,6 +50,12 @@ import { buildClaimRiskReviewIssues } from "./claim-risk-knowledge.js";
 import { createPlatformStoreFromEnv } from "../../platform-api/src/store/create-store.js";
 import { createFeeCalculatorFromEnv } from "./python-calculator.js";
 import { createFeeStoreFromEnv } from "./store/create-store.js";
+import {
+  canonicalPatientIds,
+  extractionSnapshotId,
+  patientMatchesSourceIdentity,
+  resolveCanonicalSidecarPatientIdentity
+} from "./longitudinal-context.js";
 
 const PRODUCT_ID = "fee";
 const SIDECAR_PRODUCT_ID = productIds.homisSidecar;
@@ -206,6 +212,14 @@ async function routeFeeApiRequest(input = {}) {
     const facility = await requireFacility(context, platformStore, normalized.facilityId);
     const department = await resolveDepartment(context, platformStore, normalized.departmentId);
     const identity = sidecarSourceIdentity(context.session.orgId, normalized);
+    const canonicalIdentity = await resolveCanonicalSidecarPatientIdentity({
+      platformStore,
+      orgId: context.session.orgId,
+      facilityId: normalized.facilityId,
+      sourceSystem: normalized.sourceSystem,
+      externalPatientId: normalized.externalPatientId,
+      sidecarPatientKey: identity.sidecarPatientKey
+    });
     const sourceRevisionHash = sidecarSourceRevisionHash(normalized);
     const encounterDetails = {
       sameBuilding: normalized.sameBuilding,
@@ -218,6 +232,11 @@ async function routeFeeApiRequest(input = {}) {
       orgId: context.session.orgId,
       sidecarDraftId: identity.sidecarDraftId,
       sidecarPatientKey: identity.sidecarPatientKey,
+      canonicalPatientId: canonicalIdentity.canonicalPatientId,
+      canonicalPatientIdSource: canonicalIdentity.canonicalPatientIdSource,
+      patientIdentityAliases: canonicalIdentity.patientIdentityAliases,
+      canonicalPatientResolutionStatus: canonicalIdentity.resolutionStatus,
+      canonicalPatientLookupCompleteness: canonicalIdentity.lookupCompleteness,
       externalSourceSystem: normalized.sourceSystem,
       idempotencyKeyHash: identity.idempotencyKeyHash,
       sourceRevisionHash,
@@ -234,7 +253,7 @@ async function routeFeeApiRequest(input = {}) {
       lastCalculatedByMemberId: context.session.memberId,
       expiresAt: sidecarDraftExpiry(now, input.processEnv || process.env)
     });
-    const draftStore = sidecarDraftCalculationStore(feeStore);
+    const draftStore = sidecarDraftCalculationStore(feeStore, canonicalIdentity);
     try {
       const calculation = await calculateFeeSessionNow({
         context,
@@ -339,6 +358,14 @@ async function routeFeeApiRequest(input = {}) {
       orgId: context.session.orgId,
       patientId: patient.patientId,
       patientRef: patient.patientId,
+      canonicalPatientId: patient.patientId,
+      canonicalPatientIdSource: "patient_identifier",
+      patientIdentityAliases: uniqueStrings([
+        patient.patientId,
+        sidecarDraft.patientId,
+        sidecarDraft.canonicalPatientId,
+        ...(Array.isArray(sidecarDraft.patientIdentityAliases) ? sidecarDraft.patientIdentityAliases : [])
+      ]),
       patientSnapshot: patientSnapshot(patient, now),
       insuranceSnapshot: insuranceSnapshot(patient, sidecarDraft.serviceDate || null, now),
       facilityId: facility.facilityId,
@@ -355,6 +382,9 @@ async function routeFeeApiRequest(input = {}) {
       diagnoses: sidecarDraft.diagnoses,
       diagnosesSource: sidecarDraft.diagnosesSource,
       sourceSystem: "homis_sidecar_adopted",
+      externalSourceSystem: sidecarDraft.externalSourceSystem,
+      externalPatientId: sidecarDraft.externalPatientId,
+      sourceRecordId: sidecarDraft.sourceRecordId,
       createdByMemberId: context.session.memberId
     });
     await platformStore.createAuditEvent(context.session.orgId, {
@@ -1522,6 +1552,22 @@ function sidecarDraftRetentionDays(env = process.env) {
   return days;
 }
 
+function feeExtractionMemoEnabled(env = process.env) {
+  return String(env.FEE_EXTRACTION_MEMO || "false").trim().toLowerCase() === "true";
+}
+
+function extractionSnapshotExpiry(now, env = process.env) {
+  const raw = String(env.FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS || env.HOMIS_SIDECAR_DRAFT_RETENTION_DAYS || "30").trim();
+  if (!/^\d+$/.test(raw)) {
+    throw sidecarConfigurationError("FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS must be an integer from 1 to 90");
+  }
+  const days = Number.parseInt(raw, 10);
+  if (days < 1 || days > 90) {
+    throw sidecarConfigurationError("FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS must be an integer from 1 to 90");
+  }
+  return new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function sidecarConfigurationError(message) {
   const error = new Error(message);
   error.name = "ConfigurationError";
@@ -1529,8 +1575,14 @@ function sidecarConfigurationError(message) {
   return error;
 }
 
-function sidecarDraftCalculationStore(feeStore) {
+function sidecarDraftCalculationStore(feeStore, canonicalIdentity = {}) {
+  const patientIds = uniqueStrings([
+    canonicalIdentity.canonicalPatientId,
+    ...(Array.isArray(canonicalIdentity.patientIdentityAliases) ? canonicalIdentity.patientIdentityAliases : [])
+  ]);
+  const canonicalPatientId = canonicalIdentity.canonicalPatientId || patientIds[0] || "";
   return {
+    getHistoryIdentityCompleteness: () => canonicalIdentity.lookupCompleteness || "complete",
     getFeeSettings: (...args) => feeStore.getFeeSettings(...args),
     updateSession: (orgId, sidecarDraftId, patch) => (
       feeStore.updateSidecarCalculationDraft(orgId, sidecarDraftId, patch)
@@ -1538,10 +1590,47 @@ function sidecarDraftCalculationStore(feeStore) {
     saveCalculation: (orgId, sidecarDraftId, calculationResult) => (
       feeStore.saveSidecarCalculation(orgId, sidecarDraftId, calculationResult)
     ),
-    listPriorSessionsForPatient: (orgId, patientId, options) => (
-      feeStore.listPriorSidecarDraftsForPatient(orgId, patientId, options)
-    )
+    listPriorSessionsForPatient: async (orgId, unusedPatientId, options) => {
+      const [sessionsByPatient, draftsByPatient] = await Promise.all([
+        Promise.all(patientIds.map((patientId) => feeStore.listPriorSessionsForPatient(orgId, patientId, options))),
+        Promise.all(patientIds.map((patientId) => feeStore.listPriorSidecarDraftsForPatient(orgId, patientId, options)))
+      ]);
+      const regularSessions = uniqueHistoryRecords(sessionsByPatient.flat());
+      const regularIds = new Set(regularSessions.map((session) => String(session.feeSessionId || session.sessionId || "")));
+      const sidecarDrafts = uniqueHistoryRecords(draftsByPatient.flat())
+        .filter((draft) => !draft.adoptedFeeSessionId || !regularIds.has(String(draft.adoptedFeeSessionId)));
+      return [...regularSessions, ...sidecarDrafts]
+        .sort((left, right) => String(right.serviceDate || "").localeCompare(String(left.serviceDate || "")))
+        .slice(0, Math.min(500, Math.max(1, Number.parseInt(options?.limit, 10) || 10)));
+    },
+    listBillingHistoryEventsForPatient: (orgId, unusedPatientId, options) => (
+      canonicalPatientId && typeof feeStore.listBillingHistoryEventsForPatient === "function"
+        ? feeStore.listBillingHistoryEventsForPatient(orgId, canonicalPatientId, options)
+        : []
+    ),
+    saveExtractionSnapshot: (...args) => feeStore.saveExtractionSnapshot(...args),
+    getLatestExtractionSnapshotForPatient: (orgId, unusedPatientIds, options) => (
+      feeStore.getLatestExtractionSnapshotForPatient(orgId, patientIds, options)
+    ),
+    deleteExtractionSnapshotsForSource: (...args) => feeStore.deleteExtractionSnapshotsForSource(...args)
   };
+}
+
+function uniqueHistoryRecords(records = []) {
+  const byId = new Map();
+  for (const record of Array.isArray(records) ? records : []) {
+    const key = String(
+      record?.feeSessionId
+      || record?.sidecarDraftId
+      || record?.sessionId
+      || record?.historyEventId
+      || ""
+    ).trim();
+    if (key && !byId.has(key)) {
+      byId.set(key, record);
+    }
+  }
+  return [...byId.values()];
 }
 
 function sidecarCalculationResponse(sidecarDraft = {}) {
@@ -1721,15 +1810,11 @@ function requireAllowedSidecarSelectorContract(input, selectorContractVersion) {
 }
 
 function sidecarPatientMatch(patient = {}, sidecarDraft = {}) {
-  const externalPatientId = String(sidecarDraft.externalPatientId || "").trim();
-  const facilityId = String(sidecarDraft.facilityId || "").trim();
-  const sourceSystem = String(sidecarDraft.externalSourceSystem || "homis").trim();
-  const structuredMatch = (Array.isArray(patient.patientIdentifiers) ? patient.patientIdentifiers : []).some((identifier) => (
-    String(identifier?.sourceSystem || "").trim() === sourceSystem
-    && String(identifier?.facilityId || "").trim() === facilityId
-    && String(identifier?.patientNumber || identifier?.value || "").trim() === externalPatientId
-    && String(identifier?.status || "active") === "active"
-  ));
+  const structuredMatch = patientMatchesSourceIdentity(patient, {
+    externalPatientId: sidecarDraft.externalPatientId,
+    facilityId: sidecarDraft.facilityId,
+    sourceSystem: sidecarDraft.externalSourceSystem || "homis"
+  });
   if (structuredMatch) {
     return { matched: true, basis: "patient_identifier" };
   }
@@ -4648,6 +4733,21 @@ async function calculatePreparedFeeSessionNow({
       })
     )
   });
+  await measureStage(stageTimings, "saveExtractionSnapshot", () => persistFeeExtractionSnapshot({
+    feeStore,
+    orgId: context.session.orgId,
+    feeSessionId,
+    session: calculationSession,
+    extractionSnapshot: prepared.extractionSnapshot,
+    now: input.now || new Date(),
+    env: input.processEnv || process.env
+  })).catch((error) => {
+    logFeeApiError(error, {
+      stage: "saveExtractionSnapshot",
+      orgId: context.session.orgId,
+      feeSessionId
+    });
+  });
   await timedCalculationStage({
     stage: "audit",
     orgId: context.session.orgId,
@@ -4737,6 +4837,44 @@ async function calculatePreparedFeeSessionNow({
       reviewItems
     })
   };
+}
+
+async function persistFeeExtractionSnapshot({
+  feeStore,
+  orgId,
+  feeSessionId,
+  session = {},
+  extractionSnapshot = null,
+  now = new Date(),
+  env = process.env
+} = {}) {
+  if (
+    !feeExtractionMemoEnabled(env)
+    || !extractionSnapshot
+    || typeof feeStore?.saveExtractionSnapshot !== "function"
+  ) {
+    return null;
+  }
+  const canonicalPatientId = String(session.canonicalPatientId || session.patientId || "").trim();
+  if (!canonicalPatientId) {
+    return null;
+  }
+  const sourceType = session.recordType === "sidecar_calculation_draft"
+    ? "sidecar_calculation_draft"
+    : "fee_session";
+  const sourceSessionId = String(feeSessionId || session.feeSessionId || session.sidecarDraftId || "").trim();
+  const timestamp = now instanceof Date ? now : new Date(now || Date.now());
+  return feeStore.saveExtractionSnapshot(orgId, {
+    ...extractionSnapshot,
+    snapshotId: extractionSnapshotId(sourceType, sourceSessionId),
+    canonicalPatientId,
+    patientIdentityAliases: canonicalPatientIds(session),
+    sourceType,
+    sourceSessionId,
+    sourceRecordId: session.sourceRecordId || sourceSessionId,
+    serviceDate: session.serviceDate || "",
+    expiresAt: session.expiresAt || extractionSnapshotExpiry(timestamp, env)
+  });
 }
 
 async function markFeeCalculationFailed({
@@ -5309,20 +5447,36 @@ async function loadPriorFeeSessionsForPatient({
     || !orgId
     || !session.patientId
   ) {
-    return [];
+    return { sessions: [], completeness: "unavailable", reason: "store_unavailable" };
+  }
+  if (
+    typeof feeStore.getHistoryIdentityCompleteness === "function"
+    && await feeStore.getHistoryIdentityCompleteness() === "unavailable"
+  ) {
+    return { sessions: [], completeness: "unavailable", reason: "patient_identity_unavailable" };
   }
   const lookbackMonths = historyLookbackMonths(feeSettings);
   const sinceServiceDate = subtractMonthsDate(session.serviceDate, lookbackMonths);
   try {
-    return await feeStore.listPriorSessionsForPatient(orgId, session.patientId, {
+    const sessions = await feeStore.listPriorSessionsForPatient(orgId, session.canonicalPatientId || session.patientId, {
       beforeServiceDate: session.serviceDate,
       includeSameServiceDate: true,
       excludeFeeSessionId: feeSessionId || session.feeSessionId,
       sinceServiceDate,
       limit: historyLookbackLimit(lookbackMonths)
     });
-  } catch {
-    return [];
+    return {
+      sessions: Array.isArray(sessions) ? sessions : [],
+      completeness: "complete",
+      reason: "loaded"
+    };
+  } catch (error) {
+    logFeeApiError(error, {
+      stage: "patientHistory",
+      orgId,
+      feeSessionId: feeSessionId || session.feeSessionId || ""
+    });
+    return { sessions: [], completeness: "unavailable", reason: "read_failed" };
   }
 }
 
@@ -5334,24 +5488,83 @@ async function loadPriorBillingHistoryForPatient({
 } = {}) {
   if (
     !feeSettings?.historyPolicy?.externalHistoryEnabled
-    || !feeStore
+  ) {
+    return { events: [], completeness: "complete", reason: "disabled" };
+  }
+  if (
+    !feeStore
     || typeof feeStore.listBillingHistoryEventsForPatient !== "function"
     || !orgId
     || !session.patientId
   ) {
-    return [];
+    return { events: [], completeness: "unavailable", reason: "store_unavailable" };
+  }
+  if (
+    typeof feeStore.getHistoryIdentityCompleteness === "function"
+    && await feeStore.getHistoryIdentityCompleteness() === "unavailable"
+  ) {
+    return { events: [], completeness: "unavailable", reason: "patient_identity_unavailable" };
   }
   const lookbackMonths = historyLookbackMonths(feeSettings);
   const sinceServiceDate = subtractMonthsDate(session.serviceDate, lookbackMonths);
   try {
-    return await feeStore.listBillingHistoryEventsForPatient(orgId, session.patientId, {
+    const events = await feeStore.listBillingHistoryEventsForPatient(orgId, session.canonicalPatientId || session.patientId, {
       beforeServiceDate: session.serviceDate,
       includeSameServiceDate: true,
       sinceServiceDate,
       limit: historyLookbackLimit(lookbackMonths)
     });
-  } catch {
-    return [];
+    return {
+      events: Array.isArray(events) ? events : [],
+      completeness: "complete",
+      reason: "loaded"
+    };
+  } catch (error) {
+    logFeeApiError(error, {
+      stage: "externalBillingHistory",
+      orgId,
+      feeSessionId: session.feeSessionId || ""
+    });
+    return { events: [], completeness: "unavailable", reason: "read_failed" };
+  }
+}
+
+function combinedPatientHistoryCompleteness(feeSettings = null, ...results) {
+  if (results.some((result) => result?.completeness === "unavailable")) {
+    return "unavailable";
+  }
+  return feeSettings?.historyPolicy?.historyCompleteness === "complete" ? "complete" : "partial";
+}
+
+async function loadLatestExtractionSnapshot({
+  feeStore,
+  orgId,
+  session = {},
+  feeSessionId = "",
+  enabled = false
+} = {}) {
+  if (!enabled) {
+    return { snapshot: null, completeness: "partial", reason: "disabled" };
+  }
+  if (!feeStore || typeof feeStore.getLatestExtractionSnapshotForPatient !== "function") {
+    return { snapshot: null, completeness: "unavailable", reason: "store_unavailable" };
+  }
+  try {
+    const snapshot = await feeStore.getLatestExtractionSnapshotForPatient(
+      orgId,
+      canonicalPatientIds(session),
+      {
+        beforeServiceDate: session.serviceDate
+      }
+    );
+    return { snapshot: snapshot || null, completeness: "complete", reason: snapshot ? "loaded" : "not_found" };
+  } catch (error) {
+    logFeeApiError(error, {
+      stage: "extractionSnapshot",
+      orgId,
+      feeSessionId: feeSessionId || session.feeSessionId || ""
+    });
+    return { snapshot: null, completeness: "unavailable", reason: "read_failed" };
   }
 }
 
@@ -5989,6 +6202,8 @@ function buildFeeCalculationPerformanceSnapshot({
   const safeStages = safeStageTimings(stageTimings);
   const prepareStageTimings = safeStageTimings(prepared?.metrics?.stageTimings || []);
   const clinical = prepared?.metrics?.clinicalStructuring || {};
+  const extractionMemo = prepared?.metrics?.extractionMemo || {};
+  const patientHistory = prepared?.metrics?.patientHistory || {};
   const ruleBased = prepared?.metrics?.ruleBasedClinicalInference || {};
   const usage = openAiUsageSummary(clinical.usage);
   const shadow = shadowCalculationPerformanceSummary(prepared.shadowCalculations || []);
@@ -6020,7 +6235,11 @@ function buildFeeCalculationPerformanceSnapshot({
       savePreparedSessionMs: stageDuration(safeStages, "savePreparedSession"),
       pythonCalculatorMs: stageDuration(safeStages, "pythonCalculator"),
       saveCalculationMs: stageDuration(safeStages, "saveCalculation"),
+      saveExtractionSnapshotMs: stageDuration(safeStages, "saveExtractionSnapshot"),
       auditMs: stageDuration(safeStages, "audit"),
+      patientHistoryMs: stageDuration(prepareStageTimings, "patientHistory"),
+      externalBillingHistoryMs: stageDuration(prepareStageTimings, "externalBillingHistory"),
+      extractionSnapshotMs: stageDuration(prepareStageTimings, "extractionSnapshot"),
       clinicalCalculationPreparationMs: stageDuration(prepareStageTimings, "clinicalCalculationPreparation"),
       openAiProviderMs: numberOrNull(clinical.openAiProviderDurationMs),
       clinicalFactsConvertMs: numberOrNull(clinical.clinicalFactsConvertDurationMs),
@@ -6040,6 +6259,24 @@ function buildFeeCalculationPerformanceSnapshot({
       timeoutMs: numberOrNull(clinical.timeoutMs),
       fallbackReasonCode: clinical.fallbackReason ? clinicalFallbackReasonCode(clinical.fallbackReason) : null,
       reusedFromCalculationId: clinical.reusedFromCalculationId || null
+    }),
+    extractionMemo: compactObject({
+      enabled: extractionMemo.enabled === true,
+      used: extractionMemo.used === true,
+      reason: extractionMemo.reason || null,
+      memoHitLineRatio: numberOrNull(extractionMemo.memoHitLineRatio),
+      continuedLineCount: numberOrNull(extractionMemo.continuedLineCount),
+      newLineCount: numberOrNull(extractionMemo.newLineCount),
+      removedLineCount: numberOrNull(extractionMemo.removedLineCount),
+      visitFactsSource: extractionMemo.visitFactsSource || null
+    }),
+    patientHistory: compactObject({
+      completeness: patientHistory.completeness || null,
+      priorSessionCount: numberOrNull(patientHistory.priorSessionCount),
+      externalHistoryEventCount: numberOrNull(patientHistory.externalHistoryEventCount),
+      patientHistoryReason: patientHistory.patientHistoryReason || null,
+      externalHistoryReason: patientHistory.externalHistoryReason || null,
+      extractionSnapshotReason: patientHistory.extractionSnapshotReason || null
     }),
     openAiUsage: usage,
     openAiCache: openAiCacheSummary(usage),
@@ -6513,23 +6750,42 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       ? activeFacilityStandardKeysFromFeeSettings(feeSettings, baseSession.serviceDate)
       : uniqueStrings(Array.isArray(facilityProfile.facilityStandardKeys) ? facilityProfile.facilityStandardKeys : [])
   };
-  const priorSessions = await measureStage(stageTimings, "patientHistory", () => loadPriorFeeSessionsForPatient({
+  const priorSessionsResult = await measureStage(stageTimings, "patientHistory", () => loadPriorFeeSessionsForPatient({
     feeStore: input.feeStore,
     orgId: input.orgId || baseSession.orgId,
     session: baseSession,
     feeSessionId: input.feeSessionId || baseSession.feeSessionId,
     feeSettings
   }));
-  const priorBillingHistory = await measureStage(stageTimings, "externalBillingHistory", () => loadPriorBillingHistoryForPatient({
+  const priorBillingHistoryResult = await measureStage(stageTimings, "externalBillingHistory", () => loadPriorBillingHistoryForPatient({
     feeStore: input.feeStore,
     orgId: input.orgId || baseSession.orgId,
     session: baseSession,
     feeSettings
   }));
-  const combinedPriorSessions = [
-    ...priorSessions,
-    ...billingHistoryEventsAsPriorSessions(priorBillingHistory)
-  ];
+  const historyCompleteness = combinedPatientHistoryCompleteness(
+    feeSettings,
+    priorSessionsResult,
+    priorBillingHistoryResult
+  );
+  const extractionMemoEnabled = feeExtractionMemoEnabled(input.processEnv || process.env);
+  const extractionSnapshotResult = await measureStage(stageTimings, "extractionSnapshot", () => loadLatestExtractionSnapshot({
+    feeStore: input.feeStore,
+    orgId: input.orgId || baseSession.orgId,
+    session: baseSession,
+    feeSessionId: input.feeSessionId || baseSession.feeSessionId,
+    enabled: extractionMemoEnabled && historyCompleteness !== "unavailable"
+  }));
+  const memoHistoryCompleteness = historyCompleteness === "unavailable"
+    || extractionSnapshotResult.completeness === "unavailable"
+    ? "unavailable"
+    : historyCompleteness;
+  const combinedPriorSessions = historyCompleteness === "unavailable"
+    ? []
+    : [
+      ...priorSessionsResult.sessions,
+      ...billingHistoryEventsAsPriorSessions(priorBillingHistoryResult.events)
+    ];
   const reusableClinicalPreparation = reusableClinicalCalculationPreparation({
     session: baseSession,
     calculationInput,
@@ -6563,6 +6819,9 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       ),
       priorSessions: combinedPriorSessions,
       feeSettings,
+      extractionSnapshot: extractionSnapshotResult.snapshot,
+      extractionMemoEnabled,
+      historyCompleteness: memoHistoryCompleteness,
       clinicalFactsExtractor: input.clinicalFactsExtractor
     }));
   const primaryPrepared = applyAutoBillingRulesToPreparation(
@@ -6591,7 +6850,11 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
   // #8: claimContext(リプレイ/契約)指定が無い通常算定では、受診履歴から
   // 同月・回数制限の判定材料を calculationOptions.history へ自動注入する。
   const hasExplicitClaimContext = isPlainObject(session.claimContext) || isPlainObject(calculationInput.claimContext);
-  if (!hasExplicitClaimContext && isPlainObject(prepared.calculationOptions)) {
+  if (
+    historyCompleteness !== "unavailable"
+    && !hasExplicitClaimContext
+    && isPlainObject(prepared.calculationOptions)
+  ) {
     const priorHistory = buildPriorHistoryOptions(combinedPriorSessions, { serviceDate: baseSession.serviceDate, feeSettings });
     if (priorHistory) {
       prepared.calculationOptions = mergePriorHistoryIntoOptions(prepared.calculationOptions, priorHistory);
@@ -6638,16 +6901,25 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     billingCandidates: Array.isArray(prepared.billingCandidates) ? prepared.billingCandidates : [],
     reviewIssues: Array.isArray(prepared.reviewIssues) ? prepared.reviewIssues : [],
     clinicalExtraction: prepared.clinicalExtraction || null,
+    extractionSnapshot: prepared.extractionSnapshot || null,
     shadowCalculations: Array.isArray(prepared.shadowCalculations) ? prepared.shadowCalculations : [],
     metrics: {
       ...(prepared.metrics || {}),
       patientHistory: {
-        priorSessionCount: Array.isArray(priorSessions) ? priorSessions.length : 0
+        priorSessionCount: priorSessionsResult.sessions.length,
+        externalHistoryEventCount: priorBillingHistoryResult.events.length,
+        completeness: historyCompleteness,
+        patientHistoryReason: priorSessionsResult.reason,
+        externalHistoryReason: priorBillingHistoryResult.reason,
+        extractionSnapshotReason: extractionSnapshotResult.reason
       },
       stageTimings
     },
     reviewWarnings: uniqueStrings([
       ...(Array.isArray(prepared.reviewWarnings) ? prepared.reviewWarnings : []),
+      ...(historyCompleteness === "unavailable"
+        ? ["受診履歴を取得できなかったため、履歴に依存する判定は未確定です。"]
+        : []),
       ...unresolvedOrderWarnings(enriched.orders || baseSession.orders || [], prepared.calculationOptions || {})
     ])
   };

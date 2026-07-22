@@ -315,6 +315,27 @@ export const feeClinicalFactsSchema = {
   }
 };
 
+export const feeClinicalLineSubsetFactsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "diagnoses",
+    "line_review",
+    "clinical_events",
+    "excluded_events",
+    "missing_information",
+    "review_flags"
+  ],
+  properties: {
+    diagnoses: feeClinicalFactsSchema.properties.diagnoses,
+    line_review: feeClinicalFactsSchema.properties.line_review,
+    clinical_events: feeClinicalFactsSchema.properties.clinical_events,
+    excluded_events: feeClinicalFactsSchema.properties.excluded_events,
+    missing_information: feeClinicalFactsSchema.properties.missing_information,
+    review_flags: feeClinicalFactsSchema.properties.review_flags
+  }
+};
+
 function shortString(maxLength = 70) {
   return { type: "string", maxLength };
 }
@@ -381,6 +402,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
   preprocessedLines = [],
   checklistMenu = [],
   checklistVerificationMode = "inline",
+  scope = "full",
   model = "gpt-5.4-nano",
   reasoningEffort = "low",
   timeoutMs = 0,
@@ -388,6 +410,12 @@ export async function extractFeeClinicalFactsWithOpenAi({
   stream = false,
   onOutputTextSnapshot = null
 }) {
+  const normalizedScope = scope === "line_subset" ? "line_subset" : "full";
+  const safeLines = safePreprocessedClinicalLines(preprocessedLines);
+  const scopedClinicalText = normalizedScope === "line_subset"
+    ? safeLines.map((line) => line.text).join("\n")
+    : String(clinicalText || "").trim();
+  const effectiveChecklistMode = normalizedScope === "line_subset" ? "disabled" : checklistVerificationMode;
   const input = [
     "診療報酬算定の前処理として、カルテ本文から臨床イベントだけを抽出してください。",
     "",
@@ -395,16 +423,19 @@ export async function extractFeeClinicalFactsWithOpenAi({
     JSON.stringify(safeSessionContext(sessionContext), null, 2),
     "",
     "Preprocessed clinical lines:",
-    JSON.stringify(safePreprocessedClinicalLines(preprocessedLines), null, 2),
+    JSON.stringify(safeLines, null, 2),
+    "",
+    "Extraction scope:",
+    normalizedScope,
     "",
     "Checklist verification mode:",
-    String(checklistVerificationMode || "inline"),
+    String(effectiveChecklistMode || "inline"),
     "",
     "Checklist menu:",
-    JSON.stringify(checklistVerificationMode === "disabled" ? [] : safeClinicalChecklistMenu(checklistMenu), null, 2),
+    JSON.stringify(effectiveChecklistMode === "disabled" ? [] : safeClinicalChecklistMenu(checklistMenu), null, 2),
     "",
     "Clinical text:",
-    String(clinicalText || "").trim()
+    scopedClinicalText
   ].join("\n");
 
   const result = await createStructuredOpenAiResponse({
@@ -414,10 +445,13 @@ export async function extractFeeClinicalFactsWithOpenAi({
     instructions: [
       "You are a Japanese medical billing clinical-structure extraction engine.",
       "Return only facts supported by the provided clinical text and session context.",
+      normalizedScope === "line_subset"
+        ? "LINE SUBSET MODE: Use only the supplied Preprocessed clinical lines and the Clinical text reconstructed from those same lines. Do not infer or mention any omitted line. Return no visit-level or checklist fields; extract only diagnoses, line_review, clinical_events, excluded_events, missing_information, and review_flags for the supplied lines."
+        : "FULL DOCUMENT MODE: Extract visit-level facts and line-level events from the complete supplied note.",
       "Your output is clinical_events, not billing candidates. Do not calculate points. Do not choose billing codes. Do not decide billable/proposal/review eligibility. Downstream master search and rules will decide those.",
       "line_review is mandatory full coverage: output exactly one entry for EVERY line_id in Preprocessed clinical lines, in order, no omissions. Set has_billable_act=true when the line records a clinical act performed/prescribed/administered at this clinic during this encounter (medication, injection, test, imaging, procedure, management/guidance, document issuance, etc.). Set false for symptoms, observations, assessments, plans without execution, and administrative notes.",
       "Every line marked has_billable_act=true MUST be referenced by evidence_line_ids of at least one clinical_event. If multiple acts are on one line, create one clinical_event per act. Do not skip an act because it seems minor or ambiguous; extract it and let downstream decide.",
-      checklistInstructionForMode(checklistVerificationMode),
+      checklistInstructionForMode(effectiveChecklistMode),
       "For each checklist menu item, return exactly one checklist_finding with the same menu_id. Use status=performed_today only when the note supports that the item happened in this clinic during this encounter. Use planned for future/order/予定/依頼/予約/次回. Use past_or_external for 前回/以前/他院/前医/持参/健診/他科/主治医. Use mentioned_not_performed when the note says the act was not done. Use not_in_text when the menu item is not actually supported by the note. Use unclear when named but timing/ownership/performance cannot be determined.",
       "For checklist_findings, set evidence_line_ids to the supporting line_id values from Preprocessed clinical lines (at most 2). When status is not_in_text leave evidence_line_ids empty. Do not quote text; the line ids are the evidence. Do not invent line ids.",
       "For every clinical_event, set evidence_line_ids to the relevant line_id values from Preprocessed clinical lines (at most 2); use an empty array only when no supporting line can be identified. Do not quote the original text; the line ids are the evidence.",
@@ -458,8 +492,8 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "- Do not create review_flags such as 今後の検討 or 方針確認 when the phrase is only follow-up planning and not a billable event."
     ].join("\n"),
     input,
-    schemaName: "fee_clinical_facts",
-    schema: feeClinicalFactsSchema,
+    schemaName: normalizedScope === "line_subset" ? "fee_clinical_line_subset_facts" : "fee_clinical_facts",
+    schema: normalizedScope === "line_subset" ? feeClinicalLineSubsetFactsSchema : feeClinicalFactsSchema,
     stream,
     onOutputTextSnapshot,
     timeoutMs,

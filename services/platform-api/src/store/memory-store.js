@@ -618,6 +618,14 @@ export class MemoryPlatformStore {
     return filterPatientsForListOptions(list, options).map(patientPublicView);
   }
 
+  findPatientsByIdentifier(orgId, input = {}) {
+    this.requireOrganization(orgId);
+    return [...this.patientsForOrg(orgId).values()]
+      .filter((patient) => patientMatchesIdentifier(patient, input))
+      .slice(0, 2)
+      .map(patientPublicView);
+  }
+
   getPatient(orgId, patientId) {
     this.requireOrganization(orgId);
     const patient = this.patientsForOrg(orgId).get(patientId);
@@ -1121,6 +1129,7 @@ function patientPublicView(patient = {}) {
     patientSearchId,
     patientSearchPrefixes,
     patientSearchText,
+    patientIdentifierKeys,
     ...publicPatient
   } = patient || {};
   return structuredClone(publicPatient);
@@ -1162,6 +1171,7 @@ function buildPatientSearchFields(patient = {}) {
     patientSearchExternalId: external || undefined,
     patientSearchId: patientId || undefined,
     patientSearchPrefixes: buildPatientSearchPrefixes(patient),
+    patientIdentifierKeys: buildPatientIdentifierKeys(patient),
     patientSearchText: normalizePatientSearchValue([
       patient.displayName,
       patient.displayNameKana,
@@ -1170,6 +1180,31 @@ function buildPatientSearchFields(patient = {}) {
       patient.patientId
     ].filter(Boolean).join(" ")) || undefined
   });
+}
+
+function buildPatientIdentifierKeys(patient = {}) {
+  const keys = [...new Set((Array.isArray(patient.patientIdentifiers) ? patient.patientIdentifiers : [])
+    .map((identifier) => patientIdentifierKey(identifier))
+    .filter(Boolean))];
+  return keys.length ? keys : undefined;
+}
+
+function patientMatchesIdentifier(patient = {}, input = {}) {
+  return (Array.isArray(patient.patientIdentifiers) ? patient.patientIdentifiers : []).some((identifier) => (
+    patientIdentifierKey(identifier) === patientIdentifierKey(input)
+    && String(identifier?.status || "active") === "active"
+  ));
+}
+
+function patientIdentifierKey(identifier = {}) {
+  const sourceSystem = normalizePatientSearchValue(identifier.sourceSystem);
+  const facilityId = normalizePatientSearchValue(identifier.facilityId);
+  const patientNumber = normalizePatientSearchValue(
+    identifier.patientNumber || identifier.value || identifier.externalPatientId
+  );
+  return sourceSystem && facilityId && patientNumber
+    ? `${sourceSystem}\u001f${facilityId}\u001f${patientNumber}`
+    : "";
 }
 
 function patientMatchesPatientSearch(patient = {}, keyword = "") {

@@ -36,7 +36,7 @@ test("stores members and patients below organization documents", async () => {
     birthDate: "1970-01-01",
     sex: "female",
     primaryPatientNumber: "000123",
-    patientIdentifiers: [{ sourceSystem: "legacy", patientNumber: "legacy-001" }]
+    patientIdentifiers: [{ sourceSystem: "legacy", facilityId: "fac_001", patientNumber: "legacy-001" }]
   });
 
   assert.equal(member.memberId, "mem_002");
@@ -47,6 +47,14 @@ test("stores members and patients below organization documents", async () => {
   assert.equal((await store.getPatient(organization.orgId, patient.patientId)).sex, "female");
   assert.equal((await store.getPatient(organization.orgId, patient.patientId)).primaryPatientNumber, "000123");
   assert.equal((await store.getPatient(organization.orgId, patient.patientId)).patientIdentifiers[0].value, "legacy-001");
+  assert.deepEqual(
+    (await store.findPatientsByIdentifier(organization.orgId, {
+      sourceSystem: "legacy",
+      facilityId: "fac_001",
+      patientNumber: "legacy-001"
+    })).map((item) => item.patientId),
+    [patient.patientId]
+  );
 });
 
 test("lists patients with bounded recent and search options", async () => {
@@ -85,6 +93,45 @@ test("lists patients with bounded recent and search options", async () => {
   assert.deepEqual(
     (await store.listPatients(organization.orgId, { search: "legacy", limit: 10 })).map((patient) => patient.patientId),
     [beta.patientId]
+  );
+});
+
+test("identifier lookup detects duplicates across indexed and legacy patient documents", async () => {
+  let counter = 0;
+  const db = new FakeFirestoreDb();
+  const store = new FirestorePlatformStore({
+    db,
+    now: () => new Date("2026-05-27T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const organization = await store.createOrganization({
+    organizationCode: "Clinic Mixed Identifiers",
+    displayName: "Clinic Mixed Identifiers"
+  });
+  const identifier = {
+    sourceSystem: "homis",
+    facilityId: "fac_001",
+    patientNumber: "1001"
+  };
+  const indexedPatient = await store.createPatient(organization.orgId, {
+    displayName: "Indexed Patient",
+    patientIdentifiers: [identifier]
+  });
+  const legacyPatient = await store.createPatient(organization.orgId, {
+    displayName: "Legacy Patient",
+    patientIdentifiers: [identifier]
+  });
+  const legacyPath = [...db.documents.keys()]
+    .find((path) => path.endsWith(`/patients/${legacyPatient.patientId}`));
+  const legacyDocument = structuredClone(db.documents.get(legacyPath));
+  delete legacyDocument.patientIdentifierKeys;
+  db.documents.set(legacyPath, legacyDocument);
+
+  const matches = await store.findPatientsByIdentifier(organization.orgId, identifier);
+
+  assert.deepEqual(
+    new Set(matches.map((patient) => patient.patientId)),
+    new Set([indexedPatient.patientId, legacyPatient.patientId])
   );
 });
 

@@ -159,6 +159,10 @@ export class LazyFirestorePlatformStore {
     return this.call("listPatients", orgId, options);
   }
 
+  async findPatientsByIdentifier(orgId, input) {
+    return this.call("findPatientsByIdentifier", orgId, input);
+  }
+
   async getPatient(orgId, patientId) {
     return this.call("getPatient", orgId, patientId);
   }

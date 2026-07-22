@@ -29,6 +29,11 @@ import {
   candidateProposalsFromClinicalBillingKnowledge,
   currentSpecificDiseaseManagementEvidence
 } from "./clinical-billing-knowledge.js";
+import {
+  buildExtractionSnapshotCore,
+  clinicalFactsFromMemo,
+  planExtractionMemo
+} from "./longitudinal-context.js";
 
 export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "処置・手技",
@@ -582,6 +587,9 @@ export async function buildClinicalCalculationPreparation({
   openAiTimeoutMs = 0,
   priorSessions = [],
   feeSettings = null,
+  extractionSnapshot = null,
+  extractionMemoEnabled = false,
+  historyCompleteness = "complete",
   clinicalFactsExtractor = null
 } = {}) {
   const manualOptions = manualCalculationOptions(session, calculationInput);
@@ -653,6 +661,7 @@ export async function buildClinicalCalculationPreparation({
   };
   let extractedVisitFacts = null;
   let checklistFindingStatusCounts = null;
+  let preparedExtractionSnapshot = null;
 
   if (text) {
     const structured = await inferStructuredClinicalCalculationOptions({
@@ -664,11 +673,16 @@ export async function buildClinicalCalculationPreparation({
       openAiReasoningEffort,
       openAiTimeoutMs,
       priorSessions,
+      extractionSnapshot,
+      extractionMemoEnabled,
+      historyCompleteness,
       clinicalFactsExtractor
     });
     metrics.clinicalStructuring = structured.metrics;
     extractedVisitFacts = structured.visitFacts || null;
     checklistFindingStatusCounts = structured.checklistFindingStatusCounts || null;
+    metrics.extractionMemo = structured.memoMetrics || null;
+    preparedExtractionSnapshot = structured.extractionSnapshot || null;
     const ruleMetrics = createMasterSearchMetrics(feeCalculator);
     const ruleStartedAt = Date.now();
     const ruleBased = structured.used
@@ -819,40 +833,47 @@ export async function buildClinicalCalculationPreparation({
     );
   }
   if (!isHomeCareEncounter && !isInpatientEncounter(session, text) && !hasUnresolvedInpatientEncounterText(session, text)) {
-    const historyBasic = inferOutpatientBasicFromPatientHistory({
-      session,
-      priorSessions,
-      feeSettings,
-      diagnoses: [
-        ...asArray(session.diagnoses),
-        ...inferredDiagnoses
-      ],
-      currentOutpatientBasic: normalizedInferred.outpatient_basic || null
-    });
-    if (
-      !hasOwn(manualOptions, "outpatient_basic")
-      && historyBasic.outpatientBasic
-    ) {
-      normalizedInferred.outpatient_basic = historyBasic.outpatientBasic;
-    }
-    // 改革1(確定ゼロ揺れ): 外来管理加算はLLM抽出(管理説明の根拠)の有無で確定点数が
-    // 反復ごとに揺れる主因だった。抽出由来の根拠では確定に入れず、承認待ち候補として
-    // 提示する(手動オプション・claimContext経由の明示指定は従来どおり確定できる)。
-    if (
-      !hasOwn(manualOptions, "outpatient_basic")
-      && String(normalizedInferred.outpatient_basic?.fee_kind || "") === "revisit"
-    ) {
-      const managementAddonProposal = await outpatientManagementAddonProposal(feeCalculator, outpatientManagementEvidence);
-      if (managementAddonProposal) {
-        candidateProposals.push(managementAddonProposal);
+    if (historyCompleteness === "unavailable") {
+      if (!hasOwn(manualOptions, "outpatient_basic")) {
+        delete normalizedInferred.outpatient_basic;
       }
+      reviewWarnings.push("受診履歴を取得できなかったため、履歴に依存する判定は未確定です。");
+    } else {
+      const historyBasic = inferOutpatientBasicFromPatientHistory({
+        session,
+        priorSessions,
+        feeSettings,
+        diagnoses: [
+          ...asArray(session.diagnoses),
+          ...inferredDiagnoses
+        ],
+        currentOutpatientBasic: normalizedInferred.outpatient_basic || null
+      });
+      if (
+        !hasOwn(manualOptions, "outpatient_basic")
+        && historyBasic.outpatientBasic
+      ) {
+        normalizedInferred.outpatient_basic = historyBasic.outpatientBasic;
+      }
+      // 改革1(確定ゼロ揺れ): 外来管理加算はLLM抽出(管理説明の根拠)の有無で確定点数が
+      // 反復ごとに揺れる主因だった。抽出由来の根拠では確定に入れず、承認待ち候補として
+      // 提示する(手動オプション・claimContext経由の明示指定は従来どおり確定できる)。
+      if (
+        !hasOwn(manualOptions, "outpatient_basic")
+        && String(normalizedInferred.outpatient_basic?.fee_kind || "") === "revisit"
+      ) {
+        const managementAddonProposal = await outpatientManagementAddonProposal(feeCalculator, outpatientManagementEvidence);
+        if (managementAddonProposal) {
+          candidateProposals.push(managementAddonProposal);
+        }
+      }
+      reviewWarnings.push(...historyBasic.reviewWarnings);
+      reviewWarnings.push(...inferPediatricAddOnReviewWarnings({
+        session,
+        text,
+        outpatientBasic: normalizedInferred.outpatient_basic || historyBasic.outpatientBasic || null
+      }));
     }
-    reviewWarnings.push(...historyBasic.reviewWarnings);
-    reviewWarnings.push(...inferPediatricAddOnReviewWarnings({
-      session,
-      text,
-      outpatientBasic: normalizedInferred.outpatient_basic || historyBasic.outpatientBasic || null
-    }));
   }
 
   const autoKeys = Object.keys(normalizedInferred).filter((key) => (
@@ -890,6 +911,7 @@ export async function buildClinicalCalculationPreparation({
       responseId: metrics.clinicalStructuring?.responseId || null,
       usage: metrics.clinicalStructuring?.usage || null
     }),
+    extractionSnapshot: preparedExtractionSnapshot,
     metrics
   };
 }
@@ -1595,10 +1617,13 @@ async function inferStructuredClinicalCalculationOptions({
   openAiReasoningEffort = "low",
   openAiTimeoutMs = 0,
   priorSessions = [],
+  extractionSnapshot = null,
+  extractionMemoEnabled = false,
+  historyCompleteness = "complete",
   clinicalFactsExtractor = null
 } = {}) {
   const extractor = typeof clinicalFactsExtractor === "function" ? clinicalFactsExtractor : null;
-  if (!extractor && !String(openAiApiKey || "").trim()) {
+  if (!extractor && !String(openAiApiKey || "").trim() && !extractionMemoEnabled) {
     return {
       used: false,
       inferred: {},
@@ -1613,6 +1638,7 @@ async function inferStructuredClinicalCalculationOptions({
         ruleSetVersion: FEE_CLINICAL_RULE_SET_VERSION,
         masterVersion: feeMasterVersion(feeCalculator),
         openAiProviderDurationMs: 0,
+        openAiCallCount: 0,
         clinicalFactsConvertDurationMs: 0,
         convertedDiagnosisCount: 0,
         convertedOptionKeys: [],
@@ -1630,6 +1656,7 @@ async function inferStructuredClinicalCalculationOptions({
   const checklistMenu = buildClinicalChecklistMenu(text);
   const checklistVerificationMode = feeChecklistVerificationMode();
   let openAiProviderDurationMs = 0;
+  let openAiCallCount = 0;
   let firstOutputTextMs = null;
   let firstSnapshotSeen = false;
   try {
@@ -1657,14 +1684,20 @@ async function inferStructuredClinicalCalculationOptions({
     // 2回並列抽出し、イベント・診断・line_review を和集合にする(拾い漏れ側の揺れ吸収)。
     // 既定は1(コスト2倍を伴うため明示オプトイン)。
     const sampleCount = Math.max(1, Math.min(3, Number(process.env.FEE_CLINICAL_EXTRACTION_SAMPLES || 1) || 1));
-    let factsResult;
-    if (sampleCount > 1) {
+    const extractOnce = (request) => {
+      openAiCallCount += 1;
+      return extractClinicalFactsWithChecklistMode(request);
+    };
+    const extractWithSamples = async (request, requestedSamples = sampleCount) => {
+      if (requestedSamples <= 1) {
+        return extractOnce(request);
+      }
       // 部分失敗耐性: 全成功前提(Promise.all)だと1件の失敗が成功サンプルまで捨てて
       // ルール縮退に落ちる。成功分を採用し、全滅時のみ従来どおり縮退(throw)する。
       const settled = await Promise.allSettled(
-        Array.from({ length: sampleCount }, (unused, index) => extractClinicalFactsWithChecklistMode({
-          ...extractionRequest,
-          onOutputTextSnapshot: index === 0 ? extractionRequest.onOutputTextSnapshot : undefined
+        Array.from({ length: requestedSamples }, (unused, index) => extractOnce({
+          ...request,
+          onOutputTextSnapshot: index === 0 ? request.onOutputTextSnapshot : undefined
         }))
       );
       const fulfilled = settled
@@ -1674,16 +1707,65 @@ async function inferStructuredClinicalCalculationOptions({
         throw settled.find((result) => result.status === "rejected")?.reason
           || new Error("clinical facts extraction returned no samples");
       }
-      factsResult = {
+      return {
         ...fulfilled[0],
         parsed: mergeClinicalFactsSamples(fulfilled.map((result) => result?.parsed || result || {})),
         // 監査用: 全成功サンプルの response ID と usage 合算を記録する(先頭だけにしない)。
         responseId: fulfilled.map((result) => result?.responseId).filter(Boolean).join(",") || null,
         usage: mergeOpenAiUsage(...fulfilled.map((result) => result?.usage)),
-        sampleStats: { requested: sampleCount, succeeded: fulfilled.length }
+        sampleStats: { requested: requestedSamples, succeeded: fulfilled.length }
       };
+    };
+
+    const memoPlan = extractionMemoEnabled
+      ? planExtractionMemo({
+        preprocessing: clinicalTextPreprocessing,
+        snapshot: extractionSnapshot,
+        promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
+        historyCompleteness
+      })
+      : {
+        compatible: false,
+        reason: "disabled",
+        continued: [],
+        newLines: clinicalTextPreprocessing.lines,
+        removed: [],
+        memoHitLineRatio: 0
+      };
+    const memoUsed = memoPlan.compatible && memoPlan.continued.length > 0;
+    let factsResult;
+    if (memoUsed) {
+      const cachedFacts = clinicalFactsFromMemo(extractionSnapshot, memoPlan, {
+        reuseSourceScopedFacts: extractionSnapshotMatchesCurrentSource(extractionSnapshot, session)
+      });
+      if (memoPlan.newLines.length) {
+        const newFactsResult = await extractWithSamples({
+          ...extractionRequest,
+          clinicalText: "",
+          preprocessedLines: memoPlan.newLines,
+          checklistMenu: [],
+          checklistVerificationMode: "disabled",
+          scope: "line_subset"
+        });
+        factsResult = {
+          ...newFactsResult,
+          parsed: mergeClinicalFactsSamples([
+            cachedFacts,
+            newFactsResult?.parsed || newFactsResult || {}
+          ])
+        };
+      } else {
+        factsResult = {
+          parsed: cachedFacts,
+          provider: "memo",
+          promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
+          responseId: null,
+          usage: null,
+          sampleStats: { requested: 0, succeeded: 0 }
+        };
+      }
     } else {
-      factsResult = await extractClinicalFactsWithChecklistMode(extractionRequest);
+      factsResult = await extractWithSamples(extractionRequest);
     }
     let facts = factsResult?.parsed || factsResult || {};
 
@@ -1696,10 +1778,14 @@ async function inferStructuredClinicalCalculationOptions({
     if (lineReviewReconciliation.missingIds.length) {
       lineReviewRetryCount = 1;
       const missingSet = new Set(lineReviewReconciliation.missingIds);
-      const retryResult = await extractClinicalFactsWithChecklistMode({
+      const retryResult = await extractOnce({
         ...extractionRequest,
+        clinicalText: "",
         preprocessedLines: asArray(clinicalTextPreprocessing.lines)
           .filter((line) => missingSet.has(String(line?.lineId || line?.line_id || "").trim())),
+        checklistMenu: [],
+        checklistVerificationMode: "disabled",
+        scope: "line_subset",
         onOutputTextSnapshot: undefined
       }).catch(() => null);
       const retryFacts = retryResult?.parsed || retryResult;
@@ -1710,7 +1796,7 @@ async function inferStructuredClinicalCalculationOptions({
     }
     // 既知IDのみ・重複はORで畳んだ正規形に置換する(未知IDの幻覚行を下流に流さない)。
     facts.line_review = lineReviewReconciliation.normalizedLineReview;
-    openAiProviderDurationMs = Date.now() - providerStartedAt;
+    openAiProviderDurationMs = openAiCallCount > 0 ? Date.now() - providerStartedAt : 0;
     // v12軽量schema: LLMは evidence_line_ids のみ返す。evidence本文とsectionを
     // 前処理済み行から決定論的に復元し、下流(根拠検証・否定判定・注釈)を従来どおり動かす。
     backfillClinicalFactsEvidenceFromLines(facts, clinicalTextPreprocessing);
@@ -1723,14 +1809,42 @@ async function inferStructuredClinicalCalculationOptions({
       priorSessions,
       lineReviewReconciliation
     });
+    const memoMetrics = {
+      enabled: extractionMemoEnabled === true,
+      used: memoUsed,
+      reason: memoPlan.reason,
+      memoHitLineRatio: Number(memoPlan.memoHitLineRatio || 0),
+      continuedLineCount: memoPlan.continued.length,
+      newLineCount: memoPlan.newLines.length,
+      removedLineCount: memoPlan.removed.length,
+      visitFactsSource: memoUsed ? "previous_snapshot" : "current_full_extraction"
+    };
+    converted.clinicalTrace = [
+      ...asArray(converted.clinicalTrace),
+      {
+        traceId: `trace_${candidateIdPart(["extraction_memo", memoUsed, memoPlan.reason].join("_"))}`,
+        stage: "extraction_memo",
+        outcome: memoUsed ? "reused" : "full_extraction",
+        ...memoMetrics
+      }
+    ];
+    const extractionSnapshotForPersistence = buildExtractionSnapshotCore({
+      promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
+      preprocessing: clinicalTextPreprocessing,
+      facts,
+      extractedAt: new Date()
+    });
     const convertedOptionKeys = Object.keys(converted.inferred || {});
     return {
       used: true,
       ...converted,
+      extractionSnapshot: extractionSnapshotForPersistence,
+      memoMetrics,
       metrics: {
-        source: "openai",
+        source: memoUsed ? "memo" : "openai",
         durationMs: Date.now() - startedAt,
         openAiProviderDurationMs,
+        openAiCallCount,
         firstOutputTextMs,
         clinicalFactsConvertDurationMs: Date.now() - conversionStartedAt,
         extractedDiagnosisCount: Array.isArray(facts?.diagnoses) ? facts.diagnoses.length : 0,
@@ -1777,7 +1891,10 @@ async function inferStructuredClinicalCalculationOptions({
       metrics: {
         source: "rules_fallback",
         durationMs: Date.now() - startedAt,
-        openAiProviderDurationMs: openAiProviderDurationMs || Date.now() - startedAt,
+        openAiProviderDurationMs: openAiCallCount > 0
+          ? (openAiProviderDurationMs || Date.now() - startedAt)
+          : 0,
+        openAiCallCount,
         firstOutputTextMs,
         clinicalFactsConvertDurationMs: 0,
         convertedDiagnosisCount: 0,
@@ -1798,6 +1915,17 @@ async function inferStructuredClinicalCalculationOptions({
   }
 }
 
+function extractionSnapshotMatchesCurrentSource(snapshot = {}, session = {}) {
+  const snapshotSourceId = String(snapshot.sourceRecordId || snapshot.sourceSessionId || "").trim();
+  const currentSourceId = String(
+    session.sourceRecordId
+    || session.feeSessionId
+    || session.sidecarDraftId
+    || ""
+  ).trim();
+  return Boolean(snapshotSourceId && currentSourceId && snapshotSourceId === currentSourceId);
+}
+
 function feeChecklistVerificationMode() {
   const value = String(process.env.FEE_CHECKLIST_VERIFICATION_MODE || "inline").trim().toLowerCase();
   if (["inline", "split", "disabled"].includes(value)) {
@@ -1815,26 +1943,31 @@ async function extractClinicalFactsWithChecklistMode({
   preprocessedLines = [],
   checklistMenu = [],
   checklistVerificationMode = "inline",
+  scope = "full",
   model = "gpt-5.4-nano",
   reasoningEffort = "low",
   timeoutMs = 0,
   onOutputTextSnapshot = null
 } = {}) {
   if (extractor) {
+    const scopedClinicalText = scope === "line_subset"
+      ? asArray(preprocessedLines).map((line) => String(line?.text || "")).filter(Boolean).join("\n")
+      : clinicalText;
     return extractor({
-      clinicalText,
+      clinicalText: scopedClinicalText,
       session,
       sessionContext,
       preprocessedLines,
       checklistMenu,
       checklistVerificationMode,
+      scope,
       model,
       reasoningEffort,
       timeoutMs
     });
   }
 
-  if (checklistVerificationMode !== "split") {
+  if (scope === "line_subset" || checklistVerificationMode !== "split") {
     return extractFeeClinicalFactsWithOpenAi({
       apiKey,
       clinicalText,
@@ -1842,6 +1975,7 @@ async function extractClinicalFactsWithChecklistMode({
       preprocessedLines,
       checklistMenu,
       checklistVerificationMode,
+      scope,
       model,
       reasoningEffort,
       timeoutMs,
@@ -1857,6 +1991,7 @@ async function extractClinicalFactsWithChecklistMode({
     preprocessedLines,
     checklistMenu: [],
     checklistVerificationMode: "disabled",
+    scope: "full",
     model,
     reasoningEffort,
     timeoutMs,
@@ -1870,6 +2005,7 @@ async function extractClinicalFactsWithChecklistMode({
     preprocessedLines,
     checklistMenu,
     checklistVerificationMode: "checklist_only",
+    scope: "full",
     model,
     reasoningEffort,
     timeoutMs,

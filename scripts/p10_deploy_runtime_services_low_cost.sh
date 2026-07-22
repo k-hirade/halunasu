@@ -215,6 +215,8 @@ deploy_env() {
   local sidecar_revoked_device_ids="${HOMIS_SIDECAR_REVOKED_DEVICE_IDS:-}"
   local sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS:-30}"
   local sidecar_grant_ttl_hours="${HOMIS_SIDECAR_GRANT_TTL_HOURS:-720}"
+  local fee_extraction_memo="${FEE_EXTRACTION_MEMO:-false}"
+  local fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS:-30}"
 
   if [[ "${env}" == "stg" ]]; then
     session_cookie_name="halunasu_stg_session"
@@ -225,6 +227,8 @@ deploy_env() {
     sidecar_revoked_device_ids="${HOMIS_SIDECAR_REVOKED_DEVICE_IDS_STG:-${sidecar_revoked_device_ids}}"
     sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS_STG:-${sidecar_draft_retention_days}}"
     sidecar_grant_ttl_hours="${HOMIS_SIDECAR_GRANT_TTL_HOURS_STG:-${sidecar_grant_ttl_hours}}"
+    fee_extraction_memo="${FEE_EXTRACTION_MEMO_STG:-${fee_extraction_memo}}"
+    fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS_STG:-${fee_extraction_snapshot_retention_days}}"
   else
     sidecar_enabled="${HOMIS_SIDECAR_ENABLED_PROD:-${sidecar_enabled}}"
     sidecar_allowed_extension_ids="${HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS_PROD:-${sidecar_allowed_extension_ids}}"
@@ -232,6 +236,18 @@ deploy_env() {
     sidecar_revoked_device_ids="${HOMIS_SIDECAR_REVOKED_DEVICE_IDS_PROD:-${sidecar_revoked_device_ids}}"
     sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS_PROD:-${sidecar_draft_retention_days}}"
     sidecar_grant_ttl_hours="${HOMIS_SIDECAR_GRANT_TTL_HOURS_PROD:-${sidecar_grant_ttl_hours}}"
+    fee_extraction_memo="${FEE_EXTRACTION_MEMO_PROD:-${fee_extraction_memo}}"
+    fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS_PROD:-${fee_extraction_snapshot_retention_days}}"
+  fi
+
+  if [[ "${fee_extraction_memo}" != "true" && "${fee_extraction_memo}" != "false" ]]; then
+    echo "FEE_EXTRACTION_MEMO_${env^^} must be true or false." >&2
+    return 1
+  fi
+  if [[ ! "${fee_extraction_snapshot_retention_days}" =~ ^[0-9]+$ ]] \
+    || (( fee_extraction_snapshot_retention_days < 1 || fee_extraction_snapshot_retention_days > 90 )); then
+    echo "Fee extraction snapshot retention for ${env} must be an integer from 1 to 90 days." >&2
+    return 1
   fi
 
   if [[ "${sidecar_enabled}" == "true" ]]; then
@@ -404,6 +420,8 @@ deploy_env() {
     "OPENAI_FEE_CLINICAL_MODEL=${OPENAI_FEE_CLINICAL_MODEL:-gpt-5.4-nano}" \
     "OPENAI_FEE_CLINICAL_REASONING_EFFORT=${OPENAI_FEE_CLINICAL_REASONING_EFFORT:-low}" \
     "OPENAI_FEE_CLINICAL_TIMEOUT_MS=${OPENAI_FEE_CLINICAL_TIMEOUT_MS:-60000}" \
+    "FEE_EXTRACTION_MEMO=${fee_extraction_memo}" \
+    "FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS=${fee_extraction_snapshot_retention_days}" \
     "HOMIS_SIDECAR_ENABLED=${sidecar_enabled}" \
     "HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS=${sidecar_allowed_extension_ids}" \
     "HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS=${sidecar_allowed_selector_contract_versions}" \

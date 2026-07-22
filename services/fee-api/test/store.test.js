@@ -837,6 +837,50 @@ test("LazyFirestoreFeeStore は server.js が使う全メソッドを delegate �
   assert.deepEqual(missing, [], `LazyFirestoreFeeStore に delegate が無いメソッド: ${missing.join(", ")}`);
 });
 
+test("MemoryFeeStore stores, selects, and deletes dedicated extraction snapshots", () => {
+  const store = new MemoryFeeStore({
+    now: () => new Date("2026-06-20T00:00:00.000Z")
+  });
+  store.saveExtractionSnapshot("org_1", {
+    snapshotId: "extract_1",
+    canonicalPatientId: "pat_1",
+    sourceSessionId: "fee_1",
+    serviceDate: "2026-06-01",
+    extractedAt: "2026-06-01T00:00:00.000Z",
+    expiresAt: "2026-07-01T00:00:00.000Z",
+    schemaVersion: 1,
+    promptVersion: "prompt-v1",
+    lines: []
+  });
+  store.saveExtractionSnapshot("org_1", {
+    snapshotId: "extract_2",
+    canonicalPatientId: "pat_1",
+    sourceSessionId: "fee_2",
+    serviceDate: "2026-06-15",
+    extractedAt: "2026-06-15T00:00:00.000Z",
+    expiresAt: "2026-07-15T00:00:00.000Z",
+    schemaVersion: 1,
+    promptVersion: "prompt-v1",
+    lines: []
+  });
+
+  assert.equal(
+    store.getLatestExtractionSnapshotForPatient("org_1", ["pat_1"])?.sourceSessionId,
+    "fee_2"
+  );
+  assert.equal(
+    store.getLatestExtractionSnapshotForPatient("org_1", ["pat_1"], {
+      excludeSourceSessionId: "fee_2"
+    })?.sourceSessionId,
+    "fee_1"
+  );
+  assert.deepEqual(store.deleteExtractionSnapshotsForSource("org_1", "fee_2"), { deletedCount: 1 });
+  assert.equal(
+    store.getLatestExtractionSnapshotForPatient("org_1", ["pat_1"])?.sourceSessionId,
+    "fee_1"
+  );
+});
+
 test("LazyFirestorePlatformStore は fee-api が使う全メソッドを delegate している", async () => {
   const { LazyFirestorePlatformStore } = await import("../../platform-api/src/store/create-store.js");
   const { readFileSync } = await import("node:fs");

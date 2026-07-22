@@ -791,6 +791,7 @@ function actualView({ feeSession, calculationResult, reviewItems, candidateWorkb
   const candidateProposals = Array.isArray(candidateWorkbench?.proposals) ? candidateWorkbench.proposals : [];
   const clinicalExtraction = calculationResult.clinicalExtraction || feeSession.calculationResult?.clinicalExtraction || null;
   const clinicalTrace = Array.isArray(clinicalExtraction?.trace) ? clinicalExtraction.trace : [];
+  const extractionMemoTrace = clinicalTrace.find((item) => item?.stage === "extraction_memo") || null;
   const reviewText = [
     ...(Array.isArray(calculationResult.warnings) ? calculationResult.warnings : []),
     ...reviewItems.flatMap((item) => [item.title, item.message, item.reason]),
@@ -848,6 +849,14 @@ function actualView({ feeSession, calculationResult, reviewItems, candidateWorkb
     } : null,
     visitFacts: clinicalExtraction?.visitFacts || null,
     checklistFindingStatusCounts: clinicalExtraction?.checklistFindingStatusCounts || null,
+    extractionMemo: extractionMemoTrace ? {
+      outcome: extractionMemoTrace.outcome || null,
+      reason: extractionMemoTrace.reason || null,
+      memoHitLineRatio: Number(extractionMemoTrace.memoHitLineRatio || 0),
+      continuedLineCount: Number(extractionMemoTrace.continuedLineCount || 0),
+      newLineCount: Number(extractionMemoTrace.newLineCount || 0),
+      removedLineCount: Number(extractionMemoTrace.removedLineCount || 0)
+    } : null,
     clinicalTraceStageCounts: traceStageCounts(clinicalTrace),
     diagnosticTrace: clinicalTrace
       .filter((item) => DIAGNOSTIC_TRACE_STAGES.has(item.stage))
@@ -934,6 +943,7 @@ function durationView({ feeSession, calculationResponse, caseStartedAt }) {
   }
   const clinicalStructuring = progressMetrics.clinicalStructuring || {};
   const ruleBased = progressMetrics.ruleBasedClinicalInference || {};
+  const extractionMemo = progressMetrics.extractionMemo || {};
   return {
     total: Date.now() - caseStartedAt,
     prepare: byStage.prepare || 0,
@@ -949,7 +959,11 @@ function durationView({ feeSession, calculationResponse, caseStartedAt }) {
     masterLookupCount: Number((clinicalStructuring.masterLookupCount || 0) + (ruleBased.masterLookupCount || 0)),
     model: clinicalStructuring.model || null,
     reasoningEffort: clinicalStructuring.reasoningEffort || null,
-    clinicalStructuringSource: clinicalStructuring.source || null
+    clinicalStructuringSource: clinicalStructuring.source || null,
+    extractionMemoUsed: extractionMemo.used === true,
+    memoHitLineRatio: Number(extractionMemo.memoHitLineRatio || 0),
+    newLineCount: Number(extractionMemo.newLineCount || 0),
+    removedLineCount: Number(extractionMemo.removedLineCount || 0)
   };
 }
 

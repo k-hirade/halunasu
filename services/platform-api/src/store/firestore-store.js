@@ -667,6 +667,39 @@ export class FirestorePlatformStore {
     return this.searchPatients(orgId, keyword, listOptions.limit);
   }
 
+  async findPatientsByIdentifier(orgId, input = {}) {
+    await this.requireOrganization(orgId);
+    const identifierKey = patientIdentifierKey(input);
+    if (!identifierKey) {
+      return [];
+    }
+    const snapshot = await this.orgCollection(orgId, collections.patients)
+      .where("patientIdentifierKeys", "array-contains", identifierKey)
+      .limit(2)
+      .get();
+    const indexedMatches = docsFromSnapshot(snapshot).filter((patient) => patientMatchesIdentifier(patient, input));
+    if (indexedMatches.length >= 2) {
+      return indexedMatches.map(patientPublicView);
+    }
+
+    // Legacy patient documents predate patientIdentifierKeys. The existing
+    // prefix index supplies a bounded migration fallback. Check it even when
+    // one indexed match exists so a mixed old/new duplicate cannot be treated
+    // as a unique patient. Exact fields are still verified before acceptance.
+    const legacyMatches = (await this.searchPatients(
+      orgId,
+      normalizePatientSearchValue(input.patientNumber || input.value || input.externalPatientId),
+      100
+    )).filter((patient) => patientMatchesIdentifier(patient, input));
+    const matchesByPatientId = new Map();
+    for (const patient of [...indexedMatches, ...legacyMatches]) {
+      if (patient?.patientId) {
+        matchesByPatientId.set(patient.patientId, patient);
+      }
+    }
+    return [...matchesByPatientId.values()].slice(0, 2).map(patientPublicView);
+  }
+
   async getPatient(orgId, patientId) {
     await this.requireOrganization(orgId);
     return docDataOrNull(await this.doc(patientPath(orgId, patientId)).get());
@@ -1194,6 +1227,7 @@ function patientPublicView(patient = {}) {
     patientSearchId,
     patientSearchPrefixes,
     patientSearchText,
+    patientIdentifierKeys,
     ...publicPatient
   } = patient || {};
   return structuredClone(publicPatient);
@@ -1228,6 +1262,7 @@ function buildPatientSearchFields(patient = {}) {
     patientSearchExternalId: external || undefined,
     patientSearchId: patientId || undefined,
     patientSearchPrefixes: buildPatientSearchPrefixes(patient),
+    patientIdentifierKeys: buildPatientIdentifierKeys(patient),
     patientSearchText: normalizePatientSearchValue([
       patient.displayName,
       patient.displayNameKana,
@@ -1236,6 +1271,31 @@ function buildPatientSearchFields(patient = {}) {
       patient.patientId
     ].filter(Boolean).join(" ")) || undefined
   });
+}
+
+function buildPatientIdentifierKeys(patient = {}) {
+  const keys = [...new Set((Array.isArray(patient.patientIdentifiers) ? patient.patientIdentifiers : [])
+    .map((identifier) => patientIdentifierKey(identifier))
+    .filter(Boolean))];
+  return keys.length ? keys : undefined;
+}
+
+function patientMatchesIdentifier(patient = {}, input = {}) {
+  return (Array.isArray(patient.patientIdentifiers) ? patient.patientIdentifiers : []).some((identifier) => (
+    patientIdentifierKey(identifier) === patientIdentifierKey(input)
+    && String(identifier?.status || "active") === "active"
+  ));
+}
+
+function patientIdentifierKey(identifier = {}) {
+  const sourceSystem = normalizePatientSearchValue(identifier.sourceSystem);
+  const facilityId = normalizePatientSearchValue(identifier.facilityId);
+  const patientNumber = normalizePatientSearchValue(
+    identifier.patientNumber || identifier.value || identifier.externalPatientId
+  );
+  return sourceSystem && facilityId && patientNumber
+    ? `${sourceSystem}\u001f${facilityId}\u001f${patientNumber}`
+    : "";
 }
 
 function patientMatchesPatientSearch(patient = {}, keyword = "") {

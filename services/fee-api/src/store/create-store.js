@@ -71,6 +71,22 @@ export class LazyFirestoreFeeStore {
     return this.call("listPriorSessionsForPatient", orgId, patientId, options);
   }
 
+  async getHistoryIdentityCompleteness() {
+    return this.call("getHistoryIdentityCompleteness");
+  }
+
+  async saveExtractionSnapshot(orgId, input) {
+    return this.call("saveExtractionSnapshot", orgId, input);
+  }
+
+  async getLatestExtractionSnapshotForPatient(orgId, patientIds, options) {
+    return this.call("getLatestExtractionSnapshotForPatient", orgId, patientIds, options);
+  }
+
+  async deleteExtractionSnapshotsForSource(orgId, sourceSessionId) {
+    return this.call("deleteExtractionSnapshotsForSource", orgId, sourceSessionId);
+  }
+
   async getSession(orgId, feeSessionId) {
     return this.call("getSession", orgId, feeSessionId);
   }

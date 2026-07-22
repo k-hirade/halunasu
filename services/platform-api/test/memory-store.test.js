@@ -20,7 +20,7 @@ test("stores organizations, members, and patients in org scope", () => {
   const patient = store.createPatient(organization.orgId, {
     displayName: "Patient",
     primaryPatientNumber: "000123",
-    patientIdentifiers: [{ sourceSystem: "legacy", patientNumber: "legacy-001" }]
+    patientIdentifiers: [{ sourceSystem: "legacy", facilityId: "fac_001", patientNumber: "legacy-001" }]
   });
 
   assert.equal(organization.orgId, "org_fixed");
@@ -30,6 +30,14 @@ test("stores organizations, members, and patients in org scope", () => {
   assert.equal(patient.patientIdentifiers[0].value, "legacy-001");
   assert.equal(store.listMembers(organization.orgId).length, 1);
   assert.equal(store.listPatients(organization.orgId).length, 1);
+  assert.deepEqual(
+    store.findPatientsByIdentifier(organization.orgId, {
+      sourceSystem: "legacy",
+      facilityId: "fac_001",
+      patientNumber: "legacy-001"
+    }).map((item) => item.patientId),
+    [patient.patientId]
+  );
 });
 
 test("lists patients with bounded recent and search options", () => {

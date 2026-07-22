@@ -16,6 +16,7 @@ import {
 import {
   collections,
   feeBillingHistoryPath,
+  feeExtractionSnapshotPath,
   feeSettingsPath,
   feeSessionPath,
   sidecarCalculationDraftPath,
@@ -37,6 +38,9 @@ const SESSION_SUMMARY_FIELDS = [
   "orgId",
   "patientId",
   "patientRef",
+  "canonicalPatientId",
+  "canonicalPatientIdSource",
+  "patientIdentityAliases",
   "patientSnapshot",
   "facilityId",
   "facilitySnapshot",
@@ -48,6 +52,9 @@ const SESSION_SUMMARY_FIELDS = [
   "claimMonth",
   "setting",
   "sourceSystem",
+  "externalSourceSystem",
+  "externalPatientId",
+  "sourceRecordId",
   "latestCalculationId",
   "activeCalculationJobId",
   "latestCalculationJobId",
@@ -163,35 +170,19 @@ export class FirestoreFeeStore {
     const includeSameServiceDate = options.includeSameServiceDate === true;
     const excludeFeeSessionId = String(options.excludeFeeSessionId || "").trim();
     const limit = Math.min(500, Math.max(1, Number.parseInt(options.limit, 10) || 10));
-    try {
-      let query = this.orgCollection(orgId, collections.sidecarCalculationDrafts)
-        .where("patientId", "==", normalizedPatientId)
-        .where("lifecycleStatus", "in", ["draft", "adopted"]);
-      if (beforeServiceDate) {
-        query = query.where("serviceDate", includeSameServiceDate ? "<=" : "<", beforeServiceDate);
-      }
-      if (sinceServiceDate) {
-        query = query.where("serviceDate", ">=", sinceServiceDate);
-      }
-      const snapshot = await query.orderBy("serviceDate", "desc").limit(limit + 1).get();
-      return docsFromSnapshot(snapshot)
-        .filter((draft) => !excludeFeeSessionId || draft.sidecarDraftId !== excludeFeeSessionId)
-        .slice(0, limit);
-    } catch {
-      const snapshot = await this.orgCollection(orgId, collections.sidecarCalculationDrafts)
-        .orderBy("createdAt", "desc")
-        .limit(Math.max(limit, 500))
-        .get();
-      return docsFromSnapshot(snapshot)
-        .filter((draft) => ["draft", "adopted"].includes(draft.lifecycleStatus) && draft.patientId === normalizedPatientId)
-        .filter((draft) => !excludeFeeSessionId || draft.sidecarDraftId !== excludeFeeSessionId)
-        .filter((draft) => !beforeServiceDate || (includeSameServiceDate
-          ? String(draft.serviceDate || "") <= beforeServiceDate
-          : String(draft.serviceDate || "") < beforeServiceDate))
-        .filter((draft) => !sinceServiceDate || String(draft.serviceDate || "") >= sinceServiceDate)
-        .sort((left, right) => String(right.serviceDate || "").localeCompare(String(left.serviceDate || "")))
-        .slice(0, limit);
+    let query = this.orgCollection(orgId, collections.sidecarCalculationDrafts)
+      .where("patientId", "==", normalizedPatientId)
+      .where("lifecycleStatus", "in", ["draft", "adopted"]);
+    if (beforeServiceDate) {
+      query = query.where("serviceDate", includeSameServiceDate ? "<=" : "<", beforeServiceDate);
     }
+    if (sinceServiceDate) {
+      query = query.where("serviceDate", ">=", sinceServiceDate);
+    }
+    const snapshot = await query.orderBy("serviceDate", "desc").limit(limit + 1).get();
+    return docsFromSnapshot(snapshot)
+      .filter((draft) => !excludeFeeSessionId || draft.sidecarDraftId !== excludeFeeSessionId)
+      .slice(0, limit);
   }
 
   async adoptSidecarCalculationDraft(orgId, sidecarDraftId, sessionInput) {
@@ -214,7 +205,12 @@ export class FirestoreFeeStore {
       const adopted = sanitizeForFirestore(withSidecarPurgeTimestamp(markSidecarDraftAdopted(
         current,
         feeSession.feeSessionId,
-        { now: this.timestamp() }
+        {
+          now: this.timestamp(),
+          canonicalPatientId: feeSession.canonicalPatientId,
+          canonicalPatientIdSource: feeSession.canonicalPatientIdSource,
+          patientIdentityAliases: feeSession.patientIdentityAliases
+        }
       )));
       const sessionRef = this.doc(feeSessionPath(orgId, feeSession.feeSessionId));
       transaction.set(sessionRef, feeSession);
@@ -318,60 +314,77 @@ export class FirestoreFeeStore {
     const excludeFeeSessionId = String(options.excludeFeeSessionId || "").trim();
     const limit = Math.min(500, Math.max(1, Number.parseInt(options.limit, 10) || 10));
 
-    try {
-      let query = this.orgCollection(orgId, collections.feeSessions)
-        .where("patientId", "==", normalizedPatientId);
-      if (beforeServiceDate) {
-        query = query.where("serviceDate", includeSameServiceDate ? "<=" : "<", beforeServiceDate);
-      }
-      if (sinceServiceDate) {
-        query = query.where("serviceDate", ">=", sinceServiceDate);
-      }
-      const snapshot = await query
-        .orderBy("serviceDate", "desc")
-        .select(...PATIENT_HISTORY_FIELDS)
-        .limit(limit)
-        .get();
-      return docsFromSnapshot(snapshot)
-        .filter((session) => !excludeFeeSessionId || session.feeSessionId !== excludeFeeSessionId);
-    } catch {
-      return this.listPriorSessionsForPatientByBoundedScan(orgId, normalizedPatientId, {
-        beforeServiceDate,
-        sinceServiceDate,
-        includeSameServiceDate,
-        excludeFeeSessionId,
-        limit
-      });
+    let query = this.orgCollection(orgId, collections.feeSessions)
+      .where("patientId", "==", normalizedPatientId);
+    if (beforeServiceDate) {
+      query = query.where("serviceDate", includeSameServiceDate ? "<=" : "<", beforeServiceDate);
     }
+    if (sinceServiceDate) {
+      query = query.where("serviceDate", ">=", sinceServiceDate);
+    }
+    const snapshot = await query
+      .orderBy("serviceDate", "desc")
+      .select(...PATIENT_HISTORY_FIELDS)
+      .limit(limit)
+      .get();
+    return docsFromSnapshot(snapshot)
+      .filter((session) => !excludeFeeSessionId || session.feeSessionId !== excludeFeeSessionId);
   }
 
-  async listPriorSessionsForPatientByBoundedScan(orgId, patientId, options = {}) {
-    const scanLimit = Number.parseInt(process.env.FEE_PATIENT_HISTORY_SCAN_LIMIT || "500", 10) || 500;
-    const snapshot = await this.orgCollection(orgId, collections.feeSessions)
-      .orderBy("createdAt", "desc")
-      .select(...PATIENT_HISTORY_FIELDS)
-      .limit(scanLimit)
-      .get();
+  getHistoryIdentityCompleteness() {
+    return "complete";
+  }
+
+  async saveExtractionSnapshot(orgId, input = {}) {
+    const now = this.timestamp();
+    const snapshot = sanitizeForFirestore(withExtractionSnapshotPurgeTimestamp({
+      ...input,
+      orgId,
+      createdAt: input.createdAt || now,
+      updatedAt: now
+    }));
+    await this.doc(feeExtractionSnapshotPath(orgId, snapshot.snapshotId)).set(snapshot);
+    return snapshot;
+  }
+
+  async getLatestExtractionSnapshotForPatient(orgId, patientIds, options = {}) {
+    const normalizedPatientIds = [...new Set((Array.isArray(patientIds) ? patientIds : [patientIds])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean))].slice(0, 10);
+    if (!normalizedPatientIds.length) {
+      return null;
+    }
     const beforeServiceDate = String(options.beforeServiceDate || "").trim();
-    const sinceServiceDate = String(options.sinceServiceDate || "").trim();
-    const includeSameServiceDate = options.includeSameServiceDate === true;
-    const excludeFeeSessionId = String(options.excludeFeeSessionId || "").trim();
-    const limit = Math.min(500, Math.max(1, Number.parseInt(options.limit, 10) || 10));
-    return docsFromSnapshot(snapshot)
-      .filter((session) => String(session.patientId || "").trim() === patientId)
-      .filter((session) => !excludeFeeSessionId || session.feeSessionId !== excludeFeeSessionId)
-      .filter((session) => (
-        !beforeServiceDate
-        || (includeSameServiceDate
-          ? String(session.serviceDate || "") <= beforeServiceDate
-          : String(session.serviceDate || "") < beforeServiceDate)
-      ))
-      .filter((session) => !sinceServiceDate || String(session.serviceDate || "") >= sinceServiceDate)
-      .sort((left, right) => (
-        String(right.serviceDate || "").localeCompare(String(left.serviceDate || ""))
-        || String(right.createdAt || "").localeCompare(String(left.createdAt || ""))
-      ))
-      .slice(0, limit);
+    const excludeSourceSessionId = String(options.excludeSourceSessionId || "").trim();
+    const snapshots = await Promise.all(normalizedPatientIds.map(async (patientId) => {
+      let query = this.orgCollection(orgId, collections.feeExtractionSnapshots)
+        .where("canonicalPatientId", "==", patientId);
+      if (beforeServiceDate) {
+        query = query.where("serviceDate", "<=", beforeServiceDate);
+      }
+      const result = await query.orderBy("serviceDate", "desc").limit(3).get();
+      return docsFromSnapshot(result);
+    }));
+    return latestExtractionSnapshot(snapshots.flat(), { excludeSourceSessionId });
+  }
+
+  async deleteExtractionSnapshotsForSource(orgId, sourceSessionId) {
+    const normalizedSourceSessionId = String(sourceSessionId || "").trim();
+    if (!normalizedSourceSessionId) {
+      return { deletedCount: 0 };
+    }
+    const snapshot = await this.orgCollection(orgId, collections.feeExtractionSnapshots)
+      .where("sourceSessionId", "==", normalizedSourceSessionId)
+      .get();
+    if (snapshot.empty) {
+      return { deletedCount: 0 };
+    }
+    const batch = this.db.batch();
+    for (const doc of snapshot.docs) {
+      batch.delete(doc.ref);
+    }
+    await batch.commit();
+    return { deletedCount: snapshot.size };
   }
 
   async getSession(orgId, feeSessionId) {
@@ -704,35 +717,16 @@ export class FirestoreFeeStore {
     const sinceServiceDate = String(options.sinceServiceDate || "").trim();
     const includeSameServiceDate = options.includeSameServiceDate === true;
     const limit = Math.min(500, Math.max(1, Number.parseInt(options.limit, 10) || 100));
-    try {
-      let query = this.orgCollection(orgId, collections.feeBillingHistory)
-        .where("patientId", "==", normalizedPatientId);
-      if (beforeServiceDate) {
-        query = query.where("serviceDate", includeSameServiceDate ? "<=" : "<", beforeServiceDate);
-      }
-      if (sinceServiceDate) {
-        query = query.where("serviceDate", ">=", sinceServiceDate);
-      }
-      const snapshot = await query.orderBy("serviceDate", "desc").limit(limit).get();
-      return docsFromSnapshot(snapshot);
-    } catch {
-      const scanLimit = Number.parseInt(process.env.FEE_BILLING_HISTORY_SCAN_LIMIT || "500", 10) || 500;
-      const snapshot = await this.orgCollection(orgId, collections.feeBillingHistory)
-        .orderBy("createdAt", "desc")
-        .limit(scanLimit)
-        .get();
-      return docsFromSnapshot(snapshot)
-        .filter((event) => String(event.patientId || "").trim() === normalizedPatientId)
-        .filter((event) => (
-          !beforeServiceDate
-          || (includeSameServiceDate
-            ? String(event.serviceDate || "") <= beforeServiceDate
-            : String(event.serviceDate || "") < beforeServiceDate)
-        ))
-        .filter((event) => !sinceServiceDate || String(event.serviceDate || "") >= sinceServiceDate)
-        .sort((left, right) => String(right.serviceDate || "").localeCompare(String(left.serviceDate || "")))
-        .slice(0, limit);
+    let query = this.orgCollection(orgId, collections.feeBillingHistory)
+      .where("patientId", "==", normalizedPatientId);
+    if (beforeServiceDate) {
+      query = query.where("serviceDate", includeSameServiceDate ? "<=" : "<", beforeServiceDate);
     }
+    if (sinceServiceDate) {
+      query = query.where("serviceDate", ">=", sinceServiceDate);
+    }
+    const snapshot = await query.orderBy("serviceDate", "desc").limit(limit).get();
+    return docsFromSnapshot(snapshot);
   }
 
   doc(path) {
@@ -974,6 +968,29 @@ function withSidecarPurgeTimestamp(sidecarDraft = {}) {
     ...sidecarDraft,
     purgeAt: new Date(expiresAtMs)
   };
+}
+
+function withExtractionSnapshotPurgeTimestamp(snapshot = {}) {
+  const expiresAtMs = Date.parse(String(snapshot.expiresAt || ""));
+  if (!Number.isFinite(expiresAtMs)) {
+    const error = new Error("fee extraction snapshot requires a valid expiration timestamp");
+    error.name = "ConfigurationError";
+    error.statusCode = 500;
+    throw error;
+  }
+  return {
+    ...snapshot,
+    purgeAt: new Date(expiresAtMs)
+  };
+}
+
+function latestExtractionSnapshot(values = [], { excludeSourceSessionId = "" } = {}) {
+  return (Array.isArray(values) ? values : [])
+    .filter((snapshot) => !excludeSourceSessionId || snapshot.sourceSessionId !== excludeSourceSessionId)
+    .sort((left, right) => (
+      String(right.serviceDate || "").localeCompare(String(left.serviceDate || ""))
+      || String(right.extractedAt || "").localeCompare(String(left.extractedAt || ""))
+    ))[0] || null;
 }
 
 function isFirestoreTimestamp(value) {

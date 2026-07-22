@@ -2386,7 +2386,7 @@ test("recovers named performed lab events from checklist findings before master 
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let receivedInput = null;
-  let extractorChecklistMenu = [];
+  const extractorChecklistMenu = [];
   const masterSearches = [];
   stores.feeCalculator.searchMaster = async (input) => {
     masterSearches.push(input);
@@ -2419,7 +2419,7 @@ test("recovers named performed lab events from checklist findings before master 
     };
   };
   const clinicalFactsExtractor = async ({ checklistMenu }) => {
-    extractorChecklistMenu = checklistMenu;
+    extractorChecklistMenu.push(...checklistMenu);
     return {
       visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
       diagnoses: [],
@@ -2604,7 +2604,7 @@ test("recovers standard treatment events from checklist findings without direct 
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
   let receivedInput = null;
-  let extractorChecklistMenu = [];
+  const extractorChecklistMenu = [];
   const masterSearches = [];
   stores.feeCalculator.searchMaster = async (input) => {
     masterSearches.push(input);
@@ -2637,7 +2637,7 @@ test("recovers standard treatment events from checklist findings without direct 
     };
   };
   const clinicalFactsExtractor = async ({ checklistMenu }) => {
-    extractorChecklistMenu = checklistMenu;
+    extractorChecklistMenu.push(...checklistMenu);
     return {
       visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
       diagnoses: [{ name: "熱傷", status: "confirmed", evidence: "熱傷" }],
@@ -2894,7 +2894,7 @@ test("recovers composite covid flu antigen checklist as an independent lab event
 test("recovers surgery review domain from excision wording in checklist menu", async () => {
   const stores = createStores();
   const headers = await signedHeaders(stores.platformStore);
-  let extractorChecklistMenu = [];
+  const extractorChecklistMenu = [];
   stores.feeCalculator.calculate = async () => ({
     provider: "test_fee_engine",
     source: "test",
@@ -2904,7 +2904,7 @@ test("recovers surgery review domain from excision wording in checklist menu", a
     warnings: []
   });
   const clinicalFactsExtractor = async ({ checklistMenu }) => {
-    extractorChecklistMenu = checklistMenu;
+    extractorChecklistMenu.push(...checklistMenu);
     return {
       visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
       diagnoses: [{ name: "皮下腫瘤", status: "suspected", evidence: "皮下腫瘤" }],
@@ -9382,6 +9382,8 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   const firstDraftId = first.body.sidecarDraft.sidecarDraftId;
   const storedFirst = stores.feeStore.getSidecarCalculationDraft("org_001", firstDraftId);
   assert.equal(storedFirst.recordType, "sidecar_calculation_draft");
+  assert.equal(storedFirst.canonicalPatientId, storedFirst.patientId);
+  assert.equal(storedFirst.canonicalPatientIdSource, "sidecar_patient_key");
   assert.equal(storedFirst.calculationResult.lineItems[0].status, "candidate");
   assert.equal(storedFirst.calculationResult.lineItems[0].reviewRequired, true);
 
@@ -9483,6 +9485,8 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
 
   assert.equal(adopted.statusCode, 201);
   assert.equal(adopted.body.feeSession.sourceSystem, "homis_sidecar_adopted");
+  assert.equal(adopted.body.feeSession.canonicalPatientId, patient.patientId);
+  assert.ok(adopted.body.feeSession.patientIdentityAliases.includes(storedFirst.patientId));
   assert.deepEqual(adopted.body.feeSession.encounterDetails, {
     sameBuilding: true,
     sameBuildingSource: "user",
@@ -9490,6 +9494,9 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   });
   assert.equal(adopted.body.feeSession.calculationResult, null);
   assert.equal(adopted.body.sidecarDraft.lifecycleStatus, "adopted");
+  const adoptedDraft = stores.feeStore.getSidecarCalculationDraft("org_001", firstDraftId);
+  assert.equal(adoptedDraft.canonicalPatientId, patient.patientId);
+  assert.ok(adoptedDraft.patientIdentityAliases.includes(storedFirst.patientId));
   assert.equal(adoptedAgain.statusCode, 200);
   assert.equal(adoptedAgain.body.alreadyAdopted, true);
   assert.equal(adoptedAgain.body.feeSession.feeSessionId, adopted.body.feeSession.feeSessionId);
@@ -9512,6 +9519,144 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(adoptedList.statusCode, 200);
   assert.equal(adoptedList.body.totalCount, 1);
   assert.equal(adoptedList.body.sidecarDrafts[0].lifecycleStatus, "adopted");
+});
+
+test("extraction snapshots are persisted only when FEE_EXTRACTION_MEMO is enabled", async () => {
+  async function calculateWithMemoFlag(flag) {
+    const stores = createStores();
+    const headers = await signedHeaders(stores.platformStore);
+    const patient = await request(stores, "POST", "/v1/fee/patients", {
+      displayName: `Memo ${flag}`
+    }, headers);
+    const session = await request(stores, "POST", "/v1/fee/sessions", {
+      patientId: patient.body.patient.patientId,
+      facilityId: "fac_001",
+      serviceDate: "2026-06-10",
+      clinicalText: "S）状態は安定。\nP）経過観察を継続。"
+    }, headers);
+    let extractorCallCount = 0;
+    const clinicalFactsExtractor = async ({ preprocessedLines }) => {
+      extractorCallCount += 1;
+      return {
+        visit_type: { kind: "revisit", evidence: "継続受診", confidence: "medium" },
+        diagnoses: [],
+        line_review: preprocessedLines.map((line) => ({ line_id: line.lineId, has_billable_act: false })),
+        clinical_events: [],
+        excluded_events: [],
+        missing_information: [],
+        review_flags: []
+      };
+    };
+    const calculated = await request(
+      stores,
+      "POST",
+      `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+      {},
+      headers,
+      {
+        clinicalFactsExtractor,
+        processEnv: { FEE_EXTRACTION_MEMO: flag }
+      }
+    );
+    return {
+      stores,
+      calculated,
+      headers,
+      clinicalFactsExtractor,
+      feeSessionId: session.body.feeSession.feeSessionId,
+      extractorCallCount: () => extractorCallCount
+    };
+  }
+
+  const disabled = await calculateWithMemoFlag("false");
+  assert.equal(disabled.calculated.statusCode, 201);
+  assert.equal(disabled.stores.feeStore.extractionSnapshotsForOrg("org_001").size, 0);
+
+  const enabled = await calculateWithMemoFlag("true");
+  assert.equal(enabled.calculated.statusCode, 201);
+  assert.equal(enabled.stores.feeStore.extractionSnapshotsForOrg("org_001").size, 1);
+  assert.equal(enabled.extractorCallCount(), 1);
+
+  const repeated = await request(
+    enabled.stores,
+    "POST",
+    `/v1/fee/sessions/${enabled.feeSessionId}/calculate`,
+    {},
+    enabled.headers,
+    {
+      clinicalFactsExtractor: enabled.clinicalFactsExtractor,
+      processEnv: { FEE_EXTRACTION_MEMO: "true" }
+    }
+  );
+  assert.equal(repeated.statusCode, 201);
+  assert.equal(enabled.extractorCallCount(), 1);
+  assert.equal(enabled.stores.feeStore.extractionSnapshotsForOrg("org_001").size, 1);
+  assert.equal(repeated.body.feeSession.calculationProgress.metrics.extractionMemo.used, true);
+  assert.equal(repeated.body.feeSession.calculationProgress.metrics.extractionMemo.memoHitLineRatio, 1);
+  assert.equal(repeated.body.feeSession.calculationProgress.metrics.clinicalStructuring.openAiCallCount, 0);
+  assert.equal(repeated.body.feeSession.calculationProgress.metrics.clinicalStructuring.openAiProviderDurationMs, 0);
+  assert.equal(repeated.body.calculationResult.totalPoints, enabled.calculated.body.calculationResult.totalPoints);
+  assert.deepEqual(repeated.body.calculationResult.lineItems, enabled.calculated.body.calculationResult.lineItems);
+  assert.deepEqual(repeated.body.calculationResult.warnings, enabled.calculated.body.calculationResult.warnings);
+  assert.deepEqual(repeated.body.calculationResult.reviewIssues, enabled.calculated.body.calculationResult.reviewIssues);
+});
+
+test("history read failure is visible and blocks inferred initial/revisit billing", async () => {
+  const stores = createStores();
+  stores.feeStore.listPriorSessionsForPatient = async () => {
+    throw new Error("history database unavailable");
+  };
+  let receivedCalculationInput = null;
+  stores.feeCalculator.calculate = async (feeSession, calculationInput) => {
+    receivedCalculationInput = calculationInput;
+    return {
+      provider: "test_fee_engine",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const headers = await signedHeaders(stores.platformStore);
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "History Failure Patient"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-10",
+    clinicalText: "再診。経過観察を継続。"
+  }, headers);
+  const calculated = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    {
+      processEnv: { FEE_EXTRACTION_MEMO: "true" },
+      clinicalFactsExtractor: async ({ preprocessedLines }) => ({
+        visit_type: { kind: "revisit", evidence: "再診", confidence: "high" },
+        diagnoses: [],
+        line_review: preprocessedLines.map((line) => ({ line_id: line.lineId, has_billable_act: false })),
+        clinical_events: [],
+        excluded_events: [],
+        missing_information: [],
+        review_flags: []
+      })
+    }
+  );
+
+  assert.equal(calculated.statusCode, 201);
+  assert.equal(receivedCalculationInput.calculationOptions?.outpatient_basic, undefined);
+  assert.ok(calculated.body.calculationResult.warnings.includes(
+    "受診履歴を取得できなかったため、履歴に依存する判定は未確定です。"
+  ));
+  assert.equal(
+    calculated.body.feeSession.calculationProgress.metrics.patientHistory.completeness,
+    "unavailable"
+  );
 });
 
 test("sidecar calculation inherits effective facility standards for meisaisho candidates", async () => {

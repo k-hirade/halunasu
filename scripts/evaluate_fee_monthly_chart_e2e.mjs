@@ -105,7 +105,12 @@ fs.mkdirSync(outputDir, { recursive: true });
 const jar = new CookieJar();
 const login = await requestJson(`${args.platformBaseUrl}/v1/auth/login`, {
   method: "POST",
-  body: { organizationCode: args.organizationCode, loginId: args.loginId, password },
+  body: {
+    organizationCode: args.organizationCode,
+    loginId: args.loginId,
+    password,
+    ...(args.mfaCode ? { mfaCode: args.mfaCode } : {})
+  },
   jar,
   timeoutMs: args.timeoutMs
 });
@@ -124,12 +129,7 @@ const orgId = String(authSession.body?.session?.orgId || "");
 if (!orgId) {
   throw new Error("auth session did not include orgId");
 }
-const bootstrap = await requestJson(
-  `${args.platformBaseUrl}/v1/organizations/${encodeURIComponent(orgId)}/admin-bootstrap?section=departments`,
-  { jar, timeoutMs: args.timeoutMs }
-);
-assertResponse(bootstrap, "organization bootstrap");
-const context = resolveFacilityContext(bootstrap.body || {}, args);
+const context = await resolveEvaluationContext({ args, jar, orgId });
 const api = createFeeApiClient({
   baseUrl: args.feeBaseUrl,
   jar,
@@ -553,6 +553,10 @@ function sanitizeCalculationMetrics(metrics) {
   const clinical = metrics.clinicalStructuring || {};
   const ruleBased = metrics.ruleBasedClinicalInference || {};
   const diseaseIndication = metrics.diseaseIndicationScan || {};
+  const performance = metrics.performance || {};
+  const extractionMemo = metrics.extractionMemo || performance.extractionMemo || {};
+  const patientHistory = metrics.patientHistory || performance.patientHistory || {};
+  const openAiUsage = sanitizeOpenAiUsage(clinical.usage || performance.openAiUsage);
   return {
     stageTimings: (metrics.stageTimings || []).map((item) => ({
       stage: item.stage || item.name || "",
@@ -560,6 +564,7 @@ function sanitizeCalculationMetrics(metrics) {
     })),
     clinicalStructuringMs: Number(clinical.durationMs || 0),
     openAiProviderMs: Number(clinical.openAiProviderDurationMs || 0),
+    openAiCallCount: inferredOpenAiCallCount(clinical, openAiUsage),
     firstOutputTextMs: clinical.firstOutputTextMs ?? null,
     ruleBasedInferenceMs: Number(ruleBased.durationMs || 0),
     masterLookupMs: Number((clinical.masterLookupDurationMs || 0) + (ruleBased.masterLookupDurationMs || 0)),
@@ -568,7 +573,53 @@ function sanitizeCalculationMetrics(metrics) {
     diseaseIndicationResolvedDiagnosisCount: Number(diseaseIndication.resolvedDiagnosisCount || 0),
     diseaseIndicationCandidateCount: Number(diseaseIndication.candidateCount || 0),
     diseaseIndicationUnresolvedCount: Number(diseaseIndication.unresolvedCount || 0),
-    diseaseIndicationFailed: diseaseIndication.failed === true || undefined
+    diseaseIndicationFailed: diseaseIndication.failed === true || undefined,
+    extractionMemo: {
+      enabled: extractionMemo.enabled === true,
+      used: extractionMemo.used === true,
+      reason: extractionMemo.reason || null,
+      memoHitLineRatio: Number(extractionMemo.memoHitLineRatio || 0),
+      continuedLineCount: Number(extractionMemo.continuedLineCount || 0),
+      newLineCount: Number(extractionMemo.newLineCount || 0),
+      removedLineCount: Number(extractionMemo.removedLineCount || 0),
+      visitFactsSource: extractionMemo.visitFactsSource || null
+    },
+    patientHistory: {
+      completeness: patientHistory.completeness || null,
+      priorSessionCount: Number(patientHistory.priorSessionCount || 0),
+      externalHistoryEventCount: Number(patientHistory.externalHistoryEventCount || 0),
+      patientHistoryReason: patientHistory.patientHistoryReason || null,
+      extractionSnapshotReason: patientHistory.extractionSnapshotReason || null
+    },
+    openAiCallObserved: inferredOpenAiCallCount(clinical, openAiUsage) > 0,
+    openAiUsage
+  };
+}
+
+function inferredOpenAiCallCount(clinical = {}, usage = null) {
+  const explicitCount = Number(clinical.openAiCallCount);
+  if (Number.isFinite(explicitCount) && explicitCount >= 0) return explicitCount;
+  if (clinical.extractionSampleStats && typeof clinical.extractionSampleStats === "object") {
+    return Math.max(0, Number(clinical.extractionSampleStats.requested || 0))
+      + Math.max(0, Number(clinical.lineReviewRetryCount || 0));
+  }
+  if (Number(usage?.inputTokens || 0) > 0 || Number(usage?.outputTokens || 0) > 0) return 1;
+  if (String(clinical.source || "") === "memo") return 0;
+  return Number(clinical.openAiProviderDurationMs || 0) > 0 || String(clinical.source || "") === "openai" ? 1 : 0;
+}
+
+function sanitizeOpenAiUsage(usage = null) {
+  if (!usage || typeof usage !== "object") return null;
+  return {
+    inputTokens: Number(usage.inputTokens ?? usage.input_tokens ?? usage.prompt_tokens ?? 0),
+    outputTokens: Number(usage.outputTokens ?? usage.output_tokens ?? usage.completion_tokens ?? 0),
+    totalTokens: Number(usage.totalTokens ?? usage.total_tokens ?? 0),
+    cachedInputTokens: Number(
+      usage.cachedInputTokens
+      ?? usage.input_tokens_details?.cached_tokens
+      ?? usage.prompt_tokens_details?.cached_tokens
+      ?? 0
+    )
   };
 }
 
@@ -660,7 +711,15 @@ function summarizeRepeats(repeats) {
     .map((item) => item.durationMs);
   const diseaseIndicationTimings = repeats.flatMap((item) => item.visits)
     .map((visit) => visit.calculationMetrics.diseaseIndicationScanMs);
-  const allOpenAi = repeats.flatMap((item) => item.visits.map((visit) => visit.extraction.source === "openai"));
+  const visits = repeats.flatMap((item) => item.visits);
+  const allOpenAi = visits.map((visit) => visit.extraction.source === "openai");
+  const historyCompletenessCounts = visits.reduce((counts, visit) => {
+    const completeness = visit.calculationMetrics.patientHistory?.completeness || "unknown";
+    counts[completeness] = Number(counts[completeness] || 0) + 1;
+    return counts;
+  }, {});
+  const memoHitRatios = visits.map((visit) => visit.calculationMetrics.extractionMemo?.memoHitLineRatio || 0);
+  const openAiUsage = visits.map((visit) => visit.calculationMetrics.openAiUsage).filter(Boolean);
   return {
     repeatCount: repeats.length,
     visitCountPerRepeat: repeats[0]?.visits.length || 0,
@@ -673,6 +732,19 @@ function summarizeRepeats(repeats) {
     // 抽出安定性: 同一カルテの反復間でイベント数がどれだけ揺れたか(受診ごとの min/max/spread)。
     // spread が大きい受診は抽出揺れが確定点数へ波及するリスクの監視対象。
     extractionStability: summarizeExtractionStability(repeats),
+    longitudinalContext: {
+      memoEnabledVisitCount: visits.filter((visit) => visit.calculationMetrics.extractionMemo?.enabled).length,
+      memoUsedVisitCount: visits.filter((visit) => visit.calculationMetrics.extractionMemo?.used).length,
+      memoHitLineRatio: distribution(memoHitRatios),
+      newLineCount: visits.map((visit) => visit.calculationMetrics.extractionMemo?.newLineCount || 0),
+      removedLineCount: visits.map((visit) => visit.calculationMetrics.extractionMemo?.removedLineCount || 0),
+      historyCompletenessCounts,
+      historyUnavailableCount: Number(historyCompletenessCounts.unavailable || 0),
+      openAiCallCount: visits.filter((visit) => visit.calculationMetrics.openAiCallObserved).length,
+      openAiInputTokens: openAiUsage.reduce((sum, usage) => sum + Number(usage.inputTokens || 0), 0),
+      openAiOutputTokens: openAiUsage.reduce((sum, usage) => sum + Number(usage.outputTokens || 0), 0),
+      cachedInputTokens: openAiUsage.reduce((sum, usage) => sum + Number(usage.cachedInputTokens || 0), 0)
+    },
     exactMatchRuns: repeats.filter((item) => item.comparison.exactMatch).length,
     baselineCodeCount: repeats[0]?.comparison.baselineCodeCount || 0,
     matchedCodeCounts: repeats.map((item) => item.comparison.matchedCodeCount),
@@ -831,6 +903,28 @@ function resolveFacilityContext(bootstrap, options) {
   };
 }
 
+async function resolveEvaluationContext({ args: options, jar, orgId }) {
+  const hasFacilityId = Boolean(String(options.facilityId || "").trim());
+  const hasDepartmentId = Boolean(String(options.departmentId || "").trim());
+  if (hasFacilityId !== hasDepartmentId) {
+    throw new Error("--facility-id and --department-id must be specified together");
+  }
+  if (hasFacilityId) {
+    return {
+      facilityId: String(options.facilityId).trim(),
+      departmentId: String(options.departmentId).trim(),
+      facilityStandardKeys: []
+    };
+  }
+
+  const bootstrap = await requestJson(
+    `${options.platformBaseUrl}/v1/organizations/${encodeURIComponent(orgId)}/admin-bootstrap?section=departments`,
+    { jar, timeoutMs: options.timeoutMs }
+  );
+  assertResponse(bootstrap, "organization bootstrap");
+  return resolveFacilityContext(bootstrap.body || {}, options);
+}
+
 function sanitizeFeeSettingsForReport(settings = {}) {
   return {
     persisted: Boolean(settings.orgId && settings.createdAt),
@@ -908,6 +1002,7 @@ function parseArgs(argv) {
     facilityId: "",
     departmentId: "",
     password: process.env.FEE_E2E_PASSWORD || "",
+    mfaCode: process.env.FEE_E2E_MFA_CODE || "",
     seedKnownPriorHistory: false,
     approveCalculatedLines: false,
     encounterSetting: "outpatient",
@@ -928,6 +1023,7 @@ function parseArgs(argv) {
     else if (arg === "--organization-code") parsed.organizationCode = next(index++, arg);
     else if (arg === "--login-id") parsed.loginId = next(index++, arg);
     else if (arg === "--password-file") parsed.passwordFile = next(index++, arg);
+    else if (arg === "--mfa-code") parsed.mfaCode = next(index++, arg);
     else if (arg === "--repeat") parsed.repeat = positiveInteger(next(index++, arg), arg);
     else if (arg === "--timeout-ms") parsed.timeoutMs = positiveInteger(next(index++, arg), arg);
     else if (arg === "--facility-id") parsed.facilityId = next(index++, arg);
@@ -1034,5 +1130,5 @@ function round(value, digits = 3) {
 }
 
 function printHelp() {
-  process.stdout.write(`Fee monthly chart-to-receipt E2E (STG only)\n\nUsage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\nOptions:\n  --patient-dir PATH       Patient dataset directory\n  --claim-month YYYY-MM    Defaults to manifest claimMonth\n  --repeat N               Independent patient runs. Default: 3\n  --output-dir PATH        Default: /private/tmp/<run-id>\n  --organization-code ID   Default: yamamoto-demo-stg\n  --login-id ID            Default: yamamoto-admin\n  --password-file PATH     Default: .secrets/yamamoto-demo-stg-password.txt\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --seed-known-prior-history\n                            Seed patients.csv start_date as prior visit history\n  --approve-calculated-lines\n                            Approve non-blocked calculated line items before monthly aggregation\n  --encounter-setting TYPE Encounter setting (outpatient/home_visit/house_call/inpatient)\n  --dry-run                Validate and summarize inputs without network calls\n  --help                   Show this help\n`);
+  process.stdout.write(`Fee monthly chart-to-receipt E2E (STG only)\n\nUsage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\nOptions:\n  --patient-dir PATH       Patient dataset directory\n  --claim-month YYYY-MM    Defaults to manifest claimMonth\n  --repeat N               Independent patient runs. Default: 3\n  --output-dir PATH        Default: /private/tmp/<run-id>\n  --organization-code ID   Default: yamamoto-demo-stg\n  --login-id ID            Default: yamamoto-admin\n  --password-file PATH     Default: .secrets/yamamoto-demo-stg-password.txt\n  --mfa-code CODE          Current 6-digit MFA code (or FEE_E2E_MFA_CODE)\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --seed-known-prior-history\n                            Seed patients.csv start_date as prior visit history\n  --approve-calculated-lines\n                            Approve non-blocked calculated line items before monthly aggregation\n  --encounter-setting TYPE Encounter setting (outpatient/home_visit/house_call/inpatient)\n  --dry-run                Validate and summarize inputs without network calls\n  --help                   Show this help\n`);
 }
