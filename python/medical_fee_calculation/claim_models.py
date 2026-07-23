@@ -22,6 +22,10 @@ class OutpatientBasicFeeKind(str, Enum):
     OUTPATIENT_CLINIC = "outpatient_clinic"
 
 
+class OutpatientVisitKind(str, Enum):
+    TELEPHONE_REVISIT = "telephone_revisit"
+
+
 class MedicationDeliveryKind(str, Enum):
     IN_HOUSE = "in_house"
     OUTSIDE_PRESCRIPTION = "outside_prescription"
@@ -216,8 +220,29 @@ class LabOptionContext:
 
 
 @dataclass(frozen=True)
+class TelephoneEligibilityContext:
+    established_patient: bool | None = None
+    patient_initiated: bool | None = None
+    instruction_given: bool | None = None
+    scheduled_management: bool | None = None
+
+    @property
+    def is_confirmed_eligible(self) -> bool:
+        return (
+            self.established_patient is True
+            and self.patient_initiated is True
+            and self.instruction_given is True
+            and self.scheduled_management is False
+        )
+
+
+@dataclass(frozen=True)
 class OutpatientBasicFeeOptionContext:
     fee_kind: OutpatientBasicFeeKind | None = None
+    visit_kind: OutpatientVisitKind | None = None
+    telephone_eligibility: TelephoneEligibilityContext = field(
+        default_factory=TelephoneEligibilityContext
+    )
     information_communication_equipment: bool = False
     same_day_second_department: bool = False
     same_day_revisit: bool = False

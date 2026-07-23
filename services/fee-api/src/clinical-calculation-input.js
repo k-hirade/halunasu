@@ -7,7 +7,8 @@ import {
   clinicalAutoCalculationOptionKeys,
   hasPerformedBloodCollectionEvidence,
   hasPerformedBloodCollectionEvidenceInText,
-  isClinicalDateRatioFalsePositiveContext
+  isClinicalDateRatioFalsePositiveContext,
+  normalizeClinicalPredicateText
 } from "../../../packages/fee-contracts/src/index.js";
 import {
   FEE_CONCEPT_REGISTRY_VERSION,
@@ -68,6 +69,13 @@ const OTHER_PROVIDER_DPC_CONTEXT_PATTERN = /DPC.{0,16}(?:病院|医療機関|他
 const SYNTHETIC_CLINICAL_META_SENTENCE_PATTERN = /(当日確認した主な診療内容|確認すべき論点|点数に直結する名称|会計前に当日実施した内容|診療内容は最終確認|expectedClaimContext)/u;
 
 export const FEE_CLINICAL_RULE_SET_VERSION = "fee-clinical-rules-v10";
+
+const CLINICAL_LINE_ROLE_PRIORITY = Object.freeze({
+  none: 0,
+  plan: 1,
+  management_continuation: 2,
+  performed: 3
+});
 
 const REVIEW_TOPIC_TAXONOMY = Object.freeze({
   visit_type_check: Object.freeze({
@@ -603,6 +611,8 @@ export async function buildClinicalCalculationPreparation({
       candidateProposals: [],
       reviewWarnings: [],
       clinicalEvents: [],
+      standingMentions: [],
+      managementContinuationRanges: [],
       masterCandidates: [],
       billingCandidates: [],
       reviewIssues: [],
@@ -635,6 +645,8 @@ export async function buildClinicalCalculationPreparation({
   const candidateProposals = [];
   const reviewWarnings = [];
   const clinicalEvents = [];
+  const standingMentions = [];
+  const managementContinuationRanges = [];
   const canonicalClinicalFacts = [];
   const masterCandidates = [];
   const billingCandidates = [];
@@ -712,6 +724,8 @@ export async function buildClinicalCalculationPreparation({
       candidateProposals.push(...asArray(structured.candidateProposals), ...asArray(ruleBased.candidateProposals));
       reviewWarnings.push(...structured.reviewWarnings, ...ruleBased.reviewWarnings);
       clinicalEvents.push(...asArray(structured.clinicalEvents));
+      standingMentions.push(...asArray(structured.standingMentions));
+      managementContinuationRanges.push(...asArray(structured.managementContinuationRanges));
       canonicalClinicalFacts.push(...asArray(structured.canonicalClinicalFacts));
       masterCandidates.push(...asArray(structured.masterCandidates));
       billingCandidates.push(...asArray(structured.billingCandidates));
@@ -731,6 +745,7 @@ export async function buildClinicalCalculationPreparation({
     const dictionaryScan = await dictionaryScanCandidateProposals({
       feeCalculator,
       text,
+      suppressedRanges: managementContinuationRanges,
       knownCodes: uniqueStrings([
         ...asArray(inferred.procedure_codes),
         ...billingCandidates.map((candidate) => candidate?.code).filter(Boolean),
@@ -890,6 +905,7 @@ export async function buildClinicalCalculationPreparation({
     candidateProposals: normalizeCandidateProposals(candidateProposals),
     reviewWarnings: normalizeReviewWarnings(reviewWarnings),
     clinicalEvents: normalizeClinicalEventsForResult(clinicalEvents),
+    standingMentions: normalizeStandingMentionsForLane(standingMentions),
     canonicalClinicalFacts: normalizeCanonicalClinicalFacts(canonicalClinicalFacts),
     masterCandidates: normalizeMasterCandidates(masterCandidates),
     billingCandidates: normalizeBillingCandidates(billingCandidates),
@@ -1846,7 +1862,8 @@ async function inferStructuredClinicalCalculationOptions({
         lineReviewReconciliation = reconcileLineReview(facts, promptLineIds);
       }
     }
-    // 既知IDのみ・重複はORで畳んだ正規形に置換する(未知IDの幻覚行を下流に流さない)。
+    // 既知IDのみ・重複はline_role優先順位で畳んだ正規形に置換する
+    // (未知IDの幻覚行を下流に流さない)。
     facts.line_review = lineReviewReconciliation.normalizedLineReview;
     openAiProviderDurationMs = openAiCallCount > 0 ? Date.now() - providerStartedAt : 0;
     // v12軽量schema: LLMは evidence_line_ids のみ返す。evidence本文とsectionを
@@ -2413,6 +2430,12 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const reviewIssues = [];
   const clinicalTrace = [];
   const clinicalTextPreprocessing = buildClinicalTextPreprocessing(text);
+  const standingMentions = standingMentionsForLane(facts, clinicalTextPreprocessing);
+  const managementContinuationRanges = clinicalLineRangesForRole(
+    facts,
+    clinicalTextPreprocessing,
+    "management_continuation"
+  );
   clinicalTrace.push(...clinicalPreprocessingTraceEvents(clinicalTextPreprocessing));
   const reconciledExtraction = reconcileClinicalFactsForCalculation({
     facts,
@@ -2562,7 +2585,7 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     }));
   }
 
-  // v14全行カバレッジ突合: has_billable_act=true なのにイベントが参照しない行は
+  // v15全行カバレッジ突合: line_role=performed なのにイベントが参照しない行は
   // 「抽出漏れの可能性」として明示する(辞書スキャン網が拾えるものは候補にも出る)。
   const uncoveredBillableLines = uncoveredBillableLinesFromFacts(facts, clinicalEventsForCalculation, clinicalTextPreprocessing);
   if (uncoveredBillableLines.length) {
@@ -2608,6 +2631,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const specificDiseaseProposals = await candidateProposalsFromClinicalBillingKnowledge({
     diagnoses,
     clinicalEvents,
+    standingMentions,
+    managementContinuationRanges,
     visitMedication,
     clinicalText: text,
     priorSessions,
@@ -3251,6 +3276,14 @@ function reconcileClinicalFactsForCalculation({ facts = {}, checklistMenu = [], 
   const reviewWarnings = [];
   const traceEvents = [];
   let clinicalEvents = clinicalEventsFromClinicalFacts(facts);
+  const continuationDowngrade = downgradeManagementContinuationEvents({
+    facts,
+    clinicalEvents
+  });
+  clinicalEvents = continuationDowngrade.clinicalEvents;
+  reviewIssues.push(...continuationDowngrade.reviewIssues);
+  reviewWarnings.push(...continuationDowngrade.reviewIssues.map((issue) => issue.messageForStaff));
+  traceEvents.push(...continuationDowngrade.traceEvents);
   const checklistContradictions = clinicalEventContradictionsFromChecklistFindings({
     facts,
     checklistMenu,
@@ -3305,6 +3338,92 @@ function reconcileClinicalFactsForCalculation({ facts = {}, checklistMenu = [], 
     reviewWarnings,
     traceEvents
   };
+}
+
+function downgradeManagementContinuationEvents({ facts = {}, clinicalEvents = [] } = {}) {
+  const rolesByLineId = new Map(asArray(facts?.line_review)
+    .map((entry) => [
+      String(entry?.line_id || entry?.lineId || "").trim(),
+      clinicalLineRole(entry)
+    ])
+    .filter(([lineId]) => lineId));
+  const kept = [];
+  const reviewIssues = [];
+  const traceEvents = [];
+
+  for (const event of asArray(clinicalEvents)) {
+    const evidenceLineIds = uniqueStrings(
+      asArray(event?.evidence_line_ids ?? event?.evidenceLineIds).map(String)
+    );
+    const lineRoles = evidenceLineIds
+      .map((lineId) => rolesByLineId.get(lineId))
+      .filter(Boolean);
+    const evidence = String(event?.evidence || "").trim();
+    const continuationOnly = (
+      lineRoles.length > 0
+      && lineRoles.every((role) => role === "management_continuation")
+    ) || managementContinuationOnlyText(evidence);
+
+    // line_role itself is an LLM output. A mistaken "performed" label must not
+    // bypass the deterministic evidence-text gate for continuation-only notes.
+    if (continuationOnly && !hasCurrentPerformedActPredicate(evidence)) {
+      const eventName = clinicalEventName(event) || "診療行為";
+      const messageForStaff = `${eventName}は継続方針の記載です。当日実施した場合のみ算定してください。`;
+      const issue = withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart([
+          "management_continuation",
+          eventName,
+          ...evidenceLineIds
+        ].join("_"))}`,
+        issueCode: "management_continuation_not_performed",
+        severity: "warning",
+        title: `${eventName}の実施確認`,
+        messageForStaff,
+        evidence: evidence.slice(0, 200),
+        requiredInput: "当日に当該行為を実施した事実",
+        source: "management_continuation_gate"
+      }, "clinical_event_conflict_check");
+      reviewIssues.push(issue);
+      traceEvents.push(clinicalTraceEvent({
+        stage: "management_continuation_gate",
+        event,
+        categoryLabel: "管理継続",
+        outcome: "downgraded",
+        selected: {
+          evidenceLineIds,
+          lineRoles
+        },
+        message: "continuation_only_event_removed_from_current_billing"
+      }));
+      continue;
+    }
+    kept.push(event);
+  }
+
+  return {
+    clinicalEvents: kept,
+    reviewIssues,
+    traceEvents
+  };
+}
+
+function managementContinuationOnlyText(value = "") {
+  const text = normalizeClinicalPredicateText(value);
+  if (!text) {
+    return false;
+  }
+  return /(?:管理|療法|治療|処方|投薬|吸引|人工呼吸|酸素|カニューレ|機器|指導).{0,20}(?:継続中|継続|維持|管理中|変わらず|引き続き)|(?:継続中|継続|維持|管理中|変わらず|引き続き).{0,20}(?:管理|療法|治療|処方|投薬|吸引|人工呼吸|酸素|カニューレ|機器|指導)/u.test(text);
+}
+
+function hasCurrentPerformedActPredicate(value = "") {
+  const text = normalizeClinicalPredicateText(value);
+  if (!text
+    || isNegatedClinicalServiceContext(text)
+    || isFutureOrOrderOnlyContext(text)
+    || isPastOrExternalClinicalServiceContext(text)) {
+    return false;
+  }
+  return /(?:実施|施行|投与|処方|交付|発行|交換|挿入|抜去|貼付|塗布|洗浄|採取|撮影|測定|検査|処置|説明|指導)(?:済み?|した|し|を行(?:った|い)|あり)|(?:吸引|注射|点滴|採血|カニューレ交換|説明|指導)(?:を)?(?:実施|施行|した|行(?:った|い)|あり)/u.test(text);
 }
 
 function prepareCanonicalCalculationPipeline(clinicalEvents = [], { preprocessing = null } = {}) {
@@ -3748,29 +3867,51 @@ export function mergeClinicalFactsSamples(samples = []) {
   }
   base.diagnoses = diagnoses;
 
-  // line_review は has_billable_act の OR(どれかのサンプルが行為ありと判定したら残す)
-  const lineFlags = new Map();
+  // v15 line_review は最も強い意味役割を採用する。
+  // performed > management_continuation > plan > none とし、複数サンプルの
+  // recallを維持しつつ、管理継続を当日実施へ昇格させない。
+  const lineRoles = new Map();
   for (const sample of list) {
     for (const entry of asArray(sample.line_review)) {
       const lineId = String(entry?.line_id || "").trim();
       if (!lineId) continue;
-      lineFlags.set(lineId, Boolean(lineFlags.get(lineId)) || entry?.has_billable_act === true);
+      lineRoles.set(lineId, strongerClinicalLineRole(
+        lineRoles.get(lineId),
+        clinicalLineRole(entry)
+      ));
     }
   }
-  if (lineFlags.size) {
-    base.line_review = [...lineFlags.entries()].map(([lineId, flag]) => ({ line_id: lineId, has_billable_act: flag }));
+  if (lineRoles.size) {
+    base.line_review = [...lineRoles.entries()].map(([lineId, lineRole]) => ({
+      line_id: lineId,
+      line_role: lineRole
+    }));
   }
+
+  const standingMentions = new Map();
+  for (const sample of list) {
+    for (const mention of asArray(sample.standing_mentions)) {
+      const normalized = normalizeStandingMention(mention);
+      if (!normalized) continue;
+      const key = `${normalized.line_id}\u001f${normalized.target}`;
+      const current = standingMentions.get(key);
+      if (!current || standingMentionStatusPriority(normalized.status) > standingMentionStatusPriority(current.status)) {
+        standingMentions.set(key, normalized);
+      }
+    }
+  }
+  base.standing_mentions = [...standingMentions.values()];
   return base;
 }
 
-// v14契約検証: line_review を「LLMに実際に提示した行ID全集合」と完全照合する。
+// v15契約検証: line_review を「LLMに実際に提示した行ID全集合」と完全照合する。
 // LLM自身の申告(返ってきた行だけの検査)では行の丸ごと省略を検出できないため、
 // 期待集合はNode側(promptClinicalLineIds)で確定し、欠落・重複・未知IDを突合する。
-// normalizedLineReview は既知IDのみ・重複はhas_billable_actのORで畳んだ正規形。
+// normalizedLineReview は既知IDのみ・重複は意味役割の優先順位で畳んだ正規形。
 export function reconcileLineReview(facts = {}, promptLineIds = []) {
   const expected = asArray(promptLineIds).map((id) => String(id || "").trim()).filter(Boolean);
   const expectedSet = new Set(expected);
-  const flags = new Map();
+  const roles = new Map();
   const unknownIds = [];
   const duplicateIds = [];
   for (const entry of asArray(facts?.line_review)) {
@@ -3782,21 +3923,27 @@ export function reconcileLineReview(facts = {}, promptLineIds = []) {
       unknownIds.push(lineId);
       continue;
     }
-    if (flags.has(lineId)) {
+    if (roles.has(lineId)) {
       duplicateIds.push(lineId);
     }
-    flags.set(lineId, Boolean(flags.get(lineId)) || entry?.has_billable_act === true);
+    roles.set(lineId, strongerClinicalLineRole(
+      roles.get(lineId),
+      clinicalLineRole(entry)
+    ));
   }
   return {
     expectedCount: expected.length,
-    missingIds: expected.filter((id) => !flags.has(id)),
+    missingIds: expected.filter((id) => !roles.has(id)),
     unknownIds: uniqueStrings(unknownIds),
     duplicateIds: uniqueStrings(duplicateIds),
-    normalizedLineReview: [...flags.entries()].map(([lineId, flag]) => ({ line_id: lineId, has_billable_act: flag }))
+    normalizedLineReview: [...roles.entries()].map(([lineId, lineRole]) => ({
+      line_id: lineId,
+      line_role: lineRole
+    }))
   };
 }
 
-// v14: line_review(全行のhas_billable_act判定)と clinical_events の evidence_line_ids を突合し、
+// v15: line_review(全行のline_role判定)と clinical_events の evidence_line_ids を突合し、
 // 「算定対象と判定されたのにイベント化されていない行」を返す。
 function uncoveredBillableLinesFromFacts(facts = {}, clinicalEvents = [], preprocessing = null) {
   const review = asArray(facts?.line_review);
@@ -3815,12 +3962,42 @@ function uncoveredBillableLinesFromFacts(facts = {}, clinicalEvents = [], prepro
   const uncovered = [];
   for (const entry of review) {
     const lineId = String(entry?.line_id || entry?.lineId || "").trim();
-    if (!lineId || entry?.has_billable_act !== true || covered.has(lineId)) {
+    if (!lineId || clinicalLineRole(entry) !== "performed" || covered.has(lineId)) {
       continue;
     }
     uncovered.push({ lineId, text: lineTextById.get(lineId) || "" });
   }
   return uncovered.slice(0, 8);
+}
+
+function clinicalLineRole(entry = {}) {
+  const role = String(entry?.line_role || entry?.lineRole || "").trim();
+  if (Object.hasOwn(CLINICAL_LINE_ROLE_PRIORITY, role)) {
+    return role;
+  }
+  return "none";
+}
+
+function strongerClinicalLineRole(left = "none", right = "none") {
+  const normalizedLeft = Object.hasOwn(CLINICAL_LINE_ROLE_PRIORITY, left) ? left : "none";
+  const normalizedRight = Object.hasOwn(CLINICAL_LINE_ROLE_PRIORITY, right) ? right : "none";
+  return CLINICAL_LINE_ROLE_PRIORITY[normalizedRight] > CLINICAL_LINE_ROLE_PRIORITY[normalizedLeft]
+    ? normalizedRight
+    : normalizedLeft;
+}
+
+function normalizeStandingMention(mention = {}) {
+  const lineId = String(mention?.line_id || mention?.lineId || "").trim();
+  const target = String(mention?.target || "").trim().slice(0, 70);
+  const status = String(mention?.status || "").trim();
+  if (!lineId || !target || !["continued", "changed", "stopped"].includes(status)) {
+    return null;
+  }
+  return { line_id: lineId, target, status };
+}
+
+function standingMentionStatusPriority(status = "") {
+  return { continued: 1, changed: 2, stopped: 3 }[String(status || "")] || 0;
 }
 
 // 日本の祝日(受付時刻の時間帯判定用)。年度更新時に追記する。
@@ -3915,7 +4092,7 @@ export async function detectEmptyExtractionContradiction({
   }
 
   const memoBillableLines = asArray(memoPlan?.continued).filter((match) => (
-    match?.previous?.hasBillableAct === true
+    clinicalLineRole(match?.previous) === "performed"
   ));
   if (memoBillableLines.length) {
     reasonCodes.push("continued_billable_line_without_event");
@@ -3968,7 +4145,12 @@ function positiveCurrentTextMention(text = "", name = "") {
 
 // 決定論セーフティネット: マスタ名称辞書スキャン結果を確認候補へ変換する。
 // LLM抽出に依存しないため、同じ本文なら毎回同じ候補が出る(揺れゼロの下限保証)。
-export async function dictionaryScanCandidateProposals({ feeCalculator, text = "", knownCodes = [] } = {}) {
+export async function dictionaryScanCandidateProposals({
+  feeCalculator,
+  text = "",
+  knownCodes = [],
+  suppressedRanges = []
+} = {}) {
   const empty = { proposals: [], trace: null };
   if (!text || typeof feeCalculator?.scanMasterNames !== "function") {
     return empty;
@@ -4007,6 +4189,10 @@ export async function dictionaryScanCandidateProposals({ feeCalculator, text = "
       continue;
     }
     const matchedText = String(match?.matchedText || codeEntries[0].name);
+    if (dictionaryMatchWithinSuppressedRange(match, matchedText, suppressedRanges)) {
+      skipped.push({ code: codeEntries[0].code, reason: "management_continuation" });
+      continue;
+    }
     // 否定判定は「全出現位置 × 節(。・改行・読点区切り)単位」で行う。
     // 「前回は意見書なし。本日は作成・交付」(肯定の再出現)や
     // 「CTは行わず、意見書を作成」(同一文内の別節)を肯定として拾うため。
@@ -4072,6 +4258,67 @@ export async function dictionaryScanCandidateProposals({ feeCalculator, text = "
       message: "master_name_dictionary_scan_completed"
     })
   };
+}
+
+function dictionaryMatchWithinSuppressedRange(match = {}, matchedText = "", ranges = []) {
+  const start = Number(match?.index);
+  if (!Number.isFinite(start) || start < 0) {
+    return false;
+  }
+  const end = start + String(matchedText || "").length;
+  return asArray(ranges).some((range) => (
+    Number.isFinite(Number(range?.charStart))
+    && Number.isFinite(Number(range?.charEnd))
+    && Number(range.charStart) <= start
+    && end <= Number(range.charEnd)
+  ));
+}
+
+function standingMentionsForLane(facts = {}, preprocessing = null) {
+  const linesById = new Map(asArray(preprocessing?.lines)
+    .map((line) => [String(line?.lineId || ""), line]));
+  return normalizeStandingMentionsForLane(asArray(facts?.standing_mentions).map((mention) => {
+    const normalized = normalizeStandingMention(mention);
+    if (!normalized) {
+      return null;
+    }
+    const line = linesById.get(normalized.line_id);
+    return {
+      lineId: normalized.line_id,
+      target: normalized.target,
+      status: normalized.status,
+      text: String(line?.text || "").trim()
+    };
+  }).filter(Boolean));
+}
+
+function normalizeStandingMentionsForLane(values = []) {
+  return dedupeObjects(asArray(values).map((mention) => ({
+    lineId: String(mention?.lineId || mention?.line_id || "").trim(),
+    target: String(mention?.target || "").trim().slice(0, 70),
+    status: ["continued", "changed", "stopped"].includes(String(mention?.status || ""))
+      ? String(mention.status)
+      : "continued",
+    text: String(mention?.text || "").trim().slice(0, 500)
+  })).filter((mention) => mention.lineId && mention.target), (mention) => (
+    `${mention.lineId}\u001f${mention.target}\u001f${mention.status}`
+  ));
+}
+
+function clinicalLineRangesForRole(facts = {}, preprocessing = null, expectedRole = "") {
+  const rolesByLineId = new Map(asArray(facts?.line_review)
+    .map((entry) => [
+      String(entry?.line_id || entry?.lineId || "").trim(),
+      clinicalLineRole(entry)
+    ])
+    .filter(([lineId]) => lineId));
+  return asArray(preprocessing?.lines)
+    .filter((line) => rolesByLineId.get(String(line?.lineId || "")) === expectedRole)
+    .map((line) => ({
+      lineId: String(line.lineId || ""),
+      charStart: Number(line.charStart || 0),
+      charEnd: Number(line.charEnd || 0)
+    }));
 }
 
 export function diagnosesForDiseaseIndicationScan(values = []) {

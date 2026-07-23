@@ -79,6 +79,7 @@ test("readyz exposes deployed extraction feature flags and revision", async () =
   assert.deepEqual(response.body.runtimeFeatures, {
     extractionMemoEnabled: true,
     emptyExtractionRetryEnabled: true,
+    standingFactsEnabled: false,
     extractionSnapshotRetentionDays: 45
   });
 });
@@ -1609,7 +1610,7 @@ test("uses structured clinical facts for calculation input when available", asyn
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("MRI腰椎")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("ロコアテープ")));
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("コルセット")));
-  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v14");
+  assert.equal(calculation.body.calculationResult.clinicalExtraction.promptVersion, "fee-clinical-events-v15");
   assert.equal(calculation.body.calculationResult.clinicalExtraction.ruleSetVersion, "fee-clinical-rules-v10");
   assert.ok(calculation.body.calculationResult.clinicalEvents.some((event) => (
     event.name === "腰椎X線"
@@ -4494,7 +4495,7 @@ test("management events become adoptable proposals but never confirmed lines", a
       warnings: []
     };
   };
-  const clinicalFactsExtractor = async () => ({
+  const clinicalFactsExtractor = async ({ preprocessedLines = [] } = {}) => ({
     visit_type: { kind: "unknown", evidence: "", confidence: "low" },
     diagnoses: [
       { name: "慢性疾患", status: "confirmed", evidence: "慢性疾患の継続管理" }
@@ -4505,6 +4506,9 @@ test("management events become adoptable proposals but never confirmed lines", a
         name: "慢性疾患指導",
         status: "performed",
         evidence: "療養上の注意点を本日説明し、継続管理の方針を確認",
+        evidence_line_ids: preprocessedLines
+          .filter((line) => String(line.text || "").includes("本日説明"))
+          .map((line) => line.lineId),
         section: "P",
         date_relation: "current_visit",
         provider_ownership: "own_clinic",
@@ -4522,7 +4526,15 @@ test("management events become adoptable proposals but never confirmed lines", a
       { type: "medication", name: "再指導", status: "history", evidence: "薬剤の使い方を再指導", reason: "指導" }
     ],
     missing_information: [],
-    review_flags: []
+    review_flags: [],
+    line_review: preprocessedLines.map((line) => ({
+      line_id: line.lineId,
+      line_role: String(line.text || line.rawText || "").includes("本日説明")
+        ? "performed"
+        : String(line.text || line.rawText || "").includes("継続管理")
+          ? "management_continuation"
+          : "none"
+    }))
   });
 
   const patient = await request(stores, "POST", "/v1/fee/patients", {
@@ -6268,7 +6280,7 @@ test("emits structural review topics for unresolved procedure, injection, and ma
     lineItems: [],
     warnings: []
   });
-  const clinicalFactsExtractor = async () => ({
+  const clinicalFactsExtractor = async ({ preprocessedLines = [] } = {}) => ({
     visit_type: { kind: "revisit", confidence: "medium", evidence: "再診" },
     diagnoses: [{ name: "処置後状態", status: "active", evidence: "処置後状態" }],
     clinical_events: [
@@ -6284,6 +6296,7 @@ test("emits structural review topics for unresolved procedure, injection, and ma
         certainty: "explicit",
         section: "O",
         evidence: "右眼角膜の異物を点眼麻酔下に除去。",
+        evidence_line_ids: preprocessedLines.map((line) => line.lineId),
         body_site: "右眼角膜",
         search_queries: ["角膜異物除去"]
       },
@@ -6299,6 +6312,7 @@ test("emits structural review topics for unresolved procedure, injection, and ma
         certainty: "ambiguous",
         section: "O",
         evidence: "脱水補正目的で補液を行ったが、経路と薬剤量の記録を確認する。",
+        evidence_line_ids: preprocessedLines.map((line) => line.lineId),
         search_queries: ["補液"]
       },
       {
@@ -6313,12 +6327,17 @@ test("emits structural review topics for unresolved procedure, injection, and ma
         certainty: "ambiguous",
         section: "P",
         evidence: "療養上の注意と継続管理方針を説明した。",
+        evidence_line_ids: preprocessedLines.map((line) => line.lineId),
         review_reason: "管理料条件の確認"
       }
     ],
     excluded_events: [],
     missing_information: [],
-    review_flags: []
+    review_flags: [],
+    line_review: preprocessedLines.map((line) => ({
+      line_id: line.lineId,
+      line_role: "performed"
+    }))
   });
 
   const patient = await request(stores, "POST", "/v1/fee/patients", {
@@ -7590,8 +7609,8 @@ test("reuses previous clinical extraction when repricing manual order changes", 
       excluded_events: [],
       missing_information: [],
       review_flags: [],
-      // v14契約: 全行のline_reviewを返す(欠落すると検証駆動リトライで再抽出が走る)
-      line_review: (preprocessedLines || []).map((line) => ({ line_id: line.lineId, has_billable_act: true }))
+      // v15契約: 全行のline_reviewを返す(欠落すると検証駆動リトライで再抽出が走る)
+      line_review: (preprocessedLines || []).map((line) => ({ line_id: line.lineId, line_role: "performed" }))
     };
   };
   let lastCalculationInput = null;
@@ -9434,7 +9453,10 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.deepEqual(second.body.sidecarDraft.encounterDetails, {
     sameBuilding: true,
     sameBuildingSource: "user",
-    singleBuildingPatientCount: 4
+    singleBuildingPatientCount: 4,
+    visitKind: null,
+    visitKindSource: null,
+    telephoneEligibility: null
   });
   assert.equal(stores.feeStore.sidecarDraftsForOrg("org_001").size, 1);
   assert.equal(stores.feeStore.listSessions("org_001").length, 0);
@@ -9518,7 +9540,10 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.deepEqual(adopted.body.feeSession.encounterDetails, {
     sameBuilding: true,
     sameBuildingSource: "user",
-    singleBuildingPatientCount: 4
+    singleBuildingPatientCount: 4,
+    visitKind: null,
+    visitKindSource: null,
+    telephoneEligibility: null
   });
   assert.equal(adopted.body.feeSession.calculationResult, null);
   assert.equal(adopted.body.sidecarDraft.lifecycleStatus, "adopted");
@@ -9568,7 +9593,7 @@ test("extraction snapshots are persisted only when FEE_EXTRACTION_MEMO is enable
       return {
         visit_type: { kind: "revisit", evidence: "継続受診", confidence: "medium" },
         diagnoses: [],
-        line_review: preprocessedLines.map((line) => ({ line_id: line.lineId, has_billable_act: false })),
+        line_review: preprocessedLines.map((line) => ({ line_id: line.lineId, line_role: "none" })),
         clinical_events: [],
         excluded_events: [],
         missing_information: [],
@@ -9667,7 +9692,7 @@ test("history read failure is visible and blocks inferred initial/revisit billin
       clinicalFactsExtractor: async ({ preprocessedLines }) => ({
         visit_type: { kind: "revisit", evidence: "再診", confidence: "high" },
         diagnoses: [],
-        line_review: preprocessedLines.map((line) => ({ line_id: line.lineId, has_billable_act: false })),
+        line_review: preprocessedLines.map((line) => ({ line_id: line.lineId, line_role: "none" })),
         clinical_events: [],
         excluded_events: [],
         missing_information: [],
@@ -10711,7 +10736,10 @@ test("同一建物区分で施設恒常算定ルールを選び、未確定時�
   assert.deepEqual(unresolvedTrace.encounterDetails, {
     sameBuilding: null,
     sameBuildingSource: null,
-    singleBuildingPatientCount: null
+    singleBuildingPatientCount: null,
+    visitKind: null,
+    visitKindSource: null,
+    telephoneEligibility: null
   });
 
   const resetToUnknown = await request(stores, "PATCH", `/v1/fee/sessions/${sessionIds[1]}`, {
@@ -10738,6 +10766,118 @@ test("同一建物区分で施設恒常算定ルールを選び、未確定時�
   );
   assert.ok(recalculatedUnknown.body.calculationResult.warnings.some((warning) => (
     warning.includes("同一建物区分が未確定")
+  )));
+});
+
+test("電話再診は施設履歴で既診関係を判定し、通常再診料へフォールバックしない", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const receivedInputs = [];
+  stores.feeCalculator.calculate = async (_feeSession, calculationInput) => {
+    receivedInputs.push(calculationInput);
+    return {
+      provider: "test",
+      source: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "再診", confidence: "high" },
+    diagnoses: [],
+    clinical_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: [],
+    line_review: [],
+    standing_mentions: []
+  });
+
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "電話再診テスト患者"
+  }, headers);
+  await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-01",
+    setting: "outpatient",
+    clinicalText: "対面で診察した。"
+  }, headers);
+
+  async function calculateTelephone({ serviceDate, encounterDetails, clinicalText }) {
+    const created = await request(stores, "POST", "/v1/fee/sessions", {
+      patientId: patient.body.patient.patientId,
+      facilityId: "fac_001",
+      serviceDate,
+      setting: "outpatient",
+      encounterDetails,
+      clinicalText
+    }, headers);
+    return request(
+      stores,
+      "POST",
+      `/v1/fee/sessions/${created.body.feeSession.feeSessionId}/calculate`,
+      {},
+      headers,
+      { clinicalFactsExtractor }
+    );
+  }
+
+  const eligible = await calculateTelephone({
+    serviceDate: "2026-06-02",
+    clinicalText: "患者から電話相談があり、治療上必要な指示をした。",
+    encounterDetails: {
+      visitKind: "telephone_revisit",
+      visitKindSource: "user",
+      telephoneEligibility: {
+        patientInitiated: true,
+        instructionGiven: true,
+        scheduledManagement: false
+      }
+    }
+  });
+  assert.equal(eligible.statusCode, 201);
+  assert.deepEqual(receivedInputs[0].calculationOptions.outpatient_basic, {
+    fee_kind: "revisit",
+    visit_kind: "telephone_revisit",
+    telephone_eligibility: {
+      established_patient: true,
+      patient_initiated: true,
+      instruction_given: true,
+      scheduled_management: false
+    }
+  });
+
+  const unknown = await calculateTelephone({
+    serviceDate: "2026-06-03",
+    clinicalText: "患者から電話相談があった。",
+    encounterDetails: {
+      visitKind: "telephone_revisit",
+      visitKindSource: "user",
+      telephoneEligibility: {
+        patientInitiated: true,
+        instructionGiven: null,
+        scheduledManagement: false
+      }
+    }
+  });
+  assert.equal(receivedInputs[1].calculationOptions?.outpatient_basic, undefined);
+  const telephoneCandidate = unknown.body.calculationResult.candidateProposals.find((proposal) => (
+    proposal.code === "112007950"
+  ));
+  assert.ok(telephoneCandidate);
+  assert.equal(telephoneCandidate.candidateOnly, true);
+
+  const wordingOnly = await calculateTelephone({
+    serviceDate: "2026-06-04",
+    clinicalText: "家族から電話で相談を受け、療養上の指示をした。",
+    encounterDetails: null
+  });
+  assert.equal(receivedInputs[2].calculationOptions?.outpatient_basic, undefined);
+  assert.ok(wordingOnly.body.calculationResult.reviewIssues.some((issue) => (
+    issue.issueCode === "telephone_visit_kind_unconfirmed"
   )));
 });
 
@@ -10768,6 +10908,7 @@ test("既存レセ一括取込が外部請求履歴になり、初診/再診判�
 
   // UKE由来のbaselineClaims(患者×月)を外部請求履歴として一括取込
   const imported = await request(stores, "POST", `/v1/fee/patients/${patientId}/billing-history/import-baseline`, {
+    facilityId: "fac_001",
     baselineClaims: [
       {
         patientId: "1001",
@@ -10784,6 +10925,43 @@ test("既存レセ一括取込が外部請求履歴になり、初診/再診判�
   }, headers);
   assert.equal(imported.statusCode, 201);
   assert.equal(imported.body.importedClaimCount, 2);
+  assert.ok(imported.body.billingHistoryEvents.every((event) => event.facilityId === "fac_001"));
+
+  // 同じ施設として取り込んだ外部確定履歴だけでも、電話再診の既診関係を導出できる。
+  const telephoneSession = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-09",
+    setting: "outpatient",
+    encounterDetails: {
+      visitKind: "telephone_revisit",
+      visitKindSource: "user",
+      telephoneEligibility: {
+        patientInitiated: true,
+        instructionGiven: true,
+        scheduledManagement: false
+      }
+    },
+    clinicalText: "患者から電話相談があり、治療上必要な指示をした。"
+  }, headers);
+  await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${telephoneSession.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+  assert.deepEqual(receivedInput.calculationOptions.outpatient_basic, {
+    fee_kind: "revisit",
+    visit_kind: "telephone_revisit",
+    telephone_eligibility: {
+      established_patient: true,
+      patient_initiated: true,
+      instruction_given: true,
+      scheduled_management: false
+    }
+  });
 
   // externalPatientId無しで複数患者のレセが混ざっている入力は拒否する
   const mixed = await request(stores, "POST", `/v1/fee/patients/${patientId}/billing-history/import-baseline`, {

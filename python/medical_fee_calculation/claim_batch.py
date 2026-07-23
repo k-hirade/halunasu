@@ -42,8 +42,10 @@ from medical_fee_calculation.claim_models import (
     MRIEquipmentKind,
     OutpatientBasicFeeKind,
     OutpatientBasicFeeOptionContext,
+    OutpatientVisitKind,
     PatientContext,
     RadiographyDiagnosticKind,
+    TelephoneEligibilityContext,
     TreatmentAreaSizeKind,
     TreatmentKind,
     TreatmentOrder,
@@ -2361,8 +2363,28 @@ def _lab_management_facility_missing_policy(value: Any) -> str:
 
 
 def _parse_outpatient_basic(payload: dict[str, Any]) -> OutpatientBasicFeeOptionContext:
+    telephone_eligibility = _dict_value(payload, "telephone_eligibility")
     return OutpatientBasicFeeOptionContext(
         fee_kind=_enum_value(OutpatientBasicFeeKind, payload.get("fee_kind"), "outpatient_basic.fee_kind"),
+        visit_kind=_enum_value(
+            OutpatientVisitKind,
+            payload.get("visit_kind"),
+            "outpatient_basic.visit_kind",
+        ),
+        telephone_eligibility=TelephoneEligibilityContext(
+            established_patient=_nullable_bool_value(
+                telephone_eligibility.get("established_patient")
+            ),
+            patient_initiated=_nullable_bool_value(
+                telephone_eligibility.get("patient_initiated")
+            ),
+            instruction_given=_nullable_bool_value(
+                telephone_eligibility.get("instruction_given")
+            ),
+            scheduled_management=_nullable_bool_value(
+                telephone_eligibility.get("scheduled_management")
+            ),
+        ),
         information_communication_equipment=_bool_value(
             payload.get("information_communication_equipment"),
             default=False,
@@ -2820,6 +2842,12 @@ def _bool_value(value: Any, *, default: bool) -> bool:
     if text in {"0", "false", "f", "no", "n"}:
         return False
     raise ValueError(f"invalid boolean value: {value}")
+
+
+def _nullable_bool_value(value: Any) -> bool | None:
+    if value is None or value == "":
+        return None
+    return _bool_value(value, default=False)
 
 
 def _enum_value(enum_type: Any, value: Any, field_name: str) -> Any | None:

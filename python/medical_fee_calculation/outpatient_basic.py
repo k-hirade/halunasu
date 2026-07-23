@@ -10,6 +10,7 @@ from medical_fee_calculation.claim_models import (
     ClaimItemStatus,
     OutpatientBasicFeeKind,
     OutpatientBasicFeeOptionContext,
+    OutpatientVisitKind,
 )
 
 
@@ -62,17 +63,32 @@ OUTPATIENT_BASIC_FEE_CODES = {
     (OutpatientBasicFeeKind.OUTPATIENT_CLINIC, True, True, False, True): "112026010",
 }
 
-OUTPATIENT_BASIC_FEE_CODE_SET = frozenset(OUTPATIENT_BASIC_FEE_CODES.values())
+OUTPATIENT_TELEPHONE_REVISIT_CODE = "112007950"
+OUTPATIENT_BASIC_FEE_CODE_SET = frozenset(
+    (*OUTPATIENT_BASIC_FEE_CODES.values(), OUTPATIENT_TELEPHONE_REVISIT_CODE)
+)
 OUTPATIENT_INITIAL_BASIC_FEE_CODES = frozenset(
     code for (kind, *_), code in OUTPATIENT_BASIC_FEE_CODES.items() if kind == OutpatientBasicFeeKind.INITIAL
 )
 OUTPATIENT_REVISIT_OR_CLINIC_BASIC_FEE_CODES = frozenset(
-    code
-    for (kind, *_), code in OUTPATIENT_BASIC_FEE_CODES.items()
-    if kind in {OutpatientBasicFeeKind.REVISIT, OutpatientBasicFeeKind.OUTPATIENT_CLINIC}
+    (
+        *(
+            code
+            for (kind, *_), code in OUTPATIENT_BASIC_FEE_CODES.items()
+            if kind in {OutpatientBasicFeeKind.REVISIT, OutpatientBasicFeeKind.OUTPATIENT_CLINIC}
+        ),
+        OUTPATIENT_TELEPHONE_REVISIT_CODE,
+    )
 )
 OUTPATIENT_REVISIT_BASIC_FEE_CODES = frozenset(
-    code for (kind, *_), code in OUTPATIENT_BASIC_FEE_CODES.items() if kind == OutpatientBasicFeeKind.REVISIT
+    (
+        *(
+            code
+            for (kind, *_), code in OUTPATIENT_BASIC_FEE_CODES.items()
+            if kind == OutpatientBasicFeeKind.REVISIT
+        ),
+        OUTPATIENT_TELEPHONE_REVISIT_CODE,
+    )
 )
 OUTPATIENT_CLINIC_BASIC_FEE_CODES = frozenset(
     code
@@ -89,6 +105,7 @@ OUTPATIENT_INFANT_ADD_ON_CLINIC_CODE = "112006270"
 MEISAISHO_HAKKO_TRIGGER_CODES = frozenset(
     {
         "112007410",  # 再診料
+        OUTPATIENT_TELEPHONE_REVISIT_CODE,  # 電話等再診料
         "112008350",  # 同日再診料
         "112024210",  # 再診料（情報通信機器）
         "112024950",  # 同日再診料（情報通信機器）
@@ -110,6 +127,20 @@ OUTPATIENT_BASIC_DERIVED_ADD_ON_RULES = (
         source="outpatient_price_support_add_on",
         effective_from=date(2026, 6, 1),
         reason="Outpatient/home price support add-on derived from a revisit or outpatient clinic basic fee",
+    ),
+    # 令和8年度診療行為マスタ O001-00:
+    # https://shinryohoshu.mhlw.go.jp/shinryohoshu/file/info/smente260306.pdf
+    # ベースアップ評価料は届出済み施設だけが算定できるため、電話等再診であっても
+    # facility standardが確認できない場合は自動候補にしない。
+    BasicFeeDerivedAddOnRule(
+        rule_id="outpatient_base_up_1_telephone_revisit",
+        add_on_code="180725810",
+        trigger_codes=frozenset({OUTPATIENT_TELEPHONE_REVISIT_CODE}),
+        source="outpatient_base_up_add_on",
+        effective_from=date(2026, 6, 1),
+        reason="Outpatient/home base-up evaluation fee (1) derived from a telephone revisit",
+        required_facility_standard_key="base_up_hyoka_1",
+        silent_when_missing_standard=True,
     ),
     # A001再診料 注11 / 令和8年度医科点数表:
     # https://www.mhlw.go.jp/content/12400000/001686842.pdf
@@ -216,6 +247,27 @@ def calculate_outpatient_basic_fee(
             ),
         )
 
+    if context.visit_kind == OutpatientVisitKind.TELEPHONE_REVISIT:
+        if (
+            context.fee_kind != OutpatientBasicFeeKind.REVISIT
+            or not context.telephone_eligibility.is_confirmed_eligible
+        ):
+            return OutpatientBasicFeeResult(
+                lines=(),
+                messages=(
+                    CalculationMessage(
+                        status=ClaimItemStatus.NEEDS_REVIEW,
+                        code=OUTPATIENT_TELEPHONE_REVISIT_CODE,
+                        message=(
+                            "Telephone revisit requires a prior in-person relationship, "
+                            "a patient-initiated treatment consultation, documented instructions, "
+                            "and confirmation that it was not scheduled medical management"
+                        ),
+                        source="outpatient_basic_fee",
+                    ),
+                ),
+            )
+
     procedure_code = _select_outpatient_basic_fee_code(context)
     if procedure_code is None:
         return OutpatientBasicFeeResult(
@@ -252,7 +304,11 @@ def calculate_outpatient_basic_fee(
                 points=float(row["points"]),
                 quantity=1,
                 status=ClaimItemStatus.CANDIDATE,
-                reason=f"Outpatient basic fee candidate for {context.fee_kind.value}",
+                reason=(
+                    "Telephone revisit basic fee candidate with all eligibility facts confirmed"
+                    if context.visit_kind == OutpatientVisitKind.TELEPHONE_REVISIT
+                    else f"Outpatient basic fee candidate for {context.fee_kind.value}"
+                ),
                 source="outpatient_basic_fee",
             ),
         ),
@@ -364,6 +420,7 @@ def calculate_outpatient_management_add_on(
     if (
         not is_outpatient
         or context.fee_kind != OutpatientBasicFeeKind.REVISIT
+        or context.visit_kind == OutpatientVisitKind.TELEPHONE_REVISIT
         or not context.management_explanation_performed
     ):
         return OutpatientBasicFeeResult(lines=(), messages=())
@@ -416,6 +473,21 @@ def calculate_outpatient_management_add_on(
 def _select_outpatient_basic_fee_code(context: OutpatientBasicFeeOptionContext) -> str | None:
     if context.fee_kind is None:
         return None
+    if context.visit_kind == OutpatientVisitKind.TELEPHONE_REVISIT:
+        if (
+            context.fee_kind != OutpatientBasicFeeKind.REVISIT
+            or context.information_communication_equipment
+            or context.same_day_second_department
+            or context.same_day_revisit
+            or context.large_hospital_no_referral
+            or not context.telephone_eligibility.is_confirmed_eligible
+        ):
+            return None
+        # A001注9 / 令和8年度医科点数表:
+        # https://www.mhlw.go.jp/content/12400000/001686842.pdf
+        # 訂正後留意事項 A001(8):
+        # https://www.mhlw.go.jp/content/12400000/001707506.pdf
+        return OUTPATIENT_TELEPHONE_REVISIT_CODE
     if context.fee_kind == OutpatientBasicFeeKind.INITIAL and context.same_day_revisit:
         return None
     if context.fee_kind == OutpatientBasicFeeKind.REVISIT and context.large_hospital_no_referral:

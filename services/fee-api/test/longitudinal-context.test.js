@@ -106,7 +106,7 @@ test("memo excludes removed-line events and remaps continued evidence line ids",
       diagnoses: [],
       line_review: previousPreprocessing.lines.map((line) => ({
         line_id: line.lineId,
-        has_billable_act: line.section === "O"
+        line_role: line.section === "O" ? "performed" : "none"
       })),
       clinical_events: [{
         type: "procedure",
@@ -143,7 +143,7 @@ test("multi-line events and billable lines without a local event are re-extracte
     preprocessing,
     facts: {
       diagnoses: [],
-      line_review: preprocessing.lines.map((line) => ({ line_id: line.lineId, has_billable_act: true })),
+      line_review: preprocessing.lines.map((line) => ({ line_id: line.lineId, line_role: "performed" })),
       clinical_events: [{
         type: "treatment",
         name: "創傷処置",
@@ -165,6 +165,49 @@ test("multi-line events and billable lines without a local event are re-extracte
   assert.equal(plan.newLines.length, 2);
 });
 
+test("management continuation is memo-safe and restores standing mentions without an event", () => {
+  const preprocessing = buildClinicalTextPreprocessing("P）在宅人工呼吸器管理を継続する。");
+  const snapshot = buildExtractionSnapshotCore({
+    promptVersion: "fee-clinical-events-v15",
+    preprocessing,
+    facts: {
+      diagnoses: [],
+      line_review: [{
+        line_id: "P-001",
+        line_role: "management_continuation"
+      }],
+      standing_mentions: [{
+        line_id: "P-001",
+        target: "在宅人工呼吸器管理",
+        status: "continued"
+      }],
+      clinical_events: []
+    },
+    extractedAt: "2026-06-01T00:00:00.000Z"
+  });
+  const plan = planExtractionMemo({
+    preprocessing,
+    snapshot,
+    promptVersion: "fee-clinical-events-v15",
+    historyCompleteness: "complete"
+  });
+  const memoFacts = clinicalFactsFromMemo(snapshot, plan);
+
+  assert.equal(snapshot.lines[0].lineRole, "management_continuation");
+  assert.equal(snapshot.lines[0].requiresReextract, false);
+  assert.equal(plan.memoHitLineRatio, 1);
+  assert.deepEqual(memoFacts.line_review, [{
+    line_id: "P-001",
+    line_role: "management_continuation"
+  }]);
+  assert.deepEqual(memoFacts.standing_mentions, [{
+    line_id: "P-001",
+    target: "在宅人工呼吸器管理",
+    status: "continued"
+  }]);
+  assert.deepEqual(memoFacts.clinical_events, []);
+});
+
 test("prompt/schema mismatch and unavailable history force full extraction", () => {
   const preprocessing = buildClinicalTextPreprocessing("P）処方を継続。");
   const snapshot = buildExtractionSnapshotCore({
@@ -172,7 +215,7 @@ test("prompt/schema mismatch and unavailable history force full extraction", () 
     preprocessing,
     facts: {
       diagnoses: [],
-      line_review: [{ line_id: "P-001", has_billable_act: false }],
+      line_review: [{ line_id: "P-001", line_role: "none" }],
       clinical_events: []
     },
     extractedAt: "2026-06-01T00:00:00.000Z"
@@ -211,7 +254,7 @@ test("new or removed prescription-mode lines force full extraction for visit fac
         prescription_evidence: ""
       },
       diagnoses: [],
-      line_review: stablePreprocessing.lines.map((line) => ({ line_id: line.lineId, has_billable_act: false })),
+      line_review: stablePreprocessing.lines.map((line) => ({ line_id: line.lineId, line_role: "none" })),
       clinical_events: []
     },
     extractedAt: "2026-06-01T00:00:00.000Z"
@@ -242,7 +285,7 @@ test("new or removed prescription-mode lines force full extraction for visit fac
         prescription_evidence: "院内処方"
       },
       diagnoses: [],
-      line_review: outsidePreprocessing.lines.map((line) => ({ line_id: line.lineId, has_billable_act: false })),
+      line_review: outsidePreprocessing.lines.map((line) => ({ line_id: line.lineId, line_role: "none" })),
       clinical_events: []
     },
     extractedAt: "2026-06-01T00:00:00.000Z"
@@ -265,7 +308,7 @@ test("ordinary prescription continuation remains eligible for memo reuse", () =>
     preprocessing,
     facts: {
       diagnoses: [],
-      line_review: preprocessing.lines.map((line) => ({ line_id: line.lineId, has_billable_act: false })),
+      line_review: preprocessing.lines.map((line) => ({ line_id: line.lineId, line_role: "none" })),
       clinical_events: []
     },
     extractedAt: "2026-06-01T00:00:00.000Z"
@@ -288,7 +331,7 @@ test("visit type is reused only when the caller proves an exact same-source reru
     facts: {
       visit_type: { kind: "initial", evidence: "当院初診", confidence: "high" },
       diagnoses: [],
-      line_review: [{ line_id: "P-001", has_billable_act: false }],
+      line_review: [{ line_id: "P-001", line_role: "none" }],
       clinical_events: []
     },
     extractedAt: "2026-06-01T00:00:00.000Z"

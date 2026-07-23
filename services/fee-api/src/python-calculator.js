@@ -231,6 +231,27 @@ export class PythonFeeCalculator {
     });
   }
 
+  // 電子点数表の月次・複数月上限と点数表階層から、恒常算定ファミリを機械生成する。
+  // この結果は承認待ち候補専用で、自動確定には使用しない。
+  async standingFeeFamilies(payload = {}) {
+    await this.ensureMasterDbReady();
+    const request = { ...payload, db_path: this.masterDbPath };
+    const timeoutMs = Math.min(this.timeoutMs, 10000);
+    if (this.workerMode) {
+      return this.runWorkerJson({ ...request, op: "standing_fee_families" }, {
+        requestIdPrefix: "fee_standing_fee_families",
+        timeoutMs
+      });
+    }
+    return runPythonJson({
+      moduleName: "medical_fee_calculation.checks_api",
+      pythonBin: this.pythonBin,
+      pythonPath: this.pythonPath,
+      timeoutMs,
+      payload: { ...request, op: "standing_fee_families" }
+    });
+  }
+
   // 既存レセ(UKE/レセコンCSV)を baselineClaims に変換する(Python adapter経由)。マスタDB不要。
   async parseBaseline(payload = {}) {
     return runPythonJson({

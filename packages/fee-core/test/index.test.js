@@ -276,6 +276,14 @@ test("normalizes external calculation results", () => {
       status: "confirmed",
       source: "medical_procedure_master"
     }],
+    candidateProposals: [{
+      proposalId: "proposal_candidate_only",
+      title: "電話等再診料の算定確認",
+      code: "112007950",
+      candidateOnly: true,
+      reviewRequired: true,
+      status: "needs_review"
+    }],
     rawResult: { rows: Array.from({ length: 10 }, (_, index) => ({ index })) }
   }, {
     calculationId: "calc_001",
@@ -293,6 +301,9 @@ test("normalizes external calculation results", () => {
   assert.equal(Object.hasOwn(calculation, "rawResult"), false);
   assert.equal(calculation.lineItems[0].supportLevel, "review_required");
   assert.equal(calculation.lineItems[0].reviewRequired, true);
+  assert.equal(calculation.candidateProposals[0].candidateOnly, true);
+  assert.equal(calculation.candidateProposals[0].reviewRequired, true);
+  assert.equal(calculation.candidateProposals[0].status, "needs_review");
   assert.equal(calculation.coverage.reviewRequired, true);
   assert.equal(updated.status, "needs_review");
   assert.equal(updated.latestCalculationId, "calc_001");

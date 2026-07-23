@@ -205,7 +205,7 @@ h3 {
 
 .segmented-control {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   border: 1px solid #bdc8d3;
   border-radius: 6px;
   overflow: hidden;
@@ -246,6 +246,31 @@ h3 {
 
 .same-building-options {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.telephone-eligibility {
+  display: grid;
+  gap: 8px;
+}
+
+.telephone-eligibility > label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(112px, 0.7fr);
+  align-items: center;
+  gap: 8px;
+  color: #334257;
+  font-size: 12px;
+}
+
+.telephone-eligibility select {
+  min-width: 0;
+  min-height: 34px;
+  padding: 5px 8px;
+  color: #142033;
+  background: #fff;
+  border: 1px solid #bdc8d3;
+  border-radius: 6px;
+  font: inherit;
 }
 
 .control-note {

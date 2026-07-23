@@ -1716,6 +1716,12 @@ function normalizeCandidateProposal(item = {}, index = 0) {
   const reason = item.reason || item.message || item.description || "";
   const conditionText = item.conditionText || item.condition_text || item.condition || "";
   const actionType = item.actionType || item.action_type || (candidateLine && potentialPoints > 0 ? "adoptable" : "confirm_required");
+  const candidateOnly = hasOwn(item, "candidateOnly") || hasOwn(item, "candidate_only")
+    ? (item.candidateOnly ?? item.candidate_only) === true
+    : null;
+  const reviewRequired = hasOwn(item, "reviewRequired") || hasOwn(item, "review_required")
+    ? (item.reviewRequired ?? item.review_required) === true
+    : null;
 
   return compactObject({
     proposalId: String(proposalId),
@@ -1730,6 +1736,9 @@ function normalizeCandidateProposal(item = {}, index = 0) {
     code: item.code || candidateLine?.code || null,
     orderType: item.orderType || item.order_type || candidateLine?.orderType || null,
     source: item.source || "candidate_proposal",
+    status: item.status || null,
+    candidateOnly,
+    reviewRequired,
     monthlyLimit: isPlainObject(item.monthlyLimit || item.monthly_limit)
       ? item.monthlyLimit || item.monthly_limit
       : null,

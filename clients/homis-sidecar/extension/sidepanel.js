@@ -2,7 +2,12 @@
   "use strict";
 
   const api = global.HalunasuSidecarApi;
-  const SETTING_LABELS = { home_visit: "定期訪問", house_call: "往診", outpatient: "外来" };
+  const SETTING_LABELS = {
+    home_visit: "定期訪問",
+    house_call: "往診",
+    outpatient: "外来",
+    telephone_revisit: "電話再診"
+  };
   const AUTO_READ_DEBOUNCE_MS = 220;
   let preview = null;
   let pollingGeneration = 0;
@@ -11,6 +16,7 @@
   let isConnected = false;
   let lastCalculationContext = null;
   let encounterTypeSource = null;
+  let visitKindSource = null;
   let sameBuildingSource = null;
 
   const elements = Object.fromEntries([
@@ -18,6 +24,8 @@
     "device-code-area", "device-code",
     "approval-link", "calculation-section", "extract-button", "chart-preview", "preview-patient",
     "preview-date", "preview-record", "preview-text", "preview-details", "setting-control", "setting-copy",
+    "telephone-eligibility-control", "telephone-patient-initiated", "telephone-instruction-given",
+    "telephone-scheduled-management",
     "same-building-control", "same-building-copy",
     "calculate-button",
     "result-section", "total-points", "revision-copy", "line-candidates", "proposal-candidates",
@@ -69,7 +77,9 @@
   document.querySelectorAll('input[name="setting"]').forEach((input) => {
     input.addEventListener("change", () => {
       encounterTypeSource = "user";
+      visitKindSource = input.value === "telephone_revisit" ? "user" : null;
       renderEncounterTypeCopy(preview, selectedEncounterType());
+      renderTelephoneEligibilityControl();
       updateCalculateButton();
     });
   });
@@ -127,6 +137,9 @@
         receptionTime: prepared.receptionTime || undefined,
         setting: encounterType.value,
         encounterTypeSource: encounterType.source,
+        visitKind: encounterType.visitKind,
+        visitKindSource: encounterType.visitKindSource,
+        telephoneEligibility: selectedTelephoneEligibility(encounterType),
         sameBuilding: sameBuilding.value,
         sameBuildingSource: sameBuilding.source,
         singleBuildingPatientCount: prepared.singleBuildingPatientCount ?? null,
@@ -252,12 +265,21 @@
     preview = null;
     lastCalculationContext = null;
     encounterTypeSource = null;
+    visitKindSource = null;
     sameBuildingSource = null;
     elements["chart-preview"].hidden = true;
     elements["result-section"].hidden = true;
     elements["setting-control"].disabled = true;
     elements["same-building-control"].disabled = true;
+    elements["telephone-eligibility-control"].hidden = true;
     document.querySelectorAll('input[name="setting"]').forEach((input) => { input.checked = false; });
+    for (const id of [
+      "telephone-patient-initiated",
+      "telephone-instruction-given",
+      "telephone-scheduled-management"
+    ]) {
+      elements[id].value = "unknown";
+    }
     const unknownSameBuilding = document.querySelector('input[name="same-building"][value="unknown"]');
     if (unknownSameBuilding) {
       unknownSameBuilding.checked = true;
@@ -330,6 +352,7 @@
     elements["preview-details"].open = false;
     selectExtractedEncounterType(extraction);
     selectExtractedSameBuilding(extraction);
+    renderTelephoneEligibilityControl();
     elements["chart-preview"].hidden = false;
   }
 
@@ -422,23 +445,34 @@
   }
 
   function selectedEncounterType() {
-    const value = document.querySelector('input[name="setting"]:checked')?.value || "";
+    const selectionKey = document.querySelector('input[name="setting"]:checked')?.value || "";
+    const visitKind = selectionKey === "telephone_revisit" ? "telephone_revisit" : null;
+    const value = visitKind ? "outpatient" : selectionKey;
     return {
       value,
       source: value ? (encounterTypeSource || "user") : null,
-      label: SETTING_LABELS[value] || value
+      visitKind,
+      visitKindSource: visitKind ? (visitKindSource || "user") : null,
+      selectionKey,
+      label: SETTING_LABELS[selectionKey] || selectionKey
     };
   }
 
   function selectExtractedEncounterType(extraction = {}) {
     document.querySelectorAll('input[name="setting"]').forEach((input) => { input.checked = false; });
-    const input = extraction.encounterType
-      ? document.querySelector(`input[name="setting"][value="${extraction.encounterType}"]`)
+    const selectionKey = extraction.visitKind === "telephone_revisit"
+      ? "telephone_revisit"
+      : extraction.encounterType;
+    const input = selectionKey
+      ? document.querySelector(`input[name="setting"][value="${selectionKey}"]`)
       : null;
     if (input) {
       input.checked = true;
     }
     encounterTypeSource = input ? (extraction.encounterTypeSource || "dom") : null;
+    visitKindSource = extraction.visitKind === "telephone_revisit"
+      ? (extraction.visitKindSource || "dom")
+      : null;
     renderEncounterTypeCopy(extraction, selectedEncounterType());
   }
 
@@ -457,6 +491,34 @@
       return;
     }
     elements["setting-copy"].textContent = "画面から判定できません。受診区分を選択してください。";
+  }
+
+  function renderTelephoneEligibilityControl() {
+    elements["telephone-eligibility-control"].hidden = (
+      selectedEncounterType().visitKind !== "telephone_revisit"
+    );
+  }
+
+  function selectedTelephoneEligibility(encounterType = selectedEncounterType()) {
+    if (encounterType.visitKind !== "telephone_revisit") {
+      return null;
+    }
+    return {
+      establishedPatient: null,
+      patientInitiated: nullableBooleanSelection(elements["telephone-patient-initiated"].value),
+      instructionGiven: nullableBooleanSelection(elements["telephone-instruction-given"].value),
+      scheduledManagement: nullableBooleanSelection(elements["telephone-scheduled-management"].value)
+    };
+  }
+
+  function nullableBooleanSelection(value) {
+    if (value === "true") {
+      return true;
+    }
+    if (value === "false") {
+      return false;
+    }
+    return null;
   }
 
   function selectedSameBuilding() {

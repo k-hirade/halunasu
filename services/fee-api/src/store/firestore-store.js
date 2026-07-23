@@ -17,11 +17,18 @@ import {
   collections,
   feeBillingHistoryPath,
   feeExtractionSnapshotPath,
+  feeStandingBillingProfilePath,
   feeSettingsPath,
   feeSessionPath,
   sidecarCalculationDraftPath,
   organizationPath
 } from "../../../../packages/firestore-schema/src/index.js";
+import {
+  applyStandingBillingEvidence,
+  applyStandingBillingManualState,
+  applyStandingBillingStatus,
+  standingBillingProfileId
+} from "../standing-billing-profiles.js";
 import {
   matchesSearch,
   matchesStatus,
@@ -385,6 +392,78 @@ export class FirestoreFeeStore {
     }
     await batch.commit();
     return { deletedCount: snapshot.size };
+  }
+
+  async getStandingBillingProfile(orgId, standingFactId) {
+    return docDataOrNull(
+      await this.doc(feeStandingBillingProfilePath(orgId, standingFactId)).get()
+    );
+  }
+
+  async listStandingBillingProfilesForPatient(orgId, facilityId, canonicalPatientId) {
+    const normalizedFacilityId = String(facilityId || "").trim();
+    const normalizedPatientId = String(canonicalPatientId || "").trim();
+    if (!normalizedFacilityId || !normalizedPatientId) {
+      return [];
+    }
+    const snapshot = await this.orgCollection(orgId, collections.feeStandingBillingProfiles)
+      .where("facilityId", "==", normalizedFacilityId)
+      .where("canonicalPatientId", "==", normalizedPatientId)
+      .get();
+    return docsFromSnapshot(snapshot)
+      .sort((left, right) => String(left.feeFamily || "").localeCompare(String(right.feeFamily || "")));
+  }
+
+  async recordStandingBillingEvidence(orgId, input = {}) {
+    requireFirestoreTransactions(this.db);
+    const standingFactId = standingBillingProfileId({
+      orgId,
+      facilityId: input.facilityId,
+      canonicalPatientId: input.canonicalPatientId,
+      feeFamily: input.family?.familyId
+    });
+    const profileRef = this.doc(feeStandingBillingProfilePath(orgId, standingFactId));
+    return this.db.runTransaction(async (transaction) => {
+      const current = docDataOrNull(await transaction.get(profileRef));
+      const updated = sanitizeForFirestore(applyStandingBillingEvidence(current, {
+        ...input,
+        orgId
+      }, { now: this.now() }));
+      transaction.set(profileRef, updated);
+      return updated;
+    });
+  }
+
+  async updateStandingBillingProfileStatus(orgId, standingFactId, input = {}) {
+    requireFirestoreTransactions(this.db);
+    const profileRef = this.doc(feeStandingBillingProfilePath(orgId, standingFactId));
+    return this.db.runTransaction(async (transaction) => {
+      const current = docDataOrNull(await transaction.get(profileRef));
+      if (!current) {
+        throw notFoundError("standing billing profile not found");
+      }
+      const updated = sanitizeForFirestore(
+        applyStandingBillingStatus(current, input, { now: this.now() })
+      );
+      transaction.set(profileRef, updated);
+      return updated;
+    });
+  }
+
+  async updateStandingBillingProfileManualState(orgId, standingFactId, input = {}) {
+    requireFirestoreTransactions(this.db);
+    const profileRef = this.doc(feeStandingBillingProfilePath(orgId, standingFactId));
+    return this.db.runTransaction(async (transaction) => {
+      const current = docDataOrNull(await transaction.get(profileRef));
+      if (!current) {
+        throw notFoundError("standing billing profile not found");
+      }
+      const updated = sanitizeForFirestore(
+        applyStandingBillingManualState(current, input, { now: this.now() })
+      );
+      transaction.set(profileRef, updated);
+      return updated;
+    });
   }
 
   async getSession(orgId, feeSessionId) {

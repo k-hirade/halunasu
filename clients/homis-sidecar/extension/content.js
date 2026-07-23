@@ -73,6 +73,8 @@
       encounterType: extraction.encounterType,
       encounterTypeLabel: extraction.encounterTypeLabel,
       encounterTypeSource: extraction.encounterTypeSource,
+      visitKind: extraction.visitKind,
+      visitKindSource: extraction.visitKindSource,
       facilityResidence: extraction.facilityResidence,
       privateResidence: extraction.privateResidence,
       singleBuildingPatientCount: extraction.singleBuildingPatientCount,

@@ -2,6 +2,7 @@
 // 外来基本料(初診・再診・外来管理加算)を自動算定しない。
 export const feeSettings = Object.freeze(["outpatient", "inpatient", "home_visit", "house_call"]);
 export const sidecarEncounterTypeSources = Object.freeze(["dom", "user"]);
+export const feeVisitKinds = Object.freeze(["telephone_revisit"]);
 export const sidecarContractVersions = Object.freeze(["v1"]);
 export {
   hasBloodCollectionNegationOrPlanningContext,
@@ -192,6 +193,15 @@ export function validateSidecarCalculationInput(input = {}) {
       : null,
     singleBuildingPatientCount: hasOwn(input, "singleBuildingPatientCount") || hasOwn(input, "single_building_patient_count")
       ? (input.singleBuildingPatientCount ?? input.single_building_patient_count)
+      : null,
+    visitKind: hasOwn(input, "visitKind") || hasOwn(input, "visit_kind")
+      ? (input.visitKind ?? input.visit_kind)
+      : null,
+    visitKindSource: hasOwn(input, "visitKindSource") || hasOwn(input, "visit_kind_source")
+      ? (input.visitKindSource ?? input.visit_kind_source)
+      : null,
+    telephoneEligibility: hasOwn(input, "telephoneEligibility") || hasOwn(input, "telephone_eligibility")
+      ? (input.telephoneEligibility ?? input.telephone_eligibility)
       : null
   });
   return compactObject({
@@ -213,6 +223,9 @@ export function validateSidecarCalculationInput(input = {}) {
     sameBuilding: encounterDetails.sameBuilding,
     sameBuildingSource: encounterDetails.sameBuildingSource,
     singleBuildingPatientCount: encounterDetails.singleBuildingPatientCount,
+    visitKind: encounterDetails.visitKind,
+    visitKindSource: encounterDetails.visitKindSource,
+    telephoneEligibility: encounterDetails.telephoneEligibility,
     clinicalText,
     orders: normalizeFeeOrders(input.orders),
     diagnoses: normalizeDiagnoses(input.diagnoses),
@@ -391,6 +404,9 @@ export function defaultFeeSettings(input = {}) {
     initialRevisitPolicy: {
       requireReviewWhenNoHistory: true
     },
+    standingFactsPolicy: {
+      stalenessMonths: 3
+    },
     facilityStandards: [],
     autoBillingRules: [],
     receiptPolicy: {
@@ -414,17 +430,28 @@ export function validateUpdateFeeSettingsInput(input = {}) {
     ? (current.initialRevisitPolicy ?? current.initial_revisit_policy)
     : {};
   const currentReceiptPolicy = isPlainObject(current.receiptPolicy ?? current.receipt_policy) ? (current.receiptPolicy ?? current.receipt_policy) : {};
+  const currentStandingFactsPolicy = isPlainObject(current.standingFactsPolicy ?? current.standing_facts_policy)
+    ? (current.standingFactsPolicy ?? current.standing_facts_policy)
+    : {};
   const inputHistoryPolicy = isPlainObject(input.historyPolicy ?? input.history_policy) ? (input.historyPolicy ?? input.history_policy) : {};
   const inputInitialRevisitPolicy = isPlainObject(input.initialRevisitPolicy ?? input.initial_revisit_policy)
     ? (input.initialRevisitPolicy ?? input.initial_revisit_policy)
     : {};
   const inputReceiptPolicy = isPlainObject(input.receiptPolicy ?? input.receipt_policy) ? (input.receiptPolicy ?? input.receipt_policy) : {};
+  const inputStandingFactsPolicy = isPlainObject(input.standingFactsPolicy ?? input.standing_facts_policy)
+    ? (input.standingFactsPolicy ?? input.standing_facts_policy)
+    : {};
   const base = defaultFeeSettings({
     facilityId: input.facilityId ?? input.facility_id ?? current.facilityId ?? current.facility_id,
     effectiveFrom: input.effectiveFrom ?? input.effective_from ?? current.effectiveFrom ?? current.effective_from
   });
   const baseHistoryPolicy = { ...base.historyPolicy, ...currentHistoryPolicy, ...inputHistoryPolicy };
   const baseInitialRevisitPolicy = { ...base.initialRevisitPolicy, ...currentInitialRevisitPolicy, ...inputInitialRevisitPolicy };
+  const baseStandingFactsPolicy = {
+    ...base.standingFactsPolicy,
+    ...currentStandingFactsPolicy,
+    ...inputStandingFactsPolicy
+  };
   const baseReceiptPolicy = mergeReceiptPolicy(base.receiptPolicy, currentReceiptPolicy, inputReceiptPolicy);
   const facilityStandardsInput = hasOwn(input, "facilityStandards") || hasOwn(input, "facility_standards")
     ? (input.facilityStandards ?? input.facility_standards)
@@ -439,9 +466,20 @@ export function validateUpdateFeeSettingsInput(input = {}) {
     effectiveFrom: optionalDate(input.effectiveFrom ?? input.effective_from ?? current.effectiveFrom ?? current.effective_from, "effectiveFrom") || base.effectiveFrom,
     historyPolicy: normalizeHistoryPolicy(baseHistoryPolicy),
     initialRevisitPolicy: normalizeInitialRevisitPolicy(baseInitialRevisitPolicy),
+    standingFactsPolicy: normalizeStandingFactsPolicy(baseStandingFactsPolicy),
     facilityStandards,
     autoBillingRules: normalizeAutoBillingRules(autoBillingRulesInput),
     receiptPolicy: normalizeReceiptPolicy(baseReceiptPolicy)
+  };
+}
+
+function normalizeStandingFactsPolicy(input = {}) {
+  const parsed = Number.parseInt(
+    input.stalenessMonths ?? input.staleness_months,
+    10
+  );
+  return {
+    stalenessMonths: Math.min(6, Math.max(1, Number.isFinite(parsed) ? parsed : 3))
   };
 }
 
@@ -500,6 +538,19 @@ export function normalizeFeeEncounterDetails(input) {
     input.singleBuildingPatientCount ?? input.single_building_patient_count,
     "encounterDetails.singleBuildingPatientCount"
   );
+  const visitKind = nullableEnum(
+    input.visitKind ?? input.visit_kind,
+    feeVisitKinds,
+    "encounterDetails.visitKind"
+  );
+  const visitKindSource = nullableEnum(
+    input.visitKindSource ?? input.visit_kind_source,
+    sidecarEncounterTypeSources,
+    "encounterDetails.visitKindSource"
+  );
+  const telephoneEligibility = normalizeTelephoneEligibility(
+    input.telephoneEligibility ?? input.telephone_eligibility
+  );
 
   if (sameBuilding !== null && !sameBuildingSource) {
     throw validationError(
@@ -534,11 +585,62 @@ export function normalizeFeeEncounterDetails(input) {
       "encounterDetails.singleBuildingPatientCount"
     );
   }
+  if (visitKind !== null && !visitKindSource) {
+    throw validationError(
+      "encounterDetails.visitKindSource is required when visitKind is known",
+      "encounterDetails.visitKindSource"
+    );
+  }
+  if (visitKind === null && visitKindSource !== null) {
+    throw validationError(
+      "encounterDetails.visitKindSource must be null when visitKind is unknown",
+      "encounterDetails.visitKindSource"
+    );
+  }
+  if (telephoneEligibility !== null && visitKind !== "telephone_revisit") {
+    throw validationError(
+      "encounterDetails.telephoneEligibility is only valid for telephone_revisit",
+      "encounterDetails.telephoneEligibility"
+    );
+  }
 
   return {
     sameBuilding,
     sameBuildingSource,
-    singleBuildingPatientCount
+    singleBuildingPatientCount,
+    visitKind,
+    visitKindSource,
+    telephoneEligibility
+  };
+}
+
+function normalizeTelephoneEligibility(input) {
+  if (input === undefined || input === null) {
+    return null;
+  }
+  if (!isPlainObject(input)) {
+    throw validationError(
+      "encounterDetails.telephoneEligibility must be an object",
+      "encounterDetails.telephoneEligibility"
+    );
+  }
+  return {
+    establishedPatient: nullableBoolean(
+      input.establishedPatient ?? input.established_patient,
+      "encounterDetails.telephoneEligibility.establishedPatient"
+    ),
+    patientInitiated: nullableBoolean(
+      input.patientInitiated ?? input.patient_initiated,
+      "encounterDetails.telephoneEligibility.patientInitiated"
+    ),
+    instructionGiven: nullableBoolean(
+      input.instructionGiven ?? input.instruction_given,
+      "encounterDetails.telephoneEligibility.instructionGiven"
+    ),
+    scheduledManagement: nullableBoolean(
+      input.scheduledManagement ?? input.scheduled_management,
+      "encounterDetails.telephoneEligibility.scheduledManagement"
+    )
   };
 }
 

@@ -146,6 +146,33 @@ test("diseaseActCandidates routes through the worker with op disease_act_candida
   assert.equal(result.candidates[0].codes[0].code, "113001810");
 });
 
+test("standingFeeFamilies routes through the worker with the service-date contract", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "fee-standing-families-"));
+  const dbPath = path.join(root, "standard-master.sqlite");
+  writeFileSync(dbPath, "sqlite fixture");
+
+  const calculator = new PythonFeeCalculator({ masterDbPath: dbPath, workerMode: true });
+  let seen = null;
+  calculator.runWorkerJson = async (payload, options) => {
+    seen = { payload, options };
+    return {
+      families: [{
+        familyId: "fee_family_fixture",
+        name: "在宅人工呼吸指導管理料",
+        variants: [{ code: "114005410", frequencyLimits: [{ windowMonths: 1, maxCount: 1 }] }]
+      }]
+    };
+  };
+
+  const result = await calculator.standingFeeFamilies({ service_date: "2026-06-25" });
+
+  assert.equal(seen.payload.op, "standing_fee_families");
+  assert.equal(seen.payload.db_path, dbPath);
+  assert.equal(seen.payload.service_date, "2026-06-25");
+  assert.equal(seen.options.requestIdPrefix, "fee_standing_fee_families");
+  assert.equal(result.families[0].variants[0].code, "114005410");
+});
+
 test("worker timeout fails only the timed-out request and re-dispatches survivors", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "fee-worker-timeout-"));
   const dbPath = path.join(root, "standard-master.sqlite");

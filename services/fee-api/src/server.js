@@ -56,6 +56,8 @@ import {
   patientMatchesSourceIdentity,
   resolveCanonicalSidecarPatientIdentity
 } from "./longitudinal-context.js";
+import { applyEncounterVariantToPreparation } from "./encounter-variants.js";
+import { buildStandingBillingLane } from "./standing-billing-profiles.js";
 
 const PRODUCT_ID = "fee";
 const SIDECAR_PRODUCT_ID = productIds.homisSidecar;
@@ -83,6 +85,7 @@ const MEISAISHO_HAKKO_CLINIC_FACILITY_TYPES = new Set([
   "クリニック"
 ]);
 const facilityProfileCache = new Map();
+const standingFeeFamilyCatalogCache = new WeakMap();
 const facilityProfileStoreIds = new WeakMap();
 let facilityProfileStoreIdCounter = 0;
 
@@ -196,6 +199,7 @@ async function routeFeeApiRequest(input = {}) {
       runtimeFeatures: {
         extractionMemoEnabled: feeExtractionMemoEnabled(runtimeEnv),
         emptyExtractionRetryEnabled: feeEmptyExtractionRetryEnabled(runtimeEnv),
+        standingFactsEnabled: feeStandingFactsEnabled(runtimeEnv),
         extractionSnapshotRetentionDays: extractionSnapshotRetentionDays(runtimeEnv)
       },
       feeCalculator: feeReadiness,
@@ -234,7 +238,10 @@ async function routeFeeApiRequest(input = {}) {
     const encounterDetails = {
       sameBuilding: normalized.sameBuilding,
       sameBuildingSource: normalized.sameBuildingSource,
-      singleBuildingPatientCount: normalized.singleBuildingPatientCount
+      singleBuildingPatientCount: normalized.singleBuildingPatientCount,
+      visitKind: normalized.visitKind,
+      visitKindSource: normalized.visitKindSource,
+      telephoneEligibility: normalized.telephoneEligibility
     };
     const now = input.now instanceof Date ? input.now : new Date(input.now || Date.now());
     const upserted = await feeStore.upsertSidecarCalculationDraft({
@@ -483,6 +490,66 @@ async function routeFeeApiRequest(input = {}) {
     return ok({ billingHistoryEvents: events });
   }
 
+  if (
+    method === "GET"
+    && parts.length === 5
+    && matches(parts.slice(0, 3), ["v1", "fee", "patients"])
+    && parts[4] === "standing-billing-profiles"
+  ) {
+    const facilityId = String(url.searchParams.get("facilityId") || "").trim();
+    if (!facilityId) {
+      throw requestValidationError("facilityId is required");
+    }
+    const canonicalPatientId = decodeURIComponent(parts[3]);
+    const profiles = await feeStore.listStandingBillingProfilesForPatient(
+      context.session.orgId,
+      facilityId,
+      canonicalPatientId
+    );
+    return ok({ standingBillingProfiles: profiles });
+  }
+
+  if (
+    method === "PATCH"
+    && parts.length === 5
+    && matches(parts.slice(0, 3), ["v1", "fee", "standing-billing-profiles"])
+    && parts[4] === "manual-state"
+  ) {
+    requireFeeAdminContext(context);
+    requireMutationCsrf(input, context.session);
+    const stopped = input.body?.stopped;
+    if (typeof stopped !== "boolean") {
+      throw requestValidationError("stopped must be boolean");
+    }
+    const standingFactId = decodeURIComponent(parts[3]);
+    const profile = await feeStore.updateStandingBillingProfileManualState(
+      context.session.orgId,
+      standingFactId,
+      {
+        stopped,
+        byMemberId: context.session.memberId,
+        note: String(input.body?.note || "").trim()
+      }
+    );
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: stopped
+        ? "fee.standing_billing_profile_stopped"
+        : "fee.standing_billing_profile_resumed",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "fee_standing_billing_profile",
+      targetId: standingFactId,
+      productId: PRODUCT_ID,
+      safePayload: {
+        facilityId: profile.facilityId,
+        canonicalPatientId: profile.canonicalPatientId,
+        feeFamily: profile.feeFamily,
+        status: profile.status
+      }
+    });
+    return ok({ standingBillingProfile: profile });
+  }
+
   // 既存レセ(UKE/レセコンCSV由来のbaselineClaims)を外部請求履歴として一括取込する。
   // 取り込んだ履歴は historyPolicy.externalHistoryEnabled のとき初診/再診・同月回数判定に使われる。
   if (method === "POST" && parts.length === 6 && matches(parts.slice(0, 3), ["v1", "fee", "patients"]) && parts[4] === "billing-history" && parts[5] === "import-baseline") {
@@ -536,6 +603,7 @@ async function routeFeeApiRequest(input = {}) {
       const claimMonth = String(claim.claimMonth || claim.claim_month || "").trim();
       const eventInput = normalizeBillingHistoryEventInput({
         patientId,
+        facilityId: String(body.facilityId ?? body.facility_id ?? "").trim(),
         // UKEは請求月粒度のため、暦上必ず存在する月初日を履歴イベント日とする。
         serviceDate: /^\d{4}-\d{2}$/u.test(claimMonth) ? `${claimMonth}-01` : claimMonth,
         source: "baseline_import",
@@ -551,6 +619,19 @@ async function routeFeeApiRequest(input = {}) {
         ? await feeStore.createBillingHistoryEvent(context.session.orgId, eventInput)
         : eventInput;
       events.push(event);
+      await recordStandingProfilesFromConfirmedLines({
+        enabled: feeStandingFactsEnabled(input.processEnv || process.env),
+        feeStore,
+        feeCalculator,
+        platformStore,
+        context,
+        facilityId: String(body.facilityId ?? body.facility_id ?? "").trim(),
+        canonicalPatientId: patientId,
+        claimMonth: claimMonth.slice(0, 7),
+        lines: event.lineItems,
+        evidenceRef: `billing_history:${event.historyEventId || `${patientId}:${claimMonth}`}`,
+        sourceSessionId: null
+      });
     }
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.billing_history_imported",
@@ -577,6 +658,19 @@ async function routeFeeApiRequest(input = {}) {
     const event = typeof feeStore.createBillingHistoryEvent === "function"
       ? await feeStore.createBillingHistoryEvent(context.session.orgId, eventInput)
       : eventInput;
+    await recordStandingProfilesFromConfirmedLines({
+      enabled: feeStandingFactsEnabled(input.processEnv || process.env),
+      feeStore,
+      feeCalculator,
+      platformStore,
+      context,
+      facilityId: String(input.body?.facilityId ?? input.body?.facility_id ?? "").trim(),
+      canonicalPatientId: patientId,
+      claimMonth: event.serviceDate.slice(0, 7),
+      lines: event.lineItems,
+      evidenceRef: `billing_history:${event.historyEventId || `${patientId}:${event.serviceDate}`}`,
+      sourceSessionId: null
+    });
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.billing_history_imported",
       actorMemberId: context.session.memberId,
@@ -1327,6 +1421,19 @@ async function routeFeeApiRequest(input = {}) {
     requireMutationCsrf(input, context.session);
     const decisions = normalizeReviewDecisionBatchInput(input.body || {});
     const result = await feeStore.decideReviewItems(context.session.orgId, parts[3], decisions);
+    if (decisions.some((decision) => decision.status === "approved")) {
+      await recordStandingProfilesFromApprovedSession({
+        enabled: feeStandingFactsEnabled(input.processEnv || process.env),
+        feeStore,
+        feeCalculator,
+        platformStore,
+        context,
+        feeSession: result.feeSession,
+        approvedReviewItemIds: decisions
+          .filter((decision) => decision.status === "approved")
+          .map((decision) => decision.reviewItemId)
+      });
+    }
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.review_items_decided",
       actorMemberId: context.session.memberId,
@@ -1347,6 +1454,17 @@ async function routeFeeApiRequest(input = {}) {
   if (method === "PATCH" && parts.length === 6 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "review-items") {
     requireMutationCsrf(input, context.session);
     const result = await feeStore.decideReviewItem(context.session.orgId, parts[3], decodeURIComponent(parts[5]), input.body || {});
+    if (String(input.body?.status || "approved") === "approved") {
+      await recordStandingProfilesFromApprovedSession({
+        enabled: feeStandingFactsEnabled(input.processEnv || process.env),
+        feeStore,
+        feeCalculator,
+        platformStore,
+        context,
+        feeSession: result.feeSession,
+        approvedReviewItemIds: [decodeURIComponent(parts[5])]
+      });
+    }
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.review_item_decided",
       actorMemberId: context.session.memberId,
@@ -1530,6 +1648,9 @@ function sidecarSourceRevisionHash(input = {}) {
     sameBuilding: input.sameBuilding ?? null,
     sameBuildingSource: input.sameBuildingSource || null,
     singleBuildingPatientCount: input.singleBuildingPatientCount ?? null,
+    visitKind: input.visitKind || null,
+    visitKindSource: input.visitKindSource || null,
+    telephoneEligibility: input.telephoneEligibility || null,
     clinicalText: input.clinicalText,
     orders: input.orders || [],
     diagnoses: input.diagnoses || []
@@ -1568,6 +1689,10 @@ function feeExtractionMemoEnabled(env = process.env) {
 
 function feeEmptyExtractionRetryEnabled(env = process.env) {
   return String(env.FEE_EMPTY_EXTRACTION_RETRY || "false").trim().toLowerCase() === "true";
+}
+
+function feeStandingFactsEnabled(env = process.env) {
+  return String(env.FEE_STANDING_FACTS || "false").trim().toLowerCase() === "true";
 }
 
 function extractionSnapshotExpiry(now, env = process.env) {
@@ -1954,6 +2079,7 @@ function normalizeBillingHistoryEventInput(input = {}) {
   }
   return {
     patientId,
+    facilityId: String(input.facilityId || input.facility_id || "").trim() || null,
     serviceDate,
     source: String(input.source || "manual").trim() || "manual",
     sourceLabel: String(input.sourceLabel || input.source_label || "").trim() || null,
@@ -1973,6 +2099,8 @@ function normalizeBillingHistoryLineItem(line = {}, index = 0) {
   return {
     code,
     name: String(line.name || line.procedureName || line.procedure_name || "").trim() || "",
+    points: Number.isFinite(Number(line.points)) ? Number(line.points) : 0,
+    quantity: Math.max(1, Number(line.quantity ?? line.count ?? 1) || 1),
     status: String(line.status || "confirmed").trim() || "confirmed",
     includedInTotal: line.includedInTotal === false ? false : true
   };
@@ -4722,6 +4850,7 @@ async function calculatePreparedFeeSessionNow({
           ...(Array.isArray(prepared.candidateProposals) ? prepared.candidateProposals : [])
         ]),
         clinicalEvents: Array.isArray(prepared.clinicalEvents) ? prepared.clinicalEvents : [],
+        standingMentions: Array.isArray(prepared.standingMentions) ? prepared.standingMentions : [],
         canonicalClinicalFacts: Array.isArray(prepared.canonicalClinicalFacts) ? prepared.canonicalClinicalFacts : [],
         masterCandidates: Array.isArray(prepared.masterCandidates) ? prepared.masterCandidates : [],
         billingCandidates: Array.isArray(prepared.billingCandidates) ? prepared.billingCandidates : [],
@@ -4763,6 +4892,19 @@ async function calculatePreparedFeeSessionNow({
   })).catch((error) => {
     logFeeApiError(error, {
       stage: "saveExtractionSnapshot",
+      orgId: context.session.orgId,
+      feeSessionId
+    });
+  });
+  await measureStage(stageTimings, "standingFactTransitions", () => persistStandingFactTransitions({
+    feeStore,
+    platformStore,
+    context,
+    feeSessionId,
+    transitions: prepared.standingStatusTransitions
+  })).catch((error) => {
+    logFeeApiError(error, {
+      stage: "standingFactTransitions",
       orgId: context.session.orgId,
       feeSessionId
     });
@@ -5322,7 +5464,11 @@ function extractedOrderLabels(options = {}) {
   }
   const labels = [];
   if (options.outpatient_basic?.fee_kind) {
-    labels.push(options.outpatient_basic.fee_kind === "initial" ? "初診料候補" : "再診料候補");
+    labels.push(
+      options.outpatient_basic.visit_kind === "telephone_revisit"
+        ? "電話等再診料候補"
+        : options.outpatient_basic.fee_kind === "initial" ? "初診料候補" : "再診料候補"
+    );
   }
   if (options.inpatient_basic?.basic_fee_code) {
     const days = Number(options.inpatient_basic.basic_fee_days || 1);
@@ -5590,6 +5736,7 @@ async function loadLatestExtractionSnapshot({
 function billingHistoryEventsAsPriorSessions(events = []) {
   return (Array.isArray(events) ? events : []).map((event) => ({
     feeSessionId: `external:${event.historyEventId || event.serviceDate || ""}`,
+    facilityId: event.facilityId || null,
     serviceDate: event.serviceDate || "",
     sourceSystem: event.source || "external",
     calculationResult: {
@@ -6858,7 +7005,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       historyCompleteness: memoHistoryCompleteness,
       clinicalFactsExtractor: input.clinicalFactsExtractor
     }));
-  const primaryPrepared = applyAutoBillingRulesToPreparation(
+  const preparedWithAutomaticRules = applyAutoBillingRulesToPreparation(
     applyFacilityProfileToPreparation(legacy, effectiveFacilityProfile, {
       clinicalText: baseSession.clinicalText || calculationInput.clinicalText || ""
     }),
@@ -6869,6 +7016,32 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       hasExplicitClaimContext: isPlainObject(baseSession.claimContext) || isPlainObject(calculationInput.claimContext)
     }
   );
+  // Encounter variants run after generic outpatient rules so an unresolved
+  // telephone encounter cannot fall back to an automatically-added revisit fee.
+  const primaryPreparedWithoutStandingFacts = applyEncounterVariantToPreparation(
+    preparedWithAutomaticRules,
+    {
+      session: baseSession,
+      priorSessions: combinedPriorSessions,
+      historyCompleteness
+    }
+  );
+  const primaryPrepared = await measureStage(stageTimings, "standingFactLane", () => (
+    applyStandingFactsToPreparation(primaryPreparedWithoutStandingFacts, {
+      enabled: feeStandingFactsEnabled(input.processEnv || process.env),
+      feeStore: input.feeStore,
+      feeCalculator,
+      orgId: input.orgId || baseSession.orgId,
+      session: baseSession,
+      feeSettings,
+      historyCompleteness,
+      currentMonthEncounterCount: countCurrentMonthEncounters(
+        baseSession,
+        priorSessionsResult.sessions
+      ),
+      facilityStandardKeys: effectiveFacilityProfile.facilityStandardKeys
+    })
+  ));
   const shadowCalculations = await measureStage(stageTimings, "shadowCalculationPreparation", () => buildFeeCalculationShadowCalculations({
     input,
     primaryPrepared,
@@ -6930,12 +7103,16 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     calculationOptions: prepared.calculationOptions,
     candidateProposals: Array.isArray(prepared.candidateProposals) ? prepared.candidateProposals : [],
     clinicalEvents: Array.isArray(prepared.clinicalEvents) ? prepared.clinicalEvents : [],
+    standingMentions: Array.isArray(prepared.standingMentions) ? prepared.standingMentions : [],
     canonicalClinicalFacts: Array.isArray(prepared.canonicalClinicalFacts) ? prepared.canonicalClinicalFacts : [],
     masterCandidates: Array.isArray(prepared.masterCandidates) ? prepared.masterCandidates : [],
     billingCandidates: Array.isArray(prepared.billingCandidates) ? prepared.billingCandidates : [],
     reviewIssues: Array.isArray(prepared.reviewIssues) ? prepared.reviewIssues : [],
     clinicalExtraction: prepared.clinicalExtraction || null,
     extractionSnapshot: prepared.extractionSnapshot || null,
+    standingStatusTransitions: Array.isArray(prepared.standingStatusTransitions)
+      ? prepared.standingStatusTransitions
+      : [],
     shadowCalculations: Array.isArray(prepared.shadowCalculations) ? prepared.shadowCalculations : [],
     metrics: {
       ...(prepared.metrics || {}),
@@ -6957,6 +7134,376 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       ...unresolvedOrderWarnings(enriched.orders || baseSession.orders || [], prepared.calculationOptions || {})
     ])
   };
+}
+
+function countCurrentMonthEncounters(session = {}, priorSessions = []) {
+  const claimMonth = String(session.serviceDate || "").slice(0, 7);
+  if (!/^\d{4}-\d{2}$/u.test(claimMonth)) {
+    return null;
+  }
+  const facilityId = String(session.facilityId || "").trim();
+  return 1 + asArrayValue(priorSessions).filter((prior) => {
+    const priorMonth = String(prior?.serviceDate || prior?.claimMonth || "").slice(0, 7);
+    if (priorMonth !== claimMonth) {
+      return false;
+    }
+    const priorFacilityId = String(prior?.facilityId || "").trim();
+    return !facilityId || !priorFacilityId || priorFacilityId === facilityId;
+  }).length;
+}
+
+async function applyStandingFactsToPreparation(prepared = {}, {
+  enabled = false,
+  feeStore,
+  feeCalculator,
+  orgId = "",
+  session = {},
+  feeSettings = null,
+  historyCompleteness = "unknown",
+  currentMonthEncounterCount = null,
+  facilityStandardKeys = []
+} = {}) {
+  const disabled = (reason) => ({
+    ...prepared,
+    standingStatusTransitions: [],
+    metrics: {
+      ...(prepared.metrics || {}),
+      standingFacts: {
+        enabled: false,
+        activeCount: 0,
+        proposedCount: 0,
+        suspendedCount: 0,
+        reasons: { [reason]: 1 }
+      }
+    }
+  });
+  if (!enabled) {
+    return disabled("feature_disabled");
+  }
+  const canonicalPatientId = String(session.canonicalPatientId || "").trim();
+  const facilityId = String(session.facilityId || "").trim();
+  if (!canonicalPatientId) {
+    return disabled("canonical_patient_unresolved");
+  }
+  if (!facilityId) {
+    return disabled("facility_unresolved");
+  }
+  if (
+    typeof feeStore?.listStandingBillingProfilesForPatient !== "function"
+    || typeof feeCalculator?.standingFeeFamilies !== "function"
+  ) {
+    return disabled("runtime_unsupported");
+  }
+
+  try {
+    const [profiles, catalog] = await Promise.all([
+      feeStore.listStandingBillingProfilesForPatient(
+        orgId,
+        facilityId,
+        canonicalPatientId
+      ),
+      loadStandingFeeFamilyCatalog(feeCalculator, session.serviceDate)
+    ]);
+    const lane = buildStandingBillingLane({
+      profiles,
+      catalog,
+      serviceDate: session.serviceDate,
+      historyCompleteness,
+      standingMentions: prepared.standingMentions,
+      stalenessMonths: feeSettings?.standingFactsPolicy?.stalenessMonths,
+      currentInputs: {
+        encounterDetails: session.encounterDetails || null,
+        currentMonthEncounterCount,
+        facilityStandardKeys,
+        procedureCodes: uniqueStrings([
+          ...asArrayValue(prepared.calculationOptions?.procedure_codes),
+          ...asArrayValue(prepared.calculationOptions?.procedureCodes)
+        ])
+      }
+    });
+    const clinicalExtraction = isPlainObject(prepared.clinicalExtraction)
+      ? {
+        ...prepared.clinicalExtraction,
+        trace: [
+          ...(Array.isArray(prepared.clinicalExtraction.trace)
+            ? prepared.clinicalExtraction.trace
+            : []),
+          lane.trace
+        ]
+      }
+      : prepared.clinicalExtraction || null;
+    return {
+      ...prepared,
+      candidateProposals: uniqueCandidateProposals([
+        ...(Array.isArray(prepared.candidateProposals) ? prepared.candidateProposals : []),
+        ...lane.candidateProposals
+      ]),
+      reviewIssues: [
+        ...(Array.isArray(prepared.reviewIssues) ? prepared.reviewIssues : []),
+        ...lane.reviewIssues
+      ],
+      reviewWarnings: uniqueStrings([
+        ...(Array.isArray(prepared.reviewWarnings) ? prepared.reviewWarnings : []),
+        ...lane.reviewIssues.map((issue) => issue.messageForStaff)
+      ]),
+      clinicalExtraction,
+      standingStatusTransitions: lane.statusTransitions,
+      metrics: {
+        ...(prepared.metrics || {}),
+        standingFacts: {
+          enabled: true,
+          ...lane.metrics,
+          profileCount: Array.isArray(profiles) ? profiles.length : 0,
+          catalogFamilyCount: Array.isArray(catalog?.families) ? catalog.families.length : 0
+        }
+      }
+    };
+  } catch (error) {
+    logFeeApiError(error, {
+      stage: "standingFactLane",
+      orgId,
+      facilityId,
+      canonicalPatientId
+    });
+    return {
+      ...disabled("lane_unavailable"),
+      reviewWarnings: uniqueStrings([
+        ...(Array.isArray(prepared.reviewWarnings) ? prepared.reviewWarnings : []),
+        "恒常算定履歴を確認できなかったため、月次管理料の継続候補は表示していません。"
+      ])
+    };
+  }
+}
+
+async function loadStandingFeeFamilyCatalog(feeCalculator, serviceDate = "") {
+  const claimMonth = String(serviceDate || "").slice(0, 7);
+  if (!/^\d{4}-\d{2}$/u.test(claimMonth)) {
+    throw requestValidationError("serviceDate is required for standing fee catalog");
+  }
+  let cache = standingFeeFamilyCatalogCache.get(feeCalculator);
+  if (!cache) {
+    cache = new Map();
+    standingFeeFamilyCatalogCache.set(feeCalculator, cache);
+  }
+  const current = cache.get(claimMonth);
+  if (current?.expiresAt > Date.now()) {
+    return current.value;
+  }
+  const value = await feeCalculator.standingFeeFamilies({
+    service_date: `${claimMonth}-01`
+  });
+  const source = isPlainObject(value?.source) ? value.source : null;
+  const normalized = {
+    ...value,
+    families: (Array.isArray(value?.families) ? value.families : []).map((family) => ({
+      ...family,
+      source
+    }))
+  };
+  cache.set(claimMonth, {
+    expiresAt: Date.now() + 5 * 60 * 1000,
+    value: normalized
+  });
+  return normalized;
+}
+
+async function recordStandingProfilesFromApprovedSession({
+  enabled = false,
+  feeStore,
+  feeCalculator,
+  platformStore,
+  context,
+  feeSession = {},
+  approvedReviewItemIds = []
+} = {}) {
+  const approved = new Set(
+    (Array.isArray(approvedReviewItemIds) ? approvedReviewItemIds : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  );
+  if (!approved.size) {
+    return { recordedCount: 0, reason: "no_approved_items" };
+  }
+  const receiptDraft = buildReceiptDraft(feeSession);
+  const confirmedLines = (Array.isArray(receiptDraft?.lines) ? receiptDraft.lines : [])
+    .filter((line) => line.includedInTotal !== false)
+    .filter((line) => approved.has(String(
+      line.reviewItemId
+      || (line.sourceLineId ? `line_${line.sourceLineId}` : "")
+    )));
+  return recordStandingProfilesFromConfirmedLines({
+    enabled,
+    feeStore,
+    feeCalculator,
+    platformStore,
+    context,
+    facilityId: feeSession.facilityId,
+    canonicalPatientId: feeSession.canonicalPatientId,
+    claimMonth: String(feeSession.claimMonth || feeSession.serviceDate || "").slice(0, 7),
+    lines: confirmedLines,
+    evidenceRef: `fee_session:${feeSession.feeSessionId}`,
+    sourceSessionId: feeSession.feeSessionId
+  });
+}
+
+async function recordStandingProfilesFromConfirmedLines({
+  enabled = false,
+  feeStore,
+  feeCalculator,
+  platformStore,
+  context,
+  facilityId = "",
+  canonicalPatientId = "",
+  claimMonth = "",
+  lines = [],
+  evidenceRef = "",
+  sourceSessionId = null
+} = {}) {
+  if (!enabled) {
+    return { recordedCount: 0, reason: "feature_disabled" };
+  }
+  const normalizedFacilityId = String(facilityId || "").trim();
+  const normalizedPatientId = String(canonicalPatientId || "").trim();
+  if (!normalizedFacilityId || !normalizedPatientId) {
+    return { recordedCount: 0, reason: "scope_unresolved" };
+  }
+  if (
+    typeof feeStore?.recordStandingBillingEvidence !== "function"
+    || typeof feeCalculator?.standingFeeFamilies !== "function"
+  ) {
+    return { recordedCount: 0, reason: "runtime_unsupported" };
+  }
+  const normalizedClaimMonth = String(claimMonth || "").trim().slice(0, 7);
+  if (!/^\d{4}-\d{2}$/u.test(normalizedClaimMonth)) {
+    return { recordedCount: 0, reason: "claim_month_unresolved" };
+  }
+  try {
+    const catalog = await loadStandingFeeFamilyCatalog(
+      feeCalculator,
+      `${normalizedClaimMonth}-01`
+    );
+    const familyByCode = new Map();
+    for (const family of Array.isArray(catalog?.families) ? catalog.families : []) {
+      for (const variant of Array.isArray(family?.variants) ? family.variants : []) {
+        const code = String(variant?.code || "").trim();
+        if (code) {
+          familyByCode.set(code, family);
+        }
+      }
+    }
+    const grouped = new Map();
+    for (const line of Array.isArray(lines) ? lines : []) {
+      if (
+        line?.includedInTotal === false
+        || ["rejected", "blocked"].includes(String(line?.status || "").toLowerCase())
+      ) {
+        continue;
+      }
+      const code = String(line?.code || "").trim();
+      const family = familyByCode.get(code);
+      if (!family) {
+        continue;
+      }
+      const current = grouped.get(family.familyId) || { family, codes: [] };
+      current.codes.push({
+        code,
+        name: String(line?.name || "").trim(),
+        claimMonth: normalizedClaimMonth
+      });
+      grouped.set(family.familyId, current);
+    }
+    const recorded = [];
+    for (const entry of grouped.values()) {
+      recorded.push(await feeStore.recordStandingBillingEvidence(
+        context.session.orgId,
+        {
+          facilityId: normalizedFacilityId,
+          canonicalPatientId: normalizedPatientId,
+          claimMonth: normalizedClaimMonth,
+          family: entry.family,
+          codes: entry.codes,
+          evidence: {
+            type: "confirmed_claim",
+            ref: evidenceRef || `${normalizedPatientId}:${normalizedClaimMonth}`
+          }
+        }
+      ));
+    }
+    if (recorded.length) {
+      await platformStore.createAuditEvent(context.session.orgId, {
+        eventType: "fee.standing_billing_profiles_confirmed",
+        actorMemberId: context.session.memberId,
+        actorLoginId: context.session.loginId,
+        targetType: "patient",
+        targetId: normalizedPatientId,
+        productId: context.productId || PRODUCT_ID,
+        safePayload: {
+          facilityId: normalizedFacilityId,
+          canonicalPatientId: normalizedPatientId,
+          claimMonth: normalizedClaimMonth,
+          standingFactIds: recorded.map((profile) => profile.standingFactId),
+          feeFamilies: recorded.map((profile) => profile.feeFamily),
+          sourceSessionId
+        }
+      });
+    }
+    return {
+      recordedCount: recorded.length,
+      profiles: recorded,
+      reason: recorded.length ? "confirmed" : "no_standing_family_codes"
+    };
+  } catch (error) {
+    logFeeApiError(error, {
+      stage: "standingFactConfirmationHook",
+      orgId: context?.session?.orgId || null,
+      facilityId: normalizedFacilityId,
+      canonicalPatientId: normalizedPatientId,
+      claimMonth: normalizedClaimMonth
+    });
+    return {
+      recordedCount: 0,
+      profiles: [],
+      reason: "record_unavailable"
+    };
+  }
+}
+
+async function persistStandingFactTransitions({
+  feeStore,
+  platformStore,
+  context,
+  feeSessionId,
+  transitions = []
+} = {}) {
+  if (!Array.isArray(transitions) || !transitions.length) {
+    return { updatedCount: 0 };
+  }
+  let updatedCount = 0;
+  for (const transition of transitions) {
+    const updated = await feeStore.updateStandingBillingProfileStatus(
+      context.session.orgId,
+      transition.standingFactId,
+      transition
+    );
+    updatedCount += 1;
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.standing_billing_profile_status_changed",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "fee_standing_billing_profile",
+      targetId: updated.standingFactId,
+      productId: context.productId || PRODUCT_ID,
+      safePayload: {
+        feeSessionId,
+        status: updated.status,
+        statusReason: updated.statusReason,
+        feeFamily: updated.feeFamily,
+        facilityId: updated.facilityId,
+        canonicalPatientId: updated.canonicalPatientId
+      }
+    });
+  }
+  return { updatedCount };
 }
 
 function sessionWithCalculationInputOverrides(session = {}, calculationInput = {}) {
@@ -7025,6 +7572,9 @@ function reusableClinicalCalculationPreparation({
     candidateProposals: Array.isArray(previousCalculationResult.candidateProposals) ? previousCalculationResult.candidateProposals : [],
     reviewWarnings: [],
     clinicalEvents: Array.isArray(previousCalculationResult.clinicalEvents) ? previousCalculationResult.clinicalEvents : [],
+    standingMentions: Array.isArray(previousCalculationResult.standingMentions)
+      ? previousCalculationResult.standingMentions
+      : [],
     canonicalClinicalFacts: Array.isArray(previousCalculationResult.canonicalClinicalFacts) ? previousCalculationResult.canonicalClinicalFacts : [],
     masterCandidates: Array.isArray(previousCalculationResult.masterCandidates) ? previousCalculationResult.masterCandidates : [],
     billingCandidates: Array.isArray(previousCalculationResult.billingCandidates) ? previousCalculationResult.billingCandidates : [],

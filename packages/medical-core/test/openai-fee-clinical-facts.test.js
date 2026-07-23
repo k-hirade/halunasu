@@ -37,6 +37,8 @@ function feeClinicalFactsPayload() {
       prescription_evidence: ""
     },
     diagnoses: [],
+    line_review: [],
+    standing_mentions: [],
     clinical_events: [],
     checklist_findings: [],
     excluded_events: [],
@@ -219,7 +221,8 @@ test("line_subset scope sends only target lines and removes visit/checklist fiel
   let requestBody = null;
   const subsetPayload = {
     diagnoses: [],
-    line_review: [{ line_id: "O-002", has_billable_act: true }],
+    line_review: [{ line_id: "O-002", line_role: "performed" }],
+    standing_mentions: [],
     clinical_events: [],
     excluded_events: [],
     missing_information: [],
@@ -395,16 +398,23 @@ test("fee clinical facts prompt asks for explicit area and body site when billin
   assert.match(requestBody.instructions, /Do not infer a size that is not written/);
 });
 
-test("v14 全行カバレッジ: line_review が必須で各行のhas_billable_act判定を持つ", async () => {
+test("v15 全行カバレッジ: line_review が必須で各行のline_role判定を持つ", async () => {
   const module = await import("../src/fee/openai-fee-clinical-facts.js");
-  assert.equal(module.FEE_CLINICAL_FACTS_PROMPT_VERSION, "fee-clinical-events-v14");
+  assert.equal(module.FEE_CLINICAL_FACTS_PROMPT_VERSION, "fee-clinical-events-v15");
   const schema = module.feeClinicalFactsSchema || module.FEE_CLINICAL_FACTS_SCHEMA;
   // schemaが直接exportされていない場合はスキップせず、リクエストビルダー経由で検証する
   if (schema) {
     assert.ok(schema.required.includes("line_review"));
+    assert.ok(schema.required.includes("standing_mentions"));
     const lineReview = schema.properties.line_review;
     assert.equal(lineReview.type, "array");
-    assert.deepEqual(lineReview.items.required, ["line_id", "has_billable_act"]);
-    assert.equal(lineReview.items.properties.has_billable_act.type, "boolean");
+    assert.deepEqual(lineReview.items.required, ["line_id", "line_role"]);
+    assert.deepEqual(lineReview.items.properties.line_role.enum, [
+      "performed",
+      "management_continuation",
+      "plan",
+      "none"
+    ]);
+    assert.equal(lineReview.items.properties.has_billable_act, undefined);
   }
 });

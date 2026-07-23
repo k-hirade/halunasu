@@ -22,6 +22,7 @@
     const clinicalTextHash = await textFingerprint(extraction.clinicalText);
     const determinantHash = await textFingerprint(JSON.stringify({
       encounterType: extraction.encounterType || null,
+      visitKind: extraction.visitKind || null,
       facilityResidence: extraction.facilityResidence === true,
       privateResidence: extraction.privateResidence === true,
       singleBuildingPatientCount: extraction.singleBuildingPatientCount ?? null,

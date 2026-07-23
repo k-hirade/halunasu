@@ -39,6 +39,8 @@ test("homis-mock-v3 extracts the complete displayed chart and residence determin
     encounterType: "home_visit",
     encounterTypeLabel: "定期",
     encounterTypeSource: "dom",
+    visitKind: null,
+    visitKindSource: null,
     facilityResidence: false,
     privateResidence: true,
     singleBuildingPatientCount: null,
@@ -63,7 +65,9 @@ test("encounter type uses only explicit chart status labels and leaves unsupport
       return {
         type: value.encounterType,
         label: value.encounterTypeLabel,
-        source: value.encounterTypeSource
+        source: value.encounterTypeSource,
+        visitKind: value.visitKind,
+        visitKindSource: value.visitKindSource
       };
     };
     return {
@@ -75,11 +79,17 @@ test("encounter type uses only explicit chart status labels and leaves unsupport
     };
   }, locationHref);
   assert.deepEqual(result, {
-    homeVisit: { type: "home_visit", label: "定期", source: "dom" },
-    houseCall: { type: "house_call", label: "往診", source: "dom" },
-    outpatient: { type: "outpatient", label: "外来", source: "dom" },
-    telephone: { type: null, label: "電話再診", source: null },
-    unknown: { type: null, label: "臨時", source: null }
+    homeVisit: { type: "home_visit", label: "定期", source: "dom", visitKind: null, visitKindSource: null },
+    houseCall: { type: "house_call", label: "往診", source: "dom", visitKind: null, visitKindSource: null },
+    outpatient: { type: "outpatient", label: "外来", source: "dom", visitKind: null, visitKindSource: null },
+    telephone: {
+      type: "outpatient",
+      label: "電話再診",
+      source: "dom",
+      visitKind: "telephone_revisit",
+      visitKindSource: "dom"
+    },
+    unknown: { type: null, label: "臨時", source: null, visitKind: null, visitKindSource: null }
   });
   await page.close();
 });
@@ -187,6 +197,22 @@ test("preview fingerprint changes when the explicit encounter type changes", asy
     document.querySelector(".rec-status").textContent = "診療記録　往診　「サンプル在宅クリニック」";
     const after = contract.extractContractSnapshot(document, { locationHref: href });
     return beforeFingerprint !== await proof.previewFingerprint(after);
+  }, locationHref);
+  assert.equal(result, true);
+  await page.close();
+});
+
+test("preview fingerprint changes between in-person and telephone outpatient visits", async () => {
+  const page = await contractPage();
+  const result = await page.evaluate(async (href) => {
+    const contract = globalThis.HalunasuSidecarContract;
+    const proof = globalThis.HalunasuSidecarProof;
+    document.querySelector(".rec-status").textContent = "診療記録　外来　「サンプル在宅クリニック」";
+    const inPerson = contract.extractContractSnapshot(document, { locationHref: href });
+    const inPersonFingerprint = await proof.previewFingerprint(inPerson);
+    document.querySelector(".rec-status").textContent = "診療記録　電話再診　「サンプル在宅クリニック」";
+    const telephone = contract.extractContractSnapshot(document, { locationHref: href });
+    return inPersonFingerprint !== await proof.previewFingerprint(telephone);
   }, locationHref);
   assert.equal(result, true);
   await page.close();

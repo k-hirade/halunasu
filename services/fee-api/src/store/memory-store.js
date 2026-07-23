@@ -13,6 +13,12 @@ import {
   buildSidecarCalculationDraft,
   markSidecarDraftAdopted
 } from "../../../../packages/fee-core/src/sidecar-drafts.js";
+import {
+  applyStandingBillingEvidence,
+  applyStandingBillingManualState,
+  applyStandingBillingStatus,
+  standingBillingProfileId
+} from "../standing-billing-profiles.js";
 
 export class MemoryFeeStore {
   constructor(options = {}) {
@@ -25,6 +31,7 @@ export class MemoryFeeStore {
     this.billingHistoryByOrg = new Map();
     this.sidecarDraftsByOrg = new Map();
     this.extractionSnapshotsByOrg = new Map();
+    this.standingBillingProfilesByOrg = new Map();
   }
 
   createSession(input) {
@@ -254,6 +261,64 @@ export class MemoryFeeStore {
       }
     }
     return { deletedCount };
+  }
+
+  getStandingBillingProfile(orgId, standingFactId) {
+    return structuredClone(
+      this.standingBillingProfilesForOrg(orgId).get(String(standingFactId || "").trim()) || null
+    );
+  }
+
+  listStandingBillingProfilesForPatient(orgId, facilityId, canonicalPatientId) {
+    const normalizedFacilityId = String(facilityId || "").trim();
+    const normalizedPatientId = String(canonicalPatientId || "").trim();
+    if (!normalizedFacilityId || !normalizedPatientId) {
+      return [];
+    }
+    return [...this.standingBillingProfilesForOrg(orgId).values()]
+      .filter((profile) => profile.facilityId === normalizedFacilityId)
+      .filter((profile) => profile.canonicalPatientId === normalizedPatientId)
+      .sort((left, right) => String(left.feeFamily || "").localeCompare(String(right.feeFamily || "")))
+      .map((profile) => structuredClone(profile));
+  }
+
+  recordStandingBillingEvidence(orgId, input = {}) {
+    const standingFactId = standingBillingProfileId({
+      orgId,
+      facilityId: input.facilityId,
+      canonicalPatientId: input.canonicalPatientId,
+      feeFamily: input.family?.familyId
+    });
+    const profiles = this.standingBillingProfilesForOrg(orgId);
+    const current = profiles.get(standingFactId) || null;
+    const updated = applyStandingBillingEvidence(current, {
+      ...input,
+      orgId
+    }, { now: this.now() });
+    profiles.set(standingFactId, structuredClone(updated));
+    return structuredClone(updated);
+  }
+
+  updateStandingBillingProfileStatus(orgId, standingFactId, input = {}) {
+    const profiles = this.standingBillingProfilesForOrg(orgId);
+    const current = profiles.get(String(standingFactId || "").trim()) || null;
+    if (!current) {
+      throw notFoundError("standing billing profile not found");
+    }
+    const updated = applyStandingBillingStatus(current, input, { now: this.now() });
+    profiles.set(updated.standingFactId, structuredClone(updated));
+    return structuredClone(updated);
+  }
+
+  updateStandingBillingProfileManualState(orgId, standingFactId, input = {}) {
+    const profiles = this.standingBillingProfilesForOrg(orgId);
+    const current = profiles.get(String(standingFactId || "").trim()) || null;
+    if (!current) {
+      throw notFoundError("standing billing profile not found");
+    }
+    const updated = applyStandingBillingManualState(current, input, { now: this.now() });
+    profiles.set(updated.standingFactId, structuredClone(updated));
+    return structuredClone(updated);
   }
 
   getSession(orgId, feeSessionId) {
@@ -588,6 +653,13 @@ export class MemoryFeeStore {
       this.extractionSnapshotsByOrg.set(orgId, new Map());
     }
     return this.extractionSnapshotsByOrg.get(orgId);
+  }
+
+  standingBillingProfilesForOrg(orgId) {
+    if (!this.standingBillingProfilesByOrg.has(orgId)) {
+      this.standingBillingProfilesByOrg.set(orgId, new Map());
+    }
+    return this.standingBillingProfilesByOrg.get(orgId);
   }
 
   calculationJobsForOrg(orgId) {

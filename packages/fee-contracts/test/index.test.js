@@ -137,6 +137,116 @@ test("validates three-state same-building sidecar inputs without treating unknow
   }));
 });
 
+test("validates telephone revisit facts separately from eligibility", () => {
+  const base = {
+    contractVersion: "v1",
+    facilityId: "fac_001",
+    sourceSystem: "homis",
+    externalPatientId: "1001",
+    sourceRecordId: "record-telephone-001",
+    serviceDate: "2026-07-18",
+    setting: "outpatient",
+    encounterTypeSource: "dom",
+    clinicalText: "家族から電話相談があり、療養上の指示を行った。",
+    extractionProof: {
+      patientIdBefore: "1001",
+      patientIdAfter: "1001",
+      sourceRecordIdBefore: "record-telephone-001",
+      sourceRecordIdAfter: "record-telephone-001",
+      selectorContractVersion: "homis-v3",
+      extractedAt: "2026-07-18T01:00:00.000Z",
+      domMutationDetected: false,
+      contractValidationPassed: true,
+      previewMatched: true,
+      requiredElementCount: 4,
+      matchedRequiredElementCount: 4,
+      clinicalTextNodeCount: 1
+    }
+  };
+
+  const normalized = validateSidecarCalculationInput({
+    ...base,
+    visitKind: "telephone_revisit",
+    visitKindSource: "dom",
+    telephoneEligibility: {
+      establishedPatient: null,
+      patientInitiated: true,
+      instructionGiven: true,
+      scheduledManagement: false
+    }
+  });
+  assert.equal(normalized.visitKind, "telephone_revisit");
+  assert.equal(normalized.visitKindSource, "dom");
+  assert.deepEqual(normalized.telephoneEligibility, {
+    establishedPatient: null,
+    patientInitiated: true,
+    instructionGiven: true,
+    scheduledManagement: false
+  });
+
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    visitKind: "telephone_revisit",
+    visitKindSource: null
+  }), /visitKindSource is required/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    visitKind: null,
+    visitKindSource: "user"
+  }), /visitKindSource must be null/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    visitKind: "video_revisit",
+    visitKindSource: "user"
+  }), /encounterDetails.visitKind/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    telephoneEligibility: {
+      patientInitiated: true
+    }
+  }), /only valid for telephone_revisit/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    visitKind: "telephone_revisit",
+    visitKindSource: "user",
+    telephoneEligibility: {
+      patientInitiated: "true"
+    }
+  }), /boolean or null/);
+});
+
+test("normalizes telephone revisit details on a standard fee session", () => {
+  const normalized = validateCreateFeeSessionInput({
+    patientId: "pat_phone",
+    facilityId: "fac_phone",
+    serviceDate: "2026-06-12",
+    setting: "outpatient",
+    encounterDetails: {
+      visitKind: "telephone_revisit",
+      visitKindSource: "user",
+      telephoneEligibility: {
+        patientInitiated: true,
+        instructionGiven: true,
+        scheduledManagement: false
+      }
+    }
+  });
+
+  assert.deepEqual(normalized.encounterDetails, {
+    sameBuilding: null,
+    sameBuildingSource: null,
+    singleBuildingPatientCount: null,
+    visitKind: "telephone_revisit",
+    visitKindSource: "user",
+    telephoneEligibility: {
+      establishedPatient: null,
+      patientInitiated: true,
+      instructionGiven: true,
+      scheduledManagement: false
+    }
+  });
+});
+
 test("rejects sidecar source URLs, extraction races, ambiguous encounter types, and unsupported versions", () => {
   const base = {
     facilityId: "fac_001",
@@ -230,7 +340,10 @@ test("normalizes fee session input to Platform identifiers", () => {
   assert.deepEqual(normalized.encounterDetails, {
     sameBuilding: true,
     sameBuildingSource: "dom",
-    singleBuildingPatientCount: 4
+    singleBuildingPatientCount: 4,
+    visitKind: null,
+    visitKindSource: null,
+    telephoneEligibility: null
   });
   assert.equal(normalized.orders[0].sourceSystem, undefined);
   assert.deepEqual(normalized.claimContext.material_inputs, [{ code: "710000001", quantity: 3 }]);
@@ -414,9 +527,22 @@ test("normalizes structured facility standards and drops unused policy fields", 
   assert.equal(normalized.facilityStandards[0].status, "active");
   assert.equal(normalized.facilityStandards[0].claimStartDate, "2026-06-01");
   assert.equal(normalized.initialRevisitPolicy.requireReviewWhenNoHistory, true);
+  assert.equal(normalized.standingFactsPolicy.stalenessMonths, 3);
   assert.equal(normalized.historyPolicy.missingHistoryBehavior, undefined);
   assert.equal(normalized.reviewPolicy, undefined);
   assert.equal(normalized.initialRevisitPolicy.priorHistoryBehavior, undefined);
+});
+
+test("normalizes standing fact staleness policy within the supported range", () => {
+  assert.equal(validateUpdateFeeSettingsInput({
+    standingFactsPolicy: { stalenessMonths: 5 }
+  }).standingFactsPolicy.stalenessMonths, 5);
+  assert.equal(validateUpdateFeeSettingsInput({
+    standingFactsPolicy: { stalenessMonths: 99 }
+  }).standingFactsPolicy.stalenessMonths, 6);
+  assert.equal(validateUpdateFeeSettingsInput({
+    standingFactsPolicy: { stalenessMonths: 0 }
+  }).standingFactsPolicy.stalenessMonths, 1);
 });
 
 test("rejects mutually exclusive active detail-issuance facility standards", () => {

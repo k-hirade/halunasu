@@ -49,8 +49,37 @@
           <label><input name="setting" type="radio" value="home_visit"><span>定期訪問</span></label>
           <label><input name="setting" type="radio" value="house_call"><span>往診</span></label>
           <label><input name="setting" type="radio" value="outpatient"><span>外来</span></label>
+          <label><input name="setting" type="radio" value="telephone_revisit"><span>電話再診</span></label>
         </div>
         <p class="muted control-note" id="setting-copy"></p>
+      </fieldset>
+      <fieldset class="setting-control telephone-eligibility" id="telephone-eligibility-control" hidden>
+        <legend>電話等再診の算定要件</legend>
+        <p class="muted control-note">既診関係は同じ施設の受診履歴から判定します。</p>
+        <label>
+          <span>患者・家族からの相談</span>
+          <select id="telephone-patient-initiated">
+            <option value="unknown">未確認</option>
+            <option value="true">あり</option>
+            <option value="false">なし</option>
+          </select>
+        </label>
+        <label>
+          <span>治療上必要な指示</span>
+          <select id="telephone-instruction-given">
+            <option value="unknown">未確認</option>
+            <option value="true">実施</option>
+            <option value="false">未実施</option>
+          </select>
+        </label>
+        <label>
+          <span>定期的な医学管理</span>
+          <select id="telephone-scheduled-management">
+            <option value="unknown">未確認</option>
+            <option value="false">該当しない</option>
+            <option value="true">該当する</option>
+          </select>
+        </label>
       </fieldset>
       <fieldset class="setting-control" id="same-building-control" disabled>
         <legend>同一建物区分</legend>

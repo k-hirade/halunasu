@@ -9,6 +9,7 @@ const visitTypeSettings = new Map([
   ["電話", "outpatient"],
   ["電話再診", "outpatient"]
 ]);
+const telephoneVisitTypes = new Set(["電話", "電話再診"]);
 
 export function deriveMonthlyChartEncounterPlans({
   charts = [],
@@ -23,11 +24,13 @@ export function deriveMonthlyChartEncounterPlans({
   return charts.map((chart, index) => {
     const visitType = auditVisitType(chart);
     const setting = override || deriveEncounterSetting(chart, index);
-    const encounterDetails = deriveEncounterDetails(patient, setting);
+    const visitKind = override ? null : deriveVisitKind(chart);
+    const encounterDetails = deriveEncounterDetails(patient, setting, visitKind);
     return {
       serviceDate: String(chart?.service_date || "").trim(),
       visitType,
       setting,
+      visitKind,
       encounterDetails
     };
   });
@@ -38,6 +41,7 @@ export function encounterPlanAuditRows(plans = []) {
     serviceDate: String(plan?.serviceDate || ""),
     visitType: String(plan?.visitType || ""),
     setting: String(plan?.setting || ""),
+    visitKind: plan?.visitKind || null,
     sameBuilding: plan?.encounterDetails?.sameBuilding ?? null,
     singleBuildingPatientCount: plan?.encounterDetails?.singleBuildingPatientCount ?? null
   }));
@@ -249,9 +253,18 @@ export function deriveEncounterSetting(chart = {}, index = 0) {
   return mapped[0].setting;
 }
 
-export function deriveEncounterDetails(patient = {}, setting = "") {
+export function deriveEncounterDetails(patient = {}, setting = "", visitKind = null) {
   if (!encounterSettings.has(setting)) {
     throw new Error(`unsupported encounter setting: ${setting || "(empty)"}`);
+  }
+  if (visitKind === "telephone_revisit") {
+    if (setting !== "outpatient") {
+      throw new Error("telephone_revisit requires outpatient setting");
+    }
+    return {
+      visitKind: "telephone_revisit",
+      visitKindSource: "user"
+    };
   }
   if (!["home_visit", "house_call"].includes(setting)) {
     return undefined;
@@ -271,6 +284,16 @@ export function deriveEncounterDetails(patient = {}, setting = "") {
     sameBuildingSource: "user",
     singleBuildingPatientCount: patientCount
   };
+}
+
+export function deriveVisitKind(chart = {}) {
+  const values = [
+    normalizeVisitType(chart?.visit_type),
+    normalizeVisitType(chart?.status)
+  ].filter(Boolean);
+  return values.some((value) => telephoneVisitTypes.has(value))
+    ? "telephone_revisit"
+    : null;
 }
 
 function normalizeEncounterSettingOverride(value) {

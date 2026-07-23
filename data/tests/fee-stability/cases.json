@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "fee-extraction-stability-cases.v1",
+  "syntheticDataOnly": true,
+  "description": "管理継続記載を当日実施イベントと誤認した場合に候補が揺れる一般構造を合成したコーパス",
+  "cases": [
+    {
+      "id": "management-heavy-continuation",
+      "title": "複数の慢性管理方針が並ぶ外来経過観察",
+      "sourcePattern": "管理記載過多で抽出イベント数が大きく揺れる構造",
+      "serviceDate": "2026-06-09",
+      "setting": "outpatient",
+      "patient": {
+        "birthDate": "1954-02-14",
+        "sex": "female"
+      },
+      "diagnoses": [
+        "慢性心不全",
+        "高血圧症",
+        "脂質異常症"
+      ],
+      "clinicalText": "S）息切れ、胸痛、浮腫の増悪なし。服薬を継続できている。\nO）血圧126/72mmHg、脈拍68回/分、SpO2 98%。呼吸音清、下腿浮腫なし。本日は検査、注射、処置を実施していない。\nA）慢性心不全、高血圧症、脂質異常症はいずれも安定。\nP）慢性心不全の管理を継続。血圧管理を継続。脂質管理を継続。食事・運動に関する従来の療養方針を継続し、次回も経過を確認する。"
+    },
+    {
+      "id": "suction-management-continuation-home",
+      "title": "在宅での喀痰吸引管理継続",
+      "sourcePattern": "喀痰吸引の管理方針を当日処置と誤認しやすい構造",
+      "serviceDate": "2026-06-16",
+      "setting": "home_visit",
+      "encounterDetails": {
+        "sameBuilding": false,
+        "sameBuildingSource": "user",
+        "singleBuildingPatientCount": 1
+      },
+      "patient": {
+        "birthDate": "1947-08-03",
+        "sex": "male"
+      },
+      "diagnoses": [
+        "脳梗塞後遺症",
+        "嚥下障害"
+      ],
+      "clinicalText": "S）家族より、痰の量は前回と同程度で発熱や呼吸苦はないとのこと。\nO）体温36.4℃、SpO2 97%。呼吸状態は安定。本日の診察中に喀痰吸引は施行していない。\nA）脳梗塞後遺症に伴う嚥下障害。全身状態は安定。\nP）家族による必要時の喀痰吸引管理を継続する。吸引手順と連絡基準は従来どおりとし、訪問看護と連携を継続する。"
+    },
+    {
+      "id": "suction-management-continuation-plan",
+      "title": "必要時吸引を含む退院後管理方針",
+      "sourcePattern": "計画・管理継続と当日実施が同じ段落に近接する構造",
+      "serviceDate": "2026-06-23",
+      "setting": "outpatient",
+      "patient": {
+        "birthDate": "1968-11-21",
+        "sex": "other"
+      },
+      "diagnoses": [
+        "神経筋疾患",
+        "慢性呼吸不全"
+      ],
+      "clinicalText": "S）退院後の呼吸状態に変化なし。自宅で必要時吸引を行っている。\nO）SpO2 96%（室内気）。聴診上、新たな異常なし。本日は吸引、ネブライザー、酸素投与を施行していない。\nA）神経筋疾患に伴う慢性呼吸不全は安定。\nP）必要時の吸引管理を継続し、痰量増加時は訪問看護へ連絡する方針を再確認した。次回診察まで現在の管理計画を継続する。"
+    }
+  ]
+}

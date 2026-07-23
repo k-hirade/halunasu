@@ -4,7 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from medical_fee_calculation.checks_api import check_lookup, disease_act_candidates, resolve_diseases
+from medical_fee_calculation.checks_api import (
+    check_lookup,
+    disease_act_candidates,
+    resolve_diseases,
+    standing_fee_families,
+)
 from medical_fee_calculation.db import connect, initialize_schema
 
 
@@ -156,6 +161,85 @@ class ChecksApiTest(unittest.TestCase):
             self.assertEqual(exclusions[0]["baseCode"], "114001110")
             self.assertEqual(exclusions[0]["excludedCode"], "112011010")
             self.assertEqual(exclusions[0]["ruleKind"], "1")
+
+    def test_standing_fee_families_are_generated_from_master_hierarchy_and_monthly_limits(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "master.sqlite"
+            conn = connect(db_path)
+            try:
+                initialize_schema(conn)
+                conn.executemany(
+                    "INSERT INTO master_sources "
+                    "(id, source_type, source_version, raw_path, checksum_sha256, encoding, row_count, imported_at) "
+                    "VALUES (?, ?, '2026-test', 'source', ?, 'cp932', 2, ?)",
+                    [
+                        (1, "medical_procedure_master", "procedure-sha", "2026-06-01T00:00:00Z"),
+                        (2, "medical_electronic_fee_table", "frequency-sha", "2026-06-02T00:00:00Z"),
+                    ],
+                )
+                conn.executemany(
+                    "INSERT INTO medical_procedures "
+                    "(source_id, code, short_name, base_name, points, facility_standard_codes, "
+                    "chapter, part, alpha_part, section, branch, item, effective_from, effective_to, raw_row_json) "
+                    "VALUES (1, ?, ?, ?, ?, ?, '1', '2', 'B', '3', '4', ?, '2026-06-01', '9999-12-31', '[]')",
+                    [
+                        (
+                            "113000001",
+                            "在宅呼吸管理料（区分１）",
+                            "在宅呼吸管理料",
+                            2800,
+                            '["803","804"]',
+                            "1",
+                        ),
+                        (
+                            "113000002",
+                            "在宅呼吸管理料（区分２）",
+                            "在宅呼吸管理料",
+                            2400,
+                            '["803"]',
+                            "2",
+                        ),
+                    ],
+                )
+                conn.executemany(
+                    "INSERT INTO electronic_frequency_limits "
+                    "(source_id, procedure_code, procedure_name, limit_code, limit_name, effective_from, effective_to, raw_row_json) "
+                    "VALUES (2, ?, ?, '132', '２月', '2026-06-01', '9999-12-31', ?)",
+                    [
+                        (
+                            "113000001",
+                            "在宅呼吸管理料（区分１）",
+                            '["0","113000001","在宅呼吸管理料","132","２月","2"]',
+                        ),
+                        (
+                            "113000002",
+                            "在宅呼吸管理料（区分２）",
+                            '["0","113000002","在宅呼吸管理料","132","２月","2"]',
+                        ),
+                    ],
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            result = standing_fee_families({
+                "db_path": str(db_path),
+                "service_date": "2026-07-01",
+            })
+
+        self.assertEqual(len(result["families"]), 1)
+        family = result["families"][0]
+        self.assertEqual([variant["code"] for variant in family["variants"]], [
+            "113000001",
+            "113000002",
+        ])
+        self.assertEqual(
+            family["variants"][0]["frequencyLimits"][0],
+            {"unitCode": "132", "unit": "２月", "windowMonths": 2, "maxCount": 2},
+        )
+        self.assertEqual(family["variants"][0]["facilityStandardCodes"], ["803", "804"])
+        self.assertIn("在宅呼吸管理", family["aliases"])
+        self.assertEqual(result["source"]["frequencyVersion"], "2026-test")
 
     def test_disease_act_candidates_resolves_filters_and_groups_families(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

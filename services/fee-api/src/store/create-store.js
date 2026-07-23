@@ -87,6 +87,31 @@ export class LazyFirestoreFeeStore {
     return this.call("deleteExtractionSnapshotsForSource", orgId, sourceSessionId);
   }
 
+  async getStandingBillingProfile(orgId, standingFactId) {
+    return this.call("getStandingBillingProfile", orgId, standingFactId);
+  }
+
+  async listStandingBillingProfilesForPatient(orgId, facilityId, canonicalPatientId) {
+    return this.call(
+      "listStandingBillingProfilesForPatient",
+      orgId,
+      facilityId,
+      canonicalPatientId
+    );
+  }
+
+  async recordStandingBillingEvidence(orgId, input) {
+    return this.call("recordStandingBillingEvidence", orgId, input);
+  }
+
+  async updateStandingBillingProfileStatus(orgId, standingFactId, input) {
+    return this.call("updateStandingBillingProfileStatus", orgId, standingFactId, input);
+  }
+
+  async updateStandingBillingProfileManualState(orgId, standingFactId, input) {
+    return this.call("updateStandingBillingProfileManualState", orgId, standingFactId, input);
+  }
+
   async getSession(orgId, feeSessionId) {
     return this.call("getSession", orgId, feeSessionId);
   }

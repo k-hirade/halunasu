@@ -6,17 +6,38 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
+import unicodedata
 from pathlib import Path
 from typing import Any
 
 from medical_fee_calculation.db import connect, initialize_schema
-from medical_fee_calculation.name_scan import strip_parenthetical_qualifiers
+from medical_fee_calculation.name_scan import _scan_aliases, strip_parenthetical_qualifiers
 
 # 傷病名を条件としない特殊コード(支払基金チェックマスタ)。適応判定の対象外。
 NON_DISEASE_CODES = frozenset({"0000000", "0000001", "0000002", "0000003"})
+STANDING_FEE_MONTH_WINDOWS = {
+    "月": 1,
+    "２月": 2,
+    "３月": 3,
+    "４月": 4,
+    "６月": 6,
+    "１２月": 12,
+    "５年": 60,
+}
+STANDING_FEE_ALPHA_PARTS = frozenset({"B", "C"})
+STANDING_ALIAS_SUFFIXES = (
+    "指導管理料",
+    "指導料",
+    "管理料",
+    "材料加算",
+    "機器加算",
+    "加算",
+    "療法",
+)
 
 
 def check_lookup(payload: dict[str, Any]) -> dict[str, Any]:
@@ -71,6 +92,249 @@ def check_lookup(payload: dict[str, Any]) -> dict[str, Any]:
         }
     finally:
         conn.close()
+
+
+def standing_fee_families(payload: dict[str, Any]) -> dict[str, Any]:
+    """Build the recurring fee-family catalog from current master attributes.
+
+    This catalog is deliberately generated from the electronic frequency table
+    and medical fee-table hierarchy. It is used only for human-review
+    candidates; it never confirms a fee by itself.
+    """
+
+    db_path = payload.get("db_path") or os.environ.get("FEE_MASTER_DB_PATH")
+    if not db_path:
+        raise ValueError("db_path or FEE_MASTER_DB_PATH is required")
+    service_date = str(payload.get("service_date") or payload.get("serviceDate") or "").strip()
+    if not service_date:
+        raise ValueError("service_date is required")
+
+    conn = connect(Path(str(db_path)))
+    try:
+        initialize_schema(conn)
+        procedure_source = conn.execute(
+            """
+            SELECT id, source_version, checksum_sha256
+            FROM master_sources
+            WHERE source_type = 'medical_procedure_master'
+            ORDER BY imported_at DESC, id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        frequency_source = conn.execute(
+            """
+            SELECT id, source_version, checksum_sha256
+            FROM master_sources
+            WHERE source_type = 'medical_electronic_fee_table'
+            ORDER BY imported_at DESC, id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        if procedure_source is None or frequency_source is None:
+            return {"families": [], "source": None}
+
+        rows = conn.execute(
+            """
+            SELECT
+                p.code,
+                p.short_name,
+                p.base_name,
+                p.points,
+                p.inout_applicability,
+                p.facility_standard_codes,
+                p.chapter,
+                p.part,
+                p.alpha_part,
+                p.section,
+                p.branch,
+                p.item,
+                f.limit_code,
+                f.limit_name,
+                f.raw_row_json
+            FROM electronic_frequency_limits f
+            JOIN medical_procedures p
+              ON p.source_id = ?
+             AND p.code = f.procedure_code
+            WHERE f.source_id = ?
+              AND (p.effective_from IS NULL OR p.effective_from <= ?)
+              AND (p.effective_to IS NULL OR p.effective_to >= ?)
+              AND (f.effective_from IS NULL OR f.effective_from <= ?)
+              AND (f.effective_to IS NULL OR f.effective_to >= ?)
+            ORDER BY p.chapter, p.part, p.alpha_part, p.section, p.branch, p.item, p.code, f.limit_code
+            """,
+            (
+                int(procedure_source["id"]),
+                int(frequency_source["id"]),
+                service_date,
+                service_date,
+                service_date,
+                service_date,
+            ),
+        ).fetchall()
+
+        grouped: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            alpha_part = str(row["alpha_part"] or "").strip().upper()
+            limit_name = str(row["limit_name"] or "").strip()
+            window_months = STANDING_FEE_MONTH_WINDOWS.get(limit_name)
+            if alpha_part not in STANDING_FEE_ALPHA_PARTS or window_months is None:
+                continue
+            max_count = _frequency_limit_count(row["raw_row_json"])
+            if max_count is None:
+                continue
+
+            name = str(row["short_name"] or "").strip()
+            family_name = strip_parenthetical_qualifiers(name).strip() or name
+            hierarchy = {
+                "chapter": str(row["chapter"] or "").strip(),
+                "part": str(row["part"] or "").strip(),
+                "alphaPart": alpha_part,
+                "section": str(row["section"] or "").strip(),
+                "branch": str(row["branch"] or "").strip(),
+            }
+            family_key = "|".join(
+                [
+                    hierarchy["chapter"],
+                    hierarchy["part"],
+                    hierarchy["alphaPart"],
+                    hierarchy["section"],
+                    hierarchy["branch"],
+                    _normalize_standing_name(family_name),
+                ]
+            )
+            family_id = "fee_family_" + hashlib.sha256(family_key.encode("utf-8")).hexdigest()[:24]
+            family = grouped.setdefault(
+                family_id,
+                {
+                    "familyId": family_id,
+                    "name": family_name,
+                    "hierarchy": hierarchy,
+                    "aliases": set(),
+                    "variants": {},
+                },
+            )
+            family["aliases"].update(_standing_aliases(name))
+            family["aliases"].update(_standing_aliases(family_name))
+
+            code = str(row["code"] or "").strip()
+            variant = family["variants"].setdefault(
+                code,
+                {
+                    "code": code,
+                    "name": name,
+                    "baseName": str(row["base_name"] or "").strip(),
+                    "points": float(row["points"] or 0),
+                    "inoutApplicability": str(row["inout_applicability"] or "").strip(),
+                    "facilityStandardCodes": _split_master_codes(row["facility_standard_codes"]),
+                    "item": str(row["item"] or "").strip(),
+                    "aliases": sorted(_standing_aliases(name)),
+                    "frequencyLimits": [],
+                },
+            )
+            frequency_key = (str(row["limit_code"] or "").strip(), window_months, max_count)
+            if frequency_key not in {
+                (
+                    entry["unitCode"],
+                    entry["windowMonths"],
+                    entry["maxCount"],
+                )
+                for entry in variant["frequencyLimits"]
+            }:
+                variant["frequencyLimits"].append(
+                    {
+                        "unitCode": frequency_key[0],
+                        "unit": limit_name,
+                        "windowMonths": window_months,
+                        "maxCount": max_count,
+                    }
+                )
+
+        families: list[dict[str, Any]] = []
+        for family in grouped.values():
+            variants = sorted(family["variants"].values(), key=lambda value: value["code"])
+            for variant in variants:
+                variant["frequencyLimits"].sort(
+                    key=lambda value: (value["windowMonths"], value["maxCount"], value["unitCode"])
+                )
+            families.append(
+                {
+                    **family,
+                    "aliases": sorted(family["aliases"], key=lambda value: (-len(value), value)),
+                    "variants": variants,
+                }
+            )
+        families.sort(key=lambda value: (value["hierarchy"]["alphaPart"], value["name"], value["familyId"]))
+        return {
+            "families": families,
+            "source": {
+                "serviceDate": service_date,
+                "procedureSourceId": int(procedure_source["id"]),
+                "procedureVersion": str(procedure_source["source_version"] or ""),
+                "procedureChecksum": str(procedure_source["checksum_sha256"] or ""),
+                "frequencySourceId": int(frequency_source["id"]),
+                "frequencyVersion": str(frequency_source["source_version"] or ""),
+                "frequencyChecksum": str(frequency_source["checksum_sha256"] or ""),
+            },
+        }
+    finally:
+        conn.close()
+
+
+def _frequency_limit_count(raw_row_json: Any) -> int | None:
+    try:
+        raw = json.loads(raw_row_json or "[]")
+        count = int(str(raw[5]).strip() or "0") if len(raw) > 5 else 0
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return count if count > 0 else None
+
+
+def _standing_aliases(name: str) -> set[str]:
+    aliases = {_normalize_standing_name(value) for value in _scan_aliases(name)}
+    aliases.add(_normalize_standing_name(name))
+    aliases.add(_normalize_standing_name(strip_parenthetical_qualifiers(name)))
+    expanded = set(aliases)
+    for alias in list(aliases):
+        if alias.endswith("料") and len(alias) > 4:
+            expanded.add(alias[:-1])
+        current = alias
+        for _ in range(3):
+            stripped = next(
+                (
+                    current[: -len(suffix)]
+                    for suffix in STANDING_ALIAS_SUFFIXES
+                    if current.endswith(suffix) and len(current) > len(suffix) + 1
+                ),
+                current,
+            )
+            if stripped == current:
+                break
+            expanded.add(stripped)
+            current = stripped
+        if current.startswith("在宅") and len(current) > 4:
+            expanded.add(current[2:])
+    return {value for value in expanded if len(value) >= 4}
+
+
+def _normalize_standing_name(value: Any) -> str:
+    return "".join(unicodedata.normalize("NFKC", str(value or "")).split()).lower()
+
+
+def _split_master_codes(value: Any) -> list[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    try:
+        decoded = json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        decoded = None
+    if isinstance(decoded, list):
+        return sorted({str(item).strip() for item in decoded if str(item).strip()})
+    separators = (",", "、", ";", "；", "|", " ")
+    values = [text]
+    for separator in separators:
+        values = [part for item in values for part in item.split(separator)]
+    return sorted({part.strip() for part in values if part.strip()})
 
 
 def _procedure_meta(conn: Any, codes: list[str]) -> dict[str, dict[str, str]]:
@@ -675,6 +939,8 @@ def main() -> None:
             result = resolve_diseases(payload)
         elif op == "disease_act_candidates":
             result = disease_act_candidates(payload)
+        elif op == "standing_fee_families":
+            result = standing_fee_families(payload)
         else:
             result = check_lookup(payload)
     except Exception as exc:  # noqa: BLE001 - command boundary returns structured failure.

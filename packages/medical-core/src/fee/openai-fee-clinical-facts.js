@@ -7,11 +7,19 @@ import { createStructuredOpenAiResponse } from "../openai/responses-structured.j
 // v13: strict json_schema は全プロパティ必須のため、空フィールドの出力コスト(~200tok/件)が残った。
 // clinical_events を anyOf の型別variant(投薬/検体/画像/部位処置/一般)に分割し、
 // イベント種別に関係するフィールドだけを出力させる(type enum を互いに素に分割して判別)。
-// v14: 全行カバレッジ契約。入力の各行に has_billable_act 判定を強制し、
+// v14: 全行カバレッジ契約。入力の各行に行為判定を強制し、
 // 「何をイベントにするか」の選択自由度(サンプリング毎の粒度揺れ・拾い漏れの根因)を奪う。
-// true判定の行は必ず対応する clinical_event を持つこと(サーバ側で突合し、
-// 不整合行は決定論リカバリ+確認事項になる)。
-export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v14";
+// v15: 行為の当日実施と恒常管理の継続を line_role で分離する。
+// performed の行だけが clinical_event を必須とし、management_continuation は
+// standing_mentions に保持して当日の算定イベントにはしない。
+export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v15";
+
+export const FEE_CLINICAL_LINE_ROLES = Object.freeze([
+  "performed",
+  "management_continuation",
+  "plan",
+  "none"
+]);
 
 const LEGACY_EVENT_STATUSES = [
   "performed",
@@ -154,6 +162,7 @@ export const feeClinicalFactsSchema = {
     "visit_facts",
     "diagnoses",
     "line_review",
+    "standing_mentions",
     "clinical_events",
     "checklist_findings",
     "excluded_events",
@@ -221,10 +230,27 @@ export const feeClinicalFactsSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["line_id", "has_billable_act"],
+        required: ["line_id", "line_role"],
         properties: {
           line_id: shortString(20),
-          has_billable_act: { type: "boolean" }
+          line_role: { type: "string", enum: FEE_CLINICAL_LINE_ROLES }
+        }
+      }
+    },
+    standing_mentions: {
+      type: "array",
+      maxItems: 24,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["line_id", "target", "status"],
+        properties: {
+          line_id: shortString(20),
+          target: shortString(70),
+          status: {
+            type: "string",
+            enum: ["continued", "changed", "stopped"]
+          }
         }
       }
     },
@@ -321,6 +347,7 @@ export const feeClinicalLineSubsetFactsSchema = {
   required: [
     "diagnoses",
     "line_review",
+    "standing_mentions",
     "clinical_events",
     "excluded_events",
     "missing_information",
@@ -329,6 +356,7 @@ export const feeClinicalLineSubsetFactsSchema = {
   properties: {
     diagnoses: feeClinicalFactsSchema.properties.diagnoses,
     line_review: feeClinicalFactsSchema.properties.line_review,
+    standing_mentions: feeClinicalFactsSchema.properties.standing_mentions,
     clinical_events: feeClinicalFactsSchema.properties.clinical_events,
     excluded_events: feeClinicalFactsSchema.properties.excluded_events,
     missing_information: feeClinicalFactsSchema.properties.missing_information,
@@ -446,11 +474,12 @@ export async function extractFeeClinicalFactsWithOpenAi({
       "You are a Japanese medical billing clinical-structure extraction engine.",
       "Return only facts supported by the provided clinical text and session context.",
       normalizedScope === "line_subset"
-        ? "LINE SUBSET MODE: Use only the supplied Preprocessed clinical lines and the Clinical text reconstructed from those same lines. Do not infer or mention any omitted line. Return no visit-level or checklist fields; extract only diagnoses, line_review, clinical_events, excluded_events, missing_information, and review_flags for the supplied lines."
+        ? "LINE SUBSET MODE: Use only the supplied Preprocessed clinical lines and the Clinical text reconstructed from those same lines. Do not infer or mention any omitted line. Return no visit-level or checklist fields; extract only diagnoses, line_review, standing_mentions, clinical_events, excluded_events, missing_information, and review_flags for the supplied lines."
         : "FULL DOCUMENT MODE: Extract visit-level facts and line-level events from the complete supplied note.",
       "Your output is clinical_events, not billing candidates. Do not calculate points. Do not choose billing codes. Do not decide billable/proposal/review eligibility. Downstream master search and rules will decide those.",
-      "line_review is mandatory full coverage: output exactly one entry for EVERY line_id in Preprocessed clinical lines, in order, no omissions. Set has_billable_act=true when the line records a clinical act performed/prescribed/administered at this clinic during this encounter (medication, injection, test, imaging, procedure, management/guidance, document issuance, etc.). Set false for symptoms, observations, assessments, plans without execution, and administrative notes.",
-      "Every line marked has_billable_act=true MUST be referenced by evidence_line_ids of at least one clinical_event. If multiple acts are on one line, create one clinical_event per act. Do not skip an act because it seems minor or ambiguous; extract it and let downstream decide.",
+      "line_review is mandatory full coverage: output exactly one entry for EVERY line_id in Preprocessed clinical lines, in order, no omissions. Set line_role=performed only when the line records an act performed, prescribed, administered, issued, or instructed by this clinic during this encounter. Set line_role=management_continuation for a standing therapy/device/management state that is merely continuing, line_role=plan for future plans or orders without execution, and line_role=none for symptoms, observations, assessments, and administrative notes.",
+      "Every line marked line_role=performed MUST be referenced by evidence_line_ids of at least one clinical_event. If multiple acts are on one line, create one clinical_event per act. Do not create a clinical_event for a line that only says management is continuing.",
+      "For every line_role=management_continuation entry, return one or more standing_mentions when a concrete therapy, device, or management target is stated. Use status=continued for ongoing management, changed for a current change without a separately performed act, and stopped for discontinuation, withdrawal, removal, discharge, or death. Do not create standing_mentions from vague phrases without a target.",
       checklistInstructionForMode(effectiveChecklistMode),
       "For each checklist menu item, return exactly one checklist_finding with the same menu_id. Use status=performed_today only when the note supports that the item happened in this clinic during this encounter. Use planned for future/order/予定/依頼/予約/次回. Use past_or_external for 前回/以前/他院/前医/持参/健診/他科/主治医. Use mentioned_not_performed when the note says the act was not done. Use not_in_text when the menu item is not actually supported by the note. Use unclear when named but timing/ownership/performance cannot be determined.",
       "For checklist_findings, set evidence_line_ids to the supporting line_id values from Preprocessed clinical lines (at most 2). When status is not_in_text leave evidence_line_ids empty. Do not quote text; the line ids are the evidence. Do not invent line ids.",

@@ -11,7 +11,8 @@ const apiSource = await readFile(path.resolve(here, "../extension/lib/api.js"), 
 test("calculate request snapshot keeps the v1 sidecar boundary", () => {
   for (const field of [
     "contractVersion", "sourceSystem", "externalPatientId", "sourceRecordId", "serviceDate",
-    "setting", "encounterTypeSource", "sameBuilding", "sameBuildingSource",
+    "setting", "encounterTypeSource", "visitKind", "visitKindSource", "telephoneEligibility",
+    "sameBuilding", "sameBuildingSource",
     "singleBuildingPatientCount", "clinicalText", "extractionProof"
   ]) {
     assert.match(panelSource, new RegExp(`\\b${field}\\b`));

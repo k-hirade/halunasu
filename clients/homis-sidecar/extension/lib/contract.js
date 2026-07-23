@@ -10,8 +10,11 @@
     "往診": "house_call",
     "臨時往診": "house_call",
     "外来": "outpatient",
-    "外来診療": "outpatient"
+    "外来診療": "outpatient",
+    "電話": "outpatient",
+    "電話再診": "outpatient"
   });
+  const TELEPHONE_REVISIT_LABELS = new Set(["電話", "電話再診"]);
 
   function readIdentity(documentRef, options = {}) {
     const href = options.locationHref || global.location?.href || "";
@@ -80,10 +83,15 @@
       .trim();
     const normalizedLabel = statusLabel.replace(/\s+/gu, "");
     const encounterType = ENCOUNTER_TYPES[normalizedLabel] || null;
+    const visitKind = TELEPHONE_REVISIT_LABELS.has(normalizedLabel)
+      ? "telephone_revisit"
+      : null;
     return {
       encounterType,
       encounterTypeLabel: statusLabel || null,
-      encounterTypeSource: encounterType ? "dom" : null
+      encounterTypeSource: encounterType ? "dom" : null,
+      visitKind,
+      visitKindSource: visitKind ? "dom" : null
     };
   }
 

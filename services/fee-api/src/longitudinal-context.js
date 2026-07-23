@@ -1,6 +1,13 @@
 import crypto from "node:crypto";
 
-export const EXTRACTION_SNAPSHOT_SCHEMA_VERSION = 2;
+export const EXTRACTION_SNAPSHOT_SCHEMA_VERSION = 3;
+
+const CLINICAL_LINE_ROLES = new Set([
+  "performed",
+  "management_continuation",
+  "plan",
+  "none"
+]);
 
 const VISIT_FACTS_SENSITIVE_PRESCRIPTION_PATTERN = /(?:処方箋|(?:院外|院内)(?:での?)?処方|処方(?:は|を)?(?:院外|院内)|一般名(?:処方|で処方|記載)|リフィル)/u;
 
@@ -100,8 +107,19 @@ export function buildExtractionSnapshotCore({
   const currentLines = clinicalLineKeyEntries(preprocessing?.lines || []);
   const lineById = new Map(currentLines.map((line) => [line.lineId, line]));
   const lineReview = new Map((Array.isArray(facts?.line_review) ? facts.line_review : [])
-    .map((entry) => [String(entry?.line_id || entry?.lineId || "").trim(), entry?.has_billable_act === true])
+    .map((entry) => [String(entry?.line_id || entry?.lineId || "").trim(), clinicalLineRole(entry)])
     .filter(([lineId]) => lineId));
+  const standingMentionsByLineId = new Map();
+  for (const mention of Array.isArray(facts?.standing_mentions) ? facts.standing_mentions : []) {
+    const lineId = String(mention?.line_id || mention?.lineId || "").trim();
+    const normalized = sanitizeStandingMention(mention);
+    if (!lineId || !normalized || !lineById.has(lineId)) {
+      continue;
+    }
+    const current = standingMentionsByLineId.get(lineId) || [];
+    current.push(normalized);
+    standingMentionsByLineId.set(lineId, dedupeStandingMentions(current));
+  }
   const eventsByLineId = new Map();
   const requiresReextractLineIds = new Set();
 
@@ -128,13 +146,15 @@ export function buildExtractionSnapshotCore({
     diagnoses: sanitizeDiagnoses(facts?.diagnoses),
     lines: currentLines.map((line) => {
       const events = eventsByLineId.get(line.lineId) || [];
-      const hasBillableAct = lineReview.get(line.lineId) === true;
+      const lineRole = lineReview.get(line.lineId) || "none";
       return {
         lineKey: line.lineKey,
-        hasBillableAct,
+        lineRole,
         events,
+        standingMentions: standingMentionsByLineId.get(line.lineId) || [],
         visitFactsSensitive: visitFactsSensitivePrescriptionLine(line.normalizedText),
-        requiresReextract: requiresReextractLineIds.has(line.lineId) || (hasBillableAct && !events.length)
+        requiresReextract: requiresReextractLineIds.has(line.lineId)
+          || (lineRole === "performed" && !events.length)
       };
     })
   };
@@ -209,6 +229,7 @@ export function planExtractionMemo({
 export function clinicalFactsFromMemo(snapshot = {}, memoPlan = {}, options = {}) {
   const lineReview = [];
   const clinicalEvents = [];
+  const standingMentions = [];
   for (const match of Array.isArray(memoPlan.continued) ? memoPlan.continued : []) {
     const lineId = String(match?.current?.lineId || "").trim();
     if (!lineId) {
@@ -216,8 +237,19 @@ export function clinicalFactsFromMemo(snapshot = {}, memoPlan = {}, options = {}
     }
     lineReview.push({
       line_id: lineId,
-      has_billable_act: match?.previous?.hasBillableAct === true
+      line_role: clinicalLineRole(match?.previous)
     });
+    for (const mention of Array.isArray(match?.previous?.standingMentions)
+      ? match.previous.standingMentions
+      : []) {
+      const normalized = sanitizeStandingMention(mention);
+      if (normalized) {
+        standingMentions.push({
+          line_id: lineId,
+          ...normalized
+        });
+      }
+    }
     for (const event of Array.isArray(match?.previous?.events) ? match.previous.events : []) {
       clinicalEvents.push({
         ...event,
@@ -235,12 +267,49 @@ export function clinicalFactsFromMemo(snapshot = {}, memoPlan = {}, options = {}
     visit_facts: sanitizeVisitFacts(snapshot.visitFacts),
     diagnoses: sanitizeDiagnoses(snapshot.diagnoses),
     line_review: lineReview,
+    standing_mentions: dedupeStandingMentions(standingMentions, { includeLineId: true }),
     clinical_events: clinicalEvents,
     checklist_findings: [],
     excluded_events: [],
     missing_information: [],
     review_flags: []
   };
+}
+
+function clinicalLineRole(entry = {}) {
+  const role = String(entry?.line_role || entry?.lineRole || "").trim();
+  if (CLINICAL_LINE_ROLES.has(role)) {
+    return role;
+  }
+  return "none";
+}
+
+function sanitizeStandingMention(value = {}) {
+  const target = String(value?.target || "").trim().slice(0, 70);
+  const status = enumValue(value?.status, ["continued", "changed", "stopped"], "");
+  if (!target || !status) {
+    return null;
+  }
+  return { target, status };
+}
+
+function dedupeStandingMentions(values = [], { includeLineId = false } = {}) {
+  const result = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const normalized = sanitizeStandingMention(value);
+    const lineId = includeLineId ? String(value?.line_id || value?.lineId || "").trim() : "";
+    if (!normalized || (includeLineId && !lineId)) {
+      continue;
+    }
+    const key = `${lineId}\u001f${normalized.target}\u001f${normalized.status}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(includeLineId ? { line_id: lineId, ...normalized } : normalized);
+  }
+  return result;
 }
 
 function sanitizeVisitType(value = null) {

@@ -30,13 +30,26 @@ test("monthly chart plan derives mixed home visit and telephone settings for fac
     sameBuildingSource: "user",
     singleBuildingPatientCount: 4
   });
-  assert.equal(plans[2].encounterDetails, undefined);
+  assert.equal(plans[2].visitKind, "telephone_revisit");
+  assert.deepEqual(plans[2].encounterDetails, {
+    visitKind: "telephone_revisit",
+    visitKindSource: "user"
+  });
   assert.deepEqual(encounterPlanAuditRows(plans)[0], {
     serviceDate: "2026-06-02",
     visitType: "定期",
     setting: "home_visit",
+    visitKind: null,
     sameBuilding: true,
     singleBuildingPatientCount: 4
+  });
+  assert.deepEqual(encounterPlanAuditRows(plans)[2], {
+    serviceDate: "2026-06-16",
+    visitType: "電話",
+    setting: "outpatient",
+    visitKind: "telephone_revisit",
+    sameBuilding: null,
+    singleBuildingPatientCount: null
   });
 });
 
@@ -73,6 +86,7 @@ test("explicit encounter setting overrides chart labels but still derives compat
   });
 
   assert.equal(plans[0].setting, "home_visit");
+  assert.equal(plans[0].visitKind, null);
   assert.equal(plans[0].encounterDetails.sameBuilding, true);
   assert.equal(plans[0].encounterDetails.singleBuildingPatientCount, 6);
 });

@@ -34,6 +34,8 @@ test("automatic preview selects DOM-backed encounter details without calculating
       encounterType: "home_visit",
       encounterTypeLabel: "定期",
       encounterTypeSource: "dom",
+      visitKind: null,
+      visitKindSource: null,
       privateResidence: true,
       facilityResidence: false,
       singleBuildingPatientCount: null,
@@ -105,6 +107,26 @@ test("automatic preview selects DOM-backed encounter details without calculating
   const userPayload = await page.evaluate(() => globalThis.__sidecarTest.calculateCalls[1]);
   assert.equal(userPayload.setting, "outpatient");
   assert.equal(userPayload.encounterTypeSource, "user");
+  assert.equal(userPayload.visitKind, null);
+  assert.equal(userPayload.telephoneEligibility, null);
+
+  await page.click('input[name="setting"][value="telephone_revisit"]');
+  await page.selectOption("#telephone-patient-initiated", "true");
+  await page.selectOption("#telephone-instruction-given", "true");
+  await page.selectOption("#telephone-scheduled-management", "false");
+  await page.click("#calculate-button");
+  await page.waitForFunction(() => globalThis.__sidecarTest.calculateCalls.length === 3);
+  const telephonePayload = await page.evaluate(() => globalThis.__sidecarTest.calculateCalls[2]);
+  assert.equal(telephonePayload.setting, "outpatient");
+  assert.equal(telephonePayload.encounterTypeSource, "user");
+  assert.equal(telephonePayload.visitKind, "telephone_revisit");
+  assert.equal(telephonePayload.visitKindSource, "user");
+  assert.deepEqual(telephonePayload.telephoneEligibility, {
+    establishedPatient: null,
+    patientInitiated: true,
+    instructionGiven: true,
+    scheduledManagement: false
+  });
 
   await page.evaluate(() => {
     Object.assign(globalThis.__sidecarTest.snapshot, {
@@ -115,6 +137,8 @@ test("automatic preview selects DOM-backed encounter details without calculating
       encounterType: "house_call",
       encounterTypeLabel: "往診",
       encounterTypeSource: "dom",
+      visitKind: null,
+      visitKindSource: null,
       privateResidence: false,
       facilityResidence: true,
       singleBuildingPatientCount: 4,
@@ -139,7 +163,7 @@ test("automatic preview selects DOM-backed encounter details without calculating
   assert.deepEqual(switched, {
     encounter: "house_call",
     sameBuilding: "same",
-    calculateCalls: 2,
+    calculateCalls: 3,
     resultHidden: true
   });
 

@@ -29,6 +29,23 @@ const MASTER_TYPES = [
   ["comment", "コメント"],
   ["all", "すべて"]
 ];
+const TELEPHONE_ELIGIBILITY_OPTIONS = {
+  patientInitiated: [
+    { value: "unknown", label: "未確認" },
+    { value: "true", label: "患者・家族から相談" },
+    { value: "false", label: "医療機関側から連絡" }
+  ],
+  instructionGiven: [
+    { value: "unknown", label: "未確認" },
+    { value: "true", label: "必要な指示あり" },
+    { value: "false", label: "指示なし" }
+  ],
+  scheduledManagement: [
+    { value: "unknown", label: "未確認" },
+    { value: "false", label: "定期管理ではない" },
+    { value: "true", label: "定期管理に該当" }
+  ]
+};
 // サマリ兼フィルタのチップ。上部の重複した数値カードを廃止し、これ1本に集約する。
 const MONTHLY_PRIMARY_FILTERS = [
   ["all", "すべて"],
@@ -2669,7 +2686,7 @@ function FeeInputSummary({ departments, form, onOpenConditions, onOpenOrders, or
         </div>
         <div>
           <span>区分</span>
-          <strong>{encounterSettingLabel(form.setting)}</strong>
+          <strong>{encounterSettingLabel(form.setting, form.visitKind)}</strong>
         </div>
         <div>
           <span>診療日</span>
@@ -2787,14 +2804,65 @@ function FeeSettingsModal({
                     ariaLabel="区分"
                     options={[
                       { value: "outpatient", label: "外来" },
+                      { value: "telephone_revisit", label: "電話再診" },
                       { value: "home_visit", label: "訪問診療（在宅）" },
                       { value: "house_call", label: "往診（在宅）" },
                       { value: "inpatient", label: "入院（限定対応）" }
                     ]}
-                    value={form.setting}
-                    onValueChange={(value) => onUpdateForm("setting", value)}
+                    value={form.visitKind === "telephone_revisit" ? "telephone_revisit" : form.setting}
+                    onValueChange={(value) => {
+                      const telephoneRevisit = value === "telephone_revisit";
+                      onUpdateForm("setting", telephoneRevisit ? "outpatient" : value);
+                      onUpdateForm("visitKind", telephoneRevisit ? "telephone_revisit" : null);
+                      onUpdateForm("visitKindSource", telephoneRevisit ? "user" : null);
+                      if (!["home_visit", "house_call"].includes(value)) {
+                        onUpdateForm("sameBuilding", null);
+                        onUpdateForm("sameBuildingSource", null);
+                        onUpdateForm("singleBuildingPatientCount", null);
+                      }
+                      if (!telephoneRevisit) {
+                        onUpdateForm("telephonePatientInitiated", null);
+                        onUpdateForm("telephoneInstructionGiven", null);
+                        onUpdateForm("telephoneScheduledManagement", null);
+                      }
+                    }}
                   />
                 </label>
+                {form.visitKind === "telephone_revisit" ? (
+                  <>
+                    <div className="source-static-field">
+                      <span>既診関係</span>
+                      <strong>当該施設の履歴から判定</strong>
+                    </div>
+                    <label>
+                      <span>相談の起点</span>
+                      <AdminSelect
+                        ariaLabel="電話再診の相談起点"
+                        options={TELEPHONE_ELIGIBILITY_OPTIONS.patientInitiated}
+                        value={nullableBooleanSelectValue(form.telephonePatientInitiated)}
+                        onValueChange={(value) => onUpdateForm("telephonePatientInitiated", nullableBooleanFromSelect(value))}
+                      />
+                    </label>
+                    <label>
+                      <span>必要な指示</span>
+                      <AdminSelect
+                        ariaLabel="電話再診の必要な指示"
+                        options={TELEPHONE_ELIGIBILITY_OPTIONS.instructionGiven}
+                        value={nullableBooleanSelectValue(form.telephoneInstructionGiven)}
+                        onValueChange={(value) => onUpdateForm("telephoneInstructionGiven", nullableBooleanFromSelect(value))}
+                      />
+                    </label>
+                    <label>
+                      <span>定期的な医学管理</span>
+                      <AdminSelect
+                        ariaLabel="電話再診の定期的な医学管理"
+                        options={TELEPHONE_ELIGIBILITY_OPTIONS.scheduledManagement}
+                        value={nullableBooleanSelectValue(form.telephoneScheduledManagement)}
+                        onValueChange={(value) => onUpdateForm("telephoneScheduledManagement", nullableBooleanFromSelect(value))}
+                      />
+                    </label>
+                  </>
+                ) : null}
                 <label>
                   <span>受付時刻（任意）</span>
                   <input
@@ -4934,6 +5002,7 @@ function buildFeeSessionPayload({
     serviceDate: form.serviceDate,
     claimMonth: emptyToNull(form.claimMonth),
     setting: form.setting,
+    encounterDetails: encounterDetailsFromForm(form),
     // 空欄はnull=クリアの明示(undefinedだとPATCHでキーが落ち、保存値を消せない)。
     receptionTime: emptyToNull(form.receptionTime),
     clinicalText: form.clinicalText,
@@ -4954,6 +5023,14 @@ function defaultFeeForm() {
     serviceDate: today,
     claimMonth: today.slice(0, 7),
     setting: "outpatient",
+    sameBuilding: null,
+    sameBuildingSource: null,
+    singleBuildingPatientCount: null,
+    visitKind: null,
+    visitKindSource: null,
+    telephonePatientInitiated: null,
+    telephoneInstructionGiven: null,
+    telephoneScheduledManagement: null,
     receptionTime: "",
     clinicalText: "",
     diagnosesText: "",
@@ -4967,6 +5044,63 @@ function hasDiagnosisInput(value) {
 
 function defaultClaimMonth() {
   return tokyoClaimMonth();
+}
+
+function encounterDetailsFromForm(form = {}) {
+  const sameBuilding = typeof form.sameBuilding === "boolean" ? form.sameBuilding : null;
+  const visitKind = form.visitKind === "telephone_revisit" ? "telephone_revisit" : null;
+  if (sameBuilding === null && !visitKind) {
+    return null;
+  }
+  return {
+    sameBuilding,
+    sameBuildingSource: sameBuilding === null ? null : (form.sameBuildingSource || "user"),
+    singleBuildingPatientCount: sameBuilding === null
+      ? null
+      : (Number(form.singleBuildingPatientCount) > 0 ? Number(form.singleBuildingPatientCount) : null),
+    visitKind,
+    visitKindSource: visitKind ? (form.visitKindSource || "user") : null,
+    telephoneEligibility: visitKind
+      ? {
+          establishedPatient: null,
+          patientInitiated: typeof form.telephonePatientInitiated === "boolean"
+            ? form.telephonePatientInitiated
+            : null,
+          instructionGiven: typeof form.telephoneInstructionGiven === "boolean"
+            ? form.telephoneInstructionGiven
+            : null,
+          scheduledManagement: typeof form.telephoneScheduledManagement === "boolean"
+            ? form.telephoneScheduledManagement
+            : null
+        }
+      : null
+  };
+}
+
+function normalizedEncounterDetailsForComparison(encounterDetails = null) {
+  const telephoneEligibility = encounterDetails?.telephoneEligibility || {};
+  return encounterDetailsFromForm({
+    sameBuilding: encounterDetails?.sameBuilding ?? null,
+    sameBuildingSource: encounterDetails?.sameBuildingSource || null,
+    singleBuildingPatientCount: encounterDetails?.singleBuildingPatientCount ?? null,
+    visitKind: encounterDetails?.visitKind || null,
+    visitKindSource: encounterDetails?.visitKindSource || null,
+    telephonePatientInitiated: telephoneEligibility.patientInitiated ?? null,
+    telephoneInstructionGiven: telephoneEligibility.instructionGiven ?? null,
+    telephoneScheduledManagement: telephoneEligibility.scheduledManagement ?? null
+  });
+}
+
+function nullableBooleanSelectValue(value) {
+  if (value === true) return "true";
+  if (value === false) return "false";
+  return "unknown";
+}
+
+function nullableBooleanFromSelect(value) {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
 }
 
 function monthlyPatientKey(patient = {}) {
@@ -5195,6 +5329,8 @@ function appendManualBillingDraftItem(draft = {}, item = {}) {
 function formFromFeeSession(session = {}) {
   const fallback = defaultFeeForm();
   const editableCalculationOptions = userEditableCalculationOptions(session);
+  const encounterDetails = session.encounterDetails || {};
+  const telephoneEligibility = encounterDetails.telephoneEligibility || {};
   return {
     patientId: session.patientId || "",
     facilityId: session.facilityId || "",
@@ -5202,6 +5338,14 @@ function formFromFeeSession(session = {}) {
     serviceDate: session.serviceDate || fallback.serviceDate,
     claimMonth: session.claimMonth || String(session.serviceDate || fallback.serviceDate).slice(0, 7),
     setting: session.setting || "outpatient",
+    sameBuilding: encounterDetails.sameBuilding ?? null,
+    sameBuildingSource: encounterDetails.sameBuildingSource || null,
+    singleBuildingPatientCount: encounterDetails.singleBuildingPatientCount ?? null,
+    visitKind: encounterDetails.visitKind || null,
+    visitKindSource: encounterDetails.visitKindSource || null,
+    telephonePatientInitiated: telephoneEligibility.patientInitiated ?? null,
+    telephoneInstructionGiven: telephoneEligibility.instructionGiven ?? null,
+    telephoneScheduledManagement: telephoneEligibility.scheduledManagement ?? null,
     receptionTime: session.receptionTime || "",
     clinicalText: session.clinicalText || "",
     diagnosesText: formatDiagnoses(session.diagnoses),
@@ -5299,7 +5443,11 @@ function canReuseClinicalCalculationForManualChange({
     [formForCalculation.departmentId || null, feeSession.departmentId || null],
     [formForCalculation.serviceDate || null, feeSession.serviceDate || null],
     [formForCalculation.claimMonth || null, feeSession.claimMonth || null],
-    [formForCalculation.setting || "outpatient", feeSession.setting || "outpatient"]
+    [formForCalculation.setting || "outpatient", feeSession.setting || "outpatient"],
+    [
+      JSON.stringify(encounterDetailsFromForm(formForCalculation)),
+      JSON.stringify(normalizedEncounterDetailsForComparison(feeSession.encounterDetails))
+    ]
   ];
   return comparisons.every(([left, right]) => String(left || "") === String(right || ""));
 }
@@ -6098,7 +6246,8 @@ function ExtractionDegradedBanner({ calculationResult }) {
   );
 }
 
-function encounterSettingLabel(value) {
+function encounterSettingLabel(value, visitKind = null) {
+  if (visitKind === "telephone_revisit") return "電話再診";
   if (value === "inpatient") return "入院（限定対応）";
   if (value === "home_visit") return "訪問診療（在宅）";
   if (value === "house_call") return "往診（在宅）";
