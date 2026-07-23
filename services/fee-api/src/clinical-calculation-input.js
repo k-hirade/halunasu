@@ -740,6 +740,17 @@ export async function buildClinicalCalculationPreparation({
       reviewWarnings.push(...structured.reviewWarnings, ...ruleBased.reviewWarnings);
     }
 
+    // 明確な継続管理文はLLMがstanding_mentionsを落としても決定論で復元する。
+    // 否定・予定・過去/他院・当日実施を含む行は対象外なので、初月候補に直結する
+    // standing laneのrecallを上げつつ、実施行為の誤候補化は避ける。
+    const deterministicStandingPreprocessing = buildClinicalTextPreprocessing(text);
+    standingMentions.push(...deterministicStandingContinuationMentions(
+      deterministicStandingPreprocessing
+    ));
+    managementContinuationRanges.push(...deterministicManagementContinuationRanges(
+      deterministicStandingPreprocessing
+    ));
+
     // 決定論セーフティネット: マスタ名称辞書でカルテ本文を走査し、
     // 抽出・候補のどこにも現れていないコードを候補として補完する。
     // LLM抽出の成否・揺れに依存しない下限保証(OpenAI不通のフォールバック時も効く)。
@@ -1866,6 +1877,10 @@ async function inferStructuredClinicalCalculationOptions({
     // 既知IDのみ・重複はline_role優先順位で畳んだ正規形に置換する
     // (未知IDの幻覚行を下流に流さない)。
     facts.line_review = lineReviewReconciliation.normalizedLineReview;
+    const deterministicStandingRecovery = recoverDeterministicStandingContinuationFacts(
+      facts,
+      clinicalTextPreprocessing
+    );
     openAiProviderDurationMs = openAiCallCount > 0 ? Date.now() - providerStartedAt : 0;
     // v12軽量schema: LLMは evidence_line_ids のみ返す。evidence本文とsectionを
     // 前処理済み行から決定論的に復元し、下流(根拠検証・否定判定・注釈)を従来どおり動かす。
@@ -1879,6 +1894,21 @@ async function inferStructuredClinicalCalculationOptions({
       priorSessions,
       lineReviewReconciliation
     });
+    if (deterministicStandingRecovery.length) {
+      converted.clinicalTrace = [
+        ...asArray(converted.clinicalTrace),
+        clinicalTraceEvent({
+          stage: "standing_mention_recovery",
+          categoryLabel: "継続管理の復元",
+          outcome: "recovered",
+          selected: {
+            recoveredCount: deterministicStandingRecovery.length,
+            lineIds: uniqueStrings(deterministicStandingRecovery.map((mention) => mention.lineId))
+          },
+          message: "deterministic_standing_continuation_mentions_recovered"
+        })
+      ];
+    }
     if (emptyExtractionGuard.triggered) {
       converted.clinicalTrace = [
         ...asArray(converted.clinicalTrace),
@@ -2432,12 +2462,37 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   const clinicalTrace = [];
   const clinicalTextPreprocessing = buildClinicalTextPreprocessing(text);
   const standingMentions = standingMentionsForLane(facts, clinicalTextPreprocessing);
-  const managementContinuationRanges = clinicalLineRangesForRole(
+  const deterministicStandingMentions = deterministicStandingContinuationMentions(
+    clinicalTextPreprocessing
+  );
+  const extractedStandingMentions = extractedStandingMentionsForLane(
     facts,
-    clinicalTextPreprocessing,
-    "management_continuation"
+    clinicalTextPreprocessing
+  );
+  const managementContinuationRanges = managementContinuationRangesForLane(
+    facts,
+    clinicalTextPreprocessing
   );
   clinicalTrace.push(...clinicalPreprocessingTraceEvents(clinicalTextPreprocessing));
+  const recoveredStandingMentions = deterministicStandingMentions.filter((mention) => (
+    !extractedStandingMentions.some((extracted) => (
+      extracted.lineId === mention.lineId
+      && extracted.target === mention.target
+      && extracted.status === mention.status
+    ))
+  ));
+  if (recoveredStandingMentions.length) {
+    clinicalTrace.push(clinicalTraceEvent({
+      stage: "standing_mention_recovery",
+      categoryLabel: "継続管理の復元",
+      outcome: "recovered",
+      selected: {
+        recoveredCount: recoveredStandingMentions.length,
+        lineIds: uniqueStrings(recoveredStandingMentions.map((mention) => mention.lineId))
+      },
+      message: "deterministic_standing_continuation_mentions_recovered"
+    }));
+  }
   const reconciledExtraction = reconcileClinicalFactsForCalculation({
     facts,
     checklistMenu,
@@ -4064,6 +4119,9 @@ export async function detectEmptyExtractionContradiction({
   const dictionaryResult = await dictionaryScanCandidateProposals({
     feeCalculator,
     text: clinicalText,
+    suppressedRanges: deterministicManagementContinuationRanges(
+      buildClinicalTextPreprocessing(clinicalText)
+    ),
     knownCodes: []
   });
   if (dictionaryResult.proposals.length) {
@@ -4275,7 +4333,7 @@ function dictionaryMatchWithinSuppressedRange(match = {}, matchedText = "", rang
   ));
 }
 
-function standingMentionsForLane(facts = {}, preprocessing = null) {
+function extractedStandingMentionsForLane(facts = {}, preprocessing = null) {
   const linesById = new Map(asArray(preprocessing?.lines)
     .map((line) => [String(line?.lineId || ""), line]));
   return normalizeStandingMentionsForLane(asArray(facts?.standing_mentions).map((mention) => {
@@ -4291,6 +4349,143 @@ function standingMentionsForLane(facts = {}, preprocessing = null) {
       text: String(line?.text || "").trim()
     };
   }).filter(Boolean));
+}
+
+function standingMentionsForLane(facts = {}, preprocessing = null) {
+  return normalizeStandingMentionsForLane([
+    ...extractedStandingMentionsForLane(facts, preprocessing),
+    ...deterministicStandingContinuationMentions(preprocessing)
+  ]);
+}
+
+export function deterministicStandingContinuationMentions(preprocessing = null) {
+  const mentions = asArray(preprocessing?.lines).map((line) => {
+    const text = String(line?.text || "").trim();
+    const normalized = normalizeClinicalPredicateText(text);
+    if (!text
+      || !managementContinuationOnlyText(normalized)
+      || hasCurrentPerformedActPredicate(normalized)
+      || isNegatedClinicalServiceContext(normalized)
+      || isStandingContinuationExplicitlyAbsent(normalized)
+      || isFutureOrOrderOnlyContext(normalized)
+      || isPastOrExternalClinicalServiceContext(normalized)) {
+      return null;
+    }
+    const target = deterministicStandingContinuationTarget(text);
+    if (!target) {
+      return null;
+    }
+    return {
+      lineId: String(line?.lineId || "").trim(),
+      target,
+      status: "continued",
+      text
+    };
+  }).filter(Boolean);
+  return normalizeStandingMentionsForLane(mentions);
+}
+
+function isStandingContinuationExplicitlyAbsent(value = "") {
+  const text = normalizeClinicalPredicateText(value);
+  if (!text) {
+    return false;
+  }
+  const subject = "(?:管理|療法|治療|処方|投薬|吸引|人工呼吸|酸素|カニューレ|機器|指導)";
+  const absent = "(?:なし|無し|不要|未導入|未使用|未装着|未施行|未実施|中止|終了)";
+  return new RegExp(`${subject}(?:は|を|の)?${absent}|${absent}(?:の)?${subject}`, "u").test(text);
+}
+
+function deterministicStandingContinuationTarget(value = "") {
+  const text = normalizeClinicalText(value)
+    .replace(/^(?:S|O|A|P)\s*[）):：]\s*/iu, "")
+    .replace(/^(?:引き続き|変更なく|従来どおり|従来通り)\s*/u, "")
+    .trim();
+  if (!text) {
+    return "";
+  }
+  const beforeContinuation = text.match(
+    /^(.{2,70}?)(?:を|は|も|について)?(?:変更なく|従来どおり|従来通り|引き続き)?(?:継続中|継続する|継続した|継続|維持する|維持した|維持|管理中|変わらず)/u
+  )?.[1];
+  const afterContinuation = text.match(
+    /^(?:継続中|継続する|継続した|継続|維持する|維持した|維持|管理中|変わらず|引き続き)(?:の|する)?(.{2,70})/u
+  )?.[1];
+  return String(beforeContinuation || afterContinuation || text)
+    .replace(/[、,。．.!！?？;；:：]+$/gu, "")
+    .trim()
+    .slice(0, 70);
+}
+
+function deterministicManagementContinuationRanges(preprocessing = null) {
+  const lineIds = new Set(deterministicStandingContinuationMentions(preprocessing)
+    .map((mention) => mention.lineId));
+  return asArray(preprocessing?.lines)
+    .filter((line) => lineIds.has(String(line?.lineId || "")))
+    .map((line) => ({
+      lineId: String(line?.lineId || ""),
+      charStart: Number(line?.charStart || 0),
+      charEnd: Number(line?.charEnd || 0)
+    }));
+}
+
+function managementContinuationRangesForLane(facts = {}, preprocessing = null) {
+  return dedupeObjects([
+    ...clinicalLineRangesForRole(facts, preprocessing, "management_continuation"),
+    ...deterministicManagementContinuationRanges(preprocessing)
+  ], (range) => `${range.lineId}\u001f${range.charStart}\u001f${range.charEnd}`);
+}
+
+function recoverDeterministicStandingContinuationFacts(facts = {}, preprocessing = null) {
+  const mentions = deterministicStandingContinuationMentions(preprocessing);
+  if (!mentions.length || !facts || typeof facts !== "object") {
+    return [];
+  }
+  const extractedMentionKeys = new Set(asArray(facts.standing_mentions)
+    .map((mention) => normalizeStandingMention(mention))
+    .filter(Boolean)
+    .map((mention) => `${mention.line_id}\u001f${mention.target}\u001f${mention.status}`));
+  const recoveredMentions = mentions.filter((mention) => (
+    !extractedMentionKeys.has(`${mention.lineId}\u001f${mention.target}\u001f${mention.status}`)
+  ));
+  const continuationLineIds = new Set(mentions.map((mention) => mention.lineId));
+  const normalizedReview = asArray(facts.line_review).map((entry) => {
+    const lineId = String(entry?.line_id || entry?.lineId || "").trim();
+    if (!continuationLineIds.has(lineId)) {
+      return entry;
+    }
+    return {
+      ...entry,
+      line_id: lineId,
+      line_role: "management_continuation"
+    };
+  });
+  const reviewLineIds = new Set(normalizedReview
+    .map((entry) => String(entry?.line_id || entry?.lineId || "").trim())
+    .filter(Boolean));
+  for (const lineId of continuationLineIds) {
+    if (!reviewLineIds.has(lineId)) {
+      normalizedReview.push({
+        line_id: lineId,
+        line_role: "management_continuation"
+      });
+    }
+  }
+  facts.line_review = normalizedReview;
+
+  const normalizedMentions = [
+    ...asArray(facts.standing_mentions),
+    ...mentions.map((mention) => ({
+      line_id: mention.lineId,
+      target: mention.target,
+      status: mention.status
+    }))
+  ]
+    .map((mention) => normalizeStandingMention(mention))
+    .filter(Boolean);
+  facts.standing_mentions = dedupeObjects(
+    normalizedMentions,
+    (mention) => `${mention.line_id}\u001f${mention.target}\u001f${mention.status}`
+  );
+  return recoveredMentions;
 }
 
 function normalizeStandingMentionsForLane(values = []) {

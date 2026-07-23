@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "fee-standing-monthly-e2e.v1",
+  "patientId": "1002",
+  "priorMonth": {
+    "claimMonth": "2026-06",
+    "serviceDate": "2026-06-25",
+    "visitType": "定期",
+    "status": "定期",
+    "clinicalText": "P）在宅人工呼吸器管理を継続する。",
+    "expectedStandingCodes": [
+      "114005410"
+    ],
+    "expectedCandidateBasis": "standing_mention_first_month_candidate"
+  },
+  "currentMonth": {
+    "claimMonth": "2026-07",
+    "copyForwardServiceDate": "2026-07-02",
+    "expectedStandingCodes": [
+      "114005410"
+    ],
+    "expectedCandidateBasis": "standing_confirmed_history_candidate"
+  },
+  "acceptance": {
+    "requireMemoHit": true,
+    "requireCurrentStandingApproval": true
+  }
+}

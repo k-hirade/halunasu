@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildClinicalCalculationPreparation,
+  buildClinicalTextPreprocessing,
   convertClinicalCalculationEvents,
+  deterministicStandingContinuationMentions,
   detectEmptyExtractionContradiction,
   diagnosesForDiseaseIndicationScan,
   dictionaryScanCandidateProposals,
   mergeDiseaseIndicationCandidateProposals
 } from "../src/clinical-calculation-input.js";
 import { candidateProposalsFromClinicalBillingKnowledge } from "../src/clinical-billing-knowledge.js";
+import { buildStandingBillingLane } from "../src/standing-billing-profiles.js";
 
 // 原則候補化(emit-as-candidate-by-default)の検証:
 // 医学管理・文書料や review-only 領域(在宅等)のイベントも、マスタ照合できたものは
@@ -522,6 +525,136 @@ test("v15管理継続行: イベントなしでも再抽出対象にせずstandi
   assert.deepEqual(prep.extractionSnapshot.lines[0].standingMentions, [
     { target: "在宅人工呼吸器管理", status: "continued" }
   ]);
+});
+
+test("v15管理継続行: LLMがstanding mentionを落としても決定論で復元しスナップショットへ保存する", async () => {
+  let extractorCalls = 0;
+  const prep = await buildClinicalCalculationPreparation({
+    session: {
+      feeSessionId: "fee_management_continuation_recovery",
+      orgId: "org_1",
+      patientId: "pat_1",
+      serviceDate: "2026-06-25",
+      setting: "home_visit",
+      clinicalText: "P）在宅人工呼吸器管理を継続する。"
+    },
+    calculationInput: {},
+    feeCalculator: {
+      async searchMaster() {
+        return {
+          items: [{
+            code: "114005410",
+            name: "在宅人工呼吸指導管理料",
+            points: 2800,
+            kind: "procedure"
+          }]
+        };
+      }
+    },
+    openAiApiKey: "dummy",
+    emptyExtractionRetryEnabled: true,
+    clinicalFactsExtractor: async ({ preprocessedLines }) => {
+      extractorCalls += 1;
+      return {
+        visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+        diagnoses: [],
+        line_review: preprocessedLines.map((line) => ({
+          line_id: line.lineId,
+          line_role: "none"
+        })),
+        standing_mentions: [],
+        clinical_events: [],
+        excluded_events: [],
+        missing_information: [],
+        review_flags: []
+      };
+    }
+  });
+
+  assert.equal(extractorCalls, 1, "継続管理だけの文で空抽出リトライを行わない");
+  assert.deepEqual(prep.standingMentions, [{
+    lineId: "P-001",
+    target: "在宅人工呼吸器管理",
+    status: "continued",
+    text: "P）在宅人工呼吸器管理を継続する。"
+  }]);
+  assert.equal(prep.extractionSnapshot.lines[0].lineRole, "management_continuation");
+  assert.deepEqual(prep.extractionSnapshot.lines[0].standingMentions, [{
+    target: "在宅人工呼吸器管理",
+    status: "continued"
+  }]);
+  assert.equal(
+    prep.candidateProposals.some((proposal) => proposal.basis === "dictionary_scan_candidate"),
+    false,
+    "継続管理文から当日実施の辞書候補を作らない"
+  );
+  assert.ok(prep.clinicalExtraction.trace.some((entry) => (
+    entry.stage === "standing_mention_recovery"
+    && entry.outcome === "recovered"
+  )));
+
+  const lane = buildStandingBillingLane({
+    profiles: [],
+    catalog: {
+      families: [{
+        familyId: "home_ventilator_management",
+        name: "在宅人工呼吸指導管理料",
+        aliases: ["在宅人工呼吸器管理", "在宅人工呼吸指導管理"],
+        variants: [{
+          code: "114005410",
+          name: "在宅人工呼吸指導管理料",
+          points: 2800,
+          aliases: ["在宅人工呼吸器管理"]
+        }]
+      }]
+    },
+    serviceDate: "2026-06-25",
+    historyCompleteness: "complete",
+    standingMentions: prep.standingMentions
+  });
+  assert.equal(lane.candidateProposals.length, 1);
+  assert.equal(lane.candidateProposals[0].code, "114005410");
+  assert.equal(lane.candidateProposals[0].basis, "standing_mention_first_month_candidate");
+});
+
+test("v15管理継続の決定論復元: 予定・過去/他院・中止検討・当日実施は対象外にする", () => {
+  const cases = [
+    {
+      text: "P）在宅酸素療法は変更なく継続中。",
+      expectedTargets: ["在宅酸素療法"]
+    },
+    {
+      text: "P）次回も在宅酸素療法を継続予定。",
+      expectedTargets: []
+    },
+    {
+      text: "P）前医で在宅酸素療法を継続していた。",
+      expectedTargets: []
+    },
+    {
+      text: "P）在宅酸素療法の中止を検討したが継続。",
+      expectedTargets: []
+    },
+    {
+      text: "P）在宅酸素療法なし、呼吸管理を継続。",
+      expectedTargets: []
+    },
+    {
+      text: "O）人工呼吸器の設定変更を実施し、管理を継続した。",
+      expectedTargets: []
+    }
+  ];
+
+  for (const entry of cases) {
+    const actual = deterministicStandingContinuationMentions(
+      buildClinicalTextPreprocessing(entry.text)
+    );
+    assert.deepEqual(
+      actual.map((mention) => mention.target),
+      entry.expectedTargets,
+      entry.text
+    );
+  }
 });
 
 test("v15決定論降格: 管理継続だけを根拠にした当日イベントを候補から除外する", async () => {

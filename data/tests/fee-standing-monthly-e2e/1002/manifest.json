@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "fee-monthly-chart-e2e.v1",
+  "datasetName": "fee-standing-monthly-e2e-1002",
+  "claimMonth": "2026-07",
+  "patientId": "1002",
+  "files": {
+    "baselineReceipt": "RECEIPTC.UKE",
+    "patients": "patients.csv",
+    "charts": "charts.jsonl",
+    "standingTimeline": "standing-timeline.json"
+  },
+  "syntheticDataOnly": true
+}

@@ -51,6 +51,7 @@
     "eval:fee-longitudinal-l7-summary": "node scripts/summarize_fee_longitudinal_l7.mjs",
     "eval:fee-extraction-stability": "node scripts/evaluate_fee_extraction_stability.mjs",
     "test:fee-extraction-stability": "node --test scripts/lib/fee-extraction-stability.test.mjs",
+    "test:fee-standing-monthly-e2e": "node --test scripts/lib/fee-standing-monthly-evaluation.test.mjs",
     "audit:fee-checklist-recall": "node scripts/audit_fee_checklist_menu_recall.mjs",
     "audit:fee-checklist-recall:v2": "node scripts/audit_fee_checklist_menu_recall.mjs --dataset data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json",
     "audit:fee-checklist-recall:v2:strict": "node scripts/audit_fee_checklist_menu_recall.mjs --dataset data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json --strict",

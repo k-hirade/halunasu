@@ -1,0 +1,2 @@
+patient_id,display_name,kana,sex,birth_date,age,is_facility,facility_name,facility_count,insurance_kind,start_date,care_text,visiting_nurse_text
+1002,Standing E2E 1002,,男,1949-06-18,76,True,テスト施設,4,後期高齢者医療,2019-10-16,要介護5,訪問看護週4回

@@ -10,6 +10,12 @@ import {
   sanitizeEmptyExtractionGuard,
   summarizeExtractionObservability
 } from "./lib/fee-monthly-chart-evaluation.mjs";
+import {
+  normalizeStandingMonthlyFixture,
+  standingProfileAudit,
+  standingProposalSelection,
+  summarizeStandingMonthlyRepeats
+} from "./lib/fee-standing-monthly-evaluation.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const defaults = {
@@ -89,6 +95,20 @@ if (args.encounterSetting) {
   );
 }
 
+if (args.seedKnownPriorHistory && args.seedStandingPriorMonth) {
+  throw new Error("--seed-known-prior-history and --seed-standing-prior-month cannot be used together");
+}
+const standingTimeline = args.seedStandingPriorMonth
+  ? loadStandingTimelineFixture({
+    args,
+    manifest,
+    patientDir,
+    claimMonth,
+    patientId: externalPatientId,
+    charts
+  })
+  : null;
+
 const ukePath = path.join(patientDir, manifest.files?.baselineReceipt || "RECEIPTC.UKE");
 const baselineClaims = parseUke(ukePath, claimMonth);
 const baselineClaim = baselineClaims.find((claim) => String(claim.patientId || "") === externalPatientId) || baselineClaims[0];
@@ -106,7 +126,21 @@ const inputAudit = {
   baselineTotalPoints: baselineTotalPoints(baselineClaim),
   prohibitedCalculationInputs: ["orders.csv", "receipt/UKE codes", "expectedClaimContext"],
   calculationPayloadKeys: [],
-  visits: encounterPlanAuditRows(encounterPlans)
+  visits: encounterPlanAuditRows(encounterPlans),
+  ...(standingTimeline ? {
+    standingTimeline: {
+      schemaVersion: standingTimeline.schemaVersion,
+      priorClaimMonth: standingTimeline.priorMonth.claimMonth,
+      priorServiceDate: standingTimeline.priorMonth.serviceDate,
+      priorClinicalTextHash: sha256(standingTimeline.priorMonth.clinicalText),
+      currentClaimMonth: standingTimeline.currentMonth.claimMonth,
+      copyForwardServiceDate: standingTimeline.currentMonth.copyForwardServiceDate,
+      expectedPriorStandingCodes: standingTimeline.priorMonth.expectedStandingCodes,
+      expectedCurrentStandingCodes: standingTimeline.currentMonth.expectedStandingCodes,
+      requireMemoHit: standingTimeline.acceptance.requireMemoHit,
+      requireCurrentStandingApproval: standingTimeline.acceptance.requireCurrentStandingApproval
+    }
+  } : {})
 };
 
 if (args.dryRun) {
@@ -175,7 +209,8 @@ for (let repeatIndex = 1; repeatIndex <= args.repeat; repeatIndex += 1) {
     baselineClaim,
     context,
     seedKnownPriorHistory: args.seedKnownPriorHistory,
-    approveCalculatedLines: args.approveCalculatedLines
+    approveCalculatedLines: args.approveCalculatedLines,
+    standingTimeline
   });
   repeats.push(repetition);
   process.stdout.write(
@@ -183,8 +218,13 @@ for (let repeatIndex = 1; repeatIndex <= args.repeat; repeatIndex += 1) {
   );
 }
 
+const summary = summarizeRepeats(repeats);
+if (standingTimeline) {
+  summary.standingTimeline = summarizeStandingMonthlyRepeats(repeats);
+}
+
 const result = {
-  schemaVersion: "fee-monthly-chart-e2e.v1",
+  schemaVersion: "fee-monthly-chart-e2e.v2",
   generatedAt: new Date().toISOString(),
   runId,
   mode: "stg",
@@ -214,11 +254,13 @@ const result = {
   evaluationOptions: {
     repeat: args.repeat,
     seedKnownPriorHistory: args.seedKnownPriorHistory,
+    seedStandingPriorMonth: args.seedStandingPriorMonth,
     encounterSettingMode: args.encounterSetting ? "override" : "derived",
     encounterSettingOverride: args.encounterSetting || null,
-    approveCalculatedLines: args.approveCalculatedLines
+    approveCalculatedLines: args.approveCalculatedLines,
+    approveStandingCandidates: Boolean(standingTimeline)
   },
-  summary: summarizeRepeats(repeats),
+  summary,
   repeats
 };
 
@@ -226,6 +268,9 @@ const resultPath = path.join(outputDir, "result.json");
 fs.writeFileSync(resultPath, `${JSON.stringify(result, null, 2)}\n`);
 process.stdout.write(`${JSON.stringify(result.summary, null, 2)}\n`);
 process.stdout.write(`result=${resultPath}\n`);
+if (standingTimeline && result.summary.standingTimeline?.allAcceptanceChecksPassed !== true) {
+  process.exitCode = 1;
+}
 
 async function runRepetition({
   api,
@@ -239,7 +284,8 @@ async function runRepetition({
   baselineClaim,
   context,
   seedKnownPriorHistory,
-  approveCalculatedLines = false
+  approveCalculatedLines = false,
+  standingTimeline = null
 }) {
   if (!Array.isArray(encounterPlans) || encounterPlans.length !== charts.length) {
     throw new Error("encounter plan count must match chart count");
@@ -248,6 +294,7 @@ async function runRepetition({
   const sessions = [];
   let internalPatientId = "";
   let priorHistorySeed = null;
+  let standingTimelineResult = null;
 
   const patientInput = {
     displayName: `月次E2E ${runId.slice(-10)} R${repeatIndex}`,
@@ -287,6 +334,30 @@ async function runRepetition({
       source: "patients.csv.start_date",
       serviceDate: priorServiceDate,
       sessionRef: opaqueRef(seedSessionId)
+    };
+  }
+
+  if (standingTimeline) {
+    const setup = await seedStandingPriorMonth({
+      api,
+      runId,
+      repeatIndex,
+      patient,
+      patientInput,
+      externalPatientId,
+      context,
+      standingTimeline,
+      requestTimings
+    });
+    internalPatientId = setup.internalPatientId;
+    priorHistorySeed = setup.priorHistorySeed;
+    standingTimelineResult = {
+      priorMonth: setup.priorMonth,
+      currentMonth: {
+        expectedCodes: standingTimeline.currentMonth.expectedStandingCodes,
+        candidateObservations: [],
+        approvedCodes: []
+      }
     };
   }
 
@@ -331,7 +402,9 @@ async function runRepetition({
     assertResponse(calculate, `calculate session ${chartIndex + 1}`);
 
     let approvedLineCount = 0;
-    if (approveCalculatedLines) {
+    let approvedStandingCandidateCount = 0;
+    let standingCandidateObservation = null;
+    if (approveCalculatedLines || standingTimeline) {
       const reviewItemsResponse = await api.request(
         "GET",
         `/v1/fee/sessions/${encodeURIComponent(feeSessionId)}/review-items`,
@@ -340,7 +413,33 @@ async function runRepetition({
       );
       requestTimings.push(timingRecord("review_items", chartIndex + 1, reviewItemsResponse));
       assertResponse(reviewItemsResponse, `review items ${chartIndex + 1}`);
-      const decisions = approvableCalculatedLineDecisions(reviewItemsResponse.body?.reviewItems);
+      const reviewItems = reviewItemsResponse.body?.reviewItems;
+      const lineDecisions = approveCalculatedLines
+        ? approvableCalculatedLineDecisions(reviewItems)
+        : [];
+      const standingSelection = standingTimeline
+        ? standingProposalSelection(reviewItems, {
+          expectedCodes: standingTimeline.currentMonth.expectedStandingCodes,
+          expectedBasis: standingTimeline.currentMonth.expectedCandidateBasis
+        })
+        : null;
+      if (standingSelection) {
+        standingCandidateObservation = {
+          serviceDate: String(chart.service_date || ""),
+          matchedCodes: standingSelection.matchedCodes,
+          missingCodes: standingSelection.missingCodes,
+          proposals: standingSelection.matches.map((item) => ({
+            proposalRef: opaqueRef(item.proposalId),
+            code: item.code,
+            name: item.name,
+            basis: item.basis,
+            source: item.source
+          }))
+        };
+        standingTimelineResult.currentMonth.candidateObservations.push(standingCandidateObservation);
+      }
+      const standingDecisions = standingSelection?.decisions || [];
+      const decisions = uniqueReviewDecisions([...lineDecisions, ...standingDecisions]);
       if (decisions.length) {
         const approveResponse = await api.request(
           "PATCH",
@@ -350,7 +449,9 @@ async function runRepetition({
         );
         requestTimings.push(timingRecord("approve_lines", chartIndex + 1, approveResponse));
         assertResponse(approveResponse, `approve calculated lines ${chartIndex + 1}`);
-        approvedLineCount = decisions.length;
+        approvedLineCount = lineDecisions.length;
+        approvedStandingCandidateCount = standingDecisions.length;
+        standingTimelineResult?.currentMonth.approvedCodes.push(...standingSelection.matchedCodes);
       }
     }
 
@@ -362,7 +463,30 @@ async function runRepetition({
     );
     requestTimings.push(timingRecord("detail", chartIndex + 1, detail));
     assertResponse(detail, `session detail ${chartIndex + 1}`);
-    sessions.push(sanitizeSessionDetail(detail.body || {}, chart, feeSessionId, { approvedLineCount }));
+    sessions.push(sanitizeSessionDetail(detail.body || {}, chart, feeSessionId, {
+      approvedLineCount,
+      approvedStandingCandidateCount,
+      standingCandidateObservation
+    }));
+  }
+
+  if (standingTimeline) {
+    const currentProfiles = await loadStandingProfiles({
+      api,
+      internalPatientId,
+      facilityId: context.facilityId,
+      repeatIndex,
+      tag: "current-standing-profiles",
+      requestTimings
+    });
+    standingTimelineResult.currentMonth.profileAudit = standingProfileAudit(
+      currentProfiles,
+      standingTimeline.currentMonth.expectedStandingCodes,
+      standingTimeline.currentMonth.claimMonth
+    );
+    standingTimelineResult.currentMonth.approvedCodes = uniqueStrings(
+      standingTimelineResult.currentMonth.approvedCodes
+    ).sort();
   }
 
   const monthlyResponse = await api.request(
@@ -426,11 +550,20 @@ async function runRepetition({
     ? Math.round((detection.matchedCodeCount / baselineLines.length) * 1000) / 1000
     : null;
   const candidateSurface = aggregateLines(sessions.flatMap((session) => session.candidateSurface.lines));
+  if (standingTimelineResult) {
+    standingTimelineResult = finalizeStandingTimelineResult({
+      standingTimeline,
+      standingTimelineResult,
+      sessions,
+      monthly
+    });
+  }
 
   return {
     repeat: repeatIndex,
     patientRef: opaqueRef(internalPatientId),
     priorHistorySeed,
+    standingTimeline: standingTimelineResult,
     sessionRefs: sessions.map((item) => item.sessionRef),
     baseline: {
       codeCount: baselineLines.length,
@@ -461,7 +594,226 @@ async function runRepetition({
   };
 }
 
-function sanitizeSessionDetail(body, chart, feeSessionId, { approvedLineCount = 0 } = {}) {
+async function seedStandingPriorMonth({
+  api,
+  runId,
+  repeatIndex,
+  patient,
+  patientInput,
+  externalPatientId,
+  context,
+  standingTimeline,
+  requestTimings
+}) {
+  const prior = standingTimeline.priorMonth;
+  const priorChart = {
+    patient_id: externalPatientId,
+    claim_month: prior.claimMonth,
+    service_date: prior.serviceDate,
+    visit_type: prior.visitType,
+    status: prior.status,
+    clinical_text: prior.clinicalText
+  };
+  const [priorPlan] = deriveMonthlyChartEncounterPlans({
+    charts: [priorChart],
+    patient
+  });
+  const createPayload = compactObject({
+    patient: patientInput,
+    patientRef: `mock-homis-${externalPatientId}`,
+    facilityId: context.facilityId,
+    departmentId: context.departmentId,
+    serviceDate: prior.serviceDate,
+    claimMonth: prior.claimMonth,
+    setting: priorPlan.setting,
+    encounterDetails: priorPlan.encounterDetails,
+    clinicalText: prior.clinicalText,
+    sourceSystem: `fee_monthly_chart_e2e_standing_prior:${runId}:r${repeatIndex}`
+  });
+  assertNoLeakedInputs(createPayload);
+  const create = await api.request("POST", "/v1/fee/sessions", createPayload, {
+    csrf: true,
+    tag: `r${repeatIndex}-standing-prior-create`
+  });
+  requestTimings.push(timingRecord("standing_prior_create", 0, create));
+  assertResponse(create, "create standing prior-month session");
+  const internalPatientId = String(create.body?.feeSession?.patientId || "");
+  const priorSessionId = String(create.body?.feeSession?.feeSessionId || "");
+  if (!internalPatientId || !priorSessionId) {
+    throw new Error("standing prior-month session did not include patientId and feeSessionId");
+  }
+
+  const calculate = await api.request(
+    "POST",
+    `/v1/fee/sessions/${encodeURIComponent(priorSessionId)}/calculate`,
+    {},
+    { csrf: true, tag: `r${repeatIndex}-standing-prior-calculate` }
+  );
+  requestTimings.push(timingRecord("standing_prior_calculate", 0, calculate));
+  assertResponse(calculate, "calculate standing prior-month session");
+
+  const reviewItemsResponse = await api.request(
+    "GET",
+    `/v1/fee/sessions/${encodeURIComponent(priorSessionId)}/review-items`,
+    undefined,
+    { tag: `r${repeatIndex}-standing-prior-review-items` }
+  );
+  requestTimings.push(timingRecord("standing_prior_review_items", 0, reviewItemsResponse));
+  assertResponse(reviewItemsResponse, "load standing prior-month review items");
+  const selection = standingProposalSelection(reviewItemsResponse.body?.reviewItems, {
+    expectedCodes: prior.expectedStandingCodes,
+    expectedBasis: prior.expectedCandidateBasis
+  });
+  if (selection.missingCodes.length) {
+    throw new Error(
+      `standing prior-month candidate missing codes ${selection.missingCodes.join(", ")}; `
+      + "confirm FEE_STANDING_FACTS=true and inspect standing_mentions extraction"
+    );
+  }
+
+  const approve = await api.request(
+    "PATCH",
+    `/v1/fee/sessions/${encodeURIComponent(priorSessionId)}/review-items`,
+    { decisions: selection.decisions },
+    { csrf: true, tag: `r${repeatIndex}-standing-prior-approve` }
+  );
+  requestTimings.push(timingRecord("standing_prior_approve", 0, approve));
+  assertResponse(approve, "approve standing prior-month candidate");
+  const canonicalPatientId = String(
+    approve.body?.feeSession?.canonicalPatientId
+    || create.body?.feeSession?.canonicalPatientId
+    || internalPatientId
+  );
+  const profiles = await loadStandingProfiles({
+    api,
+    internalPatientId: canonicalPatientId,
+    facilityId: context.facilityId,
+    repeatIndex,
+    tag: "prior-standing-profiles",
+    requestTimings
+  });
+  const profileAudit = standingProfileAudit(
+    profiles,
+    prior.expectedStandingCodes,
+    prior.claimMonth
+  );
+  if (profileAudit.missingCodes.length) {
+    throw new Error(
+      `standing prior-month confirmation was not recorded for ${profileAudit.missingCodes.join(", ")}`
+    );
+  }
+
+  return {
+    internalPatientId,
+    priorHistorySeed: {
+      source: "standing_first_month_candidate_approval",
+      serviceDate: prior.serviceDate,
+      claimMonth: prior.claimMonth,
+      sessionRef: opaqueRef(priorSessionId)
+    },
+    priorMonth: {
+      serviceDate: prior.serviceDate,
+      claimMonth: prior.claimMonth,
+      sessionRef: opaqueRef(priorSessionId),
+      expectedCodes: prior.expectedStandingCodes,
+      candidateCodes: selection.matchedCodes,
+      approvedCodes: selection.matchedCodes,
+      profileAudit
+    }
+  };
+}
+
+async function loadStandingProfiles({
+  api,
+  internalPatientId,
+  facilityId,
+  repeatIndex,
+  tag,
+  requestTimings
+}) {
+  const response = await api.request(
+    "GET",
+    `/v1/fee/patients/${encodeURIComponent(internalPatientId)}/standing-billing-profiles?facilityId=${encodeURIComponent(facilityId)}`,
+    undefined,
+    { tag: `r${repeatIndex}-${tag}` }
+  );
+  requestTimings.push(timingRecord(tag, 0, response));
+  assertResponse(response, `load ${tag}`);
+  return Array.isArray(response.body?.standingBillingProfiles)
+    ? response.body.standingBillingProfiles
+    : [];
+}
+
+function finalizeStandingTimelineResult({
+  standingTimeline,
+  standingTimelineResult,
+  sessions,
+  monthly
+}) {
+  const expectedPrior = standingTimeline.priorMonth.expectedStandingCodes;
+  const expectedCurrent = standingTimeline.currentMonth.expectedStandingCodes;
+  const observedCurrentCodes = uniqueStrings(
+    standingTimelineResult.currentMonth.candidateObservations
+      .flatMap((item) => item.matchedCodes)
+  ).sort();
+  const monthlyCodes = new Set((Array.isArray(monthly?.lines) ? monthly.lines : [])
+    .map((line) => String(line?.code || ""))
+    .filter(Boolean));
+  const copyForwardVisit = (Array.isArray(sessions) ? sessions : []).find((session) => (
+    session.serviceDate === standingTimeline.currentMonth.copyForwardServiceDate
+  ));
+  const memo = copyForwardVisit?.calculationMetrics?.extractionMemo || {};
+  const checks = {
+    priorCandidateObserved: containsAll(
+      standingTimelineResult.priorMonth.candidateCodes,
+      expectedPrior
+    ),
+    priorConfirmationRecorded: standingTimelineResult.priorMonth.profileAudit.missingCodes.length === 0,
+    currentCandidateObserved: containsAll(observedCurrentCodes, expectedCurrent),
+    currentConfirmationRecorded: standingTimelineResult.currentMonth.profileAudit.missingCodes.length === 0,
+    currentMonthlyLineIncluded: expectedCurrent.every((code) => monthlyCodes.has(code)),
+    memoHit: memo.used === true && Number(memo.memoHitLineRatio || 0) > 0
+  };
+  const requiredChecks = [
+    checks.priorCandidateObserved,
+    checks.priorConfirmationRecorded,
+    checks.currentCandidateObserved,
+    ...(
+      standingTimeline.acceptance.requireCurrentStandingApproval
+        ? [checks.currentConfirmationRecorded, checks.currentMonthlyLineIncluded]
+        : []
+    ),
+    ...(standingTimeline.acceptance.requireMemoHit ? [checks.memoHit] : [])
+  ];
+  return {
+    ...standingTimelineResult,
+    currentMonth: {
+      ...standingTimelineResult.currentMonth,
+      observedCandidateCodes: observedCurrentCodes,
+      monthlyIncludedCodes: expectedCurrent.filter((code) => monthlyCodes.has(code))
+    },
+    memo: {
+      copyForwardServiceDate: standingTimeline.currentMonth.copyForwardServiceDate,
+      extractionMode: copyForwardVisit?.calculationMetrics?.extractionMode || null,
+      enabled: memo.enabled === true,
+      used: memo.used === true,
+      memoHitLineRatio: Number(memo.memoHitLineRatio || 0),
+      continuedLineCount: Number(memo.continuedLineCount || 0),
+      newLineCount: Number(memo.newLineCount || 0),
+      removedLineCount: Number(memo.removedLineCount || 0)
+    },
+    acceptance: {
+      ...checks,
+      passed: requiredChecks.every(Boolean)
+    }
+  };
+}
+
+function sanitizeSessionDetail(body, chart, feeSessionId, {
+  approvedLineCount = 0,
+  approvedStandingCandidateCount = 0,
+  standingCandidateObservation = null
+} = {}) {
   const feeSession = body.feeSession || {};
   const calculation = feeSession.calculationResult || {};
   const workbench = body.candidateWorkbench || {};
@@ -476,6 +828,8 @@ function sanitizeSessionDetail(body, chart, feeSessionId, { approvedLineCount = 
     chartHash: sha256(String(chart.clinical_text || "")),
     totalPoints: Number(calculation.totalPoints || 0),
     approvedLineCount: Number(approvedLineCount || 0),
+    approvedStandingCandidateCount: Number(approvedStandingCandidateCount || 0),
+    standingCandidateObservation,
     diagnoses: (feeSession.diagnoses || []).map((item) => String(item.name || item)).filter(Boolean),
     candidateSurface: {
       lines: aggregateLines(lineSource),
@@ -511,6 +865,20 @@ function approvableCalculatedLineDecisions(reviewItems = []) {
       status: "approved"
     }))
     .filter((decision) => decision.reviewItemId);
+}
+
+function uniqueReviewDecisions(decisions = []) {
+  const byId = new Map();
+  for (const decision of Array.isArray(decisions) ? decisions : []) {
+    const reviewItemId = String(decision?.reviewItemId || "").trim();
+    if (reviewItemId) {
+      byId.set(reviewItemId, {
+        reviewItemId,
+        status: String(decision?.status || "approved")
+      });
+    }
+  }
+  return [...byId.values()];
 }
 
 function sanitizeMonthlyReceipt(receipt) {
@@ -564,11 +932,14 @@ function sanitizeEndpointDiagnosis(diagnosis) {
 
 function sanitizeActionItem(item) {
   return compactObject({
+    proposalRef: item.proposalId ? opaqueRef(item.proposalId) : undefined,
     code: item.code || item.masterCode || item.lineItem?.code || undefined,
     title: item.displayTitle || item.title || item.name || undefined,
     potentialPoints: Number(item.potentialPoints || item.totalPoints || item.points || 0),
     canAdopt: item.canAdopt === true,
-    actionType: item.actionType || undefined
+    actionType: item.actionType || undefined,
+    source: item.source || undefined,
+    basis: item.basis || undefined
   });
 }
 
@@ -579,6 +950,7 @@ function sanitizeCalculationMetrics(metrics) {
   const performance = metrics.performance || {};
   const extractionMemo = metrics.extractionMemo || performance.extractionMemo || {};
   const patientHistory = metrics.patientHistory || performance.patientHistory || {};
+  const standingFacts = metrics.standingFacts || performance.standingFacts || {};
   const openAiUsage = sanitizeOpenAiUsage(clinical.usage || performance.openAiUsage);
   const emptyExtractionGuard = sanitizeEmptyExtractionGuard(clinical.emptyExtractionGuard);
   return {
@@ -616,6 +988,16 @@ function sanitizeCalculationMetrics(metrics) {
       externalHistoryEventCount: Number(patientHistory.externalHistoryEventCount || 0),
       patientHistoryReason: patientHistory.patientHistoryReason || null,
       extractionSnapshotReason: patientHistory.extractionSnapshotReason || null
+    },
+    standingFacts: {
+      enabled: standingFacts.enabled === true,
+      activeCount: Number(standingFacts.activeCount || 0),
+      proposedCount: Number(standingFacts.proposedCount || 0),
+      suspendedCount: Number(standingFacts.suspendedCount || 0),
+      profileCount: Number(standingFacts.profileCount || 0),
+      reasons: standingFacts.reasons && typeof standingFacts.reasons === "object"
+        ? standingFacts.reasons
+        : {}
     },
     openAiCallObserved: inferredOpenAiCallCount(clinical, openAiUsage) > 0,
     openAiUsage
@@ -1033,6 +1415,8 @@ function parseArgs(argv) {
     password: process.env.FEE_E2E_PASSWORD || "",
     mfaCode: process.env.FEE_E2E_MFA_CODE || "",
     seedKnownPriorHistory: false,
+    seedStandingPriorMonth: false,
+    standingTimelinePath: "",
     approveCalculatedLines: false,
     encounterSetting: "",
     dryRun: false,
@@ -1058,6 +1442,11 @@ function parseArgs(argv) {
     else if (arg === "--facility-id") parsed.facilityId = next(index++, arg);
     else if (arg === "--department-id") parsed.departmentId = next(index++, arg);
     else if (arg === "--seed-known-prior-history") parsed.seedKnownPriorHistory = true;
+    else if (arg === "--seed-standing-prior-month") parsed.seedStandingPriorMonth = true;
+    else if (arg === "--standing-timeline") {
+      parsed.standingTimelinePath = next(index++, arg);
+      parsed.seedStandingPriorMonth = true;
+    }
     else if (arg === "--approve-calculated-lines") parsed.approveCalculatedLines = true;
     else if (arg === "--encounter-setting") parsed.encounterSetting = next(index++, arg);
     else if (arg === "--dry-run") parsed.dryRun = true;
@@ -1115,12 +1504,40 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function loadStandingTimelineFixture({
+  args,
+  manifest,
+  patientDir,
+  claimMonth,
+  patientId,
+  charts
+}) {
+  const configuredPath = String(args.standingTimelinePath || "").trim();
+  const manifestPath = String(manifest.files?.standingTimeline || "standing-timeline.json").trim();
+  const fixturePath = configuredPath
+    ? path.resolve(repoRoot, configuredPath)
+    : path.resolve(patientDir, manifestPath);
+  if (!fs.existsSync(fixturePath)) {
+    throw new Error(`standing timeline fixture not found: ${path.relative(repoRoot, fixturePath)}`);
+  }
+  return normalizeStandingMonthlyFixture(readJson(fixturePath), {
+    claimMonth,
+    patientId,
+    charts
+  });
+}
+
 function compactObject(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
 
 function uniqueStrings(values) {
   return [...new Set((Array.isArray(values) ? values : []).map((item) => String(item || "").trim()).filter(Boolean))];
+}
+
+function containsAll(values = [], expected = []) {
+  const available = new Set((Array.isArray(values) ? values : []).map((value) => String(value || "")));
+  return (Array.isArray(expected) ? expected : []).every((value) => available.has(String(value || "")));
 }
 
 function sha256(value) {
@@ -1159,5 +1576,5 @@ function round(value, digits = 3) {
 }
 
 function printHelp() {
-  process.stdout.write(`Fee monthly chart-to-receipt E2E (STG only)\n\nUsage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\nOptions:\n  --patient-dir PATH       Patient dataset directory\n  --claim-month YYYY-MM    Defaults to manifest claimMonth\n  --repeat N               Independent patient runs. Default: 3\n  --output-dir PATH        Default: /private/tmp/<run-id>\n  --organization-code ID   Default: yamamoto-demo-stg\n  --login-id ID            Default: yamamoto-admin\n  --password-file PATH     Default: .secrets/yamamoto-demo-stg-password.txt\n  --mfa-code CODE          Current 6-digit MFA code (or FEE_E2E_MFA_CODE)\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --seed-known-prior-history\n                            Seed patients.csv start_date as prior visit history\n  --approve-calculated-lines\n                            Approve non-blocked calculated line items before monthly aggregation\n  --encounter-setting TYPE Override every chart setting (outpatient/home_visit/house_call/inpatient)\n                            Default: derive each visit from charts.jsonl visit_type/status\n  --dry-run                Validate and summarize inputs without network calls\n  --help                   Show this help\n`);
+  process.stdout.write(`Fee monthly chart-to-receipt E2E (STG only)\n\nUsage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\nOptions:\n  --patient-dir PATH       Patient dataset directory\n  --claim-month YYYY-MM    Defaults to manifest claimMonth\n  --repeat N               Independent patient runs. Default: 3\n  --output-dir PATH        Default: /private/tmp/<run-id>\n  --organization-code ID   Default: yamamoto-demo-stg\n  --login-id ID            Default: yamamoto-admin\n  --password-file PATH     Default: .secrets/yamamoto-demo-stg-password.txt\n  --mfa-code CODE          Current 6-digit MFA code (or FEE_E2E_MFA_CODE)\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --seed-known-prior-history\n                            Seed patients.csv start_date as prior visit history\n  --seed-standing-prior-month\n                            Approve the W1b prior-month candidate, verify its profile,\n                            then approve and measure the current W1 candidate\n  --standing-timeline PATH Override standing-timeline.json and enable the standing timeline\n  --approve-calculated-lines\n                            Approve non-blocked calculated line items before monthly aggregation\n  --encounter-setting TYPE Override every chart setting (outpatient/home_visit/house_call/inpatient)\n                            Default: derive each visit from charts.jsonl visit_type/status\n  --dry-run                Validate and summarize inputs without network calls\n  --help                   Show this help\n`);
 }
