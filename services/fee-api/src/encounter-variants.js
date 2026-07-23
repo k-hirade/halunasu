@@ -1,7 +1,46 @@
+import {
+  isPastOrExternalClinicalServiceContext,
+  normalizeClinicalPredicateText
+} from "../../../packages/fee-contracts/src/index.js";
+
 const TELEPHONE_REVISIT_CODE = "112007950";
 const TELEPHONE_REVISIT_KIND = "telephone_revisit";
 
-const TELEPHONE_VISIT_PATTERN = /(?:電話(?:等)?再診|電話相談|電話(?:で|にて|による).{0,20}(?:診療|相談|指示)|(?:患者|家族|看護者).{0,20}電話.{0,20}(?:相談|指示))/u;
+const TELEPHONE_VISIT_PATTERN_SOURCE = String.raw`(?:電話(?:等)?再診|電話相談|電話(?:で|にて|による).{0,20}(?:診療|相談|指示)|(?:患者|家族|看護者).{0,20}電話.{0,20}(?:相談|指示))`;
+const TELEPHONE_VISIT_PATTERN = new RegExp(TELEPHONE_VISIT_PATTERN_SOURCE, "u");
+const TELEPHONE_CONTEXT_CUE_PATTERN = /(?:本日|今回|当日|現在|今朝|前回|先月|先週|先日|昨日|前日|以前|過去|持参|他院|前医|他科|紹介元|かかりつけ|健診|検診|外部資料|院外|外部|前に|過去に)/u;
+const TELEPHONE_CURRENT_CONTEXT_TERMS = Object.freeze([
+  "本日",
+  "今回",
+  "当日",
+  "現在",
+  "今朝"
+]);
+const TELEPHONE_PAST_OR_EXTERNAL_TERMS = Object.freeze([
+  "前回",
+  "先月",
+  "先週",
+  "先日",
+  "昨日",
+  "前日",
+  "以前",
+  "過去",
+  "過去値",
+  "既知値",
+  "持参",
+  "他院",
+  "前医",
+  "他科",
+  "紹介元",
+  "かかりつけ",
+  "健診",
+  "検診",
+  "外部資料",
+  "院外",
+  "外部",
+  "前に",
+  "過去に"
+]);
 
 export function deriveEstablishedPatient({
   session = {},
@@ -24,10 +63,19 @@ export function deriveEstablishedPatient({
 }
 
 export function hasTelephoneVisitWording(value) {
-  const text = String(value || "")
-    .replace(/[\s\u3000]+/gu, "")
-    .trim();
-  return TELEPHONE_VISIT_PATTERN.test(text);
+  const text = normalizeClinicalPredicateText(value);
+  if (!text) {
+    return false;
+  }
+  return splitTelephoneSentences(text).some((sentence) => (
+    telephoneMatches(sentence).some((match) => {
+      const context = telephoneContextAt(sentence, match.index);
+      return !telephoneContextIsPastOrExternal(
+        context.text,
+        context.telephoneIndex + match.value.length
+      );
+    })
+  ));
 }
 
 export function applyEncounterVariantToPreparation(prepared = {}, {
@@ -271,6 +319,70 @@ function withEncounterVariantMetrics(prepared = {}, detail = {}) {
 
 function nullableBoolean(value) {
   return typeof value === "boolean" ? value : null;
+}
+
+function splitTelephoneSentences(value = "") {
+  return String(value || "")
+    .split(/[\n。．.!！?？]+/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function telephoneMatches(value = "") {
+  return [...String(value || "").matchAll(new RegExp(TELEPHONE_VISIT_PATTERN_SOURCE, "gu"))]
+    .map((match) => ({
+      index: Number(match.index || 0),
+      value: match[0]
+    }));
+}
+
+function telephoneContextAt(sentence = "", telephoneIndex = 0) {
+  const value = String(sentence || "");
+  const separators = [...value.matchAll(/[、，；;]/gu)].map((match) => Number(match.index || 0));
+  const previousSeparators = separators.filter((index) => index < telephoneIndex);
+  const nextSeparator = separators.find((index) => index > telephoneIndex);
+  const clauseStart = previousSeparators.length
+    ? previousSeparators[previousSeparators.length - 1] + 1
+    : 0;
+  const clauseEnd = nextSeparator ?? value.length;
+  const clause = value.slice(clauseStart, clauseEnd);
+  let prefix = "";
+
+  if (!TELEPHONE_CONTEXT_CUE_PATTERN.test(clause) && previousSeparators.length) {
+    const previousEnd = previousSeparators[previousSeparators.length - 1];
+    const previousStart = previousSeparators.length > 1
+      ? previousSeparators[previousSeparators.length - 2] + 1
+      : 0;
+    const previousClause = value.slice(previousStart, previousEnd);
+    if (previousClause.length <= 20 && TELEPHONE_CONTEXT_CUE_PATTERN.test(previousClause)) {
+      prefix = previousClause;
+    }
+  }
+
+  return {
+    text: `${prefix}${clause}`,
+    telephoneIndex: prefix.length + Math.max(0, telephoneIndex - clauseStart)
+  };
+}
+
+function telephoneContextIsPastOrExternal(value = "", telephoneEndIndex = 0) {
+  const throughTelephone = String(value || "").slice(0, Math.max(0, telephoneEndIndex));
+  const hasPastOrExternalContext = (
+    isPastOrExternalClinicalServiceContext(throughTelephone)
+    || TELEPHONE_PAST_OR_EXTERNAL_TERMS.some((term) => throughTelephone.includes(term))
+  );
+  if (!hasPastOrExternalContext) {
+    return false;
+  }
+  return lastTermIndex(throughTelephone, TELEPHONE_PAST_OR_EXTERNAL_TERMS)
+    >= lastTermIndex(throughTelephone, TELEPHONE_CURRENT_CONTEXT_TERMS);
+}
+
+function lastTermIndex(value = "", terms = []) {
+  return terms.reduce(
+    (latest, term) => Math.max(latest, String(value || "").lastIndexOf(term)),
+    -1
+  );
 }
 
 function uniqueStrings(values = []) {

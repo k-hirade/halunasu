@@ -4,6 +4,11 @@ export function normalizeClinicalPredicateText(value = "") {
     .replace(/\s+/gu, "");
 }
 
+export function isPastOrExternalClinicalServiceContext(value = "") {
+  const normalized = normalizeClinicalPredicateText(value);
+  return /(前回|先月|以前|過去|過去値|既知値|持参|他院|前医|他科|紹介元|かかりつけ|健診|検診|外部資料|院外|外部|前に|過去に)/u.test(normalized);
+}
+
 export function hasPerformedBloodCollectionEvidence(input = {}) {
   if (typeof input === "string") {
     return hasPerformedBloodCollectionEvidenceInText(input);

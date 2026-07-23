@@ -8,6 +8,7 @@ import {
   hasPerformedBloodCollectionEvidence,
   hasPerformedBloodCollectionEvidenceInText,
   isClinicalDateRatioFalsePositiveContext,
+  isPastOrExternalClinicalServiceContext,
   normalizeClinicalPredicateText
 } from "../../../packages/fee-contracts/src/index.js";
 import {
@@ -9688,11 +9689,6 @@ function isClinicalMetaSentence(sentence = "") {
 function isPastOrExternalLabReferenceContext(sentence = "") {
   const text = normalizeClinicalText(sentence);
   return /(前回|先月|以前|過去|過去値|既知値|持参|他院|前医|他科|紹介元|かかりつけ|健診|検診|外部資料|院外|内科で|外来で確認済み)/u.test(text);
-}
-
-function isPastOrExternalClinicalServiceContext(sentence = "") {
-  const text = normalizeClinicalText(sentence);
-  return /(前回|先月|以前|過去|過去値|既知値|持参|他院|前医|他科|紹介元|かかりつけ|健診|検診|外部資料|院外|外部|前に|過去に)/u.test(text);
 }
 
 function hasPerformedLabContext(sentence = "") {

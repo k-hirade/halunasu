@@ -56,6 +56,55 @@ test("telephone wording does not match a telephone number or contact metadata", 
   assert.equal(hasTelephoneVisitWording("次回予約は受付へ電話してください。"), false);
 });
 
+test("telephone wording ignores past or external references without hiding a current telephone visit", () => {
+  assert.equal(
+    hasTelephoneVisitWording("先週電話で相談があった。本日対面で再診し血圧安定。"),
+    false
+  );
+  assert.equal(
+    hasTelephoneVisitWording("前回は電話再診だった。本日は来院。"),
+    false
+  );
+  assert.equal(
+    hasTelephoneVisitWording("他院で電話相談を受けた。本日は当院へ来院。"),
+    false
+  );
+  assert.equal(
+    hasTelephoneVisitWording("前回は対面診療だった。本日は電話再診として対応した。"),
+    true
+  );
+  assert.equal(
+    hasTelephoneVisitWording("前回は対面診療だったが本日は電話再診として対応した。"),
+    true
+  );
+  assert.equal(
+    hasTelephoneVisitWording("本日、家族から電話相談があり、電話にて必要な指示をした。"),
+    true
+  );
+});
+
+test("past telephone references leave the current in-person revisit unchanged", () => {
+  for (const clinicalText of [
+    "先週電話で相談があった。本日対面で再診し血圧安定。",
+    "前回は電話再診だった。本日は来院。"
+  ]) {
+    const result = applyEncounterVariantToPreparation(prepared(), {
+      session: {
+        facilityId: "fac-a",
+        setting: "outpatient",
+        clinicalText,
+        encounterDetails: null
+      },
+      priorSessions: [{ facilityId: "fac-a", serviceDate: "2026-06-01" }],
+      historyCompleteness: "complete"
+    });
+
+    assert.equal(result.calculationOptions.outpatient_basic.fee_kind, "revisit");
+    assert.equal(result.reviewIssues.length, 0);
+    assert.equal(result.metrics.encounterVariant.outcome, "not_applicable");
+  }
+});
+
 test("confirmed telephone eligibility selects the telephone axis and removes outpatient management", () => {
   const result = applyEncounterVariantToPreparation(prepared(), {
     session: {

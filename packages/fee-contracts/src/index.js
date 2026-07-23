@@ -10,6 +10,7 @@ export {
   hasPerformedBloodCollectionEvidenceInText,
   hasStructuredBloodCollectionEvidence,
   isClinicalDateRatioFalsePositiveContext,
+  isPastOrExternalClinicalServiceContext,
   normalizeClinicalPredicateText
 } from "./clinical-predicates.js";
 export const feeSessionStatuses = Object.freeze([

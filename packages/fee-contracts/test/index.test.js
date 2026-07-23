@@ -10,7 +10,8 @@ import {
   validateUpdateFeeSettingsInput,
   hasPerformedBloodCollectionEvidence,
   hasPerformedBloodCollectionEvidenceInText,
-  isClinicalDateRatioFalsePositiveContext
+  isClinicalDateRatioFalsePositiveContext,
+  isPastOrExternalClinicalServiceContext
 } from "../src/index.js";
 
 test("defaults receipt exports to fail closed", () => {
@@ -578,6 +579,12 @@ test("detects performed blood collection using the shared strict predicate", () 
   assert.equal(hasPerformedBloodCollectionEvidenceInText("O: 血清Cr 1.2mg/dL、尿一般を確認。"), false);
   assert.equal(hasPerformedBloodCollectionEvidence({ specimen: "血清" }), true);
   assert.equal(hasPerformedBloodCollectionEvidence({ payload: { collection_method: "blood_venous" } }), true);
+});
+
+test("classifies past and external clinical-service context through the shared predicate", () => {
+  assert.equal(isPastOrExternalClinicalServiceContext("前回は電話再診だった。"), true);
+  assert.equal(isPastOrExternalClinicalServiceContext("他院で検査を実施した。"), true);
+  assert.equal(isPastOrExternalClinicalServiceContext("本日、電話再診として対応した。"), false);
 });
 
 test("filters pain-scale ratios from clinical date extraction contexts", () => {
