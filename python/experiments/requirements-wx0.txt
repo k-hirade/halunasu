@@ -1,0 +1,4 @@
+# Install in an isolated experiment environment. These are not runtime dependencies.
+gliner==0.2.24
+sentence-transformers==5.1.2
+psutil==7.1.3

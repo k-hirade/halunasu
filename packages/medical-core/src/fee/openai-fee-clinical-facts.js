@@ -35,7 +35,7 @@ const LEGACY_EVENT_STATUSES = [
   "unclear"
 ];
 
-const ACTION_STATUSES = [
+export const ACTION_STATUSES = Object.freeze([
   "performed",
   "prescribed",
   "administered",
@@ -45,33 +45,33 @@ const ACTION_STATUSES = [
   "instruction_only",
   "not_performed",
   "unknown"
-];
+]);
 
-const TEMPORAL_RELATIONS = [
+export const TEMPORAL_RELATIONS = Object.freeze([
   "current_visit",
   "same_day_but_unknown",
   "past",
   "future",
   "unknown"
-];
+]);
 
-const SOURCE_ORIGINS = [
+export const SOURCE_ORIGINS = Object.freeze([
   "own_clinic_record",
   "patient_reported",
   "external_document",
   "carried_in_result",
   "other_provider_record",
   "unknown"
-];
+]);
 
-const PROVIDER_OWNERSHIPS = [
+export const PROVIDER_OWNERSHIPS = Object.freeze([
   "own_clinic",
   "same_institution_other_department",
   "other_provider",
   "unknown"
-];
+]);
 
-const RESULT_ASSERTIONS = [
+export const RESULT_ASSERTIONS = Object.freeze([
   "positive",
   "negative",
   "normal",
@@ -79,24 +79,24 @@ const RESULT_ASSERTIONS = [
   "numeric",
   "not_applicable",
   "unknown"
-];
+]);
 
-const CERTAINTY_LEVELS = [
+export const CERTAINTY_LEVELS = Object.freeze([
   "explicit",
   "inferred",
   "ambiguous"
-];
+]);
 
-const CHECKLIST_STATUSES = [
+export const CHECKLIST_STATUSES = Object.freeze([
   "performed_today",
   "planned",
   "past_or_external",
   "mentioned_not_performed",
   "not_in_text",
   "unclear"
-];
+]);
 
-const EVENT_TYPES = [
+export const EVENT_TYPES = Object.freeze([
   "outpatient_basic",
   "imaging",
   "procedure",
@@ -112,7 +112,7 @@ const EVENT_TYPES = [
   "emergency_time_addon",
   "follow_up",
   "other"
-];
+]);
 
 // v13: 型別variantの type 分割(互いに素・和 = EVENT_TYPES)。
 // 各variantは種別に関係するフィールドだけを持ち、無関係な空フィールドの出力コストを排除する。
@@ -130,7 +130,7 @@ const GENERAL_EVENT_TYPES = [
   "other"
 ];
 
-const BILLING_DOMAINS = [
+export const BILLING_DOMAINS = Object.freeze([
   "standard_lab",
   "standard_imaging",
   "standard_procedure",
@@ -152,7 +152,14 @@ const BILLING_DOMAINS = [
   "injection_review_only",
   "split_multi_day",
   "unknown"
-];
+]);
+
+export const STANDING_STATUSES = Object.freeze([
+  "continued",
+  "changed",
+  "stopped",
+  "none"
+]);
 
 export const feeClinicalFactsSchema = {
   type: "object",
@@ -249,7 +256,7 @@ export const feeClinicalFactsSchema = {
           target: shortString(70),
           status: {
             type: "string",
-            enum: ["continued", "changed", "stopped"]
+            enum: STANDING_STATUSES.filter((status) => status !== "none")
           }
         }
       }

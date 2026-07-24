@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://halunasu.com/schemas/fee-clinical-axes.schema.json",
+  "title": "Halunasu fee clinical extraction axes",
+  "description": "Canonical enums shared by fee extraction datasets and runtimes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "actionStatus",
+    "temporalRelation",
+    "sourceOrigin",
+    "providerOwnership",
+    "standingStatus"
+  ],
+  "properties": {
+    "actionStatus": {
+      "type": "string",
+      "enum": [
+        "performed",
+        "prescribed",
+        "administered",
+        "ordered",
+        "planned",
+        "considered",
+        "instruction_only",
+        "not_performed",
+        "unknown"
+      ]
+    },
+    "temporalRelation": {
+      "type": "string",
+      "enum": [
+        "current_visit",
+        "same_day_but_unknown",
+        "past",
+        "future",
+        "unknown"
+      ]
+    },
+    "sourceOrigin": {
+      "type": "string",
+      "enum": [
+        "own_clinic_record",
+        "patient_reported",
+        "external_document",
+        "carried_in_result",
+        "other_provider_record",
+        "unknown"
+      ]
+    },
+    "providerOwnership": {
+      "type": "string",
+      "enum": [
+        "own_clinic",
+        "same_institution_other_department",
+        "other_provider",
+        "unknown"
+      ]
+    },
+    "standingStatus": {
+      "type": "string",
+      "enum": [
+        "continued",
+        "changed",
+        "stopped",
+        "none"
+      ]
+    }
+  },
+  "$defs": {
+    "lineRole": {
+      "type": "string",
+      "enum": [
+        "performed",
+        "management_continuation",
+        "plan",
+        "none"
+      ]
+    },
+    "resultAssertion": {
+      "type": "string",
+      "enum": [
+        "positive",
+        "negative",
+        "normal",
+        "abnormal",
+        "numeric",
+        "not_applicable",
+        "unknown"
+      ]
+    },
+    "certainty": {
+      "type": "string",
+      "enum": [
+        "explicit",
+        "inferred",
+        "ambiguous"
+      ]
+    },
+    "checklistStatus": {
+      "type": "string",
+      "enum": [
+        "performed_today",
+        "planned",
+        "past_or_external",
+        "mentioned_not_performed",
+        "not_in_text",
+        "unclear"
+      ]
+    },
+    "eventType": {
+      "type": "string",
+      "enum": [
+        "outpatient_basic",
+        "imaging",
+        "procedure",
+        "exam",
+        "treatment",
+        "medication",
+        "injection",
+        "material",
+        "lab",
+        "management",
+        "counseling",
+        "pathology",
+        "emergency_time_addon",
+        "follow_up",
+        "other"
+      ]
+    },
+    "billingDomain": {
+      "type": "string",
+      "enum": [
+        "standard_lab",
+        "standard_imaging",
+        "standard_procedure",
+        "standard_medication",
+        "standard_material",
+        "standard_management",
+        "standard_counseling",
+        "pathology",
+        "emergency_time_addon",
+        "psychiatry_special",
+        "anesthesia",
+        "surgery",
+        "rehabilitation",
+        "home_care",
+        "endoscopy",
+        "dialysis",
+        "transfusion",
+        "radiation_therapy",
+        "injection_review_only",
+        "split_multi_day",
+        "unknown"
+      ]
+    }
+  },
+  "x-halunasu-prompt-version": "fee-clinical-events-v15"
+}

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "fee-specialty-matrix-v3",
+  "datasetId": "fee-specialty-matrix",
+  "scope": "whitebox-wx0",
+  "specialties": [
+    { "id": "internal_medicine", "label": "内科" },
+    { "id": "dermatology", "label": "皮膚科" },
+    { "id": "orthopedics", "label": "整形外科" },
+    { "id": "pediatrics", "label": "小児科" },
+    { "id": "otolaryngology", "label": "耳鼻咽喉科" },
+    { "id": "ophthalmology", "label": "眼科" },
+    { "id": "psychiatry", "label": "精神科" },
+    { "id": "surgery", "label": "外科" }
+  ],
+  "encounterSettings": [
+    { "id": "outpatient", "label": "外来" },
+    { "id": "home_visit", "label": "訪問診療" },
+    { "id": "house_call", "label": "往診" },
+    { "id": "telephone", "label": "電話再診" }
+  ],
+  "requirements": {
+    "minimumCasesPerCell": 10,
+    "minimumHoldoutCasesPerCell": 2,
+    "syntheticOnly": true,
+    "inpatientExcluded": true,
+    "primaryMetricSplit": "holdout"
+  }
+}

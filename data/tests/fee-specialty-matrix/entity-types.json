@@ -1,0 +1,250 @@
+{
+  "schemaVersion": "fee-wx0-entity-types-v1",
+  "source": {
+    "medicalProcedureMasterVersion": "2026-06-15",
+    "masterSha256": "26737b6719ede79ea0ba532a3ac91cc8c5a2ecacbe3af040b73de21bcb3376d1",
+    "clinicalAxesSchemaSha256": "a2be9569c975f9f46e1a05740b1be54cd106e734ac42c2f79b9201e9575147d7"
+  },
+  "types": [
+    {
+      "id": "medical_procedure_a",
+      "category": "outpatient_basic",
+      "label": "基本診療料",
+      "definition": "初診、再診、入院など診療の基本となる行為",
+      "modelLabel": "基本診療料: 初診、再診、入院など診療の基本となる行為",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "A"
+      },
+      "masterRowCount": 2202
+    },
+    {
+      "id": "medical_procedure_b",
+      "category": "management",
+      "label": "医学管理",
+      "definition": "疾患や療養に対する医学的な指導・管理",
+      "modelLabel": "医学管理: 疾患や療養に対する医学的な指導・管理",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "B"
+      },
+      "masterRowCount": 471
+    },
+    {
+      "id": "medical_procedure_c",
+      "category": "management",
+      "label": "在宅医療",
+      "definition": "訪問診療、往診、在宅療養に関する診療行為",
+      "modelLabel": "在宅医療: 訪問診療、往診、在宅療養に関する診療行為",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "C"
+      },
+      "masterRowCount": 813
+    },
+    {
+      "id": "medical_procedure_d",
+      "category": "lab",
+      "label": "検査",
+      "definition": "検体検査、生体検査、検査判断",
+      "modelLabel": "検査: 検体検査、生体検査、検査判断",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "D"
+      },
+      "masterRowCount": 1722
+    },
+    {
+      "id": "medical_procedure_e",
+      "category": "imaging",
+      "label": "画像診断",
+      "definition": "X線、CT、MRI、超音波などの画像診断",
+      "modelLabel": "画像診断: X線、CT、MRI、超音波などの画像診断",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "E"
+      },
+      "masterRowCount": 345
+    },
+    {
+      "id": "medical_procedure_f",
+      "category": "medication",
+      "label": "投薬",
+      "definition": "処方、調剤、薬剤の投与",
+      "modelLabel": "投薬: 処方、調剤、薬剤の投与",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "F"
+      },
+      "masterRowCount": 45
+    },
+    {
+      "id": "medical_procedure_g",
+      "category": "injection",
+      "label": "注射",
+      "definition": "皮下、筋肉内、静脈内などの注射",
+      "modelLabel": "注射: 皮下、筋肉内、静脈内などの注射",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "G"
+      },
+      "masterRowCount": 67
+    },
+    {
+      "id": "medical_procedure_h",
+      "category": "treatment",
+      "label": "リハビリテーション",
+      "definition": "運動器、脳血管、呼吸器などのリハビリ",
+      "modelLabel": "リハビリテーション: 運動器、脳血管、呼吸器などのリハビリ",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "H"
+      },
+      "masterRowCount": 234
+    },
+    {
+      "id": "medical_procedure_i",
+      "category": "counseling",
+      "label": "精神科専門療法",
+      "definition": "精神療法、心理支援、精神科訪問看護",
+      "modelLabel": "精神科専門療法: 精神療法、心理支援、精神科訪問看護",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "I"
+      },
+      "masterRowCount": 353
+    },
+    {
+      "id": "medical_procedure_j",
+      "category": "procedure",
+      "label": "処置",
+      "definition": "創傷、熱傷、吸引などの処置",
+      "modelLabel": "処置: 創傷、熱傷、吸引などの処置",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "J"
+      },
+      "masterRowCount": 473
+    },
+    {
+      "id": "medical_procedure_k",
+      "category": "procedure",
+      "label": "手術",
+      "definition": "手術および手術に付随する操作",
+      "modelLabel": "手術: 手術および手術に付随する操作",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "K"
+      },
+      "masterRowCount": 3295
+    },
+    {
+      "id": "medical_procedure_l",
+      "category": "procedure",
+      "label": "麻酔",
+      "definition": "麻酔、神経ブロック",
+      "modelLabel": "麻酔: 麻酔、神経ブロック",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "L"
+      },
+      "masterRowCount": 173
+    },
+    {
+      "id": "medical_procedure_m",
+      "category": "treatment",
+      "label": "放射線治療",
+      "definition": "放射線照射、定位放射線治療",
+      "modelLabel": "放射線治療: 放射線照射、定位放射線治療",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "M"
+      },
+      "masterRowCount": 90
+    },
+    {
+      "id": "medical_procedure_n",
+      "category": "pathology",
+      "label": "病理診断",
+      "definition": "病理組織、細胞診、病理判断",
+      "modelLabel": "病理診断: 病理組織、細胞診、病理判断",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "N"
+      },
+      "masterRowCount": 50
+    },
+    {
+      "id": "medical_procedure_o",
+      "category": "other",
+      "label": "その他の診療行為",
+      "definition": "上記以外の診療行為や評価料",
+      "modelLabel": "その他の診療行為: 上記以外の診療行為や評価料",
+      "masterSelector": {
+        "table": "medical_procedures",
+        "chapter": [
+          "1",
+          "2"
+        ],
+        "alphaPart": "O"
+      },
+      "masterRowCount": 1084
+    }
+  ]
+}
