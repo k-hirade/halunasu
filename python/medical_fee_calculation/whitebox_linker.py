@@ -26,6 +26,7 @@ from medical_fee_calculation.whitebox_onnx import (
     require_runtime_modules,
     runtime_dependency_status,
     session_feeds,
+    verify_deterministic_inference,
 )
 
 
@@ -120,7 +121,10 @@ def linker_readiness(manifest_path: str | Path | None = None) -> dict[str, Any]:
             str(artifact.manifest_path),
             artifact.artifact_version,
         )
-        probe_vectors = encoder.encode(["算定確認"])
+        probe_vectors, determinism_probe = verify_deterministic_inference(
+            lambda: encoder.encode(["算定確認"]),
+            label="linker readiness probe",
+        )
         if len(probe_vectors) != 1:
             raise WhiteboxArtifactError(
                 "linker readiness probe returned an unexpected vector count"
@@ -134,6 +138,7 @@ def linker_readiness(manifest_path: str | Path | None = None) -> dict[str, Any]:
             **base,
             "runtimeDependencies": dependencies,
             "inferenceProbe": "passed",
+            "determinismProbe": determinism_probe,
             "indexEntryCount": len(index.entries),
             "dimension": expected_dimension,
         }

@@ -26,6 +26,7 @@ from medical_fee_calculation.whitebox_onnx import (
     runtime_dependency_status,
     session_feeds,
     softmax,
+    verify_deterministic_inference,
 )
 
 
@@ -106,11 +107,15 @@ def span_detector_readiness(manifest_path: str | Path | None = None) -> dict[str
             str(artifact.manifest_path),
             artifact.artifact_version,
         )
-        probe = runtime.detect([{
+        probe_input = [{
             "lineId": "readiness-probe",
             "text": "算定確認",
             "section": "unknown",
-        }])
+        }]
+        probe, determinism_probe = verify_deterministic_inference(
+            lambda: runtime.detect(probe_input),
+            label="span detector readiness probe",
+        )
         if len(probe) != 1:
             raise WhiteboxArtifactError(
                 "span detector readiness probe returned an unexpected result count"
@@ -119,6 +124,7 @@ def span_detector_readiness(manifest_path: str | Path | None = None) -> dict[str
             **base,
             "runtimeDependencies": dependencies,
             "inferenceProbe": "passed",
+            "determinismProbe": determinism_probe,
         }
     except (WhiteboxArtifactError, ValueError, OSError, ImportError) as exc:
         return {**base, "available": False, "reason": str(exc)}

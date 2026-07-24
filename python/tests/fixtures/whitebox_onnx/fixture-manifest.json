@@ -1,0 +1,12 @@
+{
+  "files": {
+    "context.onnx": "e3b422e31fd74a857bafa50d102fbde2d987d5267c636d2d8c0fe891b50621c6",
+    "linker.onnx": "2a811e23f5c651b80c499318ee785d9f37ba470fd73cc31d6397b17fa623e063",
+    "span.onnx": "4c34352304c485f07623012f6f84eee37524916369347f771d2003c9d5176b1b",
+    "tokenizer.json": "c3a5f295c7875b71f76623158c3140c679f44cb46af5cf3c16016f60d2df4153"
+  },
+  "generator": "build_whitebox_onnx_fixtures.py",
+  "onnxIrVersion": 8,
+  "onnxOpsetVersion": 13,
+  "schemaVersion": 1
+}

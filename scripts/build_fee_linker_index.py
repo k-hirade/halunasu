@@ -19,7 +19,10 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
 from medical_fee_calculation.name_scan import _scan_aliases
-from medical_fee_calculation.whitebox_artifacts import sha256_file
+from medical_fee_calculation.whitebox_artifacts import (
+    sha256_file,
+    validate_artifact_license,
+)
 from medical_fee_calculation.whitebox_linker import create_onnx_sentence_encoder
 
 
@@ -156,12 +159,24 @@ def build_linker_artifact(
     output_dir: Path,
     model_version: str,
     model_revision: str,
+    license_model_id: str,
+    license_name: str,
+    license_verified_at: str,
+    license_source_url: str,
     embedder: Callable[[Sequence[str]], Sequence[Sequence[float]]] | None = None,
     batch_size: int = 256,
     embedding_output_name: str = "",
     pooling: str = "mean",
     max_length: int = 256,
 ) -> Path:
+    license_record = validate_artifact_license({
+        "license": {
+            "modelId": license_model_id,
+            "license": license_name,
+            "verifiedAt": license_verified_at,
+            "sourceUrl": license_source_url,
+        }
+    })
     if output_dir.exists() and any(output_dir.iterdir()):
         raise ValueError(f"output directory must be empty: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -221,10 +236,16 @@ def build_linker_artifact(
     source_fingerprint = hashlib.sha256(
         json.dumps(sources, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
+    license_fingerprint = json.dumps(
+        license_record,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     artifact_version = hashlib.sha256(
         (
             f"{INDEX_SCHEMA_VERSION}:{model_revision}:{index_sha}:{model_sha}:"
-            f"{tokenizer_sha}:{source_fingerprint}"
+            f"{tokenizer_sha}:{source_fingerprint}:{license_fingerprint}"
         ).encode("utf-8")
     ).hexdigest()[:24]
     manifest = {
@@ -234,6 +255,7 @@ def build_linker_artifact(
         "indexVersion": artifact_version,
         "modelVersion": model_version,
         "modelRevision": model_revision,
+        "license": license_record,
         "backend": "onnx_sentence_encoder",
         "modelFileKey": "model",
         "tokenizerFileKey": "tokenizer",
@@ -500,6 +522,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--model-version", required=True)
     parser.add_argument("--model-revision", required=True)
+    parser.add_argument("--license-model-id", required=True)
+    parser.add_argument("--license-name", required=True)
+    parser.add_argument("--license-verified-at", required=True)
+    parser.add_argument("--license-source-url", required=True)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--embedding-output-name", default="")
     parser.add_argument(
@@ -521,6 +547,10 @@ def main() -> int:
         output_dir=args.output_dir,
         model_version=args.model_version,
         model_revision=args.model_revision,
+        license_model_id=args.license_model_id,
+        license_name=args.license_name,
+        license_verified_at=args.license_verified_at,
+        license_source_url=args.license_source_url,
         batch_size=args.batch_size,
         embedding_output_name=args.embedding_output_name,
         pooling=args.pooling,

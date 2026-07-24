@@ -10,11 +10,26 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlparse
 
 
 WHITEBOX_ARTIFACT_SCHEMA_VERSION = 1
+WHITEBOX_ARTIFACT_LICENSE_FIELDS = (
+    "modelId",
+    "license",
+    "verifiedAt",
+    "sourceUrl",
+)
+NON_COMMERCIAL_LICENSE_MARKERS = (
+    "by-nc",
+    "noncommercial",
+    "non-commercial",
+    "research-only",
+    "research only",
+)
 
 
 class WhiteboxArtifactError(ValueError):
@@ -80,6 +95,7 @@ def load_whitebox_artifact(
     for field in ("artifactVersion", "modelVersion", "modelRevision", "backend"):
         if not isinstance(manifest.get(field), str) or not manifest[field].strip():
             raise WhiteboxArtifactError(f"artifact manifest field is missing: {field}")
+    validate_artifact_license(manifest)
     files = manifest.get("files")
     if not isinstance(files, dict):
         raise WhiteboxArtifactError("artifact manifest files must be an object")
@@ -88,6 +104,49 @@ def load_whitebox_artifact(
     artifact = WhiteboxArtifact(root=root, manifest_path=path, manifest=manifest)
     validate_artifact_files(artifact, required_files)
     return artifact
+
+
+def validate_artifact_license(manifest: Mapping[str, Any]) -> dict[str, str]:
+    license_record = manifest.get("license")
+    if not isinstance(license_record, Mapping):
+        raise WhiteboxArtifactError(
+            "artifact manifest license verification is required"
+        )
+    normalized: dict[str, str] = {}
+    for field in WHITEBOX_ARTIFACT_LICENSE_FIELDS:
+        value = license_record.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise WhiteboxArtifactError(
+                f"artifact manifest license field is missing: {field}"
+            )
+        normalized[field] = value.strip()
+
+    license_name = normalized["license"].lower().replace("_", "-")
+    if license_name in {"unknown", "unverified", "none"} or any(
+        marker in license_name
+        for marker in NON_COMMERCIAL_LICENSE_MARKERS
+    ):
+        raise WhiteboxArtifactError(
+            "artifact license is not approved for commercial runtime use"
+        )
+
+    try:
+        verified_at = date.fromisoformat(normalized["verifiedAt"])
+    except ValueError as exc:
+        raise WhiteboxArtifactError(
+            "artifact manifest license verifiedAt must be YYYY-MM-DD"
+        ) from exc
+    if verified_at > date.today():
+        raise WhiteboxArtifactError(
+            "artifact manifest license verifiedAt cannot be in the future"
+        )
+
+    source_url = urlparse(normalized["sourceUrl"])
+    if source_url.scheme != "https" or not source_url.netloc:
+        raise WhiteboxArtifactError(
+            "artifact manifest license sourceUrl must be an HTTPS URL"
+        )
+    return normalized
 
 
 def validate_artifact_files(
@@ -140,6 +199,7 @@ def artifact_readiness(
         "modelVersion": artifact.model_version,
         "modelRevision": artifact.manifest["modelRevision"],
         "backend": artifact.manifest["backend"],
+        "license": validate_artifact_license(artifact.manifest),
         "manifestSha256": sha256_file(artifact.manifest_path),
     }
 

@@ -46,6 +46,10 @@ class WhiteboxRetrainingPipelineTest(unittest.TestCase):
                 {artifact["layer"] for artifact in result["artifacts"]},
                 {"wx1", "wx2", "wx3"},
             )
+            self.assertTrue(all(
+                artifact["license"]["license"] == "Apache-2.0"
+                for artifact in result["artifacts"]
+            ))
             self.assertEqual(result["deployment"]["status"], "complete")
             deployment = calls[-1]
             self.assertEqual(deployment["environment"]["TARGET_ENV"], "stg")
@@ -153,6 +157,28 @@ class WhiteboxRetrainingPipelineTest(unittest.TestCase):
                     command_runner=lambda *unused: CommandResult(returncode=0),
                 )
 
+    def test_artifact_without_license_verification_is_rejected_before_registration(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config_path = self._fixture(root)
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            manifest_path = root / config["artifacts"][0]["manifestPath"]
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest.pop("license")
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "license verification is required",
+            ):
+                run_pipeline(
+                    config_path,
+                    repo_root=root,
+                    output_dir=root / "docs" / "blocked",
+                    apply=True,
+                    command_runner=lambda *unused: CommandResult(returncode=0),
+                )
+
     def _fixture(self, root: Path) -> Path:
         (root / "generated").mkdir(parents=True)
         (root / "reports").mkdir()
@@ -197,6 +223,12 @@ class WhiteboxRetrainingPipelineTest(unittest.TestCase):
                 "artifactVersion": f"{layer}-v1",
                 "modelVersion": f"{layer}-model-v1",
                 "modelRevision": "immutable-test-revision",
+                "license": {
+                    "modelId": f"test/{layer}-model",
+                    "license": "Apache-2.0",
+                    "verifiedAt": "2026-07-25",
+                    "sourceUrl": f"https://example.test/{layer}-model/license",
+                },
                 "backend": "test-injected",
                 "files": {
                     "model": {

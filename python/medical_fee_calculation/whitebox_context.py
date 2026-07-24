@@ -26,6 +26,7 @@ from medical_fee_calculation.whitebox_onnx import (
     runtime_dependency_status,
     session_feeds,
     softmax,
+    verify_deterministic_inference,
 )
 
 
@@ -108,14 +109,18 @@ def context_classifier_readiness(
             str(artifact.manifest_path),
             artifact.artifact_version,
         )
-        probe = runtime.classify([{
+        probe_input = [{
             "lineId": "readiness-probe",
             "spanId": "readiness-probe",
             "text": "算定確認",
             "spanText": "算定確認",
             "previousLine": "",
             "nextLine": "",
-        }])
+        }]
+        probe, determinism_probe = verify_deterministic_inference(
+            lambda: runtime.classify(probe_input),
+            label="context classifier readiness probe",
+        )
         if len(probe) != 1:
             raise WhiteboxArtifactError(
                 "context classifier readiness probe returned an unexpected result count"
@@ -124,6 +129,7 @@ def context_classifier_readiness(
             **base,
             "runtimeDependencies": dependencies,
             "inferenceProbe": "passed",
+            "determinismProbe": determinism_probe,
         }
     except (WhiteboxArtifactError, ValueError, OSError, ImportError) as exc:
         return {**base, "available": False, "reason": str(exc)}

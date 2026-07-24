@@ -61,33 +61,29 @@ npm run prepare:fee-specialty-matrix -- --output /private/tmp/fee-specialty-anno
 
 商用利用不可のものは代替(自社合成データでのFT)へ切り替える。判断は表にして残す。
 
-### E1確認結果 (2026-07-24)
+### E1確認結果 (2026-07-25)
 
-| 候補 | 一次情報上の条件 | 製品・商用評価での扱い |
-| --- | --- | --- |
-| `urchade/gliner_multi` | CC BY-NC 4.0 | **不採用**。非商用条件のため製品評価にも使わない |
-| `urchade/gliner_multi-v2.1` | Apache 2.0 | **採用候補**。multilingualの主比較対象 |
-| `Ihor/gliner-biomed-small-v1.0` / `base-v1.0` | Apache 2.0 | **採用候補**。ただし英語中心のため日本語性能はE3でのみ判断 |
-| `cl-nagoya/ruri-v3-{30m,70m,130m,310m}` | Apache 2.0 | **採用候補**。E4では30mから実測し、サイズを段階比較 |
-| `cl-nagoya/ruri-reranker-base` / `ruri-v3-reranker-310m` | Apache 2.0 | **採用候補**。E4のtop-k再順位付け有無を比較 |
-| `sbintuitions/modernbert-ja-*` | MIT | **採用候補**。WX3のベースモデル候補 |
-| `sociocom/MedNER-CR-JA` | CC BY 4.0 | モデル比較には利用可能。帰属表示をアーティファクトmanifestへ残す |
-| MedTxt-CR / MedTxt-RRコーパス | 配布元への申請が必要。J-Stage利用規約・著作権上、公開配布されていない | **訓練不採用**。個別許諾を得るまで評価・訓練データへ取り込まない |
-| UTH-BERT | 公開ページ上の配布リンクとCC BY-NC-SA 4.0記載が取り消し線・deprecated | **不採用**。現時点で利用可能な許諾済みアーティファクトを確認できない |
+| モデルID・データ | ライセンス | 一次情報 | 確認日 | 商用利用 | 帰属・再配布時の義務 | 判断 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `urchade/gliner_multi` | CC BY-NC 4.0 | https://huggingface.co/urchade/gliner_multi | 2026-07-25 | 不可 | 帰属、ライセンス表示、変更表示に加えて非商用制限 | **不採用**。製品評価、派生学習、同梱に使用しない |
+| `urchade/gliner_multi-v2.1` | Apache-2.0 | https://huggingface.co/urchade/gliner_multi-v2.1 | 2026-07-25 | 可 | LICENSEと著作権表示を保持し、NOTICEがある場合は保持。変更箇所を表示 | **採用候補**。multilingualの主比較対象 |
+| `Ihor/gliner-biomed-small-v1.0` | Apache-2.0 | https://huggingface.co/Ihor/gliner-biomed-small-v1.0 | 2026-07-25 | 可 | LICENSEと著作権表示を保持し、NOTICEがある場合は保持。変更箇所を表示 | **採用候補**。英語中心のため日本語性能はE3で判断 |
+| `cl-nagoya/ruri-v3-30m` | Apache-2.0 | https://huggingface.co/cl-nagoya/ruri-v3-30m | 2026-07-25 | 可 | LICENSEと著作権表示を保持し、NOTICEがある場合は保持。変更箇所を表示 | **採用候補**。E4は30mから実測 |
+| `cl-nagoya/ruri-v3-reranker-310m` | Apache-2.0 | https://huggingface.co/cl-nagoya/ruri-v3-reranker-310m | 2026-07-25 | 可 | LICENSEと著作権表示を保持し、NOTICEがある場合は保持。変更箇所を表示 | **採用候補**。top-k再順位付け比較用 |
+| `sbintuitions/modernbert-ja-130m` | MIT | https://huggingface.co/sbintuitions/modernbert-ja-130m/blob/main/LICENSE | 2026-07-25 | 可 | 著作権表示とMITライセンス本文を保持 | **採用候補**。WX3のベースモデル候補 |
+| `sociocom/MedNER-CR-JA` | CC BY 4.0 | https://huggingface.co/sociocom/MedNER-CR-JA | 2026-07-25 | 可 | 適切な帰属、ライセンスへのリンク、変更有無を表示 | **モデル比較のみ採用候補**。学習元データは別途審査する |
+| MedTxt-CR / MedTxt-RRコーパス | 一般配布ライセンスを確認できず、申請制 | https://sociocom.naist.jp/medtxt-en/cr/ | 2026-07-25 | 未確認 | 個別許諾条件に従う必要がある | **不採用**。書面の個別許諾を得るまで評価・訓練へ取り込まない |
+| UTH-BERT | 公開ページのCC BY-NC-SA 4.0・配布導線がdeprecated | https://ai-health.m.u-tokyo.ac.jp/home/research/uth-bert | 2026-07-25 | 不可/配布停止 | 非商用・継承条件。現行配布物の許諾も確認不能 | **不採用** |
 
-一次情報:
+アーティファクトに含めるtokenizer、語彙、変換済みONNXも、上表のモデルと
+同一条件であるか、別の一次情報で商用利用可能と確認できたものだけを使う。
+確認対象が複数なら、全構成要素の判断が完了するまでビルドしない。
 
-- GLiNER v2.1モデルカード: https://huggingface.co/urchade/gliner_multi-v2.1
-- GLiNER-BioMedモデルカード: https://huggingface.co/Ihor/gliner-biomed-small-v1.0
-- Ruri v3モデルカード: https://huggingface.co/cl-nagoya/ruri-v3-30m
-- Ruri rerankerモデルカード: https://huggingface.co/cl-nagoya/ruri-v3-reranker-310m
-- ModernBERT-Jaライセンス: https://huggingface.co/sbintuitions/modernbert-ja-130m/blob/main/LICENSE
-- MedNER-CR-JAモデルカード: https://huggingface.co/sociocom/MedNER-CR-JA
-- MedTxt-CR配布条件: https://sociocom.naist.jp/medtxt-en/cr/
-- UTH-BERT公式ページ: https://ai-health.m.u-tokyo.ac.jp/home/research/uth-bert
-
-判断はモデルIDとrevisionをmanifestへ固定した時点で再確認する。モデルカードの
-ライセンス表示だけで、学習元データの追加条件まで自動的に安全とはみなさない。
+判断はモデルIDとrevisionをmanifestへ固定した時点で再確認する。manifestには
+`license: {modelId, license, verifiedAt, sourceUrl}`を必須で保存し、欠落、
+非商用条件、未来日、HTTPSでない一次情報URLはランタイムローダーで拒否する。
+モデルカードのライセンス表示だけで、学習元データの追加条件まで自動的に
+安全とはみなさない。
 
 ## E2. 評価コーパス: 診療科×受診区分マトリクス
 

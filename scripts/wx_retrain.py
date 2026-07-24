@@ -367,6 +367,7 @@ def _register_artifacts(
             "artifactType": expected_type,
             "artifactVersion": version,
             "modelVersion": artifact.model_version,
+            "license": dict(artifact.manifest["license"]),
             "manifestPath": _relative_to_root(destination_manifest, root),
             "runtimeManifestPath": f"/app/{_relative_to_root(destination_manifest, root)}",
             "manifestSha256": _sha256_file(destination_manifest),

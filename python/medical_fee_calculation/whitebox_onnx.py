@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
+import math
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from medical_fee_calculation.whitebox_artifacts import WhiteboxArtifactError
 
@@ -41,6 +44,10 @@ def require_runtime_modules():
 
 
 def deterministic_session_options(ort):
+    # Determinism is part of the billing-extraction contract. The runtimes use
+    # CPUExecutionProvider with one thread and sequential execution. Any future
+    # execution-provider, threading, or graph-optimization change must retain
+    # the byte-equality CI test and the readiness probe.
     options = ort.SessionOptions()
     options.intra_op_num_threads = 1
     options.inter_op_num_threads = 1
@@ -48,6 +55,64 @@ def deterministic_session_options(ort):
     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
     options.enable_mem_pattern = False
     return options
+
+
+def verify_deterministic_inference(
+    inference: Callable[[], Any],
+    *,
+    label: str,
+    repeat_count: int = 2,
+) -> tuple[Any, dict[str, Any]]:
+    if repeat_count < 2:
+        raise ValueError("determinism probe repeat_count must be at least 2")
+    first_result = inference()
+    first_bytes = canonical_inference_bytes(first_result)
+    for _ in range(1, repeat_count):
+        current_bytes = canonical_inference_bytes(inference())
+        if current_bytes != first_bytes:
+            raise WhiteboxArtifactError(
+                f"{label} output is not deterministic"
+            )
+    return first_result, {
+        "status": "passed",
+        "repeatCount": repeat_count,
+        "outputSha256": hashlib.sha256(first_bytes).hexdigest(),
+    }
+
+
+def canonical_inference_bytes(value: Any) -> bytes:
+    return json.dumps(
+        _json_safe_inference_value(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _json_safe_inference_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _json_safe_inference_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_inference_value(item) for item in value]
+    if hasattr(value, "tolist"):
+        return _json_safe_inference_value(value.tolist())
+    if hasattr(value, "item"):
+        return _json_safe_inference_value(value.item())
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise WhiteboxArtifactError(
+                "ONNX inference output contains a non-finite value"
+            )
+        return value
+    raise WhiteboxArtifactError(
+        f"ONNX inference output contains an unsupported value: {type(value).__name__}"
+    )
 
 
 def load_tokenizer(tokenizer_class, path: str | Path):
@@ -109,4 +174,3 @@ def softmax(values, np, *, axis: int = -1):
     if np.any(denominator == 0):
         raise WhiteboxArtifactError("ONNX logits produced an invalid softmax")
     return exponentials / denominator
-

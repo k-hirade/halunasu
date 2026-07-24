@@ -19,11 +19,15 @@ from medical_fee_calculation.whitebox_context import (
     context_classifier_readiness,
 )
 from medical_fee_calculation.whitebox_linker import linker_readiness, link_spans
+from medical_fee_calculation.whitebox_onnx import verify_deterministic_inference
 from medical_fee_calculation.whitebox_span import (
     detect_spans,
     span_detector_readiness,
 )
-from scripts.build_fee_linker_index import _validate_runtime_embedding_parity
+from scripts.build_fee_linker_index import (
+    _validate_runtime_embedding_parity,
+    build_linker_artifact,
+)
 
 
 CURRENT_AXES = {
@@ -48,6 +52,23 @@ CURRENT_AXES = {
 
 
 class WhiteboxRuntimeTest(unittest.TestCase):
+    def test_determinism_probe_rejects_byte_different_output(self) -> None:
+        calls = 0
+
+        def changing_output():
+            nonlocal calls
+            calls += 1
+            return [{"score": 0.9 + calls / 100}]
+
+        with self.assertRaisesRegex(
+            WhiteboxArtifactError,
+            "output is not deterministic",
+        ):
+            verify_deterministic_inference(
+                changing_output,
+                label="test runtime",
+            )
+
     def test_linker_builder_requires_build_runtime_embedding_parity(self) -> None:
         result = _validate_runtime_embedding_parity(
             [[1.0, 0.0], [0.0, 1.0]],
@@ -78,6 +99,89 @@ class WhiteboxRuntimeTest(unittest.TestCase):
                     expected_type="fee_master_linker",
                     required_files=("index",),
                 )
+
+    def test_artifact_requires_verified_commercial_license_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)
+            manifest = self._manifest("fee_master_linker")
+            manifest.pop("license")
+            manifest_path = self._write_manifest(path, manifest)
+            with self.assertRaisesRegex(
+                WhiteboxArtifactError,
+                "license verification is required",
+            ):
+                load_whitebox_artifact(
+                    manifest_path,
+                    expected_type="fee_master_linker",
+                )
+
+            manifest["license"] = {
+                **self._license(),
+                "license": "CC-BY-NC-4.0",
+            }
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(
+                WhiteboxArtifactError,
+                "not approved for commercial runtime use",
+            ):
+                load_whitebox_artifact(
+                    manifest_path,
+                    expected_type="fee_master_linker",
+                )
+
+            invalid_licenses = (
+                (
+                    {key: value for key, value in self._license().items() if key != "sourceUrl"},
+                    "license field is missing: sourceUrl",
+                ),
+                (
+                    {**self._license(), "verifiedAt": "07/25/2026"},
+                    "verifiedAt must be YYYY-MM-DD",
+                ),
+                (
+                    {**self._license(), "verifiedAt": "2999-01-01"},
+                    "verifiedAt cannot be in the future",
+                ),
+                (
+                    {**self._license(), "sourceUrl": "http://example.test/license"},
+                    "sourceUrl must be an HTTPS URL",
+                ),
+            )
+            for license_record, message in invalid_licenses:
+                with self.subTest(message=message):
+                    manifest["license"] = license_record
+                    manifest_path.write_text(
+                        json.dumps(manifest),
+                        encoding="utf-8",
+                    )
+                    with self.assertRaisesRegex(WhiteboxArtifactError, message):
+                        load_whitebox_artifact(
+                            manifest_path,
+                            expected_type="fee_master_linker",
+                        )
+
+    def test_linker_builder_rejects_unverified_license_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)
+            output_dir = path / "artifact"
+            with self.assertRaisesRegex(
+                WhiteboxArtifactError,
+                "not approved for commercial runtime use",
+            ):
+                build_linker_artifact(
+                    master_db=path / "missing-master.sqlite",
+                    model_dir=path / "missing-model",
+                    onnx_model=None,
+                    tokenizer=None,
+                    output_dir=output_dir,
+                    model_version="model-v1",
+                    model_revision="revision-v1",
+                    license_model_id="test/noncommercial",
+                    license_name="CC-BY-NC-4.0",
+                    license_verified_at="2026-07-25",
+                    license_source_url="https://example.test/noncommercial",
+                )
+            self.assertFalse(output_dir.exists())
 
     def test_linker_groups_codes_applies_category_penalty_and_effective_date(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -273,6 +377,34 @@ class WhiteboxRuntimeTest(unittest.TestCase):
                 result = span_detector_readiness(manifest_path)
             self.assertTrue(result["available"])
             self.assertEqual(result["inferenceProbe"], "passed")
+            self.assertEqual(result["determinismProbe"]["repeatCount"], 2)
+
+            probe_calls = 0
+
+            def changing_probe(lines):
+                nonlocal probe_calls
+                probe_calls += 1
+                return [
+                    {
+                        "relevance": "irrelevant",
+                        "probeCall": probe_calls,
+                    }
+                    for _ in lines
+                ]
+
+            with (
+                patch(
+                    "medical_fee_calculation.whitebox_span.runtime_dependency_status",
+                    return_value={"available": True},
+                ),
+                patch(
+                    "medical_fee_calculation.whitebox_span._load_onnx_span_runtime",
+                    return_value=SimpleNamespace(detect=changing_probe),
+                ),
+            ):
+                result = span_detector_readiness(manifest_path)
+            self.assertFalse(result["available"])
+            self.assertIn("not deterministic", result["reason"])
 
             with (
                 patch(
@@ -314,6 +446,7 @@ class WhiteboxRuntimeTest(unittest.TestCase):
                 result = context_classifier_readiness(manifest_path)
             self.assertTrue(result["available"])
             self.assertEqual(result["inferenceProbe"], "passed")
+            self.assertEqual(result["determinismProbe"]["repeatCount"], 2)
 
     def test_linker_readiness_rejects_encoder_index_dimension_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -364,9 +497,19 @@ class WhiteboxRuntimeTest(unittest.TestCase):
             "artifactVersion": "artifact-v1",
             "modelVersion": "model-v1",
             "modelRevision": "immutable-revision",
+            "license": WhiteboxRuntimeTest._license(),
             "backend": "test-injected",
             "files": {},
             **extra,
+        }
+
+    @staticmethod
+    def _license():
+        return {
+            "modelId": "test/whitebox-model",
+            "license": "Apache-2.0",
+            "verifiedAt": "2026-07-25",
+            "sourceUrl": "https://example.test/whitebox-model/license",
         }
 
     @staticmethod

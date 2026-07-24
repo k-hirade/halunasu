@@ -103,6 +103,19 @@ LLM使用率は下げ続けるKPIになる(Fathom型のconfidence routing)。
 
 切替前に必ず: `FEE_SPAN_DETECTOR_MODE = off | shadow | route`。
 
+#### shadow有効化前pre-flight (2026-07-25レビューF4)
+
+以下を順番どおりに完了するまで、STGでもshadowへ切り替えない。
+
+1. 対象Cloud Run revisionを固定し、WX0-E6を1/10/40/80並行で実行する。
+   warm/cold、p50/p95/p99、最大RSS、CPU、timeout/5xxを記録し、80並行でも
+   同期workerの枯渇やOOMがないことを確認する。
+2. 同じrevisionの`/readyz`でWX1/WX2/WX3がすべて`available=true`、
+   `inferenceProbe=passed`、`determinismProbe.status=passed`かつ
+   `determinismProbe.repeatCount=2`であることを確認する。
+3. E6結果とreadyzのrevisionが一致することを保存してからshadowを有効化し、
+   標準5患者、L7再走、マトリクスサンプルの順で計測する。
+
 - shadow: L1〜L3をフル実行するが結果は使わず、以下をmetrics/traceへ:
   - **gold基準の指標(主)**: 固定gold・マトリクスに対するコード単位
     recall/precision、算定対象の見逃し率、過剰候補率、confidence別の
@@ -130,8 +143,11 @@ LLM使用率は下げ続けるKPIになる(Fathom型のconfidence routing)。
 
 - メモのsnapshot妥当性キーに `extractorVersion`(モデル+タイプ集合+閾値の
   ハッシュ)を追加。モデル更新でsnapshotは自動失効(promptVersionと同じ)。
-- エンコーダ経路は元々決定論なので、同一行の再計算はメモなしでも同一結果。
-  メモの価値は主に「LLM行きになった行の結果再利用」に縮退していく(良いこと)。
+- **実装済みの決定(2026-07-25レビューF3)**: route_ready時は抽出メモを
+  使用しない。エンコーダ経路は決定論で再計算が常に同一結果のためメモ不要、
+  LLM fallback行は毎回再抽出になるがroute時のLLM行は少数の前提で許容する。
+  route運用でLLM使用率が下がらないセルが観測されたら、
+  「メモをllmLinesサブセットに適用する」拡張を再検討する。
 
 ## テスト
 

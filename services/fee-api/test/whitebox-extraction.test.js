@@ -13,6 +13,10 @@ import {
   whiteboxRuntimeModes,
   whiteboxThresholds
 } from "../src/whitebox-extraction.js";
+import {
+  mergeClinicalFactsSamples,
+  reconcileLineReview
+} from "../src/clinical-calculation-input.js";
 
 const CURRENT_AXES = {
   actionStatus: { value: "performed", confidence: 0.99, abstained: false },
@@ -210,6 +214,71 @@ test("WX3 mixed performed and standing spans keep only the performed event", asy
     ["喀痰吸引"]
   );
   assert.deepEqual(result.encoderFacts.standing_mentions, []);
+  assert.deepEqual(result.encoderFacts.line_review, [{
+    line_id: "O-001",
+    line_role: "performed"
+  }]);
+});
+
+test("WX1 encoder and LLM routes preserve the complete v15 fact contract", async () => {
+  const lines = [
+    {
+      lineId: "O-001",
+      text: "創傷処置を施行。",
+      section: "O",
+      cues: { currentVisit: true }
+    },
+    {
+      lineId: "P-001",
+      text: "今後の治療方針を相談した。",
+      section: "P",
+      cues: {}
+    }
+  ];
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator(),
+    preprocessing: { lines },
+    session: { setting: "outpatient", serviceDate: "2026-07-24" },
+    env: routeEnv()
+  });
+
+  assert.equal(result.status, "route_ready");
+  assert.deepEqual(result.llmLines.map((line) => line.lineId), ["P-001"]);
+  assert.deepEqual(result.encoderFacts.line_review, [{
+    line_id: "O-001",
+    line_role: "performed"
+  }]);
+  assert.equal(result.encoderFacts.clinical_events[0].status, "candidate");
+  assert.equal(result.encoderFacts.clinical_events[0].reviewRequired, true);
+  assert.deepEqual(
+    result.encoderFacts.clinical_events[0].evidence_line_ids,
+    ["O-001"]
+  );
+
+  const merged = mergeClinicalFactsSamples([
+    result.encoderFacts,
+    {
+      clinical_events: [],
+      standing_mentions: [],
+      line_review: [{ line_id: "P-001", line_role: "none" }]
+    }
+  ]);
+  const reconciliation = reconcileLineReview(
+    merged,
+    lines.map((line) => line.lineId)
+  );
+  assert.deepEqual(reconciliation.missingIds, []);
+  assert.deepEqual(reconciliation.unknownIds, []);
+  assert.deepEqual(reconciliation.duplicateIds, []);
+  assert.deepEqual(reconciliation.normalizedLineReview, [
+    { line_id: "O-001", line_role: "performed" },
+    { line_id: "P-001", line_role: "none" }
+  ]);
+  const validLineIds = new Set(lines.map((line) => line.lineId));
+  for (const event of merged.clinical_events) {
+    assert.ok(event.evidence_line_ids.length > 0);
+    assert.ok(event.evidence_line_ids.every((lineId) => validLineIds.has(lineId)));
+  }
 });
 
 test("WX3 keeps past span axes while routing a current span on the same line", async () => {

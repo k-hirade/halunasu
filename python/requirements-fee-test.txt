@@ -1,0 +1,4 @@
+-r requirements-fee-runtime.txt
+
+# Used only to generate and verify the committed deterministic ONNX fixtures.
+onnx==1.17.0
