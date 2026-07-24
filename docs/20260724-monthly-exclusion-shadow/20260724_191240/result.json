@@ -1,0 +1,5483 @@
+{
+  "schemaVersion": "fee-monthly-chart-e2e.v2",
+  "generatedAt": "2026-07-24T10:15:02.617Z",
+  "runId": "monthly-chart-e2e-20260724101240818-676eb0",
+  "mode": "stg",
+  "source": {
+    "patientDir": "data/tests/fee-standing-monthly-e2e/1002",
+    "manifestSchemaVersion": "fee-monthly-chart-e2e.v1",
+    "syntheticDataOnly": true
+  },
+  "environment": {
+    "platformBaseUrl": "https://platform-api-stg-lp2t3inhza-an.a.run.app",
+    "feeBaseUrl": "https://fee-api-stg-wmfrwcpzkq-an.a.run.app",
+    "organizationCode": "yamamoto-demo-stg",
+    "facilityRef": "e136d89477c5",
+    "departmentRef": "47bcbc443271",
+    "facilityStandardKeys": [],
+    "feeSettings": {
+      "persisted": true,
+      "effectiveFrom": "2026-06-01",
+      "facilityStandards": [
+        {
+          "key": "zaitaku_data_teishutsu_kasan",
+          "status": "active",
+          "claimStartDate": "2026-01-01",
+          "effectiveTo": ""
+        },
+        {
+          "key": "base_up_hyoka_1",
+          "status": "active",
+          "claimStartDate": "2026-01-01",
+          "effectiveTo": ""
+        },
+        {
+          "key": "meisaisho_hakko_taisei",
+          "status": "active",
+          "claimStartDate": "2026-06-01",
+          "effectiveTo": ""
+        }
+      ],
+      "autoBillingRules": [
+        {
+          "ruleId": "home_visit_fee",
+          "code": "114001110",
+          "status": "active",
+          "action": "confirm",
+          "requiredFacilityStandardKey": ""
+        },
+        {
+          "ruleId": "home_visit_baseup",
+          "code": "180725910",
+          "status": "active",
+          "action": "confirm",
+          "requiredFacilityStandardKey": "base_up_hyoka_1"
+        },
+        {
+          "ruleId": "zaitaku_data_addon",
+          "code": "114057970",
+          "status": "active",
+          "action": "candidate",
+          "requiredFacilityStandardKey": "zaitaku_data_teishutsu_kasan"
+        }
+      ],
+      "historyPolicy": {
+        "externalHistoryEnabled": false,
+        "historyCompleteness": "unknown",
+        "defaultLookbackMonths": 12
+      }
+    }
+  },
+  "security": {
+    "chartTextIncluded": false,
+    "patientNameIncluded": false,
+    "credentialsIncluded": false,
+    "expectedReceiptWithheldUntilComparison": true,
+    "structuredOrdersSentToCalculation": false,
+    "expectedClaimContextSentToCalculation": false
+  },
+  "inputAudit": {
+    "patientRef": "1002",
+    "claimMonth": "2026-07",
+    "chartCount": 4,
+    "chartHashes": [
+      "276dcc3cb119bf976d26f56a51b9db9b09432bc74f3b613ef942927d736bb2be",
+      "1f2cccdd91592573521a28ffe9b1449f2a8d9879b577ed8c1847504054fd4ca7",
+      "65a32b1713653192de439168fa660ef6f0a6b86f33540f1f37ca1948e2f4338b",
+      "89b54485e445596035c620b16274431f9cdd206681bb5e0f904153dd0e3a93e5"
+    ],
+    "baselineCodeCount": 10,
+    "baselineOccurrenceCount": 14,
+    "baselineTotalPoints": 11313,
+    "prohibitedCalculationInputs": [
+      "orders.csv",
+      "receipt/UKE codes",
+      "expectedClaimContext"
+    ],
+    "calculationPayloadKeys": [],
+    "visits": [
+      {
+        "serviceDate": "2026-07-02",
+        "visitType": "定期",
+        "setting": "home_visit",
+        "visitKind": null,
+        "sameBuilding": true,
+        "singleBuildingPatientCount": 4
+      },
+      {
+        "serviceDate": "2026-07-09",
+        "visitType": "定期",
+        "setting": "home_visit",
+        "visitKind": null,
+        "sameBuilding": true,
+        "singleBuildingPatientCount": 4
+      },
+      {
+        "serviceDate": "2026-07-16",
+        "visitType": "電話",
+        "setting": "outpatient",
+        "visitKind": "telephone_revisit",
+        "sameBuilding": null,
+        "singleBuildingPatientCount": null
+      },
+      {
+        "serviceDate": "2026-07-23",
+        "visitType": "定期",
+        "setting": "home_visit",
+        "visitKind": null,
+        "sameBuilding": true,
+        "singleBuildingPatientCount": 4
+      }
+    ],
+    "standingTimeline": {
+      "schemaVersion": "fee-standing-monthly-e2e.v1",
+      "priorClaimMonth": "2026-06",
+      "priorServiceDate": "2026-06-25",
+      "priorClinicalTextHash": "276dcc3cb119bf976d26f56a51b9db9b09432bc74f3b613ef942927d736bb2be",
+      "currentClaimMonth": "2026-07",
+      "copyForwardServiceDate": "2026-07-02",
+      "expectedPriorStandingCodes": [
+        "114005410"
+      ],
+      "expectedCurrentStandingCodes": [
+        "114005410"
+      ],
+      "requireMemoHit": true,
+      "requireCurrentStandingApproval": true
+    }
+  },
+  "evaluationOptions": {
+    "repeat": 3,
+    "seedKnownPriorHistory": false,
+    "seedStandingPriorMonth": true,
+    "encounterSettingMode": "derived",
+    "encounterSettingOverride": null,
+    "approveCalculatedLines": true,
+    "approveStandingCandidates": true
+  },
+  "summary": {
+    "repeatCount": 3,
+    "visitCountPerRepeat": 4,
+    "allCalculationsUsedOpenAi": false,
+    "candidateResultStable": false,
+    "monthlyResultStable": false,
+    "reviewIssueResultStable": false,
+    "reviewIssueCounts": [
+      34,
+      26,
+      30
+    ],
+    "clinicalEventCounts": [
+      [
+        0,
+        2,
+        4,
+        11
+      ],
+      [
+        0,
+        3,
+        5,
+        3
+      ],
+      [
+        0,
+        2,
+        7,
+        4
+      ]
+    ],
+    "extractionStability": {
+      "perVisit": [
+        {
+          "visit": 1,
+          "serviceDate": "2026-07-02",
+          "eventCounts": [
+            0,
+            0,
+            0
+          ],
+          "min": 0,
+          "max": 0,
+          "spread": 0
+        },
+        {
+          "visit": 2,
+          "serviceDate": "2026-07-09",
+          "eventCounts": [
+            2,
+            3,
+            2
+          ],
+          "min": 2,
+          "max": 3,
+          "spread": 1
+        },
+        {
+          "visit": 3,
+          "serviceDate": "2026-07-16",
+          "eventCounts": [
+            4,
+            5,
+            7
+          ],
+          "min": 4,
+          "max": 7,
+          "spread": 3
+        },
+        {
+          "visit": 4,
+          "serviceDate": "2026-07-23",
+          "eventCounts": [
+            11,
+            3,
+            4
+          ],
+          "min": 3,
+          "max": 11,
+          "spread": 8
+        }
+      ],
+      "maxSpread": 8,
+      "stableVisitCount": 1
+    },
+    "extractionModeCounts": {
+      "full": 9,
+      "memo_only": 3
+    },
+    "emptyExtractionGuard": {
+      "triggeredVisitCount": 0,
+      "recoveredVisitCount": 0,
+      "unrecoveredVisitCount": 0
+    },
+    "longitudinalContext": {
+      "memoEnabledVisitCount": 12,
+      "memoUsedVisitCount": 3,
+      "memoHitLineRatio": {
+        "count": 12,
+        "min": 0,
+        "median": 0,
+        "mean": 0.25,
+        "max": 1
+      },
+      "newLineCount": [
+        0,
+        4,
+        4,
+        4,
+        0,
+        4,
+        4,
+        4,
+        0,
+        4,
+        4,
+        4
+      ],
+      "removedLineCount": [
+        0,
+        1,
+        4,
+        4,
+        0,
+        1,
+        4,
+        4,
+        0,
+        1,
+        4,
+        4
+      ],
+      "historyCompletenessCounts": {
+        "partial": 12
+      },
+      "historyUnavailableCount": 0,
+      "openAiCallCount": 9,
+      "openAiInputTokens": 53373,
+      "openAiOutputTokens": 12880,
+      "cachedInputTokens": 43776
+    },
+    "exactMatchRuns": 0,
+    "baselineCodeCount": 10,
+    "matchedCodeCounts": [
+      3,
+      3,
+      3
+    ],
+    "detectionMatchedCodeCounts": [
+      5,
+      5,
+      5
+    ],
+    "monthlyCandidateTotalPoints": [
+      50,
+      50,
+      50
+    ],
+    "baselineOnlyCounts": [
+      7,
+      7,
+      7
+    ],
+    "engineOnlyCounts": [
+      0,
+      1,
+      0
+    ],
+    "bothDeltaCounts": [
+      0,
+      0,
+      0
+    ],
+    "baselineTotalPoints": 11313,
+    "monthlyTotalPoints": [
+      3502,
+      3550,
+      3502
+    ],
+    "calculateRequestMs": {
+      "count": 12,
+      "min": 838.23,
+      "median": 9602.4,
+      "mean": 9177.4,
+      "max": 24648.55
+    },
+    "diseaseIndicationScanMs": {
+      "count": 12,
+      "min": 0,
+      "median": 22.5,
+      "mean": 26.67,
+      "max": 72
+    },
+    "standingTimeline": {
+      "enabled": true,
+      "repeatCount": 3,
+      "priorCandidateObservedCount": 3,
+      "priorConfirmationRecordedCount": 3,
+      "currentCandidateObservedCount": 3,
+      "currentConfirmationRecordedCount": 3,
+      "currentMonthlyLineIncludedCount": 3,
+      "memoHitCount": 3,
+      "allAcceptanceChecksPassed": true
+    }
+  },
+  "repeats": [
+    {
+      "repeat": 1,
+      "patientRef": "7694c566985d",
+      "priorHistorySeed": {
+        "source": "standing_first_month_candidate_approval",
+        "serviceDate": "2026-06-25",
+        "claimMonth": "2026-06",
+        "sessionRef": "f81a7613dfec"
+      },
+      "standingTimeline": {
+        "priorMonth": {
+          "serviceDate": "2026-06-25",
+          "claimMonth": "2026-06",
+          "sessionRef": "f81a7613dfec",
+          "expectedCodes": [
+            "114005410"
+          ],
+          "candidateCodes": [
+            "114005410"
+          ],
+          "approvedCodes": [
+            "114005410"
+          ],
+          "profileAudit": {
+            "profileCount": 1,
+            "matchedCodes": [
+              "114005410"
+            ],
+            "missingCodes": [],
+            "profiles": [
+              {
+                "profileRef": "74982c42aa1a",
+                "feeFamily": "fee_family_0e7a8a61319f88cef0a0dbf2",
+                "status": "active",
+                "claimMonth": "2026-06",
+                "confirmedCodes": [
+                  "114005410"
+                ]
+              }
+            ]
+          }
+        },
+        "currentMonth": {
+          "expectedCodes": [
+            "114005410"
+          ],
+          "candidateObservations": [
+            {
+              "serviceDate": "2026-07-02",
+              "matchedCodes": [
+                "114005410"
+              ],
+              "missingCodes": [],
+              "proposals": [
+                {
+                  "proposalRef": "40d3e26b5d0b",
+                  "code": "114005410",
+                  "name": "在宅人工呼吸指導管理料",
+                  "basis": "standing_confirmed_history_candidate",
+                  "source": "standing_fact_lane"
+                }
+              ]
+            },
+            {
+              "serviceDate": "2026-07-09",
+              "matchedCodes": [],
+              "missingCodes": [
+                "114005410"
+              ],
+              "proposals": []
+            },
+            {
+              "serviceDate": "2026-07-16",
+              "matchedCodes": [],
+              "missingCodes": [
+                "114005410"
+              ],
+              "proposals": []
+            },
+            {
+              "serviceDate": "2026-07-23",
+              "matchedCodes": [],
+              "missingCodes": [
+                "114005410"
+              ],
+              "proposals": []
+            }
+          ],
+          "approvedCodes": [
+            "114005410"
+          ],
+          "profileAudit": {
+            "profileCount": 1,
+            "matchedCodes": [
+              "114005410"
+            ],
+            "missingCodes": [],
+            "profiles": [
+              {
+                "profileRef": "74982c42aa1a",
+                "feeFamily": "fee_family_0e7a8a61319f88cef0a0dbf2",
+                "status": "active",
+                "claimMonth": "2026-07",
+                "confirmedCodes": [
+                  "114005410"
+                ]
+              }
+            ]
+          },
+          "observedCandidateCodes": [
+            "114005410"
+          ],
+          "monthlyIncludedCodes": [
+            "114005410"
+          ]
+        },
+        "memo": {
+          "copyForwardServiceDate": "2026-07-02",
+          "extractionMode": "memo_only",
+          "enabled": true,
+          "used": true,
+          "memoHitLineRatio": 1,
+          "continuedLineCount": 1,
+          "newLineCount": 0,
+          "removedLineCount": 0
+        },
+        "acceptance": {
+          "priorCandidateObserved": true,
+          "priorConfirmationRecorded": true,
+          "currentCandidateObserved": true,
+          "currentConfirmationRecorded": true,
+          "currentMonthlyLineIncluded": true,
+          "memoHit": true,
+          "passed": true
+        }
+      },
+      "sessionRefs": [
+        "c26d61e0a8be",
+        "ee2011632ed3",
+        "2baebb079205",
+        "a263ee4c1980"
+      ],
+      "baseline": {
+        "codeCount": 10,
+        "occurrenceCount": 14,
+        "totalPoints": 11313,
+        "lines": [
+          {
+            "code": "112007950",
+            "name": "",
+            "count": 1,
+            "totalPoints": 76
+          },
+          {
+            "code": "112015770",
+            "name": "",
+            "count": 1,
+            "totalPoints": 1
+          },
+          {
+            "code": "114005410",
+            "name": "",
+            "count": 1,
+            "totalPoints": 2800
+          },
+          {
+            "code": "114006810",
+            "name": "",
+            "count": 1,
+            "totalPoints": 7480
+          },
+          {
+            "code": "114008370",
+            "name": "",
+            "count": 1,
+            "totalPoints": 100
+          },
+          {
+            "code": "114030310",
+            "name": "",
+            "count": 3,
+            "totalPoints": 645
+          },
+          {
+            "code": "114057970",
+            "name": "",
+            "count": 1,
+            "totalPoints": 50
+          },
+          {
+            "code": "114723810",
+            "name": "",
+            "count": 1,
+            "totalPoints": 100
+          },
+          {
+            "code": "180725810",
+            "name": "",
+            "count": 1,
+            "totalPoints": 4
+          },
+          {
+            "code": "180726010",
+            "name": "",
+            "count": 3,
+            "totalPoints": 57
+          }
+        ]
+      },
+      "visits": [
+        {
+          "sessionRef": "c26d61e0a8be",
+          "serviceDate": "2026-07-02",
+          "chartHash": "276dcc3cb119bf976d26f56a51b9db9b09432bc74f3b613ef942927d736bb2be",
+          "totalPoints": 234,
+          "approvedLineCount": 2,
+          "approvedStandingCandidateCount": 1,
+          "standingCandidateObservation": {
+            "serviceDate": "2026-07-02",
+            "matchedCodes": [
+              "114005410"
+            ],
+            "missingCodes": [],
+            "proposals": [
+              {
+                "proposalRef": "40d3e26b5d0b",
+                "code": "114005410",
+                "name": "在宅人工呼吸指導管理料",
+                "basis": "standing_confirmed_history_candidate",
+                "source": "standing_fact_lane"
+              }
+            ]
+          },
+          "diagnoses": [],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "114005410",
+                "name": "在宅人工呼吸指導管理料",
+                "count": 1,
+                "totalPoints": 2800
+              },
+              {
+                "code": "114030310",
+                "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+                "count": 1,
+                "totalPoints": 215
+              },
+              {
+                "code": "180726010",
+                "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+                "count": 1,
+                "totalPoints": 19
+              }
+            ],
+            "proposals": [
+              {
+                "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+                "potentialPoints": 50,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "facility_auto_billing_rule"
+              }
+            ],
+            "issues": [
+              {
+                "title": "人工呼吸器加算の初回算定確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "standing_fact_lane"
+              },
+              {
+                "title": "初診/再診確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "visit_type_rule"
+              },
+              {
+                "title": "レセプトコメントの確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              }
+            ],
+            "proposalCount": 1,
+            "issueCount": 6
+          },
+          "extraction": {
+            "source": "memo",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v15",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "6165ebcb85f4",
+            "clinicalEventCount": 0,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 1
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 21
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 40
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "extractionSnapshot",
+                "durationMs": 32
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 34
+              },
+              {
+                "stage": "standingFactLane",
+                "durationMs": 152
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 19
+              }
+            ],
+            "clinicalStructuringMs": 18,
+            "openAiProviderMs": 0,
+            "openAiCallCount": 0,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 0,
+            "masterLookupMs": 0,
+            "masterLookupCount": 0,
+            "diseaseIndicationScanMs": 0,
+            "diseaseIndicationResolvedDiagnosisCount": 0,
+            "diseaseIndicationCandidateCount": 0,
+            "diseaseIndicationUnresolvedCount": 0,
+            "extractionMode": "memo_only",
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 0,
+              "finalEventCount": 0
+            },
+            "extractionMemo": {
+              "enabled": true,
+              "used": true,
+              "reason": "compatible",
+              "memoHitLineRatio": 1,
+              "continuedLineCount": 1,
+              "newLineCount": 0,
+              "removedLineCount": 0,
+              "visitFactsSource": "previous_snapshot"
+            },
+            "patientHistory": {
+              "completeness": "partial",
+              "priorSessionCount": 1,
+              "externalHistoryEventCount": 0,
+              "patientHistoryReason": "loaded",
+              "extractionSnapshotReason": "loaded"
+            },
+            "standingFacts": {
+              "enabled": true,
+              "activeCount": 1,
+              "proposedCount": 2,
+              "suspendedCount": 0,
+              "profileCount": 1,
+              "reasons": {
+                "proposed": 1,
+                "first_month_candidate": 1
+              }
+            },
+            "openAiCallObserved": false,
+            "openAiUsage": null
+          }
+        },
+        {
+          "sessionRef": "ee2011632ed3",
+          "serviceDate": "2026-07-09",
+          "chartHash": "1f2cccdd91592573521a28ffe9b1449f2a8d9879b577ed8c1847504054fd4ca7",
+          "totalPoints": 234,
+          "approvedLineCount": 2,
+          "approvedStandingCandidateCount": 0,
+          "standingCandidateObservation": {
+            "serviceDate": "2026-07-09",
+            "matchedCodes": [],
+            "missingCodes": [
+              "114005410"
+            ],
+            "proposals": []
+          },
+          "diagnoses": [
+            "ALS",
+            "気管切開状態"
+          ],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "114030310",
+                "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+                "count": 1,
+                "totalPoints": 215
+              },
+              {
+                "code": "180726010",
+                "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+                "count": 1,
+                "totalPoints": 19
+              }
+            ],
+            "proposals": [
+              {
+                "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+                "potentialPoints": 50,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "facility_auto_billing_rule"
+              }
+            ],
+            "issues": [
+              {
+                "title": "人工呼吸器加算の初回算定確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "standing_fact_lane"
+              },
+              {
+                "title": "初診/再診確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "visit_type_rule"
+              },
+              {
+                "title": "リハビリ未対応",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now",
+                "source": "review_only_domain_gate"
+              },
+              {
+                "title": "レセプトコメントの確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              }
+            ],
+            "proposalCount": 1,
+            "issueCount": 7
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v15",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "9e0981d5a953",
+            "clinicalEventCount": 2,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 3
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 20
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 64
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "extractionSnapshot",
+                "durationMs": 26
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 8221
+              },
+              {
+                "stage": "standingFactLane",
+                "durationMs": 49
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 18
+              }
+            ],
+            "clinicalStructuringMs": 8130,
+            "openAiProviderMs": 7642,
+            "openAiCallCount": 1,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 0,
+            "masterLookupMs": 1596,
+            "masterLookupCount": 5,
+            "diseaseIndicationScanMs": 72,
+            "diseaseIndicationResolvedDiagnosisCount": 1,
+            "diseaseIndicationCandidateCount": 0,
+            "diseaseIndicationUnresolvedCount": 1,
+            "extractionMode": "full",
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 0,
+              "finalEventCount": 0
+            },
+            "extractionMemo": {
+              "enabled": true,
+              "used": false,
+              "reason": "compatible",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 1,
+              "visitFactsSource": "current_full_extraction"
+            },
+            "patientHistory": {
+              "completeness": "partial",
+              "priorSessionCount": 2,
+              "externalHistoryEventCount": 0,
+              "patientHistoryReason": "loaded",
+              "extractionSnapshotReason": "loaded"
+            },
+            "standingFacts": {
+              "enabled": true,
+              "activeCount": 1,
+              "proposedCount": 1,
+              "suspendedCount": 0,
+              "profileCount": 1,
+              "reasons": {
+                "already_confirmed_current_month": 1,
+                "first_month_candidate": 1
+              }
+            },
+            "openAiCallObserved": true,
+            "openAiUsage": {
+              "inputTokens": 5949,
+              "outputTokens": 1003,
+              "totalTokens": 6952,
+              "cachedInputTokens": 4864
+            }
+          }
+        },
+        {
+          "sessionRef": "2baebb079205",
+          "serviceDate": "2026-07-16",
+          "chartHash": "65a32b1713653192de439168fa660ef6f0a6b86f33540f1f37ca1948e2f4338b",
+          "totalPoints": 0,
+          "approvedLineCount": 0,
+          "approvedStandingCandidateCount": 0,
+          "standingCandidateObservation": {
+            "serviceDate": "2026-07-16",
+            "matchedCodes": [],
+            "missingCodes": [
+              "114005410"
+            ],
+            "proposals": []
+          },
+          "diagnoses": [],
+          "candidateSurface": {
+            "lines": [],
+            "proposals": [],
+            "issues": [
+              {
+                "title": "電話等再診料の算定確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "encounter_variant"
+              },
+              {
+                "title": "初診/再診確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "visit_type_rule"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_procedure_rule"
+              },
+              {
+                "title": "療養計画確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now",
+                "source": "management_review_gate"
+              },
+              {
+                "title": "在宅医療未対応",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now",
+                "source": "review_only_domain_gate"
+              },
+              {
+                "title": "受診方法の確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "encounter_variant"
+              }
+            ],
+            "proposalCount": 0,
+            "issueCount": 6
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v15",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "cf7579b6566d",
+            "clinicalEventCount": 4,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 6
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 22
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 34
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "extractionSnapshot",
+                "durationMs": 34
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 12006
+              },
+              {
+                "stage": "standingFactLane",
+                "durationMs": 35
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 19
+              }
+            ],
+            "clinicalStructuringMs": 11975,
+            "openAiProviderMs": 10947,
+            "openAiCallCount": 1,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 0,
+            "masterLookupMs": 2911,
+            "masterLookupCount": 15,
+            "diseaseIndicationScanMs": 0,
+            "diseaseIndicationResolvedDiagnosisCount": 0,
+            "diseaseIndicationCandidateCount": 0,
+            "diseaseIndicationUnresolvedCount": 0,
+            "extractionMode": "full",
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 4,
+              "finalEventCount": 4
+            },
+            "extractionMemo": {
+              "enabled": true,
+              "used": false,
+              "reason": "compatible",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 4,
+              "visitFactsSource": "current_full_extraction"
+            },
+            "patientHistory": {
+              "completeness": "partial",
+              "priorSessionCount": 3,
+              "externalHistoryEventCount": 0,
+              "patientHistoryReason": "loaded",
+              "extractionSnapshotReason": "loaded"
+            },
+            "standingFacts": {
+              "enabled": true,
+              "activeCount": 1,
+              "proposedCount": 0,
+              "suspendedCount": 0,
+              "profileCount": 1,
+              "reasons": {
+                "already_confirmed_current_month": 1
+              }
+            },
+            "openAiCallObserved": true,
+            "openAiUsage": {
+              "inputTokens": 5884,
+              "outputTokens": 1213,
+              "totalTokens": 7097,
+              "cachedInputTokens": 4864
+            }
+          }
+        },
+        {
+          "sessionRef": "a263ee4c1980",
+          "serviceDate": "2026-07-23",
+          "chartHash": "89b54485e445596035c620b16274431f9cdd206681bb5e0f904153dd0e3a93e5",
+          "totalPoints": 234,
+          "approvedLineCount": 2,
+          "approvedStandingCandidateCount": 0,
+          "standingCandidateObservation": {
+            "serviceDate": "2026-07-23",
+            "matchedCodes": [],
+            "missingCodes": [
+              "114005410"
+            ],
+            "proposals": []
+          },
+          "diagnoses": [
+            "ALS（筋萎縮性側索硬化症）",
+            "気管切開状態"
+          ],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "114030310",
+                "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+                "count": 1,
+                "totalPoints": 215
+              },
+              {
+                "code": "180726010",
+                "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+                "count": 1,
+                "totalPoints": 19
+              }
+            ],
+            "proposals": [
+              {
+                "title": "「人工呼吸」の算定区分確認",
+                "potentialPoints": 1140,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_billing_opportunity"
+              },
+              {
+                "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+                "potentialPoints": 50,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "facility_auto_billing_rule"
+              }
+            ],
+            "issues": [
+              {
+                "title": "抽出結果確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "management_continuation_gate"
+              },
+              {
+                "title": "抽出結果確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "management_continuation_gate"
+              },
+              {
+                "title": "抽出結果確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "management_continuation_gate"
+              },
+              {
+                "title": "抽出結果確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "management_continuation_gate"
+              },
+              {
+                "title": "初診/再診確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "visit_type_rule"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_procedure_rule"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_procedure_rule"
+              },
+              {
+                "title": "手技内容確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_procedure_rule"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_procedure_rule"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_procedure_rule"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_procedure_rule"
+              },
+              {
+                "title": "レセプトコメントの確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              }
+            ],
+            "proposalCount": 2,
+            "issueCount": 15
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v15",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "26adc4b1156b",
+            "clinicalEventCount": 11,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 12
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 20
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 40
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "extractionSnapshot",
+                "durationMs": 21
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 23553
+              },
+              {
+                "stage": "standingFactLane",
+                "durationMs": 48
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 17
+              }
+            ],
+            "clinicalStructuringMs": 23486,
+            "openAiProviderMs": 22431,
+            "openAiCallCount": 1,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 1,
+            "masterLookupMs": 1880,
+            "masterLookupCount": 24,
+            "diseaseIndicationScanMs": 46,
+            "diseaseIndicationResolvedDiagnosisCount": 1,
+            "diseaseIndicationCandidateCount": 0,
+            "diseaseIndicationUnresolvedCount": 1,
+            "extractionMode": "full",
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 15,
+              "finalEventCount": 15
+            },
+            "extractionMemo": {
+              "enabled": true,
+              "used": false,
+              "reason": "compatible",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 4,
+              "visitFactsSource": "current_full_extraction"
+            },
+            "patientHistory": {
+              "completeness": "partial",
+              "priorSessionCount": 4,
+              "externalHistoryEventCount": 0,
+              "patientHistoryReason": "loaded",
+              "extractionSnapshotReason": "loaded"
+            },
+            "standingFacts": {
+              "enabled": true,
+              "activeCount": 1,
+              "proposedCount": 0,
+              "suspendedCount": 0,
+              "profileCount": 1,
+              "reasons": {
+                "already_confirmed_current_month": 1
+              }
+            },
+            "openAiCallObserved": true,
+            "openAiUsage": {
+              "inputTokens": 5958,
+              "outputTokens": 3082,
+              "totalTokens": 9040,
+              "cachedInputTokens": 4864
+            }
+          }
+        }
+      ],
+      "candidateSurface": {
+        "codeCount": 3,
+        "lines": [
+          {
+            "code": "114005410",
+            "name": "在宅人工呼吸指導管理料",
+            "count": 1,
+            "totalPoints": 2800
+          },
+          {
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "count": 3,
+            "totalPoints": 645
+          },
+          {
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "count": 3,
+            "totalPoints": 57
+          }
+        ],
+        "proposalCount": 4,
+        "issueCount": 34
+      },
+      "monthly": {
+        "status": "ready",
+        "claimMonth": "2026-07",
+        "sessionCount": 4,
+        "actualDays": 4,
+        "totalPoints": 3502,
+        "codeCount": 3,
+        "lines": [
+          {
+            "code": "114005410",
+            "name": "在宅人工呼吸指導管理料",
+            "count": 1,
+            "totalPoints": 2800
+          },
+          {
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "count": 3,
+            "totalPoints": 645
+          },
+          {
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "count": 3,
+            "totalPoints": 57
+          }
+        ],
+        "candidateLines": [
+          {
+            "code": "114057970",
+            "codeCandidates": [],
+            "name": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+            "quantity": 1,
+            "totalPoints": 50,
+            "occurrenceCount": 3,
+            "suppressedOccurrenceCount": 2,
+            "conflicts": []
+          },
+          {
+            "code": null,
+            "codeCandidates": [
+              "114005510",
+              "114006810",
+              "114009610"
+            ],
+            "name": "人工呼吸器加算の初回算定確認",
+            "quantity": 2,
+            "totalPoints": 0,
+            "occurrenceCount": 2,
+            "suppressedOccurrenceCount": 0,
+            "conflicts": []
+          },
+          {
+            "code": "112007950",
+            "codeCandidates": [],
+            "name": "電話等再診料の算定確認",
+            "quantity": 1,
+            "totalPoints": 0,
+            "occurrenceCount": 1,
+            "suppressedOccurrenceCount": 0,
+            "conflicts": [
+              "114030310"
+            ]
+          },
+          {
+            "code": null,
+            "codeCandidates": [
+              "140023510",
+              "140023750",
+              "140023950",
+              "140039650",
+              "140063810",
+              "140064050",
+              "140064350",
+              "140064750"
+            ],
+            "name": "「人工呼吸」の算定区分確認",
+            "quantity": 1,
+            "totalPoints": 0,
+            "occurrenceCount": 1,
+            "suppressedOccurrenceCount": 0,
+            "conflicts": []
+          }
+        ],
+        "candidateTotalPoints": 50
+      },
+      "monthlyMetrics": {
+        "schemaVersion": 1,
+        "totalDurationMs": 295,
+        "sessionCount": 4,
+        "stageDurationsMs": {
+          "buildMonthlyReceiptDraft": 4,
+          "listSessionsForMonthlyView": 138,
+          "monthlyCandidateConstraints": 153
+        }
+      },
+      "comparison": {
+        "baselineCodeCount": 10,
+        "engineCodeCount": 3,
+        "matchedCodeCount": 3,
+        "baselineOnlyCount": 7,
+        "engineOnlyCount": 0,
+        "bothDeltaCount": 0,
+        "codeRecall": 0.3,
+        "codePrecision": 1,
+        "exactMatch": false,
+        "rows": [
+          {
+            "status": "baseline_only",
+            "code": "112007950",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 76,
+            "enginePoints": 0,
+            "deltaPoints": -76
+          },
+          {
+            "status": "baseline_only",
+            "code": "112015770",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 1,
+            "enginePoints": 0,
+            "deltaPoints": -1
+          },
+          {
+            "status": "matched",
+            "code": "114005410",
+            "name": "在宅人工呼吸指導管理料",
+            "baselineCount": 1,
+            "engineCount": 1,
+            "baselinePoints": 2800,
+            "enginePoints": 2800,
+            "deltaPoints": 0
+          },
+          {
+            "status": "baseline_only",
+            "code": "114006810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 7480,
+            "enginePoints": 0,
+            "deltaPoints": -7480
+          },
+          {
+            "status": "baseline_only",
+            "code": "114008370",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100
+          },
+          {
+            "status": "matched",
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 645,
+            "enginePoints": 645,
+            "deltaPoints": 0
+          },
+          {
+            "status": "baseline_only",
+            "code": "114057970",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 50,
+            "enginePoints": 0,
+            "deltaPoints": -50
+          },
+          {
+            "status": "baseline_only",
+            "code": "114723810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 4,
+            "enginePoints": 0,
+            "deltaPoints": -4
+          },
+          {
+            "status": "matched",
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 57,
+            "enginePoints": 57,
+            "deltaPoints": 0
+          }
+        ]
+      },
+      "detection": {
+        "matchedCodeCount": 5,
+        "baselineOnlyCount": 4,
+        "codeRecall": 0.5,
+        "rows": [
+          {
+            "status": "both_delta",
+            "code": "112007950",
+            "name": "電話等再診料の算定確認",
+            "baselineCount": 1,
+            "engineCount": 1,
+            "baselinePoints": 76,
+            "enginePoints": 0,
+            "deltaPoints": -76
+          },
+          {
+            "status": "baseline_only",
+            "code": "112015770",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 1,
+            "enginePoints": 0,
+            "deltaPoints": -1
+          },
+          {
+            "status": "matched",
+            "code": "114005410",
+            "name": "在宅人工呼吸指導管理料",
+            "baselineCount": 1,
+            "engineCount": 1,
+            "baselinePoints": 2800,
+            "enginePoints": 2800,
+            "deltaPoints": 0
+          },
+          {
+            "status": "matched_via_code_candidates",
+            "code": "114006810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 7480,
+            "enginePoints": 0,
+            "deltaPoints": -7480
+          },
+          {
+            "status": "baseline_only",
+            "code": "114008370",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100
+          },
+          {
+            "status": "matched",
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 645,
+            "enginePoints": 645,
+            "deltaPoints": 0
+          },
+          {
+            "status": "matched",
+            "code": "114057970",
+            "name": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+            "baselineCount": 1,
+            "engineCount": 1,
+            "baselinePoints": 50,
+            "enginePoints": 50,
+            "deltaPoints": 0
+          },
+          {
+            "status": "baseline_only",
+            "code": "114723810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 4,
+            "enginePoints": 0,
+            "deltaPoints": -4
+          },
+          {
+            "status": "matched",
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 57,
+            "enginePoints": 57,
+            "deltaPoints": 0
+          }
+        ]
+      },
+      "endpointComparison": {
+        "baselineTotalPoints": 11313,
+        "engineTotalPoints": 702,
+        "matchedCount": 2,
+        "baselineOnlyCount": 8,
+        "engineOnlyCount": 0,
+        "bothDeltaCount": 0,
+        "rows": [
+          {
+            "status": "baseline_only",
+            "code": "112007950",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 76,
+            "enginePoints": 0,
+            "deltaPoints": -76,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "112015770",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 1,
+            "enginePoints": 0,
+            "deltaPoints": -1,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114005410",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 2800,
+            "enginePoints": 0,
+            "deltaPoints": -2800,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114006810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 7480,
+            "enginePoints": 0,
+            "deltaPoints": -7480,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114008370",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "matched",
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 645,
+            "enginePoints": 645,
+            "deltaPoints": 0,
+            "reason": "既存レセと当社再算定が一致"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114057970",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 50,
+            "enginePoints": 0,
+            "deltaPoints": -50,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114723810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 4,
+            "enginePoints": 0,
+            "deltaPoints": -4,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "matched",
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 57,
+            "enginePoints": 57,
+            "deltaPoints": 0,
+            "reason": "既存レセと当社再算定が一致"
+          }
+        ]
+      },
+      "baselineDiagnosisMetrics": {
+        "schemaVersion": 1,
+        "totalDurationMs": 208,
+        "sessionCount": 4,
+        "baselineClaimCount": 1,
+        "stageDurationsMs": {
+          "audit": 76,
+          "baselineClaimsFromDiagnosisBody": 0,
+          "buildMonthlyBaselineDiagnosis": 2,
+          "listSessionsForBaselineDiagnosis": 130
+        }
+      },
+      "performance": {
+        "totalClientMs": 59252.36,
+        "calculateRequestMs": {
+          "count": 4,
+          "min": 1261.14,
+          "median": 11089.2,
+          "mean": 12022.02,
+          "max": 24648.55
+        },
+        "clinicalStructuringMs": {
+          "count": 4,
+          "min": 18,
+          "median": 10052.5,
+          "mean": 10902.25,
+          "max": 23486
+        },
+        "openAiProviderMs": {
+          "count": 4,
+          "min": 0,
+          "median": 9294.5,
+          "mean": 10255,
+          "max": 22431
+        },
+        "diseaseIndicationScanMs": {
+          "count": 4,
+          "min": 0,
+          "median": 23,
+          "mean": 29.5,
+          "max": 72
+        }
+      },
+      "requestTimings": [
+        {
+          "operation": "standing_prior_create",
+          "visit": null,
+          "statusCode": 201,
+          "durationMs": 712.79
+        },
+        {
+          "operation": "standing_prior_calculate",
+          "visit": null,
+          "statusCode": 201,
+          "durationMs": 5240.36
+        },
+        {
+          "operation": "standing_prior_review_items",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 217
+        },
+        {
+          "operation": "standing_prior_approve",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 349.31
+        },
+        {
+          "operation": "prior-standing-profiles",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 61.97
+        },
+        {
+          "operation": "create_session",
+          "visit": 1,
+          "statusCode": 201,
+          "durationMs": 265.95
+        },
+        {
+          "operation": "calculate",
+          "visit": 1,
+          "statusCode": 201,
+          "durationMs": 1261.14
+        },
+        {
+          "operation": "review_items",
+          "visit": 1,
+          "statusCode": 200,
+          "durationMs": 58.86
+        },
+        {
+          "operation": "approve_lines",
+          "visit": 1,
+          "statusCode": 200,
+          "durationMs": 429.16
+        },
+        {
+          "operation": "detail",
+          "visit": 1,
+          "statusCode": 200,
+          "durationMs": 74.92
+        },
+        {
+          "operation": "create_session",
+          "visit": 2,
+          "statusCode": 201,
+          "durationMs": 409.2
+        },
+        {
+          "operation": "calculate",
+          "visit": 2,
+          "statusCode": 201,
+          "durationMs": 9252.75
+        },
+        {
+          "operation": "review_items",
+          "visit": 2,
+          "statusCode": 200,
+          "durationMs": 209.53
+        },
+        {
+          "operation": "approve_lines",
+          "visit": 2,
+          "statusCode": 200,
+          "durationMs": 386.65
+        },
+        {
+          "operation": "detail",
+          "visit": 2,
+          "statusCode": 200,
+          "durationMs": 127.56
+        },
+        {
+          "operation": "create_session",
+          "visit": 3,
+          "statusCode": 201,
+          "durationMs": 271.49
+        },
+        {
+          "operation": "calculate",
+          "visit": 3,
+          "statusCode": 201,
+          "durationMs": 12925.65
+        },
+        {
+          "operation": "review_items",
+          "visit": 3,
+          "statusCode": 200,
+          "durationMs": 201.15
+        },
+        {
+          "operation": "detail",
+          "visit": 3,
+          "statusCode": 200,
+          "durationMs": 81.11
+        },
+        {
+          "operation": "create_session",
+          "visit": 4,
+          "statusCode": 201,
+          "durationMs": 307.85
+        },
+        {
+          "operation": "calculate",
+          "visit": 4,
+          "statusCode": 201,
+          "durationMs": 24648.55
+        },
+        {
+          "operation": "review_items",
+          "visit": 4,
+          "statusCode": 200,
+          "durationMs": 341.94
+        },
+        {
+          "operation": "approve_lines",
+          "visit": 4,
+          "statusCode": 200,
+          "durationMs": 306.97
+        },
+        {
+          "operation": "detail",
+          "visit": 4,
+          "statusCode": 200,
+          "durationMs": 234.89
+        },
+        {
+          "operation": "current-standing-profiles",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 52.38
+        },
+        {
+          "operation": "monthly_receipt",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 518.84
+        },
+        {
+          "operation": "baseline_diagnosis",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 304.39
+        }
+      ]
+    },
+    {
+      "repeat": 2,
+      "patientRef": "de062727813e",
+      "priorHistorySeed": {
+        "source": "standing_first_month_candidate_approval",
+        "serviceDate": "2026-06-25",
+        "claimMonth": "2026-06",
+        "sessionRef": "c979b2d4300f"
+      },
+      "standingTimeline": {
+        "priorMonth": {
+          "serviceDate": "2026-06-25",
+          "claimMonth": "2026-06",
+          "sessionRef": "c979b2d4300f",
+          "expectedCodes": [
+            "114005410"
+          ],
+          "candidateCodes": [
+            "114005410"
+          ],
+          "approvedCodes": [
+            "114005410"
+          ],
+          "profileAudit": {
+            "profileCount": 1,
+            "matchedCodes": [
+              "114005410"
+            ],
+            "missingCodes": [],
+            "profiles": [
+              {
+                "profileRef": "7feea083257b",
+                "feeFamily": "fee_family_0e7a8a61319f88cef0a0dbf2",
+                "status": "active",
+                "claimMonth": "2026-06",
+                "confirmedCodes": [
+                  "114005410"
+                ]
+              }
+            ]
+          }
+        },
+        "currentMonth": {
+          "expectedCodes": [
+            "114005410"
+          ],
+          "candidateObservations": [
+            {
+              "serviceDate": "2026-07-02",
+              "matchedCodes": [
+                "114005410"
+              ],
+              "missingCodes": [],
+              "proposals": [
+                {
+                  "proposalRef": "aaecac4da1fb",
+                  "code": "114005410",
+                  "name": "在宅人工呼吸指導管理料",
+                  "basis": "standing_confirmed_history_candidate",
+                  "source": "standing_fact_lane"
+                }
+              ]
+            },
+            {
+              "serviceDate": "2026-07-09",
+              "matchedCodes": [],
+              "missingCodes": [
+                "114005410"
+              ],
+              "proposals": []
+            },
+            {
+              "serviceDate": "2026-07-16",
+              "matchedCodes": [],
+              "missingCodes": [
+                "114005410"
+              ],
+              "proposals": []
+            },
+            {
+              "serviceDate": "2026-07-23",
+              "matchedCodes": [],
+              "missingCodes": [
+                "114005410"
+              ],
+              "proposals": []
+            }
+          ],
+          "approvedCodes": [
+            "114005410"
+          ],
+          "profileAudit": {
+            "profileCount": 1,
+            "matchedCodes": [
+              "114005410"
+            ],
+            "missingCodes": [],
+            "profiles": [
+              {
+                "profileRef": "7feea083257b",
+                "feeFamily": "fee_family_0e7a8a61319f88cef0a0dbf2",
+                "status": "active",
+                "claimMonth": "2026-07",
+                "confirmedCodes": [
+                  "114005410"
+                ]
+              }
+            ]
+          },
+          "observedCandidateCodes": [
+            "114005410"
+          ],
+          "monthlyIncludedCodes": [
+            "114005410"
+          ]
+        },
+        "memo": {
+          "copyForwardServiceDate": "2026-07-02",
+          "extractionMode": "memo_only",
+          "enabled": true,
+          "used": true,
+          "memoHitLineRatio": 1,
+          "continuedLineCount": 1,
+          "newLineCount": 0,
+          "removedLineCount": 0
+        },
+        "acceptance": {
+          "priorCandidateObserved": true,
+          "priorConfirmationRecorded": true,
+          "currentCandidateObserved": true,
+          "currentConfirmationRecorded": true,
+          "currentMonthlyLineIncluded": true,
+          "memoHit": true,
+          "passed": true
+        }
+      },
+      "sessionRefs": [
+        "e35e438a1d12",
+        "92fe74f1cc47",
+        "c970683e0171",
+        "79822c7f611d"
+      ],
+      "baseline": {
+        "codeCount": 10,
+        "occurrenceCount": 14,
+        "totalPoints": 11313,
+        "lines": [
+          {
+            "code": "112007950",
+            "name": "",
+            "count": 1,
+            "totalPoints": 76
+          },
+          {
+            "code": "112015770",
+            "name": "",
+            "count": 1,
+            "totalPoints": 1
+          },
+          {
+            "code": "114005410",
+            "name": "",
+            "count": 1,
+            "totalPoints": 2800
+          },
+          {
+            "code": "114006810",
+            "name": "",
+            "count": 1,
+            "totalPoints": 7480
+          },
+          {
+            "code": "114008370",
+            "name": "",
+            "count": 1,
+            "totalPoints": 100
+          },
+          {
+            "code": "114030310",
+            "name": "",
+            "count": 3,
+            "totalPoints": 645
+          },
+          {
+            "code": "114057970",
+            "name": "",
+            "count": 1,
+            "totalPoints": 50
+          },
+          {
+            "code": "114723810",
+            "name": "",
+            "count": 1,
+            "totalPoints": 100
+          },
+          {
+            "code": "180725810",
+            "name": "",
+            "count": 1,
+            "totalPoints": 4
+          },
+          {
+            "code": "180726010",
+            "name": "",
+            "count": 3,
+            "totalPoints": 57
+          }
+        ]
+      },
+      "visits": [
+        {
+          "sessionRef": "e35e438a1d12",
+          "serviceDate": "2026-07-02",
+          "chartHash": "276dcc3cb119bf976d26f56a51b9db9b09432bc74f3b613ef942927d736bb2be",
+          "totalPoints": 234,
+          "approvedLineCount": 2,
+          "approvedStandingCandidateCount": 1,
+          "standingCandidateObservation": {
+            "serviceDate": "2026-07-02",
+            "matchedCodes": [
+              "114005410"
+            ],
+            "missingCodes": [],
+            "proposals": [
+              {
+                "proposalRef": "aaecac4da1fb",
+                "code": "114005410",
+                "name": "在宅人工呼吸指導管理料",
+                "basis": "standing_confirmed_history_candidate",
+                "source": "standing_fact_lane"
+              }
+            ]
+          },
+          "diagnoses": [],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "114005410",
+                "name": "在宅人工呼吸指導管理料",
+                "count": 1,
+                "totalPoints": 2800
+              },
+              {
+                "code": "114030310",
+                "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+                "count": 1,
+                "totalPoints": 215
+              },
+              {
+                "code": "180726010",
+                "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+                "count": 1,
+                "totalPoints": 19
+              }
+            ],
+            "proposals": [
+              {
+                "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+                "potentialPoints": 50,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "facility_auto_billing_rule"
+              }
+            ],
+            "issues": [
+              {
+                "title": "人工呼吸器加算の初回算定確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "standing_fact_lane"
+              },
+              {
+                "title": "初診/再診確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "visit_type_rule"
+              },
+              {
+                "title": "レセプトコメントの確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              }
+            ],
+            "proposalCount": 1,
+            "issueCount": 6
+          },
+          "extraction": {
+            "source": "memo",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v15",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "3e296caf1e6b",
+            "clinicalEventCount": 0,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 1
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 23
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 22
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 32
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "extractionSnapshot",
+                "durationMs": 30
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 31
+              },
+              {
+                "stage": "standingFactLane",
+                "durationMs": 49
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 15
+              }
+            ],
+            "clinicalStructuringMs": 17,
+            "openAiProviderMs": 0,
+            "openAiCallCount": 0,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 0,
+            "masterLookupMs": 0,
+            "masterLookupCount": 0,
+            "diseaseIndicationScanMs": 0,
+            "diseaseIndicationResolvedDiagnosisCount": 0,
+            "diseaseIndicationCandidateCount": 0,
+            "diseaseIndicationUnresolvedCount": 0,
+            "extractionMode": "memo_only",
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 0,
+              "finalEventCount": 0
+            },
+            "extractionMemo": {
+              "enabled": true,
+              "used": true,
+              "reason": "compatible",
+              "memoHitLineRatio": 1,
+              "continuedLineCount": 1,
+              "newLineCount": 0,
+              "removedLineCount": 0,
+              "visitFactsSource": "previous_snapshot"
+            },
+            "patientHistory": {
+              "completeness": "partial",
+              "priorSessionCount": 1,
+              "externalHistoryEventCount": 0,
+              "patientHistoryReason": "loaded",
+              "extractionSnapshotReason": "loaded"
+            },
+            "standingFacts": {
+              "enabled": true,
+              "activeCount": 1,
+              "proposedCount": 2,
+              "suspendedCount": 0,
+              "profileCount": 1,
+              "reasons": {
+                "proposed": 1,
+                "first_month_candidate": 1
+              }
+            },
+            "openAiCallObserved": false,
+            "openAiUsage": null
+          }
+        },
+        {
+          "sessionRef": "92fe74f1cc47",
+          "serviceDate": "2026-07-09",
+          "chartHash": "1f2cccdd91592573521a28ffe9b1449f2a8d9879b577ed8c1847504054fd4ca7",
+          "totalPoints": 282,
+          "approvedLineCount": 3,
+          "approvedStandingCandidateCount": 0,
+          "standingCandidateObservation": {
+            "serviceDate": "2026-07-09",
+            "matchedCodes": [],
+            "missingCodes": [
+              "114005410"
+            ],
+            "proposals": []
+          },
+          "diagnoses": [
+            "ALS",
+            "気管切開状態"
+          ],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "114030310",
+                "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+                "count": 1,
+                "totalPoints": 215
+              },
+              {
+                "code": "140003810",
+                "name": "喀痰吸引",
+                "count": 1,
+                "totalPoints": 48
+              },
+              {
+                "code": "180726010",
+                "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+                "count": 1,
+                "totalPoints": 19
+              }
+            ],
+            "proposals": [
+              {
+                "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+                "potentialPoints": 50,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "facility_auto_billing_rule"
+              }
+            ],
+            "issues": [
+              {
+                "title": "人工呼吸器加算の初回算定確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "standing_fact_lane"
+              },
+              {
+                "title": "初診/再診確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "visit_type_rule"
+              },
+              {
+                "title": "リハビリ未対応",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now",
+                "source": "review_only_domain_gate"
+              },
+              {
+                "title": "レセプトコメントの確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              }
+            ],
+            "proposalCount": 1,
+            "issueCount": 7
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v15",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "7dfd0c46de17",
+            "clinicalEventCount": 3,
+            "billingCandidateCount": 1,
+            "reviewIssueCount": 3
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 31
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 21
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "extractionSnapshot",
+                "durationMs": 16
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 8862
+              },
+              {
+                "stage": "standingFactLane",
+                "durationMs": 40
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 17
+              }
+            ],
+            "clinicalStructuringMs": 8800,
+            "openAiProviderMs": 8703,
+            "openAiCallCount": 1,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 0,
+            "masterLookupMs": 87,
+            "masterLookupCount": 6,
+            "diseaseIndicationScanMs": 45,
+            "diseaseIndicationResolvedDiagnosisCount": 1,
+            "diseaseIndicationCandidateCount": 0,
+            "diseaseIndicationUnresolvedCount": 1,
+            "extractionMode": "full",
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 1,
+              "finalEventCount": 1
+            },
+            "extractionMemo": {
+              "enabled": true,
+              "used": false,
+              "reason": "compatible",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 1,
+              "visitFactsSource": "current_full_extraction"
+            },
+            "patientHistory": {
+              "completeness": "partial",
+              "priorSessionCount": 2,
+              "externalHistoryEventCount": 0,
+              "patientHistoryReason": "loaded",
+              "extractionSnapshotReason": "loaded"
+            },
+            "standingFacts": {
+              "enabled": true,
+              "activeCount": 1,
+              "proposedCount": 1,
+              "suspendedCount": 0,
+              "profileCount": 1,
+              "reasons": {
+                "already_confirmed_current_month": 1,
+                "first_month_candidate": 1
+              }
+            },
+            "openAiCallObserved": true,
+            "openAiUsage": {
+              "inputTokens": 5949,
+              "outputTokens": 1287,
+              "totalTokens": 7236,
+              "cachedInputTokens": 4864
+            }
+          }
+        },
+        {
+          "sessionRef": "c970683e0171",
+          "serviceDate": "2026-07-16",
+          "chartHash": "65a32b1713653192de439168fa660ef6f0a6b86f33540f1f37ca1948e2f4338b",
+          "totalPoints": 0,
+          "approvedLineCount": 0,
+          "approvedStandingCandidateCount": 0,
+          "standingCandidateObservation": {
+            "serviceDate": "2026-07-16",
+            "matchedCodes": [],
+            "missingCodes": [
+              "114005410"
+            ],
+            "proposals": []
+          },
+          "diagnoses": [],
+          "candidateSurface": {
+            "lines": [],
+            "proposals": [],
+            "issues": [
+              {
+                "title": "電話等再診料の算定確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "encounter_variant"
+              },
+              {
+                "title": "初診/再診確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "visit_type_rule"
+              },
+              {
+                "title": "療養計画確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now",
+                "source": "management_review_gate"
+              },
+              {
+                "title": "在宅医療未対応",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now",
+                "source": "review_only_domain_gate"
+              },
+              {
+                "title": "受診方法の確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "encounter_variant"
+              },
+              {
+                "title": "療養計画確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              }
+            ],
+            "proposalCount": 0,
+            "issueCount": 6
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v15",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "848a983ca0d3",
+            "clinicalEventCount": 5,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 5
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 17
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 43
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "extractionSnapshot",
+                "durationMs": 35
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 9757
+              },
+              {
+                "stage": "standingFactLane",
+                "durationMs": 23
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 17
+              }
+            ],
+            "clinicalStructuringMs": 9739,
+            "openAiProviderMs": 9243,
+            "openAiCallCount": 1,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 1,
+            "masterLookupMs": 1541,
+            "masterLookupCount": 13,
+            "diseaseIndicationScanMs": 0,
+            "diseaseIndicationResolvedDiagnosisCount": 0,
+            "diseaseIndicationCandidateCount": 0,
+            "diseaseIndicationUnresolvedCount": 0,
+            "extractionMode": "full",
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 5,
+              "finalEventCount": 5
+            },
+            "extractionMemo": {
+              "enabled": true,
+              "used": false,
+              "reason": "compatible",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 4,
+              "visitFactsSource": "current_full_extraction"
+            },
+            "patientHistory": {
+              "completeness": "partial",
+              "priorSessionCount": 3,
+              "externalHistoryEventCount": 0,
+              "patientHistoryReason": "loaded",
+              "extractionSnapshotReason": "loaded"
+            },
+            "standingFacts": {
+              "enabled": true,
+              "activeCount": 1,
+              "proposedCount": 0,
+              "suspendedCount": 0,
+              "profileCount": 1,
+              "reasons": {
+                "already_confirmed_current_month": 1
+              }
+            },
+            "openAiCallObserved": true,
+            "openAiUsage": {
+              "inputTokens": 5884,
+              "outputTokens": 1361,
+              "totalTokens": 7245,
+              "cachedInputTokens": 4864
+            }
+          }
+        },
+        {
+          "sessionRef": "79822c7f611d",
+          "serviceDate": "2026-07-23",
+          "chartHash": "89b54485e445596035c620b16274431f9cdd206681bb5e0f904153dd0e3a93e5",
+          "totalPoints": 234,
+          "approvedLineCount": 2,
+          "approvedStandingCandidateCount": 0,
+          "standingCandidateObservation": {
+            "serviceDate": "2026-07-23",
+            "matchedCodes": [],
+            "missingCodes": [
+              "114005410"
+            ],
+            "proposals": []
+          },
+          "diagnoses": [
+            "ALS",
+            "気管切開状態"
+          ],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "114030310",
+                "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+                "count": 1,
+                "totalPoints": 215
+              },
+              {
+                "code": "180726010",
+                "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+                "count": 1,
+                "totalPoints": 19
+              }
+            ],
+            "proposals": [
+              {
+                "title": "「人工呼吸」の算定区分確認",
+                "potentialPoints": 1140,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_billing_opportunity"
+              },
+              {
+                "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+                "potentialPoints": 50,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "facility_auto_billing_rule"
+              }
+            ],
+            "issues": [
+              {
+                "title": "初診/再診確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "visit_type_rule"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_procedure_rule"
+              },
+              {
+                "title": "手技内容確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_procedure_rule"
+              },
+              {
+                "title": "レセプトコメントの確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              }
+            ],
+            "proposalCount": 2,
+            "issueCount": 7
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v15",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "b61695c61681",
+            "clinicalEventCount": 3,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 4
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 19
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 49
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "extractionSnapshot",
+                "durationMs": 24
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 7356
+              },
+              {
+                "stage": "standingFactLane",
+                "durationMs": 34
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 17
+              }
+            ],
+            "clinicalStructuringMs": 7292,
+            "openAiProviderMs": 6815,
+            "openAiCallCount": 1,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 0,
+            "masterLookupMs": 1337,
+            "masterLookupCount": 21,
+            "diseaseIndicationScanMs": 46,
+            "diseaseIndicationResolvedDiagnosisCount": 1,
+            "diseaseIndicationCandidateCount": 0,
+            "diseaseIndicationUnresolvedCount": 1,
+            "extractionMode": "full",
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 3,
+              "finalEventCount": 3
+            },
+            "extractionMemo": {
+              "enabled": true,
+              "used": false,
+              "reason": "compatible",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 4,
+              "visitFactsSource": "current_full_extraction"
+            },
+            "patientHistory": {
+              "completeness": "partial",
+              "priorSessionCount": 4,
+              "externalHistoryEventCount": 0,
+              "patientHistoryReason": "loaded",
+              "extractionSnapshotReason": "loaded"
+            },
+            "standingFacts": {
+              "enabled": true,
+              "activeCount": 1,
+              "proposedCount": 0,
+              "suspendedCount": 0,
+              "profileCount": 1,
+              "reasons": {
+                "already_confirmed_current_month": 1
+              }
+            },
+            "openAiCallObserved": true,
+            "openAiUsage": {
+              "inputTokens": 5958,
+              "outputTokens": 949,
+              "totalTokens": 6907,
+              "cachedInputTokens": 4864
+            }
+          }
+        }
+      ],
+      "candidateSurface": {
+        "codeCount": 4,
+        "lines": [
+          {
+            "code": "114005410",
+            "name": "在宅人工呼吸指導管理料",
+            "count": 1,
+            "totalPoints": 2800
+          },
+          {
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "count": 3,
+            "totalPoints": 645
+          },
+          {
+            "code": "140003810",
+            "name": "喀痰吸引",
+            "count": 1,
+            "totalPoints": 48
+          },
+          {
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "count": 3,
+            "totalPoints": 57
+          }
+        ],
+        "proposalCount": 4,
+        "issueCount": 26
+      },
+      "monthly": {
+        "status": "ready",
+        "claimMonth": "2026-07",
+        "sessionCount": 4,
+        "actualDays": 4,
+        "totalPoints": 3550,
+        "codeCount": 4,
+        "lines": [
+          {
+            "code": "114005410",
+            "name": "在宅人工呼吸指導管理料",
+            "count": 1,
+            "totalPoints": 2800
+          },
+          {
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "count": 3,
+            "totalPoints": 645
+          },
+          {
+            "code": "140003810",
+            "name": "喀痰吸引",
+            "count": 1,
+            "totalPoints": 48
+          },
+          {
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "count": 3,
+            "totalPoints": 57
+          }
+        ],
+        "candidateLines": [
+          {
+            "code": "114057970",
+            "codeCandidates": [],
+            "name": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+            "quantity": 1,
+            "totalPoints": 50,
+            "occurrenceCount": 3,
+            "suppressedOccurrenceCount": 2,
+            "conflicts": []
+          },
+          {
+            "code": null,
+            "codeCandidates": [
+              "114005510",
+              "114006810",
+              "114009610"
+            ],
+            "name": "人工呼吸器加算の初回算定確認",
+            "quantity": 2,
+            "totalPoints": 0,
+            "occurrenceCount": 2,
+            "suppressedOccurrenceCount": 0,
+            "conflicts": []
+          },
+          {
+            "code": "112007950",
+            "codeCandidates": [],
+            "name": "電話等再診料の算定確認",
+            "quantity": 1,
+            "totalPoints": 0,
+            "occurrenceCount": 1,
+            "suppressedOccurrenceCount": 0,
+            "conflicts": [
+              "114030310"
+            ]
+          },
+          {
+            "code": null,
+            "codeCandidates": [
+              "140023510",
+              "140023750",
+              "140023950",
+              "140039650",
+              "140063810",
+              "140064050",
+              "140064350",
+              "140064750"
+            ],
+            "name": "「人工呼吸」の算定区分確認",
+            "quantity": 1,
+            "totalPoints": 0,
+            "occurrenceCount": 1,
+            "suppressedOccurrenceCount": 0,
+            "conflicts": []
+          }
+        ],
+        "candidateTotalPoints": 50
+      },
+      "monthlyMetrics": {
+        "schemaVersion": 1,
+        "totalDurationMs": 230,
+        "sessionCount": 4,
+        "stageDurationsMs": {
+          "buildMonthlyReceiptDraft": 3,
+          "listSessionsForMonthlyView": 61,
+          "monthlyCandidateConstraints": 166
+        }
+      },
+      "comparison": {
+        "baselineCodeCount": 10,
+        "engineCodeCount": 4,
+        "matchedCodeCount": 3,
+        "baselineOnlyCount": 7,
+        "engineOnlyCount": 1,
+        "bothDeltaCount": 0,
+        "codeRecall": 0.3,
+        "codePrecision": 0.75,
+        "exactMatch": false,
+        "rows": [
+          {
+            "status": "baseline_only",
+            "code": "112007950",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 76,
+            "enginePoints": 0,
+            "deltaPoints": -76
+          },
+          {
+            "status": "baseline_only",
+            "code": "112015770",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 1,
+            "enginePoints": 0,
+            "deltaPoints": -1
+          },
+          {
+            "status": "matched",
+            "code": "114005410",
+            "name": "在宅人工呼吸指導管理料",
+            "baselineCount": 1,
+            "engineCount": 1,
+            "baselinePoints": 2800,
+            "enginePoints": 2800,
+            "deltaPoints": 0
+          },
+          {
+            "status": "baseline_only",
+            "code": "114006810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 7480,
+            "enginePoints": 0,
+            "deltaPoints": -7480
+          },
+          {
+            "status": "baseline_only",
+            "code": "114008370",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100
+          },
+          {
+            "status": "matched",
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 645,
+            "enginePoints": 645,
+            "deltaPoints": 0
+          },
+          {
+            "status": "baseline_only",
+            "code": "114057970",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 50,
+            "enginePoints": 0,
+            "deltaPoints": -50
+          },
+          {
+            "status": "baseline_only",
+            "code": "114723810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100
+          },
+          {
+            "status": "engine_only",
+            "code": "140003810",
+            "name": "喀痰吸引",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 48,
+            "deltaPoints": 48
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 4,
+            "enginePoints": 0,
+            "deltaPoints": -4
+          },
+          {
+            "status": "matched",
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 57,
+            "enginePoints": 57,
+            "deltaPoints": 0
+          }
+        ]
+      },
+      "detection": {
+        "matchedCodeCount": 5,
+        "baselineOnlyCount": 4,
+        "codeRecall": 0.5,
+        "rows": [
+          {
+            "status": "both_delta",
+            "code": "112007950",
+            "name": "電話等再診料の算定確認",
+            "baselineCount": 1,
+            "engineCount": 1,
+            "baselinePoints": 76,
+            "enginePoints": 0,
+            "deltaPoints": -76
+          },
+          {
+            "status": "baseline_only",
+            "code": "112015770",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 1,
+            "enginePoints": 0,
+            "deltaPoints": -1
+          },
+          {
+            "status": "matched",
+            "code": "114005410",
+            "name": "在宅人工呼吸指導管理料",
+            "baselineCount": 1,
+            "engineCount": 1,
+            "baselinePoints": 2800,
+            "enginePoints": 2800,
+            "deltaPoints": 0
+          },
+          {
+            "status": "matched_via_code_candidates",
+            "code": "114006810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 7480,
+            "enginePoints": 0,
+            "deltaPoints": -7480
+          },
+          {
+            "status": "baseline_only",
+            "code": "114008370",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100
+          },
+          {
+            "status": "matched",
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 645,
+            "enginePoints": 645,
+            "deltaPoints": 0
+          },
+          {
+            "status": "matched",
+            "code": "114057970",
+            "name": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+            "baselineCount": 1,
+            "engineCount": 1,
+            "baselinePoints": 50,
+            "enginePoints": 50,
+            "deltaPoints": 0
+          },
+          {
+            "status": "baseline_only",
+            "code": "114723810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 4,
+            "enginePoints": 0,
+            "deltaPoints": -4
+          },
+          {
+            "status": "matched",
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 57,
+            "enginePoints": 57,
+            "deltaPoints": 0
+          }
+        ]
+      },
+      "endpointComparison": {
+        "baselineTotalPoints": 11313,
+        "engineTotalPoints": 750,
+        "matchedCount": 2,
+        "baselineOnlyCount": 8,
+        "engineOnlyCount": 1,
+        "bothDeltaCount": 0,
+        "rows": [
+          {
+            "status": "baseline_only",
+            "code": "112007950",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 76,
+            "enginePoints": 0,
+            "deltaPoints": -76,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "112015770",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 1,
+            "enginePoints": 0,
+            "deltaPoints": -1,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114005410",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 2800,
+            "enginePoints": 0,
+            "deltaPoints": -2800,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114006810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 7480,
+            "enginePoints": 0,
+            "deltaPoints": -7480,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114008370",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "matched",
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 645,
+            "enginePoints": 645,
+            "deltaPoints": 0,
+            "reason": "既存レセと当社再算定が一致"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114057970",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 50,
+            "enginePoints": 0,
+            "deltaPoints": -50,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114723810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "engine_only",
+            "code": "140003810",
+            "name": "喀痰吸引",
+            "baselineCount": 0,
+            "engineCount": 1,
+            "baselinePoints": 0,
+            "enginePoints": 48,
+            "deltaPoints": 48,
+            "reason": "低確信の当社候補"
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 4,
+            "enginePoints": 0,
+            "deltaPoints": -4,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "matched",
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 57,
+            "enginePoints": 57,
+            "deltaPoints": 0,
+            "reason": "既存レセと当社再算定が一致"
+          }
+        ]
+      },
+      "baselineDiagnosisMetrics": {
+        "schemaVersion": 1,
+        "totalDurationMs": 119,
+        "sessionCount": 4,
+        "baselineClaimCount": 1,
+        "stageDurationsMs": {
+          "audit": 44,
+          "baselineClaimsFromDiagnosisBody": 0,
+          "buildMonthlyBaselineDiagnosis": 0,
+          "listSessionsForBaselineDiagnosis": 75
+        }
+      },
+      "performance": {
+        "totalClientMs": 38407.47,
+        "calculateRequestMs": {
+          "count": 4,
+          "min": 1028.78,
+          "median": 9188.82,
+          "mean": 7508.08,
+          "max": 10625.9
+        },
+        "clinicalStructuringMs": {
+          "count": 4,
+          "min": 17,
+          "median": 8046,
+          "mean": 6462,
+          "max": 9739
+        },
+        "openAiProviderMs": {
+          "count": 4,
+          "min": 0,
+          "median": 7759,
+          "mean": 6190.25,
+          "max": 9243
+        },
+        "diseaseIndicationScanMs": {
+          "count": 4,
+          "min": 0,
+          "median": 22.5,
+          "mean": 22.75,
+          "max": 46
+        }
+      },
+      "requestTimings": [
+        {
+          "operation": "standing_prior_create",
+          "visit": null,
+          "statusCode": 201,
+          "durationMs": 406.7
+        },
+        {
+          "operation": "standing_prior_calculate",
+          "visit": null,
+          "statusCode": 201,
+          "durationMs": 4000.71
+        },
+        {
+          "operation": "standing_prior_review_items",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 159.28
+        },
+        {
+          "operation": "standing_prior_approve",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 288.29
+        },
+        {
+          "operation": "prior-standing-profiles",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 59.04
+        },
+        {
+          "operation": "create_session",
+          "visit": 1,
+          "statusCode": 201,
+          "durationMs": 300.71
+        },
+        {
+          "operation": "calculate",
+          "visit": 1,
+          "statusCode": 201,
+          "durationMs": 1028.78
+        },
+        {
+          "operation": "review_items",
+          "visit": 1,
+          "statusCode": 200,
+          "durationMs": 40.58
+        },
+        {
+          "operation": "approve_lines",
+          "visit": 1,
+          "statusCode": 200,
+          "durationMs": 366.3
+        },
+        {
+          "operation": "detail",
+          "visit": 1,
+          "statusCode": 200,
+          "durationMs": 77.51
+        },
+        {
+          "operation": "create_session",
+          "visit": 2,
+          "statusCode": 201,
+          "durationMs": 230.92
+        },
+        {
+          "operation": "calculate",
+          "visit": 2,
+          "statusCode": 201,
+          "durationMs": 9952.05
+        },
+        {
+          "operation": "review_items",
+          "visit": 2,
+          "statusCode": 200,
+          "durationMs": 204.21
+        },
+        {
+          "operation": "approve_lines",
+          "visit": 2,
+          "statusCode": 200,
+          "durationMs": 158.58
+        },
+        {
+          "operation": "detail",
+          "visit": 2,
+          "statusCode": 200,
+          "durationMs": 164.1
+        },
+        {
+          "operation": "create_session",
+          "visit": 3,
+          "statusCode": 201,
+          "durationMs": 264.93
+        },
+        {
+          "operation": "calculate",
+          "visit": 3,
+          "statusCode": 201,
+          "durationMs": 10625.9
+        },
+        {
+          "operation": "review_items",
+          "visit": 3,
+          "statusCode": 200,
+          "durationMs": 251.8
+        },
+        {
+          "operation": "detail",
+          "visit": 3,
+          "statusCode": 200,
+          "durationMs": 70.63
+        },
+        {
+          "operation": "create_session",
+          "visit": 4,
+          "statusCode": 201,
+          "durationMs": 301.04
+        },
+        {
+          "operation": "calculate",
+          "visit": 4,
+          "statusCode": 201,
+          "durationMs": 8425.59
+        },
+        {
+          "operation": "review_items",
+          "visit": 4,
+          "statusCode": 200,
+          "durationMs": 210.44
+        },
+        {
+          "operation": "approve_lines",
+          "visit": 4,
+          "statusCode": 200,
+          "durationMs": 175.59
+        },
+        {
+          "operation": "detail",
+          "visit": 4,
+          "statusCode": 200,
+          "durationMs": 131.22
+        },
+        {
+          "operation": "current-standing-profiles",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 48.42
+        },
+        {
+          "operation": "monthly_receipt",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 320.1
+        },
+        {
+          "operation": "baseline_diagnosis",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 144.05
+        }
+      ]
+    },
+    {
+      "repeat": 3,
+      "patientRef": "2ee714eba1fa",
+      "priorHistorySeed": {
+        "source": "standing_first_month_candidate_approval",
+        "serviceDate": "2026-06-25",
+        "claimMonth": "2026-06",
+        "sessionRef": "7b807c662463"
+      },
+      "standingTimeline": {
+        "priorMonth": {
+          "serviceDate": "2026-06-25",
+          "claimMonth": "2026-06",
+          "sessionRef": "7b807c662463",
+          "expectedCodes": [
+            "114005410"
+          ],
+          "candidateCodes": [
+            "114005410"
+          ],
+          "approvedCodes": [
+            "114005410"
+          ],
+          "profileAudit": {
+            "profileCount": 1,
+            "matchedCodes": [
+              "114005410"
+            ],
+            "missingCodes": [],
+            "profiles": [
+              {
+                "profileRef": "d135c1a58b40",
+                "feeFamily": "fee_family_0e7a8a61319f88cef0a0dbf2",
+                "status": "active",
+                "claimMonth": "2026-06",
+                "confirmedCodes": [
+                  "114005410"
+                ]
+              }
+            ]
+          }
+        },
+        "currentMonth": {
+          "expectedCodes": [
+            "114005410"
+          ],
+          "candidateObservations": [
+            {
+              "serviceDate": "2026-07-02",
+              "matchedCodes": [
+                "114005410"
+              ],
+              "missingCodes": [],
+              "proposals": [
+                {
+                  "proposalRef": "74d2a46dd558",
+                  "code": "114005410",
+                  "name": "在宅人工呼吸指導管理料",
+                  "basis": "standing_confirmed_history_candidate",
+                  "source": "standing_fact_lane"
+                }
+              ]
+            },
+            {
+              "serviceDate": "2026-07-09",
+              "matchedCodes": [],
+              "missingCodes": [
+                "114005410"
+              ],
+              "proposals": []
+            },
+            {
+              "serviceDate": "2026-07-16",
+              "matchedCodes": [],
+              "missingCodes": [
+                "114005410"
+              ],
+              "proposals": []
+            },
+            {
+              "serviceDate": "2026-07-23",
+              "matchedCodes": [],
+              "missingCodes": [
+                "114005410"
+              ],
+              "proposals": []
+            }
+          ],
+          "approvedCodes": [
+            "114005410"
+          ],
+          "profileAudit": {
+            "profileCount": 1,
+            "matchedCodes": [
+              "114005410"
+            ],
+            "missingCodes": [],
+            "profiles": [
+              {
+                "profileRef": "d135c1a58b40",
+                "feeFamily": "fee_family_0e7a8a61319f88cef0a0dbf2",
+                "status": "active",
+                "claimMonth": "2026-07",
+                "confirmedCodes": [
+                  "114005410"
+                ]
+              }
+            ]
+          },
+          "observedCandidateCodes": [
+            "114005410"
+          ],
+          "monthlyIncludedCodes": [
+            "114005410"
+          ]
+        },
+        "memo": {
+          "copyForwardServiceDate": "2026-07-02",
+          "extractionMode": "memo_only",
+          "enabled": true,
+          "used": true,
+          "memoHitLineRatio": 1,
+          "continuedLineCount": 1,
+          "newLineCount": 0,
+          "removedLineCount": 0
+        },
+        "acceptance": {
+          "priorCandidateObserved": true,
+          "priorConfirmationRecorded": true,
+          "currentCandidateObserved": true,
+          "currentConfirmationRecorded": true,
+          "currentMonthlyLineIncluded": true,
+          "memoHit": true,
+          "passed": true
+        }
+      },
+      "sessionRefs": [
+        "dda77d20db0f",
+        "0ec4e686ec16",
+        "1abe407b62ee",
+        "9af7d9042174"
+      ],
+      "baseline": {
+        "codeCount": 10,
+        "occurrenceCount": 14,
+        "totalPoints": 11313,
+        "lines": [
+          {
+            "code": "112007950",
+            "name": "",
+            "count": 1,
+            "totalPoints": 76
+          },
+          {
+            "code": "112015770",
+            "name": "",
+            "count": 1,
+            "totalPoints": 1
+          },
+          {
+            "code": "114005410",
+            "name": "",
+            "count": 1,
+            "totalPoints": 2800
+          },
+          {
+            "code": "114006810",
+            "name": "",
+            "count": 1,
+            "totalPoints": 7480
+          },
+          {
+            "code": "114008370",
+            "name": "",
+            "count": 1,
+            "totalPoints": 100
+          },
+          {
+            "code": "114030310",
+            "name": "",
+            "count": 3,
+            "totalPoints": 645
+          },
+          {
+            "code": "114057970",
+            "name": "",
+            "count": 1,
+            "totalPoints": 50
+          },
+          {
+            "code": "114723810",
+            "name": "",
+            "count": 1,
+            "totalPoints": 100
+          },
+          {
+            "code": "180725810",
+            "name": "",
+            "count": 1,
+            "totalPoints": 4
+          },
+          {
+            "code": "180726010",
+            "name": "",
+            "count": 3,
+            "totalPoints": 57
+          }
+        ]
+      },
+      "visits": [
+        {
+          "sessionRef": "dda77d20db0f",
+          "serviceDate": "2026-07-02",
+          "chartHash": "276dcc3cb119bf976d26f56a51b9db9b09432bc74f3b613ef942927d736bb2be",
+          "totalPoints": 234,
+          "approvedLineCount": 2,
+          "approvedStandingCandidateCount": 1,
+          "standingCandidateObservation": {
+            "serviceDate": "2026-07-02",
+            "matchedCodes": [
+              "114005410"
+            ],
+            "missingCodes": [],
+            "proposals": [
+              {
+                "proposalRef": "74d2a46dd558",
+                "code": "114005410",
+                "name": "在宅人工呼吸指導管理料",
+                "basis": "standing_confirmed_history_candidate",
+                "source": "standing_fact_lane"
+              }
+            ]
+          },
+          "diagnoses": [],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "114005410",
+                "name": "在宅人工呼吸指導管理料",
+                "count": 1,
+                "totalPoints": 2800
+              },
+              {
+                "code": "114030310",
+                "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+                "count": 1,
+                "totalPoints": 215
+              },
+              {
+                "code": "180726010",
+                "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+                "count": 1,
+                "totalPoints": 19
+              }
+            ],
+            "proposals": [
+              {
+                "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+                "potentialPoints": 50,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "facility_auto_billing_rule"
+              }
+            ],
+            "issues": [
+              {
+                "title": "人工呼吸器加算の初回算定確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "standing_fact_lane"
+              },
+              {
+                "title": "初診/再診確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "visit_type_rule"
+              },
+              {
+                "title": "レセプトコメントの確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              }
+            ],
+            "proposalCount": 1,
+            "issueCount": 6
+          },
+          "extraction": {
+            "source": "memo",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v15",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "678799d5d7fb",
+            "clinicalEventCount": 0,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 1
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 20
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 19
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "extractionSnapshot",
+                "durationMs": 24
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 34
+              },
+              {
+                "stage": "standingFactLane",
+                "durationMs": 37
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 16
+              }
+            ],
+            "clinicalStructuringMs": 18,
+            "openAiProviderMs": 0,
+            "openAiCallCount": 0,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 0,
+            "masterLookupMs": 0,
+            "masterLookupCount": 0,
+            "diseaseIndicationScanMs": 0,
+            "diseaseIndicationResolvedDiagnosisCount": 0,
+            "diseaseIndicationCandidateCount": 0,
+            "diseaseIndicationUnresolvedCount": 0,
+            "extractionMode": "memo_only",
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 0,
+              "finalEventCount": 0
+            },
+            "extractionMemo": {
+              "enabled": true,
+              "used": true,
+              "reason": "compatible",
+              "memoHitLineRatio": 1,
+              "continuedLineCount": 1,
+              "newLineCount": 0,
+              "removedLineCount": 0,
+              "visitFactsSource": "previous_snapshot"
+            },
+            "patientHistory": {
+              "completeness": "partial",
+              "priorSessionCount": 1,
+              "externalHistoryEventCount": 0,
+              "patientHistoryReason": "loaded",
+              "extractionSnapshotReason": "loaded"
+            },
+            "standingFacts": {
+              "enabled": true,
+              "activeCount": 1,
+              "proposedCount": 2,
+              "suspendedCount": 0,
+              "profileCount": 1,
+              "reasons": {
+                "proposed": 1,
+                "first_month_candidate": 1
+              }
+            },
+            "openAiCallObserved": false,
+            "openAiUsage": null
+          }
+        },
+        {
+          "sessionRef": "0ec4e686ec16",
+          "serviceDate": "2026-07-09",
+          "chartHash": "1f2cccdd91592573521a28ffe9b1449f2a8d9879b577ed8c1847504054fd4ca7",
+          "totalPoints": 234,
+          "approvedLineCount": 2,
+          "approvedStandingCandidateCount": 0,
+          "standingCandidateObservation": {
+            "serviceDate": "2026-07-09",
+            "matchedCodes": [],
+            "missingCodes": [
+              "114005410"
+            ],
+            "proposals": []
+          },
+          "diagnoses": [
+            "ALS",
+            "気管切開状態"
+          ],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "114030310",
+                "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+                "count": 1,
+                "totalPoints": 215
+              },
+              {
+                "code": "180726010",
+                "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+                "count": 1,
+                "totalPoints": 19
+              }
+            ],
+            "proposals": [
+              {
+                "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+                "potentialPoints": 50,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "facility_auto_billing_rule"
+              }
+            ],
+            "issues": [
+              {
+                "title": "人工呼吸器加算の初回算定確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "standing_fact_lane"
+              },
+              {
+                "title": "抽出結果確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "management_continuation_gate"
+              },
+              {
+                "title": "抽出結果確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "management_continuation_gate"
+              },
+              {
+                "title": "抽出結果確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "management_continuation_gate"
+              },
+              {
+                "title": "初診/再診確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "visit_type_rule"
+              },
+              {
+                "title": "リハビリ未対応",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now",
+                "source": "review_only_domain_gate"
+              },
+              {
+                "title": "レセプトコメントの確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              }
+            ],
+            "proposalCount": 1,
+            "issueCount": 10
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v15",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "61fbf061c666",
+            "clinicalEventCount": 2,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 6
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 14
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 32
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "extractionSnapshot",
+                "durationMs": 18
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 10195
+              },
+              {
+                "stage": "standingFactLane",
+                "durationMs": 33
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 17
+              }
+            ],
+            "clinicalStructuringMs": 10131,
+            "openAiProviderMs": 10068,
+            "openAiCallCount": 1,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 0,
+            "masterLookupMs": 56,
+            "masterLookupCount": 5,
+            "diseaseIndicationScanMs": 47,
+            "diseaseIndicationResolvedDiagnosisCount": 1,
+            "diseaseIndicationCandidateCount": 0,
+            "diseaseIndicationUnresolvedCount": 1,
+            "extractionMode": "full",
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 3,
+              "finalEventCount": 3
+            },
+            "extractionMemo": {
+              "enabled": true,
+              "used": false,
+              "reason": "compatible",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 1,
+              "visitFactsSource": "current_full_extraction"
+            },
+            "patientHistory": {
+              "completeness": "partial",
+              "priorSessionCount": 2,
+              "externalHistoryEventCount": 0,
+              "patientHistoryReason": "loaded",
+              "extractionSnapshotReason": "loaded"
+            },
+            "standingFacts": {
+              "enabled": true,
+              "activeCount": 1,
+              "proposedCount": 1,
+              "suspendedCount": 0,
+              "profileCount": 1,
+              "reasons": {
+                "already_confirmed_current_month": 1,
+                "first_month_candidate": 1
+              }
+            },
+            "openAiCallObserved": true,
+            "openAiUsage": {
+              "inputTokens": 5949,
+              "outputTokens": 1498,
+              "totalTokens": 7447,
+              "cachedInputTokens": 4864
+            }
+          }
+        },
+        {
+          "sessionRef": "1abe407b62ee",
+          "serviceDate": "2026-07-16",
+          "chartHash": "65a32b1713653192de439168fa660ef6f0a6b86f33540f1f37ca1948e2f4338b",
+          "totalPoints": 0,
+          "approvedLineCount": 0,
+          "approvedStandingCandidateCount": 0,
+          "standingCandidateObservation": {
+            "serviceDate": "2026-07-16",
+            "matchedCodes": [],
+            "missingCodes": [
+              "114005410"
+            ],
+            "proposals": []
+          },
+          "diagnoses": [],
+          "candidateSurface": {
+            "lines": [],
+            "proposals": [],
+            "issues": [
+              {
+                "title": "電話等再診料の算定確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "encounter_variant"
+              },
+              {
+                "title": "初診/再診確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "visit_type_rule"
+              },
+              {
+                "title": "在宅医療未対応",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "not_billable_now",
+                "source": "review_only_domain_gate"
+              },
+              {
+                "title": "受診方法の確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "encounter_variant"
+              }
+            ],
+            "proposalCount": 0,
+            "issueCount": 4
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v15",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "7f8c95a14025",
+            "clinicalEventCount": 7,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 6
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 15
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 35
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "extractionSnapshot",
+                "durationMs": 21
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 6308
+              },
+              {
+                "stage": "standingFactLane",
+                "durationMs": 23
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 16
+              }
+            ],
+            "clinicalStructuringMs": 6291,
+            "openAiProviderMs": 6123,
+            "openAiCallCount": 1,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 0,
+            "masterLookupMs": 371,
+            "masterLookupCount": 5,
+            "diseaseIndicationScanMs": 0,
+            "diseaseIndicationResolvedDiagnosisCount": 0,
+            "diseaseIndicationCandidateCount": 0,
+            "diseaseIndicationUnresolvedCount": 0,
+            "extractionMode": "full",
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 7,
+              "finalEventCount": 7
+            },
+            "extractionMemo": {
+              "enabled": true,
+              "used": false,
+              "reason": "compatible",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 4,
+              "visitFactsSource": "current_full_extraction"
+            },
+            "patientHistory": {
+              "completeness": "partial",
+              "priorSessionCount": 3,
+              "externalHistoryEventCount": 0,
+              "patientHistoryReason": "loaded",
+              "extractionSnapshotReason": "loaded"
+            },
+            "standingFacts": {
+              "enabled": true,
+              "activeCount": 1,
+              "proposedCount": 0,
+              "suspendedCount": 0,
+              "profileCount": 1,
+              "reasons": {
+                "already_confirmed_current_month": 1
+              }
+            },
+            "openAiCallObserved": true,
+            "openAiUsage": {
+              "inputTokens": 5884,
+              "outputTokens": 851,
+              "totalTokens": 6735,
+              "cachedInputTokens": 4864
+            }
+          }
+        },
+        {
+          "sessionRef": "9af7d9042174",
+          "serviceDate": "2026-07-23",
+          "chartHash": "89b54485e445596035c620b16274431f9cdd206681bb5e0f904153dd0e3a93e5",
+          "totalPoints": 234,
+          "approvedLineCount": 2,
+          "approvedStandingCandidateCount": 0,
+          "standingCandidateObservation": {
+            "serviceDate": "2026-07-23",
+            "matchedCodes": [],
+            "missingCodes": [
+              "114005410"
+            ],
+            "proposals": []
+          },
+          "diagnoses": [
+            "ALS",
+            "気管切開状態"
+          ],
+          "candidateSurface": {
+            "lines": [
+              {
+                "code": "114030310",
+                "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+                "count": 1,
+                "totalPoints": 215
+              },
+              {
+                "code": "180726010",
+                "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+                "count": 1,
+                "totalPoints": 19
+              }
+            ],
+            "proposals": [
+              {
+                "title": "「人工呼吸」の算定区分確認",
+                "potentialPoints": 1140,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_billing_opportunity"
+              },
+              {
+                "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+                "potentialPoints": 50,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "facility_auto_billing_rule"
+              }
+            ],
+            "issues": [
+              {
+                "title": "抽出結果確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "management_continuation_gate"
+              },
+              {
+                "title": "抽出結果確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "management_continuation_gate"
+              },
+              {
+                "title": "抽出結果確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "management_continuation_gate"
+              },
+              {
+                "title": "初診/再診確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "visit_type_rule"
+              },
+              {
+                "title": "検査コード確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_procedure_rule"
+              },
+              {
+                "title": "手技内容確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required",
+                "source": "clinical_procedure_rule"
+              },
+              {
+                "title": "レセプトコメントの確認",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              },
+              {
+                "title": "確認事項",
+                "potentialPoints": 0,
+                "canAdopt": false,
+                "actionType": "confirm_required"
+              }
+            ],
+            "proposalCount": 2,
+            "issueCount": 10
+          },
+          "extraction": {
+            "source": "openai",
+            "model": "gpt-5.4-nano",
+            "reasoningEffort": "low",
+            "promptVersion": "fee-clinical-events-v15",
+            "ruleSetVersion": "fee-clinical-rules-v10",
+            "masterVersion": "runtime-master-current",
+            "runRef": "639a6f3e45d3",
+            "clinicalEventCount": 4,
+            "billingCandidateCount": 0,
+            "reviewIssueCount": 7
+          },
+          "calculationMetrics": {
+            "stageTimings": [
+              {
+                "stage": "enrichOrders",
+                "durationMs": 0
+              },
+              {
+                "stage": "facilityProfile",
+                "durationMs": 0
+              },
+              {
+                "stage": "feeSettings",
+                "durationMs": 14
+              },
+              {
+                "stage": "patientHistory",
+                "durationMs": 34
+              },
+              {
+                "stage": "externalBillingHistory",
+                "durationMs": 0
+              },
+              {
+                "stage": "extractionSnapshot",
+                "durationMs": 18
+              },
+              {
+                "stage": "clinicalCalculationPreparation",
+                "durationMs": 11839
+              },
+              {
+                "stage": "standingFactLane",
+                "durationMs": 38
+              },
+              {
+                "stage": "shadowCalculationPreparation",
+                "durationMs": 17
+              }
+            ],
+            "clinicalStructuringMs": 11757,
+            "openAiProviderMs": 11440,
+            "openAiCallCount": 1,
+            "firstOutputTextMs": null,
+            "ruleBasedInferenceMs": 0,
+            "masterLookupMs": 349,
+            "masterLookupCount": 17,
+            "diseaseIndicationScanMs": 64,
+            "diseaseIndicationResolvedDiagnosisCount": 1,
+            "diseaseIndicationCandidateCount": 0,
+            "diseaseIndicationUnresolvedCount": 1,
+            "extractionMode": "full",
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 7,
+              "finalEventCount": 7
+            },
+            "extractionMemo": {
+              "enabled": true,
+              "used": false,
+              "reason": "compatible",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 4,
+              "visitFactsSource": "current_full_extraction"
+            },
+            "patientHistory": {
+              "completeness": "partial",
+              "priorSessionCount": 4,
+              "externalHistoryEventCount": 0,
+              "patientHistoryReason": "loaded",
+              "extractionSnapshotReason": "loaded"
+            },
+            "standingFacts": {
+              "enabled": true,
+              "activeCount": 1,
+              "proposedCount": 0,
+              "suspendedCount": 0,
+              "profileCount": 1,
+              "reasons": {
+                "already_confirmed_current_month": 1
+              }
+            },
+            "openAiCallObserved": true,
+            "openAiUsage": {
+              "inputTokens": 5958,
+              "outputTokens": 1636,
+              "totalTokens": 7594,
+              "cachedInputTokens": 4864
+            }
+          }
+        }
+      ],
+      "candidateSurface": {
+        "codeCount": 3,
+        "lines": [
+          {
+            "code": "114005410",
+            "name": "在宅人工呼吸指導管理料",
+            "count": 1,
+            "totalPoints": 2800
+          },
+          {
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "count": 3,
+            "totalPoints": 645
+          },
+          {
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "count": 3,
+            "totalPoints": 57
+          }
+        ],
+        "proposalCount": 4,
+        "issueCount": 30
+      },
+      "monthly": {
+        "status": "ready",
+        "claimMonth": "2026-07",
+        "sessionCount": 4,
+        "actualDays": 4,
+        "totalPoints": 3502,
+        "codeCount": 3,
+        "lines": [
+          {
+            "code": "114005410",
+            "name": "在宅人工呼吸指導管理料",
+            "count": 1,
+            "totalPoints": 2800
+          },
+          {
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "count": 3,
+            "totalPoints": 645
+          },
+          {
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "count": 3,
+            "totalPoints": 57
+          }
+        ],
+        "candidateLines": [
+          {
+            "code": "114057970",
+            "codeCandidates": [],
+            "name": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+            "quantity": 1,
+            "totalPoints": 50,
+            "occurrenceCount": 3,
+            "suppressedOccurrenceCount": 2,
+            "conflicts": []
+          },
+          {
+            "code": null,
+            "codeCandidates": [
+              "114005510",
+              "114006810",
+              "114009610"
+            ],
+            "name": "人工呼吸器加算の初回算定確認",
+            "quantity": 2,
+            "totalPoints": 0,
+            "occurrenceCount": 2,
+            "suppressedOccurrenceCount": 0,
+            "conflicts": []
+          },
+          {
+            "code": "112007950",
+            "codeCandidates": [],
+            "name": "電話等再診料の算定確認",
+            "quantity": 1,
+            "totalPoints": 0,
+            "occurrenceCount": 1,
+            "suppressedOccurrenceCount": 0,
+            "conflicts": [
+              "114030310"
+            ]
+          },
+          {
+            "code": null,
+            "codeCandidates": [
+              "140023510",
+              "140023750",
+              "140023950",
+              "140039650",
+              "140063810",
+              "140064050",
+              "140064350",
+              "140064750"
+            ],
+            "name": "「人工呼吸」の算定区分確認",
+            "quantity": 1,
+            "totalPoints": 0,
+            "occurrenceCount": 1,
+            "suppressedOccurrenceCount": 0,
+            "conflicts": []
+          }
+        ],
+        "candidateTotalPoints": 50
+      },
+      "monthlyMetrics": {
+        "schemaVersion": 1,
+        "totalDurationMs": 251,
+        "sessionCount": 4,
+        "stageDurationsMs": {
+          "buildMonthlyReceiptDraft": 2,
+          "listSessionsForMonthlyView": 64,
+          "monthlyCandidateConstraints": 185
+        }
+      },
+      "comparison": {
+        "baselineCodeCount": 10,
+        "engineCodeCount": 3,
+        "matchedCodeCount": 3,
+        "baselineOnlyCount": 7,
+        "engineOnlyCount": 0,
+        "bothDeltaCount": 0,
+        "codeRecall": 0.3,
+        "codePrecision": 1,
+        "exactMatch": false,
+        "rows": [
+          {
+            "status": "baseline_only",
+            "code": "112007950",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 76,
+            "enginePoints": 0,
+            "deltaPoints": -76
+          },
+          {
+            "status": "baseline_only",
+            "code": "112015770",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 1,
+            "enginePoints": 0,
+            "deltaPoints": -1
+          },
+          {
+            "status": "matched",
+            "code": "114005410",
+            "name": "在宅人工呼吸指導管理料",
+            "baselineCount": 1,
+            "engineCount": 1,
+            "baselinePoints": 2800,
+            "enginePoints": 2800,
+            "deltaPoints": 0
+          },
+          {
+            "status": "baseline_only",
+            "code": "114006810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 7480,
+            "enginePoints": 0,
+            "deltaPoints": -7480
+          },
+          {
+            "status": "baseline_only",
+            "code": "114008370",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100
+          },
+          {
+            "status": "matched",
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 645,
+            "enginePoints": 645,
+            "deltaPoints": 0
+          },
+          {
+            "status": "baseline_only",
+            "code": "114057970",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 50,
+            "enginePoints": 0,
+            "deltaPoints": -50
+          },
+          {
+            "status": "baseline_only",
+            "code": "114723810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 4,
+            "enginePoints": 0,
+            "deltaPoints": -4
+          },
+          {
+            "status": "matched",
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 57,
+            "enginePoints": 57,
+            "deltaPoints": 0
+          }
+        ]
+      },
+      "detection": {
+        "matchedCodeCount": 5,
+        "baselineOnlyCount": 4,
+        "codeRecall": 0.5,
+        "rows": [
+          {
+            "status": "both_delta",
+            "code": "112007950",
+            "name": "電話等再診料の算定確認",
+            "baselineCount": 1,
+            "engineCount": 1,
+            "baselinePoints": 76,
+            "enginePoints": 0,
+            "deltaPoints": -76
+          },
+          {
+            "status": "baseline_only",
+            "code": "112015770",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 1,
+            "enginePoints": 0,
+            "deltaPoints": -1
+          },
+          {
+            "status": "matched",
+            "code": "114005410",
+            "name": "在宅人工呼吸指導管理料",
+            "baselineCount": 1,
+            "engineCount": 1,
+            "baselinePoints": 2800,
+            "enginePoints": 2800,
+            "deltaPoints": 0
+          },
+          {
+            "status": "matched_via_code_candidates",
+            "code": "114006810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 7480,
+            "enginePoints": 0,
+            "deltaPoints": -7480
+          },
+          {
+            "status": "baseline_only",
+            "code": "114008370",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100
+          },
+          {
+            "status": "matched",
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 645,
+            "enginePoints": 645,
+            "deltaPoints": 0
+          },
+          {
+            "status": "matched",
+            "code": "114057970",
+            "name": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+            "baselineCount": 1,
+            "engineCount": 1,
+            "baselinePoints": 50,
+            "enginePoints": 50,
+            "deltaPoints": 0
+          },
+          {
+            "status": "baseline_only",
+            "code": "114723810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 4,
+            "enginePoints": 0,
+            "deltaPoints": -4
+          },
+          {
+            "status": "matched",
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 57,
+            "enginePoints": 57,
+            "deltaPoints": 0
+          }
+        ]
+      },
+      "endpointComparison": {
+        "baselineTotalPoints": 11313,
+        "engineTotalPoints": 702,
+        "matchedCount": 2,
+        "baselineOnlyCount": 8,
+        "engineOnlyCount": 0,
+        "bothDeltaCount": 0,
+        "rows": [
+          {
+            "status": "baseline_only",
+            "code": "112007950",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 76,
+            "enginePoints": 0,
+            "deltaPoints": -76,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "112015770",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 1,
+            "enginePoints": 0,
+            "deltaPoints": -1,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114005410",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 2800,
+            "enginePoints": 0,
+            "deltaPoints": -2800,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114006810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 7480,
+            "enginePoints": 0,
+            "deltaPoints": -7480,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114008370",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "matched",
+            "code": "114030310",
+            "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 645,
+            "enginePoints": 645,
+            "deltaPoints": 0,
+            "reason": "既存レセと当社再算定が一致"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114057970",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 50,
+            "enginePoints": 0,
+            "deltaPoints": -50,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "114723810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 100,
+            "enginePoints": 0,
+            "deltaPoints": -100,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "baseline_only",
+            "code": "180725810",
+            "name": "",
+            "baselineCount": 1,
+            "engineCount": 0,
+            "baselinePoints": 4,
+            "enginePoints": 0,
+            "deltaPoints": -4,
+            "reason": "既存にあり当社で再現せず（当社未対応の可能性／既存の過剰の可能性）"
+          },
+          {
+            "status": "matched",
+            "code": "180726010",
+            "name": "外来・在宅ベースアップ評価料（１）３（訪問診療時）ロ",
+            "baselineCount": 3,
+            "engineCount": 3,
+            "baselinePoints": 57,
+            "enginePoints": 57,
+            "deltaPoints": 0,
+            "reason": "既存レセと当社再算定が一致"
+          }
+        ]
+      },
+      "baselineDiagnosisMetrics": {
+        "schemaVersion": 1,
+        "totalDurationMs": 104,
+        "sessionCount": 4,
+        "baselineClaimCount": 1,
+        "stageDurationsMs": {
+          "audit": 41,
+          "baselineClaimsFromDiagnosisBody": 0,
+          "buildMonthlyBaselineDiagnosis": 0,
+          "listSessionsForBaselineDiagnosis": 63
+        }
+      },
+      "performance": {
+        "totalClientMs": 39466.29,
+        "calculateRequestMs": {
+          "count": 4,
+          "min": 838.23,
+          "median": 9122.95,
+          "mean": 8002.09,
+          "max": 12924.22
+        },
+        "clinicalStructuringMs": {
+          "count": 4,
+          "min": 18,
+          "median": 8211,
+          "mean": 7049.25,
+          "max": 11757
+        },
+        "openAiProviderMs": {
+          "count": 4,
+          "min": 0,
+          "median": 8095.5,
+          "mean": 6907.75,
+          "max": 11440
+        },
+        "diseaseIndicationScanMs": {
+          "count": 4,
+          "min": 0,
+          "median": 23.5,
+          "mean": 27.75,
+          "max": 64
+        }
+      },
+      "requestTimings": [
+        {
+          "operation": "standing_prior_create",
+          "visit": null,
+          "statusCode": 201,
+          "durationMs": 257.69
+        },
+        {
+          "operation": "standing_prior_calculate",
+          "visit": null,
+          "statusCode": 201,
+          "durationMs": 3621.25
+        },
+        {
+          "operation": "standing_prior_review_items",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 127.59
+        },
+        {
+          "operation": "standing_prior_approve",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 264.39
+        },
+        {
+          "operation": "prior-standing-profiles",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 37.35
+        },
+        {
+          "operation": "create_session",
+          "visit": 1,
+          "statusCode": 201,
+          "durationMs": 218.7
+        },
+        {
+          "operation": "calculate",
+          "visit": 1,
+          "statusCode": 201,
+          "durationMs": 838.23
+        },
+        {
+          "operation": "review_items",
+          "visit": 1,
+          "statusCode": 200,
+          "durationMs": 49.94
+        },
+        {
+          "operation": "approve_lines",
+          "visit": 1,
+          "statusCode": 200,
+          "durationMs": 313.32
+        },
+        {
+          "operation": "detail",
+          "visit": 1,
+          "statusCode": 200,
+          "durationMs": 71.88
+        },
+        {
+          "operation": "create_session",
+          "visit": 2,
+          "statusCode": 201,
+          "durationMs": 191.96
+        },
+        {
+          "operation": "calculate",
+          "visit": 2,
+          "statusCode": 201,
+          "durationMs": 11161.97
+        },
+        {
+          "operation": "review_items",
+          "visit": 2,
+          "statusCode": 200,
+          "durationMs": 251.25
+        },
+        {
+          "operation": "approve_lines",
+          "visit": 2,
+          "statusCode": 200,
+          "durationMs": 176.42
+        },
+        {
+          "operation": "detail",
+          "visit": 2,
+          "statusCode": 200,
+          "durationMs": 90.39
+        },
+        {
+          "operation": "create_session",
+          "visit": 3,
+          "statusCode": 201,
+          "durationMs": 200.39
+        },
+        {
+          "operation": "calculate",
+          "visit": 3,
+          "statusCode": 201,
+          "durationMs": 7083.93
+        },
+        {
+          "operation": "review_items",
+          "visit": 3,
+          "statusCode": 200,
+          "durationMs": 181.12
+        },
+        {
+          "operation": "detail",
+          "visit": 3,
+          "statusCode": 200,
+          "durationMs": 61.01
+        },
+        {
+          "operation": "create_session",
+          "visit": 4,
+          "statusCode": 201,
+          "durationMs": 212.9
+        },
+        {
+          "operation": "calculate",
+          "visit": 4,
+          "statusCode": 201,
+          "durationMs": 12924.22
+        },
+        {
+          "operation": "review_items",
+          "visit": 4,
+          "statusCode": 200,
+          "durationMs": 141.69
+        },
+        {
+          "operation": "approve_lines",
+          "visit": 4,
+          "statusCode": 200,
+          "durationMs": 258.06
+        },
+        {
+          "operation": "detail",
+          "visit": 4,
+          "statusCode": 200,
+          "durationMs": 96.93
+        },
+        {
+          "operation": "current-standing-profiles",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 48.03
+        },
+        {
+          "operation": "monthly_receipt",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 461.02
+        },
+        {
+          "operation": "baseline_diagnosis",
+          "visit": null,
+          "statusCode": 200,
+          "durationMs": 124.66
+        }
+      ]
+    }
+  ]
+}
