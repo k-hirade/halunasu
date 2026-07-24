@@ -70,6 +70,23 @@ gcloud_dict_arg() {
   printf '^%s^%s' "${delimiter}" "${joined}"
 }
 
+validate_packaged_fee_artifact_path() {
+  local runtime_path="$1"
+  local label="$2"
+  if [[ -z "${runtime_path}" ]]; then
+    return 0
+  fi
+  if [[ "${runtime_path}" != /app/python/data/whitebox/* ]]; then
+    echo "${label} must be packaged under /app/python/data/whitebox/." >&2
+    return 1
+  fi
+  local repository_path="${runtime_path#/app/}"
+  if [[ ! -f "${repository_path}" ]]; then
+    echo "${label} does not exist in the fee-api build context: ${repository_path}" >&2
+    return 1
+  fi
+}
+
 billing_enabled() {
   gcloud billing projects describe "$1" --format="value(billingEnabled)" --quiet 2>/dev/null || true
 }
@@ -143,6 +160,9 @@ deploy_service() {
   fi
   if [[ "${service}" == fee-api-* ]] && secret_exists "${project}" "fee-calculation-worker-token"; then
     secret_vars="${secret_vars},FEE_CALCULATION_WORKER_TOKEN=fee-calculation-worker-token:latest"
+  fi
+  if [[ "${service}" == fee-api-* ]] && secret_exists "${project}" "FEE_EXTRACTION_FEEDBACK_HMAC_SECRET"; then
+    secret_vars="${secret_vars},FEE_EXTRACTION_FEEDBACK_HMAC_SECRET=FEE_EXTRACTION_FEEDBACK_HMAC_SECRET:latest"
   fi
 
   echo "== ${project}/${service} =="
@@ -220,6 +240,15 @@ deploy_env() {
   local fee_empty_extraction_retry="false"
   local fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS:-30}"
   local fee_monthly_exclusion_mode="${FEE_MONTHLY_EXCLUSION_MODE:-off}"
+  local fee_linker_mode="${FEE_LINKER_MODE:-off}"
+  local fee_context_classifier_mode="${FEE_CONTEXT_CLASSIFIER_MODE:-off}"
+  local fee_span_detector_mode="${FEE_SPAN_DETECTOR_MODE:-off}"
+  local fee_extraction_feedback_mode="${FEE_EXTRACTION_FEEDBACK_MODE:-off}"
+  local fee_linker_manifest_path="${FEE_LINKER_MANIFEST_PATH:-}"
+  local fee_context_classifier_manifest_path="${FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH:-}"
+  local fee_span_detector_manifest_path="${FEE_SPAN_DETECTOR_MANIFEST_PATH:-}"
+  local fee_whitebox_thresholds_path="${FEE_WHITEBOX_THRESHOLDS_PATH:-}"
+  local fee_extraction_feedback_hmac_key_version="${FEE_EXTRACTION_FEEDBACK_HMAC_KEY_VERSION:-v1}"
 
   if [[ "${env}" == "stg" ]]; then
     session_cookie_name="halunasu_stg_session"
@@ -235,6 +264,15 @@ deploy_env() {
     fee_empty_extraction_retry="${FEE_EMPTY_EXTRACTION_RETRY_STG:-true}"
     fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS_STG:-${fee_extraction_snapshot_retention_days}}"
     fee_monthly_exclusion_mode="${FEE_MONTHLY_EXCLUSION_MODE_STG:-${fee_monthly_exclusion_mode}}"
+    fee_linker_mode="${FEE_LINKER_MODE_STG:-${fee_linker_mode}}"
+    fee_context_classifier_mode="${FEE_CONTEXT_CLASSIFIER_MODE_STG:-${fee_context_classifier_mode}}"
+    fee_span_detector_mode="${FEE_SPAN_DETECTOR_MODE_STG:-${fee_span_detector_mode}}"
+    fee_extraction_feedback_mode="${FEE_EXTRACTION_FEEDBACK_MODE_STG:-${fee_extraction_feedback_mode}}"
+    fee_linker_manifest_path="${FEE_LINKER_MANIFEST_PATH_STG:-${fee_linker_manifest_path}}"
+    fee_context_classifier_manifest_path="${FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH_STG:-${fee_context_classifier_manifest_path}}"
+    fee_span_detector_manifest_path="${FEE_SPAN_DETECTOR_MANIFEST_PATH_STG:-${fee_span_detector_manifest_path}}"
+    fee_whitebox_thresholds_path="${FEE_WHITEBOX_THRESHOLDS_PATH_STG:-${fee_whitebox_thresholds_path}}"
+    fee_extraction_feedback_hmac_key_version="${FEE_EXTRACTION_FEEDBACK_HMAC_KEY_VERSION_STG:-${fee_extraction_feedback_hmac_key_version}}"
   else
     sidecar_enabled="${HOMIS_SIDECAR_ENABLED_PROD:-${sidecar_enabled}}"
     sidecar_allowed_extension_ids="${HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS_PROD:-${sidecar_allowed_extension_ids}}"
@@ -247,6 +285,15 @@ deploy_env() {
     fee_empty_extraction_retry="${FEE_EMPTY_EXTRACTION_RETRY_PROD:-false}"
     fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS_PROD:-${fee_extraction_snapshot_retention_days}}"
     fee_monthly_exclusion_mode="${FEE_MONTHLY_EXCLUSION_MODE_PROD:-${fee_monthly_exclusion_mode}}"
+    fee_linker_mode="${FEE_LINKER_MODE_PROD:-${fee_linker_mode}}"
+    fee_context_classifier_mode="${FEE_CONTEXT_CLASSIFIER_MODE_PROD:-${fee_context_classifier_mode}}"
+    fee_span_detector_mode="${FEE_SPAN_DETECTOR_MODE_PROD:-${fee_span_detector_mode}}"
+    fee_extraction_feedback_mode="${FEE_EXTRACTION_FEEDBACK_MODE_PROD:-${fee_extraction_feedback_mode}}"
+    fee_linker_manifest_path="${FEE_LINKER_MANIFEST_PATH_PROD:-${fee_linker_manifest_path}}"
+    fee_context_classifier_manifest_path="${FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH_PROD:-${fee_context_classifier_manifest_path}}"
+    fee_span_detector_manifest_path="${FEE_SPAN_DETECTOR_MANIFEST_PATH_PROD:-${fee_span_detector_manifest_path}}"
+    fee_whitebox_thresholds_path="${FEE_WHITEBOX_THRESHOLDS_PATH_PROD:-${fee_whitebox_thresholds_path}}"
+    fee_extraction_feedback_hmac_key_version="${FEE_EXTRACTION_FEEDBACK_HMAC_KEY_VERSION_PROD:-${fee_extraction_feedback_hmac_key_version}}"
   fi
 
   if [[ "${fee_extraction_memo}" != "true" && "${fee_extraction_memo}" != "false" ]]; then
@@ -270,6 +317,71 @@ deploy_env() {
     && "${fee_monthly_exclusion_mode}" != "shadow" \
     && "${fee_monthly_exclusion_mode}" != "enforce" ]]; then
     echo "FEE_MONTHLY_EXCLUSION_MODE for ${env} must be off, shadow, or enforce." >&2
+    return 1
+  fi
+  if [[ "${fee_linker_mode}" != "off" \
+    && "${fee_linker_mode}" != "shadow" \
+    && "${fee_linker_mode}" != "propose" ]]; then
+    echo "FEE_LINKER_MODE for ${env} must be off, shadow, or propose." >&2
+    return 1
+  fi
+  if [[ "${fee_context_classifier_mode}" != "off" \
+    && "${fee_context_classifier_mode}" != "shadow" \
+    && "${fee_context_classifier_mode}" != "assist" ]]; then
+    echo "FEE_CONTEXT_CLASSIFIER_MODE for ${env} must be off, shadow, or assist." >&2
+    return 1
+  fi
+  if [[ "${fee_span_detector_mode}" != "off" \
+    && "${fee_span_detector_mode}" != "shadow" \
+    && "${fee_span_detector_mode}" != "route" ]]; then
+    echo "FEE_SPAN_DETECTOR_MODE for ${env} must be off, shadow, or route." >&2
+    return 1
+  fi
+  if [[ "${fee_extraction_feedback_mode}" != "off" \
+    && "${fee_extraction_feedback_mode}" != "collect" ]]; then
+    echo "FEE_EXTRACTION_FEEDBACK_MODE for ${env} must be off or collect." >&2
+    return 1
+  fi
+  if [[ "${fee_span_detector_mode}" == "route" \
+    && ( "${fee_linker_mode}" != "propose" || "${fee_context_classifier_mode}" != "assist" ) ]]; then
+    echo "FEE_SPAN_DETECTOR_MODE=route requires FEE_LINKER_MODE=propose and FEE_CONTEXT_CLASSIFIER_MODE=assist for ${env}." >&2
+    return 1
+  fi
+  if [[ "${fee_linker_mode}" != "off" && -z "${fee_linker_manifest_path}" ]]; then
+    echo "FEE_LINKER_MANIFEST_PATH is required when linker mode is enabled for ${env}." >&2
+    return 1
+  fi
+  if [[ "${fee_context_classifier_mode}" != "off" && -z "${fee_context_classifier_manifest_path}" ]]; then
+    echo "FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH is required when context classifier mode is enabled for ${env}." >&2
+    return 1
+  fi
+  if [[ "${fee_span_detector_mode}" != "off" && -z "${fee_span_detector_manifest_path}" ]]; then
+    echo "FEE_SPAN_DETECTOR_MANIFEST_PATH is required when span detector mode is enabled for ${env}." >&2
+    return 1
+  fi
+  if [[ "${fee_linker_mode}" != "off" ]]; then
+    validate_packaged_fee_artifact_path \
+      "${fee_linker_manifest_path}" \
+      "FEE_LINKER_MANIFEST_PATH for ${env}" || return 1
+  fi
+  if [[ "${fee_context_classifier_mode}" != "off" ]]; then
+    validate_packaged_fee_artifact_path \
+      "${fee_context_classifier_manifest_path}" \
+      "FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH for ${env}" || return 1
+  fi
+  if [[ "${fee_span_detector_mode}" != "off" ]]; then
+    validate_packaged_fee_artifact_path \
+      "${fee_span_detector_manifest_path}" \
+      "FEE_SPAN_DETECTOR_MANIFEST_PATH for ${env}" || return 1
+  fi
+  if [[ -n "${fee_whitebox_thresholds_path}" ]]; then
+    validate_packaged_fee_artifact_path \
+      "${fee_whitebox_thresholds_path}" \
+      "FEE_WHITEBOX_THRESHOLDS_PATH for ${env}" || return 1
+  fi
+  if [[ "${fee_extraction_feedback_mode}" == "collect" ]] \
+    && ! secret_exists "${fee_project}" "FEE_EXTRACTION_FEEDBACK_HMAC_SECRET"; then
+    echo "FEE_EXTRACTION_FEEDBACK_MODE=collect requires FEE_EXTRACTION_FEEDBACK_HMAC_SECRET in ${fee_project}." >&2
     return 1
   fi
 
@@ -448,6 +560,15 @@ deploy_env() {
     "FEE_EMPTY_EXTRACTION_RETRY=${fee_empty_extraction_retry}" \
     "FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS=${fee_extraction_snapshot_retention_days}" \
     "FEE_MONTHLY_EXCLUSION_MODE=${fee_monthly_exclusion_mode}" \
+    "FEE_LINKER_MODE=${fee_linker_mode}" \
+    "FEE_CONTEXT_CLASSIFIER_MODE=${fee_context_classifier_mode}" \
+    "FEE_SPAN_DETECTOR_MODE=${fee_span_detector_mode}" \
+    "FEE_EXTRACTION_FEEDBACK_MODE=${fee_extraction_feedback_mode}" \
+    "FEE_LINKER_MANIFEST_PATH=${fee_linker_manifest_path}" \
+    "FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH=${fee_context_classifier_manifest_path}" \
+    "FEE_SPAN_DETECTOR_MANIFEST_PATH=${fee_span_detector_manifest_path}" \
+    "FEE_WHITEBOX_THRESHOLDS_PATH=${fee_whitebox_thresholds_path}" \
+    "FEE_EXTRACTION_FEEDBACK_HMAC_KEY_VERSION=${fee_extraction_feedback_hmac_key_version}" \
     "HOMIS_SIDECAR_ENABLED=${sidecar_enabled}" \
     "HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS=${sidecar_allowed_extension_ids}" \
     "HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS=${sidecar_allowed_selector_contract_versions}" \

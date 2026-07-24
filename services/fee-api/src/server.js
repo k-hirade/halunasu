@@ -14,6 +14,7 @@ import {
   validateCreateFeeSessionInput,
   validateSidecarCalculationInput,
   validateMonthlyExclusionResolutionInput,
+  validateReviewDecisionInput,
   defaultFeeSettings,
   validateUpdateFeeSettingsInput,
   validateUpdateFeeSessionInput
@@ -61,6 +62,14 @@ import {
 } from "./longitudinal-context.js";
 import { applyEncounterVariantToPreparation } from "./encounter-variants.js";
 import { buildStandingBillingLane } from "./standing-billing-profiles.js";
+import { whiteboxRuntimeModes } from "./whitebox-extraction.js";
+import {
+  buildCalculationFeedbackEvents,
+  buildReviewDecisionFeedbackEvents,
+  captureExtractionFeedback,
+  extractionFeedbackMode,
+  extractionFeedbackReadiness
+} from "./extraction-feedback.js";
 
 const PRODUCT_ID = "fee";
 const SIDECAR_PRODUCT_ID = productIds.homisSidecar;
@@ -204,7 +213,10 @@ async function routeFeeApiRequest(input = {}) {
         emptyExtractionRetryEnabled: feeEmptyExtractionRetryEnabled(runtimeEnv),
         standingFactsEnabled: feeStandingFactsEnabled(runtimeEnv),
         extractionSnapshotRetentionDays: extractionSnapshotRetentionDays(runtimeEnv),
-        monthlyExclusionMode: monthlyExclusionMode(runtimeEnv)
+        monthlyExclusionMode: monthlyExclusionMode(runtimeEnv),
+        whiteboxExtraction: whiteboxRuntimeModes(runtimeEnv),
+        extractionFeedbackMode: extractionFeedbackMode(runtimeEnv),
+        extractionFeedback: extractionFeedbackReadiness(runtimeEnv)
       },
       feeCalculator: feeReadiness,
       startedAt: input.startedAt instanceof Date
@@ -1589,6 +1601,13 @@ async function routeFeeApiRequest(input = {}) {
   if (method === "PATCH" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "review-items") {
     requireMutationCsrf(input, context.session);
     const decisions = normalizeReviewDecisionBatchInput(input.body || {});
+    const feedbackEnabled = extractionFeedbackMode(input.processEnv || process.env) === "collect";
+    const feedbackSourceSession = feedbackEnabled
+      ? await feeStore.getSession(context.session.orgId, parts[3])
+      : null;
+    const feedbackSourceReviewItems = feedbackSourceSession
+      ? buildReviewItems(feedbackSourceSession)
+      : [];
     const result = await feeStore.decideReviewItems(context.session.orgId, parts[3], decisions);
     if (decisions.some((decision) => decision.status === "approved")) {
       await recordStandingProfilesFromApprovedSession({
@@ -1616,14 +1635,35 @@ async function routeFeeApiRequest(input = {}) {
         statuses: decisions.map((decision) => decision.status)
       }
     });
+    if (feedbackEnabled) {
+      await captureReviewDecisionFeedbackSafely({
+        feeStore,
+        orgId: context.session.orgId,
+        feeSessionId: parts[3],
+        feeSession: feedbackSourceSession || result.feeSession,
+        reviewItems: feedbackSourceReviewItems,
+        decisions,
+        env: input.processEnv || process.env,
+        now: input.now || new Date()
+      });
+    }
 
     return ok(await feeSessionMutationResponse(feeStore, context.session.orgId, result, input.now || new Date()));
   }
 
   if (method === "PATCH" && parts.length === 6 && matches(parts.slice(0, 3), ["v1", "fee", "sessions"]) && parts[4] === "review-items") {
     requireMutationCsrf(input, context.session);
-    const result = await feeStore.decideReviewItem(context.session.orgId, parts[3], decodeURIComponent(parts[5]), input.body || {});
-    if (String(input.body?.status || "approved") === "approved") {
+    const reviewItemId = decodeURIComponent(parts[5]);
+    const decision = normalizeReviewDecisionInput(input.body || {});
+    const feedbackEnabled = extractionFeedbackMode(input.processEnv || process.env) === "collect";
+    const feedbackSourceSession = feedbackEnabled
+      ? await feeStore.getSession(context.session.orgId, parts[3])
+      : null;
+    const feedbackSourceReviewItems = feedbackSourceSession
+      ? buildReviewItems(feedbackSourceSession)
+      : [];
+    const result = await feeStore.decideReviewItem(context.session.orgId, parts[3], reviewItemId, decision);
+    if (decision.status === "approved") {
       await recordStandingProfilesFromApprovedSession({
         enabled: feeStandingFactsEnabled(input.processEnv || process.env),
         feeStore,
@@ -1631,7 +1671,7 @@ async function routeFeeApiRequest(input = {}) {
         platformStore,
         context,
         feeSession: result.feeSession,
-        approvedReviewItemIds: [decodeURIComponent(parts[5])]
+        approvedReviewItemIds: [reviewItemId]
       });
     }
     await platformStore.createAuditEvent(context.session.orgId, {
@@ -1639,14 +1679,26 @@ async function routeFeeApiRequest(input = {}) {
       actorMemberId: context.session.memberId,
       actorLoginId: context.session.loginId,
       targetType: "fee_review_item",
-      targetId: decodeURIComponent(parts[5]),
+      targetId: reviewItemId,
       productId: PRODUCT_ID,
       safePayload: {
         feeSessionId: result.feeSession.feeSessionId,
-        reviewItemId: decodeURIComponent(parts[5]),
-        status: result.feeSession.reviewDecisions?.[decodeURIComponent(parts[5])]?.status
+        reviewItemId,
+        status: result.feeSession.reviewDecisions?.[reviewItemId]?.status
       }
     });
+    if (feedbackEnabled) {
+      await captureReviewDecisionFeedbackSafely({
+        feeStore,
+        orgId: context.session.orgId,
+        feeSessionId: parts[3],
+        feeSession: feedbackSourceSession || result.feeSession,
+        reviewItems: feedbackSourceReviewItems,
+        decisions: [{ reviewItemId, ...decision }],
+        env: input.processEnv || process.env,
+        now: input.now || new Date()
+      });
+    }
 
     return ok(await feeSessionMutationResponse(feeStore, context.session.orgId, result, input.now || new Date()));
   }
@@ -2289,11 +2341,21 @@ function normalizeReviewDecisionBatchInput(input = {}) {
       throw requestValidationError(`decisions[${index}].reviewItemId is required`);
     }
     return {
-      ...decision,
       reviewItemId,
-      status: String(decision.status || "approved").trim() || "approved"
+      ...normalizeReviewDecisionInput(decision)
     };
   });
+}
+
+function normalizeReviewDecisionInput(input = {}) {
+  try {
+    return validateReviewDecisionInput(input);
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 400;
+    }
+    throw error;
+  }
 }
 
 function requestValidationError(message) {
@@ -5199,6 +5261,18 @@ async function calculatePreparedFeeSessionNow({
       }
     })
   });
+  await measureStage(stageTimings, "extractionFeedback", () => (
+    captureCalculationFeedbackSafely({
+      feeStore,
+      orgId: context.session.orgId,
+      feeSessionId,
+      feeSession: result.feeSession,
+      clinicalMetrics: prepared.metrics?.clinicalStructuring || {},
+      calculationKey: result.calculationResult.calculationId,
+      env: input.processEnv || process.env,
+      now: input.now || new Date()
+    })
+  ));
   const performance = buildFeeCalculationPerformanceSnapshot({
     env: input.processEnv || process.env,
     orgId: context.session.orgId,
@@ -5235,6 +5309,16 @@ async function calculatePreparedFeeSessionNow({
     status: result.feeSession.status,
     ...performance
   }));
+  if (performance.whiteboxExtraction?.degraded === true) {
+    console.warn(JSON.stringify({
+      event: "fee.whitebox.degraded",
+      orgId: context.session.orgId,
+      feeSessionId,
+      calculationId: result.calculationResult.calculationId,
+      runtime: performance.runtime,
+      whiteboxExtraction: performance.whiteboxExtraction
+    }));
+  }
   console.info(JSON.stringify({
     event: "fee.calculate.completed",
     orgId: context.session.orgId,
@@ -5263,6 +5347,81 @@ async function calculatePreparedFeeSessionNow({
       reviewItems
     })
   };
+}
+
+async function captureReviewDecisionFeedbackSafely({
+  feeStore,
+  orgId,
+  feeSessionId,
+  feeSession,
+  reviewItems,
+  decisions,
+  env,
+  now
+}) {
+  if (extractionFeedbackMode(env) !== "collect") {
+    return { status: "disabled", storedCount: 0 };
+  }
+  try {
+    const events = buildReviewDecisionFeedbackEvents({
+      orgId,
+      feeSessionId,
+      feeSession,
+      reviewItems,
+      decisions,
+      env,
+      now
+    });
+    const result = await captureExtractionFeedback({ feeStore, events, env });
+    logExtractionFeedbackCapture("review_decision", result);
+    return result;
+  } catch (error) {
+    logFeeApiError(error, { stage: "extractionFeedback.reviewDecision", orgId });
+    return { status: "degraded", storedCount: 0 };
+  }
+}
+
+async function captureCalculationFeedbackSafely({
+  feeStore,
+  orgId,
+  feeSessionId,
+  feeSession,
+  clinicalMetrics,
+  calculationKey,
+  env,
+  now
+}) {
+  if (extractionFeedbackMode(env) !== "collect") {
+    return { status: "disabled", storedCount: 0 };
+  }
+  try {
+    const events = buildCalculationFeedbackEvents({
+      orgId,
+      feeSessionId,
+      feeSession,
+      clinicalMetrics,
+      calculationKey,
+      env,
+      now
+    });
+    const result = await captureExtractionFeedback({ feeStore, events, env });
+    logExtractionFeedbackCapture("calculation", result);
+    return result;
+  } catch (error) {
+    logFeeApiError(error, { stage: "extractionFeedback.calculation", orgId });
+    return { status: "degraded", storedCount: 0 };
+  }
+}
+
+function logExtractionFeedbackCapture(source, result = {}) {
+  console.info(JSON.stringify({
+    event: "fee.extraction_feedback.capture",
+    source,
+    status: result.status || "unknown",
+    storedCount: Number(result.storedCount || 0),
+    ready: result.readiness?.ready ?? null,
+    reason: result.readiness?.reason || null
+  }));
 }
 
 async function persistFeeExtractionSnapshot({
@@ -6736,6 +6895,10 @@ function buildFeeCalculationPerformanceSnapshot({
       recovered: clinical.emptyExtractionGuard?.recovered === true,
       initialEventCount: numberOrNull(clinical.emptyExtractionGuard?.initialEventCount),
       finalEventCount: numberOrNull(clinical.emptyExtractionGuard?.finalEventCount)
+    }),
+    whiteboxExtraction: compactObject({
+      ...(isPlainObject(clinical.whiteboxExtraction) ? clinical.whiteboxExtraction : {}),
+      modes: whiteboxRuntimeModes(env)
     }),
     patientHistory: compactObject({
       completeness: patientHistory.completeness || null,

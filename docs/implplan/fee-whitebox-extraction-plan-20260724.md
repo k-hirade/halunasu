@@ -49,6 +49,35 @@
   ⑥E6へ80並行追加(Cloud Run既定)⑦WX1のroute開始条件とM1マイルストーンの分離
   ⑧WX4保存項目へspecialty/failureFeatureTags追加。
 
+- 第6改訂(2026-07-24): WX1〜WX4の製品ランタイムと安全境界を実装。
+  WX2の版付きONNX索引・runtime parity検証、WX3の多軸分類とmixed行集約、
+  WX1のoff/shadow/route・入院除外・candidateOnly、WX4の構造化フィードバック・
+  HMAC相関・TTL・集計・再学習オーケストレーションまで接続した。WX0の評価と
+  実モデル成果物は未完のため、全モードの既定値はoffのままとし、有効化はしていない。
+
+- 第7改訂(2026-07-24): WX1の科×受診区分セル別しきい値を
+  `defaults → *|setting → specialty|* → specialty|setting` の階層で適用し、
+  設定不正時はencoder routeを禁止してLLMへ戻す安全境界を追加。WX3は
+  同一語が行内に複数ある場合も文字オフセットで対象spanだけをマークし、
+  `calls/overrides/disagreements/modelVersion`を構造化metricsへ追加した。
+
+## 実装状況
+
+2026-07-24時点の「実装済み」と「昇格済み」は別物として扱う。
+
+| 領域 | 実装済み | 未完了・有効化条件 |
+| --- | --- | --- |
+| WX2 | Python worker API、版付きmanifest/ハッシュ検証、ONNX決定論実行、ベクトル索引、top-k/score/margin/category penalty、build時とruntimeの埋め込みparity検証 | 実マスタからの本番成果物生成、WX0/WX2精度ゲート、STG shadow計測 |
+| WX3 | 既存契約enumに沿う多軸分類、abstain、決定論述語とのconsensus、文字オフセットに基づくspan指定、span単位軸保持、mixed行のperformed優先集約、過去・他所の除外trace、calls/overrides/disagreements metrics | 学習済み分類器成果物、危険方向誤陽性・ECE・coverage-riskゲート |
+| WX1 | span worker API、off/shadow/route、科×受診区分セル別しきい値、設定不正・低確信・未検出・競合時のLLMフォールバック、入院の明示除外、encoder由来候補のcandidateOnly三層防御、memo版失効 | 学習済みspan成果物、セル別しきい値の実測較正、gold非劣化、shadow不一致裁定、route昇格 |
+| WX4 | 却下理由UI/契約、PHIを持たない構造化イベント、組織秘密鍵HMAC、Firestore保存とTTL、穴レポート、immutable artifact登録を含む再学習オーケストレーター | 契約・匿名化承認、collect有効化、実データでの再学習→全ゲート→昇格の1周 |
+
+ランタイムフラグ
+`FEE_LINKER_MODE`、`FEE_CONTEXT_CLASSIFIER_MODE`、`FEE_SPAN_DETECTOR_MODE`、
+`FEE_EXTRACTION_FEEDBACK_MODE`はすべて既定値`off`である。WX0と各子ページの
+受入ゲートを満たし、版固定した成果物をコンテナへ同梱するまでは
+`propose`/`assist`/`route`/`collect`へ変更しない。
+
 ## 決定事項(レビュー疑問への回答)
 
 1. **初期対象範囲**: 外来・訪問診療・往診・電話再診。**入院は明示的に対象外**
@@ -162,9 +191,10 @@ L5 決定論エンジン+監査証跡(既存)       … 施設ルール・頻度
 L3の文脈判定を前提にするため、WX3が先)。WX2はWX0の結果が悪くても
 現行辞書スキャンの改善として独立の価値がある(最小リスクの初手)。
 
-2026-07-24時点ではWX0の共有契約・コーパス検証・実験ランナーまで実装済み。
-reviewedコーパスは0/320件で、モデル実測と分岐決定は未完了のため、
-WX2以降の製品経路は意図的に未着手。
+2026-07-24時点ではWX0の共有契約・コーパス検証・実験ランナーに加え、
+WX1〜WX4の製品ランタイムと運用基盤まで実装済み。ただしreviewedコーパスは
+0/320件で、モデル実測・成果物生成・分岐決定・昇格判定は未完了である。
+したがって製品トラフィックへの適用は意図的に無効化している。
 
 ## リスクと対応
 

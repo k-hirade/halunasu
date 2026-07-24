@@ -4295,6 +4295,20 @@ body:has(.fee-shell--detail) {
   font-size: 0.9rem;
 }
 
+.fee-modal-reject-reason {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.fee-modal-reject-reason select {
+  width: 100%;
+}
+
+.fee-modal-reject-reason p {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .fee-modal-receipt-annotation {
   border: 1px solid #fedf89;
   border-radius: 8px;

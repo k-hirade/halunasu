@@ -646,12 +646,31 @@ function normalizeTelephoneEligibility(input) {
 }
 
 export function validateReviewDecisionInput(input = {}) {
+  const status = optionalEnum(input.status, feeReviewDecisionStatuses, "status") || "approved";
+  const rejectReason = optionalEnum(
+    input.rejectReason ?? input.reject_reason,
+    feeExtractionRejectReasons,
+    "rejectReason"
+  );
+  if (status !== "rejected" && rejectReason) {
+    throw validationError("rejectReason is only valid when status is rejected", "rejectReason");
+  }
   return compactObject({
-    status: optionalEnum(input.status, feeReviewDecisionStatuses, "status") || "approved",
+    status,
+    rejectReason,
     note: optionalMultilineString(input.note, 5000),
     replacementText: optionalMultilineString(input.replacementText ?? input.replacement_text, 20000)
   });
 }
+
+export const feeExtractionRejectReasons = Object.freeze([
+  "extraction_wrong",
+  "duplicate",
+  "facility_standard_missing",
+  "frequency_limit",
+  "clinical_judgment",
+  "other"
+]);
 
 export const feeMonthlyExclusionResolutions = Object.freeze([
   "auto_winner",

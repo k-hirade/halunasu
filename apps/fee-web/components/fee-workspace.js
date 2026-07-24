@@ -72,6 +72,15 @@ const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "カルテ記載内容から算定候補を確認"
 ]);
 const CLINICAL_AUTO_CALCULATION_OPTION_KEYS = new Set(clinicalAutoCalculationOptionKeys);
+const EXTRACTION_REJECT_REASON_OPTIONS = [
+  ["", "理由を選択しない"],
+  ["extraction_wrong", "カルテ内容の抽出が誤っている"],
+  ["duplicate", "別の明細と重複している"],
+  ["facility_standard_missing", "施設基準を満たしていない"],
+  ["frequency_limit", "算定回数・期間の上限に達している"],
+  ["clinical_judgment", "臨床・医事判断で算定しない"],
+  ["other", "その他"]
+];
 
 function isMasterSearchAvailable(masterStatus) {
   if (!masterStatus || typeof masterStatus !== "object") {
@@ -1318,9 +1327,18 @@ function FeeSessionDetailView({ sessionId }) {
   const pendingReviewDecisionCount = projectedReviewState.pendingCount;
   const effectiveCandidateDetail = useMemo(() => (
     candidateDetail?.reviewItemId
-      ? findCandidateWorkbenchItemByReviewItemId(effectiveCandidateWorkbench, candidateDetail.reviewItemId) || candidateDetail
+      ? (() => {
+        const item = findCandidateWorkbenchItemByReviewItemId(
+          effectiveCandidateWorkbench,
+          candidateDetail.reviewItemId
+        ) || candidateDetail;
+        const decision = pendingReviewDecisions[candidateDetail.reviewItemId]
+          || effectiveFeeSession?.reviewDecisions?.[candidateDetail.reviewItemId]
+          || null;
+        return decision?.rejectReason ? { ...item, rejectReason: decision.rejectReason } : item;
+      })()
       : candidateDetail
-  ), [candidateDetail, effectiveCandidateWorkbench]);
+  ), [candidateDetail, effectiveCandidateWorkbench, effectiveFeeSession, pendingReviewDecisions]);
 
   const applyDetail = useCallback((detail, options = {}) => {
     applyDetailResponse(detail, {
@@ -1669,7 +1687,10 @@ function FeeSessionDetailView({ sessionId }) {
     const decisions = Object.entries(pendingReviewDecisions)
       .map(([reviewItemId, decision]) => ({
         reviewItemId,
-        status: decision.status
+        status: decision.status,
+        ...(decision.status === "rejected" && decision.rejectReason
+          ? { rejectReason: decision.rejectReason }
+          : {})
       }))
       .filter((decision) => decision.reviewItemId && decision.status);
     if (!decisions.length) {
@@ -1834,23 +1855,30 @@ function FeeSessionDetailView({ sessionId }) {
     });
   }
 
-  function decideReviewItem(reviewItemId, status, previousStatus = "") {
+  function decideReviewItem(reviewItemId, status, previousStatus = "", metadata = {}) {
     if (!reviewItemId) {
       return;
     }
     const nextStatus = decisionSelectValue(status);
+    const nextRejectReason = nextStatus === "rejected"
+      ? normalizeExtractionRejectReason(metadata.rejectReason)
+      : "";
     setPendingReviewDecisions((current) => {
       const currentDecision = current[reviewItemId] || null;
       const baselineItem = findCandidateWorkbenchItemByReviewItemId(candidateWorkbench, reviewItemId);
       const baseStatus = currentDecision?.baseStatus
         || decisionSelectValue(baselineItem?.decisionStatus || baselineItem?.status || previousStatus);
+      const baseRejectReason = currentDecision?.baseRejectReason
+        ?? String(feeSession?.reviewDecisions?.[reviewItemId]?.rejectReason || "");
       const next = { ...current };
-      if (nextStatus === baseStatus) {
+      if (nextStatus === baseStatus && nextRejectReason === baseRejectReason) {
         delete next[reviewItemId];
       } else {
         next[reviewItemId] = {
           baseStatus,
+          baseRejectReason,
           status: nextStatus,
+          ...(nextRejectReason ? { rejectReason: nextRejectReason } : {}),
           decidedAt: new Date().toISOString()
         };
       }
@@ -3770,12 +3798,14 @@ function TaskRow({ item, onOpenDetail, severity }) {
 
 function CandidateDetailModal({ disabled, item, onClose, onDecision, onSaveReceiptAnnotation }) {
   const [confirmAdoptionChecked, setConfirmAdoptionChecked] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
   const [annotationKind, setAnnotationKind] = useState("symptom_detail");
   const [annotationStatus, setAnnotationStatus] = useState("draft");
   const [annotationCode, setAnnotationCode] = useState("");
   const [annotationText, setAnnotationText] = useState("");
   useEffect(() => {
     setConfirmAdoptionChecked(false);
+    setRejectReason(normalizeExtractionRejectReason(item?.rejectReason));
     setAnnotationKind("symptom_detail");
     setAnnotationStatus("draft");
     setAnnotationCode("");
@@ -3858,6 +3888,24 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision, onSaveRecei
               <p>この提案は自動採用にはしていませんが、候補コードと点数はあります。内容を確認した場合のみ算定中へ移します。</p>
             </section>
           ) : null}
+          {canReject ? (
+            <section className="fee-modal-reject-reason">
+              <h3>算定しない理由</h3>
+              <label>
+                <select
+                  aria-label="算定しない理由（任意）"
+                  disabled={disabled}
+                  onChange={(event) => setRejectReason(event.target.value)}
+                  value={rejectReason}
+                >
+                  {EXTRACTION_REJECT_REASON_OPTIONS.map(([value, label]) => (
+                    <option key={value || "none"} value={value}>{label}</option>
+                  ))}
+                </select>
+              </label>
+              <p>任意です。選択内容は抽出精度の集計にのみ利用し、カルテ本文は保存しません。</p>
+            </section>
+          ) : null}
           {onSaveReceiptAnnotation && canCreateReceiptAnnotationFromItem(item) ? (
             <section className="fee-modal-receipt-annotation">
               <h3>コメント・詳記</h3>
@@ -3926,13 +3974,13 @@ function CandidateDetailModal({ disabled, item, onClose, onDecision, onSaveRecei
                 {directAdoptLabel}
               </button>
               {canReject ? (
-                <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected", itemDecisionStatus)} type="button">算定しない</button>
+                <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected", itemDecisionStatus, { rejectReason })} type="button">算定しない</button>
               ) : null}
             </>
           ) : canConfirmAdopt ? (
             <>
               <button className="btn btn--primary" disabled={disabled || !confirmAdoptionChecked} onClick={() => onDecision(item.reviewItemId, "approved", itemDecisionStatus)} type="button">算定する</button>
-              <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected", itemDecisionStatus)} type="button">算定しない</button>
+              <button className="btn btn--ghost" disabled={disabled} onClick={() => onDecision(item.reviewItemId, "rejected", itemDecisionStatus, { rejectReason })} type="button">算定しない</button>
             </>
           ) : null}
         </footer>
@@ -4272,6 +4320,13 @@ function canApproveReviewItem(item = {}) {
 
 function decisionSelectValue(value = "") {
   return value === "approved" ? "approved" : "rejected";
+}
+
+function normalizeExtractionRejectReason(value = "") {
+  const normalized = String(value || "").trim();
+  return EXTRACTION_REJECT_REASON_OPTIONS.some(([key]) => key === normalized)
+    ? normalized
+    : "";
 }
 
 function confirmableProposalForAdoption(item = {}) {
@@ -6069,11 +6124,16 @@ function projectPendingReviewDecisions({
     : feeSession;
   if (nextFeeSession) {
     for (const [reviewItemId, decision] of entries) {
-      nextFeeSession.reviewDecisions[reviewItemId] = {
+      const projectedDecision = {
         ...(nextFeeSession.reviewDecisions[reviewItemId] || {}),
         status: decision.status,
         decidedAt: decision.decidedAt
       };
+      delete projectedDecision.rejectReason;
+      if (decision.status === "rejected" && decision.rejectReason) {
+        projectedDecision.rejectReason = decision.rejectReason;
+      }
+      nextFeeSession.reviewDecisions[reviewItemId] = projectedDecision;
     }
   }
   const nextReceiptDraft = projectReceiptDraftForReviewDecisions(receiptDraft, candidateWorkbench, decisionById);
@@ -6156,12 +6216,20 @@ function projectCandidateWorkbenchForReviewDecisions(candidateWorkbench, receipt
   ]);
   let lines = baseLines.map((line) => {
     const decision = decisionById.get(line.reviewItemId);
-    return decision?.status ? projectCandidateLineDecision(line, decision.status) : line;
+    return decision?.status
+      ? projectCandidateRejectReason(projectCandidateLineDecision(line, decision.status), decision)
+      : line;
   });
   const proposals = model.proposals
     .map((item) => {
       const decision = decisionById.get(item.reviewItemId);
-      return decision?.status ? { ...item, decisionStatus: decision.status, status: decision.status } : item;
+      return decision?.status
+        ? projectCandidateRejectReason({
+          ...item,
+          decisionStatus: decision.status,
+          status: decision.status
+        }, decision)
+        : item;
     })
     .filter((item) => reviewDecisionStatusValue(item) !== "approved");
   for (const item of model.proposals) {
@@ -6225,6 +6293,15 @@ function findCandidateWorkbenchItemByReviewItemId(workbench = {}, reviewItemId =
     return null;
   }
   return candidateWorkbenchItems(workbench).find((item) => item.reviewItemId === reviewItemId) || null;
+}
+
+function projectCandidateRejectReason(item, decision = {}) {
+  const projected = { ...item };
+  delete projected.rejectReason;
+  if (decision.status === "rejected" && decision.rejectReason) {
+    projected.rejectReason = decision.rejectReason;
+  }
+  return projected;
 }
 
 function reviewDecisionStatusValue(item = {}) {

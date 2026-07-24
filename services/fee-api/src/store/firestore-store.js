@@ -16,6 +16,7 @@ import {
 import {
   collections,
   feeBillingHistoryPath,
+  feeExtractionFeedbackEventPath,
   feeExtractionSnapshotPath,
   feeMonthlyExclusionResolutionPath,
   feeStandingBillingProfilePath,
@@ -869,6 +870,45 @@ export class FirestoreFeeStore {
     return docsFromSnapshot(snapshot);
   }
 
+  async createExtractionFeedbackEvents(orgId, events = []) {
+    const normalized = (Array.isArray(events) ? events : []).map((raw) => {
+      if (String(raw?.orgId || "") !== String(orgId || "")) {
+        throw new TypeError("feedback event orgId does not match collection scope");
+      }
+      return sanitizeForFirestore(withExtractionFeedbackPurgeTimestamp(raw));
+    });
+    if (!normalized.length) {
+      return [];
+    }
+    if (typeof this.db.batch === "function") {
+      const batch = this.db.batch();
+      for (const event of normalized) {
+        batch.set(this.doc(feeExtractionFeedbackEventPath(orgId, event.eventId)), event);
+      }
+      await batch.commit();
+    } else {
+      await Promise.all(normalized.map((event) => (
+        this.doc(feeExtractionFeedbackEventPath(orgId, event.eventId)).set(event)
+      )));
+    }
+    return normalized;
+  }
+
+  async listExtractionFeedbackEvents(orgId, options = {}) {
+    const since = String(options.since || "").trim();
+    const until = String(options.until || "").trim();
+    const limit = Math.min(5000, Math.max(1, Number.parseInt(options.limit, 10) || 1000));
+    let query = this.orgCollection(orgId, collections.feeExtractionFeedbackEvents);
+    if (since) {
+      query = query.where("occurredAt", ">=", since);
+    }
+    if (until) {
+      query = query.where("occurredAt", "<=", until);
+    }
+    const snapshot = await query.orderBy("occurredAt", "desc").limit(limit).get();
+    return docsFromSnapshot(snapshot);
+  }
+
   doc(path) {
     return this.db.doc(path);
   }
@@ -1121,6 +1161,20 @@ function withExtractionSnapshotPurgeTimestamp(snapshot = {}) {
   return {
     ...snapshot,
     purgeAt: new Date(expiresAtMs)
+  };
+}
+
+function withExtractionFeedbackPurgeTimestamp(event = {}) {
+  const purgeAtMs = Date.parse(String(event.purgeAt || ""));
+  if (!Number.isFinite(purgeAtMs)) {
+    const error = new Error("fee extraction feedback event requires a valid purgeAt timestamp");
+    error.name = "ConfigurationError";
+    error.statusCode = 500;
+    throw error;
+  }
+  return {
+    ...event,
+    purgeAt: new Date(purgeAtMs)
   };
 }
 

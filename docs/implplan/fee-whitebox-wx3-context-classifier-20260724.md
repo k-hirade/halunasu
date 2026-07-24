@@ -2,6 +2,14 @@
 
 親: [白箱抽出エンジン計画](./fee-whitebox-extraction-plan-20260724.md)。前提: WX0のE5。
 
+## 実装ステータス (2026-07-24)
+
+多軸ONNX runtime、abstain、真理値表、決定論述語との合議、文字オフセットに基づく
+span指定、span単位trace、mixed行集約、過去・他所・未実施の除外、
+`calls/overrides/disagreements/modelVersion` metricsは実装済み。学習済み分類器と
+精度・較正ゲートは未完了のため、`FEE_CONTEXT_CLASSIFIER_MODE`の既定値は`off`であり、
+`assist`は未有効化。
+
 ## 意図
 
 「その表現は当日この施設で実施されたのか」は算定の生死を分ける判定であり、

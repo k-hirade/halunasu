@@ -8,6 +8,8 @@ import {
   buildCandidateWorkbench,
   buildReceiptDraft,
   buildMonthlyReceiptDraft,
+  buildReceiptCsv,
+  lineInclusionStatus,
   evaluateMonthlyExclusions,
   buildReceiptDenshin,
   buildReceiptExportValidation,
@@ -21,6 +23,93 @@ import {
   BASELINE_COMPARISON_STATUS,
   BASELINE_DIFF_CATEGORY
 } from "../src/index.js";
+
+test("encoder-derived lines remain pending until explicitly approved", () => {
+  const line = {
+    lineId: "whitebox_line_1",
+    code: "140000610",
+    status: "confirmed",
+    reviewRequired: false,
+    extractionSource: "encoder"
+  };
+  assert.equal(lineInclusionStatus(line, {}), "pending");
+  assert.equal(lineInclusionStatus(line, {
+    line_whitebox_line_1: { status: "approved" }
+  }), "included");
+  assert.equal(lineInclusionStatus(line, {
+    line_whitebox_line_1: { status: "rejected" }
+  }), "excluded");
+});
+
+test("unapproved encoder lines stay out of session, monthly, CSV, and UKE totals", () => {
+  const session = applyCalculationResult(buildFeeSession({
+    orgId: "org_whitebox",
+    patientId: "pat_whitebox",
+    facilityId: "fac_whitebox",
+    createdByMemberId: "mem_whitebox",
+    serviceDate: "2026-06-12",
+    patientSnapshot: {
+      displayName: "評価 患者",
+      sex: "female",
+      birthDate: "1980-01-02"
+    },
+    facilitySnapshot: {
+      medicalInstitutionCode: "1312345",
+      displayName: "評価医療機関",
+      prefectureCode: "13"
+    },
+    insuranceSnapshot: {
+      insurance: {
+        insurerType: "shaho",
+        insurerNumber: "01130012",
+        insuredSymbol: "12",
+        insuredNumber: "3456"
+      }
+    }
+  }, {
+    feeSessionId: "fee_whitebox_safety",
+    now: "2026-06-12T00:00:00.000Z"
+  }), {
+    provider: "whitebox-test",
+    status: "completed",
+    totalPoints: 52,
+    lineItems: [{
+      lineId: "encoder_procedure",
+      code: "140000610",
+      name: "創傷処置",
+      orderType: "procedure",
+      points: 52,
+      quantity: 1,
+      totalPoints: 52,
+      status: "confirmed",
+      reviewRequired: false,
+      extractionSource: "encoder"
+    }]
+  }, {
+    calculationId: "calc_whitebox_safety",
+    now: "2026-06-12T00:01:00.000Z"
+  });
+
+  const sessionDraft = buildReceiptDraft(session);
+  const monthlyDraft = buildMonthlyReceiptDraft([session], {
+    patientId: "pat_whitebox",
+    claimMonth: "2026-06"
+  });
+  const csv = buildReceiptCsv(monthlyDraft);
+  const uke = buildReceiptDenshin(monthlyDraft);
+
+  assert.equal(sessionDraft.totalPoints, 0);
+  assert.equal(sessionDraft.pendingLineCount, 1);
+  assert.equal(sessionDraft.lineOccurrences.length, 0);
+  assert.equal(monthlyDraft.totalPoints, 0);
+  assert.equal(monthlyDraft.pendingLineCount, 1);
+  assert.equal(monthlyDraft.lineOccurrences.length, 0);
+  assert.doesNotMatch(csv, /140000610/u);
+  assert.equal(
+    uke.some((record) => record.fields.some((field) => field === "140000610")),
+    false
+  );
+});
 
 test("aggregates a monthly receipt across a patient's visits", () => {
   function calculatedSession({ feeSessionId, serviceDate, lineItems, diagnoses, totalPoints }) {

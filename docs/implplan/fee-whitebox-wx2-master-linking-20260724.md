@@ -2,6 +2,13 @@
 
 親: [白箱抽出エンジン計画](./fee-whitebox-extraction-plan-20260724.md)。前提: WX0のE1/E4。
 
+## 実装ステータス (2026-07-24)
+
+版付きartifact loader、ONNX決定論runtime、索引builder、effective date、top-k/score/margin、
+category penalty、build/runtime埋め込みparity検証、worker/API統合は実装済み。
+実マスタ成果物と精度ゲートは未完了のため、`FEE_LINKER_MODE`の既定値は`off`であり、
+`propose`は未有効化。
+
 ## 意図
 
 現行の辞書スキャン(`name_scan`)は正規化完全一致+alias展開であり、

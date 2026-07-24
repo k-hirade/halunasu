@@ -203,6 +203,14 @@ export class LazyFirestoreFeeStore {
     return this.call("listBillingHistoryEventsForPatient", orgId, patientId, options);
   }
 
+  async createExtractionFeedbackEvents(orgId, events) {
+    return this.call("createExtractionFeedbackEvents", orgId, events);
+  }
+
+  async listExtractionFeedbackEvents(orgId, options) {
+    return this.call("listExtractionFeedbackEvents", orgId, options);
+  }
+
   async call(methodName, ...args) {
     const store = await this.store();
     return store[methodName](...args);

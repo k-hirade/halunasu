@@ -173,6 +173,47 @@ test("standingFeeFamilies routes through the worker with the service-date contra
   assert.equal(result.families[0].variants[0].code, "114005410");
 });
 
+test("whiteboxReadiness routes configured artifact manifests through the worker", async () => {
+  const calculator = new PythonFeeCalculator({
+    linkerManifestPath: "/app/python/data/whitebox/wx2/manifest.json",
+    contextClassifierManifestPath: "/app/python/data/whitebox/wx3/manifest.json",
+    spanDetectorManifestPath: "/app/python/data/whitebox/wx1/manifest.json",
+    workerMode: true
+  });
+  let seen = null;
+  calculator.runWorkerJson = async (payload, options) => {
+    seen = { payload, options };
+    return {
+      linker: { available: false },
+      contextClassifier: { available: false },
+      spanDetector: { available: false }
+    };
+  };
+
+  await calculator.whiteboxReadiness();
+
+  assert.deepEqual(seen.payload, {
+    op: "whitebox_readiness",
+    linker_manifest_path: "/app/python/data/whitebox/wx2/manifest.json",
+    context_manifest_path: "/app/python/data/whitebox/wx3/manifest.json",
+    span_manifest_path: "/app/python/data/whitebox/wx1/manifest.json"
+  });
+  assert.equal(seen.options.requestIdPrefix, "fee_whitebox_readiness");
+});
+
+test("whiteboxReadiness does not start a worker when no artifact is configured", async () => {
+  const calculator = new PythonFeeCalculator({ workerMode: true });
+  calculator.runWorkerJson = async () => {
+    assert.fail("unconfigured whitebox readiness must not start the Python worker");
+  };
+
+  assert.deepEqual(await calculator.whiteboxReadiness(), {
+    linker: { available: false, reason: "not_configured" },
+    contextClassifier: { available: false, reason: "not_configured" },
+    spanDetector: { available: false, reason: "not_configured" }
+  });
+});
+
 test("worker timeout fails only the timed-out request and re-dispatches survivors", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "fee-worker-timeout-"));
   const dbPath = path.join(root, "standard-master.sqlite");
@@ -235,6 +276,11 @@ test("reports detailed master readiness with checksums and source metadata", asy
       dpcStatus: { mode: "review_only", counts: { electronicTableRows: 0 } }
     };
   };
+  calculator.whiteboxReadiness = async () => ({
+    linker: { available: false, reason: "not_configured" },
+    contextClassifier: { available: false, reason: "not_configured" },
+    spanDetector: { available: false, reason: "not_configured" }
+  });
 
   const detailed = await calculator.readinessDetailed();
 

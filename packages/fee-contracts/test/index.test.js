@@ -12,8 +12,33 @@ import {
   hasPerformedBloodCollectionEvidence,
   hasPerformedBloodCollectionEvidenceInText,
   isClinicalDateRatioFalsePositiveContext,
-  isPastOrExternalClinicalServiceContext
+  isPastOrExternalClinicalServiceContext,
+  validateReviewDecisionInput
 } from "../src/index.js";
+
+test("validates structured extraction reject reasons", () => {
+  assert.deepEqual(validateReviewDecisionInput({
+    status: "rejected",
+    rejectReason: "extraction_wrong"
+  }), {
+    status: "rejected",
+    rejectReason: "extraction_wrong"
+  });
+  assert.throws(
+    () => validateReviewDecisionInput({
+      status: "approved",
+      rejectReason: "duplicate"
+    }),
+    /rejectReason is only valid/u
+  );
+  assert.throws(
+    () => validateReviewDecisionInput({
+      status: "rejected",
+      rejectReason: "free_text_reason"
+    }),
+    /rejectReason/u
+  );
+});
 
 test("validates patient-month exclusion decisions and requires a basis for dual billing", () => {
   const base = {

@@ -2186,6 +2186,7 @@ function normalizeLineItems(items) {
     const totalPoints = Number(item.totalPoints ?? item.total_points ?? points * quantity);
     const status = item.status || "candidate";
     const source = item.source || "medical_fee_calculation";
+    const extractionSource = item.extractionSource || item.extraction_source || null;
     const coverage = normalizeLineCoverage(item.coverage, { ...item, status, source });
     const supportLevel = item.supportLevel || item.support_level || coverage.supportLevel;
     const reviewRequired = coerceBoolean(
@@ -2216,6 +2217,7 @@ function normalizeLineItems(items) {
       status,
       reason: item.reason || null,
       source,
+      extractionSource,
       coverage: {
         ...coverage,
         supportLevel,
@@ -2283,6 +2285,9 @@ function normalizeCandidateProposal(item = {}, index = 0) {
     code: item.code || candidateLine?.code || null,
     orderType: item.orderType || item.order_type || candidateLine?.orderType || null,
     source: item.source || "candidate_proposal",
+    route: item.route || null,
+    confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : null,
+    category: item.category || null,
     status: item.status || null,
     candidateOnly,
     reviewRequired,
@@ -2719,6 +2724,15 @@ export function lineInclusionStatus(line = {}, decisions = {}) {
   if (decisionStatus === "rejected") return "excluded";
   if (decisionStatus === "edited") return "pending";
   if (decisionStatus === "approved") return "included";
+  const extractionSource = String(
+    line.extractionSource
+    || line.extraction_source
+    || line.coverage?.extractionSource
+    || ""
+  ).trim().toLowerCase();
+  // WX1最終防衛線: encoder由来明細は、生成層のstatus/reviewRequired付与が
+  // 失われても、人の明示承認なしでは点数・月次・出力へ含めない。
+  if (extractionSource === "encoder") return "pending";
   const status = String(line.status || "candidate").toLowerCase();
   if (status === "rejected" || status === "blocked") return "excluded";
   // エンジンの自動整合(背反・回数・包括・年齢)で除外された行は、

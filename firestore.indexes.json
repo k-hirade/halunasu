@@ -221,6 +221,12 @@
       "fieldPath": "purgeAt",
       "ttl": true,
       "indexes": []
+    },
+    {
+      "collectionGroup": "fee_extraction_feedback_events",
+      "fieldPath": "purgeAt",
+      "ttl": true,
+      "indexes": []
     }
   ]
 }

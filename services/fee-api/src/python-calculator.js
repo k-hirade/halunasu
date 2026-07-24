@@ -35,6 +35,9 @@ export function createFeeCalculatorFromEnv(env = process.env) {
     masterDbGzipPath: gzipPath,
     masterDbManifestPath: manifestPath,
     masterContentCheckMode: env.FEE_MASTER_CONTENT_CHECK || "strict",
+    linkerManifestPath: env.FEE_LINKER_MANIFEST_PATH || "",
+    contextClassifierManifestPath: env.FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH || "",
+    spanDetectorManifestPath: env.FEE_SPAN_DETECTOR_MANIFEST_PATH || "",
     timeoutMs: Number(env.FEE_CALCULATOR_TIMEOUT_MS || 30000),
     workerMode: env.FEE_PYTHON_WORKER_MODE === "spawn" || env.FEE_PYTHON_WORKER === "0" ? false : true,
     masterSearchCacheMaxEntries: positiveInteger(env.FEE_MASTER_SEARCH_CACHE_MAX_ENTRIES, DEFAULT_MASTER_SEARCH_CACHE_MAX_ENTRIES),
@@ -56,6 +59,9 @@ export class PythonFeeCalculator {
     this.masterContentCheckMode = String(options.masterContentCheckMode || "strict").trim().toLowerCase() === "warn"
       ? "warn"
       : "strict";
+    this.linkerManifestPath = options.linkerManifestPath || "";
+    this.contextClassifierManifestPath = options.contextClassifierManifestPath || "";
+    this.spanDetectorManifestPath = options.spanDetectorManifestPath || "";
     this.logger = options.logger || console;
     this.timeoutMs = options.timeoutMs || 30000;
     this.workerMode = options.workerMode !== false;
@@ -252,6 +258,64 @@ export class PythonFeeCalculator {
     });
   }
 
+  async linkSpans(payload = {}) {
+    return this.runWorkerJson({
+      ...payload,
+      op: "link_spans",
+      manifest_path: payload.manifest_path || payload.manifestPath || this.linkerManifestPath
+    }, {
+      requestIdPrefix: "fee_link_spans",
+      timeoutMs: Math.min(this.timeoutMs, 10000)
+    });
+  }
+
+  async classifyContext(payload = {}) {
+    return this.runWorkerJson({
+      ...payload,
+      op: "classify_context",
+      manifest_path: payload.manifest_path
+        || payload.manifestPath
+        || this.contextClassifierManifestPath
+    }, {
+      requestIdPrefix: "fee_classify_context",
+      timeoutMs: Math.min(this.timeoutMs, 10000)
+    });
+  }
+
+  async detectSpans(payload = {}) {
+    return this.runWorkerJson({
+      ...payload,
+      op: "detect_spans",
+      manifest_path: payload.manifest_path
+        || payload.manifestPath
+        || this.spanDetectorManifestPath
+    }, {
+      requestIdPrefix: "fee_detect_spans",
+      timeoutMs: Math.min(this.timeoutMs, 10000)
+    });
+  }
+
+  async whiteboxReadiness() {
+    if (!this.linkerManifestPath
+      && !this.contextClassifierManifestPath
+      && !this.spanDetectorManifestPath) {
+      return {
+        linker: { available: false, reason: "not_configured" },
+        contextClassifier: { available: false, reason: "not_configured" },
+        spanDetector: { available: false, reason: "not_configured" }
+      };
+    }
+    return this.runWorkerJson({
+      op: "whitebox_readiness",
+      linker_manifest_path: this.linkerManifestPath,
+      context_manifest_path: this.contextClassifierManifestPath,
+      span_manifest_path: this.spanDetectorManifestPath
+    }, {
+      requestIdPrefix: "fee_whitebox_readiness",
+      timeoutMs: Math.min(this.timeoutMs, 10000)
+    });
+  }
+
   // 既存レセ(UKE/レセコンCSV)を baselineClaims に変換する(Python adapter経由)。マスタDB不要。
   async parseBaseline(payload = {}) {
     return runPythonJson({
@@ -278,6 +342,11 @@ export class PythonFeeCalculator {
       masterDbGzipBytes: masterDbGzipPathExists ? statSync(this.masterDbGzipPath).size : null,
       masterDbManifestPath: this.masterDbManifestPath || null,
       masterDbManifestPathExists: this.masterDbManifestPath ? existsSync(this.masterDbManifestPath) : false,
+      whiteboxArtifacts: {
+        linkerConfigured: Boolean(this.linkerManifestPath),
+        contextClassifierConfigured: Boolean(this.contextClassifierManifestPath),
+        spanDetectorConfigured: Boolean(this.spanDetectorManifestPath)
+      },
       masterContentCheckMode: this.masterContentCheckMode,
       timeoutMs: this.timeoutMs,
       workerMode: this.workerMode ? "persistent" : "spawn",
@@ -316,6 +385,11 @@ export class PythonFeeCalculator {
         detailed.dpcStatus = metadata.dpcStatus || null;
       }
     }
+    detailed.whitebox = await this.whiteboxReadiness().catch((error) => ({
+      linker: { available: false, reason: error.message || String(error) },
+      contextClassifier: { available: false, reason: error.message || String(error) },
+      spanDetector: { available: false, reason: error.message || String(error) }
+    }));
     return detailed;
   }
 

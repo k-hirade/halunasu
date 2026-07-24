@@ -27,6 +27,7 @@ packages/*/test/
 
 !python/
 python/*
+!python/requirements-fee-runtime.txt
 !python/medical_fee_calculation/
 !python/medical_fee_calculation/**
 !python/data/
@@ -35,3 +36,5 @@ python/data/*
 python/data/master/*
 !python/data/master/standard-master.sqlite.gz
 !python/data/master/standard-master.manifest.json
+!python/data/whitebox/
+!python/data/whitebox/**

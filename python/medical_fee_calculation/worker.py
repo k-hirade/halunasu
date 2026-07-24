@@ -13,6 +13,12 @@ from medical_fee_calculation.checks_api import (
 )
 from medical_fee_calculation.master_search import search_master
 from medical_fee_calculation.name_scan import scan_names
+from medical_fee_calculation.whitebox_context import (
+    classify_context,
+    context_classifier_readiness,
+)
+from medical_fee_calculation.whitebox_linker import link_spans, linker_readiness
+from medical_fee_calculation.whitebox_span import detect_spans, span_detector_readiness
 
 
 def main() -> None:
@@ -39,6 +45,22 @@ def main() -> None:
                 result = standing_fee_families(payload)
             elif operation == "name_scan":
                 result = scan_names(payload)
+            elif operation == "link_spans":
+                result = link_spans(payload)
+            elif operation == "classify_context":
+                result = classify_context(payload)
+            elif operation == "detect_spans":
+                result = detect_spans(payload)
+            elif operation == "whitebox_readiness":
+                result = {
+                    "linker": linker_readiness(payload.get("linker_manifest_path")),
+                    "contextClassifier": context_classifier_readiness(
+                        payload.get("context_manifest_path")
+                    ),
+                    "spanDetector": span_detector_readiness(
+                        payload.get("span_manifest_path")
+                    ),
+                }
             else:
                 result = calculate_fee_session(payload)
             response: dict[str, Any] = {

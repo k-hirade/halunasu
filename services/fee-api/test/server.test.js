@@ -83,7 +83,20 @@ test("readyz exposes deployed extraction feature flags and revision", async () =
     emptyExtractionRetryEnabled: true,
     standingFactsEnabled: false,
     extractionSnapshotRetentionDays: 45,
-    monthlyExclusionMode: "shadow"
+    monthlyExclusionMode: "shadow",
+    whiteboxExtraction: {
+      linker: "off",
+      context: "off",
+      span: "off"
+    },
+    extractionFeedbackMode: "off",
+    extractionFeedback: {
+      mode: "off",
+      ready: true,
+      secretConfigured: false,
+      hmacKeyVersion: "v1",
+      reason: null
+    }
   });
 });
 

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-export const EXTRACTION_SNAPSHOT_SCHEMA_VERSION = 3;
+export const EXTRACTION_SNAPSHOT_SCHEMA_VERSION = 4;
 
 const CLINICAL_LINE_ROLES = new Set([
   "performed",
@@ -100,6 +100,7 @@ export function extractionSnapshotId(sourceType, sourceSessionId) {
 
 export function buildExtractionSnapshotCore({
   promptVersion,
+  extractorVersion = "llm-v15",
   preprocessing,
   facts,
   extractedAt
@@ -140,6 +141,7 @@ export function buildExtractionSnapshotCore({
   return {
     schemaVersion: EXTRACTION_SNAPSHOT_SCHEMA_VERSION,
     promptVersion: requiredString(promptVersion, "promptVersion"),
+    extractorVersion: requiredString(extractorVersion, "extractorVersion"),
     extractedAt: timestamp(extractedAt),
     visitType: sanitizeVisitType(facts?.visit_type),
     visitFacts: sanitizeVisitFacts(facts?.visit_facts),
@@ -164,6 +166,7 @@ export function planExtractionMemo({
   preprocessing,
   snapshot,
   promptVersion,
+  extractorVersion = "llm-v15",
   historyCompleteness = "complete"
 } = {}) {
   const currentLines = clinicalLineKeyEntries(preprocessing?.lines || []);
@@ -171,6 +174,7 @@ export function planExtractionMemo({
   const compatible = !unavailable
     && snapshot?.schemaVersion === EXTRACTION_SNAPSHOT_SCHEMA_VERSION
     && String(snapshot?.promptVersion || "") === String(promptVersion || "")
+    && String(snapshot?.extractorVersion || "") === String(extractorVersion || "")
     && Array.isArray(snapshot?.lines);
   if (!compatible) {
     return {

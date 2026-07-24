@@ -1,0 +1,5 @@
+# Runtime-only dependencies for the optional WX1-WX3 white-box inference path.
+# Keep model training dependencies out of the fee-api image.
+numpy==1.26.4
+onnxruntime==1.20.1
+tokenizers==0.20.3

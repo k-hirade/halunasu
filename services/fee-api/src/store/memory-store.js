@@ -32,6 +32,7 @@ export class MemoryFeeStore {
     this.billingHistoryByOrg = new Map();
     this.sidecarDraftsByOrg = new Map();
     this.extractionSnapshotsByOrg = new Map();
+    this.extractionFeedbackEventsByOrg = new Map();
     this.standingBillingProfilesByOrg = new Map();
   }
 
@@ -703,6 +704,32 @@ export class MemoryFeeStore {
       .slice(0, limit);
   }
 
+  createExtractionFeedbackEvents(orgId, events = []) {
+    const values = this.extractionFeedbackEventsForOrg(orgId);
+    const stored = [];
+    for (const raw of Array.isArray(events) ? events : []) {
+      const event = structuredClone(raw);
+      if (String(event.orgId || "") !== String(orgId || "")) {
+        throw new TypeError("feedback event orgId does not match collection scope");
+      }
+      values.set(event.eventId, event);
+      stored.push(structuredClone(event));
+    }
+    return stored;
+  }
+
+  listExtractionFeedbackEvents(orgId, options = {}) {
+    const since = String(options.since || "").trim();
+    const until = String(options.until || "").trim();
+    const limit = Math.min(5000, Math.max(1, Number.parseInt(options.limit, 10) || 1000));
+    return [...this.extractionFeedbackEventsForOrg(orgId).values()]
+      .filter((event) => !since || String(event.occurredAt || "") >= since)
+      .filter((event) => !until || String(event.occurredAt || "") <= until)
+      .sort((left, right) => String(right.occurredAt || "").localeCompare(String(left.occurredAt || "")))
+      .slice(0, limit)
+      .map((event) => structuredClone(event));
+  }
+
   sessionsForOrg(orgId) {
     if (!this.sessionsByOrg.has(orgId)) {
       this.sessionsByOrg.set(orgId, new Map());
@@ -723,6 +750,13 @@ export class MemoryFeeStore {
       this.extractionSnapshotsByOrg.set(orgId, new Map());
     }
     return this.extractionSnapshotsByOrg.get(orgId);
+  }
+
+  extractionFeedbackEventsForOrg(orgId) {
+    if (!this.extractionFeedbackEventsByOrg.has(orgId)) {
+      this.extractionFeedbackEventsByOrg.set(orgId, new Map());
+    }
+    return this.extractionFeedbackEventsByOrg.get(orgId);
   }
 
   standingBillingProfilesForOrg(orgId) {

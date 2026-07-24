@@ -36,6 +36,10 @@ import {
   clinicalFactsFromMemo,
   planExtractionMemo
 } from "./longitudinal-context.js";
+import {
+  buildLinkerCandidateLayer,
+  prepareWhiteboxExtraction
+} from "./whitebox-extraction.js";
 
 export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "処置・手技",
@@ -769,6 +773,30 @@ export async function buildClinicalCalculationPreparation({
     }
     if (dictionaryScan.trace) {
       clinicalTrace.push(dictionaryScan.trace);
+    }
+
+    const linkerLayer = await buildLinkerCandidateLayer({
+      feeCalculator,
+      events: clinicalEvents,
+      knownCodes: uniqueStrings([
+        ...asArray(inferred.procedure_codes),
+        ...billingCandidates.map((candidate) => candidate?.code).filter(Boolean),
+        ...candidateProposals.map((proposal) => proposal?.code || proposal?.candidateLine?.code).filter(Boolean)
+      ]),
+      serviceDate: String(session.serviceDate || ""),
+      specialty: String(
+        session.departmentSnapshot?.specialty
+        || session.specialty
+        || session.facilitySnapshot?.specialty
+        || ""
+      ),
+      encounterSetting: String(session.setting || "outpatient")
+    });
+    metrics.linkerScan = linkerLayer.metrics;
+    candidateProposals.push(...linkerLayer.proposals);
+    reviewIssues.push(...linkerLayer.reviewIssues);
+    if (linkerLayer.trace) {
+      clinicalTrace.push(linkerLayer.trace);
     }
   }
 
@@ -1654,7 +1682,25 @@ async function inferStructuredClinicalCalculationOptions({
   clinicalFactsExtractor = null
 } = {}) {
   const extractor = typeof clinicalFactsExtractor === "function" ? clinicalFactsExtractor : null;
-  if (!extractor && !String(openAiApiKey || "").trim() && !extractionMemoEnabled) {
+  const clinicalTextPreprocessing = buildClinicalTextPreprocessing(text);
+  const whiteboxPlan = await prepareWhiteboxExtraction({
+    feeCalculator,
+    preprocessing: clinicalTextPreprocessing,
+    session
+  });
+  const hasClinicalFactsProvider = Boolean(extractor || String(openAiApiKey || "").trim());
+  const whiteboxEncoderOnly = whiteboxPlan.status === "route_ready"
+    && whiteboxPlan.llmLines.length === 0;
+  const memoCanRunWithoutProvider = extractionMemoEnabled === true
+    && whiteboxPlan.status !== "route_ready";
+  const activeExtractorVersion = whiteboxPlan.status === "route_ready"
+    ? String(whiteboxPlan.extractorVersion || "whitebox-unknown")
+    : "llm-v15";
+  if (
+    !hasClinicalFactsProvider
+    && !whiteboxEncoderOnly
+    && !memoCanRunWithoutProvider
+  ) {
     return {
       used: false,
       inferred: {},
@@ -1676,14 +1722,15 @@ async function inferStructuredClinicalCalculationOptions({
         convertedReviewWarningCount: 0,
         masterLookupCount: 0,
         masterLookupDurationMs: 0,
+        whiteboxExtraction: whiteboxPlan.metrics,
         timeoutMs: Number(openAiTimeoutMs || 0)
-      }
+      },
+      clinicalTrace: whiteboxPlan.trace
     };
   }
 
   const startedAt = Date.now();
   const conversionSearch = createMasterSearchMetrics(feeCalculator);
-  const clinicalTextPreprocessing = buildClinicalTextPreprocessing(text);
   const checklistMenu = buildClinicalChecklistMenu(text);
   const checklistVerificationMode = feeChecklistVerificationMode();
   let openAiProviderDurationMs = 0;
@@ -1748,11 +1795,12 @@ async function inferStructuredClinicalCalculationOptions({
       };
     };
 
-    const memoPlan = extractionMemoEnabled
+    const memoPlan = extractionMemoEnabled && whiteboxPlan.status !== "route_ready"
       ? planExtractionMemo({
         preprocessing: clinicalTextPreprocessing,
         snapshot: extractionSnapshot,
         promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
+        extractorVersion: activeExtractorVersion,
         historyCompleteness
       })
       : {
@@ -1765,7 +1813,34 @@ async function inferStructuredClinicalCalculationOptions({
       };
     const memoUsed = memoPlan.compatible && memoPlan.continued.length > 0;
     let factsResult;
-    if (memoUsed) {
+    if (whiteboxPlan.status === "route_ready") {
+      if (whiteboxPlan.llmLines.length) {
+        const fallbackResult = await extractWithSamples({
+          ...extractionRequest,
+          clinicalText: "",
+          preprocessedLines: whiteboxPlan.llmLines,
+          checklistMenu: [],
+          checklistVerificationMode: "disabled",
+          scope: "line_subset"
+        });
+        factsResult = {
+          ...fallbackResult,
+          parsed: mergeClinicalFactsSamples([
+            whiteboxPlan.encoderFacts,
+            fallbackResult?.parsed || fallbackResult || {}
+          ])
+        };
+      } else {
+        factsResult = {
+          parsed: whiteboxPlan.encoderFacts,
+          provider: "whitebox_encoder",
+          promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
+          responseId: null,
+          usage: null,
+          sampleStats: { requested: 0, succeeded: 0 }
+        };
+      }
+    } else if (memoUsed) {
       const cachedFacts = clinicalFactsFromMemo(extractionSnapshot, memoPlan, {
         reuseSourceScopedFacts: extractionSnapshotMatchesCurrentSource(extractionSnapshot, session)
       });
@@ -1813,7 +1888,11 @@ async function inferStructuredClinicalCalculationOptions({
       finalEventCount: initialEventCount
     };
 
-    if (emptyExtractionRetryEnabled === true && initialEventCount === 0) {
+    if (
+      emptyExtractionRetryEnabled === true
+      && initialEventCount === 0
+      && hasClinicalFactsProvider
+    ) {
       const contradiction = await detectEmptyExtractionContradiction({
         text,
         session,
@@ -1853,7 +1932,11 @@ async function inferStructuredClinicalCalculationOptions({
     // 「欠落行だけ」を1回再抽出して統合し、なお欠落する行は下流で確認事項として明示する。
     const promptLineIds = promptClinicalLineIds(clinicalTextPreprocessing.lines);
     let lineReviewReconciliation = reconcileLineReview(facts, promptLineIds);
-    if (lineReviewReconciliation.missingIds.length && semanticRetryCount === 0) {
+    if (
+      lineReviewReconciliation.missingIds.length
+      && semanticRetryCount === 0
+      && hasClinicalFactsProvider
+    ) {
       semanticRetryCount = 1;
       lineReviewRetryCount = 1;
       const missingSet = new Set(lineReviewReconciliation.missingIds);
@@ -1894,6 +1977,19 @@ async function inferStructuredClinicalCalculationOptions({
       priorSessions,
       lineReviewReconciliation
     });
+    const whiteboxShadowComparison = compareWhiteboxShadowCodes(whiteboxPlan, converted);
+    if (whiteboxShadowComparison.observed) {
+      converted.clinicalTrace = [
+        ...asArray(converted.clinicalTrace),
+        {
+          stage: "whitebox_shadow_comparison",
+          outcome: whiteboxShadowComparison.disagreementCount ? "disagreed" : "matched",
+          encoderOnlyCodes: whiteboxShadowComparison.encoderOnlyCodes,
+          llmOnlyCodes: whiteboxShadowComparison.llmOnlyCodes,
+          matchedCodes: whiteboxShadowComparison.matchedCodes
+        }
+      ];
+    }
     if (deterministicStandingRecovery.length) {
       converted.clinicalTrace = [
         ...asArray(converted.clinicalTrace),
@@ -1955,6 +2051,7 @@ async function inferStructuredClinicalCalculationOptions({
     };
     converted.clinicalTrace = [
       ...asArray(converted.clinicalTrace),
+      ...asArray(whiteboxPlan.trace),
       {
         traceId: `trace_${candidateIdPart(["extraction_memo", memoUsed, memoPlan.reason].join("_"))}`,
         stage: "extraction_memo",
@@ -1964,6 +2061,7 @@ async function inferStructuredClinicalCalculationOptions({
     ];
     const extractionSnapshotForPersistence = buildExtractionSnapshotCore({
       promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
+      extractorVersion: activeExtractorVersion,
       preprocessing: clinicalTextPreprocessing,
       facts,
       extractedAt: new Date()
@@ -1975,7 +2073,9 @@ async function inferStructuredClinicalCalculationOptions({
       extractionSnapshot: extractionSnapshotForPersistence,
       memoMetrics,
       metrics: {
-        source: memoUsed ? "memo" : "openai",
+        source: whiteboxPlan.status === "route_ready"
+          ? (whiteboxPlan.llmLines.length ? "whitebox_mixed" : "whitebox_encoder")
+          : memoUsed ? "memo" : "openai",
         durationMs: Date.now() - startedAt,
         openAiProviderDurationMs,
         openAiCallCount,
@@ -1995,6 +2095,10 @@ async function inferStructuredClinicalCalculationOptions({
         convertedBillingCandidateCount: Array.isArray(converted.billingCandidates) ? converted.billingCandidates.length : 0,
         convertedReviewIssueCount: Array.isArray(converted.reviewIssues) ? converted.reviewIssues.length : 0,
         convertedClinicalTraceCount: Array.isArray(converted.clinicalTrace) ? converted.clinicalTrace.length : 0,
+        whiteboxExtraction: {
+          ...whiteboxPlan.metrics,
+          shadowComparison: whiteboxShadowComparison
+        },
         ...conversionSearch.snapshot(),
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
@@ -2006,8 +2110,10 @@ async function inferStructuredClinicalCalculationOptions({
         responseId: factsResult?.responseId || null,
         usage: factsResult?.usage || null,
         extractionSampleStats: factsResult?.sampleStats || null,
-        extractionMode: openAiCallCount === 0
-          ? "memo_only"
+        extractionMode: whiteboxPlan.status === "route_ready"
+          ? (whiteboxPlan.llmLines.length ? "whitebox_mixed" : "whitebox_encoder")
+          : openAiCallCount === 0
+            ? "memo_only"
           : emptyExtractionGuard.retryAttempted
             ? (memoUsed ? "line_subset_with_full_retry" : "full_with_retry")
             : memoUsed ? "line_subset" : "full",
@@ -2041,6 +2147,7 @@ async function inferStructuredClinicalCalculationOptions({
         convertedDiagnosisCount: 0,
         convertedOptionKeys: [],
         convertedReviewWarningCount: 0,
+        whiteboxExtraction: whiteboxPlan.metrics,
         ...conversionSearch.snapshot(),
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
@@ -2051,9 +2158,49 @@ async function inferStructuredClinicalCalculationOptions({
         timeoutMs: Number(openAiTimeoutMs || 0),
         checklistVerificationMode,
         fallbackReason: safeClinicalStructuringError(error)
-      }
+      },
+      clinicalTrace: whiteboxPlan.trace
     };
   }
+}
+
+function compareWhiteboxShadowCodes(whiteboxPlan = {}, converted = {}) {
+  const encoderCodes = new Set(asArray(whiteboxPlan?.encoderShadowFacts?.clinical_events)
+    .map((event) => String(event?._whiteboxLink?.code || "").trim())
+    .filter(Boolean));
+  const llmCodes = new Set(uniqueStrings([
+    ...asArray(converted?.inferred?.procedure_codes),
+    ...asArray(converted?.candidateProposals).flatMap((proposal) => [
+      proposal?.code,
+      proposal?.candidateLine?.code
+    ]),
+    ...asArray(converted?.billingCandidates).flatMap((candidate) => [
+      candidate?.code,
+      candidate?.masterCode
+    ]),
+    ...asArray(converted?.masterCandidates).map((candidate) => candidate?.masterCode)
+  ]).map(String));
+  const observed = encoderCodes.size > 0
+    || whiteboxPlan?.metrics?.shadowEncoderLineCount > 0;
+  if (!observed) {
+    return {
+      observed: false,
+      matchedCodes: [],
+      encoderOnlyCodes: [],
+      llmOnlyCodes: [],
+      disagreementCount: 0
+    };
+  }
+  const matchedCodes = [...encoderCodes].filter((code) => llmCodes.has(code)).sort();
+  const encoderOnlyCodes = [...encoderCodes].filter((code) => !llmCodes.has(code)).sort();
+  const llmOnlyCodes = [...llmCodes].filter((code) => !encoderCodes.has(code)).sort();
+  return {
+    observed: true,
+    matchedCodes,
+    encoderOnlyCodes,
+    llmOnlyCodes,
+    disagreementCount: encoderOnlyCodes.length + llmOnlyCodes.length
+  };
 }
 
 function extractionSnapshotMatchesCurrentSource(snapshot = {}, session = {}) {
@@ -2888,6 +3035,13 @@ async function convertSingleClinicalCalculationEvent({
     return gateResult;
   }
 
+  if (clinicalEventExtractionSource(event) === "encoder") {
+    return convertEncoderClinicalEventToCandidate({
+      event,
+      feeCalculator
+    });
+  }
+
   if (hasExplicitBloodCollectionEvidence(event)) {
     result.hasCaseLevelBloodCollectionEvidence = true;
   }
@@ -3079,6 +3233,88 @@ async function convertSingleClinicalCalculationEvent({
     result.candidateProposals.push(unsupportedProposal);
   }
   return result;
+}
+
+async function convertEncoderClinicalEventToCandidate({
+  event = {},
+  feeCalculator
+} = {}) {
+  const result = emptyClinicalEventConversionResult();
+  const link = isPlainObject(event?._whiteboxLink) ? event._whiteboxLink : {};
+  const eventName = clinicalEventName(event);
+  let proposal = null;
+  if (String(link.code || "").trim()) {
+    const proposalId = `whitebox_${candidateIdPart([
+      event?.clinicalEventId || event?.clinical_event_id || eventName,
+      link.code
+    ].join("_"))}`;
+    proposal = candidateProposalFromProcedureItem({
+      proposalId,
+      title: `${String(link.name || eventName || link.code)}の算定確認`,
+      reason: `カルテの記載「${eventName}」をマスタ「${String(link.name || link.code)}」と照合しました。`,
+      conditionText: "実施事実・対象病名・回数制限・施設基準を確認してから採用してください。",
+      basis: "whitebox_span_link_candidate",
+      evidence: String(event?.evidence || "").slice(0, 160),
+      item: {
+        code: String(link.code),
+        name: String(link.name || eventName || link.code),
+        points: Number(link.points || 0)
+      },
+      sortOrder: 55
+    });
+  } else {
+    proposal = await masterLinkCandidateProposalFromClinicalEvent(feeCalculator, event, {
+      categoryLabel: "診療行為",
+      conditionText: "実施事実・対象病名・回数制限・施設基準を確認してから採用してください。",
+      sortOrder: 55
+    });
+  }
+  if (proposal) {
+    proposal = {
+      ...proposal,
+      source: "whitebox_encoder",
+      route: "encoder",
+      confidence: Number(link.score || 0) || null,
+      candidateLine: {
+        ...proposal.candidateLine,
+        status: "candidate",
+        source: "whitebox_encoder",
+        extractionSource: "encoder",
+        reviewRequired: true,
+        coverage: {
+          ...proposal.candidateLine?.coverage,
+          scope: "whitebox_span_link",
+          supportLevel: "review_required",
+          reviewRequired: true
+        }
+      }
+    };
+    result.candidateProposals.push(proposal);
+  }
+  result.clinicalTrace.push(clinicalTraceEvent({
+    stage: "whitebox_provenance_gate",
+    event,
+    categoryLabel: "白箱抽出",
+    outcome: proposal ? "candidate_only" : "review_required",
+    selected: {
+      code: String(link.code || ""),
+      confidence: Number(link.score || 0) || null,
+      indexVersion: String(link.indexVersion || "")
+    },
+    message: proposal
+      ? "encoder_event_forced_to_candidate_only"
+      : "encoder_event_not_resolved_to_candidate"
+  }));
+  return result;
+}
+
+function clinicalEventExtractionSource(event = {}) {
+  return String(
+    event?.extractionSource
+    || event?.extraction_source
+    || event?.source
+    || ""
+  ).trim().toLowerCase();
 }
 
 function reviewConversionResultFromClinicalEventGate(event = {}, { type = normalizeClinicalEventType(event) } = {}) {

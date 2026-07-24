@@ -3,6 +3,13 @@
 親: [白箱抽出エンジン計画](./fee-whitebox-extraction-plan-20260724.md)。
 前提: WX1〜WX3のいずれかが shadow 以上で稼働。
 
+## 実装ステータス (2026-07-24)
+
+構造化却下理由、PHI禁止検証、組織秘密鍵HMAC、Firestore TTL保存、集計レポート、
+immutable artifact登録を含む再学習オーケストレーターは実装済み。実データ学習の
+契約・匿名化承認と実モデルでの一周検証は未完了のため、
+`FEE_EXTRACTION_FEEDBACK_MODE`の既定値は`off`であり、`collect`は未有効化。
+
 ## 意図
 
 candidateOnly→人承認という製品構造は、(本文, 正解構造化)のラベルを毎日生成する

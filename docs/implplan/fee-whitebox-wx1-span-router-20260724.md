@@ -5,6 +5,14 @@
 本ページのルーティングはL3の文脈判定とL2の照合を前提にする)。
 対象範囲: 外来・訪問・往診・電話のみ(setting=inpatientでは起動しない。親の決定事項1)。
 
+## 実装ステータス (2026-07-24)
+
+ランタイム・ルーティング・candidateOnly・入院除外・degraded時のLLM全面フォールバック・
+科×受診区分セル別しきい値・監査metrics・回帰テストは実装済み。しきい値設定が
+不正な場合はencoder routeを禁止してLLMへ戻す。学習済みspan成果物と
+WX0/gold/shadowの昇格判定は未完了のため、`FEE_SPAN_DETECTOR_MODE`の既定値は
+`off`であり、`route`は未有効化。
+
 ## 意図
 
 最終形: **エンコーダが主経路、LLMは例外係**。
@@ -86,7 +94,10 @@ LLM使用率は下げ続けるKPIになる(Fathom型のconfidence routing)。
   経路によらず共通(エンコーダ経路の出力もv15契約の形に正規化して流す)。
 - confidence閾値は科×区分マトリクスのセル別に較正ファイルへ
   (`linker/routing-thresholds.json`、アーティファクト管理)。初期は保守側
-  (=LLM行き多め)から始めて下げていく。
+  (=LLM行き多め)から始めて下げていく。ランタイムの適用順は
+  `defaults → *|encounterSetting → specialty|* →
+  specialty|encounterSetting`。適用セルと設定versionはmetricsへ残し、
+  schema・値域・セル定義が不正ならrouteせずLLMへ戻す。
 
 ### 3. shadow計測プロトコル
 
