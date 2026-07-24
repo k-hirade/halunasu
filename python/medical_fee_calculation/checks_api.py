@@ -11,10 +11,14 @@ import json
 import os
 import sys
 import unicodedata
+from calendar import monthrange
+from datetime import date
 from pathlib import Path
 from typing import Any
 
+from medical_fee_calculation.claim_adjustments import exclusion_resolution
 from medical_fee_calculation.db import connect, initialize_schema
+from medical_fee_calculation.electronic_rules import EXCLUSION_SCOPES
 from medical_fee_calculation.name_scan import _scan_aliases, strip_parenthetical_qualifiers
 
 # 傷病名を条件としない特殊コード(支払基金チェックマスタ)。適応判定の対象外。
@@ -75,7 +79,7 @@ def check_lookup(payload: dict[str, Any]) -> dict[str, Any]:
             name_codes.update(codes)
         name_codes.discard("")
 
-        return {
+        result = {
             "drugIndications": drug_indications,
             "drugDoseRules": drug_dose_rules,
             "drugDoseGroups": drug_dose_groups,
@@ -90,6 +94,23 @@ def check_lookup(payload: dict[str, Any]) -> dict[str, Any]:
             "actFrequencyLimits": _act_frequency_limits(conn, act_codes),
             "actExclusions": _act_exclusion_pairs(conn, act_codes),
         }
+        if payload.get("claim_month") or payload.get("claimMonth") or payload.get("service_date") or payload.get("serviceDate"):
+            result["actExclusionRules"] = _act_exclusion_rules(conn, payload, act_codes)
+        return result
+    finally:
+        conn.close()
+
+
+def act_exclusion_rules(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the strict monthly exclusion contract without advisory lookups."""
+
+    db_path = payload.get("db_path") or os.environ.get("FEE_MASTER_DB_PATH")
+    if not db_path:
+        raise ValueError("db_path or FEE_MASTER_DB_PATH is required")
+    conn = connect(Path(str(db_path)))
+    try:
+        initialize_schema(conn)
+        return _act_exclusion_rules(conn, payload, _clean_codes(payload.get("act_codes")))
     finally:
         conn.close()
 
@@ -409,6 +430,13 @@ def _act_frequency_limits(conn: Any, codes: list[str]) -> dict[str, list[dict[st
 
 
 def _act_exclusion_pairs(conn: Any, codes: list[str]) -> list[dict[str, str]]:
+    """Return advisory, directional rows for existing checklist callers.
+
+    This legacy helper is intentionally fail-open and must not be used to
+    decide which monthly receipt lines are exportable. The strict path is
+    `_act_exclusion_rules`.
+    """
+
     codes = sorted({c for c in codes if c})
     if len(codes) < 2:
         return []
@@ -445,6 +473,309 @@ def _act_exclusion_pairs(conn: Any, codes: list[str]) -> list[dict[str, str]]:
             }
         )
     return out
+
+
+def _act_exclusion_rules(
+    conn: Any,
+    payload: dict[str, Any],
+    codes: list[str],
+) -> dict[str, Any]:
+    try:
+        evaluated_from, evaluated_to = _exclusion_evaluation_period(payload)
+    except (TypeError, ValueError):
+        return _exclusion_envelope(
+            "lookup_failed",
+            evaluated_from=None,
+            evaluated_to=None,
+        )
+
+    try:
+        source = _effective_electronic_source(conn, evaluated_from, evaluated_to)
+        if source is None:
+            return _exclusion_envelope(
+                "no_effective_generation",
+                evaluated_from=evaluated_from,
+                evaluated_to=evaluated_to,
+            )
+
+        source_id = int(source["id"])
+        source_version = str(source["source_version"] or "")
+        source_row_count = int(conn.execute(
+            "SELECT COUNT(*) AS count FROM electronic_exclusions WHERE source_id = ?",
+            (source_id,),
+        ).fetchone()["count"])
+        if source_row_count <= 0:
+            return _exclusion_envelope(
+                "master_incomplete",
+                source_id=source_id,
+                source_version=source_version,
+                evaluated_from=evaluated_from,
+                evaluated_to=evaluated_to,
+            )
+
+        effective_row_count = int(conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM electronic_exclusions
+            WHERE source_id = ?
+              AND (effective_from IS NULL OR effective_from = '' OR effective_from <= ?)
+              AND (effective_to IS NULL OR effective_to = '' OR effective_to >= ?)
+            """,
+            (source_id, evaluated_to, evaluated_from),
+        ).fetchone()["count"])
+        if effective_row_count <= 0:
+            return _exclusion_envelope(
+                "no_effective_generation",
+                source_id=source_id,
+                source_version=source_version,
+                evaluated_from=evaluated_from,
+                evaluated_to=evaluated_to,
+            )
+
+        normalized_codes = sorted({str(code or "").strip() for code in codes if str(code or "").strip()})
+        if len(normalized_codes) < 2:
+            return _exclusion_envelope(
+                "complete",
+                source_id=source_id,
+                source_version=source_version,
+                evaluated_from=evaluated_from,
+                evaluated_to=evaluated_to,
+                rules=[],
+            )
+
+        placeholders = ",".join("?" for _ in normalized_codes)
+        rows = conn.execute(
+            f"""
+            SELECT
+                exclusion_table,
+                base_code,
+                base_name,
+                excluded_code,
+                excluded_name,
+                rule_kind,
+                effective_from,
+                effective_to,
+                COALESCE(json_extract(raw_row_json, '$[6]'), '0') AS special_condition
+            FROM electronic_exclusions
+            WHERE source_id = ?
+              AND base_code IN ({placeholders})
+              AND excluded_code IN ({placeholders})
+              AND (effective_from IS NULL OR effective_from = '' OR effective_from <= ?)
+              AND (effective_to IS NULL OR effective_to = '' OR effective_to >= ?)
+            ORDER BY exclusion_table, base_code, excluded_code, effective_from, effective_to
+            """,
+            [source_id, *normalized_codes, *normalized_codes, evaluated_to, evaluated_from],
+        ).fetchall()
+        rules = _canonical_exclusion_rules(rows)
+        if rules is None:
+            return _exclusion_envelope(
+                "master_incomplete",
+                source_id=source_id,
+                source_version=source_version,
+                evaluated_from=evaluated_from,
+                evaluated_to=evaluated_to,
+            )
+        return _exclusion_envelope(
+            "complete",
+            source_id=source_id,
+            source_version=source_version,
+            evaluated_from=evaluated_from,
+            evaluated_to=evaluated_to,
+            rules=rules,
+        )
+    except Exception:  # noqa: BLE001 - strict caller distinguishes lookup failure from zero rules.
+        return _exclusion_envelope(
+            "lookup_failed",
+            evaluated_from=evaluated_from,
+            evaluated_to=evaluated_to,
+        )
+
+
+def _exclusion_evaluation_period(payload: dict[str, Any]) -> tuple[str, str]:
+    claim_month = str(payload.get("claim_month") or payload.get("claimMonth") or "").strip()
+    if claim_month:
+        if len(claim_month) != 7 or claim_month[4] != "-":
+            raise ValueError("claim_month must use YYYY-MM")
+        year = int(claim_month[:4])
+        month = int(claim_month[5:7])
+        last_day = monthrange(year, month)[1]
+        return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"
+
+    service_date = str(payload.get("service_date") or payload.get("serviceDate") or "").strip()
+    parsed = date.fromisoformat(service_date)
+    normalized = parsed.isoformat()
+    return normalized, normalized
+
+
+def _effective_electronic_source(
+    conn: Any,
+    evaluated_from: str,
+    evaluated_to: str,
+) -> Any | None:
+    """Select the newest known generation with rows effective in the period.
+
+    A revision can be published before its rules take effect. In that window,
+    the preceding effective generation remains authoritative. An empty newest
+    generation is returned as-is so the caller reports `master_incomplete`
+    instead of silently falling back.
+    """
+
+    sources = conn.execute(
+        """
+        SELECT id, source_version, published_at
+        FROM master_sources
+        WHERE source_type = 'medical_electronic_fee_table'
+          AND (
+                (published_at IS NOT NULL AND published_at != '' AND substr(published_at, 1, 10) <= ?)
+             OR (
+                  (published_at IS NULL OR published_at = '')
+                  AND source_version GLOB '????-??-??*'
+                  AND substr(source_version, 1, 10) <= ?
+                )
+          )
+        ORDER BY
+          COALESCE(NULLIF(substr(published_at, 1, 10), ''), substr(source_version, 1, 10)) DESC,
+          id DESC
+        """,
+        (evaluated_to, evaluated_to),
+    ).fetchall()
+    for index, source in enumerate(sources):
+        source_id = int(source["id"])
+        row_count = int(conn.execute(
+            "SELECT COUNT(*) AS count FROM electronic_exclusions WHERE source_id = ?",
+            (source_id,),
+        ).fetchone()["count"])
+        if index == 0 and row_count <= 0:
+            return source
+        if row_count <= 0:
+            continue
+        effective_count = int(conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM electronic_exclusions
+            WHERE source_id = ?
+              AND (effective_from IS NULL OR effective_from = '' OR effective_from <= ?)
+              AND (effective_to IS NULL OR effective_to = '' OR effective_to >= ?)
+            """,
+            (source_id, evaluated_to, evaluated_from),
+        ).fetchone()["count"])
+        if effective_count > 0:
+            return source
+    return None
+
+
+def _canonical_exclusion_rules(rows: list[Any]) -> list[dict[str, Any]] | None:
+    grouped: dict[tuple[str, str, str, str, str, str], list[Any]] = {}
+    for row in rows:
+        table = str(row["exclusion_table"] or "")
+        scope = EXCLUSION_SCOPES.get(table)
+        base = str(row["base_code"] or "").strip()
+        excluded = str(row["excluded_code"] or "").strip()
+        if not scope or not base or not excluded or base == excluded:
+            return None
+        code_a, code_b = sorted((base, excluded))
+        special_condition = str(row["special_condition"] or "0").strip() or "0"
+        effective_from = str(row["effective_from"] or "")
+        effective_to = str(row["effective_to"] or "")
+        grouped.setdefault(
+            (scope, code_a, code_b, special_condition, effective_from, effective_to),
+            [],
+        ).append(row)
+
+    canonical: list[dict[str, Any]] = []
+    for key in sorted(grouped):
+        scope, code_a, code_b, special_condition, effective_from, effective_to = key
+        pair_rows = grouped[key]
+        directions = {
+            (str(row["base_code"] or "").strip(), str(row["excluded_code"] or "").strip())
+            for row in pair_rows
+        }
+        if directions != {(code_a, code_b), (code_b, code_a)}:
+            return None
+
+        row_by_direction = {
+            (str(row["base_code"] or "").strip(), str(row["excluded_code"] or "").strip()): row
+            for row in pair_rows
+        }
+        if len(row_by_direction) != 2:
+            return None
+        kinds = [str(row["rule_kind"] or "").strip() for row in row_by_direction.values()]
+        resolution = exclusion_resolution(kinds[0], special_condition)
+        winner_code: str | None = None
+
+        if resolution == "conditional_review":
+            pass
+        elif all(kind in {"1", "2"} for kind in kinds):
+            winners = {
+                str(row["base_code"] if str(row["rule_kind"] or "").strip() == "1" else row["excluded_code"])
+                for row in row_by_direction.values()
+            }
+            if len(winners) != 1:
+                return None
+            winner_code = next(iter(winners))
+            resolution = "auto_winner"
+        elif kinds == ["3", "3"] or sorted(kinds) == ["3", "3"]:
+            resolution = "demote_lower_points"
+        else:
+            resolution = "unsupported_rule_kind"
+
+        name_by_code: dict[str, str] = {}
+        for row in row_by_direction.values():
+            name_by_code.setdefault(str(row["base_code"]), str(row["base_name"] or ""))
+            name_by_code.setdefault(str(row["excluded_code"]), str(row["excluded_name"] or ""))
+        fingerprint_payload = {
+            "scope": scope,
+            "codeA": code_a,
+            "codeB": code_b,
+            "resolution": resolution,
+            "winnerCode": winner_code,
+            "specialCondition": special_condition,
+            "effectiveFrom": effective_from or None,
+            "effectiveTo": effective_to or None,
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                fingerprint_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        canonical.append(
+            {
+                "scope": scope,
+                "codeA": code_a,
+                "codeB": code_b,
+                "codeAName": name_by_code.get(code_a, ""),
+                "codeBName": name_by_code.get(code_b, ""),
+                "resolution": resolution,
+                "winnerCode": winner_code,
+                "specialCondition": special_condition,
+                "ruleFingerprint": fingerprint,
+                "effectiveFrom": effective_from or None,
+                "effectiveTo": effective_to or None,
+            }
+        )
+    return canonical
+
+
+def _exclusion_envelope(
+    status: str,
+    *,
+    source_id: int | None = None,
+    source_version: str | None = None,
+    evaluated_from: str | None,
+    evaluated_to: str | None,
+    rules: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "sourceId": source_id,
+        "sourceVersion": source_version,
+        "evaluatedFrom": evaluated_from,
+        "evaluatedTo": evaluated_to,
+        "rules": rules or [],
+    }
 
 
 def _clean_codes(value: Any) -> list[str]:

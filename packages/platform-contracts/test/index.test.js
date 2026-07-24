@@ -261,7 +261,12 @@ test("validates product entitlements and audit events", () => {
       deviceAuthId: "sda_123",
       extensionId: "nhbmaniknlcaaelpaoogepmkhphmmjof",
       grantRecordId: "sgr_123",
-      scopes: ["sidecar:calculate"]
+      scopes: ["sidecar:calculate"],
+      pairKey: "same_month:114005410:140003810",
+      scopeKey: "2026-05",
+      ruleFingerprint: "fingerprint-test",
+      beforeAction: null,
+      afterAction: "acknowledge_auto"
     }
   });
 
@@ -276,6 +281,11 @@ test("validates product entitlements and audit events", () => {
   assert.equal(auditEvent.safePayload.extensionId, "nhbmaniknlcaaelpaoogepmkhphmmjof");
   assert.equal(auditEvent.safePayload.grantRecordId, "sgr_123");
   assert.deepEqual(auditEvent.safePayload.scopes, ["sidecar:calculate"]);
+  assert.equal(auditEvent.safePayload.pairKey, "same_month:114005410:140003810");
+  assert.equal(auditEvent.safePayload.scopeKey, "2026-05");
+  assert.equal(auditEvent.safePayload.ruleFingerprint, "fingerprint-test");
+  assert.equal(auditEvent.safePayload.beforeAction, null);
+  assert.equal(auditEvent.safePayload.afterAction, "acknowledge_auto");
   assert.equal(auditEvent.safePayload.displayName, undefined);
   assert.equal(auditEvent.safePayload.birthDate, undefined);
 });

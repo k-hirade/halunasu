@@ -36,6 +36,19 @@ _COUNTED_STATUSES = {
 }
 
 
+def exclusion_resolution(rule_kind: object, special_condition: object = "0") -> str:
+    """電子点数表の背反区分を、月次層でも共有する解決種別へ正規化する。"""
+
+    if str(special_condition or "0").strip() == "1":
+        return "conditional_review"
+    normalized_kind = str(rule_kind or "").strip()
+    if normalized_kind in {"1", "2"}:
+        return "auto_winner"
+    if normalized_kind == "3":
+        return "demote_lower_points"
+    return "unsupported_rule_kind"
+
+
 # ---------------------------------------------------------------------------
 # 1. 年齢条件つき注加算
 # ---------------------------------------------------------------------------
@@ -235,22 +248,28 @@ def apply_electronic_consistency(
     for hit in sorted(electronic_rules.exclusions, key=lambda h: (h.base_code, h.excluded_code)):
         if hit.scope not in ("same_day", "simultaneous") or hit.matched_from != "current":
             continue
-        if str(getattr(hit, "special_condition", "0") or "0") == "1":
+        resolution = exclusion_resolution(
+            hit.rule_kind,
+            getattr(hit, "special_condition", "0"),
+        )
+        if resolution == "conditional_review":
             continue
         base_index = counted(hit.base_code)
         excluded_index = counted(hit.excluded_code)
         if base_index is None or excluded_index is None:
             continue
-        if hit.rule_kind == "1":
+        if resolution == "auto_winner" and hit.rule_kind == "1":
             loser = excluded_index
-        elif hit.rule_kind == "2":
+        elif resolution == "auto_winner" and hit.rule_kind == "2":
             loser = base_index
-        else:
+        elif resolution == "demote_lower_points":
             loser = (
                 excluded_index
                 if adjusted[excluded_index].total_points <= adjusted[base_index].total_points
                 else base_index
             )
+        else:
+            continue
         survivor = base_index if loser == excluded_index else excluded_index
         demote(
             loser,

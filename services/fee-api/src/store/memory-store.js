@@ -27,6 +27,7 @@ export class MemoryFeeStore {
     this.sessionsByOrg = new Map();
     this.calculationJobsByOrg = new Map();
     this.monthlyBulkJobsByOrg = new Map();
+    this.monthlyExclusionResolutionsByOrg = new Map();
     this.feeSettingsByOrg = new Map();
     this.billingHistoryByOrg = new Map();
     this.sidecarDraftsByOrg = new Map();
@@ -575,6 +576,75 @@ export class MemoryFeeStore {
     return { monthlyBulkJob: updated };
   }
 
+  listMonthlyExclusionResolutions(orgId, patientId, claimMonth) {
+    return [...this.monthlyExclusionResolutionsForOrg(orgId).values()]
+      .filter((resolution) => resolution.patientId === String(patientId || ""))
+      .filter((resolution) => resolution.claimMonth === String(claimMonth || ""))
+      .sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || "")))
+      .map((resolution) => structuredClone(resolution));
+  }
+
+  getMonthlyExclusionResolution(orgId, resolutionId) {
+    const resolution = this.monthlyExclusionResolutionsForOrg(orgId).get(resolutionId);
+    return resolution ? structuredClone(resolution) : null;
+  }
+
+  putMonthlyExclusionResolution(orgId, resolutionId, input = {}, options = {}) {
+    const resolutions = this.monthlyExclusionResolutionsForOrg(orgId);
+    const current = resolutions.get(resolutionId) || null;
+    if (
+      current
+      && !input.revoke
+      && current.action === input.action
+      && String(current.basisNote || "") === String(input.basisNote || "")
+      && !current.revokedAt
+    ) {
+      return {
+        previous: structuredClone(current),
+        resolution: structuredClone(current),
+        changed: false
+      };
+    }
+    if (current?.revokedAt && input.revoke) {
+      return {
+        previous: structuredClone(current),
+        resolution: structuredClone(current),
+        changed: false
+      };
+    }
+    assertMonthlyResolutionVersion(current, options.expectedUpdatedAt);
+    const now = this.timestamp();
+    const updated = input.revoke
+      ? {
+        ...current,
+        resolutionId,
+        orgId,
+        revokedAt: current?.revokedAt || now,
+        revokedByMemberId: input.resolvedByMemberId || null,
+        updatedAt: now
+      }
+      : {
+        ...current,
+        ...input,
+        resolutionId,
+        orgId,
+        revokedAt: null,
+        resolvedAt: now,
+        createdAt: current?.createdAt || now,
+        updatedAt: now,
+        schemaVersion: 1
+      };
+    if (!current && input.revoke) {
+      throw notFoundError("monthly exclusion resolution not found");
+    }
+    resolutions.set(resolutionId, updated);
+    return {
+      previous: current ? structuredClone(current) : null,
+      resolution: structuredClone(updated),
+      changed: true
+    };
+  }
+
   getFeeSettings(orgId, facilityId = "default") {
     return this.feeSettingsForOrg(orgId).get(facilityId || "default") || null;
   }
@@ -713,6 +783,13 @@ export class MemoryFeeStore {
     }
 
     return this.monthlyBulkJobsByOrg.get(orgId);
+  }
+
+  monthlyExclusionResolutionsForOrg(orgId) {
+    if (!this.monthlyExclusionResolutionsByOrg.has(orgId)) {
+      this.monthlyExclusionResolutionsByOrg.set(orgId, new Map());
+    }
+    return this.monthlyExclusionResolutionsByOrg.get(orgId);
   }
 
   feeSettingsForOrg(orgId) {
@@ -894,6 +971,19 @@ export function notFoundError(message) {
   error.name = "NotFoundError";
   error.statusCode = 404;
   return error;
+}
+
+function assertMonthlyResolutionVersion(current, expectedUpdatedAt) {
+  const expected = String(expectedUpdatedAt || "");
+  if (!current && !expected) {
+    return;
+  }
+  if (!current || !expected || String(current.updatedAt || "") !== expected) {
+    const error = new Error("monthly exclusion resolution was updated by another user");
+    error.name = "ConflictError";
+    error.statusCode = 409;
+    throw error;
+  }
 }
 
 function sortByCreatedAt(items) {

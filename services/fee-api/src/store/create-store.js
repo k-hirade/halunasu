@@ -172,6 +172,18 @@ export class LazyFirestoreFeeStore {
     return this.call("updateMonthlyBulkJob", orgId, monthlyBulkJobId, patch);
   }
 
+  async listMonthlyExclusionResolutions(orgId, patientId, claimMonth) {
+    return this.call("listMonthlyExclusionResolutions", orgId, patientId, claimMonth);
+  }
+
+  async getMonthlyExclusionResolution(orgId, resolutionId) {
+    return this.call("getMonthlyExclusionResolution", orgId, resolutionId);
+  }
+
+  async putMonthlyExclusionResolution(orgId, resolutionId, input, options) {
+    return this.call("putMonthlyExclusionResolution", orgId, resolutionId, input, options);
+  }
+
   // 注意: server.js は `typeof feeStore.method === "function"` でフォールバックするため、
   // ここに delegate が無いメソッドは「保存せずエコー」等の沈黙劣化になる。
   // FirestoreFeeStore にメソッドを追加したら、必ずここにも delegate を追加すること。

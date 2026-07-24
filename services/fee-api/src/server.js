@@ -13,6 +13,7 @@ import {
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput,
   validateSidecarCalculationInput,
+  validateMonthlyExclusionResolutionInput,
   defaultFeeSettings,
   validateUpdateFeeSettingsInput,
   validateUpdateFeeSessionInput
@@ -31,6 +32,8 @@ import {
   buildMonthlyBaselineDiagnosis,
   buildReceiptExportValidation,
   buildReviewItems,
+  allowedMonthlyExclusionActions,
+  billingWeekSundayKey,
   lineInclusionStatus,
   serializeUke
 } from "../../../packages/fee-core/src/index.js";
@@ -200,7 +203,8 @@ async function routeFeeApiRequest(input = {}) {
         extractionMemoEnabled: feeExtractionMemoEnabled(runtimeEnv),
         emptyExtractionRetryEnabled: feeEmptyExtractionRetryEnabled(runtimeEnv),
         standingFactsEnabled: feeStandingFactsEnabled(runtimeEnv),
-        extractionSnapshotRetentionDays: extractionSnapshotRetentionDays(runtimeEnv)
+        extractionSnapshotRetentionDays: extractionSnapshotRetentionDays(runtimeEnv),
+        monthlyExclusionMode: monthlyExclusionMode(runtimeEnv)
       },
       feeCalculator: feeReadiness,
       startedAt: input.startedAt instanceof Date
@@ -1041,6 +1045,154 @@ async function routeFeeApiRequest(input = {}) {
     });
   }
 
+  if (method === "GET" && matches(parts, ["v1", "fee", "monthly-exclusion-resolutions"])) {
+    requireBaselineDiagnosisContext(context);
+    if (monthlyExclusionMode(input.processEnv || process.env) === "off") {
+      return notFound("monthly exclusion enforcement is disabled");
+    }
+    const patientId = String(url.searchParams.get("patientId") || "").trim();
+    const claimMonth = String(url.searchParams.get("claimMonth") || "").trim();
+    assertMonthlyPatientClaimScope(patientId, claimMonth);
+    const sessionList = await listSessionsForMonthlyView(
+      feeStore,
+      context.session.orgId,
+      claimMonth,
+      { processEnv: input.processEnv || process.env, patientId }
+    );
+    if (!sessionList.some((session) => String(session.patientId || "") === patientId)) {
+      return notFound("patient month not found");
+    }
+    const resolutions = await feeStore.listMonthlyExclusionResolutions(
+      context.session.orgId,
+      patientId,
+      claimMonth
+    );
+    return ok({ resolutions });
+  }
+
+  if (method === "PUT" && matches(parts, ["v1", "fee", "monthly-exclusion-resolutions"])) {
+    requireBaselineDiagnosisContext(context);
+    requireMutationCsrf(input, context.session);
+    if (monthlyExclusionMode(input.processEnv || process.env) === "off") {
+      return notFound("monthly exclusion enforcement is disabled");
+    }
+    const resolutionInput = validateMonthlyExclusionResolutionInput(input.body || {});
+    const resolutionId = monthlyExclusionResolutionId({
+      orgId: context.session.orgId,
+      ...resolutionInput
+    });
+    let authoritativeConflict = null;
+    if (!resolutionInput.revoke) {
+      const sessionList = await listSessionsForMonthlyView(
+        feeStore,
+        context.session.orgId,
+        resolutionInput.claimMonth,
+        {
+          processEnv: input.processEnv || process.env,
+          patientId: resolutionInput.patientId
+        }
+      );
+      if (!sessionList.some((session) => String(session.patientId || "") === resolutionInput.patientId)) {
+        return notFound("patient month not found");
+      }
+      const [constraints, existingResolutions] = await Promise.all([
+        monthlyCandidateConstraints(feeCalculator, sessionList, {
+          patientId: resolutionInput.patientId,
+          claimMonth: resolutionInput.claimMonth,
+          strict: true
+        }),
+        feeStore.listMonthlyExclusionResolutions(
+          context.session.orgId,
+          resolutionInput.patientId,
+          resolutionInput.claimMonth
+        )
+      ]);
+      const receiptDraft = buildMonthlyReceiptDraft(sessionList, {
+        patientId: resolutionInput.patientId,
+        claimMonth: resolutionInput.claimMonth,
+        monthlyExclusionMode: "enforce",
+        monthlyExclusionResolutions: existingResolutions,
+        ...constraints
+      });
+      authoritativeConflict = asArrayValue(receiptDraft.exclusionConflicts).find((conflict) => (
+        conflict.pairKey === resolutionInput.pairKey
+        && conflict.scopeKey === resolutionInput.scopeKey
+        && conflict.ruleFingerprint === resolutionInput.ruleFingerprint
+      )) || null;
+      if (!authoritativeConflict || authoritativeConflict.complex) {
+        throw requestValidationError(
+          "対象の背反は現在の患者・請求月で解決可能な2コード背反ではありません。"
+        );
+      }
+      if (
+        resolutionInput.resolution
+        && resolutionInput.resolution !== authoritativeConflict.resolution
+      ) {
+        throw requestValidationError("resolution does not match the current master rule");
+      }
+      if (!allowedMonthlyExclusionActions(authoritativeConflict.resolution)
+        .includes(resolutionInput.action)) {
+        throw requestValidationError(
+          `action is not allowed for ${authoritativeConflict.resolution}`
+        );
+      }
+    } else {
+      const current = await feeStore.getMonthlyExclusionResolution(
+        context.session.orgId,
+        resolutionId
+      );
+      if (
+        !current
+        || current.patientId !== resolutionInput.patientId
+        || current.claimMonth !== resolutionInput.claimMonth
+      ) {
+        return notFound("monthly exclusion resolution not found");
+      }
+    }
+
+    const stored = await feeStore.putMonthlyExclusionResolution(
+      context.session.orgId,
+      resolutionId,
+      {
+        patientId: resolutionInput.patientId,
+        claimMonth: resolutionInput.claimMonth,
+        pairKey: resolutionInput.pairKey,
+        scopeKey: resolutionInput.scopeKey,
+        ruleFingerprint: resolutionInput.ruleFingerprint,
+        sourceId: authoritativeConflict?.sourceId ?? null,
+        sourceVersion: authoritativeConflict?.sourceVersion ?? null,
+        resolution: authoritativeConflict?.resolution || null,
+        action: resolutionInput.action,
+        basisNote: resolutionInput.basisNote || null,
+        resolvedByMemberId: context.session.memberId,
+        revoke: resolutionInput.revoke
+      },
+      { expectedUpdatedAt: resolutionInput.expectedUpdatedAt }
+    );
+    if (stored.changed !== false) {
+      await platformStore.createAuditEvent(context.session.orgId, {
+        eventType: resolutionInput.revoke
+          ? "fee.monthly_exclusion_resolution_revoked"
+          : "fee.monthly_exclusion_resolution_updated",
+        actorMemberId: context.session.memberId,
+        actorLoginId: context.session.loginId,
+        targetType: "fee_monthly_exclusion_resolution",
+        targetId: resolutionId,
+        productId: PRODUCT_ID,
+        safePayload: {
+          patientId: resolutionInput.patientId,
+          claimMonth: resolutionInput.claimMonth,
+          pairKey: resolutionInput.pairKey,
+          scopeKey: resolutionInput.scopeKey,
+          ruleFingerprint: resolutionInput.ruleFingerprint,
+          beforeAction: stored.previous?.revokedAt ? null : (stored.previous?.action || null),
+          afterAction: stored.resolution?.revokedAt ? null : (stored.resolution?.action || null)
+        }
+      });
+    }
+    return ok({ resolution: stored.resolution });
+  }
+
   // 患者×請求月で集計した月次レセプト案(プレビューのb=月次集計)
   if (method === "GET" && matches(parts, ["v1", "fee", "monthly-receipt"])) {
     const performanceStartedAt = Date.now();
@@ -1053,15 +1205,30 @@ async function routeFeeApiRequest(input = {}) {
         patientId
       })
     ));
-    const constraints = await measureStage(stageTimings, "monthlyCandidateConstraints", () => (
-      monthlyCandidateConstraints(feeCalculator, sessionList, { patientId, claimMonth })
-    ));
+    const exclusionMode = monthlyExclusionMode(input.processEnv || process.env);
+    const [constraints, monthlyExclusionResolutions] = await Promise.all([
+      measureStage(stageTimings, "monthlyCandidateConstraints", () => (
+        monthlyCandidateConstraints(feeCalculator, sessionList, { patientId, claimMonth })
+      )),
+      exclusionMode === "off"
+        ? Promise.resolve([])
+        : feeStore.listMonthlyExclusionResolutions(context.session.orgId, patientId, claimMonth)
+    ]);
     const receiptDraft = await measureStage(stageTimings, "buildMonthlyReceiptDraft", () => (
-      buildMonthlyReceiptDraft(sessionList, { patientId, claimMonth, ...constraints })
+      buildMonthlyReceiptDraft(sessionList, {
+        patientId,
+        claimMonth,
+        monthlyExclusionMode: exclusionMode,
+        monthlyExclusionResolutions,
+        ...constraints
+      })
     ));
-    const monthlyMetrics = buildEndpointStageMetrics(stageTimings, performanceStartedAt, {
-      sessionCount: sessionList.length
-    });
+    const monthlyMetrics = {
+      ...buildEndpointStageMetrics(stageTimings, performanceStartedAt, {
+        sessionCount: sessionList.length
+      }),
+      monthlyExclusion: buildMonthlyExclusionMetrics(receiptDraft)
+    };
     logFeeEndpointPerformance("fee.monthly_receipt.performance", {
       orgId: context.session.orgId,
       claimMonth,
@@ -1349,6 +1516,7 @@ async function routeFeeApiRequest(input = {}) {
   // 月次集計レセプトのCSV出力(scope=monthly)
   if (method === "GET" && matches(parts, ["v1", "fee", "monthly-receipt.csv"])) {
     const exportData = await loadMonthlyReceiptForExport({
+      feeCalculator,
       feeStore,
       orgId: context.session.orgId,
       patientId: url.searchParams.get("patientId") || "",
@@ -1381,6 +1549,7 @@ async function routeFeeApiRequest(input = {}) {
   // 月次集計レセプトのレセ電(UKE)出力(scope=monthly)
   if (method === "GET" && matches(parts, ["v1", "fee", "monthly-receipt.uke"])) {
     const exportData = await loadMonthlyReceiptForExport({
+      feeCalculator,
       feeStore,
       orgId: context.session.orgId,
       patientId: url.searchParams.get("patientId") || "",
@@ -3683,11 +3852,23 @@ function claimPayloadServiceDate(payload = {}) {
   ).trim();
 }
 
-// 月次候補の重複排除(回数上限)と背反注釈に使う電子点数表制約を引く。
-// 補助情報のため、マスタ未整備や参照失敗では空を返して月次集計自体は継続する。
-async function monthlyCandidateConstraints(feeCalculator, sessions = [], { patientId = "", claimMonth = "" } = {}) {
+// 月次候補の回数上限と背反規則を引く。strict=falseは点検・shadow用途でfail-open、
+// strict=trueはCSV/UKE提出用途で完全性envelopeを必須とする。
+async function monthlyCandidateConstraints(
+  feeCalculator,
+  sessions = [],
+  { patientId = "", claimMonth = "", strict = false } = {}
+) {
   if (typeof feeCalculator?.checkLookup !== "function") {
-    return {};
+    if (strict) {
+      throw monthlyExclusionLookupError("monthly exclusion lookup is unavailable");
+    }
+    return {
+      actExclusionRules: monthlyExclusionLookupFailureEnvelope(
+        claimMonth,
+        "monthly exclusion lookup is unavailable"
+      )
+    };
   }
   const codes = new Set();
   for (const session of Array.isArray(sessions) ? sessions : []) {
@@ -3707,18 +3888,102 @@ async function monthlyCandidateConstraints(feeCalculator, sessions = [], { patie
       if (code) codes.add(code);
     }
   }
-  if (!codes.size) {
+  if (!codes.size && !strict) {
     return {};
   }
   try {
-    const lookup = await feeCalculator.checkLookup({ act_codes: [...codes], drug_codes: [], disease_codes: [] });
+    const lookup = await feeCalculator.checkLookup({
+      act_codes: [...codes],
+      drug_codes: [],
+      disease_codes: [],
+      claim_month: claimMonth
+    });
+    const actExclusionRules = isPlainObject(lookup?.actExclusionRules)
+      ? lookup.actExclusionRules
+      : {
+        status: "lookup_failed",
+        sourceId: null,
+        sourceVersion: null,
+        evaluatedFrom: claimMonth ? `${claimMonth}-01` : null,
+        evaluatedTo: null,
+        rules: []
+      };
+    if (strict && actExclusionRules.status !== "complete") {
+      throw monthlyExclusionLookupError(
+        `monthly exclusion lookup is not complete: ${actExclusionRules.status}`
+      );
+    }
     return {
       actFrequencyLimits: isPlainObject(lookup?.actFrequencyLimits) ? lookup.actFrequencyLimits : {},
-      actExclusions: Array.isArray(lookup?.actExclusions) ? lookup.actExclusions : []
+      actExclusions: Array.isArray(lookup?.actExclusions) ? lookup.actExclusions : [],
+      actExclusionRules
     };
-  } catch {
-    return {};
+  } catch (error) {
+    if (strict) {
+      throw error?.statusCode ? error : monthlyExclusionLookupError(error?.message);
+    }
+    return {
+      actExclusionRules: monthlyExclusionLookupFailureEnvelope(
+        claimMonth,
+        error?.message
+      )
+    };
   }
+}
+
+function monthlyExclusionLookupFailureEnvelope(claimMonth, detail = "") {
+  return {
+    status: "lookup_failed",
+    sourceId: null,
+    sourceVersion: null,
+    evaluatedFrom: claimMonth ? `${claimMonth}-01` : null,
+    evaluatedTo: null,
+    rules: [],
+    detail: String(detail || "").slice(0, 300) || null
+  };
+}
+
+function monthlyExclusionMode(env = process.env) {
+  const configured = String(env.FEE_MONTHLY_EXCLUSION_MODE || "").trim().toLowerCase();
+  if (["off", "shadow", "enforce"].includes(configured)) {
+    return configured;
+  }
+  return String(env.FEE_MONTHLY_EXCLUSION_ENFORCEMENT || "").trim().toLowerCase() === "true"
+    ? "enforce"
+    : "off";
+}
+
+function monthlyExclusionLookupError(detail = "") {
+  const error = new Error(
+    detail
+      ? `電子点数表の背反マスタを確認できません: ${detail}`
+      : "電子点数表の背反マスタを確認できません"
+  );
+  error.name = "ServiceUnavailableError";
+  error.statusCode = 503;
+  error.code = "FEE_MONTHLY_EXCLUSION_LOOKUP_INCOMPLETE";
+  return error;
+}
+
+function assertMonthlyPatientClaimScope(patientId, claimMonth) {
+  if (!patientId) {
+    throw requestValidationError("patientId is required");
+  }
+  if (!/^\d{4}-\d{2}$/u.test(claimMonth)) {
+    throw requestValidationError("claimMonth must use YYYY-MM");
+  }
+}
+
+function monthlyExclusionResolutionId(value = {}) {
+  const canonical = [
+    value.orgId,
+    value.patientId,
+    value.claimMonth,
+    value.pairKey,
+    value.scopeKey,
+    value.ruleFingerprint
+  ].map((item) => String(item || "").trim()).join("|");
+  return `mexr_${crypto.createHash("sha256").update(canonical).digest("hex")}`;
 }
 
 function asArrayValue(value) {
@@ -5590,6 +5855,29 @@ function buildEndpointStageMetrics(stageTimings = [], startedAt = Date.now(), co
   };
 }
 
+function buildMonthlyExclusionMetrics(receiptDraft = {}) {
+  const conflicts = asArrayValue(receiptDraft.exclusionConflicts);
+  const countBy = (key) => Object.fromEntries(
+    [...conflicts.reduce((counts, conflict) => {
+      const value = String(conflict?.[key] || "unknown");
+      counts.set(value, Number(counts.get(value) || 0) + 1);
+      return counts;
+    }, new Map()).entries()].sort(([left], [right]) => left.localeCompare(right))
+  );
+  return {
+    mode: receiptDraft.exclusionMode || "off",
+    constraintsStatus: receiptDraft.exclusionConstraintsStatus || "not_requested",
+    conflictCount: conflicts.length,
+    unresolvedConflictCount: Number(receiptDraft.unresolvedExclusionCount || 0),
+    complexComponentCount: Number(receiptDraft.complexExclusionComponentCount || 0),
+    blockedLineCount: asArrayValue(receiptDraft.blockedLines).length,
+    previewBlockedLineCount: asArrayValue(receiptDraft.blockedLinesPreview).length,
+    scopeCounts: countBy("scope"),
+    resolutionCounts: countBy("resolution"),
+    componentSizeCounts: countBy("componentSize")
+  };
+}
+
 function logFeeEndpointPerformance(event, { orgId = "", claimMonth = "", metrics = {} } = {}) {
   console.info(JSON.stringify({
     event,
@@ -6814,7 +7102,15 @@ export function receiptAnnotationContext(session = {}, receiptPolicy = {}) {
   return { comments, symptomDetails };
 }
 
-async function loadMonthlyReceiptForExport({ feeStore, orgId, patientId, claimMonth, now, processEnv = process.env }) {
+async function loadMonthlyReceiptForExport({
+  feeCalculator,
+  feeStore,
+  orgId,
+  patientId,
+  claimMonth,
+  now,
+  processEnv = process.env
+}) {
   const sessionList = await listSessionsForMonthlyView(feeStore, orgId, claimMonth, { processEnv, patientId });
   const month = String(claimMonth || "").slice(0, 7);
   const monthOf = (session) => String(session.claimMonth || String(session.serviceDate || "").slice(0, 7));
@@ -6823,7 +7119,27 @@ async function loadMonthlyReceiptForExport({ feeStore, orgId, patientId, claimMo
     && (!month || monthOf(session) === month)
     && session.calculationResult
     && session.calculationResult.status) || null;
-  const receiptDraft = buildMonthlyReceiptDraft(sessionList, { patientId, claimMonth, now });
+  const exclusionMode = monthlyExclusionMode(processEnv);
+  const [constraints, monthlyExclusionResolutions] = await Promise.all([
+    exclusionMode === "off"
+      ? Promise.resolve({})
+      : monthlyCandidateConstraints(feeCalculator, sessionList, {
+        patientId,
+        claimMonth,
+        strict: exclusionMode === "enforce"
+      }),
+    exclusionMode === "off"
+      ? Promise.resolve([])
+      : feeStore.listMonthlyExclusionResolutions(orgId, patientId, claimMonth)
+  ]);
+  const receiptDraft = buildMonthlyReceiptDraft(sessionList, {
+    patientId,
+    claimMonth,
+    now,
+    monthlyExclusionMode: exclusionMode,
+    monthlyExclusionResolutions,
+    ...constraints
+  });
   return { sessionList, base, receiptDraft };
 }
 
@@ -8818,22 +9134,8 @@ function compactObject(value = {}) {
 }
 
 function isSameBillingWeek(left = "", right = "") {
-  const leftDate = parseIsoDate(left);
-  const rightDate = parseIsoDate(right);
-  if (!leftDate || !rightDate) {
-    return false;
-  }
-  const leftSunday = billingWeekSunday(leftDate);
-  const rightSunday = billingWeekSunday(rightDate);
-  return leftSunday.getTime() === rightSunday.getTime();
-}
-
-// 厚労省の診療報酬上の「週」は日曜日から土曜日までを単位とする。
-// https://www.mhlw.go.jp/web/t_doc?dataId=00tc4894&dataType=1&pageNo=1
-function billingWeekSunday(date) {
-  const normalized = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  normalized.setUTCDate(normalized.getUTCDate() - normalized.getUTCDay());
-  return normalized;
+  const leftSunday = billingWeekSundayKey(left);
+  return Boolean(leftSunday && leftSunday === billingWeekSundayKey(right));
 }
 
 function parseIsoDate(value = "") {

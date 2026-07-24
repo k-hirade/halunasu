@@ -653,6 +653,61 @@ export function validateReviewDecisionInput(input = {}) {
   });
 }
 
+export const feeMonthlyExclusionResolutions = Object.freeze([
+  "auto_winner",
+  "demote_lower_points",
+  "conditional_review",
+  "unsupported_rule_kind"
+]);
+
+export const feeMonthlyExclusionActions = Object.freeze([
+  "acknowledge_auto",
+  "choose_a",
+  "choose_b",
+  "allow_both_with_basis",
+  "reject_both"
+]);
+
+export function validateMonthlyExclusionResolutionInput(input = {}) {
+  if (!isPlainObject(input)) {
+    throw validationError("monthly exclusion resolution must be an object", "resolution");
+  }
+  const revoke = input.revoke === true;
+  const action = revoke
+    ? undefined
+    : optionalEnum(input.action, feeMonthlyExclusionActions, "action");
+  if (!revoke && !action) {
+    throw validationError("action is required", "action");
+  }
+  const basisNote = optionalMultilineString(input.basisNote ?? input.basis_note, 5000);
+  if (action === "allow_both_with_basis" && !basisNote) {
+    throw validationError("basisNote is required for allow_both_with_basis", "basisNote");
+  }
+  const claimMonth = optionalClaimMonth(input.claimMonth ?? input.claim_month);
+  if (!claimMonth) {
+    throw validationError("claimMonth is required", "claimMonth");
+  }
+  return compactObject({
+    patientId: requiredString(input.patientId ?? input.patient_id, "patientId"),
+    claimMonth,
+    pairKey: requiredString(input.pairKey ?? input.pair_key, "pairKey"),
+    scopeKey: requiredString(input.scopeKey ?? input.scope_key, "scopeKey"),
+    ruleFingerprint: requiredString(
+      input.ruleFingerprint ?? input.rule_fingerprint,
+      "ruleFingerprint"
+    ),
+    resolution: optionalEnum(
+      input.resolution,
+      feeMonthlyExclusionResolutions,
+      "resolution"
+    ),
+    action,
+    basisNote,
+    expectedUpdatedAt: optionalString(input.expectedUpdatedAt ?? input.expected_updated_at),
+    revoke
+  });
+}
+
 function normalizeMonthlyClaimWork(input) {
   if (input === undefined) {
     return undefined;

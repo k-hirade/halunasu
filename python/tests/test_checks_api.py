@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from medical_fee_calculation.checks_api import (
+    act_exclusion_rules,
     check_lookup,
     disease_act_candidates,
     resolve_diseases,
@@ -161,6 +162,246 @@ class ChecksApiTest(unittest.TestCase):
             self.assertEqual(exclusions[0]["baseCode"], "114001110")
             self.assertEqual(exclusions[0]["excludedCode"], "112011010")
             self.assertEqual(exclusions[0]["ruleKind"], "1")
+
+    def test_act_exclusion_rules_returns_canonical_date_scoped_envelope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "master.sqlite"
+            conn = connect(db_path)
+            try:
+                initialize_schema(conn)
+                conn.executemany(
+                    """
+                    INSERT INTO master_sources (
+                        id, source_type, source_version, published_at, raw_path,
+                        checksum_sha256, encoding, row_count, imported_at
+                    )
+                    VALUES (?, 'medical_electronic_fee_table', ?, ?, 'source', ?, 'cp932', 4, ?)
+                    """,
+                    [
+                        (1, "2025-06-01", "2025-06-01", "old", "2025-06-01T00:00:00Z"),
+                        (2, "2026-06-01", "2026-06-01", "current", "2026-06-01T00:00:00Z"),
+                        (3, "2027-06-01", "2027-06-01", "future", "2027-06-01T00:00:00Z"),
+                    ],
+                )
+                rows = [
+                    (2, "exclusions_month", "114005410", "在宅人工呼吸指導管理料", "140003810", "喀痰吸引", "1"),
+                    (2, "exclusions_month", "140003810", "喀痰吸引", "114005410", "在宅人工呼吸指導管理料", "2"),
+                    (2, "exclusions_month", "114005410", "在宅人工呼吸指導管理料", "140009310", "人工呼吸", "1"),
+                    (2, "exclusions_month", "140009310", "人工呼吸", "114005410", "在宅人工呼吸指導管理料", "2"),
+                ]
+                conn.executemany(
+                    """
+                    INSERT INTO electronic_exclusions (
+                        source_id, exclusion_table, base_code, base_name,
+                        excluded_code, excluded_name, rule_kind,
+                        effective_from, effective_to, raw_row_json
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, '2026-06-01', '2028-05-31', ?)
+                    """,
+                    [(*row, '["0","","","","","","0","","20260601","20280531"]') for row in rows],
+                )
+                # Older/future generations must not leak into the selected source.
+                for source_id, code in ((1, "199900001"), (3, "199900002")):
+                    conn.executemany(
+                        """
+                        INSERT INTO electronic_exclusions (
+                            source_id, exclusion_table, base_code, base_name,
+                            excluded_code, excluded_name, rule_kind,
+                            effective_from, effective_to, raw_row_json
+                        )
+                        VALUES (?, 'exclusions_month', ?, '旧将来A', '199900009', '旧将来B', ?, '2020-01-01', '9999-12-31', '[]')
+                        """,
+                        [(source_id, code, "1"), (source_id, "199900009", "2")],
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+
+            result = act_exclusion_rules(
+                {
+                    "db_path": str(db_path),
+                    "claim_month": "2026-07",
+                    "act_codes": ["114005410", "140003810", "140009310"],
+                }
+            )
+
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["sourceId"], 2)
+        self.assertEqual(result["evaluatedFrom"], "2026-07-01")
+        self.assertEqual(result["evaluatedTo"], "2026-07-31")
+        self.assertEqual(len(result["rules"]), 2)
+        self.assertEqual(
+            {(rule["codeA"], rule["codeB"], rule["winnerCode"]) for rule in result["rules"]},
+            {
+                ("114005410", "140003810", "114005410"),
+                ("114005410", "140009310", "114005410"),
+            },
+        )
+        self.assertTrue(all(rule["resolution"] == "auto_winner" for rule in result["rules"]))
+        self.assertTrue(all(len(rule["ruleFingerprint"]) == 64 for rule in result["rules"]))
+
+    def test_act_exclusion_rules_uses_prior_generation_before_new_rules_take_effect(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "master.sqlite"
+            conn = connect(db_path)
+            try:
+                initialize_schema(conn)
+                conn.executemany(
+                    """
+                    INSERT INTO master_sources (
+                        id, source_type, source_version, published_at, raw_path,
+                        checksum_sha256, encoding, row_count, imported_at
+                    )
+                    VALUES (?, 'medical_electronic_fee_table', ?, ?, 'source', ?, 'cp932', 2, ?)
+                    """,
+                    [
+                        (1, "2024-06-01", "2024-06-01", "current", "2024-06-01T00:00:00Z"),
+                        (2, "2026-06-01", "2026-05-20", "next", "2026-05-20T00:00:00Z"),
+                    ],
+                )
+                for source_id, effective_from, effective_to in (
+                    (1, "2024-06-01", "2026-05-31"),
+                    (2, "2026-06-01", "9999-12-31"),
+                ):
+                    conn.executemany(
+                        """
+                        INSERT INTO electronic_exclusions (
+                            source_id, exclusion_table, base_code, base_name,
+                            excluded_code, excluded_name, rule_kind,
+                            effective_from, effective_to, raw_row_json
+                        )
+                        VALUES (?, 'exclusions_month', ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            (
+                                source_id,
+                                "100",
+                                "項目A",
+                                "200",
+                                "項目B",
+                                "1",
+                                effective_from,
+                                effective_to,
+                                '["0","","","","","1","0"]',
+                            ),
+                            (
+                                source_id,
+                                "200",
+                                "項目B",
+                                "100",
+                                "項目A",
+                                "2",
+                                effective_from,
+                                effective_to,
+                                '["0","","","","","2","0"]',
+                            ),
+                        ],
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+
+            result = act_exclusion_rules({
+                "db_path": str(db_path),
+                "claim_month": "2026-05",
+                "act_codes": ["100", "200"],
+            })
+
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["sourceId"], 1)
+        self.assertEqual(len(result["rules"]), 1)
+
+    def test_act_exclusion_rules_distinguishes_empty_no_generation_and_incomplete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "master.sqlite"
+            conn = connect(db_path)
+            try:
+                initialize_schema(conn)
+                conn.executemany(
+                    """
+                    INSERT INTO master_sources (
+                        id, source_type, source_version, published_at, raw_path,
+                        checksum_sha256, encoding, row_count, imported_at
+                    )
+                    VALUES (?, 'medical_electronic_fee_table', ?, ?, 'source', ?, 'cp932', 1, ?)
+                    """,
+                    [
+                        (1, "2026-06-01", "2026-06-01", "empty", "2026-06-01T00:00:00Z"),
+                        (2, "2027-06-01", "2027-06-01", "future", "2027-06-01T00:00:00Z"),
+                    ],
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            incomplete = act_exclusion_rules({
+                "db_path": str(db_path),
+                "claim_month": "2026-07",
+                "act_codes": ["100", "200"],
+            })
+            no_generation = act_exclusion_rules({
+                "db_path": str(db_path),
+                "claim_month": "2025-07",
+                "act_codes": ["100", "200"],
+            })
+
+        self.assertEqual(incomplete["status"], "master_incomplete")
+        self.assertEqual(no_generation["status"], "no_effective_generation")
+
+    def test_act_exclusion_rules_maps_special_unknown_and_rejects_one_way_rows(self) -> None:
+        def run(rows: list[tuple[str, str, str, str]]) -> dict[str, object]:
+            with tempfile.TemporaryDirectory() as tmp:
+                db_path = Path(tmp) / "master.sqlite"
+                conn = connect(db_path)
+                try:
+                    initialize_schema(conn)
+                    conn.execute(
+                        """
+                        INSERT INTO master_sources (
+                            id, source_type, source_version, published_at, raw_path,
+                            checksum_sha256, encoding, row_count, imported_at
+                        )
+                        VALUES (1, 'medical_electronic_fee_table', '2026-06-01', '2026-06-01',
+                                'source', 'sha', 'cp932', 2, '2026-06-01T00:00:00Z')
+                        """
+                    )
+                    conn.executemany(
+                        """
+                        INSERT INTO electronic_exclusions (
+                            source_id, exclusion_table, base_code, base_name,
+                            excluded_code, excluded_name, rule_kind,
+                            effective_from, effective_to, raw_row_json
+                        )
+                        VALUES (1, 'exclusions_day', ?, ?, ?, ?, ?, '2026-06-01', '9999-12-31', ?)
+                        """,
+                        [
+                            (
+                                base,
+                                f"name-{base}",
+                                excluded,
+                                f"name-{excluded}",
+                                kind,
+                                f'["0","","","","","{kind}","{special}","","20260601","99991231"]',
+                            )
+                            for base, excluded, kind, special in rows
+                        ],
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+                return act_exclusion_rules({
+                    "db_path": str(db_path),
+                    "service_date": "2026-07-01",
+                    "act_codes": ["100", "200"],
+                })
+
+        special = run([("100", "200", "1", "1"), ("200", "100", "2", "1")])
+        unknown = run([("100", "200", "9", "0"), ("200", "100", "9", "0")])
+        one_way = run([("100", "200", "1", "0")])
+
+        self.assertEqual(special["rules"][0]["resolution"], "conditional_review")
+        self.assertEqual(unknown["rules"][0]["resolution"], "unsupported_rule_kind")
+        self.assertEqual(one_way["status"], "master_incomplete")
 
     def test_standing_fee_families_are_generated_from_master_hierarchy_and_monthly_limits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

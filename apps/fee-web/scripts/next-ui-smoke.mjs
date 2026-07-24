@@ -85,7 +85,11 @@ try {
     const monthlyReceiptDialog = page.getByRole("dialog", { name: "月次レセプト案" });
     await monthlyReceiptDialog.waitFor();
     await monthlyReceiptDialog.getByRole("heading", { name: "患者名未入力" }).waitFor();
-    await monthlyReceiptDialog.getByRole("button", { name: "CSV出力" }).waitFor();
+    const monthlyCsvButton = monthlyReceiptDialog.getByRole("button", { name: "CSV出力" });
+    await monthlyCsvButton.waitFor();
+    assert.equal(await monthlyCsvButton.isDisabled(), true, "unresolved monthly exclusions must disable CSV export");
+    await monthlyReceiptDialog.getByRole("heading", { name: "背反の確認" }).waitFor();
+    await monthlyReceiptDialog.getByRole("button", { name: "在宅人工呼吸指導管理料を算定" }).waitFor();
     await monthlyReceiptDialog.getByText("診療報酬明細書").waitFor();
     await monthlyReceiptDialog.locator(".fee-modal-footer").getByRole("button", { name: "閉じる" }).click();
 
@@ -498,6 +502,42 @@ async function installApiMocks(page) {
         status: "ready",
         actualDays: 1,
         totalPoints: 321,
+        exclusionMode: "enforce",
+        exclusionConstraintsStatus: "complete",
+        unresolvedExclusionCount: 1,
+        complexExclusionComponentCount: 0,
+        exclusionConflicts: [{
+          conflictId: "mex_test_1",
+          componentId: "mexc_test_1",
+          componentSize: 2,
+          complex: false,
+          scope: "same_month",
+          scopeKey: "2026-06",
+          pairKey: "same_month:114005410:140003810",
+          ruleFingerprint: "fingerprint-test",
+          codeA: "114005410",
+          codeAName: "在宅人工呼吸指導管理料",
+          codeB: "140003810",
+          codeBName: "喀痰吸引",
+          resolution: "auto_winner",
+          winnerCode: "114005410",
+          defaultAction: "acknowledge_auto",
+          action: null,
+          allowedActions: ["acknowledge_auto", "reject_both"],
+          status: "unresolved",
+          blockingExport: true,
+          serviceDates: ["2026-06-03"],
+          feeSessionIds: ["fee_test_1"]
+        }],
+        blockedLines: [{
+          occurrenceId: "fee_test_1_line_2",
+          feeSessionId: "fee_test_1",
+          serviceDate: "2026-06-03",
+          code: "140003810",
+          name: "喀痰吸引",
+          points: 48,
+          reason: "喀痰吸引は同月の在宅人工呼吸指導管理料と併算定できません。"
+        }],
         billing: { totalPoints: 321, totalFee: 3210, burdenRatio: 0.3, burdenRatioSource: "default_unknown", copay: 960, insurerPay: 2250, notes: [] },
         diagnoses: [{ name: "急性上気道炎", icd10Code: "J06.9", isPrimary: true }],
         receiptAnnotations: { comments: [], symptomDetails: [] },

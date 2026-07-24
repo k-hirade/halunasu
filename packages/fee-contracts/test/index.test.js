@@ -6,6 +6,7 @@ import {
   validateSidecarCalculationInput,
   validateUpdateFeeSessionInput,
   validateCreateFeeCalculationInput,
+  validateMonthlyExclusionResolutionInput,
   defaultFeeSettings,
   validateUpdateFeeSettingsInput,
   hasPerformedBloodCollectionEvidence,
@@ -13,6 +14,45 @@ import {
   isClinicalDateRatioFalsePositiveContext,
   isPastOrExternalClinicalServiceContext
 } from "../src/index.js";
+
+test("validates patient-month exclusion decisions and requires a basis for dual billing", () => {
+  const base = {
+    patientId: "pat_001",
+    claimMonth: "2026-05",
+    pairKey: "same_month:114005410:140003810",
+    scopeKey: "2026-05",
+    ruleFingerprint: "fingerprint-test"
+  };
+  assert.deepEqual(validateMonthlyExclusionResolutionInput({
+    ...base,
+    resolution: "auto_winner",
+    action: "acknowledge_auto"
+  }), {
+    ...base,
+    resolution: "auto_winner",
+    action: "acknowledge_auto",
+    revoke: false
+  });
+  assert.throws(
+    () => validateMonthlyExclusionResolutionInput({
+      ...base,
+      resolution: "conditional_review",
+      action: "allow_both_with_basis"
+    }),
+    /basisNote/
+  );
+  assert.equal(validateMonthlyExclusionResolutionInput({
+    ...base,
+    resolution: "conditional_review",
+    action: "allow_both_with_basis",
+    basisNote: "別部位に対してそれぞれ実施した。"
+  }).basisNote, "別部位に対してそれぞれ実施した。");
+  assert.equal(validateMonthlyExclusionResolutionInput({
+    ...base,
+    revoke: true,
+    expectedUpdatedAt: "2026-05-28T00:00:00.000Z"
+  }).revoke, true);
+});
 
 test("defaults receipt exports to fail closed", () => {
   const settings = defaultFeeSettings({ facilityId: "fac_001" });

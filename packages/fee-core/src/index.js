@@ -403,7 +403,7 @@ export function buildMonthlyReceiptDraft(sessions = [], options = {}) {
     .sort((a, b) => String(a.serviceDate || "").localeCompare(String(b.serviceDate || "")));
   const uncalculatedSessionCount = scopedSessions.length - relevant.length;
 
-  const lineMap = new Map();
+  const lineEntries = [];
   const lineOccurrences = [];
   let pendingLineCount = 0;
   let pendingProposalCount = 0;
@@ -418,29 +418,33 @@ export function buildMonthlyReceiptDraft(sessions = [], options = {}) {
       const key = receiptLineAggregateKey(line);
       const occurrence = receiptLineOccurrenceFromLine(line, session, lineOccurrences.length, { aggregateKey: key });
       lineOccurrences.push(occurrence);
-      const existing = lineMap.get(key);
-      if (existing) {
-        existing.quantity = Number(existing.quantity || 0) + Number(line.quantity || 1);
-        existing.totalPoints = Number(existing.totalPoints || 0) + Number(line.totalPoints || 0);
-        existing.occurrenceCount = Number(existing.occurrenceCount || 0) + 1;
-        existing.occurrenceIds = [...(Array.isArray(existing.occurrenceIds) ? existing.occurrenceIds : []), occurrence.occurrenceId];
-        existing.serviceDates = uniqueSortedStrings([...(Array.isArray(existing.serviceDates) ? existing.serviceDates : []), occurrence.serviceDate]);
-      } else {
-        lineMap.set(key, {
-          ...line,
-          aggregateKey: key,
-          quantity: Number(line.quantity || 1),
-          totalPoints: Number(line.totalPoints || 0),
-          occurrenceCount: 1,
-          occurrenceIds: [occurrence.occurrenceId],
-          serviceDates: occurrence.serviceDate ? [occurrence.serviceDate] : []
-        });
-      }
+      lineEntries.push({ line, occurrence });
     }
   }
-  const lines = [...lineMap.values()];
+  const candidateEntries = monthlyCandidateOccurrenceEntries(relevant);
+  const exclusionMode = normalizeMonthlyExclusionMode(options.monthlyExclusionMode);
+  const exclusionEvaluation = evaluateMonthlyExclusions({
+    claimMonth,
+    confirmedOccurrences: lineOccurrences,
+    candidateOccurrences: candidateEntries.map((entry) => entry.occurrence),
+    rulesEnvelope: options.actExclusionRules,
+    resolutions: options.monthlyExclusionResolutions
+  });
+  const enforcedConfirmedIds = exclusionMode === "enforce"
+    ? exclusionEvaluation.blockedConfirmedOccurrenceIds
+    : new Set();
+  const enforcedCandidateIds = exclusionMode === "enforce"
+    ? exclusionEvaluation.suppressedCandidateOccurrenceIds
+    : new Set();
+  const includedLineEntries = lineEntries.filter(({ occurrence }) => (
+    !enforcedConfirmedIds.has(occurrence.occurrenceId)
+  ));
+  const lines = aggregateReceiptLineEntries(includedLineEntries);
   const totalPoints = lines.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0);
   const candidateAggregation = aggregateMonthlyCandidateLines(relevant, {
+    candidateEntries,
+    suppressedCandidateOccurrenceIds: enforcedCandidateIds,
+    exclusionConflicts: exclusionEvaluation.conflicts,
     confirmedLineCodes: lines.map((line) => String(line.code || "")).filter(Boolean),
     actFrequencyLimits: options.actFrequencyLimits,
     actExclusions: options.actExclusions
@@ -485,12 +489,23 @@ export function buildMonthlyReceiptDraft(sessions = [], options = {}) {
     diagnoses: mergeMonthlyDiagnoses(relevant),
     receiptAnnotations: mergeMonthlyReceiptAnnotations(relevant),
     lines,
-    lineOccurrences,
+    lineOccurrences: includedLineEntries.map(({ occurrence }) => occurrence),
     lineGroups: groupReceiptLines(lines),
+    blockedLines: exclusionMode === "enforce" ? exclusionEvaluation.blockedLines : [],
+    blockedLinesPreview: exclusionMode === "shadow" ? exclusionEvaluation.blockedLines : [],
+    exclusionMode,
+    exclusionConstraintsStatus: exclusionEvaluation.constraintsStatus,
+    exclusionConflicts: exclusionEvaluation.conflicts,
+    unresolvedExclusionCount: exclusionEvaluation.unresolvedConflictCount,
+    complexExclusionComponentCount: exclusionEvaluation.complexComponentCount,
     // 2段表示: totalPoints(=当社算定案) とは別に、未承認の増点候補を患者×月で集計する。
     // 候補は承認されるまで totalPoints には入らない。
     candidateLines: candidateAggregation.candidateLines,
     candidateTotalPoints: candidateAggregation.candidateTotalPoints,
+    candidateOccurrences: candidateEntries.map(({ occurrence }) => ({
+      ...occurrence,
+      suppressedByExclusion: enforcedCandidateIds.has(occurrence.occurrenceId)
+    })),
     generatedAt: timestamp(options.now),
     schemaVersion: 1
   };
@@ -501,65 +516,54 @@ export function buildMonthlyReceiptDraft(sessions = [], options = {}) {
 // - 同一コードは1行に畳み、電子点数表の回数上限(月)を超える分は suppressed として数える
 // - 確定明細/他候補との背反(併算定不可)を conflicts として注釈する
 function aggregateMonthlyCandidateLines(sessions = [], {
+  candidateEntries = null,
+  suppressedCandidateOccurrenceIds = new Set(),
+  exclusionConflicts = [],
   confirmedLineCodes = [],
   actFrequencyLimits = null,
   actExclusions = null
 } = {}) {
   const map = new Map();
-  for (const session of Array.isArray(sessions) ? sessions : []) {
-    const decisions = isPlainObject(session.reviewDecisions) ? session.reviewDecisions : {};
-    const proposals = Array.isArray(session.calculationResult?.candidateProposals)
-      ? session.calculationResult.candidateProposals
-      : [];
-    for (const proposal of proposals) {
-      const decision = proposalDecision(proposal, decisions)?.status || "";
-      if (decision === "approved" || decision === "rejected") {
-        continue;
+  const entries = Array.isArray(candidateEntries)
+    ? candidateEntries
+    : monthlyCandidateOccurrenceEntries(sessions);
+  for (const { proposal, occurrence } of entries) {
+    const key = occurrence.aggregateKey;
+    const excluded = suppressedCandidateOccurrenceIds.has(occurrence.occurrenceId);
+    const existing = map.get(key);
+    if (existing) {
+      existing.occurrenceCount += 1;
+      existing.serviceDates = uniqueSortedStrings([...existing.serviceDates, occurrence.serviceDate]);
+      existing.proposalIds.push(proposal.proposalId || null);
+      existing.occurrenceIds.push(occurrence.occurrenceId);
+      if (excluded) {
+        existing.exclusionSuppressedOccurrenceCount += 1;
       }
-      const code = String(proposal.code || proposal.candidateLine?.code || "").trim();
-      const codeCandidates = uniqueSortedStrings(
-        Array.isArray(proposal.codeCandidates) ? proposal.codeCandidates : []
-      );
-      // コード未確定の候補に特定区分の点数を表示しない。生成元が誤って点数を
-      // 渡した場合も、月次合計へ混入させない。
-      const points = code
-        ? Number(proposal.potentialPoints || proposal.candidateLine?.totalPoints || 0)
-        : 0;
-      // 完全に同じコード候補集合だけをレーン横断で統合する。部分一致する集合は
-      // 意味が異なる可能性があるため、別候補のまま保持する。
-      const key = code
-        || (codeCandidates.length ? `choice:${codeCandidates.join("/")}` : "")
-        || (proposal.ruleId ? `rule:${proposal.ruleId}` : `proposal:${proposal.proposalId || proposal.title || ""}`);
-      const serviceDate = String(session.serviceDate || "");
-      const existing = map.get(key);
-      if (existing) {
-        existing.occurrenceCount += 1;
-        existing.serviceDates = uniqueSortedStrings([...existing.serviceDates, serviceDate]);
-        existing.proposalIds.push(proposal.proposalId || null);
-        existing.proposalMonthlyLimit ||= normalizeProposalMonthlyLimit(proposal.monthlyLimit);
-        existing.codeCandidates = uniqueSortedStrings([
-          ...(existing.codeCandidates || []),
-          ...codeCandidates
-        ]);
-      } else {
-        map.set(key, {
-          candidateLineId: `candidate_${key.replace(/[^\w-]/gu, "_")}`,
-          code: code || null,
-          name: proposal.candidateLine?.name || proposal.title || "算定候補",
-          orderType: proposal.orderType || proposal.candidateLine?.orderType || "procedure",
-          points,
-          occurrenceCount: 1,
-          title: proposal.title || "",
-          reason: proposal.reason || "",
-          conditionText: proposal.conditionText || "",
-          evidence: proposal.evidence || "",
-          source: proposal.source || "candidate_proposal",
-          serviceDates: serviceDate ? [serviceDate] : [],
-          proposalIds: [proposal.proposalId || null],
-          proposalMonthlyLimit: normalizeProposalMonthlyLimit(proposal.monthlyLimit),
-          codeCandidates
-        });
-      }
+      existing.proposalMonthlyLimit ||= normalizeProposalMonthlyLimit(proposal.monthlyLimit);
+      existing.codeCandidates = uniqueSortedStrings([
+        ...(existing.codeCandidates || []),
+        ...(occurrence.codeCandidates || [])
+      ]);
+    } else {
+      map.set(key, {
+        candidateLineId: `candidate_${key.replace(/[^\w-]/gu, "_")}`,
+        code: occurrence.code || null,
+        name: occurrence.name,
+        orderType: occurrence.orderType,
+        points: occurrence.points,
+        occurrenceCount: 1,
+        title: proposal.title || "",
+        reason: proposal.reason || "",
+        conditionText: proposal.conditionText || "",
+        evidence: proposal.evidence || "",
+        source: proposal.source || "candidate_proposal",
+        serviceDates: occurrence.serviceDate ? [occurrence.serviceDate] : [],
+        proposalIds: [proposal.proposalId || null],
+        occurrenceIds: [occurrence.occurrenceId],
+        exclusionSuppressedOccurrenceCount: excluded ? 1 : 0,
+        proposalMonthlyLimit: normalizeProposalMonthlyLimit(proposal.monthlyLimit),
+        codeCandidates: occurrence.codeCandidates || []
+      });
     }
   }
 
@@ -574,9 +578,13 @@ function aggregateMonthlyCandidateLines(sessions = [], {
     // 知識ルール側の monthlyLimit をフォールバックとして使う。
     const monthlyLimit = limits.find((limit) => limit && limit.unit === "月" && Number(limit.maxCount) > 0)
       || line.proposalMonthlyLimit;
+    const eligibleOccurrenceCount = Math.max(
+      0,
+      line.occurrenceCount - Number(line.exclusionSuppressedOccurrenceCount || 0)
+    );
     const cappedQuantity = monthlyLimit
-      ? Math.min(line.occurrenceCount, Number(monthlyLimit.maxCount))
-      : line.occurrenceCount;
+      ? Math.min(eligibleOccurrenceCount, Number(monthlyLimit.maxCount))
+      : eligibleOccurrenceCount;
     const suppressedOccurrenceCount = line.occurrenceCount - cappedQuantity;
     const conflicts = [];
     for (const rule of exclusions) {
@@ -595,11 +603,16 @@ function aggregateMonthlyCandidateLines(sessions = [], {
       });
     }
     const { proposalMonthlyLimit, ...rest } = line;
+    const exclusionConflictList = exclusionConflicts.filter((conflict) => (
+      (conflict.candidateOccurrenceIds || []).some((occurrenceId) => line.occurrenceIds.includes(occurrenceId))
+    )).map(monthlyExclusionConflictSummary);
     return {
       ...rest,
       quantity: cappedQuantity,
       totalPoints: Number(line.points || 0) * cappedQuantity,
       suppressedOccurrenceCount,
+      suppressedByExclusion: Number(line.exclusionSuppressedOccurrenceCount || 0) > 0,
+      exclusionConflicts: exclusionConflictList.length ? exclusionConflictList : undefined,
       frequencyLimits: limits.length
         ? limits
         : (proposalMonthlyLimit ? [proposalMonthlyLimit] : undefined),
@@ -611,6 +624,524 @@ function aggregateMonthlyCandidateLines(sessions = [], {
     candidateLines,
     candidateTotalPoints: candidateLines.reduce((sum, line) => sum + Number(line.totalPoints || 0), 0)
   };
+}
+
+function monthlyCandidateOccurrenceEntries(sessions = []) {
+  const entries = [];
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    const decisions = isPlainObject(session.reviewDecisions) ? session.reviewDecisions : {};
+    const proposals = Array.isArray(session.calculationResult?.candidateProposals)
+      ? session.calculationResult.candidateProposals
+      : [];
+    for (const [index, proposal] of proposals.entries()) {
+      const decision = proposalDecision(proposal, decisions)?.status || "";
+      if (decision === "approved" || decision === "rejected") {
+        continue;
+      }
+      const code = String(proposal.code || proposal.candidateLine?.code || "").trim();
+      const codeCandidates = uniqueSortedStrings(
+        Array.isArray(proposal.codeCandidates) ? proposal.codeCandidates : []
+      );
+      const points = code
+        ? Number(proposal.potentialPoints || proposal.candidateLine?.totalPoints || 0)
+        : 0;
+      const aggregateKey = code
+        || (codeCandidates.length ? `choice:${codeCandidates.join("/")}` : "")
+        || (proposal.ruleId ? `rule:${proposal.ruleId}` : `proposal:${proposal.proposalId || proposal.title || ""}`);
+      entries.push({
+        proposal,
+        occurrence: compactObject({
+          occurrenceId: `${session.feeSessionId || "session"}_candidate_${proposal.proposalId || index + 1}`,
+          aggregateKey,
+          feeSessionId: session.feeSessionId || null,
+          proposalId: proposal.proposalId || null,
+          serviceDate: session.serviceDate || null,
+          serviceTime: proposal.serviceTime || proposal.performedTime || null,
+          code: code || null,
+          codeCandidates,
+          name: proposal.candidateLine?.name || proposal.title || "算定候補",
+          orderType: proposal.orderType || proposal.candidateLine?.orderType || "procedure",
+          points,
+          quantity: 1,
+          totalPoints: points,
+          occurrenceKind: "candidate"
+        })
+      });
+    }
+  }
+  return entries;
+}
+
+function aggregateReceiptLineEntries(entries = []) {
+  const lineMap = new Map();
+  for (const { line, occurrence } of entries) {
+    const key = occurrence.aggregateKey || receiptLineAggregateKey(line);
+    const existing = lineMap.get(key);
+    if (existing) {
+      existing.quantity = Number(existing.quantity || 0) + Number(line.quantity || 1);
+      existing.totalPoints = Number(existing.totalPoints || 0) + Number(line.totalPoints || 0);
+      existing.occurrenceCount = Number(existing.occurrenceCount || 0) + 1;
+      existing.occurrenceIds = [...existing.occurrenceIds, occurrence.occurrenceId];
+      existing.serviceDates = uniqueSortedStrings([...existing.serviceDates, occurrence.serviceDate]);
+      continue;
+    }
+    lineMap.set(key, {
+      ...line,
+      aggregateKey: key,
+      quantity: Number(line.quantity || 1),
+      totalPoints: Number(line.totalPoints || 0),
+      occurrenceCount: 1,
+      occurrenceIds: [occurrence.occurrenceId],
+      serviceDates: occurrence.serviceDate ? [occurrence.serviceDate] : []
+    });
+  }
+  return [...lineMap.values()];
+}
+
+function normalizeMonthlyExclusionMode(value) {
+  const normalized = String(value || "off").trim().toLowerCase();
+  return ["off", "shadow", "enforce"].includes(normalized) ? normalized : "off";
+}
+
+export function evaluateMonthlyExclusions({
+  claimMonth = "",
+  confirmedOccurrences = [],
+  candidateOccurrences = [],
+  rulesEnvelope = null,
+  resolutions = []
+} = {}) {
+  const constraintsStatus = String(rulesEnvelope?.status || "not_requested");
+  const empty = {
+    constraintsStatus,
+    conflicts: [],
+    blockedLines: [],
+    blockedConfirmedOccurrenceIds: new Set(),
+    suppressedCandidateOccurrenceIds: new Set(),
+    unresolvedConflictCount: 0,
+    complexComponentCount: 0
+  };
+  if (constraintsStatus !== "complete") {
+    return empty;
+  }
+
+  const occurrences = [
+    ...confirmedOccurrences.map((occurrence) => ({ ...occurrence, occurrenceKind: "confirmed" })),
+    ...candidateOccurrences.map((occurrence) => ({ ...occurrence, occurrenceKind: "candidate" }))
+  ].filter((occurrence) => occurrence.code && occurrence.occurrenceId);
+  // simultaneous は同一受診内の関係であり、セッション計算層が扱う。
+  // 月次層では別受診を「同時」と誤認しないため再評価しない。
+  const rules = (Array.isArray(rulesEnvelope?.rules) ? rulesEnvelope.rules : [])
+    .filter((rule) => rule && rule.scope !== "simultaneous")
+    .sort(monthlyExclusionRuleOrder);
+  if (!rules.length || !occurrences.length) {
+    return empty;
+  }
+
+  const resolutionRecords = (Array.isArray(resolutions) ? resolutions : [])
+    .filter(Boolean);
+  const latestResolutionMap = new Map(resolutionRecords
+    .map((resolution) => [
+      monthlyExclusionResolutionKey(resolution),
+      resolution
+    ]));
+  const resolutionMap = new Map(resolutionRecords
+    .filter((resolution) => !resolution.revokedAt)
+    .map((resolution) => [
+      monthlyExclusionResolutionKey(resolution),
+      resolution
+    ]));
+  const graphBuckets = new Map();
+  for (const rule of rules) {
+    for (const scoped of scopedOccurrencePairs(occurrences, rule, claimMonth)) {
+      const bucketKey = `${rule.scope}|${scoped.scopeKey}`;
+      if (!graphBuckets.has(bucketKey)) {
+        graphBuckets.set(bucketKey, {
+          scope: rule.scope,
+          scopeKey: scoped.scopeKey,
+          occurrences: [],
+          edges: []
+        });
+      }
+      const bucket = graphBuckets.get(bucketKey);
+      bucket.edges.push({ rule, ...scoped });
+      const occurrenceMap = new Map(bucket.occurrences.map((occurrence) => [occurrence.occurrenceId, occurrence]));
+      for (const occurrence of scoped.occurrences) {
+        occurrenceMap.set(occurrence.occurrenceId, occurrence);
+      }
+      bucket.occurrences = [...occurrenceMap.values()].sort((left, right) => (
+        String(left.occurrenceId || "").localeCompare(String(right.occurrenceId || ""))
+      ));
+    }
+  }
+
+  const conflicts = [];
+  const blockedConfirmedOccurrenceIds = new Set();
+  const suppressedCandidateOccurrenceIds = new Set();
+  const blockedReasonByOccurrenceId = new Map();
+  let complexComponentCount = 0;
+
+  for (const bucket of [...graphBuckets.values()].sort(monthlyExclusionBucketOrder)) {
+    const components = exclusionGraphComponents(bucket.edges);
+    for (const component of components) {
+      const componentEdges = bucket.edges.filter(({ rule }) => (
+        component.codes.has(rule.codeA) && component.codes.has(rule.codeB)
+      ));
+      const componentOccurrences = bucket.occurrences.filter((occurrence) => component.codes.has(occurrence.code));
+      const componentId = monthlyExclusionComponentId(bucket.scope, bucket.scopeKey, component.codes);
+      const complex = component.codes.size !== 2 || componentEdges.length !== 1;
+      if (complex) {
+        complexComponentCount += 1;
+        for (const occurrence of componentOccurrences) {
+          if (occurrence.occurrenceKind === "candidate") {
+            suppressedCandidateOccurrenceIds.add(occurrence.occurrenceId);
+          }
+        }
+        conflicts.push({
+          conflictId: componentId,
+          componentId,
+          componentSize: component.codes.size,
+          complex: true,
+          scope: bucket.scope,
+          scopeKey: bucket.scopeKey,
+          codes: [...component.codes].sort(),
+          occurrenceIds: uniqueSortedStrings(componentOccurrences.map((item) => item.occurrenceId)),
+          feeSessionIds: uniqueSortedStrings(componentOccurrences.map((item) => item.feeSessionId)),
+          serviceDates: uniqueSortedStrings(componentOccurrences.map((item) => item.serviceDate)),
+          candidateOccurrenceIds: uniqueSortedStrings(componentOccurrences
+            .filter((item) => item.occurrenceKind === "candidate")
+            .map((item) => item.occurrenceId)),
+          status: "unresolved",
+          blockingExport: true,
+          reason: "複数の背反関係が連結しているため、元の算定画面で明細の採否を見直してください。"
+        });
+        continue;
+      }
+
+      const edge = componentEdges[0];
+      const { rule } = edge;
+      const pairKey = monthlyExclusionPairKey(rule);
+      const resolutionKey = monthlyExclusionResolutionKey({
+        pairKey,
+        scopeKey: bucket.scopeKey,
+        ruleFingerprint: rule.ruleFingerprint
+      });
+      const savedResolution = resolutionMap.get(resolutionKey) || null;
+      const latestResolution = latestResolutionMap.get(resolutionKey) || null;
+      const action = validMonthlyExclusionAction(rule.resolution, savedResolution?.action)
+        ? savedResolution.action
+        : null;
+      const codeAOccurrences = componentOccurrences.filter((item) => item.code === rule.codeA);
+      const codeBOccurrences = componentOccurrences.filter((item) => item.code === rule.codeB);
+      const defaultBlockedCodes = defaultBlockedMonthlyCodes(
+        rule,
+        codeAOccurrences,
+        codeBOccurrences
+      );
+      const applied = appliedMonthlyExclusionAction(rule, action, defaultBlockedCodes);
+      const blockedCodes = applied.blockedCodes;
+      const unresolved = rule.resolution === "unsupported_rule_kind"
+        || action === null;
+      const blockedOccurrenceIds = [];
+
+      for (const occurrence of componentOccurrences) {
+        const candidateMustWait = occurrence.occurrenceKind === "candidate"
+          && unresolved
+          && (
+            ["conditional_review", "unsupported_rule_kind"].includes(rule.resolution)
+            || defaultBlockedCodes.size === 0
+          );
+        if (!blockedCodes.has(occurrence.code) && !candidateMustWait) {
+          continue;
+        }
+        if (occurrence.occurrenceKind === "candidate") {
+          suppressedCandidateOccurrenceIds.add(occurrence.occurrenceId);
+        } else if (blockedCodes.has(occurrence.code)) {
+          blockedConfirmedOccurrenceIds.add(occurrence.occurrenceId);
+          blockedOccurrenceIds.push(occurrence.occurrenceId);
+          blockedReasonByOccurrenceId.set(
+            occurrence.occurrenceId,
+            monthlyExclusionReason(occurrence, rule, bucket.scope)
+          );
+        }
+      }
+
+      conflicts.push({
+        conflictId: monthlyExclusionConflictId(rule, bucket.scopeKey),
+        componentId,
+        componentSize: 2,
+        complex: false,
+        scope: bucket.scope,
+        scopeKey: bucket.scopeKey,
+        pairKey,
+        ruleFingerprint: rule.ruleFingerprint,
+        sourceId: rulesEnvelope.sourceId ?? null,
+        sourceVersion: rulesEnvelope.sourceVersion ?? null,
+        codeA: rule.codeA,
+        codeAName: rule.codeAName || "",
+        codeB: rule.codeB,
+        codeBName: rule.codeBName || "",
+        resolution: rule.resolution,
+        winnerCode: rule.winnerCode || null,
+        specialCondition: rule.specialCondition || "0",
+        defaultAction: defaultMonthlyExclusionAction(rule, defaultBlockedCodes),
+        action,
+        basisNote: savedResolution?.basisNote || null,
+        resolutionUpdatedAt: latestResolution?.updatedAt || null,
+        resolvedByMemberId: savedResolution?.resolvedByMemberId || null,
+        allowedActions: allowedMonthlyExclusionActions(rule.resolution),
+        status: unresolved ? "unresolved" : "resolved",
+        blockingExport: unresolved,
+        occurrenceIds: uniqueSortedStrings(componentOccurrences.map((item) => item.occurrenceId)),
+        feeSessionIds: uniqueSortedStrings(componentOccurrences.map((item) => item.feeSessionId)),
+        serviceDates: uniqueSortedStrings(componentOccurrences.map((item) => item.serviceDate)),
+        candidateOccurrenceIds: uniqueSortedStrings(componentOccurrences
+          .filter((item) => item.occurrenceKind === "candidate")
+          .map((item) => item.occurrenceId)),
+        blockedOccurrenceIds: uniqueSortedStrings(blockedOccurrenceIds)
+      });
+    }
+  }
+
+  const occurrenceById = new Map(confirmedOccurrences.map((occurrence) => [occurrence.occurrenceId, occurrence]));
+  const blockedLines = [...blockedConfirmedOccurrenceIds]
+    .sort()
+    .map((occurrenceId) => {
+      const occurrence = occurrenceById.get(occurrenceId) || {};
+      const conflict = conflicts.find((item) => item.blockedOccurrenceIds?.includes(occurrenceId));
+      return {
+        ...occurrence,
+        blockedByConflictId: conflict?.conflictId || null,
+        counterpartCodes: conflict
+          ? [conflict.codeA, conflict.codeB].filter((code) => code && code !== occurrence.code)
+          : [],
+        resolution: conflict?.resolution || null,
+        reason: blockedReasonByOccurrenceId.get(occurrenceId) || "電子点数表の背反により提出対象から除外しました。"
+      };
+    });
+  const sortedConflicts = conflicts.sort((left, right) => (
+    String(left.scopeKey || "").localeCompare(String(right.scopeKey || ""))
+    || String(left.pairKey || left.conflictId || "").localeCompare(String(right.pairKey || right.conflictId || ""))
+  ));
+  return {
+    constraintsStatus,
+    conflicts: sortedConflicts,
+    blockedLines,
+    blockedConfirmedOccurrenceIds,
+    suppressedCandidateOccurrenceIds,
+    unresolvedConflictCount: sortedConflicts.filter((conflict) => conflict.blockingExport).length,
+    complexComponentCount
+  };
+}
+
+function scopedOccurrencePairs(occurrences, rule, claimMonth) {
+  const codeA = occurrences.filter((occurrence) => (
+    occurrence.code === rule.codeA && occurrenceFallsWithinExclusionRule(occurrence, rule)
+  ));
+  const codeB = occurrences.filter((occurrence) => (
+    occurrence.code === rule.codeB && occurrenceFallsWithinExclusionRule(occurrence, rule)
+  ));
+  if (!codeA.length || !codeB.length) {
+    return [];
+  }
+  if (rule.scope === "same_month") {
+    return [{
+      scopeKey: String(claimMonth || codeA[0]?.serviceDate || codeB[0]?.serviceDate || "").slice(0, 7),
+      occurrences: [...codeA, ...codeB]
+    }];
+  }
+  const keyFor = rule.scope === "same_week"
+    ? billingWeekSundayKey
+    : (value) => String(value || "");
+  const aByKey = groupOccurrencesByScopeKey(codeA, keyFor);
+  const bByKey = groupOccurrencesByScopeKey(codeB, keyFor);
+  return [...aByKey.keys()]
+    .filter((scopeKey) => scopeKey && bByKey.has(scopeKey))
+    .sort()
+    .map((scopeKey) => ({
+      scopeKey,
+      occurrences: [...aByKey.get(scopeKey), ...bByKey.get(scopeKey)]
+    }));
+}
+
+function occurrenceFallsWithinExclusionRule(occurrence, rule) {
+  const effectiveFrom = String(rule.effectiveFrom || "");
+  const effectiveTo = String(rule.effectiveTo || "");
+  if (!effectiveFrom && !effectiveTo) {
+    return true;
+  }
+  const serviceDate = String(occurrence.serviceDate || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(serviceDate)) {
+    return false;
+  }
+  return (!effectiveFrom || serviceDate >= effectiveFrom)
+    && (!effectiveTo || serviceDate <= effectiveTo);
+}
+
+function groupOccurrencesByScopeKey(occurrences, keyFor) {
+  const grouped = new Map();
+  for (const occurrence of occurrences) {
+    const scopeKey = keyFor(occurrence.serviceDate);
+    if (!scopeKey) {
+      continue;
+    }
+    if (!grouped.has(scopeKey)) {
+      grouped.set(scopeKey, []);
+    }
+    grouped.get(scopeKey).push(occurrence);
+  }
+  return grouped;
+}
+
+// 診療報酬上の週境界は日曜日から土曜日。月次背反と履歴集計で同じ関数を使う。
+// https://www.mhlw.go.jp/web/t_doc?dataId=00tc4894&dataType=1&pageNo=1
+export function billingWeekSundayKey(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(String(value || ""));
+  if (!match) {
+    return "";
+  }
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  date.setUTCDate(date.getUTCDate() - date.getUTCDay());
+  return date.toISOString().slice(0, 10);
+}
+
+function exclusionGraphComponents(edges = []) {
+  const adjacency = new Map();
+  for (const { rule } of edges) {
+    if (!adjacency.has(rule.codeA)) adjacency.set(rule.codeA, new Set());
+    if (!adjacency.has(rule.codeB)) adjacency.set(rule.codeB, new Set());
+    adjacency.get(rule.codeA).add(rule.codeB);
+    adjacency.get(rule.codeB).add(rule.codeA);
+  }
+  const visited = new Set();
+  const components = [];
+  for (const start of [...adjacency.keys()].sort()) {
+    if (visited.has(start)) continue;
+    const codes = new Set();
+    const queue = [start];
+    while (queue.length) {
+      const code = queue.shift();
+      if (visited.has(code)) continue;
+      visited.add(code);
+      codes.add(code);
+      queue.push(...[...(adjacency.get(code) || [])].sort());
+    }
+    components.push({ codes });
+  }
+  return components;
+}
+
+function defaultBlockedMonthlyCodes(rule, codeAOccurrences, codeBOccurrences) {
+  if (rule.resolution === "auto_winner") {
+    return new Set([rule.winnerCode === rule.codeA ? rule.codeB : rule.codeA]);
+  }
+  if (rule.resolution !== "demote_lower_points") {
+    return new Set();
+  }
+  const aPoints = uniqueSortedNumbers(codeAOccurrences.map((item) => item.points));
+  const bPoints = uniqueSortedNumbers(codeBOccurrences.map((item) => item.points));
+  if (aPoints.length !== 1 || bPoints.length !== 1 || aPoints[0] === bPoints[0]) {
+    return new Set();
+  }
+  return new Set([aPoints[0] < bPoints[0] ? rule.codeA : rule.codeB]);
+}
+
+function appliedMonthlyExclusionAction(rule, action, defaultBlockedCodes) {
+  if (action === "reject_both") return { blockedCodes: new Set([rule.codeA, rule.codeB]) };
+  if (action === "choose_a") return { blockedCodes: new Set([rule.codeB]) };
+  if (action === "choose_b") return { blockedCodes: new Set([rule.codeA]) };
+  if (action === "allow_both_with_basis") return { blockedCodes: new Set() };
+  return { blockedCodes: new Set(defaultBlockedCodes) };
+}
+
+function defaultMonthlyExclusionAction(rule, blockedCodes) {
+  if (rule.resolution === "auto_winner") return "acknowledge_auto";
+  if (rule.resolution === "demote_lower_points") {
+    if (blockedCodes.has(rule.codeB)) return "choose_a";
+    if (blockedCodes.has(rule.codeA)) return "choose_b";
+  }
+  return null;
+}
+
+export function allowedMonthlyExclusionActions(resolution) {
+  return {
+    auto_winner: ["acknowledge_auto", "reject_both"],
+    demote_lower_points: ["choose_a", "choose_b", "reject_both"],
+    conditional_review: ["choose_a", "choose_b", "allow_both_with_basis", "reject_both"],
+    unsupported_rule_kind: []
+  }[resolution] || [];
+}
+
+function validMonthlyExclusionAction(resolution, action) {
+  return allowedMonthlyExclusionActions(resolution).includes(String(action || ""));
+}
+
+function monthlyExclusionPairKey(rule) {
+  return `${rule.scope}:${rule.codeA}:${rule.codeB}`;
+}
+
+function monthlyExclusionResolutionKey(value) {
+  return [
+    value.pairKey || monthlyExclusionPairKey(value),
+    value.scopeKey || "",
+    value.ruleFingerprint || ""
+  ].join("|");
+}
+
+function monthlyExclusionConflictId(rule, scopeKey) {
+  return `mex_${crypto.createHash("sha256")
+    .update(monthlyExclusionResolutionKey({
+      pairKey: monthlyExclusionPairKey(rule),
+      scopeKey,
+      ruleFingerprint: rule.ruleFingerprint
+    }))
+    .digest("hex")
+    .slice(0, 24)}`;
+}
+
+function monthlyExclusionComponentId(scope, scopeKey, codes) {
+  return `mexc_${crypto.createHash("sha256")
+    .update(`${scope}|${scopeKey}|${[...codes].sort().join("|")}`)
+    .digest("hex")
+    .slice(0, 24)}`;
+}
+
+function monthlyExclusionReason(occurrence, rule, scope) {
+  const counterpartName = occurrence.code === rule.codeA
+    ? (rule.codeBName || rule.codeB)
+    : (rule.codeAName || rule.codeA);
+  const scopeLabel = { same_month: "月", same_day: "日", same_week: "週" }[scope] || "期間";
+  return `${occurrence.name || occurrence.code}(${occurrence.serviceDate || "日付未設定"})は同一${scopeLabel}の${counterpartName}と併算定できません(電子点数表背反)。`;
+}
+
+function monthlyExclusionConflictSummary(conflict) {
+  return compactObject({
+    conflictId: conflict.conflictId,
+    scope: conflict.scope,
+    scopeKey: conflict.scopeKey,
+    withCodes: [conflict.codeA, conflict.codeB].filter(Boolean),
+    resolution: conflict.resolution,
+    status: conflict.status,
+    reason: conflict.reason
+  });
+}
+
+function monthlyExclusionRuleOrder(left, right) {
+  return String(left.scope || "").localeCompare(String(right.scope || ""))
+    || String(left.codeA || "").localeCompare(String(right.codeA || ""))
+    || String(left.codeB || "").localeCompare(String(right.codeB || ""))
+    || String(left.ruleFingerprint || "").localeCompare(String(right.ruleFingerprint || ""));
+}
+
+function monthlyExclusionBucketOrder(left, right) {
+  return String(left.scope || "").localeCompare(String(right.scope || ""))
+    || String(left.scopeKey || "").localeCompare(String(right.scopeKey || ""));
+}
+
+function uniqueSortedNumbers(values = []) {
+  return [...new Set(values.map(Number).filter(Number.isFinite))].sort((left, right) => left - right);
 }
 
 function normalizeProposalMonthlyLimit(value) {
@@ -709,6 +1240,22 @@ export function buildReceiptExportValidation(receiptDraft = {}, context = {}) {
     "receiptDraft.pendingReviewCount",
     "error",
     `未確認の算定候補が${Number(receiptDraft.pendingReviewCount || 0)}件あります。採用または却下を確定してください。`
+  );
+  addReceiptValidationIssue(
+    issues,
+    receiptDraft.exclusionMode === "enforce"
+      && receiptDraft.exclusionConstraintsStatus !== "complete",
+    "receiptDraft.exclusionConstraintsStatus",
+    "error",
+    "電子点数表の背反マスタを完全に評価できないため、月次レセプトを出力できません。"
+  );
+  addReceiptValidationIssue(
+    issues,
+    receiptDraft.exclusionMode === "enforce"
+      && Number(receiptDraft.unresolvedExclusionCount || 0) > 0,
+    "receiptDraft.unresolvedExclusionCount",
+    "error",
+    `未解決の電子点数表背反が${Number(receiptDraft.unresolvedExclusionCount || 0)}件あります。背反の確認を完了してください。`
   );
   for (const [index, line] of lines.entries()) {
     addReceiptValidationIssue(issues, !line.code, `lines[${index}].code`, severityFor("lineCode", "warning"), "診療行為・薬剤・材料コードが未設定の明細があります。");

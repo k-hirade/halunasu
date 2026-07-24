@@ -17,6 +17,7 @@ import {
   collections,
   feeBillingHistoryPath,
   feeExtractionSnapshotPath,
+  feeMonthlyExclusionResolutionPath,
   feeStandingBillingProfilePath,
   feeSettingsPath,
   feeSessionPath,
@@ -751,6 +752,66 @@ export class FirestoreFeeStore {
     return { monthlyBulkJob: updated };
   }
 
+  async listMonthlyExclusionResolutions(orgId, patientId, claimMonth) {
+    const snapshot = await this.orgCollection(orgId, collections.feeMonthlyExclusionResolutions)
+      .where("patientId", "==", String(patientId || ""))
+      .get();
+    return docsFromSnapshot(snapshot)
+      .filter((resolution) => resolution.claimMonth === String(claimMonth || ""))
+      .sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || "")));
+  }
+
+  async getMonthlyExclusionResolution(orgId, resolutionId) {
+    return docDataOrNull(
+      await this.doc(feeMonthlyExclusionResolutionPath(orgId, resolutionId)).get()
+    );
+  }
+
+  async putMonthlyExclusionResolution(orgId, resolutionId, input = {}, options = {}) {
+    requireFirestoreTransactions(this.db);
+    const ref = this.doc(feeMonthlyExclusionResolutionPath(orgId, resolutionId));
+    return this.db.runTransaction(async (transaction) => {
+      const current = docDataOrNull(await transaction.get(ref));
+      if (!current && input.revoke) {
+        throw notFoundError("monthly exclusion resolution not found");
+      }
+      if (
+        current
+        && !input.revoke
+        && current.action === input.action
+        && String(current.basisNote || "") === String(input.basisNote || "")
+        && !current.revokedAt
+      ) {
+        return { previous: current, resolution: current, changed: false };
+      }
+      if (current?.revokedAt && input.revoke) {
+        return { previous: current, resolution: current, changed: false };
+      }
+      assertMonthlyResolutionVersion(current, options.expectedUpdatedAt);
+      const now = this.timestamp();
+      const updated = sanitizeForFirestore(input.revoke
+        ? {
+          ...current,
+          revokedAt: current.revokedAt || now,
+          revokedByMemberId: input.resolvedByMemberId || null,
+          updatedAt: now
+        }
+        : {
+          ...current,
+          ...input,
+          resolutionId,
+          orgId,
+          revokedAt: null,
+          resolvedAt: now,
+          createdAt: current?.createdAt || now,
+          updatedAt: now,
+          schemaVersion: 1
+        });
+      transaction.set(ref, updated);
+      return { previous: current, resolution: updated, changed: true };
+    });
+  }
+
   async getFeeSettings(orgId, facilityId = "default") {
     return docDataOrNull(await this.doc(feeSettingsPath(orgId, facilityId || "default")).get());
   }
@@ -1187,6 +1248,16 @@ function conflictError(message) {
   error.name = "ConflictError";
   error.statusCode = 409;
   return error;
+}
+
+function assertMonthlyResolutionVersion(current, expectedUpdatedAt) {
+  const expected = String(expectedUpdatedAt || "");
+  if (!current && !expected) {
+    return;
+  }
+  if (!current || !expected || String(current.updatedAt || "") !== expected) {
+    throw conflictError("monthly exclusion resolution was updated by another user");
+  }
 }
 
 function requireFirestoreTransactions(db) {

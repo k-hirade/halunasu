@@ -577,8 +577,10 @@ function MonthlyReceiptModal({ claimMonth, onClose, patient }) {
   const [receiptDraft, setReceiptDraft] = useState(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [savingConflictId, setSavingConflictId] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [noticeMessage, setNoticeMessage] = useState("");
+  const [resolutionEdits, setResolutionEdits] = useState({});
   const [ukeEncoding, setUkeEncoding] = useState("shift_jis");
   const patientId = patient?.patientId || "";
   const patientName = patient?.patientName || patientId || "患者未設定";
@@ -589,6 +591,11 @@ function MonthlyReceiptModal({ claimMonth, onClose, patient }) {
     patientSnapshot: { displayName: patientName },
     serviceDate: receiptDraft?.serviceDate || ""
   }), [claimMonth, patientId, patientName, receiptDraft?.serviceDate]);
+  const fetchReceiptDraft = useCallback(async () => {
+    const params = new URLSearchParams({ patientId, claimMonth });
+    const response = await feeApi(`/v1/fee/monthly-receipt?${params.toString()}`);
+    return response?.receiptDraft || null;
+  }, [claimMonth, feeApi, patientId]);
 
   useEffect(() => {
     function handleKeyDown(event) {
@@ -610,12 +617,12 @@ function MonthlyReceiptModal({ claimMonth, onClose, patient }) {
     setLoading(true);
     setErrorMessage("");
     setNoticeMessage("");
+    setResolutionEdits({});
     (async () => {
       try {
-        const params = new URLSearchParams({ patientId, claimMonth });
-        const response = await feeApi(`/v1/fee/monthly-receipt?${params.toString()}`);
+        const nextReceiptDraft = await fetchReceiptDraft();
         if (!cancelled) {
-          setReceiptDraft(response?.receiptDraft || null);
+          setReceiptDraft(nextReceiptDraft);
         }
       } catch (error) {
         if (!cancelled) {
@@ -629,7 +636,107 @@ function MonthlyReceiptModal({ claimMonth, onClose, patient }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [claimMonth, feeApi, patientId]);
+  }, [claimMonth, fetchReceiptDraft, patientId]);
+
+  function updateResolutionEdit(conflict, patch) {
+    setResolutionEdits((current) => ({
+      ...current,
+      [conflict.conflictId]: {
+        action: current[conflict.conflictId]?.action
+          ?? conflict.action
+          ?? conflict.defaultAction
+          ?? "",
+        basisNote: current[conflict.conflictId]?.basisNote
+          ?? conflict.basisNote
+          ?? "",
+        ...patch
+      }
+    }));
+  }
+
+  function resolutionEdit(conflict) {
+    return resolutionEdits[conflict.conflictId] || {
+      action: conflict.action || conflict.defaultAction || "",
+      basisNote: conflict.basisNote || ""
+    };
+  }
+
+  async function saveExclusionResolution(conflict) {
+    const edit = resolutionEdit(conflict);
+    if (!edit.action) {
+      setErrorMessage("算定する明細を選択してください。");
+      return;
+    }
+    if (edit.action === "allow_both_with_basis" && !String(edit.basisNote || "").trim()) {
+      setErrorMessage("両方を算定する根拠を入力してください。");
+      return;
+    }
+    setSavingConflictId(conflict.conflictId);
+    setErrorMessage("");
+    setNoticeMessage("");
+    try {
+      await feeApi("/v1/fee/monthly-exclusion-resolutions", {
+        method: "PUT",
+        csrf: true,
+        body: {
+          patientId,
+          claimMonth,
+          pairKey: conflict.pairKey,
+          scopeKey: conflict.scopeKey,
+          ruleFingerprint: conflict.ruleFingerprint,
+          resolution: conflict.resolution,
+          action: edit.action,
+          basisNote: edit.action === "allow_both_with_basis"
+            ? String(edit.basisNote || "").trim()
+            : undefined,
+          expectedUpdatedAt: conflict.resolutionUpdatedAt || undefined
+        }
+      });
+      setReceiptDraft(await fetchReceiptDraft());
+      setResolutionEdits((current) => {
+        const next = { ...current };
+        delete next[conflict.conflictId];
+        return next;
+      });
+      setNoticeMessage("背反の確認内容を保存しました。");
+    } catch (error) {
+      setErrorMessage(toUserFacingErrorMessage(error, "背反の確認内容を保存できませんでした。"));
+    } finally {
+      setSavingConflictId("");
+    }
+  }
+
+  async function revokeExclusionResolution(conflict) {
+    setSavingConflictId(conflict.conflictId);
+    setErrorMessage("");
+    setNoticeMessage("");
+    try {
+      await feeApi("/v1/fee/monthly-exclusion-resolutions", {
+        method: "PUT",
+        csrf: true,
+        body: {
+          patientId,
+          claimMonth,
+          pairKey: conflict.pairKey,
+          scopeKey: conflict.scopeKey,
+          ruleFingerprint: conflict.ruleFingerprint,
+          expectedUpdatedAt: conflict.resolutionUpdatedAt || undefined,
+          revoke: true
+        }
+      });
+      setReceiptDraft(await fetchReceiptDraft());
+      setResolutionEdits((current) => {
+        const next = { ...current };
+        delete next[conflict.conflictId];
+        return next;
+      });
+      setNoticeMessage("背反の確認を取り消しました。");
+    } catch (error) {
+      setErrorMessage(toUserFacingErrorMessage(error, "背反の確認を取り消せませんでした。"));
+    } finally {
+      setSavingConflictId("");
+    }
+  }
 
   async function runExportTask(task, successMessage) {
     setBusy(true);
@@ -651,7 +758,12 @@ function MonthlyReceiptModal({ claimMonth, onClose, patient }) {
     }
   }
 
-  const exportDisabled = busy || loading || !receiptDraft || !patientId || !claimMonth;
+  const previewDisabled = busy || loading || !receiptDraft || !patientId || !claimMonth;
+  const exclusionBlocksExport = receiptDraft?.exclusionMode === "enforce" && (
+    receiptDraft?.exclusionConstraintsStatus !== "complete"
+    || Number(receiptDraft?.unresolvedExclusionCount || 0) > 0
+  );
+  const machineExportDisabled = previewDisabled || exclusionBlocksExport;
 
   return (
     <div className="fee-modal-overlay" role="presentation" onMouseDown={onClose}>
@@ -666,12 +778,12 @@ function MonthlyReceiptModal({ claimMonth, onClose, patient }) {
         </header>
         <div className="fee-modal-body monthly-receipt-modal-body">
           <div className="monthly-receipt-actions" aria-label="月次レセプト出力">
-            <button className="btn btn--ghost btn--sm" disabled={exportDisabled} onClick={printReceiptDraft} type="button">
+            <button className="btn btn--ghost btn--sm" disabled={previewDisabled} onClick={printReceiptDraft} type="button">
               印刷/PDF
             </button>
             <button
               className="btn btn--ghost btn--sm"
-              disabled={exportDisabled}
+              disabled={previewDisabled}
               onClick={() => runExportTask(async () => {
                 const text = formatReceiptDraftForClipboard({ feeSession: receiptFeeSession, receiptDraft });
                 await writeClipboardText(text);
@@ -682,7 +794,7 @@ function MonthlyReceiptModal({ claimMonth, onClose, patient }) {
             </button>
             <button
               className="btn btn--ghost btn--sm"
-              disabled={exportDisabled}
+              disabled={machineExportDisabled}
               onClick={() => runExportTask(() => downloadMonthlyReceiptCsvFile(patientId, claimMonth), "月次レセプトCSVをダウンロードしました。")}
               type="button"
             >
@@ -692,7 +804,7 @@ function MonthlyReceiptModal({ claimMonth, onClose, patient }) {
               <select
                 className="receipt-uke-encoding"
                 aria-label="レセ電の文字コード"
-                disabled={exportDisabled}
+                disabled={machineExportDisabled}
                 value={ukeEncoding}
                 onChange={(event) => setUkeEncoding(event.target.value)}
               >
@@ -701,7 +813,7 @@ function MonthlyReceiptModal({ claimMonth, onClose, patient }) {
               </select>
               <button
                 className="btn btn--ghost btn--sm"
-                disabled={exportDisabled}
+                disabled={machineExportDisabled}
                 onClick={() => runExportTask(() => downloadMonthlyReceiptUkeFile(patientId, claimMonth, ukeEncoding), "月次レセプト電算(UKE)をダウンロードしました。")}
                 type="button"
               >
@@ -711,6 +823,16 @@ function MonthlyReceiptModal({ claimMonth, onClose, patient }) {
           </div>
           {errorMessage ? <div className="inline-error" role="status">{errorMessage}</div> : null}
           {noticeMessage ? <div className="inline-success" role="status">{noticeMessage}</div> : null}
+          {!loading && receiptDraft ? (
+            <MonthlyExclusionReview
+              receiptDraft={receiptDraft}
+              savingConflictId={savingConflictId}
+              resolutionEdit={resolutionEdit}
+              onEdit={updateResolutionEdit}
+              onSave={saveExclusionResolution}
+              onRevoke={revokeExclusionResolution}
+            />
+          ) : null}
           {loading ? (
             <div className="fee-empty-state">月次レセプト案を作成しています…</div>
           ) : (
@@ -723,6 +845,180 @@ function MonthlyReceiptModal({ claimMonth, onClose, patient }) {
       </section>
     </div>
   );
+}
+
+function MonthlyExclusionReview({
+  receiptDraft,
+  savingConflictId,
+  resolutionEdit,
+  onEdit,
+  onSave,
+  onRevoke
+}) {
+  const mode = receiptDraft?.exclusionMode || "off";
+  const conflicts = Array.isArray(receiptDraft?.exclusionConflicts)
+    ? receiptDraft.exclusionConflicts
+    : [];
+  const constraintsComplete = receiptDraft?.exclusionConstraintsStatus === "complete";
+  if (mode === "off" || (!conflicts.length && constraintsComplete)) {
+    return null;
+  }
+  const enforce = mode === "enforce";
+  const unresolvedCount = Number(receiptDraft?.unresolvedExclusionCount || 0);
+
+  return (
+    <section className="monthly-exclusion-review" aria-labelledby="monthly-exclusion-heading">
+      <header className="monthly-exclusion-review-head">
+        <div>
+          <h3 id="monthly-exclusion-heading">背反の確認</h3>
+          <p>
+            {enforce
+              ? `同じ請求月で併算定できない組み合わせを確認します。未確認 ${unresolvedCount}件。`
+              : "電子点数表の背反候補を試行表示しています。現在の明細と出力内容は変更しません。"}
+          </p>
+        </div>
+        <span className={`monthly-exclusion-mode ${enforce ? "is-enforce" : "is-shadow"}`}>
+          {enforce ? "適用中" : "確認のみ"}
+        </span>
+      </header>
+
+      {!constraintsComplete ? (
+        <div className="inline-error" role="status">
+          電子点数表の背反マスタを完全に確認できないため、CSV・UKEを出力できません。
+        </div>
+      ) : null}
+
+      {conflicts.length ? (
+        <div className="monthly-exclusion-list">
+          {conflicts.map((conflict) => {
+            const edit = resolutionEdit(conflict);
+            const saving = savingConflictId === conflict.conflictId;
+            const resolved = conflict.status === "resolved";
+            return (
+              <article className="monthly-exclusion-row" key={conflict.conflictId}>
+                <div className="monthly-exclusion-row-main">
+                  <div>
+                    <strong>{monthlyExclusionConflictTitle(conflict)}</strong>
+                    <small>
+                      {monthlyExclusionScopeLabel(conflict.scope, conflict.scopeKey)}
+                      {Array.isArray(conflict.serviceDates) && conflict.serviceDates.length
+                        ? ` / ${conflict.serviceDates.join("・")}`
+                        : ""}
+                    </small>
+                  </div>
+                  <span className={`monthly-exclusion-status ${resolved ? "is-resolved" : ""}`}>
+                    {resolved ? "確認済み" : "未確認"}
+                  </span>
+                </div>
+
+                {conflict.complex ? (
+                  <div className="monthly-exclusion-complex">
+                    <p>{conflict.reason}</p>
+                    <div className="monthly-exclusion-session-links">
+                      {(Array.isArray(conflict.feeSessionIds) ? conflict.feeSessionIds : []).map((sessionId) => (
+                        <a className="btn btn--ghost btn--sm" href={`/sessions/${encodeURIComponent(sessionId)}`} key={sessionId}>
+                          算定画面で採否を変更
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {conflict.resolution === "unsupported_rule_kind" ? (
+                      <div className="monthly-exclusion-complex">
+                        <p>
+                          この背反区分は現在のシステムでは解決できません。マスタまたは算定ロジックの対応後に出力してください。
+                        </p>
+                      </div>
+                    ) : null}
+                    <div className="monthly-exclusion-actions" role="group" aria-label="算定する明細">
+                      {(Array.isArray(conflict.allowedActions) ? conflict.allowedActions : []).map((action) => (
+                        <button
+                          aria-pressed={edit.action === action}
+                          className={`monthly-exclusion-action ${edit.action === action ? "is-selected" : ""}`}
+                          disabled={!enforce || saving}
+                          key={action}
+                          onClick={() => onEdit(conflict, { action })}
+                          type="button"
+                        >
+                          {monthlyExclusionActionLabel(action, conflict)}
+                        </button>
+                      ))}
+                    </div>
+                    {edit.action === "allow_both_with_basis" ? (
+                      <label className="monthly-exclusion-basis">
+                        <span>併算定する根拠</span>
+                        <textarea
+                          disabled={!enforce || saving}
+                          maxLength={5000}
+                          onChange={(event) => onEdit(conflict, { basisNote: event.target.value })}
+                          placeholder="実施事実・算定要件・別部位など、併算定できる根拠を記載"
+                          rows={2}
+                          value={edit.basisNote}
+                        />
+                      </label>
+                    ) : null}
+                    {enforce && (conflict.allowedActions || []).length ? (
+                      <div className="monthly-exclusion-commands">
+                        <button
+                          className="btn btn--primary btn--sm"
+                          disabled={saving || !edit.action}
+                          onClick={() => onSave(conflict)}
+                          type="button"
+                        >
+                          {saving ? "保存中…" : "確認内容を保存"}
+                        </button>
+                        {resolved ? (
+                          <button
+                            className="btn btn--ghost btn--sm"
+                            disabled={saving}
+                            onClick={() => onRevoke(conflict)}
+                            type="button"
+                          >
+                            確認を取り消す
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function monthlyExclusionConflictTitle(conflict = {}) {
+  if (conflict.complex) {
+    return `複数明細の組み合わせ確認: ${(conflict.codes || []).join(" / ")}`;
+  }
+  const codeA = conflict.codeAName || conflict.codeA || "明細A";
+  const codeB = conflict.codeBName || conflict.codeB || "明細B";
+  return `${codeA} / ${codeB}`;
+}
+
+function monthlyExclusionScopeLabel(scope, scopeKey) {
+  const label = {
+    same_month: "同月",
+    same_day: "同日",
+    same_week: "同一週"
+  }[scope] || "同期間";
+  return scopeKey ? `${label} (${scopeKey})` : label;
+}
+
+function monthlyExclusionActionLabel(action, conflict = {}) {
+  const codeA = conflict.codeAName || conflict.codeA || "明細A";
+  const codeB = conflict.codeBName || conflict.codeB || "明細B";
+  return {
+    acknowledge_auto: `${conflict.winnerCode === conflict.codeB ? codeB : codeA}を算定`,
+    choose_a: `${codeA}を算定`,
+    choose_b: `${codeB}を算定`,
+    allow_both_with_basis: "根拠を記載して両方算定",
+    reject_both: "両方算定しない"
+  }[action] || action;
 }
 
 function MonthlySkeleton() {

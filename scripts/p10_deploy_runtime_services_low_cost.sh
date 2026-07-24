@@ -219,6 +219,7 @@ deploy_env() {
   local fee_standing_facts="${FEE_STANDING_FACTS:-false}"
   local fee_empty_extraction_retry="false"
   local fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS:-30}"
+  local fee_monthly_exclusion_mode="${FEE_MONTHLY_EXCLUSION_MODE:-off}"
 
   if [[ "${env}" == "stg" ]]; then
     session_cookie_name="halunasu_stg_session"
@@ -233,6 +234,7 @@ deploy_env() {
     fee_standing_facts="${FEE_STANDING_FACTS_STG:-${fee_standing_facts}}"
     fee_empty_extraction_retry="${FEE_EMPTY_EXTRACTION_RETRY_STG:-true}"
     fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS_STG:-${fee_extraction_snapshot_retention_days}}"
+    fee_monthly_exclusion_mode="${FEE_MONTHLY_EXCLUSION_MODE_STG:-${fee_monthly_exclusion_mode}}"
   else
     sidecar_enabled="${HOMIS_SIDECAR_ENABLED_PROD:-${sidecar_enabled}}"
     sidecar_allowed_extension_ids="${HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS_PROD:-${sidecar_allowed_extension_ids}}"
@@ -244,6 +246,7 @@ deploy_env() {
     fee_standing_facts="${FEE_STANDING_FACTS_PROD:-${fee_standing_facts}}"
     fee_empty_extraction_retry="${FEE_EMPTY_EXTRACTION_RETRY_PROD:-false}"
     fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS_PROD:-${fee_extraction_snapshot_retention_days}}"
+    fee_monthly_exclusion_mode="${FEE_MONTHLY_EXCLUSION_MODE_PROD:-${fee_monthly_exclusion_mode}}"
   fi
 
   if [[ "${fee_extraction_memo}" != "true" && "${fee_extraction_memo}" != "false" ]]; then
@@ -261,6 +264,12 @@ deploy_env() {
   if [[ ! "${fee_extraction_snapshot_retention_days}" =~ ^[0-9]+$ ]] \
     || (( fee_extraction_snapshot_retention_days < 1 || fee_extraction_snapshot_retention_days > 90 )); then
     echo "Fee extraction snapshot retention for ${env} must be an integer from 1 to 90 days." >&2
+    return 1
+  fi
+  if [[ "${fee_monthly_exclusion_mode}" != "off" \
+    && "${fee_monthly_exclusion_mode}" != "shadow" \
+    && "${fee_monthly_exclusion_mode}" != "enforce" ]]; then
+    echo "FEE_MONTHLY_EXCLUSION_MODE for ${env} must be off, shadow, or enforce." >&2
     return 1
   fi
 
@@ -438,6 +447,7 @@ deploy_env() {
     "FEE_STANDING_FACTS=${fee_standing_facts}" \
     "FEE_EMPTY_EXTRACTION_RETRY=${fee_empty_extraction_retry}" \
     "FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS=${fee_extraction_snapshot_retention_days}" \
+    "FEE_MONTHLY_EXCLUSION_MODE=${fee_monthly_exclusion_mode}" \
     "HOMIS_SIDECAR_ENABLED=${sidecar_enabled}" \
     "HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS=${sidecar_allowed_extension_ids}" \
     "HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS=${sidecar_allowed_selector_contract_versions}" \

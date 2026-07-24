@@ -8,6 +8,7 @@ import {
   buildCandidateWorkbench,
   buildReceiptDraft,
   buildMonthlyReceiptDraft,
+  evaluateMonthlyExclusions,
   buildReceiptDenshin,
   buildReceiptExportValidation,
   serializeUke,
@@ -1657,6 +1658,375 @@ test("monthly receipt aggregates pending candidate proposals into a second tier"
   // 却下済みは候補に出ない
   assert.ok(!receipt.candidateLines.some((line) => line.code === "199999999"));
   assert.equal(receipt.candidateTotalPoints, 200 + 890);
+});
+
+test("monthly exclusion enforcement blocks only the conflicting same-day occurrence", () => {
+  function session(feeSessionId, serviceDate, lines) {
+    return applyCalculationResult(buildFeeSession({
+      orgId: "org_123",
+      patientId: "pat_monthly_exclusion",
+      facilityId: "fac_123",
+      createdByMemberId: "mem_123",
+      serviceDate
+    }, { feeSessionId, now: `${serviceDate}T00:00:00.000Z` }), {
+      provider: "test",
+      status: "completed",
+      totalPoints: lines.reduce((sum, line) => sum + line.totalPoints, 0),
+      lineItems: lines.map((line) => ({ ...line, status: "confirmed", orderType: "procedure", quantity: 1 })),
+      warnings: []
+    }, { calculationId: `calc_${feeSessionId}`, now: `${serviceDate}T00:01:00.000Z` });
+  }
+  const rules = {
+    status: "complete",
+    sourceId: 7,
+    sourceVersion: "2026-06-01",
+    rules: [{
+      scope: "same_day",
+      codeA: "100",
+      codeAName: "処置A",
+      codeB: "200",
+      codeBName: "処置B",
+      resolution: "auto_winner",
+      winnerCode: "200",
+      specialCondition: "0",
+      ruleFingerprint: "fp-day"
+    }]
+  };
+  const sessions = [
+    session("fee_day_1", "2026-07-01", [
+      { code: "100", name: "処置A", points: 40, totalPoints: 40 },
+      { code: "200", name: "処置B", points: 90, totalPoints: 90 }
+    ]),
+    session("fee_day_2", "2026-07-08", [
+      { code: "100", name: "処置A", points: 40, totalPoints: 40 }
+    ])
+  ];
+
+  const unresolved = buildMonthlyReceiptDraft(sessions, {
+    patientId: "pat_monthly_exclusion",
+    claimMonth: "2026-07",
+    monthlyExclusionMode: "enforce",
+    actExclusionRules: rules
+  });
+  assert.equal(unresolved.totalPoints, 130);
+  assert.equal(unresolved.lines.find((line) => line.code === "100").quantity, 1);
+  assert.deepEqual(unresolved.lines.find((line) => line.code === "100").serviceDates, ["2026-07-08"]);
+  assert.equal(unresolved.blockedLines.length, 1);
+  assert.equal(unresolved.blockedLines[0].serviceDate, "2026-07-01");
+  assert.equal(unresolved.unresolvedExclusionCount, 1);
+
+  const resolved = buildMonthlyReceiptDraft(sessions, {
+    patientId: "pat_monthly_exclusion",
+    claimMonth: "2026-07",
+    monthlyExclusionMode: "enforce",
+    actExclusionRules: rules,
+    monthlyExclusionResolutions: [{
+      pairKey: "same_day:100:200",
+      scopeKey: "2026-07-01",
+      ruleFingerprint: "fp-day",
+      action: "acknowledge_auto"
+    }]
+  });
+  assert.equal(resolved.unresolvedExclusionCount, 0);
+  assert.ok(!resolved.lineGroups.flatMap((group) => group.lines)
+    .some((line) => line.code === "100" && line.serviceDates.includes("2026-07-01")));
+
+  const revoked = buildMonthlyReceiptDraft(sessions, {
+    patientId: "pat_monthly_exclusion",
+    claimMonth: "2026-07",
+    monthlyExclusionMode: "enforce",
+    actExclusionRules: rules,
+    monthlyExclusionResolutions: [{
+      pairKey: "same_day:100:200",
+      scopeKey: "2026-07-01",
+      ruleFingerprint: "fp-day",
+      action: "acknowledge_auto",
+      revokedAt: "2026-07-31T00:00:00.000Z",
+      updatedAt: "2026-07-31T00:00:00.000Z"
+    }]
+  });
+  assert.equal(revoked.unresolvedExclusionCount, 1);
+  assert.equal(revoked.exclusionConflicts[0].action, null);
+  assert.equal(revoked.exclusionConflicts[0].resolutionUpdatedAt, "2026-07-31T00:00:00.000Z");
+
+  const shadow = buildMonthlyReceiptDraft(sessions, {
+    patientId: "pat_monthly_exclusion",
+    claimMonth: "2026-07",
+    monthlyExclusionMode: "shadow",
+    actExclusionRules: rules
+  });
+  assert.equal(shadow.totalPoints, 170);
+  assert.equal(shadow.blockedLines.length, 0);
+  assert.equal(shadow.blockedLinesPreview.length, 1);
+});
+
+test("monthly exclusions do not affect occurrences outside the rule effective period", () => {
+  const evaluation = evaluateMonthlyExclusions({
+    claimMonth: "2026-07",
+    confirmedOccurrences: [
+      {
+        occurrenceId: "a-before",
+        code: "100",
+        name: "処置A",
+        serviceDate: "2026-07-01",
+        points: 40
+      },
+      {
+        occurrenceId: "a-after",
+        code: "100",
+        name: "処置A",
+        serviceDate: "2026-07-08",
+        points: 40
+      },
+      {
+        occurrenceId: "b-after",
+        code: "200",
+        name: "処置B",
+        serviceDate: "2026-07-08",
+        points: 90
+      }
+    ],
+    rulesEnvelope: {
+      status: "complete",
+      rules: [{
+        scope: "same_month",
+        codeA: "100",
+        codeB: "200",
+        resolution: "auto_winner",
+        winnerCode: "200",
+        ruleFingerprint: "fp-mid-month",
+        effectiveFrom: "2026-07-05",
+        effectiveTo: "9999-12-31"
+      }]
+    }
+  });
+
+  assert.deepEqual([...evaluation.blockedConfirmedOccurrenceIds], ["a-after"]);
+  assert.deepEqual(evaluation.conflicts[0].serviceDates, ["2026-07-08"]);
+});
+
+test("monthly exclusion enforcement suppresses only the conflicting candidate occurrence", () => {
+  function session(feeSessionId, serviceDate, { confirmed = [], candidates = [] } = {}) {
+    return applyCalculationResult(buildFeeSession({
+      orgId: "org_123",
+      patientId: "pat_candidate_occurrence",
+      facilityId: "fac_123",
+      createdByMemberId: "mem_123",
+      serviceDate
+    }, { feeSessionId, now: `${serviceDate}T00:00:00.000Z` }), {
+      provider: "test",
+      status: "completed",
+      totalPoints: confirmed.reduce((sum, line) => sum + line.totalPoints, 0),
+      lineItems: confirmed.map((line) => ({ ...line, status: "confirmed", orderType: "procedure", quantity: 1 })),
+      candidateProposals: candidates,
+      warnings: []
+    }, { calculationId: `calc_${feeSessionId}`, now: `${serviceDate}T00:01:00.000Z` });
+  }
+  const candidate = (id) => ({
+    proposalId: id,
+    code: "100",
+    title: "処置A",
+    potentialPoints: 40,
+    candidateLine: { code: "100", name: "処置A", orderType: "procedure", totalPoints: 40 }
+  });
+  const sessions = [
+    session("fee_candidate_1", "2026-07-01", {
+      confirmed: [{ code: "200", name: "処置B", points: 90, totalPoints: 90 }],
+      candidates: [candidate("candidate-a-1")]
+    }),
+    session("fee_candidate_2", "2026-07-08", {
+      candidates: [candidate("candidate-a-2")]
+    })
+  ];
+  const receipt = buildMonthlyReceiptDraft(sessions, {
+    patientId: "pat_candidate_occurrence",
+    claimMonth: "2026-07",
+    monthlyExclusionMode: "enforce",
+    actExclusionRules: {
+      status: "complete",
+      rules: [{
+        scope: "same_day",
+        codeA: "100",
+        codeB: "200",
+        resolution: "auto_winner",
+        winnerCode: "200",
+        ruleFingerprint: "fp-candidate"
+      }]
+    }
+  });
+
+  const line = receipt.candidateLines.find((item) => item.code === "100");
+  assert.equal(line.occurrenceCount, 2);
+  assert.equal(line.quantity, 1);
+  assert.equal(line.suppressedOccurrenceCount, 1);
+  assert.equal(line.totalPoints, 40);
+  assert.deepEqual(
+    receipt.candidateOccurrences.map((item) => [item.serviceDate, item.suppressedByExclusion]),
+    [["2026-07-01", true], ["2026-07-08", false]]
+  );
+});
+
+test("conditional and unsupported candidate pairs stay out of monthly candidate points", () => {
+  const session = applyCalculationResult(buildFeeSession({
+    orgId: "org_123",
+    patientId: "pat_candidate_review",
+    facilityId: "fac_123",
+    createdByMemberId: "mem_123",
+    serviceDate: "2026-07-01"
+  }, {
+    feeSessionId: "fee_candidate_review",
+    now: "2026-07-01T00:00:00.000Z"
+  }), {
+    provider: "test",
+    status: "completed",
+    totalPoints: 0,
+    lineItems: [],
+    candidateProposals: [
+      {
+        proposalId: "candidate-a",
+        code: "100",
+        title: "候補A",
+        potentialPoints: 40,
+        candidateLine: { code: "100", name: "候補A", orderType: "procedure", totalPoints: 40 }
+      },
+      {
+        proposalId: "candidate-b",
+        code: "200",
+        title: "候補B",
+        potentialPoints: 90,
+        candidateLine: { code: "200", name: "候補B", orderType: "procedure", totalPoints: 90 }
+      }
+    ],
+    warnings: []
+  }, {
+    calculationId: "calc_candidate_review",
+    now: "2026-07-01T00:01:00.000Z"
+  });
+  const build = (resolution) => buildMonthlyReceiptDraft([session], {
+    patientId: "pat_candidate_review",
+    claimMonth: "2026-07",
+    monthlyExclusionMode: "enforce",
+    actExclusionRules: {
+      status: "complete",
+      rules: [{
+        scope: "same_month",
+        codeA: "100",
+        codeB: "200",
+        resolution,
+        specialCondition: resolution === "conditional_review" ? "1" : "0",
+        ruleFingerprint: `fp-${resolution}`
+      }]
+    }
+  });
+
+  for (const resolution of ["conditional_review", "unsupported_rule_kind"]) {
+    const receipt = build(resolution);
+    assert.equal(receipt.candidateTotalPoints, 0);
+    assert.equal(receipt.unresolvedExclusionCount, 1);
+    assert.deepEqual(receipt.candidateLines.map((line) => line.quantity), [0, 0]);
+    assert.ok(receipt.candidateOccurrences.every((item) => item.suppressedByExclusion));
+  }
+});
+
+test("an unresolved equal-point demotion does not count either candidate", () => {
+  const evaluation = evaluateMonthlyExclusions({
+    claimMonth: "2026-07",
+    candidateOccurrences: [
+      {
+        occurrenceId: "candidate-a",
+        code: "100",
+        name: "候補A",
+        serviceDate: "2026-07-01",
+        points: 50
+      },
+      {
+        occurrenceId: "candidate-b",
+        code: "200",
+        name: "候補B",
+        serviceDate: "2026-07-01",
+        points: 50
+      }
+    ],
+    rulesEnvelope: {
+      status: "complete",
+      rules: [{
+        scope: "same_month",
+        codeA: "100",
+        codeB: "200",
+        resolution: "demote_lower_points",
+        ruleFingerprint: "fp-equal-points"
+      }]
+    }
+  });
+
+  assert.equal(evaluation.unresolvedConflictCount, 1);
+  assert.deepEqual(
+    [...evaluation.suppressedCandidateOccurrenceIds].sort(),
+    ["candidate-a", "candidate-b"]
+  );
+});
+
+test("monthly exclusion graph is order independent and blocks complex components", () => {
+  const envelope = {
+    status: "complete",
+    rules: [
+      { scope: "same_month", codeA: "100", codeB: "200", resolution: "auto_winner", winnerCode: "100", ruleFingerprint: "fp-ab" },
+      { scope: "same_month", codeA: "200", codeB: "300", resolution: "auto_winner", winnerCode: "200", ruleFingerprint: "fp-bc" }
+    ]
+  };
+  const occurrences = [
+    { occurrenceId: "a", code: "100", name: "A", serviceDate: "2026-07-01", points: 10 },
+    { occurrenceId: "b", code: "200", name: "B", serviceDate: "2026-07-02", points: 20 },
+    { occurrenceId: "c", code: "300", name: "C", serviceDate: "2026-07-03", points: 30 }
+  ];
+  const first = evaluateMonthlyExclusions({
+    claimMonth: "2026-07",
+    confirmedOccurrences: occurrences,
+    rulesEnvelope: envelope
+  });
+  const second = evaluateMonthlyExclusions({
+    claimMonth: "2026-07",
+    confirmedOccurrences: [...occurrences].reverse(),
+    rulesEnvelope: { ...envelope, rules: [...envelope.rules].reverse() }
+  });
+
+  assert.equal(first.complexComponentCount, 1);
+  assert.equal(first.unresolvedConflictCount, 1);
+  assert.equal(first.blockedLines.length, 0);
+  assert.deepEqual(first.conflicts, second.conflicts);
+});
+
+test("same-week monthly exclusions use a Sunday-start billing week", () => {
+  const result = evaluateMonthlyExclusions({
+    claimMonth: "2026-07",
+    confirmedOccurrences: [
+      { occurrenceId: "sun", code: "100", serviceDate: "2026-07-05", points: 10 },
+      { occurrenceId: "sat", code: "200", serviceDate: "2026-07-11", points: 20 },
+      { occurrenceId: "next", code: "100", serviceDate: "2026-07-12", points: 10 }
+    ],
+    rulesEnvelope: {
+      status: "complete",
+      rules: [{
+        scope: "same_week",
+        codeA: "100",
+        codeB: "200",
+        resolution: "auto_winner",
+        winnerCode: "200",
+        ruleFingerprint: "fp-week"
+      }, {
+        scope: "simultaneous",
+        codeA: "100",
+        codeB: "200",
+        resolution: "auto_winner",
+        winnerCode: "200",
+        ruleFingerprint: "fp-simultaneous"
+      }]
+    }
+  });
+
+  assert.equal(result.conflicts.length, 1);
+  assert.equal(result.conflicts[0].scopeKey, "2026-07-05");
+  assert.deepEqual(result.blockedLines.map((line) => line.occurrenceId), ["sun"]);
 });
 
 test("同一codeCandidates集合のコード未確定候補はレーンを越えて0点の1行に畳まれる", () => {

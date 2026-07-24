@@ -56,6 +56,7 @@ test("readyz reports fee master readiness", async () => {
   assert.equal(response.body.runtimeFeatures.extractionMemoEnabled, false);
   assert.equal(response.body.runtimeFeatures.emptyExtractionRetryEnabled, false);
   assert.equal(response.body.runtimeFeatures.extractionSnapshotRetentionDays, 30);
+  assert.equal(response.body.runtimeFeatures.monthlyExclusionMode, "off");
 });
 
 test("readyz exposes deployed extraction feature flags and revision", async () => {
@@ -65,6 +66,7 @@ test("readyz exposes deployed extraction feature flags and revision", async () =
       FEE_EXTRACTION_MEMO: "true",
       FEE_EMPTY_EXTRACTION_RETRY: "true",
       FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS: "45",
+      FEE_MONTHLY_EXCLUSION_MODE: "shadow",
       K_SERVICE: "fee-api-stg",
       K_REVISION: "fee-api-stg-00169-test"
     }
@@ -80,7 +82,8 @@ test("readyz exposes deployed extraction feature flags and revision", async () =
     extractionMemoEnabled: true,
     emptyExtractionRetryEnabled: true,
     standingFactsEnabled: false,
-    extractionSnapshotRetentionDays: 45
+    extractionSnapshotRetentionDays: 45,
+    monthlyExclusionMode: "shadow"
   });
 });
 
@@ -10375,6 +10378,8 @@ test("monthly receipt reports stage performance without changing the receipt pay
     assert.equal(typeof response.body.monthlyMetrics.stageDurationsMs[stage], "number");
   }
   assert.equal(typeof response.body.monthlyMetrics.totalDurationMs, "number");
+  assert.equal(response.body.monthlyMetrics.monthlyExclusion.mode, "off");
+  assert.equal(response.body.monthlyMetrics.monthlyExclusion.conflictCount, 0);
 });
 
 test("exports a receipt CSV with billing summary", async () => {
@@ -11095,6 +11100,524 @@ test("monthly receipt export blocks when the patient month contains an uncalcula
     issue.field === "receiptDraft.uncalculatedSessionCount" && issue.severity === "error"
   )));
 });
+
+test("monthly exclusion resolution gates export, persists an audit trail, and supports revocation", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const fixture = await createMonthlyExclusionFixture(stores, headers);
+  stores.feeCalculator.checkLookup = async () => monthlyExclusionLookupResponse({
+    resolution: "auto_winner",
+    winnerCode: fixture.codeA
+  });
+  const shadowPreview = await request(
+    stores,
+    "GET",
+    `/v1/fee/monthly-receipt?${fixture.params}`,
+    undefined,
+    headers,
+    { processEnv: { FEE_MONTHLY_EXCLUSION_MODE: "shadow" } }
+  );
+  assert.equal(shadowPreview.body.receiptDraft.totalPoints, 148);
+  assert.equal(shadowPreview.body.receiptDraft.blockedLines.length, 0);
+  assert.equal(shadowPreview.body.receiptDraft.blockedLinesPreview.length, 1);
+  assert.equal(shadowPreview.body.monthlyMetrics.monthlyExclusion.mode, "shadow");
+  assert.equal(shadowPreview.body.monthlyMetrics.monthlyExclusion.conflictCount, 1);
+
+  const processEnv = { FEE_MONTHLY_EXCLUSION_MODE: "enforce" };
+  const monthlyPath = `/v1/fee/monthly-receipt?${fixture.params}`;
+  const resolutionPath = "/v1/fee/monthly-exclusion-resolutions";
+
+  const preview = await request(stores, "GET", monthlyPath, undefined, headers, { processEnv });
+  assert.equal(preview.statusCode, 200);
+  assert.equal(preview.body.receiptDraft.totalPoints, 100);
+  assert.equal(preview.body.receiptDraft.unresolvedExclusionCount, 1);
+  assert.equal(preview.body.receiptDraft.blockedLines.length, 1);
+  assert.equal(preview.body.receiptDraft.blockedLines[0].code, fixture.codeB);
+  const conflict = preview.body.receiptDraft.exclusionConflicts[0];
+  assert.equal(conflict.defaultAction, "acknowledge_auto");
+  assert.equal(conflict.action, null);
+
+  const blockedExport = await request(
+    stores,
+    "GET",
+    `/v1/fee/monthly-receipt.csv?${fixture.params}`,
+    undefined,
+    headers,
+    { processEnv }
+  );
+  assert.equal(blockedExport.statusCode, 409);
+  assert.ok(blockedExport.body.receiptExportValidation.issues.some((issue) => (
+    issue.field === "receiptDraft.unresolvedExclusionCount"
+  )));
+
+  const mutationBody = {
+    patientId: fixture.patientId,
+    claimMonth: fixture.claimMonth,
+    pairKey: conflict.pairKey,
+    scopeKey: conflict.scopeKey,
+    ruleFingerprint: conflict.ruleFingerprint,
+    resolution: conflict.resolution,
+    action: "acknowledge_auto"
+  };
+  const noCsrfHeaders = { cookie: headers.cookie };
+  const noCsrf = await request(
+    stores,
+    "PUT",
+    resolutionPath,
+    mutationBody,
+    noCsrfHeaders,
+    { processEnv }
+  );
+  assert.equal(noCsrf.statusCode, 403);
+
+  const invalidAction = await request(
+    stores,
+    "PUT",
+    resolutionPath,
+    { ...mutationBody, action: "choose_b" },
+    headers,
+    { processEnv }
+  );
+  assert.equal(invalidAction.statusCode, 400);
+
+  const obsoleteRule = await request(
+    stores,
+    "PUT",
+    resolutionPath,
+    { ...mutationBody, ruleFingerprint: "obsolete-master-rule" },
+    headers,
+    { processEnv }
+  );
+  assert.equal(obsoleteRule.statusCode, 400);
+
+  const saved = await request(
+    stores,
+    "PUT",
+    resolutionPath,
+    mutationBody,
+    headers,
+    { processEnv }
+  );
+  assert.equal(saved.statusCode, 200);
+  assert.equal(saved.body.resolution.action, "acknowledge_auto");
+  assert.equal(saved.body.resolution.revokedAt, null);
+  const idempotentRetry = await request(
+    stores,
+    "PUT",
+    resolutionPath,
+    mutationBody,
+    headers,
+    { processEnv }
+  );
+  assert.equal(idempotentRetry.statusCode, 200);
+  assert.equal(idempotentRetry.body.resolution.updatedAt, saved.body.resolution.updatedAt);
+
+  const listed = await request(
+    stores,
+    "GET",
+    `${resolutionPath}?${fixture.params}`,
+    undefined,
+    headers,
+    { processEnv }
+  );
+  assert.equal(listed.statusCode, 200);
+  assert.equal(listed.body.resolutions.length, 1);
+
+  const resolvedPreview = await request(
+    stores,
+    "GET",
+    monthlyPath,
+    undefined,
+    headers,
+    { processEnv }
+  );
+  assert.equal(resolvedPreview.body.receiptDraft.unresolvedExclusionCount, 0);
+  assert.equal(resolvedPreview.body.receiptDraft.exclusionConflicts[0].action, "acknowledge_auto");
+  assert.equal(
+    resolvedPreview.body.receiptDraft.exclusionConflicts[0].resolutionUpdatedAt,
+    saved.body.resolution.updatedAt
+  );
+
+  const exported = await request(
+    stores,
+    "GET",
+    `/v1/fee/monthly-receipt.csv?${fixture.params}`,
+    undefined,
+    headers,
+    { processEnv }
+  );
+  assert.equal(exported.statusCode, 200);
+  assert.match(String(exported.body), new RegExp(fixture.codeA));
+  assert.doesNotMatch(String(exported.body), new RegExp(fixture.codeB));
+  const ukeExported = await request(
+    stores,
+    "GET",
+    `/v1/fee/monthly-receipt.uke?${fixture.params}&encoding=utf-8`,
+    undefined,
+    headers,
+    { processEnv }
+  );
+  assert.equal(ukeExported.statusCode, 200);
+  assert.match(String(ukeExported.body), new RegExp(fixture.codeA));
+  assert.doesNotMatch(String(ukeExported.body), new RegExp(fixture.codeB));
+
+  const stale = await request(
+    stores,
+    "PUT",
+    resolutionPath,
+    {
+      ...mutationBody,
+      action: "reject_both",
+      expectedUpdatedAt: "2000-01-01T00:00:00.000Z"
+    },
+    headers,
+    { processEnv }
+  );
+  assert.equal(stale.statusCode, 409);
+  const missingVersion = await request(
+    stores,
+    "PUT",
+    resolutionPath,
+    { ...mutationBody, action: "reject_both" },
+    headers,
+    { processEnv }
+  );
+  assert.equal(missingVersion.statusCode, 409);
+
+  const revoked = await request(
+    stores,
+    "PUT",
+    resolutionPath,
+    {
+      patientId: fixture.patientId,
+      claimMonth: fixture.claimMonth,
+      pairKey: conflict.pairKey,
+      scopeKey: conflict.scopeKey,
+      ruleFingerprint: conflict.ruleFingerprint,
+      expectedUpdatedAt: saved.body.resolution.updatedAt,
+      revoke: true
+    },
+    headers,
+    { processEnv }
+  );
+  assert.equal(revoked.statusCode, 200);
+  assert.ok(revoked.body.resolution.revokedAt);
+
+  const revokedPreview = await request(stores, "GET", monthlyPath, undefined, headers, { processEnv });
+  assert.equal(revokedPreview.body.receiptDraft.unresolvedExclusionCount, 1);
+  assert.equal(revokedPreview.body.receiptDraft.exclusionConflicts[0].action, null);
+
+  const auditEvents = stores.platformStore.listAuditEvents("org_001")
+    .filter((event) => event.targetType === "fee_monthly_exclusion_resolution");
+  assert.equal(auditEvents.length, 2);
+  assert.deepEqual(
+    auditEvents.map((event) => event.safePayload.afterAction),
+    ["acknowledge_auto", null]
+  );
+  assert.equal(Object.hasOwn(auditEvents[0].safePayload, "patientName"), false);
+  assert.equal(Object.hasOwn(auditEvents[0].safePayload, "clinicalText"), false);
+});
+
+test("monthly exclusion resolution rejects insufficient roles and cross-organization patient months", async () => {
+  const stores = createStores();
+  const adminHeaders = await signedHeaders(stores.platformStore);
+  const fixture = await createMonthlyExclusionFixture(stores, adminHeaders);
+  stores.platformStore.createMember("org_001", {
+    loginId: "viewer@example.com",
+    displayName: "Viewer",
+    globalRoles: [],
+    productRoles: { fee: ["viewer"] },
+    password: "correct horse battery staple"
+  });
+  const viewerHeaders = await signedHeaders(stores.platformStore, {
+    loginId: "viewer@example.com",
+    globalRoles: [],
+    productRoles: { fee: ["viewer"] }
+  });
+  const processEnv = { FEE_MONTHLY_EXCLUSION_MODE: "enforce" };
+  const denied = await request(
+    stores,
+    "GET",
+    `/v1/fee/monthly-exclusion-resolutions?${fixture.params}`,
+    undefined,
+    viewerHeaders,
+    { processEnv }
+  );
+  assert.equal(denied.statusCode, 403);
+
+  const otherOrganization = stores.platformStore.createOrganization({
+    organizationCode: "OtherClinic",
+    displayName: "Other Clinic"
+  });
+  stores.feeStore.createSession({
+    orgId: otherOrganization.orgId,
+    patientId: "pat_other_org",
+    facilityId: "fac_other",
+    createdByMemberId: "mem_other",
+    serviceDate: "2026-05-12"
+  });
+  const crossOrganization = await request(
+    stores,
+    "GET",
+    "/v1/fee/monthly-exclusion-resolutions?patientId=pat_other_org&claimMonth=2026-05",
+    undefined,
+    adminHeaders,
+    { processEnv }
+  );
+  assert.equal(crossOrganization.statusCode, 404);
+});
+
+test("monthly exclusion resolution rejects edge decisions for a complex component", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const fixture = await createMonthlyExclusionFixture(stores, headers);
+  const codeC = "140009310";
+  stores.feeStore.saveCalculation("org_001", fixture.feeSessionId, {
+    provider: "test",
+    status: "completed",
+    totalPoints: 450,
+    lineItems: [
+      {
+        lineId: "complex_a",
+        code: fixture.codeA,
+        name: "在宅人工呼吸指導管理料",
+        orderType: "management",
+        points: 100,
+        quantity: 1,
+        totalPoints: 100,
+        status: "confirmed"
+      },
+      {
+        lineId: "complex_b",
+        code: fixture.codeB,
+        name: "喀痰吸引",
+        orderType: "procedure",
+        points: 48,
+        quantity: 1,
+        totalPoints: 48,
+        status: "confirmed"
+      },
+      {
+        lineId: "complex_c",
+        code: codeC,
+        name: "人工呼吸",
+        orderType: "procedure",
+        points: 302,
+        quantity: 1,
+        totalPoints: 302,
+        status: "confirmed"
+      }
+    ]
+  });
+  stores.feeCalculator.checkLookup = async () => ({
+    actFrequencyLimits: {},
+    actExclusions: [],
+    actExclusionRules: {
+      status: "complete",
+      sourceId: 1,
+      sourceVersion: "test-master",
+      evaluatedFrom: "2026-05-01",
+      evaluatedTo: "2026-05-31",
+      rules: [
+        {
+          scope: "same_month",
+          codeA: fixture.codeA,
+          codeB: fixture.codeB,
+          resolution: "auto_winner",
+          winnerCode: fixture.codeA,
+          specialCondition: "0",
+          ruleFingerprint: "fingerprint-complex-ab"
+        },
+        {
+          scope: "same_month",
+          codeA: fixture.codeB,
+          codeB: codeC,
+          resolution: "demote_lower_points",
+          winnerCode: null,
+          specialCondition: "0",
+          ruleFingerprint: "fingerprint-complex-bc"
+        }
+      ]
+    }
+  });
+  const processEnv = { FEE_MONTHLY_EXCLUSION_MODE: "enforce" };
+  const preview = await request(
+    stores,
+    "GET",
+    `/v1/fee/monthly-receipt?${fixture.params}`,
+    undefined,
+    headers,
+    { processEnv }
+  );
+  assert.equal(preview.statusCode, 200);
+  assert.equal(preview.body.receiptDraft.complexExclusionComponentCount, 1);
+  assert.equal(preview.body.receiptDraft.exclusionConflicts[0].complex, true);
+
+  const rejected = await request(
+    stores,
+    "PUT",
+    "/v1/fee/monthly-exclusion-resolutions",
+    {
+      patientId: fixture.patientId,
+      claimMonth: fixture.claimMonth,
+      pairKey: `same_month:${fixture.codeA}:${fixture.codeB}`,
+      scopeKey: fixture.claimMonth,
+      ruleFingerprint: "fingerprint-complex-ab",
+      resolution: "auto_winner",
+      action: "acknowledge_auto"
+    },
+    headers,
+    { processEnv }
+  );
+  assert.equal(rejected.statusCode, 400);
+});
+
+test("monthly exclusion enforcement fails closed when the canonical rule lookup is unavailable", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  const fixture = await createMonthlyExclusionFixture(stores, headers);
+  stores.feeCalculator.checkLookup = async () => {
+    throw new Error("master database unavailable");
+  };
+  const processEnv = { FEE_MONTHLY_EXCLUSION_MODE: "enforce" };
+
+  const preview = await request(
+    stores,
+    "GET",
+    `/v1/fee/monthly-receipt?${fixture.params}`,
+    undefined,
+    headers,
+    { processEnv }
+  );
+  assert.equal(preview.statusCode, 200);
+  assert.equal(preview.body.receiptDraft.exclusionConstraintsStatus, "lookup_failed");
+
+  const exported = await request(
+    stores,
+    "GET",
+    `/v1/fee/monthly-receipt.csv?${fixture.params}`,
+    undefined,
+    headers,
+    { processEnv }
+  );
+  assert.equal(exported.statusCode, 503);
+  assert.equal(exported.body.error, "service_unavailable");
+
+  stores.feeCalculator.checkLookup = async () => ({
+    actFrequencyLimits: {},
+    actExclusions: [],
+    actExclusionRules: {
+      status: "no_effective_generation",
+      sourceId: null,
+      sourceVersion: null,
+      evaluatedFrom: "2026-05-01",
+      evaluatedTo: "2026-05-31",
+      rules: []
+    }
+  });
+  const noGeneration = await request(
+    stores,
+    "GET",
+    `/v1/fee/monthly-receipt.csv?${fixture.params}`,
+    undefined,
+    headers,
+    { processEnv }
+  );
+  assert.equal(noGeneration.statusCode, 503);
+});
+
+async function createMonthlyExclusionFixture(stores, headers) {
+  const claimMonth = "2026-05";
+  const codeA = "114005410";
+  const codeB = "140003810";
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "背反確認 患者",
+    birthDate: "1970-01-01",
+    sex: "female",
+    insurance: {
+      insurerType: "shaho",
+      insurerNumber: "01130012",
+      insuredSymbol: "12",
+      insuredNumber: "3456"
+    }
+  }, headers);
+  const patientId = patient.body.patient.patientId;
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    serviceDate: "2026-05-07"
+  }, headers);
+  stores.feeStore.saveCalculation("org_001", session.body.feeSession.feeSessionId, {
+    provider: "test",
+    status: "completed",
+    totalPoints: 148,
+    lineItems: [
+      {
+        lineId: "confirmed_winner",
+        code: codeA,
+        name: "在宅人工呼吸指導管理料",
+        orderType: "management",
+        points: 100,
+        quantity: 1,
+        totalPoints: 100,
+        status: "confirmed"
+      },
+      {
+        lineId: "confirmed_loser",
+        code: codeB,
+        name: "喀痰吸引",
+        orderType: "procedure",
+        points: 48,
+        quantity: 1,
+        totalPoints: 48,
+        status: "confirmed"
+      }
+    ]
+  });
+  await request(stores, "PATCH", "/v1/fee/settings/fac_001", {
+    receiptPolicy: { connectorSpecVerified: true }
+  }, headers);
+  return {
+    patientId,
+    feeSessionId: session.body.feeSession.feeSessionId,
+    claimMonth,
+    codeA,
+    codeB,
+    params: new URLSearchParams({ patientId, claimMonth }).toString()
+  };
+}
+
+function monthlyExclusionLookupResponse({
+  resolution,
+  winnerCode = null,
+  specialCondition = "0"
+}) {
+  return {
+    actFrequencyLimits: {},
+    actExclusions: [],
+    actExclusionRules: {
+      status: "complete",
+      sourceId: 1,
+      sourceVersion: "test-master",
+      evaluatedFrom: "2026-05-01",
+      evaluatedTo: "2026-05-31",
+      rules: [{
+        scope: "same_month",
+        codeA: "114005410",
+        codeB: "140003810",
+        codeAName: "在宅人工呼吸指導管理料",
+        codeBName: "喀痰吸引",
+        resolution,
+        winnerCode,
+        specialCondition,
+        ruleFingerprint: `fingerprint-${resolution}`,
+        effectiveFrom: "2010-04-01",
+        effectiveTo: null
+      }]
+    }
+  };
+}
 
 test("recalculation clears prior candidate approvals before receipt export", async () => {
   const stores = createStores();

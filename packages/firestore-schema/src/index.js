@@ -23,6 +23,7 @@ export const collections = Object.freeze({
   feeSessions: "fee_sessions",
   feeExtractionSnapshots: "fee_extraction_snapshots",
   feeStandingBillingProfiles: "fee_standing_billing_profiles",
+  feeMonthlyExclusionResolutions: "fee_monthly_exclusion_resolutions",
   sidecarCalculationDrafts: "sidecar_calculation_drafts",
   referrals: "referrals"
 });
@@ -132,6 +133,15 @@ export function feeStandingBillingProfilePath(orgId, standingFactId) {
     collections.feeStandingBillingProfiles,
     standingFactId,
     "standingFactId"
+  );
+}
+
+export function feeMonthlyExclusionResolutionPath(orgId, resolutionId) {
+  return orgDocPath(
+    orgId,
+    collections.feeMonthlyExclusionResolutions,
+    resolutionId,
+    "resolutionId"
   );
 }
 

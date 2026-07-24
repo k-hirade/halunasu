@@ -7,6 +7,7 @@ import {
   dataRequestPath,
   departmentPath,
   facilityPath,
+  feeMonthlyExclusionResolutionPath,
   feeSessionPath,
   sidecarCalculationDraftPath,
   loginIdentityKey,
@@ -47,6 +48,10 @@ test("builds platform document paths", () => {
     "organizations/org_123/fee_sessions/fee_456"
   );
   assert.equal(
+    feeMonthlyExclusionResolutionPath("org_123", "resolution_456"),
+    "organizations/org_123/fee_monthly_exclusion_resolutions/resolution_456"
+  );
+  assert.equal(
     sidecarCalculationDraftPath("org_123", "sidecar_456"),
     "organizations/org_123/sidecar_calculation_drafts/sidecar_456"
   );
@@ -82,6 +87,7 @@ test("rejects invalid path segments", () => {
 test("exports canonical collection names", () => {
   assert.equal(collections.organizations, "organizations");
   assert.equal(collections.patients, "patients");
+  assert.equal(collections.feeMonthlyExclusionResolutions, "fee_monthly_exclusion_resolutions");
   assert.equal(collections.sidecarCalculationDrafts, "sidecar_calculation_drafts");
   assert.equal(collections.sidecarDeviceAuthorizations, "sidecar_device_authorizations");
   assert.equal(collections.sidecarDeviceGrants, "sidecar_device_grants");
