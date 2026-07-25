@@ -1,0 +1,1449 @@
+{
+  "schemaVersion": "fee-extraction-stability-eval.v1",
+  "generatedAt": "2026-07-25T07:44:59.079Z",
+  "runId": "fee-stability-20260725074305-bf0f99",
+  "mode": "stg",
+  "source": {
+    "casesFile": "data/tests/fee-stability/cases.json",
+    "syntheticDataOnly": true,
+    "caseCount": 3,
+    "clinicalTextHashes": {
+      "management-heavy-continuation": "44ba26f338fc5411be66638cd2a99e92035033280bf2a271cb814e65d6c2b6c2",
+      "suction-management-continuation-home": "97b415a223f6c6ce843b2bdbe466d184ed0b55178ead12d2e90aadbbc8644b5b",
+      "suction-management-continuation-plan": "d3c8633861bd4fe304160a9d0cbaf323f7846300b1563ffe6cff8c11177814ed"
+    }
+  },
+  "environment": {
+    "platformBaseUrl": "https://platform-api-stg-lp2t3inhza-an.a.run.app",
+    "feeBaseUrl": "https://fee-api-stg-wmfrwcpzkq-an.a.run.app",
+    "organizationCode": "fee-longitudinal-e2e-stg",
+    "facilityRef": "df0241fe794d",
+    "departmentRef": "9451b40eaad2",
+    "preflight": {
+      "checkedAt": "2026-07-25T07:43:05.505Z",
+      "environment": "stg",
+      "cloudRunService": "fee-api-stg",
+      "cloudRunRevision": "fee-api-stg-00180-jtv",
+      "promptVersion": null,
+      "requestDurationMs": 18038.22
+    },
+    "cloudRunRevisions": [
+      "fee-api-stg-00180-jtv"
+    ],
+    "sameRevisionObserved": true,
+    "preflightRevisionMatch": true
+  },
+  "methodology": {
+    "repeat": 3,
+    "isolation": "fresh synthetic patient and fresh fee session for every repetition",
+    "confirmedPoints": "feeSession.calculationResult.totalPoints",
+    "candidateSet": "candidate workbench pending lines and proposals keyed by code, code candidates, and normalized title",
+    "attribution": "memo and prior-patient history are excluded; remaining candidate/event variability belongs to full extraction",
+    "eventCount": "clinicalExtraction.clinicalEventCount; recorded but not used as a pass/fail gate"
+  },
+  "baseline": {
+    "file": "data/tests/fee-stability/baseline.json",
+    "action": "created",
+    "sourceRunId": "fee-stability-20260725074305-bf0f99"
+  },
+  "summary": {
+    "verdict": "pass",
+    "allConfirmedPointVarianceZero": true,
+    "allCandidateJaccardChecksPassed": true,
+    "baselineRequired": false,
+    "caseCount": 3,
+    "runCount": 9,
+    "cases": [
+      {
+        "caseId": "management-heavy-continuation",
+        "runCount": 3,
+        "verdict": "pass",
+        "confirmedPoints": {
+          "values": [
+            293,
+            293,
+            293
+          ],
+          "variance": 0,
+          "stable": true,
+          "pass": true
+        },
+        "candidates": {
+          "counts": [
+            3,
+            3,
+            3
+          ],
+          "pairwiseJaccard": [
+            {
+              "leftRun": 1,
+              "rightRun": 2,
+              "jaccard": 1
+            },
+            {
+              "leftRun": 1,
+              "rightRun": 3,
+              "jaccard": 1
+            },
+            {
+              "leftRun": 2,
+              "rightRun": 3,
+              "jaccard": 1
+            }
+          ],
+          "minimumJaccard": 1,
+          "meanJaccard": 1,
+          "gate": {
+            "status": "pass",
+            "minimum": 1,
+            "observed": 1,
+            "pass": true
+          }
+        },
+        "clinicalEvents": {
+          "counts": [
+            6,
+            7,
+            7
+          ],
+          "minimum": 6,
+          "maximum": 7,
+          "spread": 1
+        }
+      },
+      {
+        "caseId": "suction-management-continuation-home",
+        "runCount": 3,
+        "verdict": "pass",
+        "confirmedPoints": {
+          "values": [
+            969,
+            969,
+            969
+          ],
+          "variance": 0,
+          "stable": true,
+          "pass": true
+        },
+        "candidates": {
+          "counts": [
+            4,
+            4,
+            4
+          ],
+          "pairwiseJaccard": [
+            {
+              "leftRun": 1,
+              "rightRun": 2,
+              "jaccard": 1
+            },
+            {
+              "leftRun": 1,
+              "rightRun": 3,
+              "jaccard": 1
+            },
+            {
+              "leftRun": 2,
+              "rightRun": 3,
+              "jaccard": 1
+            }
+          ],
+          "minimumJaccard": 1,
+          "meanJaccard": 1,
+          "gate": {
+            "status": "pass",
+            "minimum": 1,
+            "observed": 1,
+            "pass": true
+          }
+        },
+        "clinicalEvents": {
+          "counts": [
+            1,
+            2,
+            3
+          ],
+          "minimum": 1,
+          "maximum": 3,
+          "spread": 2
+        }
+      },
+      {
+        "caseId": "suction-management-continuation-plan",
+        "runCount": 3,
+        "verdict": "pass",
+        "confirmedPoints": {
+          "values": [
+            293,
+            293,
+            293
+          ],
+          "variance": 0,
+          "stable": true,
+          "pass": true
+        },
+        "candidates": {
+          "counts": [
+            3,
+            3,
+            3
+          ],
+          "pairwiseJaccard": [
+            {
+              "leftRun": 1,
+              "rightRun": 2,
+              "jaccard": 1
+            },
+            {
+              "leftRun": 1,
+              "rightRun": 3,
+              "jaccard": 1
+            },
+            {
+              "leftRun": 2,
+              "rightRun": 3,
+              "jaccard": 1
+            }
+          ],
+          "minimumJaccard": 1,
+          "meanJaccard": 1,
+          "gate": {
+            "status": "pass",
+            "minimum": 1,
+            "observed": 1,
+            "pass": true
+          }
+        },
+        "clinicalEvents": {
+          "counts": [
+            4,
+            5,
+            5
+          ],
+          "minimum": 4,
+          "maximum": 5,
+          "spread": 1
+        }
+      }
+    ],
+    "environmentStable": true,
+    "preflightRevisionMatch": true
+  },
+  "cases": [
+    {
+      "id": "management-heavy-continuation",
+      "title": "複数の慢性管理方針が並ぶ外来経過観察",
+      "sourcePattern": "管理記載過多で抽出イベント数が大きく揺れる構造",
+      "inputAudit": {
+        "id": "management-heavy-continuation",
+        "title": "複数の慢性管理方針が並ぶ外来経過観察",
+        "sourcePattern": "管理記載過多で抽出イベント数が大きく揺れる構造",
+        "serviceDate": "2026-06-09",
+        "setting": "outpatient",
+        "diagnosisCount": 3,
+        "clinicalTextHash": "44ba26f338fc5411be66638cd2a99e92035033280bf2a271cb814e65d6c2b6c2",
+        "clinicalTextLineCount": 4
+      },
+      "summary": {
+        "caseId": "management-heavy-continuation",
+        "runCount": 3,
+        "verdict": "pass",
+        "confirmedPoints": {
+          "values": [
+            293,
+            293,
+            293
+          ],
+          "variance": 0,
+          "stable": true,
+          "pass": true
+        },
+        "candidates": {
+          "counts": [
+            3,
+            3,
+            3
+          ],
+          "pairwiseJaccard": [
+            {
+              "leftRun": 1,
+              "rightRun": 2,
+              "jaccard": 1
+            },
+            {
+              "leftRun": 1,
+              "rightRun": 3,
+              "jaccard": 1
+            },
+            {
+              "leftRun": 2,
+              "rightRun": 3,
+              "jaccard": 1
+            }
+          ],
+          "minimumJaccard": 1,
+          "meanJaccard": 1,
+          "gate": {
+            "status": "pass",
+            "minimum": 1,
+            "observed": 1,
+            "pass": true
+          }
+        },
+        "clinicalEvents": {
+          "counts": [
+            6,
+            7,
+            7
+          ],
+          "minimum": 6,
+          "maximum": 7,
+          "spread": 1
+        }
+      },
+      "runs": [
+        {
+          "run": 1,
+          "sessionRef": "1a86f30d94eb",
+          "totalPoints": 293,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "pending_line",
+              "code": "111000110",
+              "codeCandidates": [],
+              "title": "初診料",
+              "points": 291
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            },
+            {
+              "kind": "pending_line",
+              "code": "180819910",
+              "codeCandidates": [],
+              "title": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+              "points": 2
+            }
+          ],
+          "candidateKeys": [
+            "{\"code\":\"111000110\",\"codeCandidates\":[],\"title\":\"初診料\"}",
+            "{\"code\":\"113707610\",\"codeCandidates\":[],\"title\":\"プログラム医療機器等指導管理料の算定確認\"}",
+            "{\"code\":\"180819910\",\"codeCandidates\":[],\"title\":\"物価対応料１（外来・在宅物価対応料）（初診時）イ\"}"
+          ],
+          "reviewIssues": [
+            {
+              "title": "生活習慣病管理料１の算定確認",
+              "reason": "病名「脂質異常症、高血圧症」は生活習慣病管理料１の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「脂質異常症、高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            }
+          ],
+          "extraction": {
+            "source": "openai",
+            "mode": "full",
+            "promptVersion": "fee-clinical-events-v15",
+            "clinicalEventCount": 6,
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 6,
+              "finalEventCount": 6
+            },
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 0,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 11912,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5896,
+              "outputTokens": 1771,
+              "totalTokens": 7667,
+              "cachedInputTokens": 0
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00180-jtv"
+          },
+          "requestDurationMs": 14152.1
+        },
+        {
+          "run": 2,
+          "sessionRef": "04c0a6089f6b",
+          "totalPoints": 293,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "pending_line",
+              "code": "111000110",
+              "codeCandidates": [],
+              "title": "初診料",
+              "points": 291
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            },
+            {
+              "kind": "pending_line",
+              "code": "180819910",
+              "codeCandidates": [],
+              "title": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+              "points": 2
+            }
+          ],
+          "candidateKeys": [
+            "{\"code\":\"111000110\",\"codeCandidates\":[],\"title\":\"初診料\"}",
+            "{\"code\":\"113707610\",\"codeCandidates\":[],\"title\":\"プログラム医療機器等指導管理料の算定確認\"}",
+            "{\"code\":\"180819910\",\"codeCandidates\":[],\"title\":\"物価対応料１（外来・在宅物価対応料）（初診時）イ\"}"
+          ],
+          "reviewIssues": [
+            {
+              "title": "生活習慣病管理料１の算定確認",
+              "reason": "病名「脂質異常症、高血圧症」は生活習慣病管理料１の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「脂質異常症、高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            }
+          ],
+          "extraction": {
+            "source": "openai",
+            "mode": "full",
+            "promptVersion": "fee-clinical-events-v15",
+            "clinicalEventCount": 7,
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 5,
+              "finalEventCount": 5
+            },
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 0,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 10018,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5896,
+              "outputTokens": 1643,
+              "totalTokens": 7539,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00180-jtv"
+          },
+          "requestDurationMs": 11094.41
+        },
+        {
+          "run": 3,
+          "sessionRef": "0690c4f6efc2",
+          "totalPoints": 293,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "pending_line",
+              "code": "111000110",
+              "codeCandidates": [],
+              "title": "初診料",
+              "points": 291
+            },
+            {
+              "kind": "proposal",
+              "code": "113707610",
+              "codeCandidates": [],
+              "title": "プログラム医療機器等指導管理料の算定確認",
+              "points": 90
+            },
+            {
+              "kind": "pending_line",
+              "code": "180819910",
+              "codeCandidates": [],
+              "title": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+              "points": 2
+            }
+          ],
+          "candidateKeys": [
+            "{\"code\":\"111000110\",\"codeCandidates\":[],\"title\":\"初診料\"}",
+            "{\"code\":\"113707610\",\"codeCandidates\":[],\"title\":\"プログラム医療機器等指導管理料の算定確認\"}",
+            "{\"code\":\"180819910\",\"codeCandidates\":[],\"title\":\"物価対応料１（外来・在宅物価対応料）（初診時）イ\"}"
+          ],
+          "reviewIssues": [
+            {
+              "title": "生活習慣病管理料１の算定確認",
+              "reason": "病名「脂質異常症、高血圧症」は生活習慣病管理料１の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "生活習慣病管理料２の算定確認",
+              "reason": "病名「脂質異常症、高血圧症」は生活習慣病管理料２の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「慢性心不全」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            }
+          ],
+          "extraction": {
+            "source": "openai",
+            "mode": "full",
+            "promptVersion": "fee-clinical-events-v15",
+            "clinicalEventCount": 7,
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 5,
+              "finalEventCount": 5
+            },
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 0,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 11079,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5896,
+              "outputTokens": 1834,
+              "totalTokens": 7730,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00180-jtv"
+          },
+          "requestDurationMs": 11988.32
+        }
+      ]
+    },
+    {
+      "id": "suction-management-continuation-home",
+      "title": "在宅での喀痰吸引管理継続",
+      "sourcePattern": "喀痰吸引の管理方針を当日処置と誤認しやすい構造",
+      "inputAudit": {
+        "id": "suction-management-continuation-home",
+        "title": "在宅での喀痰吸引管理継続",
+        "sourcePattern": "喀痰吸引の管理方針を当日処置と誤認しやすい構造",
+        "serviceDate": "2026-06-16",
+        "setting": "home_visit",
+        "diagnosisCount": 2,
+        "clinicalTextHash": "97b415a223f6c6ce843b2bdbe466d184ed0b55178ead12d2e90aadbbc8644b5b",
+        "clinicalTextLineCount": 4
+      },
+      "summary": {
+        "caseId": "suction-management-continuation-home",
+        "runCount": 3,
+        "verdict": "pass",
+        "confirmedPoints": {
+          "values": [
+            969,
+            969,
+            969
+          ],
+          "variance": 0,
+          "stable": true,
+          "pass": true
+        },
+        "candidates": {
+          "counts": [
+            4,
+            4,
+            4
+          ],
+          "pairwiseJaccard": [
+            {
+              "leftRun": 1,
+              "rightRun": 2,
+              "jaccard": 1
+            },
+            {
+              "leftRun": 1,
+              "rightRun": 3,
+              "jaccard": 1
+            },
+            {
+              "leftRun": 2,
+              "rightRun": 3,
+              "jaccard": 1
+            }
+          ],
+          "minimumJaccard": 1,
+          "meanJaccard": 1,
+          "gate": {
+            "status": "pass",
+            "minimum": 1,
+            "observed": 1,
+            "pass": true
+          }
+        },
+        "clinicalEvents": {
+          "counts": [
+            1,
+            2,
+            3
+          ],
+          "minimum": 1,
+          "maximum": 3,
+          "spread": 2
+        }
+      },
+      "runs": [
+        {
+          "run": 1,
+          "sessionRef": "8c144b8208a1",
+          "totalPoints": 969,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "pending_line",
+              "code": "114001110",
+              "codeCandidates": [],
+              "title": "在宅患者訪問診療料（１）１（同一建物居住者以外）",
+              "points": 890
+            },
+            {
+              "kind": "proposal",
+              "code": "140003810",
+              "codeCandidates": [],
+              "title": "喀痰吸引の算定確認",
+              "points": 48
+            },
+            {
+              "kind": "pending_line",
+              "code": "180725910",
+              "codeCandidates": [],
+              "title": "外来・在宅ベースアップ評価料（１）３（訪問診療時）イ",
+              "points": 79
+            }
+          ],
+          "candidateKeys": [
+            "{\"code\":\"\",\"codeCandidates\":[],\"title\":\"在宅データ提出加算（在医総管・施医総管）の算定確認\"}",
+            "{\"code\":\"114001110\",\"codeCandidates\":[],\"title\":\"在宅患者訪問診療料（１）１（同一建物居住者以外）\"}",
+            "{\"code\":\"140003810\",\"codeCandidates\":[],\"title\":\"喀痰吸引の算定確認\"}",
+            "{\"code\":\"180725910\",\"codeCandidates\":[],\"title\":\"外来・在宅ベースアップ評価料（１）３（訪問診療時）イ\"}"
+          ],
+          "reviewIssues": [
+            {
+              "title": "レセプトコメントの確認",
+              "reason": "在宅患者訪問診療料（１）１（同一建物居住者以外）: レセプトコメントの要否を確認し、必要な理由を記載してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "施設恒常算定ルール: 外来・在宅ベースアップ評価料（１）３（訪問診療時）イ(180725910)を施設設定に基づき算定へ自動追加しました。今回の受診での実施事実と算定要件を確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "施設恒常算定ルール: 在宅患者訪問診療料（１）１（同一建物居住者以外）(114001110)を施設設定に基づき算定へ自動追加しました。今回の受診での実施事実と算定要件を確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「脳梗塞後遺症」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            }
+          ],
+          "extraction": {
+            "source": "openai",
+            "mode": "full",
+            "promptVersion": "fee-clinical-events-v15",
+            "clinicalEventCount": 1,
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 1,
+              "finalEventCount": 1
+            },
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 0,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 5735,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5800,
+              "outputTokens": 769,
+              "totalTokens": 6569,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00180-jtv"
+          },
+          "requestDurationMs": 6805.26
+        },
+        {
+          "run": 2,
+          "sessionRef": "12c7a91c1eac",
+          "totalPoints": 969,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "pending_line",
+              "code": "114001110",
+              "codeCandidates": [],
+              "title": "在宅患者訪問診療料（１）１（同一建物居住者以外）",
+              "points": 890
+            },
+            {
+              "kind": "proposal",
+              "code": "140003810",
+              "codeCandidates": [],
+              "title": "喀痰吸引の算定確認",
+              "points": 48
+            },
+            {
+              "kind": "pending_line",
+              "code": "180725910",
+              "codeCandidates": [],
+              "title": "外来・在宅ベースアップ評価料（１）３（訪問診療時）イ",
+              "points": 79
+            }
+          ],
+          "candidateKeys": [
+            "{\"code\":\"\",\"codeCandidates\":[],\"title\":\"在宅データ提出加算（在医総管・施医総管）の算定確認\"}",
+            "{\"code\":\"114001110\",\"codeCandidates\":[],\"title\":\"在宅患者訪問診療料（１）１（同一建物居住者以外）\"}",
+            "{\"code\":\"140003810\",\"codeCandidates\":[],\"title\":\"喀痰吸引の算定確認\"}",
+            "{\"code\":\"180725910\",\"codeCandidates\":[],\"title\":\"外来・在宅ベースアップ評価料（１）３（訪問診療時）イ\"}"
+          ],
+          "reviewIssues": [
+            {
+              "title": "レセプトコメントの確認",
+              "reason": "在宅患者訪問診療料（１）１（同一建物居住者以外）: レセプトコメントの要否を確認し、必要な理由を記載してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "施設恒常算定ルール: 外来・在宅ベースアップ評価料（１）３（訪問診療時）イ(180725910)を施設設定に基づき算定へ自動追加しました。今回の受診での実施事実と算定要件を確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "施設恒常算定ルール: 在宅患者訪問診療料（１）１（同一建物居住者以外）(114001110)を施設設定に基づき算定へ自動追加しました。今回の受診での実施事実と算定要件を確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「脳梗塞後遺症」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            }
+          ],
+          "extraction": {
+            "source": "openai",
+            "mode": "full",
+            "promptVersion": "fee-clinical-events-v15",
+            "clinicalEventCount": 2,
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 2,
+              "finalEventCount": 2
+            },
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 0,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 6960,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5800,
+              "outputTokens": 1107,
+              "totalTokens": 6907,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00180-jtv"
+          },
+          "requestDurationMs": 8018.08
+        },
+        {
+          "run": 3,
+          "sessionRef": "40704b8949d7",
+          "totalPoints": 969,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "proposal",
+              "code": "",
+              "codeCandidates": [],
+              "title": "在宅データ提出加算（在医総管・施医総管）の算定確認",
+              "points": 50
+            },
+            {
+              "kind": "pending_line",
+              "code": "114001110",
+              "codeCandidates": [],
+              "title": "在宅患者訪問診療料（１）１（同一建物居住者以外）",
+              "points": 890
+            },
+            {
+              "kind": "proposal",
+              "code": "140003810",
+              "codeCandidates": [],
+              "title": "喀痰吸引の算定確認",
+              "points": 48
+            },
+            {
+              "kind": "pending_line",
+              "code": "180725910",
+              "codeCandidates": [],
+              "title": "外来・在宅ベースアップ評価料（１）３（訪問診療時）イ",
+              "points": 79
+            }
+          ],
+          "candidateKeys": [
+            "{\"code\":\"\",\"codeCandidates\":[],\"title\":\"在宅データ提出加算（在医総管・施医総管）の算定確認\"}",
+            "{\"code\":\"114001110\",\"codeCandidates\":[],\"title\":\"在宅患者訪問診療料（１）１（同一建物居住者以外）\"}",
+            "{\"code\":\"140003810\",\"codeCandidates\":[],\"title\":\"喀痰吸引の算定確認\"}",
+            "{\"code\":\"180725910\",\"codeCandidates\":[],\"title\":\"外来・在宅ベースアップ評価料（１）３（訪問診療時）イ\"}"
+          ],
+          "reviewIssues": [
+            {
+              "title": "レセプトコメントの確認",
+              "reason": "在宅患者訪問診療料（１）１（同一建物居住者以外）: レセプトコメントの要否を確認し、必要な理由を記載してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "施設恒常算定ルール: 外来・在宅ベースアップ評価料（１）３（訪問診療時）イ(180725910)を施設設定に基づき算定へ自動追加しました。今回の受診での実施事実と算定要件を確認してください。"
+            },
+            {
+              "title": "確認事項",
+              "reason": "施設恒常算定ルール: 在宅患者訪問診療料（１）１（同一建物居住者以外）(114001110)を施設設定に基づき算定へ自動追加しました。今回の受診での実施事実と算定要件を確認してください。"
+            },
+            {
+              "title": "初診/再診確認",
+              "reason": "初診/再診確認: 初診か再診かを構造化抽出だけでは確定できません。患者の受診履歴、今回病名との継続性、紹介・新疾患初診の扱いを確認してください。"
+            },
+            {
+              "title": "特定疾患療養管理料の算定確認",
+              "reason": "病名「脳梗塞後遺症」は特定疾患療養管理料の対象疾患です。管理・指導の実施記録がある場合に算定できます。"
+            }
+          ],
+          "extraction": {
+            "source": "openai",
+            "mode": "full",
+            "promptVersion": "fee-clinical-events-v15",
+            "clinicalEventCount": 3,
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 3,
+              "finalEventCount": 3
+            },
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 0,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 12477,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5800,
+              "outputTokens": 1235,
+              "totalTokens": 7035,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00180-jtv"
+          },
+          "requestDurationMs": 13603.39
+        }
+      ]
+    },
+    {
+      "id": "suction-management-continuation-plan",
+      "title": "必要時吸引を含む退院後管理方針",
+      "sourcePattern": "計画・管理継続と当日実施が同じ段落に近接する構造",
+      "inputAudit": {
+        "id": "suction-management-continuation-plan",
+        "title": "必要時吸引を含む退院後管理方針",
+        "sourcePattern": "計画・管理継続と当日実施が同じ段落に近接する構造",
+        "serviceDate": "2026-06-23",
+        "setting": "outpatient",
+        "diagnosisCount": 2,
+        "clinicalTextHash": "d3c8633861bd4fe304160a9d0cbaf323f7846300b1563ffe6cff8c11177814ed",
+        "clinicalTextLineCount": 4
+      },
+      "summary": {
+        "caseId": "suction-management-continuation-plan",
+        "runCount": 3,
+        "verdict": "pass",
+        "confirmedPoints": {
+          "values": [
+            293,
+            293,
+            293
+          ],
+          "variance": 0,
+          "stable": true,
+          "pass": true
+        },
+        "candidates": {
+          "counts": [
+            3,
+            3,
+            3
+          ],
+          "pairwiseJaccard": [
+            {
+              "leftRun": 1,
+              "rightRun": 2,
+              "jaccard": 1
+            },
+            {
+              "leftRun": 1,
+              "rightRun": 3,
+              "jaccard": 1
+            },
+            {
+              "leftRun": 2,
+              "rightRun": 3,
+              "jaccard": 1
+            }
+          ],
+          "minimumJaccard": 1,
+          "meanJaccard": 1,
+          "gate": {
+            "status": "pass",
+            "minimum": 1,
+            "observed": 1,
+            "pass": true
+          }
+        },
+        "clinicalEvents": {
+          "counts": [
+            4,
+            5,
+            5
+          ],
+          "minimum": 4,
+          "maximum": 5,
+          "spread": 1
+        }
+      },
+      "runs": [
+        {
+          "run": 1,
+          "sessionRef": "0fdd4f50a9df",
+          "totalPoints": 293,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "pending_line",
+              "code": "111000110",
+              "codeCandidates": [],
+              "title": "初診料",
+              "points": 291
+            },
+            {
+              "kind": "proposal",
+              "code": "140022710",
+              "codeCandidates": [],
+              "title": "ネブライザの算定確認",
+              "points": 12
+            },
+            {
+              "kind": "pending_line",
+              "code": "180819910",
+              "codeCandidates": [],
+              "title": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+              "points": 2
+            }
+          ],
+          "candidateKeys": [
+            "{\"code\":\"111000110\",\"codeCandidates\":[],\"title\":\"初診料\"}",
+            "{\"code\":\"140022710\",\"codeCandidates\":[],\"title\":\"ネブライザの算定確認\"}",
+            "{\"code\":\"180819910\",\"codeCandidates\":[],\"title\":\"物価対応料１（外来・在宅物価対応料）（初診時）イ\"}"
+          ],
+          "reviewIssues": [],
+          "extraction": {
+            "source": "openai",
+            "mode": "full",
+            "promptVersion": "fee-clinical-events-v15",
+            "clinicalEventCount": 4,
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 4,
+              "finalEventCount": 4
+            },
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 0,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 11491,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5785,
+              "outputTokens": 1678,
+              "totalTokens": 7463,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00180-jtv"
+          },
+          "requestDurationMs": 12572.21
+        },
+        {
+          "run": 2,
+          "sessionRef": "596a64b526cb",
+          "totalPoints": 293,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "pending_line",
+              "code": "111000110",
+              "codeCandidates": [],
+              "title": "初診料",
+              "points": 291
+            },
+            {
+              "kind": "proposal",
+              "code": "140022710",
+              "codeCandidates": [],
+              "title": "ネブライザの算定確認",
+              "points": 12
+            },
+            {
+              "kind": "pending_line",
+              "code": "180819910",
+              "codeCandidates": [],
+              "title": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+              "points": 2
+            }
+          ],
+          "candidateKeys": [
+            "{\"code\":\"111000110\",\"codeCandidates\":[],\"title\":\"初診料\"}",
+            "{\"code\":\"140022710\",\"codeCandidates\":[],\"title\":\"ネブライザの算定確認\"}",
+            "{\"code\":\"180819910\",\"codeCandidates\":[],\"title\":\"物価対応料１（外来・在宅物価対応料）（初診時）イ\"}"
+          ],
+          "reviewIssues": [],
+          "extraction": {
+            "source": "openai",
+            "mode": "full",
+            "promptVersion": "fee-clinical-events-v15",
+            "clinicalEventCount": 5,
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 5,
+              "finalEventCount": 5
+            },
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 0,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 12272,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5785,
+              "outputTokens": 1866,
+              "totalTokens": 7651,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00180-jtv"
+          },
+          "requestDurationMs": 13270.05
+        },
+        {
+          "run": 3,
+          "sessionRef": "9a778e40a0c9",
+          "totalPoints": 293,
+          "confirmedLines": [],
+          "candidateItems": [
+            {
+              "kind": "pending_line",
+              "code": "111000110",
+              "codeCandidates": [],
+              "title": "初診料",
+              "points": 291
+            },
+            {
+              "kind": "proposal",
+              "code": "140022710",
+              "codeCandidates": [],
+              "title": "ネブライザの算定確認",
+              "points": 12
+            },
+            {
+              "kind": "pending_line",
+              "code": "180819910",
+              "codeCandidates": [],
+              "title": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+              "points": 2
+            }
+          ],
+          "candidateKeys": [
+            "{\"code\":\"111000110\",\"codeCandidates\":[],\"title\":\"初診料\"}",
+            "{\"code\":\"140022710\",\"codeCandidates\":[],\"title\":\"ネブライザの算定確認\"}",
+            "{\"code\":\"180819910\",\"codeCandidates\":[],\"title\":\"物価対応料１（外来・在宅物価対応料）（初診時）イ\"}"
+          ],
+          "reviewIssues": [],
+          "extraction": {
+            "source": "openai",
+            "mode": "full",
+            "promptVersion": "fee-clinical-events-v15",
+            "clinicalEventCount": 5,
+            "emptyExtractionGuard": {
+              "enabled": true,
+              "triggered": false,
+              "reasonCodes": [],
+              "retryAttempted": false,
+              "recovered": false,
+              "initialEventCount": 5,
+              "finalEventCount": 5
+            },
+            "memo": {
+              "enabled": false,
+              "used": false,
+              "reason": "disabled",
+              "memoHitLineRatio": 0,
+              "continuedLineCount": 0,
+              "newLineCount": 4,
+              "removedLineCount": 0,
+              "visitFactsSource": "current_full_extraction",
+              "traceRecorded": true,
+              "trace": {
+                "stage": "extraction_memo",
+                "outcome": "full_extraction",
+                "reason": "disabled",
+                "memoHitLineRatio": 0,
+                "continuedLineCount": 0,
+                "newLineCount": 4,
+                "removedLineCount": 0,
+                "visitFactsSource": "current_full_extraction"
+              }
+            }
+          },
+          "patientHistory": {
+            "completeness": "partial",
+            "priorSessionCount": 0,
+            "externalHistoryEventCount": 0,
+            "patientHistoryReason": "loaded",
+            "extractionSnapshotReason": "disabled"
+          },
+          "openAi": {
+            "providerDurationMs": 10941,
+            "callCount": 1,
+            "callObserved": true,
+            "usage": {
+              "inputTokens": 5785,
+              "outputTokens": 1678,
+              "totalTokens": 7463,
+              "cachedInputTokens": 4864
+            }
+          },
+          "runtime": {
+            "environment": "stg",
+            "cloudRunService": "fee-api-stg",
+            "cloudRunRevision": "fee-api-stg-00180-jtv"
+          },
+          "requestDurationMs": 11947.33
+        }
+      ]
+    }
+  ]
+}

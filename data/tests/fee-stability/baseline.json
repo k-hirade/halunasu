@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "fee-extraction-stability-baseline.v1",
+  "generatedAt": "2026-07-25T07:44:59.075Z",
+  "sourceRunId": "fee-stability-20260725074305-bf0f99",
+  "policy": {
+    "confirmedPointVariance": 0,
+    "candidateThreshold": "per-case minimum pairwise Jaccard observed in the reviewed baseline run"
+  },
+  "cases": {
+    "management-heavy-continuation": {
+      "minimumCandidateJaccard": 1,
+      "observedCandidateCounts": [
+        3,
+        3,
+        3
+      ],
+      "observedClinicalEventSpread": 1
+    },
+    "suction-management-continuation-home": {
+      "minimumCandidateJaccard": 1,
+      "observedCandidateCounts": [
+        4,
+        4,
+        4
+      ],
+      "observedClinicalEventSpread": 2
+    },
+    "suction-management-continuation-plan": {
+      "minimumCandidateJaccard": 1,
+      "observedCandidateCounts": [
+        3,
+        3,
+        3
+      ],
+      "observedClinicalEventSpread": 1
+    }
+  }
+}

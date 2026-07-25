@@ -3,11 +3,36 @@
 WX0で使う、診療科8種 x 受診区分4種の合成カルテ評価コーパスです。
 初期目標は各セル10件、うちholdout 2件以上、合計320件です。入院は対象外です。
 
-## 現在地
+## 現在地 (2026-07-25 更新)
 
-`cases.json` はまだ症例作成前です。空のままでも構造検証は通りますが、厳格検証は
-全32セルの不足を返します。未作成ケースを実測済み・gold済みとして扱わないための
-意図的な状態です。
+- train/development: 288ケース(32セル×9)完成。バリデータgreen・軸クォータ全セル充足。
+- **holdout: 外来8セル分16件を作成済み**(計304ケース)。本文はannotation queueの
+  fee-soap-e2e-v2生成文を無変更で使用(別生成系要件を充足。ビルド時に
+  queue本文との完全一致をassertで保証)、ラベルはclaude-fable-5付与+機械検証。
+  reviewPolicy.reviewedByに由来を明記しており、コミット前のスポットチェックを推奨。
+- **外来8セルはstrict complete**。strict残はhome_visit/house_call/telephoneの
+  24セルのみで、別生成系の本文が存在しないため
+  H2(非外来holdout生産パイプライン、`fee-whitebox-wx0-completion-workorder-20260725.md`)
+  の実装が前提。
+
+執筆フロー:
+
+1. **train/development**: claude-fable-5(primary_generator)が執筆。
+   ドラフト(spanはtext+occurrence指定)を執筆ハーネスに通し、
+   ①コードポイント単位オフセットの自動計算 ②全コードのマスタ実在検証
+   ③軸・カテゴリenum検証 を経て `cases.json` にマージする。
+   マージは調整役が直列に行う(並列書き込み禁止)。
+2. **holdout(各セル2件)**: 生成系ファミリをtrain側と共有できないため、
+   既存のfee-soap-e2e-v2 blueprint(別生成系)から
+   `npm run prepare:fee-specialty-matrix` でannotation候補を作り、
+   **人手でspan・軸ラベルを確認**して昇格する(human_reviewed)。
+   e2e-v2に該当セルの症例がない場合は、OPENAI_API_KEYのある環境で
+   blueprint生成器により別生成系ケースを追加してから同じ手順を踏む。
+3. 執筆ケースの正解例は internal_medicine × outpatient の9件
+   (wx0-im-outp-0001〜0009)。軸の多様性(past/other_provider/
+   not_performed/planned/continued)を各セルに必ず含める。
+4. 制度上の簡略化(判断料・採取料の省略、院外処方薬剤のレセプト除外等)は
+   各ケースの `expectedClaimContext.notes` に明記する。
 
 ```bash
 npm run test:fee-specialty-matrix
