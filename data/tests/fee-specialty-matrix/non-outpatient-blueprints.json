@@ -1,0 +1,2257 @@
+{
+  "schemaVersion": "fee-specialty-holdout-blueprints-v1",
+  "datasetId": "fee-specialty-holdout-blueprints-v1",
+  "synthetic": true,
+  "generatorFamily": "openai-fee-specialty-holdout-v1",
+  "casesPerCell": 2,
+  "blueprints": [
+    {
+      "blueprintId": "H2-INTERNAL-MEDICINE-HOME_VISIT-001",
+      "templateId": "fee-specialty-holdout-v1:internal_medicine:home_visit:001",
+      "specialty": "internal_medicine",
+      "specialtyLabel": "内科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-04",
+      "style": "慢性疾患または急性症状を簡潔に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-04",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": false,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 1
+        },
+        "procedure_codes": [
+          "114001110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114001110",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者以外）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "患者宅へ訪問"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-INTERNAL-MEDICINE-HOME_VISIT-002",
+      "templateId": "fee-specialty-holdout-v1:internal_medicine:home_visit:002",
+      "specialty": "internal_medicine",
+      "specialtyLabel": "内科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-07",
+      "style": "慢性疾患または急性症状を簡潔に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-07",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": true,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 4
+        },
+        "procedure_codes": [
+          "114030310"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114030310",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "同一建物内の患者4名"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-INTERNAL-MEDICINE-HOUSE_CALL-001",
+      "templateId": "fee-specialty-holdout-v1:internal_medicine:house_call:001",
+      "specialty": "internal_medicine",
+      "specialtyLabel": "内科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-04",
+      "style": "慢性疾患または急性症状を簡潔に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-04",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院再診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-INTERNAL-MEDICINE-HOUSE_CALL-002",
+      "templateId": "fee-specialty-holdout-v1:internal_medicine:house_call:002",
+      "specialty": "internal_medicine",
+      "specialtyLabel": "内科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-07",
+      "style": "慢性疾患または急性症状を簡潔に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-07",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院初診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-INTERNAL-MEDICINE-TELEPHONE-001",
+      "templateId": "fee-specialty-holdout-v1:internal_medicine:telephone:001",
+      "specialty": "internal_medicine",
+      "specialtyLabel": "内科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-04",
+      "style": "慢性疾患または急性症状を簡潔に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-04",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        }
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-INTERNAL-MEDICINE-TELEPHONE-002",
+      "templateId": "fee-specialty-holdout-v1:internal_medicine:telephone:002",
+      "specialty": "internal_medicine",
+      "specialtyLabel": "内科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-07",
+      "style": "慢性疾患または急性症状を簡潔に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-07",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        },
+        "procedure_codes": [
+          "120002910"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "120002910",
+          "name": "処方箋料（リフィル以外・その他）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示",
+        "院外処方箋を発行"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-DERMATOLOGY-HOME_VISIT-001",
+      "templateId": "fee-specialty-holdout-v1:dermatology:home_visit:001",
+      "specialty": "dermatology",
+      "specialtyLabel": "皮膚科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-10",
+      "style": "皮疹の部位・性状・経過を具体的に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-10",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": false,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 1
+        },
+        "procedure_codes": [
+          "114001110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114001110",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者以外）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "患者宅へ訪問"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-DERMATOLOGY-HOME_VISIT-002",
+      "templateId": "fee-specialty-holdout-v1:dermatology:home_visit:002",
+      "specialty": "dermatology",
+      "specialtyLabel": "皮膚科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-13",
+      "style": "皮疹の部位・性状・経過を具体的に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-13",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": true,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 4
+        },
+        "procedure_codes": [
+          "114030310"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114030310",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "同一建物内の患者4名"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-DERMATOLOGY-HOUSE_CALL-001",
+      "templateId": "fee-specialty-holdout-v1:dermatology:house_call:001",
+      "specialty": "dermatology",
+      "specialtyLabel": "皮膚科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-10",
+      "style": "皮疹の部位・性状・経過を具体的に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-10",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院再診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-DERMATOLOGY-HOUSE_CALL-002",
+      "templateId": "fee-specialty-holdout-v1:dermatology:house_call:002",
+      "specialty": "dermatology",
+      "specialtyLabel": "皮膚科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-13",
+      "style": "皮疹の部位・性状・経過を具体的に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-13",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院初診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-DERMATOLOGY-TELEPHONE-001",
+      "templateId": "fee-specialty-holdout-v1:dermatology:telephone:001",
+      "specialty": "dermatology",
+      "specialtyLabel": "皮膚科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-10",
+      "style": "皮疹の部位・性状・経過を具体的に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-10",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        }
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-DERMATOLOGY-TELEPHONE-002",
+      "templateId": "fee-specialty-holdout-v1:dermatology:telephone:002",
+      "specialty": "dermatology",
+      "specialtyLabel": "皮膚科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-13",
+      "style": "皮疹の部位・性状・経過を具体的に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-13",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        },
+        "procedure_codes": [
+          "120002910"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "120002910",
+          "name": "処方箋料（リフィル以外・その他）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示",
+        "院外処方箋を発行"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-ORTHOPEDICS-HOME_VISIT-001",
+      "templateId": "fee-specialty-holdout-v1:orthopedics:home_visit:001",
+      "specialty": "orthopedics",
+      "specialtyLabel": "整形外科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-16",
+      "style": "疼痛部位・可動域・移動能力を具体的に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-16",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": false,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 1
+        },
+        "procedure_codes": [
+          "114001110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114001110",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者以外）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "患者宅へ訪問"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-ORTHOPEDICS-HOME_VISIT-002",
+      "templateId": "fee-specialty-holdout-v1:orthopedics:home_visit:002",
+      "specialty": "orthopedics",
+      "specialtyLabel": "整形外科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-19",
+      "style": "疼痛部位・可動域・移動能力を具体的に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-19",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": true,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 4
+        },
+        "procedure_codes": [
+          "114030310"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114030310",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "同一建物内の患者4名"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-ORTHOPEDICS-HOUSE_CALL-001",
+      "templateId": "fee-specialty-holdout-v1:orthopedics:house_call:001",
+      "specialty": "orthopedics",
+      "specialtyLabel": "整形外科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-16",
+      "style": "疼痛部位・可動域・移動能力を具体的に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-16",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院再診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-ORTHOPEDICS-HOUSE_CALL-002",
+      "templateId": "fee-specialty-holdout-v1:orthopedics:house_call:002",
+      "specialty": "orthopedics",
+      "specialtyLabel": "整形外科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-19",
+      "style": "疼痛部位・可動域・移動能力を具体的に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-19",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院初診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-ORTHOPEDICS-TELEPHONE-001",
+      "templateId": "fee-specialty-holdout-v1:orthopedics:telephone:001",
+      "specialty": "orthopedics",
+      "specialtyLabel": "整形外科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-16",
+      "style": "疼痛部位・可動域・移動能力を具体的に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-16",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        }
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-ORTHOPEDICS-TELEPHONE-002",
+      "templateId": "fee-specialty-holdout-v1:orthopedics:telephone:002",
+      "specialty": "orthopedics",
+      "specialtyLabel": "整形外科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-19",
+      "style": "疼痛部位・可動域・移動能力を具体的に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-19",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        },
+        "procedure_codes": [
+          "120002910"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "120002910",
+          "name": "処方箋料（リフィル以外・その他）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示",
+        "院外処方箋を発行"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-PEDIATRICS-HOME_VISIT-001",
+      "templateId": "fee-specialty-holdout-v1:pediatrics:home_visit:001",
+      "specialty": "pediatrics",
+      "specialtyLabel": "小児科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-22",
+      "style": "保護者からの聴取、年齢、全身状態を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-22",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": false,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 1
+        },
+        "procedure_codes": [
+          "114001110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114001110",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者以外）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "患者宅へ訪問"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-PEDIATRICS-HOME_VISIT-002",
+      "templateId": "fee-specialty-holdout-v1:pediatrics:home_visit:002",
+      "specialty": "pediatrics",
+      "specialtyLabel": "小児科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-25",
+      "style": "保護者からの聴取、年齢、全身状態を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-25",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": true,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 4
+        },
+        "procedure_codes": [
+          "114030310"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114030310",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "同一建物内の患者4名"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-PEDIATRICS-HOUSE_CALL-001",
+      "templateId": "fee-specialty-holdout-v1:pediatrics:house_call:001",
+      "specialty": "pediatrics",
+      "specialtyLabel": "小児科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-22",
+      "style": "保護者からの聴取、年齢、全身状態を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-22",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院再診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-PEDIATRICS-HOUSE_CALL-002",
+      "templateId": "fee-specialty-holdout-v1:pediatrics:house_call:002",
+      "specialty": "pediatrics",
+      "specialtyLabel": "小児科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-25",
+      "style": "保護者からの聴取、年齢、全身状態を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-25",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院初診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-PEDIATRICS-TELEPHONE-001",
+      "templateId": "fee-specialty-holdout-v1:pediatrics:telephone:001",
+      "specialty": "pediatrics",
+      "specialtyLabel": "小児科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-22",
+      "style": "保護者からの聴取、年齢、全身状態を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-22",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        }
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-PEDIATRICS-TELEPHONE-002",
+      "templateId": "fee-specialty-holdout-v1:pediatrics:telephone:002",
+      "specialty": "pediatrics",
+      "specialtyLabel": "小児科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-25",
+      "style": "保護者からの聴取、年齢、全身状態を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-25",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        },
+        "procedure_codes": [
+          "120002910"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "120002910",
+          "name": "処方箋料（リフィル以外・その他）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示",
+        "院外処方箋を発行"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-OTOLARYNGOLOGY-HOME_VISIT-001",
+      "templateId": "fee-specialty-holdout-v1:otolaryngology:home_visit:001",
+      "specialty": "otolaryngology",
+      "specialtyLabel": "耳鼻咽喉科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-01",
+      "style": "耳鼻咽喉症状と局所所見を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-01",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": false,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 1
+        },
+        "procedure_codes": [
+          "114001110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114001110",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者以外）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "患者宅へ訪問"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-OTOLARYNGOLOGY-HOME_VISIT-002",
+      "templateId": "fee-specialty-holdout-v1:otolaryngology:home_visit:002",
+      "specialty": "otolaryngology",
+      "specialtyLabel": "耳鼻咽喉科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-04",
+      "style": "耳鼻咽喉症状と局所所見を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-04",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": true,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 4
+        },
+        "procedure_codes": [
+          "114030310"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114030310",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "同一建物内の患者4名"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-OTOLARYNGOLOGY-HOUSE_CALL-001",
+      "templateId": "fee-specialty-holdout-v1:otolaryngology:house_call:001",
+      "specialty": "otolaryngology",
+      "specialtyLabel": "耳鼻咽喉科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-01",
+      "style": "耳鼻咽喉症状と局所所見を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-01",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院再診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-OTOLARYNGOLOGY-HOUSE_CALL-002",
+      "templateId": "fee-specialty-holdout-v1:otolaryngology:house_call:002",
+      "specialty": "otolaryngology",
+      "specialtyLabel": "耳鼻咽喉科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-04",
+      "style": "耳鼻咽喉症状と局所所見を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-04",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院初診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-OTOLARYNGOLOGY-TELEPHONE-001",
+      "templateId": "fee-specialty-holdout-v1:otolaryngology:telephone:001",
+      "specialty": "otolaryngology",
+      "specialtyLabel": "耳鼻咽喉科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-01",
+      "style": "耳鼻咽喉症状と局所所見を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-01",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        }
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-OTOLARYNGOLOGY-TELEPHONE-002",
+      "templateId": "fee-specialty-holdout-v1:otolaryngology:telephone:002",
+      "specialty": "otolaryngology",
+      "specialtyLabel": "耳鼻咽喉科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-04",
+      "style": "耳鼻咽喉症状と局所所見を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-04",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        },
+        "procedure_codes": [
+          "120002910"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "120002910",
+          "name": "処方箋料（リフィル以外・その他）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示",
+        "院外処方箋を発行"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-OPHTHALMOLOGY-HOME_VISIT-001",
+      "templateId": "fee-specialty-holdout-v1:ophthalmology:home_visit:001",
+      "specialty": "ophthalmology",
+      "specialtyLabel": "眼科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-07",
+      "style": "左右、視覚症状、眼所見を明確に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-07",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": false,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 1
+        },
+        "procedure_codes": [
+          "114001110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114001110",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者以外）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "患者宅へ訪問"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-OPHTHALMOLOGY-HOME_VISIT-002",
+      "templateId": "fee-specialty-holdout-v1:ophthalmology:home_visit:002",
+      "specialty": "ophthalmology",
+      "specialtyLabel": "眼科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-10",
+      "style": "左右、視覚症状、眼所見を明確に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-10",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": true,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 4
+        },
+        "procedure_codes": [
+          "114030310"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114030310",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "同一建物内の患者4名"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-OPHTHALMOLOGY-HOUSE_CALL-001",
+      "templateId": "fee-specialty-holdout-v1:ophthalmology:house_call:001",
+      "specialty": "ophthalmology",
+      "specialtyLabel": "眼科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-07",
+      "style": "左右、視覚症状、眼所見を明確に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-07",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院再診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-OPHTHALMOLOGY-HOUSE_CALL-002",
+      "templateId": "fee-specialty-holdout-v1:ophthalmology:house_call:002",
+      "specialty": "ophthalmology",
+      "specialtyLabel": "眼科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-10",
+      "style": "左右、視覚症状、眼所見を明確に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-10",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院初診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-OPHTHALMOLOGY-TELEPHONE-001",
+      "templateId": "fee-specialty-holdout-v1:ophthalmology:telephone:001",
+      "specialty": "ophthalmology",
+      "specialtyLabel": "眼科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-07",
+      "style": "左右、視覚症状、眼所見を明確に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-07",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        }
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-OPHTHALMOLOGY-TELEPHONE-002",
+      "templateId": "fee-specialty-holdout-v1:ophthalmology:telephone:002",
+      "specialty": "ophthalmology",
+      "specialtyLabel": "眼科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-10",
+      "style": "左右、視覚症状、眼所見を明確に記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-10",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        },
+        "procedure_codes": [
+          "120002910"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "120002910",
+          "name": "処方箋料（リフィル以外・その他）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示",
+        "院外処方箋を発行"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-PSYCHIATRY-HOME_VISIT-001",
+      "templateId": "fee-specialty-holdout-v1:psychiatry:home_visit:001",
+      "specialty": "psychiatry",
+      "specialtyLabel": "精神科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-13",
+      "style": "精神症状、生活状況、本人または家族への指示を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-13",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": false,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 1
+        },
+        "procedure_codes": [
+          "114001110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114001110",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者以外）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "患者宅へ訪問"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-PSYCHIATRY-HOME_VISIT-002",
+      "templateId": "fee-specialty-holdout-v1:psychiatry:home_visit:002",
+      "specialty": "psychiatry",
+      "specialtyLabel": "精神科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-16",
+      "style": "精神症状、生活状況、本人または家族への指示を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-16",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": true,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 4
+        },
+        "procedure_codes": [
+          "114030310"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114030310",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "同一建物内の患者4名"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-PSYCHIATRY-HOUSE_CALL-001",
+      "templateId": "fee-specialty-holdout-v1:psychiatry:house_call:001",
+      "specialty": "psychiatry",
+      "specialtyLabel": "精神科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-13",
+      "style": "精神症状、生活状況、本人または家族への指示を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-13",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院再診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-PSYCHIATRY-HOUSE_CALL-002",
+      "templateId": "fee-specialty-holdout-v1:psychiatry:house_call:002",
+      "specialty": "psychiatry",
+      "specialtyLabel": "精神科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-16",
+      "style": "精神症状、生活状況、本人または家族への指示を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-16",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院初診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-PSYCHIATRY-TELEPHONE-001",
+      "templateId": "fee-specialty-holdout-v1:psychiatry:telephone:001",
+      "specialty": "psychiatry",
+      "specialtyLabel": "精神科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-13",
+      "style": "精神症状、生活状況、本人または家族への指示を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-13",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        }
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-PSYCHIATRY-TELEPHONE-002",
+      "templateId": "fee-specialty-holdout-v1:psychiatry:telephone:002",
+      "specialty": "psychiatry",
+      "specialtyLabel": "精神科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-16",
+      "style": "精神症状、生活状況、本人または家族への指示を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-16",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        },
+        "procedure_codes": [
+          "120002910"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "120002910",
+          "name": "処方箋料（リフィル以外・その他）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示",
+        "院外処方箋を発行"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-SURGERY-HOME_VISIT-001",
+      "templateId": "fee-specialty-holdout-v1:surgery:home_visit:001",
+      "specialty": "surgery",
+      "specialtyLabel": "外科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-19",
+      "style": "創部または術後経過、全身状態を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-19",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": false,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 1
+        },
+        "procedure_codes": [
+          "114001110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114001110",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者以外）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "患者宅へ訪問"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-SURGERY-HOME_VISIT-002",
+      "templateId": "fee-specialty-holdout-v1:surgery:home_visit:002",
+      "specialty": "surgery",
+      "specialtyLabel": "外科",
+      "encounterSetting": "home_visit",
+      "serviceDate": "2026-08-22",
+      "style": "創部または術後経過、全身状態を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-22",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "home_visit",
+          "sameBuilding": true,
+          "sameBuildingSource": "user",
+          "singleBuildingPatientCount": 4
+        },
+        "procedure_codes": [
+          "114030310"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "114030310",
+          "name": "在宅患者訪問診療料（１）１（同一建物居住者）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "定期訪問診療を実施",
+        "同一建物内の患者4名"
+      ],
+      "forbiddenPhrases": [
+        "往診を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-SURGERY-HOUSE_CALL-001",
+      "templateId": "fee-specialty-holdout-v1:surgery:house_call:001",
+      "specialty": "surgery",
+      "specialtyLabel": "外科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-19",
+      "style": "創部または術後経過、全身状態を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-19",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007410",
+          "name": "再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院再診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-SURGERY-HOUSE_CALL-002",
+      "templateId": "fee-specialty-holdout-v1:surgery:house_call:002",
+      "specialty": "surgery",
+      "specialtyLabel": "外科",
+      "encounterSetting": "house_call",
+      "serviceDate": "2026-08-22",
+      "style": "創部または術後経過、全身状態を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-22",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "house_call"
+        },
+        "outpatient_basic": {
+          "fee_kind": "initial"
+        },
+        "procedure_codes": [
+          "114000110"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "114000110",
+          "name": "往診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "当院初診",
+        "患者側から臨時の求めがあり往診を実施"
+      ],
+      "forbiddenPhrases": [
+        "定期訪問診療を実施",
+        "電話等再診"
+      ]
+    },
+    {
+      "blueprintId": "H2-SURGERY-TELEPHONE-001",
+      "templateId": "fee-specialty-holdout-v1:surgery:telephone:001",
+      "specialty": "surgery",
+      "specialtyLabel": "外科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-19",
+      "style": "創部または術後経過、全身状態を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-19",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        }
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    },
+    {
+      "blueprintId": "H2-SURGERY-TELEPHONE-002",
+      "templateId": "fee-specialty-holdout-v1:surgery:telephone:002",
+      "specialty": "surgery",
+      "specialtyLabel": "外科",
+      "encounterSetting": "telephone",
+      "serviceDate": "2026-08-22",
+      "style": "創部または術後経過、全身状態を記載する",
+      "synthetic": true,
+      "expectedClaimContext": {
+        "encounter": {
+          "service_date": "2026-08-22",
+          "is_outpatient": true
+        },
+        "encounterDetails": {
+          "visitKind": "telephone_revisit",
+          "telephoneEligibility": {
+            "establishedPatient": true,
+            "patientInitiated": true,
+            "instructionGiven": true,
+            "scheduledManagement": false
+          }
+        },
+        "outpatient_basic": {
+          "fee_kind": "revisit",
+          "visit_kind": "telephone_revisit",
+          "telephone_eligibility": {
+            "established_patient": true,
+            "patient_initiated": true,
+            "instruction_given": true,
+            "scheduled_management": false
+          }
+        },
+        "procedure_codes": [
+          "120002910"
+        ]
+      },
+      "billingTargets": [
+        {
+          "code": "112007950",
+          "name": "電話等再診料",
+          "source": "medical_procedures"
+        },
+        {
+          "code": "120002910",
+          "name": "処方箋料（リフィル以外・その他）",
+          "source": "medical_procedures"
+        }
+      ],
+      "requiredPhrases": [
+        "患者本人から電話相談",
+        "電話等再診として治療上必要な指示",
+        "院外処方箋を発行"
+      ],
+      "forbiddenPhrases": [
+        "来院して診察",
+        "当日、検査を実施",
+        "当日、処置を実施"
+      ]
+    }
+  ]
+}

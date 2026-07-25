@@ -4,11 +4,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateNonOutpatientBlueprintDataset } from "./lib/fee-specialty-holdout-generation.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const blueprintPath = path.join(repoRoot, "data/tests/fee-soap-e2e-v2/gold-blueprints.json");
 const matrixPath = path.join(repoRoot, "data/tests/fee-soap-e2e-v2/coverage-matrix-v2.json");
 const fixturesPath = path.join(repoRoot, "data/tests/fee-soap-e2e-v2/facility-fixtures.json");
+const specialtySourceIndex = process.argv.indexOf("--specialty-source");
 
 const data = JSON.parse(fs.readFileSync(blueprintPath, "utf8"));
 const matrix = JSON.parse(fs.readFileSync(matrixPath, "utf8"));
@@ -38,6 +40,25 @@ const ids = new Set();
 const caseTypeKeys = new Set();
 const exactPointShapes = new Set();
 const authored = [];
+
+let specialtySourceValidation = null;
+if (specialtySourceIndex >= 0) {
+  const configured = process.argv[specialtySourceIndex + 1];
+  if (!configured) {
+    fail("(specialty-source)", "--specialty-source requires a path");
+  } else {
+    const specialtySource = JSON.parse(
+      fs.readFileSync(path.resolve(repoRoot, configured), "utf8")
+    );
+    specialtySourceValidation = validateNonOutpatientBlueprintDataset({
+      document: specialtySource,
+      requireClinicalText: Boolean(specialtySource.cases)
+    });
+    for (const error of specialtySourceValidation.errors) {
+      fail("(specialty-source)", error);
+    }
+  }
+}
 
 for (const item of blueprints) {
   const id = item.blueprintId || "(missing id)";
@@ -125,6 +146,7 @@ console.log(JSON.stringify({
   assertionMix: byAssertion,
   statusCounts,
   exactPointShapes: exactPointShapes.size,
+  specialtySourceValidation,
   errors: errors.slice(0, 50),
   errorCount: errors.length,
   warnings: warnings.slice(0, 20),

@@ -16,6 +16,12 @@ import {
   standingProposalSelection,
   summarizeStandingMonthlyRepeats
 } from "./lib/fee-standing-monthly-evaluation.mjs";
+import {
+  buildMonthlyExclusionResolutionPlan,
+  sanitizeMonthlyExclusion,
+  sanitizeMonthlyExportResponse,
+  summarizeMonthlyExclusionRuns
+} from "./lib/fee-monthly-exclusion-evaluation.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const defaults = {
@@ -210,7 +216,8 @@ for (let repeatIndex = 1; repeatIndex <= args.repeat; repeatIndex += 1) {
     context,
     seedKnownPriorHistory: args.seedKnownPriorHistory,
     approveCalculatedLines: args.approveCalculatedLines,
-    standingTimeline
+    standingTimeline,
+    resolveExclusions: args.resolveExclusions
   });
   repeats.push(repetition);
   process.stdout.write(
@@ -258,7 +265,8 @@ const result = {
     encounterSettingMode: args.encounterSetting ? "override" : "derived",
     encounterSettingOverride: args.encounterSetting || null,
     approveCalculatedLines: args.approveCalculatedLines,
-    approveStandingCandidates: Boolean(standingTimeline)
+    approveStandingCandidates: Boolean(standingTimeline),
+    resolveExclusions: args.resolveExclusions || null
   },
   summary,
   repeats
@@ -285,7 +293,8 @@ async function runRepetition({
   context,
   seedKnownPriorHistory,
   approveCalculatedLines = false,
-  standingTimeline = null
+  standingTimeline = null,
+  resolveExclusions = ""
 }) {
   if (!Array.isArray(encounterPlans) || encounterPlans.length !== charts.length) {
     throw new Error("encounter plan count must match chart count");
@@ -497,8 +506,20 @@ async function runRepetition({
   );
   requestTimings.push(timingRecord("monthly_receipt", 0, monthlyResponse));
   assertResponse(monthlyResponse, "monthly receipt");
-  const monthly = sanitizeMonthlyReceipt(monthlyResponse.body?.receiptDraft || {});
+  const monthlyBeforeResolution = sanitizeMonthlyReceipt(monthlyResponse.body?.receiptDraft || {});
   const monthlyMetrics = sanitizeEndpointStageMetrics(monthlyResponse.body?.monthlyMetrics);
+  const monthlyExclusionResolution = resolveExclusions
+    ? await resolveMonthlyExclusions({
+      api,
+      patientId: internalPatientId,
+      claimMonth,
+      action: resolveExclusions,
+      receiptBefore: monthlyBeforeResolution,
+      requestTimings,
+      repeatIndex
+    })
+    : null;
+  const monthly = monthlyExclusionResolution?.monthlyAfterResolution || monthlyBeforeResolution;
 
   const mappedBaseline = {
     ...baselineClaim,
@@ -579,6 +600,13 @@ async function runRepetition({
       issueCount: sessions.reduce((sum, item) => sum + item.candidateSurface.issueCount, 0)
     },
     monthly,
+    monthlyBeforeResolution,
+    monthlyExclusionResolution: monthlyExclusionResolution
+      ? {
+        ...monthlyExclusionResolution,
+        monthlyAfterResolution: undefined
+      }
+      : null,
     monthlyMetrics,
     comparison,
     detection: {
@@ -903,7 +931,130 @@ function sanitizeMonthlyReceipt(receipt) {
     lines,
     // 2段表示の下段(承認待ち候補)。確定一致とは別に「候補まで含む検知率」を評価する。
     candidateLines,
-    candidateTotalPoints: Number(receipt.candidateTotalPoints || 0)
+    candidateTotalPoints: Number(receipt.candidateTotalPoints || 0),
+    exclusion: sanitizeMonthlyExclusion(receipt)
+  };
+}
+
+async function resolveMonthlyExclusions({
+  api,
+  patientId,
+  claimMonth,
+  action,
+  receiptBefore,
+  requestTimings,
+  repeatIndex
+}) {
+  const query = `patientId=${encodeURIComponent(patientId)}&claimMonth=${encodeURIComponent(claimMonth)}`;
+  const exportsBefore = await queryMonthlyExports(
+    api,
+    query,
+    `r${repeatIndex}-before-resolution`,
+    { forbiddenCodes: receiptBefore.exclusion.blockedCodes }
+  );
+  requestTimings.push(...exportsBefore.timings);
+  const plan = buildMonthlyExclusionResolutionPlan(receiptBefore.exclusion, { action });
+  const mutationResults = [];
+  let resolvedCount = 0;
+  let failedCount = 0;
+  let skippedUnsupportedCount = 0;
+  for (const resolution of plan.plan) {
+    const response = await api.request(
+      "PUT",
+      "/v1/fee/monthly-exclusion-resolutions",
+      {
+        patientId,
+        claimMonth,
+        ...resolution
+      },
+      {
+        csrf: true,
+        tag: `r${repeatIndex}-resolve-exclusion-${mutationResults.length + 1}`
+      }
+    );
+    requestTimings.push(timingRecord("resolve_monthly_exclusion", 0, response));
+    const errorCode = response.statusCode >= 400
+      ? String(response.body?.error?.code || response.body?.code || "request_failed")
+      : null;
+    if (response.statusCode < 400) {
+      resolvedCount += 1;
+    } else if (
+      response.statusCode === 400
+      && String(response.body?.error?.message || response.body?.message || "")
+        .toLowerCase()
+        .includes("action")
+    ) {
+      skippedUnsupportedCount += 1;
+    } else {
+      failedCount += 1;
+    }
+    mutationResults.push({
+      pairKeyHash: sha256(resolution.pairKey).slice(0, 12),
+      action: resolution.action,
+      statusCode: response.statusCode,
+      errorCode
+    });
+  }
+
+  const monthlyResponse = await api.request(
+    "GET",
+    `/v1/fee/monthly-receipt?${query}`,
+    undefined,
+    { tag: `r${repeatIndex}-monthly-after-resolution` }
+  );
+  requestTimings.push(timingRecord("monthly_receipt_after_resolution", 0, monthlyResponse));
+  assertResponse(monthlyResponse, "monthly receipt after exclusion resolution");
+  const monthlyAfterResolution = sanitizeMonthlyReceipt(monthlyResponse.body?.receiptDraft || {});
+  const exportsAfter = await queryMonthlyExports(
+    api,
+    query,
+    `r${repeatIndex}-after-resolution`,
+    { forbiddenCodes: monthlyAfterResolution.exclusion.blockedCodes }
+  );
+  requestTimings.push(...exportsAfter.timings);
+
+  return {
+    requestedAction: plan.requestedAction,
+    before: receiptBefore.exclusion,
+    plan: {
+      plannedCount: plan.plannedCount,
+      alreadyResolvedCount: plan.alreadyResolvedCount,
+      complexSkippedCount: plan.complexSkippedCount,
+      unsupportedSkippedCount: plan.unsupportedSkippedCount
+    },
+    resolvedCount,
+    failedCount,
+    skippedUnsupportedCount,
+    mutationResults,
+    after: monthlyAfterResolution.exclusion,
+    exports: {
+      before: exportsBefore.exports,
+      after: exportsAfter.exports
+    },
+    monthlyAfterResolution
+  };
+}
+
+async function queryMonthlyExports(api, query, tagPrefix, {
+  forbiddenCodes = []
+} = {}) {
+  const [csvResponse, ukeResponse] = await Promise.all([
+    api.request("GET", `/v1/fee/monthly-receipt.csv?${query}`, undefined, {
+      tag: `${tagPrefix}-csv`
+    }),
+    api.request("GET", `/v1/fee/monthly-receipt.uke?${query}&encoding=utf-8`, undefined, {
+      tag: `${tagPrefix}-uke`
+    })
+  ]);
+  return {
+    exports: {
+      csv: sanitizeMonthlyExportResponse(csvResponse, { forbiddenCodes }),
+      uke: sanitizeMonthlyExportResponse(ukeResponse, { forbiddenCodes })
+    },
+    timings: [
+      timingRecord("monthly_receipt_csv", 0, csvResponse),
+      timingRecord("monthly_receipt_uke", 0, ukeResponse)
+    ]
   };
 }
 
@@ -1129,7 +1280,7 @@ function summarizeRepeats(repeats) {
   const memoHitRatios = visits.map((visit) => visit.calculationMetrics.extractionMemo?.memoHitLineRatio || 0);
   const openAiUsage = visits.map((visit) => visit.calculationMetrics.openAiUsage).filter(Boolean);
   const extractionObservability = summarizeExtractionObservability(visits);
-  return {
+  const summary = {
     repeatCount: repeats.length,
     visitCountPerRepeat: repeats[0]?.visits.length || 0,
     allCalculationsUsedOpenAi: allOpenAi.length > 0 && allOpenAi.every(Boolean),
@@ -1169,6 +1320,11 @@ function summarizeRepeats(repeats) {
     calculateRequestMs: distribution(calculateTimings),
     diseaseIndicationScanMs: distribution(diseaseIndicationTimings)
   };
+  const monthlyExclusion = summarizeMonthlyExclusionRuns(repeats);
+  if (monthlyExclusion) {
+    summary.monthlyExclusion = monthlyExclusion;
+  }
+  return summary;
 }
 
 function summarizeExtractionStability(repeats) {
@@ -1293,7 +1449,13 @@ async function requestJson(url, { method = "GET", body, headers = {}, jar, timeo
   } catch {
     parsed = { error: "non_json_response", message: responseText.slice(0, 200) };
   }
-  return { statusCode: response.status, durationMs: round(durationMs, 2), body: parsed };
+  return {
+    statusCode: response.status,
+    durationMs: round(durationMs, 2),
+    body: parsed,
+    rawBody: responseText,
+    responseHeaders: Object.fromEntries(response.headers.entries())
+  };
 }
 
 function resolveFacilityContext(bootstrap, options) {
@@ -1418,6 +1580,7 @@ function parseArgs(argv) {
     seedStandingPriorMonth: false,
     standingTimelinePath: "",
     approveCalculatedLines: false,
+    resolveExclusions: "",
     encounterSetting: "",
     dryRun: false,
     help: false
@@ -1448,6 +1611,7 @@ function parseArgs(argv) {
       parsed.seedStandingPriorMonth = true;
     }
     else if (arg === "--approve-calculated-lines") parsed.approveCalculatedLines = true;
+    else if (arg === "--resolve-exclusions") parsed.resolveExclusions = next(index++, arg);
     else if (arg === "--encounter-setting") parsed.encounterSetting = next(index++, arg);
     else if (arg === "--dry-run") parsed.dryRun = true;
     else if (arg === "--help" || arg === "-h") parsed.help = true;
@@ -1455,6 +1619,19 @@ function parseArgs(argv) {
   }
   parsed.platformBaseUrl = normalizeBaseUrl(parsed.platformBaseUrl);
   parsed.feeBaseUrl = normalizeBaseUrl(parsed.feeBaseUrl);
+  if (
+    parsed.resolveExclusions
+    && ![
+      "default",
+      "acknowledge_auto",
+      "choose_a",
+      "choose_b",
+      "allow_both_with_basis",
+      "reject_both"
+    ].includes(parsed.resolveExclusions)
+  ) {
+    throw new Error("--resolve-exclusions must be default or a supported monthly exclusion action");
+  }
   return parsed;
 }
 
@@ -1576,5 +1753,35 @@ function round(value, digits = 3) {
 }
 
 function printHelp() {
-  process.stdout.write(`Fee monthly chart-to-receipt E2E (STG only)\n\nUsage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\nOptions:\n  --patient-dir PATH       Patient dataset directory\n  --claim-month YYYY-MM    Defaults to manifest claimMonth\n  --repeat N               Independent patient runs. Default: 3\n  --output-dir PATH        Default: /private/tmp/<run-id>\n  --organization-code ID   Default: yamamoto-demo-stg\n  --login-id ID            Default: yamamoto-admin\n  --password-file PATH     Default: .secrets/yamamoto-demo-stg-password.txt\n  --mfa-code CODE          Current 6-digit MFA code (or FEE_E2E_MFA_CODE)\n  --facility-id ID         Optional facility override\n  --department-id ID       Optional department override\n  --seed-known-prior-history\n                            Seed patients.csv start_date as prior visit history\n  --seed-standing-prior-month\n                            Approve the W1b prior-month candidate, verify its profile,\n                            then approve and measure the current W1 candidate\n  --standing-timeline PATH Override standing-timeline.json and enable the standing timeline\n  --approve-calculated-lines\n                            Approve non-blocked calculated line items before monthly aggregation\n  --encounter-setting TYPE Override every chart setting (outpatient/home_visit/house_call/inpatient)\n                            Default: derive each visit from charts.jsonl visit_type/status\n  --dry-run                Validate and summarize inputs without network calls\n  --help                   Show this help\n`);
+  process.stdout.write(
+    "Fee monthly chart-to-receipt E2E (STG only)\n\n"
+    + "Usage:\n  npm run eval:fee-monthly-chart-e2e -- [options]\n\n"
+    + "Options:\n"
+    + "  --patient-dir PATH       Patient dataset directory\n"
+    + "  --claim-month YYYY-MM    Defaults to manifest claimMonth\n"
+    + "  --repeat N               Independent patient runs. Default: 3\n"
+    + "  --output-dir PATH        Default: /private/tmp/<run-id>\n"
+    + "  --organization-code ID   Default: yamamoto-demo-stg\n"
+    + "  --login-id ID            Default: yamamoto-admin\n"
+    + "  --password-file PATH     Default: .secrets/yamamoto-demo-stg-password.txt\n"
+    + "  --mfa-code CODE          Current 6-digit MFA code (or FEE_E2E_MFA_CODE)\n"
+    + "  --facility-id ID         Optional facility override\n"
+    + "  --department-id ID       Optional department override\n"
+    + "  --seed-known-prior-history\n"
+    + "                            Seed patients.csv start_date as prior visit history\n"
+    + "  --seed-standing-prior-month\n"
+    + "                            Approve the W1b prior-month candidate, verify its profile,\n"
+    + "                            then approve and measure the current W1 candidate\n"
+    + "  --standing-timeline PATH Override standing-timeline.json and enable the standing timeline\n"
+    + "  --approve-calculated-lines\n"
+    + "                            Approve non-blocked calculated line items before monthly aggregation\n"
+    + "  --resolve-exclusions ACTION\n"
+    + "                            Resolve simple monthly exclusions and audit CSV/UKE before/after.\n"
+    + "                            ACTION: default, acknowledge_auto, choose_a, choose_b,\n"
+    + "                            allow_both_with_basis, or reject_both\n"
+    + "  --encounter-setting TYPE Override every chart setting (outpatient/home_visit/house_call/inpatient)\n"
+    + "                            Default: derive each visit from charts.jsonl visit_type/status\n"
+    + "  --dry-run                Validate and summarize inputs without network calls\n"
+    + "  --help                   Show this help\n"
+  );
 }

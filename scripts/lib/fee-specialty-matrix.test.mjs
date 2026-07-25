@@ -67,6 +67,8 @@ function validCase(overrides = {}) {
     },
     reviewPolicy: {
       expectedSpansReviewed: true,
+      reviewedBy: "test-reviewer",
+      reviewedAt: "2026-07-25",
       medicalOfficeReviewed: false,
       productionGoldAllowed: false
     },

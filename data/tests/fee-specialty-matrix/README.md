@@ -8,12 +8,12 @@ WX0で使う、診療科8種 x 受診区分4種の合成カルテ評価コーパ
 - train/development: 288ケース(32セル×9)完成。バリデータgreen・軸クォータ全セル充足。
 - **holdout: 外来8セル分16件を作成済み**(計304ケース)。本文はannotation queueの
   fee-soap-e2e-v2生成文を無変更で使用(別生成系要件を充足。ビルド時に
-  queue本文との完全一致をassertで保証)、ラベルはclaude-fable-5付与+機械検証。
-  reviewPolicy.reviewedByに由来を明記しており、コミット前のスポットチェックを推奨。
+  queue本文との完全一致をassertで保証)。平出がラベルを確認済みとして承認し、
+  `holdoutProvenance.source: human_reviewed`、
+  `reviewPolicy.reviewedBy: hiradekeishi` を記録済み。
 - **外来8セルはstrict complete**。strict残はhome_visit/house_call/telephoneの
-  24セルのみで、別生成系の本文が存在しないため
-  H2(非外来holdout生産パイプライン、`fee-whitebox-wx0-completion-workorder-20260725.md`)
-  の実装が前提。
+  24セルのみ。非外来48件のblueprintは生成済みで、別生成系によるSOAP本文生成、
+  人手レビュー、昇格が残る。
 
 執筆フロー:
 
@@ -27,7 +27,7 @@ WX0で使う、診療科8種 x 受診区分4種の合成カルテ評価コーパ
    `npm run prepare:fee-specialty-matrix` でannotation候補を作り、
    **人手でspan・軸ラベルを確認**して昇格する(human_reviewed)。
    e2e-v2に該当セルの症例がない場合は、OPENAI_API_KEYのある環境で
-   blueprint生成器により別生成系ケースを追加してから同じ手順を踏む。
+   `openai-fee-specialty-holdout-v1` 生成系のケースを追加してから同じ手順を踏む。
 3. 執筆ケースの正解例は internal_medicine × outpatient の9件
    (wx0-im-outp-0001〜0009)。軸の多様性(past/other_provider/
    not_performed/planned/continued)を各セルに必ず含める。
@@ -43,6 +43,49 @@ npm run prepare:fee-specialty-matrix -- \
 
 最後のコマンドは既存v2合成カルテからannotation候補を作るだけです。
 `cases.json`への書き戻しやgold昇格はしません。
+
+## 非外来holdoutの生成と昇格
+
+```bash
+# 8診療科 x 3受診区分 x 2件 = 48 blueprintを生成
+npm run generate:fee-specialty-holdout-blueprints
+
+# 非外来契約を含むblueprint validator
+npm run test:fee-soap-e2e-v2:blueprints -- \
+  --specialty-source data/tests/fee-specialty-matrix/non-outpatient-blueprints.json
+
+# APIを呼ばず入力・出力契約だけ確認
+npm run generate:fee-specialty-holdout-texts -- --dry-run
+
+# immutable model revisionを記録して合成SOAP本文を生成
+OPENAI_API_KEY=... npm run generate:fee-specialty-holdout-texts -- \
+  --model gpt-5.4-nano \
+  --model-revision <immutable-model-revision>
+
+# 生成本文をreview queueへ変換
+npm run prepare:fee-specialty-matrix -- \
+  --source data/tests/fee-specialty-matrix/non-outpatient-generated-cases.json \
+  --output data/tests/fee-specialty-matrix/non-outpatient-review-queue.json
+```
+
+`non-outpatient-review-queue.json` の各項目について、本文全体を対象に
+`approvedSpans`、5軸、コード、`reviewedBy`を人手確認します。anchor suggestionは
+候補にすぎず、候補外の算定可能表現も確認します。レビュー完了後:
+
+```bash
+npm run promote:fee-specialty-matrix -- \
+  --input data/tests/fee-specialty-matrix/non-outpatient-review-queue.json \
+  --reviewed-at 2026-07-25 \
+  --dry-run
+
+npm run promote:fee-specialty-matrix -- \
+  --input data/tests/fee-specialty-matrix/non-outpatient-review-queue.json \
+  --reviewed-at 2026-07-25 \
+  --strict
+```
+
+昇格はバッチ単位でatomicです。caseId衝突、オフセット不整合、未知コード、
+provenance不整合が1件でもあれば `cases.json` を更新しません。
 
 ## 症例契約
 
@@ -77,7 +120,10 @@ Pythonにenumを再定義しません。
 
 ## 実験ランナー
 
-モデルは別venvへ`python/experiments/requirements-wx0.txt`を導入します。
+WX0のGLiNER実験は専用venvへ
+`python/experiments/requirements-wx0.txt`を導入します。この環境は
+GLiNERが要求するTransformers/Tokenizersを使うため、WX1〜WX3成果物製造環境と
+混在させません。
 Hugging Faceのbranch名ではなく、モデルカードでライセンスを再確認した
 immutable commit SHAを`--revision`へ渡します。
 
@@ -99,3 +145,52 @@ npm run eval:fee-whitebox-context -- \
 
 reviewed症例がない状態では各ランナーは失敗します。空母集団を0%や100%として
 レポートしないための仕様です。
+
+## WX1/WX3製造入力
+
+成果物製造は別venvへ
+`python/experiments/requirements-whitebox-build.txt`を導入します。この環境の
+Tokenizersはfee-apiのONNXランタイムと同じ版に固定します。
+
+```bash
+python3.12 -m venv .venv-whitebox-build
+.venv-whitebox-build/bin/pip install \
+  -r python/experiments/requirements-whitebox-build.txt
+```
+
+モデル製造時にはholdoutラベルを物理的に分離したviewだけを使います。
+
+```bash
+npm run prepare:fee-whitebox-training-view
+npm run test:fee-whitebox-training-view
+```
+
+`training-view.json` はtrain/developmentの本文・ラベルだけを持ち、
+holdoutはcaseIdだけです。WX1/WX3 builderはこのスキーマ以外を拒否します。
+GLiNERはWX0のゼロショット評価・教師候補であり、製品ランタイムへ直接配置する
+モデルではありません。製品成果物は既存ONNXランタイム契約に合わせた
+BIO+relevance head（WX1）と5軸head（WX3）を学習して生成します。
+
+```bash
+PYTHONPATH=python:. .venv-whitebox-build/bin/python \
+  scripts/build_wx1_span_artifact.py \
+  --base-model <approved-model-id> \
+  --model-revision <immutable-revision> \
+  --license <commercial-license-id> \
+  --license-source-url <official-license-url> \
+  --license-verified-at <YYYY-MM-DD> \
+  --artifact-version <version>
+
+PYTHONPATH=python:. .venv-whitebox-build/bin/python \
+  scripts/build_wx3_context_artifact.py \
+  --base-model <approved-model-id> \
+  --model-revision <immutable-revision> \
+  --license <commercial-license-id> \
+  --license-source-url <official-license-url> \
+  --license-verified-at <YYYY-MM-DD> \
+  --artifact-version <version>
+```
+
+builderはtrainで学習し、developmentでcheckpoint選択と較正を行います。
+ONNX manifest/checksum、実ランタイムload、同一入力100回一致を通過しない限り
+成果物ディレクトリを確定しません。holdout評価とSTG/PROD昇格は別工程です。

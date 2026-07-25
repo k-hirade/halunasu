@@ -21203,12 +21203,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-IM-LAB-001",
       "clinicalText": "S（Subjective：主観的情報）\n3日前からの排尿時痛で7/3に受診し、本日再診。\n排尿時痛は少し軽くなったが残尿感が続く。トイレが近く、夜間も2回起きる。\n発熱なし、悪寒なし。肉眼的血尿なし。腰や背中の痛みもなし。\n痛みが強いときは自宅にあったロキソニンSを1回だけ内服した。\nもともと便秘がちで、ここ数日は市販のオリゴ糖で様子を見ているとのこと。\n仕事はデスクワーク。水分はコーヒー中心であまり摂れていない。妊娠の可能性はなし。\n既往: 20代に扁桃炎で抗菌薬を使用、薬疹などのアレルギー歴はなし。膀胱炎は2年前にも1回。\n\nO（Objective：客観的情報）\nKT 36.8、BP 118/72、P 68整。\n腹部平坦・軟。下腹部に軽度圧痛、反跳痛なし。CVA叩打痛なし。\n院内で尿定性・尿蛋白を実施。混濁(+)、白血球反応(2+)、亜硝酸塩(+)、蛋白(±)、潜血(-)。\n静脈採血も施行し、血液検体を外注へ提出。\n前回(7/3)提出の尿培養はまだ結果未着。\n腹部エコーは症状の経過から今回は行わず。\n\nA（Assessment：評価）\n急性膀胱炎の遷延。亜硝酸塩陽性で細菌尿が示唆される。\n発熱・CVA叩打痛なく、腎盂腎炎を示唆する所見はない。便秘は機能性で経過観察可。\n\nP（Plan：計画）\n培養と外注結果を確認のうえ抗菌薬の選択・継続を判断する。結果は電話で連絡予定。\n水分摂取を増やすよう指導(コーヒー以外で1日1.5L目安)。\n発熱・腰背部痛・血尿が出たら早めに再診するよう説明した。\n排尿を我慢しないこと、カフェインの摂りすぎを控えることも併せて助言。",
@@ -21349,12 +21349,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-IM-LAB-060",
       "clinicalText": "S（Subjective：主観的情報）\n咳嗽と微熱で3日前に受診し、本日再診。痰は少し減ったが、夜間咳が残る。\n市販の咳止めを1回飲んだが眠気が強かったとのこと。\n息苦しさなし、胸痛なし。喫煙なし。\n家族に同様の咳症状あり。食欲は戻ってきており、水分摂取も問題ない。\n前回処方薬は飲み切り予定で、発疹や下痢はない。\n\nO（Objective：客観的情報）\nKT 36.9、BP 120/76、P 78整、SpO2 98%(室内気)。\n咽頭軽度発赤。呼吸音は両側清、wheezeなし、crackleなし。\n本日、静脈採血を施行し、血算とCRPを測定。WBC 7600、CRP 1.2。\n前回CRPは2.8で、改善傾向。\n肺炎を疑う聴診所見なく、胸部X線は本日行わず。\n\nA（Assessment：評価）\n急性気管支炎の改善傾向。炎症反応は低下。\n肺炎を示唆する所見なし。\n\nP（Plan：計画）\n咳が残るため去痰薬を継続。眠気の出る市販薬は避けるよう説明。\n発熱再燃、息切れ、胸痛があれば早めに受診。\n前回のCRP値と本日の値を比較して、炎症が下がっていることを説明した。\n仕事中は水分をこまめに摂るよう助言。",
@@ -21492,12 +21492,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-DERM-MED-003",
       "clinicalText": "S（Subjective：主観的情報）\n7/3に調理中の熱湯で右前腕を受傷し、当日から当院で処置中。受傷5日目。\n痛みはだいぶ軽くなった。夜は眠れている。仕事(調理補助)は患部を覆って続けている。\n受診前の2日間は自己判断で市販の白色ワセリンを塗っていたとのこと(初診時聴取済み)。\n\nO（Objective：客観的情報）\n右前腕伸側に約4×3cmのII度熱傷。水疱は破れ、浸出液は少量に減少。\n周囲発赤なし、悪臭なし、感染徴候なし。上皮化が辺縁から始まっている。\n周囲の健常皮膚に掻破痕なし。指の可動・知覚は問題なし。\n創部を生理食塩水で洗浄し、熱傷部の処置を施行。非固着性ガーゼで保護。\n\nA（Assessment：評価）\n右前腕II度熱傷、経過良好。感染なし。\n破傷風トキソイドは初診時に創の性状から不要と判断しており、方針変更なし。\n\nP（Plan：計画）\nゲーベンクリーム1% 10gを院内処方。1日1回、入浴後に塗布しガーゼ保護を継続。\n1週間後に再診。浸出液増加・発赤・痛みの再燃があれば早めに受診。",
@@ -21615,12 +21615,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-DERM-MED-031",
       "clinicalText": "S（Subjective：主観的情報）\n手湿疹で通院中。前回処方の外用でかゆみは半分程度に改善。\n食器洗いの際の悪化は続く。市販の保湿剤を併用している。\n睡眠への影響はなくなった。新しい部位への拡大なし。\n仕事は飲食店勤務で、手袋は着けられる作業と着けられない作業がある。\n\nO（Objective：客観的情報）\n両手指・手掌に紅斑と軽度の鱗屑。亀裂は治癒傾向。\n水疱・膿疱なし。掻破痕は減少。爪周囲に異常なし。\n前回と比べ紅斑の範囲は2割ほど縮小。\n\nA（Assessment：評価）\n手湿疹、改善傾向。接触要因(洗剤)の関与が続いている。\n\nP（Plan：計画）\n院外処方箋を交付。リンデロンVG軟膏0.12% 10g 1日2回 患部に塗布。\n綿手袋+ゴム手袋の二重着用を継続するよう指導。\n2週間後に再診。悪化時は早めに受診。",
@@ -21698,12 +21698,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-PED-LAB-002",
       "clinicalText": "S（Subjective：主観的情報）\n昨日(7/12)発熱で受診し、本日も39度台が続くため再診。\n母:「夜もぐったりしていて、水分はなんとか摂れている」。\n咽頭痛あり。咳は軽度、鼻汁あり。嘔吐・下痢なし。\n5日前に兄(小2)がインフルエンザAと診断され自宅療養中。保育園でも複数発生。\n昨夜は自宅に残っていたアンヒバ坐剤100mgを1回使用し、一時的に38度前半まで下がった。\n食欲は普段の半分程度。おしっこは出ている。\n今季のインフルエンザワクチンは未接種。熱性けいれんの既往なし。きょうだいは兄と本人の2人。\n\nO（Objective：客観的情報）\nKT 38.9、P 128、SpO2 98%(室内気)。体重16.2kg。\n活気やや不良だが、あやすと笑顔あり。脱水所見なし。皮疹なし、項部硬直なし。\n咽頭発赤(+)、扁桃白苔(+)。頸部リンパ節は両側に小豆大を数個触知。\n鼓膜は両側とも発赤なし。呼吸音清、陥没呼吸なし。\n鼻咽頭ぬぐい液でインフル迅速と溶連菌迅速を施行。インフルA(+)、溶連菌(-)。\n経口摂取できており、点滴は不要と判断し行わず。\n\nA（Assessment：評価）\nインフルエンザA型。兄からの家族内感染と考える。\n溶連菌は陰性。中耳炎・肺炎を示唆する所見なし。脱水なし。\n\nP（Plan：計画）\n自宅安静と水分摂取をこまめに摂るよう指導。\n解熱剤は自宅のアンヒバ坐剤を使用してよいと説明(体重から100mgで適量)。\n呼吸が苦しそう、ぐったりして水分が摂れない、けいれん等があればすぐ受診。\n登園は発症後5日かつ解熱後3日を経過してからと説明。母へ書面も渡した。",
@@ -21828,12 +21828,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-PED-LAB-033",
       "clinicalText": "S（Subjective：主観的情報）\n昨日からの高熱と強い咽頭痛。引っ越してきたばかりで当院は初診。\nクラスで溶連菌と診断された子が複数いるとのこと。\n咳・鼻汁はほとんどない。嘔気が朝に1回。発疹に母が気づいた(体幹)。\n食欲は低下しているが水分は摂れている。アレルギー歴なし。\n\nO（Objective：客観的情報）\nKT 38.6、P 110。咽頭発赤強く、軟口蓋に点状出血。扁桃白苔(+)。\n頸部前方リンパ節に圧痛を伴う腫脹。体幹に細かい紅斑が散在。\n咽頭ぬぐい液で溶連菌迅速を施行。陽性。\n全身状態の評価のため静脈採血も実施し、血算・生化学を外注へ提出。\n咳がなく夏季で周囲の流行もないため、インフルエンザ迅速は実施せず。\n\nA（Assessment：評価）\nＡ群溶連菌性咽頭炎。猩紅熱様の発疹を伴う。\n川崎病を示唆する他の所見は現時点でなし(眼球結膜充血なし、口唇発赤なし)。\n\nP（Plan：計画）\n抗菌薬を院外で処方予定(本日は外注結果を待たず開始)。\n解熱後24時間まで登校を控えるよう説明。\n尿の色が濃い・浮腫など腎炎を疑う症状が出たら受診するよう母に説明。\n2日後に再診し、解熱と発疹の経過を確認する。",
@@ -21949,12 +21949,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-ENT-LAB-011",
       "clinicalText": "S（Subjective：主観的情報）\n昨日からの発熱・咽頭痛で昨日受診し、本日再診。\n今朝はKT 38.2まで上昇。関節痛と倦怠感が出てきた。咳は軽度。\n職場でインフルエンザの同僚あり。市販の解熱薬とのど飴で様子を見ていた。\n嚥下は痛いが水分は摂れている。\n\nO（Objective：客観的情報）\nKT 38.0、P 92。咽頭発赤(+)、扁桃腫大なし、白苔なし。\n鼓膜両側異常なし。鼻粘膜発赤あり、水様性鼻汁。頸部リンパ節圧痛軽度。\n鼻咽頭ぬぐい液でインフル迅速を施行。A型(+)。\n\nA（Assessment：評価）\nインフルエンザA型。咽頭所見は随伴性で、細菌性扁桃炎は否定的。\n\nP（Plan：計画）\n自宅安静、水分摂取を指導。市販解熱薬の継続使用で可と説明。\n出勤は発症後5日を目安に。呼吸苦・水分摂取不能時は早めに再診。",
@@ -22022,12 +22022,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-ENT-LABF-331",
       "clinicalText": "S（Subjective：主観的情報）\n鼻閉で受診。周囲でインフルエンザが流行している。\n市販の風邪薬を使ったが熱感が残る。\n咳と関節痛があり、食事量はやや低下。\n\nO（Objective：客観的情報）\nKT 37.1、BP 119/74、P 72整。\n咽頭発赤軽度、呼吸苦なし。\n院内でインフルエンザ抗原迅速を実施。結果を説明した。\n胸部画像や採血は本日行っていない。\n\nA（Assessment：評価）\n急性上気道炎。流行状況からインフルエンザを含め評価した。\n脱水や呼吸不全を示す所見はない。\n\nP（Plan：計画）\n自宅療養、水分摂取、解熱薬の使い方を説明。\n呼吸苦や摂取不良があれば早めに受診。\n配偶者にも、当日行った内容と今後見守る症状を分けて説明した。 就寝前の症状の強さについて次回も確認する。",
@@ -22130,12 +22130,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-OPH-MED-012",
       "clinicalText": "S（Subjective：主観的情報）\n1週間前から両眼のかゆみと充血。当院初診。\n毎年この時期に同様の症状。市販の人工涙液で一時しのぎしていた。\nコンタクトレンズは使用していない。眼脂は少量、漿液性。視力低下の自覚なし。\nくしゃみ・鼻のかゆみも軽くあり、花粉症と言われたことがある。\n\nO（Objective：客観的情報）\n両眼球結膜に充血、乳頭増殖を認める。角膜清明、フルオレセイン染色で上皮欠損なし。\n前房に炎症所見なし。眼瞼結膜に浮腫軽度。\n視力 右1.0、左1.0(矯正)。眼圧は触診上問題なし。\n\nA（Assessment：評価）\n両アレルギー性結膜炎。角膜病変なし。\n\nP（Plan：計画）\n院外処方箋を交付(一般名処方)。オロパタジン点眼液0.1% 5mL 両眼1日4回。\nかゆみが強いときは冷罨法を併用。2週間で改善なければ再診。",
@@ -22283,12 +22283,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-OPH-PROC-028",
       "clinicalText": "S（Subjective：主観的情報）\n本日午前、工場でグラインダー作業中に右眼に異物が入った。保護メガネは着用していなかった。当院初診。\n右眼の異物感と流涙が続く。受傷直後に水道水で洗眼したが改善しなかった。視力低下の自覚は軽度。\n仕事中の受傷であり、労災の手続きについて総務に確認中とのこと。\n\nO（Objective：客観的情報）\n右眼視力 0.8(矯正)、左 1.2。\n細隙灯で角膜中央やや下方に金属様異物を確認。前房に炎症所見なし。\n眼圧は両眼とも正常範囲。左眼に異常なし。\n点眼麻酔下に角膜異物を除去。錆輪は残存なし。フルオレセインで上皮欠損は小範囲。\n前房出血なし、虹彩損傷なし。\n瞼結膜・円蓋部に残存異物なし(上眼瞼翻転で確認)。\n\nA（Assessment：評価）\n右角膜異物(除去後)。感染予防が必要。\n\nP（Plan：計画）\n抗菌点眼を院外で処方予定。保護メガネの常用を指導。\n点眼の手技を説明し、こすらないよう指導。当面はコンタクト不可(未使用者)。\n職場には保護メガネ着用の徹底を依頼するよう本人へ説明。\n車の運転は本日は控えるよう伝えた。仕事は明日から可。\n明日再診し上皮化を確認する。痛み増強時はすぐ受診。",
@@ -22432,12 +22432,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-ORTH-IMG-006",
       "clinicalText": "S（Subjective：主観的情報）\n2日前、駅の階段を下りる際に荷物を持ったまま右膝を内側に捻った。当院初診。\n受傷直後から内側の痛み。荷重時痛があり、階段下りで増悪。膝崩れ感・ロッキングはなし。\n腫れは昨日がピークで今日は少し引いた印象。自宅にあった湿布を貼って様子をみていた。\n既往: 5年前に腰椎椎間板ヘルニア(保存的治療で軽快)。常用薬なし。アレルギーなし。\n学生時代はサッカー。膝のけがは今回が初めて。\n仕事は倉庫内作業で、しゃがみ動作が多い。早期復帰を希望。\n\nO（Objective：客観的情報）\n歩行は軽度跛行。右膝に軽度腫脹、熱感は軽度。皮下出血なし。膝蓋跳動は明らかでない。\n左膝と比較し周径+1cm程度。内側関節裂隙に圧痛。外反ストレスで疼痛誘発、明らかな不安定性なし。\n前方引き出し・ラックマン陰性。マクマレー陰性。可動域 0-130度(左は0-140度)。\n右膝XP 2方向(DR)を施行。骨折線なし、関節裂隙狭小化なし、骨棘なし。\n\nA（Assessment：評価）\n右膝内側側副靭帯損傷(grade I-II)疑い。骨傷なし。\n半月板損傷は理学所見上は否定的だが、経過で再評価する。\n\nP（Plan：計画）\nサポーター装着と、しゃがみ込み・捻り動作の回避を指導。\nアイシングを1日数回。仕事は重量物を避ければ継続可と説明。\n2週間後に再診。改善が乏しければMRIを検討する。",
@@ -22548,12 +22548,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-ORTH-IMG-032",
       "clinicalText": "S（Subjective：主観的情報）\n慢性腰痛で通院中。1週間前に庭仕事の後から痛みが増悪し再診。\n痛みは腰部中央からやや右寄り。下肢への放散なし、しびれなし。\n排尿・排便障害なし。夜間痛で目が覚めることはない。\n昨年の健診で骨密度がやや低めと言われたとのこと(結果は未持参)。\n鎮痛は前回処方の残りの湿布で対応している。\n仕事(事務)は継続できているが、長時間の座位で重だるさが出る。\n\nO（Objective：客観的情報）\n腰部右傍脊柱筋に圧痛と筋緊張。棘突起の叩打痛なし。\nSLR両側陰性。下肢筋力・知覚に左右差なし。膝・アキレス腱反射正常。\n増悪後の骨傷評価のため腰椎XP 2方向(DR)を施行。\n椎体の圧迫骨折なし。椎間板腔の狭小化は軽度(経年変化相当)。すべりなし。\n\nA（Assessment：評価）\n筋筋膜性腰痛の増悪。圧迫骨折は否定的。神経根症状なし。\n\nP（Plan：計画）\n湿布は残りを継続使用。体幹ストレッチの再開と、庭仕事の中腰姿勢を避ける工夫を指導。\n下肢のしびれ・筋力低下が出た場合はMRIを検討すると説明。\n骨密度は健診結果を次回持参してもらい、必要なら精査を相談。\n2週間後に再診。",
@@ -22677,12 +22677,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-PSY-020",
       "clinicalText": "S（Subjective：主観的情報）\nうつ病で通院中。2週間ぶりの再診。\n気分は「先月よりは少し楽」。睡眠は中途覚醒が週2回程度に減少。\n食欲は回復傾向で体重は横ばい。仕事は時短勤務を継続中で、先週から週4日出勤に増やした。\n頓用の睡眠薬(院外)は週1回程度の使用に減っている。希死念慮なし。\n「朝の準備が前ほど億劫でなくなった」とのこと。\n週末は家族と外出できた。趣味の読書も少しずつ再開している。\n通勤電車も以前ほど苦痛ではなくなったとのこと。頭痛などの身体症状なし。\n\nO（Objective：客観的情報）\n表情はやや硬いが、会話のテンポは改善。思考制止は軽度。\n面接を約20分実施し、復職ペースの調整と睡眠衛生について話し合った。\n「失敗したら全部だめ」という考えが出たときの対処(考えの書き出し)を一緒に確認した。\n\nA（Assessment：評価）\nうつ病、回復期。再燃の兆候なし。\n\nP（Plan：計画）\n現行の抗うつ薬を院外で継続。増量は見送り。\n次回2週間後。眠れない日が続く場合は早めに連絡するよう伝えた。\n産業医との面談が来週予定されており、就業配慮の情報提供書を準備する。頓用薬の残数を確認した。",
@@ -22761,12 +22761,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-PSY-MED-035",
       "clinicalText": "S（Subjective：主観的情報）\n3ヶ月前の部署異動後から入眠に1〜2時間かかる。当院初診。\n中途覚醒は週3回。朝のだるさで仕事の能率が落ちている。\n市販の睡眠改善薬を試したが効果は一晩のみだった。\n気分の落ち込みは「少しある」が、食欲低下・興味喪失は明らかでない。\n飲酒は寝酒として缶チューハイ1本がほぼ毎日。カフェインは夕方まで。\n希死念慮なし。既往なし。家族構成は妻と2人暮らし。\n休日は眠れることもあるが、平日との差が大きい。\n\nO（Objective：客観的情報）\n表情は疲労感があるが、会話は整い疎通良好。\n思考の制止・焦燥なし。妄想・幻覚を示唆する言動なし。\n抑うつは軽度で、不眠が主体と評価。\n\nA（Assessment：評価）\n不眠症(入眠障害+中途覚醒)。適応上のストレスが背景。\nうつ病の診断基準は現時点で満たさない。経過で再評価する。\n\nP（Plan：計画）\n睡眠衛生指導: 寝酒の中止、就床時刻を遅らせる、起床時刻の固定。\n院外処方箋を交付(一般名処方)。レンボレキサント錠5mg 1T 就寝前 14日分。\n心理検査は経過をみて必要なら検討。2週間後に再診。\n日中の強い眠気が出た場合は運転を控え、連絡するよう説明。",
@@ -22901,12 +22901,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-SURG-MAT-026",
       "clinicalText": "S（Subjective：主観的情報）\n下腿挫創の処置で通院中。受傷8日目。\n自宅では指導どおり1日1回シャワー洗浄し、渡した被覆材を貼り替えている。\n受傷は自宅の階段で転倒し角にぶつけたもの。仕事(配送業)は患部を保護して継続している。\n痛みは貼り替え時のみ軽度。発熱なし。\n糖尿病などの既往なし。破傷風は受傷時に追加接種済み(初診時)。\n\nO（Objective：客観的情報）\n左下腿前面の創は約3×2cm、肉芽良好。感染徴候なし。\n創部を洗浄し創傷処置を実施。滲出液が中等量のため、ハイドロファイバー被覆材を1枚使用して保護。\n周囲皮膚の浸軟は軽度で、保護クリームで対応。創周囲の知覚正常。\n経過記録用に創部の写真を撮影。\nKT 36.6。創縁の発赤なし、圧痛は軽度。滲出液に膿性変化なし。\n歩行への影響なし。下肢の腫脹・発赤なし。\n\nA（Assessment：評価）\n左下腿挫創、肉芽形成期。経過良好で感染の合併なし。\n\nP（Plan：計画）\n自宅での貼り替え用に被覆材を2枚渡し、交換手技を再確認。入浴は浴槽も可とした。\n次回3日後。滲出液の増加・悪臭があれば早めに受診。入浴は浴槽も可とした。",
@@ -22985,12 +22985,12 @@
         "generatorFamily": "fee-soap-e2e-v2"
       },
       "holdoutProvenance": {
-        "source": "separate_generator",
-        "generatorFamily": "fee-soap-e2e-v2"
+        "source": "human_reviewed"
       },
       "reviewPolicy": {
         "expectedSpansReviewed": true,
-        "reviewedBy": "claude-fable-5 (labels on fee-soap-e2e-v2 text)"
+        "reviewedBy": "hiradekeishi",
+        "reviewedAt": "2026-07-25"
       },
       "sourceCaseId": "V2-SURG-SAFE-050",
       "clinicalText": "S（Subjective：主観的情報）\n右鼠径部の膨隆で通院中。立ち仕事の夕方に出やすく、横になると戻る。\n嵌頓を疑うエピソードなし。痛みは違和感程度で、仕事に支障はない。\n既往は高血圧(内服中・院外)。抗凝固薬なし。喫煙なし。\n仕事は配送業で重量物を持つ場面が多い。\n前回提案した手術について、家族と相談して受ける決心がついたとのこと。\n症状自体は前回から変化なく、膨隆の出る頻度も同程度。\n手術への不安として麻酔と痛みについて質問が複数あった。\n睡眠・食欲は普段どおりで、体重の変化もなし。\n\nO（Objective：客観的情報）\n立位で右鼠径部に還納可能な膨隆。咳嗽で増大。\n圧痛なし。皮膚に発赤なし。\n本日は診察と説明のみで、処置・検査は実施していない。\nBP 134/82。腹部全体に他の異常所見なし。\n\nA（Assessment：評価）\n右鼠径ヘルニア。待機的手術の適応。\n\nP（Plan：計画）\n来月の手術日を仮押さえし、術式(メッシュ法)について図を使って説明した。\n合併症(出血・感染・再発・慢性疼痛)と麻酔方法、当日の流れを文書で説明し、同意書を受領。\n質問には「仕事復帰の時期」「入浴の可否」があり、それぞれ回答した。\n術前検査(採血・心電図・胸部X線)は来週の予約で実施予定。\nそれまでに嵌頓症状(強い痛み・戻らない膨隆・嘔吐)が出たら直ちに受診するよう説明。\n手術前後の仕事の調整(重量物制限2週間)についても説明した。\n術前検査の結果は手術前の外来でまとめて説明する予定とした。",

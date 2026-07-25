@@ -106,6 +106,9 @@ export function prepareAnnotationQueue(sourceDataset) {
         ?? caseItem.caseTypeSignature
         ?? caseItem.variantOf
         ?? caseItem.caseId,
+      ...(caseItem.generationProvenance
+        ? { generationProvenance: caseItem.generationProvenance }
+        : {}),
       clinicalText: caseItem?.chart?.standard ?? "",
       expectedClaimContext: caseItem.expectedClaimContext ?? {},
       billingTargets: caseItem.billingTargets ?? [],

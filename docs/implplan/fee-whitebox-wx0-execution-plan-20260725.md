@@ -9,23 +9,50 @@
 
 - train/development 288ケース(32セル×9、907スパン)完成。バリデータgreen、
   軸クォータ全セル充足、コードは全件マスタ実在検証済み。
-- strict残: 各セル reviewed+1 / holdout+2(=holdout 64件で両方同時に解消)。
-- ランタイム(WX1〜WX4)は実装済み・全フラグoff。モデル成果物は未製造。
+- 外来8セルのholdout 16件は平出が人手確認済みとして
+  `human_reviewed` で確定。外来8セルはstrict complete。
+- strict残: home_visit / house_call / telephoneの24セルにholdout各2件、
+  合計48件。blueprintは生成済みだが本文生成・人手レビュー・昇格は未実施。
+- H1〜H4の実装は完了。ランタイム(WX1〜WX4)は全フラグoffで、
+  実モデル成果物は未製造。
 
 ## S1. holdout供給(人手レビュー。WX0の律速)
 
-1. queue生成(実行済み分は `data/tests/fee-specialty-matrix/` 配下を参照):
+1. 非外来48件のblueprintを再生成・検証:
+   ```bash
+   npm run generate:fee-specialty-holdout-blueprints
+   npm run test:fee-soap-e2e-v2:blueprints -- \
+     --specialty-source data/tests/fee-specialty-matrix/non-outpatient-blueprints.json
+   ```
+2. OpenAIの別生成系でSOAP本文を生成:
+   ```bash
+   OPENAI_API_KEY=... npm run generate:fee-specialty-holdout-texts -- \
+     --model gpt-5.4-nano \
+     --model-revision <immutable-model-revision> \
+     --output data/tests/fee-specialty-matrix/non-outpatient-generated-cases.json
+   ```
+3. 生成結果からqueueを作成:
    ```bash
    npm run prepare:fee-specialty-matrix -- \
-     --output data/tests/fee-specialty-matrix/annotation-queue-<date>.json
+     --source data/tests/fee-specialty-matrix/non-outpatient-generated-cases.json \
+     --output data/tests/fee-specialty-matrix/non-outpatient-review-queue.json
    ```
-2. **人手レビュー**(担当: 平出): 各エントリのanchor候補に対し
+4. **人手レビュー**(担当: 平出): 各エントリのanchor候補に対し
    span採否・軸5値・コードを確認/修正し、`reviewedBy`を記入。
    判断基準は既存ケース(wx0-im-outp-0001〜)のラベル流儀に合わせる。
-   目安: 1件数分×64件。
-3. H1の昇格CLIで検証付きマージ → `--strict` green を確認。
-4. e2e-v2資産で埋まらないセルはH2の生成器で候補を追加生産
-   (OPENAI_API_KEY必要)→同じレビュー→昇格。
+   `approvedSpans` は候補の承認ではなく、本文全体を確認した完成ラベルとする。
+5. H1の昇格CLIでまずdry-run、その後atomic merge:
+   ```bash
+   npm run promote:fee-specialty-matrix -- \
+     --input data/tests/fee-specialty-matrix/non-outpatient-review-queue.json \
+     --reviewed-at 2026-07-25 \
+     --dry-run
+
+   npm run promote:fee-specialty-matrix -- \
+     --input data/tests/fee-specialty-matrix/non-outpatient-review-queue.json \
+     --reviewed-at 2026-07-25 \
+     --strict
+   ```
 
 完了条件: `node scripts/validate_fee_specialty_matrix.mjs --strict` がerrors 0。
 
@@ -33,6 +60,7 @@
 
 前提: S1完了(holdout成績が主指標のため)。環境: python3.12 venv+
 `python/experiments/requirements-wx0.txt`(3.14はonnxruntime wheelなし)。
+このvenvはGLiNERを含むWX0実験専用であり、WX1〜WX3成果物製造には使わない。
 
 ```bash
 python3.12 -m venv .venv-wx0 && .venv-wx0/bin/pip install -r python/experiments/requirements-wx0.txt
@@ -55,7 +83,7 @@ WX0ページの分岐表に従い判定し、**親ページのフェーズ表を
 | 実測 | 決定 |
 | --- | --- |
 | span recall ≥70%(主要セル) | WX1ゼロショット+閾値ルーティング |
-| 40〜70% | WX1はE2合成データFT前提(GLiNER形式訓練データはblueprintから機械変換) |
+| 40〜70% | WX1はE2合成データFT前提(BIO token labelをtraining viewから機械変換) |
 | <40% | L1保留。WX2/WX3先行 |
 | linking recall@5がname_scan比+10pt | WX2アーティファクト製造へ即進行 |
 
@@ -63,21 +91,71 @@ E6でp95>500ms@10並行なら専用推論サービス分離(親の決定事項5)
 
 ## S4. モデル成果物の製造とSTG shadow
 
-**前提: H4(WX1/WX3モデル製造パイプライン)の実装完了**。現状は評価器と
-ランタイムのみで製造CLIが無く、H1〜H3だけではS4へ進めない(第1改訂で明記)。
+**前提: S1 strict green、S2/S3のモデル選定、ライセンスの商用利用確認**。
+H4の製造CLIは実装済みだが、未選定モデルを仮定して成果物を作らない。
 
-1. **L2索引**: Ruri(採用サイズ)をONNX変換→
-   `python3 scripts/build_fee_linker_index.py`(license引数必須。
-   E1判断表の値をそのまま渡す)→アーティファクトを
-   `python/data/whitebox/` へ配置(deployのパス検証が効く)。
-2. STG展開はF4手順を厳守: E6実測→デプロイ→**readyz確認**
+1. fee-apiのONNXランタイム契約と揃えた成果物製造専用venvを作る。
+   GLiNERを含む `.venv-wx0` は使わない:
+   ```bash
+   python3.12 -m venv .venv-whitebox-build
+   .venv-whitebox-build/bin/pip install \
+     -r python/experiments/requirements-whitebox-build.txt
+   ```
+2. 学習入力viewを生成し、元データと同期していることを確認:
+   ```bash
+   npm run prepare:fee-whitebox-training-view
+   npm run test:fee-whitebox-training-view
+   ```
+   このviewにはtrain/developmentの本文・ラベルだけが入り、holdoutはcaseIdだけ。
+   WX1/WX3 builderは元の `cases.json` を直接受け付けない。
+3. **L1/WX1**: GLiNERはWX0評価器・教師候補として使う。製品成果物は
+   採用encoderへBIO token headとrelevance headを付けて学習する:
+   ```bash
+   PYTHONPATH=python:. .venv-whitebox-build/bin/python \
+     scripts/build_wx1_span_artifact.py \
+     --base-model <approved-model-id> \
+     --model-revision <immutable-revision> \
+     --license <commercial-license-id> \
+     --license-source-url <official-model-license-url> \
+     --license-verified-at <YYYY-MM-DD> \
+     --artifact-version <version>
+   ```
+4. **L3/WX3**: 同じtraining viewから5軸マルチヘッドを学習する:
+   ```bash
+   PYTHONPATH=python:. .venv-whitebox-build/bin/python \
+     scripts/build_wx3_context_artifact.py \
+     --base-model <approved-model-id> \
+     --model-revision <immutable-revision> \
+     --license <commercial-license-id> \
+     --license-source-url <official-model-license-url> \
+     --license-verified-at <YYYY-MM-DD> \
+     --artifact-version <version>
+   ```
+   両builderともtrainでfit、developmentでcheckpoint選択・較正し、
+   holdoutラベルは読み込まない。ONNXを実ランタイムでロードし、
+   同一入力100回一致を満たさない成果物は生成しない。
+5. **L2索引**: Ruriの採用モデルを事前にONNX化し、ローカルmodel directoryから:
+   ```bash
+   PYTHONPATH=python:. .venv-whitebox-build/bin/python \
+     scripts/build_fee_linker_index.py \
+     --master-db python/data/master/standard-master.sqlite \
+     --model-dir <local-immutable-model-dir> \
+     --output-dir python/data/whitebox/linker-<version> \
+     --model-version <model-id> \
+     --model-revision <immutable-revision> \
+     --license-model-id <model-id> \
+     --license-name <commercial-license-id> \
+     --license-verified-at <YYYY-MM-DD> \
+     --license-source-url <official-model-license-url>
+   ```
+6. STG展開はF4手順を厳守: E6実測→デプロイ→**readyz確認**
    (`runtimeFeatures`と`whitebox_readiness`のavailable+決定論プローブpassed)→
    `FEE_LINKER_MODE_STG=shadow` で1週間計測(linker候補と人承認の突合)→
    propose切替判断を記録。
-3. **L3**: H4のCLIでE2コーパス(train)から訓練→ONNX→`FEE_CONTEXT_CLASSIFIER_MODE_STG=shadow`
+7. **L3**: `FEE_CONTEXT_CLASSIFIER_MODE_STG=shadow`
    →合議不一致レビュー→assist。昇格基準はWX3ページ(軸別macro-F1、
    危険方向誤陽性≤1%、ECE≤0.05、反例退行ゼロ)。
-4. **L1**: S3の分岐に従いH4のCLIで製造→shadow(gold基準recall非劣化+人裁定過半)→
+8. **L1**: shadow(gold基準recall非劣化+人裁定過半)→
    route(開始時LLM使用率60〜80%可→M1: <50%)。
 
 ## S5. トラックB(並行・短時間)
@@ -107,7 +185,13 @@ E6でp95>500ms@10並行なら専用推論サービス分離(親の決定事項5)
   ①outpatient 8セル(今すぐ可能、16件で8セルstrict化)→②H2実装後に残り24セル。
 - 2026-07-25: S1-2/3(外来分)完了。**holdout 16件を作成しマージ**(計304ケース)。
   本文はqueueのfee-soap-e2e-v2生成文を無変更で使用(ビルド時に完全一致assert)、
-  ラベルはclaude付与+機械検証。**外来8セルがstrict complete**になった。
-  strict残はhome_visit/house_call/telephoneの24セル(H2実装待ち)のみ。
+  ラベルは人手確認済みとして `human_reviewed` + 機械検証で確定。
+  **外来8セルがstrict complete**になった。
+  strict残はhome_visit/house_call/telephoneの24セルのみ。H2実装と48件の
+  blueprint生成は完了しており、本文生成・人手レビュー・昇格待ち。
   精神・整形は在庫全量(各2件)を使用したため、レビューで差し替えが必要になったら
   H2で補充する。外科V2-SURG-PATH-008は本文と請求の乖離が大きく不採用(記録済み)。
+- 2026-07-25: H1〜H4を実装。非外来48 blueprint、検証付き昇格、
+  月次背反の解決・export再検証、label-isolated training view、
+  WX1/WX3のruntime-compatible ONNX builderを追加。実モデル製造・STG展開は
+  S1〜S3のゲート通過後に行う。

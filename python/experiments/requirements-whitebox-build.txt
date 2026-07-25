@@ -1,0 +1,9 @@
+# WX1-WX3 artifact builders only. Keep Tokenizers aligned with the fee-api
+# ONNX runtime and do not install GLiNER in this environment.
+sentence-transformers==5.1.2
+numpy==1.26.4
+onnx==1.17.0
+onnxruntime==1.20.1
+tokenizers==0.20.3
+torch==2.5.1
+transformers==4.46.3

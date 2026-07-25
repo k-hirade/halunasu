@@ -171,12 +171,18 @@ function validateHoldout(caseItem, errors) {
   }
   if (
     source === "human_reviewed"
-    && caseItem.reviewPolicy?.expectedSpansReviewed !== true
+    && (
+      caseItem.reviewPolicy?.expectedSpansReviewed !== true
+      || !String(caseItem.reviewPolicy?.reviewedBy ?? "").trim()
+      || !/^\d{4}-\d{2}-\d{2}$/u.test(
+        String(caseItem.reviewPolicy?.reviewedAt ?? "")
+      )
+    )
   ) {
     pushIssue(
       errors,
       "invalid_holdout_provenance",
-      "human_reviewed holdout requires expectedSpansReviewed=true",
+      "human_reviewed holdout requires expectedSpansReviewed=true, reviewedBy, and reviewedAt (YYYY-MM-DD)",
       { caseId: caseItem.caseId }
     );
   }
