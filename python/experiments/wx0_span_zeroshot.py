@@ -26,12 +26,24 @@ LICENSED_MODELS = {
 }
 
 
-def load_reviewed_cases(dataset_path: Path, split: str) -> list[dict[str, Any]]:
+def load_evaluation_cases(
+    dataset_path: Path,
+    split: str,
+    *,
+    allow_machine_labels: bool = False,
+) -> list[dict[str, Any]]:
     dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
     return [
         item
         for item in dataset.get("cases", [])
-        if item.get("annotationStatus") == "reviewed"
+        if (
+            item.get("annotationStatus") == "reviewed"
+            or (
+                allow_machine_labels
+                and item.get("annotationStatus") == "pending_review"
+                and item.get("experimentalLabelStatus") == "machine_derived"
+            )
+        )
         and (split == "all" or item.get("split") == split)
     ]
 
@@ -144,8 +156,19 @@ def evaluate_model(
             }
         )
 
+    label_source_counts: dict[str, int] = {}
+    for case_item in cases:
+        label_source = (
+            "machine_derived"
+            if case_item.get("experimentalLabelStatus") == "machine_derived"
+            else "human_reviewed"
+        )
+        label_source_counts[label_source] = label_source_counts.get(label_source, 0) + 1
+
     return {
         "schemaVersion": "fee-wx0-span-result-v1",
+        "notGold": bool(label_source_counts.get("machine_derived")),
+        "labelSourceCounts": label_source_counts,
         "model": dict(model_manifest),
         "threshold": threshold,
         "repeatCount": repeats,
@@ -205,17 +228,28 @@ def _write_report(result: Mapping[str, Any], output_dir: Path) -> None:
         f"- model: `{result['model']['id']}@{result['model']['revision']}`",
         f"- license: `{result['model']['license']}`",
         f"- cases: {result['caseCount']}",
+        f"- label sources: `{json.dumps(result['labelSourceCounts'], ensure_ascii=False, sort_keys=True)}`",
+        f"- gold evaluation: `{'no' if result['notGold'] else 'yes'}`",
         f"- span precision: {result['overall']['precision']:.4f}",
         f"- span recall: {result['overall']['recall']:.4f}",
         f"- span F1: {result['overall']['f1']:.4f}",
         f"- deterministic exact-match rate: {result['determinism']['exactMatchRate']:.4f}",
         f"- latency p50/p95: {result['latencyMs']['p50']:.1f} / {result['latencyMs']['p95']:.1f} ms",
         "",
+    ]
+    if result["notGold"]:
+        lines.extend([
+            "> WARNING: This result includes machine-derived labels that were not",
+            "> human-reviewed. It is experimental evidence only and must not be used",
+            "> to promote a production model or claim gold accuracy.",
+            "",
+        ])
+    lines.extend([
         "## Cell Metrics",
         "",
         "| specialty / setting | precision | recall | F1 |",
         "| --- | ---: | ---: | ---: |",
-    ]
+    ])
     for key, metrics in result["byCell"].items():
         lines.append(
             f"| {key} | {metrics['precision']:.4f} | {metrics['recall']:.4f} | {metrics['f1']:.4f} |"
@@ -245,6 +279,14 @@ def main() -> int:
     parser.add_argument("--threshold", type=float, default=0.5)
     parser.add_argument("--repeats", type=int, default=20)
     parser.add_argument("--max-cases", type=int)
+    parser.add_argument(
+        "--allow-machine-labels",
+        action="store_true",
+        help=(
+            "Include pending_review cases explicitly marked "
+            "experimentalLabelStatus=machine_derived. Results are not gold."
+        ),
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
 
@@ -255,12 +297,17 @@ def main() -> int:
     if args.repeats < 1:
         parser.error("--repeats must be positive")
 
-    cases = load_reviewed_cases(args.dataset, args.split)
+    cases = load_evaluation_cases(
+        args.dataset,
+        args.split,
+        allow_machine_labels=args.allow_machine_labels,
+    )
     if args.max_cases:
         cases = cases[: args.max_cases]
     if not cases:
         parser.error(
-            "no reviewed cases are available for the selected split; complete E2 before model measurement"
+            "no eligible cases are available for the selected split; complete E2 or "
+            "explicitly use --allow-machine-labels with a non-gold experimental dataset"
         )
     entity_types_artifact = json.loads(args.entity_types.read_text(encoding="utf-8"))
     entity_types = entity_types_artifact.get("types", [])

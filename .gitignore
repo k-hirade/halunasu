@@ -103,3 +103,10 @@ tmp/
 .venv-wx0/
 venv-wx0/
 .venv-whitebox-build/
+
+# Generated whitebox runtime binaries are too large for normal Git storage.
+# Keep the small manifest and versioned build report, but distribute model
+# binaries through the deployment artifact path.
+python/data/whitebox/**/model.onnx
+python/data/whitebox/**/tokenizer.json
+python/data/whitebox/**/build-report.json

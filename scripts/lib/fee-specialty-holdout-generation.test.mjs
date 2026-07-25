@@ -103,6 +103,31 @@ test("generated source is prepare-compatible and retries an invalid first respon
   assert.equal(document.cases[0].generationProvenance.modelRevision, "immutable-test-revision");
 });
 
+test("generated source accepts full-width SOAP colons at section starts", async () => {
+  const blueprints = buildNonOutpatientHoldoutBlueprints({
+    masterRecords,
+    casesPerCell: 1
+  });
+  const document = await generateHoldoutTexts({
+    blueprintDocument: {
+      ...blueprints,
+      blueprints: [blueprints.blueprints[0]]
+    },
+    model: "test-model",
+    modelRevision: "immutable-test-revision",
+    generator: async ({ blueprint }) => ({
+      clinicalText: [
+        "S：定期診療のため患者宅へ訪問。本人から体調変化はないと聴取した。",
+        "O：本日、患者宅へ訪問し定期訪問診療を実施。全身状態は安定している。",
+        `A：${blueprint.specialtyLabel}領域の慢性疾患は安定している。`,
+        "P：現在の療養方針を継続し、変化時の連絡方法を本人と家族へ説明した。次回も定期訪問予定。"
+      ].join("\n")
+    })
+  });
+
+  assert.equal(document.cases.length, 1);
+});
+
 test("text generation refuses mutable provenance without modelRevision", async () => {
   const blueprints = buildNonOutpatientHoldoutBlueprints({
     masterRecords,

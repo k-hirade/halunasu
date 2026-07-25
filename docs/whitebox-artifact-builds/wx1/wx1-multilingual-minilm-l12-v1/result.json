@@ -1,0 +1,241 @@
+{
+  "artifactType": "fee_span_detector",
+  "artifactVersion": "wx1-multilingual-minilm-l12-v1",
+  "backend": "onnx_token_classifier",
+  "baseModel": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "determinism": {
+    "outputSha256": "4fa7e27c47c96a45f4da058d550886e472665a4d85c9e8a397f75e4b28d213cb",
+    "repeatCount": 100,
+    "status": "passed"
+  },
+  "development": {
+    "entityMetrics": {
+      "counseling": {
+        "f1": 0.7692307692307693,
+        "falseNegativeCount": 9,
+        "falsePositiveCount": 0,
+        "precision": 1.0,
+        "recall": 0.625,
+        "threshold": 0.3,
+        "truePositiveCount": 15
+      },
+      "exam": {
+        "f1": 0.7417218543046357,
+        "falseNegativeCount": 56,
+        "falsePositiveCount": 22,
+        "precision": 0.835820895522388,
+        "recall": 0.6666666666666666,
+        "threshold": 0.3,
+        "truePositiveCount": 112
+      },
+      "imaging": {
+        "f1": 0.0,
+        "falseNegativeCount": 17,
+        "falsePositiveCount": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "threshold": 0.9,
+        "truePositiveCount": 0
+      },
+      "injection": {
+        "f1": 0.8,
+        "falseNegativeCount": 12,
+        "falsePositiveCount": 0,
+        "precision": 1.0,
+        "recall": 0.6666666666666666,
+        "threshold": 0.3,
+        "truePositiveCount": 24
+      },
+      "lab": {
+        "f1": 0.835978835978836,
+        "falseNegativeCount": 22,
+        "falsePositiveCount": 9,
+        "precision": 0.8977272727272727,
+        "recall": 0.7821782178217822,
+        "threshold": 0.4,
+        "truePositiveCount": 79
+      },
+      "management": {
+        "f1": 0.88,
+        "falseNegativeCount": 6,
+        "falsePositiveCount": 0,
+        "precision": 1.0,
+        "recall": 0.7857142857142857,
+        "threshold": 0.3,
+        "truePositiveCount": 22
+      },
+      "material": {
+        "f1": 0.0,
+        "falseNegativeCount": 0,
+        "falsePositiveCount": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "threshold": 0.9,
+        "truePositiveCount": 0
+      },
+      "medication": {
+        "f1": 0.9858557284299858,
+        "falseNegativeCount": 2,
+        "falsePositiveCount": 18,
+        "precision": 0.9748251748251748,
+        "recall": 0.9971387696709585,
+        "threshold": 0.6,
+        "truePositiveCount": 697
+      },
+      "other": {
+        "f1": 0.0,
+        "falseNegativeCount": 0,
+        "falsePositiveCount": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "threshold": 0.9,
+        "truePositiveCount": 0
+      },
+      "outpatient_basic": {
+        "f1": 0.0,
+        "falseNegativeCount": 0,
+        "falsePositiveCount": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "threshold": 0.9,
+        "truePositiveCount": 0
+      },
+      "pathology": {
+        "f1": 0.0,
+        "falseNegativeCount": 0,
+        "falsePositiveCount": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "threshold": 0.9,
+        "truePositiveCount": 0
+      },
+      "procedure": {
+        "f1": 0.8805031446540881,
+        "falseNegativeCount": 11,
+        "falsePositiveCount": 27,
+        "precision": 0.8383233532934131,
+        "recall": 0.9271523178807947,
+        "threshold": 0.3,
+        "truePositiveCount": 140
+      },
+      "treatment": {
+        "f1": 0.0,
+        "falseNegativeCount": 19,
+        "falsePositiveCount": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "threshold": 0.9,
+        "truePositiveCount": 0
+      }
+    },
+    "entityThresholds": {
+      "counseling": 0.3,
+      "exam": 0.3,
+      "imaging": 0.9,
+      "injection": 0.3,
+      "lab": 0.4,
+      "management": 0.3,
+      "material": 0.9,
+      "medication": 0.6,
+      "other": 0.9,
+      "outpatient_basic": 0.9,
+      "pathology": 0.9,
+      "procedure": 0.3,
+      "treatment": 0.9
+    },
+    "relevanceAccuracy": 0.9921875,
+    "relevanceTemperature": 0.9
+  },
+  "developmentCaseCount": 64,
+  "developmentLineCount": 256,
+  "entityTypes": [
+    "counseling",
+    "exam",
+    "imaging",
+    "injection",
+    "lab",
+    "management",
+    "material",
+    "medication",
+    "other",
+    "outpatient_basic",
+    "pathology",
+    "procedure",
+    "treatment"
+  ],
+  "generatedAt": "2026-07-25T13:21:41.662437Z",
+  "license": {
+    "license": "Apache-2.0",
+    "modelId": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "sourceUrl": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+    "verifiedAt": "2026-07-25"
+  },
+  "manifestSha256": "059a7c4adc394f1bdd3861aa703ce44f68d3a7394b4972f0ab730b24c13f456a",
+  "mode": "ft",
+  "modelRevision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+  "modelSelection": {
+    "history": [
+      {
+        "developmentLoss": 0.5526924729347229,
+        "epoch": 1,
+        "trainLoss": 1.160516679819141
+      },
+      {
+        "developmentLoss": 0.34397339820861816,
+        "epoch": 2,
+        "trainLoss": 0.36675237491726875
+      },
+      {
+        "developmentLoss": 0.23277339339256287,
+        "epoch": 3,
+        "trainLoss": 0.20690319810195693
+      },
+      {
+        "developmentLoss": 0.18010172247886658,
+        "epoch": 4,
+        "trainLoss": 0.11609978435028877
+      }
+    ],
+    "selectedDevelopmentLoss": 0.18010172247886658,
+    "selectedEpoch": 4
+  },
+  "outputDir": "/Users/hiradekeishi/medical-ai/halunasu/python/data/whitebox/span-wx1-multilingual-minilm-l12-v1",
+  "schemaVersion": "fee-wx1-build-report-v1",
+  "status": "complete",
+  "tokenLabels": [
+    "O",
+    "B-counseling",
+    "I-counseling",
+    "B-exam",
+    "I-exam",
+    "B-imaging",
+    "I-imaging",
+    "B-injection",
+    "I-injection",
+    "B-lab",
+    "I-lab",
+    "B-management",
+    "I-management",
+    "B-material",
+    "I-material",
+    "B-medication",
+    "I-medication",
+    "B-other",
+    "I-other",
+    "B-outpatient_basic",
+    "I-outpatient_basic",
+    "B-pathology",
+    "I-pathology",
+    "B-procedure",
+    "I-procedure",
+    "B-treatment",
+    "I-treatment"
+  ],
+  "trainCaseCount": 224,
+  "trainLineCount": 896,
+  "trainingCategoryAdditions": [
+    "exam",
+    "material"
+  ],
+  "withheldHoldoutCaseCount": 16
+}

@@ -82,6 +82,15 @@ def build_token_labels(entity_types: Sequence[str]) -> list[str]:
     return ["O", *(f"{prefix}-{category}" for category in categories for prefix in ("B", "I"))]
 
 
+def categories_from_examples(examples: Sequence[SpanExample]) -> list[str]:
+    return sorted({
+        str(span.get("category") or "").strip()
+        for example in examples
+        for span in example.spans
+        if str(span.get("category") or "").strip()
+    })
+
+
 def labels_for_offsets(
     offsets: Sequence[Sequence[int]],
     spans: Sequence[Mapping[str, Any]],
@@ -456,10 +465,18 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         repo_root=repo_root,
     )
     partitions = load_training_partitions(dataset_path)
-    entity_types, entity_types_sha = load_entity_categories(entity_types_path)
-    token_labels = build_token_labels(entity_types)
+    declared_entity_types, entity_types_sha = load_entity_categories(entity_types_path)
     train_examples = build_span_examples(partitions.train)
     development_examples = build_span_examples(partitions.development)
+    labeled_entity_types = categories_from_examples([
+        *train_examples,
+        *development_examples,
+    ])
+    entity_types = sorted({*declared_entity_types, *labeled_entity_types})
+    training_category_additions = sorted(
+        set(labeled_entity_types) - set(declared_entity_types)
+    )
+    token_labels = build_token_labels(entity_types)
     plan = {
         "artifactType": "fee_span_detector",
         "backend": "onnx_token_classifier",
@@ -474,6 +491,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         "trainLineCount": len(train_examples),
         "developmentLineCount": len(development_examples),
         "entityTypes": entity_types,
+        "trainingCategoryAdditions": training_category_additions,
         "tokenLabels": token_labels,
         "license": license_record,
     }
@@ -553,6 +571,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "tokenizerFileKey": "tokenizer",
             "maxLength": args.max_length,
             "entityTypes": entity_types,
+            "trainingCategoryAdditions": training_category_additions,
             "tokenLabels": token_labels,
             "tokenLogitsOutputName": "token_logits",
             "relevanceLogitsOutputName": "relevance_logits",

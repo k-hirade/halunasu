@@ -6,6 +6,7 @@ from scripts.build_wx1_span_artifact import (
     DETERMINISM_REPEAT_COUNT,
     SpanExample,
     build_token_labels,
+    categories_from_examples,
     category_token_metrics,
     labels_for_offsets,
 )
@@ -58,6 +59,24 @@ class BuildWx1SpanArtifactTest(unittest.TestCase):
             relevance_label="irrelevant",
         )
         self.assertEqual(example.relevance_label, "irrelevant")
+
+    def test_training_categories_extend_master_derived_entity_types(self) -> None:
+        examples = [
+            SpanExample(
+                case_id="case",
+                line_index=0,
+                text="心電図と材料",
+                spans=(
+                    {"charStart": 0, "charEnd": 3, "category": "exam"},
+                    {"charStart": 4, "charEnd": 6, "category": "material"},
+                ),
+                relevance_label="relevant",
+            )
+        ]
+        self.assertEqual(
+            categories_from_examples(examples),
+            ["exam", "material"],
+        )
 
     def test_threshold_metrics_match_runtime_argmax_decoding(self) -> None:
         metrics = category_token_metrics(

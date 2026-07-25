@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from experiments.wx0_span_zeroshot import (
     evaluate_model,
+    load_evaluation_cases,
     normalize_predictions,
     prediction_fingerprint,
 )
+from experiments.wx0_metrics import aggregate_count_metrics
 
 
 ENTITY_TYPES = [
@@ -20,6 +25,55 @@ ENTITY_TYPES = [
 
 
 class Wx0SpanZeroshotTest(unittest.TestCase):
+    def test_aggregate_count_metrics_accepts_single_pass_iterables(self) -> None:
+        result = aggregate_count_metrics(
+            iter([
+                {
+                    "truePositive": 1,
+                    "falsePositive": 2,
+                    "falseNegative": 3,
+                }
+            ])
+        )
+        self.assertEqual(result["truePositive"], 1)
+        self.assertEqual(result["falsePositive"], 2)
+        self.assertEqual(result["falseNegative"], 3)
+
+    def test_machine_labels_require_explicit_opt_in(self) -> None:
+        dataset = {
+            "cases": [
+                {
+                    "caseId": "human",
+                    "split": "holdout",
+                    "annotationStatus": "reviewed",
+                },
+                {
+                    "caseId": "machine",
+                    "split": "holdout",
+                    "annotationStatus": "pending_review",
+                    "experimentalLabelStatus": "machine_derived",
+                },
+            ]
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "cases.json"
+            path.write_text(json.dumps(dataset), encoding="utf-8")
+            self.assertEqual(
+                [item["caseId"] for item in load_evaluation_cases(path, "holdout")],
+                ["human"],
+            )
+            self.assertEqual(
+                [
+                    item["caseId"]
+                    for item in load_evaluation_cases(
+                        path,
+                        "holdout",
+                        allow_machine_labels=True,
+                    )
+                ],
+                ["human", "machine"],
+            )
+
     def test_normalizes_known_labels_and_ignores_unknown_labels(self) -> None:
         result = normalize_predictions(
             [
@@ -81,6 +135,8 @@ class Wx0SpanZeroshotTest(unittest.TestCase):
         self.assertEqual(result["overall"]["f1"], 1)
         self.assertTrue(result["determinism"]["allCasesDeterministic"])
         self.assertEqual(result["determinism"]["exactMatchRate"], 1)
+        self.assertFalse(result["notGold"])
+        self.assertEqual(result["labelSourceCounts"], {"human_reviewed": 1})
 
     def test_fingerprint_is_stable_for_equivalent_predictions(self) -> None:
         first = [

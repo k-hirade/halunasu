@@ -71,6 +71,7 @@ npm run prepare:fee-specialty-matrix -- --output /private/tmp/fee-specialty-anno
 | `cl-nagoya/ruri-v3-30m` | Apache-2.0 | https://huggingface.co/cl-nagoya/ruri-v3-30m | 2026-07-25 | 可 | LICENSEと著作権表示を保持し、NOTICEがある場合は保持。変更箇所を表示 | **採用候補**。E4は30mから実測 |
 | `cl-nagoya/ruri-v3-reranker-310m` | Apache-2.0 | https://huggingface.co/cl-nagoya/ruri-v3-reranker-310m | 2026-07-25 | 可 | LICENSEと著作権表示を保持し、NOTICEがある場合は保持。変更箇所を表示 | **採用候補**。top-k再順位付け比較用 |
 | `sbintuitions/modernbert-ja-130m` | MIT | https://huggingface.co/sbintuitions/modernbert-ja-130m/blob/main/LICENSE | 2026-07-25 | 可 | 著作権表示とMITライセンス本文を保持 | **採用候補**。WX3のベースモデル候補 |
+| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Apache-2.0 | https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/e8f8c211226b894fcb81acc59f3b34ba3efd5f42 | 2026-07-25 | 可 | LICENSEと著作権表示を保持 | **採用(WX1 v1ベース)**。manifestにrevision固定で記録済み。次版でmodernbert-ja-130mと比較予定 |
 | `sociocom/MedNER-CR-JA` | CC BY 4.0 | https://huggingface.co/sociocom/MedNER-CR-JA | 2026-07-25 | 可 | 適切な帰属、ライセンスへのリンク、変更有無を表示 | **モデル比較のみ採用候補**。学習元データは別途審査する |
 | MedTxt-CR / MedTxt-RRコーパス | 一般配布ライセンスを確認できず、申請制 | https://sociocom.naist.jp/medtxt-en/cr/ | 2026-07-25 | 未確認 | 個別許諾条件に従う必要がある | **不採用**。書面の個別許諾を得るまで評価・訓練へ取り込まない |
 | UTH-BERT | 公開ページのCC BY-NC-SA 4.0・配布導線がdeprecated | https://ai-health.m.u-tokyo.ac.jp/home/research/uth-bert | 2026-07-25 | 不可/配布停止 | 非商用・継承条件。現行配布物の許諾も確認不能 | **不採用** |

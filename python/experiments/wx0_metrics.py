@@ -122,9 +122,10 @@ def match_spans(
 
 
 def aggregate_count_metrics(items: Iterable[Mapping[str, Any]]) -> dict[str, float | int]:
-    true_positive = sum(int(item.get("truePositive", 0)) for item in items)
-    false_positive = sum(int(item.get("falsePositive", 0)) for item in items)
-    false_negative = sum(int(item.get("falseNegative", 0)) for item in items)
+    rows = list(items)
+    true_positive = sum(int(item.get("truePositive", 0)) for item in rows)
+    false_positive = sum(int(item.get("falsePositive", 0)) for item in rows)
+    false_negative = sum(int(item.get("falseNegative", 0)) for item in rows)
     precision = _safe_divide(true_positive, true_positive + false_positive)
     recall = _safe_divide(true_positive, true_positive + false_negative)
     return {

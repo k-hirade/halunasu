@@ -1,0 +1,3067 @@
+{
+  "schemaVersion": "fee-wx0-span-result-v1",
+  "notGold": true,
+  "labelSourceCounts": {
+    "human_reviewed": 16,
+    "machine_derived": 48
+  },
+  "model": {
+    "id": "urchade/gliner_multi-v2.1",
+    "revision": "443d26d654e0324125a96bebd8e796c14ff2efe6",
+    "license": "Apache-2.0",
+    "glinerVersion": "0.2.24",
+    "entityTypesSource": {
+      "medicalProcedureMasterVersion": "2026-06-15",
+      "masterSha256": "26737b6719ede79ea0ba532a3ac91cc8c5a2ecacbe3af040b73de21bcb3376d1",
+      "clinicalAxesSchemaSha256": "a2be9569c975f9f46e1a05740b1be54cd106e734ac42c2f79b9201e9575147d7"
+    }
+  },
+  "threshold": 0.1,
+  "repeatCount": 3,
+  "caseCount": 64,
+  "overall": {
+    "truePositive": 2,
+    "falsePositive": 192,
+    "falseNegative": 150,
+    "precision": 0.010309278350515464,
+    "recall": 0.013157894736842105,
+    "f1": 0.011560693641618498
+  },
+  "byCell": {
+    "dermatology|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 1,
+      "falseNegative": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "dermatology|house_call": {
+      "truePositive": 0,
+      "falsePositive": 4,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "dermatology|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 16,
+      "falseNegative": 5,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "dermatology|telephone": {
+      "truePositive": 0,
+      "falsePositive": 2,
+      "falseNegative": 3,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "internal_medicine|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 2,
+      "falseNegative": 3,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "internal_medicine|house_call": {
+      "truePositive": 0,
+      "falsePositive": 1,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "internal_medicine|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 13,
+      "falseNegative": 10,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "internal_medicine|telephone": {
+      "truePositive": 0,
+      "falsePositive": 1,
+      "falseNegative": 3,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "ophthalmology|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 2,
+      "falseNegative": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "ophthalmology|house_call": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 5,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "ophthalmology|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 17,
+      "falseNegative": 15,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "ophthalmology|telephone": {
+      "truePositive": 0,
+      "falsePositive": 6,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "orthopedics|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "orthopedics|house_call": {
+      "truePositive": 0,
+      "falsePositive": 4,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "orthopedics|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 21,
+      "falseNegative": 9,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "orthopedics|telephone": {
+      "truePositive": 0,
+      "falsePositive": 1,
+      "falseNegative": 5,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "otolaryngology|home_visit": {
+      "truePositive": 1,
+      "falsePositive": 0,
+      "falseNegative": 1,
+      "precision": 1.0,
+      "recall": 0.5,
+      "f1": 0.6666666666666666
+    },
+    "otolaryngology|house_call": {
+      "truePositive": 0,
+      "falsePositive": 2,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "otolaryngology|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 15,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "otolaryngology|telephone": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "pediatrics|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 9,
+      "falseNegative": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "pediatrics|house_call": {
+      "truePositive": 0,
+      "falsePositive": 2,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "pediatrics|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 17,
+      "falseNegative": 9,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "pediatrics|telephone": {
+      "truePositive": 0,
+      "falsePositive": 2,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "psychiatry|home_visit": {
+      "truePositive": 1,
+      "falsePositive": 1,
+      "falseNegative": 1,
+      "precision": 0.5,
+      "recall": 0.5,
+      "f1": 0.5
+    },
+    "psychiatry|house_call": {
+      "truePositive": 0,
+      "falsePositive": 4,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "psychiatry|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 11,
+      "falseNegative": 9,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "psychiatry|telephone": {
+      "truePositive": 0,
+      "falsePositive": 4,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "surgery|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 6,
+      "falseNegative": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "surgery|house_call": {
+      "truePositive": 0,
+      "falsePositive": 4,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "surgery|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 16,
+      "falseNegative": 9,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "surgery|telephone": {
+      "truePositive": 0,
+      "falsePositive": 8,
+      "falseNegative": 5,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    }
+  },
+  "determinism": {
+    "matchingRuns": 192,
+    "totalRuns": 192,
+    "exactMatchRate": 1.0,
+    "allCasesDeterministic": true
+  },
+  "latencyMs": {
+    "count": 192,
+    "min": 359.7668329603039,
+    "p50": 781.352729012724,
+    "p95": 1228.9611896383576,
+    "max": 1508.0910000251606,
+    "mean": 804.4546137010306
+  },
+  "rows": [
+    {
+      "caseId": "wx0-im-outp-h001",
+      "specialty": "internal_medicine",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 8,
+        "falseNegative": 5,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 8,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 0,
+          "charEnd": 1,
+          "text": "S",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11182694882154465
+        },
+        {
+          "charStart": 2,
+          "charEnd": 12,
+          "text": "Subjective",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10975392162799835
+        },
+        {
+          "charStart": 268,
+          "charEnd": 269,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12936986982822418
+        },
+        {
+          "charStart": 334,
+          "charEnd": 342,
+          "text": "CVA叩打痛なし",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1557796448469162
+        },
+        {
+          "charStart": 460,
+          "charEnd": 461,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1515609323978424
+        },
+        {
+          "charStart": 507,
+          "charEnd": 515,
+          "text": "CVA叩打痛なく",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.16960446536540985
+        },
+        {
+          "charStart": 546,
+          "charEnd": 547,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.23132789134979248
+        },
+        {
+          "charStart": 548,
+          "charEnd": 552,
+          "text": "Plan",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11514415591955185
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-im-outp-h002",
+      "specialty": "internal_medicine",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 5,
+        "falseNegative": 5,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 5,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 2,
+          "charEnd": 12,
+          "text": "Subjective",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10837321728467941
+        },
+        {
+          "charStart": 159,
+          "charEnd": 160,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10674683004617691
+        },
+        {
+          "charStart": 274,
+          "charEnd": 282,
+          "text": "WBC 7600",
+          "category": "lab",
+          "entityTypeId": "medical_procedure_d",
+          "confidence": 0.12933939695358276
+        },
+        {
+          "charStart": 334,
+          "charEnd": 335,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.15131716430187225
+        },
+        {
+          "charStart": 386,
+          "charEnd": 387,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.23053120076656342
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-derm-outp-h001",
+      "specialty": "dermatology",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 9,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 9,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 0,
+          "charEnd": 1,
+          "text": "S",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12225046753883362
+        },
+        {
+          "charStart": 2,
+          "charEnd": 12,
+          "text": "Subjective",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10672786831855774
+        },
+        {
+          "charStart": 143,
+          "charEnd": 144,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.155715212225914
+        },
+        {
+          "charStart": 210,
+          "charEnd": 216,
+          "text": "感染徴候なし",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12372773885726929
+        },
+        {
+          "charStart": 297,
+          "charEnd": 298,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1779032051563263
+        },
+        {
+          "charStart": 328,
+          "charEnd": 332,
+          "text": "感染なし",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.14692732691764832
+        },
+        {
+          "charStart": 372,
+          "charEnd": 373,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.214278906583786
+        },
+        {
+          "charStart": 374,
+          "charEnd": 378,
+          "text": "Plan",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.13017980754375458
+        },
+        {
+          "charStart": 425,
+          "charEnd": 432,
+          "text": "1週間後に再診",
+          "category": "outpatient_basic",
+          "entityTypeId": "medical_procedure_a",
+          "confidence": 0.10382704436779022
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-derm-outp-h002",
+      "specialty": "dermatology",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 7,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 7,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 77,
+          "charEnd": 89,
+          "text": "睡眠への影響はなくなった",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10107062757015228
+        },
+        {
+          "charStart": 138,
+          "charEnd": 139,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11056467145681381
+        },
+        {
+          "charStart": 197,
+          "charEnd": 205,
+          "text": "爪周囲に異常なし",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10266528278589249
+        },
+        {
+          "charStart": 244,
+          "charEnd": 247,
+          "text": "手湿疹",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1101338341832161
+        },
+        {
+          "charStart": 273,
+          "charEnd": 274,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11489339172840118
+        },
+        {
+          "charStart": 275,
+          "charEnd": 279,
+          "text": "Plan",
+          "category": "outpatient_basic",
+          "entityTypeId": "medical_procedure_a",
+          "confidence": 0.1258842498064041
+        },
+        {
+          "charStart": 356,
+          "charEnd": 365,
+          "text": "悪化時は早めに受診",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1024724617600441
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-ped-outp-h001",
+      "specialty": "pediatrics",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 5,
+        "falseNegative": 5,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 5,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 0,
+          "charEnd": 1,
+          "text": "S",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11505532264709473
+        },
+        {
+          "charStart": 2,
+          "charEnd": 12,
+          "text": "Subjective",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12537722289562225
+        },
+        {
+          "charStart": 260,
+          "charEnd": 261,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.13530398905277252
+        },
+        {
+          "charStart": 482,
+          "charEnd": 483,
+          "text": "A",
+          "category": "management",
+          "entityTypeId": "medical_procedure_c",
+          "confidence": 0.10832825303077698
+        },
+        {
+          "charStart": 554,
+          "charEnd": 555,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.20244276523590088
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-ped-outp-h002",
+      "specialty": "pediatrics",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 12,
+        "falseNegative": 4,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 12,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 0,
+          "charEnd": 1,
+          "text": "S",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11158948391675949
+        },
+        {
+          "charStart": 2,
+          "charEnd": 12,
+          "text": "Subjective",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10270636528730392
+        },
+        {
+          "charStart": 77,
+          "charEnd": 78,
+          "text": "咳",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10700202733278275
+        },
+        {
+          "charStart": 131,
+          "charEnd": 139,
+          "text": "アレルギー歴なし",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10353968292474747
+        },
+        {
+          "charStart": 142,
+          "charEnd": 143,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.14107050001621246
+        },
+        {
+          "charStart": 283,
+          "charEnd": 300,
+          "text": "咳がなく夏季で周囲の流行もないため",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11354133486747742
+        },
+        {
+          "charStart": 318,
+          "charEnd": 319,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.2121327668428421
+        },
+        {
+          "charStart": 335,
+          "charEnd": 344,
+          "text": "Ａ群溶連菌性咽頭炎",
+          "category": "management",
+          "entityTypeId": "medical_procedure_c",
+          "confidence": 0.12715370953083038
+        },
+        {
+          "charStart": 396,
+          "charEnd": 397,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.24956125020980835
+        },
+        {
+          "charStart": 398,
+          "charEnd": 402,
+          "text": "Plan",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12366082519292831
+        },
+        {
+          "charStart": 407,
+          "charEnd": 418,
+          "text": "抗菌薬を院外で処方予定",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1067669689655304
+        },
+        {
+          "charStart": 490,
+          "charEnd": 497,
+          "text": "2日後に再診し",
+          "category": "outpatient_basic",
+          "entityTypeId": "medical_procedure_a",
+          "confidence": 0.10199658572673798
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-ent-outp-h001",
+      "specialty": "otolaryngology",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 6,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 6,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 131,
+          "charEnd": 132,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10953571647405624
+        },
+        {
+          "charStart": 150,
+          "charEnd": 157,
+          "text": "KT 38.0",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1461639553308487
+        },
+        {
+          "charStart": 207,
+          "charEnd": 217,
+          "text": "頸部リンパ節圧痛軽度",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10124307125806808
+        },
+        {
+          "charStart": 245,
+          "charEnd": 246,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.17371614277362823
+        },
+        {
+          "charStart": 295,
+          "charEnd": 296,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.21267685294151306
+        },
+        {
+          "charStart": 319,
+          "charEnd": 334,
+          "text": "市販解熱薬の継続使用で可と説明",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11151400208473206
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-ent-outp-h002",
+      "specialty": "otolaryngology",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 9,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 9,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 83,
+          "charEnd": 84,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12098142504692078
+        },
+        {
+          "charStart": 127,
+          "charEnd": 133,
+          "text": "咽頭発赤軽度",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11365142464637756
+        },
+        {
+          "charStart": 168,
+          "charEnd": 184,
+          "text": "胸部画像や採血は本日行っていない",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10157567262649536
+        },
+        {
+          "charStart": 187,
+          "charEnd": 188,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1529780477285385
+        },
+        {
+          "charStart": 204,
+          "charEnd": 210,
+          "text": "急性上気道炎",
+          "category": "management",
+          "entityTypeId": "medical_procedure_c",
+          "confidence": 0.10207939893007278
+        },
+        {
+          "charStart": 251,
+          "charEnd": 252,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.22368264198303223
+        },
+        {
+          "charStart": 253,
+          "charEnd": 257,
+          "text": "Plan",
+          "category": "outpatient_basic",
+          "entityTypeId": "medical_procedure_a",
+          "confidence": 0.13370096683502197
+        },
+        {
+          "charStart": 262,
+          "charEnd": 266,
+          "text": "自宅療養",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11949272453784943
+        },
+        {
+          "charStart": 272,
+          "charEnd": 282,
+          "text": "解熱薬の使い方を説明",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10074370354413986
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-oph-outp-h001",
+      "specialty": "ophthalmology",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 7,
+        "falseNegative": 7,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 7,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 144,
+          "charEnd": 145,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12379808723926544
+        },
+        {
+          "charStart": 255,
+          "charEnd": 256,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.16365331411361694
+        },
+        {
+          "charStart": 272,
+          "charEnd": 282,
+          "text": "両アレルギー性結膜炎",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.102572001516819
+        },
+        {
+          "charStart": 292,
+          "charEnd": 293,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1753547340631485
+        },
+        {
+          "charStart": 294,
+          "charEnd": 298,
+          "text": "Plan",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10885930061340332
+        },
+        {
+          "charStart": 312,
+          "charEnd": 317,
+          "text": "一般名処方",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11697110533714294
+        },
+        {
+          "charStart": 361,
+          "charEnd": 373,
+          "text": "2週間で改善なければ再診",
+          "category": "outpatient_basic",
+          "entityTypeId": "medical_procedure_a",
+          "confidence": 0.10537795722484589
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-oph-outp-h002",
+      "specialty": "ophthalmology",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 10,
+        "falseNegative": 8,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 10,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 150,
+          "charEnd": 151,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11119846999645233
+        },
+        {
+          "charStart": 178,
+          "charEnd": 180,
+          "text": "矯正",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11924794316291809
+        },
+        {
+          "charStart": 243,
+          "charEnd": 256,
+          "text": "点眼麻酔下に角膜異物を除去",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11339206248521805
+        },
+        {
+          "charStart": 325,
+          "charEnd": 326,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.13605083525180817
+        },
+        {
+          "charStart": 353,
+          "charEnd": 360,
+          "text": "感染予防が必要",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.13716843724250793
+        },
+        {
+          "charStart": 363,
+          "charEnd": 364,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1672697812318802
+        },
+        {
+          "charStart": 365,
+          "charEnd": 369,
+          "text": "Plan",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1025044396519661
+        },
+        {
+          "charStart": 374,
+          "charEnd": 386,
+          "text": "抗菌点眼を院外で処方予定",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.17367860674858093
+        },
+        {
+          "charStart": 387,
+          "charEnd": 398,
+          "text": "保護メガネの常用を指導",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10677915811538696
+        },
+        {
+          "charStart": 493,
+          "charEnd": 506,
+          "text": "明日再診し上皮化を確認する",
+          "category": "outpatient_basic",
+          "entityTypeId": "medical_procedure_a",
+          "confidence": 0.11660833656787872
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-orth-outp-h001",
+      "specialty": "orthopedics",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 11,
+        "falseNegative": 4,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 11,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 0,
+          "charEnd": 1,
+          "text": "S",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11955145746469498
+        },
+        {
+          "charStart": 2,
+          "charEnd": 12,
+          "text": "Subjective",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11325999349355698
+        },
+        {
+          "charStart": 209,
+          "charEnd": 218,
+          "text": "仕事は倉庫内作業で",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.17204932868480682
+        },
+        {
+          "charStart": 239,
+          "charEnd": 240,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11485310643911362
+        },
+        {
+          "charStart": 280,
+          "charEnd": 286,
+          "text": "皮下出血なし",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10123346000909805
+        },
+        {
+          "charStart": 433,
+          "charEnd": 434,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.14673824608325958
+        },
+        {
+          "charStart": 510,
+          "charEnd": 511,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.15566159784793854
+        },
+        {
+          "charStart": 521,
+          "charEnd": 529,
+          "text": "サポーター装着と",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11882240325212479
+        },
+        {
+          "charStart": 549,
+          "charEnd": 559,
+          "text": "アイシングを1日数回",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10169799625873566
+        },
+        {
+          "charStart": 560,
+          "charEnd": 577,
+          "text": "仕事は重量物を避ければ継続可と説明",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.21728895604610443
+        },
+        {
+          "charStart": 579,
+          "charEnd": 586,
+          "text": "2週間後に再診",
+          "category": "outpatient_basic",
+          "entityTypeId": "medical_procedure_a",
+          "confidence": 0.13712741434574127
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-orth-outp-h002",
+      "specialty": "orthopedics",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 10,
+        "falseNegative": 5,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 10,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 0,
+          "charEnd": 1,
+          "text": "S",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10168342292308807
+        },
+        {
+          "charStart": 196,
+          "charEnd": 197,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1371554285287857
+        },
+        {
+          "charStart": 241,
+          "charEnd": 248,
+          "text": "SLR両側陰性",
+          "category": "lab",
+          "entityTypeId": "medical_procedure_d",
+          "confidence": 0.22445300221443176
+        },
+        {
+          "charStart": 334,
+          "charEnd": 339,
+          "text": "すべりなし",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1011996865272522
+        },
+        {
+          "charStart": 342,
+          "charEnd": 343,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.15701448917388916
+        },
+        {
+          "charStart": 378,
+          "charEnd": 385,
+          "text": "神経根症状なし",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1154111698269844
+        },
+        {
+          "charStart": 388,
+          "charEnd": 389,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.17908217012882233
+        },
+        {
+          "charStart": 422,
+          "charEnd": 439,
+          "text": "庭仕事の中腰姿勢を避ける工夫を指導",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.15626494586467743
+        },
+        {
+          "charStart": 471,
+          "charEnd": 489,
+          "text": "骨密度は健診結果を次回持参してもらい",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10228750109672546
+        },
+        {
+          "charStart": 501,
+          "charEnd": 508,
+          "text": "2週間後に再診",
+          "category": "outpatient_basic",
+          "entityTypeId": "medical_procedure_a",
+          "confidence": 0.14573471248149872
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-psy-outp-h001",
+      "specialty": "psychiatry",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 3,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 3,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 2,
+          "charEnd": 12,
+          "text": "Subjective",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11078213155269623
+        },
+        {
+          "charStart": 365,
+          "charEnd": 366,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11344742029905319
+        },
+        {
+          "charStart": 400,
+          "charEnd": 401,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.18193085491657257
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-psy-outp-h002",
+      "specialty": "psychiatry",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 8,
+        "falseNegative": 6,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 8,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 0,
+          "charEnd": 1,
+          "text": "S",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11250122636556625
+        },
+        {
+          "charStart": 2,
+          "charEnd": 12,
+          "text": "Subjective",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12153755873441696
+        },
+        {
+          "charStart": 222,
+          "charEnd": 223,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12461783736944199
+        },
+        {
+          "charStart": 309,
+          "charEnd": 310,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1298021376132965
+        },
+        {
+          "charStart": 384,
+          "charEnd": 385,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.15449707210063934
+        },
+        {
+          "charStart": 386,
+          "charEnd": 390,
+          "text": "Plan",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11108636856079102
+        },
+        {
+          "charStart": 395,
+          "charEnd": 401,
+          "text": "睡眠衛生指導",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.2136119157075882
+        },
+        {
+          "charStart": 470,
+          "charEnd": 486,
+          "text": "心理検査は経過をみて必要なら検討",
+          "category": "lab",
+          "entityTypeId": "medical_procedure_d",
+          "confidence": 0.16041827201843262
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-surg-outp-h001",
+      "specialty": "surgery",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 5,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 5,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 0,
+          "charEnd": 1,
+          "text": "S",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10499183088541031
+        },
+        {
+          "charStart": 172,
+          "charEnd": 173,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1260322779417038
+        },
+        {
+          "charStart": 211,
+          "charEnd": 217,
+          "text": "感染徴候なし",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12297047674655914
+        },
+        {
+          "charStart": 371,
+          "charEnd": 372,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.14784936606884003
+        },
+        {
+          "charStart": 415,
+          "charEnd": 416,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.19150987267494202
+        }
+      ]
+    },
+    {
+      "caseId": "wx0-surg-outp-h002",
+      "specialty": "surgery",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 11,
+        "falseNegative": 6,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 11,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 0,
+          "charEnd": 1,
+          "text": "S",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1303967833518982
+        },
+        {
+          "charStart": 2,
+          "charEnd": 12,
+          "text": "Subjective",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.13192684948444366
+        },
+        {
+          "charStart": 197,
+          "charEnd": 223,
+          "text": "手術への不安として麻酔と痛みについて質問が複数あった",
+          "category": "lab",
+          "entityTypeId": "medical_procedure_d",
+          "confidence": 0.15944726765155792
+        },
+        {
+          "charStart": 249,
+          "charEnd": 250,
+          "text": "O",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.14637134969234467
+        },
+        {
+          "charStart": 358,
+          "charEnd": 359,
+          "text": "A",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1321459859609604
+        },
+        {
+          "charStart": 394,
+          "charEnd": 395,
+          "text": "P",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1476316750049591
+        },
+        {
+          "charStart": 421,
+          "charEnd": 426,
+          "text": "メッシュ法",
+          "category": "procedure",
+          "entityTypeId": "medical_procedure_k",
+          "confidence": 0.15525920689105988
+        },
+        {
+          "charStart": 521,
+          "charEnd": 525,
+          "text": "術前検査",
+          "category": "lab",
+          "entityTypeId": "medical_procedure_d",
+          "confidence": 0.20136958360671997
+        },
+        {
+          "charStart": 529,
+          "charEnd": 532,
+          "text": "心電図",
+          "category": "pathology",
+          "entityTypeId": "medical_procedure_n",
+          "confidence": 0.13254256546497345
+        },
+        {
+          "charStart": 533,
+          "charEnd": 537,
+          "text": "胸部X線",
+          "category": "pathology",
+          "entityTypeId": "medical_procedure_n",
+          "confidence": 0.13157109916210175
+        },
+        {
+          "charStart": 593,
+          "charEnd": 603,
+          "text": "手術前後の仕事の調整",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10760410130023956
+        }
+      ]
+    },
+    {
+      "caseId": "H2-INTERNAL-MEDICINE-HOME_VISIT-001",
+      "specialty": "internal_medicine",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 2,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 2,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 14,
+          "charEnd": 27,
+          "text": "呼吸状態と全身状態を確認し",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12084648758172989
+        },
+        {
+          "charStart": 172,
+          "charEnd": 185,
+          "text": "服薬の自己管理状況を踏まえ",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1105130985379219
+        }
+      ]
+    },
+    {
+      "caseId": "H2-INTERNAL-MEDICINE-HOME_VISIT-002",
+      "specialty": "internal_medicine",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-INTERNAL-MEDICINE-HOUSE_CALL-001",
+      "specialty": "internal_medicine",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 1,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 130,
+          "charEnd": 157,
+          "text": "再診料および往診料の対象として今後の経過をフォローする",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.17363247275352478
+        }
+      ]
+    },
+    {
+      "caseId": "H2-INTERNAL-MEDICINE-HOUSE_CALL-002",
+      "specialty": "internal_medicine",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-INTERNAL-MEDICINE-TELEPHONE-001",
+      "specialty": "internal_medicine",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 1,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 229,
+          "charEnd": 248,
+          "text": "電話等再診として治療上必要な指示を行う",
+          "category": "management",
+          "entityTypeId": "medical_procedure_b",
+          "confidence": 0.12012071162462234
+        }
+      ]
+    },
+    {
+      "caseId": "H2-INTERNAL-MEDICINE-TELEPHONE-002",
+      "specialty": "internal_medicine",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-DERMATOLOGY-HOME_VISIT-001",
+      "specialty": "dermatology",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 1,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 339,
+          "charEnd": 348,
+          "text": "定期訪問診療を実施",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11131457984447479
+        }
+      ]
+    },
+    {
+      "caseId": "H2-DERMATOLOGY-HOME_VISIT-002",
+      "specialty": "dermatology",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-DERMATOLOGY-HOUSE_CALL-001",
+      "specialty": "dermatology",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 2,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 2,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 2,
+          "charEnd": 7,
+          "text": "皮膚科再診",
+          "category": "management",
+          "entityTypeId": "medical_procedure_c",
+          "confidence": 0.20404036343097687
+        },
+        {
+          "charStart": 44,
+          "charEnd": 48,
+          "text": "訪問診療",
+          "category": "management",
+          "entityTypeId": "medical_procedure_c",
+          "confidence": 0.301762193441391
+        }
+      ]
+    },
+    {
+      "caseId": "H2-DERMATOLOGY-HOUSE_CALL-002",
+      "specialty": "dermatology",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 2,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 2,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 307,
+          "charEnd": 322,
+          "text": "躯幹上部にも同様の発疹がみられ",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11411745846271515
+        },
+        {
+          "charStart": 437,
+          "charEnd": 444,
+          "text": "2〜3日で悪化",
+          "category": "outpatient_basic",
+          "entityTypeId": "medical_procedure_a",
+          "confidence": 0.11282959580421448
+        }
+      ]
+    },
+    {
+      "caseId": "H2-DERMATOLOGY-TELEPHONE-001",
+      "specialty": "dermatology",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 2,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 2,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 120,
+          "charEnd": 133,
+          "text": "電話等再診としての問診対応",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10758890211582184
+        },
+        {
+          "charStart": 343,
+          "charEnd": 359,
+          "text": "電話等再診として治療上必要な指示",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12274964898824692
+        }
+      ]
+    },
+    {
+      "caseId": "H2-DERMATOLOGY-TELEPHONE-002",
+      "specialty": "dermatology",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-ORTHOPEDICS-HOME_VISIT-001",
+      "specialty": "orthopedics",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-ORTHOPEDICS-HOME_VISIT-002",
+      "specialty": "orthopedics",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-ORTHOPEDICS-HOUSE_CALL-001",
+      "specialty": "orthopedics",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 1,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 425,
+          "charEnd": 435,
+          "text": "再診として疼痛の推移",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10431326180696487
+        }
+      ]
+    },
+    {
+      "caseId": "H2-ORTHOPEDICS-HOUSE_CALL-002",
+      "specialty": "orthopedics",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 3,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 3,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 225,
+          "charEnd": 241,
+          "text": "立ち上がりは体重移動に時間を要し",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1201593354344368
+        },
+        {
+          "charStart": 252,
+          "charEnd": 268,
+          "text": "ADLは部分的に介助を要する状況",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.18340201675891876
+        },
+        {
+          "charStart": 371,
+          "charEnd": 385,
+          "text": "立ち上がり時の段階的体重移動",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1052442342042923
+        }
+      ]
+    },
+    {
+      "caseId": "H2-ORTHOPEDICS-TELEPHONE-001",
+      "specialty": "orthopedics",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-ORTHOPEDICS-TELEPHONE-002",
+      "specialty": "orthopedics",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 1,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 504,
+          "charEnd": 523,
+          "text": "電話等再診として治療上必要な指示を行う",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10952633619308472
+        }
+      ]
+    },
+    {
+      "caseId": "H2-PEDIATRICS-HOME_VISIT-001",
+      "specialty": "pediatrics",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 2,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 2,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 164,
+          "charEnd": 176,
+          "text": "呼吸状態は落ち着いていた",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10255298763513565
+        },
+        {
+          "charStart": 311,
+          "charEnd": 329,
+          "text": "家庭での体調管理に関する助言を行った",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12050145864486694
+        }
+      ]
+    },
+    {
+      "caseId": "H2-PEDIATRICS-HOME_VISIT-002",
+      "specialty": "pediatrics",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 7,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 7,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 2,
+          "charEnd": 9,
+          "text": "保護者より聴取",
+          "category": "management",
+          "entityTypeId": "medical_procedure_b",
+          "confidence": 0.27278125286102295
+        },
+        {
+          "charStart": 100,
+          "charEnd": 104,
+          "text": "全身状態",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10016551613807678
+        },
+        {
+          "charStart": 110,
+          "charEnd": 119,
+          "text": "呼吸数は安静時範囲",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.100079245865345
+        },
+        {
+          "charStart": 160,
+          "charEnd": 172,
+          "text": "保護者同伴下で評価を実施",
+          "category": "management",
+          "entityTypeId": "medical_procedure_b",
+          "confidence": 0.2939799427986145
+        },
+        {
+          "charStart": 255,
+          "charEnd": 256,
+          "text": "P",
+          "category": "management",
+          "entityTypeId": "medical_procedure_b",
+          "confidence": 0.12798629701137543
+        },
+        {
+          "charStart": 257,
+          "charEnd": 266,
+          "text": "定期訪問診療を実施",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.14190919697284698
+        },
+        {
+          "charStart": 290,
+          "charEnd": 311,
+          "text": "保護者へ今後の観察計画と受診目安を説明した",
+          "category": "management",
+          "entityTypeId": "medical_procedure_b",
+          "confidence": 0.1584724336862564
+        }
+      ]
+    },
+    {
+      "caseId": "H2-PEDIATRICS-HOUSE_CALL-001",
+      "specialty": "pediatrics",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 1,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 160,
+          "charEnd": 164,
+          "text": "呼吸状態",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10330507904291153
+        }
+      ]
+    },
+    {
+      "caseId": "H2-PEDIATRICS-HOUSE_CALL-002",
+      "specialty": "pediatrics",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 1,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 427,
+          "charEnd": 445,
+          "text": "再診の連絡や受診が必要な状況について",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1110846996307373
+        }
+      ]
+    },
+    {
+      "caseId": "H2-PEDIATRICS-TELEPHONE-001",
+      "specialty": "pediatrics",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 1,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 94,
+          "charEnd": 113,
+          "text": "電話等再診として治療上必要な指示のもと",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10366585850715637
+        }
+      ]
+    },
+    {
+      "caseId": "H2-PEDIATRICS-TELEPHONE-002",
+      "specialty": "pediatrics",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 1,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 326,
+          "charEnd": 330,
+          "text": "水分摂取",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11372381448745728
+        }
+      ]
+    },
+    {
+      "caseId": "H2-OTOLARYNGOLOGY-HOME_VISIT-001",
+      "specialty": "otolaryngology",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OTOLARYNGOLOGY-HOME_VISIT-002",
+      "specialty": "otolaryngology",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 1,
+        "falsePositive": 0,
+        "falseNegative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "matches": [
+          {
+            "expectedIndex": 0,
+            "predictedIndex": 0,
+            "overlap": 1.0
+          }
+        ]
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 290,
+          "charEnd": 299,
+          "text": "定期訪問診療を実施",
+          "category": "management",
+          "entityTypeId": "medical_procedure_c",
+          "confidence": 0.10047784447669983
+        }
+      ]
+    },
+    {
+      "caseId": "H2-OTOLARYNGOLOGY-HOUSE_CALL-001",
+      "specialty": "otolaryngology",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 2,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 2,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 0,
+          "charEnd": 1,
+          "text": "S",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1003674790263176
+        },
+        {
+          "charStart": 7,
+          "charEnd": 25,
+          "text": "患者側から臨時の求めがあり往診を実施",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10475172847509384
+        }
+      ]
+    },
+    {
+      "caseId": "H2-OTOLARYNGOLOGY-HOUSE_CALL-002",
+      "specialty": "otolaryngology",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OTOLARYNGOLOGY-TELEPHONE-001",
+      "specialty": "otolaryngology",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OTOLARYNGOLOGY-TELEPHONE-002",
+      "specialty": "otolaryngology",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OPHTHALMOLOGY-HOME_VISIT-001",
+      "specialty": "ophthalmology",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 2,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 2,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 13,
+          "charEnd": 22,
+          "text": "定期訪問診療を実施",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11634940654039383
+        },
+        {
+          "charStart": 318,
+          "charEnd": 335,
+          "text": "定期訪問診療として眼科的観察を行い",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.16447404026985168
+        }
+      ]
+    },
+    {
+      "caseId": "H2-OPHTHALMOLOGY-HOME_VISIT-002",
+      "specialty": "ophthalmology",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OPHTHALMOLOGY-HOUSE_CALL-001",
+      "specialty": "ophthalmology",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OPHTHALMOLOGY-HOUSE_CALL-002",
+      "specialty": "ophthalmology",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OPHTHALMOLOGY-TELEPHONE-001",
+      "specialty": "ophthalmology",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OPHTHALMOLOGY-TELEPHONE-002",
+      "specialty": "ophthalmology",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 6,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 6,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 13,
+          "charEnd": 23,
+          "text": "左優位にかすみが続き",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11302955448627472
+        },
+        {
+          "charStart": 94,
+          "charEnd": 110,
+          "text": "電話等再診として治療上必要な指示",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10753413289785385
+        },
+        {
+          "charStart": 227,
+          "charEnd": 237,
+          "text": "左優位のかすみが持続",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.14672264456748962
+        },
+        {
+          "charStart": 288,
+          "charEnd": 303,
+          "text": "点眼の継続と生活上の注意を行い",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11970238387584686
+        },
+        {
+          "charStart": 332,
+          "charEnd": 340,
+          "text": "電話等再診として",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11291788518428802
+        },
+        {
+          "charStart": 341,
+          "charEnd": 346,
+          "text": "点眼の継続",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11090758442878723
+        }
+      ]
+    },
+    {
+      "caseId": "H2-PSYCHIATRY-HOME_VISIT-001",
+      "specialty": "psychiatry",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 1,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 90,
+          "charEnd": 102,
+          "text": "家族は見守り負担感が強い",
+          "category": "management",
+          "entityTypeId": "medical_procedure_b",
+          "confidence": 0.1027897372841835
+        }
+      ]
+    },
+    {
+      "caseId": "H2-PSYCHIATRY-HOME_VISIT-002",
+      "specialty": "psychiatry",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 1,
+        "falsePositive": 0,
+        "falseNegative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "matches": [
+          {
+            "expectedIndex": 0,
+            "predictedIndex": 0,
+            "overlap": 1.0
+          }
+        ]
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 332,
+          "charEnd": 341,
+          "text": "定期訪問診療を実施",
+          "category": "management",
+          "entityTypeId": "medical_procedure_c",
+          "confidence": 0.11832091212272644
+        }
+      ]
+    },
+    {
+      "caseId": "H2-PSYCHIATRY-HOUSE_CALL-001",
+      "specialty": "psychiatry",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 1,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 294,
+          "charEnd": 303,
+          "text": "家族の支援はあるが",
+          "category": "management",
+          "entityTypeId": "medical_procedure_b",
+          "confidence": 0.11845038831233978
+        }
+      ]
+    },
+    {
+      "caseId": "H2-PSYCHIATRY-HOUSE_CALL-002",
+      "specialty": "psychiatry",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 3,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 3,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 119,
+          "charEnd": 121,
+          "text": "往診",
+          "category": "management",
+          "entityTypeId": "medical_procedure_c",
+          "confidence": 0.18098041415214539
+        },
+        {
+          "charStart": 169,
+          "charEnd": 193,
+          "text": "バイタル等の詳細検査は当日評価範囲で聴取中心とし",
+          "category": "lab",
+          "entityTypeId": "medical_procedure_d",
+          "confidence": 0.11069204658269882
+        },
+        {
+          "charStart": 309,
+          "charEnd": 313,
+          "text": "睡眠衛生",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11050056666135788
+        }
+      ]
+    },
+    {
+      "caseId": "H2-PSYCHIATRY-TELEPHONE-001",
+      "specialty": "psychiatry",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 4,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 4,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 86,
+          "charEnd": 106,
+          "text": "電話等再診として治療上必要な指示を行った",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.13721248507499695
+        },
+        {
+          "charStart": 107,
+          "charEnd": 111,
+          "text": "睡眠衛生",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.18586400151252747
+        },
+        {
+          "charStart": 362,
+          "charEnd": 382,
+          "text": "電話等再診として治療上必要な指示を踏まえ",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.13801847398281097
+        },
+        {
+          "charStart": 383,
+          "charEnd": 397,
+          "text": "睡眠衛生と日中の活動の再構築",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.13928592205047607
+        }
+      ]
+    },
+    {
+      "caseId": "H2-PSYCHIATRY-TELEPHONE-002",
+      "specialty": "psychiatry",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-SURGERY-HOME_VISIT-001",
+      "specialty": "surgery",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 2,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 2,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 203,
+          "charEnd": 223,
+          "text": "術後創部は現時点で大きな感染徴候は乏しく",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11705721169710159
+        },
+        {
+          "charStart": 269,
+          "charEnd": 284,
+          "text": "創部観察と生活指導の継続が必要",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10501865297555923
+        }
+      ]
+    },
+    {
+      "caseId": "H2-SURGERY-HOME_VISIT-002",
+      "specialty": "surgery",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 4,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 4,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 96,
+          "charEnd": 106,
+          "text": "創部は被覆状態良好で",
+          "category": "management",
+          "entityTypeId": "medical_procedure_c",
+          "confidence": 0.13092003762722015
+        },
+        {
+          "charStart": 147,
+          "charEnd": 167,
+          "text": "清潔保持の手技について家族が介助している",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.13381484150886536
+        },
+        {
+          "charStart": 295,
+          "charEnd": 304,
+          "text": "創部の観察を継続し",
+          "category": "management",
+          "entityTypeId": "medical_procedure_c",
+          "confidence": 0.10403880476951599
+        },
+        {
+          "charStart": 330,
+          "charEnd": 347,
+          "text": "被覆材の交換手順と清潔操作を再確認",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1181674376130104
+        }
+      ]
+    },
+    {
+      "caseId": "H2-SURGERY-HOUSE_CALL-001",
+      "specialty": "surgery",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 3,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 3,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 57,
+          "charEnd": 89,
+          "text": "術後より創部の状態を中心に経過観察を行う必要があるとの訴えがある",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.16289427876472473
+        },
+        {
+          "charStart": 209,
+          "charEnd": 227,
+          "text": "術後経過として創部は概ね安定しており",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11754468083381653
+        },
+        {
+          "charStart": 264,
+          "charEnd": 279,
+          "text": "創部ケアの継続と観察強化が必要",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10725603997707367
+        }
+      ]
+    },
+    {
+      "caseId": "H2-SURGERY-HOUSE_CALL-002",
+      "specialty": "surgery",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 1,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 369,
+          "charEnd": 376,
+          "text": "創部観察を行い",
+          "category": "management",
+          "entityTypeId": "medical_procedure_b",
+          "confidence": 0.11448340862989426
+        }
+      ]
+    },
+    {
+      "caseId": "H2-SURGERY-TELEPHONE-001",
+      "specialty": "surgery",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 5,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 5,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 67,
+          "charEnd": 78,
+          "text": "術後経過は安定しており",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12216722965240479
+        },
+        {
+          "charStart": 131,
+          "charEnd": 145,
+          "text": "創部ケア継続と症状観察の継続",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.13903994858264923
+        },
+        {
+          "charStart": 167,
+          "charEnd": 184,
+          "text": "外科的術後経過は概ね良好と判断する",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.10005883127450943
+        },
+        {
+          "charStart": 236,
+          "charEnd": 256,
+          "text": "電話等再診として治療上必要な指示に基づき",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.12789078056812286
+        },
+        {
+          "charStart": 257,
+          "charEnd": 273,
+          "text": "創部の清潔保持とセルフケアの継続",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1418571174144745
+        }
+      ]
+    },
+    {
+      "caseId": "H2-SURGERY-TELEPHONE-002",
+      "specialty": "surgery",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 3,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 3,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 47,
+          "charEnd": 67,
+          "text": "電話等再診として治療上必要な指示を行った",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.1041068360209465
+        },
+        {
+          "charStart": 68,
+          "charEnd": 95,
+          "text": "外科的術後の全身状態は概ね安定しているとの申告であった",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.11286251246929169
+        },
+        {
+          "charStart": 258,
+          "charEnd": 277,
+          "text": "電話等再診として治療上必要な指示を行い",
+          "category": "other",
+          "entityTypeId": "medical_procedure_o",
+          "confidence": 0.13291573524475098
+        }
+      ]
+    }
+  ]
+}

@@ -42,9 +42,11 @@ export const HOLDOUT_TEXT_INSTRUCTIONS = [
   "You create synthetic Japanese SOAP notes for medical fee extraction evaluation.",
   "Never include a real person's name, address, insurer number, or other identifying information.",
   "Use all required phrases verbatim and make the encounter facts internally consistent.",
+  "Never repeat a forbidden phrase, including to say that it did not happen; omit that topic entirely.",
   "Do not invent any same-day billable procedure, test, injection, imaging, surgery, or medication beyond billingTargets.",
   "Write only the current encounter. Do not add a billing code or point value to the note.",
-  "Return one clinicalText string containing S, O, A, and P sections."
+  "Return one clinicalText string with exactly four sections.",
+  "Start each section on its own line using these exact prefixes in this order: S：, O：, A：, P：."
 ].join("\n");
 
 export function buildNonOutpatientHoldoutBlueprints({
@@ -423,7 +425,9 @@ function validateGeneratedClinicalText(blueprint, clinicalText) {
   const id = blueprint?.blueprintId || blueprint?.caseId || "(missing)";
   const errors = [];
   if (clinicalText.length < 120) errors.push(`${id}: clinicalText is too short`);
-  if (!["S", "O", "A", "P"].every((section) => new RegExp(`${section}[）:]`, "u").test(clinicalText))) {
+  if (!["S", "O", "A", "P"].every((section) => (
+    new RegExp(`(?:^|\\n)\\s*${section}\\s*[）):：]`, "u").test(clinicalText)
+  ))) {
     errors.push(`${id}: clinicalText must contain S/O/A/P sections`);
   }
   for (const phrase of blueprint?.requiredPhrases || []) {

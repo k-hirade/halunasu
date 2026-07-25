@@ -1,0 +1,1507 @@
+{
+  "schemaVersion": "fee-wx0-span-result-v1",
+  "notGold": true,
+  "labelSourceCounts": {
+    "human_reviewed": 16,
+    "machine_derived": 48
+  },
+  "model": {
+    "id": "Ihor/gliner-biomed-base-v1.0",
+    "revision": "146c133ff9da643f738f9817bc38cee479cebe8c",
+    "license": "Apache-2.0",
+    "glinerVersion": "0.2.24",
+    "entityTypesSource": {
+      "medicalProcedureMasterVersion": "2026-06-15",
+      "masterSha256": "26737b6719ede79ea0ba532a3ac91cc8c5a2ecacbe3af040b73de21bcb3376d1",
+      "clinicalAxesSchemaSha256": "a2be9569c975f9f46e1a05740b1be54cd106e734ac42c2f79b9201e9575147d7"
+    }
+  },
+  "threshold": 0.1,
+  "repeatCount": 1,
+  "caseCount": 64,
+  "overall": {
+    "truePositive": 0,
+    "falsePositive": 6,
+    "falseNegative": 152,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0
+  },
+  "byCell": {
+    "dermatology|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 3,
+      "falseNegative": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "dermatology|house_call": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "dermatology|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 5,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "dermatology|telephone": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 3,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "internal_medicine|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 3,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "internal_medicine|house_call": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "internal_medicine|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 10,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "internal_medicine|telephone": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 3,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "ophthalmology|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "ophthalmology|house_call": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 5,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "ophthalmology|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 15,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "ophthalmology|telephone": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "orthopedics|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 1,
+      "falseNegative": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "orthopedics|house_call": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "orthopedics|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 9,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "orthopedics|telephone": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 5,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "otolaryngology|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "otolaryngology|house_call": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "otolaryngology|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "otolaryngology|telephone": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "pediatrics|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "pediatrics|house_call": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "pediatrics|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 9,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "pediatrics|telephone": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "psychiatry|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "psychiatry|house_call": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "psychiatry|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 9,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "psychiatry|telephone": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "surgery|home_visit": {
+      "truePositive": 0,
+      "falsePositive": 2,
+      "falseNegative": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "surgery|house_call": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "surgery|outpatient": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 9,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "surgery|telephone": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 5,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    }
+  },
+  "determinism": {
+    "matchingRuns": 64,
+    "totalRuns": 64,
+    "exactMatchRate": 1.0,
+    "allCasesDeterministic": true
+  },
+  "latencyMs": {
+    "count": 64,
+    "min": 734.9877909873612,
+    "p50": 1541.290270484751,
+    "p95": 2852.3752517037783,
+    "max": 11439.361958997324,
+    "mean": 1874.8870299068585
+  },
+  "rows": [
+    {
+      "caseId": "wx0-im-outp-h001",
+      "specialty": "internal_medicine",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 5,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-im-outp-h002",
+      "specialty": "internal_medicine",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 5,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-derm-outp-h001",
+      "specialty": "dermatology",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-derm-outp-h002",
+      "specialty": "dermatology",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-ped-outp-h001",
+      "specialty": "pediatrics",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 5,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-ped-outp-h002",
+      "specialty": "pediatrics",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 4,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-ent-outp-h001",
+      "specialty": "otolaryngology",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-ent-outp-h002",
+      "specialty": "otolaryngology",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-oph-outp-h001",
+      "specialty": "ophthalmology",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 7,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-oph-outp-h002",
+      "specialty": "ophthalmology",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 8,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-orth-outp-h001",
+      "specialty": "orthopedics",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 4,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-orth-outp-h002",
+      "specialty": "orthopedics",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 5,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-psy-outp-h001",
+      "specialty": "psychiatry",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-psy-outp-h002",
+      "specialty": "psychiatry",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 6,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-surg-outp-h001",
+      "specialty": "surgery",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "wx0-surg-outp-h002",
+      "specialty": "surgery",
+      "encounterSetting": "outpatient",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 6,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-INTERNAL-MEDICINE-HOME_VISIT-001",
+      "specialty": "internal_medicine",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-INTERNAL-MEDICINE-HOME_VISIT-002",
+      "specialty": "internal_medicine",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-INTERNAL-MEDICINE-HOUSE_CALL-001",
+      "specialty": "internal_medicine",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-INTERNAL-MEDICINE-HOUSE_CALL-002",
+      "specialty": "internal_medicine",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-INTERNAL-MEDICINE-TELEPHONE-001",
+      "specialty": "internal_medicine",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-INTERNAL-MEDICINE-TELEPHONE-002",
+      "specialty": "internal_medicine",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-DERMATOLOGY-HOME_VISIT-001",
+      "specialty": "dermatology",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-DERMATOLOGY-HOME_VISIT-002",
+      "specialty": "dermatology",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 3,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 3,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 174,
+          "charEnd": 195,
+          "text": "皮疹の部位は前胸部から上腹部にかけて広がり",
+          "category": "procedure",
+          "entityTypeId": "medical_procedure_l",
+          "confidence": 0.1378827691078186
+        },
+        {
+          "charStart": 428,
+          "charEnd": 453,
+          "text": "皮疹の拡大速度と掻破状況を評価しつつ経過観察が必要",
+          "category": "procedure",
+          "entityTypeId": "medical_procedure_l",
+          "confidence": 0.1811934858560562
+        },
+        {
+          "charStart": 503,
+          "charEnd": 508,
+          "text": "皮疹の状態",
+          "category": "procedure",
+          "entityTypeId": "medical_procedure_l",
+          "confidence": 0.19657106697559357
+        }
+      ]
+    },
+    {
+      "caseId": "H2-DERMATOLOGY-HOUSE_CALL-001",
+      "specialty": "dermatology",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-DERMATOLOGY-HOUSE_CALL-002",
+      "specialty": "dermatology",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-DERMATOLOGY-TELEPHONE-001",
+      "specialty": "dermatology",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-DERMATOLOGY-TELEPHONE-002",
+      "specialty": "dermatology",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-ORTHOPEDICS-HOME_VISIT-001",
+      "specialty": "orthopedics",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 1,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 1,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 428,
+          "charEnd": 432,
+          "text": "急な麻痺",
+          "category": "procedure",
+          "entityTypeId": "medical_procedure_l",
+          "confidence": 0.1365191638469696
+        }
+      ]
+    },
+    {
+      "caseId": "H2-ORTHOPEDICS-HOME_VISIT-002",
+      "specialty": "orthopedics",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-ORTHOPEDICS-HOUSE_CALL-001",
+      "specialty": "orthopedics",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-ORTHOPEDICS-HOUSE_CALL-002",
+      "specialty": "orthopedics",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-ORTHOPEDICS-TELEPHONE-001",
+      "specialty": "orthopedics",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-ORTHOPEDICS-TELEPHONE-002",
+      "specialty": "orthopedics",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-PEDIATRICS-HOME_VISIT-001",
+      "specialty": "pediatrics",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-PEDIATRICS-HOME_VISIT-002",
+      "specialty": "pediatrics",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-PEDIATRICS-HOUSE_CALL-001",
+      "specialty": "pediatrics",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-PEDIATRICS-HOUSE_CALL-002",
+      "specialty": "pediatrics",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-PEDIATRICS-TELEPHONE-001",
+      "specialty": "pediatrics",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-PEDIATRICS-TELEPHONE-002",
+      "specialty": "pediatrics",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OTOLARYNGOLOGY-HOME_VISIT-001",
+      "specialty": "otolaryngology",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OTOLARYNGOLOGY-HOME_VISIT-002",
+      "specialty": "otolaryngology",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OTOLARYNGOLOGY-HOUSE_CALL-001",
+      "specialty": "otolaryngology",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OTOLARYNGOLOGY-HOUSE_CALL-002",
+      "specialty": "otolaryngology",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OTOLARYNGOLOGY-TELEPHONE-001",
+      "specialty": "otolaryngology",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OTOLARYNGOLOGY-TELEPHONE-002",
+      "specialty": "otolaryngology",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OPHTHALMOLOGY-HOME_VISIT-001",
+      "specialty": "ophthalmology",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OPHTHALMOLOGY-HOME_VISIT-002",
+      "specialty": "ophthalmology",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OPHTHALMOLOGY-HOUSE_CALL-001",
+      "specialty": "ophthalmology",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OPHTHALMOLOGY-HOUSE_CALL-002",
+      "specialty": "ophthalmology",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OPHTHALMOLOGY-TELEPHONE-001",
+      "specialty": "ophthalmology",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-OPHTHALMOLOGY-TELEPHONE-002",
+      "specialty": "ophthalmology",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-PSYCHIATRY-HOME_VISIT-001",
+      "specialty": "psychiatry",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-PSYCHIATRY-HOME_VISIT-002",
+      "specialty": "psychiatry",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-PSYCHIATRY-HOUSE_CALL-001",
+      "specialty": "psychiatry",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-PSYCHIATRY-HOUSE_CALL-002",
+      "specialty": "psychiatry",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-PSYCHIATRY-TELEPHONE-001",
+      "specialty": "psychiatry",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-PSYCHIATRY-TELEPHONE-002",
+      "specialty": "psychiatry",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-SURGERY-HOME_VISIT-001",
+      "specialty": "surgery",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 2,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 2,
+      "deterministic": true,
+      "predictions": [
+        {
+          "charStart": 111,
+          "charEnd": 119,
+          "text": "腫脹の増悪はなく",
+          "category": "procedure",
+          "entityTypeId": "medical_procedure_l",
+          "confidence": 0.12131629139184952
+        },
+        {
+          "charStart": 301,
+          "charEnd": 303,
+          "text": "腫脹",
+          "category": "procedure",
+          "entityTypeId": "medical_procedure_l",
+          "confidence": 0.10309760272502899
+        }
+      ]
+    },
+    {
+      "caseId": "H2-SURGERY-HOME_VISIT-002",
+      "specialty": "surgery",
+      "encounterSetting": "home_visit",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-SURGERY-HOUSE_CALL-001",
+      "specialty": "surgery",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-SURGERY-HOUSE_CALL-002",
+      "specialty": "surgery",
+      "encounterSetting": "house_call",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-SURGERY-TELEPHONE-001",
+      "specialty": "surgery",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    },
+    {
+      "caseId": "H2-SURGERY-TELEPHONE-002",
+      "specialty": "surgery",
+      "encounterSetting": "telephone",
+      "split": "holdout",
+      "metrics": {
+        "truePositive": 0,
+        "falsePositive": 0,
+        "falseNegative": 3,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "matches": []
+      },
+      "predictionCount": 0,
+      "deterministic": true,
+      "predictions": []
+    }
+  ]
+}

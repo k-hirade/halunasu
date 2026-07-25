@@ -74,8 +74,11 @@ outpatient_basic / `:403` setting="outpatient")。
    区分ごとのExpected Claim Context契約を定義する——
    訪問診療: 訪問診療料(114001110/114030310)+`encounterDetails`
    (sameBuilding/singleBuildingPatientCount。本文の居住状況と整合必須)、
-   往診: 往診料114000110(+時間帯加算の任意変種)、
-   電話: 電話等再診料112007950のみ(処置・検査の当日実施禁止)。
+   往診: **初診料または再診料+往診料114000110+当日行為**(時間帯加算の任意変種。
+   既存goldの往診ケースと同形)、
+   電話: 電話等再診料112007950を基本とし、**当日交付した処方箋料120002910は許可**。
+   物理的な処置・検査を「実施」として期待することは禁止(既存goldの電話ケースと同形。
+   実装済みの `TELEPHONE_ALLOWED_CODES = {112007950, 120002910}` と一致させる)。
    基本料コード・区分・同一建物条件はblueprint生成時にマスタ照合して埋める。
 2. **本文の別生成系経路(新規)**: SOAP本文を生成する実経路を作る。
    `scripts/generate_fee_specialty_holdout_texts.mjs`(新規、OpenAI API使用。
