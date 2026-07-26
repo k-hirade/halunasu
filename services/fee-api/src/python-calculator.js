@@ -78,6 +78,7 @@ export class PythonFeeCalculator {
     this.worker = null;
     this.workerStdoutBuffer = "";
     this.workerStderrBuffer = "";
+    this.workerStartedAt = 0;
     this.workerRequestCounter = 0;
     this.workerPending = new Map();
     this.masterSearchCache = new Map();
@@ -732,9 +733,11 @@ export class PythonFeeCalculator {
     this.worker = child;
     this.workerStdoutBuffer = "";
     this.workerStderrBuffer = "";
+    this.workerStartedAt = Date.now();
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
+    let exitLogged = false;
     child.stdout.on("data", (chunk) => {
       this.handleWorkerStdout(chunk);
     });
@@ -747,20 +750,76 @@ export class PythonFeeCalculator {
       if (this.worker !== child) {
         return;
       }
+      this.logUnexpectedWorkerExit({
+        code: null,
+        signal: null,
+        errorName: error?.name || "Error",
+        spawnError: true
+      });
+      exitLogged = true;
       this.rejectPendingWorkerRequests(error);
     });
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       if (this.worker !== child) {
         return;
       }
-      const error = new Error(this.workerStderrBuffer.trim() || `medical fee worker exited with code ${code}`);
+      const exitDescription = signal
+        ? `signal ${signal}`
+        : `code ${code == null ? "unknown" : code}`;
+      const stderr = this.workerStderrBuffer.trim();
+      const error = new Error(
+        stderr
+          ? `${stderr} [medical fee worker exited with ${exitDescription}]`
+          : `medical fee worker exited with ${exitDescription}`
+      );
       error.name = "FeeCalculationError";
       error.statusCode = 502;
+      error.workerExit = {
+        code: code ?? null,
+        signal: signal || null
+      };
+      if (!exitLogged) {
+        this.logUnexpectedWorkerExit({ code, signal });
+      }
       this.worker = null;
+      this.workerStartedAt = 0;
       this.rejectPendingWorkerRequests(error);
     });
 
     return child;
+  }
+
+  logUnexpectedWorkerExit({
+    code = null,
+    signal = null,
+    errorName = null,
+    spawnError = false
+  } = {}) {
+    const operationCounts = {};
+    for (const pending of this.workerPending.values()) {
+      const operation = String(pending?.payload?.op || "calculate").trim() || "calculate";
+      operationCounts[operation] = Number(operationCounts[operation] || 0) + 1;
+    }
+    const stderr = this.workerStderrBuffer.trim();
+    this.logger.error?.(JSON.stringify({
+      event: "fee.python_worker.exited",
+      unexpected: true,
+      spawnError: Boolean(spawnError),
+      code: code ?? null,
+      signal: signal || null,
+      errorName,
+      uptimeMs: this.workerStartedAt
+        ? Math.max(0, Date.now() - this.workerStartedAt)
+        : null,
+      pendingRequestCount: this.workerPending.size,
+      pendingOperationCounts: Object.fromEntries(
+        Object.entries(operationCounts).sort(([left], [right]) => left.localeCompare(right))
+      ),
+      stderrPresent: Boolean(stderr),
+      stderrSha256: stderr
+        ? createHash("sha256").update(stderr).digest("hex")
+        : null
+    }));
   }
 
   handleWorkerStdout(chunk) {
@@ -818,6 +877,7 @@ export class PythonFeeCalculator {
       this.worker.kill("SIGTERM");
     }
     this.worker = null;
+    this.workerStartedAt = 0;
   }
 }
 

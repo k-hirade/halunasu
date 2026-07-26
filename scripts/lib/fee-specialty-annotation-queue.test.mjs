@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildAnchorSuggestions,
+  buildDraftSpanSuggestions,
   prepareAnnotationQueue
 } from "../prepare_fee_specialty_matrix_annotations.mjs";
 
@@ -63,4 +64,52 @@ test("queue includes only the declared initial specialty and setting matrix", ()
   assert.equal(result.queue.length, 1);
   assert.equal(result.queue[0].notGold, true);
   assert.equal(result.skipped.length, 2);
+});
+
+test("draft spans remain explicitly unapproved suggestions", () => {
+  const item = sourceCase({
+    annotationDraftSpans: [
+      {
+        text: "尿定性",
+        charStart: 5,
+        charEnd: 8,
+        code: "160000310",
+        category: "lab",
+        actionStatus: "performed",
+        temporalRelation: "current_visit",
+        sourceOrigin: "own_clinic_record",
+        providerOwnership: "own_clinic",
+        standingStatus: "none"
+      }
+    ]
+  });
+
+  const suggestions = buildDraftSpanSuggestions(item);
+
+  assert.equal(suggestions.length, 1);
+  assert.equal(suggestions[0].approved, false);
+  assert.equal(suggestions[0].status, "suggestion_only");
+});
+
+test("multiple sources are combined without silently accepting duplicates", () => {
+  const first = {
+    datasetId: "first",
+    cases: [sourceCase({ caseId: "first-case" })]
+  };
+  const second = {
+    datasetId: "second",
+    cases: [sourceCase({ caseId: "second-case" })]
+  };
+
+  const result = prepareAnnotationQueue([first, second], {
+    targetSplit: "holdout"
+  });
+
+  assert.equal(result.queue.length, 2);
+  assert.deepEqual(result.sourceDatasetIds, ["first", "second"]);
+  assert.ok(result.queue.every((item) => item.split === "holdout"));
+  assert.throws(
+    () => prepareAnnotationQueue([first, first]),
+    /duplicate annotation source caseId/u
+  );
 });

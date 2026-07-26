@@ -80,9 +80,10 @@ npm run upload:fee-whitebox-artifact -- \
 The profile is complete and fail-closed. `TARGET_ENV=all` and PROD are rejected.
 The deploy script fetches and verifies every artifact before Cloud Build.
 
-Local cold-process measurement observed a maximum RSS of 1,650.53 MiB. The
-fee-api deploy script already defaults to `FEE_MEMORY=4Gi`; keep that value for
-the three-lane run.
+Current STG revision `fee-api-stg-00183-vhx` stops its Python worker at 4 GiB,
+but the old runtime only reports `code null`. First deploy the signal-aware
+diagnostic revision at the same size; do not label it OOM before observing
+`signal=SIGKILL`.
 
 ```bash
 RUNTIME_FEATURE_PROFILE=stg-whitebox-three-lane-shadow \
@@ -115,10 +116,38 @@ Required result:
 - all three `.feeCalculator.whitebox.*.available == true`
 - all three artifact versions match the immutable manifests
 
+If an artifact is unavailable, inspect the PHI-free worker exit event:
+
+```bash
+gcloud logging read \
+  'resource.type="cloud_run_revision"
+   AND resource.labels.service_name="fee-api-stg"
+   AND jsonPayload.event="fee.python_worker.exited"' \
+  --project halunasu-fee-stg \
+  --freshness=30m \
+  --limit=20 \
+  --format=json
+```
+
+Only when this records `signal=SIGKILL`, repeat the isolated STG deployment at
+8 GiB and verify readiness again:
+
+```bash
+RUNTIME_FEATURE_PROFILE=stg-whitebox-three-lane-shadow \
+FEE_MEMORY=8Gi \
+TARGET_ENV=stg \
+TARGET_SERVICE=fee-api \
+./scripts/p10_deploy_runtime_services_low_cost.sh --apply
+```
+
+Do not start the matrix harness until all three artifacts are available.
+
 ## 5. Validate and run the 32-cell harness
 
-The dry run must select 96 reviewed, synthetic, non-holdout cases: 8
-specialties x 4 encounter settings x 3 cases.
+The diagnostic dry run must select 96 reviewed, synthetic, non-holdout cases:
+8 specialties x 4 encounter settings x 3 cases. It also schedules one
+identical-input control per cell three times. The first calculation is shared
+with the 96 measurements, so the total is 160 calculations (96 + 64).
 
 ```bash
 npm run eval:fee-whitebox-shadow-stg -- --dry-run
@@ -130,6 +159,8 @@ rewriting an existing department:
 ```bash
 FEE_E2E_MFA_CODE=<current-6-digit-code> \
 npm run eval:fee-whitebox-shadow-stg -- \
+  --purpose diagnostic \
+  --control-repeats 3 \
   --organization-code yamamoto-demo-stg \
   --login-id yamamoto-admin \
   --password-file .secrets/yamamoto-demo-stg-password.txt \
@@ -143,7 +174,9 @@ dedicated `telephone` cell.
 
 The harness writes `result.json` after every calculation and records only
 synthetic identifiers, hashes, revision metadata, and machine precheck results.
-The machine precheck is **not** independent adjudication.
+The machine precheck is **not** independent adjudication. Control calculations
+are excluded from telemetry accuracy/latency denominators and are used only for
+white-box fingerprint determinism.
 
 ## 6. Export and isolate Cloud Logging
 
@@ -172,10 +205,42 @@ npm run report:fee-whitebox-shadow -- \
 ```
 
 Unrelated Cloud Run traffic is ignored. Missing logs, duplicate logs, an
-incomplete harness, holdout use, cell mismatch, or revision mismatch blocks the
-gate.
+incomplete harness, purpose/holdout mismatch, cell mismatch, revision
+mismatch, or a missing/invalid lane duration blocks the gate. Missing duration
+telemetry is never treated as zero milliseconds.
 
-## 7. Promotion interpretation
+## 7. Prepare and compile independent review
+
+Prepare a run-bound queue. The command verifies the manifest-bound dataset and
+policy SHA-256 values. Diagnostic runs remain ineligible for promotion:
+
+```bash
+npm run prepare:fee-whitebox-adjudication -- \
+  --run-manifest "$RUN_DIR/result.json" \
+  --output "$RUN_DIR/adjudication-queue.json"
+```
+
+Review only the `humanReview` object of every selected item, then compile it:
+
+```bash
+npm run compile:fee-whitebox-adjudication -- \
+  --queue "$RUN_DIR/adjudication-queue.json" \
+  --output "$RUN_DIR/adjudication.json"
+```
+
+The compiler rejects incomplete reviews, purpose/holdout mismatches, a policy
+SHA-256 mismatch, and changes to clinical text, selection metadata, or machine
+comparisons. Feed the compiled file to the reporter only for the same run:
+
+```bash
+npm run report:fee-whitebox-shadow -- \
+  --input "$RUN_DIR/cloud-logging.json" \
+  --run-manifest "$RUN_DIR/result.json" \
+  --adjudication "$RUN_DIR/adjudication.json" \
+  --output-dir "$RUN_DIR/report-with-adjudication"
+```
+
+## 8. Promotion interpretation
 
 The current local three-layer p95 sum is 984–1,252 ms, above the declared
 500 ms gate. This result does not permit loosening the gate.
@@ -183,14 +248,24 @@ The current local three-layer p95 sum is 984–1,252 ms, above the declared
 Even if telemetry passes later, the report remains blocked until a separately
 reviewed `fee-whitebox-adjudication-v1` file covers every cell and satisfies:
 
-- minimum reviewed lines and spans;
+- minimum reviewed cases, lines, and spans;
 - code precision and recall non-inferiority;
 - dangerous false-positive limit;
 - deterministic exact-match repeat count.
 
 LLM agreement and the harness machine precheck are not gold truth.
+The final report also requires the adjudication run ID, dataset SHA-256, and
+policy SHA-256 to match the run manifest.
 
-## 8. Cross-feature regression after isolated shadow
+The promotion path is a separate holdout run. It fails before network access
+until every cell has at least 3 reviewed cases, 20 reviewed lines, and 10
+reviewed spans:
+
+```bash
+npm run eval:fee-whitebox-shadow-stg -- --purpose promotion --dry-run
+```
+
+## 9. Cross-feature regression after isolated shadow
 
 Only after isolated shadow is understood, deploy the combined STG profile and
 rerun longitudinal, standing, and monthly-exclusion acceptance suites:

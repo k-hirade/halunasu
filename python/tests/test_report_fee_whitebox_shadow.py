@@ -30,11 +30,11 @@ POLICY = {
 }
 
 
-def telemetry_record():
+def telemetry_record(session_id: str = "fee-session-1"):
     return {
         "jsonPayload": {
             "event": "fee.calculate.performance",
-            "feeSessionId": "fee-session-1",
+            "feeSessionId": session_id,
             "runtime": {"cloudRunRevision": "revision-1"},
             "whiteboxExtraction": {
                 "specialty": "internal_medicine",
@@ -49,6 +49,12 @@ def telemetry_record():
                 "linkerDurationMs": 20,
                 "contextClassifierDurationMs": 30,
                 "routeReasonCounts": {"performed_span": 2},
+                "contextClassifier": {
+                    "evaluatedSpans": 2,
+                    "abstainedSpans": 1,
+                    "uncertainAxisCounts": {"temporalRelation": 1},
+                    "status": "complete",
+                },
                 "modes": {
                     "span": "shadow",
                     "linker": "shadow",
@@ -62,11 +68,19 @@ def telemetry_record():
 def adjudication():
     return {
         "schemaVersion": "fee-whitebox-adjudication-v1",
+        "purpose": "promotion",
+        "promotionEligible": True,
+        "source": {
+            "runId": "run-1",
+            "datasetSha256": "dataset-sha",
+            "policySha256": "policy-sha",
+        },
         "controlRepeats": 3,
         "deterministicExactMatchRate": 1,
         "cells": [{
             "specialty": "internal_medicine",
             "encounterSetting": "outpatient",
+            "reviewedItemCount": 1,
             "reviewedLineCount": 2,
             "reviewedSpanCount": 1,
             "truePositiveCodeCount": 100,
@@ -85,15 +99,58 @@ def run_manifest():
         "schemaVersion": "fee-whitebox-shadow-stg-run-v1",
         "runId": "run-1",
         "status": "complete",
-        "source": {"holdoutUsed": False},
+        "source": {
+            "holdoutUsed": True,
+            "datasetSha256": "dataset-sha",
+            "policySha256": "policy-sha",
+        },
+        "methodology": {"evaluationPurpose": "promotion"},
         "environment": {"cloudRunRevision": "revision-1"},
-        "runs": [{
-            "feeSessionId": "fee-session-1",
-            "measurementCell": "internal_medicine|outpatient",
-            "cloudRunRevision": "revision-1",
-            "extractorVersion": "whitebox-v1:test",
-        }],
+        "runs": [
+            {
+                "feeSessionId": "fee-session-1",
+                "measurementCell": "internal_medicine|outpatient",
+                "cloudRunRevision": "revision-1",
+                "extractorVersion": "whitebox-v1:test",
+                "runKind": "measurement",
+                "controlGroupId": "internal_medicine|outpatient:case-1",
+                "controlAttempt": 1,
+                "whiteboxFingerprint": "same-fingerprint",
+                "machinePrecheck": {
+                    "encoderCodes": ["160022510", "999999999"],
+                    "llmCodes": ["160022510", "170020010"],
+                },
+            },
+            {
+                "feeSessionId": "fee-control-2",
+                "measurementCell": "internal_medicine|outpatient",
+                "cloudRunRevision": "revision-1",
+                "extractorVersion": "whitebox-v1:test",
+                "runKind": "determinism_control",
+                "controlGroupId": "internal_medicine|outpatient:case-1",
+                "controlAttempt": 2,
+                "whiteboxFingerprint": "same-fingerprint",
+            },
+            {
+                "feeSessionId": "fee-control-3",
+                "measurementCell": "internal_medicine|outpatient",
+                "cloudRunRevision": "revision-1",
+                "extractorVersion": "whitebox-v1:test",
+                "runKind": "determinism_control",
+                "controlGroupId": "internal_medicine|outpatient:case-1",
+                "controlAttempt": 3,
+                "whiteboxFingerprint": "same-fingerprint",
+            },
+        ],
     }
+
+
+def manifest_telemetry_records():
+    return [
+        telemetry_record("fee-session-1"),
+        telemetry_record("fee-control-2"),
+        telemetry_record("fee-control-3"),
+    ]
 
 
 class ReportFeeWhiteboxShadowTest(unittest.TestCase):
@@ -120,6 +177,14 @@ class ReportFeeWhiteboxShadowTest(unittest.TestCase):
             report["telemetry"]["extractorVersionCounts"],
             {"whitebox-v1:test": 1},
         )
+        self.assertEqual(
+            report["telemetry"]["laneDurationMs"]["linker"]["p95"],
+            20,
+        )
+        self.assertEqual(
+            report["telemetry"]["contextClassifier"]["abstainRate"],
+            0.5,
+        )
 
     def test_gate_blocks_without_independent_adjudication(self) -> None:
         report = build_report(
@@ -136,6 +201,26 @@ class ReportFeeWhiteboxShadowTest(unittest.TestCase):
                 if not check["passed"]
             ],
         )
+
+    def test_gate_blocks_when_lane_duration_telemetry_is_missing(self) -> None:
+        record = telemetry_record()
+        del record["jsonPayload"]["whiteboxExtraction"]["linkerDurationMs"]
+        report = build_report(
+            [record],
+            policy=POLICY,
+            adjudication_payload=adjudication(),
+        )
+
+        self.assertFalse(report["gate"]["passed"])
+        self.assertEqual(
+            report["telemetry"]["laneDurationMissingCounts"]["linker"],
+            1,
+        )
+        self.assertTrue(any(
+            check["name"] == "telemetry.laneDurationCompleteness"
+            and not check["passed"]
+            for check in report["gate"]["checks"]
+        ))
 
     def test_specialty_alias_is_normalized_before_cell_aggregation(self) -> None:
         record = telemetry_record()
@@ -218,7 +303,7 @@ class ReportFeeWhiteboxShadowTest(unittest.TestCase):
         }
 
         report = build_report(
-            [telemetry_record(), unrelated],
+            [*manifest_telemetry_records(), unrelated],
             policy=strict_policy,
             adjudication_payload=adjudication(),
             run_manifest=run_manifest(),
@@ -230,6 +315,11 @@ class ReportFeeWhiteboxShadowTest(unittest.TestCase):
             report["runManifestAudit"]["ignoredUnrelatedPerformanceRecordCount"],
             1,
         )
+        comparison = report["machineComparison"]["cells"][
+            "internal_medicine|outpatient"
+        ]
+        self.assertEqual(comparison["encoderOnlyCodes"], {"999999999": 1})
+        self.assertEqual(comparison["llmOnlyCodes"], {"170020010": 1})
 
     def test_run_manifest_missing_or_duplicate_logs_block_gate(self) -> None:
         strict_policy = {
@@ -246,7 +336,7 @@ class ReportFeeWhiteboxShadowTest(unittest.TestCase):
             run_manifest=run_manifest(),
         )
         duplicate = build_report(
-            [telemetry_record(), telemetry_record()],
+            [*manifest_telemetry_records(), telemetry_record()],
             policy=strict_policy,
             adjudication_payload=adjudication(),
             run_manifest=run_manifest(),
@@ -279,7 +369,7 @@ class ReportFeeWhiteboxShadowTest(unittest.TestCase):
         manifest["environment"]["cloudRunRevision"] = "revision-other"
 
         report = build_report(
-            [telemetry_record()],
+            manifest_telemetry_records(),
             policy=strict_policy,
             adjudication_payload=adjudication(),
             run_manifest=manifest,
@@ -288,6 +378,57 @@ class ReportFeeWhiteboxShadowTest(unittest.TestCase):
         self.assertFalse(report["gate"]["passed"])
         self.assertTrue(any(
             check["name"] == "telemetry.runManifest.revision"
+            and not check["passed"]
+            for check in report["gate"]["checks"]
+        ))
+
+    def test_adjudication_source_hash_mismatch_blocks_gate(self) -> None:
+        strict_policy = {
+            **POLICY,
+            "telemetry": {
+                **POLICY["telemetry"],
+                "requireRunManifest": True,
+            },
+        }
+        reviewed = adjudication()
+        reviewed["source"]["policySha256"] = "other-policy-sha"
+
+        report = build_report(
+            manifest_telemetry_records(),
+            policy=strict_policy,
+            adjudication_payload=reviewed,
+            run_manifest=run_manifest(),
+        )
+
+        self.assertFalse(report["gate"]["passed"])
+        self.assertTrue(any(
+            check["name"] == "adjudication.sourceRun"
+            and not check["passed"]
+            for check in report["gate"]["checks"]
+        ))
+
+    def test_diagnostic_manifest_cannot_be_used_for_promotion(self) -> None:
+        strict_policy = {
+            **POLICY,
+            "telemetry": {
+                **POLICY["telemetry"],
+                "requireRunManifest": True,
+            },
+        }
+        manifest = run_manifest()
+        manifest["source"]["holdoutUsed"] = False
+        manifest["methodology"]["evaluationPurpose"] = "diagnostic"
+
+        report = build_report(
+            manifest_telemetry_records(),
+            policy=strict_policy,
+            adjudication_payload=adjudication(),
+            run_manifest=manifest,
+        )
+
+        self.assertFalse(report["gate"]["passed"])
+        self.assertTrue(any(
+            check["name"] == "adjudication.sourceRun"
             and not check["passed"]
             for check in report["gate"]["checks"]
         ))

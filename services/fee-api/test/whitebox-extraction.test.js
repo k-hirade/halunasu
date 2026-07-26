@@ -197,8 +197,51 @@ test("WX1 routes only high-confidence span, link, and context through encoder", 
     overrides: 0,
     disagreements: 0,
     disagreementAxes: [],
+    abstainedSpans: 0,
+    uncertainAxisCounts: {},
     modelVersion: "context-v1",
     status: "complete"
+  });
+});
+
+test("WX3 metrics count abstained spans by uncertain axis", async () => {
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator({
+      contextAxesBySpanId: {
+        span_1: {
+          ...CURRENT_AXES,
+          temporalRelation: {
+            value: "current_visit",
+            confidence: 0.2,
+            abstained: true
+          },
+          providerOwnership: {
+            value: "own_clinic",
+            confidence: 0.3,
+            abstained: true
+          }
+        }
+      }
+    }),
+    preprocessing: {
+      lines: [{
+        lineId: "O-001",
+        text: "創傷処置を施行。",
+        section: "O",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient", serviceDate: "2026-07-24" },
+    env: shadowEnv()
+  });
+
+  assert.equal(result.metrics.contextClassifier.abstainedSpans, 1);
+  assert.deepEqual(result.metrics.contextClassifier.uncertainAxisCounts, {
+    providerOwnership: 1,
+    temporalRelation: 1
+  });
+  assert.deepEqual(result.metrics.routeReasonCounts, {
+    llm_owns_whole_line: 1
   });
 });
 

@@ -3,9 +3,15 @@
 WX0で使う、診療科8種 x 受診区分4種の合成カルテ評価コーパスです。
 初期目標は各セル10件、うちholdout 2件以上、合計320件です。入院は対象外です。
 
-## 現在地 (2026-07-25 更新)
+## 現在地 (2026-07-26 更新)
 
 - train/development: 288ケース(32セル×9)完成。バリデータgreen・軸クォータ全セル充足。
+- P4用のtraining-only対立コーパスを96件追加した。全32セルに
+  `past` / `other_provider` / `patient_reported` /
+  `same_day_but_unknown`を各3 span以上配置し、WX1弱カテゴリだった
+  `imaging` / `treatment`も各セル6 spanずつ含めた。
+  `training-view.json`は合計384件(train 288 / development 96)になった。
+  この96件は`notGold=true`かつholdoutを含まず、昇格評価には使用しない。
 - **holdout: 外来8セル分16件を作成済み**(計304ケース)。本文はannotation queueの
   fee-soap-e2e-v2生成文を無変更で使用(別生成系要件を充足。ビルド時に
   queue本文との完全一致をassertで保証)。平出がラベルを確認済みとして承認し、
@@ -14,6 +20,13 @@ WX0で使う、診療科8種 x 受診区分4種の合成カルテ評価コーパ
 - **外来8セルはstrict complete**。strict残はhome_visit/house_call/telephoneの
   24セルのみ。非外来48件のblueprintは生成済みで、別生成系によるSOAP本文生成、
   人手レビュー、昇格が残る。
+- P5用に全32セルへ1件ずつ、16行・13 span以上の別生成系supplementを作成した。
+  既存の非外来48件と合わせたレビューqueueは80件で、レビュー後に全32セルが
+  3実行・20行・10 span以上になる。監査上の準備済み範囲は3実行、
+  24〜59行、17〜32 span/セル。
+- **重要**: supplement 32件とqueue 80件はすべて未レビューであり、
+  `reviewed complete`は0/32セル。`test:fee-specialty-matrix:strict`が
+  現時点で失敗するのは正しいfail-closed動作である。
 
 執筆フロー:
 
@@ -43,6 +56,31 @@ npm run prepare:fee-specialty-matrix -- \
 
 最後のコマンドは既存v2合成カルテからannotation候補を作るだけです。
 `cases.json`への書き戻しやgold昇格はしません。
+
+## Phase 2データの再生成と監査
+
+P4の訓練専用対立コーパスとP5のholdout候補は、次のコマンドで再現できます。
+
+```bash
+npm run generate:fee-whitebox-phase2-context
+npm run generate:fee-whitebox-phase2-holdout
+npm run prepare:fee-whitebox-phase2-holdout-review
+npm run audit:fee-whitebox-phase2-data
+npm run prepare:fee-whitebox-training-view
+npm run test:fee-whitebox-training-view
+```
+
+`audit:fee-whitebox-phase2-data`は、32セルすべてにレビュー後の必要母数が
+用意されていることを検査する。ただしレビュー完了とは判定しない。
+`draftSpanSuggestions`は人手作業の候補であり、すべて
+`approved=false` / `suggestion_only`として出力される。
+
+生成物:
+
+- `context-contrast-cases.json`: P4訓練専用96件
+- `phase2-holdout-supplement.json`: P5未レビュー候補32件
+- `phase2-holdout-review-queue.json`: 既存48件とsupplement 32件のレビューqueue
+- `training-view.json`: holdout本文を物理的に含まないWX1/WX3入力
 
 ## 非外来holdoutの生成と昇格
 
@@ -194,3 +232,27 @@ PYTHONPATH=python:. .venv-whitebox-build/bin/python \
 builderはtrainで学習し、developmentでcheckpoint選択と較正を行います。
 ONNX manifest/checksum、実ランタイムload、同一入力100回一致を通過しない限り
 成果物ディレクトリを確定しません。holdout評価とSTG/PROD昇格は別工程です。
+
+### P4のベースモデル比較
+
+MiniLMの再学習は上記`.venv-whitebox-build`を使う。ModernBERT比較は
+Transformers 4.48以降を必要とし、fee-api runtimeのTokenizers契約とも異なるため、
+専用venvへ隔離する。
+
+```bash
+python3.12 -m venv .venv-whitebox-modernbert-build
+.venv-whitebox-modernbert-build/bin/pip install \
+  -r python/experiments/requirements-whitebox-modernbert-build.txt
+```
+
+比較対象は次のimmutable revisionに固定する。
+
+- `sbintuitions/modernbert-ja-130m@28c180b16463ba6f3fa79b48756fbf21586fe23e`
+- license: MIT
+- license source:
+  `https://huggingface.co/sbintuitions/modernbert-ja-130m/blob/28c180b16463ba6f3fa79b48756fbf21586fe23e/LICENSE`
+
+比較専用venvで生成できてもruntime互換とはみなさない。生成したtokenizer/ONNXを
+`python/requirements-fee-runtime.txt`の環境でloadし、100回決定論プローブと
+`eval:fee-whitebox-runtime`を通過したartifactだけがSTG upload候補になる。
+P2のSTG baselineを取得するまでは比較学習を開始しない。

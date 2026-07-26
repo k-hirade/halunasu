@@ -1,0 +1,11 @@
+# WX1/WX3 ModernBERT comparison builds only. Do not install this over the
+# legacy MiniLM builder or the fee-api runtime environment. Artifacts produced
+# here must pass the target runtime compatibility probe under
+# python/requirements-fee-runtime.txt before STG upload.
+sentence-transformers==5.1.2
+numpy==1.26.4
+onnx==1.17.0
+onnxruntime==1.20.1
+tokenizers==0.22.1
+torch==2.5.1
+transformers==4.57.3

@@ -5,12 +5,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   WHITEBOX_SPECIALTY_LABELS,
+  buildWhiteboxShadowExecutions,
   buildWhiteboxShadowSessionInput,
   requiredWhiteboxCells,
   resolveWhiteboxDepartments,
+  selectWhiteboxPromotionCases,
   selectWhiteboxShadowCases,
   summarizeWhiteboxCaseAudits,
+  summarizeWhiteboxDeterminism,
   whiteboxDepartmentInput,
+  whiteboxDeterminismFingerprint,
+  whiteboxDeterminismSnapshot,
   whiteboxShadowCaseAudit
 } from "./lib/fee-whitebox-shadow-matrix.mjs";
 
@@ -64,7 +69,12 @@ const datasetPath = resolveRepoPath(args.dataset);
 const policyPath = resolveRepoPath(args.policy);
 const dataset = readJson(datasetPath);
 const policy = readJson(policyPath);
-const selectedCases = selectWhiteboxShadowCases(dataset, policy);
+const selectedCases = args.purpose === "promotion"
+  ? selectWhiteboxPromotionCases(dataset, policy)
+  : selectWhiteboxShadowCases(dataset, policy);
+const executionPlan = buildWhiteboxShadowExecutions(selectedCases, {
+  controlRepeats: args.controlRepeats
+});
 const requiredCells = requiredWhiteboxCells(policy);
 const datasetSha256 = sha256File(datasetPath);
 const policySha256 = sha256File(policyPath);
@@ -72,10 +82,14 @@ const policySha256 = sha256File(policyPath);
 if (args.dryRun) {
   process.stdout.write(`${JSON.stringify({
     mode: "dry-run",
+    purpose: args.purpose,
     dataset: path.relative(repoRoot, datasetPath),
     policy: path.relative(repoRoot, policyPath),
     requiredCellCount: requiredCells.length,
     selectedCaseCount: selectedCases.length,
+    controlRepeats: executionPlan.controlRepeats,
+    controlGroupCount: executionPlan.controlGroupCount,
+    expectedCalculationCount: executionPlan.expectedCalculationCount,
     holdoutCaseCount: selectedCases.filter((item) => item.split === "holdout").length,
     selectedCases: selectedCases.map((item) => ({
       caseId: item.caseId,
@@ -159,7 +173,7 @@ const result = {
     policy: path.relative(repoRoot, policyPath),
     policySha256,
     syntheticDataOnly: true,
-    holdoutUsed: false
+    holdoutUsed: args.purpose === "promotion"
   },
   environment: {
     organizationCode: args.organizationCode,
@@ -170,10 +184,19 @@ const result = {
   },
   methodology: {
     requiredCellCount: requiredCells.length,
+    evaluationPurpose: args.purpose,
     minimumRunsPerCell: policy.telemetry.minimumRunsPerCell,
     selectedCaseCount: selectedCases.length,
-    caseSelection: "development first, then train; reviewed synthetic cases only",
-    holdoutPolicy: "holdout cases are excluded",
+    expectedCalculationCount: executionPlan.expectedCalculationCount,
+    controlRepeats: executionPlan.controlRepeats,
+    controlGroupCount: executionPlan.controlGroupCount,
+    caseSelection: args.purpose === "promotion"
+      ? "reviewed synthetic holdout only; per-cell line/span coverage enforced"
+      : "development first, then train; reviewed synthetic cases only",
+    determinismControl: "the first selected case in every cell is recalculated with identical input",
+    holdoutPolicy: args.purpose === "promotion"
+      ? "holdout cases are required"
+      : "holdout cases are excluded",
     departmentPolicy: "dedicated or existing active department with exact specialty metadata",
     telephoneRepresentation: "setting=outpatient + encounterDetails.visitKind=telephone_revisit",
     machinePrecheckOnly: true
@@ -188,22 +211,26 @@ const result = {
     status: "pending",
     warning: "This is not independent human adjudication and cannot satisfy the promotion gate.",
     cells: {}
-  }
+  },
+  determinism: summarizeWhiteboxDeterminism([])
 };
 persistResult(outputDir, result);
 
 try {
-  for (let index = 0; index < selectedCases.length; index += 1) {
-    const item = selectedCases[index];
+  for (let index = 0; index < executionPlan.executions.length; index += 1) {
+    const item = executionPlan.executions[index];
     process.stdout.write(
-      `[${index + 1}/${selectedCases.length}] ${item.measurementCell} ${item.caseId}\n`
+      `[${index + 1}/${executionPlan.executions.length}] ${item.measurementCell} `
+      + `${item.caseId} ${item.runKind}`
+      + `${item.controlAttempt ? ` ${item.controlAttempt}/${executionPlan.controlRepeats}` : ""}\n`
     );
     const departmentId = departmentResolution.bySpecialty[item.specialty];
     const sessionInput = buildWhiteboxShadowSessionInput(item, {
       facilityId,
       departmentId,
       runId,
-      serviceDate: args.serviceDate
+      serviceDate: args.serviceDate,
+      runInstance: item.runInstance
     });
     const create = await requestJson(`${args.feeBaseUrl}/v1/fee/sessions`, {
       method: "POST",
@@ -242,6 +269,7 @@ try {
       );
     }
     const audit = whiteboxShadowCaseAudit(item, detail.body || {});
+    const whiteboxSnapshot = whiteboxDeterminismSnapshot(detail.body || {});
     result.runs.push({
       caseId: item.caseId,
       specialty: item.specialty,
@@ -251,19 +279,30 @@ try {
       feeSessionId,
       departmentId,
       serviceDate: args.serviceDate,
+      runKind: item.runKind,
+      runInstance: item.runInstance,
+      ...(item.controlGroupId ? {
+        controlGroupId: item.controlGroupId,
+        controlAttempt: item.controlAttempt
+      } : {}),
       cloudRunRevision: actualRevision,
       extractorVersion: String(performance?.whiteboxExtraction?.extractorVersion || ""),
       whiteboxDegraded: performance?.whiteboxExtraction?.degraded === true,
       calculateRequestMs: Date.now() - calculateStartedAt,
+      whiteboxSnapshot,
+      whiteboxFingerprint: whiteboxDeterminismFingerprint(detail.body || {}),
       machinePrecheck: audit
     });
+    const measurementRuns = result.runs.filter((run) => run.runKind === "measurement");
     result.machinePrecheck.cells = summarizeWhiteboxCaseAudits(
-      result.runs.map((run) => run.machinePrecheck)
+      measurementRuns.map((run) => run.machinePrecheck)
     );
+    result.determinism = summarizeWhiteboxDeterminism(result.runs);
     persistResult(outputDir, result);
   }
   result.status = "complete";
   result.completedAt = new Date().toISOString();
+  result.determinism = summarizeWhiteboxDeterminism(result.runs);
   result.summary = summarizeRun(result);
   result.machinePrecheck.status = "complete";
   persistResult(outputDir, result);
@@ -276,6 +315,7 @@ try {
     name: error?.name || "Error",
     message: String(error?.message || error).slice(0, 500)
   };
+  result.determinism = summarizeWhiteboxDeterminism(result.runs);
   result.summary = summarizeRun(result);
   persistResult(outputDir, result);
   throw error;
@@ -391,18 +431,24 @@ function calculationPerformance(detail = {}) {
 
 function summarizeRun(result) {
   const runs = Array.isArray(result.runs) ? result.runs : [];
+  const measurementRuns = runs.filter((run) => run.runKind !== "determinism_control");
+  const controlRuns = runs.filter((run) => run.runKind === "determinism_control");
   const cells = {};
-  for (const run of runs) {
+  for (const run of measurementRuns) {
     cells[run.measurementCell] = Number(cells[run.measurementCell] || 0) + 1;
   }
   return {
     status: result.status,
     runCount: runs.length,
+    measurementRunCount: measurementRuns.length,
+    determinismControlRunCount: controlRuns.length,
+    expectedCalculationCount: result.methodology.expectedCalculationCount,
     requiredCellCount: result.methodology.requiredCellCount,
     observedCellCount: Object.keys(cells).length,
     degradedRunCount: runs.filter((run) => run.whiteboxDegraded).length,
     uniqueCloudRunRevisions: uniqueStrings(runs.map((run) => run.cloudRunRevision)),
     uniqueExtractorVersions: uniqueStrings(runs.map((run) => run.extractorVersion)),
+    determinism: result.determinism || summarizeWhiteboxDeterminism(runs),
     cells: Object.fromEntries(Object.entries(cells).sort(([left], [right]) => (
       left.localeCompare(right)
     )))
@@ -425,10 +471,13 @@ function renderReadme(result) {
     `- run: \`${result.runId}\``,
     `- status: **${result.status}**`,
     `- revision: \`${result.environment.cloudRunRevision}\``,
-    `- cases: ${summary.runCount} / ${result.methodology.selectedCaseCount}`,
+    `- measurement cases: ${summary.measurementRunCount} / ${result.methodology.selectedCaseCount}`,
+    `- total calculations: ${summary.runCount} / ${result.methodology.expectedCalculationCount}`,
+    `- determinism controls: ${summary.determinism?.exactGroupCount || 0} / ${summary.determinism?.groupCount || 0} exact`,
     `- cells: ${summary.observedCellCount} / ${result.methodology.requiredCellCount}`,
     `- degraded runs: ${summary.degradedRunCount}`,
-    "- holdout used: no",
+    `- purpose: **${result.methodology.evaluationPurpose}**`,
+    `- holdout used: ${result.source.holdoutUsed ? "yes" : "no"}`,
     "",
     "The machine precheck compares runtime encoder code sets with the reviewed synthetic "
       + "dataset. It is not independent human adjudication and must not be supplied to the "
@@ -451,6 +500,8 @@ function parseArgs(argv) {
     facilityId: "",
     password: process.env.FEE_E2E_PASSWORD || "",
     mfaCode: process.env.FEE_E2E_MFA_CODE || "",
+    controlRepeats: 3,
+    purpose: "diagnostic",
     provisionDepartments: false,
     dryRun: false,
     help: false
@@ -474,6 +525,10 @@ function parseArgs(argv) {
     else if (arg === "--mfa-code") parsed.mfaCode = next(index++, arg);
     else if (arg === "--facility-id") parsed.facilityId = next(index++, arg);
     else if (arg === "--service-date") parsed.serviceDate = next(index++, arg);
+    else if (arg === "--purpose") parsed.purpose = next(index++, arg);
+    else if (arg === "--control-repeats") {
+      parsed.controlRepeats = boundedPositiveInteger(next(index++, arg), arg, 3);
+    }
     else if (arg === "--timeout-ms") parsed.timeoutMs = positiveInteger(next(index++, arg), arg);
     else if (arg === "--provision-departments") parsed.provisionDepartments = true;
     else if (arg === "--dry-run") parsed.dryRun = true;
@@ -484,6 +539,9 @@ function parseArgs(argv) {
   parsed.feeBaseUrl = normalizeBaseUrl(parsed.feeBaseUrl);
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(parsed.serviceDate)) {
     throw new Error("--service-date must use YYYY-MM-DD");
+  }
+  if (!["diagnostic", "promotion"].includes(parsed.purpose)) {
+    throw new Error("--purpose must be diagnostic or promotion");
   }
   return parsed;
 }
@@ -600,6 +658,14 @@ function positiveInteger(value, option) {
   return parsed;
 }
 
+function boundedPositiveInteger(value, option, maximum) {
+  const parsed = positiveInteger(value, option);
+  if (parsed > maximum) {
+    throw new Error(`${option} must be at most ${maximum}`);
+  }
+  return parsed;
+}
+
 function splitSetCookie(value) {
   if (!value) {
     return [];
@@ -632,6 +698,8 @@ Options:
   --mfa-code CODE             Current 6-digit MFA code (or FEE_E2E_MFA_CODE)
   --facility-id ID            Optional facility override
   --service-date YYYY-MM-DD   Default: 2026-07-25
+  --purpose TYPE              diagnostic or promotion. Default: diagnostic
+  --control-repeats N         Identical-input controls per cell, 1-3. Default: 3
   --provision-departments     Create missing dedicated WX Shadow departments
   --dry-run                   Validate matrix selection without network calls
   --help                      Show this help

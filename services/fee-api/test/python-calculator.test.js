@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -278,6 +279,54 @@ test("worker timeout fails only the timed-out request and re-dispatches survivor
 
   assert.deepEqual(await survivor, { q: "B" });
   assert.equal(workerCount, 2);
+});
+
+test("unexpected worker exit reports signal and pending operation without payload data", () => {
+  const errors = [];
+  const calculator = new PythonFeeCalculator({
+    workerMode: true,
+    logger: {
+      warn() {},
+      error(message) {
+        errors.push(JSON.parse(message));
+      }
+    }
+  });
+  calculator.workerStartedAt = Date.now() - 25;
+  calculator.workerStderrBuffer = "sensitive worker stderr";
+  calculator.workerPending.set("request-1", {
+    payload: {
+      op: "whitebox_readiness",
+      clinicalText: "must not be logged"
+    }
+  });
+
+  calculator.logUnexpectedWorkerExit({
+    code: null,
+    signal: "SIGKILL"
+  });
+
+  assert.equal(errors.length, 1);
+  assert.deepEqual(errors[0], {
+    event: "fee.python_worker.exited",
+    unexpected: true,
+    spawnError: false,
+    code: null,
+    signal: "SIGKILL",
+    errorName: null,
+    uptimeMs: errors[0].uptimeMs,
+    pendingRequestCount: 1,
+    pendingOperationCounts: {
+      whitebox_readiness: 1
+    },
+    stderrPresent: true,
+    stderrSha256: createHash("sha256")
+      .update("sensitive worker stderr")
+      .digest("hex")
+  });
+  assert.ok(errors[0].uptimeMs >= 0);
+  assert.equal(JSON.stringify(errors[0]).includes("must not be logged"), false);
+  assert.equal(JSON.stringify(errors[0]).includes("sensitive worker stderr"), false);
 });
 
 test("reports detailed master readiness with checksums and source metadata", async () => {

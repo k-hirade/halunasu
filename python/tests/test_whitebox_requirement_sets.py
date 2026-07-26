@@ -10,6 +10,9 @@ BUILD_REQUIREMENTS = ROOT / "python/experiments/requirements-whitebox-build.txt"
 LINKER_BUILD_REQUIREMENTS = (
     ROOT / "python/experiments/requirements-whitebox-linker-build.txt"
 )
+MODERNBERT_BUILD_REQUIREMENTS = (
+    ROOT / "python/experiments/requirements-whitebox-modernbert-build.txt"
+)
 RUNTIME_REQUIREMENTS = ROOT / "python/requirements-fee-runtime.txt"
 
 
@@ -55,6 +58,16 @@ class WhiteboxRequirementSetsTest(unittest.TestCase):
         self.assertEqual(pins["transformers"], "4.57.3")
         self.assertEqual(pins["tokenizers"], "0.22.1")
         self.assertEqual(pins["onnxruntime"], "1.20.1")
+
+    def test_modernbert_comparison_builder_is_isolated_from_runtime(self):
+        pins = read_pins(MODERNBERT_BUILD_REQUIREMENTS)
+        runtime_pins = read_pins(RUNTIME_REQUIREMENTS)
+
+        self.assertNotIn("gliner", pins)
+        self.assertEqual(pins["transformers"], "4.57.3")
+        self.assertEqual(pins["tokenizers"], "0.22.1")
+        self.assertEqual(pins["onnxruntime"], runtime_pins["onnxruntime"])
+        self.assertNotEqual(pins["tokenizers"], runtime_pins["tokenizers"])
 
     def test_runtime_excludes_training_dependencies(self):
         pins = read_pins(RUNTIME_REQUIREMENTS)

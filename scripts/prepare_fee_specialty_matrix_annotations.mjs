@@ -83,49 +83,107 @@ export function buildAnchorSuggestions(caseItem) {
   );
 }
 
-export function prepareAnnotationQueue(sourceDataset) {
+export function buildDraftSpanSuggestions(caseItem) {
+  const clinicalText = String(caseItem?.chart?.standard ?? "");
+  const chars = Array.from(clinicalText);
+  return (Array.isArray(caseItem?.annotationDraftSpans)
+    ? caseItem.annotationDraftSpans
+    : [])
+    .map((span, index) => {
+      const charStart = Number(span?.charStart);
+      const charEnd = Number(span?.charEnd);
+      const text = String(span?.text || "");
+      if (
+        !text
+        || !Number.isInteger(charStart)
+        || !Number.isInteger(charEnd)
+        || charStart < 0
+        || charEnd <= charStart
+        || chars.slice(charStart, charEnd).join("") !== text
+      ) {
+        throw new Error(
+          `${caseItem?.caseId || "(missing)"}: annotationDraftSpans[${index}] has invalid offsets`
+        );
+      }
+      return {
+        ...span,
+        approved: false,
+        status: "suggestion_only"
+      };
+    })
+    .sort(
+      (left, right) => left.charStart - right.charStart || left.charEnd - right.charEnd
+    );
+}
+
+export function prepareAnnotationQueue(sourceInput, {
+  targetSplit = ""
+} = {}) {
+  if (targetSplit && targetSplit !== "holdout") {
+    throw new Error("targetSplit must be holdout when provided");
+  }
+  const sourceDatasets = Array.isArray(sourceInput) ? sourceInput : [sourceInput];
   const queue = [];
   const skipped = [];
-  for (const caseItem of sourceDataset?.cases ?? []) {
-    const department = caseItem?.encounter?.department;
-    const specialty = DEPARTMENT_TO_SPECIALTY[department];
-    const encounterSetting = caseItem?.encounter?.setting;
-    if (!specialty || !SUPPORTED_SETTINGS.has(encounterSetting)) {
-      skipped.push({
-        caseId: caseItem?.caseId,
-        reason: !specialty ? "unsupported_specialty" : "unsupported_setting"
+  const sourceCaseIds = new Set();
+  const sourceDatasetIds = [];
+  for (const sourceDataset of sourceDatasets) {
+    sourceDatasetIds.push(sourceDataset?.datasetId ?? null);
+    for (const caseItem of sourceDataset?.cases ?? []) {
+      const sourceCaseId = String(caseItem?.caseId || "").trim();
+      if (!sourceCaseId) throw new Error("annotation source caseId is required");
+      if (sourceCaseIds.has(sourceCaseId)) {
+        throw new Error(`duplicate annotation source caseId: ${sourceCaseId}`);
+      }
+      sourceCaseIds.add(sourceCaseId);
+      const department = caseItem?.encounter?.department;
+      const specialty = DEPARTMENT_TO_SPECIALTY[department];
+      const encounterSetting = caseItem?.encounter?.setting;
+      if (!specialty || !SUPPORTED_SETTINGS.has(encounterSetting)) {
+        skipped.push({
+          caseId: caseItem?.caseId,
+          reason: !specialty ? "unsupported_specialty" : "unsupported_setting"
+        });
+        continue;
+      }
+      queue.push({
+        sourceCaseId: caseItem.caseId,
+        specialty,
+        encounterSetting,
+        ...(targetSplit || caseItem?.split
+          ? { split: targetSplit || caseItem.split }
+          : {}),
+        sourceTemplateId:
+          caseItem.caseTypeKey
+          ?? caseItem.caseTypeSignature
+          ?? caseItem.variantOf
+          ?? caseItem.caseId,
+        ...(caseItem.generationProvenance
+          ? { generationProvenance: caseItem.generationProvenance }
+          : {}),
+        clinicalText: caseItem?.chart?.standard ?? "",
+        expectedClaimContext: caseItem.expectedClaimContext ?? {},
+        billingTargets: caseItem.billingTargets ?? [],
+        anchorSuggestions: buildAnchorSuggestions(caseItem),
+        draftSpanSuggestions: buildDraftSpanSuggestions(caseItem),
+        annotationStatus: "pending_manual_annotation",
+        synthetic: true,
+        notGold: true,
+        instructions: [
+          "Confirm every billable span in the chart; suggestions are not exhaustive.",
+          "Draft span suggestions are unapproved and must be checked against the text and fee master.",
+          "Assign one code, category, and all five context axes to each accepted span.",
+          "Do not promote this item to cases.json until offsets and labels pass review."
+        ]
       });
-      continue;
     }
-    queue.push({
-      sourceCaseId: caseItem.caseId,
-      specialty,
-      encounterSetting,
-      sourceTemplateId:
-        caseItem.caseTypeKey
-        ?? caseItem.caseTypeSignature
-        ?? caseItem.variantOf
-        ?? caseItem.caseId,
-      ...(caseItem.generationProvenance
-        ? { generationProvenance: caseItem.generationProvenance }
-        : {}),
-      clinicalText: caseItem?.chart?.standard ?? "",
-      expectedClaimContext: caseItem.expectedClaimContext ?? {},
-      billingTargets: caseItem.billingTargets ?? [],
-      anchorSuggestions: buildAnchorSuggestions(caseItem),
-      annotationStatus: "pending_manual_annotation",
-      synthetic: true,
-      notGold: true,
-      instructions: [
-        "Confirm every billable span in the chart; suggestions are not exhaustive.",
-        "Assign one code, category, and all five context axes to each accepted span.",
-        "Do not promote this item to cases.json until offsets and labels pass review."
-      ]
-    });
   }
   return {
     schemaVersion: "fee-specialty-matrix-annotation-queue-v1",
-    sourceDatasetId: sourceDataset?.datasetId ?? null,
+    sourceDatasetId: sourceDatasetIds.length === 1
+      ? sourceDatasetIds[0]
+      : "fee-specialty-matrix-multi-source",
+    sourceDatasetIds,
     status: "suggestions_require_manual_review",
     queue,
     skipped
@@ -139,20 +197,27 @@ if (isMain) {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const args = process.argv.slice(2);
   const outputIndex = args.indexOf("--output");
-  const sourceIndex = args.indexOf("--source");
+  const sourceValues = collectArgumentValues(args, "--source");
+  const targetSplitIndex = args.indexOf("--target-split");
+  const targetSplit = targetSplitIndex >= 0
+    ? String(args[targetSplitIndex + 1] || "")
+    : "";
   if (outputIndex < 0 || !args[outputIndex + 1]) {
     console.error("--output is required; annotation queues are never written into cases.json automatically");
     process.exitCode = 2;
   } else {
-    const sourcePath = path.resolve(
-      repoRoot,
-      sourceIndex >= 0 && args[sourceIndex + 1]
-        ? args[sourceIndex + 1]
-        : "data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json"
-    );
+    const sourcePaths = (sourceValues.length
+      ? sourceValues
+      : ["data/tests/fee-soap-e2e-v2/fee-soap-e2e-v2-cases.json"])
+      .map((value) => path.resolve(repoRoot, value));
     const outputPath = path.resolve(repoRoot, args[outputIndex + 1]);
-    const source = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
-    const result = prepareAnnotationQueue(source);
+    const sources = sourcePaths.map((sourcePath) => (
+      JSON.parse(fs.readFileSync(sourcePath, "utf8"))
+    ));
+    const result = prepareAnnotationQueue(
+      sources.length === 1 ? sources[0] : sources,
+      { targetSplit }
+    );
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(
       outputPath,
@@ -165,4 +230,18 @@ if (isMain) {
       noAutomaticGoldPromotion: true
     }, null, 2));
   }
+}
+
+function collectArgumentValues(args, flag) {
+  const values = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== flag) continue;
+    const value = String(args[index + 1] || "");
+    if (!value || value.startsWith("--")) {
+      throw new Error(`${flag} requires a value`);
+    }
+    values.push(value);
+    index += 1;
+  }
+  return values;
 }

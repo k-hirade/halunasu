@@ -461,6 +461,8 @@ export async function prepareWhiteboxExtraction({
   let contextDisagreementCount = 0;
   let contextOverrideCount = 0;
   const contextDisagreementAxes = new Set();
+  let contextAbstainSpanCount = 0;
+  const contextUncertainAxisCounts = {};
 
   for (const line of lines) {
     const spanRow = spanRows.find((row) => String(row?.lineId || "") === String(line.lineId)) || {
@@ -477,6 +479,14 @@ export async function prepareWhiteboxExtraction({
       const contextRole = context
         ? contextRoleFromAxes(context.axes, thresholds.contextConfidence)
         : { role: "llm", reasonCodes: ["context_missing"] };
+      if (contextRole.uncertainAxes?.length) {
+        contextAbstainSpanCount += 1;
+        for (const axis of contextRole.uncertainAxes) {
+          contextUncertainAxisCounts[axis] = Number(
+            contextUncertainAxisCounts[axis] || 0
+          ) + 1;
+        }
+      }
       const predicateContext = predicateContextForLine(line);
       const consensus = contextConsensus({
         classifierRole: contextRole.role,
@@ -632,6 +642,11 @@ export async function prepareWhiteboxExtraction({
         overrides: contextOverrideCount,
         disagreements: contextDisagreementCount,
         disagreementAxes: [...contextDisagreementAxes].sort(),
+        abstainedSpans: contextAbstainSpanCount,
+        uncertainAxisCounts: Object.fromEntries(
+          Object.entries(contextUncertainAxisCounts)
+            .sort(([left], [right]) => left.localeCompare(right))
+        ),
         modelVersion: contextEnvelope.modelVersion || null,
         status: contextEnvelope.status
       },

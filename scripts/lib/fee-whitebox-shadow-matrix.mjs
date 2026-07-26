@@ -99,11 +99,125 @@ export function selectWhiteboxShadowCases(dataset = {}, policy = {}) {
   return selected;
 }
 
+export function selectWhiteboxPromotionCases(dataset = {}, policy = {}) {
+  if (dataset.schemaVersion !== "fee-specialty-matrix-cases-v1") {
+    throw new Error("whitebox promotion dataset must use fee-specialty-matrix-cases-v1");
+  }
+  const minimumRuns = positiveInteger(
+    policy.telemetry?.minimumRunsPerCell,
+    "telemetry.minimumRunsPerCell"
+  );
+  const minimumLines = positiveInteger(
+    policy.adjudication?.minimumReviewedLinesPerCell,
+    "adjudication.minimumReviewedLinesPerCell"
+  );
+  const minimumSpans = positiveInteger(
+    policy.adjudication?.minimumReviewedSpansPerCell,
+    "adjudication.minimumReviewedSpansPerCell"
+  );
+  const cases = Array.isArray(dataset.cases) ? dataset.cases : [];
+  const selected = [];
+  for (const cell of requiredWhiteboxCells(policy)) {
+    const eligible = cases
+      .filter((item) => (
+        item?.specialty === cell.specialty
+        && item?.encounterSetting === cell.encounterSetting
+        && item?.split === "holdout"
+        && item?.synthetic === true
+        && item?.annotationStatus === "reviewed"
+        && item?.holdoutProvenance?.source === "human_reviewed"
+        && item?.reviewPolicy?.expectedSpansReviewed === true
+        && String(item?.reviewPolicy?.reviewedBy || "").trim()
+        && /^\d{4}-\d{2}-\d{2}$/u.test(
+          String(item?.reviewPolicy?.reviewedAt || "")
+        )
+        && String(item?.clinicalText || "").trim()
+      ))
+      .sort(compareMatrixCases);
+    const cellSelection = [];
+    let lineCount = 0;
+    let spanCount = 0;
+    for (const item of eligible) {
+      cellSelection.push(item);
+      lineCount += clinicalLineCount(item.clinicalText);
+      spanCount += Array.isArray(item.expectedSpans) ? item.expectedSpans.length : 0;
+      if (
+        cellSelection.length >= minimumRuns
+        && lineCount >= minimumLines
+        && spanCount >= minimumSpans
+      ) {
+        break;
+      }
+    }
+    if (
+      cellSelection.length < minimumRuns
+      || lineCount < minimumLines
+      || spanCount < minimumSpans
+    ) {
+      throw new Error(
+        `${cell.cell} holdout coverage is insufficient: `
+        + `runs=${cellSelection.length}/${minimumRuns}, `
+        + `lines=${lineCount}/${minimumLines}, spans=${spanCount}/${minimumSpans}`
+      );
+    }
+    selected.push(...cellSelection.map((item) => ({
+      ...item,
+      measurementCell: cell.cell
+    })));
+  }
+  return selected;
+}
+
+export function buildWhiteboxShadowExecutions(selectedCases = [], {
+  controlRepeats = 1
+} = {}) {
+  const repeats = positiveInteger(controlRepeats, "controlRepeats");
+  if (repeats > 3) {
+    throw new Error("controlRepeats must be between 1 and 3");
+  }
+  const controlsByCell = new Map();
+  const executions = [];
+  for (const item of Array.isArray(selectedCases) ? selectedCases : []) {
+    const cell = String(item?.measurementCell || "").trim();
+    const caseId = String(item?.caseId || "").trim();
+    if (!cell || !caseId) {
+      throw new Error("selected whitebox cases require measurementCell and caseId");
+    }
+    const isControl = repeats > 1 && !controlsByCell.has(cell);
+    const controlGroupId = isControl ? `${cell}:${caseId}` : "";
+    if (isControl) {
+      controlsByCell.set(cell, controlGroupId);
+    }
+    executions.push({
+      ...item,
+      runKind: "measurement",
+      runInstance: "measurement-1",
+      ...(controlGroupId ? { controlGroupId, controlAttempt: 1 } : {})
+    });
+    for (let attempt = 2; isControl && attempt <= repeats; attempt += 1) {
+      executions.push({
+        ...item,
+        runKind: "determinism_control",
+        runInstance: `determinism-${attempt}`,
+        controlGroupId,
+        controlAttempt: attempt
+      });
+    }
+  }
+  return {
+    executions,
+    controlRepeats: repeats,
+    controlGroupCount: controlsByCell.size,
+    expectedCalculationCount: executions.length
+  };
+}
+
 export function buildWhiteboxShadowSessionInput(item = {}, {
   facilityId = "",
   departmentId = "",
   runId = "",
-  serviceDate = "2026-07-25"
+  serviceDate = "2026-07-25",
+  runInstance = ""
 } = {}) {
   const specialty = String(item.specialty || "").trim();
   const encounterSetting = String(item.encounterSetting || "").trim();
@@ -133,7 +247,11 @@ export function buildWhiteboxShadowSessionInput(item = {}, {
     patient: {
       displayName: `Whitebox E2E ${item.caseId}`,
       sex: "unknown",
-      externalPatientIds: [`${runId}:${item.caseId}`]
+      externalPatientIds: [
+        [runId, item.caseId, String(runInstance || "").trim()]
+          .filter(Boolean)
+          .join(":")
+      ]
     },
     sourceSystem: `fee_whitebox_shadow_stg:${runId}`
   };
@@ -251,6 +369,81 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
   )));
 }
 
+export function whiteboxDeterminismSnapshot(detail = {}) {
+  const performance = calculationPerformance(detail);
+  const whitebox = performance?.whiteboxExtraction || {};
+  const calculation = detail?.feeSession?.calculationResult || {};
+  const trace = Array.isArray(calculation?.clinicalExtraction?.trace)
+    ? calculation.clinicalExtraction.trace
+    : [];
+  const router = trace.find((entry) => entry?.stage === "whitebox_router") || {};
+  const comparison = trace.find(
+    (entry) => entry?.stage === "whitebox_shadow_comparison"
+  ) || {};
+  return {
+    extractorVersion: String(whitebox.extractorVersion || ""),
+    degraded: whitebox.degraded === true,
+    lineCount: Number(whitebox.lineCount || 0),
+    spanCount: Number(whitebox.spanCount || 0),
+    shadowEncoderLineIds: uniqueStrings(router.shadowEncoderLineIds),
+    routeReasonCounts: sortedNumberMapping(whitebox.routeReasonCounts),
+    contextUncertainAxisCounts: sortedNumberMapping(
+      whitebox.contextClassifier?.uncertainAxisCounts
+    ),
+    encoderCodes: uniqueStrings([
+      ...(comparison.matchedCodes || []),
+      ...(comparison.encoderOnlyCodes || [])
+    ])
+  };
+}
+
+export function whiteboxDeterminismFingerprint(detail = {}) {
+  return sha256(JSON.stringify(whiteboxDeterminismSnapshot(detail)));
+}
+
+export function summarizeWhiteboxDeterminism(runs = []) {
+  const grouped = new Map();
+  for (const run of Array.isArray(runs) ? runs : []) {
+    const groupId = String(run?.controlGroupId || "").trim();
+    if (!groupId) {
+      continue;
+    }
+    const current = grouped.get(groupId) || {
+      controlGroupId: groupId,
+      caseId: String(run?.caseId || ""),
+      measurementCell: String(run?.measurementCell || ""),
+      fingerprints: []
+    };
+    current.fingerprints.push(String(run?.whiteboxFingerprint || ""));
+    grouped.set(groupId, current);
+  }
+  const groups = [...grouped.values()]
+    .map((group) => {
+      const fingerprints = group.fingerprints.filter(Boolean);
+      const uniqueFingerprints = uniqueStrings(fingerprints);
+      return {
+        controlGroupId: group.controlGroupId,
+        caseId: group.caseId,
+        measurementCell: group.measurementCell,
+        observedRepeats: fingerprints.length,
+        exactMatch: fingerprints.length > 1 && uniqueFingerprints.length === 1,
+        uniqueFingerprintCount: uniqueFingerprints.length
+      };
+    })
+    .sort((left, right) => left.controlGroupId.localeCompare(right.controlGroupId));
+  const eligible = groups.filter((group) => group.observedRepeats > 1);
+  const exact = eligible.filter((group) => group.exactMatch);
+  return {
+    groupCount: eligible.length,
+    exactGroupCount: exact.length,
+    exactMatchRate: eligible.length ? exact.length / eligible.length : null,
+    minimumObservedRepeats: eligible.length
+      ? Math.min(...eligible.map((group) => group.observedRepeats))
+      : 0,
+    groups
+  };
+}
+
 function compareMatrixCases(left, right) {
   const splitRank = { development: 0, train: 1 };
   return (splitRank[left.split] ?? 9) - (splitRank[right.split] ?? 9)
@@ -267,6 +460,24 @@ function isCurrentOwnPerformedSpan(span = {}) {
 
 function clinicalLineCount(value) {
   return String(value || "").split(/\r?\n/u).filter((line) => line.trim()).length;
+}
+
+function calculationPerformance(detail = {}) {
+  const feeSession = detail?.feeSession || {};
+  const metrics = feeSession.calculationProgress?.metrics || {};
+  return metrics.performance || feeSession.calculationProgress?.performance || {};
+}
+
+function sortedNumberMapping(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, count]) => [String(key), Number(count || 0)])
+      .filter(([key, count]) => key && Number.isFinite(count))
+      .sort(([left], [right]) => left.localeCompare(right))
+  );
 }
 
 function nonemptyUniqueStrings(value, label) {
