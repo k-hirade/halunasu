@@ -57,18 +57,33 @@ The phase plan predicted that span-bearing lines would reach L3 and then
 abstain. The observed result does not support that prediction: WX1 found only
 one span-bearing line, so L2 and L3 were almost never exercised.
 
-The same WX1 ONNX artifact was invoked locally with reviewed development case
-`wx0-im-outp-0008`. It classified all four lines as `irrelevant` and returned
-zero spans, while the artifact build report records strong development token
-metrics for that case's lab and medication categories. This reproduces the
-problem outside Cloud Run and rules out STG networking, GCS download, and
-revision drift as the primary cause. The remaining fault domain is the WX1
-artifact export/runtime parity or the build-time evaluation contract.
+The root cause was confirmed after this run. The serialized WX1 tokenizer
+pads every line to 256 tokens and exposes the correct mask as
+`Encoding.attention_mask`. The shared ONNX runtime instead marked every
+serialized token as active, including all padding tokens. For a short line,
+the runtime therefore supplied a mask sum of 256 where the training path used
+only 10 to 40 active tokens.
 
-Do not proceed to L3 retraining or promotion from this result. First add a
-full-development PyTorch-to-ONNX parity gate, identify and fix the mismatch,
-rebuild and upload WX1, and rerun this same diagnostic matrix. Latency
-optimization follows correctness restoration.
+Using the tokenizer-provided mask with the unchanged ONNX artifact restored
+the original build-time development metrics exactly: relevance accuracy
+0.9921875 and every category's TP/FP/FN counts matched. On this run's 96-case
+matrix, the same correction increased span-bearing lines from 1 to 179 and
+produced 328 spans. This rules out ONNX export, GCS delivery, Cloud Run, and
+revision drift as the primary cause.
+
+The same shared mask bug also affects WX3 because its tokenizer is serialized
+with fixed 256-token padding. WX2 is not currently affected because its
+tokenizer has no built-in padding, but the shared helper must be fixed once
+for all lanes.
+
+Do not retrain WX1 to address this failure. First fix the shared ONNX batch
+encoder, add padded-tokenizer regression tests and full-development
+PyTorch-to-ONNX/runtime parity gates, deploy, and rerun this same diagnostic
+matrix. L3 calibration and latency optimization follow after the corrected
+three-lane measurement.
+
+See [span-root-cause.md](./span-root-cause.md) for the evidence and remediation
+order.
 
 The generated gate report remains `blocked`, as expected for a diagnostic run
 without independent adjudication. It also fails the 500 ms white-box p95 gate.
