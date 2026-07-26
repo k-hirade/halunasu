@@ -23,6 +23,11 @@ COPY python ./python
 ENV PYTHONPATH=/app/python
 
 RUN if [ "${SERVICE_PATH}" = "services/fee-api" ]; then \
+      test -f /app/packages/medical-core/generated/clinical-axes.schema.json \
+        || { echo "Missing generated clinical axes schema in fee-api build context." >&2; exit 1; }; \
+    fi
+
+RUN if [ "${SERVICE_PATH}" = "services/fee-api" ]; then \
       python3 -m pip install \
         --break-system-packages \
         --no-cache-dir \
