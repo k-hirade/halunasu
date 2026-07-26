@@ -132,9 +132,7 @@ def encode_batch(
     encoded = [tokenizer.encode(str(text)) for text in texts]
     lengths = [min(max_length, len(item.ids)) for item in encoded]
     width = max(1, max(lengths, default=1))
-    pad_token_id = tokenizer.token_to_id("[PAD]")
-    if pad_token_id is None:
-        pad_token_id = 0
+    pad_token_id = _tokenizer_pad_id(tokenizer)
     input_ids = np.full(
         (len(encoded), width),
         int(pad_token_id),
@@ -143,15 +141,46 @@ def encode_batch(
     attention_mask = np.zeros((len(encoded), width), dtype=np.int64)
     token_type_ids = np.zeros((len(encoded), width), dtype=np.int64)
     for row, (item, length) in enumerate(zip(encoded, lengths, strict=True)):
-        input_ids[row, :length] = item.ids[:length]
-        attention_mask[row, :length] = 1
-        if item.type_ids:
-            token_type_ids[row, :length] = item.type_ids[:length]
+        item_ids = list(item.ids)
+        item_attention_mask = list(item.attention_mask)
+        item_type_ids = list(item.type_ids)
+        item_offsets = getattr(item, "offsets", None)
+        if len(item_attention_mask) != len(item_ids):
+            raise WhiteboxArtifactError(
+                "tokenizer attention mask length does not match input ids"
+            )
+        if item_type_ids and len(item_type_ids) != len(item_ids):
+            raise WhiteboxArtifactError(
+                "tokenizer type ids length does not match input ids"
+            )
+        if item_offsets is not None and len(item_offsets) != len(item_ids):
+            raise WhiteboxArtifactError(
+                "tokenizer offsets length does not match input ids"
+            )
+        if any(value not in (0, 1) for value in item_attention_mask):
+            raise WhiteboxArtifactError(
+                "tokenizer attention mask must contain only zero or one"
+            )
+        input_ids[row, :length] = item_ids[:length]
+        attention_mask[row, :length] = item_attention_mask[:length]
+        if item_type_ids:
+            token_type_ids[row, :length] = item_type_ids[:length]
     return {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
         "token_type_ids": token_type_ids,
     }, encoded
+
+
+def _tokenizer_pad_id(tokenizer) -> int:
+    padding = getattr(tokenizer, "padding", None)
+    if isinstance(padding, Mapping) and padding.get("pad_id") is not None:
+        return int(padding["pad_id"])
+    for token in ("<pad>", "[PAD]"):
+        token_id = tokenizer.token_to_id(token)
+        if token_id is not None:
+            return int(token_id)
+    return 0
 
 
 def session_feeds(session, encoded_inputs: Mapping[str, Any]) -> dict[str, Any]:

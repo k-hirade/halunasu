@@ -31,6 +31,16 @@ from medical_fee_calculation.whitebox_onnx import (
 
 
 CONTEXT_ARTIFACT_TYPE = "fee_context_classifier"
+CONTEXT_SEMANTIC_PROBE_ITEM = {
+    "lineId": "semantic-probe",
+    "spanId": "semantic-probe",
+    "text": "本日はＣＲＰのみ再検とし、採血を実施。",
+    "spanText": "採血",
+    "charStart": 13,
+    "charEnd": 15,
+    "previousLine": "",
+    "nextLine": "",
+}
 
 
 def classify_context(
@@ -110,29 +120,49 @@ def context_classifier_readiness(
             artifact.artifact_version,
         )
         probe_input = [{
+            **CONTEXT_SEMANTIC_PROBE_ITEM,
             "lineId": "readiness-probe",
             "spanId": "readiness-probe",
-            "text": "算定確認",
-            "spanText": "算定確認",
-            "previousLine": "",
-            "nextLine": "",
         }]
         probe, determinism_probe = verify_deterministic_inference(
             lambda: runtime.classify(probe_input),
             label="context classifier readiness probe",
         )
-        if len(probe) != 1:
-            raise WhiteboxArtifactError(
-                "context classifier readiness probe returned an unexpected result count"
-            )
+        _validate_context_semantic_probe(probe)
         return {
             **base,
             "runtimeDependencies": dependencies,
             "inferenceProbe": "passed",
+            "semanticProbe": "passed",
             "determinismProbe": determinism_probe,
         }
     except (WhiteboxArtifactError, ValueError, OSError, ImportError) as exc:
         return {**base, "available": False, "reason": str(exc)}
+
+
+def _validate_context_semantic_probe(
+    probe: Sequence[Mapping[str, Any]],
+) -> None:
+    if len(probe) != 1:
+        raise WhiteboxArtifactError(
+            "context classifier readiness probe returned an unexpected result count"
+        )
+    axes = probe[0].get("axes") if isinstance(probe[0], Mapping) else None
+    expected_axes = {
+        "actionStatus": "performed",
+        "sourceOrigin": "own_clinic_record",
+        "standingStatus": "none",
+    }
+    if not isinstance(axes, Mapping) or any(
+        not isinstance(axes.get(axis), Mapping)
+        or axes[axis].get("value") != expected
+        or axes[axis].get("abstained") is True
+        for axis, expected in expected_axes.items()
+    ):
+        raise WhiteboxArtifactError(
+            "context classifier readiness semantic probe did not preserve "
+            "current performed own-clinic context"
+        )
 
 
 def _normalize_items(value: Any) -> list[dict[str, Any]]:

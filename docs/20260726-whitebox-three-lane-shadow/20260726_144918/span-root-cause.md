@@ -76,6 +76,21 @@ not that the result matched the trained model.
 
 ## Remediation
 
+### Implementation status (2026-07-26)
+
+The shared runtime fix is implemented locally:
+
+- tokenizer-provided attention masks are preserved;
+- the serialized padding configuration supplies the pad ID;
+- ID, mask, type-ID, and offset lengths are validated;
+- fixed-padding and variable-length regression tests pass;
+- WX1/WX3 readiness and artifact-build probes now require known positive
+  semantic behavior, not only deterministic output.
+
+The unchanged WX1 and WX3 artifacts both pass the new local semantic
+readiness probes. No retraining or artifact re-upload is required for this
+runtime correction.
+
 ### P0: Correct the shared encoder
 
 Update `encode_batch` to:
@@ -112,15 +127,17 @@ reviewed train/development data. Do not use holdout data.
 
 ### P1: Remeasure before model work
 
-After deploying the runtime fix, rerun the same 160 calculations on one Cloud
-Run revision. Confirm:
+After deploying the runtime fix, first run a reduced diagnostic smoke of 16
+calculations: one balanced cell per specialty (8 measurement cases) and one
+identical-input control per selected cell. Confirm:
 
 - span-bearing lines are no longer near zero;
 - WX2 and WX3 receive measurable traffic;
 - no degraded runs;
 - determinism controls still pass.
 
-Only then evaluate L3 retraining or promotion.
+The reduced run is diagnostic only and cannot support promotion. Run the full
+160-calculation matrix before any promotion decision.
 
 ## Remaining Non-root-cause Work
 

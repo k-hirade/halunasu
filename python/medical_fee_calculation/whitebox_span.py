@@ -32,6 +32,11 @@ from medical_fee_calculation.whitebox_onnx import (
 
 SPAN_ARTIFACT_TYPE = "fee_span_detector"
 ALLOWED_RELEVANCE = {"relevant", "irrelevant", "abstain"}
+SPAN_SEMANTIC_PROBE_LINE = {
+    "lineId": "semantic-probe",
+    "text": "本日はＣＲＰのみ再検とし、採血を実施。",
+    "section": "O",
+}
 
 
 def detect_spans(
@@ -107,27 +112,41 @@ def span_detector_readiness(manifest_path: str | Path | None = None) -> dict[str
             str(artifact.manifest_path),
             artifact.artifact_version,
         )
-        probe_input = [{
-            "lineId": "readiness-probe",
-            "text": "算定確認",
-            "section": "unknown",
-        }]
+        probe_input = [{**SPAN_SEMANTIC_PROBE_LINE, "lineId": "readiness-probe"}]
         probe, determinism_probe = verify_deterministic_inference(
             lambda: runtime.detect(probe_input),
             label="span detector readiness probe",
         )
-        if len(probe) != 1:
-            raise WhiteboxArtifactError(
-                "span detector readiness probe returned an unexpected result count"
-            )
+        _validate_span_semantic_probe(probe)
         return {
             **base,
             "runtimeDependencies": dependencies,
             "inferenceProbe": "passed",
+            "semanticProbe": "passed",
             "determinismProbe": determinism_probe,
         }
     except (WhiteboxArtifactError, ValueError, OSError, ImportError) as exc:
         return {**base, "available": False, "reason": str(exc)}
+
+
+def _validate_span_semantic_probe(probe: Sequence[Mapping[str, Any]]) -> None:
+    if len(probe) != 1:
+        raise WhiteboxArtifactError(
+            "span detector readiness probe returned an unexpected result count"
+        )
+    spans = probe[0].get("spans") if isinstance(probe[0], Mapping) else None
+    if (
+        probe[0].get("relevance") != "relevant"
+        or not isinstance(spans, list)
+        or not any(
+            span.get("text") == "採血" and span.get("category") == "lab"
+            for span in spans
+            if isinstance(span, Mapping)
+        )
+    ):
+        raise WhiteboxArtifactError(
+            "span detector readiness semantic probe did not detect the expected lab span"
+        )
 
 
 def _normalize_lines(value: Any) -> list[dict[str, Any]]:

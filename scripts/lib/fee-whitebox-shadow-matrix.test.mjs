@@ -5,6 +5,7 @@ import {
   buildWhiteboxShadowSessionInput,
   requiredWhiteboxCells,
   resolveWhiteboxDepartments,
+  selectWhiteboxDiagnosticSample,
   selectWhiteboxShadowCases,
   selectWhiteboxPromotionCases,
   summarizeWhiteboxCaseAudits,
@@ -53,6 +54,60 @@ test("shadow matrix selection excludes holdout and requires every policy cell", 
   assert.equal(requiredWhiteboxCells(policy).length, 4);
   assert.equal(selected.length, 4);
   assert.equal(selected.some((item) => item.split === "holdout"), false);
+});
+
+test("diagnostic sample balances specialties and encounter settings", () => {
+  const samplePolicy = {
+    requiredSpecialties: [
+      "internal_medicine",
+      "pediatrics",
+      "dermatology",
+      "orthopedics",
+      "psychiatry",
+      "ophthalmology",
+      "otolaryngology",
+      "surgery",
+    ],
+    requiredEncounterSettings: [
+      "outpatient",
+      "home_visit",
+      "house_call",
+      "telephone",
+    ],
+  };
+  const selected = requiredWhiteboxCells(samplePolicy).map((cell) => ({
+    caseId: `${cell.specialty}-${cell.encounterSetting}`,
+    specialty: cell.specialty,
+    encounterSetting: cell.encounterSetting,
+    measurementCell: cell.cell,
+  }));
+
+  const sampled = selectWhiteboxDiagnosticSample(selected, samplePolicy, {
+    cellLimit: 8,
+  });
+
+  assert.equal(sampled.length, 8);
+  assert.equal(new Set(sampled.map((item) => item.specialty)).size, 8);
+  assert.deepEqual(
+    Object.fromEntries(
+      samplePolicy.requiredEncounterSettings.map((setting) => [
+        setting,
+        sampled.filter((item) => item.encounterSetting === setting).length,
+      ])
+    ),
+    {
+      outpatient: 2,
+      home_visit: 2,
+      house_call: 2,
+      telephone: 2,
+    }
+  );
+  assert.throws(
+    () => selectWhiteboxDiagnosticSample(selected, samplePolicy, {
+      cellLimit: 33,
+    }),
+    /at most 32/u
+  );
 });
 
 test("shadow session represents telephone as outpatient plus telephone visit kind", () => {

@@ -99,6 +99,60 @@ export function selectWhiteboxShadowCases(dataset = {}, policy = {}) {
   return selected;
 }
 
+export function selectWhiteboxDiagnosticSample(selectedCases = [], policy = {}, {
+  cellLimit
+} = {}) {
+  const limit = positiveInteger(cellLimit, "diagnosticCellLimit");
+  const requiredCells = requiredWhiteboxCells(policy);
+  if (limit > requiredCells.length) {
+    throw new Error(
+      `diagnosticCellLimit must be at most ${requiredCells.length}`
+    );
+  }
+  const specialties = nonemptyUniqueStrings(
+    policy.requiredSpecialties,
+    "requiredSpecialties"
+  );
+  const settings = nonemptyUniqueStrings(
+    policy.requiredEncounterSettings,
+    "requiredEncounterSettings"
+  );
+  const selectedByCell = new Map();
+  for (const item of Array.isArray(selectedCases) ? selectedCases : []) {
+    const cell = String(item?.measurementCell || "").trim();
+    if (cell && !selectedByCell.has(cell)) {
+      selectedByCell.set(cell, item);
+    }
+  }
+  const sampled = [];
+  const sampledCells = new Set();
+  for (let round = 0; sampled.length < limit && round < settings.length; round += 1) {
+    for (
+      let specialtyIndex = 0;
+      specialtyIndex < specialties.length && sampled.length < limit;
+      specialtyIndex += 1
+    ) {
+      const setting = settings[(specialtyIndex + round) % settings.length];
+      const cell = `${specialties[specialtyIndex]}|${setting}`;
+      if (sampledCells.has(cell)) {
+        continue;
+      }
+      const item = selectedByCell.get(cell);
+      if (!item) {
+        throw new Error(`diagnostic sample is missing selected case for ${cell}`);
+      }
+      sampledCells.add(cell);
+      sampled.push(item);
+    }
+  }
+  if (sampled.length !== limit) {
+    throw new Error(
+      `diagnostic sample selected ${sampled.length}/${limit} cells`
+    );
+  }
+  return sampled;
+}
+
 export function selectWhiteboxPromotionCases(dataset = {}, policy = {}) {
   if (dataset.schemaVersion !== "fee-specialty-matrix-cases-v1") {
     throw new Error("whitebox promotion dataset must use fee-specialty-matrix-cases-v1");

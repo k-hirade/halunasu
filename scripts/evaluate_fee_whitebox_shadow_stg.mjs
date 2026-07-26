@@ -9,6 +9,7 @@ import {
   buildWhiteboxShadowSessionInput,
   requiredWhiteboxCells,
   resolveWhiteboxDepartments,
+  selectWhiteboxDiagnosticSample,
   selectWhiteboxPromotionCases,
   selectWhiteboxShadowCases,
   summarizeWhiteboxCaseAudits,
@@ -69,9 +70,14 @@ const datasetPath = resolveRepoPath(args.dataset);
 const policyPath = resolveRepoPath(args.policy);
 const dataset = readJson(datasetPath);
 const policy = readJson(policyPath);
-const selectedCases = args.purpose === "promotion"
+const fullSelectedCases = args.purpose === "promotion"
   ? selectWhiteboxPromotionCases(dataset, policy)
   : selectWhiteboxShadowCases(dataset, policy);
+const selectedCases = args.diagnosticCellLimit
+  ? selectWhiteboxDiagnosticSample(fullSelectedCases, policy, {
+      cellLimit: args.diagnosticCellLimit
+    })
+  : fullSelectedCases;
 const executionPlan = buildWhiteboxShadowExecutions(selectedCases, {
   controlRepeats: args.controlRepeats
 });
@@ -86,6 +92,10 @@ if (args.dryRun) {
     dataset: path.relative(repoRoot, datasetPath),
     policy: path.relative(repoRoot, policyPath),
     requiredCellCount: requiredCells.length,
+    sampledCellCount: new Set(
+      selectedCases.map((item) => item.measurementCell)
+    ).size,
+    diagnosticCellLimit: args.diagnosticCellLimit || null,
     selectedCaseCount: selectedCases.length,
     controlRepeats: executionPlan.controlRepeats,
     controlGroupCount: executionPlan.controlGroupCount,
@@ -184,6 +194,10 @@ const result = {
   },
   methodology: {
     requiredCellCount: requiredCells.length,
+    sampledCellCount: new Set(
+      selectedCases.map((item) => item.measurementCell)
+    ).size,
+    diagnosticCellLimit: args.diagnosticCellLimit || null,
     evaluationPurpose: args.purpose,
     minimumRunsPerCell: policy.telemetry.minimumRunsPerCell,
     selectedCaseCount: selectedCases.length,
@@ -501,6 +515,7 @@ function parseArgs(argv) {
     password: process.env.FEE_E2E_PASSWORD || "",
     mfaCode: process.env.FEE_E2E_MFA_CODE || "",
     controlRepeats: 3,
+    diagnosticCellLimit: 0,
     purpose: "diagnostic",
     provisionDepartments: false,
     dryRun: false,
@@ -529,6 +544,9 @@ function parseArgs(argv) {
     else if (arg === "--control-repeats") {
       parsed.controlRepeats = boundedPositiveInteger(next(index++, arg), arg, 3);
     }
+    else if (arg === "--diagnostic-cell-limit") {
+      parsed.diagnosticCellLimit = positiveInteger(next(index++, arg), arg);
+    }
     else if (arg === "--timeout-ms") parsed.timeoutMs = positiveInteger(next(index++, arg), arg);
     else if (arg === "--provision-departments") parsed.provisionDepartments = true;
     else if (arg === "--dry-run") parsed.dryRun = true;
@@ -542,6 +560,11 @@ function parseArgs(argv) {
   }
   if (!["diagnostic", "promotion"].includes(parsed.purpose)) {
     throw new Error("--purpose must be diagnostic or promotion");
+  }
+  if (parsed.purpose === "promotion" && parsed.diagnosticCellLimit) {
+    throw new Error(
+      "--diagnostic-cell-limit cannot be used for promotion measurements"
+    );
   }
   return parsed;
 }
@@ -700,6 +723,7 @@ Options:
   --service-date YYYY-MM-DD   Default: 2026-07-25
   --purpose TYPE              diagnostic or promotion. Default: diagnostic
   --control-repeats N         Identical-input controls per cell, 1-3. Default: 3
+  --diagnostic-cell-limit N   Diagnostic only: one case from N balanced cells
   --provision-departments     Create missing dedicated WX Shadow departments
   --dry-run                   Validate matrix selection without network calls
   --help                      Show this help

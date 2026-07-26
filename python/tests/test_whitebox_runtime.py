@@ -452,14 +452,40 @@ class WhiteboxRuntimeTest(unittest.TestCase):
                 patch(
                     "medical_fee_calculation.whitebox_span._load_onnx_span_runtime",
                     return_value=SimpleNamespace(
-                        detect=lambda lines: [{"relevance": "irrelevant"} for _ in lines]
+                        detect=lambda lines: [{
+                            "relevance": "relevant",
+                            "spans": [{
+                                "text": "採血",
+                                "category": "lab",
+                            }],
+                        } for _ in lines]
                     ),
                 ),
             ):
                 result = span_detector_readiness(manifest_path)
             self.assertTrue(result["available"])
             self.assertEqual(result["inferenceProbe"], "passed")
+            self.assertEqual(result["semanticProbe"], "passed")
             self.assertEqual(result["determinismProbe"]["repeatCount"], 2)
+
+            with (
+                patch(
+                    "medical_fee_calculation.whitebox_span.runtime_dependency_status",
+                    return_value={"available": True},
+                ),
+                patch(
+                    "medical_fee_calculation.whitebox_span._load_onnx_span_runtime",
+                    return_value=SimpleNamespace(
+                        detect=lambda lines: [{
+                            "relevance": "irrelevant",
+                            "spans": [],
+                        } for _ in lines]
+                    ),
+                ),
+            ):
+                result = span_detector_readiness(manifest_path)
+            self.assertFalse(result["available"])
+            self.assertIn("semantic probe", result["reason"])
 
             probe_calls = 0
 
@@ -468,7 +494,11 @@ class WhiteboxRuntimeTest(unittest.TestCase):
                 probe_calls += 1
                 return [
                     {
-                        "relevance": "irrelevant",
+                        "relevance": "relevant",
+                        "spans": [{
+                            "text": "採血",
+                            "category": "lab",
+                        }],
                         "probeCall": probe_calls,
                     }
                     for _ in lines
@@ -528,7 +558,35 @@ class WhiteboxRuntimeTest(unittest.TestCase):
                 result = context_classifier_readiness(manifest_path)
             self.assertTrue(result["available"])
             self.assertEqual(result["inferenceProbe"], "passed")
+            self.assertEqual(result["semanticProbe"], "passed")
             self.assertEqual(result["determinismProbe"]["repeatCount"], 2)
+
+            abstained_axes = {
+                **CURRENT_AXES,
+                "actionStatus": {
+                    "value": "performed",
+                    "confidence": 0.8,
+                    "abstained": True,
+                },
+            }
+            with (
+                patch(
+                    "medical_fee_calculation.whitebox_context.runtime_dependency_status",
+                    return_value={"available": True},
+                ),
+                patch(
+                    "medical_fee_calculation.whitebox_context._load_onnx_context_runtime",
+                    return_value=SimpleNamespace(
+                        classify=lambda items: [
+                            {"axes": abstained_axes}
+                            for _ in items
+                        ]
+                    ),
+                ),
+            ):
+                result = context_classifier_readiness(manifest_path)
+            self.assertFalse(result["available"])
+            self.assertIn("semantic probe", result["reason"])
 
     def test_linker_readiness_rejects_encoder_index_dimension_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as root:

@@ -19,8 +19,10 @@ from medical_fee_calculation.whitebox_artifacts import (
 )
 from medical_fee_calculation.whitebox_onnx import verify_deterministic_inference
 from medical_fee_calculation.whitebox_span import (
+    SPAN_SEMANTIC_PROBE_LINE,
     _OnnxSpanRuntime,
     _validate_onnx_manifest,
+    _validate_span_semantic_probe,
 )
 from scripts.whitebox_training_common import (
     WhiteboxTrainingError,
@@ -660,15 +662,15 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         )
         _validate_onnx_manifest(artifact)
         runtime = _OnnxSpanRuntime(model_path, tokenizer_path, manifest)
-        _, determinism = verify_deterministic_inference(
+        semantic_probe, determinism = verify_deterministic_inference(
             lambda: runtime.detect([{
+                **SPAN_SEMANTIC_PROBE_LINE,
                 "lineId": "artifact-probe",
-                "text": development_examples[0].text,
-                "section": "unknown",
             }]),
             label="WX1 artifact build probe",
             repeat_count=DETERMINISM_REPEAT_COUNT,
         )
+        _validate_span_semantic_probe(semantic_probe)
         build_report = {
             "schemaVersion": "fee-wx1-build-report-v1",
             "generatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -676,6 +678,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "status": "complete",
             "modelSelection": selection,
             "development": calibration,
+            "semanticProbe": "passed",
             "determinism": determinism,
             "manifestSha256": sha256_file(manifest_path),
         }

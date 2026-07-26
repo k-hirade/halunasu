@@ -27,7 +27,9 @@ from medical_fee_calculation.whitebox_artifacts import (
     sha256_file,
 )
 from medical_fee_calculation.whitebox_context import (
+    CONTEXT_SEMANTIC_PROBE_ITEM,
     _OnnxContextRuntime,
+    _validate_context_semantic_probe,
     _validate_context_manifest,
 )
 from medical_fee_calculation.whitebox_onnx import verify_deterministic_inference
@@ -537,20 +539,16 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         )
         _validate_context_manifest(artifact.manifest)
         runtime = _OnnxContextRuntime(model_path, tokenizer_path, manifest)
-        _, determinism = verify_deterministic_inference(
+        semantic_probe, determinism = verify_deterministic_inference(
             lambda: runtime.classify([{
+                **CONTEXT_SEMANTIC_PROBE_ITEM,
                 "lineId": "artifact-probe",
                 "spanId": "artifact-probe",
-                "text": "創傷処置を実施した。",
-                "spanText": "創傷処置",
-                "charStart": 0,
-                "charEnd": 4,
-                "previousLine": "",
-                "nextLine": "",
             }]),
             label="WX3 artifact build probe",
             repeat_count=DETERMINISM_REPEAT_COUNT,
         )
+        _validate_context_semantic_probe(semantic_probe)
         build_report = {
             "schemaVersion": "fee-wx3-build-report-v1",
             "generatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -558,6 +556,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "status": "complete",
             "modelSelection": selection,
             "development": calibration,
+            "semanticProbe": "passed",
             "determinism": determinism,
             "manifestSha256": sha256_file(manifest_path),
         }
