@@ -105,10 +105,16 @@ venv-wx0/
 .venv-whitebox-build/
 
 # Generated whitebox runtime binaries are too large for normal Git storage.
-# Keep the small manifest and versioned build report, but distribute model
-# binaries through the deployment artifact path.
-python/data/whitebox/**/model.onnx
+# Keep manifests and routing configuration in Git; distribute runtime models,
+# indexes, tokenizers, and training checkpoints through the artifact registry.
+python/data/whitebox/**/*.onnx
 python/data/whitebox/**/tokenizer.json
 python/data/whitebox/**/build-report.json
-python/data/whitebox/**/linker-index.sqlite
-python/data/whitebox/**/linker-index.sqlite-*
+python/data/whitebox/**/*.sqlite
+python/data/whitebox/**/*.sqlite-*
+python/data/whitebox/**/*.safetensors
+python/data/whitebox/**/*.bin
+python/data/whitebox/**/*.pt
+python/data/whitebox/**/*.pth
+python/data/whitebox/**/*.npy
+python/data/whitebox/**/*.npz

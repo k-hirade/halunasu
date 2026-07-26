@@ -279,25 +279,20 @@ class _OnnxContextRuntime:
     def classify(self, items: Sequence[Mapping[str, Any]]) -> Sequence[Mapping[str, Any]]:
         if not items:
             return []
-        encoded_inputs, _ = encode_batch(
-            tokenizer=self.tokenizer,
-            texts=[_classifier_text(item) for item in items],
-            np=self.np,
-            max_length=self.max_length,
+        return self.classify_preformatted_texts(
+            [_classifier_text(item) for item in items]
         )
-        requested_outputs = [self.output_names[axis] for axis in self.labels]
-        try:
-            output_values = self.session.run(
-                requested_outputs,
-                session_feeds(self.session, encoded_inputs),
-            )
-        except Exception as exc:  # noqa: BLE001 - external model boundary.
-            raise WhiteboxArtifactError(
-                f"context classifier ONNX inference failed: {exc}"
-            ) from exc
-        output_by_name = dict(zip(requested_outputs, output_values, strict=True))
+
+    def classify_preformatted_texts(
+        self,
+        texts: Sequence[str],
+    ) -> Sequence[Mapping[str, Any]]:
+        """Classify already marked WX3 inputs for build-time ONNX calibration."""
+        if not texts:
+            return []
+        output_by_name = self._predict_output_values(texts)
         results = []
-        for row in range(len(items)):
+        for row in range(len(texts)):
             axes = {}
             for axis, axis_labels in self.labels.items():
                 logits = self.np.asarray(output_by_name[self.output_names[axis]][row], dtype=self.np.float64)
@@ -313,6 +308,41 @@ class _OnnxContextRuntime:
                 }
             results.append({"axes": axes})
         return results
+
+    def predict_logits_preformatted_texts(
+        self,
+        texts: Sequence[str],
+    ) -> Mapping[str, Any]:
+        """Return final ONNX logits so the artifact builder calibrates what ships."""
+        if not texts:
+            return {
+                axis: self.np.empty((0, len(labels)), dtype=self.np.float32)
+                for axis, labels in self.labels.items()
+            }
+        output_by_name = self._predict_output_values(texts)
+        return {
+            axis: self.np.asarray(output_by_name[self.output_names[axis]])
+            for axis in self.labels
+        }
+
+    def _predict_output_values(self, texts: Sequence[str]) -> Mapping[str, Any]:
+        encoded_inputs, _ = encode_batch(
+            tokenizer=self.tokenizer,
+            texts=[str(text) for text in texts],
+            np=self.np,
+            max_length=self.max_length,
+        )
+        requested_outputs = [self.output_names[axis] for axis in self.labels]
+        try:
+            output_values = self.session.run(
+                requested_outputs,
+                session_feeds(self.session, encoded_inputs),
+            )
+        except Exception as exc:  # noqa: BLE001 - external model boundary.
+            raise WhiteboxArtifactError(
+                f"context classifier ONNX inference failed: {exc}"
+            ) from exc
+        return dict(zip(requested_outputs, output_values, strict=True))
 
 
 def _classifier_text(item: Mapping[str, Any]) -> str:

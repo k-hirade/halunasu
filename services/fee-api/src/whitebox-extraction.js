@@ -8,7 +8,9 @@ export const WHITEBOX_SPAN_MODES = Object.freeze(["off", "shadow", "route"]);
 export const DEFAULT_WHITEBOX_THRESHOLDS = Object.freeze({
   schemaVersion: 1,
   spanConfidence: 0.9,
-  contextConfidence: 0.9,
+  // WX3 applies calibrated per-axis thresholds in the ONNX runtime.
+  // This optional router threshold may only make that decision stricter.
+  contextConfidence: 0,
   linkerHighScore: 0.92,
   linkerReviewScore: 0.8,
   linkerMargin: 0.05,
@@ -286,6 +288,13 @@ export function contextConsensus({
       role: "standing",
       disagreement: false,
       reasonCodes: ["current_visit_predicate_compatible_with_standing"]
+    };
+  }
+  if (classifier === "llm" && predicate === "excluded") {
+    return {
+      role: "excluded",
+      disagreement: true,
+      reasonCodes: ["predicate_safe_exclusion"]
     };
   }
   if (classifier === "llm") {
@@ -593,6 +602,29 @@ export async function prepareWhiteboxExtraction({
       && line.spans.length > 0
     )
   ).length;
+  const contextConfidenceByAxis = {};
+  for (const result of Array.isArray(contextEnvelope?.results) ? contextEnvelope.results : []) {
+    for (const [axis, value] of Object.entries(result?.axes || {})) {
+      if (!contextConfidenceByAxis[axis]) {
+        contextConfidenceByAxis[axis] = [];
+      }
+      contextConfidenceByAxis[axis].push(Number(value?.confidence));
+    }
+  }
+  const confidenceSummary = {
+    span: summarizeMetricValues(spans.map((span) => Number(span?.confidence))),
+    linkerTopScore: summarizeMetricValues(linkedByIndex.map(
+      (link) => Number(link?.candidates?.[0]?.score)
+    )),
+    linkerMargin: summarizeMetricValues(linkedByIndex.map(
+      (link) => Number(link?.margin)
+    )),
+    contextAxes: Object.fromEntries(
+      Object.entries(contextConfidenceByAxis)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([axis, values]) => [axis, summarizeMetricValues(values)])
+    )
+  };
   const encoderFacts = {
     ...emptyEncoderFacts(lines),
     visit_facts: visitFactsPlan.facts,
@@ -632,6 +664,7 @@ export async function prepareWhiteboxExtraction({
       spanDetectorDurationMs: spanDurationMs,
       linkerDurationMs,
       contextClassifierDurationMs: contextDurationMs,
+      confidenceSummary,
       contextDisagreementCount,
       contextDisagreementAxes: [...contextDisagreementAxes].sort(),
       contextClassifier: {
@@ -715,6 +748,33 @@ function countRouteReasons(lineRoutes = []) {
   return Object.fromEntries(
     Object.entries(counts).sort(([left], [right]) => left.localeCompare(right))
   );
+}
+
+function summarizeMetricValues(values = []) {
+  const sorted = (Array.isArray(values) ? values : [])
+    .map(Number)
+    .filter(Number.isFinite)
+    .sort((left, right) => left - right);
+  if (!sorted.length) {
+    return {
+      count: 0,
+      min: null,
+      p50: null,
+      p95: null,
+      max: null,
+      mean: null
+    };
+  }
+  const at = (ratio) => sorted[Math.floor((sorted.length - 1) * ratio)];
+  const rounded = (value) => Number(value.toFixed(6));
+  return {
+    count: sorted.length,
+    min: rounded(sorted[0]),
+    p50: rounded(at(0.5)),
+    p95: rounded(at(0.95)),
+    max: rounded(sorted[sorted.length - 1]),
+    mean: rounded(sorted.reduce((total, value) => total + value, 0) / sorted.length)
+  };
 }
 
 export async function buildLinkerCandidateLayer({

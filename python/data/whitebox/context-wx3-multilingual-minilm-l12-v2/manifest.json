@@ -1,0 +1,148 @@
+{
+  "abstainThresholds": {
+    "actionStatus": 0.9554716348648072,
+    "providerOwnership": 0.9674355983734132,
+    "sourceOrigin": 0.993758797645569,
+    "standingStatus": 0.9209179282188417,
+    "temporalRelation": 0.9853457212448121
+  },
+  "artifactType": "fee_context_classifier",
+  "artifactVersion": "wx3-multilingual-minilm-l12-v2",
+  "axisLabels": {
+    "actionStatus": [
+      "performed",
+      "prescribed",
+      "administered",
+      "ordered",
+      "planned",
+      "considered",
+      "instruction_only",
+      "not_performed",
+      "unknown"
+    ],
+    "providerOwnership": [
+      "own_clinic",
+      "same_institution_other_department",
+      "other_provider",
+      "unknown"
+    ],
+    "sourceOrigin": [
+      "own_clinic_record",
+      "patient_reported",
+      "external_document",
+      "carried_in_result",
+      "other_provider_record",
+      "unknown"
+    ],
+    "standingStatus": [
+      "continued",
+      "changed",
+      "stopped",
+      "none"
+    ],
+    "temporalRelation": [
+      "current_visit",
+      "same_day_but_unknown",
+      "past",
+      "future",
+      "unknown"
+    ]
+  },
+  "backend": "onnx_multi_axis",
+  "files": {
+    "model": {
+      "path": "model.onnx",
+      "sha256": "ea998e274f54aa2aac3044e0a626b9189f1131e7ad960076fc2807d8972956d2"
+    },
+    "tokenizer": {
+      "path": "tokenizer.json",
+      "sha256": "93189c5d9a15db043017cfd920e00cf72fe9a4220bd74b460b635f6aa85a61a2"
+    }
+  },
+  "license": {
+    "license": "Apache-2.0",
+    "modelId": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "sourceUrl": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d",
+    "verifiedAt": "2026-07-25"
+  },
+  "maxLength": 256,
+  "modelFileKey": "model",
+  "modelRevision": "86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d",
+  "modelVersion": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "outputNames": {
+    "actionStatus": "actionStatus_logits",
+    "providerOwnership": "providerOwnership_logits",
+    "sourceOrigin": "sourceOrigin_logits",
+    "standingStatus": "standingStatus_logits",
+    "temporalRelation": "temporalRelation_logits"
+  },
+  "schemaVersion": 1,
+  "temperatures": {
+    "actionStatus": 0.6,
+    "providerOwnership": 0.6,
+    "sourceOrigin": 0.5,
+    "standingStatus": 0.7,
+    "temporalRelation": 0.6
+  },
+  "tokenizerFileKey": "tokenizer",
+  "training": {
+    "batchSize": 8,
+    "calibrationSource": "onnx_runtime",
+    "classWeighting": "sqrt_inverse",
+    "classWeights": {
+      "actionStatus": [
+        0.16414559207552215,
+        0.362622166295063,
+        0.7161213992091319,
+        3.922358442590038,
+        0.4756558282450562,
+        1.6012961287738834,
+        0.5847106739834355,
+        0.6827949635041155,
+        0.49029480532375475
+      ],
+      "providerOwnership": [
+        0.4789466385790247,
+        0.0,
+        0.9450259750489348,
+        1.5760273863720404
+      ],
+      "sourceOrigin": [
+        0.11678070772939825,
+        0.3307446660628019,
+        0.34578611496672984,
+        0.0,
+        3.2066885112410697,
+        0.0
+      ],
+      "standingStatus": [
+        0.29224169738859457,
+        1.9237703657170808,
+        1.666034007758672,
+        0.11795392913565217
+      ],
+      "temporalRelation": [
+        0.5108528702115079,
+        1.4153916622354417,
+        0.7076958311177208,
+        1.36605963643533,
+        0.0
+      ]
+    },
+    "counterexampleDatasetSha256": "ee95f858e46a0bafe75ec53da2c12c387a1f1afdf841ef581e272ccd5602b6c9",
+    "counterexampleProtectedTextCount": 6,
+    "datasetSha256": "75d48a32d11bced89e764e61bd926561af7a642304581075f6d6f44e8c6f7cf9",
+    "developmentCaseCount": 96,
+    "epochs": 6,
+    "learningRate": 2e-05,
+    "minimumCalibrationCoverage": 0.05,
+    "minimumCalibrationCoveredCount": 20,
+    "pooling": "mean",
+    "seed": 17,
+    "selectedEpoch": 6,
+    "syntheticOnly": true,
+    "trainCaseCount": 288,
+    "trainingViewSha256": "0e9aff22f03d65bb1178fae8f5b8bee19fdad3414117a6e62d7fc1fa612b5ff1",
+    "withheldHoldoutCaseCount": 16
+  }
+}

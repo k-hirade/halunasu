@@ -90,7 +90,15 @@ def build_context_examples(
     return examples
 
 
-def create_model(torch, transformers, *, model_id: str, revision: str, axis_labels):
+def create_model(
+    torch,
+    transformers,
+    *,
+    model_id: str,
+    revision: str,
+    axis_labels,
+    pooling: str,
+):
     encoder = transformers.AutoModel.from_pretrained(
         model_id,
         revision=revision,
@@ -112,10 +120,66 @@ def create_model(torch, transformers, *, model_id: str, revision: str, axis_labe
                 input_ids=input_ids,
                 attention_mask=attention_mask,
             ).last_hidden_state
-            pooled = hidden[:, 0, :]
+            if pooling == "mean":
+                mask = attention_mask.unsqueeze(-1).to(dtype=hidden.dtype)
+                pooled = (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1.0)
+            else:
+                pooled = hidden[:, 0, :]
             return tuple(self.heads[axis](pooled) for axis in AXIS_NAMES)
 
     return ContextClassifier()
+
+
+def class_weight_values(
+    label_indexes: Sequence[int],
+    *,
+    class_count: int,
+    strategy: str,
+) -> list[float]:
+    counts = [0] * class_count
+    for index in label_indexes:
+        if index < 0 or index >= class_count:
+            raise WhiteboxTrainingError("class weight label index is outside the axis")
+        counts[index] += 1
+    if strategy == "none":
+        return [1.0] * class_count
+    if strategy != "sqrt_inverse":
+        raise WhiteboxTrainingError(f"unsupported class weighting strategy: {strategy}")
+    raw = [
+        1.0 / math.sqrt(count) if count else 0.0
+        for count in counts
+    ]
+    nonzero = [weight for weight in raw if weight > 0]
+    if not nonzero:
+        raise WhiteboxTrainingError("class weighting requires at least one label")
+    scale = len(nonzero) / sum(nonzero)
+    return [weight * scale for weight in raw]
+
+
+def build_loss_functions(
+    train_encoded: Mapping[str, Any],
+    *,
+    axis_labels: Mapping[str, Sequence[str]],
+    strategy: str,
+    torch,
+) -> tuple[dict[str, Any], dict[str, list[float]]]:
+    weights = {
+        axis: class_weight_values(
+            [int(value) for value in train_encoded["labels"][axis].tolist()],
+            class_count=len(axis_labels[axis]),
+            strategy=strategy,
+        )
+        for axis in AXIS_NAMES
+    }
+    return (
+        {
+            axis: torch.nn.CrossEntropyLoss(
+                weight=torch.tensor(weights[axis], dtype=torch.float32)
+            )
+            for axis in AXIS_NAMES
+        },
+        weights,
+    )
 
 
 def encode_examples(
@@ -155,6 +219,7 @@ def train_model(
     train_encoded: Mapping[str, Any],
     development_encoded: Mapping[str, Any],
     *,
+    loss_functions: Mapping[str, Any],
     torch,
     epochs: int,
     batch_size: int,
@@ -162,7 +227,6 @@ def train_model(
     seed: int,
 ) -> dict[str, Any]:
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-    loss_function = torch.nn.CrossEntropyLoss()
     sample_count = int(train_encoded["input_ids"].shape[0])
     best_state = None
     best_development_loss = math.inf
@@ -181,7 +245,7 @@ def train_model(
                 train_encoded["attention_mask"][indexes],
             )
             loss = sum(
-                loss_function(
+                loss_functions[axis](
                     outputs[axis_index],
                     train_encoded["labels"][axis][indexes],
                 )
@@ -195,6 +259,7 @@ def train_model(
         development_loss = context_loss(
             model,
             development_encoded,
+            loss_functions=loss_functions,
             torch=torch,
         )
         history.append({
@@ -202,6 +267,14 @@ def train_model(
             "trainLoss": train_loss / max(1, batch_count),
             "developmentLoss": development_loss,
         })
+        print(
+            "WX3 epoch "
+            f"{epoch + 1}/{epochs}: "
+            f"train_loss={history[-1]['trainLoss']:.6f} "
+            f"development_loss={development_loss:.6f}",
+            file=sys.stderr,
+            flush=True,
+        )
         if development_loss < best_development_loss:
             best_development_loss = development_loss
             best_state = copy.deepcopy(model.state_dict())
@@ -215,59 +288,73 @@ def train_model(
     }
 
 
-def context_loss(model, encoded: Mapping[str, Any], *, torch) -> float:
+def context_loss(
+    model,
+    encoded: Mapping[str, Any],
+    *,
+    loss_functions: Mapping[str, Any],
+    torch,
+) -> float:
     model.eval()
-    loss_function = torch.nn.CrossEntropyLoss()
     with torch.no_grad():
         outputs = model(encoded["input_ids"], encoded["attention_mask"])
         loss = sum(
-            loss_function(outputs[index], encoded["labels"][axis])
+            loss_functions[axis](outputs[index], encoded["labels"][axis])
             for index, axis in enumerate(AXIS_NAMES)
         ) / len(AXIS_NAMES)
     return float(loss)
 
 
-def calibrate_context_model(
-    model,
-    encoded: Mapping[str, Any],
+def calibrate_context_runtime(
+    runtime: _OnnxContextRuntime,
     examples: Sequence[ContextExample],
     *,
     axis_labels: Mapping[str, Sequence[str]],
     max_risk: float,
     max_dangerous_false_positive_rate: float,
+    minimum_covered_count: int,
+    minimum_coverage: float,
     torch,
 ) -> dict[str, Any]:
-    model.eval()
-    with torch.no_grad():
-        outputs = tuple(
-            value.cpu()
-            for value in model(encoded["input_ids"], encoded["attention_mask"])
-        )
+    logits_by_axis = runtime.predict_logits_preformatted_texts(
+        [example.text for example in examples]
+    )
     axis_results = {}
-    temperatures = {}
     thresholds = {}
-    for axis_index, axis in enumerate(AXIS_NAMES):
+    temperatures = {}
+    for axis in AXIS_NAMES:
         labels = list(axis_labels[axis])
-        truth_indexes = encoded["labels"][axis].cpu()
-        logits = outputs[axis_index]
+        truths = [example.labels[axis] for example in examples]
+        label_indexes = {label: index for index, label in enumerate(labels)}
+        truth_indexes = torch.tensor(
+            [label_indexes[truth] for truth in truths],
+            dtype=torch.long,
+        )
+        logits = torch.tensor(logits_by_axis[axis], dtype=torch.float32)
+        if logits.ndim != 2 or tuple(logits.shape) != (len(examples), len(labels)):
+            raise WhiteboxTrainingError(
+                f"{axis}: WX3 ONNX calibration returned invalid logits"
+            )
         temperature = select_temperature(logits, truth_indexes, torch=torch)
         probabilities = torch.softmax(logits / temperature, dim=-1)
-        confidences, prediction_indexes = probabilities.max(dim=-1)
-        truths = [example.labels[axis] for example in examples]
+        confidence_values, prediction_indexes = probabilities.max(dim=-1)
         raw_predictions = [labels[int(index)] for index in prediction_indexes]
+        confidences = [float(value) for value in confidence_values]
         threshold = select_abstain_threshold(
             axis=axis,
             truths=truths,
             predictions=raw_predictions,
-            confidences=[float(value) for value in confidences],
+            confidences=confidences,
             max_risk=max_risk,
             max_dangerous_false_positive_rate=max_dangerous_false_positive_rate,
+            minimum_covered_count=minimum_covered_count,
+            minimum_coverage=minimum_coverage,
         )
         predictions = [
             prediction if confidence >= threshold else None
             for prediction, confidence in zip(
                 raw_predictions,
-                [float(value) for value in confidences],
+                confidences,
                 strict=True,
             )
         ]
@@ -285,10 +372,10 @@ def calibrate_context_model(
                 truth == prediction
                 for truth, prediction in zip(truths, raw_predictions, strict=True)
             ],
-            [float(value) for value in confidences],
+            confidences,
         )
-        temperatures[axis] = temperature
         thresholds[axis] = threshold
+        temperatures[axis] = temperature
         axis_results[axis] = {
             **metrics,
             "dangerousFalsePositiveCount": dangerous_count,
@@ -300,11 +387,14 @@ def calibrate_context_model(
             "expectedCalibrationError": ece,
             "temperature": temperature,
             "abstainThreshold": threshold,
+            "coveredCount": sum(confidence >= threshold for confidence in confidences),
+            "calibrationExampleCount": len(confidences),
         }
     return {
-        "temperatures": temperatures,
+        "temperatures": dict(temperatures),
         "abstainThresholds": thresholds,
         "axisMetrics": axis_results,
+        "calibrationSource": "onnx_runtime",
     }
 
 
@@ -328,9 +418,33 @@ def select_abstain_threshold(
     confidences: Sequence[float],
     max_risk: float,
     max_dangerous_false_positive_rate: float,
+    minimum_covered_count: int = 1,
+    minimum_coverage: float = 0.0,
 ) -> float:
-    candidates = [value / 100 for value in range(50, 100, 2)] + [1.0]
-    for threshold in candidates:
+    if not (
+        len(truths) == len(predictions) == len(confidences)
+        and len(truths) > 0
+    ):
+        raise WhiteboxTrainingError(
+            f"{axis}: abstain calibration inputs must be non-empty and aligned"
+        )
+    required_count = max(
+        int(minimum_covered_count),
+        math.ceil(len(truths) * float(minimum_coverage)),
+    )
+    if required_count < 1:
+        required_count = 1
+    if required_count > len(truths):
+        raise WhiteboxTrainingError(
+            f"{axis}: required calibration coverage exceeds the development set"
+        )
+    candidates = {0.0}
+    for raw_confidence in confidences:
+        confidence = min(1.0, max(0.0, float(raw_confidence)))
+        candidates.add(confidence)
+        if confidence < 1.0:
+            candidates.add(math.nextafter(confidence, math.inf))
+    for threshold in sorted(candidates):
         covered = [
             (truth, prediction)
             for truth, prediction, confidence in zip(
@@ -341,8 +455,10 @@ def select_abstain_threshold(
             )
             if confidence >= threshold
         ]
+        if len(covered) < required_count:
+            continue
         errors = sum(truth != prediction for truth, prediction in covered)
-        risk = errors / len(covered) if covered else 0.0
+        risk = errors / len(covered)
         dangerous = sum(
             dangerous_false_positive(axis, truth, prediction)
             for truth, prediction in covered
@@ -358,7 +474,10 @@ def select_abstain_threshold(
         )
         if risk <= max_risk and dangerous_rate <= max_dangerous_false_positive_rate:
             return threshold
-    return 1.0
+    raise WhiteboxTrainingError(
+        f"{axis}: no non-empty abstain threshold satisfies the safety gates "
+        f"with at least {required_count}/{len(truths)} covered examples"
+    )
 
 
 def export_onnx(model, encoded: Mapping[str, Any], model_path: Path, *, torch, opset: int) -> None:
@@ -424,6 +543,10 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         "trainSpanCount": len(train_examples),
         "developmentSpanCount": len(development_examples),
         "axisLabels": axis_labels,
+        "pooling": args.pooling,
+        "classWeighting": args.class_weighting,
+        "minimumCalibrationCoveredCount": args.minimum_calibration_covered_count,
+        "minimumCalibrationCoverage": args.minimum_calibration_coverage,
         "counterexampleAudit": leakage_audit,
         "license": license_record,
     }
@@ -446,6 +569,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         model_id=args.base_model,
         revision=model_revision,
         axis_labels=axis_labels,
+        pooling=args.pooling,
     )
     train_encoded = encode_examples(
         tokenizer,
@@ -461,26 +585,23 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         max_length=args.max_length,
         torch=torch,
     )
+    loss_functions, class_weights = build_loss_functions(
+        train_encoded,
+        axis_labels=axis_labels,
+        strategy=args.class_weighting,
+        torch=torch,
+    )
     selection = train_model(
         model,
         train_encoded,
         development_encoded,
+        loss_functions=loss_functions,
         torch=torch,
         epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
         seed=args.seed,
     )
-    calibration = calibrate_context_model(
-        model,
-        development_encoded,
-        development_examples,
-        axis_labels=axis_labels,
-        max_risk=args.max_risk,
-        max_dangerous_false_positive_rate=args.max_dangerous_false_positive_rate,
-        torch=torch,
-    )
-
     with atomic_artifact_directory(output_dir) as temporary:
         model_path = temporary / "model.onnx"
         tokenizer_path = temporary / "tokenizer.json"
@@ -493,6 +614,38 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         )
         onnx.checker.check_model(onnx.load(str(model_path)))
         tokenizer.backend_tokenizer.save(str(tokenizer_path))
+        output_names = {
+            axis: f"{axis}_logits"
+            for axis in AXIS_NAMES
+        }
+        provisional_manifest = {
+            "maxLength": args.max_length,
+            "axisLabels": axis_labels,
+            "outputNames": output_names,
+            "temperatures": {
+                axis: 1.0
+                for axis in AXIS_NAMES
+            },
+            "abstainThresholds": {
+                axis: 0.0
+                for axis in AXIS_NAMES
+            },
+        }
+        runtime = _OnnxContextRuntime(
+            model_path,
+            tokenizer_path,
+            provisional_manifest,
+        )
+        calibration = calibrate_context_runtime(
+            runtime,
+            development_examples,
+            axis_labels=axis_labels,
+            max_risk=args.max_risk,
+            max_dangerous_false_positive_rate=args.max_dangerous_false_positive_rate,
+            minimum_covered_count=args.minimum_calibration_covered_count,
+            minimum_coverage=args.minimum_calibration_coverage,
+            torch=torch,
+        )
         manifest = {
             "schemaVersion": 1,
             "artifactType": "fee_context_classifier",
@@ -505,10 +658,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "tokenizerFileKey": "tokenizer",
             "maxLength": args.max_length,
             "axisLabels": axis_labels,
-            "outputNames": {
-                axis: f"{axis}_logits"
-                for axis in AXIS_NAMES
-            },
+            "outputNames": output_names,
             "temperatures": calibration["temperatures"],
             "abstainThresholds": calibration["abstainThresholds"],
             "training": {
@@ -525,6 +675,12 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
                 "batchSize": args.batch_size,
                 "learningRate": args.learning_rate,
                 "seed": args.seed,
+                "pooling": args.pooling,
+                "classWeighting": args.class_weighting,
+                "classWeights": class_weights,
+                "calibrationSource": calibration["calibrationSource"],
+                "minimumCalibrationCoveredCount": args.minimum_calibration_covered_count,
+                "minimumCalibrationCoverage": args.minimum_calibration_coverage,
             },
             "files": {
                 "model": artifact_file_entry(model_path, temporary),
@@ -578,6 +734,9 @@ def markdown_report(report: Mapping[str, Any]) -> str:
         f"- artifact: `{report['artifactVersion']}`",
         f"- model: `{report['baseModel']}@{report['modelRevision']}`",
         f"- selected epoch: {report['modelSelection']['selectedEpoch']}",
+        f"- pooling: `{report['pooling']}`",
+        f"- class weighting: `{report['classWeighting']}`",
+        f"- calibration: `{report['development']['calibrationSource']}`",
         f"- train/development: {report['trainCaseCount']} / {report['developmentCaseCount']} cases",
         f"- holdout withheld: {report['withheldHoldoutCaseCount']} cases",
         f"- counterexample texts withheld: {report['counterexampleAudit']['protectedTextCount']}",
@@ -591,7 +750,7 @@ def markdown_report(report: Mapping[str, Any]) -> str:
         lines.append(
             f"| {axis} | {metrics['macroF1']:.4f} | {metrics['coverage']:.4f} "
             f"| {metrics['risk']:.4f} | {metrics['dangerousFalsePositiveRate']:.4f} "
-            f"| {metrics['expectedCalibrationError']:.4f} | {metrics['abstainThreshold']:.2f} |"
+            f"| {metrics['expectedCalibrationError']:.4f} | {metrics['abstainThreshold']:.6f} |"
         )
     lines.extend([
         "",
@@ -617,8 +776,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=6)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=2e-5)
+    parser.add_argument("--pooling", choices=("mean", "cls"), default="mean")
+    parser.add_argument(
+        "--class-weighting",
+        choices=("sqrt_inverse", "none"),
+        default="sqrt_inverse",
+    )
     parser.add_argument("--max-risk", type=float, default=0.05)
     parser.add_argument("--max-dangerous-false-positive-rate", type=float, default=0.01)
+    parser.add_argument("--minimum-calibration-covered-count", type=int, default=20)
+    parser.add_argument("--minimum-calibration-coverage", type=float, default=0.05)
     parser.add_argument("--opset", type=int, default=17)
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument("--dry-run", action="store_true")
@@ -631,6 +798,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--max-risk must be from 0 to 1")
     if not 0 <= args.max_dangerous_false_positive_rate <= 1:
         parser.error("--max-dangerous-false-positive-rate must be from 0 to 1")
+    if args.minimum_calibration_covered_count < 1:
+        parser.error("--minimum-calibration-covered-count must be at least 1")
+    if not 0 <= args.minimum_calibration_coverage <= 1:
+        parser.error("--minimum-calibration-coverage must be from 0 to 1")
     if args.opset < 13:
         parser.error("--opset must be at least 13")
     return args

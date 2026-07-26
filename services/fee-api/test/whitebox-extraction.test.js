@@ -141,6 +141,17 @@ test("WX3 abstain and same-day ambiguity are owned by the LLM", () => {
   ]).role, "llm");
 });
 
+test("WX3 calibrated non-abstained axes are not rejected by a second default threshold", () => {
+  const lowConfidenceAxes = Object.fromEntries(Object.entries(CURRENT_AXES)
+    .map(([axis, result]) => [axis, {
+      ...result,
+      confidence: 0.61,
+      abstained: false
+    }]));
+  assert.equal(contextRoleFromAxes(lowConfidenceAxes).role, "performed");
+  assert.equal(contextRoleFromAxes(lowConfidenceAxes, 0.9).role, "llm");
+});
+
 test("WX3 classifier and deterministic predicate disagreement downgrades safely", () => {
   assert.deepEqual(contextConsensus({
     classifierRole: "performed",
@@ -149,6 +160,17 @@ test("WX3 classifier and deterministic predicate disagreement downgrades safely"
     role: "excluded",
     disagreement: true,
     reasonCodes: ["classifier_predicate_disagreement_safe_downgrade"]
+  });
+});
+
+test("WX3 deterministic exclusion remains safe when the classifier abstains", () => {
+  assert.deepEqual(contextConsensus({
+    classifierRole: "llm",
+    predicateRole: "excluded"
+  }), {
+    role: "excluded",
+    disagreement: true,
+    reasonCodes: ["predicate_safe_exclusion"]
   });
 });
 
@@ -190,6 +212,12 @@ test("WX1 routes only high-confidence span, link, and context through encoder", 
   assert.equal(result.metrics.shadowEncoderLineCount, 1);
   assert.equal(result.metrics.shadowRoutableLineRatio, 1);
   assert.equal(result.metrics.spanBearingLineCount, 1);
+  assert.equal(result.metrics.confidenceSummary.span.count, 1);
+  assert.equal(result.metrics.confidenceSummary.linkerTopScore.p50, 0.98);
+  assert.equal(
+    result.metrics.confidenceSummary.contextAxes.actionStatus.p50,
+    0.99
+  );
   assert.deepEqual(result.metrics.routeReasonCounts, { performed_span: 1 });
   assert.deepEqual(result.metrics.contextClassifier, {
     calls: 1,
