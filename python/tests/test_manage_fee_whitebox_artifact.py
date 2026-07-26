@@ -9,6 +9,7 @@ from unittest import mock
 
 from scripts.manage_fee_whitebox_artifact import (
     WhiteboxArtifactDistributionError,
+    _gcloud_capture,
     _remote_artifact_version,
     fetch_artifact,
     immutable_remote_manifest_uri,
@@ -116,6 +117,46 @@ class ManageFeeWhiteboxArtifactTest(unittest.TestCase):
                 immutable_remote_manifest_uri(
                     artifact,
                     "gs://example/whitebox",
+                )
+
+    def test_gcloud_capture_accepts_first_upload_missing_object_message(self) -> None:
+        completed = mock.Mock(
+            returncode=1,
+            stdout=b"",
+            stderr=(
+                b"ERROR: (gcloud.storage.cat) The following URLs matched "
+                b"no objects or files:\n"
+                b"gs://example/whitebox/fee_span_detector/test-v1/manifest.json\n"
+            ),
+        )
+        with mock.patch(
+            "scripts.manage_fee_whitebox_artifact.subprocess.run",
+            return_value=completed,
+        ):
+            self.assertIsNone(
+                _gcloud_capture(
+                    ["gcloud", "storage", "cat", "gs://example/manifest.json"],
+                    allow_not_found=True,
+                )
+            )
+
+    def test_gcloud_capture_does_not_hide_other_gcloud_errors(self) -> None:
+        completed = mock.Mock(
+            returncode=1,
+            stdout=b"",
+            stderr=b"ERROR: permission denied",
+        )
+        with mock.patch(
+            "scripts.manage_fee_whitebox_artifact.subprocess.run",
+            return_value=completed,
+        ):
+            with self.assertRaisesRegex(
+                WhiteboxArtifactDistributionError,
+                "permission denied",
+            ):
+                _gcloud_capture(
+                    ["gcloud", "storage", "cat", "gs://example/manifest.json"],
+                    allow_not_found=True,
                 )
 
     def test_fetch_rejects_uri_manifest_version_mismatch_before_model_download(self) -> None:

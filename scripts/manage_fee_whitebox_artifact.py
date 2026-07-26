@@ -373,7 +373,12 @@ def _gcloud_capture(
     message = completed.stderr.decode("utf-8", errors="replace")
     if allow_not_found and any(
         marker in message.lower()
-        for marker in ("not found", "no urls matched", "404")
+        for marker in (
+            "not found",
+            "no urls matched",
+            "matched no objects or files",
+            "404",
+        )
     ):
         return None
     raise WhiteboxArtifactDistributionError(
