@@ -8,7 +8,9 @@ from scripts.build_wx1_span_artifact import (
     build_token_labels,
     categories_from_examples,
     category_token_metrics,
+    classify_category_metric,
     labels_for_offsets,
+    summarize_category_coverage,
 )
 from scripts.whitebox_training_common import WhiteboxTrainingError
 
@@ -90,6 +92,43 @@ class BuildWx1SpanArtifactTest(unittest.TestCase):
         self.assertEqual(metrics["falsePositiveCount"], 0)
         self.assertEqual(metrics["falseNegativeCount"], 2)
         self.assertAlmostEqual(metrics["recall"], 1 / 3)
+
+    def test_category_metric_separates_failure_from_unmeasured(self) -> None:
+        unmeasured = classify_category_metric({
+            "f1": 0,
+            "truePositiveCount": 0,
+            "falsePositiveCount": 0,
+            "falseNegativeCount": 0,
+        })
+        failed = classify_category_metric({
+            "f1": 0,
+            "truePositiveCount": 0,
+            "falsePositiveCount": 0,
+            "falseNegativeCount": 3,
+        })
+        false_positive_only = classify_category_metric({
+            "f1": 0,
+            "truePositiveCount": 0,
+            "falsePositiveCount": 2,
+            "falseNegativeCount": 0,
+        })
+
+        self.assertEqual(unmeasured["qualityStatus"], "unmeasured")
+        self.assertEqual(failed["qualityStatus"], "below_target")
+        self.assertEqual(false_positive_only["qualityStatus"], "false_positive_only")
+
+    def test_category_coverage_reports_each_status(self) -> None:
+        coverage = summarize_category_coverage({
+            "exam": {"qualityStatus": "measured"},
+            "imaging": {"qualityStatus": "below_target"},
+            "material": {"qualityStatus": "unmeasured"},
+        })
+
+        self.assertEqual(coverage["measuredCategoryCount"], 2)
+        self.assertEqual(
+            coverage["categoriesByStatus"]["unmeasured"],
+            ["material"],
+        )
 
 
 if __name__ == "__main__":

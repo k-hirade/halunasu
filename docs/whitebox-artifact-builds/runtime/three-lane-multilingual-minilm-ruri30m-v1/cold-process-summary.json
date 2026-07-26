@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "fee-whitebox-runtime-cold-process-summary-v1",
+  "generatedAt": "2026-07-25",
+  "runCount": 3,
+  "repeatPerRun": 10,
+  "artifactBytesTotal": 1399804036,
+  "peakRssMiB": {
+    "values": [
+      1619.86,
+      1620.19,
+      1650.53
+    ],
+    "maximum": 1650.53
+  },
+  "threeLaneLocalP95SumMs": {
+    "values": [
+      984.102,
+      1252.158,
+      1226.786
+    ],
+    "maximum": 1252.158
+  },
+  "conclusion": {
+    "stgFeeApiMemory": "4Gi",
+    "memoryRationale": "The 4Gi fee-api default leaves headroom above the 1650.53 MiB local model-process peak for Node, the fee master, Python, and request concurrency.",
+    "promotionLatencyGateMs": 500,
+    "latencyGatePassed": false,
+    "routePromotionAllowed": false
+  },
+  "limitations": [
+    "This is a local Apple Silicon measurement, not Cloud Run production telemetry.",
+    "The three per-layer p95 values are conservatively summed and are not a substitute for end-to-end STG telemetry.",
+    "Controlled synthetic traffic does not establish customer copy-forward or routable rates."
+  ]
+}

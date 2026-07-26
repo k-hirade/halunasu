@@ -25,6 +25,8 @@ from medical_fee_calculation.whitebox_span import (
     span_detector_readiness,
 )
 from scripts.build_fee_linker_index import (
+    _embedding_document,
+    _prefixed_embedder,
     _validate_runtime_embedding_parity,
     build_linker_artifact,
 )
@@ -52,6 +54,37 @@ CURRENT_AXES = {
 
 
 class WhiteboxRuntimeTest(unittest.TestCase):
+    def test_linker_build_uses_one_alias_document_per_master_code(self) -> None:
+        self.assertEqual(
+            _embedding_document(
+                "創傷処置",
+                ["創傷処置", "創傷処置（１００ｃｍ２未満）"],
+            ),
+            "創傷処置 / 創傷処置 / 創傷処置（１００ｃｍ２未満）",
+        )
+        self.assertEqual(
+            _embedding_document("聾", ["聾", "ロウ", "H919"]),
+            "聾 / 聾 / ロウ / H919",
+        )
+        self.assertEqual(
+            _embedding_document(
+                "バリトゲンＨＤ　９８．６％",
+                ["バリトゲンＨＤ　９８．６％", "ﾊﾞﾘﾄｹﾞﾝHD", "バリトゲンＨＤ"],
+            ),
+            "バリトゲンＨＤ　９８．６％ / バリトゲンＨＤ　９８．６％ / ﾊﾞﾘﾄｹﾞﾝHD",
+        )
+
+    def test_linker_document_prefix_is_applied_before_embedding(self) -> None:
+        observed = []
+
+        def embed(values):
+            observed.extend(values)
+            return [[1.0] for _ in values]
+
+        prefixed = _prefixed_embedder(embed, "検索文書: ")
+        self.assertEqual(prefixed(["創傷処置"]), [[1.0]])
+        self.assertEqual(observed, ["検索文書: 創傷処置"])
+
     def test_determinism_probe_rejects_byte_different_output(self) -> None:
         calls = 0
 
@@ -242,7 +275,10 @@ class WhiteboxRuntimeTest(unittest.TestCase):
                     "service_date": "2026-07-24",
                     "top_k": 5,
                 },
-                embedder=lambda values: [[1.0, 0.0] for _ in values],
+                embedder=lambda values: (
+                    self.assertEqual(values, ["創部を処置"])
+                    or [[1.0, 0.0] for _ in values]
+                ),
             )
             self.assertEqual(result["status"], "complete")
             candidates = result["results"][0]["candidates"]
@@ -250,6 +286,52 @@ class WhiteboxRuntimeTest(unittest.TestCase):
             self.assertEqual(candidates[0]["categoryMatched"], True)
             self.assertEqual(candidates[1]["score"], 0.9)
             self.assertNotIn("old", [item["code"] for item in candidates])
+
+    def test_linker_applies_manifest_query_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)
+            index = {
+                "dimension": 2,
+                "entries": [
+                    {
+                        "code": "140000610",
+                        "name": "創傷処置",
+                        "kind": "procedure",
+                        "matchedDoc": "創傷処置",
+                        "vector": [1.0, 0.0],
+                    }
+                ],
+            }
+            index_path = path / "index.json"
+            index_path.write_text(json.dumps(index), encoding="utf-8")
+            manifest_path = self._write_manifest(
+                path,
+                self._manifest(
+                    "fee_master_linker",
+                    files={
+                        "index": {
+                            "path": "index.json",
+                            "sha256": self._sha(index_path),
+                        }
+                    },
+                    queryPrefix="検索クエリ: ",
+                ),
+            )
+            observed = []
+
+            def embed(values):
+                observed.extend(values)
+                return [[1.0, 0.0] for _ in values]
+
+            result = link_spans(
+                {
+                    "manifest_path": str(manifest_path),
+                    "spans": [{"text": "創傷処置", "category": "procedure"}],
+                },
+                embedder=embed,
+            )
+            self.assertEqual(result["status"], "complete")
+            self.assertEqual(observed, ["検索クエリ: 創傷処置"])
 
     def test_context_contract_validates_all_axes(self) -> None:
         with tempfile.TemporaryDirectory() as root:

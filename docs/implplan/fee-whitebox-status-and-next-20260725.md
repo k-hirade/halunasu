@@ -1,63 +1,88 @@
-# 現在地と次の一手: 白箱抽出 (2026-07-25 夜時点)
+# 現在地と次の一手: 白箱抽出 (2026-07-25 実装後)
 
-親: [白箱抽出エンジン計画](./fee-whitebox-extraction-plan-20260724.md) /
-[H1〜H4ワークオーダー](./fee-whitebox-wx0-completion-workorder-20260725.md) /
-[WX0実行計画](./fee-whitebox-wx0-execution-plan-20260725.md)
+親:
+[白箱抽出計画](./fee-whitebox-extraction-plan-20260724.md) /
+[WX0完了ワークオーダー](./fee-whitebox-wx0-completion-workorder-20260725.md) /
+[WX1後の計画](./fee-whitebox-next-after-wx1-shadow-20260725.md) /
+[STG runbook](./fee-whitebox-three-lane-shadow-runbook-20260725.md)。
 
-## 直近2コミットの棚卸し(4ccbd6d "Add data" / b0ea7a1 "Impl GLiNER")
+## 結論
 
-**H1〜H4は全て実装された**(計28,201行):
+WX1・WX2・WX3の成果物と、STGで3レーンを安全にshadow計測する実装は
+ローカルで揃った。まだSTGへは配置しておらず、PRODはoffのまま。
 
-| 項目 | 実装物 | 状態 |
-| --- | --- | --- |
-| H1 昇格CLI | `promote_fee_specialty_matrix_annotations.mjs` + promotion lib+テスト | 済 |
-| H2 非外来holdout生産 | blueprint生成(`generate_fee_specialty_holdout_blueprints/texts.mjs`)+generation lib+validator拡張+`non-outpatient-blueprints.json`(24セル分) | 済 |
-| H3 背反ハーネス | `fee-monthly-exclusion-evaluation.mjs`+monthly harness拡張 | 実装済・**STG再走は未**(下記env問題) |
-| H4 モデル製造 | `build_wx1_span_artifact.py`(677行)/`build_wx3_context_artifact.py`(651行)/`whitebox_training_common.py`/training-view生成 | 済(モデル成果物は未製造) |
-| holdout 16件 | **平出さんの人手レビュー済み**(reviewedBy記録・human_reviewed) | 済。外来8セルstrict complete |
-| 非外来生成 | 24セル×2=48ケースの本文生成済み(`non-outpatient-generated-cases.json`、未コミット) | **ラベル未付与** |
-| 実験用機械ビュー | `experimental-machine-holdout.json`(352件、humanReviewSkipped明示) | 未コミット |
+「GLiNER方式が本番で完全に動く」段階ではない。現在は以下を正直に区別する。
 
-レビュー指摘(P1×4+P2×2)は、P1-2(split規律)/P1-1(GLiNERは評価専用・製品はBIO+relevance訓練)/P2×2(100回・PYTHONPATH)がコミットで反映済み。P1-3はユーザーの実レビューで解消。P1-4(非外来請求契約の文言)は本日doc修正済み。
+- 成果物製造: 完了
+- ローカル決定論・readiness: 完了
+- 32セルSTG shadow計測経路: 実装・dry-run完了
+- STG artifacts upload / deploy / 96件実測: 未実施
+- 独立人手判定: 未実施
+- route / propose / assist昇格: 禁止
 
-## GCP実測(fee-api-stg)
+## 成果物
 
-- revision: `fee-api-stg-00181-prk`。whitebox 3レーンはoff+not_configured(モデル未配置なので想定どおり)。
-- **⚠ フラグ落ちを検出**: `extractionMemoEnabled=false / standingFactsEnabled=false /
-  monthlyExclusionMode=off`。以前のSTGは memo=true / standing=true / exclusion=enforce
-  だった。意図的でなければ、次回デプロイで
-  `FEE_EXTRACTION_MEMO_STG=true FEE_STANDING_FACTS_STG=true FEE_MONTHLY_EXCLUSION_MODE_STG=enforce`
-  を付けて復元すること(env未指定デプロイで既定値に戻る、過去に一度起きた事故と同型)。
-  **H3の受入再走(B2)はこの復元が前提**。
+| 層 | 成果物 | 主な結果 | 判定 |
+| --- | --- | --- | --- |
+| WX1 span | `span-wx1-multilingual-minilm-l12-v1` | 決定論100回合格 | shadowのみ |
+| WX2 linker | `linker-ruri-v3-30m-v1` | dev recall@5 57.89% (exact alias 32.46%) | shadowのみ |
+| WX3 context | `context-wx3-multilingual-minilm-l12-v1` | 決定論100回合格、危険側をabstain | shadowのみ |
 
-## ⚠ WX0初回計測(gliner-multi-v2.1)は無効
+WX3は`actionStatus`で高精度なクラスがある一方、
+`temporalRelation`と`providerOwnership`は開発データ上で全件abstain。
+standingには危険側false positive 1件 (0.529%) がある。したがって安全側の
+shadow観測対象ではあるが、route可能という意味ではない。
 
-`docs/20260725-whitebox-stg-shadow/wx0/gliner-multi-v2.1/` の全セルF1=0.0000は
-**モデルの実力値ではない**。result.jsonは `TP=FP=FN=0`——本当に全滅なら
-FN=gold総数になるはずで、**goldも予測も1件も評価器に入っていない**
-(実行時のデータセットビューにexpectedSpansが乗っていなかった+予測も0件)。
-現在の`experimental-machine-holdout.json`は全ケースspanありを確認済み。
-作業ツリーの未コミット修正(`wx0_span_zeroshot.py`のラベル由来集計等)を仕上げて
-**再実行が必要**。この数字で分岐判定(S3)をしないこと。
+## WX1カテゴリの根拠
 
-## 次の一手(優先順)
+開発データにpositive supportがあり、recall失敗を実測したカテゴリ:
 
-1. **WX0 span再実行**: 未コミット修正を完成→gliner-multi-v2.1 / gliner-biomedで
-   再計測。①gold集計=human_reviewed 16件のみ ②experimental集計=機械ラベル込み、
-   を必ず分離して出す(実装済みのnotGold機構)。**閾値スイープ(0.1/0.2/0.3/0.5)**を
-   追加——予測0件は閾値0.5が日本語で高すぎる可能性があり、0%と閾値問題を
-   切り分けるため。
-2. **STG envの復元**(上記⚠)。復元後にB2(背反受入の自動再現)を再走してクローズ。
-3. **48非外来ケースのラベル付け**: 本文は生成済み(nano=別生成系)。
-   ラベルはclaude付与→機械検証→`experimental-machine-holdout.json`更新で
-   実験には即使える。**gold昇格には平出さんのレビュー**(H1の昇格CLI経由)。
-4. E4(linking)/E5(文脈)/E6(負荷)の実行(実行計画S2)。
-5. S3分岐判定は**goldスコア(human_reviewed分)のみ**を根拠に記録。
-6. 分岐に応じてH4で成果物製造→S4のshadow手順へ。
+- `imaging`: support 17、TP 0、FN 17
+- `treatment`: support 19、TP 0、FN 19
 
-## コミット待ち(ユーザー判断)
+positive supportがなく、失敗とはまだ言えない未計測カテゴリ:
 
-未コミット: `experimental-machine-holdout.json` / `non-outpatient-generated-cases.json` /
-`wx0_span_zeroshot.py`修正 / experimental holdout系スクリプト3本 /
-`docs/20260725-whitebox-stg-shadow/`(※無効計測の注記を本ページから参照) /
-本日のdocs修正(P1-4文言・本ページ)。
+- `material`
+- `other`
+- `outpatient_basic`
+- `pathology`
+
+詳細:
+[category coverage](../whitebox-artifact-builds/wx1/wx1-multilingual-minilm-l12-v1/category-coverage.md)。
+
+## 運用実装
+
+1. `configs/runtime-feature-profiles/` に完全なSTG状態を宣言した。
+2. profile loaderは全キー必須、環境不一致・`TARGET_ENV=all`をfail-closedにする。
+3. モデルはGCSの`artifactType/artifactVersion`へimmutable uploadする。
+4. デプロイ前に全ファイルsha256を検証してfee-api build contextへatomic配置する。
+5. 白箱cold-load専用timeoutを120秒に分離した。
+6. STGハーネスは8科 x 4区分 x 3件 = 96件、holdout 0件を固定選択する。
+7. 電話再診は本番契約の`outpatient + telephone_revisit`から`telephone`セルへ正規化する。
+8. ログレポータはハーネスのsession IDだけを集計し、欠損・重複・revision混在を拒否する。
+9. machine precheckは人手goldを名乗らず、独立判定なしでは昇格ゲートが閉じる。
+
+## 容量・性能
+
+3モデルのartifact合計は1,399,804,036 bytes。独立cold process 3回の最大RSSは
+1,650.53 MiBだった。既存fee-api既定の4GiBを維持する。
+
+各層のローカルp95合計は984〜1,252msで、昇格ポリシーの500msを超える。
+これはゲートを緩める理由ではなく、最適化または構成見直しが必要という結果。
+Cloud Run上のend-to-end telemetryで再確認するまでroute化しない。
+
+詳細:
+[runtime summary](../whitebox-artifact-builds/runtime/three-lane-multilingual-minilm-ruri30m-v1/cold-process-summary.md)。
+
+## 次の一手
+
+1. 3成果物をSTG artifact registryへimmutable uploadする。
+2. `stg-whitebox-three-lane-shadow` profileでfee-api-stgだけをデプロイする。
+3. `/readyz`でrevision、3モード、3artifactを確認する。
+4. 32セル96件を実行し、session allowlist付きでログを集計する。
+5. latency、degraded、routable、棄却理由を評価する。
+6. 別途作成した独立判定データをゲートへ入力する。
+7. isolated shadowを理解した後だけ`stg-full-validation`で縦断・standing・月次背反を再走する。
+8. その後にWX1 imaging/treatment補強と、L3 abstainのデータ拡張へ進む。
+
+STG実測と独立判定を通過するまで、PROD反映およびencoder routingは行わない。

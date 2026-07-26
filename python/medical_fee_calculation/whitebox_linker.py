@@ -66,7 +66,12 @@ def link_spans(
         top_k = _bounded_int(payload.get("top_k", payload.get("topK")), DEFAULT_TOP_K, 1, MAX_TOP_K)
         service_date = str(payload.get("service_date") or payload.get("serviceDate") or "").strip()
         encoder = embedder or _load_embedder(artifact)
-        vectors = encoder([span["text"] for span in spans]) if spans else []
+        query_prefix = str(artifact.manifest.get("queryPrefix") or "")
+        vectors = (
+            encoder([f"{query_prefix}{span['text']}" for span in spans])
+            if spans
+            else []
+        )
         if len(vectors) != len(spans):
             raise WhiteboxArtifactError("linker embedder returned an unexpected vector count")
         results = [
@@ -121,8 +126,9 @@ def linker_readiness(manifest_path: str | Path | None = None) -> dict[str, Any]:
             str(artifact.manifest_path),
             artifact.artifact_version,
         )
+        query_prefix = str(artifact.manifest.get("queryPrefix") or "")
         probe_vectors, determinism_probe = verify_deterministic_inference(
-            lambda: encoder.encode(["算定確認"]),
+            lambda: encoder.encode([f"{query_prefix}算定確認"]),
             label="linker readiness probe",
         )
         if len(probe_vectors) != 1:

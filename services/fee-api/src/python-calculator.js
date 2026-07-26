@@ -16,6 +16,7 @@ const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const DEFAULT_MASTER_SEARCH_CACHE_MAX_ENTRIES = 2000;
 const DEFAULT_MASTER_SEARCH_CACHE_TTL_MS = 600_000;
 const DEFAULT_MASTER_METADATA_CACHE_TTL_MS = 60_000;
+const DEFAULT_WHITEBOX_TIMEOUT_MS = 120_000;
 // ワーカータイムアウト時、巻き込まれた待機リクエストを新ワーカーへ再送する最大試行回数。
 // これを超えたら該当リクエストも失敗させ、無限再送を防ぐ。
 const WORKER_MAX_DISPATCH_ATTEMPTS = 2;
@@ -39,6 +40,10 @@ export function createFeeCalculatorFromEnv(env = process.env) {
     contextClassifierManifestPath: env.FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH || "",
     spanDetectorManifestPath: env.FEE_SPAN_DETECTOR_MANIFEST_PATH || "",
     timeoutMs: Number(env.FEE_CALCULATOR_TIMEOUT_MS || 30000),
+    whiteboxTimeoutMs: positiveInteger(
+      env.FEE_WHITEBOX_TIMEOUT_MS,
+      DEFAULT_WHITEBOX_TIMEOUT_MS
+    ),
     workerMode: env.FEE_PYTHON_WORKER_MODE === "spawn" || env.FEE_PYTHON_WORKER === "0" ? false : true,
     masterSearchCacheMaxEntries: positiveInteger(env.FEE_MASTER_SEARCH_CACHE_MAX_ENTRIES, DEFAULT_MASTER_SEARCH_CACHE_MAX_ENTRIES),
     masterSearchCacheTtlMs: positiveInteger(env.FEE_MASTER_SEARCH_CACHE_TTL_MS, DEFAULT_MASTER_SEARCH_CACHE_TTL_MS)
@@ -64,6 +69,8 @@ export class PythonFeeCalculator {
     this.spanDetectorManifestPath = options.spanDetectorManifestPath || "";
     this.logger = options.logger || console;
     this.timeoutMs = options.timeoutMs || 30000;
+    this.whiteboxTimeoutMs = options.whiteboxTimeoutMs
+      || DEFAULT_WHITEBOX_TIMEOUT_MS;
     this.workerMode = options.workerMode !== false;
     this.masterDbPreparePromise = null;
     this.masterContentCheckPromise = null;
@@ -265,7 +272,7 @@ export class PythonFeeCalculator {
       manifest_path: payload.manifest_path || payload.manifestPath || this.linkerManifestPath
     }, {
       requestIdPrefix: "fee_link_spans",
-      timeoutMs: Math.min(this.timeoutMs, 10000)
+      timeoutMs: this.whiteboxTimeoutMs
     });
   }
 
@@ -278,7 +285,7 @@ export class PythonFeeCalculator {
         || this.contextClassifierManifestPath
     }, {
       requestIdPrefix: "fee_classify_context",
-      timeoutMs: Math.min(this.timeoutMs, 10000)
+      timeoutMs: this.whiteboxTimeoutMs
     });
   }
 
@@ -291,7 +298,7 @@ export class PythonFeeCalculator {
         || this.spanDetectorManifestPath
     }, {
       requestIdPrefix: "fee_detect_spans",
-      timeoutMs: Math.min(this.timeoutMs, 10000)
+      timeoutMs: this.whiteboxTimeoutMs
     });
   }
 
@@ -312,7 +319,7 @@ export class PythonFeeCalculator {
       span_manifest_path: this.spanDetectorManifestPath
     }, {
       requestIdPrefix: "fee_whitebox_readiness",
-      timeoutMs: Math.min(this.timeoutMs, 10000)
+      timeoutMs: this.whiteboxTimeoutMs
     });
   }
 
@@ -347,6 +354,7 @@ export class PythonFeeCalculator {
         contextClassifierConfigured: Boolean(this.contextClassifierManifestPath),
         spanDetectorConfigured: Boolean(this.spanDetectorManifestPath)
       },
+      whiteboxTimeoutMs: this.whiteboxTimeoutMs,
       masterContentCheckMode: this.masterContentCheckMode,
       timeoutMs: this.timeoutMs,
       workerMode: this.workerMode ? "persistent" : "spawn",

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "policyId": "fee-whitebox-shadow-promotion-v1",
+  "requiredSpecialties": [
+    "internal_medicine",
+    "pediatrics",
+    "dermatology",
+    "orthopedics",
+    "psychiatry",
+    "ophthalmology",
+    "otolaryngology",
+    "surgery"
+  ],
+  "requiredEncounterSettings": [
+    "outpatient",
+    "home_visit",
+    "house_call",
+    "telephone"
+  ],
+  "specialtyAliases": {
+    "内科": "internal_medicine",
+    "小児科": "pediatrics",
+    "皮膚科": "dermatology",
+    "整形外科": "orthopedics",
+    "精神科": "psychiatry",
+    "眼科": "ophthalmology",
+    "耳鼻咽喉科": "otolaryngology",
+    "外科": "surgery"
+  },
+  "telemetry": {
+    "minimumRunsPerCell": 3,
+    "maximumDegradedRunRate": 0,
+    "maximumWhiteboxP95Ms": 500,
+    "requireRunManifest": true,
+    "requireSingleCloudRunRevision": true,
+    "requireSingleExtractorVersion": true
+  },
+  "adjudication": {
+    "minimumControlRepeats": 3,
+    "minimumReviewedLinesPerCell": 20,
+    "minimumReviewedSpansPerCell": 10,
+    "minimumCodePrecision": 0.99,
+    "minimumRecallDeltaVsLlm": -0.02,
+    "maximumDangerousFalsePositiveRate": 0.01,
+    "minimumDeterministicExactMatchRate": 1
+  }
+}

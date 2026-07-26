@@ -1,0 +1,182 @@
+{
+  "schemaVersion": "fee-whitebox-runtime-measurement-v1",
+  "generatedAt": "2026-07-25T15:58:50.029703Z",
+  "platform": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "python": "3.12.10"
+  },
+  "repeat": 10,
+  "serviceDate": "2026-07-25",
+  "artifacts": {
+    "span": {
+      "manifestPath": "python/data/whitebox/span-wx1-multilingual-minilm-l12-v1/manifest.json",
+      "artifactType": "fee_span_detector",
+      "artifactVersion": "wx1-multilingual-minilm-l12-v1",
+      "modelRevision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+      "sizeBytes": 487426394
+    },
+    "linker": {
+      "manifestPath": "python/data/whitebox/linker-ruri-v3-30m-v1/linker_manifest.json",
+      "artifactType": "fee_master_linker",
+      "artifactVersion": "ca0b72af0ea8ed861525941e",
+      "modelRevision": "24899e5de370b56d179604a007c0d727bf144504",
+      "sizeBytes": 424953501
+    },
+    "context": {
+      "manifestPath": "python/data/whitebox/context-wx3-multilingual-minilm-l12-v1/manifest.json",
+      "artifactType": "fee_context_classifier",
+      "artifactVersion": "wx3-multilingual-minilm-l12-v1",
+      "modelRevision": "86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d",
+      "sizeBytes": 487424141
+    }
+  },
+  "artifactBytesTotal": 1399804036,
+  "readinessDurationMs": 7199.048,
+  "readiness": {
+    "span": {
+      "available": true,
+      "artifactType": "fee_span_detector",
+      "artifactVersion": "wx1-multilingual-minilm-l12-v1",
+      "modelVersion": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "modelRevision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+      "backend": "onnx_token_classifier",
+      "license": {
+        "modelId": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        "license": "Apache-2.0",
+        "verifiedAt": "2026-07-25",
+        "sourceUrl": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
+      },
+      "manifestSha256": "059a7c4adc394f1bdd3861aa703ce44f68d3a7394b4972f0ab730b24c13f456a",
+      "runtimeDependencies": {
+        "available": true,
+        "missingModules": [],
+        "reason": null
+      },
+      "inferenceProbe": "passed",
+      "determinismProbe": {
+        "status": "passed",
+        "repeatCount": 2,
+        "outputSha256": "764a9be961b95d796049c49cc8499c5edeabc635083a447e297d7a7407c84c84"
+      }
+    },
+    "linker": {
+      "available": true,
+      "artifactType": "fee_master_linker",
+      "artifactVersion": "ca0b72af0ea8ed861525941e",
+      "modelVersion": "cl-nagoya/ruri-v3-30m",
+      "modelRevision": "24899e5de370b56d179604a007c0d727bf144504",
+      "backend": "onnx_sentence_encoder",
+      "license": {
+        "modelId": "cl-nagoya/ruri-v3-30m",
+        "license": "Apache-2.0",
+        "verifiedAt": "2026-07-25",
+        "sourceUrl": "https://huggingface.co/cl-nagoya/ruri-v3-30m/blob/24899e5de370b56d179604a007c0d727bf144504/README.md"
+      },
+      "manifestSha256": "e00a6511541d858c92da38ccfdc043a6fca87b3c56cffdb503bd9da47f92693c",
+      "runtimeDependencies": {
+        "available": true,
+        "missingModules": [],
+        "reason": null
+      },
+      "inferenceProbe": "passed",
+      "determinismProbe": {
+        "status": "passed",
+        "repeatCount": 2,
+        "outputSha256": "41b5dac2465038bac8def4be99cf7b2b227324f4d6d1a1978e23d2aeb1232ea2"
+      },
+      "indexEntryCount": 57925,
+      "dimension": 256
+    },
+    "context": {
+      "available": true,
+      "artifactType": "fee_context_classifier",
+      "artifactVersion": "wx3-multilingual-minilm-l12-v1",
+      "modelVersion": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "modelRevision": "86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d",
+      "backend": "onnx_multi_axis",
+      "license": {
+        "modelId": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        "license": "Apache-2.0",
+        "verifiedAt": "2026-07-25",
+        "sourceUrl": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d"
+      },
+      "manifestSha256": "3b6f3140c09869a80f74e08b74f2ed3c97885d07a2c13cfca435994e7dc91fed",
+      "runtimeDependencies": {
+        "available": true,
+        "missingModules": [],
+        "reason": null
+      },
+      "inferenceProbe": "passed",
+      "determinismProbe": {
+        "status": "passed",
+        "repeatCount": 2,
+        "outputSha256": "193bf9775c080edfb93ecdffc5c6508741eaeebd13d23a6de2c1e1619fcaf31c"
+      }
+    }
+  },
+  "peakRssBytes": 1698545664,
+  "peakRssMiB": 1619.86,
+  "rssStages": [
+    {
+      "stage": "start",
+      "peakRssBytes": 24772608,
+      "peakRssMiB": 23.62
+    },
+    {
+      "stage": "all_readiness_loaded",
+      "peakRssBytes": 1698545664,
+      "peakRssMiB": 1619.86
+    },
+    {
+      "stage": "span_inference",
+      "peakRssBytes": 1698545664,
+      "peakRssMiB": 1619.86
+    },
+    {
+      "stage": "linker_inference",
+      "peakRssBytes": 1698545664,
+      "peakRssMiB": 1619.86
+    },
+    {
+      "stage": "context_inference",
+      "peakRssBytes": 1698545664,
+      "peakRssMiB": 1619.86
+    }
+  ],
+  "latencyMs": {
+    "span": {
+      "count": 10,
+      "median": 215.794,
+      "mean": 222.653,
+      "p95": 269.43,
+      "max": 269.43
+    },
+    "linker": {
+      "count": 10,
+      "median": 288.495,
+      "mean": 298.225,
+      "p95": 363.497,
+      "max": 363.497
+    },
+    "context": {
+      "count": 10,
+      "median": 230.638,
+      "mean": 252.821,
+      "p95": 351.175,
+      "max": 351.175
+    },
+    "totalP95": 984.102
+  },
+  "sampleResult": {
+    "spanCount": 0,
+    "linkerCandidateCount": 5,
+    "contextItemCount": 1
+  },
+  "interpretation": {
+    "localOnly": true,
+    "cloudRunMemoryDecisionRequiresHeadroom": true,
+    "recommendedMinimumHeadroomRatio": 1.35,
+    "note": "The measured peak excludes the rest of fee-api and concurrent requests. Do not set Cloud Run memory equal to this local peak."
+  }
+}

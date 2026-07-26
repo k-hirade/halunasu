@@ -10,6 +10,7 @@ import {
   contextRoleFromAxes,
   determineWhiteboxVisitFacts,
   prepareWhiteboxExtraction,
+  whiteboxEncounterSetting,
   whiteboxRuntimeModes,
   whiteboxThresholds
 } from "../src/whitebox-extraction.js";
@@ -80,6 +81,34 @@ test("WX1 threshold configuration applies setting, specialty, then exact cell ov
     "皮膚科|home_visit"
   ]);
   assert.match(thresholds.version, /^thresholds-v1:cells=/);
+});
+
+test("whitebox uses a dedicated telephone cell for outpatient telephone revisits", async () => {
+  assert.equal(whiteboxEncounterSetting({
+    setting: "outpatient",
+    encounterDetails: {
+      visitKind: "telephone_revisit",
+      visitKindSource: "user"
+    }
+  }), "telephone");
+  assert.equal(whiteboxEncounterSetting({ setting: "home_visit" }), "home_visit");
+
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator(),
+    preprocessing: { lines: [] },
+    session: {
+      setting: "outpatient",
+      encounterDetails: {
+        visitKind: "telephone_revisit",
+        visitKindSource: "user"
+      }
+    },
+    env: shadowEnv()
+  });
+
+  assert.equal(result.status, "shadow");
+  assert.equal(result.metrics.eligible, true);
+  assert.equal(result.metrics.encounterSetting, "telephone");
 });
 
 test("WX3 truth table excludes non-performed, past, and external context", () => {
@@ -158,6 +187,10 @@ test("WX1 routes only high-confidence span, link, and context through encoder", 
   assert.equal(result.encoderFacts.clinical_events[0].extractionSource, "encoder");
   assert.equal(result.encoderFacts.clinical_events[0].status, "candidate");
   assert.equal(result.encoderFacts.clinical_events[0].reviewRequired, true);
+  assert.equal(result.metrics.shadowEncoderLineCount, 1);
+  assert.equal(result.metrics.shadowRoutableLineRatio, 1);
+  assert.equal(result.metrics.spanBearingLineCount, 1);
+  assert.deepEqual(result.metrics.routeReasonCounts, { performed_span: 1 });
   assert.deepEqual(result.metrics.contextClassifier, {
     calls: 1,
     evaluatedSpans: 1,
@@ -392,6 +425,127 @@ test("WX1 falls back all lines to LLM when a whitebox worker is unavailable", as
   assert.equal(result.degraded, true);
   assert.deepEqual(result.llmLines, lines);
   assert.deepEqual(result.encoderFacts.clinical_events, []);
+});
+
+test("three-lane shadow is healthy when every artifact returns a complete envelope", async () => {
+  const lines = [{
+    lineId: "O-001",
+    text: "創傷処置を施行。",
+    section: "O",
+    cues: { currentVisit: true }
+  }];
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator(),
+    preprocessing: { lines },
+    session: { setting: "outpatient" },
+    env: shadowEnv()
+  });
+
+  assert.equal(result.status, "shadow");
+  assert.equal(result.degraded, false);
+  assert.equal(result.metrics.degraded, false);
+  assert.deepEqual(result.metrics.degradedReasons, []);
+  assert.equal(result.metrics.shadowEncoderLineCount, 1);
+  assert.equal(result.metrics.spanBearingLineCount, 1);
+  assert.equal(result.metrics.shadowEncoderSpanBearingLineCount, 1);
+  assert.equal(result.metrics.spanBearingRoutableLineRatio, 1);
+  assert.equal(result.metrics.encoderLineCount, 0);
+  assert.deepEqual(result.llmLines, lines);
+});
+
+test("three-lane shadow reports an unavailable linker as degraded", async () => {
+  const calculator = completeWhiteboxCalculator();
+  calculator.linkSpans = async () => ({
+    status: "index_unavailable",
+    results: [],
+    reason: "index missing"
+  });
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: calculator,
+    preprocessing: {
+      lines: [{
+        lineId: "O-001",
+        text: "創傷処置を施行。",
+        section: "O",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient" },
+    env: shadowEnv()
+  });
+
+  assert.equal(result.status, "shadow");
+  assert.equal(result.degraded, true);
+  assert.deepEqual(result.metrics.degradedReasons, ["linker_unavailable"]);
+});
+
+test("three-lane shadow with no detected spans is not a model failure", async () => {
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator({
+      spanResults: [{
+        lineId: "S-001",
+        relevance: "irrelevant",
+        relevanceConfidence: 0.99,
+        spans: []
+      }]
+    }),
+    preprocessing: {
+      lines: [{
+        lineId: "S-001",
+        text: "症状は安定。",
+        section: "S",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient" },
+    env: shadowEnv()
+  });
+
+  assert.equal(result.degraded, false);
+  assert.deepEqual(result.metrics.degradedReasons, []);
+});
+
+test("three-lane extractor identity is stable for lines with and without spans", async () => {
+  const env = shadowEnv();
+  const withSpan = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator(),
+    preprocessing: {
+      lines: [{
+        lineId: "O-001",
+        text: "創傷処置を施行。",
+        section: "O",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient" },
+    env
+  });
+  const withoutSpan = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator({
+      spanResults: [{
+        lineId: "S-001",
+        relevance: "irrelevant",
+        relevanceConfidence: 0.99,
+        spans: []
+      }]
+    }),
+    preprocessing: {
+      lines: [{
+        lineId: "S-001",
+        text: "症状は安定。",
+        section: "S",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient" },
+    env
+  });
+
+  assert.equal(withSpan.extractorVersion, withoutSpan.extractorVersion);
+  assert.equal(withSpan.metrics.extractorVersion, withoutSpan.metrics.extractorVersion);
+  assert.equal(withSpan.metrics.spanDetectorArtifactVersion, "span-artifact-v1");
+  assert.equal(withSpan.metrics.linkerArtifactVersion, "link-artifact-v1");
+  assert.equal(withSpan.metrics.contextClassifierArtifactVersion, "context-artifact-v1");
 });
 
 test("WX1 invalid threshold configuration cannot activate encoder routing", async (t) => {
@@ -660,6 +814,17 @@ function routeEnv() {
   };
 }
 
+function shadowEnv() {
+  return {
+    FEE_LINKER_MODE: "shadow",
+    FEE_CONTEXT_CLASSIFIER_MODE: "shadow",
+    FEE_SPAN_DETECTOR_MODE: "shadow",
+    FEE_LINKER_MANIFEST_PATH: "/app/python/data/whitebox/linker-v1/manifest.json",
+    FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH: "/app/python/data/whitebox/context-v1/manifest.json",
+    FEE_SPAN_DETECTOR_MANIFEST_PATH: "/app/python/data/whitebox/span-v1/manifest.json"
+  };
+}
+
 function completeWhiteboxCalculator(options = {}) {
   const spanResults = options.spanResults || [{
     lineId: "O-001",
@@ -680,6 +845,7 @@ function completeWhiteboxCalculator(options = {}) {
       return {
         status: "complete",
         extractorVersion: "span-v1",
+        artifactVersion: "span-artifact-v1",
         results: spanResults
       };
     },
@@ -687,6 +853,7 @@ function completeWhiteboxCalculator(options = {}) {
       return {
         status: "complete",
         indexVersion: "link-v1",
+        artifactVersion: "link-artifact-v1",
         results: options.linkResults || spanResults.flatMap((row) => row.spans).map(() => (
           linkedCandidate("140000610", "創傷処置（１００ｃｍ２未満）", "procedure")
         ))
@@ -696,6 +863,7 @@ function completeWhiteboxCalculator(options = {}) {
       return {
         status: "complete",
         modelVersion: "context-v1",
+        artifactVersion: "context-artifact-v1",
         results: items.map((item) => ({
           lineId: item.lineId,
           spanId: item.spanId,

@@ -110,3 +110,5 @@ venv-wx0/
 python/data/whitebox/**/model.onnx
 python/data/whitebox/**/tokenizer.json
 python/data/whitebox/**/build-report.json
+python/data/whitebox/**/linker-index.sqlite
+python/data/whitebox/**/linker-index.sqlite-*

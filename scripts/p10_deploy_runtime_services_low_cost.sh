@@ -21,6 +21,30 @@ TIMEOUT="${TIMEOUT:-60}"
 CONCURRENCY="${CONCURRENCY:-80}"
 TARGET_ENV="${TARGET_ENV:-all}"
 TARGET_SERVICE="${TARGET_SERVICE:-all}"
+RUNTIME_FEATURE_PROFILE="${RUNTIME_FEATURE_PROFILE:-}"
+
+load_runtime_feature_profile() {
+  if [[ -z "${RUNTIME_FEATURE_PROFILE}" ]]; then
+    return 0
+  fi
+  if [[ "${TARGET_ENV}" != "stg" && "${TARGET_ENV}" != "prod" ]]; then
+    echo "RUNTIME_FEATURE_PROFILE requires TARGET_ENV=stg or TARGET_ENV=prod." >&2
+    return 1
+  fi
+  local resolved
+  if ! resolved="$(python3 scripts/runtime_feature_profile.py resolve \
+    --profile "${RUNTIME_FEATURE_PROFILE}" \
+    --environment "${TARGET_ENV}")"; then
+    return 1
+  fi
+  local assignment
+  while IFS= read -r assignment; do
+    [[ -z "${assignment}" ]] && continue
+    export "${assignment}"
+  done <<< "${resolved}"
+}
+
+load_runtime_feature_profile
 
 if [[ "${MIN_INSTANCES}" != "0" ]]; then
   echo "Refusing deploy: MIN_INSTANCES must be 0." >&2
@@ -39,6 +63,7 @@ echo "Tag: ${TAG}"
 echo "Cloud Run: min=${MIN_INSTANCES}, max=${MAX_INSTANCES}, cpu throttling enabled"
 echo "Target env: ${TARGET_ENV}"
 echo "Target service: ${TARGET_SERVICE}"
+echo "Runtime feature profile: ${RUNTIME_FEATURE_PROFILE:-manual/default}"
 echo
 
 run_or_print() {
@@ -70,7 +95,46 @@ gcloud_dict_arg() {
   printf '^%s^%s' "${delimiter}" "${joined}"
 }
 
-validate_packaged_fee_artifact_path() {
+prepare_packaged_fee_artifact() {
+  local runtime_path="$1"
+  local source_uri="$2"
+  local expected_type="$3"
+  local label="$4"
+  if [[ -z "${runtime_path}" ]]; then
+    return 0
+  fi
+  if [[ "${runtime_path}" != /app/python/data/whitebox/* ]]; then
+    echo "${label} must be packaged under /app/python/data/whitebox/." >&2
+    return 1
+  fi
+  local repository_path="${runtime_path#/app/}"
+  if [[ -n "${source_uri}" ]]; then
+    if [[ "${source_uri}" != gs://* ]]; then
+      echo "${label} artifact URI must use gs://." >&2
+      return 1
+    fi
+    if [[ "${APPLY}" == "true" ]]; then
+      PYTHONPATH=python:. python3 scripts/manage_fee_whitebox_artifact.py fetch \
+        --manifest-uri "${source_uri}" \
+        --destination-manifest "${repository_path}" \
+        --expected-type "${expected_type}"
+    else
+      echo "DRY RUN: fetch ${label} from ${source_uri} to ${repository_path}"
+    fi
+  fi
+  if [[ ! -f "${repository_path}" ]]; then
+    if [[ "${APPLY}" != "true" && -n "${source_uri}" ]]; then
+      return 0
+    fi
+    echo "${label} does not exist in the fee-api build context: ${repository_path}" >&2
+    return 1
+  fi
+  PYTHONPATH=python:. python3 scripts/manage_fee_whitebox_artifact.py verify \
+    --manifest "${repository_path}" \
+    --expected-type "${expected_type}" >/dev/null
+}
+
+validate_packaged_fee_file_path() {
   local runtime_path="$1"
   local label="$2"
   if [[ -z "${runtime_path}" ]]; then
@@ -247,6 +311,9 @@ deploy_env() {
   local fee_linker_manifest_path="${FEE_LINKER_MANIFEST_PATH:-}"
   local fee_context_classifier_manifest_path="${FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH:-}"
   local fee_span_detector_manifest_path="${FEE_SPAN_DETECTOR_MANIFEST_PATH:-}"
+  local fee_linker_artifact_uri="${FEE_LINKER_ARTIFACT_URI:-}"
+  local fee_context_classifier_artifact_uri="${FEE_CONTEXT_CLASSIFIER_ARTIFACT_URI:-}"
+  local fee_span_detector_artifact_uri="${FEE_SPAN_DETECTOR_ARTIFACT_URI:-}"
   local fee_whitebox_thresholds_path="${FEE_WHITEBOX_THRESHOLDS_PATH:-}"
   local fee_extraction_feedback_hmac_key_version="${FEE_EXTRACTION_FEEDBACK_HMAC_KEY_VERSION:-v1}"
 
@@ -271,6 +338,9 @@ deploy_env() {
     fee_linker_manifest_path="${FEE_LINKER_MANIFEST_PATH_STG:-${fee_linker_manifest_path}}"
     fee_context_classifier_manifest_path="${FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH_STG:-${fee_context_classifier_manifest_path}}"
     fee_span_detector_manifest_path="${FEE_SPAN_DETECTOR_MANIFEST_PATH_STG:-${fee_span_detector_manifest_path}}"
+    fee_linker_artifact_uri="${FEE_LINKER_ARTIFACT_URI_STG:-${fee_linker_artifact_uri}}"
+    fee_context_classifier_artifact_uri="${FEE_CONTEXT_CLASSIFIER_ARTIFACT_URI_STG:-${fee_context_classifier_artifact_uri}}"
+    fee_span_detector_artifact_uri="${FEE_SPAN_DETECTOR_ARTIFACT_URI_STG:-${fee_span_detector_artifact_uri}}"
     fee_whitebox_thresholds_path="${FEE_WHITEBOX_THRESHOLDS_PATH_STG:-${fee_whitebox_thresholds_path}}"
     fee_extraction_feedback_hmac_key_version="${FEE_EXTRACTION_FEEDBACK_HMAC_KEY_VERSION_STG:-${fee_extraction_feedback_hmac_key_version}}"
   else
@@ -292,6 +362,9 @@ deploy_env() {
     fee_linker_manifest_path="${FEE_LINKER_MANIFEST_PATH_PROD:-${fee_linker_manifest_path}}"
     fee_context_classifier_manifest_path="${FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH_PROD:-${fee_context_classifier_manifest_path}}"
     fee_span_detector_manifest_path="${FEE_SPAN_DETECTOR_MANIFEST_PATH_PROD:-${fee_span_detector_manifest_path}}"
+    fee_linker_artifact_uri="${FEE_LINKER_ARTIFACT_URI_PROD:-${fee_linker_artifact_uri}}"
+    fee_context_classifier_artifact_uri="${FEE_CONTEXT_CLASSIFIER_ARTIFACT_URI_PROD:-${fee_context_classifier_artifact_uri}}"
+    fee_span_detector_artifact_uri="${FEE_SPAN_DETECTOR_ARTIFACT_URI_PROD:-${fee_span_detector_artifact_uri}}"
     fee_whitebox_thresholds_path="${FEE_WHITEBOX_THRESHOLDS_PATH_PROD:-${fee_whitebox_thresholds_path}}"
     fee_extraction_feedback_hmac_key_version="${FEE_EXTRACTION_FEEDBACK_HMAC_KEY_VERSION_PROD:-${fee_extraction_feedback_hmac_key_version}}"
   fi
@@ -360,22 +433,28 @@ deploy_env() {
     return 1
   fi
   if [[ "${fee_linker_mode}" != "off" ]]; then
-    validate_packaged_fee_artifact_path \
+    prepare_packaged_fee_artifact \
       "${fee_linker_manifest_path}" \
+      "${fee_linker_artifact_uri}" \
+      "fee_master_linker" \
       "FEE_LINKER_MANIFEST_PATH for ${env}" || return 1
   fi
   if [[ "${fee_context_classifier_mode}" != "off" ]]; then
-    validate_packaged_fee_artifact_path \
+    prepare_packaged_fee_artifact \
       "${fee_context_classifier_manifest_path}" \
+      "${fee_context_classifier_artifact_uri}" \
+      "fee_context_classifier" \
       "FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH for ${env}" || return 1
   fi
   if [[ "${fee_span_detector_mode}" != "off" ]]; then
-    validate_packaged_fee_artifact_path \
+    prepare_packaged_fee_artifact \
       "${fee_span_detector_manifest_path}" \
+      "${fee_span_detector_artifact_uri}" \
+      "fee_span_detector" \
       "FEE_SPAN_DETECTOR_MANIFEST_PATH for ${env}" || return 1
   fi
   if [[ -n "${fee_whitebox_thresholds_path}" ]]; then
-    validate_packaged_fee_artifact_path \
+    validate_packaged_fee_file_path \
       "${fee_whitebox_thresholds_path}" \
       "FEE_WHITEBOX_THRESHOLDS_PATH for ${env}" || return 1
   fi
@@ -555,6 +634,7 @@ deploy_env() {
     "OPENAI_FEE_CLINICAL_MODEL=${OPENAI_FEE_CLINICAL_MODEL:-gpt-5.4-nano}" \
     "OPENAI_FEE_CLINICAL_REASONING_EFFORT=${OPENAI_FEE_CLINICAL_REASONING_EFFORT:-low}" \
     "OPENAI_FEE_CLINICAL_TIMEOUT_MS=${OPENAI_FEE_CLINICAL_TIMEOUT_MS:-60000}" \
+    "FEE_WHITEBOX_TIMEOUT_MS=${FEE_WHITEBOX_TIMEOUT_MS:-120000}" \
     "FEE_EXTRACTION_MEMO=${fee_extraction_memo}" \
     "FEE_STANDING_FACTS=${fee_standing_facts}" \
     "FEE_EMPTY_EXTRACTION_RETRY=${fee_empty_extraction_retry}" \

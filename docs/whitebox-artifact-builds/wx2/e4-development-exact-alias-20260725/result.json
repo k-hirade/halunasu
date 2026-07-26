@@ -1,0 +1,6300 @@
+{
+  "schemaVersion": "fee-wx0-linking-result-v1",
+  "queryCount": 228,
+  "master": {
+    "path": "/Users/hiradekeishi/medical-ai/halunasu/python/data/master/standard-master.sqlite",
+    "sha256": "26737b6719ede79ea0ba532a3ac91cc8c5a2ecacbe3af040b73de21bcb3376d1",
+    "documentCount": 57925
+  },
+  "exactAlias": {
+    "overall": {
+      "count": 228,
+      "unresolved": 151,
+      "recallAt": {
+        "1": 0.27631578947368424,
+        "5": 0.32456140350877194
+      },
+      "mrr": 0.2984022556390978,
+      "rows": [
+        {
+          "index": 0,
+          "rank": 1
+        },
+        {
+          "index": 1,
+          "rank": 1
+        },
+        {
+          "index": 2,
+          "rank": null
+        },
+        {
+          "index": 3,
+          "rank": null
+        },
+        {
+          "index": 4,
+          "rank": null
+        },
+        {
+          "index": 5,
+          "rank": null
+        },
+        {
+          "index": 6,
+          "rank": null
+        },
+        {
+          "index": 7,
+          "rank": null
+        },
+        {
+          "index": 8,
+          "rank": 1
+        },
+        {
+          "index": 9,
+          "rank": null
+        },
+        {
+          "index": 10,
+          "rank": null
+        },
+        {
+          "index": 11,
+          "rank": null
+        },
+        {
+          "index": 12,
+          "rank": null
+        },
+        {
+          "index": 13,
+          "rank": null
+        },
+        {
+          "index": 14,
+          "rank": null
+        },
+        {
+          "index": 15,
+          "rank": null
+        },
+        {
+          "index": 16,
+          "rank": null
+        },
+        {
+          "index": 17,
+          "rank": null
+        },
+        {
+          "index": 18,
+          "rank": null
+        },
+        {
+          "index": 19,
+          "rank": 1
+        },
+        {
+          "index": 20,
+          "rank": 2
+        },
+        {
+          "index": 21,
+          "rank": null
+        },
+        {
+          "index": 22,
+          "rank": null
+        },
+        {
+          "index": 23,
+          "rank": 1
+        },
+        {
+          "index": 24,
+          "rank": null
+        },
+        {
+          "index": 25,
+          "rank": null
+        },
+        {
+          "index": 26,
+          "rank": null
+        },
+        {
+          "index": 27,
+          "rank": null
+        },
+        {
+          "index": 28,
+          "rank": null
+        },
+        {
+          "index": 29,
+          "rank": null
+        },
+        {
+          "index": 30,
+          "rank": 1
+        },
+        {
+          "index": 31,
+          "rank": null
+        },
+        {
+          "index": 32,
+          "rank": null
+        },
+        {
+          "index": 33,
+          "rank": 1
+        },
+        {
+          "index": 34,
+          "rank": null
+        },
+        {
+          "index": 35,
+          "rank": null
+        },
+        {
+          "index": 36,
+          "rank": 1
+        },
+        {
+          "index": 37,
+          "rank": 1
+        },
+        {
+          "index": 38,
+          "rank": 1
+        },
+        {
+          "index": 39,
+          "rank": null
+        },
+        {
+          "index": 40,
+          "rank": null
+        },
+        {
+          "index": 41,
+          "rank": 1
+        },
+        {
+          "index": 42,
+          "rank": null
+        },
+        {
+          "index": 43,
+          "rank": null
+        },
+        {
+          "index": 44,
+          "rank": null
+        },
+        {
+          "index": 45,
+          "rank": null
+        },
+        {
+          "index": 46,
+          "rank": 2
+        },
+        {
+          "index": 47,
+          "rank": 2
+        },
+        {
+          "index": 48,
+          "rank": 1
+        },
+        {
+          "index": 49,
+          "rank": null
+        },
+        {
+          "index": 50,
+          "rank": null
+        },
+        {
+          "index": 51,
+          "rank": null
+        },
+        {
+          "index": 52,
+          "rank": 1
+        },
+        {
+          "index": 53,
+          "rank": null
+        },
+        {
+          "index": 54,
+          "rank": null
+        },
+        {
+          "index": 55,
+          "rank": null
+        },
+        {
+          "index": 56,
+          "rank": null
+        },
+        {
+          "index": 57,
+          "rank": null
+        },
+        {
+          "index": 58,
+          "rank": null
+        },
+        {
+          "index": 59,
+          "rank": null
+        },
+        {
+          "index": 60,
+          "rank": null
+        },
+        {
+          "index": 61,
+          "rank": null
+        },
+        {
+          "index": 62,
+          "rank": null
+        },
+        {
+          "index": 63,
+          "rank": 1
+        },
+        {
+          "index": 64,
+          "rank": 1
+        },
+        {
+          "index": 65,
+          "rank": null
+        },
+        {
+          "index": 66,
+          "rank": 1
+        },
+        {
+          "index": 67,
+          "rank": null
+        },
+        {
+          "index": 68,
+          "rank": null
+        },
+        {
+          "index": 69,
+          "rank": 1
+        },
+        {
+          "index": 70,
+          "rank": null
+        },
+        {
+          "index": 71,
+          "rank": null
+        },
+        {
+          "index": 72,
+          "rank": null
+        },
+        {
+          "index": 73,
+          "rank": null
+        },
+        {
+          "index": 74,
+          "rank": 3
+        },
+        {
+          "index": 75,
+          "rank": null
+        },
+        {
+          "index": 76,
+          "rank": null
+        },
+        {
+          "index": 77,
+          "rank": null
+        },
+        {
+          "index": 78,
+          "rank": null
+        },
+        {
+          "index": 79,
+          "rank": null
+        },
+        {
+          "index": 80,
+          "rank": null
+        },
+        {
+          "index": 81,
+          "rank": null
+        },
+        {
+          "index": 82,
+          "rank": null
+        },
+        {
+          "index": 83,
+          "rank": 1
+        },
+        {
+          "index": 84,
+          "rank": null
+        },
+        {
+          "index": 85,
+          "rank": 1
+        },
+        {
+          "index": 86,
+          "rank": null
+        },
+        {
+          "index": 87,
+          "rank": null
+        },
+        {
+          "index": 88,
+          "rank": null
+        },
+        {
+          "index": 89,
+          "rank": 1
+        },
+        {
+          "index": 90,
+          "rank": 1
+        },
+        {
+          "index": 91,
+          "rank": 1
+        },
+        {
+          "index": 92,
+          "rank": null
+        },
+        {
+          "index": 93,
+          "rank": null
+        },
+        {
+          "index": 94,
+          "rank": null
+        },
+        {
+          "index": 95,
+          "rank": 1
+        },
+        {
+          "index": 96,
+          "rank": null
+        },
+        {
+          "index": 97,
+          "rank": 1
+        },
+        {
+          "index": 98,
+          "rank": null
+        },
+        {
+          "index": 99,
+          "rank": null
+        },
+        {
+          "index": 100,
+          "rank": 1
+        },
+        {
+          "index": 101,
+          "rank": null
+        },
+        {
+          "index": 102,
+          "rank": null
+        },
+        {
+          "index": 103,
+          "rank": null
+        },
+        {
+          "index": 104,
+          "rank": 1
+        },
+        {
+          "index": 105,
+          "rank": null
+        },
+        {
+          "index": 106,
+          "rank": 1
+        },
+        {
+          "index": 107,
+          "rank": 1
+        },
+        {
+          "index": 108,
+          "rank": 2
+        },
+        {
+          "index": 109,
+          "rank": 1
+        },
+        {
+          "index": 110,
+          "rank": null
+        },
+        {
+          "index": 111,
+          "rank": 1
+        },
+        {
+          "index": 112,
+          "rank": null
+        },
+        {
+          "index": 113,
+          "rank": null
+        },
+        {
+          "index": 114,
+          "rank": null
+        },
+        {
+          "index": 115,
+          "rank": 1
+        },
+        {
+          "index": 116,
+          "rank": null
+        },
+        {
+          "index": 117,
+          "rank": 7
+        },
+        {
+          "index": 118,
+          "rank": null
+        },
+        {
+          "index": 119,
+          "rank": null
+        },
+        {
+          "index": 120,
+          "rank": null
+        },
+        {
+          "index": 121,
+          "rank": 3
+        },
+        {
+          "index": 122,
+          "rank": 1
+        },
+        {
+          "index": 123,
+          "rank": 1
+        },
+        {
+          "index": 124,
+          "rank": null
+        },
+        {
+          "index": 125,
+          "rank": 3
+        },
+        {
+          "index": 126,
+          "rank": null
+        },
+        {
+          "index": 127,
+          "rank": null
+        },
+        {
+          "index": 128,
+          "rank": 6
+        },
+        {
+          "index": 129,
+          "rank": 7
+        },
+        {
+          "index": 130,
+          "rank": 1
+        },
+        {
+          "index": 131,
+          "rank": null
+        },
+        {
+          "index": 132,
+          "rank": null
+        },
+        {
+          "index": 133,
+          "rank": null
+        },
+        {
+          "index": 134,
+          "rank": null
+        },
+        {
+          "index": 135,
+          "rank": null
+        },
+        {
+          "index": 136,
+          "rank": null
+        },
+        {
+          "index": 137,
+          "rank": null
+        },
+        {
+          "index": 138,
+          "rank": null
+        },
+        {
+          "index": 139,
+          "rank": null
+        },
+        {
+          "index": 140,
+          "rank": null
+        },
+        {
+          "index": 141,
+          "rank": null
+        },
+        {
+          "index": 142,
+          "rank": 1
+        },
+        {
+          "index": 143,
+          "rank": null
+        },
+        {
+          "index": 144,
+          "rank": 3
+        },
+        {
+          "index": 145,
+          "rank": 1
+        },
+        {
+          "index": 146,
+          "rank": 1
+        },
+        {
+          "index": 147,
+          "rank": 1
+        },
+        {
+          "index": 148,
+          "rank": null
+        },
+        {
+          "index": 149,
+          "rank": 1
+        },
+        {
+          "index": 150,
+          "rank": null
+        },
+        {
+          "index": 151,
+          "rank": null
+        },
+        {
+          "index": 152,
+          "rank": null
+        },
+        {
+          "index": 153,
+          "rank": 2
+        },
+        {
+          "index": 154,
+          "rank": 1
+        },
+        {
+          "index": 155,
+          "rank": 1
+        },
+        {
+          "index": 156,
+          "rank": null
+        },
+        {
+          "index": 157,
+          "rank": null
+        },
+        {
+          "index": 158,
+          "rank": 1
+        },
+        {
+          "index": 159,
+          "rank": null
+        },
+        {
+          "index": 160,
+          "rank": 4
+        },
+        {
+          "index": 161,
+          "rank": null
+        },
+        {
+          "index": 162,
+          "rank": null
+        },
+        {
+          "index": 163,
+          "rank": null
+        },
+        {
+          "index": 164,
+          "rank": 1
+        },
+        {
+          "index": 165,
+          "rank": null
+        },
+        {
+          "index": 166,
+          "rank": null
+        },
+        {
+          "index": 167,
+          "rank": null
+        },
+        {
+          "index": 168,
+          "rank": 1
+        },
+        {
+          "index": 169,
+          "rank": 1
+        },
+        {
+          "index": 170,
+          "rank": 1
+        },
+        {
+          "index": 171,
+          "rank": null
+        },
+        {
+          "index": 172,
+          "rank": null
+        },
+        {
+          "index": 173,
+          "rank": 1
+        },
+        {
+          "index": 174,
+          "rank": null
+        },
+        {
+          "index": 175,
+          "rank": 1
+        },
+        {
+          "index": 176,
+          "rank": null
+        },
+        {
+          "index": 177,
+          "rank": 1
+        },
+        {
+          "index": 178,
+          "rank": 1
+        },
+        {
+          "index": 179,
+          "rank": null
+        },
+        {
+          "index": 180,
+          "rank": 1
+        },
+        {
+          "index": 181,
+          "rank": null
+        },
+        {
+          "index": 182,
+          "rank": null
+        },
+        {
+          "index": 183,
+          "rank": null
+        },
+        {
+          "index": 184,
+          "rank": null
+        },
+        {
+          "index": 185,
+          "rank": null
+        },
+        {
+          "index": 186,
+          "rank": 1
+        },
+        {
+          "index": 187,
+          "rank": 1
+        },
+        {
+          "index": 188,
+          "rank": 1
+        },
+        {
+          "index": 189,
+          "rank": null
+        },
+        {
+          "index": 190,
+          "rank": 1
+        },
+        {
+          "index": 191,
+          "rank": null
+        },
+        {
+          "index": 192,
+          "rank": null
+        },
+        {
+          "index": 193,
+          "rank": null
+        },
+        {
+          "index": 194,
+          "rank": null
+        },
+        {
+          "index": 195,
+          "rank": 1
+        },
+        {
+          "index": 196,
+          "rank": 1
+        },
+        {
+          "index": 197,
+          "rank": null
+        },
+        {
+          "index": 198,
+          "rank": null
+        },
+        {
+          "index": 199,
+          "rank": null
+        },
+        {
+          "index": 200,
+          "rank": null
+        },
+        {
+          "index": 201,
+          "rank": null
+        },
+        {
+          "index": 202,
+          "rank": null
+        },
+        {
+          "index": 203,
+          "rank": 2
+        },
+        {
+          "index": 204,
+          "rank": null
+        },
+        {
+          "index": 205,
+          "rank": null
+        },
+        {
+          "index": 206,
+          "rank": null
+        },
+        {
+          "index": 207,
+          "rank": 1
+        },
+        {
+          "index": 208,
+          "rank": null
+        },
+        {
+          "index": 209,
+          "rank": null
+        },
+        {
+          "index": 210,
+          "rank": 1
+        },
+        {
+          "index": 211,
+          "rank": null
+        },
+        {
+          "index": 212,
+          "rank": null
+        },
+        {
+          "index": 213,
+          "rank": null
+        },
+        {
+          "index": 214,
+          "rank": null
+        },
+        {
+          "index": 215,
+          "rank": null
+        },
+        {
+          "index": 216,
+          "rank": null
+        },
+        {
+          "index": 217,
+          "rank": null
+        },
+        {
+          "index": 218,
+          "rank": 1
+        },
+        {
+          "index": 219,
+          "rank": null
+        },
+        {
+          "index": 220,
+          "rank": null
+        },
+        {
+          "index": 221,
+          "rank": null
+        },
+        {
+          "index": 222,
+          "rank": 1
+        },
+        {
+          "index": 223,
+          "rank": null
+        },
+        {
+          "index": 224,
+          "rank": 1
+        },
+        {
+          "index": 225,
+          "rank": null
+        },
+        {
+          "index": 226,
+          "rank": null
+        },
+        {
+          "index": 227,
+          "rank": 1
+        }
+      ]
+    },
+    "byCell": {
+      "dermatology|home_visit": {
+        "count": 6,
+        "unresolved": 6,
+        "recallAt": {
+          "1": 0.0,
+          "5": 0.0
+        },
+        "mrr": 0.0,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": null
+          }
+        ]
+      },
+      "dermatology|house_call": {
+        "count": 7,
+        "unresolved": 5,
+        "recallAt": {
+          "1": 0.14285714285714285,
+          "5": 0.2857142857142857
+        },
+        "mrr": 0.21428571428571427,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": 1
+          },
+          {
+            "index": 4,
+            "rank": 2
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": null
+          }
+        ]
+      },
+      "dermatology|outpatient": {
+        "count": 8,
+        "unresolved": 6,
+        "recallAt": {
+          "1": 0.25,
+          "5": 0.25
+        },
+        "mrr": 0.25,
+        "rows": [
+          {
+            "index": 0,
+            "rank": 1
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": null
+          },
+          {
+            "index": 7,
+            "rank": 1
+          }
+        ]
+      },
+      "dermatology|telephone": {
+        "count": 4,
+        "unresolved": 3,
+        "recallAt": {
+          "1": 0.25,
+          "5": 0.25
+        },
+        "mrr": 0.25,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": 1
+          },
+          {
+            "index": 3,
+            "rank": null
+          }
+        ]
+      },
+      "internal_medicine|home_visit": {
+        "count": 10,
+        "unresolved": 6,
+        "recallAt": {
+          "1": 0.4,
+          "5": 0.4
+        },
+        "mrr": 0.4,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": 1
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": 1
+          },
+          {
+            "index": 6,
+            "rank": 1
+          },
+          {
+            "index": 7,
+            "rank": 1
+          },
+          {
+            "index": 8,
+            "rank": null
+          },
+          {
+            "index": 9,
+            "rank": null
+          }
+        ]
+      },
+      "internal_medicine|house_call": {
+        "count": 8,
+        "unresolved": 7,
+        "recallAt": {
+          "1": 0.0,
+          "5": 0.125
+        },
+        "mrr": 0.0625,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": 2
+          },
+          {
+            "index": 7,
+            "rank": null
+          }
+        ]
+      },
+      "internal_medicine|outpatient": {
+        "count": 10,
+        "unresolved": 7,
+        "recallAt": {
+          "1": 0.3,
+          "5": 0.3
+        },
+        "mrr": 0.3,
+        "rows": [
+          {
+            "index": 0,
+            "rank": 1
+          },
+          {
+            "index": 1,
+            "rank": 1
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": null
+          },
+          {
+            "index": 7,
+            "rank": null
+          },
+          {
+            "index": 8,
+            "rank": 1
+          },
+          {
+            "index": 9,
+            "rank": null
+          }
+        ]
+      },
+      "internal_medicine|telephone": {
+        "count": 5,
+        "unresolved": 4,
+        "recallAt": {
+          "1": 0.2,
+          "5": 0.2
+        },
+        "mrr": 0.2,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": 1
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          }
+        ]
+      },
+      "ophthalmology|home_visit": {
+        "count": 9,
+        "unresolved": 5,
+        "recallAt": {
+          "1": 0.2222222222222222,
+          "5": 0.4444444444444444
+        },
+        "mrr": 0.3333333333333333,
+        "rows": [
+          {
+            "index": 0,
+            "rank": 1
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": 2
+          },
+          {
+            "index": 6,
+            "rank": 2
+          },
+          {
+            "index": 7,
+            "rank": 1
+          },
+          {
+            "index": 8,
+            "rank": null
+          }
+        ]
+      },
+      "ophthalmology|house_call": {
+        "count": 5,
+        "unresolved": 2,
+        "recallAt": {
+          "1": 0.4,
+          "5": 0.6
+        },
+        "mrr": 0.5,
+        "rows": [
+          {
+            "index": 0,
+            "rank": 2
+          },
+          {
+            "index": 1,
+            "rank": 1
+          },
+          {
+            "index": 2,
+            "rank": 1
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          }
+        ]
+      },
+      "ophthalmology|outpatient": {
+        "count": 10,
+        "unresolved": 9,
+        "recallAt": {
+          "1": 0.1,
+          "5": 0.1
+        },
+        "mrr": 0.1,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": 1
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": null
+          },
+          {
+            "index": 7,
+            "rank": null
+          },
+          {
+            "index": 8,
+            "rank": null
+          },
+          {
+            "index": 9,
+            "rank": null
+          }
+        ]
+      },
+      "ophthalmology|telephone": {
+        "count": 4,
+        "unresolved": 2,
+        "recallAt": {
+          "1": 0.25,
+          "5": 0.5
+        },
+        "mrr": 0.3125,
+        "rows": [
+          {
+            "index": 0,
+            "rank": 1
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": 4
+          },
+          {
+            "index": 3,
+            "rank": null
+          }
+        ]
+      },
+      "orthopedics|home_visit": {
+        "count": 6,
+        "unresolved": 4,
+        "recallAt": {
+          "1": 0.3333333333333333,
+          "5": 0.3333333333333333
+        },
+        "mrr": 0.3333333333333333,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": 1
+          },
+          {
+            "index": 4,
+            "rank": 1
+          },
+          {
+            "index": 5,
+            "rank": null
+          }
+        ]
+      },
+      "orthopedics|house_call": {
+        "count": 7,
+        "unresolved": 5,
+        "recallAt": {
+          "1": 0.2857142857142857,
+          "5": 0.2857142857142857
+        },
+        "mrr": 0.2857142857142857,
+        "rows": [
+          {
+            "index": 0,
+            "rank": 1
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": 1
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": null
+          }
+        ]
+      },
+      "orthopedics|outpatient": {
+        "count": 8,
+        "unresolved": 7,
+        "recallAt": {
+          "1": 0.0,
+          "5": 0.125
+        },
+        "mrr": 0.041666666666666664,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": 3
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": null
+          },
+          {
+            "index": 7,
+            "rank": null
+          }
+        ]
+      },
+      "orthopedics|telephone": {
+        "count": 6,
+        "unresolved": 1,
+        "recallAt": {
+          "1": 0.6666666666666666,
+          "5": 0.8333333333333334
+        },
+        "mrr": 0.7222222222222222,
+        "rows": [
+          {
+            "index": 0,
+            "rank": 3
+          },
+          {
+            "index": 1,
+            "rank": 1
+          },
+          {
+            "index": 2,
+            "rank": 1
+          },
+          {
+            "index": 3,
+            "rank": 1
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": 1
+          }
+        ]
+      },
+      "otolaryngology|home_visit": {
+        "count": 7,
+        "unresolved": 5,
+        "recallAt": {
+          "1": 0.2857142857142857,
+          "5": 0.2857142857142857
+        },
+        "mrr": 0.2857142857142857,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": 1
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": 1
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": null
+          }
+        ]
+      },
+      "otolaryngology|house_call": {
+        "count": 9,
+        "unresolved": 5,
+        "recallAt": {
+          "1": 0.4444444444444444,
+          "5": 0.4444444444444444
+        },
+        "mrr": 0.4444444444444444,
+        "rows": [
+          {
+            "index": 0,
+            "rank": 1
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": 1
+          },
+          {
+            "index": 3,
+            "rank": 1
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": 1
+          },
+          {
+            "index": 6,
+            "rank": null
+          },
+          {
+            "index": 7,
+            "rank": null
+          },
+          {
+            "index": 8,
+            "rank": null
+          }
+        ]
+      },
+      "otolaryngology|outpatient": {
+        "count": 11,
+        "unresolved": 6,
+        "recallAt": {
+          "1": 0.45454545454545453,
+          "5": 0.45454545454545453
+        },
+        "mrr": 0.45454545454545453,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": 1
+          },
+          {
+            "index": 2,
+            "rank": 1
+          },
+          {
+            "index": 3,
+            "rank": 1
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": null
+          },
+          {
+            "index": 7,
+            "rank": 1
+          },
+          {
+            "index": 8,
+            "rank": null
+          },
+          {
+            "index": 9,
+            "rank": 1
+          },
+          {
+            "index": 10,
+            "rank": null
+          }
+        ]
+      },
+      "otolaryngology|telephone": {
+        "count": 5,
+        "unresolved": 2,
+        "recallAt": {
+          "1": 0.6,
+          "5": 0.6
+        },
+        "mrr": 0.6,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": 1
+          },
+          {
+            "index": 3,
+            "rank": 1
+          },
+          {
+            "index": 4,
+            "rank": 1
+          }
+        ]
+      },
+      "pediatrics|home_visit": {
+        "count": 6,
+        "unresolved": 4,
+        "recallAt": {
+          "1": 0.3333333333333333,
+          "5": 0.3333333333333333
+        },
+        "mrr": 0.3333333333333333,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": 1
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": 1
+          }
+        ]
+      },
+      "pediatrics|house_call": {
+        "count": 8,
+        "unresolved": 5,
+        "recallAt": {
+          "1": 0.375,
+          "5": 0.375
+        },
+        "mrr": 0.375,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": 1
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": 1
+          },
+          {
+            "index": 7,
+            "rank": 1
+          }
+        ]
+      },
+      "pediatrics|outpatient": {
+        "count": 12,
+        "unresolved": 6,
+        "recallAt": {
+          "1": 0.4166666666666667,
+          "5": 0.5
+        },
+        "mrr": 0.4583333333333333,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": 1
+          },
+          {
+            "index": 2,
+            "rank": 1
+          },
+          {
+            "index": 3,
+            "rank": 2
+          },
+          {
+            "index": 4,
+            "rank": 1
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": 1
+          },
+          {
+            "index": 7,
+            "rank": null
+          },
+          {
+            "index": 8,
+            "rank": null
+          },
+          {
+            "index": 9,
+            "rank": null
+          },
+          {
+            "index": 10,
+            "rank": 1
+          },
+          {
+            "index": 11,
+            "rank": null
+          }
+        ]
+      },
+      "pediatrics|telephone": {
+        "count": 5,
+        "unresolved": 3,
+        "recallAt": {
+          "1": 0.4,
+          "5": 0.4
+        },
+        "mrr": 0.4,
+        "rows": [
+          {
+            "index": 0,
+            "rank": 1
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": 1
+          },
+          {
+            "index": 4,
+            "rank": null
+          }
+        ]
+      },
+      "psychiatry|home_visit": {
+        "count": 8,
+        "unresolved": 4,
+        "recallAt": {
+          "1": 0.25,
+          "5": 0.375
+        },
+        "mrr": 0.30952380952380953,
+        "rows": [
+          {
+            "index": 0,
+            "rank": 7
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": 3
+          },
+          {
+            "index": 5,
+            "rank": 1
+          },
+          {
+            "index": 6,
+            "rank": 1
+          },
+          {
+            "index": 7,
+            "rank": null
+          }
+        ]
+      },
+      "psychiatry|house_call": {
+        "count": 6,
+        "unresolved": 2,
+        "recallAt": {
+          "1": 0.16666666666666666,
+          "5": 0.3333333333333333
+        },
+        "mrr": 0.2738095238095238,
+        "rows": [
+          {
+            "index": 0,
+            "rank": 3
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": 6
+          },
+          {
+            "index": 4,
+            "rank": 7
+          },
+          {
+            "index": 5,
+            "rank": 1
+          }
+        ]
+      },
+      "psychiatry|outpatient": {
+        "count": 9,
+        "unresolved": 9,
+        "recallAt": {
+          "1": 0.0,
+          "5": 0.0
+        },
+        "mrr": 0.0,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": null
+          },
+          {
+            "index": 7,
+            "rank": null
+          },
+          {
+            "index": 8,
+            "rank": null
+          }
+        ]
+      },
+      "psychiatry|telephone": {
+        "count": 3,
+        "unresolved": 3,
+        "recallAt": {
+          "1": 0.0,
+          "5": 0.0
+        },
+        "mrr": 0.0,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          }
+        ]
+      },
+      "surgery|home_visit": {
+        "count": 7,
+        "unresolved": 6,
+        "recallAt": {
+          "1": 0.14285714285714285,
+          "5": 0.14285714285714285
+        },
+        "mrr": 0.14285714285714285,
+        "rows": [
+          {
+            "index": 0,
+            "rank": 1
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": null
+          }
+        ]
+      },
+      "surgery|house_call": {
+        "count": 7,
+        "unresolved": 5,
+        "recallAt": {
+          "1": 0.2857142857142857,
+          "5": 0.2857142857142857
+        },
+        "mrr": 0.2857142857142857,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": 1
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": 1
+          },
+          {
+            "index": 6,
+            "rank": null
+          }
+        ]
+      },
+      "surgery|outpatient": {
+        "count": 8,
+        "unresolved": 5,
+        "recallAt": {
+          "1": 0.375,
+          "5": 0.375
+        },
+        "mrr": 0.375,
+        "rows": [
+          {
+            "index": 0,
+            "rank": null
+          },
+          {
+            "index": 1,
+            "rank": 1
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": null
+          },
+          {
+            "index": 4,
+            "rank": null
+          },
+          {
+            "index": 5,
+            "rank": null
+          },
+          {
+            "index": 6,
+            "rank": 1
+          },
+          {
+            "index": 7,
+            "rank": 1
+          }
+        ]
+      },
+      "surgery|telephone": {
+        "count": 4,
+        "unresolved": 2,
+        "recallAt": {
+          "1": 0.5,
+          "5": 0.5
+        },
+        "mrr": 0.5,
+        "rows": [
+          {
+            "index": 0,
+            "rank": 1
+          },
+          {
+            "index": 1,
+            "rank": null
+          },
+          {
+            "index": 2,
+            "rank": null
+          },
+          {
+            "index": 3,
+            "rank": 1
+          }
+        ]
+      }
+    },
+    "rows": [
+      {
+        "caseId": "wx0-im-outp-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "outpatient",
+        "text": "末梢血液一般検査",
+        "category": "lab",
+        "expectedCodes": [
+          "160008010"
+        ],
+        "candidates": [
+          {
+            "code": "160008010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-im-outp-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "outpatient",
+        "text": "ＣＲＰ",
+        "category": "lab",
+        "expectedCodes": [
+          "160054710"
+        ],
+        "candidates": [
+          {
+            "code": "160054710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-im-outp-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "outpatient",
+        "text": "採血",
+        "category": "lab",
+        "expectedCodes": [
+          "160095710"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-outp-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "outpatient",
+        "text": "アムロジピンＯＤ錠２．５ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620007817"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-outp-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "outpatient",
+        "text": "処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-outp-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "outpatient",
+        "text": "インフルエンザ抗原検査",
+        "category": "lab",
+        "expectedCodes": [
+          "160169450"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-outp-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "outpatient",
+        "text": "ＳｐＯ２",
+        "category": "exam",
+        "expectedCodes": [
+          "160155510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-outp-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "outpatient",
+        "text": "心電図",
+        "category": "exam",
+        "expectedCodes": [
+          "160068410"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-outp-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "outpatient",
+        "text": "カロナール錠３００",
+        "category": "medication",
+        "expectedCodes": [
+          "620000033"
+        ],
+        "candidates": [
+          {
+            "code": "620000033",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-im-outp-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "outpatient",
+        "text": "処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-hv-0008",
+        "specialty": "dermatology",
+        "encounterSetting": "home_visit",
+        "text": "ＫＯＨ直接鏡検",
+        "category": "lab",
+        "expectedCodes": [
+          "160057710"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-hv-0008",
+        "specialty": "dermatology",
+        "encounterSetting": "home_visit",
+        "text": "ルリコンクリーム",
+        "category": "medication",
+        "expectedCodes": [
+          "620002499"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-hv-0008",
+        "specialty": "dermatology",
+        "encounterSetting": "home_visit",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-hv-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "home_visit",
+        "text": "軟膏処置",
+        "category": "procedure",
+        "expectedCodes": [
+          "140011610"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-hv-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "home_visit",
+        "text": "ロコイド軟膏",
+        "category": "medication",
+        "expectedCodes": [
+          "620009078"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-hv-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "home_visit",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-hc-0008",
+        "specialty": "dermatology",
+        "encounterSetting": "house_call",
+        "text": "皮下注射",
+        "category": "injection",
+        "expectedCodes": [
+          "130000510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-hc-0008",
+        "specialty": "dermatology",
+        "encounterSetting": "house_call",
+        "text": "オロパタジン塩酸塩錠５ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "622188101"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-hc-0008",
+        "specialty": "dermatology",
+        "encounterSetting": "house_call",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-hc-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "house_call",
+        "text": "デブリードマン",
+        "category": "procedure",
+        "expectedCodes": [
+          "150002210"
+        ],
+        "candidates": [
+          {
+            "code": "150002210",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "150002310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "150002410",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-derm-hc-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "house_call",
+        "text": "創傷処置",
+        "category": "procedure",
+        "expectedCodes": [
+          "140000710"
+        ],
+        "candidates": [
+          {
+            "code": "140000610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140000710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140000810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140000910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140001010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-derm-hc-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "house_call",
+        "text": "皮膚生検",
+        "category": "lab",
+        "expectedCodes": [
+          "160098610"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-hc-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "house_call",
+        "text": "ゲーベンクリーム",
+        "category": "medication",
+        "expectedCodes": [
+          "620008991"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-outp-0008",
+        "specialty": "dermatology",
+        "encounterSetting": "outpatient",
+        "text": "爪甲除去",
+        "category": "procedure",
+        "expectedCodes": [
+          "140032750"
+        ],
+        "candidates": [
+          {
+            "code": "140032750",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-derm-outp-0008",
+        "specialty": "dermatology",
+        "encounterSetting": "outpatient",
+        "text": "ゲンタシン軟膏",
+        "category": "medication",
+        "expectedCodes": [
+          "620008993"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-outp-0008",
+        "specialty": "dermatology",
+        "encounterSetting": "outpatient",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-outp-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "outpatient",
+        "text": "軟膏処置",
+        "category": "procedure",
+        "expectedCodes": [
+          "140011610"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-outp-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "outpatient",
+        "text": "リンデロン－ＶＧ軟膏",
+        "category": "medication",
+        "expectedCodes": [
+          "662640418"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-outp-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "outpatient",
+        "text": "ロコイド軟膏",
+        "category": "medication",
+        "expectedCodes": [
+          "620009078"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-outp-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "outpatient",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-outp-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "outpatient",
+        "text": "ダーモスコピー",
+        "category": "exam",
+        "expectedCodes": [
+          "160179610"
+        ],
+        "candidates": [
+          {
+            "code": "160179610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-im-hv-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "home_visit",
+        "text": "インフルエンザ抗原検査",
+        "category": "lab",
+        "expectedCodes": [
+          "160169450"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-hv-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "home_visit",
+        "text": "サチュレーション",
+        "category": "exam",
+        "expectedCodes": [
+          "160155510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-hv-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "home_visit",
+        "text": "カロナール錠３００",
+        "category": "medication",
+        "expectedCodes": [
+          "620000033"
+        ],
+        "candidates": [
+          {
+            "code": "620000033",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-im-hv-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "home_visit",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-hv-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "home_visit",
+        "text": "採血",
+        "category": "lab",
+        "expectedCodes": [
+          "160095710"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-hv-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "home_visit",
+        "text": "ＨｂＡ１ｃ",
+        "category": "lab",
+        "expectedCodes": [
+          "160010010"
+        ],
+        "candidates": [
+          {
+            "code": "160010010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-im-hv-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "home_visit",
+        "text": "グルコース",
+        "category": "lab",
+        "expectedCodes": [
+          "160019410"
+        ],
+        "candidates": [
+          {
+            "code": "160019410",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160137950",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160138150",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160138750",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-im-hv-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "home_visit",
+        "text": "ＨｂＡ１ｃ",
+        "category": "lab",
+        "expectedCodes": [
+          "160010010"
+        ],
+        "candidates": [
+          {
+            "code": "160010010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-im-hv-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "home_visit",
+        "text": "メトホルミン塩酸塩錠２５０ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "621676001"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-hv-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "home_visit",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-hv-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "home_visit",
+        "text": "水晶体再建術",
+        "category": "procedure",
+        "expectedCodes": [
+          "150253010"
+        ],
+        "candidates": [
+          {
+            "code": "150253010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "150315610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "150356210",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "150356310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-oph-hv-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "home_visit",
+        "text": "スリット",
+        "category": "exam",
+        "expectedCodes": [
+          "160084510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-hv-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "home_visit",
+        "text": "フルオロメトロン点眼液０．１％",
+        "category": "medication",
+        "expectedCodes": [
+          "620204201"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-hv-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "home_visit",
+        "text": "レボフロキサシン点眼液０．５％",
+        "category": "medication",
+        "expectedCodes": [
+          "622046702"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-hv-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "home_visit",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-hv-0009",
+        "specialty": "ophthalmology",
+        "encounterSetting": "home_visit",
+        "text": "矯正視力検査",
+        "category": "exam",
+        "expectedCodes": [
+          "160179110"
+        ],
+        "candidates": [
+          {
+            "code": "160082810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160179110",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160248910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160249010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-oph-hv-0009",
+        "specialty": "ophthalmology",
+        "encounterSetting": "home_visit",
+        "text": "精密眼底検査",
+        "category": "exam",
+        "expectedCodes": [
+          "160081130"
+        ],
+        "candidates": [
+          {
+            "code": "160081010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160081130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160246010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160246130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-oph-hv-0009",
+        "specialty": "ophthalmology",
+        "encounterSetting": "home_visit",
+        "text": "眼底三次元画像解析",
+        "category": "exam",
+        "expectedCodes": [
+          "160183310"
+        ],
+        "candidates": [
+          {
+            "code": "160183310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160246810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-oph-hv-0009",
+        "specialty": "ophthalmology",
+        "encounterSetting": "home_visit",
+        "text": "視力",
+        "category": "exam",
+        "expectedCodes": [
+          "160179110"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-outp-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "outpatient",
+        "text": "視野検査",
+        "category": "exam",
+        "expectedCodes": [
+          "160082210"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-outp-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "outpatient",
+        "text": "眼圧",
+        "category": "exam",
+        "expectedCodes": [
+          "160082910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-outp-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "outpatient",
+        "text": "静的量的視野検査",
+        "category": "exam",
+        "expectedCodes": [
+          "160082210"
+        ],
+        "candidates": [
+          {
+            "code": "160082210",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160248010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-oph-outp-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "outpatient",
+        "text": "ラタノプロスト点眼液０．００５％",
+        "category": "medication",
+        "expectedCodes": [
+          "621975001"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-outp-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "outpatient",
+        "text": "チモロール点眼液０．５％",
+        "category": "medication",
+        "expectedCodes": [
+          "620006452"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-outp-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "outpatient",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-outp-0009",
+        "specialty": "ophthalmology",
+        "encounterSetting": "outpatient",
+        "text": "スリット",
+        "category": "exam",
+        "expectedCodes": [
+          "160084510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-outp-0009",
+        "specialty": "ophthalmology",
+        "encounterSetting": "outpatient",
+        "text": "膿瘍切開",
+        "category": "procedure",
+        "expectedCodes": [
+          "150077610"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-outp-0009",
+        "specialty": "ophthalmology",
+        "encounterSetting": "outpatient",
+        "text": "レボフロキサシン点眼液０．５％",
+        "category": "medication",
+        "expectedCodes": [
+          "622046702"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-outp-0009",
+        "specialty": "ophthalmology",
+        "encounterSetting": "outpatient",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-hv-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "home_visit",
+        "text": "湿布処置",
+        "category": "treatment",
+        "expectedCodes": [
+          "140002210"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-hv-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "home_visit",
+        "text": "ロキソプロフェンＮａ錠６０ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620099201"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-hv-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "home_visit",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-hv-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "home_visit",
+        "text": "関節腔内注射",
+        "category": "injection",
+        "expectedCodes": [
+          "130005310"
+        ],
+        "candidates": [
+          {
+            "code": "130005310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-orth-hv-0009",
+        "specialty": "orthopedics",
+        "encounterSetting": "home_visit",
+        "text": "関節腔内注射",
+        "category": "injection",
+        "expectedCodes": [
+          "130005310"
+        ],
+        "candidates": [
+          {
+            "code": "130005310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-orth-hv-0009",
+        "specialty": "orthopedics",
+        "encounterSetting": "home_visit",
+        "text": "ケナコルト－Ａ",
+        "category": "medication",
+        "expectedCodes": [
+          "620004660"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-hc-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "house_call",
+        "text": "トリガーポイント注射",
+        "category": "injection",
+        "expectedCodes": [
+          "150266010"
+        ],
+        "candidates": [
+          {
+            "code": "150266010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-orth-hc-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "house_call",
+        "text": "ロキソプロフェンＮａテープ５０ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "622227301"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-hc-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "house_call",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-hc-0009",
+        "specialty": "orthopedics",
+        "encounterSetting": "house_call",
+        "text": "絆創膏固定術",
+        "category": "procedure",
+        "expectedCodes": [
+          "150017850"
+        ],
+        "candidates": [
+          {
+            "code": "150017850",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-orth-hc-0009",
+        "specialty": "orthopedics",
+        "encounterSetting": "house_call",
+        "text": "Ｘ－Ｐ",
+        "category": "imaging",
+        "expectedCodes": [
+          "170000410"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-hc-0009",
+        "specialty": "orthopedics",
+        "encounterSetting": "house_call",
+        "text": "ロキソプロフェンＮａテープ５０ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "622227301"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-hc-0009",
+        "specialty": "orthopedics",
+        "encounterSetting": "house_call",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-outp-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "outpatient",
+        "text": "Ｘ－Ｐ",
+        "category": "imaging",
+        "expectedCodes": [
+          "170000410"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-outp-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "outpatient",
+        "text": "消炎鎮痛等処置",
+        "category": "treatment",
+        "expectedCodes": [
+          "140040310"
+        ],
+        "candidates": [
+          {
+            "code": "140002210",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140029610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140040310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-orth-outp-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "outpatient",
+        "text": "エペリゾン塩酸塩錠５０ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620193017"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-outp-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "outpatient",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-outp-0009",
+        "specialty": "orthopedics",
+        "encounterSetting": "outpatient",
+        "text": "Ｘ－Ｐ",
+        "category": "imaging",
+        "expectedCodes": [
+          "170000410"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-outp-0009",
+        "specialty": "orthopedics",
+        "encounterSetting": "outpatient",
+        "text": "ＣＴ",
+        "category": "imaging",
+        "expectedCodes": [
+          "170011810"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-outp-0009",
+        "specialty": "orthopedics",
+        "encounterSetting": "outpatient",
+        "text": "ギプスシーネ",
+        "category": "treatment",
+        "expectedCodes": [
+          "140041750"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-outp-0009",
+        "specialty": "orthopedics",
+        "encounterSetting": "outpatient",
+        "text": "Ｘ－Ｐ",
+        "category": "imaging",
+        "expectedCodes": [
+          "170000410"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-hv-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "home_visit",
+        "text": "純音聴力検査",
+        "category": "exam",
+        "expectedCodes": [
+          "160078010"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-hv-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "home_visit",
+        "text": "耳垢栓塞除去（複雑）",
+        "category": "procedure",
+        "expectedCodes": [
+          "140051610"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-hv-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "home_visit",
+        "text": "簡易聴力検査",
+        "category": "exam",
+        "expectedCodes": [
+          "160175910"
+        ],
+        "candidates": [
+          {
+            "code": "160175910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160176010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ent-hv-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "home_visit",
+        "text": "ＳｐＯ２",
+        "category": "exam",
+        "expectedCodes": [
+          "160155510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-hv-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "home_visit",
+        "text": "喀痰吸引",
+        "category": "procedure",
+        "expectedCodes": [
+          "140003810"
+        ],
+        "candidates": [
+          {
+            "code": "140003810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ent-hv-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "home_visit",
+        "text": "カルボシステイン錠５００ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "621752101"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-hv-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "home_visit",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-outp-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "outpatient",
+        "text": "超音波ネブライザー",
+        "category": "procedure",
+        "expectedCodes": [
+          "140022810"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-outp-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "outpatient",
+        "text": "鼻処置",
+        "category": "procedure",
+        "expectedCodes": [
+          "140019710"
+        ],
+        "candidates": [
+          {
+            "code": "140019710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ent-outp-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "outpatient",
+        "text": "副鼻腔自然口開大処置",
+        "category": "procedure",
+        "expectedCodes": [
+          "140039310"
+        ],
+        "candidates": [
+          {
+            "code": "140039310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ent-outp-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "outpatient",
+        "text": "ＥＦ－嗅裂・鼻咽腔・副鼻腔",
+        "category": "exam",
+        "expectedCodes": [
+          "160092310"
+        ],
+        "candidates": [
+          {
+            "code": "160092310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ent-outp-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "outpatient",
+        "text": "カルボシステイン錠５００ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "621752101"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-outp-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "outpatient",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-outp-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "outpatient",
+        "text": "溶連菌迅速検査",
+        "category": "lab",
+        "expectedCodes": [
+          "160044110"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-outp-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "outpatient",
+        "text": "耳処置",
+        "category": "procedure",
+        "expectedCodes": [
+          "140019310"
+        ],
+        "candidates": [
+          {
+            "code": "140019310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ent-outp-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "outpatient",
+        "text": "アモキシシリン細粒２０％",
+        "category": "medication",
+        "expectedCodes": [
+          "621072701"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-outp-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "outpatient",
+        "text": "カロナール錠３００",
+        "category": "medication",
+        "expectedCodes": [
+          "620000033"
+        ],
+        "candidates": [
+          {
+            "code": "620000033",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ent-outp-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "outpatient",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-hv-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "home_visit",
+        "text": "在宅小児経管栄養法の指導管理",
+        "category": "management",
+        "expectedCodes": [
+          "114021210"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-hv-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "home_visit",
+        "text": "ラコールＮＦ配合経腸用半固形剤",
+        "category": "medication",
+        "expectedCodes": [
+          "622346201"
+        ],
+        "candidates": [
+          {
+            "code": "622346201",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ped-hv-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "home_visit",
+        "text": "訪問看護指示書",
+        "category": "management",
+        "expectedCodes": [
+          "114008010"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-hv-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "home_visit",
+        "text": "ＳｐＯ２測定",
+        "category": "exam",
+        "expectedCodes": [
+          "160155510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-hv-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "home_visit",
+        "text": "在宅酸素療法の指導管理",
+        "category": "management",
+        "expectedCodes": [
+          "114003710"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-hv-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "home_visit",
+        "text": "末梢血液一般検査",
+        "category": "lab",
+        "expectedCodes": [
+          "160008010"
+        ],
+        "candidates": [
+          {
+            "code": "160008010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ped-outp-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "outpatient",
+        "text": "採血",
+        "category": "lab",
+        "expectedCodes": [
+          "160095710"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-outp-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "outpatient",
+        "text": "末梢血液一般検査",
+        "category": "lab",
+        "expectedCodes": [
+          "160008010"
+        ],
+        "candidates": [
+          {
+            "code": "160008010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ped-outp-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "outpatient",
+        "text": "ＣＲＰ",
+        "category": "lab",
+        "expectedCodes": [
+          "160054710"
+        ],
+        "candidates": [
+          {
+            "code": "160054710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ped-outp-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "outpatient",
+        "text": "マイコプラズマ抗原定性",
+        "category": "lab",
+        "expectedCodes": [
+          "160202050"
+        ],
+        "candidates": [
+          {
+            "code": "160153150",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160202050",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ped-outp-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "outpatient",
+        "text": "オゼックス細粒小児用１５％",
+        "category": "medication",
+        "expectedCodes": [
+          "621971501"
+        ],
+        "candidates": [
+          {
+            "code": "621971501",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ped-outp-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "outpatient",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-outp-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "outpatient",
+        "text": "ＲＳウイルス抗原定性",
+        "category": "lab",
+        "expectedCodes": [
+          "160117610"
+        ],
+        "candidates": [
+          {
+            "code": "160117610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ped-outp-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "outpatient",
+        "text": "ＳｐＯ２",
+        "category": "exam",
+        "expectedCodes": [
+          "160155510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-outp-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "outpatient",
+        "text": "ネブライザー",
+        "category": "procedure",
+        "expectedCodes": [
+          "140022710"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-outp-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "outpatient",
+        "text": "インフルエンザ迅速検査",
+        "category": "lab",
+        "expectedCodes": [
+          "160169450"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-outp-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "outpatient",
+        "text": "ホクナリンテープ１ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "660421116"
+        ],
+        "candidates": [
+          {
+            "code": "660421116",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "670421116",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ped-outp-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "outpatient",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-hv-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "home_visit",
+        "text": "在宅精神療法",
+        "category": "counseling",
+        "expectedCodes": [
+          "180068310"
+        ],
+        "candidates": [
+          {
+            "code": "180055610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180056130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180067910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068210",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068530",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068630",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180071830",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180071930",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180072030",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180073030",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180073130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180774910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180775130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776230",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776330",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776430",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776530",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-psy-hv-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "home_visit",
+        "text": "心理検査",
+        "category": "exam",
+        "expectedCodes": [
+          "160085910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-hv-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "home_visit",
+        "text": "セルトラリン錠５０ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "622442901"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-hv-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "home_visit",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-hv-0009",
+        "specialty": "psychiatry",
+        "encounterSetting": "home_visit",
+        "text": "在宅精神療法",
+        "category": "counseling",
+        "expectedCodes": [
+          "180067910"
+        ],
+        "candidates": [
+          {
+            "code": "180055610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180056130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180067910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068210",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068530",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068630",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180071830",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180071930",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180072030",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180073030",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180073130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180774910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180775130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776230",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776330",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776430",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776530",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-psy-hv-0009",
+        "specialty": "psychiatry",
+        "encounterSetting": "home_visit",
+        "text": "ベルソムラ錠１５ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "622374201"
+        ],
+        "candidates": [
+          {
+            "code": "622374201",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-psy-hv-0009",
+        "specialty": "psychiatry",
+        "encounterSetting": "home_visit",
+        "text": "デエビゴ錠５ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "622703201"
+        ],
+        "candidates": [
+          {
+            "code": "622703201",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-psy-hv-0009",
+        "specialty": "psychiatry",
+        "encounterSetting": "home_visit",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-hc-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "house_call",
+        "text": "在宅精神療法",
+        "category": "counseling",
+        "expectedCodes": [
+          "180067910"
+        ],
+        "candidates": [
+          {
+            "code": "180055610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180056130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180067910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068210",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068530",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068630",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180071830",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180071930",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180072030",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180073030",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180073130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180774910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180775130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776230",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776330",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776430",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776530",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-psy-hc-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "house_call",
+        "text": "炭酸リチウム錠２００ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620140501"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-hc-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "house_call",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-hc-0009",
+        "specialty": "psychiatry",
+        "encounterSetting": "house_call",
+        "text": "通院精神療法",
+        "category": "counseling",
+        "expectedCodes": [
+          "180067410"
+        ],
+        "candidates": [
+          {
+            "code": "180055510",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180056030",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180067110",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180067230",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180067310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180067410",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180067530",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180067630",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070410",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070510",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180071530",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180071630",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180071730",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180761710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180761810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180774810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180775030",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180775710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180775810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180775930",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776030",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-psy-hc-0009",
+        "specialty": "psychiatry",
+        "encounterSetting": "house_call",
+        "text": "在宅精神療法",
+        "category": "counseling",
+        "expectedCodes": [
+          "180068310"
+        ],
+        "candidates": [
+          {
+            "code": "180055610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180056130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180067910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068210",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068530",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180068630",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180070910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180071830",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180071930",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180072030",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180073030",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180073130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180774910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180775130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776230",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776330",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776430",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "180776530",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-psy-hc-0009",
+        "specialty": "psychiatry",
+        "encounterSetting": "house_call",
+        "text": "ベルソムラ錠１５ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "622374201"
+        ],
+        "candidates": [
+          {
+            "code": "622374201",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-psy-outp-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "outpatient",
+        "text": "精神療法",
+        "category": "counseling",
+        "expectedCodes": [
+          "180067310"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-outp-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "outpatient",
+        "text": "心理検査",
+        "category": "exam",
+        "expectedCodes": [
+          "160085910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-outp-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "outpatient",
+        "text": "セルトラリン錠５０ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "622442901"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-outp-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "outpatient",
+        "text": "エチゾラム錠０．５ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620148601"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-outp-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "outpatient",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-outp-0009",
+        "specialty": "psychiatry",
+        "encounterSetting": "outpatient",
+        "text": "心理検査",
+        "category": "exam",
+        "expectedCodes": [
+          "160085910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-outp-0009",
+        "specialty": "psychiatry",
+        "encounterSetting": "outpatient",
+        "text": "精神療法",
+        "category": "counseling",
+        "expectedCodes": [
+          "180067410"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-outp-0009",
+        "specialty": "psychiatry",
+        "encounterSetting": "outpatient",
+        "text": "ミルタザピン錠１５ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "622647601"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-outp-0009",
+        "specialty": "psychiatry",
+        "encounterSetting": "outpatient",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-tel-0008",
+        "specialty": "dermatology",
+        "encounterSetting": "telephone",
+        "text": "いぼ等冷凍凝固",
+        "category": "procedure",
+        "expectedCodes": [
+          "140012410"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-tel-0008",
+        "specialty": "dermatology",
+        "encounterSetting": "telephone",
+        "text": "ヒルドイドソフト軟膏",
+        "category": "medication",
+        "expectedCodes": [
+          "620009048"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-derm-tel-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "telephone",
+        "text": "ユーパスタ軟膏",
+        "category": "medication",
+        "expectedCodes": [
+          "620668803"
+        ],
+        "candidates": [
+          {
+            "code": "620668803",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-derm-tel-0009",
+        "specialty": "dermatology",
+        "encounterSetting": "telephone",
+        "text": "往診",
+        "category": "management",
+        "expectedCodes": [
+          "114000110"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-tel-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "telephone",
+        "text": "骨塩定量検査",
+        "category": "exam",
+        "expectedCodes": [
+          "160170410"
+        ],
+        "candidates": [
+          {
+            "code": "160091310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160147310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160170410",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160226050",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-orth-tel-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "telephone",
+        "text": "骨塩定量検査（超音波法）",
+        "category": "exam",
+        "expectedCodes": [
+          "160170410"
+        ],
+        "candidates": [
+          {
+            "code": "160170410",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-orth-tel-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "telephone",
+        "text": "カロナール錠３００",
+        "category": "medication",
+        "expectedCodes": [
+          "620000033"
+        ],
+        "candidates": [
+          {
+            "code": "620000033",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-orth-tel-0009",
+        "specialty": "orthopedics",
+        "encounterSetting": "telephone",
+        "text": "トリガーポイント注射",
+        "category": "injection",
+        "expectedCodes": [
+          "150266010"
+        ],
+        "candidates": [
+          {
+            "code": "150266010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-orth-tel-0009",
+        "specialty": "orthopedics",
+        "encounterSetting": "telephone",
+        "text": "レントゲン",
+        "category": "imaging",
+        "expectedCodes": [
+          "170000410"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-orth-tel-0009",
+        "specialty": "orthopedics",
+        "encounterSetting": "telephone",
+        "text": "トリガーポイント注射",
+        "category": "injection",
+        "expectedCodes": [
+          "150266010"
+        ],
+        "candidates": [
+          {
+            "code": "150266010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-psy-tel-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "telephone",
+        "text": "アリピプラゾール錠６ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "622542001"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-tel-0009",
+        "specialty": "psychiatry",
+        "encounterSetting": "telephone",
+        "text": "ラメルテオン錠８ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "622923501"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-psy-tel-0009",
+        "specialty": "psychiatry",
+        "encounterSetting": "telephone",
+        "text": "ラメルテオン錠８ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "622923501"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-hc-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "house_call",
+        "text": "精密眼底検査",
+        "category": "exam",
+        "expectedCodes": [
+          "160081130"
+        ],
+        "candidates": [
+          {
+            "code": "160081010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160081130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160246010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160246130",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-oph-hc-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "house_call",
+        "text": "眼底三次元画像解析",
+        "category": "exam",
+        "expectedCodes": [
+          "160183310"
+        ],
+        "candidates": [
+          {
+            "code": "160183310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160246810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-oph-hc-0009",
+        "specialty": "ophthalmology",
+        "encounterSetting": "house_call",
+        "text": "眼処置",
+        "category": "treatment",
+        "expectedCodes": [
+          "140017610"
+        ],
+        "candidates": [
+          {
+            "code": "140017610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-oph-hc-0009",
+        "specialty": "ophthalmology",
+        "encounterSetting": "house_call",
+        "text": "レボフロキサシン点眼液０．５％",
+        "category": "medication",
+        "expectedCodes": [
+          "622046702"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-hc-0009",
+        "specialty": "ophthalmology",
+        "encounterSetting": "house_call",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-tel-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "telephone",
+        "text": "水晶体再建術",
+        "category": "procedure",
+        "expectedCodes": [
+          "150253010"
+        ],
+        "candidates": [
+          {
+            "code": "150253010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "150315610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "150356210",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "150356310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-oph-tel-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "telephone",
+        "text": "レボフロキサシン点眼液０．５％",
+        "category": "medication",
+        "expectedCodes": [
+          "622046702"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-oph-tel-0009",
+        "specialty": "ophthalmology",
+        "encounterSetting": "telephone",
+        "text": "眼底カメラ撮影",
+        "category": "exam",
+        "expectedCodes": [
+          "160203810"
+        ],
+        "candidates": [
+          {
+            "code": "160081550",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160199310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160203710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160203810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160246310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160246410",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160246510",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "160246610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-oph-tel-0009",
+        "specialty": "ophthalmology",
+        "encounterSetting": "telephone",
+        "text": "眼圧",
+        "category": "exam",
+        "expectedCodes": [
+          "160082910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-hc-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "house_call",
+        "text": "ＳｐＯ２",
+        "category": "exam",
+        "expectedCodes": [
+          "160155510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-hc-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "house_call",
+        "text": "筋肉内注射",
+        "category": "injection",
+        "expectedCodes": [
+          "130000510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-hc-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "house_call",
+        "text": "ザイザルシロップ０．０５％",
+        "category": "medication",
+        "expectedCodes": [
+          "622308201"
+        ],
+        "candidates": [
+          {
+            "code": "622308201",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ped-hc-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "house_call",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-hc-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "house_call",
+        "text": "採血",
+        "category": "lab",
+        "expectedCodes": [
+          "160095710"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-hc-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "house_call",
+        "text": "溶連菌迅速検査",
+        "category": "lab",
+        "expectedCodes": [
+          "160044110"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-hc-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "house_call",
+        "text": "アンヒバ坐剤小児用２００ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620002622"
+        ],
+        "candidates": [
+          {
+            "code": "620002622",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ped-hc-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "house_call",
+        "text": "ムコダインシロップ５％",
+        "category": "medication",
+        "expectedCodes": [
+          "612220508"
+        ],
+        "candidates": [
+          {
+            "code": "612220508",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "672220508",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ped-tel-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "telephone",
+        "text": "アンヒバ坐剤小児用１００ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620002621"
+        ],
+        "candidates": [
+          {
+            "code": "620002621",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ped-tel-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "telephone",
+        "text": "溶連菌迅速検査",
+        "category": "lab",
+        "expectedCodes": [
+          "160044110"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-tel-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "telephone",
+        "text": "ネブライザー",
+        "category": "procedure",
+        "expectedCodes": [
+          "140022710"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ped-tel-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "telephone",
+        "text": "キプレス細粒４ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620005821"
+        ],
+        "candidates": [
+          {
+            "code": "620005821",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ped-tel-0009",
+        "specialty": "pediatrics",
+        "encounterSetting": "telephone",
+        "text": "ＳｐＯ２",
+        "category": "exam",
+        "expectedCodes": [
+          "160155510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-hc-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "house_call",
+        "text": "耳垢栓塞除去",
+        "category": "procedure",
+        "expectedCodes": [
+          "140022610"
+        ],
+        "candidates": [
+          {
+            "code": "140022610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140051610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ent-hc-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "house_call",
+        "text": "耳垢栓塞除去（複雑）",
+        "category": "procedure",
+        "expectedCodes": [
+          "140022610"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-hc-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "house_call",
+        "text": "耳処置",
+        "category": "procedure",
+        "expectedCodes": [
+          "140019310"
+        ],
+        "candidates": [
+          {
+            "code": "140019310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ent-hc-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "house_call",
+        "text": "鼻処置",
+        "category": "procedure",
+        "expectedCodes": [
+          "140019710"
+        ],
+        "candidates": [
+          {
+            "code": "140019710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ent-hc-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "house_call",
+        "text": "鼻内視鏡検査",
+        "category": "exam",
+        "expectedCodes": [
+          "160092310"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-hc-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "house_call",
+        "text": "ＥＦ－嗅裂・鼻咽腔・副鼻腔",
+        "category": "exam",
+        "expectedCodes": [
+          "160092310"
+        ],
+        "candidates": [
+          {
+            "code": "160092310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ent-hc-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "house_call",
+        "text": "モメタゾン点鼻液",
+        "category": "medication",
+        "expectedCodes": [
+          "622672501"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-hc-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "house_call",
+        "text": "フェキソフェナジン塩酸塩錠６０ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "622184401"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-hc-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "house_call",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-tel-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "telephone",
+        "text": "カルボシステイン錠５００ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "621752101"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-tel-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "telephone",
+        "text": "処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-ent-tel-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "telephone",
+        "text": "ＥＦ－嗅裂・鼻咽腔・副鼻腔",
+        "category": "exam",
+        "expectedCodes": [
+          "160092310"
+        ],
+        "candidates": [
+          {
+            "code": "160092310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ent-tel-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "telephone",
+        "text": "ＥＦ－喉頭",
+        "category": "exam",
+        "expectedCodes": [
+          "160092410"
+        ],
+        "candidates": [
+          {
+            "code": "160092410",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-ent-tel-0009",
+        "specialty": "otolaryngology",
+        "encounterSetting": "telephone",
+        "text": "ＥＦ－喉頭",
+        "category": "exam",
+        "expectedCodes": [
+          "160092410"
+        ],
+        "candidates": [
+          {
+            "code": "160092410",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-surg-outp-0008",
+        "specialty": "surgery",
+        "encounterSetting": "outpatient",
+        "text": "縫合",
+        "category": "procedure",
+        "expectedCodes": [
+          "150001010"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-outp-0008",
+        "specialty": "surgery",
+        "encounterSetting": "outpatient",
+        "text": "創傷処置",
+        "category": "procedure",
+        "expectedCodes": [
+          "140000610"
+        ],
+        "candidates": [
+          {
+            "code": "140000610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140000710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140000810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140000910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140001010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-surg-outp-0008",
+        "specialty": "surgery",
+        "encounterSetting": "outpatient",
+        "text": "破傷風トキソイド",
+        "category": "medication",
+        "expectedCodes": [
+          "646320003"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-outp-0008",
+        "specialty": "surgery",
+        "encounterSetting": "outpatient",
+        "text": "筋注",
+        "category": "injection",
+        "expectedCodes": [
+          "130000510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-outp-0008",
+        "specialty": "surgery",
+        "encounterSetting": "outpatient",
+        "text": "セファレキシンカプセル２５０ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620004512"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-outp-0008",
+        "specialty": "surgery",
+        "encounterSetting": "outpatient",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-outp-0009",
+        "specialty": "surgery",
+        "encounterSetting": "outpatient",
+        "text": "デブリードマン",
+        "category": "procedure",
+        "expectedCodes": [
+          "150002210"
+        ],
+        "candidates": [
+          {
+            "code": "150002210",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "150002310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "150002410",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-surg-outp-0009",
+        "specialty": "surgery",
+        "encounterSetting": "outpatient",
+        "text": "ユーパスタ軟膏",
+        "category": "medication",
+        "expectedCodes": [
+          "620668803"
+        ],
+        "candidates": [
+          {
+            "code": "620668803",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-im-hc-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "house_call",
+        "text": "サチュレーション",
+        "category": "exam",
+        "expectedCodes": [
+          "160155510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-hc-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "house_call",
+        "text": "サチュレーション",
+        "category": "exam",
+        "expectedCodes": [
+          "160155510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-hc-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "house_call",
+        "text": "ツロブテロールテープ２ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620004236"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-hc-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "house_call",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-hc-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "house_call",
+        "text": "メトクロプラミド注１０ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620507804"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-hc-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "house_call",
+        "text": "筋肉内注射",
+        "category": "injection",
+        "expectedCodes": [
+          "130000510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-hc-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "house_call",
+        "text": "点滴注射",
+        "category": "injection",
+        "expectedCodes": [
+          "130003810"
+        ],
+        "candidates": [
+          {
+            "code": "130003710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "130003810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "130009310",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-im-hc-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "house_call",
+        "text": "採血",
+        "category": "lab",
+        "expectedCodes": [
+          "160095710"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-tel-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "telephone",
+        "text": "サチュレーション",
+        "category": "exam",
+        "expectedCodes": [
+          "160155510"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-tel-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "telephone",
+        "text": "ＨＯＴ",
+        "category": "management",
+        "expectedCodes": [
+          "114003710"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-tel-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "telephone",
+        "text": "ＥＣＧ１２",
+        "category": "exam",
+        "expectedCodes": [
+          "160068410"
+        ],
+        "candidates": [
+          {
+            "code": "160068410",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-im-tel-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "telephone",
+        "text": "フロセミド錠２０ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620004042"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-im-tel-0009",
+        "specialty": "internal_medicine",
+        "encounterSetting": "telephone",
+        "text": "採血",
+        "category": "lab",
+        "expectedCodes": [
+          "160095710"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-hv-0008",
+        "specialty": "surgery",
+        "encounterSetting": "home_visit",
+        "text": "熱傷処置",
+        "category": "procedure",
+        "expectedCodes": [
+          "140032010"
+        ],
+        "candidates": [
+          {
+            "code": "140032010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140032110",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140032210",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140036510",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140036610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-surg-hv-0008",
+        "specialty": "surgery",
+        "encounterSetting": "home_visit",
+        "text": "白色ワセリン",
+        "category": "medication",
+        "expectedCodes": [
+          "620001705"
+        ],
+        "candidates": [
+          {
+            "code": "667120033",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-surg-hv-0008",
+        "specialty": "surgery",
+        "encounterSetting": "home_visit",
+        "text": "ガーゼ交換",
+        "category": "procedure",
+        "expectedCodes": [
+          "140000610"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-hv-0009",
+        "specialty": "surgery",
+        "encounterSetting": "home_visit",
+        "text": "切開排膿",
+        "category": "procedure",
+        "expectedCodes": [
+          "150001810"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-hv-0009",
+        "specialty": "surgery",
+        "encounterSetting": "home_visit",
+        "text": "キズの処置",
+        "category": "procedure",
+        "expectedCodes": [
+          "140000610"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-hv-0009",
+        "specialty": "surgery",
+        "encounterSetting": "home_visit",
+        "text": "セファレキシンカプセル２５０ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620004512"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-hv-0009",
+        "specialty": "surgery",
+        "encounterSetting": "home_visit",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-hc-0008",
+        "specialty": "surgery",
+        "encounterSetting": "house_call",
+        "text": "縫合",
+        "category": "procedure",
+        "expectedCodes": [
+          "150001010"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-hc-0008",
+        "specialty": "surgery",
+        "encounterSetting": "house_call",
+        "text": "創傷処置",
+        "category": "procedure",
+        "expectedCodes": [
+          "140000610"
+        ],
+        "candidates": [
+          {
+            "code": "140000610",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140000710",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140000810",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140000910",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          },
+          {
+            "code": "140001010",
+            "kind": "procedure",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-surg-hc-0008",
+        "specialty": "surgery",
+        "encounterSetting": "house_call",
+        "text": "セファレキシンカプセル２５０ｍｇ",
+        "category": "medication",
+        "expectedCodes": [
+          "620004512"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-hc-0008",
+        "specialty": "surgery",
+        "encounterSetting": "house_call",
+        "text": "院外処方箋",
+        "category": "medication",
+        "expectedCodes": [
+          "120002910"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-hc-0009",
+        "specialty": "surgery",
+        "encounterSetting": "house_call",
+        "text": "デブリ",
+        "category": "procedure",
+        "expectedCodes": [
+          "150002210"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-hc-0009",
+        "specialty": "surgery",
+        "encounterSetting": "house_call",
+        "text": "ユーパスタ軟膏",
+        "category": "medication",
+        "expectedCodes": [
+          "620668803"
+        ],
+        "candidates": [
+          {
+            "code": "620668803",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-surg-hc-0009",
+        "specialty": "surgery",
+        "encounterSetting": "house_call",
+        "text": "ガーゼ交換",
+        "category": "procedure",
+        "expectedCodes": [
+          "140000610"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-tel-0008",
+        "specialty": "surgery",
+        "encounterSetting": "telephone",
+        "text": "カデックス軟膏０．９％",
+        "category": "medication",
+        "expectedCodes": [
+          "660453014"
+        ],
+        "candidates": [
+          {
+            "code": "660453014",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      },
+      {
+        "caseId": "wx0-surg-tel-0008",
+        "specialty": "surgery",
+        "encounterSetting": "telephone",
+        "text": "デブリ",
+        "category": "procedure",
+        "expectedCodes": [
+          "150002210"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-tel-0009",
+        "specialty": "surgery",
+        "encounterSetting": "telephone",
+        "text": "抜糸",
+        "category": "procedure",
+        "expectedCodes": [
+          "140000610"
+        ],
+        "candidates": []
+      },
+      {
+        "caseId": "wx0-surg-tel-0009",
+        "specialty": "surgery",
+        "encounterSetting": "telephone",
+        "text": "ゲンタシン軟膏０．１％",
+        "category": "medication",
+        "expectedCodes": [
+          "620008993"
+        ],
+        "candidates": [
+          {
+            "code": "620008993",
+            "kind": "drug",
+            "score": 1.0,
+            "source": "exact_alias"
+          }
+        ]
+      }
+    ]
+  }
+}

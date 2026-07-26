@@ -19,6 +19,7 @@ test("environment wiring infers the sibling master manifest and strict mode", ()
 
   assert.equal(calculator.masterDbManifestPath, "/app/python/data/master/standard-master.manifest.json");
   assert.equal(calculator.masterContentCheckMode, "strict");
+  assert.equal(calculator.whiteboxTimeoutMs, 120_000);
 });
 
 test("expands gzip-compressed fee master DB into runtime tmp path", async () => {
@@ -178,6 +179,7 @@ test("whiteboxReadiness routes configured artifact manifests through the worker"
     linkerManifestPath: "/app/python/data/whitebox/wx2/manifest.json",
     contextClassifierManifestPath: "/app/python/data/whitebox/wx3/manifest.json",
     spanDetectorManifestPath: "/app/python/data/whitebox/wx1/manifest.json",
+    whiteboxTimeoutMs: 90_000,
     workerMode: true
   });
   let seen = null;
@@ -199,6 +201,7 @@ test("whiteboxReadiness routes configured artifact manifests through the worker"
     span_manifest_path: "/app/python/data/whitebox/wx1/manifest.json"
   });
   assert.equal(seen.options.requestIdPrefix, "fee_whitebox_readiness");
+  assert.equal(seen.options.timeoutMs, 90_000);
 });
 
 test("whiteboxReadiness does not start a worker when no artifact is configured", async () => {
@@ -212,6 +215,34 @@ test("whiteboxReadiness does not start a worker when no artifact is configured",
     contextClassifier: { available: false, reason: "not_configured" },
     spanDetector: { available: false, reason: "not_configured" }
   });
+});
+
+test("whitebox inference operations use the dedicated cold-load timeout", async () => {
+  const calculator = new PythonFeeCalculator({
+    linkerManifestPath: "/app/wx2.json",
+    contextClassifierManifestPath: "/app/wx3.json",
+    spanDetectorManifestPath: "/app/wx1.json",
+    whiteboxTimeoutMs: 75_000,
+    workerMode: true
+  });
+  const calls = [];
+  calculator.runWorkerJson = async (payload, options) => {
+    calls.push({ payload, options });
+    return { status: "complete", results: [] };
+  };
+
+  await calculator.linkSpans({ spans: [] });
+  await calculator.classifyContext({ items: [] });
+  await calculator.detectSpans({ lines: [] });
+
+  assert.deepEqual(
+    calls.map((call) => [call.payload.op, call.options.timeoutMs]),
+    [
+      ["link_spans", 75_000],
+      ["classify_context", 75_000],
+      ["detect_spans", 75_000]
+    ]
+  );
 });
 
 test("worker timeout fails only the timed-out request and re-dispatches survivors", async () => {

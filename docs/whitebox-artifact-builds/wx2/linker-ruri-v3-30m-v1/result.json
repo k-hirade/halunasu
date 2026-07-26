@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "fee-wx2-artifact-build-summary-v1",
+  "artifact": {
+    "type": "fee_master_linker",
+    "version": "ca0b72af0ea8ed861525941e",
+    "manifestPath": "python/data/whitebox/linker-ruri-v3-30m-v1/linker_manifest.json",
+    "manifestSha256": "e00a6511541d858c92da38ccfdc043a6fca87b3c56cffdb503bd9da47f92693c",
+    "documentCount": 57925,
+    "dimension": 256,
+    "sourceMasterSha256": "26737b6719ede79ea0ba532a3ac91cc8c5a2ecacbe3af040b73de21bcb3376d1"
+  },
+  "model": {
+    "id": "cl-nagoya/ruri-v3-30m",
+    "revision": "24899e5de370b56d179604a007c0d727bf144504",
+    "license": "Apache-2.0",
+    "queryPrefix": "検索クエリ: ",
+    "documentPrefix": "検索文書: "
+  },
+  "developmentEvaluation": {
+    "queryCount": 228,
+    "exactAliasRecallAt1": 0.27631578947368424,
+    "exactAliasRecallAt5": 0.32456140350877194,
+    "embeddingRecallAt1": 0.37719298245614036,
+    "embeddingRecallAt5": 0.5789473684210527,
+    "embeddingRecallAt5Delta": 0.25438596491228077
+  },
+  "runtimeParity": {
+    "probeCount": 8,
+    "minimumCosine": 1.0,
+    "requiredMinimumCosine": 0.999
+  },
+  "runtimeEvaluation": {
+    "queryCount": 228,
+    "recallAt1": 0.37719298245614036,
+    "recallAt5": 0.5789473684210527,
+    "mrrAt5": 0.4562134502923977,
+    "unresolvedWithinTop5": 96
+  },
+  "status": "accepted_for_shadow"
+}

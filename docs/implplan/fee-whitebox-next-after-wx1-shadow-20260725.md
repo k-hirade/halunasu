@@ -22,9 +22,12 @@ WX1初回shadow(revision fee-api-stg-00182-6sd)。
 
 ### A. span単独のshadowは、ルーティング判定材料をほぼ生まない
 
-実装上、行のencoder経路判定は `spanHigh ∧ linkerHigh` の合議で決まり
-(`whitebox-extraction.js:487`)、**linker=offでは全行がllm側に落ちる**。
-つまり現状のshadowが集められるのは「span検出の件数・レイテンシ・決定性」まで
+実装上、spanを含む行のencoder経路判定は `spanHigh ∧ linkerHigh` の合議で決まり
+(`whitebox-extraction.js`)、**linker=offでは算定spanを含む行をencoderへ委譲
+できない**。自明な非算定行はspanなしでもshadow上encoder判定になり得るが、
+コード再現性の判定材料にはならない。
+つまりspan単独shadowが集められるのは主に「span検出の件数・レイテンシ・決定性」
+まで
 で、本命の「何%の行をencoderに任せられるか/コード一致率」は**L2 linkerと
 L3 contextが揃うまで測定不能**。shadowを1週間流しても切替判断はできない。
 
@@ -118,3 +121,26 @@ N6 コミット → N1 env復元デプロイ(B2再走でH3クローズ)
 
 WX1単独の精度磨き込みに進まないこと。**律速はL2/L3の不在**であり、
 3レーンが揃って初めてこの計画の本丸(routable率とLLM使用率)が測れる。
+
+## 実装結果 (2026-07-25)
+
+| 項目 | 結果 | 現在地 |
+| --- | --- | --- |
+| N1 | 完全なSTG機能プロファイル5種とfail-closed loaderを実装 | ローカル完了、デプロイ待ち |
+| N2 / E4 | ruri-v3-30mで57,925文書のL2索引を製造 | recall@5 32.46% → 57.89%、shadow採用 |
+| N2 / E5 | MiniLM-L12でL3 5軸分類器を製造 | 決定論100回合格、shadow採用 |
+| N3 | 8科 x 4区分 x 3件のSTGハーネスと昇格ゲートを実装 | dry-run 96件、holdout 0件 |
+| N5 | immutable GCS upload/fetch/sha256検証を実装 | アップロード・デプロイ待ち |
+| N4 | WX1 imaging/treatmentの補強 | 3レーンshadowの観測後に実施 |
+
+L2の30mモデルはexact alias基準よりrecall@5が25.44ポイント改善した。
+L3は安全側較正により`actionStatus`等を利用できる一方、
+`temporalRelation`と`providerOwnership`は開発セットで全件abstainである。
+これは誤った自動委譲より安全だが、route昇格可能な品質ではない。
+
+3モデルの独立cold process計測では最大RSS 1,650.53 MiB。fee-api既定の4GiBを
+維持する。ローカル3層p95合計は984〜1,252msで、宣言済み500msゲートを
+満たさない。ゲートは変更せず、STG実測でも不合格ならroute化しない。
+
+運用手順:
+[three-lane shadow runbook](./fee-whitebox-three-lane-shadow-runbook-20260725.md)。

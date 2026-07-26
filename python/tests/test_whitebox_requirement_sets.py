@@ -7,6 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WX0_REQUIREMENTS = ROOT / "python/experiments/requirements-wx0.txt"
 BUILD_REQUIREMENTS = ROOT / "python/experiments/requirements-whitebox-build.txt"
+LINKER_BUILD_REQUIREMENTS = (
+    ROOT / "python/experiments/requirements-whitebox-linker-build.txt"
+)
 RUNTIME_REQUIREMENTS = ROOT / "python/requirements-fee-runtime.txt"
 
 
@@ -44,6 +47,14 @@ class WhiteboxRequirementSetsTest(unittest.TestCase):
 
         for package in ("numpy", "onnxruntime", "tokenizers"):
             self.assertEqual(build_pins[package], runtime_pins[package])
+
+    def test_modern_linker_builder_is_isolated_from_legacy_builders(self):
+        pins = read_pins(LINKER_BUILD_REQUIREMENTS)
+
+        self.assertNotIn("gliner", pins)
+        self.assertEqual(pins["transformers"], "4.57.3")
+        self.assertEqual(pins["tokenizers"], "0.22.1")
+        self.assertEqual(pins["onnxruntime"], "1.20.1")
 
     def test_runtime_excludes_training_dependencies(self):
         pins = read_pins(RUNTIME_REQUIREMENTS)

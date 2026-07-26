@@ -106,6 +106,13 @@ export function isWhiteboxSupportedSetting(setting = "") {
   return WHITEBOX_SUPPORTED_SETTINGS.has(String(setting || "outpatient").trim() || "outpatient");
 }
 
+export function whiteboxEncounterSetting(session = {}) {
+  if (String(session?.encounterDetails?.visitKind || "").trim() === "telephone_revisit") {
+    return "telephone";
+  }
+  return String(session?.setting || "outpatient").trim() || "outpatient";
+}
+
 export function contextRoleFromAxes(axes = {}, threshold = DEFAULT_WHITEBOX_THRESHOLDS.contextConfidence) {
   const normalized = normalizeContextAxes(axes);
   const result = (value) => ({ ...value, normalizedAxes: normalized });
@@ -323,7 +330,7 @@ export async function prepareWhiteboxExtraction({
 } = {}) {
   const modes = whiteboxRuntimeModes(env);
   const lines = Array.isArray(preprocessing?.lines) ? preprocessing.lines : [];
-  const setting = String(session?.setting || "outpatient").trim() || "outpatient";
+  const setting = whiteboxEncounterSetting(session);
   const specialty = whiteboxSpecialty(session);
   const thresholds = safeWhiteboxThresholds(env, {
     specialty,
@@ -380,7 +387,9 @@ export async function prepareWhiteboxExtraction({
   const spans = spanRows.flatMap((row) => Array.isArray(row?.spans) ? row.spans : []);
 
   let linkerEnvelope = {
-    status: modes.linker === "off" ? "disabled" : "index_unavailable",
+    status: modes.linker === "off"
+      ? "disabled"
+      : (spans.length ? "index_unavailable" : "complete"),
     results: []
   };
   let linkerDurationMs = 0;
@@ -396,7 +405,9 @@ export async function prepareWhiteboxExtraction({
   }
 
   let contextEnvelope = {
-    status: modes.context === "off" ? "disabled" : "model_unavailable",
+    status: modes.context === "off"
+      ? "disabled"
+      : (spans.length ? "model_unavailable" : "complete"),
     results: []
   };
   let contextDurationMs = 0;
@@ -421,19 +432,23 @@ export async function prepareWhiteboxExtraction({
     contextDurationMs = Date.now() - contextStartedAt;
   }
 
-  const canRoute = thresholdConfigValid
-    && modes.span === "route"
-    && modes.linker === "propose"
-    && modes.context === "assist"
+  const shadowStackAvailable = thresholdConfigValid
+    && modes.linker !== "off"
+    && modes.context !== "off"
     && linkerEnvelope?.status === "complete"
     && contextEnvelope?.status === "complete";
+  const canRoute = shadowStackAvailable
+    && modes.span === "route"
+    && modes.linker === "propose"
+    && modes.context === "assist";
   const visitFactsPlan = determineWhiteboxVisitFacts({ lines, session });
   const fullLlmRequired = visitFactsPlan.status !== "complete";
   const extractorVersion = whiteboxExtractorVersion({
     spanEnvelope,
     linkerEnvelope,
     contextEnvelope,
-    thresholds
+    thresholds,
+    env
   });
   const linkedByIndex = Array.isArray(linkerEnvelope?.results) ? linkerEnvelope.results : [];
   const contextBySpanId = new Map((Array.isArray(contextEnvelope?.results) ? contextEnvelope.results : [])
@@ -555,6 +570,19 @@ export async function prepareWhiteboxExtraction({
 
   const llmLineIds = new Set(lineRoutes.filter((line) => line.route === "llm").map((line) => line.lineId));
   const llmLines = lines.filter((line) => llmLineIds.has(line.lineId));
+  const shadowEncoderLineCount = lineRoutes.filter(
+    (line) => line.shadowRoute === "encoder"
+  ).length;
+  const spanBearingLineCount = lineRoutes.filter(
+    (line) => Array.isArray(line.spans) && line.spans.length > 0
+  ).length;
+  const shadowEncoderSpanBearingLineCount = lineRoutes.filter(
+    (line) => (
+      line.shadowRoute === "encoder"
+      && Array.isArray(line.spans)
+      && line.spans.length > 0
+    )
+  ).length;
   const encoderFacts = {
     ...emptyEncoderFacts(lines),
     visit_facts: visitFactsPlan.facts,
@@ -568,9 +596,7 @@ export async function prepareWhiteboxExtraction({
         line_role: lineRoleForContract(line.lineRole)
       }))
   };
-  const degraded = !canRoute
-    || linkerEnvelope?.status === "index_unavailable"
-    || contextEnvelope?.status === "model_unavailable";
+  const degraded = !shadowStackAvailable;
   return {
     ...base,
     status: canRoute && !fullLlmRequired ? "route_ready" : "shadow",
@@ -587,9 +613,11 @@ export async function prepareWhiteboxExtraction({
       degradedReasons: [
         ...(thresholdConfigValid ? [] : ["threshold_config_invalid"]),
         ...(linkerEnvelope?.status !== "complete" ? ["linker_unavailable"] : []),
-        ...(contextEnvelope?.status !== "complete" ? ["context_classifier_unavailable"] : []),
-        ...(fullLlmRequired ? ["visit_facts_sensitive_change"] : [])
+        ...(contextEnvelope?.status !== "complete" ? ["context_classifier_unavailable"] : [])
       ],
+      safetyFallbackReasons: fullLlmRequired
+        ? ["visit_facts_sensitive_change"]
+        : [],
       spanCount: spans.length,
       spanDetectorDurationMs: spanDurationMs,
       linkerDurationMs,
@@ -613,7 +641,16 @@ export async function prepareWhiteboxExtraction({
         evidenceLineCount: visitFactsPlan.evidenceLineIds.length,
         ambiguousLineCount: visitFactsPlan.ambiguousLineIds.length
       },
-      shadowEncoderLineCount: lineRoutes.filter((line) => line.shadowRoute === "encoder").length,
+      shadowEncoderLineCount,
+      shadowRoutableLineRatio: lines.length
+        ? shadowEncoderLineCount / lines.length
+        : 0,
+      spanBearingLineCount,
+      shadowEncoderSpanBearingLineCount,
+      spanBearingRoutableLineRatio: spanBearingLineCount
+        ? shadowEncoderSpanBearingLineCount / spanBearingLineCount
+        : 0,
+      routeReasonCounts: countRouteReasons(lineRoutes),
       encoderLineCount: canRoute && !fullLlmRequired
         ? lineRoutes.filter((line) => line.route === "encoder").length
         : 0,
@@ -622,8 +659,11 @@ export async function prepareWhiteboxExtraction({
         ? (canRoute && !fullLlmRequired ? llmLines.length : lines.length) / lines.length
         : 0,
       spanDetectorVersion: spanEnvelope.extractorVersion || spanEnvelope.modelVersion || null,
+      spanDetectorArtifactVersion: spanEnvelope.artifactVersion || null,
       linkerIndexVersion: linkerEnvelope.indexVersion || null,
+      linkerArtifactVersion: linkerEnvelope.artifactVersion || null,
       contextClassifierVersion: contextEnvelope.modelVersion || null,
+      contextClassifierArtifactVersion: contextEnvelope.artifactVersion || null,
       extractorVersion
     },
     trace: [{
@@ -644,6 +684,22 @@ export async function prepareWhiteboxExtraction({
       visitFactsAmbiguousLineIds: visitFactsPlan.ambiguousLineIds
     }]
   };
+}
+
+function countRouteReasons(lineRoutes = []) {
+  const counts = {};
+  for (const line of Array.isArray(lineRoutes) ? lineRoutes : []) {
+    for (const rawReason of Array.isArray(line?.reasonCodes) ? line.reasonCodes : []) {
+      const reason = String(rawReason || "").trim();
+      if (!reason) {
+        continue;
+      }
+      counts[reason] = Number(counts[reason] || 0) + 1;
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(counts).sort(([left], [right]) => left.localeCompare(right))
+  );
 }
 
 export async function buildLinkerCandidateLayer({
@@ -1287,19 +1343,23 @@ function whiteboxExtractorVersion({
   spanEnvelope = {},
   linkerEnvelope = {},
   contextEnvelope = {},
-  thresholds = {}
+  thresholds = {},
+  env = process.env
 } = {}) {
   const identity = {
     schemaVersion: 1,
-    span: spanEnvelope.extractorVersion
+    span: String(env?.FEE_SPAN_DETECTOR_MANIFEST_PATH || "").trim()
+      || spanEnvelope.extractorVersion
       || spanEnvelope.artifactVersion
       || spanEnvelope.modelVersion
       || "unavailable",
-    linker: linkerEnvelope.artifactVersion
+    linker: String(env?.FEE_LINKER_MANIFEST_PATH || "").trim()
+      || linkerEnvelope.artifactVersion
       || linkerEnvelope.indexVersion
       || linkerEnvelope.modelVersion
       || "unavailable",
-    context: contextEnvelope.artifactVersion
+    context: String(env?.FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH || "").trim()
+      || contextEnvelope.artifactVersion
       || contextEnvelope.modelVersion
       || "unavailable",
     thresholds: thresholds.version || thresholdDigest(thresholds)

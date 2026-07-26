@@ -1,0 +1,10 @@
+# WX2 Ruri/ModernBERT export and index build only. Keep this separate from
+# the pinned WX1/WX3 builder environment because ModernBERT requires the
+# newer Transformers/Tokenizers contract.
+sentence-transformers==5.1.2
+numpy==1.26.4
+onnx==1.17.0
+onnxruntime==1.20.1
+tokenizers==0.22.1
+torch==2.5.1
+transformers==4.57.3

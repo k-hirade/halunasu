@@ -14,6 +14,7 @@ import json
 import math
 import shutil
 import sqlite3
+import unicodedata
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
@@ -50,7 +51,7 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
             (procedure_source["id"],),
         )
         for row in rows:
-            names = _unique_documents(
+            aliases = (
                 alias
                 for value in (row["short_name"], row["base_name"])
                 if value
@@ -60,7 +61,7 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
                 code=row["code"],
                 name=row["short_name"],
                 kind="procedure",
-                docs=names,
+                docs=[_embedding_document(row["short_name"], aliases)],
                 points=row["points"],
                 effective_from=row["effective_from"],
                 effective_to=row["effective_to"],
@@ -80,7 +81,7 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
                 (drug_source["id"],),
             )
             for row in rows:
-                names = _unique_documents(
+                aliases = (
                     str(value)
                     for value in (
                         row["name"],
@@ -94,7 +95,7 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
                     code=row["code"],
                     name=row["name"],
                     kind="drug",
-                    docs=names,
+                    docs=[_embedding_document(row["name"], aliases)],
                     effective_from=row["changed_at"],
                     effective_to=row["discontinued_at"],
                 ))
@@ -131,7 +132,7 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
             for row in rows:
                 if not row["name"]:
                     continue
-                names = _unique_documents(
+                aliases = (
                     str(value)
                     for value in (row["name"], row["name_kana"], row["icd10"])
                     if value
@@ -140,7 +141,7 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
                     code=row["code"],
                     name=row["name"],
                     kind="disease",
-                    docs=names,
+                    docs=[_embedding_document(row["name"], aliases)],
                     effective_from=row["effective_from"],
                     effective_to=row["effective_to"],
                 ))
@@ -168,6 +169,8 @@ def build_linker_artifact(
     embedding_output_name: str = "",
     pooling: str = "mean",
     max_length: int = 256,
+    query_prefix: str = "",
+    document_prefix: str = "",
 ) -> Path:
     license_record = validate_artifact_license({
         "license": {
@@ -205,8 +208,9 @@ def build_linker_artifact(
         raise ValueError("master produced no linker documents")
 
     encoder = embedder or _sentence_transformer_embedder(model_dir)
+    document_encoder = _prefixed_embedder(encoder, document_prefix)
     index_path = output_dir / "linker-index.sqlite"
-    dimension = _write_index(index_path, documents, encoder, batch_size)
+    dimension = _write_index(index_path, documents, document_encoder, batch_size)
 
     runtime_dir = output_dir / "runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -230,8 +234,8 @@ def build_linker_artifact(
     )
     probe_texts = [item["doc"] for item in documents[: min(8, len(documents))]]
     runtime_parity = _validate_runtime_embedding_parity(
-        encoder(probe_texts),
-        runtime_encoder.encode(probe_texts),
+        encoder([f"{query_prefix}{text}" for text in probe_texts]),
+        runtime_encoder.encode([f"{query_prefix}{text}" for text in probe_texts]),
     )
     source_fingerprint = hashlib.sha256(
         json.dumps(sources, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -262,6 +266,8 @@ def build_linker_artifact(
         "embeddingOutputName": embedding_output_name,
         "pooling": pooling,
         "maxLength": max_length,
+        "queryPrefix": query_prefix,
+        "documentPrefix": document_prefix,
         "dimension": dimension,
         "documentCount": len(documents),
         "runtimeParity": runtime_parity,
@@ -440,6 +446,16 @@ def _sentence_transformer_embedder(model_dir: Path):
     return encode
 
 
+def _prefixed_embedder(
+    embedder: Callable[[Sequence[str]], Sequence[Sequence[float]]],
+    prefix: str,
+):
+    def encode(texts: Sequence[str]):
+        return embedder([f"{prefix}{text}" for text in texts])
+
+    return encode
+
+
 def _resolve_runtime_file(
     configured: Path | None,
     model_dir: Path,
@@ -501,16 +517,28 @@ def _document_rows(
     ]
 
 
-def _unique_documents(values: Iterable[str]) -> list[str]:
+def _unique_embedding_aliases(values: Iterable[str]) -> list[str]:
     seen: set[str] = set()
     output: list[str] = []
     for value in values:
-        normalized = str(value or "").strip()
-        if len(normalized) < 2 or normalized in seen:
+        text = str(value or "").strip()
+        normalized = (
+            unicodedata.normalize("NFKC", text)
+            .casefold()
+            .replace(" ", "")
+            .replace("　", "")
+        )
+        if not normalized or normalized in seen:
             continue
         seen.add(normalized)
-        output.append(normalized)
+        output.append(text)
     return output
+
+
+def _embedding_document(canonical_name: Any, aliases: Iterable[str]) -> str:
+    canonical = str(canonical_name or "").strip()
+    values = [canonical, *_unique_embedding_aliases(aliases)]
+    return " / ".join(value for value in values if value)
 
 
 def parse_args() -> argparse.Namespace:
@@ -534,6 +562,8 @@ def parse_args() -> argparse.Namespace:
         default="mean",
     )
     parser.add_argument("--max-length", type=int, default=256)
+    parser.add_argument("--query-prefix", required=True)
+    parser.add_argument("--document-prefix", required=True)
     return parser.parse_args()
 
 
@@ -555,6 +585,8 @@ def main() -> int:
         embedding_output_name=args.embedding_output_name,
         pooling=args.pooling,
         max_length=args.max_length,
+        query_prefix=args.query_prefix,
+        document_prefix=args.document_prefix,
     )
     print(manifest)
     return 0

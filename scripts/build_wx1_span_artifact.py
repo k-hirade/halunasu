@@ -352,7 +352,10 @@ def calibrate_span_model(
                     **metrics,
                 }
         entity_thresholds[category] = best["threshold"]
-        entity_metrics[category] = best
+        entity_metrics[category] = {
+            **best,
+            **classify_category_metric(best),
+        }
 
     relevance_temperature = select_temperature(
         relevance_logits,
@@ -363,9 +366,11 @@ def calibrate_span_model(
     relevance_accuracy = float(
         (relevance_prediction == encoded["relevance_labels"].cpu()).float().mean()
     )
+    category_coverage = summarize_category_coverage(entity_metrics)
     return {
         "entityThresholds": entity_thresholds,
         "entityMetrics": entity_metrics,
+        "categoryCoverage": category_coverage,
         "relevanceTemperature": relevance_temperature,
         "relevanceAccuracy": relevance_accuracy,
     }
@@ -411,6 +416,56 @@ def category_token_metrics(
         "truePositiveCount": tp,
         "falsePositiveCount": fp,
         "falseNegativeCount": fn,
+    }
+
+
+def classify_category_metric(
+    metric: Mapping[str, Any],
+    *,
+    minimum_f1: float = 0.5,
+) -> dict[str, Any]:
+    true_positive = int(metric.get("truePositiveCount") or 0)
+    false_positive = int(metric.get("falsePositiveCount") or 0)
+    false_negative = int(metric.get("falseNegativeCount") or 0)
+    positive_support = true_positive + false_negative
+    prediction_count = true_positive + false_positive
+    if positive_support == 0:
+        quality_status = (
+            "false_positive_only"
+            if false_positive
+            else "unmeasured"
+        )
+    elif float(metric.get("f1") or 0) < minimum_f1:
+        quality_status = "below_target"
+    else:
+        quality_status = "measured"
+    return {
+        "positiveSupport": positive_support,
+        "predictionCount": prediction_count,
+        "qualityStatus": quality_status,
+        "minimumF1Target": minimum_f1,
+    }
+
+
+def summarize_category_coverage(
+    entity_metrics: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    statuses = {
+        "measured": [],
+        "below_target": [],
+        "false_positive_only": [],
+        "unmeasured": [],
+    }
+    for category, metric in sorted(entity_metrics.items()):
+        status = str(metric.get("qualityStatus") or "unmeasured")
+        statuses.setdefault(status, []).append(category)
+    return {
+        "categoryCount": len(entity_metrics),
+        "measuredCategoryCount": sum(
+            len(statuses[key])
+            for key in ("measured", "below_target")
+        ),
+        "categoriesByStatus": statuses,
     }
 
 
@@ -636,7 +691,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _markdown_report(report: Mapping[str, Any]) -> str:
-    return "\n".join([
+    lines = [
         "# WX1 Span Artifact Build",
         "",
         f"- artifact: `{report['artifactVersion']}`",
@@ -647,9 +702,26 @@ def _markdown_report(report: Mapping[str, Any]) -> str:
         f"- relevance accuracy: {report['development']['relevanceAccuracy']:.4f}",
         f"- deterministic runs: {report['determinism']['repeatCount']}",
         "",
+        "| category | positive support | precision | recall | F1 | status |",
+        "| --- | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for category, metrics in sorted(
+        report["development"]["entityMetrics"].items()
+    ):
+        lines.append(
+            f"| {category} | {metrics['positiveSupport']} "
+            f"| {metrics['precision']:.4f} | {metrics['recall']:.4f} "
+            f"| {metrics['f1']:.4f} | {metrics['qualityStatus']} |"
+        )
+    lines.extend([
+        "",
+        "`unmeasured` means that development contained no positive token for the category; "
+        "it is not evidence of model failure or success.",
+        "",
         "This report does not evaluate or expose holdout labels. Promotion remains a separate human decision.",
         "",
     ])
+    return "\n".join(lines)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
