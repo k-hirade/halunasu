@@ -107,14 +107,40 @@ venv-wx0/
 # Generated whitebox runtime binaries are too large for normal Git storage.
 # Keep manifests and routing configuration in Git; distribute runtime models,
 # indexes, tokenizers, and training checkpoints through the artifact registry.
+# Artifact fetch/build commands use hidden atomic work directories. Ignore them
+# as directories so a failed or interrupted operation cannot expose manifests
+# or otherwise trackable JSON files from an incomplete artifact.
+python/data/whitebox/.*/
+python/data/whitebox/**/.*/
+python/data/whitebox/**/.*.partial-*
 python/data/whitebox/**/*.onnx
+python/data/whitebox/**/*.onnx.data
+python/data/whitebox/**/*.onnx_data
+python/data/whitebox/**/*.ort
 python/data/whitebox/**/tokenizer.json
 python/data/whitebox/**/build-report.json
 python/data/whitebox/**/*.sqlite
 python/data/whitebox/**/*.sqlite-*
 python/data/whitebox/**/*.safetensors
 python/data/whitebox/**/*.bin
+python/data/whitebox/**/*.ckpt
 python/data/whitebox/**/*.pt
 python/data/whitebox/**/*.pth
 python/data/whitebox/**/*.npy
 python/data/whitebox/**/*.npz
+python/data/whitebox/**/*.faiss
+python/data/whitebox/**/*.index
+python/data/whitebox/**/*.arrow
+python/data/whitebox/**/*.parquet
+python/data/whitebox/**/*.pkl
+python/data/whitebox/**/*.pickle
+python/data/whitebox/**/*.joblib
+python/data/whitebox/**/*.h5
+python/data/whitebox/**/*.hdf5
+python/data/whitebox/**/*.pb
+python/data/whitebox/**/*.tflite
+python/data/whitebox/**/*.mlmodel
+python/data/whitebox/**/*.model
+python/data/whitebox/**/*.tar
+python/data/whitebox/**/*.tar.gz
+python/data/whitebox/**/*.zip

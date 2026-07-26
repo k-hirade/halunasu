@@ -49,6 +49,32 @@ def telemetry_record(session_id: str = "fee-session-1"):
                 "linkerDurationMs": 20,
                 "contextClassifierDurationMs": 30,
                 "routeReasonCounts": {"performed_span": 2},
+                "gateFunnel": {
+                    "strict": {
+                        "spanCount": 2,
+                        "spanPassCount": 1,
+                        "linkerCandidateCount": 2,
+                        "linkerScorePassCount": 1,
+                        "linkerMarginPassCount": 1,
+                        "linkerCategoryPassCount": 2,
+                        "linkerPassCount": 1,
+                        "contextResolvedCount": 1,
+                        "jointEligibleCount": 1,
+                        "rejectionCounts": {"span_low_confidence": 1},
+                    },
+                    "shadow": {
+                        "spanCount": 2,
+                        "spanPassCount": 2,
+                        "linkerCandidateCount": 2,
+                        "linkerScorePassCount": 2,
+                        "linkerMarginPassCount": 2,
+                        "linkerCategoryPassCount": 2,
+                        "linkerPassCount": 2,
+                        "contextResolvedCount": 1,
+                        "jointEligibleCount": 1,
+                        "rejectionCounts": {"context_unresolved": 1},
+                    },
+                },
                 "contextClassifier": {
                     "evaluatedSpans": 2,
                     "abstainedSpans": 1,
@@ -184,6 +210,14 @@ class ReportFeeWhiteboxShadowTest(unittest.TestCase):
         self.assertEqual(
             report["telemetry"]["contextClassifier"]["abstainRate"],
             0.5,
+        )
+        self.assertEqual(
+            report["telemetry"]["gateFunnel"]["strict"]["spanPassCount"],
+            1,
+        )
+        self.assertEqual(
+            report["telemetry"]["gateFunnel"]["shadow"]["rejectionCounts"],
+            {"context_unresolved": 1},
         )
 
     def test_gate_blocks_without_independent_adjudication(self) -> None:

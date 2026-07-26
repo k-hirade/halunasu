@@ -524,6 +524,140 @@ test("three-lane shadow is healthy when every artifact returns a complete envelo
   assert.deepEqual(result.llmLines, lines);
 });
 
+test("three-lane shadow uses artifact-calibrated diagnostic gates without relaxing promotion routing", async () => {
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator({
+      spanResults: [{
+        lineId: "O-001",
+        relevance: "relevant",
+        relevanceConfidence: 0.99,
+        spans: [{
+          spanId: "span_shadow",
+          lineId: "O-001",
+          charStart: 0,
+          charEnd: 4,
+          text: "創部処置",
+          category: "procedure",
+          confidence: 0.7,
+          detectionThreshold: 0.3
+        }]
+      }],
+      linkResults: [{
+        text: "創部処置",
+        margin: 0.03,
+        candidates: [
+          {
+            code: "140000610",
+            name: "創傷処置（１００ｃｍ２未満）",
+            matchedDoc: "創傷処置",
+            kind: "procedure",
+            score: 0.9,
+            categoryMatched: true,
+            points: 52
+          },
+          {
+            code: "140032110",
+            name: "熱傷処置",
+            matchedDoc: "熱傷処置",
+            kind: "procedure",
+            score: 0.87,
+            categoryMatched: true,
+            points: 147
+          }
+        ]
+      }]
+    }),
+    preprocessing: {
+      lines: [{
+        lineId: "O-001",
+        index: 1,
+        text: "創部処置を施行。",
+        section: "O",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient", serviceDate: "2026-07-24" },
+    env: shadowEnv()
+  });
+
+  assert.equal(result.lineRoutes[0].route, "llm");
+  assert.equal(result.lineRoutes[0].strictLineRole, "llm");
+  assert.equal(result.lineRoutes[0].shadowLineRole, "performed");
+  assert.equal(result.lineRoutes[0].shadowRoute, "encoder");
+  assert.equal(result.encoderFacts.clinical_events.length, 0);
+  assert.deepEqual(
+    result.encoderShadowFacts.clinical_events.map((event) => event._whiteboxLink.code),
+    ["140000610"]
+  );
+  assert.equal(result.metrics.gateFunnel.strict.jointEligibleCount, 0);
+  assert.equal(result.metrics.gateFunnel.shadow.jointEligibleCount, 1);
+  assert.deepEqual(result.metrics.gateFunnel.strict.rejectionCounts, {
+    linker_low_margin: 1,
+    linker_low_score: 1,
+    span_low_confidence: 1
+  });
+  const router = result.trace.find((entry) => entry.stage === "whitebox_router");
+  assert.equal(router.gateDiagnostics.length, 1);
+  assert.equal(router.gateDiagnostics[0].shadow.spanThreshold, 0.3);
+  assert.equal(JSON.stringify(router.gateDiagnostics).includes("創部処置"), false);
+});
+
+test("three-lane shadow limits ambiguous visit-facts fallback to the affected line", async () => {
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator({
+      spanResults: [
+        {
+          lineId: "O-001",
+          relevance: "relevant",
+          relevanceConfidence: 0.99,
+          spans: [span("span_1", "O-001", "創傷処置", "procedure", 0, 4)]
+        },
+        {
+          lineId: "P-001",
+          relevance: "abstain",
+          relevanceConfidence: 0.2,
+          spans: []
+        }
+      ]
+    }),
+    preprocessing: {
+      lines: [
+        {
+          lineId: "O-001",
+          index: 1,
+          text: "創傷処置を施行。",
+          section: "O",
+          cues: { currentVisit: true }
+        },
+        {
+          lineId: "P-001",
+          index: 2,
+          text: "処方箋について患者と相談した。",
+          section: "P",
+          cues: { currentVisit: true }
+        }
+      ]
+    },
+    session: { setting: "outpatient", serviceDate: "2026-07-24" },
+    env: shadowEnv()
+  });
+
+  assert.equal(result.status, "shadow");
+  assert.deepEqual(
+    result.lineRoutes.map((line) => [line.lineId, line.shadowRoute]),
+    [["O-001", "encoder"], ["P-001", "llm"]]
+  );
+  assert.deepEqual(result.llmLines.map((line) => line.lineId), ["O-001", "P-001"]);
+  assert.equal(result.encoderShadowFacts.clinical_events.length, 1);
+  assert.equal(result.metrics.visitFacts.fullLlmRequired, true);
+  assert.equal(result.metrics.visitFacts.shadowScopedFallback, true);
+  assert.equal(result.metrics.visitFacts.shadowBlockedLineCount, 1);
+  assert.deepEqual(result.metrics.shadowRouteReasonCounts, {
+    performed_span: 1,
+    visit_facts_sensitive_change: 1
+  });
+});
+
 test("three-lane shadow reports an unavailable linker as degraded", async () => {
   const calculator = completeWhiteboxCalculator();
   calculator.linkSpans = async () => ({

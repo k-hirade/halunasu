@@ -463,10 +463,75 @@ function summarizeRun(result) {
     uniqueCloudRunRevisions: uniqueStrings(runs.map((run) => run.cloudRunRevision)),
     uniqueExtractorVersions: uniqueStrings(runs.map((run) => run.extractorVersion)),
     determinism: result.determinism || summarizeWhiteboxDeterminism(runs),
+    gateDiagnostics: summarizeGateDiagnostics(result.machinePrecheck?.cells),
     cells: Object.fromEntries(Object.entries(cells).sort(([left], [right]) => (
       left.localeCompare(right)
     )))
   };
+}
+
+function summarizeGateDiagnostics(cells = {}) {
+  const total = {
+    expectedCurrentOwnSpanCount: 0,
+    detectedCurrentOwnSpanCount: 0,
+    expectedSemanticTop1Count: 0,
+    expectedSemanticTop5Count: 0,
+    expectedShadowTop1Count: 0,
+    expectedShadowTop5Count: 0,
+    strictJointEligibleCount: 0,
+    shadowJointEligibleCount: 0,
+    strictBlockerCounts: {},
+    shadowBlockerCounts: {}
+  };
+  for (const cell of Object.values(cells && typeof cells === "object" ? cells : {})) {
+    for (const field of [
+      "expectedCurrentOwnSpanCount",
+      "detectedCurrentOwnSpanCount",
+      "expectedSemanticTop1Count",
+      "expectedSemanticTop5Count",
+      "expectedShadowTop1Count",
+      "expectedShadowTop5Count",
+      "strictJointEligibleCount",
+      "shadowJointEligibleCount"
+    ]) {
+      total[field] += Number(cell?.[field] || 0);
+    }
+    mergeCountMap(total.strictBlockerCounts, cell?.strictBlockerCounts);
+    mergeCountMap(total.shadowBlockerCounts, cell?.shadowBlockerCounts);
+  }
+  const denominator = total.expectedCurrentOwnSpanCount;
+  return {
+    ...total,
+    detectedCurrentOwnSpanRate: denominator
+      ? total.detectedCurrentOwnSpanCount / denominator
+      : null,
+    expectedSemanticTop1Rate: denominator
+      ? total.expectedSemanticTop1Count / denominator
+      : null,
+    expectedSemanticTop5Rate: denominator
+      ? total.expectedSemanticTop5Count / denominator
+      : null,
+    expectedShadowTop1Rate: denominator
+      ? total.expectedShadowTop1Count / denominator
+      : null,
+    expectedShadowTop5Rate: denominator
+      ? total.expectedShadowTop5Count / denominator
+      : null,
+    strictJointEligibleRate: denominator
+      ? total.strictJointEligibleCount / denominator
+      : null,
+    shadowJointEligibleRate: denominator
+      ? total.shadowJointEligibleCount / denominator
+      : null
+  };
+}
+
+function mergeCountMap(target, source) {
+  for (const [key, count] of Object.entries(
+    source && typeof source === "object" ? source : {}
+  )) {
+    target[key] = Number(target[key] || 0) + Number(count || 0);
+  }
 }
 
 function persistResult(outputDir, result) {
@@ -492,6 +557,31 @@ function renderReadme(result) {
     `- degraded runs: ${summary.degradedRunCount}`,
     `- purpose: **${result.methodology.evaluationPurpose}**`,
     `- holdout used: ${result.source.holdoutUsed ? "yes" : "no"}`,
+    `- expected current-own spans detected: ${formatGateRatio(
+      summary.gateDiagnostics?.detectedCurrentOwnSpanCount,
+      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+    )}`,
+    `- expected code semantic top-1 / top-5: ${formatGateRatio(
+      summary.gateDiagnostics?.expectedSemanticTop1Count,
+      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+    )} / ${formatGateRatio(
+      summary.gateDiagnostics?.expectedSemanticTop5Count,
+      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+    )}`,
+    `- expected code shadow top-1 / top-5: ${formatGateRatio(
+      summary.gateDiagnostics?.expectedShadowTop1Count,
+      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+    )} / ${formatGateRatio(
+      summary.gateDiagnostics?.expectedShadowTop5Count,
+      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+    )}`,
+    `- strict / shadow joint eligible spans: ${formatGateRatio(
+      summary.gateDiagnostics?.strictJointEligibleCount,
+      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+    )} / ${formatGateRatio(
+      summary.gateDiagnostics?.shadowJointEligibleCount,
+      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+    )}`,
     "",
     "The machine precheck compares runtime encoder code sets with the reviewed synthetic "
       + "dataset. It is not independent human adjudication and must not be supplied to the "
@@ -505,6 +595,14 @@ function renderReadme(result) {
     lines.push("## Failure", "", `- ${result.failure.message}`, "");
   }
   return lines.join("\n");
+}
+
+function formatGateRatio(value, denominator) {
+  const numerator = Number(value || 0);
+  const total = Number(denominator || 0);
+  return total
+    ? `${numerator}/${total} (${(numerator / total * 100).toFixed(1)}%)`
+    : "n/a";
 }
 
 function parseArgs(argv) {

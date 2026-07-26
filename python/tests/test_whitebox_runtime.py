@@ -416,6 +416,10 @@ class WhiteboxRuntimeTest(unittest.TestCase):
             )
             self.assertEqual(result["status"], "complete")
             self.assertEqual(result["results"][0]["spans"][0]["text"], "創傷処置")
+            self.assertEqual(
+                result["results"][0]["spans"][0]["detectionThreshold"],
+                0.5,
+            )
 
     def test_missing_artifacts_return_explicit_unavailable_envelopes(self) -> None:
         self.assertEqual(

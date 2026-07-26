@@ -73,6 +73,43 @@ degraded発生 / 決定性(同一入力再計算の一致)。
 - 棄却理由の分布が「どの軸・どのカテゴリを直せばroutable率が上がるか」の
   優先順位表そのものになる。
 
+### 8セル診断計測を受けたゲート観測の修正(2026-07-26)
+
+STG revision `fee-api-stg-00189-jtt`で8セルを1件ずつ診断した結果、8/8計算は完了し、
+degradedは0件だった。一方、gold上のcurrent/own対象22 spanに対して
+encoder codeは0件だった。原因は単一ではなく、次のゲートが混在していた。
+
+- WX1 artifactのカテゴリ別検出閾値を通ったspanにも、Node側で一律0.9を再適用していた。
+- WX2はstrict用のscore 0.92 / margin 0.05をshadow観測にも適用し、
+  expected codeが候補内にあるか、何位だったかを記録していなかった。
+- WX3 v2は特に`actionStatus` / `sourceOrigin`でabstainが多かったが、
+  span単位の棄却軸をレポートから特定できなかった。
+- visit factsが曖昧な場合、実点数を守るfull fallbackだけでなく、
+  無関係な行のshadow観測まで全停止していた。
+
+これを受け、次の診断基盤を実装した。
+
+1. **strict昇格ゲートとdiagnostic shadowゲートを分離**した。strictは従来の
+   0.9 / 0.92 / 0.05を維持し、算定結果への影響を変えない。diagnostic shadowだけ
+   WX1 artifactのカテゴリ別閾値、WX2 score 0.8 / margin 0.02を使用する。
+2. WX2のsemantic順位に加え、正規化後の完全一致だけを使う決定論的な
+   shadow lexical rerankを追加した。prefix一致は記録だけ行い、marginを迂回しない。
+   このrerankはshadow専用で、strict候補順・確定明細・点数には使わない。
+3. spanごとに、WX1閾値、WX2 strict/shadow順位・score・margin、WX3の採用role/
+   uncertain軸、visit-facts blockerを構造化traceへ記録する。本文は保存せず、
+   line/span ID、offset、SHA-256だけを使用する。
+4. ハーネスはgold expected codeのsemantic/shadow top-1・top-5順位、
+   strict/shadow joint eligibility、blocker理由を集計する。これにより
+   「span未検出」「linker検索失敗」「context abstain」を分離して判断できる。
+5. pure shadow時のvisit-facts fallbackは曖昧な行だけを観測対象外にした。
+   実算定経路は従来どおり全行LLMへfail closedし、shadowの観測範囲だけを広げる。
+6. 閾値世代を`whitebox-routing-wx-v3-diagnostic-shadow`として固定した。
+
+この修正後もroute/propose/assistへの昇格条件は不変である。まず同じ8セルを再計測し、
+expected code順位とblocker分布を確認する。8件・対照1回は原因診断に限定し、
+決定性と昇格判断には32セル×3対照のP2本測定を使う。WX3再学習は再計測で
+context blockerが律速と確認できた場合にのみP4として実施する。
+
 ## P3. 独立人手判定(実装済み、P2では診断専用)
 
 **根拠**: 機械precheckは「人手goldを名乗らない」設計にした(昇格ゲートは
@@ -205,10 +242,10 @@ recall非劣化+500msゲート+「承認なしで確定点数不変」回帰テ�
 
 ## ローカル実装の検証結果(2026-07-26)
 
-- `npm test --workspace @halunasu/fee-api`: **322/322 pass**
-- `npm run test:fee-whitebox-ops`: Node **15/15 pass**、Python **28/28 pass**
-- `npm run test:fee-whitebox-runtime`: Node **33/33 pass**、Python **22 pass /
-  3 skip**。skipはONNX実体を要求する任意環境テストで、STG readinessで別途確認する。
+- `npm test --workspace @halunasu/fee-api`: **326/326 pass**
+- `npm run test:fee-whitebox-ops`: Node **16/16 pass**、Python **30/30 pass**
+- `npm run test:fee-whitebox-runtime`: Node **37/37 pass**、Python **22 pass /
+  7 skip**。skipはONNX実体を要求する任意環境テストで、STG readinessで別途確認する。
 - 診断dry-run: 32セル、96本測定、32対照群、合計160計算を選択。
 - promotion dry-run: `internal_medicine|outpatient`の既存holdoutが
   `runs=2/3`のため通信前に停止。これはP5未完を正しく閉じる期待結果。

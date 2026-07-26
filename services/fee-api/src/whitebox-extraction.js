@@ -7,22 +7,33 @@ export const WHITEBOX_SPAN_MODES = Object.freeze(["off", "shadow", "route"]);
 
 export const DEFAULT_WHITEBOX_THRESHOLDS = Object.freeze({
   schemaVersion: 1,
+  // Promotion routing remains intentionally strict.
   spanConfidence: 0.9,
+  // Shadow diagnostics trust spans that already passed the artifact's
+  // category-specific decoder threshold.
+  spanShadowConfidence: 0,
   // WX3 applies calibrated per-axis thresholds in the ONNX runtime.
   // This optional router threshold may only make that decision stricter.
   contextConfidence: 0,
   linkerHighScore: 0.92,
   linkerReviewScore: 0.8,
   linkerMargin: 0.05,
+  // These values never activate encoder routing. They only make shadow
+  // measurements useful enough to calibrate the promotion thresholds.
+  linkerShadowScore: 0.8,
+  linkerShadowMargin: 0.02,
   relevanceConfidence: 0.95
 });
 
 const WHITEBOX_THRESHOLD_FIELDS = Object.freeze([
   "spanConfidence",
+  "spanShadowConfidence",
   "contextConfidence",
   "linkerHighScore",
   "linkerReviewScore",
   "linkerMargin",
+  "linkerShadowScore",
+  "linkerShadowMargin",
   "relevanceConfidence"
 ]);
 
@@ -450,8 +461,17 @@ export async function prepareWhiteboxExtraction({
     && modes.span === "route"
     && modes.linker === "propose"
     && modes.context === "assist";
+  const diagnosticShadowMode = shadowStackAvailable
+    && modes.span === "shadow"
+    && modes.linker === "shadow"
+    && modes.context === "shadow";
   const visitFactsPlan = determineWhiteboxVisitFacts({ lines, session });
   const fullLlmRequired = visitFactsPlan.status !== "complete";
+  const shadowVisitFactsBlockedLineIds = new Set(
+    diagnosticShadowMode
+      ? visitFactsPlan.ambiguousLineIds
+      : (fullLlmRequired ? lines.map((line) => line.lineId) : [])
+  );
   const extractorVersion = whiteboxExtractorVersion({
     spanEnvelope,
     linkerEnvelope,
@@ -472,6 +492,7 @@ export async function prepareWhiteboxExtraction({
   const contextDisagreementAxes = new Set();
   let contextAbstainSpanCount = 0;
   const contextUncertainAxisCounts = {};
+  const gateDiagnostics = [];
 
   for (const line of lines) {
     const spanRow = spanRows.find((row) => String(row?.lineId || "") === String(line.lineId)) || {
@@ -511,53 +532,146 @@ export async function prepareWhiteboxExtraction({
       ) {
         contextOverrideCount += 1;
       }
-      const linkerHigh = Boolean(
-        topCandidate
-        && Number(topCandidate.score) >= thresholds.linkerHighScore
-        && Number(link.margin) >= thresholds.linkerMargin
-        && topCandidate.categoryMatched === true
+      const shadowLink = rankLinkForShadow(span, link);
+      const shadowTopCandidate = shadowLink.candidates[0] || null;
+      const strictLinkerGates = linkerGateEvaluation({
+        candidate: topCandidate,
+        margin: link.margin,
+        scoreThreshold: thresholds.linkerHighScore,
+        marginThreshold: thresholds.linkerMargin
+      });
+      const shadowLinkerGates = linkerGateEvaluation({
+        candidate: shadowTopCandidate,
+        margin: shadowLink.margin,
+        scoreThreshold: thresholds.linkerShadowScore,
+        marginThreshold: thresholds.linkerShadowMargin,
+        allowExactMargin: true
+      });
+      const spanConfidence = Number(span.confidence);
+      const artifactDetectionThreshold = finiteProbabilityOrNull(
+        span.detectionThreshold
       );
-      const spanHigh = Number(span.confidence) >= thresholds.spanConfidence;
-      const role = spanHigh && linkerHigh ? consensus.role : "llm";
-      evaluatedSpans.push({
+      const shadowSpanThreshold = Math.max(
+        artifactDetectionThreshold ?? 0,
+        thresholds.spanShadowConfidence
+      );
+      const strictSpanPass = spanConfidence >= thresholds.spanConfidence;
+      const shadowSpanPass = spanConfidence >= shadowSpanThreshold;
+      const strictRole = strictSpanPass && strictLinkerGates.passed
+        ? consensus.role
+        : "llm";
+      const shadowRole = shadowSpanPass && shadowLinkerGates.passed
+        ? consensus.role
+        : "llm";
+      const useDiagnosticShadow = diagnosticShadowMode;
+      const selectedLink = useDiagnosticShadow
+        ? shadowLink
+        : { ...link, candidates: Array.isArray(link.candidates) ? link.candidates : [] };
+      const selectedTopCandidate = useDiagnosticShadow
+        ? shadowTopCandidate
+        : topCandidate;
+      const role = useDiagnosticShadow ? shadowRole : strictRole;
+      const strictReasonCodes = spanGateReasonCodes({
+        spanPass: strictSpanPass,
+        linkerGates: strictLinkerGates,
+        consensus
+      });
+      const shadowReasonCodes = spanGateReasonCodes({
+        spanPass: shadowSpanPass,
+        linkerGates: shadowLinkerGates,
+        consensus
+      });
+      const evaluated = {
         ...span,
         role,
+        strictRole,
+        shadowRole,
         contextRole,
         consensus,
-        link: { ...link, indexVersion: linkerEnvelope.indexVersion || null },
-        topCandidate,
-        reasonCodes: [
-          ...(spanHigh ? [] : ["span_low_confidence"]),
-          ...(linkerHigh ? [] : ["linker_low_confidence_or_margin"]),
-          ...consensus.reasonCodes
-        ]
-      });
+        link: { ...selectedLink, indexVersion: linkerEnvelope.indexVersion || null },
+        strictLink: { ...link, indexVersion: linkerEnvelope.indexVersion || null },
+        shadowLink: { ...shadowLink, indexVersion: linkerEnvelope.indexVersion || null },
+        topCandidate: selectedTopCandidate,
+        strictTopCandidate: topCandidate,
+        shadowTopCandidate,
+        strictReasonCodes,
+        shadowReasonCodes,
+        reasonCodes: useDiagnosticShadow ? shadowReasonCodes : strictReasonCodes
+      };
+      evaluatedSpans.push(evaluated);
+      gateDiagnostics.push(spanGateDiagnostic({
+        line,
+        span,
+        contextRole,
+        consensus,
+        artifactDetectionThreshold,
+        strictSpanThreshold: thresholds.spanConfidence,
+        shadowSpanThreshold,
+        strictSpanPass,
+        shadowSpanPass,
+        strictLink: link,
+        shadowLink,
+        strictLinkerGates,
+        shadowLinkerGates,
+        strictLinkerScoreThreshold: thresholds.linkerHighScore,
+        strictLinkerMarginThreshold: thresholds.linkerMargin,
+        shadowLinkerScoreThreshold: thresholds.linkerShadowScore,
+        shadowLinkerMarginThreshold: thresholds.linkerShadowMargin,
+        strictRole,
+        shadowRole,
+        strictReasonCodes,
+        shadowReasonCodes
+      }));
     }
-    let aggregate;
+    let strictAggregate;
+    let diagnosticAggregate;
     if (!lineSpans.length) {
       const trivial = isTrivialClinicalLine(line.text);
       const confidentlyIrrelevant = spanRow.relevance === "irrelevant"
         && Number(spanRow.relevanceConfidence) >= thresholds.relevanceConfidence;
-      aggregate = trivial || confidentlyIrrelevant
+      strictAggregate = trivial || confidentlyIrrelevant
         ? { role: "none", reasonCodes: [trivial ? "trivial_line" : "relevance_irrelevant"] }
         : { role: "llm", reasonCodes: ["span_missing_nontrivial_line"] };
+      diagnosticAggregate = strictAggregate;
     } else {
-      aggregate = aggregateLineContext(evaluatedSpans);
+      strictAggregate = aggregateLineContext(
+        evaluatedSpans.map((span) => ({ ...span, role: span.strictRole }))
+      );
+      diagnosticAggregate = aggregateLineContext(
+        evaluatedSpans.map((span) => ({ ...span, role: span.shadowRole }))
+      );
     }
-    const shadowRoute = !fullLlmRequired && aggregate.role !== "llm"
+    const shadowAggregate = diagnosticShadowMode
+      ? diagnosticAggregate
+      : strictAggregate;
+    const shadowVisitFactsBlocked = shadowVisitFactsBlockedLineIds.has(
+      String(line.lineId || "")
+    );
+    const shadowReasonCodes = shadowVisitFactsBlocked
+      ? ["visit_facts_sensitive_change"]
+      : shadowAggregate.reasonCodes;
+    const strictReasonCodes = fullLlmRequired
+      ? ["visit_facts_sensitive_change"]
+      : strictAggregate.reasonCodes;
+    const shadowRoute = !shadowVisitFactsBlocked && shadowAggregate.role !== "llm"
       ? "encoder"
       : "llm";
-    const route = canRoute && shadowRoute === "encoder"
+    const route = canRoute
+      && !fullLlmRequired
+      && strictAggregate.role !== "llm"
       ? "encoder"
       : "llm";
     lineRoutes.push({
       lineId: line.lineId,
       route,
       shadowRoute,
-      lineRole: aggregate.role,
-      reasonCodes: fullLlmRequired
-        ? ["visit_facts_sensitive_change"]
-        : aggregate.reasonCodes,
+      lineRole: shadowAggregate.role,
+      strictLineRole: strictAggregate.role,
+      shadowLineRole: shadowAggregate.role,
+      reasonCodes: diagnosticShadowMode ? shadowReasonCodes : strictReasonCodes,
+      strictReasonCodes,
+      shadowReasonCodes,
+      shadowVisitFactsBlocked,
       spans: evaluatedSpans
     });
     if (shadowRoute !== "encoder") {
@@ -572,7 +686,7 @@ export async function prepareWhiteboxExtraction({
       }
       const standingStatus = evaluated.contextRole?.standingStatus;
       if (
-        aggregate.role === "standing"
+        shadowAggregate.role === "standing"
         &&
         evaluated.role === "standing"
         && ["continued", "changed", "stopped"].includes(standingStatus)
@@ -622,9 +736,17 @@ export async function prepareWhiteboxExtraction({
     contextAxes: Object.fromEntries(
       Object.entries(contextConfidenceByAxis)
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([axis, values]) => [axis, summarizeMetricValues(values)])
+      .map(([axis, values]) => [axis, summarizeMetricValues(values)])
     )
   };
+  const strictGateFunnel = summarizeSpanGateDiagnostics(
+    gateDiagnostics,
+    "strict"
+  );
+  const shadowGateFunnel = summarizeSpanGateDiagnostics(
+    gateDiagnostics,
+    "shadow"
+  );
   const encoderFacts = {
     ...emptyEncoderFacts(lines),
     visit_facts: visitFactsPlan.facts,
@@ -632,7 +754,7 @@ export async function prepareWhiteboxExtraction({
     excluded_events: encoderExcludedEvents,
     standing_mentions: standingMentions,
     line_review: lineRoutes
-      .filter((line) => line.route === "encoder")
+      .filter((line) => line.shadowRoute === "encoder")
       .map((line) => ({
         line_id: line.lineId,
         line_role: lineRoleForContract(line.lineRole)
@@ -660,6 +782,9 @@ export async function prepareWhiteboxExtraction({
       safetyFallbackReasons: fullLlmRequired
         ? ["visit_facts_sensitive_change"]
         : [],
+      shadowEvaluationPolicy: diagnosticShadowMode
+        ? "artifact_calibrated_diagnostic"
+        : "promotion_strict",
       spanCount: spans.length,
       spanDetectorDurationMs: spanDurationMs,
       linkerDurationMs,
@@ -687,7 +812,14 @@ export async function prepareWhiteboxExtraction({
         status: visitFactsPlan.status,
         source: visitFactsPlan.source,
         evidenceLineCount: visitFactsPlan.evidenceLineIds.length,
-        ambiguousLineCount: visitFactsPlan.ambiguousLineIds.length
+        ambiguousLineCount: visitFactsPlan.ambiguousLineIds.length,
+        fullLlmRequired,
+        shadowScopedFallback: diagnosticShadowMode && fullLlmRequired,
+        shadowBlockedLineCount: shadowVisitFactsBlockedLineIds.size
+      },
+      gateFunnel: {
+        strict: strictGateFunnel,
+        shadow: shadowGateFunnel
       },
       shadowEncoderLineCount,
       shadowRoutableLineRatio: lines.length
@@ -699,6 +831,8 @@ export async function prepareWhiteboxExtraction({
         ? shadowEncoderSpanBearingLineCount / spanBearingLineCount
         : 0,
       routeReasonCounts: countRouteReasons(lineRoutes),
+      strictRouteReasonCounts: countRouteReasons(lineRoutes, "strictReasonCodes"),
+      shadowRouteReasonCounts: countRouteReasons(lineRoutes, "shadowReasonCodes"),
       encoderLineCount: canRoute && !fullLlmRequired
         ? lineRoutes.filter((line) => line.route === "encoder").length
         : 0,
@@ -729,15 +863,20 @@ export async function prepareWhiteboxExtraction({
       extractorVersion,
       visitFactsStatus: visitFactsPlan.status,
       visitFactsSource: visitFactsPlan.source,
-      visitFactsAmbiguousLineIds: visitFactsPlan.ambiguousLineIds
+      visitFactsAmbiguousLineIds: visitFactsPlan.ambiguousLineIds,
+      shadowVisitFactsBlockedLineIds: [...shadowVisitFactsBlockedLineIds].sort(),
+      shadowEvaluationPolicy: diagnosticShadowMode
+        ? "artifact_calibrated_diagnostic"
+        : "promotion_strict",
+      gateDiagnostics
     }]
   };
 }
 
-function countRouteReasons(lineRoutes = []) {
+function countRouteReasons(lineRoutes = [], field = "reasonCodes") {
   const counts = {};
   for (const line of Array.isArray(lineRoutes) ? lineRoutes : []) {
-    for (const rawReason of Array.isArray(line?.reasonCodes) ? line.reasonCodes : []) {
+    for (const rawReason of Array.isArray(line?.[field]) ? line[field] : []) {
       const reason = String(rawReason || "").trim();
       if (!reason) {
         continue;
@@ -748,6 +887,258 @@ function countRouteReasons(lineRoutes = []) {
   return Object.fromEntries(
     Object.entries(counts).sort(([left], [right]) => left.localeCompare(right))
   );
+}
+
+function rankLinkForShadow(span = {}, link = {}) {
+  const candidates = (Array.isArray(link?.candidates) ? link.candidates : [])
+    .map((candidate, index) => ({
+      ...candidate,
+      semanticRank: index + 1,
+      shadowLexicalMatch: linkerLexicalMatch(span?.text, candidate)
+    }))
+    .sort((left, right) => {
+      const leftExact = left.shadowLexicalMatch === "exact" ? 0 : 1;
+      const rightExact = right.shadowLexicalMatch === "exact" ? 0 : 1;
+      return leftExact - rightExact
+        || Number(left.semanticRank || 0) - Number(right.semanticRank || 0);
+    })
+    .map((candidate, index) => ({
+      ...candidate,
+      shadowRank: index + 1
+    }));
+  const margin = candidates.length >= 2
+    ? Math.max(0, Number(candidates[0]?.score || 0) - Number(candidates[1]?.score || 0))
+    : Number(candidates[0]?.score || 0);
+  return {
+    ...link,
+    candidates,
+    margin: Number(margin.toFixed(6))
+  };
+}
+
+function linkerLexicalMatch(spanText = "", candidate = {}) {
+  const query = normalizedLinkerLexeme(spanText);
+  if (!query) {
+    return "none";
+  }
+  const values = [
+    candidate?.name,
+    ...String(candidate?.matchedDoc || "").split("/")
+  ].map(normalizedLinkerLexeme).filter(Boolean);
+  if (values.includes(query)) {
+    return "exact";
+  }
+  if (
+    query.length >= 3
+    && values.some((value) => value.startsWith(query) || query.startsWith(value))
+  ) {
+    return "prefix";
+  }
+  return "none";
+}
+
+function normalizedLinkerLexeme(value = "") {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s\u3000・,，.。/／()（）「」『』【】［］\[\]'"’‘“”:：;；_-]+/gu, "");
+}
+
+function linkerGateEvaluation({
+  candidate = null,
+  margin = 0,
+  scoreThreshold = 0,
+  marginThreshold = 0,
+  allowExactMargin = false
+} = {}) {
+  const candidatePresent = Boolean(candidate);
+  const scorePass = candidatePresent
+    && Number(candidate.score) >= Number(scoreThreshold);
+  const categoryPass = candidatePresent && candidate.categoryMatched === true;
+  const marginPass = Number(margin) >= Number(marginThreshold);
+  const exactMarginBypass = allowExactMargin
+    && candidate?.shadowLexicalMatch === "exact";
+  return {
+    candidatePresent,
+    scorePass,
+    categoryPass,
+    marginPass,
+    exactMarginBypass,
+    passed: candidatePresent
+      && scorePass
+      && categoryPass
+      && (marginPass || exactMarginBypass)
+  };
+}
+
+function spanGateReasonCodes({
+  spanPass = false,
+  linkerGates = {},
+  consensus = {}
+} = {}) {
+  return [
+    ...(spanPass ? [] : ["span_low_confidence"]),
+    ...(linkerGates.candidatePresent ? [] : ["linker_candidate_missing"]),
+    ...(linkerGates.candidatePresent && !linkerGates.scorePass
+      ? ["linker_low_score"]
+      : []),
+    ...(linkerGates.candidatePresent
+      && !linkerGates.marginPass
+      && !linkerGates.exactMarginBypass
+      ? ["linker_low_margin"]
+      : []),
+    ...(linkerGates.candidatePresent && !linkerGates.categoryPass
+      ? ["linker_category_mismatch"]
+      : []),
+    ...(consensus.role === "llm" ? ["context_unresolved"] : []),
+    ...new Set(Array.isArray(consensus.reasonCodes) ? consensus.reasonCodes : [])
+  ];
+}
+
+function spanGateDiagnostic({
+  line = {},
+  span = {},
+  contextRole = {},
+  consensus = {},
+  artifactDetectionThreshold = null,
+  strictSpanThreshold = 0,
+  shadowSpanThreshold = 0,
+  strictSpanPass = false,
+  shadowSpanPass = false,
+  strictLink = {},
+  shadowLink = {},
+  strictLinkerGates = {},
+  shadowLinkerGates = {},
+  strictLinkerScoreThreshold = 0,
+  strictLinkerMarginThreshold = 0,
+  shadowLinkerScoreThreshold = 0,
+  shadowLinkerMarginThreshold = 0,
+  strictRole = "llm",
+  shadowRole = "llm",
+  strictReasonCodes = [],
+  shadowReasonCodes = []
+} = {}) {
+  const candidateView = (candidates = [], rankField = "") => (
+    (Array.isArray(candidates) ? candidates : []).slice(0, 5).map((candidate, index) => ({
+      code: String(candidate?.code || ""),
+      kind: String(candidate?.kind || ""),
+      score: finiteNumberOrNull(candidate?.score),
+      rawScore: finiteNumberOrNull(candidate?.rawScore),
+      categoryMatched: candidate?.categoryMatched === true,
+      rank: Number(candidate?.[rankField] || index + 1),
+      lexicalMatch: String(candidate?.shadowLexicalMatch || "none")
+    }))
+  );
+  const contextResolved = consensus.role !== "llm";
+  return {
+    lineId: String(line?.lineId || ""),
+    lineIndex: Number(line?.index || 0),
+    lineTextSha256: sha256Text(line?.text),
+    spanId: String(span?.spanId || ""),
+    spanTextSha256: sha256Text(span?.text),
+    charStart: Number(span?.charStart || 0),
+    charEnd: Number(span?.charEnd || 0),
+    category: String(span?.category || ""),
+    confidence: finiteNumberOrNull(span?.confidence),
+    artifactDetectionThreshold,
+    context: {
+      classifierRole: String(contextRole?.role || "llm"),
+      consensusRole: String(consensus?.role || "llm"),
+      uncertainAxes: [...new Set(
+        Array.isArray(contextRole?.uncertainAxes)
+          ? contextRole.uncertainAxes.map(String)
+          : []
+      )].sort(),
+      resolved: contextResolved,
+      disagreement: consensus?.disagreement === true
+    },
+    strict: {
+      spanThreshold: Number(strictSpanThreshold),
+      spanPass: strictSpanPass,
+      linkerScoreThreshold: Number(strictLinkerScoreThreshold),
+      linkerMarginThreshold: Number(strictLinkerMarginThreshold),
+      linkerMargin: finiteNumberOrNull(strictLink?.margin),
+      ...strictLinkerGates,
+      role: strictRole,
+      jointEligible: strictSpanPass
+        && strictLinkerGates.passed
+        && contextResolved,
+      blockerReasonCodes: gateBlockerReasonCodes(strictReasonCodes)
+    },
+    shadow: {
+      spanThreshold: Number(shadowSpanThreshold),
+      spanPass: shadowSpanPass,
+      linkerScoreThreshold: Number(shadowLinkerScoreThreshold),
+      linkerMarginThreshold: Number(shadowLinkerMarginThreshold),
+      linkerMargin: finiteNumberOrNull(shadowLink?.margin),
+      ...shadowLinkerGates,
+      role: shadowRole,
+      jointEligible: shadowSpanPass
+        && shadowLinkerGates.passed
+        && contextResolved,
+      blockerReasonCodes: gateBlockerReasonCodes(shadowReasonCodes)
+    },
+    semanticCandidates: candidateView(strictLink?.candidates, "semanticRank"),
+    shadowCandidates: candidateView(shadowLink?.candidates, "shadowRank")
+  };
+}
+
+function gateBlockerReasonCodes(reasonCodes = []) {
+  return [...new Set((Array.isArray(reasonCodes) ? reasonCodes : [])
+    .map(String)
+    .filter((reason) => (
+      reason === "span_low_confidence"
+      || reason.startsWith("linker_")
+      || reason === "context_unresolved"
+    )))].sort();
+}
+
+function summarizeSpanGateDiagnostics(diagnostics = [], lane = "strict") {
+  const rows = (Array.isArray(diagnostics) ? diagnostics : [])
+    .map((entry) => ({
+      gate: entry?.[lane],
+      contextResolved: entry?.context?.resolved === true
+    }))
+    .filter((entry) => entry.gate && typeof entry.gate === "object");
+  const rejectionCounts = {};
+  for (const row of rows) {
+    for (const reason of Array.isArray(row.gate.blockerReasonCodes)
+      ? row.gate.blockerReasonCodes
+      : []) {
+      rejectionCounts[reason] = Number(rejectionCounts[reason] || 0) + 1;
+    }
+  }
+  return {
+    spanCount: rows.length,
+    spanPassCount: rows.filter((row) => row.gate.spanPass === true).length,
+    linkerCandidateCount: rows.filter((row) => row.gate.candidatePresent === true).length,
+    linkerScorePassCount: rows.filter((row) => row.gate.scorePass === true).length,
+    linkerMarginPassCount: rows.filter((row) => (
+      row.gate.marginPass === true || row.gate.exactMarginBypass === true
+    )).length,
+    linkerCategoryPassCount: rows.filter((row) => row.gate.categoryPass === true).length,
+    linkerPassCount: rows.filter((row) => row.gate.passed === true).length,
+    contextResolvedCount: rows.filter((row) => row.contextResolved).length,
+    jointEligibleCount: rows.filter((row) => row.gate.jointEligible === true).length,
+    rejectionCounts: Object.fromEntries(
+      Object.entries(rejectionCounts)
+        .sort(([left], [right]) => left.localeCompare(right))
+    )
+  };
+}
+
+function sha256Text(value = "") {
+  return crypto.createHash("sha256").update(String(value || "")).digest("hex");
+}
+
+function finiteNumberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function finiteProbabilityOrNull(value) {
+  const number = finiteNumberOrNull(value);
+  return number !== null && number >= 0 && number <= 1 ? number : null;
 }
 
 function summarizeMetricValues(values = []) {

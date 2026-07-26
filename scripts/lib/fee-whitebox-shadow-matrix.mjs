@@ -362,6 +362,7 @@ export function whiteboxShadowCaseAudit(item = {}, detail = {}) {
   const trace = Array.isArray(calculation?.clinicalExtraction?.trace)
     ? calculation.clinicalExtraction.trace
     : [];
+  const router = trace.find((entry) => entry?.stage === "whitebox_router") || {};
   const comparison = trace.find((entry) => entry?.stage === "whitebox_shadow_comparison") || {};
   const encoderCodes = uniqueStrings([
     ...(comparison.matchedCodes || []),
@@ -376,6 +377,10 @@ export function whiteboxShadowCaseAudit(item = {}, detail = {}) {
       .filter(isCurrentOwnPerformedSpan)
       .map((span) => span.code)
   );
+  const expectedSpanDiagnostics = buildExpectedSpanGateDiagnostics(
+    item,
+    router.gateDiagnostics
+  );
   return {
     caseId: item.caseId,
     specialty: item.specialty,
@@ -389,6 +394,7 @@ export function whiteboxShadowCaseAudit(item = {}, detail = {}) {
     encoderTruePositiveCodes: encoderCodes.filter((code) => truthCodes.includes(code)),
     encoderFalsePositiveCodes: encoderCodes.filter((code) => !truthCodes.includes(code)),
     encoderFalseNegativeCodes: truthCodes.filter((code) => !encoderCodes.includes(code)),
+    expectedSpanDiagnostics,
     shadowComparisonObserved: comparison.observed === true
       || encoderCodes.length > 0
       || llmCodes.length > 0,
@@ -407,7 +413,17 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
       encoderTruePositiveCodeCount: 0,
       encoderFalsePositiveCodeCount: 0,
       encoderFalseNegativeCodeCount: 0,
-      shadowComparisonObservedCount: 0
+      shadowComparisonObservedCount: 0,
+      expectedCurrentOwnSpanCount: 0,
+      detectedCurrentOwnSpanCount: 0,
+      expectedSemanticTop1Count: 0,
+      expectedSemanticTop5Count: 0,
+      expectedShadowTop1Count: 0,
+      expectedShadowTop5Count: 0,
+      strictJointEligibleCount: 0,
+      shadowJointEligibleCount: 0,
+      strictBlockerCounts: {},
+      shadowBlockerCounts: {}
     };
     current.runCount += 1;
     current.reviewedLineCount += Number(audit.reviewedLineCount || 0);
@@ -416,6 +432,35 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
     current.encoderFalsePositiveCodeCount += audit.encoderFalsePositiveCodes?.length || 0;
     current.encoderFalseNegativeCodeCount += audit.encoderFalseNegativeCodes?.length || 0;
     current.shadowComparisonObservedCount += audit.shadowComparisonObserved ? 1 : 0;
+    for (const diagnostic of Array.isArray(audit.expectedSpanDiagnostics)
+      ? audit.expectedSpanDiagnostics
+      : []) {
+      if (!diagnostic.currentOwnPerformed) {
+        continue;
+      }
+      current.expectedCurrentOwnSpanCount += 1;
+      current.detectedCurrentOwnSpanCount += diagnostic.runtimeSpanObserved ? 1 : 0;
+      current.expectedSemanticTop1Count += diagnostic.expectedSemanticRank === 1 ? 1 : 0;
+      current.expectedSemanticTop5Count += (
+        Number(diagnostic.expectedSemanticRank || 0) >= 1
+        && Number(diagnostic.expectedSemanticRank || 0) <= 5
+      ) ? 1 : 0;
+      current.expectedShadowTop1Count += diagnostic.expectedShadowRank === 1 ? 1 : 0;
+      current.expectedShadowTop5Count += (
+        Number(diagnostic.expectedShadowRank || 0) >= 1
+        && Number(diagnostic.expectedShadowRank || 0) <= 5
+      ) ? 1 : 0;
+      current.strictJointEligibleCount += diagnostic.strictJointEligible ? 1 : 0;
+      current.shadowJointEligibleCount += diagnostic.shadowJointEligible ? 1 : 0;
+      addReasonCounts(
+        current.strictBlockerCounts,
+        diagnostic.strictBlockerReasonCodes
+      );
+      addReasonCounts(
+        current.shadowBlockerCounts,
+        diagnostic.shadowBlockerReasonCodes
+      );
+    }
     byCell[cell] = current;
   }
   return Object.fromEntries(Object.entries(byCell).sort(([left], [right]) => (
@@ -440,6 +485,8 @@ export function whiteboxDeterminismSnapshot(detail = {}) {
     lineCount: Number(whitebox.lineCount || 0),
     spanCount: Number(whitebox.spanCount || 0),
     shadowEncoderLineIds: uniqueStrings(router.shadowEncoderLineIds),
+    gateDiagnosticsSha256: sha256(JSON.stringify(router.gateDiagnostics || [])),
+    gateFunnel: sortedGateFunnel(whitebox.gateFunnel),
     routeReasonCounts: sortedNumberMapping(whitebox.routeReasonCounts),
     contextUncertainAxisCounts: sortedNumberMapping(
       whitebox.contextClassifier?.uncertainAxisCounts
@@ -496,6 +543,128 @@ export function summarizeWhiteboxDeterminism(runs = []) {
       : 0,
     groups
   };
+}
+
+function buildExpectedSpanGateDiagnostics(item = {}, runtimeDiagnostics = []) {
+  const expected = Array.isArray(item.expectedSpans) ? item.expectedSpans : [];
+  const runtime = (Array.isArray(runtimeDiagnostics) ? runtimeDiagnostics : [])
+    .map((diagnostic) => ({ diagnostic, used: false }));
+  return expected.map((span) => {
+    const location = expectedSpanLocation(item.clinicalText, span);
+    const spanTextSha256 = sha256(String(span?.text || ""));
+    let matched = runtime.find((entry) => (
+      !entry.used
+      && Number(entry.diagnostic?.lineIndex || 0) === location.lineIndex
+      && Number(entry.diagnostic?.charStart ?? -1) === location.charStart
+      && Number(entry.diagnostic?.charEnd ?? -1) === location.charEnd
+      && String(entry.diagnostic?.category || "") === String(span?.category || "")
+      && String(entry.diagnostic?.spanTextSha256 || "") === spanTextSha256
+    ));
+    if (!matched) {
+      matched = runtime.find((entry) => (
+        !entry.used
+        && String(entry.diagnostic?.category || "") === String(span?.category || "")
+        && String(entry.diagnostic?.spanTextSha256 || "") === spanTextSha256
+      ));
+    }
+    if (matched) {
+      matched.used = true;
+    }
+    const diagnostic = matched?.diagnostic || null;
+    const expectedCode = String(span?.code || "").trim();
+    const semanticRank = candidateCodeRank(
+      diagnostic?.semanticCandidates,
+      expectedCode
+    );
+    const shadowRank = candidateCodeRank(
+      diagnostic?.shadowCandidates,
+      expectedCode
+    );
+    const strictBlockers = diagnostic
+      ? [...(diagnostic.strict?.blockerReasonCodes || [])]
+      : ["span_not_detected"];
+    const shadowBlockers = diagnostic
+      ? [...(diagnostic.shadow?.blockerReasonCodes || [])]
+      : ["span_not_detected"];
+    if (diagnostic && semanticRank !== 1) {
+      strictBlockers.push(
+        semanticRank === null
+          ? "linker_expected_code_not_in_top5"
+          : "linker_expected_code_not_top1"
+      );
+    }
+    if (diagnostic && shadowRank !== 1) {
+      shadowBlockers.push(
+        shadowRank === null
+          ? "linker_expected_code_not_in_top5"
+          : "linker_expected_code_not_top1"
+      );
+    }
+    return {
+      expectedCode,
+      category: String(span?.category || ""),
+      currentOwnPerformed: Boolean(isCurrentOwnPerformedSpan(span)),
+      expectedLineIndex: location.lineIndex,
+      expectedCharStart: location.charStart,
+      expectedCharEnd: location.charEnd,
+      spanTextSha256,
+      runtimeSpanObserved: Boolean(diagnostic),
+      runtimeSpanId: String(diagnostic?.spanId || ""),
+      expectedSemanticRank: semanticRank,
+      expectedShadowRank: shadowRank,
+      strictJointEligible: diagnostic?.strict?.jointEligible === true
+        && semanticRank === 1,
+      shadowJointEligible: diagnostic?.shadow?.jointEligible === true
+        && shadowRank === 1,
+      strictBlockerReasonCodes: uniqueStrings(strictBlockers),
+      shadowBlockerReasonCodes: uniqueStrings(shadowBlockers)
+    };
+  });
+}
+
+function expectedSpanLocation(clinicalText = "", span = {}) {
+  const text = String(clinicalText || "").replace(/\r\n?/gu, "\n");
+  const globalStart = Math.max(0, Number(span?.charStart || 0));
+  const globalEnd = Math.max(globalStart, Number(span?.charEnd || globalStart));
+  const before = text.slice(0, globalStart);
+  const lineStart = before.lastIndexOf("\n") + 1;
+  return {
+    lineIndex: before.split("\n").length,
+    charStart: globalStart - lineStart,
+    charEnd: globalEnd - lineStart
+  };
+}
+
+function candidateCodeRank(candidates = [], expectedCode = "") {
+  const index = (Array.isArray(candidates) ? candidates : [])
+    .findIndex((candidate) => String(candidate?.code || "") === expectedCode);
+  return index >= 0 ? Number(candidates[index]?.rank || index + 1) : null;
+}
+
+function addReasonCounts(target, reasons = []) {
+  for (const reason of Array.isArray(reasons) ? reasons : []) {
+    const key = String(reason || "").trim();
+    if (key) {
+      target[key] = Number(target[key] || 0) + 1;
+    }
+  }
+}
+
+function sortedGateFunnel(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([lane, funnel]) => [
+        lane,
+        {
+          ...funnel,
+          rejectionCounts: sortedNumberMapping(funnel?.rejectionCounts)
+        }
+      ])
+  );
 }
 
 function compareMatrixCases(left, right) {

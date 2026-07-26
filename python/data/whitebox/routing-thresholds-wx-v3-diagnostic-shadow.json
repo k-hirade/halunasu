@@ -1,12 +1,15 @@
 {
   "schemaVersion": 1,
-  "version": "whitebox-routing-wx-v2-shadow",
+  "version": "whitebox-routing-wx-v3-diagnostic-shadow",
   "defaults": {
     "spanConfidence": 0.9,
+    "spanShadowConfidence": 0,
     "contextConfidence": 0,
     "linkerHighScore": 0.92,
     "linkerReviewScore": 0.8,
     "linkerMargin": 0.05,
+    "linkerShadowScore": 0.8,
+    "linkerShadowMargin": 0.02,
     "relevanceConfidence": 0.95
   },
   "cells": {}

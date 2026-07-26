@@ -61,8 +61,16 @@ def detect_spans(
             raise WhiteboxArtifactError(
                 "span detector returned an unexpected result count"
             )
+        default_threshold, entity_thresholds = _manifest_detection_thresholds(
+            artifact.manifest
+        )
         results = [
-            _normalize_line_result(line, raw)
+            _normalize_line_result(
+                line,
+                raw,
+                default_threshold=default_threshold,
+                entity_thresholds=entity_thresholds,
+            )
             for line, raw in zip(lines, raw_results, strict=True)
         ]
         return {
@@ -165,7 +173,13 @@ def _normalize_lines(value: Any) -> list[dict[str, Any]]:
     return normalized
 
 
-def _normalize_line_result(line: Mapping[str, Any], raw: Mapping[str, Any]) -> dict[str, Any]:
+def _normalize_line_result(
+    line: Mapping[str, Any],
+    raw: Mapping[str, Any],
+    *,
+    default_threshold: float,
+    entity_thresholds: Mapping[str, float],
+) -> dict[str, Any]:
     if not isinstance(raw, Mapping):
         raise ValueError("span detector line result must be an object")
     relevance = str(raw.get("relevance") or "abstain")
@@ -198,6 +212,13 @@ def _normalize_line_result(line: Mapping[str, Any], raw: Mapping[str, Any]) -> d
             "text": span_text,
             "category": category,
             "confidence": confidence,
+            # The model already applied this category-specific threshold while
+            # decoding. Node uses it only for shadow diagnostics; promotion
+            # routing keeps its separate, stricter threshold.
+            "detectionThreshold": entity_thresholds.get(
+                category,
+                default_threshold,
+            ),
         })
     relevance_confidence = float(
         raw.get("relevanceConfidence", raw.get("relevance_confidence", 0))
@@ -209,6 +230,27 @@ def _normalize_line_result(line: Mapping[str, Any], raw: Mapping[str, Any]) -> d
         "relevance": relevance,
         "relevanceConfidence": relevance_confidence,
         "spans": spans,
+    }
+
+
+def _manifest_detection_thresholds(
+    manifest: Mapping[str, Any],
+) -> tuple[float, dict[str, float]]:
+    default_threshold = _probability(
+        manifest.get("defaultThreshold", 0.5),
+        "defaultThreshold",
+    )
+    raw_thresholds = manifest.get("entityThresholds") or {}
+    if not isinstance(raw_thresholds, Mapping):
+        raise WhiteboxArtifactError(
+            "span detector entityThresholds must be an object"
+        )
+    return default_threshold, {
+        str(category): _probability(
+            value,
+            f"entityThresholds.{category}",
+        )
+        for category, value in raw_thresholds.items()
     }
 
 

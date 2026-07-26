@@ -271,6 +271,14 @@ def summarize_telemetry(
             "shadowEncoderSpanBearingLineCount": 0,
             "degradedRunCount": 0,
             "routeReasonCounts": Counter(),
+            "gateFunnel": {
+                "strict": Counter(),
+                "shadow": Counter(),
+            },
+            "gateRejectionCounts": {
+                "strict": Counter(),
+                "shadow": Counter(),
+            },
             "contextAbstainedSpanCount": 0,
             "contextEvaluatedSpanCount": 0,
             "contextUncertainAxisCounts": Counter(),
@@ -294,6 +302,8 @@ def summarize_telemetry(
     unexpected_cells = Counter()
     mode_counts = Counter()
     route_reason_counts = Counter()
+    gate_funnel = {"strict": Counter(), "shadow": Counter()}
+    gate_rejection_counts = {"strict": Counter(), "shadow": Counter()}
     context_uncertain_axis_counts = Counter()
     context_status_counts = Counter()
     total_context_abstained_spans = 0
@@ -333,6 +343,36 @@ def summarize_telemetry(
         ).items():
             cell["routeReasonCounts"][reason] += count
             route_reason_counts[reason] += count
+        runtime_gate_funnel = (
+            whitebox.get("gateFunnel")
+            if isinstance(whitebox.get("gateFunnel"), Mapping)
+            else {}
+        )
+        for lane in ("strict", "shadow"):
+            lane_values = (
+                runtime_gate_funnel.get(lane)
+                if isinstance(runtime_gate_funnel.get(lane), Mapping)
+                else {}
+            )
+            for field in (
+                "spanCount",
+                "spanPassCount",
+                "linkerCandidateCount",
+                "linkerScorePassCount",
+                "linkerMarginPassCount",
+                "linkerCategoryPassCount",
+                "linkerPassCount",
+                "contextResolvedCount",
+                "jointEligibleCount",
+            ):
+                count = _count(lane_values.get(field))
+                cell["gateFunnel"][lane][field] += count
+                gate_funnel[lane][field] += count
+            for reason, count in _counter_mapping(
+                lane_values.get("rejectionCounts")
+            ).items():
+                cell["gateRejectionCounts"][lane][reason] += count
+                gate_rejection_counts[lane][reason] += count
         context = (
             whitebox.get("contextClassifier")
             if isinstance(whitebox.get("contextClassifier"), Mapping)
@@ -403,6 +443,8 @@ def summarize_telemetry(
                 for key, value in cell.items()
                 if key not in {
                     "routeReasonCounts",
+                    "gateFunnel",
+                    "gateRejectionCounts",
                     "contextUncertainAxisCounts",
                     "contextStatusCounts",
                 }
@@ -419,6 +461,15 @@ def summarize_telemetry(
                 else None
             ),
             "routeReasonCounts": dict(sorted(cell["routeReasonCounts"].items())),
+            "gateFunnel": {
+                lane: {
+                    **dict(sorted(cell["gateFunnel"][lane].items())),
+                    "rejectionCounts": dict(
+                        sorted(cell["gateRejectionCounts"][lane].items())
+                    ),
+                }
+                for lane in ("strict", "shadow")
+            },
             "contextAbstainRate": (
                 cell["contextAbstainedSpanCount"]
                 / cell["contextEvaluatedSpanCount"]
@@ -453,6 +504,15 @@ def summarize_telemetry(
         },
         "laneDurationMissingCounts": lane_duration_missing_counts,
         "routeReasonCounts": dict(sorted(route_reason_counts.items())),
+        "gateFunnel": {
+            lane: {
+                **dict(sorted(gate_funnel[lane].items())),
+                "rejectionCounts": dict(
+                    sorted(gate_rejection_counts[lane].items())
+                ),
+            }
+            for lane in ("strict", "shadow")
+        },
         "contextClassifier": {
             "evaluatedSpanCount": total_context_evaluated_spans,
             "abstainedSpanCount": total_context_abstained_spans,
@@ -1139,6 +1199,18 @@ def markdown_report(report: Mapping[str, Any]) -> str:
             ensure_ascii=False,
             sort_keys=True,
         ) if telemetry["routeReasonCounts"] else "none"),
+        "- strict gate funnel: "
+        + json.dumps(
+            telemetry["gateFunnel"]["strict"],
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        "- shadow diagnostic gate funnel: "
+        + json.dumps(
+            telemetry["gateFunnel"]["shadow"],
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
         "- context uncertain axes: "
         + (json.dumps(
             telemetry["contextClassifier"]["uncertainAxisCounts"],

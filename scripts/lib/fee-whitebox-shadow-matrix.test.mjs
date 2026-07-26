@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { test } from "node:test";
 import {
   buildWhiteboxShadowExecutions,
@@ -248,6 +249,10 @@ test("machine precheck compares encoder codes without claiming human adjudicatio
     clinicalText: "S）安定。\nO）採血を実施。",
     expectedSpans: [
       {
+        text: "採血",
+        charStart: 8,
+        charEnd: 10,
+        category: "lab",
         code: "160022510",
         actionStatus: "performed",
         temporalRelation: "current_visit",
@@ -266,12 +271,36 @@ test("machine precheck compares encoder codes without claiming human adjudicatio
     feeSession: {
       calculationResult: {
         clinicalExtraction: {
-          trace: [{
-            stage: "whitebox_shadow_comparison",
-            matchedCodes: ["160022510"],
-            encoderOnlyCodes: ["999999999"],
-            llmOnlyCodes: []
-          }]
+          trace: [
+            {
+              stage: "whitebox_router",
+              gateDiagnostics: [{
+                lineId: "O-001",
+                lineIndex: 2,
+                spanId: "span-blood",
+                spanTextSha256: crypto.createHash("sha256").update("採血").digest("hex"),
+                charStart: 2,
+                charEnd: 4,
+                category: "lab",
+                strict: {
+                  jointEligible: true,
+                  blockerReasonCodes: []
+                },
+                shadow: {
+                  jointEligible: true,
+                  blockerReasonCodes: []
+                },
+                semanticCandidates: [{ code: "160022510", rank: 1 }],
+                shadowCandidates: [{ code: "160022510", rank: 1 }]
+              }]
+            },
+            {
+              stage: "whitebox_shadow_comparison",
+              matchedCodes: ["160022510"],
+              encoderOnlyCodes: ["999999999"],
+              llmOnlyCodes: []
+            }
+          ]
         }
       }
     }
@@ -291,7 +320,17 @@ test("machine precheck compares encoder codes without claiming human adjudicatio
       encoderTruePositiveCodeCount: 1,
       encoderFalsePositiveCodeCount: 1,
       encoderFalseNegativeCodeCount: 0,
-      shadowComparisonObservedCount: 1
+      shadowComparisonObservedCount: 1,
+      expectedCurrentOwnSpanCount: 1,
+      detectedCurrentOwnSpanCount: 1,
+      expectedSemanticTop1Count: 1,
+      expectedSemanticTop5Count: 1,
+      expectedShadowTop1Count: 1,
+      expectedShadowTop5Count: 1,
+      strictJointEligibleCount: 1,
+      shadowJointEligibleCount: 1,
+      strictBlockerCounts: {},
+      shadowBlockerCounts: {}
     }
   );
 });
