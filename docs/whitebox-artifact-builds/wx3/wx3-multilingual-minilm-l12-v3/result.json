@@ -1,0 +1,660 @@
+{
+  "artifactType": "fee_context_classifier",
+  "artifactVersion": "wx3-multilingual-minilm-l12-v3",
+  "axisLabels": {
+    "actionStatus": [
+      "performed",
+      "prescribed",
+      "administered",
+      "ordered",
+      "planned",
+      "considered",
+      "instruction_only",
+      "not_performed",
+      "unknown"
+    ],
+    "providerOwnership": [
+      "own_clinic",
+      "same_institution_other_department",
+      "other_provider",
+      "unknown"
+    ],
+    "sourceOrigin": [
+      "own_clinic_record",
+      "patient_reported",
+      "external_document",
+      "carried_in_result",
+      "other_provider_record",
+      "unknown"
+    ],
+    "standingStatus": [
+      "continued",
+      "changed",
+      "stopped",
+      "none"
+    ],
+    "temporalRelation": [
+      "current_visit",
+      "same_day_but_unknown",
+      "past",
+      "future",
+      "unknown"
+    ]
+  },
+  "backend": "onnx_multi_axis",
+  "baseModel": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "classWeighting": "sqrt_inverse",
+  "counterexampleAudit": {
+    "leakedCaseCount": 0,
+    "protectedTextCount": 6,
+    "sourceSha256": "ee95f858e46a0bafe75ec53da2c12c387a1f1afdf841ef581e272ccd5602b6c9"
+  },
+  "determinism": {
+    "outputSha256": "a70f948fce710272a571f5f60bd22859736ae8355d3f1175e001dac62f2ec3ca",
+    "repeatCount": 100,
+    "status": "passed"
+  },
+  "development": {
+    "abstainThresholds": {
+      "actionStatus": 0.9554716348648072,
+      "providerOwnership": 0.9674355983734132,
+      "sourceOrigin": 0.993758797645569,
+      "standingStatus": 0.9209179282188417,
+      "temporalRelation": 0.9853457212448121
+    },
+    "axisMetrics": {
+      "actionStatus": {
+        "abstainThreshold": 0.9554716348648072,
+        "abstained": 105,
+        "accuracyIncludingAbstain": 0.7050561797752809,
+        "calibrationExampleCount": 356,
+        "confusion": {
+          "administered": {
+            "__abstain__": 7,
+            "administered": 0,
+            "considered": 0,
+            "instruction_only": 0,
+            "not_performed": 0,
+            "ordered": 0,
+            "performed": 0,
+            "planned": 0,
+            "prescribed": 0,
+            "unknown": 0
+          },
+          "considered": {
+            "__abstain__": 3,
+            "administered": 0,
+            "considered": 0,
+            "instruction_only": 0,
+            "not_performed": 0,
+            "ordered": 0,
+            "performed": 0,
+            "planned": 0,
+            "prescribed": 0,
+            "unknown": 0
+          },
+          "instruction_only": {
+            "__abstain__": 16,
+            "administered": 0,
+            "considered": 0,
+            "instruction_only": 1,
+            "not_performed": 0,
+            "ordered": 0,
+            "performed": 0,
+            "planned": 0,
+            "prescribed": 0,
+            "unknown": 0
+          },
+          "not_performed": {
+            "__abstain__": 14,
+            "administered": 0,
+            "considered": 0,
+            "instruction_only": 0,
+            "not_performed": 0,
+            "ordered": 0,
+            "performed": 0,
+            "planned": 0,
+            "prescribed": 0,
+            "unknown": 0
+          },
+          "ordered": {
+            "__abstain__": 0,
+            "administered": 0,
+            "considered": 0,
+            "instruction_only": 0,
+            "not_performed": 0,
+            "ordered": 0,
+            "performed": 0,
+            "planned": 0,
+            "prescribed": 0,
+            "unknown": 0
+          },
+          "performed": {
+            "__abstain__": 26,
+            "administered": 0,
+            "considered": 0,
+            "instruction_only": 0,
+            "not_performed": 0,
+            "ordered": 0,
+            "performed": 193,
+            "planned": 0,
+            "prescribed": 0,
+            "unknown": 0
+          },
+          "planned": {
+            "__abstain__": 21,
+            "administered": 0,
+            "considered": 0,
+            "instruction_only": 0,
+            "not_performed": 0,
+            "ordered": 0,
+            "performed": 0,
+            "planned": 1,
+            "prescribed": 0,
+            "unknown": 0
+          },
+          "prescribed": {
+            "__abstain__": 18,
+            "administered": 0,
+            "considered": 0,
+            "instruction_only": 0,
+            "not_performed": 0,
+            "ordered": 0,
+            "performed": 0,
+            "planned": 0,
+            "prescribed": 24,
+            "unknown": 0
+          },
+          "unknown": {
+            "__abstain__": 0,
+            "administered": 0,
+            "considered": 0,
+            "instruction_only": 0,
+            "not_performed": 0,
+            "ordered": 0,
+            "performed": 0,
+            "planned": 0,
+            "prescribed": 0,
+            "unknown": 32
+          }
+        },
+        "count": 356,
+        "coverage": 0.7050561797752809,
+        "covered": 251,
+        "coveredCount": 251,
+        "dangerousFalsePositiveCount": 0,
+        "dangerousFalsePositiveRate": 0.0,
+        "expectedCalibrationError": 0.00993490872088438,
+        "macroF1": 0.3180259515562738,
+        "perClass": {
+          "administered": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 7
+          },
+          "considered": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 3
+          },
+          "instruction_only": {
+            "f1": 0.1111111111111111,
+            "precision": 1.0,
+            "recall": 0.058823529411764705,
+            "support": 17
+          },
+          "not_performed": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 14
+          },
+          "ordered": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 0
+          },
+          "performed": {
+            "f1": 0.9368932038834951,
+            "precision": 1.0,
+            "recall": 0.8812785388127854,
+            "support": 219
+          },
+          "planned": {
+            "f1": 0.08695652173913045,
+            "precision": 1.0,
+            "recall": 0.045454545454545456,
+            "support": 22
+          },
+          "prescribed": {
+            "f1": 0.7272727272727273,
+            "precision": 1.0,
+            "recall": 0.5714285714285714,
+            "support": 42
+          },
+          "unknown": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "recall": 1.0,
+            "support": 32
+          }
+        },
+        "risk": 0.0,
+        "temperature": 0.6
+      },
+      "providerOwnership": {
+        "abstainThreshold": 0.9674355983734132,
+        "abstained": 33,
+        "accuracyIncludingAbstain": 0.898876404494382,
+        "calibrationExampleCount": 356,
+        "confusion": {
+          "other_provider": {
+            "__abstain__": 6,
+            "other_provider": 69,
+            "own_clinic": 0,
+            "same_institution_other_department": 0,
+            "unknown": 0
+          },
+          "own_clinic": {
+            "__abstain__": 26,
+            "other_provider": 2,
+            "own_clinic": 219,
+            "same_institution_other_department": 0,
+            "unknown": 0
+          },
+          "same_institution_other_department": {
+            "__abstain__": 0,
+            "other_provider": 0,
+            "own_clinic": 0,
+            "same_institution_other_department": 0,
+            "unknown": 0
+          },
+          "unknown": {
+            "__abstain__": 1,
+            "other_provider": 0,
+            "own_clinic": 1,
+            "same_institution_other_department": 0,
+            "unknown": 32
+          }
+        },
+        "count": 356,
+        "coverage": 0.9073033707865169,
+        "covered": 323,
+        "coveredCount": 323,
+        "dangerousFalsePositiveCount": 0,
+        "dangerousFalsePositiveRate": 0.0,
+        "expectedCalibrationError": 0.00787649044160092,
+        "macroF1": 0.7132009870195902,
+        "perClass": {
+          "other_provider": {
+            "f1": 0.9452054794520549,
+            "precision": 0.971830985915493,
+            "recall": 0.92,
+            "support": 75
+          },
+          "own_clinic": {
+            "f1": 0.9379014989293363,
+            "precision": 0.9954545454545455,
+            "recall": 0.8866396761133604,
+            "support": 247
+          },
+          "same_institution_other_department": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 0
+          },
+          "unknown": {
+            "f1": 0.9696969696969697,
+            "precision": 1.0,
+            "recall": 0.9411764705882353,
+            "support": 34
+          }
+        },
+        "risk": 0.009287925696594427,
+        "temperature": 0.6
+      },
+      "sourceOrigin": {
+        "abstainThreshold": 0.993758797645569,
+        "abstained": 163,
+        "accuracyIncludingAbstain": 0.5393258426966292,
+        "calibrationExampleCount": 356,
+        "confusion": {
+          "carried_in_result": {
+            "__abstain__": 0,
+            "carried_in_result": 0,
+            "external_document": 0,
+            "other_provider_record": 0,
+            "own_clinic_record": 0,
+            "patient_reported": 0,
+            "unknown": 0
+          },
+          "external_document": {
+            "__abstain__": 39,
+            "carried_in_result": 0,
+            "external_document": 0,
+            "other_provider_record": 0,
+            "own_clinic_record": 0,
+            "patient_reported": 0,
+            "unknown": 0
+          },
+          "other_provider_record": {
+            "__abstain__": 0,
+            "carried_in_result": 0,
+            "external_document": 0,
+            "other_provider_record": 0,
+            "own_clinic_record": 0,
+            "patient_reported": 0,
+            "unknown": 0
+          },
+          "own_clinic_record": {
+            "__abstain__": 120,
+            "carried_in_result": 0,
+            "external_document": 0,
+            "other_provider_record": 0,
+            "own_clinic_record": 160,
+            "patient_reported": 1,
+            "unknown": 0
+          },
+          "patient_reported": {
+            "__abstain__": 4,
+            "carried_in_result": 0,
+            "external_document": 0,
+            "other_provider_record": 0,
+            "own_clinic_record": 0,
+            "patient_reported": 32,
+            "unknown": 0
+          },
+          "unknown": {
+            "__abstain__": 0,
+            "carried_in_result": 0,
+            "external_document": 0,
+            "other_provider_record": 0,
+            "own_clinic_record": 0,
+            "patient_reported": 0,
+            "unknown": 0
+          }
+        },
+        "count": 356,
+        "coverage": 0.5421348314606742,
+        "covered": 193,
+        "coveredCount": 193,
+        "dangerousFalsePositiveCount": 0,
+        "dangerousFalsePositiveRate": 0.0,
+        "expectedCalibrationError": 0.016850177910220795,
+        "macroF1": 0.275526635775083,
+        "perClass": {
+          "carried_in_result": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 0
+          },
+          "external_document": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 39
+          },
+          "other_provider_record": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 0
+          },
+          "own_clinic_record": {
+            "f1": 0.72562358276644,
+            "precision": 1.0,
+            "recall": 0.5693950177935944,
+            "support": 281
+          },
+          "patient_reported": {
+            "f1": 0.927536231884058,
+            "precision": 0.9696969696969697,
+            "recall": 0.8888888888888888,
+            "support": 36
+          },
+          "unknown": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 0
+          }
+        },
+        "risk": 0.0051813471502590676,
+        "temperature": 0.5
+      },
+      "standingStatus": {
+        "abstainThreshold": 0.9209179282188417,
+        "abstained": 64,
+        "accuracyIncludingAbstain": 0.800561797752809,
+        "calibrationExampleCount": 356,
+        "confusion": {
+          "changed": {
+            "__abstain__": 4,
+            "changed": 0,
+            "continued": 0,
+            "none": 0,
+            "stopped": 0
+          },
+          "continued": {
+            "__abstain__": 11,
+            "changed": 0,
+            "continued": 20,
+            "none": 0,
+            "stopped": 0
+          },
+          "none": {
+            "__abstain__": 49,
+            "changed": 0,
+            "continued": 3,
+            "none": 265,
+            "stopped": 0
+          },
+          "stopped": {
+            "__abstain__": 0,
+            "changed": 0,
+            "continued": 4,
+            "none": 0,
+            "stopped": 0
+          }
+        },
+        "count": 356,
+        "coverage": 0.8202247191011236,
+        "covered": 292,
+        "coveredCount": 292,
+        "dangerousFalsePositiveCount": 3,
+        "dangerousFalsePositiveRate": 0.00946372239747634,
+        "expectedCalibrationError": 0.028822456350487247,
+        "macroF1": 0.4000770233439981,
+        "perClass": {
+          "changed": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 4
+          },
+          "continued": {
+            "f1": 0.689655172413793,
+            "precision": 0.7407407407407407,
+            "recall": 0.6451612903225806,
+            "support": 31
+          },
+          "none": {
+            "f1": 0.9106529209621993,
+            "precision": 1.0,
+            "recall": 0.8359621451104101,
+            "support": 317
+          },
+          "stopped": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 4
+          }
+        },
+        "risk": 0.023972602739726026,
+        "temperature": 0.7
+      },
+      "temporalRelation": {
+        "abstainThreshold": 0.9853457212448121,
+        "abstained": 215,
+        "accuracyIncludingAbstain": 0.39325842696629215,
+        "calibrationExampleCount": 356,
+        "confusion": {
+          "current_visit": {
+            "__abstain__": 87,
+            "current_visit": 86,
+            "future": 0,
+            "past": 0,
+            "same_day_but_unknown": 0,
+            "unknown": 0
+          },
+          "future": {
+            "__abstain__": 24,
+            "current_visit": 1,
+            "future": 1,
+            "past": 0,
+            "same_day_but_unknown": 0,
+            "unknown": 0
+          },
+          "past": {
+            "__abstain__": 70,
+            "current_visit": 0,
+            "future": 0,
+            "past": 53,
+            "same_day_but_unknown": 0,
+            "unknown": 0
+          },
+          "same_day_but_unknown": {
+            "__abstain__": 34,
+            "current_visit": 0,
+            "future": 0,
+            "past": 0,
+            "same_day_but_unknown": 0,
+            "unknown": 0
+          },
+          "unknown": {
+            "__abstain__": 0,
+            "current_visit": 0,
+            "future": 0,
+            "past": 0,
+            "same_day_but_unknown": 0,
+            "unknown": 0
+          }
+        },
+        "count": 356,
+        "coverage": 0.3960674157303371,
+        "covered": 141,
+        "coveredCount": 141,
+        "dangerousFalsePositiveCount": 1,
+        "dangerousFalsePositiveRate": 0.00546448087431694,
+        "expectedCalibrationError": 0.02173874183986967,
+        "macroF1": 0.26757705257705255,
+        "perClass": {
+          "current_visit": {
+            "f1": 0.6615384615384615,
+            "precision": 0.9885057471264368,
+            "recall": 0.49710982658959535,
+            "support": 173
+          },
+          "future": {
+            "f1": 0.07407407407407407,
+            "precision": 1.0,
+            "recall": 0.038461538461538464,
+            "support": 26
+          },
+          "past": {
+            "f1": 0.6022727272727273,
+            "precision": 1.0,
+            "recall": 0.43089430894308944,
+            "support": 123
+          },
+          "same_day_but_unknown": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 34
+          },
+          "unknown": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 0
+          }
+        },
+        "risk": 0.0070921985815602835,
+        "temperature": 0.6
+      }
+    },
+    "calibrationSource": "onnx_runtime",
+    "temperatures": {
+      "actionStatus": 0.6,
+      "providerOwnership": 0.6,
+      "sourceOrigin": 0.5,
+      "standingStatus": 0.7,
+      "temporalRelation": 0.6
+    }
+  },
+  "developmentCaseCount": 96,
+  "developmentSpanCount": 356,
+  "generatedAt": "2026-07-27T07:05:38.782841Z",
+  "inputContractVersion": 1,
+  "license": {
+    "license": "Apache-2.0",
+    "modelId": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "sourceUrl": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d",
+    "verifiedAt": "2026-07-25"
+  },
+  "manifestSha256": "b1d852ebad438f781d93ed88964c3ea52a40b170066c14491edeb1cce9b9c853",
+  "minimumCalibrationCoverage": 0.05,
+  "minimumCalibrationCoveredCount": 20,
+  "modelRevision": "86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d",
+  "modelSelection": {
+    "history": [
+      {
+        "developmentLoss": 0.8477546572685242,
+        "epoch": 1,
+        "trainLoss": 1.0474020410806706
+      },
+      {
+        "developmentLoss": 0.7141419649124146,
+        "epoch": 2,
+        "trainLoss": 0.7049466595690475
+      },
+      {
+        "developmentLoss": 0.6046653985977173,
+        "epoch": 3,
+        "trainLoss": 0.6051228639916477
+      },
+      {
+        "developmentLoss": 0.5403364896774292,
+        "epoch": 4,
+        "trainLoss": 0.4726286815781879
+      },
+      {
+        "developmentLoss": 0.46177491545677185,
+        "epoch": 5,
+        "trainLoss": 0.3895746428742368
+      },
+      {
+        "developmentLoss": 0.42704957723617554,
+        "epoch": 6,
+        "trainLoss": 0.31422557076837265
+      }
+    ],
+    "selectedDevelopmentLoss": 0.42704957723617554,
+    "selectedEpoch": 6
+  },
+  "outputDir": "/Users/hiradekeishi/medical-ai/halunasu/python/data/whitebox/context-wx3-multilingual-minilm-l12-v3",
+  "pooling": "mean",
+  "schemaVersion": "fee-wx3-build-report-v1",
+  "semanticProbe": "passed",
+  "status": "complete",
+  "trainCaseCount": 288,
+  "trainSpanCount": 935,
+  "withheldHoldoutCaseCount": 16
+}

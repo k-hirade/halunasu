@@ -2,6 +2,7 @@
 # the pinned WX1/WX3 builder environment because ModernBERT requires the
 # newer Transformers/Tokenizers contract.
 sentence-transformers==5.1.2
+sentencepiece==0.2.2
 numpy==1.26.4
 onnx==1.17.0
 onnxruntime==1.20.1

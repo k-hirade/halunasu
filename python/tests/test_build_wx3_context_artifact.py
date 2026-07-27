@@ -3,11 +3,16 @@ from __future__ import annotations
 import unittest
 
 from medical_fee_calculation.clinical_axes import clinical_axis_values
+from medical_fee_calculation.whitebox_context import (
+    LEGACY_INPUT_CONTRACT_VERSION,
+    STRUCTURED_INPUT_CONTRACT_VERSION,
+)
 from scripts.whitebox_training_common import WhiteboxTrainingError
 from scripts.build_wx3_context_artifact import (
     DETERMINISM_REPEAT_COUNT,
     build_context_examples,
     class_weight_values,
+    parse_args,
     select_abstain_threshold,
 )
 
@@ -16,7 +21,7 @@ class BuildWx3ContextArtifactTest(unittest.TestCase):
     def test_artifact_gate_requires_one_hundred_identical_runs(self) -> None:
         self.assertEqual(DETERMINISM_REPEAT_COUNT, 100)
 
-    def test_context_examples_preserve_all_axis_labels(self) -> None:
+    def test_context_examples_default_to_safety_calibrated_legacy_contract(self) -> None:
         text = "O）創傷処置を実施した。"
         start = text.index("創傷処置")
         examples = build_context_examples([{
@@ -37,9 +42,50 @@ class BuildWx3ContextArtifactTest(unittest.TestCase):
         }], clinical_axis_values())
         self.assertEqual(examples[0].labels["actionStatus"], "performed")
         self.assertIn("[SPAN]創傷処置[/SPAN]", examples[0].text)
+        self.assertNotIn("[SETTING]", examples[0].text)
+        self.assertNotIn("[SPECIALTY]", examples[0].text)
+
+    def test_context_examples_support_explicit_structured_contract(self) -> None:
+        text = "O）創傷処置を実施した。"
+        start = text.index("創傷処置")
+        examples = build_context_examples([{
+            "caseId": "case-1",
+            "specialty": "surgery",
+            "encounterSetting": "outpatient",
+            "clinicalText": text,
+            "expectedSpans": [{
+                "text": "創傷処置",
+                "charStart": start,
+                "charEnd": start + 4,
+                "actionStatus": "performed",
+                "temporalRelation": "current_visit",
+                "sourceOrigin": "own_clinic_record",
+                "providerOwnership": "own_clinic",
+                "standingStatus": "none",
+            }],
+        }], clinical_axis_values(), input_contract_version=STRUCTURED_INPUT_CONTRACT_VERSION)
+        self.assertEqual(examples[0].labels["actionStatus"], "performed")
         self.assertIn("[SETTING]outpatient[/SETTING]", examples[0].text)
         self.assertIn("[SPECIALTY]surgery[/SPECIALTY]", examples[0].text)
         self.assertIn("[SECTION]O[/SECTION]", examples[0].text)
+
+    def test_cli_defaults_to_legacy_contract_and_allows_explicit_v2(self) -> None:
+        required = [
+            "--base-model", "model",
+            "--model-revision", "a" * 40,
+            "--license", "Apache-2.0",
+            "--license-source-url", "https://example.com/license",
+            "--license-verified-at", "2026-07-25",
+            "--artifact-version", "wx3-test",
+        ]
+        self.assertEqual(
+            parse_args(required).input_contract_version,
+            LEGACY_INPUT_CONTRACT_VERSION,
+        )
+        self.assertEqual(
+            parse_args([*required, "--input-contract-version", "2"]).input_contract_version,
+            STRUCTURED_INPUT_CONTRACT_VERSION,
+        )
 
     def test_threshold_abstains_until_risk_is_acceptable(self) -> None:
         threshold = select_abstain_threshold(

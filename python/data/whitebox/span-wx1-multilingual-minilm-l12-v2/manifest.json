@@ -1,0 +1,113 @@
+{
+  "artifactType": "fee_span_detector",
+  "artifactVersion": "wx1-multilingual-minilm-l12-v2",
+  "backend": "onnx_token_classifier",
+  "defaultThreshold": 0.5,
+  "entityThresholds": {
+    "counseling": 0.3,
+    "exam": 0.3,
+    "imaging": 0.3,
+    "injection": 0.3,
+    "lab": 0.3,
+    "management": 0.7,
+    "material": 0.9,
+    "medication": 0.6,
+    "other": 0.9,
+    "outpatient_basic": 0.9,
+    "pathology": 0.9,
+    "procedure": 0.5,
+    "treatment": 0.3
+  },
+  "entityTypes": [
+    "counseling",
+    "exam",
+    "imaging",
+    "injection",
+    "lab",
+    "management",
+    "material",
+    "medication",
+    "other",
+    "outpatient_basic",
+    "pathology",
+    "procedure",
+    "treatment"
+  ],
+  "files": {
+    "model": {
+      "path": "model.onnx",
+      "sha256": "a7b89c201371ee91e4129536eed7761fddb022e85188733b5d4ab46021c0b747"
+    },
+    "tokenizer": {
+      "path": "tokenizer.json",
+      "sha256": "93189c5d9a15db043017cfd920e00cf72fe9a4220bd74b460b635f6aa85a61a2"
+    }
+  },
+  "inputNormalizationVersion": 1,
+  "license": {
+    "license": "Apache-2.0",
+    "modelId": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "sourceUrl": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/\n    e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+    "verifiedAt": "2026-07-25"
+  },
+  "maxLength": 256,
+  "modelFileKey": "model",
+  "modelRevision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+  "modelVersion": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "relevanceLabels": [
+    "relevant",
+    "irrelevant",
+    "abstain"
+  ],
+  "relevanceLogitsOutputName": "relevance_logits",
+  "relevanceTemperature": 1.0,
+  "schemaVersion": 1,
+  "tokenLabels": [
+    "O",
+    "B-counseling",
+    "I-counseling",
+    "B-exam",
+    "I-exam",
+    "B-imaging",
+    "I-imaging",
+    "B-injection",
+    "I-injection",
+    "B-lab",
+    "I-lab",
+    "B-management",
+    "I-management",
+    "B-material",
+    "I-material",
+    "B-medication",
+    "I-medication",
+    "B-other",
+    "I-other",
+    "B-outpatient_basic",
+    "I-outpatient_basic",
+    "B-pathology",
+    "I-pathology",
+    "B-procedure",
+    "I-procedure",
+    "B-treatment",
+    "I-treatment"
+  ],
+  "tokenLogitsOutputName": "token_logits",
+  "tokenizerFileKey": "tokenizer",
+  "training": {
+    "batchSize": 8,
+    "datasetSha256": "75d48a32d11bced89e764e61bd926561af7a642304581075f6d6f44e8c6f7cf9",
+    "developmentCaseCount": 96,
+    "entityTypesSha256": "34c114c024e8987aadf5936a21341b8ebf41cb4f5804e4b566c63f176d441697",
+    "epochs": 4,
+    "learningRate": 2e-05,
+    "seed": 17,
+    "syntheticOnly": true,
+    "trainCaseCount": 288,
+    "trainingViewSha256": "0e9aff22f03d65bb1178fae8f5b8bee19fdad3414117a6e62d7fc1fa612b5ff1",
+    "withheldHoldoutCaseCount": 16
+  },
+  "trainingCategoryAdditions": [
+    "exam",
+    "material"
+  ]
+}

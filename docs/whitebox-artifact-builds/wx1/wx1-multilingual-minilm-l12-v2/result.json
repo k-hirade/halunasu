@@ -1,0 +1,433 @@
+{
+  "artifactType": "fee_span_detector",
+  "artifactVersion": "wx1-multilingual-minilm-l12-v2",
+  "backend": "onnx_token_classifier",
+  "baseModel": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "determinism": {
+    "outputSha256": "c02d7b77104c9d891d3fb15e24e1935ceced348c44d538f80e150a77e19cb1a7",
+    "repeatCount": 100,
+    "status": "passed"
+  },
+  "development": {
+    "categoryCoverage": {
+      "categoriesByStatus": {
+        "below_target": [],
+        "false_positive_only": [],
+        "measured": [
+          "counseling",
+          "exam",
+          "imaging",
+          "injection",
+          "lab",
+          "management",
+          "medication",
+          "procedure",
+          "treatment"
+        ],
+        "unmeasured": [
+          "material",
+          "other",
+          "outpatient_basic",
+          "pathology"
+        ]
+      },
+      "categoryCount": 13,
+      "measuredCategoryCount": 9
+    },
+    "entityMetrics": {
+      "counseling": {
+        "f1": 0.8695652173913043,
+        "falseNegativeCount": 4,
+        "falsePositiveCount": 2,
+        "minimumF1Target": 0.5,
+        "positiveSupport": 24,
+        "precision": 0.9090909090909091,
+        "predictionCount": 22,
+        "qualityStatus": "measured",
+        "recall": 0.8333333333333334,
+        "threshold": 0.3,
+        "truePositiveCount": 20
+      },
+      "exam": {
+        "f1": 0.78419452887538,
+        "falseNegativeCount": 39,
+        "falsePositiveCount": 32,
+        "minimumF1Target": 0.5,
+        "positiveSupport": 168,
+        "precision": 0.8012422360248447,
+        "predictionCount": 161,
+        "qualityStatus": "measured",
+        "recall": 0.7678571428571429,
+        "threshold": 0.3,
+        "truePositiveCount": 129
+      },
+      "imaging": {
+        "f1": 0.9972826086956521,
+        "falseNegativeCount": 2,
+        "falsePositiveCount": 0,
+        "minimumF1Target": 0.5,
+        "positiveSupport": 369,
+        "precision": 1.0,
+        "predictionCount": 367,
+        "qualityStatus": "measured",
+        "recall": 0.994579945799458,
+        "threshold": 0.3,
+        "truePositiveCount": 367
+      },
+      "injection": {
+        "f1": 0.9411764705882353,
+        "falseNegativeCount": 4,
+        "falsePositiveCount": 0,
+        "minimumF1Target": 0.5,
+        "positiveSupport": 36,
+        "precision": 1.0,
+        "predictionCount": 32,
+        "qualityStatus": "measured",
+        "recall": 0.8888888888888888,
+        "threshold": 0.3,
+        "truePositiveCount": 32
+      },
+      "lab": {
+        "f1": 0.8677248677248677,
+        "falseNegativeCount": 19,
+        "falsePositiveCount": 6,
+        "minimumF1Target": 0.5,
+        "positiveSupport": 101,
+        "precision": 0.9318181818181818,
+        "predictionCount": 88,
+        "qualityStatus": "measured",
+        "recall": 0.8118811881188119,
+        "threshold": 0.3,
+        "truePositiveCount": 82
+      },
+      "management": {
+        "f1": 0.8571428571428571,
+        "falseNegativeCount": 7,
+        "falsePositiveCount": 0,
+        "minimumF1Target": 0.5,
+        "positiveSupport": 28,
+        "precision": 1.0,
+        "predictionCount": 21,
+        "qualityStatus": "measured",
+        "recall": 0.75,
+        "threshold": 0.7,
+        "truePositiveCount": 21
+      },
+      "material": {
+        "f1": 0.0,
+        "falseNegativeCount": 0,
+        "falsePositiveCount": 0,
+        "minimumF1Target": 0.5,
+        "positiveSupport": 0,
+        "precision": 0.0,
+        "predictionCount": 0,
+        "qualityStatus": "unmeasured",
+        "recall": 0.0,
+        "threshold": 0.9,
+        "truePositiveCount": 0
+      },
+      "medication": {
+        "f1": 0.9836531627576404,
+        "falseNegativeCount": 7,
+        "falsePositiveCount": 16,
+        "minimumF1Target": 0.5,
+        "positiveSupport": 699,
+        "precision": 0.9774011299435028,
+        "predictionCount": 708,
+        "qualityStatus": "measured",
+        "recall": 0.9899856938483548,
+        "threshold": 0.6,
+        "truePositiveCount": 692
+      },
+      "other": {
+        "f1": 0.0,
+        "falseNegativeCount": 0,
+        "falsePositiveCount": 0,
+        "minimumF1Target": 0.5,
+        "positiveSupport": 0,
+        "precision": 0.0,
+        "predictionCount": 0,
+        "qualityStatus": "unmeasured",
+        "recall": 0.0,
+        "threshold": 0.9,
+        "truePositiveCount": 0
+      },
+      "outpatient_basic": {
+        "f1": 0.0,
+        "falseNegativeCount": 0,
+        "falsePositiveCount": 0,
+        "minimumF1Target": 0.5,
+        "positiveSupport": 0,
+        "precision": 0.0,
+        "predictionCount": 0,
+        "qualityStatus": "unmeasured",
+        "recall": 0.0,
+        "threshold": 0.9,
+        "truePositiveCount": 0
+      },
+      "pathology": {
+        "f1": 0.0,
+        "falseNegativeCount": 0,
+        "falsePositiveCount": 0,
+        "minimumF1Target": 0.5,
+        "positiveSupport": 0,
+        "precision": 0.0,
+        "predictionCount": 0,
+        "qualityStatus": "unmeasured",
+        "recall": 0.0,
+        "threshold": 0.9,
+        "truePositiveCount": 0
+      },
+      "procedure": {
+        "f1": 0.9235880398671096,
+        "falseNegativeCount": 12,
+        "falsePositiveCount": 11,
+        "minimumF1Target": 0.5,
+        "positiveSupport": 151,
+        "precision": 0.9266666666666666,
+        "predictionCount": 150,
+        "qualityStatus": "measured",
+        "recall": 0.9205298013245033,
+        "threshold": 0.5,
+        "truePositiveCount": 139
+      },
+      "treatment": {
+        "f1": 0.9904306220095694,
+        "falseNegativeCount": 4,
+        "falsePositiveCount": 0,
+        "minimumF1Target": 0.5,
+        "positiveSupport": 211,
+        "precision": 1.0,
+        "predictionCount": 207,
+        "qualityStatus": "measured",
+        "recall": 0.981042654028436,
+        "threshold": 0.3,
+        "truePositiveCount": 207
+      }
+    },
+    "entityThresholds": {
+      "counseling": 0.3,
+      "exam": 0.3,
+      "imaging": 0.3,
+      "injection": 0.3,
+      "lab": 0.3,
+      "management": 0.7,
+      "material": 0.9,
+      "medication": 0.6,
+      "other": 0.9,
+      "outpatient_basic": 0.9,
+      "pathology": 0.9,
+      "procedure": 0.5,
+      "treatment": 0.3
+    },
+    "exactEntityMetrics": {
+      "byCategory": {
+        "counseling": {
+          "boundaryMismatchCount": 2,
+          "exactMatchCount": 4,
+          "expectedSpanCount": 7,
+          "f1": 0.5714285714285714,
+          "missedSpanCount": 1,
+          "precision": 0.5714285714285714,
+          "predictedSpanCount": 7,
+          "recall": 0.5714285714285714,
+          "spuriousSpanCount": 1
+        },
+        "exam": {
+          "boundaryMismatchCount": 5,
+          "exactMatchCount": 32,
+          "expectedSpanCount": 39,
+          "f1": 0.7619047619047619,
+          "missedSpanCount": 2,
+          "precision": 0.7111111111111111,
+          "predictedSpanCount": 45,
+          "recall": 0.8205128205128205,
+          "spuriousSpanCount": 8
+        },
+        "imaging": {
+          "boundaryMismatchCount": 1,
+          "exactMatchCount": 68,
+          "expectedSpanCount": 70,
+          "f1": 0.9784172661870504,
+          "missedSpanCount": 1,
+          "precision": 0.9855072463768116,
+          "predictedSpanCount": 69,
+          "recall": 0.9714285714285714,
+          "spuriousSpanCount": 0
+        },
+        "injection": {
+          "boundaryMismatchCount": 2,
+          "exactMatchCount": 7,
+          "expectedSpanCount": 10,
+          "f1": 0.7368421052631577,
+          "missedSpanCount": 1,
+          "precision": 0.7777777777777778,
+          "predictedSpanCount": 9,
+          "recall": 0.7,
+          "spuriousSpanCount": 0
+        },
+        "lab": {
+          "boundaryMismatchCount": 14,
+          "exactMatchCount": 9,
+          "expectedSpanCount": 24,
+          "f1": 0.339622641509434,
+          "missedSpanCount": 1,
+          "precision": 0.3103448275862069,
+          "predictedSpanCount": 29,
+          "recall": 0.375,
+          "spuriousSpanCount": 6
+        },
+        "management": {
+          "boundaryMismatchCount": 3,
+          "exactMatchCount": 0,
+          "expectedSpanCount": 5,
+          "f1": 0.0,
+          "missedSpanCount": 2,
+          "precision": 0.0,
+          "predictedSpanCount": 3,
+          "recall": 0.0,
+          "spuriousSpanCount": 0
+        },
+        "medication": {
+          "boundaryMismatchCount": 4,
+          "exactMatchCount": 93,
+          "expectedSpanCount": 98,
+          "f1": 0.9207920792079209,
+          "missedSpanCount": 1,
+          "precision": 0.8942307692307693,
+          "predictedSpanCount": 104,
+          "recall": 0.9489795918367347,
+          "spuriousSpanCount": 7
+        },
+        "procedure": {
+          "boundaryMismatchCount": 4,
+          "exactMatchCount": 30,
+          "expectedSpanCount": 35,
+          "f1": 0.7999999999999999,
+          "missedSpanCount": 1,
+          "precision": 0.75,
+          "predictedSpanCount": 40,
+          "recall": 0.8571428571428571,
+          "spuriousSpanCount": 6
+        },
+        "treatment": {
+          "boundaryMismatchCount": 1,
+          "exactMatchCount": 66,
+          "expectedSpanCount": 68,
+          "f1": 0.9777777777777777,
+          "missedSpanCount": 1,
+          "precision": 0.9850746268656716,
+          "predictedSpanCount": 67,
+          "recall": 0.9705882352941176,
+          "spuriousSpanCount": 0
+        }
+      },
+      "overall": {
+        "boundaryMismatchCount": 36,
+        "exactMatchCount": 309,
+        "expectedSpanCount": 356,
+        "f1": 0.8477366255144033,
+        "missedSpanCount": 11,
+        "precision": 0.8284182305630027,
+        "predictedSpanCount": 373,
+        "recall": 0.8679775280898876,
+        "spuriousSpanCount": 28
+      }
+    },
+    "relevanceAccuracy": 0.994140625,
+    "relevanceTemperature": 1.0
+  },
+  "developmentCaseCount": 96,
+  "developmentLineCount": 512,
+  "entityTypes": [
+    "counseling",
+    "exam",
+    "imaging",
+    "injection",
+    "lab",
+    "management",
+    "material",
+    "medication",
+    "other",
+    "outpatient_basic",
+    "pathology",
+    "procedure",
+    "treatment"
+  ],
+  "generatedAt": "2026-07-27T05:33:37.840849Z",
+  "license": {
+    "license": "Apache-2.0",
+    "modelId": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "sourceUrl": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/\n    e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+    "verifiedAt": "2026-07-25"
+  },
+  "manifestSha256": "b75220d45fffb0f5191705038060d7d592d73e052278d6893285289c5a121bb7",
+  "mode": "ft",
+  "modelRevision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+  "modelSelection": {
+    "history": [
+      {
+        "developmentLoss": 0.3775157332420349,
+        "epoch": 1,
+        "trainLoss": 0.8874466566538269
+      },
+      {
+        "developmentLoss": 0.20246458053588867,
+        "epoch": 2,
+        "trainLoss": 0.23669622161171652
+      },
+      {
+        "developmentLoss": 0.12991419434547424,
+        "epoch": 3,
+        "trainLoss": 0.11322444372556427
+      },
+      {
+        "developmentLoss": 0.08967170864343643,
+        "epoch": 4,
+        "trainLoss": 0.05886704235507006
+      }
+    ],
+    "selectedDevelopmentLoss": 0.08967170864343643,
+    "selectedEpoch": 4
+  },
+  "outputDir": "/Users/hiradekeishi/medical-ai/halunasu/python/data/whitebox/span-wx1-multilingual-minilm-l12-v2",
+  "schemaVersion": "fee-wx1-build-report-v1",
+  "semanticProbe": "passed",
+  "status": "complete",
+  "tokenLabels": [
+    "O",
+    "B-counseling",
+    "I-counseling",
+    "B-exam",
+    "I-exam",
+    "B-imaging",
+    "I-imaging",
+    "B-injection",
+    "I-injection",
+    "B-lab",
+    "I-lab",
+    "B-management",
+    "I-management",
+    "B-material",
+    "I-material",
+    "B-medication",
+    "I-medication",
+    "B-other",
+    "I-other",
+    "B-outpatient_basic",
+    "I-outpatient_basic",
+    "B-pathology",
+    "I-pathology",
+    "B-procedure",
+    "I-procedure",
+    "B-treatment",
+    "I-treatment"
+  ],
+  "trainCaseCount": 288,
+  "trainLineCount": 1408,
+  "trainingCategoryAdditions": [
+    "exam",
+    "material"
+  ],
+  "withheldHoldoutCaseCount": 16
+}

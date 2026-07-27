@@ -28,6 +28,7 @@ from medical_fee_calculation.whitebox_artifacts import (
 )
 from medical_fee_calculation.whitebox_context import (
     CONTEXT_SEMANTIC_PROBE_ITEM,
+    LEGACY_INPUT_CONTRACT_VERSION,
     STRUCTURED_INPUT_CONTRACT_VERSION,
     _OnnxContextRuntime,
     _validate_context_semantic_probe,
@@ -68,6 +69,8 @@ class ContextExample:
 def build_context_examples(
     cases: Sequence[Mapping[str, Any]],
     axis_labels: Mapping[str, Sequence[str]],
+    *,
+    input_contract_version: int = LEGACY_INPUT_CONTRACT_VERSION,
 ) -> list[ContextExample]:
     examples = []
     for case in cases:
@@ -83,7 +86,11 @@ def build_context_examples(
             examples.append(ContextExample(
                 case_id=str(case["caseId"]),
                 span_index=span_index,
-                text=context_text_for_span(case, span),
+                text=context_text_for_span(
+                    case,
+                    span,
+                    input_contract_version=input_contract_version,
+                ),
                 labels=labels,
             ))
     if not examples:
@@ -529,8 +536,16 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         axis: list(values)
         for axis, values in clinical_axis_values().items()
     }
-    train_examples = build_context_examples(partitions.train, axis_labels)
-    development_examples = build_context_examples(partitions.development, axis_labels)
+    train_examples = build_context_examples(
+        partitions.train,
+        axis_labels,
+        input_contract_version=args.input_contract_version,
+    )
+    development_examples = build_context_examples(
+        partitions.development,
+        axis_labels,
+        input_contract_version=args.input_contract_version,
+    )
     plan = {
         "artifactType": "fee_context_classifier",
         "backend": "onnx_multi_axis",
@@ -545,7 +560,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         "developmentSpanCount": len(development_examples),
         "axisLabels": axis_labels,
         "pooling": args.pooling,
-        "inputContractVersion": STRUCTURED_INPUT_CONTRACT_VERSION,
+        "inputContractVersion": args.input_contract_version,
         "classWeighting": args.class_weighting,
         "minimumCalibrationCoveredCount": args.minimum_calibration_covered_count,
         "minimumCalibrationCoverage": args.minimum_calibration_coverage,
@@ -622,7 +637,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         }
         provisional_manifest = {
             "maxLength": args.max_length,
-            "inputContractVersion": STRUCTURED_INPUT_CONTRACT_VERSION,
+            "inputContractVersion": args.input_contract_version,
             "axisLabels": axis_labels,
             "outputNames": output_names,
             "temperatures": {
@@ -660,7 +675,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "modelFileKey": "model",
             "tokenizerFileKey": "tokenizer",
             "maxLength": args.max_length,
-            "inputContractVersion": STRUCTURED_INPUT_CONTRACT_VERSION,
+            "inputContractVersion": args.input_contract_version,
             "axisLabels": axis_labels,
             "outputNames": output_names,
             "temperatures": calibration["temperatures"],
@@ -781,6 +796,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=2e-5)
     parser.add_argument("--pooling", choices=("mean", "cls"), default="mean")
+    parser.add_argument(
+        "--input-contract-version",
+        type=int,
+        choices=(
+            LEGACY_INPUT_CONTRACT_VERSION,
+            STRUCTURED_INPUT_CONTRACT_VERSION,
+        ),
+        default=LEGACY_INPUT_CONTRACT_VERSION,
+        help=(
+            "WX3 text contract. Version 1 is the safety-calibrated default; "
+            "version 2 is experimental structured-metadata input."
+        ),
+    )
     parser.add_argument(
         "--class-weighting",
         choices=("sqrt_inverse", "none"),

@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "artifactType": "fee_master_linker",
+  "artifactVersion": "35bf85df0511064be6da763b",
+  "indexVersion": "35bf85df0511064be6da763b",
+  "indexSchemaVersion": 2,
+  "modelVersion": "cl-nagoya/ruri-v3-30m",
+  "modelRevision": "24899e5de370b56d179604a007c0d727bf144504",
+  "license": {
+    "modelId": "cl-nagoya/ruri-v3-30m",
+    "license": "Apache-2.0",
+    "verifiedAt": "2026-07-25",
+    "sourceUrl": "https://huggingface.co/cl-nagoya/ruri-v3-30m/blob/24899e5de370b56d179604a007c0d727bf144504/README.md"
+  },
+  "backend": "onnx_sentence_encoder",
+  "modelFileKey": "model",
+  "tokenizerFileKey": "tokenizer",
+  "embeddingOutputName": "",
+  "pooling": "mean",
+  "maxLength": 256,
+  "queryPrefix": "検索クエリ: ",
+  "documentPrefix": "検索文書: ",
+  "dimension": 256,
+  "documentCount": 57925,
+  "runtimeParity": {
+    "probeCount": 8,
+    "minimumCosine": 1.0,
+    "requiredMinimumCosine": 0.999
+  },
+  "sourceMasterSha256": "26737b6719ede79ea0ba532a3ac91cc8c5a2ecacbe3af040b73de21bcb3376d1",
+  "sourceFingerprint": "6cd2d2adb63369cdb7ec6f8a76cee396a109679c03c736f4143d17527075fc17",
+  "sources": [
+    {
+      "id": 1,
+      "source_type": "medical_procedure_master",
+      "source_version": "2026-06-15",
+      "checksum_sha256": "4d333fe3c0be4070f6fc1aa15a01db2cc7a5af4580fed7652ae3af8884b0be75",
+      "imported_at": "2026-06-15T10:07:02+00:00"
+    },
+    {
+      "id": 2,
+      "source_type": "drug_master",
+      "source_version": "2026-06-15",
+      "checksum_sha256": "54e13d4fee9d54cf6b569396bbdcb961e66e0280b2e292f32d351494c8446ada",
+      "imported_at": "2026-06-15T10:07:03+00:00"
+    },
+    {
+      "id": 44,
+      "source_type": "payer_check_master",
+      "source_version": "令和8年度版",
+      "checksum_sha256": "-",
+      "imported_at": "2026-07-16T13:11:29"
+    }
+  ],
+  "generatedAt": "2026-07-27T04:11:31.825733Z",
+  "files": {
+    "index": {
+      "path": "linker-index.sqlite",
+      "sha256": "f33346e17ebd83d4c3863c3e69770505d0e74756564b24fd4f4f8dbda1b2db7a"
+    },
+    "model": {
+      "path": "runtime/model.onnx",
+      "sha256": "f31ec25b65596d07280845e73db9362308163f0da674b21934d1eca10e19659e"
+    },
+    "tokenizer": {
+      "path": "runtime/tokenizer.json",
+      "sha256": "0a94ac9a0a02c067bdef25b72ae9f4ee33f48f552e55988d444f6d25eeb1d062"
+    }
+  }
+}

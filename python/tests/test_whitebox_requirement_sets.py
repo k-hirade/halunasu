@@ -57,6 +57,7 @@ class WhiteboxRequirementSetsTest(unittest.TestCase):
         self.assertNotIn("gliner", pins)
         self.assertEqual(pins["transformers"], "4.57.3")
         self.assertEqual(pins["tokenizers"], "0.22.1")
+        self.assertEqual(pins["sentencepiece"], "0.2.2")
         self.assertEqual(pins["onnxruntime"], "1.20.1")
 
     def test_modernbert_comparison_builder_is_isolated_from_runtime(self):
