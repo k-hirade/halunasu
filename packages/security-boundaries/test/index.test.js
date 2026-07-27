@@ -273,6 +273,16 @@ test("P10 runtime provisioning and deploy scripts keep low-cost guardrails", () 
 
   assert.match(deploy, /MIN_INSTANCES="\$\{MIN_INSTANCES:-0\}"/, "P10 deploy must default min instances to zero");
   assert.match(deploy, /MAX_INSTANCES="\$\{MAX_INSTANCES:-1\}"/, "P10 deploy must default max instances to one");
+  assert.match(
+    deploy,
+    /STG_HOMIS_SIDECAR_ENABLED_DEFAULT="true"/,
+    "P10 deploy must keep the approved STG HOMIS sidecar available"
+  );
+  assert.match(
+    deploy,
+    /sidecar_enabled="\$\{HOMIS_SIDECAR_ENABLED_PROD:-\$\{sidecar_enabled:-false\}\}"/,
+    "P10 deploy must keep the HOMIS sidecar disabled by default in PROD"
+  );
   assert.match(deploy, /--cpu-throttling/, "P10 deploy must keep CPU throttling enabled");
   assert.match(deploy, /--no-allow-unauthenticated/, "P10 deploy must support private worker services");
   assert.equal(/terraform\s+apply/.test(deploy), false, "P10 deploy must not run Terraform");

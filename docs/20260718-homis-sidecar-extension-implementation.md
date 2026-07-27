@@ -116,15 +116,24 @@ fee-apiテストでは、candidate-onlyの維持、月次セッションへの�
 デプロイ後に上記STG E2Eを実施し、その結果を別の実測記録として残す。
 
 同一建物v3のSTG更新では、現在のv2拡張を止めないよう次の順で実施する。
+STGではサイドカーを継続利用するため、デプロイスクリプトの環境別既定値を
+`enabled=true`、固定拡張ID、`homis-mock-v3,homis-mock-v2` としている。
+この値はfee-apiのwhitebox機能プロファイルとは独立しており、whiteboxの再デプロイでも
+サイドカーを無効化しない。PRODの既定値は引き続きOFFである。
 
 ```bash
 python3 clients/homis-sidecar/mock/prepare_homis_mock_v3.py tmp/mock_homis --apply
 python3 clients/homis-sidecar/mock/prepare_homis_mock_v3.py tmp/mock_homis --check
 
-HOMIS_SIDECAR_ENABLED_STG=true \
-HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS_STG=nhbmaniknlcaaelpaoogepmkhphmmjof \
-HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS_STG=homis-mock-v3,homis-mock-v2 \
-TARGET_ENV=stg TARGET_SERVICE=fee-api \
+TARGET_ENV=stg TARGET_SERVICE=platform-api \
+./scripts/p10_deploy_runtime_services_low_cost.sh --apply
+
+MIN_INSTANCES=0 \
+RUNTIME_FEATURE_PROFILE=stg-whitebox-three-lane-shadow \
+CPU=2 \
+FEE_MEMORY=8Gi \
+TARGET_ENV=stg \
+TARGET_SERVICE=fee-api \
 ./scripts/p10_deploy_runtime_services_low_cost.sh --apply
 
 npm run seed:yamamoto-demo-stg -- --apply
@@ -132,3 +141,18 @@ npm run seed:yamamoto-demo-stg -- --apply
 
 拡張を再読み込みして1001/1002/1011を確認した後、同じデプロイコマンドの許可値を
 `homis-mock-v3` のみにしてv2を終了する。Firestore rules/indexesとNetlifyの更新は不要。
+
+既存イメージとwhitebox設定を変えず、誤ってOFFになったSTGサイドカーだけを復旧する場合は、
+Cloud Buildを行わず次の2サービスを更新する。
+
+```bash
+gcloud run services update platform-api-stg \
+  --project medical-core-stg \
+  --region asia-northeast1 \
+  --update-env-vars='^@^HOMIS_SIDECAR_ENABLED=true@HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS=nhbmaniknlcaaelpaoogepmkhphmmjof@HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS=homis-mock-v3,homis-mock-v2'
+
+gcloud run services update fee-api-stg \
+  --project halunasu-fee-stg \
+  --region asia-northeast1 \
+  --update-env-vars='^@^HOMIS_SIDECAR_ENABLED=true@HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS=nhbmaniknlcaaelpaoogepmkhphmmjof@HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS=homis-mock-v3,homis-mock-v2'
+```

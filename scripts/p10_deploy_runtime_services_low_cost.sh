@@ -22,6 +22,9 @@ CONCURRENCY="${CONCURRENCY:-80}"
 TARGET_ENV="${TARGET_ENV:-all}"
 TARGET_SERVICE="${TARGET_SERVICE:-all}"
 RUNTIME_FEATURE_PROFILE="${RUNTIME_FEATURE_PROFILE:-}"
+STG_HOMIS_SIDECAR_ENABLED_DEFAULT="true"
+STG_HOMIS_SIDECAR_EXTENSION_IDS_DEFAULT="nhbmaniknlcaaelpaoogepmkhphmmjof"
+STG_HOMIS_SIDECAR_SELECTOR_CONTRACTS_DEFAULT="homis-mock-v3,homis-mock-v2"
 
 load_runtime_feature_profile() {
   if [[ -z "${RUNTIME_FEATURE_PROFILE}" ]]; then
@@ -293,7 +296,7 @@ deploy_env() {
   local referral_project="$5"
   local session_cookie_name="halunasu_session"
   local csrf_cookie_name="halunasu_csrf"
-  local sidecar_enabled="${HOMIS_SIDECAR_ENABLED:-false}"
+  local sidecar_enabled="${HOMIS_SIDECAR_ENABLED:-}"
   local sidecar_allowed_extension_ids="${HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS:-}"
   local sidecar_allowed_selector_contract_versions="${HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS:-}"
   local sidecar_revoked_device_ids="${HOMIS_SIDECAR_REVOKED_DEVICE_IDS:-}"
@@ -320,9 +323,9 @@ deploy_env() {
   if [[ "${env}" == "stg" ]]; then
     session_cookie_name="halunasu_stg_session"
     csrf_cookie_name="halunasu_stg_csrf"
-    sidecar_enabled="${HOMIS_SIDECAR_ENABLED_STG:-${sidecar_enabled}}"
-    sidecar_allowed_extension_ids="${HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS_STG:-${sidecar_allowed_extension_ids}}"
-    sidecar_allowed_selector_contract_versions="${HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS_STG:-${sidecar_allowed_selector_contract_versions}}"
+    sidecar_enabled="${HOMIS_SIDECAR_ENABLED_STG:-${sidecar_enabled:-${STG_HOMIS_SIDECAR_ENABLED_DEFAULT}}}"
+    sidecar_allowed_extension_ids="${HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS_STG:-${sidecar_allowed_extension_ids:-${STG_HOMIS_SIDECAR_EXTENSION_IDS_DEFAULT}}}"
+    sidecar_allowed_selector_contract_versions="${HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS_STG:-${sidecar_allowed_selector_contract_versions:-${STG_HOMIS_SIDECAR_SELECTOR_CONTRACTS_DEFAULT}}}"
     sidecar_revoked_device_ids="${HOMIS_SIDECAR_REVOKED_DEVICE_IDS_STG:-${sidecar_revoked_device_ids}}"
     sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS_STG:-${sidecar_draft_retention_days}}"
     sidecar_grant_ttl_hours="${HOMIS_SIDECAR_GRANT_TTL_HOURS_STG:-${sidecar_grant_ttl_hours}}"
@@ -344,7 +347,7 @@ deploy_env() {
     fee_whitebox_thresholds_path="${FEE_WHITEBOX_THRESHOLDS_PATH_STG:-${fee_whitebox_thresholds_path}}"
     fee_extraction_feedback_hmac_key_version="${FEE_EXTRACTION_FEEDBACK_HMAC_KEY_VERSION_STG:-${fee_extraction_feedback_hmac_key_version}}"
   else
-    sidecar_enabled="${HOMIS_SIDECAR_ENABLED_PROD:-${sidecar_enabled}}"
+    sidecar_enabled="${HOMIS_SIDECAR_ENABLED_PROD:-${sidecar_enabled:-false}}"
     sidecar_allowed_extension_ids="${HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS_PROD:-${sidecar_allowed_extension_ids}}"
     sidecar_allowed_selector_contract_versions="${HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS_PROD:-${sidecar_allowed_selector_contract_versions}}"
     sidecar_revoked_device_ids="${HOMIS_SIDECAR_REVOKED_DEVICE_IDS_PROD:-${sidecar_revoked_device_ids}}"
@@ -369,6 +372,10 @@ deploy_env() {
     fee_extraction_feedback_hmac_key_version="${FEE_EXTRACTION_FEEDBACK_HMAC_KEY_VERSION_PROD:-${fee_extraction_feedback_hmac_key_version}}"
   fi
 
+  if [[ "${sidecar_enabled}" != "true" && "${sidecar_enabled}" != "false" ]]; then
+    echo "HOMIS_SIDECAR_ENABLED_${env^^} must be true or false." >&2
+    return 1
+  fi
   if [[ "${fee_extraction_memo}" != "true" && "${fee_extraction_memo}" != "false" ]]; then
     echo "FEE_EXTRACTION_MEMO_${env^^} must be true or false." >&2
     return 1

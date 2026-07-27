@@ -90,6 +90,12 @@ Cloud Run上のend-to-end telemetryで再確認するまでroute化しない。
 
 ## 次の一手
 
+**2026-07-27追記**: 正規化修正によりspan検出は41.2%→95.5%へ改善し、
+律速は「ゲート設計とマスタ構造の不整合」へ移った。実装項目は
+[ゲート再設計ワークオーダー(S1〜S4)](./fee-whitebox-gate-redesign-workorder-20260727.md)
+を参照(根拠計測: `docs/20260727-whitebox-v2-v3-stg-remeasurement/20260727_165842/`)。
+
+
 **フェーズ2の詳細計画(根拠・実装含む)**:
 [shadow phase2 plan (P1〜P7)](./fee-whitebox-shadow-phase2-plan-20260726.md)。
 以下は要約。
