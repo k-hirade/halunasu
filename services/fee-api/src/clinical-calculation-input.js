@@ -40,6 +40,7 @@ import {
   buildLinkerCandidateLayer,
   prepareWhiteboxExtraction
 } from "./whitebox-extraction.js";
+import { normalizeClinicalTextValue } from "./clinical-text-normalization.js";
 
 export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
   "処置・手技",
@@ -1006,10 +1007,7 @@ export function isAutoPlaceholderOrderName(value) {
 }
 
 export function normalizeClinicalText(value) {
-  return String(value || "")
-    .replace(/\r\n?/gu, "\n")
-    .replace(/[Ａ-Ｚａ-ｚ０-９]/gu, (char) => String.fromCharCode(char.charCodeAt(0) - 0xFEE0))
-    .trim();
+  return normalizeClinicalTextValue(value);
 }
 
 export function buildClinicalTextPreprocessing(text = "") {

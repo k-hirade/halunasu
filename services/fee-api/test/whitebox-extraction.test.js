@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   aggregateLineContext,
   buildLinkerCandidateLayer,
@@ -11,6 +12,7 @@ import {
   determineWhiteboxVisitFacts,
   prepareWhiteboxExtraction,
   whiteboxEncounterSetting,
+  whiteboxMentionType,
   whiteboxRuntimeModes,
   whiteboxThresholds
 } from "../src/whitebox-extraction.js";
@@ -26,6 +28,11 @@ const CURRENT_AXES = {
   providerOwnership: { value: "own_clinic", confidence: 0.99, abstained: false },
   standingStatus: { value: "none", confidence: 0.99, abstained: false }
 };
+
+const DIAGNOSTIC_SHADOW_THRESHOLDS_PATH = fileURLToPath(new URL(
+  "../../../python/data/whitebox/routing-thresholds-wx-v3-diagnostic-shadow.json",
+  import.meta.url
+));
 
 test("whitebox modes are fail-safe off for missing and invalid values", () => {
   assert.deepEqual(whiteboxRuntimeModes({}), {
@@ -81,6 +88,37 @@ test("WX1 threshold configuration applies setting, specialty, then exact cell ov
     "皮膚科|home_visit"
   ]);
   assert.match(thresholds.version, /^thresholds-v1:cells=/);
+});
+
+test("diagnostic shadow threshold file preserves every router threshold", () => {
+  const thresholds = whiteboxThresholds({
+    FEE_WHITEBOX_THRESHOLDS_PATH: DIAGNOSTIC_SHADOW_THRESHOLDS_PATH
+  });
+
+  assert.deepEqual(
+    Object.fromEntries([
+      "spanConfidence",
+      "spanShadowConfidence",
+      "contextConfidence",
+      "linkerHighScore",
+      "linkerReviewScore",
+      "linkerMargin",
+      "linkerShadowScore",
+      "linkerShadowMargin",
+      "relevanceConfidence"
+    ].map((field) => [field, thresholds[field]])),
+    {
+      spanConfidence: 0.9,
+      spanShadowConfidence: 0,
+      contextConfidence: 0,
+      linkerHighScore: 0.92,
+      linkerReviewScore: 0.8,
+      linkerMargin: 0.05,
+      linkerShadowScore: 0.8,
+      linkerShadowMargin: 0.02,
+      relevanceConfidence: 0.95
+    }
+  );
 });
 
 test("whitebox uses a dedicated telephone cell for outpatient telephone revisits", async () => {
@@ -150,6 +188,126 @@ test("WX3 calibrated non-abstained axes are not rejected by a second default thr
     }]));
   assert.equal(contextRoleFromAxes(lowConfidenceAxes).role, "performed");
   assert.equal(contextRoleFromAxes(lowConfidenceAxes, 0.9).role, "llm");
+});
+
+test("WX2 mention typing distinguishes billing acts from drug products generically", () => {
+  assert.equal(
+    whiteboxMentionType(
+      { text: "院外処方箋", category: "medication" },
+      { text: "院外処方箋を発行した。" }
+    ),
+    "medication_act"
+  );
+  assert.equal(
+    whiteboxMentionType(
+      { text: "アムロジピンOD錠5mg", category: "medication" },
+      { text: "アムロジピンOD錠5mgを処方した。" }
+    ),
+    "drug_product"
+  );
+  assert.equal(
+    whiteboxMentionType(
+      { text: "アムロジピン", category: "medication" },
+      { text: "アムロジピンを院内処方した。" }
+    ),
+    "unspecified"
+  );
+  assert.equal(
+    whiteboxMentionType({ text: "創傷処置", category: "procedure" }),
+    "procedure_act"
+  );
+  assert.equal(
+    whiteboxMentionType({ text: "急性胃腸炎", category: "diagnosis" }),
+    "diagnosis"
+  );
+});
+
+test("WX2 mention type mismatch cannot cross the routing gate", async () => {
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator({
+      linkResults: [{
+        text: "創傷処置",
+        margin: 0.1,
+        candidates: [{
+          code: "620000001",
+          name: "同名薬剤",
+          kind: "drug",
+          score: 0.99,
+          categoryMatched: true,
+          mentionTypeMatched: false
+        }]
+      }]
+    }),
+    preprocessing: {
+      lines: [{
+        lineId: "O-001",
+        text: "創傷処置を施行。",
+        section: "O",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient", serviceDate: "2026-07-24" },
+    env: routeEnv()
+  });
+
+  assert.equal(result.lineRoutes[0].route, "llm");
+  assert.equal(result.encoderFacts.clinical_events.length, 0);
+  assert.equal(
+    result.trace[0].gateDiagnostics[0].strict.mentionTypePass,
+    false
+  );
+  assert.deepEqual(
+    result.trace[0].gateDiagnostics[0].strict.blockerReasonCodes,
+    ["linker_mention_type_mismatch"]
+  );
+});
+
+test("whitebox worker contracts include encounter metadata without patient identifiers", async () => {
+  const calculator = completeWhiteboxCalculator();
+  let linkerPayload = null;
+  let contextPayload = null;
+  const originalLinkSpans = calculator.linkSpans;
+  const originalClassifyContext = calculator.classifyContext;
+  calculator.linkSpans = async (payload) => {
+    linkerPayload = payload;
+    return originalLinkSpans(payload);
+  };
+  calculator.classifyContext = async (payload) => {
+    contextPayload = payload;
+    return originalClassifyContext(payload);
+  };
+
+  await prepareWhiteboxExtraction({
+    feeCalculator: calculator,
+    preprocessing: {
+      lines: [{
+        lineId: "O-001",
+        text: "創傷処置を施行。",
+        section: "O",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: {
+      setting: "home_visit",
+      serviceDate: "2026-07-24",
+      patientId: "must-not-be-sent",
+      departmentSnapshot: { specialty: "surgery" }
+    },
+    env: shadowEnv()
+  });
+
+  assert.deepEqual(linkerPayload.spans[0], {
+    text: "創傷処置",
+    category: "procedure",
+    mentionType: "procedure_act"
+  });
+  assert.equal(contextPayload.items[0].section, "O");
+  assert.equal(contextPayload.items[0].encounterSetting, "home_visit");
+  assert.equal(contextPayload.items[0].specialty, "surgery");
+  assert.equal(contextPayload.items[0].sourceType, "clinical_note");
+  assert.equal(JSON.stringify({ linkerPayload, contextPayload }).includes(
+    "must-not-be-sent"
+  ), false);
 });
 
 test("WX3 classifier and deterministic predicate disagreement downgrades safely", () => {

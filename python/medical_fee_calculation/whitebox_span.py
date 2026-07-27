@@ -31,6 +31,7 @@ from medical_fee_calculation.whitebox_onnx import (
 
 
 SPAN_ARTIFACT_TYPE = "fee_span_detector"
+SPAN_INPUT_NORMALIZATION_VERSION = 1
 ALLOWED_RELEVANCE = {"relevant", "irrelevant", "abstain"}
 SPAN_SEMANTIC_PROBE_LINE = {
     "lineId": "semantic-probe",
@@ -448,6 +449,21 @@ def _validate_onnx_manifest(artifact) -> tuple[str, str]:
     model_key = str(artifact.manifest.get("modelFileKey") or "model")
     tokenizer_key = str(artifact.manifest.get("tokenizerFileKey") or "tokenizer")
     validate_artifact_files(artifact, [model_key, tokenizer_key])
+    try:
+        input_normalization_version = int(
+            artifact.manifest.get(
+                "inputNormalizationVersion",
+                SPAN_INPUT_NORMALIZATION_VERSION,
+            )
+        )
+    except (TypeError, ValueError) as exc:
+        raise WhiteboxArtifactError(
+            "span detector inputNormalizationVersion is invalid"
+        ) from exc
+    if input_normalization_version != SPAN_INPUT_NORMALIZATION_VERSION:
+        raise WhiteboxArtifactError(
+            "span detector inputNormalizationVersion is unsupported"
+        )
     entity_types = artifact.manifest.get("entityTypes")
     token_labels = artifact.manifest.get("tokenLabels")
     relevance_labels = artifact.manifest.get("relevanceLabels")

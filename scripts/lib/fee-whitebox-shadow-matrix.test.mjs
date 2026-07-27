@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { test } from "node:test";
 import {
+  assessWhiteboxEvaluationEligibility,
   buildWhiteboxShadowExecutions,
   buildWhiteboxShadowSessionInput,
   requiredWhiteboxCells,
@@ -321,6 +322,11 @@ test("machine precheck compares encoder codes without claiming human adjudicatio
       encoderFalsePositiveCodeCount: 1,
       encoderFalseNegativeCodeCount: 0,
       shadowComparisonObservedCount: 1,
+      expectedSpanCount: 2,
+      exactBoundaryMatchCount: 1,
+      overlapMatchCount: 1,
+      boundaryMismatchCount: 0,
+      canonicalTextMatchCount: 1,
       expectedCurrentOwnSpanCount: 1,
       detectedCurrentOwnSpanCount: 1,
       expectedSemanticTop1Count: 1,
@@ -329,10 +335,189 @@ test("machine precheck compares encoder codes without claiming human adjudicatio
       expectedShadowTop5Count: 1,
       strictJointEligibleCount: 1,
       shadowJointEligibleCount: 1,
+      expectedBillableInclusionSpanCount: 1,
+      strictBillableInclusionEligibleCount: 1,
+      shadowBillableInclusionEligibleCount: 1,
+      expectedStandingSpanCount: 0,
+      strictStandingEligibleCount: 0,
+      shadowStandingEligibleCount: 0,
+      expectedSafeExclusionSpanCount: 1,
+      strictSafeExclusionEligibleCount: 0,
+      shadowSafeExclusionEligibleCount: 0,
+      expectedAbstainSpanCount: 0,
       strictBlockerCounts: {},
       shadowBlockerCounts: {}
     }
   );
+});
+
+test("span audit uses the same CRLF, trim, and fullwidth normalization as runtime", () => {
+  const clinicalText = " \r\nＯ）ＣＴ撮影を実施。 \r\n";
+  const rawStart = clinicalText.indexOf("ＣＴ");
+  const audit = whiteboxShadowCaseAudit({
+    caseId: "normalized-offsets",
+    specialty: "internal_medicine",
+    encounterSetting: "outpatient",
+    clinicalText,
+    expectedSpans: [{
+      text: "ＣＴ",
+      charStart: rawStart,
+      charEnd: rawStart + 2,
+      category: "imaging",
+      code: "170000000",
+      actionStatus: "performed",
+      temporalRelation: "current_visit",
+      sourceOrigin: "own_clinic_record",
+      providerOwnership: "own_clinic"
+    }]
+  }, detailWithGateDiagnostic({
+    lineIndex: 1,
+    charStart: 2,
+    charEnd: 4,
+    category: "imaging",
+    spanText: "CT",
+    code: "170000000",
+    strict: {
+      jointEligible: true,
+      billableInclusionEligible: true,
+      blockerReasonCodes: []
+    },
+    shadow: {
+      jointEligible: true,
+      billableInclusionEligible: true,
+      blockerReasonCodes: []
+    }
+  }));
+
+  const [diagnostic] = audit.expectedSpanDiagnostics;
+  assert.equal(diagnostic.runtimeSpanObserved, true);
+  assert.equal(diagnostic.matchType, "exact");
+  assert.equal(diagnostic.exactBoundaryMatch, true);
+  assert.equal(diagnostic.canonicalText, "CT");
+  assert.equal(diagnostic.expectedLineIndex, 1);
+  assert.equal(diagnostic.expectedCharStart, 2);
+  assert.equal(diagnostic.expectedCharEnd, 4);
+});
+
+test("span audit separates an overlapping boundary from a missing span", () => {
+  const clinicalText = "O）採血を実施。";
+  const rawStart = clinicalText.indexOf("採血");
+  const audit = whiteboxShadowCaseAudit({
+    caseId: "overlap-boundary",
+    specialty: "internal_medicine",
+    encounterSetting: "outpatient",
+    clinicalText,
+    expectedSpans: [{
+      text: "採血",
+      charStart: rawStart,
+      charEnd: rawStart + 2,
+      category: "lab",
+      code: "160022510",
+      actionStatus: "performed",
+      temporalRelation: "current_visit",
+      sourceOrigin: "own_clinic_record",
+      providerOwnership: "own_clinic"
+    }]
+  }, detailWithGateDiagnostic({
+    lineIndex: 1,
+    charStart: 2,
+    charEnd: 5,
+    category: "lab",
+    spanText: "採血を",
+    code: "160022510"
+  }));
+
+  const [diagnostic] = audit.expectedSpanDiagnostics;
+  assert.equal(diagnostic.runtimeSpanObserved, true);
+  assert.equal(diagnostic.matchType, "overlap");
+  assert.equal(diagnostic.exactBoundaryMatch, false);
+  assert.equal(diagnostic.overlapMatch, true);
+  assert.equal(diagnostic.intervalIou, 2 / 3);
+  const summary = summarizeWhiteboxCaseAudits([audit])[
+    "internal_medicine|outpatient"
+  ];
+  assert.equal(summary.boundaryMismatchCount, 1);
+});
+
+test("span audit does not match the same wording from a different line", () => {
+  const clinicalText = "S）前回は採血を実施。\nO）本日も採血を実施。";
+  const rawStart = clinicalText.lastIndexOf("採血");
+  const audit = whiteboxShadowCaseAudit({
+    caseId: "repeated-wording",
+    specialty: "internal_medicine",
+    encounterSetting: "outpatient",
+    clinicalText,
+    expectedSpans: [{
+      text: "採血",
+      charStart: rawStart,
+      charEnd: rawStart + 2,
+      category: "lab",
+      code: "160022510",
+      actionStatus: "performed",
+      temporalRelation: "current_visit",
+      sourceOrigin: "own_clinic_record",
+      providerOwnership: "own_clinic"
+    }]
+  }, detailWithGateDiagnostic({
+    lineIndex: 1,
+    charStart: 5,
+    charEnd: 7,
+    category: "lab",
+    spanText: "採血",
+    code: "160022510"
+  }));
+
+  const [diagnostic] = audit.expectedSpanDiagnostics;
+  assert.equal(diagnostic.expectedLineIndex, 2);
+  assert.equal(diagnostic.runtimeSpanObserved, false);
+  assert.equal(diagnostic.matchType, "none");
+});
+
+test("span audit reports safe exclusion separately from billable inclusion", () => {
+  const clinicalText = "O）ネブライザーは施行せず。";
+  const rawStart = clinicalText.indexOf("ネブライザー");
+  const audit = whiteboxShadowCaseAudit({
+    caseId: "safe-exclusion",
+    specialty: "internal_medicine",
+    encounterSetting: "outpatient",
+    clinicalText,
+    expectedSpans: [{
+      text: "ネブライザー",
+      charStart: rawStart,
+      charEnd: rawStart + "ネブライザー".length,
+      category: "treatment",
+      code: "140009610",
+      actionStatus: "not_performed",
+      temporalRelation: "current_visit",
+      sourceOrigin: "own_clinic_record",
+      providerOwnership: "own_clinic"
+    }]
+  }, detailWithGateDiagnostic({
+    lineIndex: 1,
+    charStart: rawStart,
+    charEnd: rawStart + "ネブライザー".length,
+    category: "treatment",
+    spanText: "ネブライザー",
+    code: "140009610",
+    strict: {
+      jointEligible: true,
+      safeExclusionEligible: true,
+      blockerReasonCodes: []
+    },
+    shadow: {
+      jointEligible: true,
+      safeExclusionEligible: true,
+      blockerReasonCodes: []
+    }
+  }));
+
+  const summary = summarizeWhiteboxCaseAudits([audit])[
+    "internal_medicine|outpatient"
+  ];
+  assert.equal(summary.expectedBillableInclusionSpanCount, 0);
+  assert.equal(summary.expectedSafeExclusionSpanCount, 1);
+  assert.equal(summary.strictSafeExclusionEligibleCount, 1);
+  assert.equal(summary.shadowSafeExclusionEligibleCount, 1);
 });
 
 test("whitebox determinism snapshot excludes LLM-only output and compares controls", () => {
@@ -412,3 +597,92 @@ test("whitebox determinism snapshot excludes LLM-only output and compares contro
     }]
   });
 });
+
+test("diagnostic subsets are never eligible for promotion review", () => {
+  const eligibility = assessWhiteboxEvaluationEligibility({
+    status: "complete",
+    purpose: "diagnostic",
+    holdoutUsed: false,
+    requiredCellCount: 32,
+    observedCellCount: 12,
+    expectedCalculationCount: 12,
+    runCount: 12,
+    degradedRunCount: 0,
+    cloudRunRevisions: ["fee-api-stg-00001"],
+    determinism: {
+      groupCount: 0,
+      exactGroupCount: 0,
+      minimumObservedRepeats: 0,
+    },
+  });
+
+  assert.equal(eligibility.promotionReviewEligible, false);
+  assert.deepEqual(eligibility.ineligibleReasonCodes, [
+    "diagnostic_measurement_only",
+    "holdout_not_used",
+    "matrix_incomplete",
+    "determinism_controls_incomplete",
+    "determinism_mismatch",
+  ]);
+});
+
+test("promotion review eligibility requires full fixed and deterministic evidence", () => {
+  const eligibility = assessWhiteboxEvaluationEligibility({
+    status: "complete",
+    purpose: "promotion",
+    holdoutUsed: true,
+    requiredCellCount: 32,
+    observedCellCount: 32,
+    expectedCalculationCount: 96,
+    runCount: 96,
+    degradedRunCount: 0,
+    cloudRunRevisions: ["fee-api-stg-00001"],
+    determinism: {
+      groupCount: 32,
+      exactGroupCount: 32,
+      minimumObservedRepeats: 3,
+    },
+  });
+
+  assert.equal(eligibility.promotionReviewEligible, true);
+  assert.deepEqual(eligibility.ineligibleReasonCodes, []);
+  assert.equal(eligibility.independentHumanAdjudicationRequired, true);
+});
+
+function detailWithGateDiagnostic({
+  spanText,
+  code,
+  strict = {
+    jointEligible: true,
+    billableInclusionEligible: true,
+    blockerReasonCodes: []
+  },
+  shadow = {
+    jointEligible: true,
+    billableInclusionEligible: true,
+    blockerReasonCodes: []
+  },
+  ...diagnostic
+}) {
+  return {
+    feeSession: {
+      calculationResult: {
+        clinicalExtraction: {
+          trace: [{
+            stage: "whitebox_router",
+            gateDiagnostics: [{
+              lineId: "line-1",
+              spanId: "span-1",
+              spanTextSha256: crypto.createHash("sha256").update(spanText).digest("hex"),
+              strict,
+              shadow,
+              semanticCandidates: [{ code, rank: 1 }],
+              shadowCandidates: [{ code, rank: 1 }],
+              ...diagnostic
+            }]
+          }]
+        }
+      }
+    }
+  };
+}

@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import sqlite3
 import struct
+import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -35,6 +37,30 @@ LINKER_INDEX_FILE = "index"
 DEFAULT_TOP_K = 5
 MAX_TOP_K = 20
 CATEGORY_MISMATCH_PENALTY = 0.9
+SEMANTIC_RERANK_POOL_SIZE = 100
+LEXICAL_EXACT_SCORE_FLOOR = 0.95
+MENTION_COMPATIBLE_SCORE_FLOOR = 0.97
+
+SPAN_CATEGORY_KINDS = {
+    "medication": frozenset({"procedure", "drug"}),
+    "drug": frozenset({"drug"}),
+    "diagnosis": frozenset({"disease"}),
+    "disease": frozenset({"disease"}),
+}
+
+PROCEDURE_ENTRY_CATEGORIES = frozenset({
+    "outpatient_basic",
+    "management",
+    "lab",
+    "imaging",
+    "injection",
+    "treatment",
+    "counseling",
+    "procedure",
+    "pathology",
+    "material",
+    "other",
+})
 
 
 @dataclass(frozen=True)
@@ -42,6 +68,7 @@ class LinkerIndex:
     entries: tuple[dict[str, Any], ...]
     matrix: Any | None
     norms: Any | None
+    lexeme_lookup: Mapping[str, tuple[int, ...]]
 
 
 def link_spans(
@@ -208,6 +235,11 @@ def _load_sqlite_index(path: str) -> LinkerIndex:
             str(row["key"]): str(row["value"])
             for row in connection.execute("SELECT key, value FROM linker_metadata")
         }
+        schema_version = int(metadata.get("schema_version") or 1)
+        if schema_version not in {1, 2}:
+            raise WhiteboxArtifactError(
+                f"unsupported linker sqlite schema version: {schema_version}"
+            )
         dimension = int(metadata.get("dimension") or 0)
         if dimension <= 0:
             raise WhiteboxArtifactError("linker sqlite index dimension must be positive")
@@ -422,26 +454,16 @@ def _link_one_iterative(
             continue
         if not _effective_on(entry, service_date):
             continue
-        category_matched = _category_matches(span["category"], entry)
         score = _cosine(query_vector, entry["vector"])
-        adjusted_score = score if category_matched else score * CATEGORY_MISMATCH_PENALTY
-        candidate = {
-            "code": entry["code"],
-            "name": entry["name"],
-            "kind": entry["kind"],
-            "score": round(adjusted_score, 6),
-            "rawScore": round(score, 6),
-            "matchedDoc": entry["matchedDoc"],
-            "categoryMatched": category_matched,
-            **({"points": entry["points"]} if entry["points"] is not None else {}),
-        }
+        candidate = _candidate_for_entry(span, entry, score)
         key = (entry["kind"], entry["code"])
         current = best_by_code.get(key)
-        if current is None or candidate["score"] > current["score"]:
+        if current is None or _candidate_sort_key(candidate) > _candidate_sort_key(current):
             best_by_code[key] = candidate
     candidates = sorted(
         best_by_code.values(),
-        key=lambda item: (-item["score"], item["kind"], item["code"]),
+        key=_candidate_sort_key,
+        reverse=True,
     )[:top_k]
     margin = (
         candidates[0]["score"] - candidates[1]["score"]
@@ -452,6 +474,7 @@ def _link_one_iterative(
     return {
         "text": span["text"],
         "category": span["category"] or None,
+        "mentionType": span["mentionType"],
         "margin": round(max(0.0, margin), 6),
         "candidates": candidates,
     }
@@ -475,6 +498,7 @@ def _link_one_vectorized(
         return {
             "text": span["text"],
             "category": span["category"] or None,
+            "mentionType": span["mentionType"],
             "margin": 0.0,
             "candidates": [],
         }
@@ -488,37 +512,34 @@ def _link_one_vectorized(
         dtype=np.bool_,
         count=len(index.entries),
     )
-    category_matches = np.fromiter(
-        (_category_matches(span["category"], entry) for entry in index.entries),
-        dtype=np.bool_,
-        count=len(index.entries),
-    )
-    adjusted = np.where(category_matches, raw_scores, raw_scores * CATEGORY_MISMATCH_PENALTY)
-    adjusted = np.where(valid, adjusted, -np.inf)
-    order = np.argsort(-adjusted, kind="stable")
+    semantic_scores = np.where(valid, raw_scores, -np.inf)
+    semantic_order = np.argsort(-semantic_scores, kind="stable")
+    pool_indexes: list[int] = []
+    for raw_index in semantic_order:
+        if not math.isfinite(float(semantic_scores[raw_index])):
+            break
+        pool_indexes.append(int(raw_index))
+        if len(pool_indexes) >= max(SEMANTIC_RERANK_POOL_SIZE, top_k * 20):
+            break
+    query_lexeme = _normalized_lexeme(span["text"])
+    for exact_index in index.lexeme_lookup.get(query_lexeme, ()):
+        if bool(valid[exact_index]) and exact_index not in pool_indexes:
+            pool_indexes.append(exact_index)
+
     best_by_code: dict[tuple[str, str], dict[str, Any]] = {}
-    for raw_index in order:
-        score = float(adjusted[raw_index])
-        if not math.isfinite(score):
-            break
-        entry = index.entries[int(raw_index)]
+    for raw_index in pool_indexes:
+        entry = index.entries[raw_index]
         key = (entry["kind"], entry["code"])
-        if key in best_by_code:
-            continue
         raw_score = float(raw_scores[raw_index])
-        best_by_code[key] = {
-            "code": entry["code"],
-            "name": entry["name"],
-            "kind": entry["kind"],
-            "score": round(score, 6),
-            "rawScore": round(raw_score, 6),
-            "matchedDoc": entry["matchedDoc"],
-            "categoryMatched": bool(category_matches[raw_index]),
-            **({"points": entry["points"]} if entry["points"] is not None else {}),
-        }
-        if len(best_by_code) >= top_k:
-            break
-    candidates = list(best_by_code.values())
+        candidate = _candidate_for_entry(span, entry, raw_score)
+        current = best_by_code.get(key)
+        if current is None or _candidate_sort_key(candidate) > _candidate_sort_key(current):
+            best_by_code[key] = candidate
+    candidates = sorted(
+        best_by_code.values(),
+        key=_candidate_sort_key,
+        reverse=True,
+    )[:top_k]
     margin = (
         candidates[0]["score"] - candidates[1]["score"]
         if len(candidates) >= 2
@@ -528,6 +549,7 @@ def _link_one_vectorized(
     return {
         "text": span["text"],
         "category": span["category"] or None,
+        "mentionType": span["mentionType"],
         "margin": round(max(0.0, margin), 6),
         "candidates": candidates,
     }
@@ -535,17 +557,35 @@ def _link_one_vectorized(
 
 def _as_linker_index(entries: Sequence[dict[str, Any]]) -> LinkerIndex:
     normalized = tuple(entries)
+    lexeme_indexes: dict[str, list[int]] = {}
+    for index, entry in enumerate(normalized):
+        for lexeme in _entry_lexemes(entry):
+            lexeme_indexes.setdefault(lexeme, []).append(index)
+    lexeme_lookup = {
+        key: tuple(value)
+        for key, value in lexeme_indexes.items()
+    }
     try:
         import numpy as np
     except ImportError:
-        return LinkerIndex(entries=normalized, matrix=None, norms=None)
+        return LinkerIndex(
+            entries=normalized,
+            matrix=None,
+            norms=None,
+            lexeme_lookup=lexeme_lookup,
+        )
     matrix = np.asarray([entry["vector"] for entry in normalized], dtype=np.float32)
     if matrix.ndim != 2 or not matrix.shape[0] or not matrix.shape[1]:
         raise WhiteboxArtifactError("linker index matrix is invalid")
     norms = np.linalg.norm(matrix, axis=1)
     if np.any(norms == 0):
         raise WhiteboxArtifactError("linker index contains a zero vector")
-    return LinkerIndex(entries=normalized, matrix=matrix, norms=norms)
+    return LinkerIndex(
+        entries=normalized,
+        matrix=matrix,
+        norms=norms,
+        lexeme_lookup=lexeme_lookup,
+    )
 
 
 def _normalize_spans(value: Any) -> list[dict[str, str]]:
@@ -561,6 +601,11 @@ def _normalize_spans(value: Any) -> list[dict[str, str]]:
         spans.append({
             "text": text[:500],
             "category": str(entry.get("category") or "").strip(),
+            "mentionType": _enum_value(
+                entry.get("mentionType") or entry.get("mention_type"),
+                {"medication_act", "drug_product", "procedure_act", "diagnosis", "unspecified"},
+                "unspecified",
+            ),
         })
     return spans
 
@@ -579,16 +624,129 @@ def _normalize_kinds(value: Any) -> set[str]:
 def _category_matches(span_category: str, entry: Mapping[str, Any]) -> bool:
     if not span_category:
         return True
+    span_category = str(span_category).strip().lower()
     entry_category = str(entry.get("category") or "").strip()
     if entry_category:
-        return span_category == entry_category
+        if span_category == entry_category:
+            return True
+        if span_category == "exam":
+            return entry_category in {"lab", "imaging", "pathology"}
+        if span_category in {"procedure", "material", "other"}:
+            return (
+                entry.get("kind") == "procedure"
+                and entry_category in PROCEDURE_ENTRY_CATEGORIES
+            )
+        if span_category in {"medication", "drug"}:
+            return entry_category == "medication"
+        if span_category in {"diagnosis", "disease"}:
+            return entry_category == "diagnosis"
+        return False
+    expected_kinds = SPAN_CATEGORY_KINDS.get(
+        span_category,
+        frozenset({"procedure"}),
+    )
+    return str(entry.get("kind") or "") in expected_kinds
+
+
+def _candidate_for_entry(
+    span: Mapping[str, str],
+    entry: Mapping[str, Any],
+    raw_score: float,
+) -> dict[str, Any]:
+    category_matched = _category_matches(span.get("category", ""), entry)
+    lexical_match = _lexical_match(span.get("text", ""), entry)
+    mention_type_matched = _mention_type_matches(
+        span.get("mentionType", "unspecified"),
+        str(entry.get("kind") or ""),
+    )
+    adjusted_score = (
+        raw_score if category_matched else raw_score * CATEGORY_MISMATCH_PENALTY
+    )
+    if lexical_match == "exact":
+        adjusted_score += 0.12
+        if category_matched and mention_type_matched is not False:
+            adjusted_score = max(adjusted_score, LEXICAL_EXACT_SCORE_FLOOR)
+    elif lexical_match == "prefix":
+        adjusted_score += 0.03
+    if mention_type_matched is True:
+        adjusted_score += 0.02
+        if lexical_match == "exact" and category_matched:
+            adjusted_score = max(adjusted_score, MENTION_COMPATIBLE_SCORE_FLOOR)
+    elif mention_type_matched is False:
+        adjusted_score -= 0.08
+    adjusted_score = max(-1.0, min(1.0, adjusted_score))
+    return {
+        "code": str(entry["code"]),
+        "name": str(entry["name"]),
+        "kind": str(entry["kind"]),
+        "score": round(adjusted_score, 6),
+        "rawScore": round(raw_score, 6),
+        "semanticScore": round(raw_score, 6),
+        "matchedDoc": str(entry["matchedDoc"]),
+        "categoryMatched": category_matched,
+        "mentionTypeMatched": mention_type_matched,
+        "lexicalMatch": lexical_match,
+        **({"points": entry["points"]} if entry.get("points") is not None else {}),
+    }
+
+
+def _candidate_sort_key(candidate: Mapping[str, Any]) -> tuple[Any, ...]:
+    return (
+        float(candidate.get("score") or 0.0),
+        {"exact": 2, "prefix": 1}.get(str(candidate.get("lexicalMatch") or ""), 0),
+        1 if candidate.get("mentionTypeMatched") is True else (
+            -1 if candidate.get("mentionTypeMatched") is False else 0
+        ),
+        1 if candidate.get("categoryMatched") is True else 0,
+        float(candidate.get("rawScore") or 0.0),
+        str(candidate.get("kind") or ""),
+        str(candidate.get("code") or ""),
+    )
+
+
+def _mention_type_matches(mention_type: str, kind: str) -> bool | None:
     expected_kind = {
-        "medication": "drug",
-        "drug": "drug",
+        "medication_act": "procedure",
+        "drug_product": "drug",
+        "procedure_act": "procedure",
         "diagnosis": "disease",
-        "disease": "disease",
-    }.get(span_category, "procedure")
-    return entry.get("kind") == expected_kind
+    }.get(str(mention_type or ""))
+    if expected_kind is None:
+        return None
+    return kind == expected_kind
+
+
+def _lexical_match(query: str, entry: Mapping[str, Any]) -> str:
+    normalized_query = _normalized_lexeme(query)
+    if not normalized_query:
+        return "none"
+    lexemes = _entry_lexemes(entry)
+    if normalized_query in lexemes:
+        return "exact"
+    if len(normalized_query) >= 3 and any(
+        value.startswith(normalized_query)
+        or normalized_query.startswith(value)
+        for value in lexemes
+    ):
+        return "prefix"
+    return "none"
+
+
+def _entry_lexemes(entry: Mapping[str, Any]) -> tuple[str, ...]:
+    values = [
+        str(entry.get("name") or ""),
+        *str(entry.get("matchedDoc") or "").split("/"),
+    ]
+    return tuple(sorted({
+        normalized
+        for value in values
+        if (normalized := _normalized_lexeme(value))
+    }))
+
+
+def _normalized_lexeme(value: Any) -> str:
+    normalized = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    return re.sub(r"[\W_]+", "", normalized, flags=re.UNICODE)
 
 
 def _effective_on(entry: Mapping[str, Any], service_date: str) -> bool:
@@ -624,3 +782,8 @@ def _bounded_int(value: Any, fallback: int, minimum: int, maximum: int) -> int:
     except (TypeError, ValueError):
         return fallback
     return min(maximum, max(minimum, parsed))
+
+
+def _enum_value(value: Any, allowed: set[str], fallback: str) -> str:
+    normalized = str(value or "").strip()
+    return normalized if normalized in allowed else fallback

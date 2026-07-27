@@ -81,6 +81,8 @@ const OUTSIDE_PRESCRIPTION_POSITIVE_PATTERN = /(?:院外処方(?:箋)?|処方(?:
 const OUTSIDE_PRESCRIPTION_NEGATIVE_PATTERN = /(?:院外処方(?:箋)?|処方(?:箋|せん)).{0,16}(?:交付していない|交付せず|交付なし|発行していない|発行せず|発行なし|出していない|出さず|なし|無し|ない|無い)/u;
 const IN_HOUSE_PRESCRIPTION_PATTERN = /(?:院内(?:での?)?(?:処方|投薬)|院内処方|院内で外用薬として処方)/u;
 const GENERIC_NAME_PRESCRIPTION_PATTERN = /(?:一般名(?:で)?処方|一般名処方(?:箋)?|一般名記載)/u;
+const MEDICATION_BILLING_ACT_PATTERN = /(?:処方箋|処方料|調剤料|一般名処方|リフィル|薬剤情報提供|投薬|院内処方|院外処方)/u;
+const DRUG_PRODUCT_PATTERN = /(?:錠|カプセル|散|顆粒|細粒|シロップ|液|軟膏|クリーム|ゲル|テープ|パッチ|坐剤|注射液|点眼|点鼻|吸入|mg|μg|mcg|mL|％|%)/iu;
 
 export function whiteboxRuntimeModes(env = process.env) {
   return {
@@ -416,7 +418,11 @@ export async function prepareWhiteboxExtraction({
   if (modes.linker !== "off" && spans.length && typeof feeCalculator?.linkSpans === "function") {
     const linkerStartedAt = Date.now();
     linkerEnvelope = await feeCalculator.linkSpans({
-      spans: spans.map(({ text, category }) => ({ text, category })),
+      spans: spans.map((span) => ({
+        text: span?.text,
+        category: span?.category,
+        mentionType: whiteboxMentionType(span)
+      })),
       kinds: ["procedure", "drug", "disease"],
       top_k: 5,
       service_date: session?.serviceDate || ""
@@ -445,7 +451,11 @@ export async function prepareWhiteboxExtraction({
           charStart: span.charStart,
           charEnd: span.charEnd,
           previousLine: index > 0 ? lines[index - 1].text : "",
-          nextLine: index >= 0 && index + 1 < lines.length ? lines[index + 1].text : ""
+          nextLine: index >= 0 && index + 1 < lines.length ? lines[index + 1].text : "",
+          section: index >= 0 ? lines[index].section || "" : "",
+          encounterSetting: setting,
+          specialty,
+          sourceType: "clinical_note"
         };
       })
     }).catch((error) => unavailableEnvelope(error));
@@ -873,6 +883,24 @@ export async function prepareWhiteboxExtraction({
   };
 }
 
+export function whiteboxMentionType(span = {}) {
+  const category = String(span?.category || "").normalize("NFKC").trim().toLowerCase();
+  if (["diagnosis", "disease"].includes(category)) {
+    return "diagnosis";
+  }
+  if (!["medication", "drug"].includes(category)) {
+    return "procedure_act";
+  }
+  const spanText = String(span?.text || "").normalize("NFKC");
+  if (MEDICATION_BILLING_ACT_PATTERN.test(spanText)) {
+    return "medication_act";
+  }
+  if (DRUG_PRODUCT_PATTERN.test(spanText)) {
+    return "drug_product";
+  }
+  return "unspecified";
+}
+
 function countRouteReasons(lineRoutes = [], field = "reasonCodes") {
   const counts = {};
   for (const line of Array.isArray(lineRoutes) ? lineRoutes : []) {
@@ -955,6 +983,8 @@ function linkerGateEvaluation({
   const scorePass = candidatePresent
     && Number(candidate.score) >= Number(scoreThreshold);
   const categoryPass = candidatePresent && candidate.categoryMatched === true;
+  const mentionTypePass = candidatePresent
+    && candidate.mentionTypeMatched !== false;
   const marginPass = Number(margin) >= Number(marginThreshold);
   const exactMarginBypass = allowExactMargin
     && candidate?.shadowLexicalMatch === "exact";
@@ -962,11 +992,13 @@ function linkerGateEvaluation({
     candidatePresent,
     scorePass,
     categoryPass,
+    mentionTypePass,
     marginPass,
     exactMarginBypass,
     passed: candidatePresent
       && scorePass
       && categoryPass
+      && mentionTypePass
       && (marginPass || exactMarginBypass)
   };
 }
@@ -989,6 +1021,9 @@ function spanGateReasonCodes({
       : []),
     ...(linkerGates.candidatePresent && !linkerGates.categoryPass
       ? ["linker_category_mismatch"]
+      : []),
+    ...(linkerGates.candidatePresent && !linkerGates.mentionTypePass
+      ? ["linker_mention_type_mismatch"]
       : []),
     ...(consensus.role === "llm" ? ["context_unresolved"] : []),
     ...new Set(Array.isArray(consensus.reasonCodes) ? consensus.reasonCodes : [])
@@ -1025,11 +1060,38 @@ function spanGateDiagnostic({
       score: finiteNumberOrNull(candidate?.score),
       rawScore: finiteNumberOrNull(candidate?.rawScore),
       categoryMatched: candidate?.categoryMatched === true,
+      mentionTypeMatched: typeof candidate?.mentionTypeMatched === "boolean"
+        ? candidate.mentionTypeMatched
+        : null,
       rank: Number(candidate?.[rankField] || index + 1),
-      lexicalMatch: String(candidate?.shadowLexicalMatch || "none")
+      lexicalMatch: String(
+        candidate?.shadowLexicalMatch
+        || candidate?.lexicalMatch
+        || "none"
+      )
     }))
   );
   const contextResolved = consensus.role !== "llm";
+  const laneOutcome = (spanPass, linkerGates, role) => {
+    const gatePassed = spanPass && linkerGates.passed;
+    return {
+      jointEligible: gatePassed && role !== "llm",
+      billableInclusionEligible: gatePassed && role === "performed",
+      standingEligible: gatePassed && role === "standing",
+      safeExclusionEligible: gatePassed && ["excluded", "plan"].includes(role),
+      abstained: role === "llm"
+    };
+  };
+  const strictOutcome = laneOutcome(
+    strictSpanPass,
+    strictLinkerGates,
+    strictRole
+  );
+  const shadowOutcome = laneOutcome(
+    shadowSpanPass,
+    shadowLinkerGates,
+    shadowRole
+  );
   return {
     lineId: String(line?.lineId || ""),
     lineIndex: Number(line?.index || 0),
@@ -1060,9 +1122,7 @@ function spanGateDiagnostic({
       linkerMargin: finiteNumberOrNull(strictLink?.margin),
       ...strictLinkerGates,
       role: strictRole,
-      jointEligible: strictSpanPass
-        && strictLinkerGates.passed
-        && contextResolved,
+      ...strictOutcome,
       blockerReasonCodes: gateBlockerReasonCodes(strictReasonCodes)
     },
     shadow: {
@@ -1073,9 +1133,7 @@ function spanGateDiagnostic({
       linkerMargin: finiteNumberOrNull(shadowLink?.margin),
       ...shadowLinkerGates,
       role: shadowRole,
-      jointEligible: shadowSpanPass
-        && shadowLinkerGates.passed
-        && contextResolved,
+      ...shadowOutcome,
       blockerReasonCodes: gateBlockerReasonCodes(shadowReasonCodes)
     },
     semanticCandidates: candidateView(strictLink?.candidates, "semanticRank"),
@@ -1117,9 +1175,22 @@ function summarizeSpanGateDiagnostics(diagnostics = [], lane = "strict") {
       row.gate.marginPass === true || row.gate.exactMarginBypass === true
     )).length,
     linkerCategoryPassCount: rows.filter((row) => row.gate.categoryPass === true).length,
+    linkerMentionTypePassCount: rows.filter(
+      (row) => row.gate.mentionTypePass === true
+    ).length,
     linkerPassCount: rows.filter((row) => row.gate.passed === true).length,
     contextResolvedCount: rows.filter((row) => row.contextResolved).length,
     jointEligibleCount: rows.filter((row) => row.gate.jointEligible === true).length,
+    billableInclusionEligibleCount: rows.filter(
+      (row) => row.gate.billableInclusionEligible === true
+    ).length,
+    standingEligibleCount: rows.filter(
+      (row) => row.gate.standingEligible === true
+    ).length,
+    safeExclusionEligibleCount: rows.filter(
+      (row) => row.gate.safeExclusionEligible === true
+    ).length,
+    abstainedCount: rows.filter((row) => row.gate.abstained === true).length,
     rejectionCounts: Object.fromEntries(
       Object.entries(rejectionCounts)
         .sort(([left], [right]) => left.localeCompare(right))
@@ -1533,12 +1604,10 @@ function normalizeThresholds(value = {}) {
   }
   return {
     schemaVersion: 1,
-    spanConfidence: probability(value.spanConfidence, "spanConfidence"),
-    contextConfidence: probability(value.contextConfidence, "contextConfidence"),
-    linkerHighScore: probability(value.linkerHighScore, "linkerHighScore"),
-    linkerReviewScore: probability(value.linkerReviewScore, "linkerReviewScore"),
-    linkerMargin: probability(value.linkerMargin, "linkerMargin"),
-    relevanceConfidence: probability(value.relevanceConfidence, "relevanceConfidence")
+    ...Object.fromEntries(WHITEBOX_THRESHOLD_FIELDS.map((field) => [
+      field,
+      probability(value[field], field)
+    ]))
   };
 }
 

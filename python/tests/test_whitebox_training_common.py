@@ -9,6 +9,7 @@ from scripts.whitebox_training_common import (
     WhiteboxTrainingError,
     assert_no_counterexample_training_leakage,
     build_license_record,
+    canonicalize_training_case,
     load_training_partitions,
     split_text_lines,
     spans_for_line,
@@ -141,6 +142,26 @@ class WhiteboxTrainingCommonTest(unittest.TestCase):
         line = split_text_lines(case["clinicalText"])[1]
         [span] = spans_for_line(case, line)
         self.assertEqual(line.text[span["charStart"]:span["charEnd"]], "創傷処置")
+
+    def test_training_text_uses_runtime_normalization_and_remaps_offsets(self) -> None:
+        text = " \r\nＯ）ＣＴ撮影を実施。 \r\n"
+        start = text.index("ＣＴ")
+        normalized_text, [span] = canonicalize_training_case(
+            text,
+            [{
+                "text": "ＣＴ",
+                "charStart": start,
+                "charEnd": start + 2,
+                "category": "imaging",
+            }],
+        )
+
+        self.assertEqual(normalized_text, "O）CT撮影を実施。")
+        self.assertEqual(span["text"], "CT")
+        self.assertEqual(
+            normalized_text[span["charStart"]:span["charEnd"]],
+            "CT",
+        )
 
 
 if __name__ == "__main__":

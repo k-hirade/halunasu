@@ -28,6 +28,7 @@ from medical_fee_calculation.whitebox_artifacts import (
 )
 from medical_fee_calculation.whitebox_context import (
     CONTEXT_SEMANTIC_PROBE_ITEM,
+    STRUCTURED_INPUT_CONTRACT_VERSION,
     _OnnxContextRuntime,
     _validate_context_semantic_probe,
     _validate_context_manifest,
@@ -544,6 +545,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         "developmentSpanCount": len(development_examples),
         "axisLabels": axis_labels,
         "pooling": args.pooling,
+        "inputContractVersion": STRUCTURED_INPUT_CONTRACT_VERSION,
         "classWeighting": args.class_weighting,
         "minimumCalibrationCoveredCount": args.minimum_calibration_covered_count,
         "minimumCalibrationCoverage": args.minimum_calibration_coverage,
@@ -620,6 +622,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         }
         provisional_manifest = {
             "maxLength": args.max_length,
+            "inputContractVersion": STRUCTURED_INPUT_CONTRACT_VERSION,
             "axisLabels": axis_labels,
             "outputNames": output_names,
             "temperatures": {
@@ -657,6 +660,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "modelFileKey": "model",
             "tokenizerFileKey": "tokenizer",
             "maxLength": args.max_length,
+            "inputContractVersion": STRUCTURED_INPUT_CONTRACT_VERSION,
             "axisLabels": axis_labels,
             "outputNames": output_names,
             "temperatures": calibration["temperatures"],

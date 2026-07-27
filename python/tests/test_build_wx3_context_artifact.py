@@ -21,6 +21,8 @@ class BuildWx3ContextArtifactTest(unittest.TestCase):
         start = text.index("創傷処置")
         examples = build_context_examples([{
             "caseId": "case-1",
+            "specialty": "surgery",
+            "encounterSetting": "outpatient",
             "clinicalText": text,
             "expectedSpans": [{
                 "text": "創傷処置",
@@ -35,6 +37,9 @@ class BuildWx3ContextArtifactTest(unittest.TestCase):
         }], clinical_axis_values())
         self.assertEqual(examples[0].labels["actionStatus"], "performed")
         self.assertIn("[SPAN]創傷処置[/SPAN]", examples[0].text)
+        self.assertIn("[SETTING]outpatient[/SETTING]", examples[0].text)
+        self.assertIn("[SPECIALTY]surgery[/SPECIALTY]", examples[0].text)
+        self.assertIn("[SECTION]O[/SECTION]", examples[0].text)
 
     def test_threshold_abstains_until_risk_is_acceptable(self) -> None:
         threshold = select_abstain_threshold(

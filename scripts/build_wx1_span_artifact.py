@@ -19,6 +19,7 @@ from medical_fee_calculation.whitebox_artifacts import (
 )
 from medical_fee_calculation.whitebox_onnx import verify_deterministic_inference
 from medical_fee_calculation.whitebox_span import (
+    SPAN_INPUT_NORMALIZATION_VERSION,
     SPAN_SEMANTIC_PROBE_LINE,
     _OnnxSpanRuntime,
     _validate_onnx_manifest,
@@ -214,6 +215,7 @@ def encode_examples(
     return {
         "input_ids": encoded["input_ids"],
         "attention_mask": encoded["attention_mask"],
+        "offset_mapping": encoded["offset_mapping"],
         "token_labels": torch.tensor(label_rows, dtype=torch.long),
         "relevance_labels": torch.tensor(
             [relevance_index[example.relevance_label] for example in examples],
@@ -311,6 +313,7 @@ def calibrate_span_model(
     model,
     encoded: Mapping[str, Any],
     *,
+    examples: Sequence[SpanExample],
     token_labels: Sequence[str],
     entity_types: Sequence[str],
     torch,
@@ -369,13 +372,211 @@ def calibrate_span_model(
         (relevance_prediction == encoded["relevance_labels"].cpu()).float().mean()
     )
     category_coverage = summarize_category_coverage(entity_metrics)
+    exact_entity_metrics = exact_span_metrics(
+        examples=examples,
+        offsets=encoded["offset_mapping"].cpu().tolist(),
+        predicted_label_indexes=winning_label_indexes.cpu().tolist(),
+        predicted_confidences=winning_confidences.cpu().tolist(),
+        token_labels=token_labels,
+        entity_thresholds=entity_thresholds,
+    )
     return {
         "entityThresholds": entity_thresholds,
         "entityMetrics": entity_metrics,
         "categoryCoverage": category_coverage,
+        "exactEntityMetrics": exact_entity_metrics,
         "relevanceTemperature": relevance_temperature,
         "relevanceAccuracy": relevance_accuracy,
     }
+
+
+def decode_bio_spans(
+    *,
+    offsets: Sequence[Sequence[int]],
+    predicted_label_indexes: Sequence[int],
+    predicted_confidences: Sequence[float],
+    token_labels: Sequence[str],
+    entity_thresholds: Mapping[str, float],
+    default_threshold: float = 0.5,
+) -> list[dict[str, Any]]:
+    if not (
+        len(offsets)
+        == len(predicted_label_indexes)
+        == len(predicted_confidences)
+    ):
+        raise WhiteboxTrainingError("BIO decode inputs must have equal lengths")
+    active: dict[str, Any] | None = None
+    spans: list[dict[str, Any]] = []
+
+    def finish() -> None:
+        nonlocal active
+        if active and active["charEnd"] > active["charStart"]:
+            spans.append(active)
+        active = None
+
+    for raw_offset, label_index, confidence in zip(
+        offsets,
+        predicted_label_indexes,
+        predicted_confidences,
+        strict=True,
+    ):
+        start, end = (int(raw_offset[0]), int(raw_offset[1]))
+        if end <= start:
+            continue
+        label = (
+            token_labels[int(label_index)]
+            if 0 <= int(label_index) < len(token_labels)
+            else "O"
+        )
+        if "-" in label:
+            prefix, category = label.split("-", 1)
+        else:
+            prefix, category = "O", ""
+        threshold = float(entity_thresholds.get(category, default_threshold))
+        if prefix == "O" or float(confidence) < threshold:
+            finish()
+            continue
+        if prefix == "B" or active is None or active["category"] != category:
+            finish()
+            active = {
+                "charStart": start,
+                "charEnd": end,
+                "category": category,
+            }
+            continue
+        active["charEnd"] = end
+    finish()
+    return spans
+
+
+def exact_span_metrics(
+    *,
+    examples: Sequence[SpanExample],
+    offsets: Sequence[Sequence[Sequence[int]]],
+    predicted_label_indexes: Sequence[Sequence[int]],
+    predicted_confidences: Sequence[Sequence[float]],
+    token_labels: Sequence[str],
+    entity_thresholds: Mapping[str, float],
+) -> dict[str, Any]:
+    if not (
+        len(examples)
+        == len(offsets)
+        == len(predicted_label_indexes)
+        == len(predicted_confidences)
+    ):
+        raise WhiteboxTrainingError("exact span metric rows must have equal lengths")
+    expected: list[tuple[int, int, str, int]] = []
+    predicted: list[tuple[int, int, str, int]] = []
+    for row, example in enumerate(examples):
+        expected.extend(
+            (
+                int(span["charStart"]),
+                int(span["charEnd"]),
+                str(span["category"]),
+                row,
+            )
+            for span in example.spans
+        )
+        predicted.extend(
+            (
+                int(span["charStart"]),
+                int(span["charEnd"]),
+                str(span["category"]),
+                row,
+            )
+            for span in decode_bio_spans(
+                offsets=offsets[row],
+                predicted_label_indexes=predicted_label_indexes[row],
+                predicted_confidences=predicted_confidences[row],
+                token_labels=token_labels,
+                entity_thresholds=entity_thresholds,
+            )
+        )
+    categories = sorted({
+        item[2]
+        for item in [*expected, *predicted]
+        if item[2]
+    })
+    return {
+        "overall": _exact_span_metric(expected, predicted),
+        "byCategory": {
+            category: _exact_span_metric(
+                [item for item in expected if item[2] == category],
+                [item for item in predicted if item[2] == category],
+            )
+            for category in categories
+        },
+    }
+
+
+def _exact_span_metric(
+    expected: Sequence[tuple[int, int, str, int]],
+    predicted: Sequence[tuple[int, int, str, int]],
+) -> dict[str, Any]:
+    remaining_expected = list(expected)
+    remaining_predicted = list(predicted)
+    exact_count = 0
+    for expected_item in list(remaining_expected):
+        try:
+            predicted_index = remaining_predicted.index(expected_item)
+        except ValueError:
+            continue
+        remaining_expected.remove(expected_item)
+        remaining_predicted.pop(predicted_index)
+        exact_count += 1
+    overlap_pairs = []
+    used_predicted: set[int] = set()
+    for expected_item in remaining_expected:
+        candidates = [
+            (index, _span_iou(expected_item, predicted_item))
+            for index, predicted_item in enumerate(remaining_predicted)
+            if index not in used_predicted
+            and expected_item[2:] == predicted_item[2:]
+        ]
+        candidates = [item for item in candidates if item[1] > 0]
+        if not candidates:
+            continue
+        index, iou = max(candidates, key=lambda item: (item[1], -item[0]))
+        used_predicted.add(index)
+        overlap_pairs.append((expected_item, remaining_predicted[index], iou))
+    true_positive = exact_count
+    false_positive = len(predicted) - true_positive
+    false_negative = len(expected) - true_positive
+    precision = (
+        true_positive / (true_positive + false_positive)
+        if true_positive + false_positive
+        else 0.0
+    )
+    recall = (
+        true_positive / (true_positive + false_negative)
+        if true_positive + false_negative
+        else 0.0
+    )
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if precision + recall
+        else 0.0
+    )
+    return {
+        "expectedSpanCount": len(expected),
+        "predictedSpanCount": len(predicted),
+        "exactMatchCount": true_positive,
+        "boundaryMismatchCount": len(overlap_pairs),
+        "missedSpanCount": len(remaining_expected) - len(overlap_pairs),
+        "spuriousSpanCount": len(remaining_predicted) - len(overlap_pairs),
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+    }
+
+
+def _span_iou(
+    left: tuple[int, int, str, int],
+    right: tuple[int, int, str, int],
+) -> float:
+    intersection = max(0, min(left[1], right[1]) - max(left[0], right[0]))
+    union = max(left[1], right[1]) - min(left[0], right[0])
+    return intersection / union if union > 0 else 0.0
 
 
 def category_token_metrics(
@@ -599,6 +800,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
     calibration = calibrate_span_model(
         model,
         development_encoded,
+        examples=development_examples,
         token_labels=token_labels,
         entity_types=entity_types,
         torch=torch,
@@ -623,6 +825,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "modelVersion": args.base_model,
             "modelRevision": model_revision,
             "backend": "onnx_token_classifier",
+            "inputNormalizationVersion": SPAN_INPUT_NORMALIZATION_VERSION,
             "license": license_record,
             "modelFileKey": "model",
             "tokenizerFileKey": "tokenizer",
@@ -703,6 +906,13 @@ def _markdown_report(report: Mapping[str, Any]) -> str:
         f"- train/development: {report['trainCaseCount']} / {report['developmentCaseCount']} cases",
         f"- holdout withheld: {report['withheldHoldoutCaseCount']} cases",
         f"- relevance accuracy: {report['development']['relevanceAccuracy']:.4f}",
+        "- exact entity F1: "
+        f"{report['development']['exactEntityMetrics']['overall']['f1']:.4f}",
+        "- exact boundary matches: "
+        f"{report['development']['exactEntityMetrics']['overall']['exactMatchCount']} / "
+        f"{report['development']['exactEntityMetrics']['overall']['expectedSpanCount']}",
+        "- boundary mismatches: "
+        f"{report['development']['exactEntityMetrics']['overall']['boundaryMismatchCount']}",
         f"- deterministic runs: {report['determinism']['repeatCount']}",
         "",
         "| category | positive support | precision | recall | F1 | status |",

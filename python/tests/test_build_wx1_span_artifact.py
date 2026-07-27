@@ -9,6 +9,8 @@ from scripts.build_wx1_span_artifact import (
     categories_from_examples,
     category_token_metrics,
     classify_category_metric,
+    decode_bio_spans,
+    exact_span_metrics,
     labels_for_offsets,
     summarize_category_coverage,
 )
@@ -129,6 +131,84 @@ class BuildWx1SpanArtifactTest(unittest.TestCase):
             coverage["categoriesByStatus"]["unmeasured"],
             ["material"],
         )
+
+    def test_bio_decoder_uses_runtime_threshold_and_boundaries(self) -> None:
+        labels = build_token_labels(["procedure"])
+        spans = decode_bio_spans(
+            offsets=[(0, 0), (0, 2), (2, 4), (5, 6)],
+            predicted_label_indexes=[
+                labels.index("O"),
+                labels.index("B-procedure"),
+                labels.index("I-procedure"),
+                labels.index("O"),
+            ],
+            predicted_confidences=[1.0, 0.9, 0.8, 0.9],
+            token_labels=labels,
+            entity_thresholds={"procedure": 0.7},
+        )
+
+        self.assertEqual(spans, [{
+            "charStart": 0,
+            "charEnd": 4,
+            "category": "procedure",
+        }])
+
+    def test_exact_metrics_separate_boundary_mismatch_from_missing_span(self) -> None:
+        labels = build_token_labels(["procedure"])
+        examples = [
+            SpanExample(
+                case_id="boundary",
+                line_index=0,
+                text="創傷処置を実施",
+                spans=({
+                    "charStart": 0,
+                    "charEnd": 4,
+                    "category": "procedure",
+                },),
+                relevance_label="relevant",
+            ),
+            SpanExample(
+                case_id="missing",
+                line_index=0,
+                text="採血を実施",
+                spans=({
+                    "charStart": 0,
+                    "charEnd": 2,
+                    "category": "procedure",
+                },),
+                relevance_label="relevant",
+            ),
+        ]
+        metrics = exact_span_metrics(
+            examples=examples,
+            offsets=[
+                [(0, 3), (3, 5), (5, 7)],
+                [(0, 2), (2, 4), (4, 6)],
+            ],
+            predicted_label_indexes=[
+                [
+                    labels.index("B-procedure"),
+                    labels.index("I-procedure"),
+                    labels.index("O"),
+                ],
+                [
+                    labels.index("O"),
+                    labels.index("O"),
+                    labels.index("O"),
+                ],
+            ],
+            predicted_confidences=[
+                [0.9, 0.9, 0.9],
+                [0.9, 0.9, 0.9],
+            ],
+            token_labels=labels,
+            entity_thresholds={"procedure": 0.5},
+        )["overall"]
+
+        self.assertEqual(metrics["exactMatchCount"], 0)
+        self.assertEqual(metrics["boundaryMismatchCount"], 1)
+        self.assertEqual(metrics["missedSpanCount"], 1)
+        self.assertEqual(metrics["spuriousSpanCount"], 0)
 
 
 if __name__ == "__main__":

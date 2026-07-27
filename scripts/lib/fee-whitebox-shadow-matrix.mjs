@@ -1,4 +1,9 @@
 import crypto from "node:crypto";
+import {
+  canonicalRangeForRawRange,
+  canonicalizeClinicalText,
+  normalizeClinicalTextValue
+} from "../../services/fee-api/src/clinical-text-normalization.js";
 
 export const WHITEBOX_SPECIALTY_LABELS = Object.freeze({
   internal_medicine: "内科",
@@ -414,6 +419,11 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
       encoderFalsePositiveCodeCount: 0,
       encoderFalseNegativeCodeCount: 0,
       shadowComparisonObservedCount: 0,
+      expectedSpanCount: 0,
+      exactBoundaryMatchCount: 0,
+      overlapMatchCount: 0,
+      boundaryMismatchCount: 0,
+      canonicalTextMatchCount: 0,
       expectedCurrentOwnSpanCount: 0,
       detectedCurrentOwnSpanCount: 0,
       expectedSemanticTop1Count: 0,
@@ -422,6 +432,16 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
       expectedShadowTop5Count: 0,
       strictJointEligibleCount: 0,
       shadowJointEligibleCount: 0,
+      expectedBillableInclusionSpanCount: 0,
+      strictBillableInclusionEligibleCount: 0,
+      shadowBillableInclusionEligibleCount: 0,
+      expectedStandingSpanCount: 0,
+      strictStandingEligibleCount: 0,
+      shadowStandingEligibleCount: 0,
+      expectedSafeExclusionSpanCount: 0,
+      strictSafeExclusionEligibleCount: 0,
+      shadowSafeExclusionEligibleCount: 0,
+      expectedAbstainSpanCount: 0,
       strictBlockerCounts: {},
       shadowBlockerCounts: {}
     };
@@ -435,6 +455,36 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
     for (const diagnostic of Array.isArray(audit.expectedSpanDiagnostics)
       ? audit.expectedSpanDiagnostics
       : []) {
+      current.expectedSpanCount += 1;
+      current.exactBoundaryMatchCount += diagnostic.exactBoundaryMatch ? 1 : 0;
+      current.overlapMatchCount += diagnostic.overlapMatch ? 1 : 0;
+      current.boundaryMismatchCount += (
+        diagnostic.overlapMatch && !diagnostic.exactBoundaryMatch ? 1 : 0
+      );
+      current.canonicalTextMatchCount += diagnostic.canonicalTextMatch ? 1 : 0;
+      if (diagnostic.expectedRole === "performed") {
+        current.expectedBillableInclusionSpanCount += 1;
+        current.strictBillableInclusionEligibleCount += (
+          diagnostic.strictBillableInclusionEligible ? 1 : 0
+        );
+        current.shadowBillableInclusionEligibleCount += (
+          diagnostic.shadowBillableInclusionEligible ? 1 : 0
+        );
+      } else if (diagnostic.expectedRole === "standing") {
+        current.expectedStandingSpanCount += 1;
+        current.strictStandingEligibleCount += diagnostic.strictStandingEligible ? 1 : 0;
+        current.shadowStandingEligibleCount += diagnostic.shadowStandingEligible ? 1 : 0;
+      } else if (diagnostic.expectedRole === "safe_exclusion") {
+        current.expectedSafeExclusionSpanCount += 1;
+        current.strictSafeExclusionEligibleCount += (
+          diagnostic.strictSafeExclusionEligible ? 1 : 0
+        );
+        current.shadowSafeExclusionEligibleCount += (
+          diagnostic.shadowSafeExclusionEligible ? 1 : 0
+        );
+      } else {
+        current.expectedAbstainSpanCount += 1;
+      }
       if (!diagnostic.currentOwnPerformed) {
         continue;
       }
@@ -545,28 +595,79 @@ export function summarizeWhiteboxDeterminism(runs = []) {
   };
 }
 
+export function assessWhiteboxEvaluationEligibility({
+  status = "",
+  purpose = "diagnostic",
+  holdoutUsed = false,
+  requiredCellCount = 0,
+  observedCellCount = 0,
+  expectedCalculationCount = 0,
+  runCount = 0,
+  degradedRunCount = 0,
+  cloudRunRevisions = [],
+  determinism = {}
+} = {}) {
+  const requiredCells = Number(requiredCellCount || 0);
+  const observedCells = Number(observedCellCount || 0);
+  const expectedCalculations = Number(expectedCalculationCount || 0);
+  const observedRuns = Number(runCount || 0);
+  const revisions = [...new Set(
+    (Array.isArray(cloudRunRevisions) ? cloudRunRevisions : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )].sort();
+  const checks = {
+    completed: status === "complete"
+      && expectedCalculations > 0
+      && observedRuns === expectedCalculations,
+    promotionPurpose: purpose === "promotion",
+    holdoutUsed: holdoutUsed === true,
+    completeMatrix: requiredCells > 0 && observedCells === requiredCells,
+    noDegradedRuns: Number(degradedRunCount || 0) === 0,
+    singleCloudRunRevision: revisions.length === 1,
+    determinismCoverage: requiredCells > 0
+      && Number(determinism?.groupCount || 0) === requiredCells
+      && Number(determinism?.minimumObservedRepeats || 0) >= 2,
+    deterministicOutputs: Number(determinism?.groupCount || 0) > 0
+      && Number(determinism?.exactGroupCount || 0)
+        === Number(determinism?.groupCount || 0)
+  };
+  const reasonByCheck = {
+    completed: "run_incomplete",
+    promotionPurpose: "diagnostic_measurement_only",
+    holdoutUsed: "holdout_not_used",
+    completeMatrix: "matrix_incomplete",
+    noDegradedRuns: "degraded_run_observed",
+    singleCloudRunRevision: "revision_not_fixed",
+    determinismCoverage: "determinism_controls_incomplete",
+    deterministicOutputs: "determinism_mismatch"
+  };
+  const ineligibleReasonCodes = Object.entries(checks)
+    .filter(([, passed]) => !passed)
+    .map(([key]) => reasonByCheck[key]);
+  return {
+    checks,
+    ineligibleReasonCodes,
+    promotionReviewEligible: ineligibleReasonCodes.length === 0,
+    independentHumanAdjudicationRequired: true
+  };
+}
+
 function buildExpectedSpanGateDiagnostics(item = {}, runtimeDiagnostics = []) {
   const expected = Array.isArray(item.expectedSpans) ? item.expectedSpans : [];
   const runtime = (Array.isArray(runtimeDiagnostics) ? runtimeDiagnostics : [])
     .map((diagnostic) => ({ diagnostic, used: false }));
   return expected.map((span) => {
     const location = expectedSpanLocation(item.clinicalText, span);
-    const spanTextSha256 = sha256(String(span?.text || ""));
-    let matched = runtime.find((entry) => (
-      !entry.used
-      && Number(entry.diagnostic?.lineIndex || 0) === location.lineIndex
-      && Number(entry.diagnostic?.charStart ?? -1) === location.charStart
-      && Number(entry.diagnostic?.charEnd ?? -1) === location.charEnd
-      && String(entry.diagnostic?.category || "") === String(span?.category || "")
-      && String(entry.diagnostic?.spanTextSha256 || "") === spanTextSha256
-    ));
-    if (!matched) {
-      matched = runtime.find((entry) => (
-        !entry.used
-        && String(entry.diagnostic?.category || "") === String(span?.category || "")
-        && String(entry.diagnostic?.spanTextSha256 || "") === spanTextSha256
-      ));
-    }
+    const spanTextSha256 = sha256(location.canonicalText);
+    const rawSpanTextSha256 = sha256(String(span?.text || ""));
+    const match = matchExpectedRuntimeSpan({
+      runtime,
+      location,
+      category: String(span?.category || ""),
+      spanTextSha256
+    });
+    const matched = match.entry;
     if (matched) {
       matched.used = true;
     }
@@ -600,22 +701,66 @@ function buildExpectedSpanGateDiagnostics(item = {}, runtimeDiagnostics = []) {
           : "linker_expected_code_not_top1"
       );
     }
+    const expectedRole = expectedLaneRole(span);
+    const strictExpectedCodeTop1 = diagnostic && semanticRank === 1;
+    const shadowExpectedCodeTop1 = diagnostic && shadowRank === 1;
     return {
       expectedCode,
       category: String(span?.category || ""),
+      expectedRole,
       currentOwnPerformed: Boolean(isCurrentOwnPerformedSpan(span)),
       expectedLineIndex: location.lineIndex,
       expectedCharStart: location.charStart,
       expectedCharEnd: location.charEnd,
       spanTextSha256,
+      rawSpanTextSha256,
+      canonicalText: location.canonicalText,
       runtimeSpanObserved: Boolean(diagnostic),
       runtimeSpanId: String(diagnostic?.spanId || ""),
+      matchType: match.matchType,
+      intervalIou: match.intervalIou,
+      exactBoundaryMatch: match.matchType === "exact",
+      overlapMatch: match.intervalIou > 0,
+      canonicalTextMatch: Boolean(
+        diagnostic
+        && String(diagnostic?.spanTextSha256 || "") === spanTextSha256
+      ),
       expectedSemanticRank: semanticRank,
       expectedShadowRank: shadowRank,
       strictJointEligible: diagnostic?.strict?.jointEligible === true
-        && semanticRank === 1,
+        && strictExpectedCodeTop1,
       shadowJointEligible: diagnostic?.shadow?.jointEligible === true
-        && shadowRank === 1,
+        && shadowExpectedCodeTop1,
+      strictBillableInclusionEligible: laneEligibility(
+        diagnostic?.strict,
+        "billableInclusionEligible",
+        expectedRole
+      ) && strictExpectedCodeTop1,
+      shadowBillableInclusionEligible: laneEligibility(
+        diagnostic?.shadow,
+        "billableInclusionEligible",
+        expectedRole
+      ) && shadowExpectedCodeTop1,
+      strictStandingEligible: laneEligibility(
+        diagnostic?.strict,
+        "standingEligible",
+        expectedRole
+      ) && strictExpectedCodeTop1,
+      shadowStandingEligible: laneEligibility(
+        diagnostic?.shadow,
+        "standingEligible",
+        expectedRole
+      ) && shadowExpectedCodeTop1,
+      strictSafeExclusionEligible: laneEligibility(
+        diagnostic?.strict,
+        "safeExclusionEligible",
+        expectedRole
+      ) && strictExpectedCodeTop1,
+      shadowSafeExclusionEligible: laneEligibility(
+        diagnostic?.shadow,
+        "safeExclusionEligible",
+        expectedRole
+      ) && shadowExpectedCodeTop1,
       strictBlockerReasonCodes: uniqueStrings(strictBlockers),
       shadowBlockerReasonCodes: uniqueStrings(shadowBlockers)
     };
@@ -623,16 +768,133 @@ function buildExpectedSpanGateDiagnostics(item = {}, runtimeDiagnostics = []) {
 }
 
 function expectedSpanLocation(clinicalText = "", span = {}) {
-  const text = String(clinicalText || "").replace(/\r\n?/gu, "\n");
-  const globalStart = Math.max(0, Number(span?.charStart || 0));
-  const globalEnd = Math.max(globalStart, Number(span?.charEnd || globalStart));
-  const before = text.slice(0, globalStart);
+  const canonicalized = canonicalizeClinicalText(clinicalText);
+  const mappedRange = canonicalRangeForRawRange(
+    canonicalized,
+    span?.charStart,
+    span?.charEnd
+  );
+  const fallbackText = normalizeClinicalTextValue(span?.text);
+  const globalStart = mappedRange?.charStart ?? 0;
+  const globalEnd = mappedRange?.charEnd ?? globalStart + fallbackText.length;
+  const before = canonicalized.text.slice(0, globalStart);
   const lineStart = before.lastIndexOf("\n") + 1;
   return {
     lineIndex: before.split("\n").length,
     charStart: globalStart - lineStart,
-    charEnd: globalEnd - lineStart
+    charEnd: globalEnd - lineStart,
+    canonicalText: mappedRange
+      ? canonicalized.text.slice(globalStart, globalEnd)
+      : fallbackText
   };
+}
+
+function matchExpectedRuntimeSpan({
+  runtime,
+  location,
+  category,
+  spanTextSha256
+}) {
+  const candidates = runtime.filter((entry) => (
+    !entry.used
+    && String(entry.diagnostic?.category || "") === category
+  ));
+  const exact = candidates.find((entry) => (
+    Number(entry.diagnostic?.lineIndex || 0) === location.lineIndex
+    && Number(entry.diagnostic?.charStart ?? -1) === location.charStart
+    && Number(entry.diagnostic?.charEnd ?? -1) === location.charEnd
+    && String(entry.diagnostic?.spanTextSha256 || "") === spanTextSha256
+  ));
+  if (exact) {
+    return { entry: exact, matchType: "exact", intervalIou: 1 };
+  }
+  const canonicalText = candidates.find((entry) => (
+    Number(entry.diagnostic?.lineIndex || 0) === location.lineIndex
+    && String(entry.diagnostic?.spanTextSha256 || "") === spanTextSha256
+  ));
+  if (canonicalText) {
+    return {
+      entry: canonicalText,
+      matchType: "canonical_text",
+      intervalIou: intervalIou(location, canonicalText.diagnostic)
+    };
+  }
+  const overlap = candidates
+    .filter((entry) => (
+      Number(entry.diagnostic?.lineIndex || 0) === location.lineIndex
+    ))
+    .map((entry) => ({
+      entry,
+      intervalIou: intervalIou(location, entry.diagnostic)
+    }))
+    .filter((entry) => entry.intervalIou > 0)
+    .sort((left, right) => right.intervalIou - left.intervalIou)[0];
+  return overlap
+    ? { ...overlap, matchType: "overlap" }
+    : { entry: null, matchType: "none", intervalIou: 0 };
+}
+
+function intervalIou(left = {}, right = {}) {
+  const leftStart = Number(left.charStart ?? -1);
+  const leftEnd = Number(left.charEnd ?? -1);
+  const rightStart = Number(right.charStart ?? -1);
+  const rightEnd = Number(right.charEnd ?? -1);
+  if (
+    leftStart < 0
+    || rightStart < 0
+    || leftEnd <= leftStart
+    || rightEnd <= rightStart
+  ) {
+    return 0;
+  }
+  const intersection = Math.max(
+    0,
+    Math.min(leftEnd, rightEnd) - Math.max(leftStart, rightStart)
+  );
+  const union = Math.max(leftEnd, rightEnd) - Math.min(leftStart, rightStart);
+  return union > 0 ? intersection / union : 0;
+}
+
+function laneEligibility(lane = {}, field, expectedRole) {
+  if (typeof lane?.[field] === "boolean") {
+    return lane[field];
+  }
+  const fallbackRole = {
+    billableInclusionEligible: "performed",
+    standingEligible: "standing",
+    safeExclusionEligible: "safe_exclusion"
+  }[field];
+  return lane?.jointEligible === true && expectedRole === fallbackRole;
+}
+
+function expectedLaneRole(span = {}) {
+  if (isCurrentOwnPerformedSpan(span)) {
+    return "performed";
+  }
+  const action = String(span?.actionStatus || "");
+  const temporal = String(span?.temporalRelation || "");
+  const source = String(span?.sourceOrigin || "");
+  const ownership = String(span?.providerOwnership || "");
+  const standing = String(span?.standingStatus || "");
+  if (
+    temporal === "current_visit"
+    && source === "own_clinic_record"
+    && ownership === "own_clinic"
+    && ["continued", "changed", "stopped"].includes(standing)
+    && !["ordered", "planned", "considered"].includes(action)
+  ) {
+    return "standing";
+  }
+  if (
+    action === "not_performed"
+    || ["ordered", "planned", "considered"].includes(action)
+    || temporal === "past"
+    || EXCLUDED_SOURCE_ORIGINS.has(source)
+    || EXCLUDED_PROVIDER_OWNERSHIPS.has(ownership)
+  ) {
+    return "safe_exclusion";
+  }
+  return "llm";
 }
 
 function candidateCodeRank(candidates = [], expectedCode = "") {

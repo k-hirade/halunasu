@@ -31,6 +31,8 @@ from medical_fee_calculation.whitebox_onnx import (
 
 
 CONTEXT_ARTIFACT_TYPE = "fee_context_classifier"
+LEGACY_INPUT_CONTRACT_VERSION = 1
+STRUCTURED_INPUT_CONTRACT_VERSION = 2
 CONTEXT_SEMANTIC_PROBE_ITEM = {
     "lineId": "semantic-probe",
     "spanId": "semantic-probe",
@@ -40,6 +42,10 @@ CONTEXT_SEMANTIC_PROBE_ITEM = {
     "charEnd": 15,
     "previousLine": "",
     "nextLine": "",
+    "section": "O",
+    "encounterSetting": "outpatient",
+    "specialty": "internal_medicine",
+    "sourceType": "clinical_note",
 }
 
 
@@ -192,6 +198,14 @@ def _normalize_items(value: Any) -> list[dict[str, Any]]:
             "charEnd": end,
             "previousLine": str(item.get("previousLine") or item.get("previous_line") or "")[:2000],
             "nextLine": str(item.get("nextLine") or item.get("next_line") or "")[:2000],
+            "section": str(item.get("section") or "").strip()[:32],
+            "encounterSetting": str(
+                item.get("encounterSetting") or item.get("encounter_setting") or ""
+            ).strip()[:64],
+            "specialty": str(item.get("specialty") or "").strip()[:64],
+            "sourceType": str(
+                item.get("sourceType") or item.get("source_type") or "clinical_note"
+            ).strip()[:64],
         })
     return normalized
 
@@ -238,6 +252,7 @@ class _OnnxContextRuntime:
                 f"context classifier ONNX model is invalid: {exc}"
             ) from exc
         self.max_length = min(512, max(32, int(manifest.get("maxLength") or 256)))
+        self.input_contract_version = _context_input_contract_version(manifest)
         expected_values = clinical_axis_values()
         labels = manifest.get("axisLabels")
         output_names = manifest.get("outputNames")
@@ -280,7 +295,13 @@ class _OnnxContextRuntime:
         if not items:
             return []
         return self.classify_preformatted_texts(
-            [_classifier_text(item) for item in items]
+            [
+                _classifier_text(
+                    item,
+                    input_contract_version=self.input_contract_version,
+                )
+                for item in items
+            ]
         )
 
     def classify_preformatted_texts(
@@ -345,7 +366,11 @@ class _OnnxContextRuntime:
         return dict(zip(requested_outputs, output_values, strict=True))
 
 
-def _classifier_text(item: Mapping[str, Any]) -> str:
+def _classifier_text(
+    item: Mapping[str, Any],
+    *,
+    input_contract_version: int = LEGACY_INPUT_CONTRACT_VERSION,
+) -> str:
     span = str(item.get("spanText") or item.get("text") or "")
     current = str(item.get("text") or "")
     start = item.get("charStart")
@@ -363,12 +388,32 @@ def _classifier_text(item: Mapping[str, Any]) -> str:
         )
     else:
         marked = current.replace(span, f"[SPAN]{span}[/SPAN]", 1) if span else current
-    parts = [
+    context_parts = [
         str(item.get("previousLine") or "").strip(),
         marked.strip(),
         str(item.get("nextLine") or "").strip(),
     ]
-    return "\n".join(part for part in parts if part)
+    if input_contract_version == LEGACY_INPUT_CONTRACT_VERSION:
+        return "\n".join(part for part in context_parts if part)
+    if input_contract_version != STRUCTURED_INPUT_CONTRACT_VERSION:
+        raise ValueError(
+            f"unsupported context input contract version: {input_contract_version}"
+        )
+    metadata = [
+        ("SETTING", item.get("encounterSetting")),
+        ("SPECIALTY", item.get("specialty")),
+        ("SECTION", item.get("section")),
+        ("SOURCE", item.get("sourceType") or "clinical_note"),
+    ]
+    metadata_parts = [
+        f"[{tag}]{str(value).strip()}[/{tag}]"
+        for tag, value in metadata
+        if str(value or "").strip()
+    ]
+    return "\n".join([
+        *metadata_parts,
+        *(part for part in context_parts if part),
+    ])
 
 
 def _optional_offset(value: Any) -> int | None:
@@ -396,6 +441,7 @@ def _validate_context_manifest(
     output_names = manifest.get("outputNames")
     temperatures = manifest.get("temperatures") or {}
     thresholds = manifest.get("abstainThresholds") or {}
+    _context_input_contract_version(manifest)
     if not isinstance(labels, Mapping) or not isinstance(output_names, Mapping):
         raise WhiteboxArtifactError(
             "context axisLabels and outputNames are required"
@@ -424,3 +470,28 @@ def _validate_context_manifest(
                 f"context abstain threshold for {axis} is invalid"
             )
     return model_key, tokenizer_key
+
+
+def _context_input_contract_version(manifest: Mapping[str, Any]) -> int:
+    value = manifest.get(
+        "inputContractVersion",
+        LEGACY_INPUT_CONTRACT_VERSION,
+    )
+    if isinstance(value, bool):
+        raise WhiteboxArtifactError(
+            "context inputContractVersion must be 1 or 2"
+        )
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise WhiteboxArtifactError(
+            "context inputContractVersion must be 1 or 2"
+        ) from exc
+    if parsed not in {
+        LEGACY_INPUT_CONTRACT_VERSION,
+        STRUCTURED_INPUT_CONTRACT_VERSION,
+    }:
+        raise WhiteboxArtifactError(
+            "context inputContractVersion must be 1 or 2"
+        )
+    return parsed

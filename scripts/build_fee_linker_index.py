@@ -27,8 +27,26 @@ from medical_fee_calculation.whitebox_artifacts import (
 from medical_fee_calculation.whitebox_linker import create_onnx_sentence_encoder
 
 
-INDEX_SCHEMA_VERSION = 1
+INDEX_SCHEMA_VERSION = 2
 ARTIFACT_TYPE = "fee_master_linker"
+
+PROCEDURE_CATEGORY_BY_ALPHA_PART = {
+    "A": "outpatient_basic",
+    "B": "management",
+    "C": "management",
+    "D": "lab",
+    "E": "imaging",
+    "F": "medication",
+    "G": "injection",
+    "H": "treatment",
+    "I": "counseling",
+    "J": "procedure",
+    "K": "procedure",
+    "L": "procedure",
+    "M": "treatment",
+    "N": "pathology",
+    "O": "other",
+}
 
 
 def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -43,7 +61,8 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
         sources.append(dict(procedure_source))
         rows = connection.execute(
             """
-            SELECT code, short_name, base_name, points, effective_from, effective_to
+            SELECT code, short_name, base_name, alpha_part, points,
+                   effective_from, effective_to
             FROM medical_procedures
             WHERE source_id = ?
             ORDER BY code
@@ -62,6 +81,10 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
                 name=row["short_name"],
                 kind="procedure",
                 docs=[_embedding_document(row["short_name"], aliases)],
+                category=PROCEDURE_CATEGORY_BY_ALPHA_PART.get(
+                    str(row["alpha_part"] or "").strip().upper(),
+                    "procedure",
+                ),
                 points=row["points"],
                 effective_from=row["effective_from"],
                 effective_to=row["effective_to"],
@@ -96,6 +119,7 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
                     name=row["name"],
                     kind="drug",
                     docs=[_embedding_document(row["name"], aliases)],
+                    category="medication",
                     effective_from=row["changed_at"],
                     effective_to=row["discontinued_at"],
                 ))
@@ -142,6 +166,7 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
                     name=row["name"],
                     kind="disease",
                     docs=[_embedding_document(row["name"], aliases)],
+                    category="diagnosis",
                     effective_from=row["effective_from"],
                     effective_to=row["effective_to"],
                 ))
@@ -257,6 +282,7 @@ def build_linker_artifact(
         "artifactType": ARTIFACT_TYPE,
         "artifactVersion": artifact_version,
         "indexVersion": artifact_version,
+        "indexSchemaVersion": INDEX_SCHEMA_VERSION,
         "modelVersion": model_version,
         "modelRevision": model_revision,
         "license": license_record,
@@ -494,6 +520,7 @@ def _document_rows(
     name: Any,
     kind: str,
     docs: Iterable[str],
+    category: str = "",
     points: Any = None,
     effective_from: Any = None,
     effective_to: Any = None,
@@ -508,7 +535,7 @@ def _document_rows(
             "name": normalized_name,
             "kind": kind,
             "doc": doc,
-            "category": "",
+            "category": str(category or "").strip(),
             "points": float(points) if isinstance(points, (int, float)) else None,
             "effectiveFrom": str(effective_from or "").strip(),
             "effectiveTo": str(effective_to or "").strip(),

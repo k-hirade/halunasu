@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   WHITEBOX_SPECIALTY_LABELS,
+  assessWhiteboxEvaluationEligibility,
   buildWhiteboxShadowExecutions,
   buildWhiteboxShadowSessionInput,
   requiredWhiteboxCells,
@@ -451,7 +452,7 @@ function summarizeRun(result) {
   for (const run of measurementRuns) {
     cells[run.measurementCell] = Number(cells[run.measurementCell] || 0) + 1;
   }
-  return {
+  const summary = {
     status: result.status,
     runCount: runs.length,
     measurementRunCount: measurementRuns.length,
@@ -468,10 +469,30 @@ function summarizeRun(result) {
       left.localeCompare(right)
     )))
   };
+  return {
+    ...summary,
+    evaluationEligibility: assessWhiteboxEvaluationEligibility({
+      status: summary.status,
+      purpose: result.methodology.evaluationPurpose,
+      holdoutUsed: result.source.holdoutUsed,
+      requiredCellCount: summary.requiredCellCount,
+      observedCellCount: summary.observedCellCount,
+      expectedCalculationCount: summary.expectedCalculationCount,
+      runCount: summary.runCount,
+      degradedRunCount: summary.degradedRunCount,
+      cloudRunRevisions: summary.uniqueCloudRunRevisions,
+      determinism: summary.determinism
+    })
+  };
 }
 
 function summarizeGateDiagnostics(cells = {}) {
   const total = {
+    expectedSpanCount: 0,
+    exactBoundaryMatchCount: 0,
+    overlapMatchCount: 0,
+    boundaryMismatchCount: 0,
+    canonicalTextMatchCount: 0,
     expectedCurrentOwnSpanCount: 0,
     detectedCurrentOwnSpanCount: 0,
     expectedSemanticTop1Count: 0,
@@ -480,11 +501,26 @@ function summarizeGateDiagnostics(cells = {}) {
     expectedShadowTop5Count: 0,
     strictJointEligibleCount: 0,
     shadowJointEligibleCount: 0,
+    expectedBillableInclusionSpanCount: 0,
+    strictBillableInclusionEligibleCount: 0,
+    shadowBillableInclusionEligibleCount: 0,
+    expectedStandingSpanCount: 0,
+    strictStandingEligibleCount: 0,
+    shadowStandingEligibleCount: 0,
+    expectedSafeExclusionSpanCount: 0,
+    strictSafeExclusionEligibleCount: 0,
+    shadowSafeExclusionEligibleCount: 0,
+    expectedAbstainSpanCount: 0,
     strictBlockerCounts: {},
     shadowBlockerCounts: {}
   };
   for (const cell of Object.values(cells && typeof cells === "object" ? cells : {})) {
     for (const field of [
+      "expectedSpanCount",
+      "exactBoundaryMatchCount",
+      "overlapMatchCount",
+      "boundaryMismatchCount",
+      "canonicalTextMatchCount",
       "expectedCurrentOwnSpanCount",
       "detectedCurrentOwnSpanCount",
       "expectedSemanticTop1Count",
@@ -492,7 +528,17 @@ function summarizeGateDiagnostics(cells = {}) {
       "expectedShadowTop1Count",
       "expectedShadowTop5Count",
       "strictJointEligibleCount",
-      "shadowJointEligibleCount"
+      "shadowJointEligibleCount",
+      "expectedBillableInclusionSpanCount",
+      "strictBillableInclusionEligibleCount",
+      "shadowBillableInclusionEligibleCount",
+      "expectedStandingSpanCount",
+      "strictStandingEligibleCount",
+      "shadowStandingEligibleCount",
+      "expectedSafeExclusionSpanCount",
+      "strictSafeExclusionEligibleCount",
+      "shadowSafeExclusionEligibleCount",
+      "expectedAbstainSpanCount"
     ]) {
       total[field] += Number(cell?.[field] || 0);
     }
@@ -500,8 +546,28 @@ function summarizeGateDiagnostics(cells = {}) {
     mergeCountMap(total.shadowBlockerCounts, cell?.shadowBlockerCounts);
   }
   const denominator = total.expectedCurrentOwnSpanCount;
+  const spanDenominator = total.expectedSpanCount;
+  const billableDenominator = total.expectedBillableInclusionSpanCount;
+  const standingDenominator = total.expectedStandingSpanCount;
+  const safeExclusionDenominator = total.expectedSafeExclusionSpanCount;
   return {
     ...total,
+    exactBoundaryMatchRate: ratioOrNull(
+      total.exactBoundaryMatchCount,
+      spanDenominator
+    ),
+    overlapMatchRate: ratioOrNull(
+      total.overlapMatchCount,
+      spanDenominator
+    ),
+    boundaryMismatchRate: ratioOrNull(
+      total.boundaryMismatchCount,
+      spanDenominator
+    ),
+    canonicalTextMatchRate: ratioOrNull(
+      total.canonicalTextMatchCount,
+      spanDenominator
+    ),
     detectedCurrentOwnSpanRate: denominator
       ? total.detectedCurrentOwnSpanCount / denominator
       : null,
@@ -522,8 +588,36 @@ function summarizeGateDiagnostics(cells = {}) {
       : null,
     shadowJointEligibleRate: denominator
       ? total.shadowJointEligibleCount / denominator
-      : null
+      : null,
+    strictBillableInclusionEligibleRate: ratioOrNull(
+      total.strictBillableInclusionEligibleCount,
+      billableDenominator
+    ),
+    shadowBillableInclusionEligibleRate: ratioOrNull(
+      total.shadowBillableInclusionEligibleCount,
+      billableDenominator
+    ),
+    strictStandingEligibleRate: ratioOrNull(
+      total.strictStandingEligibleCount,
+      standingDenominator
+    ),
+    shadowStandingEligibleRate: ratioOrNull(
+      total.shadowStandingEligibleCount,
+      standingDenominator
+    ),
+    strictSafeExclusionEligibleRate: ratioOrNull(
+      total.strictSafeExclusionEligibleCount,
+      safeExclusionDenominator
+    ),
+    shadowSafeExclusionEligibleRate: ratioOrNull(
+      total.shadowSafeExclusionEligibleCount,
+      safeExclusionDenominator
+    )
   };
+}
+
+function ratioOrNull(numerator, denominator) {
+  return denominator ? numerator / denominator : null;
 }
 
 function mergeCountMap(target, source) {
@@ -557,6 +651,24 @@ function renderReadme(result) {
     `- degraded runs: ${summary.degradedRunCount}`,
     `- purpose: **${result.methodology.evaluationPurpose}**`,
     `- holdout used: ${result.source.holdoutUsed ? "yes" : "no"}`,
+    `- eligible for promotion review: ${
+      summary.evaluationEligibility?.promotionReviewEligible ? "yes" : "no"
+    }`,
+    `- promotion-review blockers: ${
+      summary.evaluationEligibility?.ineligibleReasonCodes?.join(", ") || "none"
+    }`,
+    `- exact span boundaries: ${formatGateRatio(
+      summary.gateDiagnostics?.exactBoundaryMatchCount,
+      summary.gateDiagnostics?.expectedSpanCount
+    )}`,
+    `- overlapping span detections: ${formatGateRatio(
+      summary.gateDiagnostics?.overlapMatchCount,
+      summary.gateDiagnostics?.expectedSpanCount
+    )}`,
+    `- boundary mismatches: ${formatGateRatio(
+      summary.gateDiagnostics?.boundaryMismatchCount,
+      summary.gateDiagnostics?.expectedSpanCount
+    )}`,
     `- expected current-own spans detected: ${formatGateRatio(
       summary.gateDiagnostics?.detectedCurrentOwnSpanCount,
       summary.gateDiagnostics?.expectedCurrentOwnSpanCount
@@ -582,6 +694,33 @@ function renderReadme(result) {
       summary.gateDiagnostics?.shadowJointEligibleCount,
       summary.gateDiagnostics?.expectedCurrentOwnSpanCount
     )}`,
+    `- strict / shadow billable inclusion: ${formatGateRatio(
+      summary.gateDiagnostics?.strictBillableInclusionEligibleCount,
+      summary.gateDiagnostics?.expectedBillableInclusionSpanCount
+    )} / ${formatGateRatio(
+      summary.gateDiagnostics?.shadowBillableInclusionEligibleCount,
+      summary.gateDiagnostics?.expectedBillableInclusionSpanCount
+    )}`,
+    `- strict / shadow standing facts: ${formatGateRatio(
+      summary.gateDiagnostics?.strictStandingEligibleCount,
+      summary.gateDiagnostics?.expectedStandingSpanCount
+    )} / ${formatGateRatio(
+      summary.gateDiagnostics?.shadowStandingEligibleCount,
+      summary.gateDiagnostics?.expectedStandingSpanCount
+    )}`,
+    `- strict / shadow safe exclusions: ${formatGateRatio(
+      summary.gateDiagnostics?.strictSafeExclusionEligibleCount,
+      summary.gateDiagnostics?.expectedSafeExclusionSpanCount
+    )} / ${formatGateRatio(
+      summary.gateDiagnostics?.shadowSafeExclusionEligibleCount,
+      summary.gateDiagnostics?.expectedSafeExclusionSpanCount
+    )}`,
+    "",
+    result.methodology.evaluationPurpose === "diagnostic"
+      ? "This diagnostic run is for bottleneck discovery only. It cannot be used as "
+        + "promotion evidence, even when every sampled case succeeds."
+      : "Promotion review requires the complete matrix, fixed revision, non-degraded "
+        + "runs, exact repeated controls, and independent human adjudication.",
     "",
     "The machine precheck compares runtime encoder code sets with the reviewed synthetic "
       + "dataset. It is not independent human adjudication and must not be supplied to the "

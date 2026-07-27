@@ -20,6 +20,10 @@ from medical_fee_calculation.whitebox_artifacts import (
     sha256_file,
     validate_artifact_license,
 )
+from medical_fee_calculation.whitebox_context import (
+    STRUCTURED_INPUT_CONTRACT_VERSION,
+    _classifier_text,
+)
 
 
 IMMUTABLE_REVISION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{6,127}$")
@@ -156,6 +160,10 @@ def _normalize_training_case(raw: Mapping[str, Any], split: str) -> dict[str, An
                 f"{raw.get('caseId')}: expectedSpans[{index}] text does not match offsets"
             )
         normalized_spans.append(dict(span))
+    clinical_text, normalized_spans = canonicalize_training_case(
+        clinical_text,
+        normalized_spans,
+    )
     return {
         "caseId": str(raw["caseId"]),
         "specialty": str(raw.get("specialty") or ""),
@@ -164,6 +172,69 @@ def _normalize_training_case(raw: Mapping[str, Any], split: str) -> dict[str, An
         "clinicalText": clinical_text,
         "expectedSpans": normalized_spans,
     }
+
+
+def canonicalize_training_case(
+    clinical_text: str,
+    spans: Sequence[Mapping[str, Any]],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Apply the runtime text contract and remap reviewed source offsets."""
+    source = str(clinical_text)
+    segments: list[dict[str, Any]] = []
+    index = 0
+    while index < len(source):
+        raw_start = index
+        character = source[index]
+        if character == "\r":
+            index += 2 if index + 1 < len(source) and source[index + 1] == "\n" else 1
+            character = "\n"
+        else:
+            index += 1
+        codepoint = ord(character)
+        if (
+            0xFF10 <= codepoint <= 0xFF19
+            or 0xFF21 <= codepoint <= 0xFF3A
+            or 0xFF41 <= codepoint <= 0xFF5A
+        ):
+            character = chr(codepoint - 0xFEE0)
+        segments.append({
+            "character": character,
+            "rawStart": raw_start,
+            "rawEnd": index,
+        })
+    first = 0
+    last = len(segments)
+    while first < last and not segments[first]["character"].strip():
+        first += 1
+    while last > first and not segments[last - 1]["character"].strip():
+        last -= 1
+    retained = segments[first:last]
+    for canonical_index, segment in enumerate(retained):
+        segment["canonicalStart"] = canonical_index
+        segment["canonicalEnd"] = canonical_index + len(segment["character"])
+    normalized_text = "".join(segment["character"] for segment in retained)
+    normalized_spans = []
+    for span_index, span in enumerate(spans):
+        raw_start = int(span["charStart"])
+        raw_end = int(span["charEnd"])
+        overlapping = [
+            segment
+            for segment in retained
+            if segment["rawStart"] < raw_end and segment["rawEnd"] > raw_start
+        ]
+        if not overlapping:
+            raise WhiteboxTrainingError(
+                f"expectedSpans[{span_index}] was removed by runtime normalization"
+            )
+        start = int(overlapping[0]["canonicalStart"])
+        end = int(overlapping[-1]["canonicalEnd"])
+        normalized_spans.append({
+            **dict(span),
+            "text": normalized_text[start:end],
+            "charStart": start,
+            "charEnd": end,
+        })
+    return normalized_text, normalized_spans
 
 
 def assert_no_counterexample_training_leakage(
@@ -246,6 +317,8 @@ def spans_for_line(
 def context_text_for_span(
     case: Mapping[str, Any],
     span: Mapping[str, Any],
+    *,
+    input_contract_version: int = STRUCTURED_INPUT_CONTRACT_VERSION,
 ) -> str:
     lines = split_text_lines(str(case["clinicalText"]))
     start = int(span["charStart"])
@@ -264,19 +337,30 @@ def context_text_for_span(
         raise WhiteboxTrainingError(
             f"{case.get('caseId')}: context span offsets are invalid"
         )
-    marked = (
-        target.text[:local_start]
-        + "[SPAN]"
-        + target.text[local_start:local_end]
-        + "[/SPAN]"
-        + target.text[local_end:]
+    return _classifier_text(
+        {
+            "text": target.text,
+            "spanText": target.text[local_start:local_end],
+            "charStart": local_start,
+            "charEnd": local_end,
+            "previousLine": lines[target_index - 1].text if target_index > 0 else "",
+            "nextLine": (
+                lines[target_index + 1].text
+                if target_index + 1 < len(lines)
+                else ""
+            ),
+            "section": _section_for_line(target.text),
+            "encounterSetting": str(case.get("encounterSetting") or ""),
+            "specialty": str(case.get("specialty") or ""),
+            "sourceType": "clinical_note",
+        },
+        input_contract_version=input_contract_version,
     )
-    parts = [
-        lines[target_index - 1].text if target_index > 0 else "",
-        marked,
-        lines[target_index + 1].text if target_index + 1 < len(lines) else "",
-    ]
-    return "\n".join(part for part in parts if part)
+
+
+def _section_for_line(value: str) -> str:
+    matched = re.match(r"^\s*([SOAP])(?:[）):：]|\s)", str(value), flags=re.IGNORECASE)
+    return matched.group(1).upper() if matched else ""
 
 
 def build_license_record(

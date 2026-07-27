@@ -1,0 +1,2662 @@
+{
+  "schemaVersion": "fee-whitebox-shadow-stg-run-v1",
+  "generatedAt": "2026-07-26T13:59:37.088Z",
+  "runId": "fee-whitebox-shadow-20260726135911458-912b48",
+  "status": "complete",
+  "source": {
+    "dataset": "data/tests/fee-specialty-matrix/cases.json",
+    "datasetSha256": "75d48a32d11bced89e764e61bd926561af7a642304581075f6d6f44e8c6f7cf9",
+    "policy": "configs/fee-whitebox-promotion-gate.json",
+    "policySha256": "7dd868e4256861e51bee0127f912572eb67a5871d3ffae58da2e1fb63826b958",
+    "syntheticDataOnly": true,
+    "holdoutUsed": false
+  },
+  "environment": {
+    "organizationCode": "yamamoto-demo-stg",
+    "facilityId": "fac_9fe275b29feebb03bfeb9410f7",
+    "cloudRunRevision": "fee-api-stg-00190-886",
+    "whiteboxModes": {
+      "linker": "shadow",
+      "context": "shadow",
+      "span": "shadow"
+    },
+    "artifactVersions": {
+      "spanDetector": "wx1-multilingual-minilm-l12-v1",
+      "linker": "ca0b72af0ea8ed861525941e",
+      "contextClassifier": "wx3-multilingual-minilm-l12-v2"
+    }
+  },
+  "methodology": {
+    "requiredCellCount": 32,
+    "sampledCellCount": 12,
+    "diagnosticCellLimit": 12,
+    "evaluationPurpose": "diagnostic",
+    "minimumRunsPerCell": 3,
+    "selectedCaseCount": 12,
+    "expectedCalculationCount": 12,
+    "controlRepeats": 1,
+    "controlGroupCount": 0,
+    "caseSelection": "development first, then train; reviewed synthetic cases only",
+    "determinismControl": "the first selected case in every cell is recalculated with identical input",
+    "holdoutPolicy": "holdout cases are excluded",
+    "departmentPolicy": "dedicated or existing active department with exact specialty metadata",
+    "telephoneRepresentation": "setting=outpatient + encounterDetails.visitKind=telephone_revisit",
+    "machinePrecheckOnly": true
+  },
+  "departmentProvisioning": {
+    "explicitlyRequested": false,
+    "created": [],
+    "specialtyDepartmentIds": {
+      "internal_medicine": "dep_144765d9bc00417cbf9c824351",
+      "pediatrics": "dep_5446115ab73e4a76bc354c0aa3",
+      "dermatology": "dep_baa81a39ab574d8295ac3d573a",
+      "orthopedics": "dep_00d6c56dcd8b4d65acf0d8f2ab",
+      "psychiatry": "dep_66fc2f62d39e482ba7a87a4519",
+      "ophthalmology": "dep_c5c113fab3d145f58e38ad9480",
+      "otolaryngology": "dep_aacd3d5d763f4a9baebd3a2c83",
+      "surgery": "dep_72f4b46b4e7d4719948fb42631"
+    }
+  },
+  "runs": [
+    {
+      "caseId": "wx0-im-outp-0008",
+      "specialty": "internal_medicine",
+      "encounterSetting": "outpatient",
+      "measurementCell": "internal_medicine|outpatient",
+      "split": "development",
+      "feeSessionId": "fee_2311183e2700463ba85576cf66",
+      "departmentId": "dep_144765d9bc00417cbf9c824351",
+      "serviceDate": "2026-07-25",
+      "runKind": "measurement",
+      "runInstance": "measurement-1",
+      "cloudRunRevision": "fee-api-stg-00190-886",
+      "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+      "whiteboxDegraded": false,
+      "calculateRequestMs": 18237,
+      "whiteboxSnapshot": {
+        "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+        "degraded": false,
+        "lineCount": 4,
+        "spanCount": 5,
+        "shadowEncoderLineIds": [
+          "A-001",
+          "S-001"
+        ],
+        "gateDiagnosticsSha256": "b2fd9991d5f86b9117104e6e76e98450bcc04d950f942c56ae9cfbb5a3da94c6",
+        "gateFunnel": {
+          "shadow": {
+            "spanCount": 5,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 5,
+            "linkerScorePassCount": 5,
+            "linkerMarginPassCount": 5,
+            "linkerCategoryPassCount": 5,
+            "linkerPassCount": 5,
+            "contextResolvedCount": 4,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 1,
+              "span_low_confidence": 5
+            }
+          },
+          "strict": {
+            "spanCount": 5,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 5,
+            "linkerScorePassCount": 1,
+            "linkerMarginPassCount": 0,
+            "linkerCategoryPassCount": 5,
+            "linkerPassCount": 0,
+            "contextResolvedCount": 4,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 1,
+              "linker_low_margin": 5,
+              "linker_low_score": 4,
+              "span_low_confidence": 5
+            }
+          }
+        },
+        "routeReasonCounts": {
+          "llm_owns_whole_line": 2,
+          "relevance_irrelevant": 2
+        },
+        "contextUncertainAxisCounts": {
+          "actionStatus": 1,
+          "sourceOrigin": 1,
+          "temporalRelation": 3
+        },
+        "encoderCodes": []
+      },
+      "whiteboxFingerprint": "6c930ae0d2989e5d97d26d030799bdfbe6eba8eea59b9d05cde2b14fdb5cb40d",
+      "machinePrecheck": {
+        "caseId": "wx0-im-outp-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "outpatient",
+        "clinicalTextSha256": "f548c3778a54aedced0ff5afb6c2f05094d59b3eca58bc458f109ae940b43edd",
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 5,
+        "expectedCurrentOwnCodes": [
+          "120002910",
+          "160054710",
+          "160095710",
+          "620007817"
+        ],
+        "encoderCodes": [],
+        "llmCodes": [],
+        "encoderTruePositiveCodes": [],
+        "encoderFalsePositiveCodes": [],
+        "encoderFalseNegativeCodes": [
+          "120002910",
+          "160054710",
+          "160095710",
+          "620007817"
+        ],
+        "expectedSpanDiagnostics": [
+          {
+            "expectedCode": "160008010",
+            "category": "lab",
+            "currentOwnPerformed": false,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 8,
+            "expectedCharEnd": 16,
+            "spanTextSha256": "dab1982e21af0d04cff73cafe7ddb03c0246fe65385530600367ed71cfb32662",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "160054710",
+            "category": "lab",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 38,
+            "expectedCharEnd": 41,
+            "spanTextSha256": "3b50a6d3dc721c2946c5e6eea8650210362028e40e22b58727c891d0e0cbe1d2",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "160095710",
+            "category": "lab",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 48,
+            "expectedCharEnd": 50,
+            "spanTextSha256": "201ae64a558c940f3249b73e660c4c1f16c8fd0de877a5e6c93f7771d011ce13",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "O-001:48:50",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "linker_low_margin",
+              "linker_low_score",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "span_low_confidence"
+            ]
+          },
+          {
+            "expectedCode": "620007817",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 2,
+            "expectedCharEnd": 16,
+            "spanTextSha256": "665fc43877825a1c241aae102c1bf9cd27868d7496767a2beebbb811ac15f529",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "120002910",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 25,
+            "expectedCharEnd": 28,
+            "spanTextSha256": "455d26176076aa2f58fb1f63f8d8d988ce26a7e269f7abcd4aee027c18f75335",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "P-001:25:28",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "linker_low_margin",
+              "linker_low_score",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "span_low_confidence"
+            ]
+          }
+        ],
+        "shadowComparisonObserved": false,
+        "reviewStatus": "machine_precheck_only"
+      }
+    },
+    {
+      "caseId": "wx0-ped-hv-0008",
+      "specialty": "pediatrics",
+      "encounterSetting": "home_visit",
+      "measurementCell": "pediatrics|home_visit",
+      "split": "development",
+      "feeSessionId": "fee_40dfa0166775490bb933019292",
+      "departmentId": "dep_5446115ab73e4a76bc354c0aa3",
+      "serviceDate": "2026-07-25",
+      "runKind": "measurement",
+      "runInstance": "measurement-1",
+      "cloudRunRevision": "fee-api-stg-00190-886",
+      "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+      "whiteboxDegraded": false,
+      "calculateRequestMs": 19919,
+      "whiteboxSnapshot": {
+        "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+        "degraded": false,
+        "lineCount": 4,
+        "spanCount": 3,
+        "shadowEncoderLineIds": [
+          "A-001",
+          "O-001",
+          "S-001"
+        ],
+        "gateDiagnosticsSha256": "07d27cc05297638b43183da3d2cdb193abda7ffbb15e93cb4cc1ccb110755c5f",
+        "gateFunnel": {
+          "shadow": {
+            "spanCount": 3,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 3,
+            "linkerScorePassCount": 3,
+            "linkerMarginPassCount": 3,
+            "linkerCategoryPassCount": 3,
+            "linkerPassCount": 3,
+            "contextResolvedCount": 0,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 3,
+              "span_low_confidence": 3
+            }
+          },
+          "strict": {
+            "spanCount": 3,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 3,
+            "linkerScorePassCount": 2,
+            "linkerMarginPassCount": 0,
+            "linkerCategoryPassCount": 3,
+            "linkerPassCount": 0,
+            "contextResolvedCount": 0,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 3,
+              "linker_low_margin": 3,
+              "linker_low_score": 1,
+              "span_low_confidence": 3
+            }
+          }
+        },
+        "routeReasonCounts": {
+          "llm_owns_whole_line": 1,
+          "relevance_irrelevant": 3
+        },
+        "contextUncertainAxisCounts": {
+          "actionStatus": 2,
+          "sourceOrigin": 1,
+          "standingStatus": 1,
+          "temporalRelation": 1
+        },
+        "encoderCodes": []
+      },
+      "whiteboxFingerprint": "a947f17f55a14261fbe59e08b9b2014d4875a37e1b06fff4cc911a5549a5e07f",
+      "machinePrecheck": {
+        "caseId": "wx0-ped-hv-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "home_visit",
+        "clinicalTextSha256": "36f929e20f5928e43042ca666d82f9343f0e59b1e57abeef64befc0fbe31c32b",
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 3,
+        "expectedCurrentOwnCodes": [
+          "114008010",
+          "114021210",
+          "622346201"
+        ],
+        "encoderCodes": [],
+        "llmCodes": [
+          "113002850",
+          "114021210"
+        ],
+        "encoderTruePositiveCodes": [],
+        "encoderFalsePositiveCodes": [],
+        "encoderFalseNegativeCodes": [
+          "114008010",
+          "114021210",
+          "622346201"
+        ],
+        "expectedSpanDiagnostics": [
+          {
+            "expectedCode": "114021210",
+            "category": "management",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 2,
+            "expectedCharEnd": 16,
+            "spanTextSha256": "426e8d7326dbcbb4a7fce211be65822af3db72a81c2204b031c7fc8ca1daab49",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "P-001:2:16",
+            "expectedSemanticRank": 1,
+            "expectedShadowRank": 1,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "context_unresolved",
+              "linker_low_margin",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "context_unresolved",
+              "span_low_confidence"
+            ]
+          },
+          {
+            "expectedCode": "622346201",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 20,
+            "expectedCharEnd": 35,
+            "spanTextSha256": "705f016714a64048f1863fdfd9057c998fde22cc482f22d81044de295f526888",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "114008010",
+            "category": "management",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 51,
+            "expectedCharEnd": 58,
+            "spanTextSha256": "a8d89026ccbfd9e16115c77542629d219a4c7b6d9764ad9871347f6a2d49813b",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          }
+        ],
+        "shadowComparisonObserved": true,
+        "reviewStatus": "machine_precheck_only"
+      }
+    },
+    {
+      "caseId": "wx0-derm-hc-0008",
+      "specialty": "dermatology",
+      "encounterSetting": "house_call",
+      "measurementCell": "dermatology|house_call",
+      "split": "development",
+      "feeSessionId": "fee_5ab0d03819b34cde969ba3570d",
+      "departmentId": "dep_baa81a39ab574d8295ac3d573a",
+      "serviceDate": "2026-07-25",
+      "runKind": "measurement",
+      "runInstance": "measurement-1",
+      "cloudRunRevision": "fee-api-stg-00190-886",
+      "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+      "whiteboxDegraded": false,
+      "calculateRequestMs": 18689,
+      "whiteboxSnapshot": {
+        "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+        "degraded": false,
+        "lineCount": 4,
+        "spanCount": 4,
+        "shadowEncoderLineIds": [
+          "A-001",
+          "S-001"
+        ],
+        "gateDiagnosticsSha256": "41e30bcac05c2f4b4ae8b9d9ae72c0758c9b7c26c5cec38a86608d3f4afa76ee",
+        "gateFunnel": {
+          "shadow": {
+            "spanCount": 4,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 4,
+            "linkerScorePassCount": 4,
+            "linkerMarginPassCount": 4,
+            "linkerCategoryPassCount": 4,
+            "linkerPassCount": 4,
+            "contextResolvedCount": 2,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 2,
+              "span_low_confidence": 4
+            }
+          },
+          "strict": {
+            "spanCount": 4,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 4,
+            "linkerScorePassCount": 1,
+            "linkerMarginPassCount": 0,
+            "linkerCategoryPassCount": 4,
+            "linkerPassCount": 0,
+            "contextResolvedCount": 2,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 2,
+              "linker_low_margin": 4,
+              "linker_low_score": 3,
+              "span_low_confidence": 4
+            }
+          }
+        },
+        "routeReasonCounts": {
+          "llm_owns_whole_line": 1,
+          "relevance_irrelevant": 2,
+          "visit_facts_sensitive_change": 1
+        },
+        "contextUncertainAxisCounts": {
+          "actionStatus": 2,
+          "standingStatus": 2,
+          "temporalRelation": 1
+        },
+        "encoderCodes": []
+      },
+      "whiteboxFingerprint": "3576f653d652da4e0d59b4f363fbb169c34b93e873c90d182d6de34a78608004",
+      "machinePrecheck": {
+        "caseId": "wx0-derm-hc-0008",
+        "specialty": "dermatology",
+        "encounterSetting": "house_call",
+        "clinicalTextSha256": "77ab6ba2aa579c06900ccb35f6260011a6c7dbcc2e42ee00e09eb510f104396d",
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 3,
+        "expectedCurrentOwnCodes": [
+          "120002910",
+          "130000510",
+          "622188101"
+        ],
+        "encoderCodes": [],
+        "llmCodes": [],
+        "encoderTruePositiveCodes": [],
+        "encoderFalsePositiveCodes": [],
+        "encoderFalseNegativeCodes": [
+          "120002910",
+          "130000510",
+          "622188101"
+        ],
+        "expectedSpanDiagnostics": [
+          {
+            "expectedCode": "130000510",
+            "category": "injection",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 31,
+            "expectedCharEnd": 35,
+            "spanTextSha256": "a0481e981d696631aafb4c04cf1b7dc14ca7335f91d9cf508f6a8e5e0413778d",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "622188101",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 2,
+            "expectedCharEnd": 15,
+            "spanTextSha256": "7b9c40c5135a9d3ca4276d3eb09e55c60f29372e1540738e83ede8078e08d065",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "120002910",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 23,
+            "expectedCharEnd": 28,
+            "spanTextSha256": "dd5947d648489d738cc3eafbb0b54189cc8632eba8cbb435eaa1a0e7d99a7ab9",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "P-001:23:28",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "linker_low_margin",
+              "linker_low_score",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "span_low_confidence"
+            ]
+          }
+        ],
+        "shadowComparisonObserved": false,
+        "reviewStatus": "machine_precheck_only"
+      }
+    },
+    {
+      "caseId": "wx0-orth-tel-0008",
+      "specialty": "orthopedics",
+      "encounterSetting": "telephone",
+      "measurementCell": "orthopedics|telephone",
+      "split": "development",
+      "feeSessionId": "fee_c729e57dfa294a9485ae7a3305",
+      "departmentId": "dep_00d6c56dcd8b4d65acf0d8f2ab",
+      "serviceDate": "2026-07-25",
+      "runKind": "measurement",
+      "runInstance": "measurement-1",
+      "cloudRunRevision": "fee-api-stg-00190-886",
+      "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+      "whiteboxDegraded": false,
+      "calculateRequestMs": 18372,
+      "whiteboxSnapshot": {
+        "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+        "degraded": false,
+        "lineCount": 4,
+        "spanCount": 4,
+        "shadowEncoderLineIds": [
+          "A-001"
+        ],
+        "gateDiagnosticsSha256": "c328a9686cf134680e832e87a2cbc9328b9361c328dcacf808a04b8d2988f41d",
+        "gateFunnel": {
+          "shadow": {
+            "spanCount": 4,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 4,
+            "linkerScorePassCount": 4,
+            "linkerMarginPassCount": 4,
+            "linkerCategoryPassCount": 4,
+            "linkerPassCount": 4,
+            "contextResolvedCount": 0,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 4,
+              "span_low_confidence": 4
+            }
+          },
+          "strict": {
+            "spanCount": 4,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 4,
+            "linkerScorePassCount": 2,
+            "linkerMarginPassCount": 0,
+            "linkerCategoryPassCount": 4,
+            "linkerPassCount": 0,
+            "contextResolvedCount": 0,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 4,
+              "linker_low_margin": 4,
+              "linker_low_score": 2,
+              "span_low_confidence": 4
+            }
+          }
+        },
+        "routeReasonCounts": {
+          "llm_owns_whole_line": 3,
+          "relevance_irrelevant": 1
+        },
+        "contextUncertainAxisCounts": {
+          "actionStatus": 1,
+          "providerOwnership": 4,
+          "sourceOrigin": 4,
+          "temporalRelation": 2
+        },
+        "encoderCodes": []
+      },
+      "whiteboxFingerprint": "999d5cea1e52bd61c522424313596b384d92e81afd1441d1e0a2fc9892b836a5",
+      "machinePrecheck": {
+        "caseId": "wx0-orth-tel-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "telephone",
+        "clinicalTextSha256": "df0be0f28e0366050530ffc35ef8a2d8832984bc9f43dc2efd00e9b711da4d05",
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 3,
+        "expectedCurrentOwnCodes": [
+          "620000033"
+        ],
+        "encoderCodes": [],
+        "llmCodes": [],
+        "encoderTruePositiveCodes": [],
+        "encoderFalsePositiveCodes": [],
+        "encoderFalseNegativeCodes": [
+          "620000033"
+        ],
+        "expectedSpanDiagnostics": [
+          {
+            "expectedCode": "160170410",
+            "category": "exam",
+            "currentOwnPerformed": false,
+            "expectedLineIndex": 1,
+            "expectedCharStart": 18,
+            "expectedCharEnd": 24,
+            "spanTextSha256": "57daf6d8f940cdcd068e1cc25554f09950ddf1da705d4c0c324812ea871035aa",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "160170410",
+            "category": "exam",
+            "currentOwnPerformed": false,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 5,
+            "expectedCharEnd": 17,
+            "spanTextSha256": "d8a3df3386b507b11083a3fefee2c5b8186d68457cc9034aa19cff9b22d83f0a",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "O-001:5:17",
+            "expectedSemanticRank": 1,
+            "expectedShadowRank": 1,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "context_unresolved",
+              "linker_low_margin",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "context_unresolved",
+              "span_low_confidence"
+            ]
+          },
+          {
+            "expectedCode": "620000033",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 24,
+            "expectedCharEnd": 33,
+            "spanTextSha256": "e44c50777f700e73b5592e91b17816ce37e9c0d8bf168b114ce56dee6caa531d",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          }
+        ],
+        "shadowComparisonObserved": false,
+        "reviewStatus": "machine_precheck_only"
+      }
+    },
+    {
+      "caseId": "wx0-psy-outp-0008",
+      "specialty": "psychiatry",
+      "encounterSetting": "outpatient",
+      "measurementCell": "psychiatry|outpatient",
+      "split": "development",
+      "feeSessionId": "fee_88a29e69e0ac440ab70564f9b0",
+      "departmentId": "dep_66fc2f62d39e482ba7a87a4519",
+      "serviceDate": "2026-07-25",
+      "runKind": "measurement",
+      "runInstance": "measurement-1",
+      "cloudRunRevision": "fee-api-stg-00190-886",
+      "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+      "whiteboxDegraded": false,
+      "calculateRequestMs": 16519,
+      "whiteboxSnapshot": {
+        "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+        "degraded": false,
+        "lineCount": 4,
+        "spanCount": 4,
+        "shadowEncoderLineIds": [
+          "A-001",
+          "S-001"
+        ],
+        "gateDiagnosticsSha256": "074d3aa082acb4dcda06a5638ba76f5fe685326f9b609c2a119c1c005071f9d3",
+        "gateFunnel": {
+          "shadow": {
+            "spanCount": 4,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 4,
+            "linkerScorePassCount": 4,
+            "linkerMarginPassCount": 4,
+            "linkerCategoryPassCount": 4,
+            "linkerPassCount": 4,
+            "contextResolvedCount": 4,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "span_low_confidence": 4
+            }
+          },
+          "strict": {
+            "spanCount": 4,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 4,
+            "linkerScorePassCount": 2,
+            "linkerMarginPassCount": 0,
+            "linkerCategoryPassCount": 4,
+            "linkerPassCount": 0,
+            "contextResolvedCount": 4,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "linker_low_margin": 4,
+              "linker_low_score": 2,
+              "span_low_confidence": 4
+            }
+          }
+        },
+        "routeReasonCounts": {
+          "llm_owns_whole_line": 1,
+          "relevance_irrelevant": 2,
+          "visit_facts_sensitive_change": 1
+        },
+        "contextUncertainAxisCounts": {
+          "actionStatus": 3,
+          "providerOwnership": 1,
+          "sourceOrigin": 3,
+          "temporalRelation": 3
+        },
+        "encoderCodes": []
+      },
+      "whiteboxFingerprint": "d852c21bd2a0dd9f9410d882f5bad08ca113ba75e9db82604c1d736e4bd2ced6",
+      "machinePrecheck": {
+        "caseId": "wx0-psy-outp-0008",
+        "specialty": "psychiatry",
+        "encounterSetting": "outpatient",
+        "clinicalTextSha256": "1be253b1e47d41d6f531554fc02db1ffa87818275b4274730ac64eeb96b56358",
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 5,
+        "expectedCurrentOwnCodes": [
+          "120002910",
+          "180067310",
+          "620148601",
+          "622442901"
+        ],
+        "encoderCodes": [],
+        "llmCodes": [],
+        "encoderTruePositiveCodes": [],
+        "encoderFalsePositiveCodes": [],
+        "encoderFalseNegativeCodes": [
+          "120002910",
+          "180067310",
+          "620148601",
+          "622442901"
+        ],
+        "expectedSpanDiagnostics": [
+          {
+            "expectedCode": "180067310",
+            "category": "counseling",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 8,
+            "expectedCharEnd": 12,
+            "spanTextSha256": "46ef8594aae41ac94611ea4ea7c2ab0fe6c72c17a93d1e57cc15107f2fa78a21",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "160085910",
+            "category": "exam",
+            "currentOwnPerformed": false,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 43,
+            "expectedCharEnd": 47,
+            "spanTextSha256": "d2cfd7de324f62fc163e689d1dcb99b020b4b19db3054d0f94523a05aa076097",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "O-001:43:47",
+            "expectedSemanticRank": 4,
+            "expectedShadowRank": 4,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "linker_expected_code_not_top1",
+              "linker_low_margin",
+              "linker_low_score",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "linker_expected_code_not_top1",
+              "span_low_confidence"
+            ]
+          },
+          {
+            "expectedCode": "622442901",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 2,
+            "expectedCharEnd": 13,
+            "spanTextSha256": "87b08077e445656b6673ffd155589326517d71ced3735812a8e8b462d04f6380",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "620148601",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 17,
+            "expectedCharEnd": 28,
+            "spanTextSha256": "ee1734454af779fd1bdc71a46d672d5025d7ac6c827b92c00f6ec099f5ea5a45",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "120002910",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 37,
+            "expectedCharEnd": 42,
+            "spanTextSha256": "dd5947d648489d738cc3eafbb0b54189cc8632eba8cbb435eaa1a0e7d99a7ab9",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "P-001:37:42",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "linker_low_margin",
+              "linker_low_score",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "span_low_confidence"
+            ]
+          }
+        ],
+        "shadowComparisonObserved": false,
+        "reviewStatus": "machine_precheck_only"
+      }
+    },
+    {
+      "caseId": "wx0-oph-hv-0008",
+      "specialty": "ophthalmology",
+      "encounterSetting": "home_visit",
+      "measurementCell": "ophthalmology|home_visit",
+      "split": "development",
+      "feeSessionId": "fee_350cf89619b742e2b7ad5a678a",
+      "departmentId": "dep_c5c113fab3d145f58e38ad9480",
+      "serviceDate": "2026-07-25",
+      "runKind": "measurement",
+      "runInstance": "measurement-1",
+      "cloudRunRevision": "fee-api-stg-00190-886",
+      "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+      "whiteboxDegraded": false,
+      "calculateRequestMs": 19604,
+      "whiteboxSnapshot": {
+        "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+        "degraded": false,
+        "lineCount": 4,
+        "spanCount": 5,
+        "shadowEncoderLineIds": [
+          "A-001"
+        ],
+        "gateDiagnosticsSha256": "efb866ee1690347030cb4e4c1cae514b0e314a99c419012a5b03f605b3b71c71",
+        "gateFunnel": {
+          "shadow": {
+            "spanCount": 5,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 5,
+            "linkerScorePassCount": 5,
+            "linkerMarginPassCount": 5,
+            "linkerCategoryPassCount": 5,
+            "linkerPassCount": 5,
+            "contextResolvedCount": 4,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 1,
+              "span_low_confidence": 5
+            }
+          },
+          "strict": {
+            "spanCount": 5,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 5,
+            "linkerScorePassCount": 3,
+            "linkerMarginPassCount": 0,
+            "linkerCategoryPassCount": 5,
+            "linkerPassCount": 0,
+            "contextResolvedCount": 4,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 1,
+              "linker_low_margin": 5,
+              "linker_low_score": 2,
+              "span_low_confidence": 5
+            }
+          }
+        },
+        "routeReasonCounts": {
+          "llm_owns_whole_line": 2,
+          "relevance_irrelevant": 1,
+          "visit_facts_sensitive_change": 1
+        },
+        "contextUncertainAxisCounts": {
+          "actionStatus": 2,
+          "sourceOrigin": 3,
+          "temporalRelation": 2
+        },
+        "encoderCodes": []
+      },
+      "whiteboxFingerprint": "285f917ab0a06e4ba2f69cdbb575feea62037a86171889957605eac86ba9ed38",
+      "machinePrecheck": {
+        "caseId": "wx0-oph-hv-0008",
+        "specialty": "ophthalmology",
+        "encounterSetting": "home_visit",
+        "clinicalTextSha256": "815005b4c0c19784aec890d5a92133f5e8d79724ceebc295ffa13cdfadbd5a75",
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 5,
+        "expectedCurrentOwnCodes": [
+          "120002910",
+          "160084510",
+          "620204201",
+          "622046702"
+        ],
+        "encoderCodes": [],
+        "llmCodes": [],
+        "encoderTruePositiveCodes": [],
+        "encoderFalsePositiveCodes": [],
+        "encoderFalseNegativeCodes": [
+          "120002910",
+          "160084510",
+          "620204201",
+          "622046702"
+        ],
+        "expectedSpanDiagnostics": [
+          {
+            "expectedCode": "150253010",
+            "category": "procedure",
+            "currentOwnPerformed": false,
+            "expectedLineIndex": 1,
+            "expectedCharStart": 29,
+            "expectedCharEnd": 35,
+            "spanTextSha256": "e44fbf5a2ec1b04b89108af000b6527cb3613f233c31f8ce8d74213c302e5db2",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "S-001:29:35",
+            "expectedSemanticRank": 2,
+            "expectedShadowRank": 2,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "linker_expected_code_not_top1",
+              "linker_low_margin",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "linker_expected_code_not_top1",
+              "span_low_confidence"
+            ]
+          },
+          {
+            "expectedCode": "160084510",
+            "category": "exam",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 2,
+            "expectedCharEnd": 6,
+            "spanTextSha256": "8e8bbca8a24b813d3f2917d863389a711c859891eb11f2113d25ba90f5cb3bd2",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "O-001:2:6",
+            "expectedSemanticRank": 2,
+            "expectedShadowRank": 2,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "context_unresolved",
+              "linker_expected_code_not_top1",
+              "linker_low_margin",
+              "linker_low_score",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "context_unresolved",
+              "linker_expected_code_not_top1",
+              "span_low_confidence"
+            ]
+          },
+          {
+            "expectedCode": "620204201",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 2,
+            "expectedCharEnd": 17,
+            "spanTextSha256": "711b38040f7036a15b921dde27bb29491fa2fb332e282d698925552ecfc7b137",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "622046702",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 21,
+            "expectedCharEnd": 36,
+            "spanTextSha256": "1f80287c2d8f21016a11b9c9a1bb26dc80daa4ce408d4633df06d6d46af07e42",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "120002910",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 43,
+            "expectedCharEnd": 48,
+            "spanTextSha256": "dd5947d648489d738cc3eafbb0b54189cc8632eba8cbb435eaa1a0e7d99a7ab9",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "P-001:43:48",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "linker_low_margin",
+              "linker_low_score",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "span_low_confidence"
+            ]
+          }
+        ],
+        "shadowComparisonObserved": false,
+        "reviewStatus": "machine_precheck_only"
+      }
+    },
+    {
+      "caseId": "wx0-ent-hc-0008",
+      "specialty": "otolaryngology",
+      "encounterSetting": "house_call",
+      "measurementCell": "otolaryngology|house_call",
+      "split": "development",
+      "feeSessionId": "fee_4eef81d91e6248f9819af7e922",
+      "departmentId": "dep_aacd3d5d763f4a9baebd3a2c83",
+      "serviceDate": "2026-07-25",
+      "runKind": "measurement",
+      "runInstance": "measurement-1",
+      "cloudRunRevision": "fee-api-stg-00190-886",
+      "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+      "whiteboxDegraded": false,
+      "calculateRequestMs": 16356,
+      "whiteboxSnapshot": {
+        "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+        "degraded": false,
+        "lineCount": 4,
+        "spanCount": 4,
+        "shadowEncoderLineIds": [
+          "A-001",
+          "P-001"
+        ],
+        "gateDiagnosticsSha256": "95e2429798b2adea8e34a4ef9a10e26741a4745df1815479cd94100750c4dbcf",
+        "gateFunnel": {
+          "shadow": {
+            "spanCount": 4,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 4,
+            "linkerScorePassCount": 4,
+            "linkerMarginPassCount": 4,
+            "linkerCategoryPassCount": 4,
+            "linkerPassCount": 4,
+            "contextResolvedCount": 2,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 2,
+              "span_low_confidence": 4
+            }
+          },
+          "strict": {
+            "spanCount": 4,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 4,
+            "linkerScorePassCount": 2,
+            "linkerMarginPassCount": 0,
+            "linkerCategoryPassCount": 4,
+            "linkerPassCount": 0,
+            "contextResolvedCount": 2,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 2,
+              "linker_low_margin": 4,
+              "linker_low_score": 2,
+              "span_low_confidence": 4
+            }
+          }
+        },
+        "routeReasonCounts": {
+          "llm_owns_whole_line": 2,
+          "relevance_irrelevant": 2
+        },
+        "contextUncertainAxisCounts": {
+          "actionStatus": 2
+        },
+        "encoderCodes": []
+      },
+      "whiteboxFingerprint": "b4f2f1b23f962c2194904134475b518af6391834522ed711c2ab0be3b4d3c113",
+      "machinePrecheck": {
+        "caseId": "wx0-ent-hc-0008",
+        "specialty": "otolaryngology",
+        "encounterSetting": "house_call",
+        "clinicalTextSha256": "d44aaf838cc61a59d611d104362438f55c46b8de6a15b1ef11866c2d343730e0",
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 3,
+        "expectedCurrentOwnCodes": [
+          "140019310",
+          "140022610"
+        ],
+        "encoderCodes": [],
+        "llmCodes": [],
+        "encoderTruePositiveCodes": [],
+        "encoderFalsePositiveCodes": [],
+        "encoderFalseNegativeCodes": [
+          "140019310",
+          "140022610"
+        ],
+        "expectedSpanDiagnostics": [
+          {
+            "expectedCode": "140022610",
+            "category": "procedure",
+            "currentOwnPerformed": false,
+            "expectedLineIndex": 1,
+            "expectedCharStart": 43,
+            "expectedCharEnd": 49,
+            "spanTextSha256": "6b05c828d587e86abef987cd0d7dfa74865c682a3fdc8b991b3f3cebd388d52e",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "S-001:43:49",
+            "expectedSemanticRank": 1,
+            "expectedShadowRank": 1,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "linker_low_margin",
+              "linker_low_score",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_low_confidence"
+            ]
+          },
+          {
+            "expectedCode": "140022610",
+            "category": "procedure",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 20,
+            "expectedCharEnd": 30,
+            "spanTextSha256": "011df9bc1b330827c801d46d4de3c070d83832ae087f8e735331db8cd2b81a9f",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "O-001:20:30",
+            "expectedSemanticRank": 1,
+            "expectedShadowRank": 1,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "linker_low_margin",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_low_confidence"
+            ]
+          },
+          {
+            "expectedCode": "140019310",
+            "category": "procedure",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 44,
+            "expectedCharEnd": 47,
+            "spanTextSha256": "7fcca3714c10cc41478971ae17bdf2b56cefbb6fdeb43f75d735c054f51c4749",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "O-001:44:47",
+            "expectedSemanticRank": 1,
+            "expectedShadowRank": 1,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "context_unresolved",
+              "linker_low_margin",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "context_unresolved",
+              "span_low_confidence"
+            ]
+          }
+        ],
+        "shadowComparisonObserved": false,
+        "reviewStatus": "machine_precheck_only"
+      }
+    },
+    {
+      "caseId": "wx0-surg-tel-0008",
+      "specialty": "surgery",
+      "encounterSetting": "telephone",
+      "measurementCell": "surgery|telephone",
+      "split": "development",
+      "feeSessionId": "fee_924fcfa4e8ca4e50935b6efc42",
+      "departmentId": "dep_72f4b46b4e7d4719948fb42631",
+      "serviceDate": "2026-07-25",
+      "runKind": "measurement",
+      "runInstance": "measurement-1",
+      "cloudRunRevision": "fee-api-stg-00190-886",
+      "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+      "whiteboxDegraded": false,
+      "calculateRequestMs": 12025,
+      "whiteboxSnapshot": {
+        "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+        "degraded": false,
+        "lineCount": 4,
+        "spanCount": 1,
+        "shadowEncoderLineIds": [
+          "A-001",
+          "O-001",
+          "S-001"
+        ],
+        "gateDiagnosticsSha256": "a7940b7fec1a0d748cd60b6196e5b7e56ffde5b373c8eef1b26304119d24c4bd",
+        "gateFunnel": {
+          "shadow": {
+            "spanCount": 1,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 1,
+            "linkerScorePassCount": 1,
+            "linkerMarginPassCount": 1,
+            "linkerCategoryPassCount": 1,
+            "linkerPassCount": 1,
+            "contextResolvedCount": 0,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 1,
+              "span_low_confidence": 1
+            }
+          },
+          "strict": {
+            "spanCount": 1,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 1,
+            "linkerScorePassCount": 1,
+            "linkerMarginPassCount": 0,
+            "linkerCategoryPassCount": 1,
+            "linkerPassCount": 0,
+            "contextResolvedCount": 0,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 1,
+              "linker_low_margin": 1,
+              "span_low_confidence": 1
+            }
+          }
+        },
+        "routeReasonCounts": {
+          "llm_owns_whole_line": 1,
+          "relevance_irrelevant": 3
+        },
+        "contextUncertainAxisCounts": {
+          "actionStatus": 1,
+          "providerOwnership": 1,
+          "sourceOrigin": 1,
+          "temporalRelation": 1
+        },
+        "encoderCodes": []
+      },
+      "whiteboxFingerprint": "8faf97e86790fa577ce4d30ed80a74fa841a2f539651a7e35a84513a7dd56b83",
+      "machinePrecheck": {
+        "caseId": "wx0-surg-tel-0008",
+        "specialty": "surgery",
+        "encounterSetting": "telephone",
+        "clinicalTextSha256": "94257b9c438d3910f428fd213569420d4801fe011188006325579f50ddb21b80",
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 2,
+        "expectedCurrentOwnCodes": [
+          "660453014"
+        ],
+        "encoderCodes": [],
+        "llmCodes": [],
+        "encoderTruePositiveCodes": [],
+        "encoderFalsePositiveCodes": [],
+        "encoderFalseNegativeCodes": [
+          "660453014"
+        ],
+        "expectedSpanDiagnostics": [
+          {
+            "expectedCode": "660453014",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 2,
+            "expectedCharEnd": 13,
+            "spanTextSha256": "0143e9afe2f565dc9189f4c6b7c5f4cc6e8a329a32c01e00253a88262215442e",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "150002210",
+            "category": "procedure",
+            "currentOwnPerformed": false,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 41,
+            "expectedCharEnd": 44,
+            "spanTextSha256": "cd1eeef8b6a2af013b6e4cb135c2bf6683249351afd2a8f78f69cfa6ffc6bc4c",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          }
+        ],
+        "shadowComparisonObserved": false,
+        "reviewStatus": "machine_precheck_only"
+      }
+    },
+    {
+      "caseId": "wx0-im-hv-0008",
+      "specialty": "internal_medicine",
+      "encounterSetting": "home_visit",
+      "measurementCell": "internal_medicine|home_visit",
+      "split": "development",
+      "feeSessionId": "fee_a8a2bf84cf944f3ab3d281b222",
+      "departmentId": "dep_144765d9bc00417cbf9c824351",
+      "serviceDate": "2026-07-25",
+      "runKind": "measurement",
+      "runInstance": "measurement-1",
+      "cloudRunRevision": "fee-api-stg-00190-886",
+      "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+      "whiteboxDegraded": false,
+      "calculateRequestMs": 14933,
+      "whiteboxSnapshot": {
+        "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+        "degraded": false,
+        "lineCount": 4,
+        "spanCount": 4,
+        "shadowEncoderLineIds": [
+          "A-001",
+          "S-001"
+        ],
+        "gateDiagnosticsSha256": "be61b22b9ca4df0572f3a688463d696b9253b5768e169eef1662fde2a4227af7",
+        "gateFunnel": {
+          "shadow": {
+            "spanCount": 4,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 4,
+            "linkerScorePassCount": 4,
+            "linkerMarginPassCount": 4,
+            "linkerCategoryPassCount": 4,
+            "linkerPassCount": 4,
+            "contextResolvedCount": 3,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 1,
+              "span_low_confidence": 4
+            }
+          },
+          "strict": {
+            "spanCount": 4,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 4,
+            "linkerScorePassCount": 1,
+            "linkerMarginPassCount": 0,
+            "linkerCategoryPassCount": 4,
+            "linkerPassCount": 0,
+            "contextResolvedCount": 3,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 1,
+              "linker_low_margin": 4,
+              "linker_low_score": 3,
+              "span_low_confidence": 4
+            }
+          }
+        },
+        "routeReasonCounts": {
+          "llm_owns_whole_line": 1,
+          "relevance_irrelevant": 2,
+          "visit_facts_sensitive_change": 1
+        },
+        "contextUncertainAxisCounts": {
+          "actionStatus": 1,
+          "standingStatus": 1,
+          "temporalRelation": 1
+        },
+        "encoderCodes": []
+      },
+      "whiteboxFingerprint": "060b3b2918dd08714a2248ea572ef9e5897beea87066de4616cc1b0ab509fb34",
+      "machinePrecheck": {
+        "caseId": "wx0-im-hv-0008",
+        "specialty": "internal_medicine",
+        "encounterSetting": "home_visit",
+        "clinicalTextSha256": "04d3c8d66cbd74a47f98756efce00345d75174e74ecd43be241415f9f6c4c60b",
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 4,
+        "expectedCurrentOwnCodes": [
+          "120002910",
+          "160155510",
+          "160169450",
+          "620000033"
+        ],
+        "encoderCodes": [],
+        "llmCodes": [
+          "160169450"
+        ],
+        "encoderTruePositiveCodes": [],
+        "encoderFalsePositiveCodes": [],
+        "encoderFalseNegativeCodes": [
+          "120002910",
+          "160155510",
+          "160169450",
+          "620000033"
+        ],
+        "expectedSpanDiagnostics": [
+          {
+            "expectedCode": "160169450",
+            "category": "lab",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 10,
+            "expectedCharEnd": 21,
+            "spanTextSha256": "e81a631791d6b844ba09c46a89f36aed479d53f383d34e8d525fb9dd9b745e01",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "160155510",
+            "category": "exam",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 36,
+            "expectedCharEnd": 44,
+            "spanTextSha256": "77fe56cd5c18acbbbdc56f4c7f587ca50cafe649e88250fd983b02634a2e2817",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "O-001:36:44",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "context_unresolved",
+              "linker_expected_code_not_in_top5",
+              "linker_low_margin",
+              "linker_low_score",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "context_unresolved",
+              "linker_expected_code_not_in_top5",
+              "span_low_confidence"
+            ]
+          },
+          {
+            "expectedCode": "620000033",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 2,
+            "expectedCharEnd": 11,
+            "spanTextSha256": "e44c50777f700e73b5592e91b17816ce37e9c0d8bf168b114ce56dee6caa531d",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "120002910",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 22,
+            "expectedCharEnd": 27,
+            "spanTextSha256": "dd5947d648489d738cc3eafbb0b54189cc8632eba8cbb435eaa1a0e7d99a7ab9",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "P-001:22:27",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "linker_low_margin",
+              "linker_low_score",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "span_low_confidence"
+            ]
+          }
+        ],
+        "shadowComparisonObserved": true,
+        "reviewStatus": "machine_precheck_only"
+      }
+    },
+    {
+      "caseId": "wx0-ped-hc-0008",
+      "specialty": "pediatrics",
+      "encounterSetting": "house_call",
+      "measurementCell": "pediatrics|house_call",
+      "split": "development",
+      "feeSessionId": "fee_56e6945d263d48899bf6efeea1",
+      "departmentId": "dep_5446115ab73e4a76bc354c0aa3",
+      "serviceDate": "2026-07-25",
+      "runKind": "measurement",
+      "runInstance": "measurement-1",
+      "cloudRunRevision": "fee-api-stg-00190-886",
+      "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+      "whiteboxDegraded": false,
+      "calculateRequestMs": 22195,
+      "whiteboxSnapshot": {
+        "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+        "degraded": false,
+        "lineCount": 4,
+        "spanCount": 6,
+        "shadowEncoderLineIds": [
+          "A-001",
+          "S-001"
+        ],
+        "gateDiagnosticsSha256": "02ec0fee895bbe73dc9e3669a545cbdb8917a726e783f847337e829083de7c53",
+        "gateFunnel": {
+          "shadow": {
+            "spanCount": 6,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 6,
+            "linkerScorePassCount": 6,
+            "linkerMarginPassCount": 6,
+            "linkerCategoryPassCount": 6,
+            "linkerPassCount": 6,
+            "contextResolvedCount": 3,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 3,
+              "span_low_confidence": 6
+            }
+          },
+          "strict": {
+            "spanCount": 6,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 6,
+            "linkerScorePassCount": 1,
+            "linkerMarginPassCount": 0,
+            "linkerCategoryPassCount": 6,
+            "linkerPassCount": 0,
+            "contextResolvedCount": 3,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 3,
+              "linker_low_margin": 6,
+              "linker_low_score": 5,
+              "span_low_confidence": 6
+            }
+          }
+        },
+        "routeReasonCounts": {
+          "llm_owns_whole_line": 1,
+          "relevance_irrelevant": 2,
+          "visit_facts_sensitive_change": 1
+        },
+        "contextUncertainAxisCounts": {
+          "actionStatus": 5,
+          "sourceOrigin": 1,
+          "standingStatus": 2,
+          "temporalRelation": 1
+        },
+        "encoderCodes": []
+      },
+      "whiteboxFingerprint": "6286242b8093b111b50cf1478fe5723f007643adf54c69de3e5a9c5009771036",
+      "machinePrecheck": {
+        "caseId": "wx0-ped-hc-0008",
+        "specialty": "pediatrics",
+        "encounterSetting": "house_call",
+        "clinicalTextSha256": "9dbddd424cec43ef209b786ebb8070d45fab06c19c90696fbd6def836eb64f77",
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 5,
+        "expectedCurrentOwnCodes": [
+          "120002910",
+          "130000510",
+          "160155510",
+          "622308201"
+        ],
+        "encoderCodes": [],
+        "llmCodes": [],
+        "encoderTruePositiveCodes": [],
+        "encoderFalsePositiveCodes": [],
+        "encoderFalseNegativeCodes": [
+          "120002910",
+          "130000510",
+          "160155510",
+          "622308201"
+        ],
+        "expectedSpanDiagnostics": [
+          {
+            "expectedCode": "160155510",
+            "category": "exam",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 18,
+            "expectedCharEnd": 22,
+            "spanTextSha256": "471e7991250486c1f8aef40a02529566bb801ff0ca491fa13bb3db0f2e6f07bc",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "130000510",
+            "category": "injection",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 35,
+            "expectedCharEnd": 40,
+            "spanTextSha256": "a7f1cdda1426b4a6760eff6d7093cfc95ecae53c1c466d13d6a9436c7b905c5f",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "622308201",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 2,
+            "expectedCharEnd": 15,
+            "spanTextSha256": "e71f1a70168a35fa3d1a18e0d1097d9b92f0ef9b4b7b3b5f9177e3556d4f98bb",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "120002910",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 20,
+            "expectedCharEnd": 25,
+            "spanTextSha256": "dd5947d648489d738cc3eafbb0b54189cc8632eba8cbb435eaa1a0e7d99a7ab9",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "P-001:20:25",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "linker_low_margin",
+              "linker_low_score",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "span_low_confidence"
+            ]
+          },
+          {
+            "expectedCode": "160095710",
+            "category": "lab",
+            "currentOwnPerformed": false,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 35,
+            "expectedCharEnd": 37,
+            "spanTextSha256": "201ae64a558c940f3249b73e660c4c1f16c8fd0de877a5e6c93f7771d011ce13",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "P-001:35:37",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "linker_low_margin",
+              "linker_low_score",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "span_low_confidence"
+            ]
+          }
+        ],
+        "shadowComparisonObserved": false,
+        "reviewStatus": "machine_precheck_only"
+      }
+    },
+    {
+      "caseId": "wx0-derm-tel-0008",
+      "specialty": "dermatology",
+      "encounterSetting": "telephone",
+      "measurementCell": "dermatology|telephone",
+      "split": "development",
+      "feeSessionId": "fee_3d8c31900117497f88a2bf1919",
+      "departmentId": "dep_baa81a39ab574d8295ac3d573a",
+      "serviceDate": "2026-07-25",
+      "runKind": "measurement",
+      "runInstance": "measurement-1",
+      "cloudRunRevision": "fee-api-stg-00190-886",
+      "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+      "whiteboxDegraded": false,
+      "calculateRequestMs": 13593,
+      "whiteboxSnapshot": {
+        "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+        "degraded": false,
+        "lineCount": 4,
+        "spanCount": 2,
+        "shadowEncoderLineIds": [
+          "A-001",
+          "O-001",
+          "S-001"
+        ],
+        "gateDiagnosticsSha256": "4f7af9b06cc66fed3dfaec3bd637eef7d4397563936a312e155524e84a0af170",
+        "gateFunnel": {
+          "shadow": {
+            "spanCount": 2,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 2,
+            "linkerScorePassCount": 2,
+            "linkerMarginPassCount": 2,
+            "linkerCategoryPassCount": 2,
+            "linkerPassCount": 2,
+            "contextResolvedCount": 0,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 2,
+              "span_low_confidence": 2
+            }
+          },
+          "strict": {
+            "spanCount": 2,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 2,
+            "linkerScorePassCount": 2,
+            "linkerMarginPassCount": 0,
+            "linkerCategoryPassCount": 2,
+            "linkerPassCount": 0,
+            "contextResolvedCount": 0,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "context_unresolved": 2,
+              "linker_low_margin": 2,
+              "span_low_confidence": 2
+            }
+          }
+        },
+        "routeReasonCounts": {
+          "llm_owns_whole_line": 1,
+          "relevance_irrelevant": 3
+        },
+        "contextUncertainAxisCounts": {
+          "actionStatus": 2,
+          "sourceOrigin": 2,
+          "standingStatus": 1,
+          "temporalRelation": 2
+        },
+        "encoderCodes": []
+      },
+      "whiteboxFingerprint": "fad05389e8385b8dfd6681b3bb237e92392d30b53ac5999170571add028d9b91",
+      "machinePrecheck": {
+        "caseId": "wx0-derm-tel-0008",
+        "specialty": "dermatology",
+        "encounterSetting": "telephone",
+        "clinicalTextSha256": "d28d090c625364f55f004229e7e6a5122a3e155a13064d1344e95d0692c1208b",
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 2,
+        "expectedCurrentOwnCodes": [
+          "620009048"
+        ],
+        "encoderCodes": [],
+        "llmCodes": [],
+        "encoderTruePositiveCodes": [],
+        "encoderFalsePositiveCodes": [],
+        "encoderFalseNegativeCodes": [
+          "620009048"
+        ],
+        "expectedSpanDiagnostics": [
+          {
+            "expectedCode": "140012410",
+            "category": "procedure",
+            "currentOwnPerformed": false,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 5,
+            "expectedCharEnd": 12,
+            "spanTextSha256": "70caf83e43a638049d01b46954d7b71cae697cfa03721686ad9d820255dbbd81",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "P-001:5:12",
+            "expectedSemanticRank": 2,
+            "expectedShadowRank": 2,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "context_unresolved",
+              "linker_expected_code_not_top1",
+              "linker_low_margin",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "context_unresolved",
+              "linker_expected_code_not_top1",
+              "span_low_confidence"
+            ]
+          },
+          {
+            "expectedCode": "620009048",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 38,
+            "expectedCharEnd": 48,
+            "spanTextSha256": "d7c14341dfd8a579b391fceebea70785092c265f633226a4e8d494152fcec002",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "P-001:38:48",
+            "expectedSemanticRank": 1,
+            "expectedShadowRank": 1,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "context_unresolved",
+              "linker_low_margin",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "context_unresolved",
+              "span_low_confidence"
+            ]
+          }
+        ],
+        "shadowComparisonObserved": false,
+        "reviewStatus": "machine_precheck_only"
+      }
+    },
+    {
+      "caseId": "wx0-orth-outp-0008",
+      "specialty": "orthopedics",
+      "encounterSetting": "outpatient",
+      "measurementCell": "orthopedics|outpatient",
+      "split": "development",
+      "feeSessionId": "fee_99c753a529f847b09d73e5fcc5",
+      "departmentId": "dep_00d6c56dcd8b4d65acf0d8f2ab",
+      "serviceDate": "2026-07-25",
+      "runKind": "measurement",
+      "runInstance": "measurement-1",
+      "cloudRunRevision": "fee-api-stg-00190-886",
+      "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+      "whiteboxDegraded": false,
+      "calculateRequestMs": 14158,
+      "whiteboxSnapshot": {
+        "extractorVersion": "whitebox-v1:dfb381d172b3a72e3086a83d",
+        "degraded": false,
+        "lineCount": 4,
+        "spanCount": 3,
+        "shadowEncoderLineIds": [
+          "A-001",
+          "S-001"
+        ],
+        "gateDiagnosticsSha256": "a79efd59af004f4b55d044110de0b350f06e58c0406f71e96952a66394c9b520",
+        "gateFunnel": {
+          "shadow": {
+            "spanCount": 3,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 3,
+            "linkerScorePassCount": 3,
+            "linkerMarginPassCount": 3,
+            "linkerCategoryPassCount": 3,
+            "linkerPassCount": 3,
+            "contextResolvedCount": 3,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "span_low_confidence": 3
+            }
+          },
+          "strict": {
+            "spanCount": 3,
+            "spanPassCount": 0,
+            "linkerCandidateCount": 3,
+            "linkerScorePassCount": 1,
+            "linkerMarginPassCount": 0,
+            "linkerCategoryPassCount": 3,
+            "linkerPassCount": 0,
+            "contextResolvedCount": 3,
+            "jointEligibleCount": 0,
+            "rejectionCounts": {
+              "linker_low_margin": 3,
+              "linker_low_score": 2,
+              "span_low_confidence": 3
+            }
+          }
+        },
+        "routeReasonCounts": {
+          "llm_owns_whole_line": 1,
+          "relevance_irrelevant": 2,
+          "visit_facts_sensitive_change": 1
+        },
+        "contextUncertainAxisCounts": {
+          "sourceOrigin": 1,
+          "standingStatus": 1,
+          "temporalRelation": 3
+        },
+        "encoderCodes": []
+      },
+      "whiteboxFingerprint": "132ad50fefead3b64be345371183b35097e282292a348bf3b6b3edaf12ab54db",
+      "machinePrecheck": {
+        "caseId": "wx0-orth-outp-0008",
+        "specialty": "orthopedics",
+        "encounterSetting": "outpatient",
+        "clinicalTextSha256": "a4c7754d00dd23abcd51e1c0430c3e6a4eb8d6dfe766c013f4a4c7323f40ecca",
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 4,
+        "expectedCurrentOwnCodes": [
+          "120002910",
+          "140040310",
+          "620193017"
+        ],
+        "encoderCodes": [],
+        "llmCodes": [],
+        "encoderTruePositiveCodes": [],
+        "encoderFalsePositiveCodes": [],
+        "encoderFalseNegativeCodes": [
+          "120002910",
+          "140040310",
+          "620193017"
+        ],
+        "expectedSpanDiagnostics": [
+          {
+            "expectedCode": "170000410",
+            "category": "imaging",
+            "currentOwnPerformed": false,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 10,
+            "expectedCharEnd": 13,
+            "spanTextSha256": "7eab65675b7a27f881d7949b10963000fb6d81a5fdf29e364373e6bdc8ca0e40",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "140040310",
+            "category": "treatment",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 2,
+            "expectedCharStart": 48,
+            "expectedCharEnd": 55,
+            "spanTextSha256": "2472fb9ec967b43fa05222e63823ef73a57dd8ea461122620e06d14d56e71be2",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "620193017",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 2,
+            "expectedCharEnd": 15,
+            "spanTextSha256": "263834817f6ff64542a17e7e11eda52f413f1559fb3ad1b34c518f8fa81ac955",
+            "runtimeSpanObserved": false,
+            "runtimeSpanId": "",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "span_not_detected"
+            ],
+            "shadowBlockerReasonCodes": [
+              "span_not_detected"
+            ]
+          },
+          {
+            "expectedCode": "120002910",
+            "category": "medication",
+            "currentOwnPerformed": true,
+            "expectedLineIndex": 4,
+            "expectedCharStart": 24,
+            "expectedCharEnd": 29,
+            "spanTextSha256": "dd5947d648489d738cc3eafbb0b54189cc8632eba8cbb435eaa1a0e7d99a7ab9",
+            "runtimeSpanObserved": true,
+            "runtimeSpanId": "P-001:24:29",
+            "expectedSemanticRank": null,
+            "expectedShadowRank": null,
+            "strictJointEligible": false,
+            "shadowJointEligible": false,
+            "strictBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "linker_low_margin",
+              "linker_low_score",
+              "span_low_confidence"
+            ],
+            "shadowBlockerReasonCodes": [
+              "linker_expected_code_not_in_top5",
+              "span_low_confidence"
+            ]
+          }
+        ],
+        "shadowComparisonObserved": false,
+        "reviewStatus": "machine_precheck_only"
+      }
+    }
+  ],
+  "machinePrecheck": {
+    "status": "complete",
+    "warning": "This is not independent human adjudication and cannot satisfy the promotion gate.",
+    "cells": {
+      "dermatology|house_call": {
+        "runCount": 1,
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 3,
+        "encoderTruePositiveCodeCount": 0,
+        "encoderFalsePositiveCodeCount": 0,
+        "encoderFalseNegativeCodeCount": 3,
+        "shadowComparisonObservedCount": 0,
+        "expectedCurrentOwnSpanCount": 3,
+        "detectedCurrentOwnSpanCount": 1,
+        "expectedSemanticTop1Count": 0,
+        "expectedSemanticTop5Count": 0,
+        "expectedShadowTop1Count": 0,
+        "expectedShadowTop5Count": 0,
+        "strictJointEligibleCount": 0,
+        "shadowJointEligibleCount": 0,
+        "strictBlockerCounts": {
+          "span_not_detected": 2,
+          "linker_expected_code_not_in_top5": 1,
+          "linker_low_margin": 1,
+          "linker_low_score": 1,
+          "span_low_confidence": 1
+        },
+        "shadowBlockerCounts": {
+          "span_not_detected": 2,
+          "linker_expected_code_not_in_top5": 1,
+          "span_low_confidence": 1
+        }
+      },
+      "dermatology|telephone": {
+        "runCount": 1,
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 2,
+        "encoderTruePositiveCodeCount": 0,
+        "encoderFalsePositiveCodeCount": 0,
+        "encoderFalseNegativeCodeCount": 1,
+        "shadowComparisonObservedCount": 0,
+        "expectedCurrentOwnSpanCount": 1,
+        "detectedCurrentOwnSpanCount": 1,
+        "expectedSemanticTop1Count": 1,
+        "expectedSemanticTop5Count": 1,
+        "expectedShadowTop1Count": 1,
+        "expectedShadowTop5Count": 1,
+        "strictJointEligibleCount": 0,
+        "shadowJointEligibleCount": 0,
+        "strictBlockerCounts": {
+          "context_unresolved": 1,
+          "linker_low_margin": 1,
+          "span_low_confidence": 1
+        },
+        "shadowBlockerCounts": {
+          "context_unresolved": 1,
+          "span_low_confidence": 1
+        }
+      },
+      "internal_medicine|home_visit": {
+        "runCount": 1,
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 4,
+        "encoderTruePositiveCodeCount": 0,
+        "encoderFalsePositiveCodeCount": 0,
+        "encoderFalseNegativeCodeCount": 4,
+        "shadowComparisonObservedCount": 1,
+        "expectedCurrentOwnSpanCount": 4,
+        "detectedCurrentOwnSpanCount": 2,
+        "expectedSemanticTop1Count": 0,
+        "expectedSemanticTop5Count": 0,
+        "expectedShadowTop1Count": 0,
+        "expectedShadowTop5Count": 0,
+        "strictJointEligibleCount": 0,
+        "shadowJointEligibleCount": 0,
+        "strictBlockerCounts": {
+          "span_not_detected": 2,
+          "context_unresolved": 1,
+          "linker_expected_code_not_in_top5": 2,
+          "linker_low_margin": 2,
+          "linker_low_score": 2,
+          "span_low_confidence": 2
+        },
+        "shadowBlockerCounts": {
+          "span_not_detected": 2,
+          "context_unresolved": 1,
+          "linker_expected_code_not_in_top5": 2,
+          "span_low_confidence": 2
+        }
+      },
+      "internal_medicine|outpatient": {
+        "runCount": 1,
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 5,
+        "encoderTruePositiveCodeCount": 0,
+        "encoderFalsePositiveCodeCount": 0,
+        "encoderFalseNegativeCodeCount": 4,
+        "shadowComparisonObservedCount": 0,
+        "expectedCurrentOwnSpanCount": 4,
+        "detectedCurrentOwnSpanCount": 2,
+        "expectedSemanticTop1Count": 0,
+        "expectedSemanticTop5Count": 0,
+        "expectedShadowTop1Count": 0,
+        "expectedShadowTop5Count": 0,
+        "strictJointEligibleCount": 0,
+        "shadowJointEligibleCount": 0,
+        "strictBlockerCounts": {
+          "span_not_detected": 2,
+          "linker_expected_code_not_in_top5": 2,
+          "linker_low_margin": 2,
+          "linker_low_score": 2,
+          "span_low_confidence": 2
+        },
+        "shadowBlockerCounts": {
+          "span_not_detected": 2,
+          "linker_expected_code_not_in_top5": 2,
+          "span_low_confidence": 2
+        }
+      },
+      "ophthalmology|home_visit": {
+        "runCount": 1,
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 5,
+        "encoderTruePositiveCodeCount": 0,
+        "encoderFalsePositiveCodeCount": 0,
+        "encoderFalseNegativeCodeCount": 4,
+        "shadowComparisonObservedCount": 0,
+        "expectedCurrentOwnSpanCount": 4,
+        "detectedCurrentOwnSpanCount": 2,
+        "expectedSemanticTop1Count": 0,
+        "expectedSemanticTop5Count": 1,
+        "expectedShadowTop1Count": 0,
+        "expectedShadowTop5Count": 1,
+        "strictJointEligibleCount": 0,
+        "shadowJointEligibleCount": 0,
+        "strictBlockerCounts": {
+          "context_unresolved": 1,
+          "linker_expected_code_not_top1": 1,
+          "linker_low_margin": 2,
+          "linker_low_score": 2,
+          "span_low_confidence": 2,
+          "span_not_detected": 2,
+          "linker_expected_code_not_in_top5": 1
+        },
+        "shadowBlockerCounts": {
+          "context_unresolved": 1,
+          "linker_expected_code_not_top1": 1,
+          "span_low_confidence": 2,
+          "span_not_detected": 2,
+          "linker_expected_code_not_in_top5": 1
+        }
+      },
+      "orthopedics|outpatient": {
+        "runCount": 1,
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 4,
+        "encoderTruePositiveCodeCount": 0,
+        "encoderFalsePositiveCodeCount": 0,
+        "encoderFalseNegativeCodeCount": 3,
+        "shadowComparisonObservedCount": 0,
+        "expectedCurrentOwnSpanCount": 3,
+        "detectedCurrentOwnSpanCount": 1,
+        "expectedSemanticTop1Count": 0,
+        "expectedSemanticTop5Count": 0,
+        "expectedShadowTop1Count": 0,
+        "expectedShadowTop5Count": 0,
+        "strictJointEligibleCount": 0,
+        "shadowJointEligibleCount": 0,
+        "strictBlockerCounts": {
+          "span_not_detected": 2,
+          "linker_expected_code_not_in_top5": 1,
+          "linker_low_margin": 1,
+          "linker_low_score": 1,
+          "span_low_confidence": 1
+        },
+        "shadowBlockerCounts": {
+          "span_not_detected": 2,
+          "linker_expected_code_not_in_top5": 1,
+          "span_low_confidence": 1
+        }
+      },
+      "orthopedics|telephone": {
+        "runCount": 1,
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 3,
+        "encoderTruePositiveCodeCount": 0,
+        "encoderFalsePositiveCodeCount": 0,
+        "encoderFalseNegativeCodeCount": 1,
+        "shadowComparisonObservedCount": 0,
+        "expectedCurrentOwnSpanCount": 1,
+        "detectedCurrentOwnSpanCount": 0,
+        "expectedSemanticTop1Count": 0,
+        "expectedSemanticTop5Count": 0,
+        "expectedShadowTop1Count": 0,
+        "expectedShadowTop5Count": 0,
+        "strictJointEligibleCount": 0,
+        "shadowJointEligibleCount": 0,
+        "strictBlockerCounts": {
+          "span_not_detected": 1
+        },
+        "shadowBlockerCounts": {
+          "span_not_detected": 1
+        }
+      },
+      "otolaryngology|house_call": {
+        "runCount": 1,
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 3,
+        "encoderTruePositiveCodeCount": 0,
+        "encoderFalsePositiveCodeCount": 0,
+        "encoderFalseNegativeCodeCount": 2,
+        "shadowComparisonObservedCount": 0,
+        "expectedCurrentOwnSpanCount": 2,
+        "detectedCurrentOwnSpanCount": 2,
+        "expectedSemanticTop1Count": 2,
+        "expectedSemanticTop5Count": 2,
+        "expectedShadowTop1Count": 2,
+        "expectedShadowTop5Count": 2,
+        "strictJointEligibleCount": 0,
+        "shadowJointEligibleCount": 0,
+        "strictBlockerCounts": {
+          "linker_low_margin": 2,
+          "span_low_confidence": 2,
+          "context_unresolved": 1
+        },
+        "shadowBlockerCounts": {
+          "span_low_confidence": 2,
+          "context_unresolved": 1
+        }
+      },
+      "pediatrics|home_visit": {
+        "runCount": 1,
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 3,
+        "encoderTruePositiveCodeCount": 0,
+        "encoderFalsePositiveCodeCount": 0,
+        "encoderFalseNegativeCodeCount": 3,
+        "shadowComparisonObservedCount": 1,
+        "expectedCurrentOwnSpanCount": 3,
+        "detectedCurrentOwnSpanCount": 1,
+        "expectedSemanticTop1Count": 1,
+        "expectedSemanticTop5Count": 1,
+        "expectedShadowTop1Count": 1,
+        "expectedShadowTop5Count": 1,
+        "strictJointEligibleCount": 0,
+        "shadowJointEligibleCount": 0,
+        "strictBlockerCounts": {
+          "context_unresolved": 1,
+          "linker_low_margin": 1,
+          "span_low_confidence": 1,
+          "span_not_detected": 2
+        },
+        "shadowBlockerCounts": {
+          "context_unresolved": 1,
+          "span_low_confidence": 1,
+          "span_not_detected": 2
+        }
+      },
+      "pediatrics|house_call": {
+        "runCount": 1,
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 5,
+        "encoderTruePositiveCodeCount": 0,
+        "encoderFalsePositiveCodeCount": 0,
+        "encoderFalseNegativeCodeCount": 4,
+        "shadowComparisonObservedCount": 0,
+        "expectedCurrentOwnSpanCount": 4,
+        "detectedCurrentOwnSpanCount": 1,
+        "expectedSemanticTop1Count": 0,
+        "expectedSemanticTop5Count": 0,
+        "expectedShadowTop1Count": 0,
+        "expectedShadowTop5Count": 0,
+        "strictJointEligibleCount": 0,
+        "shadowJointEligibleCount": 0,
+        "strictBlockerCounts": {
+          "span_not_detected": 3,
+          "linker_expected_code_not_in_top5": 1,
+          "linker_low_margin": 1,
+          "linker_low_score": 1,
+          "span_low_confidence": 1
+        },
+        "shadowBlockerCounts": {
+          "span_not_detected": 3,
+          "linker_expected_code_not_in_top5": 1,
+          "span_low_confidence": 1
+        }
+      },
+      "psychiatry|outpatient": {
+        "runCount": 1,
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 5,
+        "encoderTruePositiveCodeCount": 0,
+        "encoderFalsePositiveCodeCount": 0,
+        "encoderFalseNegativeCodeCount": 4,
+        "shadowComparisonObservedCount": 0,
+        "expectedCurrentOwnSpanCount": 4,
+        "detectedCurrentOwnSpanCount": 1,
+        "expectedSemanticTop1Count": 0,
+        "expectedSemanticTop5Count": 0,
+        "expectedShadowTop1Count": 0,
+        "expectedShadowTop5Count": 0,
+        "strictJointEligibleCount": 0,
+        "shadowJointEligibleCount": 0,
+        "strictBlockerCounts": {
+          "span_not_detected": 3,
+          "linker_expected_code_not_in_top5": 1,
+          "linker_low_margin": 1,
+          "linker_low_score": 1,
+          "span_low_confidence": 1
+        },
+        "shadowBlockerCounts": {
+          "span_not_detected": 3,
+          "linker_expected_code_not_in_top5": 1,
+          "span_low_confidence": 1
+        }
+      },
+      "surgery|telephone": {
+        "runCount": 1,
+        "reviewedLineCount": 4,
+        "reviewedSpanCount": 2,
+        "encoderTruePositiveCodeCount": 0,
+        "encoderFalsePositiveCodeCount": 0,
+        "encoderFalseNegativeCodeCount": 1,
+        "shadowComparisonObservedCount": 0,
+        "expectedCurrentOwnSpanCount": 1,
+        "detectedCurrentOwnSpanCount": 0,
+        "expectedSemanticTop1Count": 0,
+        "expectedSemanticTop5Count": 0,
+        "expectedShadowTop1Count": 0,
+        "expectedShadowTop5Count": 0,
+        "strictJointEligibleCount": 0,
+        "shadowJointEligibleCount": 0,
+        "strictBlockerCounts": {
+          "span_not_detected": 1
+        },
+        "shadowBlockerCounts": {
+          "span_not_detected": 1
+        }
+      }
+    }
+  },
+  "determinism": {
+    "groupCount": 0,
+    "exactGroupCount": 0,
+    "exactMatchRate": null,
+    "minimumObservedRepeats": 0,
+    "groups": []
+  },
+  "completedAt": "2026-07-26T14:03:07.738Z",
+  "summary": {
+    "status": "complete",
+    "runCount": 12,
+    "measurementRunCount": 12,
+    "determinismControlRunCount": 0,
+    "expectedCalculationCount": 12,
+    "requiredCellCount": 32,
+    "observedCellCount": 12,
+    "degradedRunCount": 0,
+    "uniqueCloudRunRevisions": [
+      "fee-api-stg-00190-886"
+    ],
+    "uniqueExtractorVersions": [
+      "whitebox-v1:dfb381d172b3a72e3086a83d"
+    ],
+    "determinism": {
+      "groupCount": 0,
+      "exactGroupCount": 0,
+      "exactMatchRate": null,
+      "minimumObservedRepeats": 0,
+      "groups": []
+    },
+    "gateDiagnostics": {
+      "expectedCurrentOwnSpanCount": 34,
+      "detectedCurrentOwnSpanCount": 14,
+      "expectedSemanticTop1Count": 4,
+      "expectedSemanticTop5Count": 5,
+      "expectedShadowTop1Count": 4,
+      "expectedShadowTop5Count": 5,
+      "strictJointEligibleCount": 0,
+      "shadowJointEligibleCount": 0,
+      "strictBlockerCounts": {
+        "span_not_detected": 20,
+        "linker_expected_code_not_in_top5": 9,
+        "linker_low_margin": 14,
+        "linker_low_score": 10,
+        "span_low_confidence": 14,
+        "context_unresolved": 5,
+        "linker_expected_code_not_top1": 1
+      },
+      "shadowBlockerCounts": {
+        "span_not_detected": 20,
+        "linker_expected_code_not_in_top5": 9,
+        "span_low_confidence": 14,
+        "context_unresolved": 5,
+        "linker_expected_code_not_top1": 1
+      },
+      "detectedCurrentOwnSpanRate": 0.4117647058823529,
+      "expectedSemanticTop1Rate": 0.11764705882352941,
+      "expectedSemanticTop5Rate": 0.14705882352941177,
+      "expectedShadowTop1Rate": 0.11764705882352941,
+      "expectedShadowTop5Rate": 0.14705882352941177,
+      "strictJointEligibleRate": 0,
+      "shadowJointEligibleRate": 0
+    },
+    "cells": {
+      "dermatology|house_call": 1,
+      "dermatology|telephone": 1,
+      "internal_medicine|home_visit": 1,
+      "internal_medicine|outpatient": 1,
+      "ophthalmology|home_visit": 1,
+      "orthopedics|outpatient": 1,
+      "orthopedics|telephone": 1,
+      "otolaryngology|house_call": 1,
+      "pediatrics|home_visit": 1,
+      "pediatrics|house_call": 1,
+      "psychiatry|outpatient": 1,
+      "surgery|telephone": 1
+    }
+  }
+}

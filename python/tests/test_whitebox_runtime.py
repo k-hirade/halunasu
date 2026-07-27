@@ -14,6 +14,7 @@ from medical_fee_calculation.whitebox_artifacts import (
     load_whitebox_artifact,
 )
 from medical_fee_calculation.whitebox_context import (
+    STRUCTURED_INPUT_CONTRACT_VERSION,
     _classifier_text,
     classify_context,
     context_classifier_readiness,
@@ -333,6 +334,127 @@ class WhiteboxRuntimeTest(unittest.TestCase):
             self.assertEqual(result["status"], "complete")
             self.assertEqual(observed, ["検索クエリ: 創傷処置"])
 
+    def test_linker_distinguishes_medication_billing_acts_from_drug_products(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)
+            index = {
+                "dimension": 2,
+                "entries": [
+                    {
+                        "code": "120002910",
+                        "name": "処方箋料（リフィル以外・その他）",
+                        "kind": "procedure",
+                        "category": "medication",
+                        "matchedDoc": "処方箋料 / 院外処方箋",
+                        "vector": [0.0, 1.0],
+                    },
+                    {
+                        "code": "620000001",
+                        "name": "院外処方錠",
+                        "kind": "drug",
+                        "category": "medication",
+                        "matchedDoc": "院外処方錠",
+                        "vector": [1.0, 0.0],
+                    },
+                ],
+            }
+            index_path = path / "index.json"
+            index_path.write_text(json.dumps(index), encoding="utf-8")
+            manifest_path = self._write_manifest(
+                path,
+                self._manifest(
+                    "fee_master_linker",
+                    files={
+                        "index": {
+                            "path": "index.json",
+                            "sha256": self._sha(index_path),
+                        }
+                    },
+                ),
+            )
+            result = link_spans(
+                {
+                    "manifest_path": str(manifest_path),
+                    "spans": [{
+                        "text": "院外処方箋",
+                        "category": "medication",
+                        "mentionType": "medication_act",
+                        "lineText": "院外処方箋を発行。",
+                        "section": "P",
+                        "encounterSetting": "outpatient",
+                        "specialty": "internal_medicine",
+                    }],
+                    "kinds": ["procedure", "drug"],
+                    "top_k": 2,
+                },
+                embedder=lambda values: [[1.0, 0.0] for _ in values],
+            )
+
+            candidates = result["results"][0]["candidates"]
+            self.assertEqual(candidates[0]["code"], "120002910")
+            self.assertEqual(candidates[0]["lexicalMatch"], "exact")
+            self.assertTrue(candidates[0]["mentionTypeMatched"])
+            self.assertFalse(candidates[1]["mentionTypeMatched"])
+            self.assertEqual(result["results"][0]["mentionType"], "medication_act")
+
+    def test_linker_prefers_an_exact_drug_product_over_a_semantic_procedure(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)
+            index = {
+                "dimension": 2,
+                "entries": [
+                    {
+                        "code": "120001210",
+                        "name": "処方料（その他）",
+                        "kind": "procedure",
+                        "category": "medication",
+                        "matchedDoc": "処方料",
+                        "vector": [1.0, 0.0],
+                    },
+                    {
+                        "code": "620007818",
+                        "name": "アムロジピンOD錠5mg「トーワ」",
+                        "kind": "drug",
+                        "category": "medication",
+                        "matchedDoc": "アムロジピンOD錠5mg「トーワ」 / アムロジピンOD錠5mg",
+                        "vector": [0.0, 1.0],
+                    },
+                ],
+            }
+            index_path = path / "index.json"
+            index_path.write_text(json.dumps(index), encoding="utf-8")
+            manifest_path = self._write_manifest(
+                path,
+                self._manifest(
+                    "fee_master_linker",
+                    files={
+                        "index": {
+                            "path": "index.json",
+                            "sha256": self._sha(index_path),
+                        }
+                    },
+                ),
+            )
+            result = link_spans(
+                {
+                    "manifest_path": str(manifest_path),
+                    "spans": [{
+                        "text": "アムロジピンOD錠5mg",
+                        "category": "medication",
+                        "mentionType": "drug_product",
+                    }],
+                    "kinds": ["procedure", "drug"],
+                    "top_k": 2,
+                },
+                embedder=lambda values: [[1.0, 0.0] for _ in values],
+            )
+
+            candidates = result["results"][0]["candidates"]
+            self.assertEqual(candidates[0]["code"], "620007818")
+            self.assertEqual(candidates[0]["kind"], "drug")
+            self.assertEqual(candidates[0]["lexicalMatch"], "exact")
+            self.assertTrue(candidates[0]["mentionTypeMatched"])
+
     def test_context_contract_validates_all_axes(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             path = Path(root)
@@ -365,6 +487,32 @@ class WhiteboxRuntimeTest(unittest.TestCase):
             "nextLine": "",
         })
         self.assertEqual(marked, "前回CTを確認し、本日は[SPAN]CT[/SPAN]を施行")
+
+    def test_context_v2_prefixes_structured_encounter_metadata(self) -> None:
+        marked = _classifier_text({
+            "text": "採血を実施。",
+            "spanText": "採血",
+            "charStart": 0,
+            "charEnd": 2,
+            "previousLine": "S）発熱あり。",
+            "nextLine": "A）感染症疑い。",
+            "section": "O",
+            "encounterSetting": "home_visit",
+            "specialty": "internal_medicine",
+            "sourceType": "clinical_note",
+        }, input_contract_version=STRUCTURED_INPUT_CONTRACT_VERSION)
+        self.assertEqual(
+            marked,
+            "\n".join([
+                "[SETTING]home_visit[/SETTING]",
+                "[SPECIALTY]internal_medicine[/SPECIALTY]",
+                "[SECTION]O[/SECTION]",
+                "[SOURCE]clinical_note[/SOURCE]",
+                "S）発熱あり。",
+                "[SPAN]採血[/SPAN]を実施。",
+                "A）感染症疑い。",
+            ]),
+        )
 
     def test_context_contract_rejects_mismatched_span_offsets(self) -> None:
         with tempfile.TemporaryDirectory() as root:
