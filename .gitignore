@@ -103,6 +103,8 @@ tmp/
 .venv-wx0/
 venv-wx0/
 .venv-whitebox-build/
+.venv-whitebox-linker-build/
+.venv-whitebox-modernbert-build/
 
 # Generated whitebox runtime binaries are too large for normal Git storage.
 # Keep manifests and routing configuration in Git; distribute runtime models,
