@@ -15,6 +15,7 @@ import {
   selectWhiteboxShadowCases,
   summarizeWhiteboxCaseAudits,
   summarizeWhiteboxDeterminism,
+  summarizeWhiteboxRouting,
   whiteboxDepartmentInput,
   whiteboxDeterminismFingerprint,
   whiteboxDeterminismSnapshot,
@@ -464,6 +465,7 @@ function summarizeRun(result) {
     uniqueCloudRunRevisions: uniqueStrings(runs.map((run) => run.cloudRunRevision)),
     uniqueExtractorVersions: uniqueStrings(runs.map((run) => run.extractorVersion)),
     determinism: result.determinism || summarizeWhiteboxDeterminism(runs),
+    routing: summarizeWhiteboxRouting(measurementRuns),
     gateDiagnostics: summarizeGateDiagnostics(result.machinePrecheck?.cells),
     cells: Object.fromEntries(Object.entries(cells).sort(([left], [right]) => (
       left.localeCompare(right)
@@ -498,6 +500,10 @@ function summarizeGateDiagnostics(cells = {}) {
     canonicalTextMatchCount: 0,
     expectedCurrentOwnSpanCount: 0,
     detectedCurrentOwnSpanCount: 0,
+    expectedLinkerSpanCount: 0,
+    structuredVisitFactResolvedCount: 0,
+    strictStructuredVisitFactEligibleCount: 0,
+    shadowStructuredVisitFactEligibleCount: 0,
     expectedSemanticTop1Count: 0,
     expectedSemanticTop5Count: 0,
     expectedShadowTop1Count: 0,
@@ -507,6 +513,7 @@ function summarizeGateDiagnostics(cells = {}) {
     strictExpectedFamilyIdentifiedCount: 0,
     shadowExpectedFamilyIdentifiedCount: 0,
     expectedBillableInclusionSpanCount: 0,
+    expectedDirectBillableInclusionSpanCount: 0,
     strictBillableInclusionEligibleCount: 0,
     shadowBillableInclusionEligibleCount: 0,
     expectedStandingSpanCount: 0,
@@ -542,6 +549,10 @@ function summarizeGateDiagnostics(cells = {}) {
       "canonicalTextMatchCount",
       "expectedCurrentOwnSpanCount",
       "detectedCurrentOwnSpanCount",
+      "expectedLinkerSpanCount",
+      "structuredVisitFactResolvedCount",
+      "strictStructuredVisitFactEligibleCount",
+      "shadowStructuredVisitFactEligibleCount",
       "expectedSemanticTop1Count",
       "expectedSemanticTop5Count",
       "expectedShadowTop1Count",
@@ -551,6 +562,7 @@ function summarizeGateDiagnostics(cells = {}) {
       "strictExpectedFamilyIdentifiedCount",
       "shadowExpectedFamilyIdentifiedCount",
       "expectedBillableInclusionSpanCount",
+      "expectedDirectBillableInclusionSpanCount",
       "strictBillableInclusionEligibleCount",
       "shadowBillableInclusionEligibleCount",
       "expectedStandingSpanCount",
@@ -588,8 +600,9 @@ function summarizeGateDiagnostics(cells = {}) {
     }
   }
   const denominator = total.expectedCurrentOwnSpanCount;
+  const linkerDenominator = total.expectedLinkerSpanCount;
   const spanDenominator = total.expectedSpanCount;
-  const billableDenominator = total.expectedBillableInclusionSpanCount;
+  const billableDenominator = total.expectedDirectBillableInclusionSpanCount;
   const standingDenominator = total.expectedStandingSpanCount;
   const safeExclusionDenominator = total.expectedSafeExclusionSpanCount;
   return {
@@ -613,31 +626,31 @@ function summarizeGateDiagnostics(cells = {}) {
     detectedCurrentOwnSpanRate: denominator
       ? total.detectedCurrentOwnSpanCount / denominator
       : null,
-    expectedSemanticTop1Rate: denominator
-      ? total.expectedSemanticTop1Count / denominator
+    expectedSemanticTop1Rate: linkerDenominator
+      ? total.expectedSemanticTop1Count / linkerDenominator
       : null,
-    expectedSemanticTop5Rate: denominator
-      ? total.expectedSemanticTop5Count / denominator
+    expectedSemanticTop5Rate: linkerDenominator
+      ? total.expectedSemanticTop5Count / linkerDenominator
       : null,
-    expectedShadowTop1Rate: denominator
-      ? total.expectedShadowTop1Count / denominator
+    expectedShadowTop1Rate: linkerDenominator
+      ? total.expectedShadowTop1Count / linkerDenominator
       : null,
-    expectedShadowTop5Rate: denominator
-      ? total.expectedShadowTop5Count / denominator
+    expectedShadowTop5Rate: linkerDenominator
+      ? total.expectedShadowTop5Count / linkerDenominator
       : null,
-    strictJointEligibleRate: denominator
-      ? total.strictJointEligibleCount / denominator
+    strictJointEligibleRate: linkerDenominator
+      ? total.strictJointEligibleCount / linkerDenominator
       : null,
-    shadowJointEligibleRate: denominator
-      ? total.shadowJointEligibleCount / denominator
+    shadowJointEligibleRate: linkerDenominator
+      ? total.shadowJointEligibleCount / linkerDenominator
       : null,
     strictExpectedFamilyIdentifiedRate: ratioOrNull(
       total.strictExpectedFamilyIdentifiedCount,
-      denominator
+      linkerDenominator
     ),
     shadowExpectedFamilyIdentifiedRate: ratioOrNull(
       total.shadowExpectedFamilyIdentifiedCount,
-      denominator
+      linkerDenominator
     ),
     strictBillableInclusionEligibleRate: ratioOrNull(
       total.strictBillableInclusionEligibleCount,
@@ -753,6 +766,7 @@ function renderReadme(result) {
     `- measurement cases: ${summary.measurementRunCount} / ${result.methodology.selectedCaseCount}`,
     `- total calculations: ${summary.runCount} / ${result.methodology.expectedCalculationCount}`,
     `- determinism controls: ${summary.determinism?.exactGroupCount || 0} / ${summary.determinism?.groupCount || 0} exact`,
+    `- determinism scope: ${summary.determinism?.scope || "whitebox_router_only"}`,
     `- cells: ${summary.observedCellCount} / ${result.methodology.requiredCellCount}`,
     `- degraded runs: ${summary.degradedRunCount}`,
     `- purpose: **${result.methodology.evaluationPurpose}**`,
@@ -779,40 +793,47 @@ function renderReadme(result) {
       summary.gateDiagnostics?.detectedCurrentOwnSpanCount,
       summary.gateDiagnostics?.expectedCurrentOwnSpanCount
     )}`,
+    `- structured visit facts resolved (strict / shadow): ${formatGateRatio(
+      summary.gateDiagnostics?.strictStructuredVisitFactEligibleCount,
+      summary.gateDiagnostics?.structuredVisitFactResolvedCount
+    )} / ${formatGateRatio(
+      summary.gateDiagnostics?.shadowStructuredVisitFactEligibleCount,
+      summary.gateDiagnostics?.structuredVisitFactResolvedCount
+    )}`,
     `- expected code semantic top-1 / top-5: ${formatGateRatio(
       summary.gateDiagnostics?.expectedSemanticTop1Count,
-      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+      summary.gateDiagnostics?.expectedLinkerSpanCount
     )} / ${formatGateRatio(
       summary.gateDiagnostics?.expectedSemanticTop5Count,
-      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+      summary.gateDiagnostics?.expectedLinkerSpanCount
     )}`,
     `- expected code shadow top-1 / top-5: ${formatGateRatio(
       summary.gateDiagnostics?.expectedShadowTop1Count,
-      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+      summary.gateDiagnostics?.expectedLinkerSpanCount
     )} / ${formatGateRatio(
       summary.gateDiagnostics?.expectedShadowTop5Count,
-      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+      summary.gateDiagnostics?.expectedLinkerSpanCount
     )}`,
     `- expected family identified (strict / shadow): ${formatGateRatio(
       summary.gateDiagnostics?.strictExpectedFamilyIdentifiedCount,
-      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+      summary.gateDiagnostics?.expectedLinkerSpanCount
     )} / ${formatGateRatio(
       summary.gateDiagnostics?.shadowExpectedFamilyIdentifiedCount,
-      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+      summary.gateDiagnostics?.expectedLinkerSpanCount
     )}`,
     `- strict / shadow joint eligible spans: ${formatGateRatio(
       summary.gateDiagnostics?.strictJointEligibleCount,
-      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+      summary.gateDiagnostics?.expectedLinkerSpanCount
     )} / ${formatGateRatio(
       summary.gateDiagnostics?.shadowJointEligibleCount,
-      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+      summary.gateDiagnostics?.expectedLinkerSpanCount
     )}`,
     `- strict / shadow billable inclusion: ${formatGateRatio(
       summary.gateDiagnostics?.strictBillableInclusionEligibleCount,
-      summary.gateDiagnostics?.expectedBillableInclusionSpanCount
+      summary.gateDiagnostics?.expectedDirectBillableInclusionSpanCount
     )} / ${formatGateRatio(
       summary.gateDiagnostics?.shadowBillableInclusionEligibleCount,
-      summary.gateDiagnostics?.expectedBillableInclusionSpanCount
+      summary.gateDiagnostics?.expectedDirectBillableInclusionSpanCount
     )}`,
     `- strict / shadow standing facts: ${formatGateRatio(
       summary.gateDiagnostics?.strictStandingEligibleCount,
@@ -842,6 +863,18 @@ function renderReadme(result) {
     } (sample-ready cells ${
       summary.gateDiagnostics?.calibration?.sampleEligibleCellCount || 0
     }/${summary.gateDiagnostics?.calibration?.cellCount || 0}; independent review required)`,
+    `- shadow routable lines: ${formatGateRatio(
+      summary.routing?.shadowRoutableLineCount,
+      summary.routing?.lineCount
+    )}`,
+    `- shadow routable span-bearing lines: ${formatGateRatio(
+      summary.routing?.shadowEncoderSpanBearingLineCount,
+      summary.routing?.spanBearingLineCount
+    )}`,
+    `- shadow expected LLM clauses: ${formatGateRatio(
+      summary.routing?.shadowClauseRoutes?.llm,
+      summary.routing?.shadowClauseRoutes?.total
+    )}`,
     "",
     result.methodology.evaluationPurpose === "diagnostic"
       ? "This diagnostic run is for bottleneck discovery only. It cannot be used as "

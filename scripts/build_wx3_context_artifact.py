@@ -27,12 +27,14 @@ from medical_fee_calculation.whitebox_artifacts import (
     sha256_file,
 )
 from medical_fee_calculation.whitebox_context import (
+    CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
     CONTEXT_SEMANTIC_PROBE_ITEM,
     LEGACY_INPUT_CONTRACT_VERSION,
     STRUCTURED_INPUT_CONTRACT_VERSION,
     _OnnxContextRuntime,
     _validate_context_semantic_probe,
     _validate_context_manifest,
+    context_input_semantics,
 )
 from medical_fee_calculation.whitebox_onnx import verify_deterministic_inference
 from scripts.whitebox_training_common import (
@@ -561,6 +563,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         "axisLabels": axis_labels,
         "pooling": args.pooling,
         "inputContractVersion": args.input_contract_version,
+        "inputSemantics": context_input_semantics(args.input_contract_version),
         "classWeighting": args.class_weighting,
         "minimumCalibrationCoveredCount": args.minimum_calibration_covered_count,
         "minimumCalibrationCoverage": args.minimum_calibration_coverage,
@@ -638,6 +641,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         provisional_manifest = {
             "maxLength": args.max_length,
             "inputContractVersion": args.input_contract_version,
+            "inputSemantics": context_input_semantics(args.input_contract_version),
             "axisLabels": axis_labels,
             "outputNames": output_names,
             "temperatures": {
@@ -676,6 +680,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "tokenizerFileKey": "tokenizer",
             "maxLength": args.max_length,
             "inputContractVersion": args.input_contract_version,
+            "inputSemantics": context_input_semantics(args.input_contract_version),
             "axisLabels": axis_labels,
             "outputNames": output_names,
             "temperatures": calibration["temperatures"],
@@ -802,11 +807,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         choices=(
             LEGACY_INPUT_CONTRACT_VERSION,
             STRUCTURED_INPUT_CONTRACT_VERSION,
+            CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
         ),
         default=LEGACY_INPUT_CONTRACT_VERSION,
         help=(
             "WX3 text contract. Version 1 is the safety-calibrated default; "
-            "version 2 is experimental structured-metadata input."
+            "version 2 adds structured metadata; version 3 adds the governing "
+            "clause while retaining its parent line."
         ),
     )
     parser.add_argument(

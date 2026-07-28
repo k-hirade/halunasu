@@ -12,6 +12,7 @@ import {
   selectWhiteboxPromotionCases,
   summarizeWhiteboxCaseAudits,
   summarizeWhiteboxDeterminism,
+  summarizeWhiteboxRouting,
   whiteboxDepartmentInput,
   whiteboxDeterminismFingerprint,
   whiteboxDeterminismSnapshot,
@@ -475,6 +476,85 @@ test("machine precheck distinguishes an underspecified family from an exact code
   ]);
 });
 
+test("machine precheck accounts for structured prescription facts outside linker metrics", () => {
+  const text = "P）院外処方箋を発行。";
+  const spanText = "処方箋";
+  const charStart = text.indexOf(spanText);
+  const audit = whiteboxShadowCaseAudit({
+    caseId: "structured-prescription",
+    specialty: "internal_medicine",
+    encounterSetting: "outpatient",
+    clinicalText: text,
+    expectedSpans: [{
+      text: spanText,
+      charStart,
+      charEnd: charStart + spanText.length,
+      category: "medication",
+      code: "120002910",
+      actionStatus: "performed",
+      temporalRelation: "current_visit",
+      sourceOrigin: "own_clinic_record",
+      providerOwnership: "own_clinic"
+    }]
+  }, {
+    feeSession: {
+      calculationResult: {
+        clinicalExtraction: {
+          trace: [{
+            stage: "whitebox_router",
+            gateDiagnostics: [{
+              lineId: "P-001",
+              lineIndex: 1,
+              spanId: "span-prescription",
+              spanTextSha256: crypto.createHash("sha256").update(spanText).digest("hex"),
+              charStart,
+              charEnd: charStart + spanText.length,
+              category: "medication",
+              confidence: 0.9,
+              resolutionSource: "structured_visit_fact",
+              strict: {
+                jointEligible: false,
+                structuredFactEligible: true,
+                resolution: "structured_visit_fact",
+                blockerReasonCodes: []
+              },
+              shadow: {
+                jointEligible: false,
+                structuredFactEligible: true,
+                resolution: "structured_visit_fact",
+                blockerReasonCodes: []
+              },
+              semanticCandidates: [],
+              shadowCandidates: []
+            }]
+          }]
+        }
+      }
+    }
+  });
+  const summary = summarizeWhiteboxCaseAudits(
+    [audit]
+  )["internal_medicine|outpatient"];
+
+  assert.deepEqual(audit.expectedCurrentOwnCodes, ["120002910"]);
+  assert.deepEqual(audit.expectedEncoderCodes, []);
+  assert.deepEqual(audit.structuredVisitFactExpectedCodes, ["120002910"]);
+  assert.deepEqual(audit.encoderFalseNegativeCodes, []);
+  assert.equal(summary.structuredVisitFactExpectedCodeCount, 1);
+  assert.equal(summary.expectedCurrentOwnSpanCount, 1);
+  assert.equal(summary.expectedLinkerSpanCount, 0);
+  assert.equal(summary.structuredVisitFactResolvedCount, 1);
+  assert.equal(summary.strictStructuredVisitFactEligibleCount, 1);
+  assert.equal(summary.shadowStructuredVisitFactEligibleCount, 1);
+  assert.equal(summary.expectedBillableInclusionSpanCount, 1);
+  assert.equal(summary.expectedDirectBillableInclusionSpanCount, 0);
+  assert.deepEqual(summary.retrievalClassificationCounts, {
+    structured_visit_fact: 1
+  });
+  assert.deepEqual(summary.strictBlockerCounts, {});
+  assert.deepEqual(summary.shadowBlockerCounts, {});
+});
+
 test("span audit uses the same CRLF, trim, and fullwidth normalization as runtime", () => {
   const clinicalText = " \r\nＯ）ＣＴ撮影を実施。 \r\n";
   const rawStart = clinicalText.indexOf("ＣＴ");
@@ -655,6 +735,27 @@ test("whitebox determinism snapshot excludes LLM-only output and compares contro
               degraded: false,
               lineCount: 4,
               spanCount: 2,
+              spanBearingLineCount: 2,
+              shadowEncoderLineCount: 1,
+              shadowPartialEncoderLineCount: 1,
+              shadowEncoderSpanBearingLineCount: 2,
+              shadowEncoderOwnedSpanCount: 2,
+              encoderLineCount: 0,
+              partialEncoderLineCount: 0,
+              encoderOwnedSpanCount: 0,
+              clauseRoutes: {
+                strict: { total: 4, llm: 4, encoder: 0 },
+                shadow: { total: 4, llm: 2, encoder: 2 }
+              },
+              visitFacts: {
+                status: "complete",
+                source: "deterministic",
+                evidenceLineCount: 1,
+                evidenceClauseCount: 1,
+                ambiguousLineCount: 0,
+                ambiguousClauseCount: 0,
+                fullLlmRequired: false
+              },
               routeReasonCounts: {
                 linker_low_confidence_or_margin: 1,
                 performed_span: 1
@@ -691,8 +792,49 @@ test("whitebox determinism snapshot excludes LLM-only output and compares contro
 
   assert.deepEqual(snapshot.encoderCodes, ["140000610", "160022510"]);
   assert.deepEqual(snapshot.shadowEncoderLineIds, ["O-001", "O-002"]);
+  assert.equal(snapshot.determinismScope, "whitebox_router_only");
+  assert.deepEqual(snapshot.clauseRoutes.shadow, {
+    encoder: 2,
+    llm: 2,
+    total: 4
+  });
   assert.equal(JSON.stringify(snapshot).includes("112007410"), false);
   assert.equal(fingerprint.length, 64);
+  assert.deepEqual(summarizeWhiteboxRouting([
+    { whiteboxSnapshot: snapshot }
+  ]), {
+    runCount: 1,
+    degradedRunCount: 0,
+    lineCount: 4,
+    spanCount: 2,
+    spanBearingLineCount: 2,
+    shadowEncoderLineCount: 1,
+    shadowPartialEncoderLineCount: 1,
+    shadowEncoderSpanBearingLineCount: 2,
+    shadowEncoderOwnedSpanCount: 2,
+    encoderLineCount: 0,
+    partialEncoderLineCount: 0,
+    encoderOwnedSpanCount: 0,
+    encoderCodeRunCount: 1,
+    fullLlmRequiredRunCount: 0,
+    strictClauseRoutes: {
+      encoder: 0,
+      llm: 4,
+      total: 4
+    },
+    shadowClauseRoutes: {
+      encoder: 2,
+      llm: 2,
+      total: 4
+    },
+    visitFactsStatusCounts: { complete: 1 },
+    visitFactsSourceCounts: { deterministic: 1 },
+    shadowRoutableLineCount: 2,
+    shadowRoutableLineRatio: 0.5,
+    spanBearingRoutableLineRatio: 1,
+    strictExpectedLlmClauseRatio: 1,
+    shadowExpectedLlmClauseRatio: 0.5
+  });
   assert.deepEqual(summarizeWhiteboxDeterminism([
     {
       controlGroupId: "group-1",
@@ -707,6 +849,7 @@ test("whitebox determinism snapshot excludes LLM-only output and compares contro
       whiteboxFingerprint: fingerprint
     }
   ]), {
+    scope: "whitebox_router_only",
     groupCount: 1,
     exactGroupCount: 1,
     exactMatchRate: 1,

@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "fee-whitebox-context-input-regressions-v1",
+  "source": {
+    "comparison": "fee-api-stg-00196-q5b to fee-api-stg-00197-kpg",
+    "measuredAt": "2026-07-28"
+  },
+  "cases": [
+    {
+      "caseId": "wx0-ent-outp-0008",
+      "spanIndex": 1,
+      "expectedText": "鼻処置",
+      "expectedDisposition": "billable_inclusion"
+    },
+    {
+      "caseId": "wx0-ent-outp-0008",
+      "spanIndex": 2,
+      "expectedText": "副鼻腔自然口開大処置",
+      "expectedDisposition": "billable_inclusion"
+    },
+    {
+      "caseId": "wx0-ped-hv-0008",
+      "spanIndex": 0,
+      "expectedText": "在宅小児経管栄養法の指導管理",
+      "expectedDisposition": "billable_inclusion"
+    },
+    {
+      "caseId": "wx0-orth-hv-0008",
+      "spanIndex": 3,
+      "expectedText": "関節腔内注射",
+      "expectedDisposition": "safe_exclusion"
+    },
+    {
+      "caseId": "wx0-derm-outp-0008",
+      "spanIndex": 1,
+      "expectedText": "ゲンタシン軟膏",
+      "expectedDisposition": "must_not_safe_exclude"
+    },
+    {
+      "caseId": "wx0-orth-tel-0008",
+      "spanIndex": 2,
+      "expectedText": "カロナール錠３００",
+      "expectedDisposition": "must_not_safe_exclude"
+    },
+    {
+      "caseId": "wx0-im-outp-0008",
+      "spanIndex": 1,
+      "expectedText": "ＣＲＰ",
+      "expectedDisposition": "must_not_safe_exclude"
+    },
+    {
+      "caseId": "wx0-ped-hc-0008",
+      "spanIndex": 2,
+      "expectedText": "ザイザルシロップ０．０５％",
+      "expectedDisposition": "must_not_safe_exclude"
+    },
+    {
+      "caseId": "wx0-surg-outp-0008",
+      "spanIndex": 4,
+      "expectedText": "セファレキシンカプセル２５０ｍｇ",
+      "expectedDisposition": "must_not_safe_exclude"
+    },
+    {
+      "caseId": "wx0-surg-hc-0008",
+      "spanIndex": 2,
+      "expectedText": "セファレキシンカプセル２５０ｍｇ",
+      "expectedDisposition": "must_not_safe_exclude"
+    }
+  ]
+}

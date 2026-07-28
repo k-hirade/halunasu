@@ -4,6 +4,7 @@ import unittest
 
 from medical_fee_calculation.clinical_axes import clinical_axis_values
 from medical_fee_calculation.whitebox_context import (
+    CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
     LEGACY_INPUT_CONTRACT_VERSION,
     STRUCTURED_INPUT_CONTRACT_VERSION,
 )
@@ -69,7 +70,32 @@ class BuildWx3ContextArtifactTest(unittest.TestCase):
         self.assertIn("[SPECIALTY]surgery[/SPECIALTY]", examples[0].text)
         self.assertIn("[SECTION]O[/SECTION]", examples[0].text)
 
-    def test_cli_defaults_to_legacy_contract_and_allows_explicit_v2(self) -> None:
+    def test_context_examples_support_clause_aware_contract(self) -> None:
+        text = "O）前回CTを確認し、本日は採血を実施。次回MRIを予定。"
+        start = text.index("採血")
+        examples = build_context_examples([{
+            "caseId": "case-clause",
+            "specialty": "internal_medicine",
+            "encounterSetting": "outpatient",
+            "clinicalText": text,
+            "expectedSpans": [{
+                "text": "採血",
+                "charStart": start,
+                "charEnd": start + 2,
+                "actionStatus": "performed",
+                "temporalRelation": "current_visit",
+                "sourceOrigin": "own_clinic_record",
+                "providerOwnership": "own_clinic",
+                "standingStatus": "none",
+            }],
+        }], clinical_axis_values(), input_contract_version=CLAUSE_AWARE_INPUT_CONTRACT_VERSION)
+        self.assertIn(f"[LINE]{text}[/LINE]", examples[0].text)
+        self.assertIn(
+            "[CLAUSE]本日は[SPAN]採血[/SPAN]を実施。[/CLAUSE]",
+            examples[0].text,
+        )
+
+    def test_cli_defaults_to_legacy_contract_and_allows_explicit_versions(self) -> None:
         required = [
             "--base-model", "model",
             "--model-revision", "a" * 40,
@@ -85,6 +111,10 @@ class BuildWx3ContextArtifactTest(unittest.TestCase):
         self.assertEqual(
             parse_args([*required, "--input-contract-version", "2"]).input_contract_version,
             STRUCTURED_INPUT_CONTRACT_VERSION,
+        )
+        self.assertEqual(
+            parse_args([*required, "--input-contract-version", "3"]).input_contract_version,
+            CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
         )
 
     def test_threshold_abstains_until_risk_is_acceptable(self) -> None:

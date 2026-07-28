@@ -377,14 +377,30 @@ export function whiteboxShadowCaseAudit(item = {}, detail = {}) {
     ...(comparison.matchedCodes || []),
     ...(comparison.llmOnlyCodes || [])
   ]);
-  const truthCodes = uniqueStrings(
-    (Array.isArray(item.expectedSpans) ? item.expectedSpans : [])
-      .filter(isCurrentOwnPerformedSpan)
-      .map((span) => span.code)
-  );
   const expectedSpanDiagnostics = buildExpectedSpanGateDiagnostics(
     item,
     router.gateDiagnostics
+  );
+  const truthCodes = uniqueStrings(
+    expectedSpanDiagnostics
+      .filter((diagnostic) => diagnostic.currentOwnPerformed)
+      .map((diagnostic) => diagnostic.expectedCode)
+  );
+  const structuredVisitFactExpectedCodes = uniqueStrings(
+    expectedSpanDiagnostics
+      .filter((diagnostic) => (
+        diagnostic.currentOwnPerformed
+        && diagnostic.structuredVisitFactResolved
+      ))
+      .map((diagnostic) => diagnostic.expectedCode)
+  );
+  const encoderTruthCodes = uniqueStrings(
+    expectedSpanDiagnostics
+      .filter((diagnostic) => (
+        diagnostic.currentOwnPerformed
+        && !diagnostic.structuredVisitFactResolved
+      ))
+      .map((diagnostic) => diagnostic.expectedCode)
   );
   return {
     caseId: item.caseId,
@@ -394,11 +410,13 @@ export function whiteboxShadowCaseAudit(item = {}, detail = {}) {
     reviewedLineCount: clinicalLineCount(item.clinicalText),
     reviewedSpanCount: Array.isArray(item.expectedSpans) ? item.expectedSpans.length : 0,
     expectedCurrentOwnCodes: truthCodes,
+    expectedEncoderCodes: encoderTruthCodes,
+    structuredVisitFactExpectedCodes,
     encoderCodes,
     llmCodes,
-    encoderTruePositiveCodes: encoderCodes.filter((code) => truthCodes.includes(code)),
-    encoderFalsePositiveCodes: encoderCodes.filter((code) => !truthCodes.includes(code)),
-    encoderFalseNegativeCodes: truthCodes.filter((code) => !encoderCodes.includes(code)),
+    encoderTruePositiveCodes: encoderCodes.filter((code) => encoderTruthCodes.includes(code)),
+    encoderFalsePositiveCodes: encoderCodes.filter((code) => !encoderTruthCodes.includes(code)),
+    encoderFalseNegativeCodes: encoderTruthCodes.filter((code) => !encoderCodes.includes(code)),
     expectedSpanDiagnostics,
     shadowComparisonObserved: comparison.observed === true
       || encoderCodes.length > 0
@@ -418,6 +436,7 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
       encoderTruePositiveCodeCount: 0,
       encoderFalsePositiveCodeCount: 0,
       encoderFalseNegativeCodeCount: 0,
+      structuredVisitFactExpectedCodeCount: 0,
       shadowComparisonObservedCount: 0,
       expectedSpanCount: 0,
       exactBoundaryMatchCount: 0,
@@ -426,6 +445,10 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
       canonicalTextMatchCount: 0,
       expectedCurrentOwnSpanCount: 0,
       detectedCurrentOwnSpanCount: 0,
+      expectedLinkerSpanCount: 0,
+      structuredVisitFactResolvedCount: 0,
+      strictStructuredVisitFactEligibleCount: 0,
+      shadowStructuredVisitFactEligibleCount: 0,
       expectedSemanticTop1Count: 0,
       expectedSemanticTop5Count: 0,
       expectedShadowTop1Count: 0,
@@ -435,6 +458,7 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
       strictExpectedFamilyIdentifiedCount: 0,
       shadowExpectedFamilyIdentifiedCount: 0,
       expectedBillableInclusionSpanCount: 0,
+      expectedDirectBillableInclusionSpanCount: 0,
       strictBillableInclusionEligibleCount: 0,
       shadowBillableInclusionEligibleCount: 0,
       expectedStandingSpanCount: 0,
@@ -467,6 +491,9 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
     current.encoderTruePositiveCodeCount += audit.encoderTruePositiveCodes?.length || 0;
     current.encoderFalsePositiveCodeCount += audit.encoderFalsePositiveCodes?.length || 0;
     current.encoderFalseNegativeCodeCount += audit.encoderFalseNegativeCodes?.length || 0;
+    current.structuredVisitFactExpectedCodeCount += (
+      audit.structuredVisitFactExpectedCodes?.length || 0
+    );
     current.shadowComparisonObservedCount += audit.shadowComparisonObserved ? 1 : 0;
     for (const diagnostic of Array.isArray(audit.expectedSpanDiagnostics)
       ? audit.expectedSpanDiagnostics
@@ -488,6 +515,9 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
       );
       if (diagnostic.expectedRole === "performed") {
         current.expectedBillableInclusionSpanCount += 1;
+        current.expectedDirectBillableInclusionSpanCount += (
+          diagnostic.structuredVisitFactResolved ? 0 : 1
+        );
         current.strictBillableInclusionEligibleCount += (
           diagnostic.strictBillableInclusionEligible ? 1 : 0
         );
@@ -522,6 +552,34 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
       }
       current.expectedCurrentOwnSpanCount += 1;
       current.detectedCurrentOwnSpanCount += diagnostic.runtimeSpanObserved ? 1 : 0;
+      current.structuredVisitFactResolvedCount += (
+        diagnostic.structuredVisitFactResolved ? 1 : 0
+      );
+      current.strictStructuredVisitFactEligibleCount += (
+        diagnostic.strictStructuredVisitFactEligible ? 1 : 0
+      );
+      current.shadowStructuredVisitFactEligibleCount += (
+        diagnostic.shadowStructuredVisitFactEligible ? 1 : 0
+      );
+      current.retrievalClassificationCounts[diagnostic.retrievalClassification] = Number(
+        current.retrievalClassificationCounts[diagnostic.retrievalClassification] || 0
+      ) + 1;
+      addCalibrationSample(
+        current.calibrationSamples.spanConfidence,
+        diagnostic.runtimeSpanConfidence
+      );
+      addReasonCounts(
+        current.strictBlockerCounts,
+        diagnostic.strictBlockerReasonCodes
+      );
+      addReasonCounts(
+        current.shadowBlockerCounts,
+        diagnostic.shadowBlockerReasonCodes
+      );
+      if (!diagnostic.linkerEvaluationEligible) {
+        continue;
+      }
+      current.expectedLinkerSpanCount += 1;
       current.expectedSemanticTop1Count += diagnostic.expectedSemanticRank === 1 ? 1 : 0;
       current.expectedSemanticTop5Count += (
         Number(diagnostic.expectedSemanticRank || 0) >= 1
@@ -539,13 +597,6 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
       );
       current.shadowExpectedFamilyIdentifiedCount += (
         diagnostic.shadowExpectedFamilyIdentified ? 1 : 0
-      );
-      current.retrievalClassificationCounts[diagnostic.retrievalClassification] = Number(
-        current.retrievalClassificationCounts[diagnostic.retrievalClassification] || 0
-      ) + 1;
-      addCalibrationSample(
-        current.calibrationSamples.spanConfidence,
-        diagnostic.runtimeSpanConfidence
       );
       addCalibrationSample(
         current.calibrationSamples.strictLinkerScore,
@@ -571,14 +622,6 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
         current.calibrationSamples.shadowFamilyMargin,
         diagnostic.shadowFamilyMargin
       );
-      addReasonCounts(
-        current.strictBlockerCounts,
-        diagnostic.strictBlockerReasonCodes
-      );
-      addReasonCounts(
-        current.shadowBlockerCounts,
-        diagnostic.shadowBlockerReasonCodes
-      );
     }
     byCell[cell] = current;
   }
@@ -602,10 +645,38 @@ export function whiteboxDeterminismSnapshot(detail = {}) {
     (entry) => entry?.stage === "whitebox_shadow_comparison"
   ) || {};
   return {
+    determinismScope: "whitebox_router_only",
     extractorVersion: String(whitebox.extractorVersion || ""),
     degraded: whitebox.degraded === true,
     lineCount: Number(whitebox.lineCount || 0),
     spanCount: Number(whitebox.spanCount || 0),
+    spanBearingLineCount: Number(whitebox.spanBearingLineCount || 0),
+    shadowEncoderLineCount: Number(whitebox.shadowEncoderLineCount || 0),
+    shadowPartialEncoderLineCount: Number(
+      whitebox.shadowPartialEncoderLineCount || 0
+    ),
+    shadowEncoderSpanBearingLineCount: Number(
+      whitebox.shadowEncoderSpanBearingLineCount || 0
+    ),
+    shadowEncoderOwnedSpanCount: Number(
+      whitebox.shadowEncoderOwnedSpanCount || 0
+    ),
+    encoderLineCount: Number(whitebox.encoderLineCount || 0),
+    partialEncoderLineCount: Number(whitebox.partialEncoderLineCount || 0),
+    encoderOwnedSpanCount: Number(whitebox.encoderOwnedSpanCount || 0),
+    clauseRoutes: {
+      strict: sortedNumberMapping(whitebox.clauseRoutes?.strict),
+      shadow: sortedNumberMapping(whitebox.clauseRoutes?.shadow)
+    },
+    visitFacts: {
+      status: String(whitebox.visitFacts?.status || ""),
+      source: String(whitebox.visitFacts?.source || ""),
+      evidenceLineCount: Number(whitebox.visitFacts?.evidenceLineCount || 0),
+      evidenceClauseCount: Number(whitebox.visitFacts?.evidenceClauseCount || 0),
+      ambiguousLineCount: Number(whitebox.visitFacts?.ambiguousLineCount || 0),
+      ambiguousClauseCount: Number(whitebox.visitFacts?.ambiguousClauseCount || 0),
+      fullLlmRequired: whitebox.visitFacts?.fullLlmRequired === true
+    },
     shadowEncoderLineIds: uniqueStrings(router.shadowEncoderLineIds),
     gateDiagnosticsSha256: sha256(JSON.stringify(router.gateDiagnostics || [])),
     gateFunnel: sortedGateFunnel(whitebox.gateFunnel),
@@ -657,6 +728,7 @@ export function summarizeWhiteboxDeterminism(runs = []) {
   const eligible = groups.filter((group) => group.observedRepeats > 1);
   const exact = eligible.filter((group) => group.exactMatch);
   return {
+    scope: "whitebox_router_only",
     groupCount: eligible.length,
     exactGroupCount: exact.length,
     exactMatchRate: eligible.length ? exact.length / eligible.length : null,
@@ -664,6 +736,81 @@ export function summarizeWhiteboxDeterminism(runs = []) {
       ? Math.min(...eligible.map((group) => group.observedRepeats))
       : 0,
     groups
+  };
+}
+
+export function summarizeWhiteboxRouting(runs = []) {
+  const snapshots = (Array.isArray(runs) ? runs : [])
+    .map((run) => run?.whiteboxSnapshot)
+    .filter((snapshot) => snapshot && typeof snapshot === "object");
+  const total = {
+    runCount: snapshots.length,
+    degradedRunCount: 0,
+    lineCount: 0,
+    spanCount: 0,
+    spanBearingLineCount: 0,
+    shadowEncoderLineCount: 0,
+    shadowPartialEncoderLineCount: 0,
+    shadowEncoderSpanBearingLineCount: 0,
+    shadowEncoderOwnedSpanCount: 0,
+    encoderLineCount: 0,
+    partialEncoderLineCount: 0,
+    encoderOwnedSpanCount: 0,
+    encoderCodeRunCount: 0,
+    fullLlmRequiredRunCount: 0,
+    strictClauseRoutes: {},
+    shadowClauseRoutes: {},
+    visitFactsStatusCounts: {},
+    visitFactsSourceCounts: {}
+  };
+  for (const snapshot of snapshots) {
+    total.degradedRunCount += snapshot.degraded === true ? 1 : 0;
+    for (const field of [
+      "lineCount",
+      "spanCount",
+      "spanBearingLineCount",
+      "shadowEncoderLineCount",
+      "shadowPartialEncoderLineCount",
+      "shadowEncoderSpanBearingLineCount",
+      "shadowEncoderOwnedSpanCount",
+      "encoderLineCount",
+      "partialEncoderLineCount",
+      "encoderOwnedSpanCount"
+    ]) {
+      total[field] += Number(snapshot?.[field] || 0);
+    }
+    total.encoderCodeRunCount += snapshot.encoderCodes?.length ? 1 : 0;
+    total.fullLlmRequiredRunCount += snapshot.visitFacts?.fullLlmRequired ? 1 : 0;
+    mergeNumberMapping(total.strictClauseRoutes, snapshot.clauseRoutes?.strict);
+    mergeNumberMapping(total.shadowClauseRoutes, snapshot.clauseRoutes?.shadow);
+    incrementStringCount(total.visitFactsStatusCounts, snapshot.visitFacts?.status);
+    incrementStringCount(total.visitFactsSourceCounts, snapshot.visitFacts?.source);
+  }
+  const shadowRoutableLineCount = total.shadowEncoderLineCount
+    + total.shadowPartialEncoderLineCount;
+  return {
+    ...total,
+    strictClauseRoutes: sortedNumberMapping(total.strictClauseRoutes),
+    shadowClauseRoutes: sortedNumberMapping(total.shadowClauseRoutes),
+    visitFactsStatusCounts: sortedNumberMapping(total.visitFactsStatusCounts),
+    visitFactsSourceCounts: sortedNumberMapping(total.visitFactsSourceCounts),
+    shadowRoutableLineCount,
+    shadowRoutableLineRatio: ratioOrNull(
+      shadowRoutableLineCount,
+      total.lineCount
+    ),
+    spanBearingRoutableLineRatio: ratioOrNull(
+      total.shadowEncoderSpanBearingLineCount,
+      total.spanBearingLineCount
+    ),
+    strictExpectedLlmClauseRatio: ratioOrNull(
+      total.strictClauseRoutes.llm,
+      total.strictClauseRoutes.total
+    ),
+    shadowExpectedLlmClauseRatio: ratioOrNull(
+      total.shadowClauseRoutes.llm,
+      total.shadowClauseRoutes.total
+    )
   };
 }
 
@@ -753,20 +900,33 @@ function buildExpectedSpanGateDiagnostics(item = {}, runtimeDiagnostics = []) {
       diagnostic?.shadowCandidates,
       expectedCode
     );
+    const strictStructuredVisitFactEligible = Boolean(
+      diagnostic?.strict?.structuredFactEligible === true
+      || diagnostic?.strict?.resolution === "structured_visit_fact"
+    );
+    const shadowStructuredVisitFactEligible = Boolean(
+      diagnostic?.shadow?.structuredFactEligible === true
+      || diagnostic?.shadow?.resolution === "structured_visit_fact"
+    );
+    const structuredVisitFactResolved = Boolean(
+      diagnostic?.resolutionSource === "structured_visit_fact"
+      || strictStructuredVisitFactEligible
+      || shadowStructuredVisitFactEligible
+    );
     const strictBlockers = diagnostic
       ? [...(diagnostic.strict?.blockerReasonCodes || [])]
       : ["span_not_detected"];
     const shadowBlockers = diagnostic
       ? [...(diagnostic.shadow?.blockerReasonCodes || [])]
       : ["span_not_detected"];
-    if (diagnostic && semanticRank !== 1) {
+    if (diagnostic && !structuredVisitFactResolved && semanticRank !== 1) {
       strictBlockers.push(
         semanticRank === null
           ? "linker_expected_code_not_in_top5"
           : "linker_expected_code_not_top1"
       );
     }
-    if (diagnostic && shadowRank !== 1) {
+    if (diagnostic && !structuredVisitFactResolved && shadowRank !== 1) {
       shadowBlockers.push(
         shadowRank === null
           ? "linker_expected_code_not_in_top5"
@@ -790,6 +950,7 @@ function buildExpectedSpanGateDiagnostics(item = {}, runtimeDiagnostics = []) {
       shadowRank,
       strictExpectedFamilyIdentified,
       shadowExpectedFamilyIdentified,
+      structuredVisitFactResolved,
       match
     });
     return {
@@ -797,6 +958,12 @@ function buildExpectedSpanGateDiagnostics(item = {}, runtimeDiagnostics = []) {
       category: String(span?.category || ""),
       expectedRole,
       currentOwnPerformed: Boolean(isCurrentOwnPerformedSpan(span)),
+      linkerEvaluationEligible: Boolean(
+        isCurrentOwnPerformedSpan(span) && !structuredVisitFactResolved
+      ),
+      structuredVisitFactResolved,
+      strictStructuredVisitFactEligible,
+      shadowStructuredVisitFactEligible,
       expectedLineIndex: location.lineIndex,
       expectedCharStart: location.charStart,
       expectedCharEnd: location.charEnd,
@@ -805,6 +972,7 @@ function buildExpectedSpanGateDiagnostics(item = {}, runtimeDiagnostics = []) {
       canonicalText: location.canonicalText,
       runtimeSpanObserved: Boolean(diagnostic),
       runtimeSpanId: String(diagnostic?.spanId || ""),
+      resolutionSource: String(diagnostic?.resolutionSource || "model_gate"),
       matchType: match.matchType,
       intervalIou: match.intervalIou,
       exactBoundaryMatch: match.matchType === "exact",
@@ -1021,10 +1189,14 @@ function classifyRetrievalOutcome({
   shadowRank = null,
   strictExpectedFamilyIdentified = false,
   shadowExpectedFamilyIdentified = false,
+  structuredVisitFactResolved = false,
   match = {}
 } = {}) {
   if (!diagnostic) {
     return "span_not_detected";
+  }
+  if (structuredVisitFactResolved) {
+    return "structured_visit_fact";
   }
   if (semanticRank === 1 || shadowRank === 1) {
     return "exact_code_top1";
@@ -1163,6 +1335,26 @@ function sortedNumberMapping(value) {
       .filter(([key, count]) => key && Number.isFinite(count))
       .sort(([left], [right]) => left.localeCompare(right))
   );
+}
+
+function mergeNumberMapping(target, source) {
+  for (const [key, count] of Object.entries(sortedNumberMapping(source))) {
+    target[key] = Number(target[key] || 0) + Number(count || 0);
+  }
+}
+
+function incrementStringCount(target, value) {
+  const key = String(value || "").trim();
+  if (key) {
+    target[key] = Number(target[key] || 0) + 1;
+  }
+}
+
+function ratioOrNull(numerator, denominator) {
+  const normalizedDenominator = Number(denominator || 0);
+  return normalizedDenominator
+    ? Number(numerator || 0) / normalizedDenominator
+    : null;
 }
 
 function nonemptyUniqueStrings(value, label) {

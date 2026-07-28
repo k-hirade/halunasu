@@ -21,6 +21,7 @@ from medical_fee_calculation.whitebox_artifacts import (
     validate_artifact_license,
 )
 from medical_fee_calculation.whitebox_context import (
+    RUNTIME_CONTEXT_INPUT_SEMANTICS,
     STRUCTURED_INPUT_CONTRACT_VERSION,
     _classifier_text,
 )
@@ -30,6 +31,10 @@ IMMUTABLE_REVISION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{6,127}$")
 VERSION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 ALLOWED_TRAINING_SPLITS = frozenset({"train", "development", "holdout"})
+CONTEXT_CLAUSE_BOUNDARY_PATTERN = re.compile(
+    r"(?:[。！？!?；;]+|[、,](?=\s*(?:本日|今回|当日|前回|先月|以前|過去|次回|"
+    r"後日|今後|他院|前医|当院|院内|自院)))"
+)
 
 
 class WhiteboxTrainingError(RuntimeError):
@@ -320,6 +325,16 @@ def context_text_for_span(
     *,
     input_contract_version: int = STRUCTURED_INPUT_CONTRACT_VERSION,
 ) -> str:
+    return _classifier_text(
+        context_classifier_item_for_span(case, span),
+        input_contract_version=input_contract_version,
+    )
+
+
+def context_classifier_item_for_span(
+    case: Mapping[str, Any],
+    span: Mapping[str, Any],
+) -> dict[str, Any]:
     lines = split_text_lines(str(case["clinicalText"]))
     start = int(span["charStart"])
     target_index = next(
@@ -337,25 +352,66 @@ def context_text_for_span(
         raise WhiteboxTrainingError(
             f"{case.get('caseId')}: context span offsets are invalid"
         )
-    return _classifier_text(
-        {
-            "text": target.text,
-            "spanText": target.text[local_start:local_end],
-            "charStart": local_start,
-            "charEnd": local_end,
-            "previousLine": lines[target_index - 1].text if target_index > 0 else "",
-            "nextLine": (
-                lines[target_index + 1].text
-                if target_index + 1 < len(lines)
-                else ""
-            ),
-            "section": _section_for_line(target.text),
-            "encounterSetting": str(case.get("encounterSetting") or ""),
-            "specialty": str(case.get("specialty") or ""),
-            "sourceType": "clinical_note",
-        },
-        input_contract_version=input_contract_version,
+    clauses = split_context_clauses(target.text)
+    clause = next(
+        (
+            item
+            for item in clauses
+            if local_start < item["charEnd"] and local_end > item["charStart"]
+        ),
+        clauses[0],
     )
+    return {
+        "text": target.text,
+        "spanText": target.text[local_start:local_end],
+        "charStart": local_start,
+        "charEnd": local_end,
+        "previousLine": lines[target_index - 1].text if target_index > 0 else "",
+        "nextLine": (
+            lines[target_index + 1].text
+            if target_index + 1 < len(lines)
+            else ""
+        ),
+        "section": _section_for_line(target.text),
+        "encounterSetting": str(case.get("encounterSetting") or ""),
+        "specialty": str(case.get("specialty") or ""),
+        "sourceType": "clinical_note",
+        "parentLineText": target.text,
+        "clauseText": clause["text"],
+        "clauseCharStart": clause["charStart"],
+        "clauseCharEnd": clause["charEnd"],
+        "clauseSpanCharStart": local_start - clause["charStart"],
+        "clauseSpanCharEnd": local_end - clause["charStart"],
+        "inputSemantics": dict(RUNTIME_CONTEXT_INPUT_SEMANTICS),
+    }
+
+
+def split_context_clauses(value: str) -> list[dict[str, Any]]:
+    text = str(value)
+    clauses: list[dict[str, Any]] = []
+    start = 0
+
+    def append(raw_start: int, raw_end: int) -> None:
+        raw = text[raw_start:raw_end]
+        leading = len(raw) - len(raw.lstrip())
+        trailing = len(raw.rstrip())
+        clause_start = raw_start + leading
+        clause_end = raw_start + trailing
+        if clause_end <= clause_start:
+            return
+        clauses.append({
+            "text": text[clause_start:clause_end],
+            "charStart": clause_start,
+            "charEnd": clause_end,
+        })
+
+    for match in CONTEXT_CLAUSE_BOUNDARY_PATTERN.finditer(text):
+        append(start, match.end())
+        start = match.end()
+    append(start, len(text))
+    if not clauses and text:
+        append(0, len(text))
+    return clauses
 
 
 def _section_for_line(value: str) -> str:

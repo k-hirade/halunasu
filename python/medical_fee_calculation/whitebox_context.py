@@ -33,6 +33,37 @@ from medical_fee_calculation.whitebox_onnx import (
 CONTEXT_ARTIFACT_TYPE = "fee_context_classifier"
 LEGACY_INPUT_CONTRACT_VERSION = 1
 STRUCTURED_INPUT_CONTRACT_VERSION = 2
+CLAUSE_AWARE_INPUT_CONTRACT_VERSION = 3
+CONTEXT_INPUT_SEMANTICS_SCHEMA_VERSION = "fee-context-input-semantics-v1"
+CONTEXT_INPUT_SEMANTICS = {
+    LEGACY_INPUT_CONTRACT_VERSION: {
+        "schemaVersion": CONTEXT_INPUT_SEMANTICS_SCHEMA_VERSION,
+        "textScope": "line",
+        "offsetBasis": "line",
+        "offsetUnit": "unicode_code_point",
+        "normalizationVersion": "fee-clinical-canonical-v1",
+        "clauseSegmentationVersion": "fee-evidence-clause-v1",
+    },
+    STRUCTURED_INPUT_CONTRACT_VERSION: {
+        "schemaVersion": CONTEXT_INPUT_SEMANTICS_SCHEMA_VERSION,
+        "textScope": "line",
+        "offsetBasis": "line",
+        "offsetUnit": "unicode_code_point",
+        "normalizationVersion": "fee-clinical-canonical-v1",
+        "clauseSegmentationVersion": "fee-evidence-clause-v1",
+    },
+    CLAUSE_AWARE_INPUT_CONTRACT_VERSION: {
+        "schemaVersion": CONTEXT_INPUT_SEMANTICS_SCHEMA_VERSION,
+        "textScope": "line_with_governing_clause",
+        "offsetBasis": "line_and_clause",
+        "offsetUnit": "unicode_code_point",
+        "normalizationVersion": "fee-clinical-canonical-v1",
+        "clauseSegmentationVersion": "fee-evidence-clause-v1",
+    },
+}
+RUNTIME_CONTEXT_INPUT_SEMANTICS = CONTEXT_INPUT_SEMANTICS[
+    CLAUSE_AWARE_INPUT_CONTRACT_VERSION
+]
 CONTEXT_SEMANTIC_PROBE_ITEM = {
     "lineId": "semantic-probe",
     "spanId": "semantic-probe",
@@ -46,6 +77,14 @@ CONTEXT_SEMANTIC_PROBE_ITEM = {
     "encounterSetting": "outpatient",
     "specialty": "internal_medicine",
     "sourceType": "clinical_note",
+    "parentLineText": "本日はＣＲＰのみ再検とし、採血を実施。",
+    "clauseId": "semantic-probe:C001",
+    "clauseText": "本日はＣＲＰのみ再検とし、採血を実施。",
+    "clauseCharStart": 0,
+    "clauseCharEnd": 19,
+    "clauseSpanCharStart": 13,
+    "clauseSpanCharEnd": 15,
+    "inputSemantics": RUNTIME_CONTEXT_INPUT_SEMANTICS,
 }
 
 
@@ -64,7 +103,11 @@ def classify_context(
             manifest_path,
             expected_type=CONTEXT_ARTIFACT_TYPE,
         )
-        items = _normalize_items(payload.get("items") or payload.get("spans"))
+        contract_version = _context_input_contract_version(artifact.manifest)
+        items = _normalize_items(
+            payload.get("items") or payload.get("spans"),
+            input_contract_version=contract_version,
+        )
         inference = classifier or _load_classifier(artifact)
         raw_results = inference(items)
         if len(raw_results) != len(items):
@@ -171,7 +214,11 @@ def _validate_context_semantic_probe(
         )
 
 
-def _normalize_items(value: Any) -> list[dict[str, Any]]:
+def _normalize_items(
+    value: Any,
+    *,
+    input_contract_version: int = LEGACY_INPUT_CONTRACT_VERSION,
+) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         raise ValueError("context items must be an array")
     normalized: list[dict[str, Any]] = []
@@ -189,6 +236,63 @@ def _normalize_items(value: Any) -> list[dict[str, Any]]:
                 raise ValueError("context span offsets are outside the source line")
             if text[start:end] != span_text:
                 raise ValueError("context span text does not match source offsets")
+        parent_line_text = str(
+            item.get("parentLineText")
+            or item.get("parent_line_text")
+            or text
+        )[:2000]
+        clause_text = str(
+            item.get("clauseText")
+            or item.get("clause_text")
+            or text
+        )[:2000]
+        clause_start = _optional_offset(
+            item.get("clauseCharStart", item.get("clause_char_start"))
+        )
+        clause_end = _optional_offset(
+            item.get("clauseCharEnd", item.get("clause_char_end"))
+        )
+        clause_span_start = _optional_offset(
+            item.get("clauseSpanCharStart", item.get("clause_span_char_start"))
+        )
+        clause_span_end = _optional_offset(
+            item.get("clauseSpanCharEnd", item.get("clause_span_char_end"))
+        )
+        if clause_start is None:
+            clause_start = 0
+        if clause_end is None:
+            clause_end = len(clause_text)
+        if (
+            clause_start < 0
+            or clause_end <= clause_start
+            or clause_end > len(parent_line_text)
+            or parent_line_text[clause_start:clause_end] != clause_text
+        ):
+            raise ValueError("context clause offsets are outside the parent line")
+        if clause_span_start is None and start is not None:
+            clause_span_start = start - clause_start
+        if clause_span_end is None and end is not None:
+            clause_span_end = end - clause_start
+        if (
+            clause_span_start is not None
+            or clause_span_end is not None
+        ):
+            if (
+                clause_span_start is None
+                or clause_span_end is None
+                or clause_span_start < 0
+                or clause_span_end <= clause_span_start
+                or clause_span_end > len(clause_text)
+                or clause_text[clause_span_start:clause_span_end] != span_text
+            ):
+                raise ValueError(
+                    "context span offsets do not match the governing clause"
+                )
+        input_semantics = item.get("inputSemantics") or item.get("input_semantics")
+        _validate_item_input_semantics(
+            input_semantics,
+            input_contract_version=input_contract_version,
+        )
         normalized.append({
             "lineId": str(item.get("lineId") or item.get("line_id") or f"L-{index + 1:03d}"),
             "spanId": str(item.get("spanId") or item.get("span_id") or f"span-{index + 1}"),
@@ -206,6 +310,18 @@ def _normalize_items(value: Any) -> list[dict[str, Any]]:
             "sourceType": str(
                 item.get("sourceType") or item.get("source_type") or "clinical_note"
             ).strip()[:64],
+            "parentLineText": parent_line_text,
+            "clauseId": str(item.get("clauseId") or item.get("clause_id") or ""),
+            "clauseText": clause_text,
+            "clauseCharStart": clause_start,
+            "clauseCharEnd": clause_end,
+            "clauseSpanCharStart": clause_span_start,
+            "clauseSpanCharEnd": clause_span_end,
+            "inputSemantics": dict(
+                input_semantics
+                if isinstance(input_semantics, Mapping)
+                else CONTEXT_INPUT_SEMANTICS[input_contract_version]
+            ),
         })
     return normalized
 
@@ -395,7 +511,10 @@ def _classifier_text(
     ]
     if input_contract_version == LEGACY_INPUT_CONTRACT_VERSION:
         return "\n".join(part for part in context_parts if part)
-    if input_contract_version != STRUCTURED_INPUT_CONTRACT_VERSION:
+    if input_contract_version not in {
+        STRUCTURED_INPUT_CONTRACT_VERSION,
+        CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
+    }:
         raise ValueError(
             f"unsupported context input contract version: {input_contract_version}"
         )
@@ -410,10 +529,67 @@ def _classifier_text(
         for tag, value in metadata
         if str(value or "").strip()
     ]
+    if input_contract_version == STRUCTURED_INPUT_CONTRACT_VERSION:
+        return "\n".join([
+            *metadata_parts,
+            *(part for part in context_parts if part),
+        ])
+    clause = str(item.get("clauseText") or current)
+    clause_start = item.get("clauseSpanCharStart")
+    clause_end = item.get("clauseSpanCharEnd")
+    if (
+        isinstance(clause_start, int)
+        and isinstance(clause_end, int)
+        and 0 <= clause_start < clause_end <= len(clause)
+        and clause[clause_start:clause_end] == span
+    ):
+        marked_clause = (
+            clause[:clause_start]
+            + f"[SPAN]{clause[clause_start:clause_end]}[/SPAN]"
+            + clause[clause_end:]
+        )
+    else:
+        marked_clause = (
+            clause.replace(span, f"[SPAN]{span}[/SPAN]", 1)
+            if span
+            else clause
+        )
     return "\n".join([
         *metadata_parts,
-        *(part for part in context_parts if part),
-    ])
+        str(item.get("previousLine") or "").strip(),
+        f"[LINE]{str(item.get('parentLineText') or current).strip()}[/LINE]",
+        f"[CLAUSE]{marked_clause.strip()}[/CLAUSE]",
+        str(item.get("nextLine") or "").strip(),
+    ]).strip()
+
+
+def context_input_semantics(input_contract_version: int) -> dict[str, str]:
+    try:
+        return dict(CONTEXT_INPUT_SEMANTICS[int(input_contract_version)])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"unsupported context input contract version: {input_contract_version}"
+        ) from exc
+
+
+def _validate_item_input_semantics(
+    value: Any,
+    *,
+    input_contract_version: int,
+) -> None:
+    if value is None:
+        if input_contract_version == CLAUSE_AWARE_INPUT_CONTRACT_VERSION:
+            raise ValueError(
+                "clause-aware context items require inputSemantics"
+            )
+        return
+    if not isinstance(value, Mapping):
+        raise ValueError("context inputSemantics must be an object")
+    expected = RUNTIME_CONTEXT_INPUT_SEMANTICS
+    if any(str(value.get(key) or "") != expected_value for key, expected_value in expected.items()):
+        raise ValueError(
+            "context inputSemantics do not match the artifact contract"
+        )
 
 
 def _optional_offset(value: Any) -> int | None:
@@ -441,7 +617,24 @@ def _validate_context_manifest(
     output_names = manifest.get("outputNames")
     temperatures = manifest.get("temperatures") or {}
     thresholds = manifest.get("abstainThresholds") or {}
-    _context_input_contract_version(manifest)
+    input_contract_version = _context_input_contract_version(manifest)
+    configured_semantics = manifest.get("inputSemantics")
+    if (
+        input_contract_version == CLAUSE_AWARE_INPUT_CONTRACT_VERSION
+        and not isinstance(configured_semantics, Mapping)
+    ):
+        raise WhiteboxArtifactError(
+            "clause-aware context artifacts require inputSemantics"
+        )
+    if isinstance(configured_semantics, Mapping):
+        expected_semantics = context_input_semantics(input_contract_version)
+        if any(
+            str(configured_semantics.get(key) or "") != expected_value
+            for key, expected_value in expected_semantics.items()
+        ):
+            raise WhiteboxArtifactError(
+                "context inputSemantics do not match inputContractVersion"
+            )
     if not isinstance(labels, Mapping) or not isinstance(output_names, Mapping):
         raise WhiteboxArtifactError(
             "context axisLabels and outputNames are required"
@@ -479,19 +672,20 @@ def _context_input_contract_version(manifest: Mapping[str, Any]) -> int:
     )
     if isinstance(value, bool):
         raise WhiteboxArtifactError(
-            "context inputContractVersion must be 1 or 2"
+            "context inputContractVersion must be 1, 2, or 3"
         )
     try:
         parsed = int(value)
     except (TypeError, ValueError) as exc:
         raise WhiteboxArtifactError(
-            "context inputContractVersion must be 1 or 2"
+            "context inputContractVersion must be 1, 2, or 3"
         ) from exc
     if parsed not in {
         LEGACY_INPUT_CONTRACT_VERSION,
         STRUCTURED_INPUT_CONTRACT_VERSION,
+        CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
     }:
         raise WhiteboxArtifactError(
-            "context inputContractVersion must be 1 or 2"
+            "context inputContractVersion must be 1, 2, or 3"
         )
     return parsed

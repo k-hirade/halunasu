@@ -10,7 +10,9 @@ from scripts.whitebox_training_common import (
     assert_no_counterexample_training_leakage,
     build_license_record,
     canonicalize_training_case,
+    context_classifier_item_for_span,
     load_training_partitions,
+    split_context_clauses,
     split_text_lines,
     spans_for_line,
     validate_model_revision,
@@ -162,6 +164,94 @@ class WhiteboxTrainingCommonTest(unittest.TestCase):
             normalized_text[span["charStart"]:span["charEnd"]],
             "CT",
         )
+
+    def test_context_item_keeps_line_scope_and_governing_clause(self) -> None:
+        text = "S）発熱は軽快。\nO）前回CTを確認し、本日は採血を実施。次回MRIを予定。"
+        start = text.index("採血")
+        item = context_classifier_item_for_span({
+            "caseId": "context-contract",
+            "specialty": "internal_medicine",
+            "encounterSetting": "outpatient",
+            "clinicalText": text,
+        }, {
+            "text": "採血",
+            "charStart": start,
+            "charEnd": start + 2,
+        })
+
+        self.assertEqual(
+            item["text"],
+            "O）前回CTを確認し、本日は採血を実施。次回MRIを予定。",
+        )
+        self.assertEqual(item["text"][item["charStart"]:item["charEnd"]], "採血")
+        self.assertEqual(item["clauseText"], "本日は採血を実施。")
+        self.assertEqual(
+            item["clauseText"][
+                item["clauseSpanCharStart"]:item["clauseSpanCharEnd"]
+            ],
+            "採血",
+        )
+        self.assertEqual(item["previousLine"], "S）発熱は軽快。")
+        self.assertEqual(item["inputSemantics"]["offsetUnit"], "unicode_code_point")
+
+    def test_context_clause_split_matches_mixed_temporal_sentence(self) -> None:
+        self.assertEqual(
+            [item["text"] for item in split_context_clauses(
+                "前回CTを確認し、本日は採血を実施。次回MRIを予定。"
+            )],
+            ["前回CTを確認し、", "本日は採血を実施。", "次回MRIを予定。"],
+        )
+
+    def test_context_input_regressions_freeze_safe_semantic_outcomes(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        matrix = json.loads(
+            (root / "data/tests/fee-specialty-matrix/cases.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        regressions = json.loads(
+            (
+                root
+                / "data/tests/fee-specialty-matrix/context-input-regressions.json"
+            ).read_text(encoding="utf-8")
+        )
+        by_case = {item["caseId"]: item for item in matrix["cases"]}
+        counts = {
+            "billable_inclusion": 0,
+            "safe_exclusion": 0,
+            "must_not_safe_exclude": 0,
+        }
+        for regression in regressions["cases"]:
+            span = by_case[regression["caseId"]]["expectedSpans"][
+                regression["spanIndex"]
+            ]
+            disposition = regression["expectedDisposition"]
+            counts[disposition] += 1
+            self.assertEqual(span["text"], regression["expectedText"])
+            current_own = (
+                span["temporalRelation"] == "current_visit"
+                and span["sourceOrigin"] == "own_clinic_record"
+                and span["providerOwnership"] == "own_clinic"
+            )
+            if disposition == "billable_inclusion":
+                self.assertTrue(current_own)
+                self.assertEqual(span["actionStatus"], "performed")
+            elif disposition == "safe_exclusion":
+                self.assertTrue(
+                    span["actionStatus"] in {"not_performed", "planned", "considered"}
+                    or span["temporalRelation"] != "current_visit"
+                )
+            else:
+                self.assertTrue(current_own)
+                self.assertIn(
+                    span["actionStatus"],
+                    {"performed", "prescribed", "instruction_only", "administered"},
+                )
+        self.assertEqual(counts, {
+            "billable_inclusion": 3,
+            "safe_exclusion": 1,
+            "must_not_safe_exclude": 6,
+        })
 
 
 if __name__ == "__main__":

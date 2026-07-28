@@ -5,6 +5,14 @@ import { clinicalServiceContextCues } from "../../../packages/fee-contracts/src/
 export const WHITEBOX_LINKER_MODES = Object.freeze(["off", "shadow", "propose"]);
 export const WHITEBOX_CONTEXT_MODES = Object.freeze(["off", "shadow", "assist"]);
 export const WHITEBOX_SPAN_MODES = Object.freeze(["off", "shadow", "route"]);
+export const WHITEBOX_CONTEXT_INPUT_SEMANTICS = Object.freeze({
+  schemaVersion: "fee-context-input-semantics-v1",
+  textScope: "line_with_governing_clause",
+  offsetBasis: "line_and_clause",
+  offsetUnit: "unicode_code_point",
+  normalizationVersion: "fee-clinical-canonical-v1",
+  clauseSegmentationVersion: "fee-evidence-clause-v1"
+});
 
 export const DEFAULT_WHITEBOX_THRESHOLDS = Object.freeze({
   schemaVersion: 1,
@@ -118,9 +126,11 @@ export function splitWhiteboxEvidenceClauses(line = {}) {
       return;
     }
     const trimmedRight = raw.trimEnd();
-    const clauseStart = rawStart + leading;
-    const clauseEnd = rawStart + trimmedRight.length;
-    const clauseText = text.slice(clauseStart, clauseEnd);
+    const clauseStartUtf16 = rawStart + leading;
+    const clauseEndUtf16 = rawStart + trimmedRight.length;
+    const clauseText = text.slice(clauseStartUtf16, clauseEndUtf16);
+    const clauseStart = codePointLength(text.slice(0, clauseStartUtf16));
+    const clauseEnd = codePointLength(text.slice(0, clauseEndUtf16));
     const localCues = clinicalServiceContextCues(clauseText);
     const inheritCurrentVisit = line?.cues?.currentVisit === true
       && !localCues.pastOrExternal
@@ -148,6 +158,67 @@ export function splitWhiteboxEvidenceClauses(line = {}) {
     append(0, text.length);
   }
   return clauses;
+}
+
+export function buildContextClassifierItems({
+  lines = [],
+  runtimeEntries = [],
+  encounterSetting = "",
+  specialty = ""
+} = {}) {
+  const normalizedLines = Array.isArray(lines) ? lines : [];
+  const lineIndex = new Map(normalizedLines.map((line, index) => [
+    String(line?.lineId || ""),
+    index
+  ]));
+  return (Array.isArray(runtimeEntries) ? runtimeEntries : []).map((entry) => {
+    const span = entry?.effectiveSpan || entry?.sourceSpan || entry || {};
+    const index = lineIndex.get(String(span?.lineId || "")) ?? -1;
+    const line = index >= 0 ? normalizedLines[index] : {};
+    const lineText = String(line?.text || span?.text || "");
+    const clause = entry?.clause || {
+      clauseId: "",
+      text: lineText,
+      charStart: 0,
+      charEnd: codePointLength(lineText)
+    };
+    const clauseStart = finiteOffset(clause?.charStart, 0);
+    const clauseEnd = finiteOffset(
+      clause?.charEnd,
+      clauseStart + codePointLength(clause?.text)
+    );
+    const spanStart = finiteOffset(span?.charStart, 0);
+    const spanEnd = finiteOffset(
+      span?.charEnd,
+      spanStart + codePointLength(span?.text)
+    );
+    return {
+      lineId: String(span?.lineId || ""),
+      spanId: String(span?.spanId || ""),
+      text: lineText,
+      spanText: String(span?.text || ""),
+      charStart: spanStart,
+      charEnd: spanEnd,
+      previousLine: index > 0 ? String(normalizedLines[index - 1]?.text || "") : "",
+      nextLine: (
+        index >= 0 && index + 1 < normalizedLines.length
+          ? String(normalizedLines[index + 1]?.text || "")
+          : ""
+      ),
+      section: index >= 0 ? String(normalizedLines[index]?.section || "") : "",
+      encounterSetting: String(encounterSetting || ""),
+      specialty: String(specialty || ""),
+      sourceType: "clinical_note",
+      parentLineText: lineText,
+      clauseId: String(clause?.clauseId || ""),
+      clauseText: String(clause?.text || lineText),
+      clauseCharStart: clauseStart,
+      clauseCharEnd: clauseEnd,
+      clauseSpanCharStart: Math.max(0, spanStart - clauseStart),
+      clauseSpanCharEnd: Math.max(0, spanEnd - clauseStart),
+      inputSemantics: { ...WHITEBOX_CONTEXT_INPUT_SEMANTICS }
+    };
+  });
 }
 
 function whiteboxClauseForSpan(clauses = [], span = {}) {
@@ -636,30 +707,13 @@ export async function prepareWhiteboxExtraction({
     && contextRuntime.length
     && typeof feeCalculator?.classifyContext === "function"
   ) {
-    const lineIndex = new Map(lines.map((line, index) => [line.lineId, index]));
     const contextStartedAt = Date.now();
     contextEnvelope = await feeCalculator.classifyContext({
-      items: contextRuntime.map((entry) => {
-        const span = entry.effectiveSpan;
-        const index = lineIndex.get(span.lineId) ?? -1;
-        const clause = entry.clause || {
-          text: index >= 0 ? lines[index].text : span.text,
-          charStart: 0
-        };
-        return {
-          lineId: span.lineId,
-          spanId: span.spanId,
-          text: clause.text,
-          spanText: span.text,
-          charStart: Math.max(0, Number(span.charStart || 0) - Number(clause.charStart || 0)),
-          charEnd: Math.max(0, Number(span.charEnd || 0) - Number(clause.charStart || 0)),
-          previousLine: index > 0 ? lines[index - 1].text : "",
-          nextLine: index >= 0 && index + 1 < lines.length ? lines[index + 1].text : "",
-          section: index >= 0 ? lines[index].section || "" : "",
-          encounterSetting: setting,
-          specialty,
-          sourceType: "clinical_note"
-        };
+      items: buildContextClassifierItems({
+        lines,
+        runtimeEntries: contextRuntime,
+        encounterSetting: setting,
+        specialty
       })
     }).catch((error) => unavailableEnvelope(error));
     contextDurationMs = Date.now() - contextStartedAt;
@@ -1199,7 +1253,7 @@ function planWhiteboxLineClauses({
         lineId: String(line?.lineId || ""),
         text: String(line?.text || ""),
         charStart: 0,
-        charEnd: String(line?.text || "").length,
+        charEnd: codePointLength(line?.text),
         cues: clinicalServiceContextCues(line?.text)
       }];
   const confidentlyIrrelevant = spanRow?.relevance === "irrelevant"
@@ -1915,11 +1969,11 @@ function resolvedSpanFromLink(span = {}, link = {}, line = {}, sourceClause = nu
     && Number.isInteger(originalStart)
     && Number.isInteger(originalEnd)
     && start >= 0
-    && end <= lineText.length
+    && end <= codePointLength(lineText)
     && start <= originalStart
     && end >= originalEnd
     && end - start > originalEnd - originalStart
-    && lineText.slice(start, end) === text
+    && sliceCodePoints(lineText, start, end) === text
     && (
       !sourceClause
       || (
@@ -1953,6 +2007,19 @@ function finiteNumberOrNull(value) {
   }
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function finiteOffset(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 ? number : fallback;
+}
+
+function codePointLength(value = "") {
+  return Array.from(String(value || "")).length;
+}
+
+function sliceCodePoints(value = "", start = 0, end = undefined) {
+  return Array.from(String(value || "")).slice(start, end).join("");
 }
 
 function finiteProbabilityOrNull(value) {

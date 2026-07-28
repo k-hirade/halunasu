@@ -14,9 +14,12 @@ from medical_fee_calculation.whitebox_artifacts import (
     load_whitebox_artifact,
 )
 from medical_fee_calculation.whitebox_context import (
+    CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
+    RUNTIME_CONTEXT_INPUT_SEMANTICS,
     STRUCTURED_INPUT_CONTRACT_VERSION,
     _classifier_text,
     classify_context,
+    context_input_semantics,
     context_classifier_readiness,
 )
 from medical_fee_calculation.whitebox_linker import linker_readiness, link_spans
@@ -749,6 +752,66 @@ class WhiteboxRuntimeTest(unittest.TestCase):
                 "A）感染症疑い。",
             ]),
         )
+
+    def test_context_v3_marks_the_span_in_its_clause_and_keeps_parent_line(self) -> None:
+        line = "前回CTを確認し、本日は採血を実施。次回MRIを予定。"
+        clause = "本日は採血を実施。"
+        marked = _classifier_text({
+            "text": line,
+            "parentLineText": line,
+            "spanText": "採血",
+            "charStart": line.index("採血"),
+            "charEnd": line.index("採血") + 2,
+            "clauseText": clause,
+            "clauseSpanCharStart": clause.index("採血"),
+            "clauseSpanCharEnd": clause.index("採血") + 2,
+            "section": "O",
+            "encounterSetting": "outpatient",
+            "specialty": "internal_medicine",
+            "sourceType": "clinical_note",
+        }, input_contract_version=CLAUSE_AWARE_INPUT_CONTRACT_VERSION)
+        self.assertIn(f"[LINE]{line}[/LINE]", marked)
+        self.assertIn(
+            "[CLAUSE]本日は[SPAN]採血[/SPAN]を実施。[/CLAUSE]",
+            marked,
+        )
+
+    def test_context_v3_rejects_runtime_payload_with_wrong_semantics(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)
+            manifest_path = self._write_manifest(
+                path,
+                self._manifest(
+                    "fee_context_classifier",
+                    inputContractVersion=CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
+                    inputSemantics=context_input_semantics(
+                        CLAUSE_AWARE_INPUT_CONTRACT_VERSION
+                    ),
+                ),
+            )
+            result = classify_context({
+                "manifest_path": str(manifest_path),
+                "items": [{
+                    "lineId": "O-001",
+                    "spanId": "span-1",
+                    "text": "採血を実施。",
+                    "spanText": "採血",
+                    "charStart": 0,
+                    "charEnd": 2,
+                    "parentLineText": "採血を実施。",
+                    "clauseText": "採血を実施。",
+                    "clauseCharStart": 0,
+                    "clauseCharEnd": 6,
+                    "clauseSpanCharStart": 0,
+                    "clauseSpanCharEnd": 2,
+                    "inputSemantics": {
+                        **RUNTIME_CONTEXT_INPUT_SEMANTICS,
+                        "offsetBasis": "clause",
+                    },
+                }],
+            }, classifier=lambda items: [{"axes": CURRENT_AXES} for _ in items])
+            self.assertEqual(result["status"], "model_unavailable")
+            self.assertIn("inputSemantics", result["reason"])
 
     def test_context_contract_rejects_mismatched_span_offsets(self) -> None:
         with tempfile.TemporaryDirectory() as root:

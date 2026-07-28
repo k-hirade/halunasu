@@ -6,12 +6,14 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   aggregateLineContext,
+  buildContextClassifierItems,
   buildLinkerCandidateLayer,
   contextConsensus,
   contextRoleFromAxes,
   determineWhiteboxVisitFacts,
   prepareWhiteboxExtraction,
   splitWhiteboxEvidenceClauses,
+  WHITEBOX_CONTEXT_INPUT_SEMANTICS,
   WHITEBOX_CONTEXT_REASON_DISPOSITIONS,
   whiteboxEncounterSetting,
   whiteboxMentionType,
@@ -775,9 +777,17 @@ test("WX3 delegates resolved clauses and sends only the unresolved clause to the
   assert.equal(result.status, "route_ready");
   assert.equal(result.lineRoutes[0].route, "mixed");
   assert.deepEqual(contextPayloads[0].items.map((item) => item.text), [
-    "前回CTを確認し、",
-    "本日は採血を実施。"
+    text,
+    text
   ]);
+  assert.deepEqual(
+    contextPayloads[0].items.map((item) => item.clauseText),
+    ["前回CTを確認し、", "本日は採血を実施。"]
+  );
+  assert.deepEqual(
+    contextPayloads[0].items.map((item) => [item.charStart, item.charEnd]),
+    [[0, 4], [text.indexOf("採血"), text.indexOf("採血") + 2]]
+  );
   assert.deepEqual(result.llmLines.map((line) => line.text), ["次回MRIを予定。"]);
   assert.deepEqual(
     result.encoderFacts.clinical_events.map((event) => [event.name, event.evidence]),
@@ -790,6 +800,94 @@ test("WX3 delegates resolved clauses and sends only the unresolved clause to the
   assert.equal(result.metrics.partialEncoderLineCount, 1);
   assert.equal(result.metrics.encoderOwnedSpanCount, 2);
   assert.equal(result.metrics.expectedLlmClauseRatio, 1 / 3);
+});
+
+test("WX3 context payload preserves the trained line scope and clause trace", () => {
+  const text = "前回CTを確認し、本日は採血を実施。次回MRIを予定。";
+  const clauses = splitWhiteboxEvidenceClauses({
+    lineId: "O-001",
+    text,
+    cues: { currentVisit: true }
+  });
+  const start = text.indexOf("採血");
+  const [item] = buildContextClassifierItems({
+    lines: [
+      { lineId: "S-001", text: "発熱は軽快した。", section: "S" },
+      { lineId: "O-001", text, section: "O" },
+      { lineId: "A-001", text: "感染症は改善傾向。", section: "A" }
+    ],
+    runtimeEntries: [{
+      effectiveSpan: {
+        lineId: "O-001",
+        spanId: "span_blood",
+        text: "採血",
+        charStart: start,
+        charEnd: start + 2
+      },
+      clause: clauses[1]
+    }],
+    encounterSetting: "outpatient",
+    specialty: "internal_medicine"
+  });
+
+  assert.equal(item.text, text);
+  assert.equal(item.parentLineText, text);
+  assert.equal(item.text.slice(item.charStart, item.charEnd), "採血");
+  assert.equal(item.clauseText, "本日は採血を実施。");
+  assert.equal(
+    item.clauseText.slice(item.clauseSpanCharStart, item.clauseSpanCharEnd),
+    "採血"
+  );
+  assert.equal(item.previousLine, "発熱は軽快した。");
+  assert.equal(item.nextLine, "感染症は改善傾向。");
+  assert.deepEqual(item.inputSemantics, WHITEBOX_CONTEXT_INPUT_SEMANTICS);
+});
+
+test("clause cues never inherit a different clause's past or future scope", () => {
+  const clauses = splitWhiteboxEvidenceClauses({
+    lineId: "O-001",
+    text: "前回CTを確認し、本日は採血を実施。次回MRIを予定。",
+    cues: {
+      currentVisit: true,
+      pastOrExternal: true,
+      futureOrOrderOnly: true
+    }
+  });
+
+  assert.equal(clauses[0].cues.pastOrExternal, true);
+  assert.equal(clauses[1].cues.currentVisit, true);
+  assert.equal(clauses[1].cues.pastOrExternal, false);
+  assert.equal(clauses[1].cues.futureOrOrderOnly, false);
+  assert.equal(clauses[2].cues.futureOrOrderOnly, true);
+});
+
+test("WX3 context offsets use Unicode code points across non-BMP text", () => {
+  const text = "O）😀後に採血を実施。";
+  const codePoints = Array.from(text);
+  const start = codePoints.indexOf("採");
+  const [item] = buildContextClassifierItems({
+    lines: [{ lineId: "O-001", text, section: "O" }],
+    runtimeEntries: [{
+      effectiveSpan: {
+        lineId: "O-001",
+        spanId: "span_blood",
+        text: "採血",
+        charStart: start,
+        charEnd: start + 2
+      },
+      clause: splitWhiteboxEvidenceClauses({
+        lineId: "O-001",
+        text,
+        cues: { currentVisit: true }
+      })[0]
+    }]
+  });
+
+  assert.equal(
+    Array.from(item.text).slice(item.charStart, item.charEnd).join(""),
+    "採血"
+  );
+  assert.equal(item.clauseCharEnd, codePoints.length);
 });
 
 test("ambiguous prescription evidence only blocks its own clause", async () => {
@@ -1260,7 +1358,8 @@ test("linker boundary expansion cannot cross an evidence clause", async () => {
     env: shadowEnv()
   });
 
-  assert.equal(contextItem.text, "本日は創傷処置を施行。");
+  assert.equal(contextItem.text, text);
+  assert.equal(contextItem.clauseText, "本日は創傷処置を施行。");
   assert.equal(contextItem.spanText, "傷処置");
   const diagnostic = result.trace
     .find((entry) => entry.stage === "whitebox_router")
