@@ -259,6 +259,59 @@ test("line_subset scope sends only target lines and removes visit/checklist fiel
   assertStrictObjectSchemasHaveRequiredProperties(schema);
 });
 
+test("auxiliary recheck accepts only literal targets from supplied lines and keeps v15", async () => {
+  let requestBody = null;
+  let extractionResult = null;
+  const subsetPayload = {
+    diagnoses: [],
+    line_review: [{ line_id: "O-002", line_role: "performed" }],
+    standing_mentions: [],
+    clinical_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  };
+
+  await withFetch(
+    async (url, options) => {
+      assert.equal(url, "https://api.openai.com/v1/responses");
+      requestBody = JSON.parse(options.body);
+      return jsonResponse({ output_text: JSON.stringify(subsetPayload) });
+    },
+    async () => {
+      extractionResult = await extractFeeClinicalFactsWithOpenAi({
+        apiKey: "test-key",
+        clinicalText: "",
+        sessionContext: {},
+        preprocessedLines: [{
+          lineId: "O-002",
+          section: "O",
+          text: "O: 胸部X線を実施。"
+        }],
+        scope: "line_subset",
+        coverageReviewTargets: [
+          {
+            line_id: "O-002",
+            category: "imaging",
+            detected_phrase: "胸部X線"
+          },
+          {
+            line_id: "O-002",
+            category: "imaging",
+            detected_phrase: "存在しない行為"
+          }
+        ]
+      });
+    }
+  );
+
+  assert.match(requestBody.instructions, /AUXILIARY COVERAGE REVIEW/u);
+  assert.match(requestBody.input, /胸部X線/u);
+  assert.equal(requestBody.input.includes("存在しない行為"), false);
+  assert.equal(extractionResult.promptVersion, "fee-clinical-events-v15");
+  assert.equal(extractionResult.recheckTag, "openai-auxiliary-span-recheck-v1");
+});
+
 test("fee clinical facts schema keeps enough diagnoses and excluded events for complex notes", async () => {
   let requestBody = null;
 

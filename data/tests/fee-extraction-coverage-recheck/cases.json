@@ -1,0 +1,127 @@
+{
+  "schemaVersion": "fee-extraction-coverage-recheck-cases.v1",
+  "syntheticDataOnly": true,
+  "cases": [
+    {
+      "id": "dual-act-single-line",
+      "title": "同一行の画像検査と検体検査",
+      "safetyClass": "current_own",
+      "serviceDate": "2026-06-02",
+      "setting": "outpatient",
+      "patient": {
+        "birthDate": "1970-04-12",
+        "sex": "female"
+      },
+      "diagnoses": [
+        "肺炎疑い"
+      ],
+      "clinicalText": "S）発熱と咳が続く。\nO）当院で胸部単純X線撮影とCRP検査を本日実施した。胸部X線は右下肺野に浸潤影を認め、CRPは2.1mg/dLだった。\nA）肺炎疑い。\nP）検査結果を説明し、経過観察とした。"
+    },
+    {
+      "id": "document-and-guidance",
+      "title": "文書交付と療養指導",
+      "safetyClass": "current_own",
+      "serviceDate": "2026-06-04",
+      "setting": "outpatient",
+      "patient": {
+        "birthDate": "1982-09-03",
+        "sex": "male"
+      },
+      "diagnoses": [
+        "腰痛症"
+      ],
+      "clinicalText": "S）腰痛は軽快傾向。\nO）神経学的異常を認めない。\nA）腰痛症。\nP）本日、傷病手当金意見書を当院で作成して本人へ交付した。あわせて就労時の注意点を説明した。"
+    },
+    {
+      "id": "past-act",
+      "title": "過去に実施した検査の記載",
+      "safetyClass": "past",
+      "serviceDate": "2026-06-08",
+      "setting": "outpatient",
+      "patient": {
+        "birthDate": "1965-01-18",
+        "sex": "female"
+      },
+      "diagnoses": [
+        "高血圧症"
+      ],
+      "clinicalText": "S）体調に変化なし。\nO）前回の受診時に胸部X線撮影と採血を実施済み。本日は診察のみで、検査・注射・処置は行っていない。\nA）高血圧症は安定。\nP）内服を継続する。"
+    },
+    {
+      "id": "external-act",
+      "title": "他院で実施した画像検査",
+      "safetyClass": "external",
+      "serviceDate": "2026-06-10",
+      "setting": "outpatient",
+      "patient": {
+        "birthDate": "1958-07-21",
+        "sex": "male"
+      },
+      "diagnoses": [
+        "頭痛"
+      ],
+      "clinicalText": "S）頭痛の精査目的で受診。\nO）他院で先週頭部CTを撮影し、画像を持参した。当院では本日、画像検査・採血・処置を実施していない。\nA）緊急性の高い所見なし。\nP）持参画像を確認し経過観察とした。"
+    },
+    {
+      "id": "negated-act",
+      "title": "明示的に未実施の処置",
+      "safetyClass": "negated",
+      "serviceDate": "2026-06-12",
+      "setting": "outpatient",
+      "patient": {
+        "birthDate": "1991-11-14",
+        "sex": "female"
+      },
+      "diagnoses": [
+        "気管支炎"
+      ],
+      "clinicalText": "S）咳は軽快している。\nO）呼吸音清。本日はネブライザー吸入、点滴、採血のいずれも実施していない。\nA）気管支炎は改善傾向。\nP）水分摂取を指導した。"
+    },
+    {
+      "id": "planned-act",
+      "title": "次回予定の検査",
+      "safetyClass": "planned",
+      "serviceDate": "2026-06-15",
+      "setting": "outpatient",
+      "patient": {
+        "birthDate": "1976-03-09",
+        "sex": "male"
+      },
+      "diagnoses": [
+        "糖尿病"
+      ],
+      "clinicalText": "S）自覚症状に変化なし。\nO）本日は診察のみ。\nA）糖尿病。\nP）次回来院時にHbA1c検査と尿検査を実施する予定。本日は検査を行っていない。"
+    },
+    {
+      "id": "current-wound-treatment",
+      "title": "当日自院で実施した創傷処置",
+      "safetyClass": "current_own",
+      "serviceDate": "2026-06-18",
+      "setting": "outpatient",
+      "patient": {
+        "birthDate": "1988-05-30",
+        "sex": "male"
+      },
+      "diagnoses": [
+        "右前腕挫創"
+      ],
+      "clinicalText": "S）右前腕を擦って受傷した。\nO）右前腕に長径2cmの浅い挫創を認めた。当院で本日、創部を洗浄し創傷処置を実施した。\nA）右前腕挫創。\nP）自宅での創部管理を説明した。"
+    },
+    {
+      "id": "long-home-care",
+      "title": "長めの在宅カルテ",
+      "safetyClass": "current_own",
+      "serviceDate": "2026-06-23",
+      "setting": "home_visit",
+      "patient": {
+        "birthDate": "1940-02-11",
+        "sex": "female"
+      },
+      "diagnoses": [
+        "慢性心不全",
+        "神経因性膀胱"
+      ],
+      "clinicalText": "S）家族より食事摂取と睡眠は普段どおりで、発熱や呼吸苦はないとのこと。尿量にも大きな変化はない。\nO）血圧124/70mmHg、脈拍72回/分、SpO2 97%、体温36.5℃。呼吸音清、下腿浮腫なし。本日の定期訪問で尿道留置カテーテルを当院医師が交換し、交換後の尿流を確認した。採血、点滴、吸引は実施していない。\nA）慢性心不全は安定。神経因性膀胱の管理を継続する。\nP）カテーテル閉塞、発熱、血尿がある場合の連絡基準を家族へ再説明した。訪問看護と連携し、次回も定期訪問を予定する。"
+    }
+  ]
+}

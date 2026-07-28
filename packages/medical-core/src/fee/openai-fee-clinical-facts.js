@@ -13,6 +13,7 @@ import { createStructuredOpenAiResponse } from "../openai/responses-structured.j
 // performed の行だけが clinical_event を必須とし、management_continuation は
 // standing_mentions に保持して当日の算定イベントにはしない。
 export const FEE_CLINICAL_FACTS_PROMPT_VERSION = "fee-clinical-events-v15";
+export const FEE_AUXILIARY_RECHECK_PROMPT_TAG = "openai-auxiliary-span-recheck-v1";
 
 export const FEE_CLINICAL_LINE_ROLES = Object.freeze([
   "performed",
@@ -438,6 +439,7 @@ export async function extractFeeClinicalFactsWithOpenAi({
   checklistMenu = [],
   checklistVerificationMode = "inline",
   scope = "full",
+  coverageReviewTargets = [],
   model = "gpt-5.4-nano",
   reasoningEffort = "low",
   timeoutMs = 0,
@@ -447,6 +449,9 @@ export async function extractFeeClinicalFactsWithOpenAi({
 }) {
   const normalizedScope = scope === "line_subset" ? "line_subset" : "full";
   const safeLines = safePreprocessedClinicalLines(preprocessedLines);
+  const safeCoverageReviewTargets = normalizedScope === "line_subset"
+    ? safeClinicalCoverageReviewTargets(coverageReviewTargets, safeLines)
+    : [];
   const scopedClinicalText = normalizedScope === "line_subset"
     ? safeLines.map((line) => line.text).join("\n")
     : String(clinicalText || "").trim();
@@ -469,6 +474,9 @@ export async function extractFeeClinicalFactsWithOpenAi({
     "Checklist menu:",
     JSON.stringify(effectiveChecklistMode === "disabled" ? [] : safeClinicalChecklistMenu(checklistMenu), null, 2),
     "",
+    "Coverage review targets (untrusted machine detections):",
+    JSON.stringify(safeCoverageReviewTargets, null, 2),
+    "",
     "Clinical text:",
     scopedClinicalText
   ].join("\n");
@@ -483,6 +491,9 @@ export async function extractFeeClinicalFactsWithOpenAi({
       normalizedScope === "line_subset"
         ? "LINE SUBSET MODE: Use only the supplied Preprocessed clinical lines and the Clinical text reconstructed from those same lines. Do not infer or mention any omitted line. Return no visit-level or checklist fields; extract only diagnoses, line_review, standing_mentions, clinical_events, excluded_events, missing_information, and review_flags for the supplied lines."
         : "FULL DOCUMENT MODE: Extract visit-level facts and line-level events from the complete supplied note.",
+      safeCoverageReviewTargets.length
+        ? "AUXILIARY COVERAGE REVIEW: Coverage review targets are untrusted machine detections, not clinical facts. Independently read each referenced source line and decide whether the detected phrase records a current in-clinic performed/prescribed/administered act, a future plan/order, a past or outside-provider reference, or a negated/not-performed act. Create an event only when the source line supports it. Do not choose billing codes or points, and do not infer from omitted lines."
+        : "",
       "Your output is clinical_events, not billing candidates. Do not calculate points. Do not choose billing codes. Do not decide billable/proposal/review eligibility. Downstream master search and rules will decide those.",
       "line_review is mandatory full coverage: output exactly one entry for EVERY line_id in Preprocessed clinical lines, in order, no omissions. Set line_role=performed only when the line records an act performed, prescribed, administered, issued, or instructed by this clinic during this encounter. Set line_role=management_continuation for a standing therapy/device/management state that is merely continuing, line_role=plan for future plans or orders without execution, and line_role=none for symptoms, observations, assessments, and administrative notes.",
       "Every line marked line_role=performed MUST be referenced by evidence_line_ids of at least one clinical_event. If multiple acts are on one line, create one clinical_event per act. Do not create a clinical_event for a line that only says management is continuing.",
@@ -541,6 +552,9 @@ export async function extractFeeClinicalFactsWithOpenAi({
     provider: "openai",
     model,
     promptVersion: FEE_CLINICAL_FACTS_PROMPT_VERSION,
+    recheckTag: safeCoverageReviewTargets.length
+      ? FEE_AUXILIARY_RECHECK_PROMPT_TAG
+      : null,
     responseId: result.responseId || null,
     usage: result.usage || null
   };
@@ -600,4 +614,57 @@ function safeClinicalChecklistMenu(menu = []) {
       domain: String(item?.billingDomain || item?.billing_domain || "").slice(0, 40)
     })).filter((item) => item.menu_id && item.label)
     : [];
+}
+
+const FEE_AUXILIARY_RECHECK_CATEGORIES = new Set([
+  "counseling",
+  "exam",
+  "imaging",
+  "injection",
+  "lab",
+  "management",
+  "material",
+  "medication",
+  "other",
+  "outpatient_basic",
+  "pathology",
+  "procedure",
+  "treatment"
+]);
+
+function safeClinicalCoverageReviewTargets(targets = [], safeLines = []) {
+  const lineById = new Map(safeLines.map((line) => [line.line_id, line]));
+  const seen = new Set();
+  const result = [];
+  for (const target of Array.isArray(targets) ? targets : []) {
+    if (result.length >= 16) {
+      break;
+    }
+    const lineId = String(target?.line_id || target?.lineId || "").slice(0, 20);
+    const category = String(target?.category || "").trim().toLowerCase();
+    const phrase = String(target?.detected_phrase || target?.detectedPhrase || "")
+      .normalize("NFKC")
+      .trim()
+      .slice(0, 80);
+    const line = lineById.get(lineId);
+    if (
+      !line
+      || !FEE_AUXILIARY_RECHECK_CATEGORIES.has(category)
+      || phrase.length < 2
+      || !String(line.text || "").normalize("NFKC").includes(phrase)
+    ) {
+      continue;
+    }
+    const key = `${lineId}\u001f${category}\u001f${phrase}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push({
+      line_id: lineId,
+      category,
+      detected_phrase: phrase
+    });
+  }
+  return result;
 }

@@ -65,6 +65,10 @@ import { applyEncounterVariantToPreparation } from "./encounter-variants.js";
 import { buildStandingBillingLane } from "./standing-billing-profiles.js";
 import { whiteboxRuntimeModes } from "./whitebox-extraction.js";
 import {
+  normalizeClinicalExtractionStrategy,
+  normalizeExtractionCoverageMode
+} from "./extraction-coverage-recheck.js";
+import {
   buildCalculationFeedbackEvents,
   buildReviewDecisionFeedbackEvents,
   captureExtractionFeedback,
@@ -215,6 +219,8 @@ async function routeFeeApiRequest(input = {}) {
         standingFactsEnabled: feeStandingFactsEnabled(runtimeEnv),
         extractionSnapshotRetentionDays: extractionSnapshotRetentionDays(runtimeEnv),
         monthlyExclusionMode: monthlyExclusionMode(runtimeEnv),
+        clinicalExtractionStrategy: feeClinicalExtractionStrategy(runtimeEnv),
+        extractionCoverage: feeExtractionCoverageReadiness(runtimeEnv, feeReadiness),
         whiteboxExtraction: whiteboxRuntimeModes(runtimeEnv),
         extractionFeedbackMode: extractionFeedbackMode(runtimeEnv),
         extractionFeedback: extractionFeedbackReadiness(runtimeEnv)
@@ -1915,6 +1921,73 @@ function feeEmptyExtractionRetryEnabled(env = process.env) {
 
 function feeStandingFactsEnabled(env = process.env) {
   return String(env.FEE_STANDING_FACTS || "false").trim().toLowerCase() === "true";
+}
+
+function feeClinicalExtractionStrategy(env = process.env) {
+  return normalizeClinicalExtractionStrategy(
+    env.FEE_CLINICAL_EXTRACTION_STRATEGY || "openai_primary"
+  );
+}
+
+function feeExtractionCoverageConfig(env = process.env, facilityId = "") {
+  const mode = normalizeExtractionCoverageMode(
+    env.FEE_EXTRACTION_COVERAGE_MODE || "off"
+  );
+  const allowlist = uniqueStrings(
+    String(env.FEE_EXTRACTION_COVERAGE_FACILITY_ALLOWLIST || "")
+      .split(/[,;\s]+/u)
+  );
+  const normalizedFacilityId = String(facilityId || "").trim();
+  const facilityAllowed = mode === "off"
+    || Boolean(normalizedFacilityId && allowlist.includes(normalizedFacilityId));
+  return {
+    mode,
+    configuredMode: mode,
+    facilityAllowed,
+    disabledReason: facilityAllowed ? null : "facility_not_allowlisted",
+    maxLines: boundedRuntimeInteger(
+      env.FEE_EXTRACTION_COVERAGE_MAX_LINES,
+      1,
+      16,
+      8
+    ),
+    maxSpans: boundedRuntimeInteger(
+      env.FEE_EXTRACTION_COVERAGE_MAX_SPANS,
+      1,
+      32,
+      16
+    ),
+    timeoutMs: boundedRuntimeInteger(
+      env.FEE_EXTRACTION_COVERAGE_TIMEOUT_MS,
+      100,
+      30_000,
+      2000
+    ),
+    allowlist
+  };
+}
+
+function feeExtractionCoverageReadiness(env = process.env, feeReadiness = {}) {
+  const coverage = feeExtractionCoverageConfig(env);
+  const span = feeReadiness?.whitebox?.spanDetector || {};
+  return {
+    mode: coverage.configuredMode,
+    maxLines: coverage.maxLines,
+    maxSpans: coverage.maxSpans,
+    timeoutMs: coverage.timeoutMs,
+    allowlistCount: coverage.allowlist.length,
+    spanDetectorAvailable: span.available === true,
+    spanArtifactVersion: span.artifactVersion || null,
+    spanDetectorReason: span.reason || null
+  };
+}
+
+function boundedRuntimeInteger(value, minimum, maximum, fallback) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isInteger(parsed)) {
+    return fallback;
+  }
+  return Math.max(minimum, Math.min(maximum, parsed));
 }
 
 function extractionSnapshotExpiry(now, env = process.env) {
@@ -6820,6 +6893,7 @@ function buildFeeCalculationPerformanceSnapshot({
   const prepareStageTimings = safeStageTimings(prepared?.metrics?.stageTimings || []);
   const clinical = prepared?.metrics?.clinicalStructuring || {};
   const extractionMemo = prepared?.metrics?.extractionMemo || {};
+  const auxiliaryCoverage = clinical.auxiliaryCoverage || {};
   const patientHistory = prepared?.metrics?.patientHistory || {};
   const ruleBased = prepared?.metrics?.ruleBasedClinicalInference || {};
   const usage = openAiUsageSummary(clinical.usage);
@@ -6866,6 +6940,7 @@ function buildFeeCalculationPerformanceSnapshot({
     }),
     clinical: compactObject({
       source: clinical.source || null,
+      extractionStrategy: clinical.clinicalExtractionStrategy || null,
       model: clinical.model || null,
       reasoningEffort: clinical.reasoningEffort || null,
       extractionMode: clinical.extractionMode || null,
@@ -6899,6 +6974,32 @@ function buildFeeCalculationPerformanceSnapshot({
       recovered: clinical.emptyExtractionGuard?.recovered === true,
       initialEventCount: numberOrNull(clinical.emptyExtractionGuard?.initialEventCount),
       finalEventCount: numberOrNull(clinical.emptyExtractionGuard?.finalEventCount)
+    }),
+    auxiliaryExtractionCoverage: compactObject({
+      mode: auxiliaryCoverage.mode || null,
+      configuredMode: auxiliaryCoverage.configuredMode || null,
+      facilityAllowed: auxiliaryCoverage.facilityAllowed === true,
+      detectorAvailable: auxiliaryCoverage.detectorAvailable === true,
+      detectorDurationMs: numberOrNull(auxiliaryCoverage.detectorDurationMs),
+      detectorReason: auxiliaryCoverage.detectorReason || null,
+      spanArtifactVersion: auxiliaryCoverage.spanArtifactVersion || null,
+      detectedSpanCount: numberOrNull(auxiliaryCoverage.detectedSpanCount),
+      coveredSpanCount: numberOrNull(auxiliaryCoverage.coveredSpanCount),
+      gapSpanCount: numberOrNull(auxiliaryCoverage.gapSpanCount),
+      gapLineCount: numberOrNull(auxiliaryCoverage.gapLineCount),
+      recheckPlanned: auxiliaryCoverage.recheckPlanned === true,
+      recheckAttempted: auxiliaryCoverage.recheckAttempted === true,
+      recheckSucceeded: auxiliaryCoverage.recheckSucceeded === true,
+      recheckSuppressedReason: auxiliaryCoverage.recheckSuppressedReason || null,
+      recoveredClinicalEventCount: numberOrNull(auxiliaryCoverage.recoveredClinicalEventCount),
+      unresolvedGapCount: numberOrNull(auxiliaryCoverage.unresolvedGapCount),
+      conflictCount: numberOrNull(auxiliaryCoverage.conflictCount),
+      omittedLineCount: numberOrNull(auxiliaryCoverage.omittedLineCount),
+      omittedSpanCount: numberOrNull(auxiliaryCoverage.omittedSpanCount),
+      additionalOpenAiCallCount: numberOrNull(auxiliaryCoverage.additionalOpenAiCallCount),
+      additionalOpenAiInputTokens: numberOrNull(auxiliaryCoverage.additionalOpenAiInputTokens),
+      additionalOpenAiOutputTokens: numberOrNull(auxiliaryCoverage.additionalOpenAiOutputTokens),
+      additionalOpenAiDurationMs: numberOrNull(auxiliaryCoverage.additionalOpenAiDurationMs)
     }),
     whiteboxExtraction: compactObject({
       ...(isPlainObject(clinical.whiteboxExtraction) ? clinical.whiteboxExtraction : {}),
@@ -7387,6 +7488,7 @@ function assertFeeSessionReadyForCalculation(session = {}) {
 
 async function prepareSessionForCalculation(session = {}, calculationInput = {}, feeCalculator, input = {}) {
   const stageTimings = [];
+  const runtimeEnv = input.processEnv || process.env;
   const inputSession = sessionWithCalculationInputOverrides(session, calculationInput);
   const enriched = await measureStage(stageTimings, "enrichOrders", () => enrichSessionOrdersForCalculation(inputSession, feeCalculator));
   const baseSession = enriched.changed ? { ...inputSession, orders: enriched.orders } : inputSession;
@@ -7430,8 +7532,13 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     priorSessionsResult,
     priorBillingHistoryResult
   );
-  const extractionMemoEnabled = feeExtractionMemoEnabled(input.processEnv || process.env);
-  const emptyExtractionRetryEnabled = feeEmptyExtractionRetryEnabled(input.processEnv || process.env);
+  const extractionMemoEnabled = feeExtractionMemoEnabled(runtimeEnv);
+  const emptyExtractionRetryEnabled = feeEmptyExtractionRetryEnabled(runtimeEnv);
+  const clinicalExtractionStrategy = feeClinicalExtractionStrategy(runtimeEnv);
+  const extractionCoverage = feeExtractionCoverageConfig(
+    runtimeEnv,
+    baseSession.facilityId
+  );
   const extractionSnapshotResult = await measureStage(stageTimings, "extractionSnapshot", () => loadLatestExtractionSnapshot({
     feeStore: input.feeStore,
     orgId: input.orgId || baseSession.orgId,
@@ -7485,6 +7592,8 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       extractionSnapshot: extractionSnapshotResult.snapshot,
       extractionMemoEnabled,
       emptyExtractionRetryEnabled,
+      clinicalExtractionStrategy,
+      extractionCoverage,
       historyCompleteness: memoHistoryCompleteness,
       clinicalFactsExtractor: input.clinicalFactsExtractor
     }));

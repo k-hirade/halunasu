@@ -42,8 +42,17 @@ import {
 } from "./longitudinal-context.js";
 import {
   buildLinkerCandidateLayer,
+  prepareAuxiliaryCoverageSignals,
   prepareWhiteboxExtraction
 } from "./whitebox-extraction.js";
+import {
+  auxiliaryRecheckEvent,
+  findUncoveredAuxiliarySpans,
+  mergeAuxiliaryRecheckFacts,
+  normalizeClinicalExtractionStrategy,
+  normalizeExtractionCoverageOptions,
+  planExtractionRecovery
+} from "./extraction-coverage-recheck.js";
 import { normalizeClinicalTextValue } from "./clinical-text-normalization.js";
 
 export const AUTO_PLACEHOLDER_ORDER_NAMES = new Set([
@@ -608,6 +617,8 @@ export async function buildClinicalCalculationPreparation({
   extractionSnapshot = null,
   extractionMemoEnabled = false,
   emptyExtractionRetryEnabled = false,
+  clinicalExtractionStrategy = "openai_primary",
+  extractionCoverage = null,
   historyCompleteness = "complete",
   clinicalFactsExtractor = null
 } = {}) {
@@ -699,6 +710,8 @@ export async function buildClinicalCalculationPreparation({
       extractionSnapshot,
       extractionMemoEnabled,
       emptyExtractionRetryEnabled,
+      clinicalExtractionStrategy,
+      extractionCoverage,
       historyCompleteness,
       clinicalFactsExtractor
     });
@@ -1677,15 +1690,51 @@ async function inferStructuredClinicalCalculationOptions({
   extractionSnapshot = null,
   extractionMemoEnabled = false,
   emptyExtractionRetryEnabled = false,
+  clinicalExtractionStrategy = "openai_primary",
+  extractionCoverage = null,
   historyCompleteness = "complete",
   clinicalFactsExtractor = null
 } = {}) {
   const extractor = typeof clinicalFactsExtractor === "function" ? clinicalFactsExtractor : null;
   const clinicalTextPreprocessing = buildClinicalTextPreprocessing(text);
+  const normalizedExtractionStrategy = normalizeClinicalExtractionStrategy(
+    clinicalExtractionStrategy
+  );
+  const normalizedExtractionCoverage = normalizeExtractionCoverageOptions(
+    extractionCoverage || {}
+  );
+  const auxiliaryCoveragePromise = normalizedExtractionCoverage.mode === "off"
+    || !(extractor || String(openAiApiKey || "").trim())
+    ? Promise.resolve({
+      status: "disabled",
+      available: false,
+      signals: [],
+      durationMs: 0,
+      artifactVersion: null,
+      reason: normalizedExtractionCoverage.mode === "off"
+        ? "coverage_mode_off"
+        : "openai_provider_unavailable",
+      trace: []
+    })
+    : prepareAuxiliaryCoverageSignals({
+      feeCalculator,
+      preprocessing: clinicalTextPreprocessing,
+      mode: normalizedExtractionCoverage.mode,
+      timeoutMs: normalizedExtractionCoverage.timeoutMs
+    }).catch(() => ({
+      status: "unavailable",
+      available: false,
+      signals: [],
+      durationMs: 0,
+      artifactVersion: null,
+      reason: "span_detector_unavailable",
+      trace: []
+    }));
   const whiteboxPlan = await prepareWhiteboxExtraction({
     feeCalculator,
     preprocessing: clinicalTextPreprocessing,
-    session
+    session,
+    strategy: normalizedExtractionStrategy
   });
   const hasClinicalFactsProvider = Boolean(extractor || String(openAiApiKey || "").trim());
   const whiteboxEncoderOnly = whiteboxPlan.status === "route_ready"
@@ -1886,6 +1935,8 @@ async function inferStructuredClinicalCalculationOptions({
       initialEventCount,
       finalEventCount: initialEventCount
     };
+    const promptLineIds = promptClinicalLineIds(clinicalTextPreprocessing.lines);
+    let lineReviewReconciliation = reconcileLineReview(facts, promptLineIds);
 
     if (
       emptyExtractionRetryEnabled === true
@@ -1905,60 +1956,141 @@ async function inferStructuredClinicalCalculationOptions({
         reasonCodes: contradiction.reasonCodes
       };
       emptyExtractionEvidence = contradiction.evidence;
-      if (contradiction.triggered) {
-        semanticRetryCount = 1;
-        emptyExtractionGuard.retryAttempted = true;
-        const retryResult = await extractOnce({
-          ...extractionRequest,
-          onOutputTextSnapshot: undefined
-        }).catch(() => null);
-        const retryFacts = retryResult?.parsed || retryResult;
-        if (retryFacts && typeof retryFacts === "object") {
-          facts = mergeClinicalFactsSamples([facts, retryFacts]);
-          factsResult = mergeClinicalExtractionResultMetadata(factsResult, retryResult);
-        }
-        const finalEventCount = clinicalEventsFromClinicalFacts(facts).length;
-        emptyExtractionGuard = {
-          ...emptyExtractionGuard,
-          recovered: finalEventCount > 0,
-          finalEventCount
-        };
-      }
     }
 
-    // 契約検証(検証駆動リトライ): LLMに提示した行ID全集合(Node側で確定)と line_review を
-    // 完全照合する。LLMの申告だけでは行の丸ごと省略を検出できない。欠落行があれば
-    // 「欠落行だけ」を1回再抽出して統合し、なお欠落する行は下流で確認事項として明示する。
-    const promptLineIds = promptClinicalLineIds(clinicalTextPreprocessing.lines);
-    let lineReviewReconciliation = reconcileLineReview(facts, promptLineIds);
+    const auxiliaryEnvelope = await auxiliaryCoveragePromise;
+    const initialCoverage = auxiliaryEnvelope.available
+      ? findUncoveredAuxiliarySpans({
+        signals: auxiliaryEnvelope.signals,
+        facts,
+        lines: clinicalTextPreprocessing.lines
+      })
+      : {
+        detectedSignals: [],
+        coveredSignals: [],
+        gapSignals: [],
+        ignoredSignals: []
+      };
+    const recoveryPlan = planExtractionRecovery({
+      lines: clinicalTextPreprocessing.lines,
+      missingLineIds: lineReviewReconciliation.missingIds,
+      emptyExtractionTriggered: emptyExtractionGuard.triggered,
+      gapSignals: normalizedExtractionCoverage.mode === "verify"
+        ? initialCoverage.gapSignals
+        : [],
+      maxLines: normalizedExtractionCoverage.maxLines,
+      maxSpans: normalizedExtractionCoverage.maxSpans
+    });
+    const auxiliaryRecheckSelected = recoveryPlan.selectedSignals.length > 0;
+    let auxiliaryRecheckSucceeded = false;
+    let auxiliaryRecheckFailed = false;
+    let auxiliaryRecoveredClinicalEventCount = 0;
+    let auxiliaryConflicts = [];
+    let additionalOpenAiDurationMs = 0;
+    let additionalOpenAiUsage = null;
+
     if (
-      lineReviewReconciliation.missingIds.length
-      && semanticRetryCount === 0
+      recoveryPlan.needed
       && hasClinicalFactsProvider
     ) {
       semanticRetryCount = 1;
-      lineReviewRetryCount = 1;
-      const missingSet = new Set(lineReviewReconciliation.missingIds);
+      lineReviewRetryCount = !emptyExtractionGuard.triggered
+        && lineReviewReconciliation.missingIds.length
+        ? 1
+        : 0;
+      emptyExtractionGuard.retryAttempted = emptyExtractionGuard.triggered;
+      const additionalStartedAt = Date.now();
       const retryResult = await extractOnce({
         ...extractionRequest,
         clinicalText: "",
-        preprocessedLines: asArray(clinicalTextPreprocessing.lines)
-          .filter((line) => missingSet.has(String(line?.lineId || line?.line_id || "").trim())),
+        preprocessedLines: recoveryPlan.lines,
         checklistMenu: [],
         checklistVerificationMode: "disabled",
         scope: "line_subset",
+        coverageReviewTargets: recoveryPlan.coverageReviewTargets,
         onOutputTextSnapshot: undefined
       }).catch(() => null);
+      additionalOpenAiDurationMs = Date.now() - additionalStartedAt;
+      additionalOpenAiUsage = retryResult?.usage || null;
       const retryFacts = retryResult?.parsed || retryResult;
       if (retryFacts && typeof retryFacts === "object") {
-        facts = mergeClinicalFactsSamples([facts, retryFacts]);
+        if (auxiliaryRecheckSelected) {
+          const auxiliaryMerge = mergeAuxiliaryRecheckFacts(facts, retryFacts);
+          facts = auxiliaryMerge.facts;
+          auxiliaryRecoveredClinicalEventCount = auxiliaryMerge.recoveredClinicalEventCount;
+          auxiliaryConflicts = auxiliaryMerge.conflicts;
+          auxiliaryRecheckSucceeded = true;
+        } else {
+          facts = mergeClinicalFactsSamples([facts, retryFacts]);
+        }
         factsResult = mergeClinicalExtractionResultMetadata(factsResult, retryResult);
-        lineReviewReconciliation = reconcileLineReview(facts, promptLineIds);
+      } else if (auxiliaryRecheckSelected) {
+        auxiliaryRecheckFailed = true;
       }
+      lineReviewReconciliation = reconcileLineReview(facts, promptLineIds);
     }
+
     // 既知IDのみ・重複はline_role優先順位で畳んだ正規形に置換する
     // (未知IDの幻覚行を下流に流さない)。
     facts.line_review = lineReviewReconciliation.normalizedLineReview;
+    const finalCoverage = auxiliaryEnvelope.available
+      ? findUncoveredAuxiliarySpans({
+        signals: auxiliaryEnvelope.signals,
+        facts,
+        lines: clinicalTextPreprocessing.lines
+      })
+      : initialCoverage;
+    const finalEventCount = clinicalEventsFromClinicalFacts(facts).length;
+    emptyExtractionGuard = {
+      ...emptyExtractionGuard,
+      recovered: emptyExtractionGuard.triggered && finalEventCount > 0,
+      finalEventCount
+    };
+    const auxiliaryCoverageMetrics = {
+      mode: normalizedExtractionCoverage.mode,
+      configuredMode: normalizedExtractionCoverage.configuredMode,
+      facilityAllowed: normalizedExtractionCoverage.facilityAllowed,
+      detectorAvailable: auxiliaryEnvelope.available === true,
+      detectorDurationMs: Number(auxiliaryEnvelope.durationMs || 0),
+      detectorReason: auxiliaryEnvelope.reason || null,
+      detectedSpanCount: initialCoverage.detectedSignals.length,
+      coveredSpanCount: initialCoverage.coveredSignals.length,
+      gapSpanCount: initialCoverage.gapSignals.length,
+      gapLineCount: new Set(initialCoverage.gapSignals.map((signal) => signal.lineId)).size,
+      recheckPlanned: normalizedExtractionCoverage.mode === "verify"
+        && initialCoverage.gapSignals.length > 0,
+      recheckAttempted: auxiliaryRecheckSelected && semanticRetryCount === 1,
+      recheckSucceeded: auxiliaryRecheckSelected && auxiliaryRecheckSucceeded,
+      recheckSuppressedReason: normalizedExtractionCoverage.mode !== "verify"
+        ? `coverage_mode_${normalizedExtractionCoverage.mode}`
+        : !auxiliaryEnvelope.available
+          ? auxiliaryEnvelope.reason || "span_detector_unavailable"
+          : initialCoverage.gapSignals.length === 0
+            ? "no_gap"
+            : !auxiliaryRecheckSelected
+              ? "recovery_budget_exhausted"
+            : !hasClinicalFactsProvider
+              ? "openai_provider_unavailable"
+              : auxiliaryRecheckFailed
+                ? "openai_recheck_failed"
+                : null,
+      recoveredClinicalEventCount: auxiliaryRecoveredClinicalEventCount,
+      unresolvedGapCount: finalCoverage.gapSignals.length,
+      conflictCount: auxiliaryConflicts.length,
+      omittedLineCount: recoveryPlan.omittedLineCount,
+      omittedSpanCount: recoveryPlan.omittedSpanCount,
+      additionalOpenAiCallCount: auxiliaryRecheckSelected && semanticRetryCount === 1 ? 1 : 0,
+      additionalOpenAiInputTokens: auxiliaryRecheckSelected
+        ? openAiUsageTokenCount(additionalOpenAiUsage, "input")
+        : 0,
+      additionalOpenAiOutputTokens: auxiliaryRecheckSelected
+        ? openAiUsageTokenCount(additionalOpenAiUsage, "output")
+        : 0,
+      additionalOpenAiDurationMs: auxiliaryRecheckSelected
+        ? additionalOpenAiDurationMs
+        : 0,
+      spanArtifactVersion: auxiliaryEnvelope.artifactVersion || null
+    };
     const deterministicStandingRecovery = recoverDeterministicStandingContinuationFacts(
       facts,
       clinicalTextPreprocessing
@@ -2038,6 +2170,121 @@ async function inferStructuredClinicalCalculationOptions({
         converted.reviewWarnings = [...asArray(converted.reviewWarnings), message];
       }
     }
+    converted.clinicalTrace = [
+      ...asArray(converted.clinicalTrace),
+      ...asArray(auxiliaryEnvelope.trace),
+      {
+        traceId: `trace_${candidateIdPart([
+          "auxiliary_coverage_check",
+          normalizedExtractionCoverage.mode,
+          auxiliaryCoverageMetrics.detectedSpanCount,
+          auxiliaryCoverageMetrics.gapSpanCount
+        ].join("_"))}`,
+        stage: "auxiliary_coverage_check",
+        outcome: auxiliaryEnvelope.available
+          ? (initialCoverage.gapSignals.length ? "gap_detected" : "covered")
+          : "unavailable",
+        selected: {
+          mode: normalizedExtractionCoverage.mode,
+          detectorAvailable: auxiliaryEnvelope.available === true,
+          detectedSpanCount: auxiliaryCoverageMetrics.detectedSpanCount,
+          coveredSpanCount: auxiliaryCoverageMetrics.coveredSpanCount,
+          gapSpanCount: auxiliaryCoverageMetrics.gapSpanCount,
+          gapLineCount: auxiliaryCoverageMetrics.gapLineCount,
+          spanArtifactVersion: auxiliaryCoverageMetrics.spanArtifactVersion
+        },
+        message: "auxiliary_extraction_coverage_checked"
+      }
+    ];
+    if (auxiliaryRecheckSelected) {
+      converted.clinicalTrace = [
+        ...asArray(converted.clinicalTrace),
+        {
+          traceId: `trace_${candidateIdPart([
+            "auxiliary_extraction_recheck",
+            auxiliaryRecheckSucceeded,
+            recoveryPlan.lineIds.length
+          ].join("_"))}`,
+          stage: "auxiliary_extraction_recheck",
+          outcome: auxiliaryRecheckSucceeded ? "merged_candidate_only" : "failed_openai_result_preserved",
+          selected: {
+            lineCount: recoveryPlan.lineIds.length,
+            spanCount: recoveryPlan.selectedSignals.length,
+            recoveredClinicalEventCount: auxiliaryRecoveredClinicalEventCount,
+            omittedLineCount: recoveryPlan.omittedLineCount,
+            omittedSpanCount: recoveryPlan.omittedSpanCount
+          },
+          message: "auxiliary_openai_line_subset_recheck_completed"
+        }
+      ];
+    }
+    if (auxiliaryConflicts.length) {
+      const conflictMessage = "初回抽出と再確認結果に不一致があります。元カルテで当日実施・予定・過去情報を確認してください。";
+      converted.reviewIssues = [
+        ...asArray(converted.reviewIssues),
+        withReviewTopic({
+          reviewIssueId: `issue_${candidateIdPart([
+            "auxiliary_extraction_conflict",
+            auxiliaryConflicts.length
+          ].join("_"))}`,
+          issueCode: "auxiliary_extraction_conflict",
+          severity: "warning",
+          title: "カルテ抽出結果の確認",
+          messageForStaff: conflictMessage,
+          evidence: "",
+          requiredInput: "当日実施、予定、過去・他院情報の区別",
+          source: "openai_auxiliary_recheck"
+        }, "extraction_coverage_check")
+      ];
+      converted.reviewWarnings = [...asArray(converted.reviewWarnings), conflictMessage];
+      converted.clinicalTrace = [
+        ...asArray(converted.clinicalTrace),
+        {
+          traceId: `trace_${candidateIdPart([
+            "auxiliary_extraction_conflict",
+            auxiliaryConflicts.length
+          ].join("_"))}`,
+          stage: "auxiliary_extraction_conflict",
+          outcome: "review_required",
+          selected: {
+            conflictCount: auxiliaryConflicts.length,
+            conflictHashes: auxiliaryConflicts.map((conflict) => conflict.identityHash)
+          },
+          message: "initial_openai_fact_preserved"
+        }
+      ];
+    }
+    if (
+      normalizedExtractionCoverage.mode === "verify"
+      && initialCoverage.gapSignals.length > 0
+      && (
+        finalCoverage.gapSignals.length > 0
+        || recoveryPlan.omittedLineCount > 0
+        || recoveryPlan.omittedSpanCount > 0
+        || auxiliaryRecheckFailed
+      )
+    ) {
+      const unresolvedCount = finalCoverage.gapSignals.length
+        + recoveryPlan.omittedSpanCount;
+      const unresolvedMessage = `カルテ内に抽出結果へ反映されていない可能性のある診療行為が${unresolvedCount}件あります。`;
+      converted.reviewIssues = [
+        ...asArray(converted.reviewIssues),
+        withReviewTopic({
+          reviewIssueId: `issue_${candidateIdPart([
+            "auxiliary_extraction_unresolved",
+            unresolvedCount
+          ].join("_"))}`,
+          issueCode: "auxiliary_extraction_unresolved",
+          severity: "warning",
+          title: "カルテ抽出候補の確認",
+          messageForStaff: unresolvedMessage,
+          evidence: "",
+          requiredInput: "当日実施、予定、過去・他院情報の区別",
+          source: "auxiliary_extraction_coverage"
+        }, "extraction_coverage_check")
+      ];
+      converted.reviewWarnings = [...asArray(converted.reviewWarnings), unresolvedMessage];
+    }
     const memoMetrics = {
       enabled: extractionMemoEnabled === true,
       used: memoUsed,
@@ -2098,6 +2345,8 @@ async function inferStructuredClinicalCalculationOptions({
           ...whiteboxPlan.metrics,
           shadowComparison: whiteboxShadowComparison
         },
+        clinicalExtractionStrategy: normalizedExtractionStrategy,
+        auxiliaryCoverage: auxiliaryCoverageMetrics,
         ...conversionSearch.snapshot(),
         model: openAiModel,
         reasoningEffort: openAiReasoningEffort,
@@ -2231,6 +2480,7 @@ async function extractClinicalFactsWithChecklistMode({
   checklistMenu = [],
   checklistVerificationMode = "inline",
   scope = "full",
+  coverageReviewTargets = [],
   model = "gpt-5.4-nano",
   reasoningEffort = "low",
   timeoutMs = 0,
@@ -2248,6 +2498,7 @@ async function extractClinicalFactsWithChecklistMode({
       checklistMenu,
       checklistVerificationMode,
       scope,
+      coverageReviewTargets,
       model,
       reasoningEffort,
       timeoutMs
@@ -2263,6 +2514,7 @@ async function extractClinicalFactsWithChecklistMode({
       checklistMenu,
       checklistVerificationMode,
       scope,
+      coverageReviewTargets,
       model,
       reasoningEffort,
       timeoutMs,
@@ -2322,6 +2574,22 @@ export function mergeOpenAiUsage(...usages) {
     return null;
   }
   return mergeOpenAiUsageObjects(filtered);
+}
+
+function openAiUsageTokenCount(usage = {}, direction = "input") {
+  if (!usage || typeof usage !== "object") {
+    return 0;
+  }
+  const keys = direction === "output"
+    ? ["output_tokens", "outputTokens", "completion_tokens", "completionTokens"]
+    : ["input_tokens", "inputTokens", "prompt_tokens", "promptTokens"];
+  for (const key of keys) {
+    const value = Number(usage[key]);
+    if (Number.isFinite(value) && value >= 0) {
+      return value;
+    }
+  }
+  return 0;
 }
 
 function mergeOpenAiUsageObjects(values = []) {
@@ -3034,6 +3302,15 @@ async function convertSingleClinicalCalculationEvent({
     return gateResult;
   }
 
+  if (auxiliaryRecheckEvent(event) && event?._auxiliaryCandidateBypass !== true) {
+    return convertAuxiliaryRecheckClinicalEventToCandidate({
+      event,
+      feeCalculator,
+      clinicalText,
+      verifiedOutsidePrescription
+    });
+  }
+
   if (clinicalEventExtractionSource(event) === "encoder") {
     return convertEncoderClinicalEventToCandidate({
       event,
@@ -3232,6 +3509,161 @@ async function convertSingleClinicalCalculationEvent({
     result.candidateProposals.push(unsupportedProposal);
   }
   return result;
+}
+
+async function convertAuxiliaryRecheckClinicalEventToCandidate({
+  event = {},
+  feeCalculator,
+  clinicalText = "",
+  verifiedOutsidePrescription = false
+} = {}) {
+  const conversionEvent = {
+    ...event,
+    _auxiliaryCandidateBypass: true,
+    extraction_source: "openai",
+    extractionSource: "openai",
+    source: "openai",
+    extraction: {
+      ...(isPlainObject(event?.extraction) ? event.extraction : {}),
+      source: "openai"
+    }
+  };
+  const converted = await convertSingleClinicalCalculationEvent({
+    event: conversionEvent,
+    feeCalculator,
+    clinicalText,
+    verifiedOutsidePrescription
+  });
+  const proposals = asArray(converted.candidateProposals).map((proposal) => (
+    auxiliaryCandidateProposal(proposal, event)
+  ));
+  const existingCodes = new Set(proposals
+    .map((proposal) => String(proposal?.code || proposal?.candidateLine?.code || "").trim())
+    .filter(Boolean));
+  for (const candidate of asArray(converted.billingCandidates)) {
+    const code = String(candidate?.code || candidate?.masterCode || "").trim();
+    if (!code || existingCodes.has(code)) {
+      continue;
+    }
+    existingCodes.add(code);
+    proposals.push(auxiliaryCandidateProposal({
+      proposalId: `auxiliary_${candidateIdPart([
+        event?.clinicalEventId || event?.clinical_event_id || clinicalEventName(event),
+        code
+      ].join("_"))}`,
+      title: `${String(candidate?.name || clinicalEventName(event) || code)}の算定確認`,
+      reason: `限定再確認で「${clinicalEventName(event) || "診療行為"}」の記載が確認されました。算定要件を確認してください。`,
+      conditionText: "当日自院での実施事実、対象病名、回数制限、施設基準を確認してから採用してください。",
+      basis: "openai_auxiliary_recheck_candidate",
+      evidence: String(event?.evidence || "").slice(0, 160),
+      actionType: "adoptable",
+      potentialPoints: Number(candidate?.pointValue || candidate?.points || 0),
+      code,
+      orderType: auxiliaryCandidateOrderType(candidate?.candidateKind),
+      source: "openai_auxiliary_recheck",
+      sortOrder: 58,
+      candidateLine: {
+        lineId: `proposal_line_auxiliary_${candidateIdPart(code)}`,
+        code,
+        name: String(candidate?.name || clinicalEventName(event) || code),
+        orderType: auxiliaryCandidateOrderType(candidate?.candidateKind),
+        points: Number(candidate?.pointValue || candidate?.points || 0),
+        quantity: 1,
+        totalPoints: Number(candidate?.pointValue || candidate?.points || 0),
+        status: "candidate",
+        reason: "限定再確認由来のため、承認前は点数へ含めません。",
+        source: "openai_auxiliary_recheck",
+        extractionSource: "openai_auxiliary_recheck",
+        reviewRequired: true
+      }
+    }, event));
+  }
+
+  const result = {
+    ...converted,
+    procedureCodes: [],
+    imagingOrders: [],
+    medicationOrders: [],
+    materialInputs: [],
+    commentInputs: [],
+    collectionFeeInputs: [],
+    masterCandidates: [],
+    billingCandidates: [],
+    candidateProposals: proposals,
+    hasCaseLevelLabProcedureCode: false,
+    hasCaseLevelBloodCollectionEvidence: false,
+    clinicalTrace: [
+      ...asArray(converted.clinicalTrace),
+      clinicalTraceEvent({
+        stage: "auxiliary_extraction_candidate_gate",
+        event,
+        categoryLabel: "カルテ抽出再確認",
+        outcome: proposals.length ? "candidate_only" : "review_required",
+        selected: {
+          proposalCount: proposals.length,
+          directLineCount: 0
+        },
+        message: "auxiliary_recheck_event_forced_to_candidate_only"
+      })
+    ]
+  };
+  if (!proposals.length && !asArray(result.reviewIssues).length) {
+    const message = `${clinicalEventName(event) || "診療行為"}は限定再確認で抽出されましたが、算定区分を確定できませんでした。`;
+    result.reviewIssues = [
+      ...asArray(result.reviewIssues),
+      withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart([
+          "auxiliary_extraction_unresolved",
+          event?.clinicalEventId || event?.clinical_event_id || clinicalEventName(event)
+        ].join("_"))}`,
+        issueCode: "auxiliary_extraction_unresolved",
+        severity: "warning",
+        title: "カルテ抽出候補の確認",
+        messageForStaff: message,
+        evidence: String(event?.evidence || "").slice(0, 200),
+        requiredInput: "当日実施、予定、過去・他院情報の区別",
+        source: "openai_auxiliary_recheck"
+      }, "extraction_coverage_check")
+    ];
+    result.reviewWarnings = [...asArray(result.reviewWarnings), message];
+  }
+  return result;
+}
+
+function auxiliaryCandidateProposal(proposal = {}, event = {}) {
+  const candidateLine = isPlainObject(proposal?.candidateLine)
+    ? {
+      ...proposal.candidateLine,
+      status: "candidate",
+      source: "openai_auxiliary_recheck",
+      extractionSource: "openai_auxiliary_recheck",
+      reviewRequired: true,
+      coverage: {
+        ...(isPlainObject(proposal.candidateLine.coverage)
+          ? proposal.candidateLine.coverage
+          : {}),
+        supportLevel: "review_required",
+        reviewRequired: true
+      }
+    }
+    : null;
+  return {
+    ...proposal,
+    basis: proposal?.basis || "openai_auxiliary_recheck_candidate",
+    source: "openai_auxiliary_recheck",
+    candidateOnly: true,
+    reviewRequired: true,
+    clinicalEventId: event?.clinicalEventId || event?.clinical_event_id || "",
+    ...(candidateLine ? { candidateLine } : {})
+  };
+}
+
+function auxiliaryCandidateOrderType(candidateKind = "") {
+  return {
+    drug: "medication",
+    material: "material",
+    procedure: "procedure"
+  }[String(candidateKind || "").trim()] || "procedure";
 }
 
 async function convertEncoderClinicalEventToCandidate({
@@ -4196,6 +4628,31 @@ export function mergeClinicalFactsSamples(samples = []) {
     }
   }
   base.standing_mentions = [...standingMentions.values()];
+
+  const excludedEvents = [];
+  const seenExcludedEvents = new Set();
+  for (const sample of list) {
+    for (const event of asArray(sample.excluded_events)) {
+      const key = JSON.stringify([
+        String(event?.type || ""),
+        String(event?.name || "").trim(),
+        String(event?.action_status || event?.status || ""),
+        asArray(event?.evidence_line_ids).map(String).sort()
+      ]);
+      if (seenExcludedEvents.has(key)) continue;
+      seenExcludedEvents.add(key);
+      excludedEvents.push(event);
+    }
+  }
+  base.excluded_events = excludedEvents;
+
+  base.missing_information = dedupeObjects(
+    list.flatMap((sample) => asArray(sample.missing_information)),
+    (entry) => JSON.stringify(entry)
+  );
+  base.review_flags = uniqueStrings(
+    list.flatMap((sample) => asArray(sample.review_flags))
+  );
   return base;
 }
 
@@ -7172,7 +7629,7 @@ function normalizeClinicalEventsForResult(values = []) {
       totalQuantity: normalized.total_quantity,
       searchTerms: clinicalEventSearchQueries(normalized),
       reviewReason: normalized.review_reason,
-      source: normalized.source || normalized.extractionSource || ""
+      source: clinicalEventExtractionSource(normalized)
     });
   }
   return result.slice(0, 120);
@@ -7259,7 +7716,7 @@ function canonicalClinicalFactsFromEvents(events = [], {
           totalQuantity: event.total_quantity || ""
         },
         extraction: {
-          source: event.source || event.extractionSource || "llm_clinical_event",
+          source: clinicalEventExtractionSource(event) || "llm_clinical_event",
           registryVersion: FEE_CONCEPT_REGISTRY_VERSION,
           masterCandidateAvailable: masterEventIds.has(eventId),
           searchQueries: clinicalEventSearchQueries(event),
@@ -7326,7 +7783,7 @@ function canonicalClinicalFactFromCalculationEvent(event = {}, {
       totalQuantity: event.total_quantity || ""
     },
     extraction: {
-      source: event.source || event.extractionSource || "canonical_clinical_fact",
+      source: clinicalEventExtractionSource(event) || "canonical_clinical_fact",
       registryVersion: FEE_CONCEPT_REGISTRY_VERSION,
       masterCandidateAvailable: masterEventIds.has(eventId),
       searchQueries,

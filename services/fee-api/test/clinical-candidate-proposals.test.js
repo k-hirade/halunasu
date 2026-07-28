@@ -63,6 +63,330 @@ test("医学管理・文書系イベントはマスタ照合され点数付き�
   assert.deepEqual(result.procedureCodes, [], "確定明細のprocedure_codesには入れない");
 });
 
+test("限定再確認由来イベントは候補専用で直接算定フラグを立てない", async () => {
+  const result = await convertClinicalCalculationEvents({
+    clinicalEvents: [managementEvent({
+      extraction_source: "openai_auxiliary_recheck"
+    })],
+    feeCalculator: mockFeeCalculator()
+  });
+
+  const proposal = result.candidateProposals.find((item) => item.code === "180000710");
+  assert.ok(proposal);
+  assert.equal(proposal.candidateOnly, true);
+  assert.equal(proposal.reviewRequired, true);
+  assert.equal(proposal.source, "openai_auxiliary_recheck");
+  assert.deepEqual(result.procedureCodes, []);
+  assert.deepEqual(result.masterCandidates, []);
+  assert.deepEqual(result.billingCandidates, []);
+  assert.equal(result.hasCaseLevelLabProcedureCode, false);
+  assert.equal(result.hasCaseLevelBloodCollectionEvidence, false);
+});
+
+test("OpenAI主経路はSpan漏れ検知時だけ1回再確認し候補専用で統合する", async (t) => {
+  const previousSpanMode = process.env.FEE_SPAN_DETECTOR_MODE;
+  process.env.FEE_SPAN_DETECTOR_MODE = "shadow";
+  t.after(() => {
+    if (previousSpanMode == null) {
+      delete process.env.FEE_SPAN_DETECTOR_MODE;
+    } else {
+      process.env.FEE_SPAN_DETECTOR_MODE = previousSpanMode;
+    }
+  });
+  let extractionCallCount = 0;
+  const calculator = {
+    ...mockFeeCalculator(),
+    async detectSpans({ lines }) {
+      const line = lines.find((item) => item.text.includes("傷病手当金意見書"));
+      const phrase = "傷病手当金意見書";
+      const charStart = [...line.text].findIndex((character) => character === "傷");
+      return {
+        status: "complete",
+        artifactVersion: "span-wx1-v2",
+        results: [{
+          spans: [{
+            spanId: "span_doc",
+            lineId: line.lineId,
+            charStart,
+            charEnd: charStart + [...phrase].length,
+            category: "management",
+            confidence: 0.95,
+            detectionThreshold: 0.5
+          }]
+        }]
+      };
+    }
+  };
+  const prep = await buildClinicalCalculationPreparation({
+    session: {
+      feeSessionId: "fee_auxiliary",
+      orgId: "org_auxiliary",
+      patientId: "patient_auxiliary",
+      facilityId: "fac_9fe275b29feebb03bfeb9410f7",
+      serviceDate: "2026-07-28",
+      setting: "outpatient",
+      clinicalText: "P）傷病手当金意見書を作成・交付した。"
+    },
+    calculationInput: {},
+    feeCalculator: calculator,
+    clinicalExtractionStrategy: "openai_primary",
+    extractionCoverage: {
+      mode: "verify",
+      facilityAllowed: true,
+      maxLines: 8,
+      maxSpans: 16,
+      timeoutMs: 2000
+    },
+    clinicalFactsExtractor: async ({ preprocessedLines, scope, coverageReviewTargets }) => {
+      extractionCallCount += 1;
+      if (scope === "line_subset") {
+        assert.equal(coverageReviewTargets.length, 1);
+        return {
+          diagnoses: [],
+          line_review: preprocessedLines.map((line) => ({
+            line_id: line.lineId,
+            line_role: "performed"
+          })),
+          standing_mentions: [],
+          clinical_events: [{
+            clinical_event_id: "event_auxiliary_document",
+            type: "management",
+            name: "傷病手当金意見書の交付",
+            action_status: "performed",
+            temporal_relation: "current_visit",
+            provider_ownership: "own_clinic",
+            source_origin: "own_clinic_record",
+            evidence_line_ids: [preprocessedLines[0].lineId],
+            search_queries: ["傷病手当金意見書交付料"]
+          }],
+          excluded_events: [],
+          missing_information: [],
+          review_flags: []
+        };
+      }
+      return {
+        visit_type: { kind: "unknown", evidence: "", confidence: "low" },
+        visit_facts: {
+          outside_prescription_issued: "unknown",
+          generic_name_prescription: "unknown",
+          prescription_evidence: ""
+        },
+        diagnoses: [],
+        line_review: [],
+        standing_mentions: [],
+        clinical_events: [],
+        checklist_findings: [],
+        excluded_events: [],
+        missing_information: [],
+        review_flags: []
+      };
+    }
+  });
+
+  assert.equal(extractionCallCount, 2);
+  assert.equal(prep.metrics.clinicalStructuring.openAiCallCount, 2);
+  assert.equal(prep.metrics.clinicalStructuring.lineReviewRetryCount, 1);
+  assert.equal(
+    prep.metrics.clinicalStructuring.auxiliaryCoverage.additionalOpenAiCallCount,
+    1
+  );
+  assert.equal(prep.metrics.clinicalStructuring.auxiliaryCoverage.recheckAttempted, true);
+  assert.equal(prep.metrics.clinicalStructuring.auxiliaryCoverage.recheckSucceeded, true);
+  const proposal = prep.candidateProposals.find((item) => item.code === "180000710");
+  assert.ok(proposal);
+  assert.equal(proposal.candidateOnly, true);
+  assert.equal(proposal.reviewRequired, true);
+  assert.equal(proposal.source, "openai_auxiliary_recheck");
+  assert.equal(
+    prep.calculationOptions?.procedure_codes?.includes("180000710") || false,
+    false
+  );
+});
+
+test("限定再確認が失敗しても初回OpenAI候補を保持し計算を継続する", async (t) => {
+  const previousSpanMode = process.env.FEE_SPAN_DETECTOR_MODE;
+  process.env.FEE_SPAN_DETECTOR_MODE = "shadow";
+  t.after(() => {
+    if (previousSpanMode == null) {
+      delete process.env.FEE_SPAN_DETECTOR_MODE;
+    } else {
+      process.env.FEE_SPAN_DETECTOR_MODE = previousSpanMode;
+    }
+  });
+  let extractionCallCount = 0;
+  const text = "P）傷病手当金意見書を作成・交付した。創傷処置も実施した。";
+  const calculator = {
+    ...mockFeeCalculator(),
+    async detectSpans({ lines }) {
+      const line = lines[0];
+      const phrase = "創傷処置";
+      const charStart = [...line.text].findIndex((character) => character === "創");
+      return {
+        status: "complete",
+        artifactVersion: "span-wx1-v2",
+        results: [{
+          spans: [{
+            spanId: "span_wound",
+            lineId: line.lineId,
+            charStart,
+            charEnd: charStart + [...phrase].length,
+            category: "procedure",
+            confidence: 0.95,
+            detectionThreshold: 0.5
+          }]
+        }]
+      };
+    }
+  };
+  const prep = await buildClinicalCalculationPreparation({
+    session: {
+      feeSessionId: "fee_auxiliary_failure",
+      orgId: "org_auxiliary",
+      patientId: "patient_auxiliary_failure",
+      facilityId: "fac_9fe275b29feebb03bfeb9410f7",
+      serviceDate: "2026-07-28",
+      setting: "outpatient",
+      clinicalText: text
+    },
+    calculationInput: {},
+    feeCalculator: calculator,
+    clinicalExtractionStrategy: "openai_primary",
+    extractionCoverage: {
+      mode: "verify",
+      facilityAllowed: true,
+      maxLines: 8,
+      maxSpans: 16,
+      timeoutMs: 2000
+    },
+    clinicalFactsExtractor: async ({ preprocessedLines, scope }) => {
+      extractionCallCount += 1;
+      if (scope === "line_subset") {
+        throw new Error("synthetic recheck failure");
+      }
+      return {
+        visit_type: { kind: "unknown", evidence: "", confidence: "low" },
+        visit_facts: {
+          outside_prescription_issued: "unknown",
+          generic_name_prescription: "unknown",
+          prescription_evidence: ""
+        },
+        diagnoses: [],
+        line_review: preprocessedLines.map((line) => ({
+          line_id: line.lineId,
+          line_role: "performed"
+        })),
+        standing_mentions: [],
+        clinical_events: [{
+          clinical_event_id: "event_initial_document",
+          type: "management",
+          name: "傷病手当金意見書の交付",
+          action_status: "performed",
+          temporal_relation: "current_visit",
+          provider_ownership: "own_clinic",
+          source_origin: "own_clinic_record",
+          evidence_line_ids: [preprocessedLines[0].lineId],
+          search_queries: ["傷病手当金意見書交付料"]
+        }],
+        checklist_findings: [],
+        excluded_events: [],
+        missing_information: [],
+        review_flags: []
+      };
+    }
+  });
+
+  assert.equal(extractionCallCount, 2);
+  assert.equal(prep.metrics.clinicalStructuring.auxiliaryCoverage.recheckAttempted, true);
+  assert.equal(prep.metrics.clinicalStructuring.auxiliaryCoverage.recheckSucceeded, false);
+  assert.equal(
+    prep.metrics.clinicalStructuring.auxiliaryCoverage.recheckSuppressedReason,
+    "openai_recheck_failed"
+  );
+  const initialProposal = prep.candidateProposals.find((item) => item.code === "180000710");
+  assert.ok(initialProposal);
+  assert.notEqual(initialProposal.source, "openai_auxiliary_recheck");
+  assert.equal(
+    prep.reviewIssues.some((item) => item.issueCode === "auxiliary_extraction_unresolved"),
+    true
+  );
+});
+
+test("Span検出器が利用不能でも追加OpenAI呼び出しをせず初回結果を保持する", async (t) => {
+  const previousSpanMode = process.env.FEE_SPAN_DETECTOR_MODE;
+  process.env.FEE_SPAN_DETECTOR_MODE = "shadow";
+  t.after(() => {
+    if (previousSpanMode == null) {
+      delete process.env.FEE_SPAN_DETECTOR_MODE;
+    } else {
+      process.env.FEE_SPAN_DETECTOR_MODE = previousSpanMode;
+    }
+  });
+  let extractionCallCount = 0;
+  const prep = await buildClinicalCalculationPreparation({
+    session: {
+      feeSessionId: "fee_auxiliary_detector_failure",
+      orgId: "org_auxiliary",
+      patientId: "patient_auxiliary_detector_failure",
+      facilityId: "fac_9fe275b29feebb03bfeb9410f7",
+      serviceDate: "2026-07-28",
+      setting: "outpatient",
+      clinicalText: "P）傷病手当金意見書を作成・交付した。"
+    },
+    calculationInput: {},
+    feeCalculator: {
+      ...mockFeeCalculator(),
+      async detectSpans() {
+        throw new Error("synthetic detector failure");
+      }
+    },
+    clinicalExtractionStrategy: "openai_primary",
+    extractionCoverage: {
+      mode: "verify",
+      facilityAllowed: true,
+      maxLines: 8,
+      maxSpans: 16,
+      timeoutMs: 2000
+    },
+    clinicalFactsExtractor: async ({ preprocessedLines }) => {
+      extractionCallCount += 1;
+      return {
+        visit_type: { kind: "unknown", evidence: "", confidence: "low" },
+        visit_facts: {
+          outside_prescription_issued: "unknown",
+          generic_name_prescription: "unknown",
+          prescription_evidence: ""
+        },
+        diagnoses: [],
+        line_review: preprocessedLines.map((line) => ({
+          line_id: line.lineId,
+          line_role: "performed"
+        })),
+        standing_mentions: [],
+        clinical_events: [{
+          clinical_event_id: "event_initial_document",
+          type: "management",
+          name: "傷病手当金意見書の交付",
+          action_status: "performed",
+          temporal_relation: "current_visit",
+          provider_ownership: "own_clinic",
+          source_origin: "own_clinic_record",
+          evidence_line_ids: [preprocessedLines[0].lineId],
+          search_queries: ["傷病手当金意見書交付料"]
+        }],
+        checklist_findings: [],
+        excluded_events: [],
+        missing_information: [],
+        review_flags: []
+      };
+    }
+  });
+
+  assert.equal(extractionCallCount, 1);
+  assert.equal(prep.metrics.clinicalStructuring.auxiliaryCoverage.detectorAvailable, false);
+  assert.equal(prep.metrics.clinicalStructuring.auxiliaryCoverage.additionalOpenAiCallCount, 0);
+  assert.ok(prep.candidateProposals.some((item) => item.code === "180000710"));
+});
+
 test("review-only領域(在宅)のイベントも候補生成される(自動確定の禁止に格下げ)", async () => {
   const result = await convertClinicalCalculationEvents({
     clinicalEvents: [{

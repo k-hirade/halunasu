@@ -76,6 +76,7 @@
     "report:fee-extraction-feedback": "node scripts/report_extraction_feedback.mjs",
     "report:fee-whitebox-shadow": "PYTHONPATH=python:. python3 scripts/report_fee_whitebox_shadow.py",
     "eval:fee-whitebox-shadow-stg": "node scripts/evaluate_fee_whitebox_shadow_stg.mjs",
+    "eval:fee-extraction-coverage-recheck-stg": "node scripts/evaluate_fee_extraction_coverage_recheck_stg.mjs",
     "prepare:fee-whitebox-adjudication": "node scripts/prepare_fee_whitebox_adjudication.mjs",
     "compile:fee-whitebox-adjudication": "node scripts/compile_fee_whitebox_adjudication.mjs",
     "eval:fee-whitebox-runtime": "PYTHONPATH=python:. python3 scripts/measure_fee_whitebox_runtime.py",

@@ -79,6 +79,59 @@ class RuntimeFeatureProfileTest(unittest.TestCase):
                     profile_root=temporary_root,
                 )
 
+    def test_active_auxiliary_recheck_profile_is_valid(self) -> None:
+        values = load_profile(
+            "stg-openai-primary-span-recheck",
+            environment="stg",
+            profile_root=Path("configs/runtime-feature-profiles"),
+        )
+        self.assertEqual(
+            values["FEE_CLINICAL_EXTRACTION_STRATEGY_STG"],
+            "openai_primary",
+        )
+        self.assertEqual(values["FEE_EXTRACTION_COVERAGE_MODE_STG"], "verify")
+        self.assertEqual(values["FEE_LINKER_MODE_STG"], "off")
+        self.assertEqual(values["FEE_CONTEXT_CLASSIFIER_MODE_STG"], "off")
+        self.assertEqual(values["FEE_SPAN_DETECTOR_MODE_STG"], "shadow")
+
+    def test_auxiliary_recheck_requires_allowlist_and_safe_layer_modes(self) -> None:
+        root = Path("configs/runtime-feature-profiles")
+        source = (root / "stg-openai-primary-span-recheck.env").read_text(
+            encoding="utf-8"
+        )
+        replacements = (
+            (
+                "FEE_EXTRACTION_COVERAGE_FACILITY_ALLOWLIST_STG="
+                "fac_9fe275b29feebb03bfeb9410f7",
+                "FEE_EXTRACTION_COVERAGE_FACILITY_ALLOWLIST_STG=",
+                "must not be empty",
+            ),
+            (
+                "FEE_LINKER_MODE_STG=off",
+                "FEE_LINKER_MODE_STG=shadow",
+                "linker and context classifier",
+            ),
+        )
+        for index, (before, after, message) in enumerate(replacements):
+            with self.subTest(case=index), tempfile.TemporaryDirectory() as temporary:
+                temporary_root = Path(temporary)
+                profile_name = f"stg-invalid-coverage-{index}"
+                (temporary_root / f"{profile_name}.env").write_text(
+                    source
+                    .replace(
+                        "PROFILE_NAME=stg-openai-primary-span-recheck",
+                        f"PROFILE_NAME={profile_name}",
+                    )
+                    .replace(before, after),
+                    encoding="utf-8",
+                )
+                with self.assertRaisesRegex(RuntimeFeatureProfileError, message):
+                    load_profile(
+                        profile_name,
+                        environment="stg",
+                        profile_root=temporary_root,
+                    )
+
     def test_mutable_or_wrong_type_artifact_uri_is_rejected(self) -> None:
         root = Path("configs/runtime-feature-profiles")
         source = (root / "stg-whitebox-span-shadow.env").read_text(

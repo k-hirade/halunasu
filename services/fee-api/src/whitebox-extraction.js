@@ -560,7 +560,8 @@ export async function prepareWhiteboxExtraction({
   feeCalculator,
   preprocessing,
   session = {},
-  env = process.env
+  env = process.env,
+  strategy = "whitebox_experiment"
 } = {}) {
   const modes = whiteboxRuntimeModes(env);
   const lines = Array.isArray(preprocessing?.lines) ? preprocessing.lines : [];
@@ -595,6 +596,21 @@ export async function prepareWhiteboxExtraction({
     },
     trace: []
   };
+  if (String(strategy || "openai_primary") !== "whitebox_experiment") {
+    return {
+      ...base,
+      status: "openai_primary",
+      metrics: {
+        ...base.metrics,
+        enabled: false,
+        strategy: "openai_primary"
+      },
+      trace: [{
+        stage: "whitebox_router",
+        outcome: "disabled_for_openai_primary"
+      }]
+    };
+  }
   if (!base.metrics.enabled) {
     return base;
   }
@@ -1215,6 +1231,188 @@ export async function prepareWhiteboxExtraction({
       gateDiagnostics
     }]
   };
+}
+
+export async function prepareAuxiliaryCoverageSignals({
+  feeCalculator,
+  preprocessing,
+  env = process.env,
+  mode = "off",
+  timeoutMs = 2000
+} = {}) {
+  const normalizedMode = ["observe", "verify"].includes(String(mode || "").trim())
+    ? String(mode).trim()
+    : "off";
+  const modes = whiteboxRuntimeModes(env);
+  const lines = Array.isArray(preprocessing?.lines) ? preprocessing.lines : [];
+  const base = {
+    status: "disabled",
+    available: false,
+    signals: [],
+    durationMs: 0,
+    artifactVersion: null,
+    reason: normalizedMode === "off" ? "coverage_mode_off" : null,
+    trace: []
+  };
+  if (normalizedMode === "off") {
+    return base;
+  }
+  if (modes.span === "off" || typeof feeCalculator?.detectSpans !== "function") {
+    return {
+      ...base,
+      status: "unavailable",
+      reason: "span_detector_disabled_or_unsupported"
+    };
+  }
+
+  const startedAt = Date.now();
+  const envelope = await withAuxiliaryTimeout(
+    feeCalculator.detectSpans({
+      lines: lines.map(({ lineId, text, section }) => ({ lineId, text, section }))
+    }),
+    timeoutMs
+  ).catch((error) => unavailableEnvelope(error));
+  const durationMs = Date.now() - startedAt;
+  if (envelope?.status !== "complete") {
+    return {
+      ...base,
+      status: "unavailable",
+      durationMs,
+      reason: safeAuxiliaryReason(envelope?.reason || envelope?.status || "span_detector_unavailable"),
+      trace: [{
+        stage: "auxiliary_coverage_check",
+        outcome: "detector_unavailable",
+        durationMs
+      }]
+    };
+  }
+
+  const lineById = new Map(lines.map((line) => [String(line?.lineId || ""), line]));
+  const clausesByLineId = new Map(lines.map((line) => [
+    String(line?.lineId || ""),
+    splitWhiteboxEvidenceClauses(line)
+  ]));
+  const artifactVersion = String(
+    envelope?.artifactVersion
+    || envelope?.extractorVersion
+    || envelope?.modelVersion
+    || ""
+  ).trim() || null;
+  const signals = (Array.isArray(envelope?.results) ? envelope.results : [])
+    .flatMap((row) => Array.isArray(row?.spans) ? row.spans : [])
+    .map((span) => {
+      const lineId = String(span?.lineId || "").trim();
+      const line = lineById.get(lineId);
+      if (!line) {
+        return null;
+      }
+      const confidence = Number(span?.confidence);
+      const artifactThreshold = Number(span?.detectionThreshold);
+      if (
+        !Number.isFinite(confidence)
+        || !Number.isFinite(artifactThreshold)
+        || confidence < artifactThreshold
+      ) {
+        return null;
+      }
+      const clause = whiteboxClauseForSpan(clausesByLineId.get(lineId) || [], span);
+      const phrase = codePointSlice(
+        String(line?.text || ""),
+        Number(span?.charStart),
+        Number(span?.charEnd)
+      );
+      return {
+        lineId,
+        clauseId: String(clause?.clauseId || ""),
+        spanId: String(span?.spanId || ""),
+        category: String(span?.category || "").trim().toLowerCase(),
+        charStart: Number(span?.charStart),
+        charEnd: Number(span?.charEnd),
+        normalizedTextHash: crypto
+          .createHash("sha256")
+          .update(normalizeAuxiliarySpanText(phrase))
+          .digest("hex"),
+        confidence,
+        artifactThreshold,
+        artifactVersion
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    status: "complete",
+    available: true,
+    signals,
+    durationMs,
+    artifactVersion,
+    reason: null,
+    trace: [{
+      stage: "auxiliary_coverage_check",
+      outcome: "detected",
+      detectedSpanCount: signals.length,
+      durationMs,
+      artifactVersion
+    }]
+  };
+}
+
+function withAuxiliaryTimeout(promise, timeoutMs) {
+  const normalizedTimeoutMs = Math.max(100, Math.min(30_000, Number(timeoutMs || 2000)));
+  let timer = null;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((resolve) => {
+      timer = setTimeout(() => {
+        resolve({
+          status: "unavailable",
+          reason: "auxiliary_span_detector_timeout"
+        });
+      }, normalizedTimeoutMs);
+      timer.unref?.();
+    })
+  ]).finally(() => {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  });
+}
+
+function safeAuxiliaryReason(value = "") {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized.includes("timeout")) {
+    return "span_detector_timeout";
+  }
+  if (normalized.includes("disabled") || normalized.includes("unsupported")) {
+    return "span_detector_disabled_or_unsupported";
+  }
+  if (normalized.includes("invalid")) {
+    return "span_detector_invalid_response";
+  }
+  return "span_detector_unavailable";
+}
+
+function codePointSlice(value = "", startInput = 0, endInput = 0) {
+  const codePoints = [...String(value || "")];
+  const start = Number(startInput);
+  const end = Number(endInput);
+  if (
+    !Number.isInteger(start)
+    || !Number.isInteger(end)
+    || start < 0
+    || end <= start
+    || end > codePoints.length
+  ) {
+    return "";
+  }
+  return codePoints.slice(start, end).join("");
+}
+
+function normalizeAuxiliarySpanText(value = "") {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\s+/gu, " ")
+    .trim();
 }
 
 export function whiteboxMentionType(span = {}) {

@@ -11,6 +11,7 @@ import {
   contextConsensus,
   contextRoleFromAxes,
   determineWhiteboxVisitFacts,
+  prepareAuxiliaryCoverageSignals,
   prepareWhiteboxExtraction,
   splitWhiteboxEvidenceClauses,
   WHITEBOX_CONTEXT_INPUT_SEMANTICS,
@@ -54,6 +55,74 @@ test("whitebox modes are fail-safe off for missing and invalid values", () => {
     span: "route"
   });
   assert.equal(whiteboxRuntimeModes({ FEE_SPAN_DETECTOR_MODE: "unsafe" }).span, "off");
+});
+
+test("auxiliary coverage uses only threshold-passing Span signals without raw text", async () => {
+  const result = await prepareAuxiliaryCoverageSignals({
+    mode: "verify",
+    env: { FEE_SPAN_DETECTOR_MODE: "shadow" },
+    preprocessing: {
+      lines: [{ lineId: "O-001", section: "O", text: "O: 胸部X線を実施。" }]
+    },
+    feeCalculator: {
+      async detectSpans() {
+        return {
+          status: "complete",
+          artifactVersion: "span-v2",
+          results: [{
+            spans: [
+              {
+                spanId: "span_high",
+                lineId: "O-001",
+                charStart: 3,
+                charEnd: 6,
+                category: "imaging",
+                confidence: 0.9,
+                detectionThreshold: 0.5
+              },
+              {
+                spanId: "span_low",
+                lineId: "O-001",
+                charStart: 3,
+                charEnd: 6,
+                category: "imaging",
+                confidence: 0.2,
+                detectionThreshold: 0.5
+              }
+            ]
+          }]
+        };
+      }
+    }
+  });
+
+  assert.equal(result.available, true);
+  assert.equal(result.signals.length, 1);
+  assert.equal(result.artifactVersion, "span-v2");
+  assert.equal(JSON.stringify(result.signals).includes("胸部X線"), false);
+  assert.match(result.signals[0].normalizedTextHash, /^[a-f0-9]{64}$/u);
+});
+
+test("auxiliary coverage off does not invoke the Span detector", async () => {
+  let invocationCount = 0;
+  const result = await prepareAuxiliaryCoverageSignals({
+    mode: "off",
+    env: { FEE_SPAN_DETECTOR_MODE: "shadow" },
+    preprocessing: {
+      lines: [{ lineId: "O-001", section: "O", text: "O: 胸部X線を実施。" }]
+    },
+    feeCalculator: {
+      async detectSpans() {
+        invocationCount += 1;
+        return { status: "complete", results: [] };
+      }
+    }
+  });
+
+  assert.equal(invocationCount, 0);
+  assert.equal(result.status, "disabled");
+  assert.equal(result.available, false);
+  assert.deepEqual(result.signals, []);
 });
 
 test("WX1 threshold configuration applies setting, specialty, then exact cell overrides", (t) => {

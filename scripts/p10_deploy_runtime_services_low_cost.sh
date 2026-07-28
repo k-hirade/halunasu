@@ -319,6 +319,12 @@ deploy_env() {
   local fee_empty_extraction_retry="false"
   local fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS:-30}"
   local fee_monthly_exclusion_mode="${FEE_MONTHLY_EXCLUSION_MODE:-off}"
+  local fee_clinical_extraction_strategy="${FEE_CLINICAL_EXTRACTION_STRATEGY:-openai_primary}"
+  local fee_extraction_coverage_mode="${FEE_EXTRACTION_COVERAGE_MODE:-off}"
+  local fee_extraction_coverage_max_lines="${FEE_EXTRACTION_COVERAGE_MAX_LINES:-8}"
+  local fee_extraction_coverage_max_spans="${FEE_EXTRACTION_COVERAGE_MAX_SPANS:-16}"
+  local fee_extraction_coverage_timeout_ms="${FEE_EXTRACTION_COVERAGE_TIMEOUT_MS:-2000}"
+  local fee_extraction_coverage_facility_allowlist="${FEE_EXTRACTION_COVERAGE_FACILITY_ALLOWLIST:-}"
   local fee_linker_mode="${FEE_LINKER_MODE:-off}"
   local fee_context_classifier_mode="${FEE_CONTEXT_CLASSIFIER_MODE:-off}"
   local fee_span_detector_mode="${FEE_SPAN_DETECTOR_MODE:-off}"
@@ -346,6 +352,12 @@ deploy_env() {
     fee_empty_extraction_retry="${FEE_EMPTY_EXTRACTION_RETRY_STG:-true}"
     fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS_STG:-${fee_extraction_snapshot_retention_days}}"
     fee_monthly_exclusion_mode="${FEE_MONTHLY_EXCLUSION_MODE_STG:-${fee_monthly_exclusion_mode}}"
+    fee_clinical_extraction_strategy="${FEE_CLINICAL_EXTRACTION_STRATEGY_STG:-${fee_clinical_extraction_strategy}}"
+    fee_extraction_coverage_mode="${FEE_EXTRACTION_COVERAGE_MODE_STG:-${fee_extraction_coverage_mode}}"
+    fee_extraction_coverage_max_lines="${FEE_EXTRACTION_COVERAGE_MAX_LINES_STG:-${fee_extraction_coverage_max_lines}}"
+    fee_extraction_coverage_max_spans="${FEE_EXTRACTION_COVERAGE_MAX_SPANS_STG:-${fee_extraction_coverage_max_spans}}"
+    fee_extraction_coverage_timeout_ms="${FEE_EXTRACTION_COVERAGE_TIMEOUT_MS_STG:-${fee_extraction_coverage_timeout_ms}}"
+    fee_extraction_coverage_facility_allowlist="${FEE_EXTRACTION_COVERAGE_FACILITY_ALLOWLIST_STG:-${fee_extraction_coverage_facility_allowlist}}"
     fee_linker_mode="${FEE_LINKER_MODE_STG:-${fee_linker_mode}}"
     fee_context_classifier_mode="${FEE_CONTEXT_CLASSIFIER_MODE_STG:-${fee_context_classifier_mode}}"
     fee_span_detector_mode="${FEE_SPAN_DETECTOR_MODE_STG:-${fee_span_detector_mode}}"
@@ -370,6 +382,12 @@ deploy_env() {
     fee_empty_extraction_retry="${FEE_EMPTY_EXTRACTION_RETRY_PROD:-false}"
     fee_extraction_snapshot_retention_days="${FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS_PROD:-${fee_extraction_snapshot_retention_days}}"
     fee_monthly_exclusion_mode="${FEE_MONTHLY_EXCLUSION_MODE_PROD:-${fee_monthly_exclusion_mode}}"
+    fee_clinical_extraction_strategy="${FEE_CLINICAL_EXTRACTION_STRATEGY_PROD:-${fee_clinical_extraction_strategy}}"
+    fee_extraction_coverage_mode="${FEE_EXTRACTION_COVERAGE_MODE_PROD:-${fee_extraction_coverage_mode}}"
+    fee_extraction_coverage_max_lines="${FEE_EXTRACTION_COVERAGE_MAX_LINES_PROD:-${fee_extraction_coverage_max_lines}}"
+    fee_extraction_coverage_max_spans="${FEE_EXTRACTION_COVERAGE_MAX_SPANS_PROD:-${fee_extraction_coverage_max_spans}}"
+    fee_extraction_coverage_timeout_ms="${FEE_EXTRACTION_COVERAGE_TIMEOUT_MS_PROD:-${fee_extraction_coverage_timeout_ms}}"
+    fee_extraction_coverage_facility_allowlist="${FEE_EXTRACTION_COVERAGE_FACILITY_ALLOWLIST_PROD:-${fee_extraction_coverage_facility_allowlist}}"
     fee_linker_mode="${FEE_LINKER_MODE_PROD:-${fee_linker_mode}}"
     fee_context_classifier_mode="${FEE_CONTEXT_CLASSIFIER_MODE_PROD:-${fee_context_classifier_mode}}"
     fee_span_detector_mode="${FEE_SPAN_DETECTOR_MODE_PROD:-${fee_span_detector_mode}}"
@@ -411,6 +429,36 @@ deploy_env() {
     echo "FEE_MONTHLY_EXCLUSION_MODE for ${env} must be off, shadow, or enforce." >&2
     return 1
   fi
+  if [[ "${fee_clinical_extraction_strategy}" != "openai_primary" \
+    && "${fee_clinical_extraction_strategy}" != "whitebox_experiment" ]]; then
+    echo "FEE_CLINICAL_EXTRACTION_STRATEGY for ${env} must be openai_primary or whitebox_experiment." >&2
+    return 1
+  fi
+  if [[ "${env}" == "prod" && "${fee_clinical_extraction_strategy}" == "whitebox_experiment" ]]; then
+    echo "Refusing deploy: whitebox_experiment cannot be enabled in prod." >&2
+    return 1
+  fi
+  if [[ "${fee_extraction_coverage_mode}" != "off" \
+    && "${fee_extraction_coverage_mode}" != "observe" \
+    && "${fee_extraction_coverage_mode}" != "verify" ]]; then
+    echo "FEE_EXTRACTION_COVERAGE_MODE for ${env} must be off, observe, or verify." >&2
+    return 1
+  fi
+  if [[ ! "${fee_extraction_coverage_max_lines}" =~ ^[0-9]+$ ]] \
+    || (( fee_extraction_coverage_max_lines < 1 || fee_extraction_coverage_max_lines > 16 )); then
+    echo "FEE_EXTRACTION_COVERAGE_MAX_LINES for ${env} must be an integer from 1 to 16." >&2
+    return 1
+  fi
+  if [[ ! "${fee_extraction_coverage_max_spans}" =~ ^[0-9]+$ ]] \
+    || (( fee_extraction_coverage_max_spans < 1 || fee_extraction_coverage_max_spans > 32 )); then
+    echo "FEE_EXTRACTION_COVERAGE_MAX_SPANS for ${env} must be an integer from 1 to 32." >&2
+    return 1
+  fi
+  if [[ ! "${fee_extraction_coverage_timeout_ms}" =~ ^[0-9]+$ ]] \
+    || (( fee_extraction_coverage_timeout_ms < 100 || fee_extraction_coverage_timeout_ms > 30000 )); then
+    echo "FEE_EXTRACTION_COVERAGE_TIMEOUT_MS for ${env} must be an integer from 100 to 30000." >&2
+    return 1
+  fi
   if [[ "${fee_linker_mode}" != "off" \
     && "${fee_linker_mode}" != "shadow" \
     && "${fee_linker_mode}" != "propose" ]]; then
@@ -438,6 +486,24 @@ deploy_env() {
     && ( "${fee_linker_mode}" != "propose" || "${fee_context_classifier_mode}" != "assist" ) ]]; then
     echo "FEE_SPAN_DETECTOR_MODE=route requires FEE_LINKER_MODE=propose and FEE_CONTEXT_CLASSIFIER_MODE=assist for ${env}." >&2
     return 1
+  fi
+  if [[ "${fee_extraction_coverage_mode}" != "off" ]]; then
+    if [[ "${fee_clinical_extraction_strategy}" != "openai_primary" ]]; then
+      echo "Extraction coverage for ${env} requires FEE_CLINICAL_EXTRACTION_STRATEGY=openai_primary." >&2
+      return 1
+    fi
+    if [[ "${fee_span_detector_mode}" != "shadow" ]]; then
+      echo "Extraction coverage for ${env} requires FEE_SPAN_DETECTOR_MODE=shadow." >&2
+      return 1
+    fi
+    if [[ "${fee_linker_mode}" != "off" || "${fee_context_classifier_mode}" != "off" ]]; then
+      echo "Extraction coverage for ${env} requires linker and context classifier modes to be off." >&2
+      return 1
+    fi
+    if [[ -z "${fee_extraction_coverage_facility_allowlist}" ]]; then
+      echo "Extraction coverage for ${env} requires a non-empty facility allowlist." >&2
+      return 1
+    fi
   fi
   if [[ "${fee_linker_mode}" != "off" && -z "${fee_linker_manifest_path}" ]]; then
     echo "FEE_LINKER_MANIFEST_PATH is required when linker mode is enabled for ${env}." >&2
@@ -665,6 +731,12 @@ deploy_env() {
     "FEE_EMPTY_EXTRACTION_RETRY=${fee_empty_extraction_retry}" \
     "FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS=${fee_extraction_snapshot_retention_days}" \
     "FEE_MONTHLY_EXCLUSION_MODE=${fee_monthly_exclusion_mode}" \
+    "FEE_CLINICAL_EXTRACTION_STRATEGY=${fee_clinical_extraction_strategy}" \
+    "FEE_EXTRACTION_COVERAGE_MODE=${fee_extraction_coverage_mode}" \
+    "FEE_EXTRACTION_COVERAGE_MAX_LINES=${fee_extraction_coverage_max_lines}" \
+    "FEE_EXTRACTION_COVERAGE_MAX_SPANS=${fee_extraction_coverage_max_spans}" \
+    "FEE_EXTRACTION_COVERAGE_TIMEOUT_MS=${fee_extraction_coverage_timeout_ms}" \
+    "FEE_EXTRACTION_COVERAGE_FACILITY_ALLOWLIST=${fee_extraction_coverage_facility_allowlist}" \
     "FEE_LINKER_MODE=${fee_linker_mode}" \
     "FEE_CONTEXT_CLASSIFIER_MODE=${fee_context_classifier_mode}" \
     "FEE_SPAN_DETECTOR_MODE=${fee_span_detector_mode}" \

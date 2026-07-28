@@ -22,6 +22,12 @@ FEATURE_BASE_NAMES = (
     "FEE_EMPTY_EXTRACTION_RETRY",
     "FEE_EXTRACTION_SNAPSHOT_RETENTION_DAYS",
     "FEE_MONTHLY_EXCLUSION_MODE",
+    "FEE_CLINICAL_EXTRACTION_STRATEGY",
+    "FEE_EXTRACTION_COVERAGE_MODE",
+    "FEE_EXTRACTION_COVERAGE_MAX_LINES",
+    "FEE_EXTRACTION_COVERAGE_MAX_SPANS",
+    "FEE_EXTRACTION_COVERAGE_TIMEOUT_MS",
+    "FEE_EXTRACTION_COVERAGE_FACILITY_ALLOWLIST",
     "FEE_LINKER_MODE",
     "FEE_CONTEXT_CLASSIFIER_MODE",
     "FEE_SPAN_DETECTOR_MODE",
@@ -151,6 +157,11 @@ def validate_resolved_profile(values: Mapping[str, str], *, environment: str) ->
 
     enum_values = {
         "FEE_MONTHLY_EXCLUSION_MODE": {"off", "shadow", "enforce"},
+        "FEE_CLINICAL_EXTRACTION_STRATEGY": {
+            "openai_primary",
+            "whitebox_experiment",
+        },
+        "FEE_EXTRACTION_COVERAGE_MODE": {"off", "observe", "verify"},
         "FEE_LINKER_MODE": {"off", "shadow", "propose"},
         "FEE_CONTEXT_CLASSIFIER_MODE": {"off", "shadow", "assist"},
         "FEE_SPAN_DETECTOR_MODE": {"off", "shadow", "route"},
@@ -160,6 +171,50 @@ def validate_resolved_profile(values: Mapping[str, str], *, environment: str) ->
         if value(base_name) not in choices:
             raise RuntimeFeatureProfileError(
                 f"{base_name}_{suffix} must be one of {sorted(choices)}"
+            )
+
+    bounded_integer_contracts = (
+        ("FEE_EXTRACTION_COVERAGE_MAX_LINES", 1, 16),
+        ("FEE_EXTRACTION_COVERAGE_MAX_SPANS", 1, 32),
+        ("FEE_EXTRACTION_COVERAGE_TIMEOUT_MS", 100, 30_000),
+    )
+    for base_name, minimum, maximum in bounded_integer_contracts:
+        raw = value(base_name)
+        if not raw.isdigit() or not minimum <= int(raw) <= maximum:
+            raise RuntimeFeatureProfileError(
+                f"{base_name}_{suffix} must be {minimum}..{maximum}"
+            )
+
+    strategy = value("FEE_CLINICAL_EXTRACTION_STRATEGY")
+    coverage_mode = value("FEE_EXTRACTION_COVERAGE_MODE")
+    if environment == "prod" and strategy == "whitebox_experiment":
+        raise RuntimeFeatureProfileError(
+            "FEE_CLINICAL_EXTRACTION_STRATEGY_PROD cannot enable "
+            "whitebox_experiment"
+        )
+    if coverage_mode != "off":
+        if strategy != "openai_primary":
+            raise RuntimeFeatureProfileError(
+                f"FEE_EXTRACTION_COVERAGE_MODE_{suffix} requires "
+                "FEE_CLINICAL_EXTRACTION_STRATEGY=openai_primary"
+            )
+        if value("FEE_SPAN_DETECTOR_MODE") != "shadow":
+            raise RuntimeFeatureProfileError(
+                f"FEE_EXTRACTION_COVERAGE_MODE_{suffix} requires "
+                "FEE_SPAN_DETECTOR_MODE=shadow"
+            )
+        if (
+            value("FEE_LINKER_MODE") != "off"
+            or value("FEE_CONTEXT_CLASSIFIER_MODE") != "off"
+        ):
+            raise RuntimeFeatureProfileError(
+                f"FEE_EXTRACTION_COVERAGE_MODE_{suffix} requires "
+                "linker and context classifier modes to be off"
+            )
+        if not value("FEE_EXTRACTION_COVERAGE_FACILITY_ALLOWLIST"):
+            raise RuntimeFeatureProfileError(
+                f"FEE_EXTRACTION_COVERAGE_FACILITY_ALLOWLIST_{suffix} "
+                "must not be empty when coverage is enabled"
             )
 
     layer_contracts = (

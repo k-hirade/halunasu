@@ -84,6 +84,17 @@ test("readyz exposes deployed extraction feature flags and revision", async () =
     standingFactsEnabled: false,
     extractionSnapshotRetentionDays: 45,
     monthlyExclusionMode: "shadow",
+    clinicalExtractionStrategy: "openai_primary",
+    extractionCoverage: {
+      mode: "off",
+      maxLines: 8,
+      maxSpans: 16,
+      timeoutMs: 2000,
+      allowlistCount: 0,
+      spanDetectorAvailable: false,
+      spanArtifactVersion: null,
+      spanDetectorReason: null
+    },
     whiteboxExtraction: {
       linker: "off",
       context: "off",
