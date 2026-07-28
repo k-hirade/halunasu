@@ -5,8 +5,35 @@ export function normalizeClinicalPredicateText(value = "") {
 }
 
 export function isPastOrExternalClinicalServiceContext(value = "") {
-  const normalized = normalizeClinicalPredicateText(value);
+  const normalized = normalizeClinicalPredicateText(value)
+    // "院外処方" is this clinic's delivery method, not another provider.
+    .replace(/院外(?:で(?:の)?)?処方(?:箋|せん)?/gu, "処方箋")
+    .replace(/処方(?:箋|せん)?(?:は|を)?院外/gu, "処方箋");
   return /(前回|先月|以前|過去|過去値|既知値|持参|他院|前医|他科|紹介元|かかりつけ|健診|検診|外部資料|院外|外部|前に|過去に)/u.test(normalized);
+}
+
+export function isFutureOrOrderOnlyClinicalServiceContext(value = "") {
+  const normalized = normalizeClinicalPredicateText(value);
+  return /(\d+\s*(?:日|週間|週|か月|カ月|ヶ月|ケ月|月)後|予定|次回|後日|紹介|持参|検討|依頼|オーダー|予約|後で|今後)/u.test(normalized);
+}
+
+export function isNegatedClinicalServiceContext(value = "") {
+  const normalized = normalizeClinicalPredicateText(value);
+  return /(未実施|未施行|行わず|行っていない|行っていません|施行せず|施行していない|実施していない|撮影せず|撮影していない|検査せず|検査していない|撮影なし|検査なし|中止)/u.test(normalized);
+}
+
+export function hasCurrentVisitClinicalServiceContext(value = "") {
+  const normalized = normalizeClinicalPredicateText(value);
+  return /(本日|今回|当日|外来|来院|受診|診察|診療|継続診療|定期受診|再来)/u.test(normalized);
+}
+
+export function clinicalServiceContextCues(value = "") {
+  return {
+    futureOrOrderOnly: isFutureOrOrderOnlyClinicalServiceContext(value),
+    negatedService: isNegatedClinicalServiceContext(value),
+    pastOrExternal: isPastOrExternalClinicalServiceContext(value),
+    currentVisit: hasCurrentVisitClinicalServiceContext(value)
+  };
 }
 
 export function hasPerformedBloodCollectionEvidence(input = {}) {

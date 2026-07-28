@@ -11,6 +11,7 @@ import {
   contextRoleFromAxes,
   determineWhiteboxVisitFacts,
   prepareWhiteboxExtraction,
+  splitWhiteboxEvidenceClauses,
   WHITEBOX_CONTEXT_REASON_DISPOSITIONS,
   whiteboxEncounterSetting,
   whiteboxMentionType,
@@ -221,6 +222,29 @@ test("WX2 mention typing distinguishes billing acts from drug products generical
     whiteboxMentionType({ text: "急性胃腸炎", category: "diagnosis" }),
     "diagnosis"
   );
+});
+
+test("whitebox clause boundaries isolate past, current, and future evidence", () => {
+  const text = "前回CTを確認し、本日は採血を実施。次回MRIを予定。";
+  const clauses = splitWhiteboxEvidenceClauses({
+    lineId: "O-001",
+    text,
+    cues: { currentVisit: true }
+  });
+
+  assert.deepEqual(clauses.map((clause) => clause.text), [
+    "前回CTを確認し、",
+    "本日は採血を実施。",
+    "次回MRIを予定。"
+  ]);
+  assert.deepEqual(clauses.map((clause) => clause.charStart), [
+    0,
+    text.indexOf("本日"),
+    text.indexOf("次回")
+  ]);
+  assert.equal(clauses[0].cues.pastOrExternal, true);
+  assert.equal(clauses[1].cues.currentVisit, true);
+  assert.equal(clauses[2].cues.futureOrOrderOnly, true);
 });
 
 test("WX2 mention type mismatch cannot cross the routing gate", async () => {
@@ -695,6 +719,116 @@ test("WX3 keeps past span axes while routing a current span on the same line", a
   );
 });
 
+test("WX3 delegates resolved clauses and sends only the unresolved clause to the LLM", async () => {
+  const text = "前回CTを確認し、本日は採血を実施。次回MRIを予定。";
+  const spanResults = [{
+    lineId: "O-001",
+    relevance: "relevant",
+    relevanceConfidence: 0.99,
+    spans: [
+      span("span_ct", "O-001", "前回CT", "imaging", 0, 4),
+      span(
+        "span_blood",
+        "O-001",
+        "採血",
+        "lab",
+        text.indexOf("採血"),
+        text.indexOf("採血") + 2
+      )
+    ]
+  }];
+  const contextPayloads = [];
+  const calculator = completeWhiteboxCalculator({
+    spanResults,
+    linkResults: [
+      linkedCandidate("170020010", "CT撮影", "procedure"),
+      linkedCandidate("160022510", "血液採取（静脈）", "procedure")
+    ],
+    contextAxesBySpanId: {
+      span_ct: {
+        ...CURRENT_AXES,
+        temporalRelation: { value: "past", confidence: 0.99, abstained: false }
+      },
+      span_blood: CURRENT_AXES
+    }
+  });
+  const originalClassifyContext = calculator.classifyContext;
+  calculator.classifyContext = async (payload) => {
+    contextPayloads.push(payload);
+    return originalClassifyContext(payload);
+  };
+
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: calculator,
+    preprocessing: {
+      lines: [{
+        lineId: "O-001",
+        text,
+        section: "O",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient", serviceDate: "2026-07-24" },
+    env: routeEnv()
+  });
+
+  assert.equal(result.status, "route_ready");
+  assert.equal(result.lineRoutes[0].route, "mixed");
+  assert.deepEqual(contextPayloads[0].items.map((item) => item.text), [
+    "前回CTを確認し、",
+    "本日は採血を実施。"
+  ]);
+  assert.deepEqual(result.llmLines.map((line) => line.text), ["次回MRIを予定。"]);
+  assert.deepEqual(
+    result.encoderFacts.clinical_events.map((event) => [event.name, event.evidence]),
+    [["血液採取（静脈）", "本日は採血を実施。"]]
+  );
+  assert.deepEqual(
+    result.encoderFacts.excluded_events.map((event) => [event.name, event.evidence]),
+    [["CT撮影", "前回CTを確認し、"]]
+  );
+  assert.equal(result.metrics.partialEncoderLineCount, 1);
+  assert.equal(result.metrics.encoderOwnedSpanCount, 2);
+  assert.equal(result.metrics.expectedLlmClauseRatio, 1 / 3);
+});
+
+test("ambiguous prescription evidence only blocks its own clause", async () => {
+  const text = "創傷処置を施行。処方箋について患者と相談した。";
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator({
+      spanResults: [{
+        lineId: "O-001",
+        relevance: "relevant",
+        relevanceConfidence: 0.99,
+        spans: [span("span_wound", "O-001", "創傷処置", "procedure", 0, 4)]
+      }]
+    }),
+    preprocessing: {
+      lines: [{
+        lineId: "O-001",
+        text,
+        section: "O",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient", serviceDate: "2026-07-24" },
+    env: routeEnv()
+  });
+
+  assert.equal(result.status, "route_ready");
+  assert.equal(result.metrics.visitFacts.fullLlmRequired, true);
+  assert.equal(result.metrics.visitFacts.scopedFallback, true);
+  assert.equal(result.lineRoutes[0].route, "mixed");
+  assert.deepEqual(result.llmLines.map((line) => line.text), [
+    "処方箋について患者と相談した。"
+  ]);
+  assert.deepEqual(
+    result.encoderFacts.clinical_events.map((event) => event.name),
+    ["創傷処置（１００ｃｍ２未満）"]
+  );
+  assert.equal(result.metrics.visitFacts.shadowBlockedClauseCount, 1);
+});
+
 test("WX1 sends a non-trivial spanless line and the whole mixed line to LLM", async () => {
   const calculator = completeWhiteboxCalculator({
     spanResults: [{
@@ -1073,6 +1207,68 @@ test("linker boundary expansion is verified and passed to the context classifier
   assert.equal(diagnostic.charStart, 0);
 });
 
+test("linker boundary expansion cannot cross an evidence clause", async () => {
+  const text = "前回CTを確認し、本日は創傷処置を施行。";
+  const sourceStart = text.indexOf("傷処置");
+  const calculator = completeWhiteboxCalculator({
+    spanResults: [{
+      lineId: "O-001",
+      relevance: "relevant",
+      relevanceConfidence: 0.99,
+      spans: [{
+        spanId: "span_1",
+        lineId: "O-001",
+        charStart: sourceStart,
+        charEnd: sourceStart + 3,
+        text: "傷処置",
+        category: "procedure",
+        confidence: 0.99
+      }]
+    }],
+    linkResults: [{
+      ...linkedCandidate("140000610", "創傷処置（１００ｃｍ２未満）", "procedure"),
+      resolvedSpan: {
+        lineId: "O-001",
+        text: text.slice(0, sourceStart + 3),
+        charStart: 0,
+        charEnd: sourceStart + 3,
+        boundarySnapped: true,
+        originalCharStart: sourceStart,
+        originalCharEnd: sourceStart + 3,
+        snapReason: "invalid_cross_clause_extension"
+      }
+    }]
+  });
+  let contextItem = null;
+  const classifyContext = calculator.classifyContext;
+  calculator.classifyContext = async (payload) => {
+    contextItem = payload.items[0];
+    return classifyContext(payload);
+  };
+
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: calculator,
+    preprocessing: {
+      lines: [{
+        lineId: "O-001",
+        text,
+        section: "O",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient", serviceDate: "2026-07-24" },
+    env: shadowEnv()
+  });
+
+  assert.equal(contextItem.text, "本日は創傷処置を施行。");
+  assert.equal(contextItem.spanText, "傷処置");
+  const diagnostic = result.trace
+    .find((entry) => entry.stage === "whitebox_router")
+    .gateDiagnostics[0];
+  assert.equal(diagnostic.boundary.snapped, false);
+  assert.equal(diagnostic.charStart, sourceStart);
+});
+
 test("three-lane shadow limits ambiguous visit-facts fallback to the affected line", async () => {
   const result = await prepareWhiteboxExtraction({
     feeCalculator: completeWhiteboxCalculator({
@@ -1338,7 +1534,7 @@ test("WX1 encoder routing is deterministic across 100 runs", async () => {
 
 test("WX1 derives explicit current-visit prescription facts without an LLM", async () => {
   const result = await prepareWhiteboxExtraction({
-    feeCalculator: completeWhiteboxCalculator(),
+    feeCalculator: completeWhiteboxCalculator({ spanResults: [] }),
     preprocessing: {
       lines: [{
         lineId: "P-001",
@@ -1351,14 +1547,15 @@ test("WX1 derives explicit current-visit prescription facts without an LLM", asy
     env: routeEnv()
   });
   assert.equal(result.status, "route_ready");
-  assert.equal(result.llmLines.length, 1);
-  assert.deepEqual(result.lineRoutes[0].reasonCodes, ["span_missing_nontrivial_line"]);
+  assert.equal(result.llmLines.length, 0);
+  assert.equal(result.lineRoutes[0].route, "encoder");
+  assert.deepEqual(result.lineRoutes[0].reasonCodes, ["structured_visit_fact"]);
   assert.equal(result.encoderFacts.visit_facts.outside_prescription_issued, "yes");
   assert.equal(result.metrics.visitFacts.source, "deterministic_text");
   assert.equal(result.metrics.degradedReasons.includes("visit_facts_sensitive_change"), false);
 });
 
-test("WX1 sends ambiguous, conflicting, and past prescription facts to the full LLM", () => {
+test("WX1 sends ambiguous and conflicting prescription facts to the LLM but ignores past facts", () => {
   const ambiguous = determineWhiteboxVisitFacts({
     lines: [{
       lineId: "P-001",
@@ -1385,7 +1582,132 @@ test("WX1 sends ambiguous, conflicting, and past prescription facts to the full 
       cues: { pastOrExternal: true }
     }]
   });
-  assert.equal(past.status, "ambiguous");
+  assert.equal(past.status, "complete");
+  assert.deepEqual(past.ambiguousLineIds, []);
+  assert.deepEqual(past.ignoredClauseIds, ["S-001:C001"]);
+  assert.equal(past.facts.outside_prescription_issued, "unknown");
+});
+
+test("structured current-visit prescription spans bypass linker and context models", async () => {
+  const text = "本日、院外処方箋を発行した。";
+  const start = text.indexOf("院外処方箋");
+  let linkerCalls = 0;
+  let contextCalls = 0;
+  const calculator = completeWhiteboxCalculator({
+    spanResults: [{
+      lineId: "P-001",
+      relevance: "relevant",
+      relevanceConfidence: 0.99,
+      spans: [span(
+        "span_prescription",
+        "P-001",
+        "院外処方箋",
+        "medication",
+        start,
+        start + "院外処方箋".length
+      )]
+    }]
+  });
+  const originalLinkSpans = calculator.linkSpans;
+  const originalClassifyContext = calculator.classifyContext;
+  calculator.linkSpans = async (payload) => {
+    linkerCalls += 1;
+    return originalLinkSpans(payload);
+  };
+  calculator.classifyContext = async (payload) => {
+    contextCalls += 1;
+    return originalClassifyContext(payload);
+  };
+
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: calculator,
+    preprocessing: {
+      lines: [{
+        lineId: "P-001",
+        text,
+        section: "P",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient", serviceDate: "2026-07-24" },
+    env: routeEnv()
+  });
+
+  assert.equal(linkerCalls, 0);
+  assert.equal(contextCalls, 0);
+  assert.equal(result.status, "route_ready");
+  assert.equal(result.llmLines.length, 0);
+  assert.equal(result.encoderFacts.visit_facts.outside_prescription_issued, "yes");
+  const diagnostic = result.trace[0].gateDiagnostics[0];
+  assert.equal(diagnostic.resolutionSource, "structured_visit_fact");
+  assert.equal(diagnostic.strict.structuredFactEligible, true);
+  assert.equal(result.metrics.gateFunnel.strict.linkerBypassedCount, 1);
+});
+
+test("clinical fact merging adopts one known visit fact and fails closed on conflicts", () => {
+  const resolved = mergeClinicalFactsSamples([
+    {
+      visit_facts: {
+        outside_prescription_issued: "unknown",
+        generic_name_prescription: "unknown",
+        prescription_evidence: ""
+      }
+    },
+    {
+      visit_facts: {
+        outside_prescription_issued: "yes",
+        generic_name_prescription: "no",
+        prescription_evidence: "本日、院外処方箋を発行した。"
+      }
+    }
+  ]);
+  assert.deepEqual(resolved.visit_facts, {
+    outside_prescription_issued: "yes",
+    generic_name_prescription: "no",
+    prescription_evidence: "本日、院外処方箋を発行した。"
+  });
+
+  const conflict = mergeClinicalFactsSamples([
+    {
+      visit_facts: {
+        outside_prescription_issued: "yes",
+        generic_name_prescription: "unknown",
+        prescription_evidence: "院外処方箋を発行した。"
+      }
+    },
+    {
+      visit_facts: {
+        outside_prescription_issued: "no",
+        generic_name_prescription: "unknown",
+        prescription_evidence: "院内処方とした。"
+      }
+    }
+  ]);
+  assert.equal(conflict.visit_facts.outside_prescription_issued, "unknown");
+  assert.equal(conflict.visit_facts.prescription_evidence, "");
+
+  const independentGenericConflict = mergeClinicalFactsSamples([
+    {
+      visit_facts: {
+        outside_prescription_issued: "yes",
+        generic_name_prescription: "yes",
+        prescription_evidence: "本日、院外処方箋を発行した。"
+      }
+    },
+    {
+      visit_facts: {
+        outside_prescription_issued: "yes",
+        generic_name_prescription: "no",
+        prescription_evidence: "本日、院外処方箋を発行した。"
+      }
+    }
+  ]);
+  assert.equal(independentGenericConflict.visit_facts.outside_prescription_issued, "yes");
+  assert.equal(independentGenericConflict.visit_facts.generic_name_prescription, "unknown");
+  assert.equal(
+    independentGenericConflict.visit_facts.prescription_evidence,
+    "本日、院外処方箋を発行した。"
+  );
 });
 
 test("WX1 uses structured prescription facts and detects text conflicts", () => {

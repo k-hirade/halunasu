@@ -5,11 +5,15 @@ export const sidecarEncounterTypeSources = Object.freeze(["dom", "user"]);
 export const feeVisitKinds = Object.freeze(["telephone_revisit"]);
 export const sidecarContractVersions = Object.freeze(["v1"]);
 export {
+  clinicalServiceContextCues,
+  hasCurrentVisitClinicalServiceContext,
   hasBloodCollectionNegationOrPlanningContext,
   hasPerformedBloodCollectionEvidence,
   hasPerformedBloodCollectionEvidenceInText,
   hasStructuredBloodCollectionEvidence,
   isClinicalDateRatioFalsePositiveContext,
+  isFutureOrOrderOnlyClinicalServiceContext,
+  isNegatedClinicalServiceContext,
   isPastOrExternalClinicalServiceContext,
   normalizeClinicalPredicateText
 } from "./clinical-predicates.js";

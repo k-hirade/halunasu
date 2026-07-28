@@ -4,10 +4,14 @@ import {
   promptClinicalLineIds
 } from "../../../packages/medical-core/src/fee/openai-fee-clinical-facts.js";
 import {
+  clinicalServiceContextCues,
   clinicalAutoCalculationOptionKeys,
+  hasCurrentVisitClinicalServiceContext as hasSharedCurrentVisitClinicalServiceContext,
   hasPerformedBloodCollectionEvidence,
   hasPerformedBloodCollectionEvidenceInText,
   isClinicalDateRatioFalsePositiveContext,
+  isFutureOrOrderOnlyClinicalServiceContext as isSharedFutureOrOrderOnlyClinicalServiceContext,
+  isNegatedClinicalServiceContext as isSharedNegatedClinicalServiceContext,
   isPastOrExternalClinicalServiceContext,
   normalizeClinicalPredicateText
 } from "../../../packages/fee-contracts/src/index.js";
@@ -1122,10 +1126,7 @@ function clinicalSectionFromLine(line = "") {
 function clinicalLineCues(line = "") {
   const text = String(line || "");
   return {
-    futureOrOrderOnly: isFutureOrOrderOnlyContext(text),
-    negatedService: isNegatedClinicalServiceContext(text),
-    pastOrExternal: isPastOrExternalClinicalServiceContext(text),
-    currentVisit: isCurrentVisitEvidence(text),
+    ...clinicalServiceContextCues(text),
     syntheticMeta: isClinicalMetaSentence(text)
   };
 }
@@ -4128,6 +4129,10 @@ export function mergeClinicalFactsSamples(samples = []) {
     return list[0] || {};
   }
   const base = { ...list[0] };
+  const visitFacts = mergeClinicalVisitFacts(list);
+  if (visitFacts) {
+    base.visit_facts = visitFacts;
+  }
   const eventKey = (event) => JSON.stringify([
     String(event?.type || ""),
     String(event?.name || "").trim(),
@@ -4192,6 +4197,49 @@ export function mergeClinicalFactsSamples(samples = []) {
   }
   base.standing_mentions = [...standingMentions.values()];
   return base;
+}
+
+function mergeClinicalVisitFacts(samples = []) {
+  const facts = asArray(samples)
+    .map((sample) => sample?.visit_facts)
+    .filter(isPlainObject);
+  if (!facts.length) {
+    return null;
+  }
+  const mergeDecision = (key) => {
+    const values = uniqueStrings(facts
+      .map((entry) => String(entry?.[key] || "").trim())
+      .filter((value) => ["yes", "no"].includes(value)));
+    return {
+      value: values.length === 1 ? values[0] : "unknown",
+      conflict: values.length > 1
+    };
+  };
+  const outside = mergeDecision("outside_prescription_issued");
+  const generic = mergeDecision("generic_name_prescription");
+  const supportingEvidence = outside.conflict
+    ? ""
+    : (
+        facts.find((entry) => (
+          outside.value !== "unknown"
+          && String(entry?.outside_prescription_issued || "").trim() === outside.value
+          && String(entry?.prescription_evidence || "").trim()
+        ))?.prescription_evidence
+        || facts.find((entry) => (
+          generic.value !== "unknown"
+          && String(entry?.generic_name_prescription || "").trim() === generic.value
+          && String(entry?.prescription_evidence || "").trim()
+        ))?.prescription_evidence
+        || facts.find((entry) => String(entry?.prescription_evidence || "").trim())
+          ?.prescription_evidence
+        || ""
+      );
+  return {
+    ...facts[0],
+    outside_prescription_issued: outside.value,
+    generic_name_prescription: generic.value,
+    prescription_evidence: String(supportingEvidence || "").trim()
+  };
 }
 
 // v15契約検証: line_review を「LLMに実際に提示した行ID全集合」と完全照合する。
@@ -10251,11 +10299,11 @@ function isPerformedImagingContext(sentence, kind) {
 }
 
 function isFutureOrOrderOnlyContext(sentence) {
-  return /(\d+\s*(?:日|週間|週|か月|カ月|ヶ月|ケ月|月)後|予定|次回|後日|紹介|持参|検討|依頼|オーダー|予約|後で|今後)/u.test(sentence);
+  return isSharedFutureOrOrderOnlyClinicalServiceContext(sentence);
 }
 
 function isCurrentVisitEvidence(sentence) {
-  return /(本日|今回|当日|外来|来院|受診|診察|診療|継続診療|定期受診|再来)/u.test(sentence);
+  return hasSharedCurrentVisitClinicalServiceContext(sentence);
 }
 
 function isNegatedContext(sentence) {
@@ -10263,7 +10311,7 @@ function isNegatedContext(sentence) {
 }
 
 function isNegatedClinicalServiceContext(sentence) {
-  return /(未実施|未施行|行わず|行っていない|行っていません|施行せず|施行していない|実施していない|撮影せず|撮影していない|検査せず|検査していない|撮影なし|検査なし|中止)/u.test(sentence);
+  return isSharedNegatedClinicalServiceContext(sentence);
 }
 
 function hasLocalContrastContext(sentence, kind) {

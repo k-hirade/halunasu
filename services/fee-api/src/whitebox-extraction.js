@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
+import { clinicalServiceContextCues } from "../../../packages/fee-contracts/src/index.js";
 
 export const WHITEBOX_LINKER_MODES = Object.freeze(["off", "shadow", "propose"]);
 export const WHITEBOX_CONTEXT_MODES = Object.freeze(["off", "shadow", "assist"]);
@@ -85,6 +86,7 @@ const MEDICATION_BILLING_ACT_PATTERN = /(?:処方箋|処方料|調剤料|一般�
 const DRUG_PRODUCT_PATTERN = /(?:錠|カプセル|散|顆粒|細粒|シロップ|液|軟膏|クリーム|ゲル|テープ|パッチ|坐剤|注射液|点眼|点鼻|吸入|mg|μg|mcg|mL|％|%)/iu;
 const MAX_REVIEWABLE_LINKER_FAMILY_SIZE = 25;
 const NON_BLOCKING_LINKER_REASON_CODES = new Set(["linker_family_identified"]);
+const WHITEBOX_CLAUSE_BOUNDARY_PATTERN = /(?:[。！？!?；;]+|[、,](?=\s*(?:本日|今回|当日|前回|先月|以前|過去|次回|後日|今後|他院|前医|当院|院内|自院)))/gu;
 
 export const WHITEBOX_CONTEXT_REASON_DISPOSITIONS = Object.freeze({
   classifier_only: "diagnostic",
@@ -104,6 +106,61 @@ export const WHITEBOX_CONTEXT_REASON_DISPOSITIONS = Object.freeze({
   predicate_safe_exclusion: "safe_downgrade",
   same_day_but_unknown: "blocker"
 });
+
+export function splitWhiteboxEvidenceClauses(line = {}) {
+  const text = String(line?.text || "");
+  const clauses = [];
+  let start = 0;
+  const append = (rawStart, rawEnd) => {
+    const raw = text.slice(rawStart, rawEnd);
+    const leading = raw.search(/\S/u);
+    if (leading < 0) {
+      return;
+    }
+    const trimmedRight = raw.trimEnd();
+    const clauseStart = rawStart + leading;
+    const clauseEnd = rawStart + trimmedRight.length;
+    const clauseText = text.slice(clauseStart, clauseEnd);
+    const localCues = clinicalServiceContextCues(clauseText);
+    const inheritCurrentVisit = line?.cues?.currentVisit === true
+      && !localCues.pastOrExternal
+      && !localCues.futureOrOrderOnly;
+    clauses.push({
+      clauseId: `${String(line?.lineId || "L")}:C${String(clauses.length + 1).padStart(3, "0")}`,
+      lineId: String(line?.lineId || ""),
+      text: clauseText,
+      charStart: clauseStart,
+      charEnd: clauseEnd,
+      cues: {
+        ...localCues,
+        currentVisit: localCues.currentVisit || inheritCurrentVisit,
+        syntheticMeta: line?.cues?.syntheticMeta === true
+      }
+    });
+  };
+  for (const match of text.matchAll(WHITEBOX_CLAUSE_BOUNDARY_PATTERN)) {
+    const end = Number(match.index || 0) + match[0].length;
+    append(start, end);
+    start = end;
+  }
+  append(start, text.length);
+  if (!clauses.length && text.length) {
+    append(0, text.length);
+  }
+  return clauses;
+}
+
+function whiteboxClauseForSpan(clauses = [], span = {}) {
+  const start = Number(span?.charStart);
+  const end = Number(span?.charEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return clauses[0] || null;
+  }
+  return clauses.find((clause) => start < clause.charEnd && end > clause.charStart)
+    || clauses.find((clause) => start >= clause.charStart && start <= clause.charEnd)
+    || clauses[0]
+    || null;
+}
 
 export function whiteboxRuntimeModes(env = process.env) {
   return {
@@ -224,38 +281,40 @@ export function determineWhiteboxVisitFacts({
 } = {}) {
   const structured = structuredPrescriptionFacts(session);
   const observations = [];
-  const ambiguousLineIds = [];
+  const ambiguousClauseIds = [];
+  const ignoredClauseIds = [];
   for (const line of Array.isArray(lines) ? lines : []) {
-    const text = String(line?.text || "");
-    if (!VISIT_FACTS_SENSITIVE_PATTERN.test(text)) {
-      continue;
+    for (const clause of splitWhiteboxEvidenceClauses(line)) {
+      const text = String(clause.text || "");
+      if (!VISIT_FACTS_SENSITIVE_PATTERN.test(text)) {
+        continue;
+      }
+      const cues = clause.cues || {};
+      if (cues.pastOrExternal === true || cues.futureOrOrderOnly === true) {
+        ignoredClauseIds.push(clause.clauseId);
+        continue;
+      }
+      const outsidePositive = OUTSIDE_PRESCRIPTION_POSITIVE_PATTERN.test(text)
+        && !OUTSIDE_PRESCRIPTION_NEGATIVE_PATTERN.test(text);
+      const outsideNegative = OUTSIDE_PRESCRIPTION_NEGATIVE_PATTERN.test(text);
+      const inHouse = IN_HOUSE_PRESCRIPTION_PATTERN.test(text);
+      const genericName = GENERIC_NAME_PRESCRIPTION_PATTERN.test(text);
+      if ((outsidePositive && inHouse) || (outsidePositive && outsideNegative)) {
+        ambiguousClauseIds.push(clause.clauseId);
+        continue;
+      }
+      if (!outsidePositive && !outsideNegative && !inHouse && !genericName) {
+        ambiguousClauseIds.push(clause.clauseId);
+        continue;
+      }
+      observations.push({
+        clauseId: clause.clauseId,
+        lineId: clause.lineId,
+        outside: outsidePositive ? "yes" : (outsideNegative || inHouse ? "no" : "unknown"),
+        genericName: genericName ? "yes" : "unknown",
+        evidence: text.trim().slice(0, 90)
+      });
     }
-    const lineId = String(line?.lineId || "");
-    const cues = line?.cues || {};
-    const unsafeContext = cues.pastOrExternal === true || cues.futureOrOrderOnly === true;
-    const outsidePositive = OUTSIDE_PRESCRIPTION_POSITIVE_PATTERN.test(text)
-      && !OUTSIDE_PRESCRIPTION_NEGATIVE_PATTERN.test(text);
-    const outsideNegative = OUTSIDE_PRESCRIPTION_NEGATIVE_PATTERN.test(text);
-    const inHouse = IN_HOUSE_PRESCRIPTION_PATTERN.test(text);
-    const genericName = GENERIC_NAME_PRESCRIPTION_PATTERN.test(text);
-    if (unsafeContext) {
-      ambiguousLineIds.push(lineId);
-      continue;
-    }
-    if ((outsidePositive && inHouse) || (outsidePositive && outsideNegative)) {
-      ambiguousLineIds.push(lineId);
-      continue;
-    }
-    if (!outsidePositive && !outsideNegative && !inHouse && !genericName) {
-      ambiguousLineIds.push(lineId);
-      continue;
-    }
-    observations.push({
-      lineId,
-      outside: outsidePositive ? "yes" : (outsideNegative || inHouse ? "no" : "unknown"),
-      genericName: genericName ? "yes" : "unknown",
-      evidence: text.trim().slice(0, 90)
-    });
   }
 
   const outsideValues = new Set(observations
@@ -265,7 +324,7 @@ export function determineWhiteboxVisitFacts({
     .map((entry) => entry.genericName)
     .filter((value) => value !== "unknown"));
   if (outsideValues.size > 1 || genericValues.size > 1) {
-    ambiguousLineIds.push(...observations.map((entry) => entry.lineId));
+    ambiguousClauseIds.push(...observations.map((entry) => entry.clauseId));
   }
   const textOutside = outsideValues.size === 1 ? [...outsideValues][0] : "unknown";
   const textGeneric = genericValues.size === 1 ? [...genericValues][0] : "unknown";
@@ -274,16 +333,24 @@ export function determineWhiteboxVisitFacts({
     && textOutside !== "unknown"
     && structured.outside !== textOutside
   ) {
-    ambiguousLineIds.push(...observations.map((entry) => entry.lineId));
+    ambiguousClauseIds.push(...observations.map((entry) => entry.clauseId));
   }
   if (
     structured.genericName !== "unknown"
     && textGeneric !== "unknown"
     && structured.genericName !== textGeneric
   ) {
-    ambiguousLineIds.push(...observations.map((entry) => entry.lineId));
+    ambiguousClauseIds.push(...observations.map((entry) => entry.clauseId));
   }
-  const uniqueAmbiguous = [...new Set(ambiguousLineIds.filter(Boolean))];
+  const uniqueAmbiguousClauses = [...new Set(ambiguousClauseIds.filter(Boolean))];
+  const lineIdByClauseId = new Map(
+    (Array.isArray(lines) ? lines : []).flatMap((line) => (
+      splitWhiteboxEvidenceClauses(line).map((clause) => [clause.clauseId, clause.lineId])
+    ))
+  );
+  const uniqueAmbiguousLines = [...new Set(uniqueAmbiguousClauses
+    .map((clauseId) => lineIdByClauseId.get(clauseId))
+    .filter(Boolean))];
   const evidence = observations.find((entry) => entry.outside !== "unknown")?.evidence
     || observations.find((entry) => entry.genericName !== "unknown")?.evidence
     || structured.evidence
@@ -298,16 +365,59 @@ export function determineWhiteboxVisitFacts({
     prescription_evidence: evidence
   };
   return {
-    status: uniqueAmbiguous.length ? "ambiguous" : "complete",
+    status: uniqueAmbiguousClauses.length ? "ambiguous" : "complete",
     facts,
     source: observations.length
       ? (structured.configured ? "structured_and_text" : "deterministic_text")
       : (structured.configured ? "structured_session" : "unknown"),
     evidenceLineIds: observations.map((entry) => entry.lineId).filter(Boolean),
-    ambiguousLineIds: uniqueAmbiguous,
-    reasonCodes: uniqueAmbiguous.length
+    evidenceClauseIds: observations.map((entry) => entry.clauseId).filter(Boolean),
+    ambiguousLineIds: uniqueAmbiguousLines,
+    ambiguousClauseIds: uniqueAmbiguousClauses,
+    ignoredClauseIds: [...new Set(ignoredClauseIds.filter(Boolean))],
+    reasonCodes: uniqueAmbiguousClauses.length
       ? ["visit_facts_sensitive_change"]
       : []
+  };
+}
+
+function structuredVisitFactResolution({
+  span = {},
+  clause = null,
+  visitFactsPlan = {}
+} = {}) {
+  if (!clause || whiteboxMentionType(span, { text: clause.text }) !== "medication_act") {
+    return null;
+  }
+  if (
+    (visitFactsPlan.ambiguousClauseIds || []).includes(clause.clauseId)
+    || (visitFactsPlan.ignoredClauseIds || []).includes(clause.clauseId)
+  ) {
+    return null;
+  }
+  const normalized = String(`${span?.text || ""} ${clause.text || ""}`)
+    .normalize("NFKC")
+    .replace(/\s+/gu, "");
+  const factKeys = [];
+  const outside = String(visitFactsPlan?.facts?.outside_prescription_issued || "unknown");
+  const generic = String(visitFactsPlan?.facts?.generic_name_prescription || "unknown");
+  if (
+    outside !== "unknown"
+    && /(?:院外処方|処方箋|処方せん|院内処方|院内投薬)/u.test(normalized)
+  ) {
+    factKeys.push("outside_prescription_issued");
+  }
+  if (generic !== "unknown" && /一般名/u.test(normalized)) {
+    factKeys.push("generic_name_prescription");
+  }
+  if (!factKeys.length) {
+    return null;
+  }
+  return {
+    resolution: "structured_visit_fact",
+    role: "fact",
+    factKeys,
+    reasonCodes: ["structured_visit_fact_resolved"]
   };
 }
 
@@ -368,6 +478,9 @@ export function aggregateLineContext(spanRoles = []) {
   }
   if (roles.some((entry) => entry?.role === "plan")) {
     return { role: "plan", reasonCodes: ["plan_span"] };
+  }
+  if (roles.some((entry) => entry?.role === "fact")) {
+    return { role: "fact", reasonCodes: ["structured_visit_fact"] };
   }
   return { role: "none", reasonCodes: ["no_billable_span"] };
 }
@@ -436,18 +549,46 @@ export async function prepareWhiteboxExtraction({
   const spanRows = Array.isArray(spanEnvelope.results) ? spanEnvelope.results : [];
   const spans = spanRows.flatMap((row) => Array.isArray(row?.spans) ? row.spans : []);
   const lineById = new Map(lines.map((line) => [String(line?.lineId || ""), line]));
+  const clausesByLineId = new Map(lines.map((line) => [
+    String(line?.lineId || ""),
+    splitWhiteboxEvidenceClauses(line)
+  ]));
+  const visitFactsPlan = determineWhiteboxVisitFacts({ lines, session });
+  const spanRuntime = spans.map((span) => {
+    const line = lineById.get(String(span?.lineId || "")) || {};
+    const clause = whiteboxClauseForSpan(
+      clausesByLineId.get(String(span?.lineId || "")) || [],
+      span
+    );
+    return {
+      sourceSpan: span,
+      line,
+      clause,
+      structuredFact: structuredVisitFactResolution({
+        span,
+        clause,
+        visitFactsPlan
+      })
+    };
+  });
+  const linkableRuntime = spanRuntime.filter((entry) => !entry.structuredFact);
+  const linkableSpans = linkableRuntime.map((entry) => entry.sourceSpan);
 
   let linkerEnvelope = {
     status: modes.linker === "off"
       ? "disabled"
-      : (spans.length ? "index_unavailable" : "complete"),
+      : (linkableSpans.length ? "index_unavailable" : "complete"),
     results: []
   };
   let linkerDurationMs = 0;
-  if (modes.linker !== "off" && spans.length && typeof feeCalculator?.linkSpans === "function") {
+  if (
+    modes.linker !== "off"
+    && linkableSpans.length
+    && typeof feeCalculator?.linkSpans === "function"
+  ) {
     const linkerStartedAt = Date.now();
     linkerEnvelope = await feeCalculator.linkSpans({
-      spans: spans.map((span) => ({
+      spans: linkableSpans.map((span) => ({
         lineId: span?.lineId,
         lineText: lineById.get(String(span?.lineId || ""))?.text || "",
         charStart: span?.charStart,
@@ -466,32 +607,52 @@ export async function prepareWhiteboxExtraction({
     linkerDurationMs = Date.now() - linkerStartedAt;
   }
   const linkedByIndex = Array.isArray(linkerEnvelope?.results) ? linkerEnvelope.results : [];
-  const effectiveSpans = spans.map((span, index) => resolvedSpanFromLink(
-    span,
-    linkedByIndex[index],
-    lineById.get(String(span?.lineId || ""))
-  ));
+  const linkBySourceSpan = new Map(linkableRuntime.map((entry, index) => [
+    entry.sourceSpan,
+    linkedByIndex[index] || { candidates: [], margin: 0 }
+  ]));
+  for (const entry of spanRuntime) {
+    const link = linkBySourceSpan.get(entry.sourceSpan);
+    entry.link = link || { candidates: [], margin: 0 };
+    entry.effectiveSpan = entry.structuredFact
+      ? entry.sourceSpan
+      : resolvedSpanFromLink(entry.sourceSpan, link, entry.line, entry.clause);
+    entry.clause = whiteboxClauseForSpan(
+      clausesByLineId.get(String(entry.effectiveSpan?.lineId || "")) || [],
+      entry.effectiveSpan
+    );
+  }
+  const contextRuntime = spanRuntime.filter((entry) => !entry.structuredFact);
 
   let contextEnvelope = {
     status: modes.context === "off"
       ? "disabled"
-      : (spans.length ? "model_unavailable" : "complete"),
+      : (contextRuntime.length ? "model_unavailable" : "complete"),
     results: []
   };
   let contextDurationMs = 0;
-  if (modes.context !== "off" && spans.length && typeof feeCalculator?.classifyContext === "function") {
+  if (
+    modes.context !== "off"
+    && contextRuntime.length
+    && typeof feeCalculator?.classifyContext === "function"
+  ) {
     const lineIndex = new Map(lines.map((line, index) => [line.lineId, index]));
     const contextStartedAt = Date.now();
     contextEnvelope = await feeCalculator.classifyContext({
-      items: effectiveSpans.map((span) => {
+      items: contextRuntime.map((entry) => {
+        const span = entry.effectiveSpan;
         const index = lineIndex.get(span.lineId) ?? -1;
+        const clause = entry.clause || {
+          text: index >= 0 ? lines[index].text : span.text,
+          charStart: 0
+        };
         return {
           lineId: span.lineId,
           spanId: span.spanId,
-          text: index >= 0 ? lines[index].text : span.text,
+          text: clause.text,
           spanText: span.text,
-          charStart: span.charStart,
-          charEnd: span.charEnd,
+          charStart: Math.max(0, Number(span.charStart || 0) - Number(clause.charStart || 0)),
+          charEnd: Math.max(0, Number(span.charEnd || 0) - Number(clause.charStart || 0)),
           previousLine: index > 0 ? lines[index - 1].text : "",
           nextLine: index >= 0 && index + 1 < lines.length ? lines[index + 1].text : "",
           section: index >= 0 ? lines[index].section || "" : "",
@@ -517,13 +678,10 @@ export async function prepareWhiteboxExtraction({
     && modes.span === "shadow"
     && modes.linker === "shadow"
     && modes.context === "shadow";
-  const visitFactsPlan = determineWhiteboxVisitFacts({ lines, session });
   const fullLlmRequired = visitFactsPlan.status !== "complete";
-  const shadowVisitFactsBlockedLineIds = new Set(
-    diagnosticShadowMode
-      ? visitFactsPlan.ambiguousLineIds
-      : (fullLlmRequired ? lines.map((line) => line.lineId) : [])
-  );
+  const visitFactsBlockedClauseIds = new Set(visitFactsPlan.ambiguousClauseIds || []);
+  const visitFactsEvidenceClauseIds = new Set(visitFactsPlan.evidenceClauseIds || []);
+  const visitFactsIgnoredClauseIds = new Set(visitFactsPlan.ignoredClauseIds || []);
   const extractorVersion = whiteboxExtractorVersion({
     spanEnvelope,
     linkerEnvelope,
@@ -533,11 +691,11 @@ export async function prepareWhiteboxExtraction({
   });
   const contextBySpanId = new Map((Array.isArray(contextEnvelope?.results) ? contextEnvelope.results : [])
     .map((entry) => [String(entry?.spanId || ""), entry]));
-  let spanIndex = 0;
+  const runtimeBySourceSpan = new Map(spanRuntime.map((entry) => [
+    entry.sourceSpan,
+    entry
+  ]));
   const lineRoutes = [];
-  const encoderEvents = [];
-  const encoderExcludedEvents = [];
-  const standingMentions = [];
   let contextDisagreementCount = 0;
   let contextOverrideCount = 0;
   const contextDisagreementAxes = new Set();
@@ -553,14 +711,38 @@ export async function prepareWhiteboxExtraction({
     const lineSpans = Array.isArray(spanRow.spans) ? spanRow.spans : [];
     const evaluatedSpans = [];
     for (const detectedSpan of lineSpans) {
-      const link = linkedByIndex[spanIndex] || { candidates: [], margin: 0 };
-      const span = effectiveSpans[spanIndex] || detectedSpan;
-      spanIndex += 1;
+      const runtime = runtimeBySourceSpan.get(detectedSpan) || {
+        sourceSpan: detectedSpan,
+        effectiveSpan: detectedSpan,
+        link: { candidates: [], margin: 0 },
+        clause: whiteboxClauseForSpan(
+          clausesByLineId.get(String(line.lineId || "")) || [],
+          detectedSpan
+        ),
+        structuredFact: null
+      };
+      const link = runtime.link || { candidates: [], margin: 0 };
+      const span = runtime.effectiveSpan || detectedSpan;
+      const clause = runtime.clause || whiteboxClauseForSpan(
+        clausesByLineId.get(String(line.lineId || "")) || [],
+        span
+      );
+      const structuredFact = runtime.structuredFact;
       const context = contextBySpanId.get(String(span.spanId || "")) || null;
       const topCandidate = Array.isArray(link.candidates) ? link.candidates[0] : null;
-      const contextRole = context
-        ? contextRoleFromAxes(context.axes, thresholds.contextConfidence)
-        : { role: "llm", reasonCodes: ["context_missing"] };
+      const contextRole = structuredFact
+        ? {
+            role: "fact",
+            reasonCodes: structuredFact.reasonCodes,
+            uncertainAxes: [],
+            unknownAxes: [],
+            normalizedAxes: {}
+          }
+        : (
+            context
+              ? contextRoleFromAxes(context.axes, thresholds.contextConfidence)
+              : { role: "llm", reasonCodes: ["context_missing"] }
+          );
       if (contextRole.uncertainAxes?.length) {
         contextAbstainSpanCount += 1;
         for (const axis of contextRole.uncertainAxes) {
@@ -569,11 +751,19 @@ export async function prepareWhiteboxExtraction({
           ) + 1;
         }
       }
-      const predicateContext = predicateContextForLine(line);
-      const consensus = contextConsensus({
-        classifierRole: contextRole.role,
-        predicateRole: predicateContext.role
-      });
+      const predicateContext = structuredFact
+        ? { role: "fact", axes: [] }
+        : predicateContextForLine(clause || line);
+      const consensus = structuredFact
+        ? {
+            role: "fact",
+            disagreement: false,
+            reasonCodes: structuredFact.reasonCodes
+          }
+        : contextConsensus({
+            classifierRole: contextRole.role,
+            predicateRole: predicateContext.role
+          });
       if (consensus.disagreement) {
         contextDisagreementCount += 1;
         predicateContext.axes.forEach((axis) => contextDisagreementAxes.add(axis));
@@ -586,25 +776,29 @@ export async function prepareWhiteboxExtraction({
       }
       const shadowLink = rankLinkForShadow(span, link);
       const shadowTopCandidate = shadowLink.candidates[0] || null;
-      const strictLinkerGates = linkerGateEvaluation({
-        candidate: topCandidate,
-        margin: link.margin,
-        familyMargin: link.familyMargin,
-        familyMemberCount: link.topFamilyMemberCount,
-        familyReviewable: link.topFamilyReviewable,
-        scoreThreshold: thresholds.linkerHighScore,
-        marginThreshold: thresholds.linkerMargin
-      });
-      const shadowLinkerGates = linkerGateEvaluation({
-        candidate: shadowTopCandidate,
-        margin: shadowLink.margin,
-        familyMargin: shadowLink.familyMargin,
-        familyMemberCount: shadowLink.topFamilyMemberCount,
-        familyReviewable: shadowLink.topFamilyReviewable,
-        scoreThreshold: thresholds.linkerShadowScore,
-        marginThreshold: thresholds.linkerShadowMargin,
-        allowExactMargin: true
-      });
+      const strictLinkerGates = structuredFact
+        ? structuredVisitFactLinkerGates()
+        : linkerGateEvaluation({
+            candidate: topCandidate,
+            margin: link.margin,
+            familyMargin: link.familyMargin,
+            familyMemberCount: link.topFamilyMemberCount,
+            familyReviewable: link.topFamilyReviewable,
+            scoreThreshold: thresholds.linkerHighScore,
+            marginThreshold: thresholds.linkerMargin
+          });
+      const shadowLinkerGates = structuredFact
+        ? structuredVisitFactLinkerGates()
+        : linkerGateEvaluation({
+            candidate: shadowTopCandidate,
+            margin: shadowLink.margin,
+            familyMargin: shadowLink.familyMargin,
+            familyMemberCount: shadowLink.topFamilyMemberCount,
+            familyReviewable: shadowLink.topFamilyReviewable,
+            scoreThreshold: thresholds.linkerShadowScore,
+            marginThreshold: thresholds.linkerShadowMargin,
+            allowExactMargin: true
+          });
       const spanConfidence = Number(span.confidence);
       const artifactDetectionThreshold = finiteProbabilityOrNull(
         span.detectionThreshold
@@ -613,14 +807,24 @@ export async function prepareWhiteboxExtraction({
         artifactDetectionThreshold ?? 0,
         thresholds.spanShadowConfidence
       );
-      const strictSpanPass = spanConfidence >= thresholds.spanConfidence;
-      const shadowSpanPass = spanConfidence >= shadowSpanThreshold;
-      const strictRole = strictSpanPass && strictLinkerGates.passed
-        ? consensus.role
-        : "llm";
-      const shadowRole = shadowSpanPass && shadowLinkerGates.passed
-        ? consensus.role
-        : "llm";
+      const strictSpanPass = structuredFact
+        || spanConfidence >= thresholds.spanConfidence;
+      const shadowSpanPass = structuredFact
+        || spanConfidence >= shadowSpanThreshold;
+      const strictRole = structuredFact
+        ? "fact"
+        : (
+            strictSpanPass && strictLinkerGates.passed
+              ? consensus.role
+              : "llm"
+          );
+      const shadowRole = structuredFact
+        ? "fact"
+        : (
+            shadowSpanPass && shadowLinkerGates.passed
+              ? consensus.role
+              : "llm"
+          );
       const useDiagnosticShadow = diagnosticShadowMode;
       const selectedLink = useDiagnosticShadow
         ? shadowLink
@@ -629,20 +833,27 @@ export async function prepareWhiteboxExtraction({
         ? shadowTopCandidate
         : topCandidate;
       const role = useDiagnosticShadow ? shadowRole : strictRole;
-      const strictReasonCodes = spanGateReasonCodes({
-        spanPass: strictSpanPass,
-        linkerGates: strictLinkerGates,
-        contextRole,
-        consensus
-      });
-      const shadowReasonCodes = spanGateReasonCodes({
-        spanPass: shadowSpanPass,
-        linkerGates: shadowLinkerGates,
-        contextRole,
-        consensus
-      });
+      const strictReasonCodes = structuredFact
+        ? structuredFact.reasonCodes
+        : spanGateReasonCodes({
+            spanPass: strictSpanPass,
+            linkerGates: strictLinkerGates,
+            contextRole,
+            consensus
+          });
+      const shadowReasonCodes = structuredFact
+        ? structuredFact.reasonCodes
+        : spanGateReasonCodes({
+            spanPass: shadowSpanPass,
+            linkerGates: shadowLinkerGates,
+            contextRole,
+            consensus
+          });
       const evaluated = {
         ...span,
+        clauseId: String(clause?.clauseId || ""),
+        clause,
+        structuredFact,
         role,
         strictRole,
         shadowRole,
@@ -662,6 +873,8 @@ export async function prepareWhiteboxExtraction({
       gateDiagnostics.push(spanGateDiagnostic({
         line,
         span,
+        clause,
+        structuredFact,
         contextRole,
         predicateContext,
         consensus,
@@ -684,95 +897,76 @@ export async function prepareWhiteboxExtraction({
         shadowReasonCodes
       }));
     }
-    let strictAggregate;
-    let diagnosticAggregate;
-    if (!lineSpans.length) {
-      const trivial = isTrivialClinicalLine(line.text);
-      const confidentlyIrrelevant = spanRow.relevance === "irrelevant"
-        && Number(spanRow.relevanceConfidence) >= thresholds.relevanceConfidence;
-      strictAggregate = trivial || confidentlyIrrelevant
-        ? { role: "none", reasonCodes: [trivial ? "trivial_line" : "relevance_irrelevant"] }
-        : { role: "llm", reasonCodes: ["span_missing_nontrivial_line"] };
-      diagnosticAggregate = strictAggregate;
-    } else {
-      strictAggregate = aggregateLineContext(
-        evaluatedSpans.map((span) => ({ ...span, role: span.strictRole }))
-      );
-      diagnosticAggregate = aggregateLineContext(
-        evaluatedSpans.map((span) => ({ ...span, role: span.shadowRole }))
-      );
-    }
-    const shadowAggregate = diagnosticShadowMode
-      ? diagnosticAggregate
-      : strictAggregate;
-    const shadowVisitFactsBlocked = shadowVisitFactsBlockedLineIds.has(
-      String(line.lineId || "")
-    );
-    const shadowReasonCodes = shadowVisitFactsBlocked
-      ? ["visit_facts_sensitive_change"]
-      : shadowAggregate.reasonCodes;
-    const strictReasonCodes = fullLlmRequired
-      ? ["visit_facts_sensitive_change"]
-      : strictAggregate.reasonCodes;
-    const shadowRoute = !shadowVisitFactsBlocked && shadowAggregate.role !== "llm"
-      ? "encoder"
-      : "llm";
-    const route = canRoute
-      && !fullLlmRequired
-      && strictAggregate.role !== "llm"
-      ? "encoder"
-      : "llm";
+    const clauses = clausesByLineId.get(String(line.lineId || "")) || [];
+    const strictPlan = planWhiteboxLineClauses({
+      line,
+      clauses,
+      evaluatedSpans,
+      spanRow,
+      roleField: "strictRole",
+      thresholds,
+      visitFactsBlockedClauseIds,
+      visitFactsEvidenceClauseIds,
+      visitFactsIgnoredClauseIds
+    });
+    const diagnosticPlan = planWhiteboxLineClauses({
+      line,
+      clauses,
+      evaluatedSpans,
+      spanRow,
+      roleField: "shadowRole",
+      thresholds,
+      visitFactsBlockedClauseIds,
+      visitFactsEvidenceClauseIds,
+      visitFactsIgnoredClauseIds
+    });
+    const shadowPlan = diagnosticShadowMode ? diagnosticPlan : strictPlan;
+    const route = canRoute ? strictPlan.route : "llm";
+    const shadowRoute = shadowPlan.route;
+    const selectedPlan = diagnosticShadowMode ? shadowPlan : strictPlan;
     lineRoutes.push({
       lineId: line.lineId,
       route,
       shadowRoute,
-      lineRole: shadowAggregate.role,
-      strictLineRole: strictAggregate.role,
-      shadowLineRole: shadowAggregate.role,
-      reasonCodes: diagnosticShadowMode ? shadowReasonCodes : strictReasonCodes,
-      strictReasonCodes,
-      shadowReasonCodes,
-      shadowVisitFactsBlocked,
+      lineRole: selectedPlan.lineRole,
+      strictLineRole: strictPlan.lineRole,
+      shadowLineRole: shadowPlan.lineRole,
+      reasonCodes: selectedPlan.reasonCodes,
+      strictReasonCodes: strictPlan.reasonCodes,
+      shadowReasonCodes: shadowPlan.reasonCodes,
+      shadowVisitFactsBlocked: shadowPlan.blockedClauseIds.length > 0,
+      strictPlan,
+      shadowPlan,
       spans: evaluatedSpans
     });
-    if (shadowRoute !== "encoder") {
-      continue;
-    }
-    for (const evaluated of evaluatedSpans) {
-      if (evaluated.role === "performed" && evaluated.topCandidate) {
-        encoderEvents.push(encoderEventFromSpan(evaluated, line));
-      }
-      if (evaluated.role === "excluded" && evaluated.topCandidate) {
-        encoderExcludedEvents.push(encoderExcludedEventFromSpan(evaluated, line));
-      }
-      const standingStatus = evaluated.contextRole?.standingStatus;
-      if (
-        shadowAggregate.role === "standing"
-        &&
-        evaluated.role === "standing"
-        && ["continued", "changed", "stopped"].includes(standingStatus)
-      ) {
-        standingMentions.push({
-          line_id: line.lineId,
-          target: evaluated.topCandidate?.name || evaluated.text,
-          status: standingStatus,
-          source: "encoder"
-        });
-      }
-    }
   }
 
-  const llmLineIds = new Set(lineRoutes.filter((line) => line.route === "llm").map((line) => line.lineId));
-  const llmLines = lines.filter((line) => llmLineIds.has(line.lineId));
+  const strictEncoderFacts = encoderFactsFromLineRoutes({
+    lines,
+    lineRoutes,
+    lane: "strict"
+  });
+  const shadowEncoderFacts = encoderFactsFromLineRoutes({
+    lines,
+    lineRoutes,
+    lane: "shadow"
+  });
+  strictEncoderFacts.visit_facts = visitFactsPlan.facts;
+  shadowEncoderFacts.visit_facts = visitFactsPlan.facts;
+  const llmLines = residualLlmLines(lines, lineRoutes, "strictPlan");
+  const shadowLlmLines = residualLlmLines(lines, lineRoutes, "shadowPlan");
   const shadowEncoderLineCount = lineRoutes.filter(
     (line) => line.shadowRoute === "encoder"
+  ).length;
+  const shadowPartialEncoderLineCount = lineRoutes.filter(
+    (line) => line.shadowRoute === "mixed"
   ).length;
   const spanBearingLineCount = lineRoutes.filter(
     (line) => Array.isArray(line.spans) && line.spans.length > 0
   ).length;
   const shadowEncoderSpanBearingLineCount = lineRoutes.filter(
     (line) => (
-      line.shadowRoute === "encoder"
+      ["encoder", "mixed"].includes(line.shadowRoute)
       && Array.isArray(line.spans)
       && line.spans.length > 0
     )
@@ -808,32 +1002,33 @@ export async function prepareWhiteboxExtraction({
     gateDiagnostics,
     "shadow"
   );
-  const encoderFacts = {
-    ...emptyEncoderFacts(lines),
-    visit_facts: visitFactsPlan.facts,
-    clinical_events: encoderEvents,
-    excluded_events: encoderExcludedEvents,
-    standing_mentions: standingMentions,
-    line_review: lineRoutes
-      .filter((line) => line.shadowRoute === "encoder")
-      .map((line) => ({
-        line_id: line.lineId,
-        line_role: lineRoleForContract(line.lineRole)
-      }))
-  };
   const degraded = !shadowStackAvailable;
+  const routeReady = canRoute;
+  const strictClauseCounts = summarizeClauseRoutes(lineRoutes, "strictPlan");
+  const shadowClauseCounts = summarizeClauseRoutes(lineRoutes, "shadowPlan");
+  const shadowEncoderOwnedSpanCount = countEncoderOwnedSpans(
+    lineRoutes,
+    "shadowPlan"
+  );
+  const strictEncoderOwnedSpanCount = countEncoderOwnedSpans(
+    lineRoutes,
+    "strictPlan"
+  );
+  const shadowVisitFactsBlockedLineIds = new Set(lineRoutes
+    .filter((line) => line.shadowPlan.blockedClauseIds.length > 0)
+    .map((line) => String(line.lineId || "")));
   return {
     ...base,
-    status: canRoute && !fullLlmRequired ? "route_ready" : "shadow",
+    status: routeReady ? "route_ready" : "shadow",
     degraded,
     extractorVersion,
     lineRoutes,
-    llmLines: canRoute && !fullLlmRequired ? llmLines : lines,
-    encoderFacts: canRoute && !fullLlmRequired ? encoderFacts : emptyEncoderFacts(lines),
-    encoderShadowFacts: encoderFacts,
+    llmLines: routeReady ? llmLines : lines,
+    encoderFacts: routeReady ? strictEncoderFacts : emptyEncoderFacts(lines),
+    encoderShadowFacts: shadowEncoderFacts,
     metrics: {
       ...base.metrics,
-      mode: canRoute && !fullLlmRequired ? "route" : "shadow",
+      mode: routeReady ? "route" : "shadow",
       degraded,
       degradedReasons: [
         ...(thresholdConfigValid ? [] : ["threshold_config_invalid"]),
@@ -873,18 +1068,23 @@ export async function prepareWhiteboxExtraction({
         status: visitFactsPlan.status,
         source: visitFactsPlan.source,
         evidenceLineCount: visitFactsPlan.evidenceLineIds.length,
+        evidenceClauseCount: visitFactsPlan.evidenceClauseIds.length,
         ambiguousLineCount: visitFactsPlan.ambiguousLineIds.length,
+        ambiguousClauseCount: visitFactsPlan.ambiguousClauseIds.length,
         fullLlmRequired,
+        scopedFallback: true,
         shadowScopedFallback: diagnosticShadowMode && fullLlmRequired,
-        shadowBlockedLineCount: shadowVisitFactsBlockedLineIds.size
+        shadowBlockedLineCount: shadowVisitFactsBlockedLineIds.size,
+        shadowBlockedClauseCount: shadowClauseCounts.blocked
       },
       gateFunnel: {
         strict: strictGateFunnel,
         shadow: shadowGateFunnel
       },
       shadowEncoderLineCount,
+      shadowPartialEncoderLineCount,
       shadowRoutableLineRatio: lines.length
-        ? shadowEncoderLineCount / lines.length
+        ? (shadowEncoderLineCount + shadowPartialEncoderLineCount) / lines.length
         : 0,
       spanBearingLineCount,
       shadowEncoderSpanBearingLineCount,
@@ -894,12 +1094,31 @@ export async function prepareWhiteboxExtraction({
       routeReasonCounts: countRouteReasons(lineRoutes),
       strictRouteReasonCounts: countRouteReasons(lineRoutes, "strictReasonCodes"),
       shadowRouteReasonCounts: countRouteReasons(lineRoutes, "shadowReasonCodes"),
-      encoderLineCount: canRoute && !fullLlmRequired
+      encoderLineCount: routeReady
         ? lineRoutes.filter((line) => line.route === "encoder").length
         : 0,
-      llmLineCount: canRoute && !fullLlmRequired ? llmLines.length : lines.length,
+      partialEncoderLineCount: routeReady
+        ? lineRoutes.filter((line) => line.route === "mixed").length
+        : 0,
+      encoderOwnedSpanCount: routeReady ? strictEncoderOwnedSpanCount : 0,
+      shadowEncoderOwnedSpanCount,
+      clauseRoutes: {
+        strict: strictClauseCounts,
+        shadow: shadowClauseCounts
+      },
+      llmLineCount: routeReady ? llmLines.length : lines.length,
       expectedLlmLineRatio: lines.length
-        ? (canRoute && !fullLlmRequired ? llmLines.length : lines.length) / lines.length
+        ? (routeReady ? llmLines.length : lines.length) / lines.length
+        : 0,
+      expectedLlmClauseRatio: routeReady && strictClauseCounts.total
+        ? strictClauseCounts.llm / strictClauseCounts.total
+        : (
+            shadowClauseCounts.total
+              ? shadowClauseCounts.llm / shadowClauseCounts.total
+              : 0
+          ),
+      shadowExpectedLlmClauseRatio: shadowClauseCounts.total
+        ? shadowClauseCounts.llm / shadowClauseCounts.total
         : 0,
       spanDetectorVersion: spanEnvelope.extractorVersion || spanEnvelope.modelVersion || null,
       spanDetectorArtifactVersion: spanEnvelope.artifactVersion || null,
@@ -911,20 +1130,30 @@ export async function prepareWhiteboxExtraction({
     },
     trace: [{
       stage: "whitebox_router",
-      outcome: canRoute && !fullLlmRequired ? "routed" : "shadow_only",
+      outcome: routeReady ? "routed" : "shadow_only",
       spanDetectorStatus: spanEnvelope.status,
       linkerStatus: linkerEnvelope.status,
       contextClassifierStatus: contextEnvelope.status,
       contextClassifierCalls: contextEnvelope?.status === "complete" && spans.length ? 1 : 0,
       contextClassifierOverrides: contextOverrideCount,
       contextClassifierDisagreements: contextDisagreementCount,
-      encoderLineIds: lineRoutes.filter((line) => line.route === "encoder").map((line) => line.lineId),
-      shadowEncoderLineIds: lineRoutes.filter((line) => line.shadowRoute === "encoder").map((line) => line.lineId),
-      llmLineIds: (canRoute && !fullLlmRequired ? llmLines : lines).map((line) => line.lineId),
+      encoderLineIds: lineRoutes
+        .filter((line) => ["encoder", "mixed"].includes(line.route))
+        .map((line) => line.lineId),
+      shadowEncoderLineIds: lineRoutes
+        .filter((line) => ["encoder", "mixed"].includes(line.shadowRoute))
+        .map((line) => line.lineId),
+      llmLineIds: (routeReady ? llmLines : lines).map((line) => line.lineId),
+      llmClauseIds: routeReady
+        ? lineRoutes.flatMap((line) => line.strictPlan.llmClauseIds)
+        : lineRoutes.flatMap((line) => line.strictPlan.clauses.map((clause) => clause.clauseId)),
+      shadowLlmClauseIds: lineRoutes.flatMap((line) => line.shadowPlan.llmClauseIds),
+      shadowResidualLlmLineIds: shadowLlmLines.map((line) => line.lineId),
       extractorVersion,
       visitFactsStatus: visitFactsPlan.status,
       visitFactsSource: visitFactsPlan.source,
       visitFactsAmbiguousLineIds: visitFactsPlan.ambiguousLineIds,
+      visitFactsAmbiguousClauseIds: visitFactsPlan.ambiguousClauseIds,
       shadowVisitFactsBlockedLineIds: [...shadowVisitFactsBlockedLineIds].sort(),
       shadowEvaluationPolicy: diagnosticShadowMode
         ? "artifact_calibrated_diagnostic"
@@ -950,6 +1179,232 @@ export function whiteboxMentionType(span = {}) {
     return "drug_product";
   }
   return "unspecified";
+}
+
+function planWhiteboxLineClauses({
+  line = {},
+  clauses = [],
+  evaluatedSpans = [],
+  spanRow = {},
+  roleField = "strictRole",
+  thresholds = DEFAULT_WHITEBOX_THRESHOLDS,
+  visitFactsBlockedClauseIds = new Set(),
+  visitFactsEvidenceClauseIds = new Set(),
+  visitFactsIgnoredClauseIds = new Set()
+} = {}) {
+  const normalizedClauses = clauses.length
+    ? clauses
+    : [{
+        clauseId: `${String(line?.lineId || "L")}:C001`,
+        lineId: String(line?.lineId || ""),
+        text: String(line?.text || ""),
+        charStart: 0,
+        charEnd: String(line?.text || "").length,
+        cues: clinicalServiceContextCues(line?.text)
+      }];
+  const confidentlyIrrelevant = spanRow?.relevance === "irrelevant"
+    && Number(spanRow?.relevanceConfidence) >= thresholds.relevanceConfidence;
+  const clausePlans = normalizedClauses.map((clause) => {
+    const clauseSpans = evaluatedSpans.filter(
+      (span) => String(span?.clauseId || "") === String(clause.clauseId || "")
+    );
+    let aggregate;
+    let blocked = false;
+    if (visitFactsBlockedClauseIds.has(clause.clauseId)) {
+      aggregate = {
+        role: "llm",
+        reasonCodes: ["visit_facts_sensitive_change"]
+      };
+      blocked = true;
+    } else if (clauseSpans.length) {
+      aggregate = aggregateLineContext(clauseSpans.map((span) => ({
+        ...span,
+        role: span?.[roleField] || "llm"
+      })));
+    } else if (visitFactsEvidenceClauseIds.has(clause.clauseId)) {
+      aggregate = {
+        role: "fact",
+        reasonCodes: ["structured_visit_fact"]
+      };
+    } else if (visitFactsIgnoredClauseIds.has(clause.clauseId)) {
+      aggregate = {
+        role: "none",
+        reasonCodes: ["ignored_noncurrent_visit_fact_clause"]
+      };
+    } else {
+      const trivial = isTrivialClinicalLine(clause.text);
+      aggregate = trivial || confidentlyIrrelevant
+        ? {
+            role: "none",
+            reasonCodes: [trivial ? "trivial_line" : "relevance_irrelevant"]
+          }
+        : {
+            role: "llm",
+            reasonCodes: ["span_missing_nontrivial_line"]
+          };
+    }
+    return {
+      ...clause,
+      route: aggregate.role === "llm" ? "llm" : "encoder",
+      role: aggregate.role,
+      reasonCodes: [...new Set(aggregate.reasonCodes || [])],
+      blocked,
+      spanIds: clauseSpans.map((span) => String(span?.spanId || "")).filter(Boolean)
+    };
+  });
+  const llmClauses = clausePlans.filter((clause) => clause.route === "llm");
+  const encoderClauses = clausePlans.filter((clause) => clause.route === "encoder");
+  const route = llmClauses.length === 0
+    ? "encoder"
+    : (encoderClauses.length === 0 ? "llm" : "mixed");
+  return {
+    route,
+    lineRole: strongestWhiteboxClauseRole(encoderClauses.map((clause) => clause.role)),
+    reasonCodes: [...new Set(clausePlans.flatMap((clause) => clause.reasonCodes))],
+    clauses: clausePlans,
+    encoderClauseIds: encoderClauses.map((clause) => clause.clauseId),
+    llmClauseIds: llmClauses.map((clause) => clause.clauseId),
+    blockedClauseIds: clausePlans
+      .filter((clause) => clause.blocked)
+      .map((clause) => clause.clauseId)
+  };
+}
+
+function strongestWhiteboxClauseRole(roles = []) {
+  const priority = {
+    llm: 0,
+    none: 1,
+    excluded: 2,
+    fact: 3,
+    plan: 4,
+    standing: 5,
+    performed: 6
+  };
+  return (Array.isArray(roles) ? roles : []).reduce((selected, role) => (
+    Number(priority[role] || 0) > Number(priority[selected] || 0)
+      ? role
+      : selected
+  ), roles.length ? "none" : "llm");
+}
+
+function encoderFactsFromLineRoutes({
+  lines = [],
+  lineRoutes = [],
+  lane = "strict"
+} = {}) {
+  const planField = lane === "shadow" ? "shadowPlan" : "strictPlan";
+  const roleField = lane === "shadow" ? "shadowRole" : "strictRole";
+  const topCandidateField = lane === "shadow"
+    ? "shadowTopCandidate"
+    : "strictTopCandidate";
+  const linkField = lane === "shadow" ? "shadowLink" : "strictLink";
+  const lineById = new Map((Array.isArray(lines) ? lines : []).map((line) => [
+    String(line?.lineId || ""),
+    line
+  ]));
+  const facts = emptyEncoderFacts([]);
+  facts.line_review = [];
+  for (const route of Array.isArray(lineRoutes) ? lineRoutes : []) {
+    const plan = route?.[planField];
+    if (!plan || !["encoder", "mixed"].includes(plan.route)) {
+      continue;
+    }
+    const line = lineById.get(String(route?.lineId || "")) || {};
+    const clauseById = new Map(plan.clauses.map((clause) => [
+      String(clause.clauseId || ""),
+      clause
+    ]));
+    facts.line_review.push({
+      line_id: route.lineId,
+      line_role: lineRoleForContract(plan.lineRole)
+    });
+    for (const span of Array.isArray(route?.spans) ? route.spans : []) {
+      const clausePlan = clauseById.get(String(span?.clauseId || ""));
+      if (clausePlan?.route !== "encoder") {
+        continue;
+      }
+      const role = span?.[roleField] || "llm";
+      const evaluated = {
+        ...span,
+        role,
+        topCandidate: span?.[topCandidateField] || null,
+        link: span?.[linkField] || {}
+      };
+      if (role === "performed" && evaluated.topCandidate) {
+        facts.clinical_events.push(encoderEventFromSpan(evaluated, line));
+      }
+      if (role === "excluded" && evaluated.topCandidate) {
+        facts.excluded_events.push(encoderExcludedEventFromSpan(evaluated, line));
+      }
+      const standingStatus = evaluated.contextRole?.standingStatus;
+      if (
+        clausePlan.role === "standing"
+        && role === "standing"
+        && ["continued", "changed", "stopped"].includes(standingStatus)
+      ) {
+        facts.standing_mentions.push({
+          line_id: line.lineId,
+          target: evaluated.topCandidate?.name || evaluated.text,
+          status: standingStatus,
+          source: "encoder"
+        });
+      }
+    }
+  }
+  return facts;
+}
+
+function residualLlmLines(lines = [], lineRoutes = [], planField = "strictPlan") {
+  const routeByLineId = new Map((Array.isArray(lineRoutes) ? lineRoutes : []).map(
+    (route) => [String(route?.lineId || ""), route]
+  ));
+  return (Array.isArray(lines) ? lines : []).flatMap((line) => {
+    const route = routeByLineId.get(String(line?.lineId || ""));
+    const plan = route?.[planField];
+    if (!plan?.llmClauseIds?.length) {
+      return [];
+    }
+    const llmClauseIds = new Set(plan.llmClauseIds);
+    const text = plan.clauses
+      .filter((clause) => llmClauseIds.has(clause.clauseId))
+      .map((clause) => String(clause.text || ""))
+      .join(" ")
+      .trim();
+    return [{
+      ...line,
+      text,
+      normalizedText: text.normalize("NFKC"),
+      cues: {
+        ...clinicalServiceContextCues(text),
+        syntheticMeta: line?.cues?.syntheticMeta === true
+      }
+    }];
+  });
+}
+
+function summarizeClauseRoutes(lineRoutes = [], planField = "strictPlan") {
+  const clauses = (Array.isArray(lineRoutes) ? lineRoutes : [])
+    .flatMap((route) => route?.[planField]?.clauses || []);
+  return {
+    total: clauses.length,
+    encoder: clauses.filter((clause) => clause.route === "encoder").length,
+    llm: clauses.filter((clause) => clause.route === "llm").length,
+    blocked: clauses.filter((clause) => clause.blocked === true).length,
+    structuredFact: clauses.filter((clause) => clause.role === "fact").length
+  };
+}
+
+function countEncoderOwnedSpans(lineRoutes = [], planField = "strictPlan") {
+  return (Array.isArray(lineRoutes) ? lineRoutes : []).reduce((total, route) => {
+    const plan = route?.[planField];
+    if (!plan) {
+      return total;
+    }
+    const encoderClauseIds = new Set(plan.encoderClauseIds || []);
+    return total + (Array.isArray(route?.spans) ? route.spans : [])
+      .filter((span) => encoderClauseIds.has(String(span?.clauseId || "")))
+      .length;
+  }, 0);
 }
 
 function countRouteReasons(lineRoutes = [], field = "reasonCodes") {
@@ -1124,6 +1579,25 @@ function linkerGateEvaluation({
   };
 }
 
+function structuredVisitFactLinkerGates() {
+  return {
+    candidatePresent: false,
+    scorePass: false,
+    categoryPass: true,
+    mentionTypePass: true,
+    marginPass: false,
+    exactMarginBypass: false,
+    familyMarginPass: false,
+    familyMemberCount: 0,
+    familyReviewable: false,
+    familyTooBroad: false,
+    familyIdentified: false,
+    linkerBypassed: true,
+    resolution: "structured_visit_fact",
+    passed: true
+  };
+}
+
 function spanGateReasonCodes({
   spanPass = false,
   linkerGates = {},
@@ -1168,6 +1642,8 @@ function spanGateReasonCodes({
 function spanGateDiagnostic({
   line = {},
   span = {},
+  clause = null,
+  structuredFact = null,
   contextRole = {},
   predicateContext = {},
   consensus = {},
@@ -1212,12 +1688,24 @@ function spanGateDiagnostic({
   );
   const contextResolved = consensus.role !== "llm";
   const laneOutcome = (spanPass, linkerGates, role) => {
+    if (structuredFact) {
+      return {
+        jointEligible: false,
+        billableInclusionEligible: false,
+        standingEligible: false,
+        safeExclusionEligible: false,
+        structuredFactEligible: true,
+        familyIdentified: false,
+        abstained: false
+      };
+    }
     const gatePassed = spanPass && linkerGates.passed;
     return {
       jointEligible: gatePassed && role !== "llm",
       billableInclusionEligible: gatePassed && role === "performed",
       standingEligible: gatePassed && role === "standing",
       safeExclusionEligible: gatePassed && ["excluded", "plan"].includes(role),
+      structuredFactEligible: false,
       familyIdentified: spanPass && linkerGates.familyIdentified === true,
       abstained: role === "llm"
     };
@@ -1236,6 +1724,10 @@ function spanGateDiagnostic({
     lineId: String(line?.lineId || ""),
     lineIndex: Number(line?.index || 0),
     lineTextSha256: sha256Text(line?.text),
+    clauseId: String(clause?.clauseId || ""),
+    clauseTextSha256: sha256Text(clause?.text),
+    clauseCharStart: finiteNumberOrNull(clause?.charStart),
+    clauseCharEnd: finiteNumberOrNull(clause?.charEnd),
     spanId: String(span?.spanId || ""),
     spanTextSha256: sha256Text(span?.text),
     charStart: Number(span?.charStart || 0),
@@ -1250,6 +1742,7 @@ function spanGateDiagnostic({
     category: String(span?.category || ""),
     confidence: finiteNumberOrNull(span?.confidence),
     artifactDetectionThreshold,
+    resolutionSource: structuredFact?.resolution || "model_gate",
     context: {
       classifierRole: String(contextRole?.role || "llm"),
       consensusRole: String(consensus?.role || "llm"),
@@ -1358,16 +1851,27 @@ function summarizeSpanGateDiagnostics(diagnostics = [], lane = "strict") {
   return {
     spanCount: rows.length,
     spanPassCount: rows.filter((row) => row.gate.spanPass === true).length,
-    linkerCandidateCount: rows.filter((row) => row.gate.candidatePresent === true).length,
-    linkerScorePassCount: rows.filter((row) => row.gate.scorePass === true).length,
-    linkerMarginPassCount: rows.filter((row) => (
-      row.gate.marginPass === true || row.gate.exactMarginBypass === true
+    linkerEvaluatedCount: rows.filter((row) => row.gate.linkerBypassed !== true).length,
+    linkerBypassedCount: rows.filter((row) => row.gate.linkerBypassed === true).length,
+    linkerCandidateCount: rows.filter((row) => (
+      row.gate.linkerBypassed !== true && row.gate.candidatePresent === true
     )).length,
-    linkerCategoryPassCount: rows.filter((row) => row.gate.categoryPass === true).length,
+    linkerScorePassCount: rows.filter((row) => (
+      row.gate.linkerBypassed !== true && row.gate.scorePass === true
+    )).length,
+    linkerMarginPassCount: rows.filter((row) => (
+      row.gate.linkerBypassed !== true
+      && (row.gate.marginPass === true || row.gate.exactMarginBypass === true)
+    )).length,
+    linkerCategoryPassCount: rows.filter((row) => (
+      row.gate.linkerBypassed !== true && row.gate.categoryPass === true
+    )).length,
     linkerMentionTypePassCount: rows.filter(
-      (row) => row.gate.mentionTypePass === true
+      (row) => row.gate.linkerBypassed !== true && row.gate.mentionTypePass === true
     ).length,
-    linkerPassCount: rows.filter((row) => row.gate.passed === true).length,
+    linkerPassCount: rows.filter((row) => (
+      row.gate.linkerBypassed !== true && row.gate.passed === true
+    )).length,
     linkerFamilyIdentifiedCount: rows.filter(
       (row) => row.gate.familyIdentified === true
     ).length,
@@ -1382,6 +1886,9 @@ function summarizeSpanGateDiagnostics(diagnostics = [], lane = "strict") {
     safeExclusionEligibleCount: rows.filter(
       (row) => row.gate.safeExclusionEligible === true
     ).length,
+    structuredFactEligibleCount: rows.filter(
+      (row) => row.gate.structuredFactEligible === true
+    ).length,
     abstainedCount: rows.filter((row) => row.gate.abstained === true).length,
     rejectionCounts: Object.fromEntries(
       Object.entries(rejectionCounts)
@@ -1390,7 +1897,7 @@ function summarizeSpanGateDiagnostics(diagnostics = [], lane = "strict") {
   };
 }
 
-function resolvedSpanFromLink(span = {}, link = {}, line = {}) {
+function resolvedSpanFromLink(span = {}, link = {}, line = {}, sourceClause = null) {
   const resolved = link?.resolvedSpan;
   if (!resolved || resolved.boundarySnapped !== true) {
     return span;
@@ -1412,7 +1919,14 @@ function resolvedSpanFromLink(span = {}, link = {}, line = {}) {
     && start <= originalStart
     && end >= originalEnd
     && end - start > originalEnd - originalStart
-    && lineText.slice(start, end) === text;
+    && lineText.slice(start, end) === text
+    && (
+      !sourceClause
+      || (
+        start >= Number(sourceClause.charStart)
+        && end <= Number(sourceClause.charEnd)
+      )
+    );
   if (!valid) {
     return span;
   }
@@ -1630,6 +2144,7 @@ function encoderEventFromSpan(evaluated, line) {
   const axes = evaluated.contextRole?.normalizedAxes || {};
   const candidate = evaluated.topCandidate;
   const contextAxes = evaluated.contextRole?.normalizedAxes || null;
+  const evidenceText = String(evaluated?.clause?.text || line.text || "");
   return {
     clinical_event_id: `encoder_${safeId([line.lineId, evaluated.spanId, candidate.code].join("_"))}`,
     type: eventTypeFromCategory(evaluated.category),
@@ -1640,7 +2155,7 @@ function encoderEventFromSpan(evaluated, line) {
     source_origin: contextAxes?.sourceOrigin?.value || "own_clinic_record",
     provider_ownership: contextAxes?.providerOwnership?.value || "own_clinic",
     evidence_line_ids: [line.lineId],
-    evidence: String(line.text || "").slice(0, 180),
+    evidence: evidenceText.slice(0, 180),
     extraction_source: "encoder",
     extractionSource: "encoder",
     review_required: true,
@@ -1666,6 +2181,7 @@ function encoderExcludedEventFromSpan(evaluated, line) {
   const temporalRelation = axes.temporalRelation?.value || "unknown";
   const sourceOrigin = axes.sourceOrigin?.value || "unknown";
   const providerOwnership = axes.providerOwnership?.value || "unknown";
+  const evidenceText = String(evaluated?.clause?.text || line.text || "");
   return {
     clinical_event_id: `encoder_excluded_${safeId([
       line.lineId,
@@ -1685,7 +2201,7 @@ function encoderExcludedEventFromSpan(evaluated, line) {
     source_origin: sourceOrigin,
     provider_ownership: providerOwnership,
     evidence_line_ids: [line.lineId],
-    evidence: String(line.text || "").slice(0, 180),
+    evidence: evidenceText.slice(0, 180),
     reason: excludedReason({
       actionStatus,
       temporalRelation,

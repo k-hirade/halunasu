@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  clinicalServiceContextCues,
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput,
   validateSidecarCalculationInput,
@@ -649,7 +650,33 @@ test("detects performed blood collection using the shared strict predicate", () 
 test("classifies past and external clinical-service context through the shared predicate", () => {
   assert.equal(isPastOrExternalClinicalServiceContext("前回は電話再診だった。"), true);
   assert.equal(isPastOrExternalClinicalServiceContext("他院で検査を実施した。"), true);
+  assert.equal(isPastOrExternalClinicalServiceContext("院外で検査を実施した。"), true);
+  assert.equal(isPastOrExternalClinicalServiceContext("本日、院外処方箋を交付した。"), false);
+  assert.equal(isPastOrExternalClinicalServiceContext("院外処方でアムロジピンを処方した。"), false);
+  assert.equal(isPastOrExternalClinicalServiceContext("院外で処方した。"), false);
+  assert.equal(isPastOrExternalClinicalServiceContext("処方は院外とした。"), false);
   assert.equal(isPastOrExternalClinicalServiceContext("本日、電話再診として対応した。"), false);
+});
+
+test("builds shared clinical-service cues without treating outside prescriptions as external care", () => {
+  assert.deepEqual(clinicalServiceContextCues("本日、院外処方箋を交付した。"), {
+    futureOrOrderOnly: false,
+    negatedService: false,
+    pastOrExternal: false,
+    currentVisit: true
+  });
+  assert.deepEqual(clinicalServiceContextCues("前医で前回CTを実施した。"), {
+    futureOrOrderOnly: false,
+    negatedService: false,
+    pastOrExternal: true,
+    currentVisit: false
+  });
+  assert.deepEqual(clinicalServiceContextCues("次回は採血を実施予定。"), {
+    futureOrOrderOnly: true,
+    negatedService: false,
+    pastOrExternal: false,
+    currentVisit: false
+  });
 });
 
 test("filters pain-scale ratios from clinical date extraction contexts", () => {

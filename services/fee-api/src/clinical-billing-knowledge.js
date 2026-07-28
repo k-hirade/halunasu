@@ -697,7 +697,9 @@ function legacyDateRelationFromClinicalEvent({
 }
 
 function isPastOrExternalClinicalServiceContext(sentence = "") {
-  const text = normalizeClinicalText(sentence);
+  const text = normalizeClinicalText(sentence)
+    .replace(/院外(?:で(?:の)?)?処方(?:箋|せん)?/gu, "処方箋")
+    .replace(/処方(?:箋|せん)?(?:は|を)?院外/gu, "処方箋");
   return /(前回|先月|以前|過去|過去値|既知値|持参|他院|前医|他科|紹介元|かかりつけ|健診|検診|外部資料|院外|外部|前に|過去に)/u.test(text);
 }
 
