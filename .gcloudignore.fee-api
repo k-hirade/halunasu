@@ -2,6 +2,7 @@
 *
 
 !cloudbuild.platform-api.yaml
+!cloudbuild.fee-api.yaml
 !cloudbuild.node-service.yaml
 !package.json
 
@@ -39,4 +40,13 @@ python/data/master/*
 !python/data/master/standard-master.sqlite.gz
 !python/data/master/standard-master.manifest.json
 !python/data/whitebox/
-!python/data/whitebox/**
+python/data/whitebox/*/
+!python/data/whitebox/*.json
+
+!scripts/
+scripts/*
+!scripts/manage_fee_whitebox_artifact.py
+
+**/__pycache__/
+**/*.py[cod]
+**/.DS_Store

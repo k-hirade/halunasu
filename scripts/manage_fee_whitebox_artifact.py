@@ -149,18 +149,41 @@ def fetch_artifact(
     ) as temporary:
         download_root = Path(temporary)
         downloaded_manifest = download_root / destination.name
-        _gcloud_run([
+        remote_manifest = _gcloud_capture([
             "gcloud",
             "storage",
-            "cp",
+            "cat",
             normalized_uri,
-            str(downloaded_manifest),
-        ])
+        ], allow_not_found=False)
+        if remote_manifest is None:
+            raise WhiteboxArtifactDistributionError(
+                f"remote artifact manifest is missing: {normalized_uri}"
+            )
+        downloaded_manifest.write_bytes(remote_manifest)
         manifest = _read_manifest(downloaded_manifest)
         if str(manifest.get("artifactVersion") or "").strip() != expected_version:
             raise WhiteboxArtifactDistributionError(
                 "remote artifact URI version does not match the downloaded manifest"
             )
+        if destination.exists():
+            local_artifact = verify_artifact(
+                destination,
+                expected_type=expected_type,
+            )
+            if local_artifact.artifact_version != expected_version:
+                raise WhiteboxArtifactDistributionError(
+                    "destination artifact version differs from the remote artifact URI"
+                )
+            if sha256_file(destination) != sha256_file(downloaded_manifest):
+                raise WhiteboxArtifactDistributionError(
+                    "destination manifest differs from immutable remote manifest"
+                )
+            result.update({
+                "status": "cached",
+                "manifestSha256": sha256_file(destination),
+                "fileCount": len(local_artifact.manifest["files"]),
+            })
+            return result
         base_uri = normalized_uri.rsplit("/", 1)[0]
         for logical_name, entry in sorted(_manifest_files(manifest).items()):
             relative_path = _safe_relative_path(entry.get("path"))

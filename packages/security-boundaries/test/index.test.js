@@ -264,6 +264,9 @@ test("P10 product activation script remains guarded", () => {
 test("P10 runtime provisioning and deploy scripts keep low-cost guardrails", () => {
   const provision = readText(join(root, "scripts", "p10_provision_runtime_projects_low_cost.sh"));
   const deploy = readText(join(root, "scripts", "p10_deploy_runtime_services_low_cost.sh"));
+  const cleanup = readText(join(root, "scripts", "p19_cleanup_runtime_artifacts.sh"));
+  const feeCloudBuild = readText(join(root, "cloudbuild.fee-api.yaml"));
+  const feeCloudIgnore = readText(join(root, ".gcloudignore.fee-api"));
 
   assert.match(provision, /APPLY="false"/, "P10 provision must dry-run by default");
   assert.match(provision, /P10_ALLOW_BILLING/, "P10 provision must require billing acknowledgement");
@@ -285,6 +288,66 @@ test("P10 runtime provisioning and deploy scripts keep low-cost guardrails", () 
   );
   assert.match(deploy, /--cpu-throttling/, "P10 deploy must keep CPU throttling enabled");
   assert.match(deploy, /--no-allow-unauthenticated/, "P10 deploy must support private worker services");
+  assert.match(
+    deploy,
+    /--default-buckets-behavior REGIONAL_USER_OWNED_BUCKET/,
+    "P10 deploy must use a regional user-owned Cloud Build staging bucket"
+  );
+  assert.match(
+    deploy,
+    /--region "\$\{REGION\}"/,
+    "P10 Cloud Build must run in the configured runtime region"
+  );
+  assert.match(
+    deploy,
+    /build_config="cloudbuild\.fee-api\.yaml"/,
+    "Fee API must use the artifact-aware Cloud Build configuration"
+  );
+  assert.match(
+    provision,
+    /ensure_regional_cloudbuild_bucket/,
+    "P10 provision must create the regional Cloud Build bucket"
+  );
+  assert.match(
+    provision,
+    /ensure_fee_whitebox_artifact_bucket/,
+    "P10 provision must create the private fee artifact bucket"
+  );
+  assert.match(
+    feeCloudBuild,
+    /fetch-fee-whitebox-artifacts/,
+    "Fee Cloud Build must fetch selected whitebox artifacts in Cloud Build"
+  );
+  assert.match(
+    feeCloudBuild,
+    /manage_fee_whitebox_artifact\.py fetch/,
+    "Fee Cloud Build must verify immutable artifacts through the artifact manager"
+  );
+  assert.match(
+    feeCloudIgnore,
+    /python\/data\/whitebox\/\*\/\s*[\r\n]+!python\/data\/whitebox\/\*\.json/,
+    "Fee Cloud Build uploads must exclude model directories but retain runtime JSON"
+  );
+  assert.match(
+    cleanup,
+    /STG_CLOUDBUILD_DELETE_AGE_DAYS="\$\{STG_CLOUDBUILD_DELETE_AGE_DAYS:-1\}"/,
+    "STG Cloud Build sources must expire after one day"
+  );
+  assert.match(
+    cleanup,
+    /\$\{project_number\}-\$\{REGION\}-cloudbuild-logs/,
+    "Regional Cloud Build log buckets must share the bounded lifecycle"
+  );
+  assert.match(
+    cleanup,
+    /--no-versioning/,
+    "Immutable whitebox artifact buckets must not retain duplicate object versions"
+  );
+  assert.match(
+    cleanup,
+    /project_group_selected/,
+    "Runtime cleanup must honor the selected service project boundary"
+  );
   assert.equal(/terraform\s+apply/.test(deploy), false, "P10 deploy must not run Terraform");
 });
 

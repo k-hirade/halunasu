@@ -33,9 +33,11 @@ An enabled white-box layer must declare both:
 - an immutable `gs://` manifest URI;
 - the corresponding `/app/python/data/whitebox/...` manifest path.
 
-The deploy script downloads every declared artifact, validates all manifest
-checksums, and only then submits the fee-api build. Upload artifacts before the
-first deployment of a new profile.
+The deploy script validates the immutable URI/path contract before submission.
+Regional Cloud Build then downloads only the artifacts selected by the profile
+and validates every manifest checksum before building the fee-api image. Local
+model generations are excluded from the source archive. Upload artifacts before
+the first deployment of a new profile.
 
 ```bash
 npm run upload:fee-whitebox-artifact -- \
@@ -57,7 +59,9 @@ npm run upload:fee-whitebox-artifact -- \
 Upload is immutable by artifact type and version. A second upload is accepted
 only when the remote manifest has the same SHA-256. Deployment downloads each
 manifest and its files, verifies every declared checksum, and installs it into
-the fee-api build context before Cloud Build starts.
+the fee-api build context inside Cloud Build. An explicit local fetch reads the
+remote manifest first and reuses a checksum-verified local artifact without
+downloading the model again.
 
 ## Profile intent
 

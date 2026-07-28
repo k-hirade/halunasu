@@ -163,16 +163,13 @@ class ManageFeeWhiteboxArtifactTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source_manifest = self._write_artifact(root / "source", b"model-v1")
-            calls: list[list[str]] = []
-
-            def fake_gcloud_run(command: list[str]) -> None:
-                calls.append(command)
-                destination = Path(command[-1])
-                destination.write_bytes(source_manifest.read_bytes())
-
+            model_download = mock.Mock()
             with mock.patch(
+                "scripts.manage_fee_whitebox_artifact._gcloud_capture",
+                return_value=source_manifest.read_bytes(),
+            ), mock.patch(
                 "scripts.manage_fee_whitebox_artifact._gcloud_run",
-                side_effect=fake_gcloud_run,
+                model_download,
             ):
                 with self.assertRaisesRegex(
                     WhiteboxArtifactDistributionError,
@@ -185,7 +182,106 @@ class ManageFeeWhiteboxArtifactTest(unittest.TestCase):
                         dry_run=False,
                     )
 
-            self.assertEqual(len(calls), 1)
+            model_download.assert_not_called()
+
+    def test_fetch_downloads_and_verifies_artifact_into_empty_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_manifest = self._write_artifact(root / "source", b"model-v1")
+            destination_manifest = root / "destination" / "manifest.json"
+            download_calls: list[list[str]] = []
+
+            def fake_gcloud_run(command: list[str]) -> None:
+                download_calls.append(command)
+                Path(command[-1]).write_bytes(b"model-v1")
+
+            with mock.patch(
+                "scripts.manage_fee_whitebox_artifact._gcloud_capture",
+                return_value=source_manifest.read_bytes(),
+            ), mock.patch(
+                "scripts.manage_fee_whitebox_artifact._gcloud_run",
+                side_effect=fake_gcloud_run,
+            ):
+                result = fetch_artifact(
+                    "gs://example/whitebox/fee_span_detector/test-v1/manifest.json",
+                    destination_manifest=destination_manifest,
+                    expected_type="fee_span_detector",
+                    dry_run=False,
+                )
+
+            self.assertEqual(result["status"], "fetched")
+            self.assertEqual(result["fileCount"], 1)
+            self.assertEqual(len(download_calls), 1)
+            installed = verify_artifact(
+                destination_manifest,
+                expected_type="fee_span_detector",
+            )
+            self.assertEqual(installed.artifact_version, "test-v1")
+
+    def test_fetch_uses_verified_local_cache_without_model_download(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_manifest = self._write_artifact(root / "source", b"model-v1")
+            source = verify_artifact(
+                source_manifest,
+                expected_type="fee_span_detector",
+            )
+            destination_manifest = root / "destination" / "manifest.json"
+            install_artifact(source, destination_manifest=destination_manifest)
+            model_download = mock.Mock()
+
+            with mock.patch(
+                "scripts.manage_fee_whitebox_artifact._gcloud_capture",
+                return_value=source_manifest.read_bytes(),
+            ), mock.patch(
+                "scripts.manage_fee_whitebox_artifact._gcloud_run",
+                model_download,
+            ):
+                result = fetch_artifact(
+                    "gs://example/whitebox/fee_span_detector/test-v1/manifest.json",
+                    destination_manifest=destination_manifest,
+                    expected_type="fee_span_detector",
+                    dry_run=False,
+                )
+
+            self.assertEqual(result["status"], "cached")
+            self.assertEqual(result["fileCount"], 1)
+            model_download.assert_not_called()
+
+    def test_fetch_rejects_changed_remote_manifest_before_model_download(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_manifest = self._write_artifact(root / "source", b"model-v1")
+            source = verify_artifact(
+                source_manifest,
+                expected_type="fee_span_detector",
+            )
+            destination_manifest = root / "destination" / "manifest.json"
+            install_artifact(source, destination_manifest=destination_manifest)
+            changed = json.loads(source_manifest.read_text(encoding="utf-8"))
+            changed["modelRevision"] = "fedcba9876543210"
+            remote_manifest = json.dumps(changed).encode("utf-8")
+            model_download = mock.Mock()
+
+            with mock.patch(
+                "scripts.manage_fee_whitebox_artifact._gcloud_capture",
+                return_value=remote_manifest,
+            ), mock.patch(
+                "scripts.manage_fee_whitebox_artifact._gcloud_run",
+                model_download,
+            ):
+                with self.assertRaisesRegex(
+                    WhiteboxArtifactDistributionError,
+                    "immutable remote manifest",
+                ):
+                    fetch_artifact(
+                        "gs://example/whitebox/fee_span_detector/test-v1/manifest.json",
+                        destination_manifest=destination_manifest,
+                        expected_type="fee_span_detector",
+                        dry_run=False,
+                    )
+
+            model_download.assert_not_called()
 
     def test_manifest_path_escape_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

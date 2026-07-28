@@ -1,0 +1,65 @@
+substitutions:
+  _FEE_LINKER_ARTIFACT_URI: ""
+  _FEE_LINKER_MANIFEST_PATH: ""
+  _FEE_CONTEXT_CLASSIFIER_ARTIFACT_URI: ""
+  _FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH: ""
+  _FEE_SPAN_DETECTOR_ARTIFACT_URI: ""
+  _FEE_SPAN_DETECTOR_MANIFEST_PATH: ""
+
+steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: fetch-fee-whitebox-artifacts
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        fetch_artifact() {
+          local source_uri="$$1"
+          local runtime_manifest="$$2"
+          local expected_type="$$3"
+
+          if [[ -z "$$source_uri" && -z "$$runtime_manifest" ]]; then
+            return 0
+          fi
+          if [[ -z "$$source_uri" || -z "$$runtime_manifest" ]]; then
+            echo "$$expected_type requires both an artifact URI and runtime manifest path." >&2
+            return 1
+          fi
+          if [[ "$$runtime_manifest" != /app/python/data/whitebox/* ]]; then
+            echo "$$expected_type runtime manifest must be under /app/python/data/whitebox/." >&2
+            return 1
+          fi
+
+          PYTHONPATH=python:. python3 scripts/manage_fee_whitebox_artifact.py fetch \
+            --manifest-uri "$$source_uri" \
+            --destination-manifest "$${runtime_manifest#/app/}" \
+            --expected-type "$$expected_type"
+        }
+
+        fetch_artifact \
+          "${_FEE_LINKER_ARTIFACT_URI}" \
+          "${_FEE_LINKER_MANIFEST_PATH}" \
+          "fee_master_linker"
+        fetch_artifact \
+          "${_FEE_CONTEXT_CLASSIFIER_ARTIFACT_URI}" \
+          "${_FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH}" \
+          "fee_context_classifier"
+        fetch_artifact \
+          "${_FEE_SPAN_DETECTOR_ARTIFACT_URI}" \
+          "${_FEE_SPAN_DETECTOR_MANIFEST_PATH}" \
+          "fee_span_detector"
+
+  - name: gcr.io/cloud-builders/docker
+    id: build-fee-api
+    args:
+      - build
+      - -f
+      - services/node-service.Dockerfile
+      - --build-arg
+      - SERVICE_PATH=${_SERVICE_PATH}
+      - -t
+      - ${_IMAGE}
+      - .
+
+images:
+  - ${_IMAGE}

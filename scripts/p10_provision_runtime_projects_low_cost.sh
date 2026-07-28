@@ -140,6 +140,66 @@ ensure_artifact_repo() {
     --quiet
 }
 
+ensure_regional_cloudbuild_bucket() {
+  local project="$1"
+  local bucket="${project}_${REGION}_cloudbuild"
+  local location
+  location="$(gcloud storage buckets describe "gs://${bucket}" \
+    --format="value(location)" \
+    --quiet 2>/dev/null || true)"
+  if [[ -n "${location}" ]]; then
+    if [[ "${location,,}" != "${REGION,,}" ]]; then
+      echo "Regional Cloud Build bucket has unexpected location: gs://${bucket} (${location})" >&2
+      return 1
+    fi
+    echo "Regional Cloud Build bucket already exists: gs://${bucket}"
+  else
+    run_or_print gcloud storage buckets create "gs://${bucket}" \
+      --project "${project}" \
+      --location "${REGION}" \
+      --uniform-bucket-level-access \
+      --quiet
+  fi
+
+  run_or_print gcloud storage buckets update "gs://${bucket}" \
+    --clear-soft-delete \
+    --quiet
+}
+
+ensure_fee_whitebox_artifact_bucket() {
+  local project="$1"
+  local bucket="${project}-artifacts"
+  local location
+  location="$(gcloud storage buckets describe "gs://${bucket}" \
+    --format="value(location)" \
+    --quiet 2>/dev/null || true)"
+  if [[ -n "${location}" ]]; then
+    if [[ "${location,,}" != "${REGION,,}" ]]; then
+      echo "Fee artifact bucket has unexpected location: gs://${bucket} (${location})" >&2
+      return 1
+    fi
+    echo "Fee artifact bucket already exists: gs://${bucket}"
+  else
+    run_or_print gcloud storage buckets create "gs://${bucket}" \
+      --project "${project}" \
+      --location "${REGION}" \
+      --uniform-bucket-level-access \
+      --quiet
+  fi
+
+  if [[ "${project}" == *-stg ]]; then
+    run_or_print gcloud storage buckets update "gs://${bucket}" \
+      --no-versioning \
+      --clear-soft-delete \
+      --quiet
+  else
+    run_or_print gcloud storage buckets update "gs://${bucket}" \
+      --no-versioning \
+      --soft-delete-duration 7d \
+      --quiet
+  fi
+}
+
 ensure_firestore() {
   local project="$1"
   if gcloud firestore databases describe --database="(default)" --project "${project}" --quiet >/dev/null 2>&1; then
@@ -258,7 +318,7 @@ secret_value_or_generate() {
   fi
 }
 
-core_services=(artifactregistry.googleapis.com cloudbuild.googleapis.com firestore.googleapis.com iam.googleapis.com run.googleapis.com secretmanager.googleapis.com)
+core_services=(artifactregistry.googleapis.com cloudbuild.googleapis.com firestore.googleapis.com iam.googleapis.com run.googleapis.com secretmanager.googleapis.com storage.googleapis.com)
 product_services=(artifactregistry.googleapis.com cloudbuild.googleapis.com firestore.googleapis.com iam.googleapis.com run.googleapis.com secretmanager.googleapis.com storage.googleapis.com)
 charting_services=("${product_services[@]}" cloudtasks.googleapis.com)
 
@@ -278,6 +338,10 @@ for project in "${ALL_RUNTIME_PROJECTS[@]}"; do
     enable_services "${project}" "${core_services[@]}"
   fi
   ensure_artifact_repo "${project}"
+  ensure_regional_cloudbuild_bucket "${project}"
+  if [[ "${project}" == halunasu-fee-* ]]; then
+    ensure_fee_whitebox_artifact_bucket "${project}"
+  fi
   ensure_firestore "${project}"
   ensure_cloud_build_account_roles "${project}"
 done

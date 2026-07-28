@@ -98,7 +98,7 @@ gcloud_dict_arg() {
   printf '^%s^%s' "${delimiter}" "${joined}"
 }
 
-prepare_packaged_fee_artifact() {
+validate_packaged_fee_artifact_reference() {
   local runtime_path="$1"
   local source_uri="$2"
   local expected_type="$3"
@@ -106,35 +106,26 @@ prepare_packaged_fee_artifact() {
   if [[ -z "${runtime_path}" ]]; then
     return 0
   fi
-  if [[ "${runtime_path}" != /app/python/data/whitebox/* ]]; then
+  if [[ "${runtime_path}" != /app/python/data/whitebox/* \
+    || ! "${runtime_path}" =~ ^/app/python/data/whitebox/[A-Za-z0-9._/-]+$ ]]; then
     echo "${label} must be packaged under /app/python/data/whitebox/." >&2
     return 1
   fi
   local repository_path="${runtime_path#/app/}"
-  if [[ -n "${source_uri}" ]]; then
-    if [[ "${source_uri}" != gs://* ]]; then
-      echo "${label} artifact URI must use gs://." >&2
-      return 1
-    fi
-    if [[ "${APPLY}" == "true" ]]; then
-      PYTHONPATH=python:. python3 scripts/manage_fee_whitebox_artifact.py fetch \
-        --manifest-uri "${source_uri}" \
-        --destination-manifest "${repository_path}" \
-        --expected-type "${expected_type}"
-    else
-      echo "DRY RUN: fetch ${label} from ${source_uri} to ${repository_path}"
-    fi
-  fi
-  if [[ ! -f "${repository_path}" ]]; then
-    if [[ "${APPLY}" != "true" && -n "${source_uri}" ]]; then
-      return 0
-    fi
-    echo "${label} does not exist in the fee-api build context: ${repository_path}" >&2
+  if [[ -z "${source_uri}" ]]; then
+    echo "${label} requires an immutable GCS artifact URI." >&2
     return 1
   fi
-  PYTHONPATH=python:. python3 scripts/manage_fee_whitebox_artifact.py verify \
-    --manifest "${repository_path}" \
-    --expected-type "${expected_type}" >/dev/null
+  if [[ "${source_uri}" != gs://* \
+    || ! "${source_uri}" =~ ^gs://[A-Za-z0-9._/-]+$ ]]; then
+    echo "${label} artifact URI must be a safe gs:// URI." >&2
+    return 1
+  fi
+  PYTHONPATH=python:. python3 scripts/manage_fee_whitebox_artifact.py fetch \
+    --manifest-uri "${source_uri}" \
+    --destination-manifest "${repository_path}" \
+    --expected-type "${expected_type}" \
+    --dry-run >/dev/null
 }
 
 validate_packaged_fee_file_path() {
@@ -182,8 +173,10 @@ deploy_service() {
   local service_timeout="${TIMEOUT}"
   local service_max_instances="${MAX_INSTANCES}"
   local build_ignore_file=".gcloudignore"
+  local build_config="cloudbuild.node-service.yaml"
   if [[ "${service}" == fee-api-* ]]; then
     build_ignore_file=".gcloudignore.fee-api"
+    build_config="cloudbuild.fee-api.yaml"
     service_memory="${FEE_MEMORY:-4Gi}"
     service_timeout="${FEE_TIMEOUT:-180}"
     service_max_instances="${FEE_MAX_INSTANCES:-3}"
@@ -246,11 +239,30 @@ deploy_service() {
     return
   fi
 
+  local build_substitutions=(
+    "_IMAGE=${image}"
+    "_SERVICE_PATH=${service_path}"
+  )
+  if [[ "${service}" == fee-api-* ]]; then
+    build_substitutions+=(
+      "_FEE_LINKER_ARTIFACT_URI=${FEE_BUILD_LINKER_ARTIFACT_URI:-}"
+      "_FEE_LINKER_MANIFEST_PATH=${FEE_BUILD_LINKER_MANIFEST_PATH:-}"
+      "_FEE_CONTEXT_CLASSIFIER_ARTIFACT_URI=${FEE_BUILD_CONTEXT_CLASSIFIER_ARTIFACT_URI:-}"
+      "_FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH=${FEE_BUILD_CONTEXT_CLASSIFIER_MANIFEST_PATH:-}"
+      "_FEE_SPAN_DETECTOR_ARTIFACT_URI=${FEE_BUILD_SPAN_DETECTOR_ARTIFACT_URI:-}"
+      "_FEE_SPAN_DETECTOR_MANIFEST_PATH=${FEE_BUILD_SPAN_DETECTOR_MANIFEST_PATH:-}"
+    )
+  fi
+  local build_substitutions_arg
+  build_substitutions_arg="$(IFS=,; printf '%s' "${build_substitutions[*]}")"
+
   build_cmd=(
     gcloud builds submit .
     --project "${project}"
-    --config cloudbuild.node-service.yaml
-    --substitutions "_IMAGE=${image},_SERVICE_PATH=${service_path}"
+    --region "${REGION}"
+    --default-buckets-behavior REGIONAL_USER_OWNED_BUCKET
+    --config "${build_config}"
+    --substitutions "${build_substitutions_arg}"
     --quiet
   )
   if [[ -f "${build_ignore_file}" ]]; then
@@ -440,21 +452,21 @@ deploy_env() {
     return 1
   fi
   if [[ "${fee_linker_mode}" != "off" ]]; then
-    prepare_packaged_fee_artifact \
+    validate_packaged_fee_artifact_reference \
       "${fee_linker_manifest_path}" \
       "${fee_linker_artifact_uri}" \
       "fee_master_linker" \
       "FEE_LINKER_MANIFEST_PATH for ${env}" || return 1
   fi
   if [[ "${fee_context_classifier_mode}" != "off" ]]; then
-    prepare_packaged_fee_artifact \
+    validate_packaged_fee_artifact_reference \
       "${fee_context_classifier_manifest_path}" \
       "${fee_context_classifier_artifact_uri}" \
       "fee_context_classifier" \
       "FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH for ${env}" || return 1
   fi
   if [[ "${fee_span_detector_mode}" != "off" ]]; then
-    prepare_packaged_fee_artifact \
+    validate_packaged_fee_artifact_reference \
       "${fee_span_detector_manifest_path}" \
       "${fee_span_detector_artifact_uri}" \
       "fee_span_detector" \
@@ -626,6 +638,12 @@ deploy_env() {
     else
       echo "fee-api-${env}: fee-calculation-worker-token secret is missing; async calculation queue env will not be set."
     fi
+    FEE_BUILD_LINKER_ARTIFACT_URI="${fee_linker_artifact_uri}" \
+    FEE_BUILD_LINKER_MANIFEST_PATH="${fee_linker_manifest_path}" \
+    FEE_BUILD_CONTEXT_CLASSIFIER_ARTIFACT_URI="${fee_context_classifier_artifact_uri}" \
+    FEE_BUILD_CONTEXT_CLASSIFIER_MANIFEST_PATH="${fee_context_classifier_manifest_path}" \
+    FEE_BUILD_SPAN_DETECTOR_ARTIFACT_URI="${fee_span_detector_artifact_uri}" \
+    FEE_BUILD_SPAN_DETECTOR_MANIFEST_PATH="${fee_span_detector_manifest_path}" \
     deploy_service "${fee_project}" "fee-api-${env}" "services/fee-api" "halunasu-fee-api" "public" \
     "HALUNASU_ENV=${env}" \
     "GOOGLE_CLOUD_PROJECT=${fee_project}" \

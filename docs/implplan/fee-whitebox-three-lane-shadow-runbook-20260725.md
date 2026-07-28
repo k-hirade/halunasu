@@ -41,22 +41,21 @@ gcloud storage buckets describe gs://halunasu-fee-stg-artifacts \
   --project halunasu-fee-stg
 ```
 
-If the bucket does not exist, create it once in the fee STG project and enable
-object versioning. This is infrastructure setup, not an application deploy:
+If the bucket does not exist, run the guarded P10 provisioner. White-box
+artifact paths already include an immutable artifact version, so bucket-level
+Object Versioning must remain disabled. STG also disables soft delete; PROD
+keeps seven days of soft delete for operator-error recovery.
 
 ```bash
-gcloud storage buckets create gs://halunasu-fee-stg-artifacts \
-  --project halunasu-fee-stg \
-  --location asia-northeast1 \
-  --uniform-bucket-level-access
-
-gcloud storage buckets update gs://halunasu-fee-stg-artifacts \
-  --versioning
+P10_ALLOW_BILLING=yes \
+./scripts/p10_provision_runtime_projects_low_cost.sh --apply
 ```
 
-Artifact fetch runs on the deploy operator's machine before Cloud Build. Cloud
-Run does not read this bucket at runtime, so no public access or Cloud Run
-service-account grant is required. Keep the bucket private.
+Artifact fetch runs inside the regional Cloud Build worker. The operator's
+machine reads only the small immutable manifest when explicitly running the
+fetch CLI, and a verified local cache skips model downloads. Cloud Run does not
+read this bucket at runtime. The provisioner grants the Cloud Build service
+account read-only object access; keep the bucket private.
 
 ```bash
 npm run upload:fee-whitebox-artifact -- \
@@ -78,7 +77,10 @@ npm run upload:fee-whitebox-artifact -- \
 ## 3. Deploy the exact STG profile
 
 The profile is complete and fail-closed. `TARGET_ENV=all` and PROD are rejected.
-The deploy script fetches and verifies every artifact before Cloud Build.
+The deploy script validates immutable references locally, uploads a code-only
+source context to a regional Cloud Build staging bucket, and Cloud Build fetches
+and verifies only the selected artifacts before creating the image. Old local
+artifact generations never enter the build context.
 
 Current STG revision `fee-api-stg-00183-vhx` stops its Python worker at 4 GiB,
 but the old runtime only reports `code null`. First deploy the signal-aware
@@ -87,6 +89,7 @@ diagnostic revision at the same size; do not label it OOM before observing
 
 ```bash
 RUNTIME_FEATURE_PROFILE=stg-whitebox-three-lane-shadow \
+CPU=2 \
 FEE_MEMORY=4Gi \
 TARGET_ENV=stg \
 TARGET_SERVICE=fee-api \
@@ -134,6 +137,7 @@ Only when this records `signal=SIGKILL`, repeat the isolated STG deployment at
 
 ```bash
 RUNTIME_FEATURE_PROFILE=stg-whitebox-three-lane-shadow \
+CPU=2 \
 FEE_MEMORY=8Gi \
 TARGET_ENV=stg \
 TARGET_SERVICE=fee-api \
@@ -141,6 +145,18 @@ TARGET_SERVICE=fee-api \
 ```
 
 Do not start the matrix harness until all three artifacts are available.
+
+After every successful deploy, P19 applies these storage controls:
+
+- regional and legacy STG Cloud Build sources: delete after one day;
+- regional and legacy PROD Cloud Build sources: delete after seven days;
+- white-box artifact bucket: disable Object Versioning;
+- noncurrent STG artifact generations: delete after one day;
+- noncurrent PROD artifact generations: delete after seven days, followed by
+  the seven-day soft-delete recovery window.
+
+Live immutable artifact versions are not age-deleted because a runtime profile
+may still reference an older rollback version.
 
 ## 5. Validate and run the 32-cell harness
 

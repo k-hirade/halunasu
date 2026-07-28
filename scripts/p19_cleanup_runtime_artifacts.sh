@@ -27,18 +27,25 @@ TARGET_SERVICE="${TARGET_SERVICE:-all}"
 
 STG_ARTIFACT_KEEP_COUNT="${STG_ARTIFACT_KEEP_COUNT:-3}"
 STG_ARTIFACT_DELETE_OLDER_THAN="${STG_ARTIFACT_DELETE_OLDER_THAN:-7d}"
-STG_CLOUDBUILD_DELETE_AGE_DAYS="${STG_CLOUDBUILD_DELETE_AGE_DAYS:-3}"
+STG_CLOUDBUILD_DELETE_AGE_DAYS="${STG_CLOUDBUILD_DELETE_AGE_DAYS:-1}"
 STG_CLOUDBUILD_SOFT_DELETE_MODE="${STG_CLOUDBUILD_SOFT_DELETE_MODE:-clear}"
 STG_CLOUDBUILD_SOFT_DELETE_DURATION="${STG_CLOUDBUILD_SOFT_DELETE_DURATION:-7d}"
+STG_WHITEBOX_NONCURRENT_DELETE_AGE_DAYS="${STG_WHITEBOX_NONCURRENT_DELETE_AGE_DAYS:-1}"
+STG_WHITEBOX_SOFT_DELETE_MODE="${STG_WHITEBOX_SOFT_DELETE_MODE:-clear}"
+STG_WHITEBOX_SOFT_DELETE_DURATION="${STG_WHITEBOX_SOFT_DELETE_DURATION:-7d}"
 
 PROD_ARTIFACT_KEEP_COUNT="${PROD_ARTIFACT_KEEP_COUNT:-30}"
 PROD_ARTIFACT_DELETE_OLDER_THAN="${PROD_ARTIFACT_DELETE_OLDER_THAN:-90d}"
-PROD_CLOUDBUILD_DELETE_AGE_DAYS="${PROD_CLOUDBUILD_DELETE_AGE_DAYS:-30}"
+PROD_CLOUDBUILD_DELETE_AGE_DAYS="${PROD_CLOUDBUILD_DELETE_AGE_DAYS:-7}"
 PROD_CLOUDBUILD_SOFT_DELETE_MODE="${PROD_CLOUDBUILD_SOFT_DELETE_MODE:-duration}"
 PROD_CLOUDBUILD_SOFT_DELETE_DURATION="${PROD_CLOUDBUILD_SOFT_DELETE_DURATION:-7d}"
+PROD_WHITEBOX_NONCURRENT_DELETE_AGE_DAYS="${PROD_WHITEBOX_NONCURRENT_DELETE_AGE_DAYS:-7}"
+PROD_WHITEBOX_SOFT_DELETE_MODE="${PROD_WHITEBOX_SOFT_DELETE_MODE:-duration}"
+PROD_WHITEBOX_SOFT_DELETE_DURATION="${PROD_WHITEBOX_SOFT_DELETE_DURATION:-7d}"
 
 ARTIFACT_WARN_GIB="${ARTIFACT_WARN_GIB:-5}"
 CLOUDBUILD_WARN_GIB="${CLOUDBUILD_WARN_GIB:-2}"
+WHITEBOX_ARTIFACT_WARN_GIB="${WHITEBOX_ARTIFACT_WARN_GIB:-5}"
 
 run_or_print() {
   if [[ "${APPLY}" == "true" ]]; then
@@ -92,6 +99,24 @@ project_prefixes_for_env() {
   esac
 }
 
+project_group_selected() {
+  local prefix_string="$1"
+  if [[ "${TARGET_SERVICE}" == "all" ]]; then
+    return 0
+  fi
+
+  local prefix
+  for prefix in ${prefix_string}; do
+    if [[ "${prefix}" == "${TARGET_SERVICE}-"* ]]; then
+      return 0
+    fi
+    if [[ "${TARGET_SERVICE}" == charting-* && "${prefix}" == charting-* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 artifact_keep_count_for_env() {
   local env="$1"
   if [[ "${env}" == "prod" ]]; then
@@ -134,6 +159,33 @@ cloudbuild_soft_delete_duration_for_env() {
     echo "${PROD_CLOUDBUILD_SOFT_DELETE_DURATION}"
   else
     echo "${STG_CLOUDBUILD_SOFT_DELETE_DURATION}"
+  fi
+}
+
+whitebox_noncurrent_delete_age_for_env() {
+  local env="$1"
+  if [[ "${env}" == "prod" ]]; then
+    echo "${PROD_WHITEBOX_NONCURRENT_DELETE_AGE_DAYS}"
+  else
+    echo "${STG_WHITEBOX_NONCURRENT_DELETE_AGE_DAYS}"
+  fi
+}
+
+whitebox_soft_delete_mode_for_env() {
+  local env="$1"
+  if [[ "${env}" == "prod" ]]; then
+    echo "${PROD_WHITEBOX_SOFT_DELETE_MODE}"
+  else
+    echo "${STG_WHITEBOX_SOFT_DELETE_MODE}"
+  fi
+}
+
+whitebox_soft_delete_duration_for_env() {
+  local env="$1"
+  if [[ "${env}" == "prod" ]]; then
+    echo "${PROD_WHITEBOX_SOFT_DELETE_DURATION}"
+  else
+    echo "${STG_WHITEBOX_SOFT_DELETE_DURATION}"
   fi
 }
 
@@ -274,11 +326,25 @@ write_cloudbuild_lifecycle() {
   }' > "${lifecycle_file}"
 }
 
-set_cloudbuild_lifecycle() {
+cloudbuild_buckets_for_project() {
+  local project="$1"
+  printf '%s\n' "${project}_cloudbuild"
+  printf '%s\n' "${project}_${REGION}_cloudbuild"
+  if [[ "${APPLY}" == "true" ]]; then
+    local project_number
+    project_number="$(gcloud projects describe "${project}" \
+      --format="value(projectNumber)" \
+      --quiet 2>/dev/null || true)"
+    if [[ -n "${project_number}" ]]; then
+      printf '%s\n' "${project_number}-${REGION}-cloudbuild-logs"
+    fi
+  fi
+}
+
+set_cloudbuild_lifecycle_for_bucket() {
   local env="$1"
-  local project="$2"
-  local bucket="${project}_cloudbuild"
-  local lifecycle_file="/tmp/halunasu-${env}-${project}-cloudbuild-lifecycle.json"
+  local bucket="$2"
+  local lifecycle_file="/tmp/halunasu-${env}-${bucket//\//-}-cloudbuild-lifecycle.json"
   local soft_delete_mode
   local soft_delete_duration
   soft_delete_mode="$(cloudbuild_soft_delete_mode_for_env "${env}")"
@@ -297,6 +363,69 @@ set_cloudbuild_lifecycle() {
       --quiet
   else
     run_or_print gcloud storage buckets update "gs://${bucket}" \
+      --lifecycle-file "${lifecycle_file}" \
+      --soft-delete-duration "${soft_delete_duration}" \
+      --quiet
+  fi
+}
+
+set_cloudbuild_lifecycles() {
+  local env="$1"
+  local project="$2"
+  local bucket
+  while IFS= read -r bucket; do
+    [[ -z "${bucket}" ]] && continue
+    set_cloudbuild_lifecycle_for_bucket "${env}" "${bucket}"
+  done < <(cloudbuild_buckets_for_project "${project}")
+}
+
+write_whitebox_artifact_lifecycle() {
+  local lifecycle_file="$1"
+  local env="$2"
+  local delete_age_days
+  delete_age_days="$(whitebox_noncurrent_delete_age_for_env "${env}")"
+  jq -n --argjson age "${delete_age_days}" '{
+    "rule": [
+      {
+        "action": {"type": "Delete"},
+        "condition": {
+          "isLive": false,
+          "daysSinceNoncurrentTime": $age
+        }
+      }
+    ]
+  }' > "${lifecycle_file}"
+}
+
+set_whitebox_artifact_lifecycle() {
+  local env="$1"
+  local project="$2"
+  if [[ "${project}" != halunasu-fee-* ]]; then
+    return
+  fi
+
+  local bucket="${project}-artifacts"
+  local lifecycle_file="/tmp/halunasu-${env}-${project}-whitebox-artifact-lifecycle.json"
+  local soft_delete_mode
+  local soft_delete_duration
+  soft_delete_mode="$(whitebox_soft_delete_mode_for_env "${env}")"
+  soft_delete_duration="$(whitebox_soft_delete_duration_for_env "${env}")"
+  write_whitebox_artifact_lifecycle "${lifecycle_file}" "${env}"
+
+  if [[ "${APPLY}" == "true" ]] && ! gcloud storage buckets describe "gs://${bucket}" --quiet >/dev/null 2>&1; then
+    echo "Skipping missing bucket: gs://${bucket}"
+    return
+  fi
+
+  if [[ "${soft_delete_mode}" == "clear" ]]; then
+    run_or_print gcloud storage buckets update "gs://${bucket}" \
+      --no-versioning \
+      --lifecycle-file "${lifecycle_file}" \
+      --clear-soft-delete \
+      --quiet
+  else
+    run_or_print gcloud storage buckets update "gs://${bucket}" \
+      --no-versioning \
       --lifecycle-file "${lifecycle_file}" \
       --soft-delete-duration "${soft_delete_duration}" \
       --quiet
@@ -323,11 +452,26 @@ report_sizes_for_project() {
     warn_gib "Artifact Registry ${project}/${prefix}" "${artifact_bytes}" "${ARTIFACT_WARN_GIB}"
   done
 
-  local bucket="${project}_cloudbuild"
-  if gcloud storage buckets describe "gs://${bucket}" --quiet >/dev/null 2>&1; then
-    local bucket_bytes
-    bucket_bytes="$(gcloud storage du --summarize "gs://${bucket}" 2>/dev/null | awk '{print $1 + 0}')"
-    warn_gib "Cloud Build bucket gs://${bucket}" "${bucket_bytes}" "${CLOUDBUILD_WARN_GIB}"
+  local bucket
+  while IFS= read -r bucket; do
+    [[ -z "${bucket}" ]] && continue
+    if gcloud storage buckets describe "gs://${bucket}" --quiet >/dev/null 2>&1; then
+      local bucket_bytes
+      bucket_bytes="$(gcloud storage du --summarize "gs://${bucket}" 2>/dev/null | awk '{print $1 + 0}')"
+      warn_gib "Cloud Build bucket gs://${bucket}" "${bucket_bytes}" "${CLOUDBUILD_WARN_GIB}"
+    fi
+  done < <(cloudbuild_buckets_for_project "${project}")
+
+  if [[ "${project}" == halunasu-fee-* ]]; then
+    bucket="${project}-artifacts"
+    if gcloud storage buckets describe "gs://${bucket}" --quiet >/dev/null 2>&1; then
+      local current_bytes
+      local retained_bytes
+      current_bytes="$(gcloud storage du --summarize "gs://${bucket}" 2>/dev/null | awk '{print $1 + 0}')"
+      retained_bytes="$(gcloud storage du --summarize --all-versions "gs://${bucket}" 2>/dev/null | awk '{print $1 + 0}')"
+      warn_gib "Whitebox artifacts current gs://${bucket}" "${current_bytes}" "${WHITEBOX_ARTIFACT_WARN_GIB}"
+      warn_gib "Whitebox artifacts retained gs://${bucket}" "${retained_bytes}" "${WHITEBOX_ARTIFACT_WARN_GIB}"
+    fi
   fi
 }
 
@@ -336,17 +480,21 @@ cleanup_env() {
   echo "== ${env}: runtime artifact cleanup =="
   while IFS='|' read -r project prefix_string; do
     [[ -z "${project}" ]] && continue
+    if ! project_group_selected "${prefix_string}"; then
+      continue
+    fi
     read -r -a prefixes <<< "${prefix_string}"
     set_artifact_cleanup_policy "${env}" "${project}" "${prefixes[@]}"
     prune_images_now "${env}" "${project}" "${prefixes[@]}"
-    set_cloudbuild_lifecycle "${env}" "${project}"
+    set_cloudbuild_lifecycles "${env}" "${project}"
+    set_whitebox_artifact_lifecycle "${env}" "${project}"
     report_sizes_for_project "${env}" "${project}" "${prefixes[@]}"
   done < <(project_prefixes_for_env "${env}")
   echo
 }
 
 if [[ "${TARGET_SERVICE}" != "all" ]]; then
-  echo "TARGET_SERVICE=${TARGET_SERVICE}; cleanup policies are repository-level, so all runtime service prefixes in the selected env are maintained."
+  echo "TARGET_SERVICE=${TARGET_SERVICE}; cleanup is limited to its owning project while all prefixes in that repository are maintained."
 fi
 
 echo "Runtime artifact cleanup"
@@ -356,6 +504,7 @@ echo "Region: ${REGION}"
 echo "Repository: ${REPOSITORY}"
 echo "STG: keep=${STG_ARTIFACT_KEEP_COUNT}, deleteOlderThan=${STG_ARTIFACT_DELETE_OLDER_THAN}, cloudBuildAge=${STG_CLOUDBUILD_DELETE_AGE_DAYS}, softDelete=${STG_CLOUDBUILD_SOFT_DELETE_MODE}"
 echo "PROD: keep=${PROD_ARTIFACT_KEEP_COUNT}, deleteOlderThan=${PROD_ARTIFACT_DELETE_OLDER_THAN}, cloudBuildAge=${PROD_CLOUDBUILD_DELETE_AGE_DAYS}, softDelete=${PROD_CLOUDBUILD_SOFT_DELETE_MODE}/${PROD_CLOUDBUILD_SOFT_DELETE_DURATION}"
+echo "Whitebox noncurrent: stg=${STG_WHITEBOX_NONCURRENT_DELETE_AGE_DAYS}d/${STG_WHITEBOX_SOFT_DELETE_MODE}, prod=${PROD_WHITEBOX_NONCURRENT_DELETE_AGE_DAYS}d/${PROD_WHITEBOX_SOFT_DELETE_MODE}"
 echo
 
 if env_selected "stg"; then
