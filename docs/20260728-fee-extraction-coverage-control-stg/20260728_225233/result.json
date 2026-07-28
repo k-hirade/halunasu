@@ -1,0 +1,1138 @@
+{
+  "schemaVersion": "fee-extraction-coverage-recheck-stg-run-v1",
+  "generatedAt": "2026-07-28T13:53:17.236Z",
+  "runId": "fee-coverage-recheck-20260728135311083-d6c7fe",
+  "status": "complete",
+  "source": {
+    "dataset": "data/tests/fee-extraction-coverage-recheck/cases.json",
+    "datasetSha256": "62cdbe7f86442d6ff93e786ef2f3c33882a6a365b89d8372203780fc10b354c6",
+    "syntheticDataOnly": true,
+    "controlResult": null
+  },
+  "environment": {
+    "organizationCode": "yamamoto-demo-stg",
+    "facilityId": "fac_9fe275b29feebb03bfeb9410f7",
+    "departmentId": "dep_0a9c99c2dedcf0b6247294ef6a",
+    "expectedCoverageMode": "off",
+    "cloudRunRevision": "fee-api-stg-00202-2c4",
+    "clinicalExtractionStrategy": "openai_primary",
+    "coverageMode": "off",
+    "whiteboxModes": {
+      "linker": "off",
+      "context": "off",
+      "span": "shadow"
+    },
+    "spanArtifactVersion": "wx1-multilingual-minilm-l12-v2"
+  },
+  "methodology": {
+    "caseCount": 8,
+    "oneAdditionalOpenAiCallMaximum": true,
+    "openAiRemainsAuthoritative": true,
+    "auxiliaryCandidatesRequireHumanReview": true,
+    "noRawClinicalTextPersisted": true,
+    "controlComparisonRequested": false
+  },
+  "runs": [
+    {
+      "caseId": "dual-act-single-line",
+      "safetyClass": "current_own",
+      "serviceDate": "2026-06-02",
+      "setting": "outpatient",
+      "clinicalTextSha256": "ee05bfc2cdc6846d4b8e3487bca0cafd3ece130ab836f6ba0dc2b39ac7f4d47d",
+      "clinicalLineCount": 4,
+      "cloudRunRevision": "fee-api-stg-00202-2c4",
+      "feeSessionId": "fee_a8de245ea05e46369bd57b0ce9",
+      "status": "needs_review",
+      "totalPoints": 606,
+      "calculatePerformance": {
+        "totalDurationMs": 11679,
+        "openAiProviderMs": 9903,
+        "openAiUsage": {
+          "inputTokens": 5778,
+          "outputTokens": 899,
+          "totalTokens": 6677,
+          "cachedInputTokens": 0
+        }
+      },
+      "auxiliaryCoverage": {
+        "mode": "off",
+        "detectorAvailable": false,
+        "detectorDurationMs": 0,
+        "detectorReason": "coverage_mode_off",
+        "spanArtifactVersion": null,
+        "detectedSpanCount": 0,
+        "coveredSpanCount": 0,
+        "gapSpanCount": 0,
+        "gapLineCount": 0,
+        "recheckPlanned": false,
+        "recheckAttempted": false,
+        "recheckSucceeded": false,
+        "recheckSuppressedReason": "coverage_mode_off",
+        "recoveredClinicalEventCount": 0,
+        "unresolvedGapCount": 0,
+        "conflictCount": 0,
+        "additionalOpenAiCallCount": 0,
+        "additionalOpenAiInputTokens": 0,
+        "additionalOpenAiOutputTokens": 0,
+        "additionalOpenAiDurationMs": 0
+      },
+      "initialClinicalEvents": [
+        {
+          "eventFingerprint": "0595d4f63c2ea9f27277606adb65fe9e3ba3bdf7aae03f43c862c41c0b3ac843",
+          "type": "lab",
+          "actionStatus": "performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "ff9dbb211e2af870a00105898189f805e46cdc9449d7257f1ecde63286863bc3",
+          "type": "imaging",
+          "actionStatus": "performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        }
+      ],
+      "auxiliaryClinicalEvents": [],
+      "lineItems": [
+        {
+          "code": "160054710",
+          "name": "ＣＲＰ",
+          "points": 16,
+          "quantity": 1,
+          "basis": null,
+          "source": "medical_procedure_master",
+          "candidateOnly": false,
+          "reviewRequired": true
+        },
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_basic_fee",
+          "candidateOnly": false,
+          "reviewRequired": true
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_price_support_add_on",
+          "candidateOnly": false,
+          "reviewRequired": true
+        },
+        {
+          "code": "170000410",
+          "name": "単純撮影（イ）の写真診断",
+          "points": 85,
+          "quantity": 1,
+          "basis": null,
+          "source": "imaging_fee",
+          "candidateOnly": false,
+          "reviewRequired": true
+        },
+        {
+          "code": "170027910",
+          "name": "単純撮影（デジタル撮影）",
+          "points": 68,
+          "quantity": 1,
+          "basis": null,
+          "source": "imaging_fee",
+          "candidateOnly": false,
+          "reviewRequired": true
+        },
+        {
+          "code": "160062110",
+          "name": "免疫学的検査判断料",
+          "points": 144,
+          "quantity": 1,
+          "basis": null,
+          "source": "d026",
+          "candidateOnly": false,
+          "reviewRequired": true
+        }
+      ],
+      "candidateProposals": [],
+      "unsafeConfirmedLineAudit": {
+        "contractPresent": true,
+        "allowedSources": [],
+        "unexpectedLineItems": []
+      },
+      "auxiliaryCandidateAudit": {
+        "duplicateCount": 0,
+        "duplicateCodes": [],
+        "netNewCount": 0,
+        "netNewCodes": []
+      },
+      "checks": {
+        "cloudRunRevisionMatches": true,
+        "additionalOpenAiCallLimit": true,
+        "noDirectWhiteboxCandidates": true,
+        "noDirectWhiteboxLineItems": true,
+        "noAuxiliaryConfirmedLines": true,
+        "auxiliaryCandidatesRequireReview": true,
+        "noDuplicateAuxiliaryCandidates": true,
+        "unsafeConfirmedLineContractPresent": true,
+        "noUnexpectedUnsafeConfirmedLines": true,
+        "unsafeContextNotPromoted": true
+      },
+      "hardCheckPassed": true
+    },
+    {
+      "caseId": "document-and-guidance",
+      "safetyClass": "current_own",
+      "serviceDate": "2026-06-04",
+      "setting": "outpatient",
+      "clinicalTextSha256": "5e60a514392b341acede7bd5382483e832e7f9331519af646a9e4e1ff0a1d0cf",
+      "clinicalLineCount": 4,
+      "cloudRunRevision": "fee-api-stg-00202-2c4",
+      "feeSessionId": "fee_ba5abb9139444bd18a293ec495",
+      "status": "needs_review",
+      "totalPoints": 293,
+      "calculatePerformance": {
+        "totalDurationMs": 6449,
+        "openAiProviderMs": 4650,
+        "openAiUsage": {
+          "inputTokens": 5635,
+          "outputTokens": 646,
+          "totalTokens": 6281,
+          "cachedInputTokens": 4864
+        }
+      },
+      "auxiliaryCoverage": {
+        "mode": "off",
+        "detectorAvailable": false,
+        "detectorDurationMs": 0,
+        "detectorReason": "coverage_mode_off",
+        "spanArtifactVersion": null,
+        "detectedSpanCount": 0,
+        "coveredSpanCount": 0,
+        "gapSpanCount": 0,
+        "gapLineCount": 0,
+        "recheckPlanned": false,
+        "recheckAttempted": false,
+        "recheckSucceeded": false,
+        "recheckSuppressedReason": "coverage_mode_off",
+        "recoveredClinicalEventCount": 0,
+        "unresolvedGapCount": 0,
+        "conflictCount": 0,
+        "additionalOpenAiCallCount": 0,
+        "additionalOpenAiInputTokens": 0,
+        "additionalOpenAiOutputTokens": 0,
+        "additionalOpenAiDurationMs": 0
+      },
+      "initialClinicalEvents": [
+        {
+          "eventFingerprint": "41f4cf9129b99e6eda0f2f3a5481d64b6b7176e597138fe02471750b3c114d64",
+          "type": "outpatient_basic",
+          "actionStatus": "performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "6acd50bc7504a080ecec6362ce3d234974a277850933ec288d8ca0d86cce6699",
+          "type": "outpatient_basic",
+          "actionStatus": "performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        }
+      ],
+      "auxiliaryClinicalEvents": [],
+      "lineItems": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_basic_fee",
+          "candidateOnly": false,
+          "reviewRequired": true
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_price_support_add_on",
+          "candidateOnly": false,
+          "reviewRequired": true
+        }
+      ],
+      "candidateProposals": [
+        {
+          "code": "180000710",
+          "name": null,
+          "potentialPoints": 100,
+          "basis": "master_link_candidate",
+          "source": "clinical_billing_opportunity",
+          "candidateOnly": false,
+          "reviewRequired": false
+        }
+      ],
+      "unsafeConfirmedLineAudit": {
+        "contractPresent": true,
+        "allowedSources": [],
+        "unexpectedLineItems": []
+      },
+      "auxiliaryCandidateAudit": {
+        "duplicateCount": 0,
+        "duplicateCodes": [],
+        "netNewCount": 0,
+        "netNewCodes": []
+      },
+      "checks": {
+        "cloudRunRevisionMatches": true,
+        "additionalOpenAiCallLimit": true,
+        "noDirectWhiteboxCandidates": true,
+        "noDirectWhiteboxLineItems": true,
+        "noAuxiliaryConfirmedLines": true,
+        "auxiliaryCandidatesRequireReview": true,
+        "noDuplicateAuxiliaryCandidates": true,
+        "unsafeConfirmedLineContractPresent": true,
+        "noUnexpectedUnsafeConfirmedLines": true,
+        "unsafeContextNotPromoted": true
+      },
+      "hardCheckPassed": true
+    },
+    {
+      "caseId": "past-act",
+      "safetyClass": "past",
+      "serviceDate": "2026-06-08",
+      "setting": "outpatient",
+      "clinicalTextSha256": "ba30ec451a579c3ce9ca931137d013bba4605d49c5fb590950dd2d3300124b73",
+      "clinicalLineCount": 4,
+      "cloudRunRevision": "fee-api-stg-00202-2c4",
+      "feeSessionId": "fee_a1ca836e30fc46c3b834e40c2d",
+      "status": "needs_review",
+      "totalPoints": 293,
+      "calculatePerformance": {
+        "totalDurationMs": 11786,
+        "openAiProviderMs": 10941,
+        "openAiUsage": {
+          "inputTokens": 5754,
+          "outputTokens": 1556,
+          "totalTokens": 7310,
+          "cachedInputTokens": 4864
+        }
+      },
+      "auxiliaryCoverage": {
+        "mode": "off",
+        "detectorAvailable": false,
+        "detectorDurationMs": 0,
+        "detectorReason": "coverage_mode_off",
+        "spanArtifactVersion": null,
+        "detectedSpanCount": 0,
+        "coveredSpanCount": 0,
+        "gapSpanCount": 0,
+        "gapLineCount": 0,
+        "recheckPlanned": false,
+        "recheckAttempted": false,
+        "recheckSucceeded": false,
+        "recheckSuppressedReason": "coverage_mode_off",
+        "recoveredClinicalEventCount": 0,
+        "unresolvedGapCount": 0,
+        "conflictCount": 0,
+        "additionalOpenAiCallCount": 0,
+        "additionalOpenAiInputTokens": 0,
+        "additionalOpenAiOutputTokens": 0,
+        "additionalOpenAiDurationMs": 0
+      },
+      "initialClinicalEvents": [
+        {
+          "eventFingerprint": "f1407f7e7202854750acc34e9b219078026fa68c67c34839240f1e61142258ef",
+          "type": "imaging",
+          "actionStatus": "performed",
+          "temporalRelation": "past",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "79a9a26248631736b5df8b9e75a2461ba2106454b293a4fbe146b5db186169f6",
+          "type": "lab",
+          "actionStatus": "performed",
+          "temporalRelation": "past",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "cb4558558e4ff503c7c63715768d0366053fbfdbfebdf46363263e775b10fd23",
+          "type": "injection",
+          "actionStatus": "not_performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        }
+      ],
+      "auxiliaryClinicalEvents": [],
+      "lineItems": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_basic_fee",
+          "candidateOnly": false,
+          "reviewRequired": true
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_price_support_add_on",
+          "candidateOnly": false,
+          "reviewRequired": true
+        }
+      ],
+      "candidateProposals": [
+        {
+          "code": "113707610",
+          "name": null,
+          "potentialPoints": 90,
+          "basis": "disease_indication_candidate",
+          "source": "clinical_billing_opportunity:disease_indication",
+          "candidateOnly": false,
+          "reviewRequired": false
+        },
+        {
+          "code": "113041810",
+          "name": null,
+          "potentialPoints": 660,
+          "basis": "disease_indication_candidate",
+          "source": "clinical_billing_opportunity:disease_indication",
+          "candidateOnly": false,
+          "reviewRequired": false
+        },
+        {
+          "code": null,
+          "name": null,
+          "potentialPoints": 0,
+          "basis": "disease_indication_candidate",
+          "source": "clinical_billing_opportunity:disease_indication",
+          "candidateOnly": false,
+          "reviewRequired": false
+        }
+      ],
+      "unsafeConfirmedLineAudit": {
+        "contractPresent": true,
+        "allowedSources": [
+          "outpatient_basic_fee",
+          "outpatient_price_support_add_on"
+        ],
+        "unexpectedLineItems": []
+      },
+      "auxiliaryCandidateAudit": {
+        "duplicateCount": 0,
+        "duplicateCodes": [],
+        "netNewCount": 0,
+        "netNewCodes": []
+      },
+      "checks": {
+        "cloudRunRevisionMatches": true,
+        "additionalOpenAiCallLimit": true,
+        "noDirectWhiteboxCandidates": true,
+        "noDirectWhiteboxLineItems": true,
+        "noAuxiliaryConfirmedLines": true,
+        "auxiliaryCandidatesRequireReview": true,
+        "noDuplicateAuxiliaryCandidates": true,
+        "unsafeConfirmedLineContractPresent": true,
+        "noUnexpectedUnsafeConfirmedLines": true,
+        "unsafeContextNotPromoted": true
+      },
+      "hardCheckPassed": true
+    },
+    {
+      "caseId": "external-act",
+      "safetyClass": "external",
+      "serviceDate": "2026-06-10",
+      "setting": "outpatient",
+      "clinicalTextSha256": "a57a59c3ec9c885ac89ccb527aa7a55e296ebd00242aa4bb79ceb1a87790a272",
+      "clinicalLineCount": 4,
+      "cloudRunRevision": "fee-api-stg-00202-2c4",
+      "feeSessionId": "fee_a1362ebec880408fa015f9ac21",
+      "status": "needs_review",
+      "totalPoints": 293,
+      "calculatePerformance": {
+        "totalDurationMs": 11125,
+        "openAiProviderMs": 10372,
+        "openAiUsage": {
+          "inputTokens": 5707,
+          "outputTokens": 1338,
+          "totalTokens": 7045,
+          "cachedInputTokens": 4864
+        }
+      },
+      "auxiliaryCoverage": {
+        "mode": "off",
+        "detectorAvailable": false,
+        "detectorDurationMs": 0,
+        "detectorReason": "coverage_mode_off",
+        "spanArtifactVersion": null,
+        "detectedSpanCount": 0,
+        "coveredSpanCount": 0,
+        "gapSpanCount": 0,
+        "gapLineCount": 0,
+        "recheckPlanned": false,
+        "recheckAttempted": false,
+        "recheckSucceeded": false,
+        "recheckSuppressedReason": "coverage_mode_off",
+        "recoveredClinicalEventCount": 0,
+        "unresolvedGapCount": 0,
+        "conflictCount": 0,
+        "additionalOpenAiCallCount": 0,
+        "additionalOpenAiInputTokens": 0,
+        "additionalOpenAiOutputTokens": 0,
+        "additionalOpenAiDurationMs": 0
+      },
+      "initialClinicalEvents": [
+        {
+          "eventFingerprint": "514f010898509c717d2aeca086143a33540da7f3d6b7502cba1b7cdb423f0e6c",
+          "type": "imaging",
+          "actionStatus": "performed",
+          "temporalRelation": "past",
+          "providerOwnership": "other_provider",
+          "sourceOrigin": "carried_in_result",
+          "source": null
+        }
+      ],
+      "auxiliaryClinicalEvents": [],
+      "lineItems": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_basic_fee",
+          "candidateOnly": false,
+          "reviewRequired": true
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_price_support_add_on",
+          "candidateOnly": false,
+          "reviewRequired": true
+        }
+      ],
+      "candidateProposals": [],
+      "unsafeConfirmedLineAudit": {
+        "contractPresent": true,
+        "allowedSources": [
+          "outpatient_basic_fee",
+          "outpatient_price_support_add_on"
+        ],
+        "unexpectedLineItems": []
+      },
+      "auxiliaryCandidateAudit": {
+        "duplicateCount": 0,
+        "duplicateCodes": [],
+        "netNewCount": 0,
+        "netNewCodes": []
+      },
+      "checks": {
+        "cloudRunRevisionMatches": true,
+        "additionalOpenAiCallLimit": true,
+        "noDirectWhiteboxCandidates": true,
+        "noDirectWhiteboxLineItems": true,
+        "noAuxiliaryConfirmedLines": true,
+        "auxiliaryCandidatesRequireReview": true,
+        "noDuplicateAuxiliaryCandidates": true,
+        "unsafeConfirmedLineContractPresent": true,
+        "noUnexpectedUnsafeConfirmedLines": true,
+        "unsafeContextNotPromoted": true
+      },
+      "hardCheckPassed": true
+    },
+    {
+      "caseId": "negated-act",
+      "safetyClass": "negated",
+      "serviceDate": "2026-06-12",
+      "setting": "outpatient",
+      "clinicalTextSha256": "9371c362dd5ded44c592f79a1382a121451f11e33b6b8b1d7d05387e0b01b19d",
+      "clinicalLineCount": 4,
+      "cloudRunRevision": "fee-api-stg-00202-2c4",
+      "feeSessionId": "fee_04c6875248ab422e9949f64620",
+      "status": "needs_review",
+      "totalPoints": 293,
+      "calculatePerformance": {
+        "totalDurationMs": 9439,
+        "openAiProviderMs": 8416,
+        "openAiUsage": {
+          "inputTokens": 5680,
+          "outputTokens": 1342,
+          "totalTokens": 7022,
+          "cachedInputTokens": 4864
+        }
+      },
+      "auxiliaryCoverage": {
+        "mode": "off",
+        "detectorAvailable": false,
+        "detectorDurationMs": 0,
+        "detectorReason": "coverage_mode_off",
+        "spanArtifactVersion": null,
+        "detectedSpanCount": 0,
+        "coveredSpanCount": 0,
+        "gapSpanCount": 0,
+        "gapLineCount": 0,
+        "recheckPlanned": false,
+        "recheckAttempted": false,
+        "recheckSucceeded": false,
+        "recheckSuppressedReason": "coverage_mode_off",
+        "recoveredClinicalEventCount": 0,
+        "unresolvedGapCount": 0,
+        "conflictCount": 0,
+        "additionalOpenAiCallCount": 0,
+        "additionalOpenAiInputTokens": 0,
+        "additionalOpenAiOutputTokens": 0,
+        "additionalOpenAiDurationMs": 0
+      },
+      "initialClinicalEvents": [
+        {
+          "eventFingerprint": "2efe408d70757a71f7d19f1cdfe9d48b28f02d515543177af7e49821f861f8c7",
+          "type": "medication",
+          "actionStatus": "not_performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "34dd4ac9a0dd8e5a7a0c4924d2c4ad816a5fa2bff654127807fbe6fc70eb3d2b",
+          "type": "medication",
+          "actionStatus": "not_performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "fc1e49dbabc538c4879f623d4b49761a91a5714d986e2bc1c4f8daa4eb6715d8",
+          "type": "lab",
+          "actionStatus": "not_performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "62c08cea535819bd9bd10442fa8cf59a941e3f7883610738bc9a065ef5aa20a8",
+          "type": "counseling",
+          "actionStatus": "performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        }
+      ],
+      "auxiliaryClinicalEvents": [],
+      "lineItems": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_basic_fee",
+          "candidateOnly": false,
+          "reviewRequired": true
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_price_support_add_on",
+          "candidateOnly": false,
+          "reviewRequired": true
+        }
+      ],
+      "candidateProposals": [],
+      "unsafeConfirmedLineAudit": {
+        "contractPresent": true,
+        "allowedSources": [
+          "outpatient_basic_fee",
+          "outpatient_price_support_add_on"
+        ],
+        "unexpectedLineItems": []
+      },
+      "auxiliaryCandidateAudit": {
+        "duplicateCount": 0,
+        "duplicateCodes": [],
+        "netNewCount": 0,
+        "netNewCodes": []
+      },
+      "checks": {
+        "cloudRunRevisionMatches": true,
+        "additionalOpenAiCallLimit": true,
+        "noDirectWhiteboxCandidates": true,
+        "noDirectWhiteboxLineItems": true,
+        "noAuxiliaryConfirmedLines": true,
+        "auxiliaryCandidatesRequireReview": true,
+        "noDuplicateAuxiliaryCandidates": true,
+        "unsafeConfirmedLineContractPresent": true,
+        "noUnexpectedUnsafeConfirmedLines": true,
+        "unsafeContextNotPromoted": true
+      },
+      "hardCheckPassed": true
+    },
+    {
+      "caseId": "planned-act",
+      "safetyClass": "planned",
+      "serviceDate": "2026-06-15",
+      "setting": "outpatient",
+      "clinicalTextSha256": "a912c7b27e60e71a11bfbb06162ed5b055de8c86cc4c2324f8bd5542eb383744",
+      "clinicalLineCount": 4,
+      "cloudRunRevision": "fee-api-stg-00202-2c4",
+      "feeSessionId": "fee_17a0f600c3b44232941f5c3cdf",
+      "status": "needs_review",
+      "totalPoints": 293,
+      "calculatePerformance": {
+        "totalDurationMs": 5141,
+        "openAiProviderMs": 4372,
+        "openAiUsage": {
+          "inputTokens": 5712,
+          "outputTokens": 713,
+          "totalTokens": 6425,
+          "cachedInputTokens": 4864
+        }
+      },
+      "auxiliaryCoverage": {
+        "mode": "off",
+        "detectorAvailable": false,
+        "detectorDurationMs": 0,
+        "detectorReason": "coverage_mode_off",
+        "spanArtifactVersion": null,
+        "detectedSpanCount": 0,
+        "coveredSpanCount": 0,
+        "gapSpanCount": 0,
+        "gapLineCount": 0,
+        "recheckPlanned": false,
+        "recheckAttempted": false,
+        "recheckSucceeded": false,
+        "recheckSuppressedReason": "coverage_mode_off",
+        "recoveredClinicalEventCount": 0,
+        "unresolvedGapCount": 0,
+        "conflictCount": 0,
+        "additionalOpenAiCallCount": 0,
+        "additionalOpenAiInputTokens": 0,
+        "additionalOpenAiOutputTokens": 0,
+        "additionalOpenAiDurationMs": 0
+      },
+      "initialClinicalEvents": [
+        {
+          "eventFingerprint": "471908c17c5eb1941615ccd3e118ae4ca330d2359adc1ee0d71b987e538774d0",
+          "type": "lab",
+          "actionStatus": "planned",
+          "temporalRelation": "future",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "1b7db3eb0f10b871563cbdd474b5737d089a87b68989e717e3d6f9b7c4872145",
+          "type": "lab",
+          "actionStatus": "planned",
+          "temporalRelation": "future",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        }
+      ],
+      "auxiliaryClinicalEvents": [],
+      "lineItems": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_basic_fee",
+          "candidateOnly": false,
+          "reviewRequired": true
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_price_support_add_on",
+          "candidateOnly": false,
+          "reviewRequired": true
+        }
+      ],
+      "candidateProposals": [
+        {
+          "code": "113041910",
+          "name": null,
+          "potentialPoints": 760,
+          "basis": "disease_indication_candidate",
+          "source": "clinical_billing_opportunity:disease_indication",
+          "candidateOnly": false,
+          "reviewRequired": false
+        },
+        {
+          "code": null,
+          "name": null,
+          "potentialPoints": 0,
+          "basis": "disease_indication_candidate",
+          "source": "clinical_billing_opportunity:disease_indication",
+          "candidateOnly": false,
+          "reviewRequired": false
+        }
+      ],
+      "unsafeConfirmedLineAudit": {
+        "contractPresent": true,
+        "allowedSources": [
+          "outpatient_basic_fee",
+          "outpatient_price_support_add_on"
+        ],
+        "unexpectedLineItems": []
+      },
+      "auxiliaryCandidateAudit": {
+        "duplicateCount": 0,
+        "duplicateCodes": [],
+        "netNewCount": 0,
+        "netNewCodes": []
+      },
+      "checks": {
+        "cloudRunRevisionMatches": true,
+        "additionalOpenAiCallLimit": true,
+        "noDirectWhiteboxCandidates": true,
+        "noDirectWhiteboxLineItems": true,
+        "noAuxiliaryConfirmedLines": true,
+        "auxiliaryCandidatesRequireReview": true,
+        "noDuplicateAuxiliaryCandidates": true,
+        "unsafeConfirmedLineContractPresent": true,
+        "noUnexpectedUnsafeConfirmedLines": true,
+        "unsafeContextNotPromoted": true
+      },
+      "hardCheckPassed": true
+    },
+    {
+      "caseId": "current-wound-treatment",
+      "safetyClass": "current_own",
+      "serviceDate": "2026-06-18",
+      "setting": "outpatient",
+      "clinicalTextSha256": "85952f8bc1f815d9de7a2dd141ee836170aa6a3357d1f54bbdb0beef006b298b",
+      "clinicalLineCount": 4,
+      "cloudRunRevision": "fee-api-stg-00202-2c4",
+      "feeSessionId": "fee_0c49724279094b05bd9e75782d",
+      "status": "needs_review",
+      "totalPoints": 293,
+      "calculatePerformance": {
+        "totalDurationMs": 7033,
+        "openAiProviderMs": 5528,
+        "openAiUsage": {
+          "inputTokens": 5703,
+          "outputTokens": 897,
+          "totalTokens": 6600,
+          "cachedInputTokens": 4864
+        }
+      },
+      "auxiliaryCoverage": {
+        "mode": "off",
+        "detectorAvailable": false,
+        "detectorDurationMs": 0,
+        "detectorReason": "coverage_mode_off",
+        "spanArtifactVersion": null,
+        "detectedSpanCount": 0,
+        "coveredSpanCount": 0,
+        "gapSpanCount": 0,
+        "gapLineCount": 0,
+        "recheckPlanned": false,
+        "recheckAttempted": false,
+        "recheckSucceeded": false,
+        "recheckSuppressedReason": "coverage_mode_off",
+        "recoveredClinicalEventCount": 0,
+        "unresolvedGapCount": 0,
+        "conflictCount": 0,
+        "additionalOpenAiCallCount": 0,
+        "additionalOpenAiInputTokens": 0,
+        "additionalOpenAiOutputTokens": 0,
+        "additionalOpenAiDurationMs": 0
+      },
+      "initialClinicalEvents": [
+        {
+          "eventFingerprint": "c2ac0e0a6980f4626ddd006fcab87381a0a97bd0c5be62ff5e26658fe01c6bf9",
+          "type": "procedure",
+          "actionStatus": "performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "24c121673394c1cb0db4b6993978ae0badb5dbc7a075cb0a0c392f501485980d",
+          "type": "outpatient_basic",
+          "actionStatus": "performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        }
+      ],
+      "auxiliaryClinicalEvents": [],
+      "lineItems": [
+        {
+          "code": "111000110",
+          "name": "初診料",
+          "points": 291,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_basic_fee",
+          "candidateOnly": false,
+          "reviewRequired": true
+        },
+        {
+          "code": "180819910",
+          "name": "物価対応料１（外来・在宅物価対応料）（初診時）イ",
+          "points": 2,
+          "quantity": 1,
+          "basis": null,
+          "source": "outpatient_price_support_add_on",
+          "candidateOnly": false,
+          "reviewRequired": true
+        }
+      ],
+      "candidateProposals": [
+        {
+          "code": null,
+          "name": null,
+          "potentialPoints": 0,
+          "basis": "dictionary_scan_candidate",
+          "source": "clinical_billing_opportunity",
+          "candidateOnly": false,
+          "reviewRequired": false
+        }
+      ],
+      "unsafeConfirmedLineAudit": {
+        "contractPresent": true,
+        "allowedSources": [],
+        "unexpectedLineItems": []
+      },
+      "auxiliaryCandidateAudit": {
+        "duplicateCount": 0,
+        "duplicateCodes": [],
+        "netNewCount": 0,
+        "netNewCodes": []
+      },
+      "checks": {
+        "cloudRunRevisionMatches": true,
+        "additionalOpenAiCallLimit": true,
+        "noDirectWhiteboxCandidates": true,
+        "noDirectWhiteboxLineItems": true,
+        "noAuxiliaryConfirmedLines": true,
+        "auxiliaryCandidatesRequireReview": true,
+        "noDuplicateAuxiliaryCandidates": true,
+        "unsafeConfirmedLineContractPresent": true,
+        "noUnexpectedUnsafeConfirmedLines": true,
+        "unsafeContextNotPromoted": true
+      },
+      "hardCheckPassed": true
+    },
+    {
+      "caseId": "long-home-care",
+      "safetyClass": "current_own",
+      "serviceDate": "2026-06-23",
+      "setting": "home_visit",
+      "clinicalTextSha256": "eb2db058e313b5440fe6090d4f2918e698a5d4c0fd0d8d6643080f8bce0c01ed",
+      "clinicalLineCount": 4,
+      "cloudRunRevision": "fee-api-stg-00202-2c4",
+      "feeSessionId": "fee_988d2c65ebf1470c8ab18c461e",
+      "status": "needs_review",
+      "totalPoints": 0,
+      "calculatePerformance": {
+        "totalDurationMs": 13973,
+        "openAiProviderMs": 12791,
+        "openAiUsage": {
+          "inputTokens": 6026,
+          "outputTokens": 1770,
+          "totalTokens": 7796,
+          "cachedInputTokens": 4864
+        }
+      },
+      "auxiliaryCoverage": {
+        "mode": "off",
+        "detectorAvailable": false,
+        "detectorDurationMs": 0,
+        "detectorReason": "coverage_mode_off",
+        "spanArtifactVersion": null,
+        "detectedSpanCount": 0,
+        "coveredSpanCount": 0,
+        "gapSpanCount": 0,
+        "gapLineCount": 0,
+        "recheckPlanned": false,
+        "recheckAttempted": false,
+        "recheckSucceeded": false,
+        "recheckSuppressedReason": "coverage_mode_off",
+        "recoveredClinicalEventCount": 0,
+        "unresolvedGapCount": 0,
+        "conflictCount": 0,
+        "additionalOpenAiCallCount": 0,
+        "additionalOpenAiInputTokens": 0,
+        "additionalOpenAiOutputTokens": 0,
+        "additionalOpenAiDurationMs": 0
+      },
+      "initialClinicalEvents": [
+        {
+          "eventFingerprint": "78fbfd136c5ec2a84b1b235bd4cfe546d1583fa11065d42eb1423b8ce097ad81",
+          "type": "procedure",
+          "actionStatus": "performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "bc63ea0e82e260ca2caa14b1b835a45d92b7f296791e6356dd51bb8d32c22f0b",
+          "type": "exam",
+          "actionStatus": "performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "04f70c8f090b5f677abb5d2010bed7ede2672c63434c8796072ee004f2fe1a75",
+          "type": "management",
+          "actionStatus": "not_performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "a773a9485b4f1955ffacf16682f1b81562aae74b87ed431a6987356d259ca23d",
+          "type": "management",
+          "actionStatus": "not_performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "8687572d844f49f62cb6291b907617bce397924416a7748e7339e375a9485875",
+          "type": "management",
+          "actionStatus": "not_performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "3ee9fa55a4c98fffe998075c76a613a34122a87c009edecb67a4c4fcffa0c847",
+          "type": "counseling",
+          "actionStatus": "performed",
+          "temporalRelation": "current_visit",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        },
+        {
+          "eventFingerprint": "e6315329f3cf5f4c934449870f3576f4d540cb26c2f7ab9e2523df6adc7c3035",
+          "type": "follow_up",
+          "actionStatus": "planned",
+          "temporalRelation": "future",
+          "providerOwnership": "own_clinic",
+          "sourceOrigin": "own_clinic_record",
+          "source": null
+        }
+      ],
+      "auxiliaryClinicalEvents": [],
+      "lineItems": [],
+      "candidateProposals": [
+        {
+          "code": null,
+          "name": null,
+          "potentialPoints": 0,
+          "basis": "disease_indication_candidate",
+          "source": "clinical_billing_opportunity:disease_indication",
+          "candidateOnly": false,
+          "reviewRequired": false
+        },
+        {
+          "code": "114057970",
+          "name": null,
+          "potentialPoints": 50,
+          "basis": "facility_auto_billing_rule",
+          "source": "facility_auto_billing_rule",
+          "candidateOnly": false,
+          "reviewRequired": false
+        }
+      ],
+      "unsafeConfirmedLineAudit": {
+        "contractPresent": true,
+        "allowedSources": [],
+        "unexpectedLineItems": []
+      },
+      "auxiliaryCandidateAudit": {
+        "duplicateCount": 0,
+        "duplicateCodes": [],
+        "netNewCount": 0,
+        "netNewCodes": []
+      },
+      "checks": {
+        "cloudRunRevisionMatches": true,
+        "additionalOpenAiCallLimit": true,
+        "noDirectWhiteboxCandidates": true,
+        "noDirectWhiteboxLineItems": true,
+        "noAuxiliaryConfirmedLines": true,
+        "auxiliaryCandidatesRequireReview": true,
+        "noDuplicateAuxiliaryCandidates": true,
+        "unsafeConfirmedLineContractPresent": true,
+        "noUnexpectedUnsafeConfirmedLines": true,
+        "unsafeContextNotPromoted": true
+      },
+      "hardCheckPassed": true
+    }
+  ],
+  "summary": {
+    "status": "complete",
+    "runCount": 8,
+    "hardCheckPassed": true,
+    "allAcceptanceChecksPassed": false,
+    "coverageRecoveryObserved": false,
+    "recoveredRunCount": 0,
+    "recheckAttemptedRunCount": 0,
+    "recheckSucceededRunCount": 0,
+    "maximumAdditionalOpenAiCallCount": 0,
+    "auxiliaryCandidateCount": 0,
+    "netNewAuxiliaryCandidateCount": 0,
+    "duplicateAuxiliaryCandidateCount": 0,
+    "auxiliaryConfirmedLineCount": 0,
+    "unsafePromotionViolationCount": 0,
+    "directWhiteboxCandidateCount": 0,
+    "uniqueCloudRunRevisions": [
+      "fee-api-stg-00202-2c4"
+    ],
+    "singleCloudRunRevision": true,
+    "controlComparisonRunCount": 0,
+    "controlComparisonComplete": false,
+    "controlComparisonPassed": null
+  },
+  "completedAt": "2026-07-28T13:54:43.310Z"
+}
