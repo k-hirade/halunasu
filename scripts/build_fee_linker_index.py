@@ -12,14 +12,16 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import shutil
 import sqlite3
 import unicodedata
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
-from medical_fee_calculation.name_scan import _scan_aliases
+from medical_fee_calculation.name_scan import _scan_aliases, strip_parenthetical_qualifiers
 from medical_fee_calculation.whitebox_artifacts import (
     sha256_file,
     validate_artifact_license,
@@ -27,8 +29,10 @@ from medical_fee_calculation.whitebox_artifacts import (
 from medical_fee_calculation.whitebox_linker import create_onnx_sentence_encoder
 
 
-INDEX_SCHEMA_VERSION = 2
+INDEX_SCHEMA_VERSION = 3
 ARTIFACT_TYPE = "fee_master_linker"
+FAMILY_KEY_RULE_VERSION = "fee-linker-family-v1"
+FAMILY_REVIEW_SIZE_LIMIT = 25
 
 PROCEDURE_CATEGORY_BY_ALPHA_PART = {
     "A": "outpatient_basic",
@@ -61,7 +65,8 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
         sources.append(dict(procedure_source))
         rows = connection.execute(
             """
-            SELECT code, short_name, base_name, alpha_part, points,
+            SELECT code, short_name, base_name, chapter, part, alpha_part,
+                   section, branch, points,
                    effective_from, effective_to
             FROM medical_procedures
             WHERE source_id = ?
@@ -88,6 +93,7 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
                 points=row["points"],
                 effective_from=row["effective_from"],
                 effective_to=row["effective_to"],
+                family=_procedure_family_identity(row),
             ))
 
         drug_source = _latest_source(connection, "drug_master")
@@ -96,7 +102,8 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
             rows = connection.execute(
                 """
                 SELECT code, name, kana, base_name, generic_prescription_text,
-                       changed_at, discontinued_at
+                       reimbursement_code, product_related_code, dosage_form,
+                       unit_code, changed_at, discontinued_at
                 FROM drugs
                 WHERE source_id = ?
                 ORDER BY code
@@ -122,6 +129,7 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
                     category="medication",
                     effective_from=row["changed_at"],
                     effective_to=row["discontinued_at"],
+                    family=_drug_family_identity(row),
                 ))
 
         disease_source = connection.execute(
@@ -169,9 +177,11 @@ def collect_master_documents(master_db: Path) -> tuple[list[dict[str, Any]], lis
                     category="diagnosis",
                     effective_from=row["effective_from"],
                     effective_to=row["effective_to"],
+                    family=_disease_family_identity(row),
                 ))
     finally:
         connection.close()
+    documents = _annotate_family_members(documents)
     documents.sort(key=lambda item: (item["kind"], item["code"], item["doc"]))
     return documents, sources
 
@@ -265,6 +275,22 @@ def build_linker_artifact(
     source_fingerprint = hashlib.sha256(
         json.dumps(sources, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
+    family_statistics = _family_statistics(documents)
+    family_assignment_sha = hashlib.sha256(
+        json.dumps(
+            sorted({
+                (
+                    str(item["kind"]),
+                    str(item["code"]),
+                    str(item["familyKey"]),
+                    int(item["familyMemberCount"]),
+                )
+                for item in documents
+            }),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
     license_fingerprint = json.dumps(
         license_record,
         ensure_ascii=False,
@@ -296,6 +322,10 @@ def build_linker_artifact(
         "documentPrefix": document_prefix,
         "dimension": dimension,
         "documentCount": len(documents),
+        "familyKeyRuleVersion": FAMILY_KEY_RULE_VERSION,
+        "familyAssignmentSha256": family_assignment_sha,
+        "familyReviewSizeLimit": FAMILY_REVIEW_SIZE_LIMIT,
+        "familyStatistics": family_statistics,
         "runtimeParity": runtime_parity,
         "sourceMasterSha256": sha256_file(master_db),
         "sourceFingerprint": source_fingerprint,
@@ -351,6 +381,9 @@ def _write_index(
                 kind TEXT NOT NULL,
                 doc TEXT NOT NULL,
                 category TEXT NOT NULL,
+                family_key TEXT NOT NULL,
+                family_source TEXT NOT NULL,
+                family_member_count INTEGER NOT NULL,
                 points REAL,
                 effective_from TEXT NOT NULL,
                 effective_to TEXT NOT NULL,
@@ -375,8 +408,9 @@ def _write_index(
                 """
                 INSERT INTO linker_embeddings(
                     code, name, kind, doc, category, points,
+                    family_key, family_source, family_member_count,
                     effective_from, effective_to, vector
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -386,6 +420,9 @@ def _write_index(
                         item["doc"],
                         item["category"],
                         item["points"],
+                        item["familyKey"],
+                        item["familySource"],
+                        item["familyMemberCount"],
                         item["effectiveFrom"],
                         item["effectiveTo"],
                         vector.astype("<f4", copy=False).tobytes(),
@@ -521,6 +558,7 @@ def _document_rows(
     kind: str,
     docs: Iterable[str],
     category: str = "",
+    family: dict[str, str] | None = None,
     points: Any = None,
     effective_from: Any = None,
     effective_to: Any = None,
@@ -529,6 +567,10 @@ def _document_rows(
     normalized_name = str(name or "").strip()
     if not normalized_code or not normalized_name:
         return []
+    family = family or {
+        "familyKey": f"{kind}|code|{normalized_code}",
+        "familySource": "exact_code",
+    }
     return [
         {
             "code": normalized_code,
@@ -536,12 +578,121 @@ def _document_rows(
             "kind": kind,
             "doc": doc,
             "category": str(category or "").strip(),
+            "familyKey": str(family["familyKey"]),
+            "familySource": str(family["familySource"]),
             "points": float(points) if isinstance(points, (int, float)) else None,
             "effectiveFrom": str(effective_from or "").strip(),
             "effectiveTo": str(effective_to or "").strip(),
         }
         for doc in docs
     ]
+
+
+def _procedure_family_identity(row: sqlite3.Row) -> dict[str, str]:
+    name = str(row["short_name"] or "")
+    core = _family_lexeme(strip_parenthetical_qualifiers(name)) or _family_lexeme(name)
+    hierarchy = ":".join(
+        str(row[key] or "").strip()
+        for key in ("chapter", "part", "alpha_part", "section", "branch")
+    )
+    return {
+        "familyKey": f"procedure|hierarchy:{hierarchy}|core:{core}",
+        "familySource": "point_table_hierarchy_and_core",
+    }
+
+
+def _drug_family_identity(row: sqlite3.Row) -> dict[str, str]:
+    reimbursement_code = _usable_master_identifier(row["reimbursement_code"])
+    product_related_code = _usable_master_identifier(row["product_related_code"])
+    dosage_form = str(row["dosage_form"] or "").strip()
+    unit_code = str(row["unit_code"] or "").strip()
+    if reimbursement_code:
+        identity = f"reimbursement:{reimbursement_code}"
+        source = "reimbursement_code"
+    elif product_related_code:
+        identity = f"product-related:{product_related_code}"
+        source = "product_related_code"
+    else:
+        identity = f"name:{_family_lexeme(_strip_drug_manufacturer(row['name']))}"
+        source = "manufacturer_stripped_name"
+    return {
+        "familyKey": (
+            f"drug|{identity}|dosage-form:{dosage_form or '-'}|unit:{unit_code or '-'}"
+        ),
+        "familySource": source,
+    }
+
+
+def _disease_family_identity(row: sqlite3.Row) -> dict[str, str]:
+    return {
+        "familyKey": f"disease|code|{str(row['code'] or '').strip()}",
+        "familySource": "exact_code",
+    }
+
+
+def _strip_drug_manufacturer(value: Any) -> str:
+    return re.sub(r"\s*「[^」]+」\s*$", "", str(value or "")).strip()
+
+
+def _family_lexeme(value: Any) -> str:
+    normalized = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    return re.sub(r"[\W_]+", "", normalized, flags=re.UNICODE)
+
+
+def _usable_master_identifier(value: Any) -> str:
+    normalized = str(value or "").strip()
+    return normalized if normalized and set(normalized) != {"0"} else ""
+
+
+def _annotate_family_members(
+    documents: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    members: dict[str, set[tuple[str, str]]] = {}
+    for item in documents:
+        members.setdefault(str(item["familyKey"]), set()).add(
+            (str(item["kind"]), str(item["code"]))
+        )
+    return [
+        {
+            **item,
+            "familyMemberCount": len(members[str(item["familyKey"])]),
+        }
+        for item in documents
+    ]
+
+
+def _family_statistics(documents: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    unique_families: dict[str, set[tuple[str, str]]] = {}
+    for item in documents:
+        unique_families.setdefault(str(item["familyKey"]), set()).add(
+            (str(item["kind"]), str(item["code"]))
+        )
+    sizes = sorted(len(members) for members in unique_families.values())
+    size_buckets = Counter(
+        "1" if size == 1
+        else "2-5" if size <= 5
+        else "6-25" if size <= FAMILY_REVIEW_SIZE_LIMIT
+        else "26-100" if size <= 100
+        else "101+"
+        for size in sizes
+    )
+    broad = sorted(
+        (
+            {"familyKey": key, "memberCount": len(members)}
+            for key, members in unique_families.items()
+            if len(members) > FAMILY_REVIEW_SIZE_LIMIT
+        ),
+        key=lambda item: (-item["memberCount"], item["familyKey"]),
+    )
+    return {
+        "familyCount": len(unique_families),
+        "multiMemberFamilyCount": sum(size > 1 for size in sizes),
+        "reviewableFamilyCount": sum(1 < size <= FAMILY_REVIEW_SIZE_LIMIT for size in sizes),
+        "overReviewLimitCount": len(broad),
+        "maximumMemberCount": max(sizes, default=0),
+        "sizeBuckets": dict(sorted(size_buckets.items())),
+        "largestFamilies": broad[:25],
+    }
 
 
 def _unique_embedding_aliases(values: Iterable[str]) -> list[str]:

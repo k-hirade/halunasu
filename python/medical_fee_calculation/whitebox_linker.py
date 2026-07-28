@@ -36,6 +36,8 @@ LINKER_ARTIFACT_TYPE = "fee_master_linker"
 LINKER_INDEX_FILE = "index"
 DEFAULT_TOP_K = 5
 MAX_TOP_K = 20
+MAX_REVIEWABLE_FAMILY_SIZE = 25
+BOUNDARY_SNAP_WINDOW = 4
 CATEGORY_MISMATCH_PENALTY = 0.9
 SEMANTIC_RERANK_POOL_SIZE = 100
 LEXICAL_EXACT_SCORE_FLOOR = 0.95
@@ -69,6 +71,7 @@ class LinkerIndex:
     matrix: Any | None
     norms: Any | None
     lexeme_lookup: Mapping[str, tuple[int, ...]]
+    family_lookup: Mapping[str, tuple[int, ...]]
 
 
 def link_spans(
@@ -90,8 +93,12 @@ def link_spans(
         index = _load_index(str(artifact.file_path(LINKER_INDEX_FILE)))
         spans = _normalize_spans(payload.get("spans"))
         kinds = _normalize_kinds(payload.get("kinds"))
-        top_k = _bounded_int(payload.get("top_k", payload.get("topK")), DEFAULT_TOP_K, 1, MAX_TOP_K)
         service_date = str(payload.get("service_date") or payload.get("serviceDate") or "").strip()
+        spans = [
+            _snap_span_boundary(span, index, kinds, service_date)
+            for span in spans
+        ]
+        top_k = _bounded_int(payload.get("top_k", payload.get("topK")), DEFAULT_TOP_K, 1, MAX_TOP_K)
         encoder = embedder or _load_embedder(artifact)
         query_prefix = str(artifact.manifest.get("queryPrefix") or "")
         vectors = (
@@ -219,6 +226,12 @@ def _load_json_index(path: str) -> LinkerIndex:
             "kind": kind,
             "matchedDoc": matched_doc,
             "category": str(raw.get("category") or "").strip(),
+            "familyKey": str(
+                raw.get("familyKey")
+                or f"{kind}|code|{code}"
+            ).strip(),
+            "familySource": str(raw.get("familySource") or "exact_code").strip(),
+            "familyMemberCount": max(1, int(raw.get("familyMemberCount") or 1)),
             "points": _optional_number(raw.get("points")),
             "effectiveFrom": str(raw.get("effectiveFrom") or "").strip(),
             "effectiveTo": str(raw.get("effectiveTo") or "").strip(),
@@ -236,16 +249,22 @@ def _load_sqlite_index(path: str) -> LinkerIndex:
             for row in connection.execute("SELECT key, value FROM linker_metadata")
         }
         schema_version = int(metadata.get("schema_version") or 1)
-        if schema_version not in {1, 2}:
+        if schema_version not in {1, 2, 3}:
             raise WhiteboxArtifactError(
                 f"unsupported linker sqlite schema version: {schema_version}"
             )
         dimension = int(metadata.get("dimension") or 0)
         if dimension <= 0:
             raise WhiteboxArtifactError("linker sqlite index dimension must be positive")
+        family_columns = (
+            "family_key, family_source, family_member_count,"
+            if schema_version >= 3
+            else ""
+        )
         rows = connection.execute(
-            """
+            f"""
             SELECT code, name, kind, doc, category, points,
+                   {family_columns}
                    effective_from, effective_to, vector
             FROM linker_embeddings
             ORDER BY kind, code, doc
@@ -263,6 +282,21 @@ def _load_sqlite_index(path: str) -> LinkerIndex:
                 "kind": str(row["kind"] or "").strip(),
                 "matchedDoc": str(row["doc"] or "").strip(),
                 "category": str(row["category"] or "").strip(),
+                "familyKey": (
+                    str(row["family_key"] or "").strip()
+                    if schema_version >= 3
+                    else f"{str(row['kind'] or '').strip()}|code|{str(row['code'] or '').strip()}"
+                ),
+                "familySource": (
+                    str(row["family_source"] or "").strip()
+                    if schema_version >= 3
+                    else "exact_code"
+                ),
+                "familyMemberCount": (
+                    max(1, int(row["family_member_count"] or 1))
+                    if schema_version >= 3
+                    else 1
+                ),
                 "points": _optional_number(row["points"]),
                 "effectiveFrom": str(row["effective_from"] or "").strip(),
                 "effectiveTo": str(row["effective_to"] or "").strip(),
@@ -437,19 +471,19 @@ def _link_one(
 ) -> dict[str, Any]:
     if index.matrix is not None:
         return _link_one_vectorized(span, query_vector, index, kinds, service_date, top_k)
-    return _link_one_iterative(span, query_vector, index.entries, kinds, service_date, top_k)
+    return _link_one_iterative(span, query_vector, index, kinds, service_date, top_k)
 
 
 def _link_one_iterative(
     span: dict[str, str],
     query_vector: Sequence[float],
-    index: Iterable[dict[str, Any]],
+    index: LinkerIndex,
     kinds: set[str],
     service_date: str,
     top_k: int,
 ) -> dict[str, Any]:
     best_by_code: dict[tuple[str, str], dict[str, Any]] = {}
-    for entry in index:
+    for entry in index.entries:
         if kinds and entry["kind"] not in kinds:
             continue
         if not _effective_on(entry, service_date):
@@ -460,24 +494,19 @@ def _link_one_iterative(
         current = best_by_code.get(key)
         if current is None or _candidate_sort_key(candidate) > _candidate_sort_key(current):
             best_by_code[key] = candidate
-    candidates = sorted(
+    ranked_candidates = sorted(
         best_by_code.values(),
         key=_candidate_sort_key,
         reverse=True,
-    )[:top_k]
-    margin = (
-        candidates[0]["score"] - candidates[1]["score"]
-        if len(candidates) >= 2
-        else candidates[0]["score"] if candidates
-        else 0.0
     )
-    return {
-        "text": span["text"],
-        "category": span["category"] or None,
-        "mentionType": span["mentionType"],
-        "margin": round(max(0.0, margin), 6),
-        "candidates": candidates,
-    }
+    return _link_result(
+        span,
+        ranked_candidates,
+        index,
+        kinds,
+        service_date,
+        top_k,
+    )
 
 
 def _link_one_vectorized(
@@ -496,10 +525,13 @@ def _link_one_vectorized(
     query_norm = float(np.linalg.norm(query))
     if not query_norm:
         return {
-            "text": span["text"],
-            "category": span["category"] or None,
-            "mentionType": span["mentionType"],
+            **_span_result_identity(span),
             "margin": 0.0,
+            "familyMargin": 0.0,
+            "topFamilyKey": None,
+            "topFamilyMemberCount": 0,
+            "topFamilyReviewable": False,
+            "topFamilyMembers": [],
             "candidates": [],
         }
     raw_scores = (index.matrix @ query) / (index.norms * query_norm)
@@ -535,35 +567,154 @@ def _link_one_vectorized(
         current = best_by_code.get(key)
         if current is None or _candidate_sort_key(candidate) > _candidate_sort_key(current):
             best_by_code[key] = candidate
-    candidates = sorted(
+    ranked_candidates = sorted(
         best_by_code.values(),
         key=_candidate_sort_key,
         reverse=True,
-    )[:top_k]
+    )
+    return _link_result(
+        span,
+        ranked_candidates,
+        index,
+        kinds,
+        service_date,
+        top_k,
+    )
+
+
+def _link_result(
+    span: Mapping[str, Any],
+    ranked_candidates: Sequence[dict[str, Any]],
+    index: LinkerIndex,
+    kinds: set[str],
+    service_date: str,
+    top_k: int,
+) -> dict[str, Any]:
+    candidates = list(ranked_candidates[:top_k])
+    top = ranked_candidates[0] if ranked_candidates else None
     margin = (
-        candidates[0]["score"] - candidates[1]["score"]
-        if len(candidates) >= 2
-        else candidates[0]["score"] if candidates
+        ranked_candidates[0]["score"] - ranked_candidates[1]["score"]
+        if len(ranked_candidates) >= 2
+        else ranked_candidates[0]["score"] if ranked_candidates
         else 0.0
     )
+    top_family_key = str(top.get("familyKey") or "") if top else ""
+    outside_family = next(
+        (
+            candidate
+            for candidate in ranked_candidates[1:]
+            if str(candidate.get("familyKey") or "") != top_family_key
+        ),
+        None,
+    )
+    family_margin = (
+        float(top["score"]) - float(outside_family["score"])
+        if top and outside_family
+        else float(top["score"]) if top
+        else 0.0
+    )
+    family_members = _active_family_members(
+        index,
+        top_family_key,
+        kinds,
+        service_date,
+    )
+    family_member_count = len(family_members)
+    family_reviewable = 1 < family_member_count <= MAX_REVIEWABLE_FAMILY_SIZE
+    family_summaries = []
+    for family_key in dict.fromkeys(
+        str(candidate.get("familyKey") or "")
+        for candidate in candidates
+        if candidate.get("familyKey")
+    ):
+        members = _active_family_members(index, family_key, kinds, service_date)
+        member_count = len(members)
+        reviewable = 1 < member_count <= MAX_REVIEWABLE_FAMILY_SIZE
+        family_summaries.append({
+            "familyKey": family_key,
+            "memberCount": member_count,
+            "reviewable": reviewable,
+            "members": members if reviewable else [],
+        })
     return {
-        "text": span["text"],
-        "category": span["category"] or None,
-        "mentionType": span["mentionType"],
+        **_span_result_identity(span),
         "margin": round(max(0.0, margin), 6),
+        "familyMargin": round(max(0.0, family_margin), 6),
+        "topFamilyKey": top_family_key or None,
+        "topFamilyMemberCount": family_member_count,
+        "topFamilyReviewable": family_reviewable,
+        "topFamilyMembers": family_members if family_reviewable else [],
+        "families": family_summaries,
         "candidates": candidates,
     }
+
+
+def _span_result_identity(span: Mapping[str, Any]) -> dict[str, Any]:
+    boundary = span.get("boundary") if isinstance(span.get("boundary"), Mapping) else {}
+    return {
+        "text": str(span.get("text") or ""),
+        "category": str(span.get("category") or "") or None,
+        "mentionType": str(span.get("mentionType") or "unspecified"),
+        "resolvedSpan": {
+            "lineId": str(span.get("lineId") or ""),
+            "text": str(span.get("text") or ""),
+            "charStart": int(span.get("charStart") or 0),
+            "charEnd": int(span.get("charEnd") or 0),
+            "boundarySnapped": boundary.get("snapped") is True,
+            "originalCharStart": int(
+                boundary.get("originalCharStart", span.get("charStart") or 0)
+            ),
+            "originalCharEnd": int(
+                boundary.get("originalCharEnd", span.get("charEnd") or 0)
+            ),
+            "snapReason": str(boundary.get("reason") or "unchanged"),
+        },
+    }
+
+
+def _active_family_members(
+    index: LinkerIndex,
+    family_key: str,
+    kinds: set[str],
+    service_date: str,
+) -> list[dict[str, Any]]:
+    if not family_key:
+        return []
+    unique: dict[tuple[str, str], dict[str, Any]] = {}
+    for raw_index in index.family_lookup.get(family_key, ()):
+        entry = index.entries[raw_index]
+        if kinds and entry["kind"] not in kinds:
+            continue
+        if not _effective_on(entry, service_date):
+            continue
+        key = (str(entry["kind"]), str(entry["code"]))
+        unique.setdefault(key, {
+            "code": str(entry["code"]),
+            "name": str(entry["name"]),
+            "kind": str(entry["kind"]),
+            **({"points": entry["points"]} if entry.get("points") is not None else {}),
+        })
+    return sorted(
+        unique.values(),
+        key=lambda item: (item["kind"], item["code"]),
+    )
 
 
 def _as_linker_index(entries: Sequence[dict[str, Any]]) -> LinkerIndex:
     normalized = tuple(entries)
     lexeme_indexes: dict[str, list[int]] = {}
+    family_indexes: dict[str, list[int]] = {}
     for index, entry in enumerate(normalized):
         for lexeme in _entry_lexemes(entry):
             lexeme_indexes.setdefault(lexeme, []).append(index)
+        family_indexes.setdefault(str(entry["familyKey"]), []).append(index)
     lexeme_lookup = {
         key: tuple(value)
         for key, value in lexeme_indexes.items()
+    }
+    family_lookup = {
+        key: tuple(value)
+        for key, value in family_indexes.items()
     }
     try:
         import numpy as np
@@ -573,6 +724,7 @@ def _as_linker_index(entries: Sequence[dict[str, Any]]) -> LinkerIndex:
             matrix=None,
             norms=None,
             lexeme_lookup=lexeme_lookup,
+            family_lookup=family_lookup,
         )
     matrix = np.asarray([entry["vector"] for entry in normalized], dtype=np.float32)
     if matrix.ndim != 2 or not matrix.shape[0] or not matrix.shape[1]:
@@ -585,19 +737,29 @@ def _as_linker_index(entries: Sequence[dict[str, Any]]) -> LinkerIndex:
         matrix=matrix,
         norms=norms,
         lexeme_lookup=lexeme_lookup,
+        family_lookup=family_lookup,
     )
 
 
-def _normalize_spans(value: Any) -> list[dict[str, str]]:
+def _normalize_spans(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         raise ValueError("spans must be an array")
-    spans: list[dict[str, str]] = []
+    spans: list[dict[str, Any]] = []
     for entry in value[:200]:
         if not isinstance(entry, Mapping):
             raise ValueError("span must be an object")
         text = str(entry.get("text") or "").strip()
         if not text:
             raise ValueError("span text is required")
+        line_text = str(entry.get("lineText") or entry.get("line_text") or "")
+        maximum_offset = len(line_text) if line_text else len(text)
+        char_start = _bounded_int(entry.get("charStart"), 0, 0, maximum_offset)
+        char_end = _bounded_int(
+            entry.get("charEnd"),
+            char_start + len(text),
+            char_start,
+            max(char_start, maximum_offset),
+        )
         spans.append({
             "text": text[:500],
             "category": str(entry.get("category") or "").strip(),
@@ -606,8 +768,114 @@ def _normalize_spans(value: Any) -> list[dict[str, str]]:
                 {"medication_act", "drug_product", "procedure_act", "diagnosis", "unspecified"},
                 "unspecified",
             ),
+            "lineId": str(entry.get("lineId") or entry.get("line_id") or "").strip(),
+            "lineText": line_text[:4000],
+            "charStart": char_start,
+            "charEnd": char_end,
+            "boundary": {
+                "snapped": False,
+                "originalCharStart": char_start,
+                "originalCharEnd": char_end,
+                "reason": "unchanged",
+            },
         })
     return spans
+
+
+def _snap_span_boundary(
+    span: dict[str, Any],
+    index: LinkerIndex,
+    kinds: set[str],
+    service_date: str,
+) -> dict[str, Any]:
+    line_text = str(span.get("lineText") or "")
+    original_start = int(span.get("charStart") or 0)
+    original_end = int(span.get("charEnd") or 0)
+    if (
+        not line_text
+        or original_start < 0
+        or original_end <= original_start
+        or original_end > len(line_text)
+    ):
+        return span
+    if _normalized_lexeme(line_text[original_start:original_end]) != _normalized_lexeme(
+        span.get("text")
+    ):
+        return {
+            **span,
+            "boundary": {
+                **span["boundary"],
+                "reason": "original_span_offset_mismatch",
+            },
+        }
+    left = max(0, original_start - BOUNDARY_SNAP_WINDOW)
+    right = min(len(line_text), original_end + BOUNDARY_SNAP_WINDOW)
+    original_lexeme = _normalized_lexeme(span.get("text"))
+    matches: list[tuple[int, int, str, str]] = []
+    clause_boundaries = frozenset("。．.!！?？、，,;；\n\r")
+    for start in range(left, original_start + 1):
+        for end in range(original_end, right + 1):
+            if start == original_start and end == original_end:
+                continue
+            value = line_text[start:end]
+            if not value or value[0].isspace() or value[-1].isspace():
+                continue
+            if any(character in clause_boundaries for character in line_text[start:original_start]):
+                continue
+            if any(character in clause_boundaries for character in line_text[original_end:end]):
+                continue
+            lexeme = _normalized_lexeme(value)
+            if len(lexeme) <= len(original_lexeme):
+                continue
+            entry_indexes = index.lexeme_lookup.get(lexeme, ())
+            compatible_families = {
+                str(entry["familyKey"])
+                for raw_index in entry_indexes
+                if (
+                    (entry := index.entries[raw_index])
+                    and (not kinds or entry["kind"] in kinds)
+                    and _effective_on(entry, service_date)
+                    and _category_matches(str(span.get("category") or ""), entry)
+                    and _mention_type_matches(
+                        str(span.get("mentionType") or "unspecified"),
+                        str(entry.get("kind") or ""),
+                    ) is not False
+                )
+            }
+            if len(compatible_families) != 1:
+                continue
+            matches.append((start, end, value, next(iter(compatible_families))))
+    if not matches:
+        return span
+    longest_length = max(end - start for start, end, _, _ in matches)
+    longest = {
+        (start, end, value, family_key)
+        for start, end, value, family_key in matches
+        if end - start == longest_length
+    }
+    boundaries = {(start, end) for start, end, _, _ in longest}
+    families = {family_key for _, _, _, family_key in longest}
+    if len(boundaries) != 1 or len(families) != 1:
+        return {
+            **span,
+            "boundary": {
+                **span["boundary"],
+                "reason": "ambiguous_alias_extension",
+            },
+        }
+    start, end = next(iter(boundaries))
+    value = line_text[start:end]
+    return {
+        **span,
+        "text": value,
+        "charStart": start,
+        "charEnd": end,
+        "boundary": {
+            **span["boundary"],
+            "snapped": True,
+            "reason": "unique_longest_family_alias_extension",
+        },
+    }
 
 
 def _normalize_kinds(value: Any) -> set[str]:
@@ -683,6 +951,9 @@ def _candidate_for_entry(
         "rawScore": round(raw_score, 6),
         "semanticScore": round(raw_score, 6),
         "matchedDoc": str(entry["matchedDoc"]),
+        "familyKey": str(entry.get("familyKey") or ""),
+        "familySource": str(entry.get("familySource") or "exact_code"),
+        "familyMemberCount": max(1, int(entry.get("familyMemberCount") or 1)),
         "categoryMatched": category_matched,
         "mentionTypeMatched": mention_type_matched,
         "lexicalMatch": lexical_match,

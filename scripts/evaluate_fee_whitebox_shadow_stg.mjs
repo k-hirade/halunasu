@@ -487,6 +487,9 @@ function summarizeRun(result) {
 }
 
 function summarizeGateDiagnostics(cells = {}) {
+  const cellSummaries = Object.values(
+    cells && typeof cells === "object" ? cells : {}
+  );
   const total = {
     expectedSpanCount: 0,
     exactBoundaryMatchCount: 0,
@@ -501,6 +504,8 @@ function summarizeGateDiagnostics(cells = {}) {
     expectedShadowTop5Count: 0,
     strictJointEligibleCount: 0,
     shadowJointEligibleCount: 0,
+    strictExpectedFamilyIdentifiedCount: 0,
+    shadowExpectedFamilyIdentifiedCount: 0,
     expectedBillableInclusionSpanCount: 0,
     strictBillableInclusionEligibleCount: 0,
     shadowBillableInclusionEligibleCount: 0,
@@ -511,10 +516,24 @@ function summarizeGateDiagnostics(cells = {}) {
     strictSafeExclusionEligibleCount: 0,
     shadowSafeExclusionEligibleCount: 0,
     expectedAbstainSpanCount: 0,
+    allStrictBlockerCounts: {},
+    allShadowBlockerCounts: {},
     strictBlockerCounts: {},
-    shadowBlockerCounts: {}
+    shadowBlockerCounts: {},
+    safeExclusionStrictBlockerCounts: {},
+    safeExclusionShadowBlockerCounts: {},
+    retrievalClassificationCounts: {},
+    calibrationSamples: {
+      spanConfidence: [],
+      strictLinkerScore: [],
+      shadowLinkerScore: [],
+      strictLinkerMargin: [],
+      shadowLinkerMargin: [],
+      strictFamilyMargin: [],
+      shadowFamilyMargin: []
+    }
   };
-  for (const cell of Object.values(cells && typeof cells === "object" ? cells : {})) {
+  for (const cell of cellSummaries) {
     for (const field of [
       "expectedSpanCount",
       "exactBoundaryMatchCount",
@@ -529,6 +548,8 @@ function summarizeGateDiagnostics(cells = {}) {
       "expectedShadowTop5Count",
       "strictJointEligibleCount",
       "shadowJointEligibleCount",
+      "strictExpectedFamilyIdentifiedCount",
+      "shadowExpectedFamilyIdentifiedCount",
       "expectedBillableInclusionSpanCount",
       "strictBillableInclusionEligibleCount",
       "shadowBillableInclusionEligibleCount",
@@ -542,8 +563,29 @@ function summarizeGateDiagnostics(cells = {}) {
     ]) {
       total[field] += Number(cell?.[field] || 0);
     }
+    mergeCountMap(total.allStrictBlockerCounts, cell?.allStrictBlockerCounts);
+    mergeCountMap(total.allShadowBlockerCounts, cell?.allShadowBlockerCounts);
     mergeCountMap(total.strictBlockerCounts, cell?.strictBlockerCounts);
     mergeCountMap(total.shadowBlockerCounts, cell?.shadowBlockerCounts);
+    mergeCountMap(
+      total.safeExclusionStrictBlockerCounts,
+      cell?.safeExclusionStrictBlockerCounts
+    );
+    mergeCountMap(
+      total.safeExclusionShadowBlockerCounts,
+      cell?.safeExclusionShadowBlockerCounts
+    );
+    mergeCountMap(
+      total.retrievalClassificationCounts,
+      cell?.retrievalClassificationCounts
+    );
+    for (const name of Object.keys(total.calibrationSamples)) {
+      total.calibrationSamples[name].push(
+        ...(Array.isArray(cell?.calibrationSamples?.[name])
+          ? cell.calibrationSamples[name]
+          : [])
+      );
+    }
   }
   const denominator = total.expectedCurrentOwnSpanCount;
   const spanDenominator = total.expectedSpanCount;
@@ -589,6 +631,14 @@ function summarizeGateDiagnostics(cells = {}) {
     shadowJointEligibleRate: denominator
       ? total.shadowJointEligibleCount / denominator
       : null,
+    strictExpectedFamilyIdentifiedRate: ratioOrNull(
+      total.strictExpectedFamilyIdentifiedCount,
+      denominator
+    ),
+    shadowExpectedFamilyIdentifiedRate: ratioOrNull(
+      total.shadowExpectedFamilyIdentifiedCount,
+      denominator
+    ),
     strictBillableInclusionEligibleRate: ratioOrNull(
       total.strictBillableInclusionEligibleCount,
       billableDenominator
@@ -612,7 +662,13 @@ function summarizeGateDiagnostics(cells = {}) {
     shadowSafeExclusionEligibleRate: ratioOrNull(
       total.shadowSafeExclusionEligibleCount,
       safeExclusionDenominator
-    )
+    ),
+    calibration: summarizeCalibrationSamples(total.calibrationSamples, {
+      cellCount: cellSummaries.length,
+      sampleEligibleCellCount: cellSummaries.filter(
+        (cell) => cell?.calibration?.sampleCountEligible === true
+      ).length
+    })
   };
 }
 
@@ -626,6 +682,56 @@ function mergeCountMap(target, source) {
   )) {
     target[key] = Number(target[key] || 0) + Number(count || 0);
   }
+}
+
+function summarizeCalibrationSamples(samples = {}, {
+  cellCount = 0,
+  sampleEligibleCellCount = 0
+} = {}) {
+  const distributions = Object.fromEntries(
+    Object.entries(samples || {}).map(([name, values]) => [
+      name,
+      numericDistribution(values)
+    ])
+  );
+  const coveredCount = distributions.spanConfidence?.count || 0;
+  const minimumCoveredCount = 20;
+  const allCellsSampleCountEligible = cellCount > 0
+    && sampleEligibleCellCount === cellCount;
+  const reasonCodes = [
+    ...(!allCellsSampleCountEligible ? ["insufficient_cell_samples"] : []),
+    "independent_human_adjudication_required"
+  ];
+  return {
+    minimumCoveredCount,
+    coveredCount,
+    cellCount,
+    sampleEligibleCellCount,
+    allCellsSampleCountEligible,
+    independentHumanAdjudicationVerified: false,
+    thresholdUpdateEligible: false,
+    reasonCode: reasonCodes[0],
+    reasonCodes,
+    distributions
+  };
+}
+
+function numericDistribution(values = []) {
+  const sorted = (Array.isArray(values) ? values : [])
+    .map(Number)
+    .filter(Number.isFinite)
+    .sort((left, right) => left - right);
+  if (!sorted.length) {
+    return { count: 0, min: null, p50: null, p95: null, max: null };
+  }
+  const at = (ratio) => sorted[Math.floor((sorted.length - 1) * ratio)];
+  return {
+    count: sorted.length,
+    min: sorted[0],
+    p50: at(0.5),
+    p95: at(0.95),
+    max: sorted[sorted.length - 1]
+  };
 }
 
 function persistResult(outputDir, result) {
@@ -687,6 +793,13 @@ function renderReadme(result) {
       summary.gateDiagnostics?.expectedShadowTop5Count,
       summary.gateDiagnostics?.expectedCurrentOwnSpanCount
     )}`,
+    `- expected family identified (strict / shadow): ${formatGateRatio(
+      summary.gateDiagnostics?.strictExpectedFamilyIdentifiedCount,
+      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+    )} / ${formatGateRatio(
+      summary.gateDiagnostics?.shadowExpectedFamilyIdentifiedCount,
+      summary.gateDiagnostics?.expectedCurrentOwnSpanCount
+    )}`,
     `- strict / shadow joint eligible spans: ${formatGateRatio(
       summary.gateDiagnostics?.strictJointEligibleCount,
       summary.gateDiagnostics?.expectedCurrentOwnSpanCount
@@ -715,6 +828,20 @@ function renderReadme(result) {
       summary.gateDiagnostics?.shadowSafeExclusionEligibleCount,
       summary.gateDiagnostics?.expectedSafeExclusionSpanCount
     )}`,
+    `- retrieval outcomes: ${formatCountMap(
+      summary.gateDiagnostics?.retrievalClassificationCounts
+    )}`,
+    `- current-own strict blockers: ${formatCountMap(
+      summary.gateDiagnostics?.strictBlockerCounts
+    )}`,
+    `- current-own shadow blockers: ${formatCountMap(
+      summary.gateDiagnostics?.shadowBlockerCounts
+    )}`,
+    `- threshold calibration eligible: ${
+      summary.gateDiagnostics?.calibration?.thresholdUpdateEligible ? "yes" : "no"
+    } (sample-ready cells ${
+      summary.gateDiagnostics?.calibration?.sampleEligibleCellCount || 0
+    }/${summary.gateDiagnostics?.calibration?.cellCount || 0}; independent review required)`,
     "",
     result.methodology.evaluationPurpose === "diagnostic"
       ? "This diagnostic run is for bottleneck discovery only. It cannot be used as "
@@ -742,6 +869,15 @@ function formatGateRatio(value, denominator) {
   return total
     ? `${numerator}/${total} (${(numerator / total * 100).toFixed(1)}%)`
     : "n/a";
+}
+
+function formatCountMap(value) {
+  const entries = Object.entries(value && typeof value === "object" ? value : {})
+    .filter(([, count]) => Number(count || 0) > 0)
+    .sort(([left], [right]) => left.localeCompare(right));
+  return entries.length
+    ? entries.map(([name, count]) => `${name}=${Number(count)}`).join(", ")
+    : "none";
 }
 
 function parseArgs(argv) {

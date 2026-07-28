@@ -432,6 +432,8 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
       expectedShadowTop5Count: 0,
       strictJointEligibleCount: 0,
       shadowJointEligibleCount: 0,
+      strictExpectedFamilyIdentifiedCount: 0,
+      shadowExpectedFamilyIdentifiedCount: 0,
       expectedBillableInclusionSpanCount: 0,
       strictBillableInclusionEligibleCount: 0,
       shadowBillableInclusionEligibleCount: 0,
@@ -442,8 +444,22 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
       strictSafeExclusionEligibleCount: 0,
       shadowSafeExclusionEligibleCount: 0,
       expectedAbstainSpanCount: 0,
+      allStrictBlockerCounts: {},
+      allShadowBlockerCounts: {},
       strictBlockerCounts: {},
-      shadowBlockerCounts: {}
+      shadowBlockerCounts: {},
+      safeExclusionStrictBlockerCounts: {},
+      safeExclusionShadowBlockerCounts: {},
+      retrievalClassificationCounts: {},
+      calibrationSamples: {
+        spanConfidence: [],
+        strictLinkerScore: [],
+        shadowLinkerScore: [],
+        strictLinkerMargin: [],
+        shadowLinkerMargin: [],
+        strictFamilyMargin: [],
+        shadowFamilyMargin: []
+      }
     };
     current.runCount += 1;
     current.reviewedLineCount += Number(audit.reviewedLineCount || 0);
@@ -462,6 +478,14 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
         diagnostic.overlapMatch && !diagnostic.exactBoundaryMatch ? 1 : 0
       );
       current.canonicalTextMatchCount += diagnostic.canonicalTextMatch ? 1 : 0;
+      addReasonCounts(
+        current.allStrictBlockerCounts,
+        diagnostic.strictBlockerReasonCodes
+      );
+      addReasonCounts(
+        current.allShadowBlockerCounts,
+        diagnostic.shadowBlockerReasonCodes
+      );
       if (diagnostic.expectedRole === "performed") {
         current.expectedBillableInclusionSpanCount += 1;
         current.strictBillableInclusionEligibleCount += (
@@ -481,6 +505,14 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
         );
         current.shadowSafeExclusionEligibleCount += (
           diagnostic.shadowSafeExclusionEligible ? 1 : 0
+        );
+        addReasonCounts(
+          current.safeExclusionStrictBlockerCounts,
+          diagnostic.strictBlockerReasonCodes
+        );
+        addReasonCounts(
+          current.safeExclusionShadowBlockerCounts,
+          diagnostic.shadowBlockerReasonCodes
         );
       } else {
         current.expectedAbstainSpanCount += 1;
@@ -502,6 +534,43 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
       ) ? 1 : 0;
       current.strictJointEligibleCount += diagnostic.strictJointEligible ? 1 : 0;
       current.shadowJointEligibleCount += diagnostic.shadowJointEligible ? 1 : 0;
+      current.strictExpectedFamilyIdentifiedCount += (
+        diagnostic.strictExpectedFamilyIdentified ? 1 : 0
+      );
+      current.shadowExpectedFamilyIdentifiedCount += (
+        diagnostic.shadowExpectedFamilyIdentified ? 1 : 0
+      );
+      current.retrievalClassificationCounts[diagnostic.retrievalClassification] = Number(
+        current.retrievalClassificationCounts[diagnostic.retrievalClassification] || 0
+      ) + 1;
+      addCalibrationSample(
+        current.calibrationSamples.spanConfidence,
+        diagnostic.runtimeSpanConfidence
+      );
+      addCalibrationSample(
+        current.calibrationSamples.strictLinkerScore,
+        diagnostic.strictTopScore
+      );
+      addCalibrationSample(
+        current.calibrationSamples.shadowLinkerScore,
+        diagnostic.shadowTopScore
+      );
+      addCalibrationSample(
+        current.calibrationSamples.strictLinkerMargin,
+        diagnostic.strictLinkerMargin
+      );
+      addCalibrationSample(
+        current.calibrationSamples.shadowLinkerMargin,
+        diagnostic.shadowLinkerMargin
+      );
+      addCalibrationSample(
+        current.calibrationSamples.strictFamilyMargin,
+        diagnostic.strictFamilyMargin
+      );
+      addCalibrationSample(
+        current.calibrationSamples.shadowFamilyMargin,
+        diagnostic.shadowFamilyMargin
+      );
       addReasonCounts(
         current.strictBlockerCounts,
         diagnostic.strictBlockerReasonCodes
@@ -513,9 +582,12 @@ export function summarizeWhiteboxCaseAudits(audits = []) {
     }
     byCell[cell] = current;
   }
-  return Object.fromEntries(Object.entries(byCell).sort(([left], [right]) => (
-    left.localeCompare(right)
-  )));
+  return Object.fromEntries(Object.entries(byCell)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([cell, summary]) => [cell, {
+      ...summary,
+      calibration: summarizeCalibrationSamples(summary.calibrationSamples)
+    }]));
 }
 
 export function whiteboxDeterminismSnapshot(detail = {}) {
@@ -704,6 +776,22 @@ function buildExpectedSpanGateDiagnostics(item = {}, runtimeDiagnostics = []) {
     const expectedRole = expectedLaneRole(span);
     const strictExpectedCodeTop1 = diagnostic && semanticRank === 1;
     const shadowExpectedCodeTop1 = diagnostic && shadowRank === 1;
+    const strictExpectedFamilyIdentified = Boolean(
+      diagnostic?.strict?.familyIdentified === true
+      && familyContainsCode(diagnostic?.strict?.linkerFamilyMembers, expectedCode)
+    );
+    const shadowExpectedFamilyIdentified = Boolean(
+      diagnostic?.shadow?.familyIdentified === true
+      && familyContainsCode(diagnostic?.shadow?.linkerFamilyMembers, expectedCode)
+    );
+    const retrievalClassification = classifyRetrievalOutcome({
+      diagnostic,
+      semanticRank,
+      shadowRank,
+      strictExpectedFamilyIdentified,
+      shadowExpectedFamilyIdentified,
+      match
+    });
     return {
       expectedCode,
       category: String(span?.category || ""),
@@ -725,8 +813,27 @@ function buildExpectedSpanGateDiagnostics(item = {}, runtimeDiagnostics = []) {
         diagnostic
         && String(diagnostic?.spanTextSha256 || "") === spanTextSha256
       ),
+      boundarySnapped: diagnostic?.boundary?.snapped === true,
+      runtimeSpanConfidence: finiteNumberOrNull(diagnostic?.confidence),
       expectedSemanticRank: semanticRank,
       expectedShadowRank: shadowRank,
+      strictTopScore: finiteNumberOrNull(diagnostic?.semanticCandidates?.[0]?.score),
+      shadowTopScore: finiteNumberOrNull(diagnostic?.shadowCandidates?.[0]?.score),
+      strictLinkerMargin: finiteNumberOrNull(diagnostic?.strict?.linkerMargin),
+      shadowLinkerMargin: finiteNumberOrNull(diagnostic?.shadow?.linkerMargin),
+      strictFamilyMargin: finiteNumberOrNull(diagnostic?.strict?.linkerFamilyMargin),
+      shadowFamilyMargin: finiteNumberOrNull(diagnostic?.shadow?.linkerFamilyMargin),
+      strictResolution: String(diagnostic?.strict?.resolution || "unresolved"),
+      shadowResolution: String(diagnostic?.shadow?.resolution || "unresolved"),
+      strictExpectedFamilyIdentified,
+      shadowExpectedFamilyIdentified,
+      retrievalClassification,
+      contextReasonCodes: uniqueStrings([
+        ...(diagnostic?.context?.classifierReasonCodes || []),
+        ...(diagnostic?.context?.consensusReasonCodes || [])
+      ]),
+      contextUnknownAxes: uniqueStrings(diagnostic?.context?.unknownAxes),
+      contextUncertainAxes: uniqueStrings(diagnostic?.context?.uncertainAxes),
       strictJointEligible: diagnostic?.strict?.jointEligible === true
         && strictExpectedCodeTop1,
       shadowJointEligible: diagnostic?.shadow?.jointEligible === true
@@ -901,6 +1008,99 @@ function candidateCodeRank(candidates = [], expectedCode = "") {
   const index = (Array.isArray(candidates) ? candidates : [])
     .findIndex((candidate) => String(candidate?.code || "") === expectedCode);
   return index >= 0 ? Number(candidates[index]?.rank || index + 1) : null;
+}
+
+function familyContainsCode(members = [], expectedCode = "") {
+  return (Array.isArray(members) ? members : [])
+    .some((member) => String(member?.code || "") === expectedCode);
+}
+
+function classifyRetrievalOutcome({
+  diagnostic = null,
+  semanticRank = null,
+  shadowRank = null,
+  strictExpectedFamilyIdentified = false,
+  shadowExpectedFamilyIdentified = false,
+  match = {}
+} = {}) {
+  if (!diagnostic) {
+    return "span_not_detected";
+  }
+  if (semanticRank === 1 || shadowRank === 1) {
+    return "exact_code_top1";
+  }
+  if (
+    (Number(semanticRank) >= 2 && Number(semanticRank) <= 5)
+    || (Number(shadowRank) >= 2 && Number(shadowRank) <= 5)
+  ) {
+    return "exact_code_top5";
+  }
+  if (strictExpectedFamilyIdentified || shadowExpectedFamilyIdentified) {
+    return "underspecified_family";
+  }
+  if (Number(match?.intervalIou || 0) > 0 && match?.matchType !== "exact") {
+    return "boundary_or_alias_gap";
+  }
+  return "retrieval_miss";
+}
+
+function finiteNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function addCalibrationSample(target, value) {
+  const number = finiteNumberOrNull(value);
+  if (number !== null) {
+    target.push(number);
+  }
+}
+
+function summarizeCalibrationSamples(samples = {}) {
+  const distributions = Object.fromEntries(
+    Object.entries(samples || {}).map(([name, values]) => [
+      name,
+      numericDistribution(values)
+    ])
+  );
+  const coveredCount = distributions.spanConfidence?.count || 0;
+  const minimumCoveredCount = 20;
+  const sampleCountEligible = coveredCount >= minimumCoveredCount;
+  const reasonCodes = [
+    ...(!sampleCountEligible ? ["insufficient_cell_samples"] : []),
+    "independent_human_adjudication_required"
+  ];
+  return {
+    minimumCoveredCount,
+    coveredCount,
+    sampleCountEligible,
+    independentHumanAdjudicationVerified: false,
+    thresholdUpdateEligible: false,
+    reasonCode: reasonCodes[0],
+    reasonCodes,
+    distributions
+  };
+}
+
+function numericDistribution(values = []) {
+  const sorted = (Array.isArray(values) ? values : [])
+    .map(Number)
+    .filter(Number.isFinite)
+    .sort((left, right) => left - right);
+  if (!sorted.length) {
+    return { count: 0, min: null, p50: null, p95: null, max: null };
+  }
+  const at = (ratio) => sorted[Math.floor((sorted.length - 1) * ratio)];
+  return {
+    count: sorted.length,
+    min: sorted[0],
+    p50: at(0.5),
+    p95: at(0.95),
+    max: sorted[sorted.length - 1]
+  };
 }
 
 function addReasonCounts(target, reasons = []) {

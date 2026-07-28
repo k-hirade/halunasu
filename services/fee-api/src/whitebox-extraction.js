@@ -83,6 +83,27 @@ const IN_HOUSE_PRESCRIPTION_PATTERN = /(?:院内(?:での?)?(?:処方|投薬)|�
 const GENERIC_NAME_PRESCRIPTION_PATTERN = /(?:一般名(?:で)?処方|一般名処方(?:箋)?|一般名記載)/u;
 const MEDICATION_BILLING_ACT_PATTERN = /(?:処方箋|処方料|調剤料|一般名処方|リフィル|薬剤情報提供|投薬|院内処方|院外処方)/u;
 const DRUG_PRODUCT_PATTERN = /(?:錠|カプセル|散|顆粒|細粒|シロップ|液|軟膏|クリーム|ゲル|テープ|パッチ|坐剤|注射液|点眼|点鼻|吸入|mg|μg|mcg|mL|％|%)/iu;
+const MAX_REVIEWABLE_LINKER_FAMILY_SIZE = 25;
+const NON_BLOCKING_LINKER_REASON_CODES = new Set(["linker_family_identified"]);
+
+export const WHITEBOX_CONTEXT_REASON_DISPOSITIONS = Object.freeze({
+  classifier_only: "diagnostic",
+  classifier_predicate_agree: "diagnostic",
+  classifier_predicate_disagreement: "blocker",
+  classifier_predicate_disagreement_safe_downgrade: "safe_downgrade",
+  classifier_requests_llm: "blocker",
+  context_abstain_or_low_confidence: "blocker",
+  context_missing: "blocker",
+  context_unresolved: "blocker",
+  current_own_performed: "diagnostic",
+  current_own_standing: "diagnostic",
+  current_visit_predicate_compatible_with_standing: "diagnostic",
+  future_or_plan: "safe_exclusion",
+  not_performed: "safe_exclusion",
+  past_or_external_context: "safe_exclusion",
+  predicate_safe_exclusion: "safe_downgrade",
+  same_day_but_unknown: "blocker"
+});
 
 export function whiteboxRuntimeModes(env = process.env) {
   return {
@@ -130,7 +151,14 @@ export function whiteboxEncounterSetting(session = {}) {
 
 export function contextRoleFromAxes(axes = {}, threshold = DEFAULT_WHITEBOX_THRESHOLDS.contextConfidence) {
   const normalized = normalizeContextAxes(axes);
-  const result = (value) => ({ ...value, normalizedAxes: normalized });
+  const unknownAxes = Object.entries(normalized)
+    .filter(([, axisResult]) => axisResult.value === "unknown")
+    .map(([axis]) => axis);
+  const result = (value) => ({
+    ...value,
+    normalizedAxes: normalized,
+    unknownAxes
+  });
   const uncertainAxes = Object.entries(normalized)
     .filter(([, result]) => result.abstained || result.confidence < threshold)
     .map(([axis]) => axis);
@@ -407,6 +435,7 @@ export async function prepareWhiteboxExtraction({
   }
   const spanRows = Array.isArray(spanEnvelope.results) ? spanEnvelope.results : [];
   const spans = spanRows.flatMap((row) => Array.isArray(row?.spans) ? row.spans : []);
+  const lineById = new Map(lines.map((line) => [String(line?.lineId || ""), line]));
 
   let linkerEnvelope = {
     status: modes.linker === "off"
@@ -419,9 +448,16 @@ export async function prepareWhiteboxExtraction({
     const linkerStartedAt = Date.now();
     linkerEnvelope = await feeCalculator.linkSpans({
       spans: spans.map((span) => ({
+        lineId: span?.lineId,
+        lineText: lineById.get(String(span?.lineId || ""))?.text || "",
+        charStart: span?.charStart,
+        charEnd: span?.charEnd,
         text: span?.text,
         category: span?.category,
-        mentionType: whiteboxMentionType(span)
+        mentionType: whiteboxMentionType(
+          span,
+          lineById.get(String(span?.lineId || ""))
+        )
       })),
       kinds: ["procedure", "drug", "disease"],
       top_k: 5,
@@ -429,6 +465,12 @@ export async function prepareWhiteboxExtraction({
     }).catch((error) => unavailableEnvelope(error, "index_unavailable"));
     linkerDurationMs = Date.now() - linkerStartedAt;
   }
+  const linkedByIndex = Array.isArray(linkerEnvelope?.results) ? linkerEnvelope.results : [];
+  const effectiveSpans = spans.map((span, index) => resolvedSpanFromLink(
+    span,
+    linkedByIndex[index],
+    lineById.get(String(span?.lineId || ""))
+  ));
 
   let contextEnvelope = {
     status: modes.context === "off"
@@ -441,7 +483,7 @@ export async function prepareWhiteboxExtraction({
     const lineIndex = new Map(lines.map((line, index) => [line.lineId, index]));
     const contextStartedAt = Date.now();
     contextEnvelope = await feeCalculator.classifyContext({
-      items: spans.map((span) => {
+      items: effectiveSpans.map((span) => {
         const index = lineIndex.get(span.lineId) ?? -1;
         return {
           lineId: span.lineId,
@@ -489,7 +531,6 @@ export async function prepareWhiteboxExtraction({
     thresholds,
     env
   });
-  const linkedByIndex = Array.isArray(linkerEnvelope?.results) ? linkerEnvelope.results : [];
   const contextBySpanId = new Map((Array.isArray(contextEnvelope?.results) ? contextEnvelope.results : [])
     .map((entry) => [String(entry?.spanId || ""), entry]));
   let spanIndex = 0;
@@ -511,8 +552,9 @@ export async function prepareWhiteboxExtraction({
     };
     const lineSpans = Array.isArray(spanRow.spans) ? spanRow.spans : [];
     const evaluatedSpans = [];
-    for (const span of lineSpans) {
+    for (const detectedSpan of lineSpans) {
       const link = linkedByIndex[spanIndex] || { candidates: [], margin: 0 };
+      const span = effectiveSpans[spanIndex] || detectedSpan;
       spanIndex += 1;
       const context = contextBySpanId.get(String(span.spanId || "")) || null;
       const topCandidate = Array.isArray(link.candidates) ? link.candidates[0] : null;
@@ -547,12 +589,18 @@ export async function prepareWhiteboxExtraction({
       const strictLinkerGates = linkerGateEvaluation({
         candidate: topCandidate,
         margin: link.margin,
+        familyMargin: link.familyMargin,
+        familyMemberCount: link.topFamilyMemberCount,
+        familyReviewable: link.topFamilyReviewable,
         scoreThreshold: thresholds.linkerHighScore,
         marginThreshold: thresholds.linkerMargin
       });
       const shadowLinkerGates = linkerGateEvaluation({
         candidate: shadowTopCandidate,
         margin: shadowLink.margin,
+        familyMargin: shadowLink.familyMargin,
+        familyMemberCount: shadowLink.topFamilyMemberCount,
+        familyReviewable: shadowLink.topFamilyReviewable,
         scoreThreshold: thresholds.linkerShadowScore,
         marginThreshold: thresholds.linkerShadowMargin,
         allowExactMargin: true
@@ -584,11 +632,13 @@ export async function prepareWhiteboxExtraction({
       const strictReasonCodes = spanGateReasonCodes({
         spanPass: strictSpanPass,
         linkerGates: strictLinkerGates,
+        contextRole,
         consensus
       });
       const shadowReasonCodes = spanGateReasonCodes({
         spanPass: shadowSpanPass,
         linkerGates: shadowLinkerGates,
+        contextRole,
         consensus
       });
       const evaluated = {
@@ -613,6 +663,7 @@ export async function prepareWhiteboxExtraction({
         line,
         span,
         contextRole,
+        predicateContext,
         consensus,
         artifactDetectionThreshold,
         strictSpanThreshold: thresholds.spanConfidence,
@@ -937,10 +988,59 @@ function rankLinkForShadow(span = {}, link = {}) {
   const margin = candidates.length >= 2
     ? Math.max(0, Number(candidates[0]?.score || 0) - Number(candidates[1]?.score || 0))
     : Number(candidates[0]?.score || 0);
+  const family = linkerFamilyView(link, candidates[0], candidates);
   return {
     ...link,
     candidates,
-    margin: Number(margin.toFixed(6))
+    margin: Number(margin.toFixed(6)),
+    ...family
+  };
+}
+
+function linkerFamilyView(link = {}, candidate = null, candidates = []) {
+  const familyKey = String(candidate?.familyKey || "");
+  if (!familyKey) {
+    return {
+      familyMargin: 0,
+      topFamilyKey: null,
+      topFamilyMemberCount: 0,
+      topFamilyReviewable: false,
+      topFamilyMembers: []
+    };
+  }
+  const summary = (Array.isArray(link?.families) ? link.families : [])
+    .find((entry) => String(entry?.familyKey || "") === familyKey);
+  const outsideFamily = (Array.isArray(candidates) ? candidates : [])
+    .find((entry) => String(entry?.familyKey || "") !== familyKey);
+  const familyMargin = outsideFamily
+    ? Math.max(0, Number(candidate?.score || 0) - Number(outsideFamily?.score || 0))
+    : Number(candidate?.score || 0);
+  const memberCount = Number(
+    summary?.memberCount
+    ?? candidate?.familyMemberCount
+    ?? (familyKey === String(link?.topFamilyKey || "")
+      ? link?.topFamilyMemberCount
+      : 0)
+  );
+  const reviewable = summary?.reviewable === true
+    || (
+      Number.isInteger(memberCount)
+      && memberCount > 1
+      && memberCount <= MAX_REVIEWABLE_LINKER_FAMILY_SIZE
+    );
+  const members = Array.isArray(summary?.members)
+    ? summary.members
+    : (
+      familyKey === String(link?.topFamilyKey || "")
+        ? link?.topFamilyMembers
+        : []
+    );
+  return {
+    familyMargin: Number(familyMargin.toFixed(6)),
+    topFamilyKey: familyKey,
+    topFamilyMemberCount: Number.isFinite(memberCount) ? memberCount : 0,
+    topFamilyReviewable: reviewable,
+    topFamilyMembers: reviewable && Array.isArray(members) ? members : []
   };
 }
 
@@ -975,6 +1075,9 @@ function normalizedLinkerLexeme(value = "") {
 function linkerGateEvaluation({
   candidate = null,
   margin = 0,
+  familyMargin = 0,
+  familyMemberCount = 0,
+  familyReviewable = false,
   scoreThreshold = 0,
   marginThreshold = 0,
   allowExactMargin = false
@@ -987,7 +1090,21 @@ function linkerGateEvaluation({
     && candidate.mentionTypeMatched !== false;
   const marginPass = Number(margin) >= Number(marginThreshold);
   const exactMarginBypass = allowExactMargin
-    && candidate?.shadowLexicalMatch === "exact";
+    && candidate?.shadowLexicalMatch === "exact"
+    && Number(familyMemberCount || 0) <= 1;
+  const familyMarginPass = Number(familyMargin) >= Number(marginThreshold);
+  const basePass = candidatePresent
+    && scorePass
+    && categoryPass
+    && mentionTypePass;
+  const exactCodeResolved = basePass && (marginPass || exactMarginBypass);
+  const familyTooBroad = Number(familyMemberCount) > MAX_REVIEWABLE_LINKER_FAMILY_SIZE;
+  const familyIdentified = basePass
+    && !exactCodeResolved
+    && familyMarginPass
+    && familyReviewable === true
+    && Number(familyMemberCount) > 1
+    && !familyTooBroad;
   return {
     candidatePresent,
     scorePass,
@@ -995,17 +1112,22 @@ function linkerGateEvaluation({
     mentionTypePass,
     marginPass,
     exactMarginBypass,
-    passed: candidatePresent
-      && scorePass
-      && categoryPass
-      && mentionTypePass
-      && (marginPass || exactMarginBypass)
+    familyMarginPass,
+    familyMemberCount: Number(familyMemberCount || 0),
+    familyReviewable: familyReviewable === true,
+    familyTooBroad,
+    familyIdentified,
+    resolution: exactCodeResolved
+      ? "exact_code"
+      : (familyIdentified ? "family_only" : "unresolved"),
+    passed: exactCodeResolved
   };
 }
 
 function spanGateReasonCodes({
   spanPass = false,
   linkerGates = {},
+  contextRole = {},
   consensus = {}
 } = {}) {
   return [
@@ -1017,7 +1139,19 @@ function spanGateReasonCodes({
     ...(linkerGates.candidatePresent
       && !linkerGates.marginPass
       && !linkerGates.exactMarginBypass
+      && !linkerGates.familyIdentified
       ? ["linker_low_margin"]
+      : []),
+    ...(linkerGates.familyIdentified ? ["linker_family_identified"] : []),
+    ...(linkerGates.familyTooBroad && !linkerGates.passed
+      ? ["linker_family_too_broad"]
+      : []),
+    ...(linkerGates.candidatePresent
+      && !linkerGates.marginPass
+      && !linkerGates.exactMarginBypass
+      && !linkerGates.familyMarginPass
+      && Number(linkerGates.familyMemberCount || 0) > 1
+      ? ["linker_family_low_margin"]
       : []),
     ...(linkerGates.candidatePresent && !linkerGates.categoryPass
       ? ["linker_category_mismatch"]
@@ -1026,6 +1160,7 @@ function spanGateReasonCodes({
       ? ["linker_mention_type_mismatch"]
       : []),
     ...(consensus.role === "llm" ? ["context_unresolved"] : []),
+    ...new Set(Array.isArray(contextRole.reasonCodes) ? contextRole.reasonCodes : []),
     ...new Set(Array.isArray(consensus.reasonCodes) ? consensus.reasonCodes : [])
   ];
 }
@@ -1034,6 +1169,7 @@ function spanGateDiagnostic({
   line = {},
   span = {},
   contextRole = {},
+  predicateContext = {},
   consensus = {},
   artifactDetectionThreshold = null,
   strictSpanThreshold = 0,
@@ -1056,7 +1192,10 @@ function spanGateDiagnostic({
   const candidateView = (candidates = [], rankField = "") => (
     (Array.isArray(candidates) ? candidates : []).slice(0, 5).map((candidate, index) => ({
       code: String(candidate?.code || ""),
+      name: String(candidate?.name || ""),
       kind: String(candidate?.kind || ""),
+      familyKey: String(candidate?.familyKey || ""),
+      familyMemberCount: Number(candidate?.familyMemberCount || 0),
       score: finiteNumberOrNull(candidate?.score),
       rawScore: finiteNumberOrNull(candidate?.rawScore),
       categoryMatched: candidate?.categoryMatched === true,
@@ -1079,6 +1218,7 @@ function spanGateDiagnostic({
       billableInclusionEligible: gatePassed && role === "performed",
       standingEligible: gatePassed && role === "standing",
       safeExclusionEligible: gatePassed && ["excluded", "plan"].includes(role),
+      familyIdentified: spanPass && linkerGates.familyIdentified === true,
       abstained: role === "llm"
     };
   };
@@ -1100,17 +1240,30 @@ function spanGateDiagnostic({
     spanTextSha256: sha256Text(span?.text),
     charStart: Number(span?.charStart || 0),
     charEnd: Number(span?.charEnd || 0),
+    boundary: {
+      snapped: span?.boundarySnapped === true,
+      originalCharStart: Number(span?.originalCharStart ?? span?.charStart ?? 0),
+      originalCharEnd: Number(span?.originalCharEnd ?? span?.charEnd ?? 0),
+      originalSpanTextSha256: sha256Text(span?.originalText ?? span?.text),
+      snapReason: String(span?.snapReason || "unchanged")
+    },
     category: String(span?.category || ""),
     confidence: finiteNumberOrNull(span?.confidence),
     artifactDetectionThreshold,
     context: {
       classifierRole: String(contextRole?.role || "llm"),
       consensusRole: String(consensus?.role || "llm"),
+      classifierReasonCodes: uniqueSortedStrings(contextRole?.reasonCodes),
+      consensusReasonCodes: uniqueSortedStrings(consensus?.reasonCodes),
+      predicateRole: String(predicateContext?.role || "unknown"),
+      predicateAxes: uniqueSortedStrings(predicateContext?.axes),
       uncertainAxes: [...new Set(
         Array.isArray(contextRole?.uncertainAxes)
           ? contextRole.uncertainAxes.map(String)
           : []
       )].sort(),
+      unknownAxes: uniqueSortedStrings(contextRole?.unknownAxes),
+      axes: diagnosticContextAxes(contextRole?.normalizedAxes),
       resolved: contextResolved,
       disagreement: consensus?.disagreement === true
     },
@@ -1120,6 +1273,9 @@ function spanGateDiagnostic({
       linkerScoreThreshold: Number(strictLinkerScoreThreshold),
       linkerMarginThreshold: Number(strictLinkerMarginThreshold),
       linkerMargin: finiteNumberOrNull(strictLink?.margin),
+      linkerFamilyMargin: finiteNumberOrNull(strictLink?.familyMargin),
+      linkerFamilyKey: String(strictLink?.topFamilyKey || ""),
+      linkerFamilyMembers: familyMemberView(strictLink),
       ...strictLinkerGates,
       role: strictRole,
       ...strictOutcome,
@@ -1131,6 +1287,9 @@ function spanGateDiagnostic({
       linkerScoreThreshold: Number(shadowLinkerScoreThreshold),
       linkerMarginThreshold: Number(shadowLinkerMarginThreshold),
       linkerMargin: finiteNumberOrNull(shadowLink?.margin),
+      linkerFamilyMargin: finiteNumberOrNull(shadowLink?.familyMargin),
+      linkerFamilyKey: String(shadowLink?.topFamilyKey || ""),
+      linkerFamilyMembers: familyMemberView(shadowLink),
       ...shadowLinkerGates,
       role: shadowRole,
       ...shadowOutcome,
@@ -1146,9 +1305,39 @@ function gateBlockerReasonCodes(reasonCodes = []) {
     .map(String)
     .filter((reason) => (
       reason === "span_low_confidence"
-      || reason.startsWith("linker_")
-      || reason === "context_unresolved"
+      || (reason.startsWith("linker_") && !NON_BLOCKING_LINKER_REASON_CODES.has(reason))
+      || WHITEBOX_CONTEXT_REASON_DISPOSITIONS[reason] === "blocker"
     )))].sort();
+}
+
+function familyMemberView(link = {}) {
+  if (link?.topFamilyReviewable !== true) {
+    return [];
+  }
+  return (Array.isArray(link?.topFamilyMembers) ? link.topFamilyMembers : [])
+    .slice(0, MAX_REVIEWABLE_LINKER_FAMILY_SIZE)
+    .map((member) => ({
+      code: String(member?.code || ""),
+      name: String(member?.name || ""),
+      kind: String(member?.kind || ""),
+      points: finiteNumberOrNull(member?.points)
+    }));
+}
+
+function diagnosticContextAxes(axes = {}) {
+  return Object.fromEntries(Object.entries(axes || {})
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([axis, result]) => [axis, {
+      value: String(result?.value || "unknown"),
+      confidence: finiteNumberOrNull(result?.confidence),
+      abstained: result?.abstained === true
+    }]));
+}
+
+function uniqueSortedStrings(values = []) {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean))].sort();
 }
 
 function summarizeSpanGateDiagnostics(diagnostics = [], lane = "strict") {
@@ -1179,6 +1368,9 @@ function summarizeSpanGateDiagnostics(diagnostics = [], lane = "strict") {
       (row) => row.gate.mentionTypePass === true
     ).length,
     linkerPassCount: rows.filter((row) => row.gate.passed === true).length,
+    linkerFamilyIdentifiedCount: rows.filter(
+      (row) => row.gate.familyIdentified === true
+    ).length,
     contextResolvedCount: rows.filter((row) => row.contextResolved).length,
     jointEligibleCount: rows.filter((row) => row.gate.jointEligible === true).length,
     billableInclusionEligibleCount: rows.filter(
@@ -1198,11 +1390,53 @@ function summarizeSpanGateDiagnostics(diagnostics = [], lane = "strict") {
   };
 }
 
+function resolvedSpanFromLink(span = {}, link = {}, line = {}) {
+  const resolved = link?.resolvedSpan;
+  if (!resolved || resolved.boundarySnapped !== true) {
+    return span;
+  }
+  const lineText = String(line?.text || "");
+  const lineId = String(span?.lineId || "");
+  const originalStart = Number(span?.charStart);
+  const originalEnd = Number(span?.charEnd);
+  const start = Number(resolved?.charStart);
+  const end = Number(resolved?.charEnd);
+  const text = String(resolved?.text || "");
+  const valid = String(resolved?.lineId || "") === lineId
+    && Number.isInteger(start)
+    && Number.isInteger(end)
+    && Number.isInteger(originalStart)
+    && Number.isInteger(originalEnd)
+    && start >= 0
+    && end <= lineText.length
+    && start <= originalStart
+    && end >= originalEnd
+    && end - start > originalEnd - originalStart
+    && lineText.slice(start, end) === text;
+  if (!valid) {
+    return span;
+  }
+  return {
+    ...span,
+    text,
+    charStart: start,
+    charEnd: end,
+    boundarySnapped: true,
+    originalText: String(span?.text || ""),
+    originalCharStart: originalStart,
+    originalCharEnd: originalEnd,
+    snapReason: String(resolved?.snapReason || "unique_alias_extension")
+  };
+}
+
 function sha256Text(value = "") {
   return crypto.createHash("sha256").update(String(value || "")).digest("hex");
 }
 
 function finiteNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -1339,7 +1573,20 @@ export async function buildLinkerCandidateLayer({
       known.add(String(top.code));
       proposals.push(linkerCandidateProposal(event, result, top));
     } else if (mode === "propose") {
-      reviewIssues.push(linkerReviewIssue(event, result, candidates));
+      const familyCandidates = result?.topFamilyReviewable === true
+        ? (Array.isArray(result?.topFamilyMembers) ? result.topFamilyMembers : [])
+          .filter((candidate) => candidate?.code && !known.has(String(candidate.code)))
+          .map((candidate) => ({
+            ...candidate,
+            score: Number(top.score || 0),
+            familyKey: String(result?.topFamilyKey || "")
+          }))
+        : [];
+      reviewIssues.push(linkerReviewIssue(
+        event,
+        result,
+        familyCandidates.length ? familyCandidates : candidates
+      ));
     }
     traceQueries.push(linkerTraceQuery(
       event,
@@ -1806,7 +2053,9 @@ function linkerReviewIssue(event, result, candidates) {
     .join("、");
   return {
     reviewIssueId: `issue_linker_${safeId(event?.clinicalEventId || event?.name)}`,
-    issueCode: "ambiguous_master",
+    issueCode: result?.topFamilyReviewable === true
+      ? "ambiguous_master_family"
+      : "ambiguous_master",
     severity: "warning",
     title: "マスター候補の確認",
     messageForStaff: `「${String(event?.name || "")}」に近い算定区分が複数あります。${labels || "該当区分"}から実施内容に一致するものを確認してください。`,
@@ -1815,6 +2064,9 @@ function linkerReviewIssue(event, result, candidates) {
     source: "whitebox_linker",
     codeCandidates: candidates.map((candidate) => candidate.code),
     linkerMargin: Number(result?.margin || 0),
+    linkerFamilyMargin: finiteNumberOrNull(result?.familyMargin),
+    linkerFamilyKey: String(result?.topFamilyKey || ""),
+    linkerFamilyMemberCount: Number(result?.topFamilyMemberCount || 0),
     route: "encoder"
   };
 }

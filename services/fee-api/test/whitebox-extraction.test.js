@@ -11,6 +11,7 @@ import {
   contextRoleFromAxes,
   determineWhiteboxVisitFacts,
   prepareWhiteboxExtraction,
+  WHITEBOX_CONTEXT_REASON_DISPOSITIONS,
   whiteboxEncounterSetting,
   whiteboxMentionType,
   whiteboxRuntimeModes,
@@ -297,6 +298,10 @@ test("whitebox worker contracts include encounter metadata without patient ident
   });
 
   assert.deepEqual(linkerPayload.spans[0], {
+    lineId: "O-001",
+    lineText: "創傷処置を施行。",
+    charStart: 0,
+    charEnd: 4,
     text: "創傷処置",
     category: "procedure",
     mentionType: "procedure_act"
@@ -341,6 +346,101 @@ test("WX3 treats a current-visit predicate as compatible with a standing span", 
     disagreement: false,
     reasonCodes: ["current_visit_predicate_compatible_with_standing"]
   });
+});
+
+test("WX3 context reason registry covers every truth-table outcome", () => {
+  const observed = new Set([
+    ...contextRoleFromAxes(CURRENT_AXES).reasonCodes,
+    ...contextRoleFromAxes({
+      ...CURRENT_AXES,
+      actionStatus: { value: "not_performed", confidence: 0.99, abstained: false }
+    }).reasonCodes,
+    ...contextRoleFromAxes({
+      ...CURRENT_AXES,
+      temporalRelation: { value: "past", confidence: 0.99, abstained: false }
+    }).reasonCodes,
+    ...contextRoleFromAxes({
+      ...CURRENT_AXES,
+      temporalRelation: {
+        value: "same_day_but_unknown",
+        confidence: 0.99,
+        abstained: false
+      }
+    }).reasonCodes,
+    ...contextRoleFromAxes({
+      ...CURRENT_AXES,
+      actionStatus: { value: "performed", confidence: 0.99, abstained: true }
+    }).reasonCodes,
+    ...contextRoleFromAxes({
+      ...CURRENT_AXES,
+      actionStatus: { value: "unknown", confidence: 0.99, abstained: false }
+    }).reasonCodes,
+    ...contextRoleFromAxes({
+      ...CURRENT_AXES,
+      actionStatus: { value: "ordered", confidence: 0.99, abstained: false }
+    }).reasonCodes,
+    ...contextRoleFromAxes({
+      ...CURRENT_AXES,
+      standingStatus: { value: "continued", confidence: 0.99, abstained: false },
+      actionStatus: { value: "unknown", confidence: 0.99, abstained: false }
+    }).reasonCodes,
+    ...contextConsensus({ classifierRole: "performed", predicateRole: "unknown" }).reasonCodes,
+    ...contextConsensus({ classifierRole: "performed", predicateRole: "performed" }).reasonCodes,
+    ...contextConsensus({ classifierRole: "standing", predicateRole: "performed" }).reasonCodes,
+    ...contextConsensus({ classifierRole: "llm", predicateRole: "excluded" }).reasonCodes,
+    ...contextConsensus({ classifierRole: "llm", predicateRole: "performed" }).reasonCodes,
+    ...contextConsensus({ classifierRole: "performed", predicateRole: "excluded" }).reasonCodes,
+    ...contextConsensus({ classifierRole: "performed", predicateRole: "standing" }).reasonCodes,
+    "context_missing"
+  ]);
+
+  assert.deepEqual(
+    [...observed].sort(),
+    Object.keys(WHITEBOX_CONTEXT_REASON_DISPOSITIONS).sort()
+  );
+});
+
+test("WX3 diagnostics retain abstained axes and classifier-predicate blockers", async () => {
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator({
+      contextAxesBySpanId: {
+        span_1: {
+          ...CURRENT_AXES,
+          temporalRelation: {
+            value: "unknown",
+            confidence: 0.2,
+            abstained: true
+          }
+        }
+      }
+    }),
+    preprocessing: {
+      lines: [{
+        lineId: "O-001",
+        text: "創傷処置を施行。",
+        section: "O",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient", serviceDate: "2026-07-24" },
+    env: shadowEnv()
+  });
+
+  const diagnostic = result.trace
+    .find((entry) => entry.stage === "whitebox_router")
+    .gateDiagnostics[0];
+  assert.deepEqual(diagnostic.context.uncertainAxes, ["temporalRelation"]);
+  assert.deepEqual(diagnostic.context.unknownAxes, ["temporalRelation"]);
+  assert.equal(
+    diagnostic.shadow.blockerReasonCodes.includes(
+      "context_abstain_or_low_confidence"
+    ),
+    true
+  );
+  assert.equal(
+    diagnostic.shadow.blockerReasonCodes.includes("classifier_requests_llm"),
+    true
+  );
 });
 
 test("WX1 routes only high-confidence span, link, and context through encoder", async () => {
@@ -760,6 +860,219 @@ test("three-lane shadow uses artifact-calibrated diagnostic gates without relaxi
   assert.equal(JSON.stringify(router.gateDiagnostics).includes("創部処置"), false);
 });
 
+test("three-lane gate keeps a resolved family on the LLM path without choosing a code", async () => {
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator({
+      linkResults: [{
+        text: "アムロジピンOD錠2.5mg",
+        margin: 0.001,
+        familyMargin: 0.2,
+        topFamilyKey: "drug|reimbursement:amlodipine-2.5",
+        topFamilyMemberCount: 2,
+        topFamilyReviewable: true,
+        topFamilyMembers: [
+          {
+            code: "620007817",
+            name: "アムロジピンOD錠2.5mg「トーワ」",
+            kind: "drug",
+            points: 10
+          },
+          {
+            code: "621931301",
+            name: "アムロジピンOD錠2.5mg「TCK」",
+            kind: "drug",
+            points: 10
+          }
+        ],
+        candidates: [{
+          code: "620007817",
+          name: "アムロジピンOD錠2.5mg「トーワ」",
+          matchedDoc: "アムロジピンOD錠2.5mg",
+          kind: "drug",
+          familyKey: "drug|reimbursement:amlodipine-2.5",
+          familyMemberCount: 2,
+          score: 0.98,
+          categoryMatched: true,
+          mentionTypeMatched: true,
+          points: 10
+        }, {
+          code: "621931301",
+          name: "アムロジピンOD錠2.5mg「TCK」",
+          matchedDoc: "アムロジピンOD錠2.5mg",
+          kind: "drug",
+          familyKey: "drug|reimbursement:amlodipine-2.5",
+          familyMemberCount: 2,
+          score: 0.979,
+          categoryMatched: true,
+          mentionTypeMatched: true,
+          points: 10
+        }]
+      }],
+      spanResults: [{
+        lineId: "P-001",
+        relevance: "relevant",
+        relevanceConfidence: 0.99,
+        spans: [{
+          spanId: "span_drug",
+          lineId: "P-001",
+          charStart: 0,
+          charEnd: 17,
+          text: "アムロジピンOD錠2.5mg",
+          category: "medication",
+          confidence: 0.99
+        }]
+      }]
+    }),
+    preprocessing: {
+      lines: [{
+        lineId: "P-001",
+        text: "アムロジピンOD錠2.5mgを処方。",
+        section: "P",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient", serviceDate: "2026-07-24" },
+    env: shadowEnv()
+  });
+
+  const diagnostic = result.trace
+    .find((entry) => entry.stage === "whitebox_router")
+    .gateDiagnostics[0];
+  assert.equal(diagnostic.shadow.resolution, "family_only");
+  assert.equal(diagnostic.shadow.familyIdentified, true);
+  assert.equal(diagnostic.shadow.jointEligible, false);
+  assert.equal(
+    diagnostic.shadow.blockerReasonCodes.includes("linker_family_identified"),
+    false
+  );
+  assert.deepEqual(
+    diagnostic.shadow.linkerFamilyMembers.map((member) => member.code),
+    ["620007817", "621931301"]
+  );
+  assert.equal(result.lineRoutes[0].shadowRoute, "llm");
+  assert.deepEqual(result.encoderShadowFacts.clinical_events, []);
+});
+
+test("three-lane gate rejects an over-broad linker family", async () => {
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: completeWhiteboxCalculator({
+      linkResults: [{
+        text: "処置",
+        margin: 0.001,
+        familyMargin: 0.2,
+        topFamilyKey: "procedure|broad",
+        topFamilyMemberCount: 26,
+        topFamilyReviewable: false,
+        candidates: [{
+          code: "140000610",
+          name: "創傷処置",
+          matchedDoc: "処置",
+          kind: "procedure",
+          familyKey: "procedure|broad",
+          familyMemberCount: 26,
+          score: 0.98,
+          categoryMatched: true,
+          mentionTypeMatched: true,
+          points: 52
+        }, {
+          code: "140000710",
+          name: "別区分の創傷処置",
+          matchedDoc: "処置",
+          kind: "procedure",
+          familyKey: "procedure|broad",
+          familyMemberCount: 26,
+          score: 0.979,
+          categoryMatched: true,
+          mentionTypeMatched: true,
+          points: 60
+        }]
+      }]
+    }),
+    preprocessing: {
+      lines: [{
+        lineId: "O-001",
+        text: "創傷処置を施行。",
+        section: "O",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient", serviceDate: "2026-07-24" },
+    env: shadowEnv()
+  });
+
+  const diagnostic = result.trace
+    .find((entry) => entry.stage === "whitebox_router")
+    .gateDiagnostics[0];
+  assert.equal(diagnostic.shadow.resolution, "unresolved");
+  assert.equal(diagnostic.shadow.familyTooBroad, true);
+  assert.equal(
+    diagnostic.shadow.blockerReasonCodes.includes("linker_family_too_broad"),
+    true
+  );
+  assert.equal(result.lineRoutes[0].shadowRoute, "llm");
+});
+
+test("linker boundary expansion is verified and passed to the context classifier", async () => {
+  const calculator = completeWhiteboxCalculator({
+    spanResults: [{
+      lineId: "O-001",
+      relevance: "relevant",
+      relevanceConfidence: 0.99,
+      spans: [{
+        spanId: "span_1",
+        lineId: "O-001",
+        charStart: 1,
+        charEnd: 4,
+        text: "傷処置",
+        category: "procedure",
+        confidence: 0.99
+      }]
+    }],
+    linkResults: [{
+      ...linkedCandidate("140000610", "創傷処置（１００ｃｍ２未満）", "procedure"),
+      resolvedSpan: {
+        lineId: "O-001",
+        text: "創傷処置",
+        charStart: 0,
+        charEnd: 4,
+        boundarySnapped: true,
+        originalCharStart: 1,
+        originalCharEnd: 4,
+        snapReason: "unique_longest_family_alias_extension"
+      }
+    }]
+  });
+  let contextItem = null;
+  const classifyContext = calculator.classifyContext;
+  calculator.classifyContext = async (payload) => {
+    contextItem = payload.items[0];
+    return classifyContext(payload);
+  };
+  const result = await prepareWhiteboxExtraction({
+    feeCalculator: calculator,
+    preprocessing: {
+      lines: [{
+        lineId: "O-001",
+        text: "創傷処置を施行。",
+        section: "O",
+        cues: { currentVisit: true }
+      }]
+    },
+    session: { setting: "outpatient", serviceDate: "2026-07-24" },
+    env: shadowEnv()
+  });
+
+  assert.equal(contextItem.spanText, "創傷処置");
+  assert.equal(contextItem.charStart, 0);
+  assert.equal(contextItem.charEnd, 4);
+  const diagnostic = result.trace
+    .find((entry) => entry.stage === "whitebox_router")
+    .gateDiagnostics[0];
+  assert.equal(diagnostic.boundary.snapped, true);
+  assert.equal(diagnostic.boundary.originalCharStart, 1);
+  assert.equal(diagnostic.charStart, 0);
+});
+
 test("three-lane shadow limits ambiguous visit-facts fallback to the affected line", async () => {
   const result = await prepareWhiteboxExtraction({
     feeCalculator: completeWhiteboxCalculator({
@@ -1167,6 +1480,65 @@ test("WX2 uses score and margin for proposal versus code-set review", async () =
   assert.equal(result.proposals[0].candidateLine.extractionSource, "encoder");
   assert.equal(result.reviewIssues.length, 1);
   assert.deepEqual(result.reviewIssues[0].codeCandidates, ["113001810", "113001910"]);
+});
+
+test("WX2 family-only matches create one review issue and never a proposal", async () => {
+  const familyKey = "drug|reimbursement:2171022F3013|dosage-form:1|unit:16";
+  const calculator = {
+    async linkSpans() {
+      return {
+        status: "complete",
+        indexVersion: "link-v3",
+        results: [{
+          margin: 0.001,
+          familyMargin: 0.2,
+          topFamilyKey: familyKey,
+          topFamilyMemberCount: 2,
+          topFamilyReviewable: true,
+          topFamilyMembers: [
+            {
+              code: "620007817",
+              name: "アムロジピンOD錠2.5mg「トーワ」",
+              kind: "drug",
+              points: 10
+            },
+            {
+              code: "621931301",
+              name: "アムロジピンOD錠2.5mg「TCK」",
+              kind: "drug",
+              points: 10
+            }
+          ],
+          candidates: [{
+            code: "620007817",
+            name: "アムロジピンOD錠2.5mg「トーワ」",
+            kind: "drug",
+            score: 0.98,
+            categoryMatched: true,
+            points: 10
+          }]
+        }]
+      };
+    }
+  };
+  const result = await buildLinkerCandidateLayer({
+    feeCalculator: calculator,
+    events: [{
+      clinicalEventId: "event_drug",
+      name: "アムロジピンOD錠2.5mg",
+      type: "medication"
+    }],
+    env: { FEE_LINKER_MODE: "propose" }
+  });
+
+  assert.deepEqual(result.proposals, []);
+  assert.equal(result.reviewIssues.length, 1);
+  assert.equal(result.reviewIssues[0].issueCode, "ambiguous_master_family");
+  assert.equal(result.reviewIssues[0].linkerFamilyKey, familyKey);
+  assert.deepEqual(result.reviewIssues[0].codeCandidates, [
+    "620007817",
+    "621931301"
+  ]);
 });
 
 function routeEnv() {

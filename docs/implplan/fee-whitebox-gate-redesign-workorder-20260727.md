@@ -5,6 +5,27 @@
 根拠計測: `docs/20260727-whitebox-v2-v3-stg-remeasurement/20260727_165842/`
 (revision `fee-api-stg-00193-fkk`、WX1 v2 / WX3 v3 / linker `35bf85df`)。
 
+## 実装状況
+
+2026-07-27時点でS1〜S4のローカル実装と回帰確認は完了した。
+
+- S1: context理由・unknown/uncertain軸を診断traceへ保持。
+- S2: schema v3の構造化family索引と
+  `exact_code` / `family_only` / `unresolved` の3値ゲートを実装。
+  `family_only` はコード・点数へ昇格しない。
+- S3: 元spanの位置整合性を確認したうえで、一意な最長aliasへ拡張する
+  fail-closed境界補正を実装。
+- S4: 全span・当日自院・安全除外の集計を分離し、機械事前点検だけでは
+  閾値更新不可となる較正メタデータを実装。
+
+回帰結果は fee-api 336/336、Python 196件成功(7件skip)、
+seed-300 engine gold 300/300、v2 exact engine gold 138/138。
+
+STG反映は未実施。family対応を計測する前に schema v3 のlinker索引を
+再構築・artifact registryへ登録し、STG shadow profileを新manifestへ
+更新してデプロイする必要がある。既存schema v2索引のままではS2のfamily
+診断は有効にならない。
+
 ## 背景: 正規化修正は成功し、律速が入れ替わった
 
 | 指標 | 前回(00191) | 今回(00193) |
@@ -17,13 +38,33 @@
 正規化契約の統一(全角/半角・CRLF・オフセット保持を訓練/評価/実行で共有)が
 効き、**span検出は実質解決**した(未検出は29件中1件)。
 
-残る詰まりは、linkerが正解をtop1に当てた13件の内訳に集約される:
+残る詰まりは、当日自院の期待span 22件に対して、linkerが正解を
+top1に当てた9件を含むゲート診断へ集約される。旧集計には全spanと
+当日自院spanの分母が混在していたため、S4でスコープ別に分離する。
 
-- 2件 通過
-- **7件 `context_unresolved`**
-- **5件 `linker_low_margin`**
+- shadow通過 1件
+- **8件 `context_unresolved`**
+- **15件 `linker_low_margin`**
 
-以降のS1〜S4はこの13件を通すための作業であり、**モデル再学習ではない**。
+ブロッカーは同一spanで重複するため、上記件数は足し上げない。
+
+以降のS1〜S4はこれらのブロッカーを分解・解消する作業であり、
+**モデル再学習ではない**。
+
+### 実装時の安全補正
+
+元案の `familyResolved` を `passed=true` とする設計は採用しない。
+現行ルータは `passed=true` の先頭候補を具体的なコード・点数へ変換するため、
+本文だけでは銘柄・区分を一意化できない族を通すと誤算定になる。
+
+実装は次の3値とする。
+
+1. `exact_code`: 単一コードを確定でき、従来のゲート通過対象。
+2. `family_only`: 族までは特定できるが、具体コードは選ばず確認候補のみ。
+3. `unresolved`: 族間でも曖昧、または族が過大で確認不能。
+
+`family_only` は `jointEligible=false`、encoder event生成なし、点数影響なしを
+反例テストで固定する。
 
 ---
 
@@ -102,20 +143,22 @@ S2はこの原則をlinkerゲートへ適用する作業である。
 
 **(1) 索引ビルド時にfamilyKeyを付与** — `scripts/build_fee_linker_index.py`
 
-各エントリへ `familyKey` を追加する。導出は決定論のみ、コード列挙は禁止:
+各エントリへ `familyKey` を追加する。導出は決定論のみ、コード列挙は禁止。
+名称だけで全種別をまとめず、マスタの構造化キーを優先する:
 
-- 名称を正規化(NFKC・全角英数→半角・空白除去)
-- **メーカー括弧を除去**: 末尾の `「…」` を削除(薬剤の銘柄差)
-- **修飾括弧を除去**: 既存の
-  `python/medical_fee_calculation/name_scan.py` の
-  `strip_parenthetical_qualifiers` を再利用(`（…）`内の
-  サイズ・回数・区分等の修飾)
-- 残った語幹 + `kind`(procedure/drug/disease)を `familyKey` とする
+- 診療行為: 点数表階層 + 修飾括弧を除いた名称語幹。
+- 薬剤: 薬価基準収載医薬品コードを優先し、剤形・単位を加える。
+  取得できない場合のみ製品関連コード、メーカー括弧除去名へ順次fallback。
+- 傷病名: コード単位。異なる傷病名コードを名称類似だけで族にしない。
 - 生成時に**族サイズの分布を統計出力**し、族が過大(例: 100件超)になる
   語幹を検出してレビュー可能にする(過剰マージの検知)
 
 manifestに `familyKeyRule` のバージョンとsha256を記録し、
 **索引バージョンを上げる**(既存のsha256検証機構がそのまま効く)。
+
+実マスタでは22族が25件を超え、最大175件だった。確認画面に列挙できる
+上限は25件とし、26件以上は `linker_family_too_broad` でfail closedする。
+アムロジピンOD錠2.5mg族は21件で、確認可能範囲に収まる。
 
 **(2) worker応答へfamily情報を追加** — `python/medical_fee_calculation/whitebox_linker.py`
 
@@ -126,27 +169,32 @@ manifestに `familyKeyRule` のバージョンとsha256を記録し、
   "text": ..., "margin": ...,
   "familyMargin": <top1の族に属さない最良候補とのスコア差>,
   "topFamilyKey": <top1のfamilyKey>,
-  "topFamilySize": <top-k内で同一familyKeyの件数>,
+  "topFamilyMemberCount": <有効期間内の同一familyKeyの全コード数>,
+  "topFamilyReviewable": <2〜25件ならtrue>,
+  "topFamilyMembers": <確認可能な場合の全コード集合>,
   "candidates": [{..., "familyKey": ...}]
 }
 ```
 
 `familyMargin` は「**族をまたいだ識別力**」を表す。族内の兄弟同士の
-差は無視され、族が違う候補との差だけが評価される。
+差は無視され、族が違う候補との差だけが評価される。族サイズはtop-k内の
+見かけの件数ではなく、索引全体から有効期間で絞った実数を返す。
 
 **(3) ゲートを族対応にする** — `linkerGateEvaluation`
 
 ```js
-const familyMarginPass = Number(familyMargin) >= Number(marginThreshold);
-const familyResolved = familyMarginPass && topFamilySize > 1;
-passed = candidatePresent && scorePass && categoryPass && mentionTypePass
-  && (marginPass || exactMarginBypass || familyMarginPass);
+exactCodeResolved = basePass && (marginPass || exactMarginBypass);
+familyIdentified = basePass
+  && !exactCodeResolved
+  && familyMarginPass
+  && topFamilyReviewable;
+passed = exactCodeResolved;
 ```
 
-- `familyResolved === true` の候補は**単一コードとして確定提案しない**。
+- `familyIdentified === true` の候補は**単一コードとして確定提案しない**。
   族の候補集合+確認事項として提示する
   (WX2設計の「margin < 閾値のときはコード集合の確認事項」規約に一致)。
-- 診断へ `linker_family_resolved` を新設し、
+- 診断へ `linker_family_identified` を新設し、
   `linker_low_margin` と区別できるようにする
   (族内曖昧=前進 / 族間曖昧=未解決 を混ぜない)。
 
@@ -163,14 +211,16 @@ passed = candidatePresent && scorePass && categoryPass && mentionTypePass
   末梢血液一般検査と末梢血液像(鏡検法)は**別**familyKey /
   処方箋料の各区分が同一familyKey。
 - 族サイズ統計が出力され、過大族が検出できる。
-- ゲート: 族内のみ曖昧→`familyResolved=true`で通過し
-  `linker_family_resolved`が付く。族間で曖昧→従来どおり`linker_low_margin`で不通過。
+- ゲート: 族内のみ曖昧→`familyIdentified=true`だが`passed=false`、
+  `linker_family_identified`が付く。族間で曖昧→従来どおり
+  `linker_low_margin`で不通過。26件以上の族も不通過。
 - 索引manifestのsha256/バージョン検証が通る(既存機構)。
 
 ### 受入
 
-- 再計測で `linker_low_margin` 5件のうち、族内曖昧に起因するものが
-  `linker_family_resolved` へ移り、joint eligible が増える。
+- 再計測で `linker_low_margin` のうち、族内曖昧に起因するものが
+  `linker_family_identified` へ移る。これは確認可能性の改善であり、
+  `joint eligible` の増加条件にはしない。
 - gold 2系統・fee-api全テストが不変(linkerはshadowのため算定影響なしを確認)。
 
 ## S3. [P1] span境界の後処理
@@ -212,8 +262,11 @@ WX1のBIO復号後、**確定的な境界吸着**を1段入れる(モデルは�
 
 ### 受入
 
-- exact boundary rate 72.4% → 90%以上。
-- 吸着後にlinker top-1が低下していない(境界改善が逆効果でないことの確認)。
+- 辞書に一意な最長拡張がある境界ズレは完全一致へ補正される。
+- 辞書にない語、複数族に一致する語、短縮が必要な語は変更しない。
+- exact boundary rateの改善量は再計測値として記録する。10件程度の
+  診断subsetに対して90%を強制せず、吸着後にlinker top-1が低下して
+  いないことを必須条件とする。
 
 ## S4. [P1] 閾値のSTG実測較正
 
@@ -225,19 +278,23 @@ dev較正値がSTG実測分布と合っていない。
 ### 実装
 
 1. S1〜S3を入れた再計測の**スコア分布**(span confidence / linker score /
-   familyMargin)をセル別に出力する。
-2. 分布から **coverage-risk曲線**(閾値を動かしたときの通過率と
-   期待コード不一致率)を作り、採用点を決める。
-3. 採用点はセル別しきい値ファイル(既存の
+   code margin / familyMargin)をセル別と全体で出力する。
+2. ブロッカーは「全span」「当日自院」「安全除外」のスコープ別に集計し、
+   単一コード一致・族特定・top5・取得失敗を別分類にする。
+3. 1セル20件未満、または独立レビュー未完のデータから閾値を自動更新しない。
+   診断subsetは分布収集のみで `thresholdUpdateEligible=false` とする。
+   現行STGハーネスの出力は `machine_precheck_only` であるため、20件を
+   満たしても独立レビュー完了とは扱わず、更新可否は常にfalseのままにする。
+4. 十分な標本でcoverage-riskを評価した後、採用点はセル別しきい値ファイル(既存の
    `defaults → *|setting → specialty|* → specialty|setting` 階層)へ書き、
    **設定不正時はrouteせずLLMへ戻す**既存の安全境界を維持する。
-4. **500msのp95ゲートは変更しない**(現状781ms)。閾値較正は
+5. **500msのp95ゲートは変更しない**(現状781ms)。閾値較正は
    精度ゲートの話であり、レイテンシゲートを緩める根拠にはしない。
 
 ### 受入
 
-- strict/shadowの2段構えが維持され、strictの`span_low_confidence`が
-  実測分布に基づく値へ更新される。
+- strict/shadowの2段構えが維持される。今回の診断subsetでは閾値を
+  更新せず、分布と更新可否が機械出力される。
 - 閾値変更の前後で「承認なしで確定点数不変」回帰テストがgreen。
 
 ---

@@ -312,8 +312,27 @@ test("machine precheck compares encoder codes without claiming human adjudicatio
   assert.deepEqual(audit.encoderFalsePositiveCodes, ["999999999"]);
   assert.deepEqual(audit.encoderFalseNegativeCodes, []);
   assert.equal(audit.reviewStatus, "machine_precheck_only");
+  const summary = summarizeWhiteboxCaseAudits(
+    [audit]
+  )["internal_medicine|outpatient"];
   assert.deepEqual(
-    summarizeWhiteboxCaseAudits([audit])["internal_medicine|outpatient"],
+    {
+      runCount: summary.runCount,
+      reviewedLineCount: summary.reviewedLineCount,
+      reviewedSpanCount: summary.reviewedSpanCount,
+      encoderTruePositiveCodeCount: summary.encoderTruePositiveCodeCount,
+      encoderFalsePositiveCodeCount: summary.encoderFalsePositiveCodeCount,
+      encoderFalseNegativeCodeCount: summary.encoderFalseNegativeCodeCount,
+      expectedSpanCount: summary.expectedSpanCount,
+      exactBoundaryMatchCount: summary.exactBoundaryMatchCount,
+      overlapMatchCount: summary.overlapMatchCount,
+      expectedCurrentOwnSpanCount: summary.expectedCurrentOwnSpanCount,
+      detectedCurrentOwnSpanCount: summary.detectedCurrentOwnSpanCount,
+      expectedSemanticTop1Count: summary.expectedSemanticTop1Count,
+      strictJointEligibleCount: summary.strictJointEligibleCount,
+      shadowJointEligibleCount: summary.shadowJointEligibleCount,
+      expectedSafeExclusionSpanCount: summary.expectedSafeExclusionSpanCount
+    },
     {
       runCount: 1,
       reviewedLineCount: 2,
@@ -321,34 +340,139 @@ test("machine precheck compares encoder codes without claiming human adjudicatio
       encoderTruePositiveCodeCount: 1,
       encoderFalsePositiveCodeCount: 1,
       encoderFalseNegativeCodeCount: 0,
-      shadowComparisonObservedCount: 1,
       expectedSpanCount: 2,
       exactBoundaryMatchCount: 1,
       overlapMatchCount: 1,
-      boundaryMismatchCount: 0,
-      canonicalTextMatchCount: 1,
       expectedCurrentOwnSpanCount: 1,
       detectedCurrentOwnSpanCount: 1,
       expectedSemanticTop1Count: 1,
-      expectedSemanticTop5Count: 1,
-      expectedShadowTop1Count: 1,
-      expectedShadowTop5Count: 1,
       strictJointEligibleCount: 1,
       shadowJointEligibleCount: 1,
-      expectedBillableInclusionSpanCount: 1,
-      strictBillableInclusionEligibleCount: 1,
-      shadowBillableInclusionEligibleCount: 1,
-      expectedStandingSpanCount: 0,
-      strictStandingEligibleCount: 0,
-      shadowStandingEligibleCount: 0,
-      expectedSafeExclusionSpanCount: 1,
-      strictSafeExclusionEligibleCount: 0,
-      shadowSafeExclusionEligibleCount: 0,
-      expectedAbstainSpanCount: 0,
-      strictBlockerCounts: {},
-      shadowBlockerCounts: {}
+      expectedSafeExclusionSpanCount: 1
     }
   );
+  assert.deepEqual(summary.strictBlockerCounts, {});
+  assert.deepEqual(summary.shadowBlockerCounts, {});
+  assert.deepEqual(summary.allStrictBlockerCounts, { span_not_detected: 1 });
+  assert.deepEqual(summary.safeExclusionStrictBlockerCounts, {
+    span_not_detected: 1
+  });
+  assert.deepEqual(summary.retrievalClassificationCounts, {
+    exact_code_top1: 1
+  });
+  assert.equal(summary.strictExpectedFamilyIdentifiedCount, 0);
+  assert.equal(summary.calibration.coveredCount, 0);
+  assert.equal(summary.calibration.thresholdUpdateEligible, false);
+});
+
+test("machine precheck distinguishes an underspecified family from an exact code", () => {
+  const text = "P）アムロジピンOD錠2.5mgを処方。";
+  const spanText = "アムロジピンOD錠2.5mg";
+  const charStart = text.indexOf(spanText);
+  const audit = whiteboxShadowCaseAudit({
+    caseId: "family-only",
+    specialty: "internal_medicine",
+    encounterSetting: "outpatient",
+    clinicalText: text,
+    expectedSpans: [{
+      text: spanText,
+      charStart,
+      charEnd: charStart + spanText.length,
+      category: "medication",
+      code: "621931301",
+      actionStatus: "performed",
+      temporalRelation: "current_visit",
+      sourceOrigin: "own_clinic_record",
+      providerOwnership: "own_clinic"
+    }]
+  }, {
+    feeSession: {
+      calculationResult: {
+        clinicalExtraction: {
+          trace: [{
+            stage: "whitebox_router",
+            gateDiagnostics: [{
+              lineId: "P-001",
+              lineIndex: 1,
+              spanId: "span-drug",
+              spanTextSha256: crypto
+                .createHash("sha256")
+                .update(spanText)
+                .digest("hex"),
+              charStart: 2,
+              charEnd: 2 + spanText.length,
+              category: "medication",
+              confidence: 0.98,
+              strict: {
+                jointEligible: false,
+                familyIdentified: true,
+                resolution: "family_only",
+                linkerMargin: 0.001,
+                linkerFamilyMargin: 0.2,
+                linkerFamilyMembers: [
+                  { code: "620007817" },
+                  { code: "621931301" }
+                ],
+                blockerReasonCodes: []
+              },
+              shadow: {
+                jointEligible: false,
+                familyIdentified: true,
+                resolution: "family_only",
+                linkerMargin: 0.001,
+                linkerFamilyMargin: 0.2,
+                linkerFamilyMembers: [
+                  { code: "620007817" },
+                  { code: "621931301" }
+                ],
+                blockerReasonCodes: []
+              },
+              semanticCandidates: [{
+                code: "620007817",
+                rank: 1,
+                score: 0.98
+              }],
+              shadowCandidates: [{
+                code: "620007817",
+                rank: 1,
+                score: 0.98
+              }]
+            }]
+          }]
+        }
+      }
+    }
+  });
+  const summary = summarizeWhiteboxCaseAudits(
+    [audit]
+  )["internal_medicine|outpatient"];
+
+  assert.equal(summary.expectedCurrentOwnSpanCount, 1);
+  assert.equal(summary.expectedSemanticTop1Count, 0);
+  assert.equal(summary.strictExpectedFamilyIdentifiedCount, 1);
+  assert.equal(summary.shadowExpectedFamilyIdentifiedCount, 1);
+  assert.equal(summary.strictJointEligibleCount, 0);
+  assert.deepEqual(summary.retrievalClassificationCounts, {
+    underspecified_family: 1
+  });
+  assert.equal(summary.calibration.coveredCount, 1);
+  assert.equal(summary.calibration.sampleCountEligible, false);
+  assert.equal(summary.calibration.thresholdUpdateEligible, false);
+  assert.deepEqual(summary.calibration.reasonCodes, [
+    "insufficient_cell_samples",
+    "independent_human_adjudication_required"
+  ]);
+
+  const sampleReady = summarizeWhiteboxCaseAudits(
+    Array.from({ length: 20 }, () => audit)
+  )["internal_medicine|outpatient"];
+  assert.equal(sampleReady.calibration.coveredCount, 20);
+  assert.equal(sampleReady.calibration.sampleCountEligible, true);
+  assert.equal(sampleReady.calibration.independentHumanAdjudicationVerified, false);
+  assert.equal(sampleReady.calibration.thresholdUpdateEligible, false);
+  assert.deepEqual(sampleReady.calibration.reasonCodes, [
+    "independent_human_adjudication_required"
+  ]);
 });
 
 test("span audit uses the same CRLF, trim, and fullwidth normalization as runtime", () => {

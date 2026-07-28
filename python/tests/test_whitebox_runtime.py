@@ -26,8 +26,12 @@ from medical_fee_calculation.whitebox_span import (
     span_detector_readiness,
 )
 from scripts.build_fee_linker_index import (
+    _annotate_family_members,
+    _drug_family_identity,
     _embedding_document,
+    _family_statistics,
     _prefixed_embedder,
+    _procedure_family_identity,
     _validate_runtime_embedding_parity,
     build_linker_artifact,
 )
@@ -455,6 +459,238 @@ class WhiteboxRuntimeTest(unittest.TestCase):
             self.assertEqual(candidates[0]["lexicalMatch"], "exact")
             self.assertTrue(candidates[0]["mentionTypeMatched"])
 
+    def test_linker_reports_family_margin_without_selecting_a_family_member(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)
+            family_key = "drug|reimbursement:amlodipine-2.5|dosage-form:tablet|unit:tablet"
+            index = {
+                "dimension": 2,
+                "entries": [
+                    {
+                        "code": "620007817",
+                        "name": "アムロジピンOD錠2.5mg「トーワ」",
+                        "kind": "drug",
+                        "category": "medication",
+                        "matchedDoc": "アムロジピンOD錠2.5mg",
+                        "familyKey": family_key,
+                        "familySource": "reimbursement_code",
+                        "familyMemberCount": 2,
+                        "vector": [1.0, 0.0],
+                    },
+                    {
+                        "code": "621931301",
+                        "name": "アムロジピンOD錠2.5mg「TCK」",
+                        "kind": "drug",
+                        "category": "medication",
+                        "matchedDoc": "アムロジピンOD錠2.5mg",
+                        "familyKey": family_key,
+                        "familySource": "reimbursement_code",
+                        "familyMemberCount": 2,
+                        "vector": [0.999, 0.0447],
+                    },
+                    {
+                        "code": "620000001",
+                        "name": "別成分錠",
+                        "kind": "drug",
+                        "category": "medication",
+                        "matchedDoc": "別成分錠",
+                        "familyKey": "drug|reimbursement:other|dosage-form:tablet|unit:tablet",
+                        "familySource": "reimbursement_code",
+                        "familyMemberCount": 1,
+                        "vector": [0.8, 0.6],
+                    },
+                ],
+            }
+            manifest_path = self._write_linker_index(path, index)
+            result = link_spans(
+                {
+                    "manifest_path": str(manifest_path),
+                    "spans": [{
+                        "text": "アムロジピンOD錠2.5mg",
+                        "category": "medication",
+                        "mentionType": "drug_product",
+                    }],
+                    "kinds": ["drug"],
+                    "top_k": 3,
+                },
+                embedder=lambda values: [[1.0, 0.0] for _ in values],
+            )["results"][0]
+
+            self.assertLess(result["margin"], 0.01)
+            self.assertGreater(result["familyMargin"], 0.1)
+            self.assertEqual(result["topFamilyKey"], family_key)
+            self.assertEqual(result["topFamilyMemberCount"], 2)
+            self.assertTrue(result["topFamilyReviewable"])
+            self.assertEqual(
+                {member["code"] for member in result["topFamilyMembers"]},
+                {"620007817", "621931301"},
+            )
+
+    def test_linker_boundary_snap_requires_one_unique_longest_family_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)
+            index = {
+                "dimension": 2,
+                "entries": [{
+                    "code": "160008010",
+                    "name": "末梢血液一般検査",
+                    "kind": "procedure",
+                    "category": "lab",
+                    "matchedDoc": "末梢血液一般検査",
+                    "familyKey": "procedure|blood-count",
+                    "familySource": "point_table_hierarchy_and_core",
+                    "familyMemberCount": 1,
+                    "vector": [1.0, 0.0],
+                }],
+            }
+            manifest_path = self._write_linker_index(path, index)
+            observed = []
+            result = link_spans(
+                {
+                    "manifest_path": str(manifest_path),
+                    "spans": [{
+                        "lineId": "O-001",
+                        "lineText": "末梢血液一般検査を実施",
+                        "charStart": 1,
+                        "charEnd": 8,
+                        "text": "梢血液一般検査",
+                        "category": "exam",
+                        "mentionType": "procedure_act",
+                    }],
+                    "kinds": ["procedure"],
+                },
+                embedder=lambda values: (
+                    observed.extend(values)
+                    or [[1.0, 0.0] for _ in values]
+                ),
+            )["results"][0]
+
+            self.assertEqual(observed, ["末梢血液一般検査"])
+            self.assertEqual(result["resolvedSpan"]["charStart"], 0)
+            self.assertEqual(result["resolvedSpan"]["charEnd"], 8)
+            self.assertTrue(result["resolvedSpan"]["boundarySnapped"])
+
+            ambiguous = {
+                **index,
+                "entries": [
+                    index["entries"][0],
+                    {
+                        **index["entries"][0],
+                        "code": "160008011",
+                        "familyKey": "procedure|different-family",
+                    },
+                ],
+            }
+            ambiguous_path = path / "ambiguous"
+            ambiguous_path.mkdir()
+            ambiguous_manifest = self._write_linker_index(ambiguous_path, ambiguous)
+            observed.clear()
+            ambiguous_result = link_spans(
+                {
+                    "manifest_path": str(ambiguous_manifest),
+                    "spans": [{
+                        "lineId": "O-001",
+                        "lineText": "末梢血液一般検査を実施",
+                        "charStart": 1,
+                        "charEnd": 8,
+                        "text": "梢血液一般検査",
+                        "category": "exam",
+                        "mentionType": "procedure_act",
+                    }],
+                    "kinds": ["procedure"],
+                },
+                embedder=lambda values: (
+                    observed.extend(values)
+                    or [[1.0, 0.0] for _ in values]
+                ),
+            )["results"][0]
+            self.assertEqual(observed, ["梢血液一般検査"])
+            self.assertFalse(ambiguous_result["resolvedSpan"]["boundarySnapped"])
+
+            observed.clear()
+            offset_mismatch_result = link_spans(
+                {
+                    "manifest_path": str(manifest_path),
+                    "spans": [{
+                        "lineId": "O-001",
+                        "lineText": "末梢血液一般検査を実施",
+                        "charStart": 0,
+                        "charEnd": 7,
+                        "text": "梢血液一般検査",
+                        "category": "exam",
+                        "mentionType": "procedure_act",
+                    }],
+                    "kinds": ["procedure"],
+                },
+                embedder=lambda values: (
+                    observed.extend(values)
+                    or [[1.0, 0.0] for _ in values]
+                ),
+            )["results"][0]
+            self.assertEqual(observed, ["梢血液一般検査"])
+            self.assertFalse(offset_mismatch_result["resolvedSpan"]["boundarySnapped"])
+            self.assertEqual(
+                offset_mismatch_result["resolvedSpan"]["snapReason"],
+                "original_span_offset_mismatch",
+            )
+
+    def test_linker_family_rules_use_structured_master_identity_and_flag_broad_groups(
+        self,
+    ) -> None:
+        drug_base = {
+            "name": "アムロジピンOD錠2.5mg「トーワ」",
+            "reimbursement_code": "AML25",
+            "product_related_code": "",
+            "dosage_form": "tablet",
+            "unit_code": "tablet",
+        }
+        self.assertEqual(
+            _drug_family_identity(drug_base)["familyKey"],
+            _drug_family_identity({
+                **drug_base,
+                "name": "アムロジピンOD錠2.5mg「TCK」",
+            })["familyKey"],
+        )
+        procedure_base = {
+            "chapter": "3",
+            "part": "1",
+            "alpha_part": "D",
+            "section": "1",
+            "branch": "1",
+        }
+        prescription_a = _procedure_family_identity({
+            **procedure_base,
+            "short_name": "処方箋料（リフィル処方箋以外の場合）",
+        })
+        prescription_b = _procedure_family_identity({
+            **procedure_base,
+            "short_name": "処方箋料（リフィル処方箋の場合）",
+        })
+        self.assertEqual(prescription_a["familyKey"], prescription_b["familyKey"])
+        self.assertNotEqual(
+            _procedure_family_identity({
+                **procedure_base,
+                "short_name": "末梢血液一般検査",
+            })["familyKey"],
+            _procedure_family_identity({
+                **procedure_base,
+                "short_name": "末梢血液像（鏡検法）",
+            })["familyKey"],
+        )
+
+        documents = _annotate_family_members([
+            {
+                "kind": "procedure",
+                "code": str(index),
+                "familyKey": "procedure|broad",
+            }
+            for index in range(26)
+        ])
+        self.assertTrue(all(item["familyMemberCount"] == 26 for item in documents))
+        statistics = _family_statistics(documents)
+        self.assertEqual(statistics["overReviewLimitCount"], 1)
+        self.assertEqual(statistics["maximumMemberCount"], 26)
+
     def test_context_contract_validates_all_axes(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             path = Path(root)
@@ -809,6 +1045,22 @@ class WhiteboxRuntimeTest(unittest.TestCase):
         manifest_path = path / "manifest.json"
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         return manifest_path
+
+    def _write_linker_index(self, path: Path, index: dict) -> Path:
+        index_path = path / "index.json"
+        index_path.write_text(json.dumps(index), encoding="utf-8")
+        return self._write_manifest(
+            path,
+            self._manifest(
+                "fee_master_linker",
+                files={
+                    "index": {
+                        "path": "index.json",
+                        "sha256": self._sha(index_path),
+                    }
+                },
+            ),
+        )
 
     def _write_runtime_manifest(
         self,
