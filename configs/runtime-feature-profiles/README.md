@@ -37,7 +37,8 @@ The deploy script validates the immutable URI/path contract before submission.
 Regional Cloud Build then downloads only the artifacts selected by the profile
 and validates every manifest checksum before building the fee-api image. Local
 model generations are excluded from the source archive. Upload artifacts before
-the first deployment of a new profile.
+the first deployment of a new profile. Build logs use Cloud Logging only; do not
+grant project-wide Storage Admin merely to create a Cloud Build GCS log bucket.
 
 ```bash
 npm run upload:fee-whitebox-artifact -- \

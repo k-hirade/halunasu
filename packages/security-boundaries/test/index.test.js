@@ -266,6 +266,7 @@ test("P10 runtime provisioning and deploy scripts keep low-cost guardrails", () 
   const deploy = readText(join(root, "scripts", "p10_deploy_runtime_services_low_cost.sh"));
   const cleanup = readText(join(root, "scripts", "p19_cleanup_runtime_artifacts.sh"));
   const feeCloudBuild = readText(join(root, "cloudbuild.fee-api.yaml"));
+  const nodeCloudBuild = readText(join(root, "cloudbuild.node-service.yaml"));
   const feeCloudIgnore = readText(join(root, ".gcloudignore.fee-api"));
 
   assert.match(provision, /APPLY="false"/, "P10 provision must dry-run by default");
@@ -322,6 +323,21 @@ test("P10 runtime provisioning and deploy scripts keep low-cost guardrails", () 
     feeCloudBuild,
     /manage_fee_whitebox_artifact\.py fetch/,
     "Fee Cloud Build must verify immutable artifacts through the artifact manager"
+  );
+  for (const [name, config] of [
+    ["Fee", feeCloudBuild],
+    ["Node service", nodeCloudBuild]
+  ]) {
+    assert.match(
+      config,
+      /options:\s*[\r\n]+\s+logging:\s+CLOUD_LOGGING_ONLY/,
+      `${name} Cloud Build must avoid persistent GCS log buckets`
+    );
+  }
+  assert.equal(
+    /roles\/storage\.admin/.test(provision),
+    false,
+    "P10 provision must not grant project-wide Storage Admin for Cloud Build logs"
   );
   assert.match(
     feeCloudIgnore,

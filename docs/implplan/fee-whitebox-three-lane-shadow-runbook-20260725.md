@@ -80,7 +80,9 @@ The profile is complete and fail-closed. `TARGET_ENV=all` and PROD are rejected.
 The deploy script validates immutable references locally, uploads a code-only
 source context to a regional Cloud Build staging bucket, and Cloud Build fetches
 and verifies only the selected artifacts before creating the image. Old local
-artifact generations never enter the build context.
+artifact generations never enter the build context. Build logs are written to
+Cloud Logging only, so a `*-cloudbuild-logs` GCS bucket and a project-wide
+`roles/storage.admin` grant are not required.
 
 Current STG revision `fee-api-stg-00183-vhx` stops its Python worker at 4 GiB,
 but the old runtime only reports `code null`. First deploy the signal-aware
@@ -150,6 +152,8 @@ After every successful deploy, P19 applies these storage controls:
 
 - regional and legacy STG Cloud Build sources: delete after one day;
 - regional and legacy PROD Cloud Build sources: delete after seven days;
+- Cloud Build logs: retain in Cloud Logging according to the project's logging
+  retention policy; do not create a dedicated GCS log bucket;
 - white-box artifact bucket: disable Object Versioning;
 - noncurrent STG artifact generations: delete after one day;
 - noncurrent PROD artifact generations: delete after seven days, followed by
