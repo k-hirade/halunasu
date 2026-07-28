@@ -475,6 +475,9 @@ function renderReadme(result) {
     `- cases: ${summary.runCount || 0}`,
     `- hard checks: ${summary.hardCheckPassed ? "pass" : "fail"}`,
     `- recovery observed: ${summary.coverageRecoveryObserved ? "yes" : "no"}`,
+    `- net-new auxiliary candidates: ${summary.netNewAuxiliaryCandidateCount || 0}`,
+    `- duplicate auxiliary candidates: ${summary.duplicateAuxiliaryCandidateCount || 0}`,
+    `- control comparison: ${summary.controlComparisonComplete ? (summary.controlComparisonPassed ? "pass" : "fail") : "not run"}`,
     `- full acceptance: ${summary.allAcceptanceChecksPassed ? "pass" : "not yet"}`,
     "",
     "カルテ本文、Span文字列、患者氏名は保存していません。各入力はSHA-256と行数だけを記録します。",
@@ -487,6 +490,7 @@ function renderReadme(result) {
       `- ${run.caseId}: points=${run.totalPoints}, spans=${run.auxiliaryCoverage?.detectedSpanCount ?? "n/a"}, `
       + `gaps=${run.auxiliaryCoverage?.gapSpanCount ?? "n/a"}, `
       + `extra_calls=${run.auxiliaryCoverage?.additionalOpenAiCallCount ?? "n/a"}, `
+      + `unsafe_lines=${run.unsafeConfirmedLineAudit?.unexpectedLineItems?.length ?? 0}, `
       + `hard_check=${run.hardCheckPassed ? "pass" : "fail"}`
     );
   }
@@ -495,7 +499,7 @@ function renderReadme(result) {
   }
   lines.push(
     "",
-    "補助経路が候補を復元しなかった場合、hard checksが通っていてもfull acceptanceは未達です。",
+    "full acceptanceには復元観測、全ケースのoff対照比較、全安全チェックの合格が必要です。",
     "OpenAI初回抽出が既に全行為を拾ったケースと、補助経路が動かなかったケースを区別してください。",
     ""
   );

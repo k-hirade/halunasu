@@ -83,6 +83,104 @@ test("限定再確認由来イベントは候補専用で直接算定フラグ�
   assert.equal(result.hasCaseLevelBloodCollectionEvidence, false);
 });
 
+test("限定再確認候補は同じコードが初回抽出で確定済みなら重複表示しない", async () => {
+  const currentEvent = {
+    clinicalEventId: "ev_wound_initial",
+    type: "procedure",
+    name: "創傷処置",
+    action_status: "performed",
+    temporal_relation: "current_visit",
+    provider_ownership: "own_clinic",
+    evidence: "本日、創傷処置を実施した。",
+    evidence_line_ids: ["O-001"],
+    search_queries: ["創傷処置"],
+    canonical_fact_status: "eligible_for_master_search",
+    evidenceVerificationStatus: "verified"
+  };
+  const calculator = {
+    async searchMaster() {
+      return {
+        items: [{
+          code: "140000610",
+          name: "創傷処置（１００ｃｍ２未満）",
+          points: 52,
+          kind: "procedure"
+        }]
+      };
+    }
+  };
+  const result = await convertClinicalCalculationEvents({
+    clinicalEvents: [
+      currentEvent,
+      {
+        ...currentEvent,
+        clinicalEventId: "ev_wound_auxiliary",
+        name: "創部処置",
+        extraction_source: "openai_auxiliary_recheck"
+      }
+    ],
+    feeCalculator: calculator
+  });
+
+  assert.deepEqual(result.procedureCodes, ["140000610"]);
+  assert.equal(result.candidateProposals.some((proposal) => (
+    proposal.source === "openai_auxiliary_recheck"
+    && proposal.code === "140000610"
+  )), false);
+});
+
+test("画像の決定論補完は過去・他院を除外し当日自院の画像だけを残す", async () => {
+  const extractor = async ({ preprocessedLines }) => ({
+    visit_type: { kind: "unknown", evidence: "", confidence: "low" },
+    visit_facts: {
+      outside_prescription_issued: "unknown",
+      generic_name_prescription: "unknown",
+      prescription_evidence: ""
+    },
+    diagnoses: [],
+    line_review: preprocessedLines.map((line) => ({
+      line_id: line.lineId,
+      line_role: "none"
+    })),
+    standing_mentions: [],
+    clinical_events: [],
+    checklist_findings: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const prepare = (clinicalText) => buildClinicalCalculationPreparation({
+    session: {
+      feeSessionId: "fee_imaging_context",
+      orgId: "org_imaging_context",
+      patientId: "patient_imaging_context",
+      serviceDate: "2026-06-08",
+      setting: "outpatient",
+      clinicalText
+    },
+    calculationInput: {},
+    feeCalculator: {},
+    clinicalFactsExtractor: extractor
+  });
+
+  const past = await prepare(
+    "O）前回の受診時に胸部X線撮影を実施済み。本日は診察のみ。"
+  );
+  const external = await prepare(
+    "O）他院で先週頭部CTを撮影した。当院では本日画像検査を実施していない。"
+  );
+  const mixed = await prepare(
+    "O）前回は胸部X線撮影を実施済み、当院で本日腹部CTを実施した。"
+  );
+
+  assert.equal(past.calculationOptions?.imaging_orders, undefined);
+  assert.equal(external.calculationOptions?.imaging_orders, undefined);
+  assert.deepEqual(
+    mixed.calculationOptions?.imaging_orders?.map((order) => order.kind),
+    ["ct"]
+  );
+});
+
 test("OpenAI主経路はSpan漏れ検知時だけ1回再確認し候補専用で統合する", async (t) => {
   const previousSpanMode = process.env.FEE_SPAN_DETECTOR_MODE;
   process.env.FEE_SPAN_DETECTOR_MODE = "shadow";
@@ -496,6 +594,33 @@ test("辞書スキャン: 本文中のマスタ名称を候補化し、否定文
   assert.equal(doc.basis, "dictionary_scan_candidate");
   assert.ok(doc.evidence.includes("傷病手当金意見書を作成・交付"));
   assert.ok(!doc.evidence.includes("催眠薬"), "根拠はヒット文のみ(行全体ではない)");
+});
+
+test("辞書スキャン: 列挙された行為にかかる共有否定は候補化しない", async () => {
+  const text = "O）本日はネブライザー吸入、点滴、採血のいずれも実施していない。";
+  const scanner = {
+    async scanMasterNames() {
+      return {
+        matches: [{
+          code: "140022710",
+          name: "ネブライザー",
+          points: 12,
+          role: "base",
+          index: text.indexOf("ネブライザー"),
+          matchedText: "ネブライザー"
+        }]
+      };
+    }
+  };
+
+  const result = await dictionaryScanCandidateProposals({
+    feeCalculator: scanner,
+    text,
+    knownCodes: []
+  });
+
+  assert.equal(result.proposals.length, 0);
+  assert.equal(result.trace?.selected?.skipped?.[0]?.reason, "negative_context");
 });
 
 test("辞書スキャン: 同一別名の複数コードは code未確定の曖昧候補1件に統合される", async () => {

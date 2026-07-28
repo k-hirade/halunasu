@@ -94,6 +94,30 @@ class RuntimeFeatureProfileTest(unittest.TestCase):
         self.assertEqual(values["FEE_CONTEXT_CLASSIFIER_MODE_STG"], "off")
         self.assertEqual(values["FEE_SPAN_DETECTOR_MODE_STG"], "shadow")
 
+    def test_auxiliary_recheck_control_differs_only_by_mode_and_profile_name(self) -> None:
+        root = Path("configs/runtime-feature-profiles")
+        active = load_profile(
+            "stg-openai-primary-span-recheck",
+            environment="stg",
+            profile_root=root,
+        )
+        control = load_profile(
+            "stg-openai-primary-span-control",
+            environment="stg",
+            profile_root=root,
+        )
+
+        differing_keys = {
+            key
+            for key in active
+            if active[key] != control[key]
+        }
+        self.assertEqual(
+            differing_keys,
+            {"FEE_EXTRACTION_COVERAGE_MODE_STG"},
+        )
+        self.assertEqual(control["FEE_EXTRACTION_COVERAGE_MODE_STG"], "off")
+
     def test_auxiliary_recheck_requires_allowlist_and_safe_layer_modes(self) -> None:
         root = Path("configs/runtime-feature-profiles")
         source = (root / "stg-openai-primary-span-recheck.env").read_text(

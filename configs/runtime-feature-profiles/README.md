@@ -69,6 +69,7 @@ downloading the model again.
 | Profile | Purpose |
 | --- | --- |
 | `stg-openai-primary-span-recheck` | OpenAI-primary extraction with one bounded Span-triggered OpenAI recheck for the Yamamoto STG facility |
+| `stg-openai-primary-span-control` | Matching OpenAI-primary STG control with coverage recheck disabled |
 | `stg-longitudinal` | Extraction memo and standing-fact measurements |
 | `stg-monthly-enforce` | Monthly exclusion acceptance measurements |
 | `stg-whitebox-span-shadow` | Isolated WX1 span shadow |
@@ -85,6 +86,11 @@ recheck can only add review-required candidates and cannot directly add or
 remove billed lines. `FEE_SPAN_DETECTOR_MODE=shadow` in this profile means the
 detector itself is never an autonomous billing route; it does not mean the
 OpenAI recheck is observation-only.
+
+Use `stg-openai-primary-span-control` immediately before the verify run to
+produce the required `off` control result. It keeps the same extraction,
+memo, standing-fact, monthly-exclusion, Span artifact, and facility settings;
+only `FEE_EXTRACTION_COVERAGE_MODE_STG` differs.
 
 Use `stg-whitebox-three-lane-shadow` to measure the white-box stack without
 memo, standing-fact, or monthly-exclusion interactions. Use

@@ -36,6 +36,10 @@
       "id": "past-act",
       "title": "過去に実施した検査の記載",
       "safetyClass": "past",
+      "allowedConfirmedLineSources": [
+        "outpatient_basic_fee",
+        "outpatient_price_support_add_on"
+      ],
       "serviceDate": "2026-06-08",
       "setting": "outpatient",
       "patient": {
@@ -51,6 +55,10 @@
       "id": "external-act",
       "title": "他院で実施した画像検査",
       "safetyClass": "external",
+      "allowedConfirmedLineSources": [
+        "outpatient_basic_fee",
+        "outpatient_price_support_add_on"
+      ],
       "serviceDate": "2026-06-10",
       "setting": "outpatient",
       "patient": {
@@ -66,6 +74,10 @@
       "id": "negated-act",
       "title": "明示的に未実施の処置",
       "safetyClass": "negated",
+      "allowedConfirmedLineSources": [
+        "outpatient_basic_fee",
+        "outpatient_price_support_add_on"
+      ],
       "serviceDate": "2026-06-12",
       "setting": "outpatient",
       "patient": {
@@ -81,6 +93,10 @@
       "id": "planned-act",
       "title": "次回予定の検査",
       "safetyClass": "planned",
+      "allowedConfirmedLineSources": [
+        "outpatient_basic_fee",
+        "outpatient_price_support_add_on"
+      ],
       "serviceDate": "2026-06-15",
       "setting": "outpatient",
       "patient": {

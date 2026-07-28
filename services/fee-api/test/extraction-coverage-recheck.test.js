@@ -111,6 +111,37 @@ test("coverage comparison is line-scoped and identifies only missing spans", () 
   assert.equal(result.gapSignals[0].detectedPhrase, "創傷処置");
 });
 
+test("event evidence covers an equivalent span even when the event name differs", () => {
+  const text = "P: 次回来院時にHbA1c検査と尿検査を実施する予定。";
+  const phrase = "尿検査";
+  const charStart = [...text].join("").indexOf(phrase);
+  const result = findUncoveredAuxiliarySpans({
+    lines: [{
+      lineId: "P-001",
+      section: "P",
+      text
+    }],
+    signals: [signal({
+      lineId: "P-001",
+      category: "lab",
+      charStart,
+      charEnd: charStart + [...phrase].length
+    })],
+    facts: {
+      clinical_events: [{
+        name: "尿一般検査",
+        action_status: "planned",
+        temporal_relation: "future",
+        evidence: "次回来院時にHbA1c検査と尿検査を実施する予定。",
+        evidence_line_ids: ["P-001"]
+      }]
+    }
+  });
+
+  assert.equal(result.coveredSignals.length, 1);
+  assert.equal(result.gapSignals.length, 0);
+});
+
 test("recovery planning enforces line and span limits", () => {
   const gapSignals = [
     signal({ lineId: "O-001", confidence: 0.8 }),

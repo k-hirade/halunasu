@@ -64,6 +64,31 @@ export function auditCoverageRecheckCase(item = {}, detail = {}, {
   const auxiliaryCandidatePolicyViolationCount = auxiliaryCandidates.filter(
     (candidate) => candidate?.candidateOnly !== true || candidate?.reviewRequired !== true
   ).length;
+  const allowedConfirmedLineSources = new Set(
+    uniqueStrings(item?.allowedConfirmedLineSources)
+  );
+  const unsafeConfirmedLineContractPresent = !unsafeSafetyClass
+    || allowedConfirmedLineSources.size > 0;
+  const unexpectedUnsafeConfirmedLineItems = unsafeSafetyClass
+    ? lineItems.filter((line) => (
+      !allowedConfirmedLineSources.has(extractionSource(line))
+    ))
+    : [];
+  const confirmedCodes = new Set(lineItems
+    .map(candidateCode)
+    .filter(Boolean));
+  const nonAuxiliaryCandidateCodes = new Set(candidates
+    .filter((candidate) => !isAuxiliaryValue(candidate))
+    .map(candidateCode)
+    .filter(Boolean));
+  const duplicateAuxiliaryCandidates = auxiliaryCandidates.filter((candidate) => {
+    const code = candidateCode(candidate);
+    return Boolean(code)
+      && (confirmedCodes.has(code) || nonAuxiliaryCandidateCodes.has(code));
+  });
+  const netNewAuxiliaryCandidates = auxiliaryCandidates.filter((candidate) => (
+    !duplicateAuxiliaryCandidates.includes(candidate)
+  ));
   const checks = {
     cloudRunRevisionMatches: Boolean(actualRevision)
       && (!expectedRevision || actualRevision === expectedRevision),
@@ -72,10 +97,14 @@ export function auditCoverageRecheckCase(item = {}, detail = {}, {
     noDirectWhiteboxLineItems: directWhiteboxLineItems.length === 0,
     noAuxiliaryConfirmedLines: auxiliaryLineItems.length === 0,
     auxiliaryCandidatesRequireReview: auxiliaryCandidatePolicyViolationCount === 0,
+    noDuplicateAuxiliaryCandidates: duplicateAuxiliaryCandidates.length === 0,
+    unsafeConfirmedLineContractPresent,
+    noUnexpectedUnsafeConfirmedLines: unexpectedUnsafeConfirmedLineItems.length === 0,
     unsafeContextNotPromoted: !unsafeSafetyClass
       || (
         auxiliaryCandidates.length === 0
         && auxiliaryLineItems.length === 0
+        && unexpectedUnsafeConfirmedLineItems.length === 0
       )
   };
 
@@ -123,6 +152,17 @@ export function auditCoverageRecheckCase(item = {}, detail = {}, {
     auxiliaryClinicalEvents: auxiliaryEvents.map(safeClinicalEvent),
     lineItems: lineItems.map(safeLineItem),
     candidateProposals: candidates.map(safeCandidate),
+    unsafeConfirmedLineAudit: {
+      contractPresent: unsafeConfirmedLineContractPresent,
+      allowedSources: [...allowedConfirmedLineSources].sort(),
+      unexpectedLineItems: unexpectedUnsafeConfirmedLineItems.map(safeLineItem)
+    },
+    auxiliaryCandidateAudit: {
+      duplicateCount: duplicateAuxiliaryCandidates.length,
+      duplicateCodes: uniqueStrings(duplicateAuxiliaryCandidates.map(candidateCode)),
+      netNewCount: netNewAuxiliaryCandidates.length,
+      netNewCodes: uniqueStrings(netNewAuxiliaryCandidates.map(candidateCode))
+    },
     checks,
     hardCheckPassed: Object.values(checks).every(Boolean)
   };
@@ -139,13 +179,20 @@ export function compareCoverageRecheckControl(activeRun = {}, controlRun = {}) {
   const unsafeSafetyClass = UNSAFE_SAFETY_CLASSES.has(
     String(activeRun.safetyClass || "")
   );
+  const recoveryObserved = Number(
+    activeRun?.auxiliaryCoverage?.recoveredClinicalEventCount || 0
+  ) > 0;
+  const candidatesEqual = arraysEqual(activeCandidates, controlCandidates);
   return {
     controlFound: true,
     totalPointsEqual: Number(activeRun.totalPoints || 0) === Number(controlRun.totalPoints || 0),
     confirmedLinesEqual: arraysEqual(activeLines, controlLines),
-    candidatesEqual: arraysEqual(activeCandidates, controlCandidates),
+    candidatesEqual,
+    candidateComparisonPassed: unsafeSafetyClass
+      ? candidatesEqual
+      : (recoveryObserved || candidatesEqual),
     unsafeCandidateSetEqual: !unsafeSafetyClass
-      || arraysEqual(activeCandidates, controlCandidates)
+      || candidatesEqual
   };
 }
 
@@ -167,15 +214,25 @@ export function summarizeCoverageRecheckResult(result = {}) {
     : comparisons.every((comparison) => (
       comparison.totalPointsEqual
       && comparison.confirmedLinesEqual
+      && comparison.candidateComparisonPassed
       && comparison.unsafeCandidateSetEqual
     ));
+  const controlComparisonComplete = result?.methodology?.controlComparisonRequested === true
+    && comparisons.length === runs.length;
+  const netNewAuxiliaryCandidateCount = sum(
+    runs.map((run) => run?.auxiliaryCandidateAudit?.netNewCount)
+  );
+  const duplicateAuxiliaryCandidateCount = sum(
+    runs.map((run) => run?.auxiliaryCandidateAudit?.duplicateCount)
+  );
   return {
     status: String(result.status || ""),
     runCount: runs.length,
     hardCheckPassed,
     allAcceptanceChecksPassed: hardCheckPassed
       && recoveredRunCount > 0
-      && (controlComparisonPassed ?? true),
+      && controlComparisonComplete
+      && controlComparisonPassed === true,
     coverageRecoveryObserved: recoveredRunCount > 0,
     recoveredRunCount,
     recheckAttemptedRunCount,
@@ -188,6 +245,8 @@ export function summarizeCoverageRecheckResult(result = {}) {
     auxiliaryCandidateCount: sum(
       runs.map((run) => arrayValue(run?.candidateProposals).filter(isAuxiliaryValue).length)
     ),
+    netNewAuxiliaryCandidateCount,
+    duplicateAuxiliaryCandidateCount,
     auxiliaryConfirmedLineCount: sum(
       runs.map((run) => arrayValue(run?.lineItems).filter(isAuxiliaryValue).length)
     ),
@@ -200,6 +259,7 @@ export function summarizeCoverageRecheckResult(result = {}) {
     uniqueCloudRunRevisions: revisions,
     singleCloudRunRevision: revisions.length === 1,
     controlComparisonRunCount: comparisons.length,
+    controlComparisonComplete,
     controlComparisonPassed
   };
 }
@@ -304,6 +364,15 @@ function isDirectWhiteboxValue(value = {}) {
     || source.startsWith("whitebox")
     || basis.startsWith("whitebox")
     || basis.startsWith("encoder");
+}
+
+function candidateCode(value = {}) {
+  return String(
+    value?.code
+    || value?.standardCode
+    || value?.candidateLine?.code
+    || ""
+  ).trim();
 }
 
 function stableLineFingerprints(lines = []) {

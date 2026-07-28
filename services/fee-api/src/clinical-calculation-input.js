@@ -3266,7 +3266,10 @@ export async function convertClinicalCalculationEvents({
     });
     mergeClinicalEventConversionResult(result, converted);
   }
-  result.candidateProposals = dedupeMasterLinkCandidateProposals(result.candidateProposals);
+  result.candidateProposals = removeAuxiliaryCandidatesForConfirmedCodes(
+    dedupeMasterLinkCandidateProposals(result.candidateProposals),
+    result
+  );
   return result;
 }
 
@@ -3286,6 +3289,26 @@ function dedupeMasterLinkCandidateProposals(proposals = []) {
     result.push(proposal);
   }
   return result;
+}
+
+function removeAuxiliaryCandidatesForConfirmedCodes(proposals = [], converted = {}) {
+  const confirmedCodes = new Set(uniqueStrings([
+    ...asArray(converted?.procedureCodes),
+    ...asArray(converted?.medicationOrders).map((order) => (
+      order?.drug_code || order?.drugCode || order?.code
+    )),
+    ...asArray(converted?.materialInputs).map((input) => input?.code)
+  ]));
+  if (!confirmedCodes.size) {
+    return proposals;
+  }
+  return asArray(proposals).filter((proposal) => {
+    if (clinicalEventExtractionSource(proposal) !== "openai_auxiliary_recheck") {
+      return true;
+    }
+    const code = String(proposal?.code || proposal?.candidateLine?.code || "").trim();
+    return !code || !confirmedCodes.has(code);
+  });
 }
 
 async function convertSingleClinicalCalculationEvent({
@@ -5439,12 +5462,38 @@ function firstPositiveClauseForMatch(text = "", matchedText = "") {
   while (index >= 0 && occurrences < 6) {
     occurrences += 1;
     const clause = clauseAtIndex(value, index);
-    if (clause && !DICTIONARY_SCAN_NEGATIVE_CONTEXT.test(clause)) {
+    if (
+      clause
+      && !DICTIONARY_SCAN_NEGATIVE_CONTEXT.test(clause)
+      && !hasCollectiveNegativeScopeAtMatch(value, index, target)
+    ) {
       return clause;
     }
     index = value.indexOf(target, index + target.length);
   }
   return null;
+}
+
+function hasCollectiveNegativeScopeAtMatch(text = "", index = -1, matchedText = "") {
+  const value = String(text || "");
+  if (!value || !Number.isFinite(index) || index < 0 || index >= value.length) {
+    return false;
+  }
+  let end = index;
+  while (end < value.length && !/[。\n]/u.test(value[end])) {
+    end += 1;
+  }
+  const tail = value.slice(index + String(matchedText || "").length, end);
+  const collectiveIndex = tail.search(/(?:いずれも|何れも|どれも|すべて|全て|全部)/u);
+  if (collectiveIndex < 0) {
+    return false;
+  }
+  const scopePrefix = tail.slice(0, collectiveIndex);
+  if (/(?:実施|施行|投与|撮影|検査|処置)(?:した|済み|あり)/u.test(scopePrefix)) {
+    return false;
+  }
+  return /(?:いずれも|何れも|どれも|すべて|全て|全部).{0,32}(?:未実施|実施していない|実施せず|施行していない|施行せず|行っていない|行わず|していない|せず|なし)/u
+    .test(tail.slice(collectiveIndex));
 }
 
 function clauseAtIndex(text = "", index = -1) {
@@ -6482,22 +6531,36 @@ function normalizeImagingEquipmentKind(value = "", imagingKind = "") {
 function inferImagingOrders(text) {
   const orders = [];
   const reviewWarnings = [];
-  const sentences = splitClinicalSentences(text);
+  const contexts = splitClinicalSentences(text).flatMap((sentence) => (
+    splitClinicalServiceClauses(sentence).map((clause) => ({
+      sentence,
+      clause
+    }))
+  ));
 
-  for (const sentence of sentences) {
-    if (isNegatedClinicalServiceContext(sentence)) {
+  for (const { sentence, clause } of contexts) {
+    const serviceContext = imagingServiceContext(sentence, clause);
+    const futureOrOrderOnly = isFutureOrOrderOnlyContext(serviceContext);
+    if (isNegatedClinicalServiceContext(serviceContext)) {
       continue;
     }
-    if (/(?:^|[^A-Za-z])MRI(?:$|[^A-Za-z])|ＭＲＩ/u.test(sentence)) {
-      if (isFutureOrOrderOnlyContext(sentence)) {
+    if (
+      isPastOrExternalClinicalServiceContext(serviceContext)
+      && !futureOrOrderOnly
+    ) {
+      continue;
+    }
+    const attributeContext = imagingAttributeContext(sentence, clause);
+    if (/(?:^|[^A-Za-z])MRI(?:$|[^A-Za-z])|ＭＲＩ/u.test(clause)) {
+      if (futureOrOrderOnly) {
         reviewWarnings.push("MRI検査は予定・依頼として記載されているため、今回算定候補には入れていません。実施済みの場合は撮影内容を確認してください。");
-      } else if (isPerformedImagingContext(sentence, "mri")) {
-        const equipmentKind = mriEquipmentKindFromText(sentence);
-        const localState = localContrastState(sentence, "mri");
+      } else if (isPerformedImagingContext(serviceContext, "mri")) {
+        const equipmentKind = mriEquipmentKindFromText(attributeContext);
+        const localState = localContrastState(attributeContext, "mri");
         const contrastState = localState === "absent" && chartLevelUnknownContrastStateForKind(text, "mri") === "unknown"
           ? "unknown"
           : localState;
-        const electronicState = localElectronicImageManagementState(sentence);
+        const electronicState = localElectronicImageManagementState(attributeContext);
         const order = {
           kind: "mri",
           contrast: contrastState === "present"
@@ -6519,16 +6582,16 @@ function inferImagingOrders(text) {
       }
       continue;
     }
-    if (/(?:^|[^A-Za-z])CT(?:$|[^A-Za-z])|ＣＴ/u.test(sentence)) {
-      if (isFutureOrOrderOnlyContext(sentence)) {
+    if (/(?:^|[^A-Za-z])CT(?:$|[^A-Za-z])|ＣＴ/u.test(clause)) {
+      if (futureOrOrderOnly) {
         reviewWarnings.push("CT検査は予定・依頼として記載されているため、今回算定候補には入れていません。実施済みの場合は撮影内容を確認してください。");
-      } else if (isPerformedImagingContext(sentence, "ct")) {
-        const equipmentKind = ctEquipmentKindFromText(sentence);
-        const localState = localContrastState(sentence, "ct");
+      } else if (isPerformedImagingContext(serviceContext, "ct")) {
+        const equipmentKind = ctEquipmentKindFromText(attributeContext);
+        const localState = localContrastState(attributeContext, "ct");
         const contrastState = localState === "absent" && chartLevelUnknownContrastStateForKind(text, "ct") === "unknown"
           ? "unknown"
           : localState;
-        const electronicState = localElectronicImageManagementState(sentence);
+        const electronicState = localElectronicImageManagementState(attributeContext);
         const order = {
           kind: "ct",
           contrast: contrastState === "present"
@@ -6550,17 +6613,17 @@ function inferImagingOrders(text) {
       }
       continue;
     }
-    if (/(X線|Ｘ線|レントゲン|単純撮影)/u.test(sentence)) {
-      if (isFutureOrOrderOnlyContext(sentence)) {
+    if (/(X線|Ｘ線|レントゲン|単純撮影)/u.test(clause)) {
+      if (futureOrOrderOnly) {
         reviewWarnings.push("単純X線は予定・依頼として記載されているため、今回算定候補には入れていません。実施済みの場合は撮影内容を確認してください。");
-      } else if (isPerformedImagingContext(sentence, "simple_radiography")) {
-        const contrastState = localContrastState(sentence, "ct");
-        const electronicState = localElectronicImageManagementState(sentence);
+      } else if (isPerformedImagingContext(serviceContext, "simple_radiography")) {
+        const contrastState = localContrastState(attributeContext, "ct");
+        const electronicState = localElectronicImageManagementState(attributeContext);
         const order = {
           kind: "simple_radiography",
           acquisition_kind: "digital",
           radiography_diagnostic_kind: "simple_i",
-          projection_count: simpleRadiographyProjectionCount(sentence)
+          projection_count: simpleRadiographyProjectionCount(attributeContext)
         };
         if (electronicState === "present") {
           order.electronic_image_management = true;
@@ -6580,6 +6643,32 @@ function inferImagingOrders(text) {
     orders: dedupeObjects(orders),
     reviewWarnings
   };
+}
+
+function imagingServiceContext(sentence = "", clause = "") {
+  const scoped = String(clause || "").trim();
+  if (!scoped) {
+    return String(sentence || "");
+  }
+  if (
+    isFutureOrOrderOnlyContext(scoped)
+    || isNegatedClinicalServiceContext(scoped)
+    || isPastOrExternalClinicalServiceContext(scoped)
+    || isCurrentVisitEvidence(scoped)
+    || /(?:実施|施行|撮影)(?:した|し|済み)/u.test(scoped)
+  ) {
+    return scoped;
+  }
+  return String(sentence || scoped);
+}
+
+function imagingAttributeContext(sentence = "", clause = "") {
+  const kinds = [
+    /(?:^|[^A-Za-z])MRI(?:$|[^A-Za-z])|ＭＲＩ/u.test(sentence) ? "mri" : "",
+    /(?:^|[^A-Za-z])CT(?:$|[^A-Za-z])|ＣＴ/u.test(sentence) ? "ct" : "",
+    /(X線|Ｘ線|レントゲン|単純撮影)/u.test(sentence) ? "simple_radiography" : ""
+  ].filter(Boolean);
+  return kinds.length === 1 ? String(sentence || clause) : String(clause || sentence);
 }
 
 function isPerformedObjectiveFinding(sentence) {
@@ -10698,6 +10787,13 @@ function splitClinicalSentences(text) {
   return normalizeClinicalText(text)
     .split(/[\n。]+/u)
     .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function splitClinicalServiceClauses(sentence = "") {
+  return String(sentence || "")
+    .split(/[、，,；;]/u)
+    .map((clause) => clause.trim())
     .filter(Boolean);
 }
 

@@ -26,3 +26,9 @@ npm run eval:fee-extraction-coverage-recheck-stg -- \
 
 結果にはカルテ本文を保存せず、入力SHA-256、件数、候補・確定明細、
 追加OpenAI呼び出し数、revision、Span artifact versionだけを残します。
+
+`full acceptance`には、coverage mode `off` で取得した同一ケースの
+`result.json`を`--control-result`へ渡した対照比較が必須です。対照なしの
+実行は動作診断として完走しますが、納品・昇格判定には使用できません。
+`off`対照のデプロイには`stg-openai-primary-span-control`、本測定には
+`stg-openai-primary-span-recheck`を使用します。

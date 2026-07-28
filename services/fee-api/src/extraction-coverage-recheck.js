@@ -104,6 +104,9 @@ export function buildClinicalFactCoverageIndex(facts = {}) {
     const values = [
       event?.name,
       event?.clinical_name,
+      event?.evidence,
+      event?.evidence_quote,
+      event?.evidenceQuote,
       ...asArray(event?.search_queries)
     ];
     for (const lineId of evidenceLineIds(event)) {
