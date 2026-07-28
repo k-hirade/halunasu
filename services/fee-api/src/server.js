@@ -23,6 +23,7 @@ import iconv from "iconv-lite";
 import {
   buildCandidateWorkbench,
   buildClinicDiagnosisReport,
+  buildFeeCandidateDisplay,
   buildMissingBillingReviewIssues,
   buildIndicationReviewIssues,
   claimCheckLookupCodes,
@@ -2005,6 +2006,7 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
     sourceType: "calculated_line",
     code: line.code || null,
     name: line.name || null,
+    display: buildFeeCandidateDisplay(line.name),
     orderType: line.orderType || null,
     points: Number(line.points || 0),
     quantity: Number(line.quantity || 1),
@@ -2016,6 +2018,7 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
     const codeCandidates = [...new Set((Array.isArray(proposal.codeCandidates) ? proposal.codeCandidates : [])
       .map((code) => String(code || "").trim())
       .filter(Boolean))];
+    const displayName = proposal.candidateLine?.name || proposal.name || proposal.title || "";
     return {
       candidateId: proposal.proposalId || proposal.candidateId || proposal.code || null,
       sourceType: "proposal",
@@ -2023,6 +2026,7 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
       codeCandidates,
       requiresSelection: !proposal.code && codeCandidates.length > 0,
       name: proposal.name || proposal.title || null,
+      display: buildFeeCandidateDisplay(displayName, { proposal: true }),
       orderType: proposal.orderType || null,
       points: Number(proposal.points || proposal.potentialPoints || 0),
       quantity: Number(proposal.quantity || 1),
@@ -9049,13 +9053,14 @@ function addSessionReviewWarnings(session = {}, calculationResult = {}, extraWar
 }
 
 function uniqueCandidateProposals(values = []) {
-  const seen = new Set();
+  const seen = new Map();
   const result = [];
   for (const value of values) {
     if (!value || typeof value !== "object") {
       continue;
     }
-    const key = [
+    const decisionKey = unresolvedProposalDecisionKey(value);
+    const key = decisionKey || [
       value.proposalId,
       value.proposal_id,
       value.code,
@@ -9063,13 +9068,59 @@ function uniqueCandidateProposals(values = []) {
       value.candidate_line?.code,
       value.title
     ].map((part) => String(part || "").trim()).filter(Boolean).join("|");
-    if (!key || seen.has(key)) {
+    if (!key) {
       continue;
     }
-    seen.add(key);
+    if (seen.has(key)) {
+      if (decisionKey) {
+        const index = seen.get(key);
+        result[index] = mergeDuplicateProposalProvenance(result[index], value);
+      }
+      continue;
+    }
+    seen.set(key, result.length);
     result.push(value);
   }
   return result;
+}
+
+function unresolvedProposalDecisionKey(value = {}) {
+  const resolvedCode = String(
+    value.code
+    || value.candidateLine?.code
+    || value.candidate_line?.code
+    || ""
+  ).trim();
+  if (resolvedCode) {
+    return "";
+  }
+  const codes = [...new Set((Array.isArray(value.codeCandidates) ? value.codeCandidates : [])
+    .map((code) => String(code || "").trim())
+    .filter(Boolean))].sort();
+  return codes.length ? `code-selection:${codes.join(",")}` : "";
+}
+
+function mergeDuplicateProposalProvenance(primary = {}, duplicate = {}) {
+  const proposalIds = [...new Set([
+    primary.proposalId,
+    primary.proposal_id,
+    ...(Array.isArray(primary.deduplication?.proposalIds) ? primary.deduplication.proposalIds : []),
+    duplicate.proposalId,
+    duplicate.proposal_id
+  ].map((value) => String(value || "").trim()).filter(Boolean))];
+  const sources = [...new Set([
+    primary.source,
+    ...(Array.isArray(primary.deduplication?.sources) ? primary.deduplication.sources : []),
+    duplicate.source
+  ].map((value) => String(value || "").trim()).filter(Boolean))];
+  return {
+    ...primary,
+    deduplication: {
+      reason: "same_code_candidates",
+      proposalIds,
+      sources
+    }
+  };
 }
 
 function normalizeCalculationWarnings(values = []) {

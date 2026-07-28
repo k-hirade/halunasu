@@ -38,10 +38,10 @@
           <div><dt>診療日</dt><dd id="preview-date"></dd></div>
           <div><dt>カルテID</dt><dd id="preview-record"></dd></div>
         </dl>
-        <details class="soap-details" id="preview-details">
-          <summary>カルテ本文を確認</summary>
+        <div class="soap-preview">
+          <strong class="preview-label">カルテ本文</strong>
           <pre id="preview-text"></pre>
-        </details>
+        </div>
       </div>
       <fieldset class="setting-control" id="setting-control" disabled>
         <legend>受診区分</legend>
@@ -96,9 +96,11 @@
     <section class="panel-section result-section" id="result-section" aria-labelledby="result-heading" hidden>
       <div class="section-heading">
         <h2 id="result-heading">算定案</h2>
+      </div>
+      <div class="result-summary-bar">
+        <strong class="total-points" id="total-points"></strong>
         <span class="candidate-badge">承認前</span>
       </div>
-      <strong class="total-points" id="total-points"></strong>
       <p class="muted result-meta" id="revision-copy"></p>
       <div class="result-group">
         <h3>明細からの候補</h3>
@@ -108,10 +110,10 @@
         <h3>追加提案</h3>
         <div class="candidate-list" id="proposal-candidates"></div>
       </div>
-      <details>
-        <summary>警告・確認事項 <span id="issue-count"></span></summary>
+      <div class="result-group issue-group">
+        <h3>警告・確認事項 <span id="issue-count"></span></h3>
         <div class="issue-list" id="issues"></div>
-      </details>
+      </div>
     </section>
 
     <p class="status-message" id="status-message" aria-live="polite"></p>

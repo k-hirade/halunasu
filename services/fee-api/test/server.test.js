@@ -9407,7 +9407,16 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
           title: "在宅酸素療法指導管理料の区分確認",
           orderType: "procedure",
           potentialPoints: 0,
-          codeCandidates: ["114009210", "114009310"]
+          codeCandidates: ["114009210", "114009310"],
+          source: "clinical_billing_knowledge:management_signal"
+        },
+        {
+          proposalId: "duplicate_home_oxygen_dictionary",
+          title: "「在宅酸素療法」の算定区分確認",
+          orderType: "procedure",
+          potentialPoints: 0,
+          codeCandidates: ["114009310", "114009210"],
+          source: "clinical_billing_opportunity"
         }
       ]
     };
@@ -9432,11 +9441,24 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.ok(first.body.sidecarDraft.calculation.candidates.every((candidate) => (
     candidate.candidateOnly === true && candidate.status === "needs_review"
   )));
+  assert.ok(first.body.sidecarDraft.calculation.candidates.every((candidate) => (
+    typeof candidate.display?.stem === "string"
+    && typeof candidate.display?.qualifier === "string"
+  )));
   const ambiguousCandidate = first.body.sidecarDraft.calculation.candidates
     .find((candidate) => candidate.candidateId === "ambiguous_home_oxygen");
   assert.deepEqual(ambiguousCandidate.codeCandidates, ["114009210", "114009310"]);
   assert.equal(ambiguousCandidate.requiresSelection, true);
   assert.equal(ambiguousCandidate.estimatedTotalPoints, 0);
+  assert.deepEqual(ambiguousCandidate.display, {
+    stem: "在宅酸素療法指導管理料",
+    qualifier: ""
+  });
+  const oxygenSelections = first.body.sidecarDraft.calculation.candidates.filter((candidate) => (
+    candidate.sourceType === "proposal"
+    && [...candidate.codeCandidates].sort().join(",") === "114009210,114009310"
+  ));
+  assert.equal(oxygenSelections.length, 1);
   assert.equal(Object.hasOwn(first.body, "receiptDraft"), false);
   assert.equal(first.headers["access-control-allow-origin"], `chrome-extension://${TEST_SIDECAR_EXTENSION_ID}`);
   assert.equal(stores.feeStore.listSessions("org_001").length, 0);
@@ -9449,6 +9471,13 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(storedFirst.canonicalPatientIdSource, "sidecar_patient_key");
   assert.equal(storedFirst.calculationResult.lineItems[0].status, "candidate");
   assert.equal(storedFirst.calculationResult.lineItems[0].reviewRequired, true);
+  const storedOxygenProposal = storedFirst.calculationResult.candidateProposals
+    .find((proposal) => proposal.proposalId === "ambiguous_home_oxygen");
+  assert.deepEqual(storedOxygenProposal.deduplication, {
+    reason: "same_code_candidates",
+    proposalIds: ["ambiguous_home_oxygen", "duplicate_home_oxygen_dictionary"],
+    sources: ["clinical_billing_knowledge:management_signal", "clinical_billing_opportunity"]
+  });
 
   const second = await request(
     stores,

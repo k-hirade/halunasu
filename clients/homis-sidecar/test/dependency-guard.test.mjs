@@ -44,6 +44,15 @@ test("side panel hides inactive sections and explains a missing content script",
   assert.match(panel, /拡張機能とカルテ画面を再読み込みしてください/);
 });
 
+test("side panel does not hide chart or calculation results behind disclosure widgets", async () => {
+  const [html, panel] = await Promise.all([
+    readFile(path.join(extensionDir, "sidepanel.html"), "utf8"),
+    readFile(path.join(extensionDir, "sidepanel.js"), "utf8")
+  ]);
+  assert.doesNotMatch(html, /<(?:details|summary)\b/i);
+  assert.doesNotMatch(panel, /createElement\(\s*["'](?:details|summary)["']\s*\)/);
+});
+
 async function sourceFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const nested = await Promise.all(entries.map(async (entry) => {

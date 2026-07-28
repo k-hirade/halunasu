@@ -192,6 +192,16 @@ h3 {
   border-radius: 6px;
 }
 
+.soap-preview {
+  display: grid;
+  gap: 6px;
+}
+
+.preview-label {
+  color: #33566e;
+  font-size: 12px;
+}
+
 .setting-control {
   margin: 0;
   padding: 0;
@@ -280,6 +290,22 @@ h3 {
 
 .total-points {
   font-size: 24px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.result-summary-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -4px -2px 0;
+  padding: 9px 2px;
+  background: #fff;
+  border-bottom: 1px solid #dfe5eb;
 }
 
 .result-group {
@@ -303,25 +329,68 @@ h3 {
 }
 
 .candidate-row header {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6.25rem;
+  align-items: start;
   gap: 10px;
 }
 
+.candidate-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.candidate-points {
+  min-width: 6.25rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+  text-align: right;
+  font-weight: 700;
+}
+
+.candidate-meta {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 10px;
+  color: #667488;
+  font-size: 11px;
+}
+
+.candidate-qualifier {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.candidate-selection {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 3px 7px;
+  margin-left: auto;
+  text-align: right;
+}
+
+.candidate-row.requires-selection {
+  border-left: 4px solid #c78a23;
+  padding-left: 6px;
+}
+
 .candidate-row small,
-.issue-row,
-details {
+.issue-row {
   color: #5c6b7e;
   font-size: 12px;
 }
 
-details summary {
-  cursor: pointer;
-  font-weight: 700;
+.issue-list {
+  gap: 5px;
 }
 
-.issue-list {
-  margin-top: 8px;
+.issue-row {
+  padding: 7px 9px;
+  line-height: 1.45;
 }
 
 .status-message {
@@ -334,7 +403,7 @@ details summary {
   color: #a62323;
 }
 
-/* --- 2026-07-20 UI簡素化: 情報の集約と折りたたみ --- */
+/* --- 2026-07-20 UI簡素化: 情報の集約 --- */
 
 .app-header .header-badge {
   margin-left: auto;
@@ -350,32 +419,16 @@ details summary {
   font-size: 12px;
 }
 
-.soap-details summary,
-.code-details summary {
-  color: #33566e;
-  font-size: 12px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.soap-details[open] summary {
-  margin-bottom: 6px;
-}
-
-.code-details {
-  margin-top: 4px;
-}
-
-.code-details small {
-  display: block;
-  margin-top: 4px;
-  color: #667488;
-  overflow-wrap: anywhere;
-}
-
 .candidate-code {
+  flex-shrink: 0;
   color: #8a97a8;
   font-size: 11px;
+  white-space: nowrap;
+}
+
+.candidate-selection .candidate-code {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .result-meta {

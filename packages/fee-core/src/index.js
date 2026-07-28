@@ -6,6 +6,7 @@ import {
 import { estimateReceiptYen } from "./receipt-utils.js";
 
 export { estimateReceiptYen } from "./receipt-utils.js";
+export { buildFeeCandidateDisplay } from "./fee-candidate-display.js";
 
 export {
   buildMissingBillingFindings,
@@ -2298,6 +2299,7 @@ function normalizeCandidateProposal(item = {}, index = 0) {
     codeCandidates: Array.isArray(item.codeCandidates ?? item.code_candidates)
       ? (item.codeCandidates ?? item.code_candidates).map((code) => String(code || "")).filter(Boolean)
       : [],
+    deduplication: normalizeProposalDeduplication(item.deduplication),
     policy: isPlainObject(item.policy) ? item.policy : null,
     knowledge: isPlainObject(item.knowledge) ? item.knowledge : null,
     resolutionOptions: Array.isArray(item.resolutionOptions || item.resolution_options)
@@ -2306,6 +2308,30 @@ function normalizeCandidateProposal(item = {}, index = 0) {
     candidateLine,
     sortOrder: Number(item.sortOrder ?? item.sort_order ?? index + 1)
   });
+}
+
+function normalizeProposalDeduplication(value) {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+  const reason = optionalString(value.reason);
+  const proposalIds = uniqueNonEmptyStrings(value.proposalIds);
+  const sources = uniqueNonEmptyStrings(value.sources);
+  if (!reason || proposalIds.length < 2) {
+    return undefined;
+  }
+  return compactObject({
+    reason,
+    proposalIds,
+    sources
+  });
+}
+
+function uniqueNonEmptyStrings(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
 function normalizeClinicalEvents(items) {

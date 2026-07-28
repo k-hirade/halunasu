@@ -9,6 +9,13 @@
     telephone_revisit: "電話再診"
   };
   const AUTO_READ_DEBOUNCE_MS = 220;
+  const ISSUE_SEVERITY_ORDER = Object.freeze({
+    error: 0,
+    warning: 1,
+    review: 2,
+    proposal: 3,
+    info: 4
+  });
   let preview = null;
   let pollingGeneration = 0;
   let extractionGeneration = 0;
@@ -23,7 +30,7 @@
     "connection-badge", "connection-copy", "connect-button", "connection-section",
     "device-code-area", "device-code",
     "approval-link", "calculation-section", "extract-button", "chart-preview", "preview-patient",
-    "preview-date", "preview-record", "preview-text", "preview-details", "setting-control", "setting-copy",
+    "preview-date", "preview-record", "preview-text", "setting-control", "setting-copy",
     "telephone-eligibility-control", "telephone-patient-initiated", "telephone-instruction-given",
     "telephone-scheduled-management",
     "same-building-control", "same-building-copy",
@@ -349,7 +356,6 @@
     elements["preview-date"].textContent = extraction.serviceDate;
     elements["preview-record"].textContent = extraction.sourceRecordDisplayId || extraction.sourceRecordId;
     elements["preview-text"].textContent = extraction.clinicalText;
-    elements["preview-details"].open = false;
     selectExtractedEncounterType(extraction);
     selectExtractedSameBuilding(extraction);
     renderTelephoneEligibilityControl();
@@ -370,7 +376,7 @@
     renderCandidates(elements["proposal-candidates"], candidates.filter((item) => item.sourceType === "proposal"));
     const issues = [
       ...(Array.isArray(calculation.warnings) ? calculation.warnings : []),
-      ...(Array.isArray(calculation.reviewIssues) ? calculation.reviewIssues : [])
+      ...sortReviewIssues(Array.isArray(calculation.reviewIssues) ? calculation.reviewIssues : [])
     ];
     elements["issue-count"].textContent = `${issues.length}件`;
     replaceChildren(elements.issues, issues.length
@@ -383,30 +389,48 @@
     const rows = candidates.length ? candidates.map((candidate) => {
       const row = document.createElement("div");
       row.className = "candidate-row";
+      row.classList.toggle("requires-selection", Boolean(candidate.requiresSelection));
       const header = document.createElement("header");
       const name = document.createElement("strong");
-      name.textContent = candidate.name || candidate.code || "名称未確定";
+      name.className = "candidate-name";
+      const display = candidate.display && typeof candidate.display === "object"
+        ? candidate.display
+        : null;
+      name.textContent = display?.stem || candidate.name || candidate.code || "名称未確定";
       const points = document.createElement("span");
+      points.className = "candidate-points";
       points.textContent = candidate.requiresSelection
-        ? "点数未確定"
+        ? "要選択"
         : `${Number(candidate.estimatedTotalPoints || 0).toLocaleString("ja-JP")}点`;
       header.append(name, points);
       row.append(header);
+
+      const meta = document.createElement("div");
+      meta.className = "candidate-meta";
+      if (display?.stem && display.qualifier) {
+        const qualifier = document.createElement("span");
+        qualifier.className = "candidate-qualifier";
+        qualifier.textContent = display.qualifier;
+        meta.append(qualifier);
+      }
       if (candidate.requiresSelection && candidate.codeCandidates?.length) {
-        // コードの羅列はパネルを圧迫するため件数だけ見せ、必要なときに展開する。
-        const choices = document.createElement("details");
-        choices.className = "code-details";
-        const summary = document.createElement("summary");
-        summary.textContent = `${candidate.codeCandidates.length}件の区分から選択が必要`;
-        const list = document.createElement("small");
+        const choices = document.createElement("span");
+        choices.className = "candidate-selection";
+        const label = document.createElement("span");
+        label.textContent = `${candidate.codeCandidates.length}件から選択`;
+        const list = document.createElement("span");
+        list.className = "candidate-code";
         list.textContent = candidate.codeCandidates.join(" / ");
-        choices.append(summary, list);
-        row.append(choices);
+        choices.append(label, list);
+        meta.append(choices);
       } else if (candidate.code) {
-        const detail = document.createElement("small");
+        const detail = document.createElement("span");
         detail.className = "candidate-code";
         detail.textContent = candidate.code;
-        row.append(detail);
+        meta.append(detail);
+      }
+      if (meta.childElementCount) {
+        row.append(meta);
       }
       return row;
     }) : [createTextRow("candidate-row", "候補はありません。")];
@@ -428,7 +452,34 @@
     if (typeof issue === "string") {
       return issue;
     }
-    return issue?.message || issue?.reason || issue?.title || "内容を確認してください。";
+    return issue?.messageForStaff
+      || issue?.message
+      || issue?.reason
+      || issue?.title
+      || "内容を確認してください。";
+  }
+
+  function sortReviewIssues(issues = []) {
+    return issues
+      .map((issue, index) => ({ issue, index }))
+      .sort((left, right) => {
+        const leftSeverity = String(left.issue?.severity || "");
+        const rightSeverity = String(right.issue?.severity || "");
+        const severityDifference = severityOrder(leftSeverity) - severityOrder(rightSeverity);
+        if (severityDifference !== 0) {
+          return severityDifference;
+        }
+        const codeDifference = String(left.issue?.issueCode || "")
+          .localeCompare(String(right.issue?.issueCode || ""), "ja");
+        return codeDifference || left.index - right.index;
+      })
+      .map((entry) => entry.issue);
+  }
+
+  function severityOrder(severity) {
+    return Object.hasOwn(ISSUE_SEVERITY_ORDER, severity)
+      ? ISSUE_SEVERITY_ORDER[severity]
+      : Number.MAX_SAFE_INTEGER;
   }
 
   async function sendToActiveTab(message) {
