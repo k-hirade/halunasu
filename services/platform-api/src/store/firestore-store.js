@@ -34,6 +34,7 @@ import {
   organizationCodePath,
   organizationPath,
   passwordSetupTokenPath,
+  patientIdentifierIndexPath,
   patientPath,
   productEntitlementPath,
   rateLimitPath,
@@ -52,6 +53,12 @@ import {
   buildTrialEntitlement,
   normalizeSignupProductSelection
 } from "../billing/catalog.js";
+import {
+  patientIdentifierIndexId,
+  patientIdentifierKey,
+  patientIdentifierKeys,
+  patientMatchesIdentifier
+} from "./patient-identifiers.js";
 
 export class FirestorePlatformStore {
   constructor(options = {}) {
@@ -645,8 +652,116 @@ export class FirestorePlatformStore {
       schemaVersion: 1
     });
 
-    await this.doc(patientPath(orgId, patientId)).set(patient);
+    await this.assertNoLegacyPatientIdentifierConflicts(orgId, patientId, patient);
+    const identifierKeys = patientIdentifierKeys(patient);
+    await this.db.runTransaction(async (transaction) => {
+      const patientRef = this.doc(patientPath(orgId, patientId));
+      const mappingEntries = await Promise.all(identifierKeys.map(async (identifierKey) => {
+        const indexId = patientIdentifierIndexId(identifierKey);
+        const ref = this.doc(patientIdentifierIndexPath(orgId, indexId));
+        return { indexId, ref, snapshot: await transaction.get(ref) };
+      }));
+      for (const entry of mappingEntries) {
+        const existing = docDataOrNull(entry.snapshot);
+        if (existing && existing.patientId !== patientId) {
+          throw conflictError("patient identifier already belongs to another patient", "patientIdentifiers");
+        }
+      }
+      transaction.set(patientRef, patient);
+      for (const entry of mappingEntries) {
+        const existing = docDataOrNull(entry.snapshot);
+        transaction.set(entry.ref, patientIdentifierMappingRecord({
+          identifierIndexId: entry.indexId,
+          patientId,
+          now,
+          existing
+        }));
+      }
+    });
     return patientPublicView(patient);
+  }
+
+  async provisionPatientFromIdentifier(orgId, input = {}) {
+    await this.requireOrganization(orgId);
+    const sourceSystem = requiredString(input.sourceSystem, "sourceSystem");
+    const facilityId = requiredString(input.facilityId, "facilityId");
+    const patientNumber = requiredString(
+      input.patientNumber || input.value || input.externalPatientId,
+      "patientNumber"
+    );
+    const sidecarPatientKey = requiredString(input.sidecarPatientKey, "sidecarPatientKey");
+    if (!/^sidecar_patient_[0-9a-f]{26}$/u.test(sidecarPatientKey)) {
+      throw new TypeError("sidecarPatientKey is invalid");
+    }
+    const identifier = { sourceSystem, facilityId, patientNumber };
+    const identifierKey = patientIdentifierKey(identifier);
+    const identifierIndexId = patientIdentifierIndexId(identifierKey);
+    const legacyMatches = await this.findPatientsByIdentifier(orgId, identifier);
+    if (legacyMatches.length > 1) {
+      throw conflictError("patient identifier matches multiple patients", "patientIdentifiers");
+    }
+    const legacyPatientId = legacyMatches[0]?.patientId || null;
+    const now = this.timestamp();
+
+    return this.db.runTransaction(async (transaction) => {
+      const mappingRef = this.doc(patientIdentifierIndexPath(orgId, identifierIndexId));
+      const mappingSnapshot = await transaction.get(mappingRef);
+      const existingMapping = docDataOrNull(mappingSnapshot);
+      const patientId = existingMapping?.patientId || legacyPatientId || sidecarPatientKey;
+      const patientRef = this.doc(patientPath(orgId, patientId));
+      const patientSnapshot = await transaction.get(patientRef);
+      const existingPatient = docDataOrNull(patientSnapshot);
+
+      if (existingMapping) {
+        if (!existingPatient || !patientMatchesIdentifier(existingPatient, identifier)) {
+          throw conflictError("patient identifier mapping is inconsistent", "patientIdentifiers");
+        }
+        return { patient: patientPublicView(existingPatient), created: false };
+      }
+
+      if (existingPatient) {
+        if (!patientMatchesIdentifier(existingPatient, identifier)) {
+          throw conflictError("sidecar patient key already belongs to another patient", "sidecarPatientKey");
+        }
+        transaction.set(mappingRef, patientIdentifierMappingRecord({
+          identifierIndexId,
+          patientId,
+          now
+        }));
+        return { patient: patientPublicView(existingPatient), created: false };
+      }
+      if (legacyPatientId) {
+        throw conflictError("patient identifier lookup changed during provisioning", "patientIdentifiers");
+      }
+
+      const normalized = validateCreatePatientInput({
+        displayName: `HOMIS患者 ${patientNumber}`,
+        primaryPatientNumber: patientNumber,
+        patientIdentifiers: [identifier],
+        duplicateCandidateIds: [],
+        status: "active",
+        provenance: {
+          source: "sidecar_auto_provision",
+          firstSeenAt: now
+        }
+      });
+      const patient = compactObject({
+        patientId: sidecarPatientKey,
+        orgId,
+        ...normalized,
+        ...buildPatientSearchFields({ patientId: sidecarPatientKey, orgId, ...normalized }),
+        createdAt: now,
+        updatedAt: now,
+        schemaVersion: 1
+      });
+      transaction.set(patientRef, patient);
+      transaction.set(mappingRef, patientIdentifierMappingRecord({
+        identifierIndexId,
+        patientId: sidecarPatientKey,
+        now
+      }));
+      return { patient: patientPublicView(patient), created: true };
+    });
   }
 
   async listPatients(orgId, options = undefined) {
@@ -720,8 +835,73 @@ export class FirestorePlatformStore {
       updatedAt: this.timestamp()
     });
 
-    await this.doc(patientPath(orgId, patientId)).set(updated);
-    return patientPublicView(updated);
+    await this.assertNoLegacyPatientIdentifierConflicts(orgId, patientId, updated);
+    const now = updated.updatedAt;
+    const previousKeys = patientIdentifierKeys(current);
+    const nextKeys = patientIdentifierKeys(updated);
+    const allKeys = [...new Set([...previousKeys, ...nextKeys])];
+    return this.db.runTransaction(async (transaction) => {
+      const patientRef = this.doc(patientPath(orgId, patientId));
+      const currentSnapshot = await transaction.get(patientRef);
+      const transactionCurrent = docDataOrNull(currentSnapshot);
+      if (!transactionCurrent) {
+        throw notFoundError("patient not found");
+      }
+      const transactionUpdated = compactObject({
+        ...transactionCurrent,
+        ...patch,
+        ...buildPatientSearchFields({ ...transactionCurrent, ...patch }),
+        updatedAt: now
+      });
+      const transactionPreviousKeys = patientIdentifierKeys(transactionCurrent);
+      const transactionNextKeys = patientIdentifierKeys(transactionUpdated);
+      const transactionAllKeys = [...new Set([
+        ...allKeys,
+        ...transactionPreviousKeys,
+        ...transactionNextKeys
+      ])];
+      const mappingEntries = await Promise.all(transactionAllKeys.map(async (identifierKey) => {
+        const indexId = patientIdentifierIndexId(identifierKey);
+        const ref = this.doc(patientIdentifierIndexPath(orgId, indexId));
+        return { identifierKey, indexId, ref, snapshot: await transaction.get(ref) };
+      }));
+      const nextSet = new Set(transactionNextKeys);
+      for (const entry of mappingEntries) {
+        const existing = docDataOrNull(entry.snapshot);
+        if (nextSet.has(entry.identifierKey) && existing && existing.patientId !== patientId) {
+          throw conflictError("patient identifier already belongs to another patient", "patientIdentifiers");
+        }
+      }
+      transaction.set(patientRef, transactionUpdated);
+      for (const entry of mappingEntries) {
+        const existing = docDataOrNull(entry.snapshot);
+        if (!nextSet.has(entry.identifierKey)) {
+          if (existing?.patientId === patientId) {
+            transaction.delete(entry.ref);
+          }
+          continue;
+        }
+        transaction.set(entry.ref, patientIdentifierMappingRecord({
+          identifierIndexId: entry.indexId,
+          patientId,
+          now,
+          existing
+        }));
+      }
+      return patientPublicView(transactionUpdated);
+    });
+  }
+
+  async assertNoLegacyPatientIdentifierConflicts(orgId, patientId, patient = {}) {
+    for (const identifier of Array.isArray(patient.patientIdentifiers) ? patient.patientIdentifiers : []) {
+      if (!patientIdentifierKey(identifier)) {
+        continue;
+      }
+      const matches = await this.findPatientsByIdentifier(orgId, identifier);
+      if (matches.some((match) => match.patientId !== patientId)) {
+        throw conflictError("patient identifier already belongs to another patient", "patientIdentifiers");
+      }
+    }
   }
 
   async searchPatients(orgId, keyword, limit) {
@@ -1274,28 +1454,8 @@ function buildPatientSearchFields(patient = {}) {
 }
 
 function buildPatientIdentifierKeys(patient = {}) {
-  const keys = [...new Set((Array.isArray(patient.patientIdentifiers) ? patient.patientIdentifiers : [])
-    .map((identifier) => patientIdentifierKey(identifier))
-    .filter(Boolean))];
+  const keys = patientIdentifierKeys(patient);
   return keys.length ? keys : undefined;
-}
-
-function patientMatchesIdentifier(patient = {}, input = {}) {
-  return (Array.isArray(patient.patientIdentifiers) ? patient.patientIdentifiers : []).some((identifier) => (
-    patientIdentifierKey(identifier) === patientIdentifierKey(input)
-    && String(identifier?.status || "active") === "active"
-  ));
-}
-
-function patientIdentifierKey(identifier = {}) {
-  const sourceSystem = normalizePatientSearchValue(identifier.sourceSystem);
-  const facilityId = normalizePatientSearchValue(identifier.facilityId);
-  const patientNumber = normalizePatientSearchValue(
-    identifier.patientNumber || identifier.value || identifier.externalPatientId
-  );
-  return sourceSystem && facilityId && patientNumber
-    ? `${sourceSystem}\u001f${facilityId}\u001f${patientNumber}`
-    : "";
 }
 
 function patientMatchesPatientSearch(patient = {}, keyword = "") {
@@ -1378,6 +1538,21 @@ function normalizePatientSearchValue(value = "") {
 
 function compactObject(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function patientIdentifierMappingRecord({
+  identifierIndexId,
+  patientId,
+  now,
+  existing = null
+}) {
+  return {
+    identifierIndexId,
+    patientId,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+    schemaVersion: 1
+  };
 }
 
 function requiredString(value, label) {

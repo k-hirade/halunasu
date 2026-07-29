@@ -31,6 +31,12 @@ import {
   buildTrialEntitlement,
   normalizeSignupProductSelection
 } from "../billing/catalog.js";
+import {
+  patientIdentifierIndexId,
+  patientIdentifierKey,
+  patientIdentifierKeys,
+  patientMatchesIdentifier
+} from "./patient-identifiers.js";
 
 export class MemoryPlatformStore {
   constructor(options = {}) {
@@ -51,6 +57,7 @@ export class MemoryPlatformStore {
     this.facilitiesByOrg = new Map();
     this.departmentsByOrg = new Map();
     this.patientsByOrg = new Map();
+    this.patientIdentifierIndexByOrg = new Map();
     this.productEntitlementsByOrg = new Map();
     this.auditEventsByOrg = new Map();
     this.dataRequestsByOrg = new Map();
@@ -80,6 +87,7 @@ export class MemoryPlatformStore {
     this.facilitiesByOrg.set(orgId, new Map());
     this.departmentsByOrg.set(orgId, new Map());
     this.patientsByOrg.set(orgId, new Map());
+    this.patientIdentifierIndexByOrg.set(orgId, new Map());
     this.productEntitlementsByOrg.set(orgId, new Map());
     this.auditEventsByOrg.set(orgId, new Map());
     this.dataRequestsByOrg.set(orgId, new Map());
@@ -605,8 +613,79 @@ export class MemoryPlatformStore {
       schemaVersion: 1
     });
 
+    this.assertPatientIdentifierMappingsAvailable(orgId, patientId, patient);
     this.patientsForOrg(orgId).set(patientId, patient);
+    this.syncPatientIdentifierMappings(orgId, patientId, [], patientIdentifierKeys(patient), now);
     return patientPublicView(patient);
+  }
+
+  provisionPatientFromIdentifier(orgId, input = {}) {
+    this.requireOrganization(orgId);
+    const sourceSystem = requiredString(input.sourceSystem, "sourceSystem");
+    const facilityId = requiredString(input.facilityId, "facilityId");
+    const patientNumber = requiredString(
+      input.patientNumber || input.value || input.externalPatientId,
+      "patientNumber"
+    );
+    const patientId = requiredString(input.sidecarPatientKey, "sidecarPatientKey");
+    if (!/^sidecar_patient_[0-9a-f]{26}$/u.test(patientId)) {
+      throw new TypeError("sidecarPatientKey is invalid");
+    }
+    const identifier = { sourceSystem, facilityId, patientNumber };
+    const identifierKey = patientIdentifierKey(identifier);
+    const indexId = patientIdentifierIndexId(identifierKey);
+    const index = this.patientIdentifierIndexForOrg(orgId);
+    const patients = this.patientsForOrg(orgId);
+    const mapped = index.get(indexId);
+    if (mapped) {
+      const patient = patients.get(mapped.patientId);
+      if (!patient || !patientMatchesIdentifier(patient, identifier)) {
+        throw conflictError("patient identifier mapping is inconsistent", "patientIdentifiers");
+      }
+      return { patient: patientPublicView(patient), created: false };
+    }
+
+    const matches = [...patients.values()]
+      .filter((patient) => patientMatchesIdentifier(patient, identifier));
+    if (matches.length > 1) {
+      throw conflictError("patient identifier matches multiple patients", "patientIdentifiers");
+    }
+    if (matches.length === 1) {
+      this.syncPatientIdentifierMappings(orgId, matches[0].patientId, [], [identifierKey], this.timestamp());
+      return { patient: patientPublicView(matches[0]), created: false };
+    }
+
+    const existingPatient = patients.get(patientId);
+    if (existingPatient) {
+      throw conflictError("sidecar patient key already belongs to another patient", "sidecarPatientKey");
+    }
+
+    const now = this.timestamp();
+    const normalized = validateCreatePatientInput({
+      displayName: `HOMIS患者 ${patientNumber}`,
+      primaryPatientNumber: patientNumber,
+      patientIdentifiers: [identifier],
+      duplicateCandidateIds: [],
+      status: "active",
+      provenance: {
+        source: "sidecar_auto_provision",
+        firstSeenAt: now
+      }
+    });
+    const patient = compactObject({
+      patientId,
+      orgId,
+      ...normalized,
+      ...buildPatientSearchFields({ patientId, orgId, ...normalized }),
+      mergedIntoPatientId: undefined,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    });
+    this.assertPatientIdentifierMappingsAvailable(orgId, patientId, patient);
+    patients.set(patientId, patient);
+    this.syncPatientIdentifierMappings(orgId, patientId, [], [identifierKey], now);
+    return { patient: patientPublicView(patient), created: true };
   }
 
   listPatients(orgId, options = undefined) {
@@ -634,7 +713,7 @@ export class MemoryPlatformStore {
 
   updatePatient(orgId, patientId, input) {
     this.requireOrganization(orgId);
-    const current = this.getPatient(orgId, patientId);
+    const current = this.patientsForOrg(orgId).get(patientId);
     if (!current) {
       throw notFoundError("patient not found");
     }
@@ -647,6 +726,14 @@ export class MemoryPlatformStore {
       updatedAt: this.timestamp()
     });
 
+    this.assertPatientIdentifierMappingsAvailable(orgId, patientId, updated);
+    this.syncPatientIdentifierMappings(
+      orgId,
+      patientId,
+      patientIdentifierKeys(current),
+      patientIdentifierKeys(updated),
+      updated.updatedAt
+    );
     this.patientsForOrg(orgId).set(patientId, updated);
     return patientPublicView(updated);
   }
@@ -982,6 +1069,60 @@ export class MemoryPlatformStore {
     return this.patientsByOrg.get(orgId);
   }
 
+  patientIdentifierIndexForOrg(orgId) {
+    if (!this.patientIdentifierIndexByOrg.has(orgId)) {
+      this.patientIdentifierIndexByOrg.set(orgId, new Map());
+    }
+    return this.patientIdentifierIndexByOrg.get(orgId);
+  }
+
+  assertPatientIdentifierMappingsAvailable(orgId, patientId, patient = {}) {
+    const keys = patientIdentifierKeys(patient);
+    const index = this.patientIdentifierIndexForOrg(orgId);
+    const patients = this.patientsForOrg(orgId);
+    for (const identifierKey of keys) {
+      const mapped = index.get(patientIdentifierIndexId(identifierKey));
+      if (mapped && mapped.patientId !== patientId) {
+        throw conflictError("patient identifier already belongs to another patient", "patientIdentifiers");
+      }
+      const legacyMatch = [...patients.values()].find((candidate) => (
+        candidate.patientId !== patientId
+        && patientIdentifierKeys(candidate).includes(identifierKey)
+      ));
+      if (legacyMatch) {
+        throw conflictError("patient identifier already belongs to another patient", "patientIdentifiers");
+      }
+    }
+  }
+
+  syncPatientIdentifierMappings(orgId, patientId, previousKeys = [], nextKeys = [], now = this.timestamp()) {
+    const index = this.patientIdentifierIndexForOrg(orgId);
+    const next = new Set(nextKeys);
+    for (const identifierKey of previousKeys) {
+      if (next.has(identifierKey)) {
+        continue;
+      }
+      const indexId = patientIdentifierIndexId(identifierKey);
+      if (index.get(indexId)?.patientId === patientId) {
+        index.delete(indexId);
+      }
+    }
+    for (const identifierKey of next) {
+      const indexId = patientIdentifierIndexId(identifierKey);
+      const existing = index.get(indexId);
+      if (existing && existing.patientId !== patientId) {
+        throw conflictError("patient identifier already belongs to another patient", "patientIdentifiers");
+      }
+      index.set(indexId, {
+        identifierIndexId: indexId,
+        patientId,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+        schemaVersion: 1
+      });
+    }
+  }
+
   productEntitlementsForOrg(orgId) {
     if (!this.productEntitlementsByOrg.has(orgId)) {
       this.productEntitlementsByOrg.set(orgId, new Map());
@@ -1183,28 +1324,8 @@ function buildPatientSearchFields(patient = {}) {
 }
 
 function buildPatientIdentifierKeys(patient = {}) {
-  const keys = [...new Set((Array.isArray(patient.patientIdentifiers) ? patient.patientIdentifiers : [])
-    .map((identifier) => patientIdentifierKey(identifier))
-    .filter(Boolean))];
+  const keys = patientIdentifierKeys(patient);
   return keys.length ? keys : undefined;
-}
-
-function patientMatchesIdentifier(patient = {}, input = {}) {
-  return (Array.isArray(patient.patientIdentifiers) ? patient.patientIdentifiers : []).some((identifier) => (
-    patientIdentifierKey(identifier) === patientIdentifierKey(input)
-    && String(identifier?.status || "active") === "active"
-  ));
-}
-
-function patientIdentifierKey(identifier = {}) {
-  const sourceSystem = normalizePatientSearchValue(identifier.sourceSystem);
-  const facilityId = normalizePatientSearchValue(identifier.facilityId);
-  const patientNumber = normalizePatientSearchValue(
-    identifier.patientNumber || identifier.value || identifier.externalPatientId
-  );
-  return sourceSystem && facilityId && patientNumber
-    ? `${sourceSystem}\u001f${facilityId}\u001f${patientNumber}`
-    : "";
 }
 
 function patientMatchesPatientSearch(patient = {}, keyword = "") {

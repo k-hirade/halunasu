@@ -9630,6 +9630,184 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(adoptedList.body.sidecarDrafts[0].lifecycleStatus, "adopted");
 });
 
+test("sidecar auto-provisions an unlinked patient without changing the canonical history key", async () => {
+  const stores = createStores();
+  const sidecarHeaders = await signedSidecarHeaders(stores);
+  const requestBody = sidecarCalculationBody();
+  const before = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    requestBody,
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(before.statusCode, 201);
+  const draftId = before.body.sidecarDraft.sidecarDraftId;
+  const unlinkedDraft = stores.feeStore.getSidecarCalculationDraft("org_001", draftId);
+  assert.equal(unlinkedDraft.canonicalPatientResolutionStatus, "not_linked");
+  assert.equal(unlinkedDraft.canonicalPatientIdSource, "sidecar_patient_key");
+  assert.equal(stores.platformStore.listPatients("org_001").length, 0);
+
+  stores.feeStore.recordStandingBillingEvidence("org_001", {
+    facilityId: "fac_001",
+    canonicalPatientId: unlinkedDraft.canonicalPatientId,
+    claimMonth: "2026-04",
+    family: {
+      familyId: "test_home_management",
+      name: "在宅管理テスト",
+      source: "test"
+    },
+    codes: [{
+      code: "114001110",
+      name: "在宅患者訪問診療料",
+      points: 890,
+      quantity: 1
+    }],
+    evidence: {
+      evidenceKey: "test:2026-04",
+      type: "confirmed_claim",
+      ref: "test"
+    }
+  });
+  stores.feeStore.updateFeeSettings("org_001", "fac_001", {
+    facilityId: "fac_001",
+    sidecarPatientAutoProvision: true
+  });
+
+  const provisioned = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    requestBody,
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(provisioned.statusCode, 200);
+  const provisionedDraft = stores.feeStore.getSidecarCalculationDraft("org_001", draftId);
+  assert.equal(provisionedDraft.canonicalPatientResolutionStatus, "resolved");
+  assert.equal(provisionedDraft.canonicalPatientLookupCompleteness, "complete");
+  assert.equal(provisionedDraft.canonicalPatientIdSource, "sidecar_auto_provision");
+  assert.equal(provisionedDraft.canonicalPatientId, unlinkedDraft.canonicalPatientId);
+  const patients = stores.platformStore.listPatients("org_001");
+  assert.equal(patients.length, 1);
+  assert.equal(patients[0].patientId, unlinkedDraft.canonicalPatientId);
+  assert.equal(patients[0].provenance.source, "sidecar_auto_provision");
+  assert.equal(
+    stores.feeStore.listStandingBillingProfilesForPatient(
+      "org_001",
+      "fac_001",
+      patients[0].patientId
+    ).length,
+    1
+  );
+
+  const feeHeaders = await signedHeaders(stores.platformStore);
+  const importedHistory = await request(
+    stores,
+    "POST",
+    `/v1/fee/patients/${patients[0].patientId}/billing-history`,
+    {
+      serviceDate: "2026-04-10",
+      source: "receipt_csv",
+      lineItems: [{
+        code: "114001110",
+        name: "在宅患者訪問診療料"
+      }]
+    },
+    feeHeaders
+  );
+  assert.equal(importedHistory.statusCode, 201);
+  assert.equal(importedHistory.body.billingHistoryEvent.patientId, patients[0].patientId);
+  const listedHistory = await request(
+    stores,
+    "GET",
+    `/v1/fee/patients/${patients[0].patientId}/billing-history?limit=10`,
+    undefined,
+    feeHeaders
+  );
+  assert.equal(listedHistory.statusCode, 200);
+  assert.equal(listedHistory.body.billingHistoryEvents.length, 1);
+  assert.equal(listedHistory.body.billingHistoryEvents[0].patientId, patients[0].patientId);
+
+  const repeated = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    requestBody,
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(repeated.statusCode, 200);
+  const repeatedDraft = stores.feeStore.getSidecarCalculationDraft("org_001", draftId);
+  assert.equal(repeatedDraft.canonicalPatientId, patients[0].patientId);
+  assert.equal(repeatedDraft.canonicalPatientIdSource, "patient_identifier");
+  assert.equal(stores.platformStore.listPatients("org_001").length, 1);
+  const auditEvents = stores.platformStore.listAuditEvents("org_001")
+    .filter((event) => event.eventType === "fee.sidecar_patient_auto_provisioned");
+  assert.equal(auditEvents.length, 1);
+  assert.deepEqual(auditEvents[0].safePayload, {
+    patientId: patients[0].patientId,
+    facilityId: "fac_001"
+  });
+});
+
+test("sidecar auto-provision remains fail-closed for ambiguous and unavailable lookups", async () => {
+  for (const lookupMode of ["ambiguous", "unavailable"]) {
+    const stores = createStores();
+    stores.feeStore.updateFeeSettings("org_001", "fac_001", {
+      facilityId: "fac_001",
+      sidecarPatientAutoProvision: true
+    });
+    let provisionCallCount = 0;
+    const originalProvision = stores.platformStore.provisionPatientFromIdentifier.bind(stores.platformStore);
+    stores.platformStore.provisionPatientFromIdentifier = (...args) => {
+      provisionCallCount += 1;
+      return originalProvision(...args);
+    };
+    stores.platformStore.findPatientsByIdentifier = lookupMode === "ambiguous"
+      ? () => [
+          {
+            patientId: "pat_one",
+            patientIdentifiers: [{
+              sourceSystem: "homis",
+              facilityId: "fac_001",
+              patientNumber: "1001"
+            }]
+          },
+          {
+            patientId: "pat_two",
+            patientIdentifiers: [{
+              sourceSystem: "homis",
+              facilityId: "fac_001",
+              patientNumber: "1001"
+            }]
+          }
+        ]
+      : () => {
+          throw new Error("patient store unavailable");
+        };
+    const response = await request(
+      stores,
+      "POST",
+      "/v1/integrations/sidecar/calculate",
+      sidecarCalculationBody(),
+      await signedSidecarHeaders(stores),
+      sidecarRequestOptions()
+    );
+
+    assert.equal(response.statusCode, 201);
+    assert.equal(provisionCallCount, 0);
+    assert.equal(stores.platformStore.listPatients("org_001").length, 0);
+    const draft = stores.feeStore.getSidecarCalculationDraft(
+      "org_001",
+      response.body.sidecarDraft.sidecarDraftId
+    );
+    assert.equal(draft.canonicalPatientResolutionStatus, lookupMode);
+    assert.equal(draft.canonicalPatientLookupCompleteness, "unavailable");
+  }
+});
+
 test("extraction snapshots are persisted only when FEE_EXTRACTION_MEMO is enabled", async () => {
   async function calculateWithMemoFlag(flag) {
     const stores = createStores();

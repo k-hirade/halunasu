@@ -79,6 +79,139 @@ test("lists patients with bounded recent and search options", () => {
   );
 });
 
+test("provisions a sidecar patient idempotently and indexes the identifier", () => {
+  const store = new MemoryPlatformStore({
+    now: () => new Date("2026-07-29T00:00:00.000Z")
+  });
+  const organization = store.createOrganization({
+    organizationCode: "Sidecar Clinic",
+    displayName: "Sidecar Clinic"
+  });
+  const input = {
+    sourceSystem: "homis",
+    facilityId: "fac_001",
+    patientNumber: "1004",
+    sidecarPatientKey: `sidecar_patient_${"a".repeat(26)}`
+  };
+
+  const first = store.provisionPatientFromIdentifier(organization.orgId, input);
+  const second = store.provisionPatientFromIdentifier(organization.orgId, input);
+
+  assert.equal(first.created, true);
+  assert.equal(second.created, false);
+  assert.equal(first.patient.patientId, input.sidecarPatientKey);
+  assert.equal(second.patient.patientId, input.sidecarPatientKey);
+  assert.equal(first.patient.primaryPatientNumber, "1004");
+  assert.deepEqual(first.patient.provenance, {
+    source: "sidecar_auto_provision",
+    firstSeenAt: "2026-07-29T00:00:00.000Z"
+  });
+  assert.deepEqual(
+    store.findPatientsByIdentifier(organization.orgId, input).map((patient) => patient.patientId),
+    [input.sidecarPatientKey]
+  );
+  assert.equal(store.patientIdentifierIndexForOrg(organization.orgId).size, 1);
+});
+
+test("enforces patient identifier uniqueness across normal and sidecar creation", () => {
+  let counter = 0;
+  const store = new MemoryPlatformStore({
+    now: () => new Date("2026-07-29T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const organization = store.createOrganization({
+    organizationCode: "Unique Clinic",
+    displayName: "Unique Clinic"
+  });
+  const identifier = {
+    sourceSystem: "homis",
+    facilityId: "fac_001",
+    patientNumber: "1004"
+  };
+  const normal = store.createPatient(organization.orgId, {
+    displayName: "Existing Patient",
+    patientIdentifiers: [identifier]
+  });
+  const provisioned = store.provisionPatientFromIdentifier(organization.orgId, {
+    ...identifier,
+    sidecarPatientKey: `sidecar_patient_${"b".repeat(26)}`
+  });
+
+  assert.equal(provisioned.created, false);
+  assert.equal(provisioned.patient.patientId, normal.patientId);
+  assert.equal(store.listPatients(organization.orgId).length, 1);
+  assert.throws(
+    () => store.createPatient(organization.orgId, {
+      displayName: "Duplicate",
+      patientIdentifiers: [identifier]
+    }),
+    /already belongs to another patient/
+  );
+  const replacement = store.createPatient(organization.orgId, {
+    displayName: "Replacement"
+  });
+  assert.throws(
+    () => store.updatePatient(organization.orgId, replacement.patientId, {
+      patientIdentifiers: [identifier]
+    }),
+    /already belongs to another patient/
+  );
+  store.updatePatient(organization.orgId, normal.patientId, { patientIdentifiers: [] });
+  assert.equal(
+    store.updatePatient(organization.orgId, replacement.patientId, {
+      patientIdentifiers: [identifier]
+    }).patientIdentifiers[0].patientNumber,
+    "1004"
+  );
+});
+
+test("keeps facility identifiers separate and detects inconsistent mappings", () => {
+  const store = new MemoryPlatformStore({
+    now: () => new Date("2026-07-29T00:00:00.000Z")
+  });
+  const organization = store.createOrganization({
+    organizationCode: "Boundary Clinic",
+    displayName: "Boundary Clinic"
+  });
+  const first = store.provisionPatientFromIdentifier(organization.orgId, {
+    sourceSystem: "homis",
+    facilityId: "fac_001",
+    patientNumber: "1004",
+    sidecarPatientKey: `sidecar_patient_${"c".repeat(26)}`
+  });
+  const second = store.provisionPatientFromIdentifier(organization.orgId, {
+    sourceSystem: "homis",
+    facilityId: "fac_002",
+    patientNumber: "1004",
+    sidecarPatientKey: `sidecar_patient_${"d".repeat(26)}`
+  });
+  const unlinked = store.createPatient(organization.orgId, {
+    displayName: "Identifier Unknown"
+  });
+
+  assert.notEqual(first.patient.patientId, second.patient.patientId);
+  assert.equal(store.listPatients(organization.orgId).length, 3);
+  assert.equal(unlinked.provenance, undefined);
+  assert.equal(
+    store.listPatients(organization.orgId)
+      .filter((patient) => patient.provenance?.source === "sidecar_auto_provision")
+      .length,
+    2
+  );
+
+  const mapping = [...store.patientIdentifierIndexForOrg(organization.orgId).values()][0];
+  mapping.patientId = "pat_missing";
+  assert.throws(
+    () => store.provisionPatientFromIdentifier(organization.orgId, {
+      sourceSystem: "homis",
+      facilityId: "fac_001",
+      patientNumber: "1004",
+      sidecarPatientKey: first.patient.patientId
+    }),
+    /mapping is inconsistent/
+  );
+});
+
 test("stores login identities and shared master data", () => {
   let counter = 0;
   const store = new MemoryPlatformStore({

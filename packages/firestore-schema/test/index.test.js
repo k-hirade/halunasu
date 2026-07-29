@@ -15,6 +15,7 @@ import {
   organizationPath,
   passwordSetupTokenPath,
   patientAliasPath,
+  patientIdentifierIndexPath,
   patientPath,
   productEntitlementPath,
   rateLimitPath,
@@ -30,6 +31,10 @@ test("builds platform document paths", () => {
   assert.equal(facilityPath("org_123", "fac_456"), "organizations/org_123/facilities/fac_456");
   assert.equal(departmentPath("org_123", "dep_456"), "organizations/org_123/departments/dep_456");
   assert.equal(patientPath("org_123", "pat_456"), "organizations/org_123/patients/pat_456");
+  assert.equal(
+    patientIdentifierIndexPath("org_123", "abc123"),
+    "organizations/org_123/patient_identifier_index/abc123"
+  );
   assert.equal(
     productEntitlementPath("org_123", "charting"),
     "organizations/org_123/product_entitlements/charting"
@@ -87,6 +92,7 @@ test("rejects invalid path segments", () => {
 test("exports canonical collection names", () => {
   assert.equal(collections.organizations, "organizations");
   assert.equal(collections.patients, "patients");
+  assert.equal(collections.patientIdentifierIndex, "patient_identifier_index");
   assert.equal(collections.feeMonthlyExclusionResolutions, "fee_monthly_exclusion_resolutions");
   assert.equal(collections.sidecarCalculationDrafts, "sidecar_calculation_drafts");
   assert.equal(collections.sidecarDeviceAuthorizations, "sidecar_device_authorizations");

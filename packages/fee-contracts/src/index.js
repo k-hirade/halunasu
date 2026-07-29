@@ -412,6 +412,7 @@ export function defaultFeeSettings(input = {}) {
     standingFactsPolicy: {
       stalenessMonths: 3
     },
+    sidecarPatientAutoProvision: false,
     facilityStandards: [],
     autoBillingRules: [],
     receiptPolicy: {
@@ -466,12 +467,25 @@ export function validateUpdateFeeSettingsInput(input = {}) {
     : (current.autoBillingRules ?? current.auto_billing_rules);
   const facilityStandards = normalizeFacilityStandards(facilityStandardsInput);
   validateExclusiveFacilityStandards(facilityStandards);
+  const sidecarPatientAutoProvisionInput = hasOwn(input, "sidecarPatientAutoProvision")
+    || hasOwn(input, "sidecar_patient_auto_provision")
+    ? (input.sidecarPatientAutoProvision ?? input.sidecar_patient_auto_provision)
+    : (
+        hasOwn(current, "sidecarPatientAutoProvision")
+        || hasOwn(current, "sidecar_patient_auto_provision")
+          ? (current.sidecarPatientAutoProvision ?? current.sidecar_patient_auto_provision)
+          : base.sidecarPatientAutoProvision
+      );
   return {
     facilityId: optionalString(input.facilityId ?? input.facility_id ?? current.facilityId ?? current.facility_id) || base.facilityId,
     effectiveFrom: optionalDate(input.effectiveFrom ?? input.effective_from ?? current.effectiveFrom ?? current.effective_from, "effectiveFrom") || base.effectiveFrom,
     historyPolicy: normalizeHistoryPolicy(baseHistoryPolicy),
     initialRevisitPolicy: normalizeInitialRevisitPolicy(baseInitialRevisitPolicy),
     standingFactsPolicy: normalizeStandingFactsPolicy(baseStandingFactsPolicy),
+    sidecarPatientAutoProvision: strictBoolean(
+      sidecarPatientAutoProvisionInput,
+      "sidecarPatientAutoProvision"
+    ),
     facilityStandards,
     autoBillingRules: normalizeAutoBillingRules(autoBillingRulesInput),
     receiptPolicy: normalizeReceiptPolicy(baseReceiptPolicy)
@@ -917,6 +931,13 @@ function optionalBoolean(value, fallback = false) {
     if (value === "false") return false;
   }
   return Boolean(value);
+}
+
+function strictBoolean(value, field) {
+  if (typeof value !== "boolean") {
+    throw validationError(`${field} must be a boolean`, field);
+  }
+  return value;
 }
 
 function normalizeReceiptAnnotationList(value, field, normalize) {

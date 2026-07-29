@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "effectiveFrom": "2026-06-01",
+  "sidecarPatientAutoProvision": true,
   "historyPolicy": {
     "externalHistoryEnabled": false,
     "historyCompleteness": "unknown",

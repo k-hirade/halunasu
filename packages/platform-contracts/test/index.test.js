@@ -178,7 +178,11 @@ test("validates patient input and snapshot", () => {
       ],
       contact: { phone: "03-0000-0000" },
       insurance: { insurerNumber: "06123456" },
-      duplicateCandidateIds: ["pat_dup", "pat_dup"]
+      duplicateCandidateIds: ["pat_dup", "pat_dup"],
+      provenance: {
+        source: "sidecar_auto_provision",
+        firstSeenAt: "2026-05-27T00:00:00.000Z"
+      }
     })
   };
 
@@ -191,6 +195,10 @@ test("validates patient input and snapshot", () => {
     status: "active"
   }]);
   assert.deepEqual(patient.duplicateCandidateIds, ["pat_dup"]);
+  assert.deepEqual(patient.provenance, {
+    source: "sidecar_auto_provision",
+    firstSeenAt: "2026-05-27T00:00:00.000Z"
+  });
   assert.deepEqual(patientSnapshot(patient, new Date("2026-05-27T00:00:00.000Z")), {
     patientId: "pat_123",
     displayName: "Yamada Taro",
@@ -315,6 +323,16 @@ test("rejects invalid patient birth date", () => {
   assert.throws(
     () => validateCreatePatientInput({ displayName: "Yamada Taro", birthDate: "19700101" }),
     /birthDate/
+  );
+});
+
+test("rejects invalid patient provenance", () => {
+  assert.throws(
+    () => validateCreatePatientInput({
+      displayName: "Yamada Taro",
+      provenance: "sidecar"
+    }),
+    /provenance must be an object/
   );
 });
 

@@ -249,13 +249,21 @@ async function routeFeeApiRequest(input = {}) {
     const facility = await requireFacility(context, platformStore, normalized.facilityId);
     const department = await resolveDepartment(context, platformStore, normalized.departmentId);
     const identity = sidecarSourceIdentity(context.session.orgId, normalized);
-    const canonicalIdentity = await resolveCanonicalSidecarPatientIdentity({
+    let canonicalIdentity = await resolveCanonicalSidecarPatientIdentity({
       platformStore,
       orgId: context.session.orgId,
       facilityId: normalized.facilityId,
       sourceSystem: normalized.sourceSystem,
       externalPatientId: normalized.externalPatientId,
       sidecarPatientKey: identity.sidecarPatientKey
+    });
+    canonicalIdentity = await maybeAutoProvisionSidecarPatient({
+      platformStore,
+      feeStore,
+      context,
+      normalized,
+      identity,
+      canonicalIdentity
     });
     const sourceRevisionHash = sidecarSourceRevisionHash(normalized);
     const encounterDetails = {
@@ -1863,6 +1871,68 @@ function sidecarSourceIdentity(orgId, input = {}) {
     idempotencyKeyHash,
     sidecarDraftId: `sidecar_${idempotencyKeyHash.slice(0, 26)}`,
     sidecarPatientKey: `sidecar_patient_${patientHash.slice(0, 26)}`
+  };
+}
+
+async function maybeAutoProvisionSidecarPatient({
+  platformStore,
+  feeStore,
+  context,
+  normalized,
+  identity,
+  canonicalIdentity
+}) {
+  if (
+    canonicalIdentity?.resolutionStatus !== "not_linked"
+    || canonicalIdentity?.lookupCompleteness !== "complete"
+  ) {
+    return canonicalIdentity;
+  }
+  const settings = typeof feeStore?.getFeeSettings === "function"
+    ? await feeStore.getFeeSettings(context.session.orgId, normalized.facilityId)
+    : null;
+  if (settings?.sidecarPatientAutoProvision !== true) {
+    return canonicalIdentity;
+  }
+  if (typeof platformStore?.provisionPatientFromIdentifier !== "function") {
+    throw new Error("platform patient provisioning is unavailable");
+  }
+
+  const provisioned = await platformStore.provisionPatientFromIdentifier(
+    context.session.orgId,
+    {
+      sourceSystem: normalized.sourceSystem,
+      facilityId: normalized.facilityId,
+      patientNumber: normalized.externalPatientId,
+      sidecarPatientKey: identity.sidecarPatientKey
+    }
+  );
+  if (provisioned.created) {
+    await platformStore.createAuditEvent(context.session.orgId, {
+      eventType: "fee.sidecar_patient_auto_provisioned",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      targetType: "patient",
+      targetId: provisioned.patient.patientId,
+      productId: PRODUCT_ID,
+      safePayload: {
+        patientId: provisioned.patient.patientId,
+        facilityId: normalized.facilityId
+      }
+    });
+  }
+  return {
+    canonicalPatientId: provisioned.patient.patientId,
+    canonicalPatientIdSource: "sidecar_auto_provision",
+    patientIdentityAliases: uniqueStrings([
+      provisioned.patient.patientId,
+      identity.sidecarPatientKey,
+      ...(Array.isArray(canonicalIdentity.patientIdentityAliases)
+        ? canonicalIdentity.patientIdentityAliases
+        : [])
+    ]),
+    resolutionStatus: "resolved",
+    lookupCompleteness: "complete"
   };
 }
 

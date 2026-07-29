@@ -84,6 +84,7 @@ test("defaults receipt exports to fail closed", () => {
   const settings = defaultFeeSettings({ facilityId: "fac_001" });
   assert.equal(settings.receiptPolicy.blockExportOnErrors, true);
   assert.equal(settings.receiptPolicy.connectorSpecVerified, false);
+  assert.equal(settings.sidecarPatientAutoProvision, false);
 });
 
 test("validates the sidecar v1 extraction and atomic identity contract", () => {
@@ -610,6 +611,24 @@ test("normalizes standing fact staleness policy within the supported range", () 
   assert.equal(validateUpdateFeeSettingsInput({
     standingFactsPolicy: { stalenessMonths: 0 }
   }).standingFactsPolicy.stalenessMonths, 1);
+});
+
+test("validates sidecar patient auto-provision as a strict facility boolean", () => {
+  assert.equal(validateUpdateFeeSettingsInput({
+    facilityId: "fac_001",
+    sidecarPatientAutoProvision: true
+  }).sidecarPatientAutoProvision, true);
+  assert.equal(validateUpdateFeeSettingsInput({
+    facilityId: "fac_001",
+    current: { sidecarPatientAutoProvision: true }
+  }).sidecarPatientAutoProvision, true);
+  assert.throws(
+    () => validateUpdateFeeSettingsInput({
+      facilityId: "fac_001",
+      sidecarPatientAutoProvision: "true"
+    }),
+    /sidecarPatientAutoProvision must be a boolean/
+  );
 });
 
 test("rejects mutually exclusive active detail-issuance facility standards", () => {

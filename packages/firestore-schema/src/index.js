@@ -13,6 +13,7 @@ export const collections = Object.freeze({
   facilities: "facilities",
   departments: "departments",
   patients: "patients",
+  patientIdentifierIndex: "patient_identifier_index",
   patientAliases: "aliases",
   productEntitlements: "product_entitlements",
   auditEvents: "audit_events",
@@ -94,6 +95,15 @@ export function departmentPath(orgId, departmentId) {
 
 export function patientPath(orgId, patientId) {
   return orgDocPath(orgId, collections.patients, patientId, "patientId");
+}
+
+export function patientIdentifierIndexPath(orgId, identifierIndexId) {
+  return orgDocPath(
+    orgId,
+    collections.patientIdentifierIndex,
+    identifierIndexId,
+    "identifierIndexId"
+  );
 }
 
 export function patientAliasPath(orgId, patientId, aliasId) {

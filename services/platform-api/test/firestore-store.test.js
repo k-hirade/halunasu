@@ -96,6 +96,130 @@ test("lists patients with bounded recent and search options", async () => {
   );
 });
 
+test("provisions a sidecar patient idempotently and indexes the identifier", async () => {
+  const db = new FakeFirestoreDb();
+  const store = new FirestorePlatformStore({
+    db,
+    now: () => new Date("2026-07-29T00:00:00.000Z")
+  });
+  const organization = await store.createOrganization({
+    organizationCode: "Sidecar Clinic",
+    displayName: "Sidecar Clinic"
+  });
+  const input = {
+    sourceSystem: "homis",
+    facilityId: "fac_001",
+    patientNumber: "1004",
+    sidecarPatientKey: `sidecar_patient_${"a".repeat(26)}`
+  };
+
+  const [first, second] = await Promise.all([
+    store.provisionPatientFromIdentifier(organization.orgId, input),
+    store.provisionPatientFromIdentifier(organization.orgId, input)
+  ]);
+
+  assert.equal([first, second].filter((result) => result.created).length, 1);
+  assert.equal(first.patient.patientId, input.sidecarPatientKey);
+  assert.equal(second.patient.patientId, input.sidecarPatientKey);
+  assert.equal(
+    [...db.documents.keys()].filter((path) => path.includes("/patients/")).length,
+    1
+  );
+  assert.equal(
+    [...db.documents.keys()].filter((path) => path.includes("/patient_identifier_index/")).length,
+    1
+  );
+  assert.deepEqual(
+    (await store.findPatientsByIdentifier(organization.orgId, input)).map((patient) => patient.patientId),
+    [input.sidecarPatientKey]
+  );
+  const patientPath = [...db.documents.keys()]
+    .find((path) => path.endsWith(`/patients/${input.sidecarPatientKey}`));
+  db.documents.delete(patientPath);
+  await assert.rejects(
+    () => store.provisionPatientFromIdentifier(organization.orgId, input),
+    /mapping is inconsistent/
+  );
+});
+
+test("prevents normal patient creation from racing sidecar provisioning", async () => {
+  let counter = 0;
+  const db = new FakeFirestoreDb();
+  const store = new FirestorePlatformStore({
+    db,
+    now: () => new Date("2026-07-29T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const organization = await store.createOrganization({
+    organizationCode: "Race Clinic",
+    displayName: "Race Clinic"
+  });
+  const identifier = {
+    sourceSystem: "homis",
+    facilityId: "fac_001",
+    patientNumber: "1004"
+  };
+
+  const outcomes = await Promise.allSettled([
+    store.createPatient(organization.orgId, {
+      displayName: "Normal Patient",
+      patientIdentifiers: [identifier]
+    }),
+    store.provisionPatientFromIdentifier(organization.orgId, {
+      ...identifier,
+      sidecarPatientKey: `sidecar_patient_${"b".repeat(26)}`
+    })
+  ]);
+
+  assert.equal(outcomes.some((outcome) => outcome.status === "fulfilled"), true);
+  assert.equal((await store.findPatientsByIdentifier(organization.orgId, identifier)).length, 1);
+  assert.equal((await store.listPatients(organization.orgId)).length, 1);
+});
+
+test("updates patient identifier mappings transactionally", async () => {
+  let counter = 0;
+  const store = new FirestorePlatformStore({
+    db: new FakeFirestoreDb(),
+    now: () => new Date("2026-07-29T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const organization = await store.createOrganization({
+    organizationCode: "Update Identifier Clinic",
+    displayName: "Update Identifier Clinic"
+  });
+  const identifier = {
+    sourceSystem: "homis",
+    facilityId: "fac_001",
+    patientNumber: "1004"
+  };
+  const first = await store.createPatient(organization.orgId, {
+    displayName: "First",
+    patientIdentifiers: [identifier]
+  });
+  const replacement = await store.createPatient(organization.orgId, {
+    displayName: "Replacement"
+  });
+
+  await assert.rejects(
+    () => store.updatePatient(organization.orgId, replacement.patientId, {
+      patientIdentifiers: [identifier]
+    }),
+    /already belongs to another patient/
+  );
+  await store.updatePatient(organization.orgId, first.patientId, {
+    patientIdentifiers: []
+  });
+  const updated = await store.updatePatient(organization.orgId, replacement.patientId, {
+    patientIdentifiers: [identifier]
+  });
+  assert.equal(updated.patientIdentifiers[0].patientNumber, "1004");
+  assert.deepEqual(
+    (await store.findPatientsByIdentifier(organization.orgId, identifier))
+      .map((patient) => patient.patientId),
+    [replacement.patientId]
+  );
+});
+
 test("identifier lookup detects duplicates across indexed and legacy patient documents", async () => {
   let counter = 0;
   const db = new FakeFirestoreDb();
@@ -117,13 +241,13 @@ test("identifier lookup detects duplicates across indexed and legacy patient doc
     displayName: "Indexed Patient",
     patientIdentifiers: [identifier]
   });
-  const legacyPatient = await store.createPatient(organization.orgId, {
-    displayName: "Legacy Patient",
-    patientIdentifiers: [identifier]
-  });
-  const legacyPath = [...db.documents.keys()]
-    .find((path) => path.endsWith(`/patients/${legacyPatient.patientId}`));
-  const legacyDocument = structuredClone(db.documents.get(legacyPath));
+  const legacyPatientId = "pat_legacy";
+  const indexedPath = [...db.documents.keys()]
+    .find((path) => path.endsWith(`/patients/${indexedPatient.patientId}`));
+  const legacyPath = indexedPath.replace(`/patients/${indexedPatient.patientId}`, `/patients/${legacyPatientId}`);
+  const legacyDocument = structuredClone(db.documents.get(indexedPath));
+  legacyDocument.patientId = legacyPatientId;
+  legacyDocument.displayName = "Legacy Patient";
   delete legacyDocument.patientIdentifierKeys;
   db.documents.set(legacyPath, legacyDocument);
 
@@ -131,7 +255,7 @@ test("identifier lookup detects duplicates across indexed and legacy patient doc
 
   assert.deepEqual(
     new Set(matches.map((patient) => patient.patientId)),
-    new Set([indexedPatient.patientId, legacyPatient.patientId])
+    new Set([indexedPatient.patientId, legacyPatientId])
   );
 });
 
@@ -340,6 +464,7 @@ function createTestStore() {
 class FakeFirestoreDb {
   constructor() {
     this.documents = new Map();
+    this.transactionQueue = Promise.resolve();
   }
 
   doc(path) {
@@ -351,7 +476,9 @@ class FakeFirestoreDb {
   }
 
   async runTransaction(callback) {
-    return callback(new FakeTransaction(this));
+    const transaction = this.transactionQueue.then(() => callback(new FakeTransaction(this)));
+    this.transactionQueue = transaction.catch(() => undefined);
+    return transaction;
   }
 }
 
@@ -366,6 +493,10 @@ class FakeTransaction {
 
   set(ref, value) {
     this.db.documents.set(ref.path, structuredClone(value));
+  }
+
+  delete(ref) {
+    this.db.documents.delete(ref.path);
   }
 }
 

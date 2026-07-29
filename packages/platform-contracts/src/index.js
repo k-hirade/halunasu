@@ -264,6 +264,7 @@ export function validateCreatePatientInput(input = {}) {
     publicInsurance: validatePublicInsurance(input.publicInsurance),
     consent: isPlainObject(input.consent) ? input.consent : {},
     duplicateCandidateIds: normalizeStringArray(input.duplicateCandidateIds),
+    provenance: normalizePatientProvenance(input.provenance),
     status: optionalEnum(input.status, patientStatuses, "status") || "active",
     notes: optionalString(input.notes)
   };
@@ -288,6 +289,9 @@ export function validatePatchPatientInput(input = {}) {
     consent: hasOwn(input, "consent") && isPlainObject(input.consent) ? input.consent : undefined,
     duplicateCandidateIds: hasOwn(input, "duplicateCandidateIds")
       ? normalizeStringArray(input.duplicateCandidateIds)
+      : undefined,
+    provenance: hasOwn(input, "provenance")
+      ? normalizePatientProvenance(input.provenance)
       : undefined,
     status: hasOwn(input, "status") ? optionalEnum(input.status, patientStatuses, "status") : undefined,
     mergedIntoPatientId: hasOwn(input, "mergedIntoPatientId")
@@ -740,6 +744,19 @@ function normalizePatientIdentifiers(value) {
       ...identifier,
       value: identifier.value || identifier.patientNumber
     }));
+}
+
+function normalizePatientProvenance(value) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!isPlainObject(value)) {
+    throw validationError("provenance must be an object", "provenance");
+  }
+  return compactObject({
+    source: optionalString(value.source),
+    firstSeenAt: optionalDateTime(value.firstSeenAt, "provenance.firstSeenAt")
+  });
 }
 
 function sanitizeSafePayload(value) {
