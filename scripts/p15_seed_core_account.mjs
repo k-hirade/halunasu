@@ -22,6 +22,7 @@ import {
   normalizeLoginId,
   normalizeOrganizationCode
 } from "../packages/platform-contracts/src/index.js";
+import { selectActiveDepartmentForSeed } from "./lib/core-account-seed-selection.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const projectByEnv = Object.freeze({
@@ -429,7 +430,10 @@ async function ensureFacility({ input, organization, actions }) {
 
 async function ensureDepartment({ input, organization, facility, actions }) {
   const departments = await listDocs(input.projectId, organizationPath(organization.orgId), "departments");
-  const existing = departments.find((department) => department.status === "active") || departments[0] || null;
+  const existing = selectActiveDepartmentForSeed(departments, {
+    facilityId: facility.facilityId,
+    displayName: input.departmentName
+  });
   if (existing) {
     return existing;
   }
