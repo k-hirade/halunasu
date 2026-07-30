@@ -26,6 +26,7 @@ CONTEXT_FIELDS = (
     "specialty",
     "sourceType",
     "parentLineText",
+    "clauseId",
     "clauseText",
     "clauseCharStart",
     "clauseCharEnd",

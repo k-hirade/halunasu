@@ -27,6 +27,7 @@ const semanticFields = [
   "specialty",
   "sourceType",
   "parentLineText",
+  "clauseId",
   "clauseText",
   "clauseCharStart",
   "clauseCharEnd",

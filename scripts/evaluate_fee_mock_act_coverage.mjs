@@ -12,12 +12,22 @@ import {
   reconcileMockActCoverageRuns,
   summarizeMockActCoverage
 } from "./lib/fee-mock-act-coverage.mjs";
+import {
+  createStaticSidecarEvaluatorAuth,
+  createTemporarySidecarEvaluatorAuth
+} from "./lib/sidecar-evaluator-auth.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const defaults = {
   mockRoot: "tmp/mock_homis",
   actionMap: "tmp/dataset_recalculation_diff_diagnosis/20260702_185214_mock_homis/homis_action_master_map.csv",
+  platformBaseUrl: "https://platform-api-stg-lp2t3inhza-an.a.run.app",
   feeBaseUrl: "https://fee-api-stg-wmfrwcpzkq-an.a.run.app",
+  organizationCode: "yamamoto-demo-stg",
+  loginId: "yamamoto-admin",
+  passwordFile: ".secrets/yamamoto-demo-stg-password.txt",
+  password: process.env.FEE_E2E_PASSWORD || "",
+  mfaCode: process.env.FEE_E2E_MFA_CODE || "",
   facilityId: "fac_9fe275b29feebb03bfeb9410f7",
   departmentId: "dep_00d6c56dcd8b4d65acf0d8f2ab",
   selectorContractVersion: "homis-mock-v3",
@@ -48,14 +58,9 @@ if (args.dryRun) {
   process.exit(0);
 }
 
-const accessToken = secretValue(args.accessToken, args.accessTokenFile, "HOMIS_SIDECAR_ACCESS_TOKEN");
-const verifier = secretValue(args.verifier, args.verifierFile, "HOMIS_SIDECAR_CODE_VERIFIER");
 const extensionId = String(args.extensionId || process.env.HOMIS_SIDECAR_EXTENSION_ID || "").trim();
-if (!accessToken || !verifier || !/^[a-p]{32}$/u.test(extensionId)) {
-  throw new Error(
-    "live evaluation requires --access-token/--access-token-file, "
-    + "--verifier/--verifier-file, and a 32-character --extension-id"
-  );
+if (!/^[a-p]{32}$/u.test(extensionId)) {
+  throw new Error("live evaluation requires a 32-character --extension-id");
 }
 
 const outputDir = path.resolve(
@@ -67,6 +72,16 @@ const ready = await requestJson(`${args.feeBaseUrl}/readyz`, { timeoutMs: args.t
 assertResponse(ready, "fee-api readyz");
 if (String(ready.body?.env || "") !== "stg" && !args.allowNonStg) {
   throw new Error(`refusing non-STG target: ${String(ready.body?.env || "unknown")}`);
+}
+const sidecarAuth = await createSidecarAuth(args, extensionId);
+const sidecarOptions = {
+  ...args,
+  facilityId: sidecarAuth.sidecarContext?.facilityId || args.facilityId,
+  departmentId: sidecarAuth.sidecarContext?.departmentId || args.departmentId
+};
+if (!sidecarOptions.facilityId) {
+  await sidecarAuth.close();
+  throw new Error("sidecar authorization did not resolve a facility");
 }
 
 const result = {
@@ -83,9 +98,15 @@ const result = {
   },
   environment: {
     feeBaseUrl: args.feeBaseUrl,
-    facilityId: args.facilityId,
-    departmentId: args.departmentId,
-    cloudRunRevision: ready.body?.runtime?.cloudRunRevision || null
+    platformBaseUrl: args.platformBaseUrl,
+    organizationCode: args.organizationCode,
+    facilityId: sidecarOptions.facilityId,
+    departmentId: sidecarOptions.departmentId || null,
+    cloudRunRevision: ready.body?.runtime?.cloudRunRevision || null,
+    sidecarAuthorization: {
+      ...sidecarAuth.metadata,
+      grantRevoked: null
+    }
   },
   methodology: {
     route: "/v1/integrations/sidecar/calculate",
@@ -104,32 +125,45 @@ const result = {
 };
 persist(outputDir, result);
 
-for (let index = 0; index < dataset.cases.length; index += 1) {
-  const item = dataset.cases[index];
-  process.stdout.write(`[${index + 1}/${dataset.cases.length}] ${item.caseId}\n`);
-  const body = sidecarBody(item, args);
-  const response = await requestJson(`${args.feeBaseUrl}/v1/integrations/sidecar/calculate`, {
-    method: "POST",
-    body,
-    timeoutMs: args.timeoutMs,
-    headers: {
-      authorization: `Bearer ${accessToken}`,
-      origin: `chrome-extension://${extensionId}`,
-      "x-sidecar-code-verifier": verifier
-    }
-  });
-  assertResponse(response, item.caseId);
-  result.runs.push(auditMockActCoverageCase(item, response.body, mappingRows));
+try {
+  for (let index = 0; index < dataset.cases.length; index += 1) {
+    const item = dataset.cases[index];
+    process.stdout.write(`[${index + 1}/${dataset.cases.length}] ${item.caseId}\n`);
+    const body = sidecarBody(item, sidecarOptions);
+    const credentials = await sidecarAuth.credentials();
+    const response = await requestJson(`${args.feeBaseUrl}/v1/integrations/sidecar/calculate`, {
+      method: "POST",
+      body,
+      timeoutMs: args.timeoutMs,
+      headers: {
+        authorization: `Bearer ${credentials.accessToken}`,
+        origin: `chrome-extension://${extensionId}`,
+        "x-sidecar-code-verifier": credentials.verifier
+      }
+    });
+    assertResponse(response, item.caseId);
+    result.runs.push(auditMockActCoverageCase(item, response.body, mappingRows));
+    reconcileMockActCoverageRuns(result.runs, mappingRows);
+    result.summary = summarizeMockActCoverage(result.runs);
+    persist(outputDir, result);
+  }
+  result.status = "complete";
+  result.completedAt = new Date().toISOString();
   reconcileMockActCoverageRuns(result.runs, mappingRows);
   result.summary = summarizeMockActCoverage(result.runs);
+} catch (error) {
+  result.status = "failed";
+  result.failedAt = new Date().toISOString();
+  result.failure = { message: String(error?.message || error).slice(0, 500) };
+  throw error;
+} finally {
+  const closeResult = await sidecarAuth.close();
+  result.environment.sidecarAuthorization.grantRevoked = closeResult.revoked === true;
+  if (closeResult.error) {
+    result.environment.sidecarAuthorization.revokeError = closeResult.error.slice(0, 300);
+  }
   persist(outputDir, result);
 }
-
-result.status = "complete";
-result.completedAt = new Date().toISOString();
-reconcileMockActCoverageRuns(result.runs, mappingRows);
-result.summary = summarizeMockActCoverage(result.runs);
-persist(outputDir, result);
 process.stdout.write(`${JSON.stringify(result.summary, null, 2)}\n`);
 process.stdout.write(`result=${path.join(outputDir, "result.json")}\n`);
 
@@ -319,6 +353,11 @@ function printHelp() {
   process.stdout.write(
     "Usage: npm run eval:fee-mock-act-coverage -- [options]\n"
     + "  --dry-run                     classify all mock actions without calling STG\n"
+    + "  --organization-code ID         STG organization (default yamamoto-demo-stg)\n"
+    + "  --login-id ID                  STG approver login (default yamamoto-admin)\n"
+    + "  --password-file PATH           STG approver password file\n"
+    + "  --mfa-code CODE                Current 6-digit MFA code (or FEE_E2E_MFA_CODE)\n"
+    + "  --platform-base-url URL        Platform API used for temporary sidecar authorization\n"
     + "  --access-token-file PATH      scoped sidecar token file\n"
     + "  --verifier-file PATH          sidecar PKCE verifier file\n"
     + "  --extension-id ID             approved Chrome extension ID\n"
@@ -326,6 +365,65 @@ function printHelp() {
     + "  --claim-months LIST           comma-separated months (default 2026-05,2026-06)\n"
     + "  --output-dir PATH             report directory\n"
   );
+}
+
+async function createSidecarAuth(options, extensionId) {
+  const accessToken = secretValue(
+    options.accessToken,
+    options.accessTokenFile,
+    "HOMIS_SIDECAR_ACCESS_TOKEN"
+  );
+  const verifier = secretValue(
+    options.verifier,
+    options.verifierFile,
+    "HOMIS_SIDECAR_CODE_VERIFIER"
+  );
+  if (accessToken || verifier) {
+    if (!accessToken || !verifier) {
+      throw new Error("static sidecar authentication requires both access token and verifier");
+    }
+    return createStaticSidecarEvaluatorAuth({ accessToken, verifier });
+  }
+  assertTemporaryAuthStg(options);
+  return createTemporarySidecarEvaluatorAuth({
+    platformBaseUrl: options.platformBaseUrl,
+    organizationCode: options.organizationCode,
+    loginId: options.loginId,
+    password: resolvePassword(options),
+    mfaCode: options.mfaCode,
+    extensionId,
+    timeoutMs: options.timeoutMs
+  });
+}
+
+function resolvePassword(options) {
+  if (String(options.password || "").trim()) {
+    return String(options.password).trim();
+  }
+  const filePath = resolveRepoPath(options.passwordFile);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`password file not found: ${options.passwordFile}`);
+  }
+  const password = fs.readFileSync(filePath, "utf8").trim();
+  if (!password) {
+    throw new Error("password file is empty");
+  }
+  return password;
+}
+
+function assertTemporaryAuthStg(options) {
+  const platformHost = new URL(options.platformBaseUrl).hostname.toLowerCase();
+  const feeHost = new URL(options.feeBaseUrl).hostname.toLowerCase();
+  const isStgHost = (host) => host.includes("-stg-")
+    || host.startsWith("stg.")
+    || host.includes(".stg.");
+  if (
+    !isStgHost(platformHost)
+    || !isStgHost(feeHost)
+    || !String(options.organizationCode || "").toLowerCase().endsWith("-stg")
+  ) {
+    throw new Error("automatic sidecar evaluator authorization is restricted to STG");
+  }
 }
 
 function secretValue(direct, file, envName) {

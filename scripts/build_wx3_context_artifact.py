@@ -28,6 +28,7 @@ from medical_fee_calculation.whitebox_artifacts import (
 )
 from medical_fee_calculation.whitebox_context import (
     CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
+    CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION,
     CONTEXT_SEMANTIC_PROBE_ITEM,
     LEGACY_INPUT_CONTRACT_VERSION,
     STRUCTURED_INPUT_CONTRACT_VERSION,
@@ -757,6 +758,11 @@ def markdown_report(report: Mapping[str, Any]) -> str:
         "",
         f"- artifact: `{report['artifactVersion']}`",
         f"- model: `{report['baseModel']}@{report['modelRevision']}`",
+        f"- input contract: {report['inputContractVersion']}",
+        (
+            "- clause segmentation: "
+            f"`{report['inputSemantics']['clauseSegmentationVersion']}`"
+        ),
         f"- selected epoch: {report['modelSelection']['selectedEpoch']}",
         f"- pooling: `{report['pooling']}`",
         f"- class weighting: `{report['classWeighting']}`",
@@ -808,12 +814,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             LEGACY_INPUT_CONTRACT_VERSION,
             STRUCTURED_INPUT_CONTRACT_VERSION,
             CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
+            CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION,
         ),
         default=LEGACY_INPUT_CONTRACT_VERSION,
         help=(
             "WX3 text contract. Version 1 is the safety-calibrated default; "
             "version 2 adds structured metadata; version 3 adds the governing "
-            "clause while retaining its parent line."
+            "clause using the historical v1 splitter; version 4 uses the "
+            "shared fee-evidence-clause-v2 splitter."
         ),
     )
     parser.add_argument(

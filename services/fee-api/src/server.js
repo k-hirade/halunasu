@@ -66,7 +66,10 @@ import { buildStandingBillingLane } from "./standing-billing-profiles.js";
 import { buildStandingStructuredFacts } from "./standing-structured-triggers.js";
 import { applyCandidateProposalGovernance } from "./candidate-proposal-governance.js";
 import { normalizeSidecarStructuredFacts } from "./sidecar-structured-facts.js";
-import { whiteboxRuntimeModes } from "./whitebox-extraction.js";
+import {
+  whiteboxRuntimeDiagnostics,
+  whiteboxRuntimeModes
+} from "./whitebox-extraction.js";
 import {
   normalizeClinicalExtractionStrategy,
   normalizeExtractionCoverageMode
@@ -225,6 +228,7 @@ async function routeFeeApiRequest(input = {}) {
         clinicalExtractionStrategy: feeClinicalExtractionStrategy(runtimeEnv),
         extractionCoverage: feeExtractionCoverageReadiness(runtimeEnv, feeReadiness),
         whiteboxExtraction: whiteboxRuntimeModes(runtimeEnv),
+        whiteboxExtractionDiagnostics: whiteboxRuntimeDiagnostics(runtimeEnv),
         extractionFeedbackMode: extractionFeedbackMode(runtimeEnv),
         extractionFeedback: extractionFeedbackReadiness(runtimeEnv)
       },
@@ -7231,7 +7235,8 @@ function buildFeeCalculationPerformanceSnapshot({
     }),
     whiteboxExtraction: compactObject({
       ...(isPlainObject(clinical.whiteboxExtraction) ? clinical.whiteboxExtraction : {}),
-      modes: whiteboxRuntimeModes(env)
+      modes: whiteboxRuntimeModes(env),
+      runtimeDiagnostics: whiteboxRuntimeDiagnostics(env)
     }),
     patientHistory: compactObject({
       completeness: patientHistory.completeness || null,

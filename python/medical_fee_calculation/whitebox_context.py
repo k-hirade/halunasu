@@ -12,6 +12,9 @@ from medical_fee_calculation.clinical_axes import (
     clinical_axis_values,
     validate_classifier_result,
 )
+from medical_fee_calculation.clause_segmentation import (
+    CLAUSE_SEGMENTATION_VERSION,
+)
 from medical_fee_calculation.whitebox_artifacts import (
     WhiteboxArtifactError,
     artifact_readiness,
@@ -34,6 +37,8 @@ CONTEXT_ARTIFACT_TYPE = "fee_context_classifier"
 LEGACY_INPUT_CONTRACT_VERSION = 1
 STRUCTURED_INPUT_CONTRACT_VERSION = 2
 CLAUSE_AWARE_INPUT_CONTRACT_VERSION = 3
+CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION = 4
+RUNTIME_CONTEXT_INPUT_CONTRACT_VERSION = CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION
 CONTEXT_INPUT_SEMANTICS_SCHEMA_VERSION = "fee-context-input-semantics-v1"
 CONTEXT_INPUT_SEMANTICS = {
     LEGACY_INPUT_CONTRACT_VERSION: {
@@ -60,10 +65,27 @@ CONTEXT_INPUT_SEMANTICS = {
         "normalizationVersion": "fee-clinical-canonical-v1",
         "clauseSegmentationVersion": "fee-evidence-clause-v1",
     },
+    CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION: {
+        "schemaVersion": CONTEXT_INPUT_SEMANTICS_SCHEMA_VERSION,
+        "textScope": "line_with_governing_clause",
+        "offsetBasis": "line_and_clause",
+        "offsetUnit": "unicode_code_point",
+        "normalizationVersion": "fee-clinical-canonical-v1",
+        "clauseSegmentationVersion": CLAUSE_SEGMENTATION_VERSION,
+    },
 }
 RUNTIME_CONTEXT_INPUT_SEMANTICS = CONTEXT_INPUT_SEMANTICS[
-    CLAUSE_AWARE_INPUT_CONTRACT_VERSION
+    RUNTIME_CONTEXT_INPUT_CONTRACT_VERSION
 ]
+CLAUSE_AWARE_INPUT_CONTRACT_VERSIONS = frozenset({
+    CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
+    CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION,
+})
+CONTEXT_INPUT_CONTRACT_VERSION_MISMATCH = (
+    "context_input_contract_version_mismatch"
+)
+CLAUSE_SEGMENTATION_VERSION_MISSING = "clause_segmentation_version_missing"
+CLAUSE_SEGMENTATION_VERSION_MISMATCH = "clause_segmentation_version_mismatch"
 CONTEXT_SEMANTIC_PROBE_ITEM = {
     "lineId": "semantic-probe",
     "spanId": "semantic-probe",
@@ -88,6 +110,12 @@ CONTEXT_SEMANTIC_PROBE_ITEM = {
 }
 
 
+class ContextArtifactCompatibilityError(WhiteboxArtifactError):
+    def __init__(self, reason_code: str, message: str):
+        super().__init__(message)
+        self.reason_code = reason_code
+
+
 def classify_context(
     payload: Mapping[str, Any],
     *,
@@ -103,6 +131,7 @@ def classify_context(
             manifest_path,
             expected_type=CONTEXT_ARTIFACT_TYPE,
         )
+        _require_runtime_context_artifact_compatibility(artifact.manifest)
         contract_version = _context_input_contract_version(artifact.manifest)
         items = _normalize_items(
             payload.get("items") or payload.get("spans"),
@@ -131,12 +160,15 @@ def classify_context(
             "results": results,
         }
     except (WhiteboxArtifactError, ValueError, OSError, ImportError) as exc:
-        return {
+        result = {
             "status": "model_unavailable",
             "modelVersion": None,
             "results": [],
             "reason": str(exc)[:500],
         }
+        if isinstance(exc, ContextArtifactCompatibilityError):
+            result["reasonCode"] = exc.reason_code
+        return result
 
 
 def context_classifier_readiness(
@@ -154,6 +186,7 @@ def context_classifier_readiness(
             configured_path,
             expected_type=CONTEXT_ARTIFACT_TYPE,
         )
+        _require_runtime_context_artifact_compatibility(artifact.manifest)
         model_key, tokenizer_key = _validate_context_manifest(artifact.manifest)
         validate_artifact_files(artifact, [model_key, tokenizer_key])
         dependencies = runtime_dependency_status()
@@ -186,7 +219,10 @@ def context_classifier_readiness(
             "determinismProbe": determinism_probe,
         }
     except (WhiteboxArtifactError, ValueError, OSError, ImportError) as exc:
-        return {**base, "available": False, "reason": str(exc)}
+        result = {**base, "available": False, "reason": str(exc)}
+        if isinstance(exc, ContextArtifactCompatibilityError):
+            result["reasonCode"] = exc.reason_code
+        return result
 
 
 def _validate_context_semantic_probe(
@@ -327,6 +363,7 @@ def _normalize_items(
 
 
 def _load_classifier(artifact):
+    _require_runtime_context_artifact_compatibility(artifact.manifest)
     _validate_context_manifest(artifact.manifest)
     runtime = _load_onnx_context_runtime(
         str(artifact.manifest_path),
@@ -343,6 +380,7 @@ def _load_onnx_context_runtime(manifest_path: str, artifact_version: str):
     )
     if artifact.artifact_version != artifact_version:
         raise WhiteboxArtifactError("context artifact changed while loading")
+    _require_runtime_context_artifact_compatibility(artifact.manifest)
     model_key, tokenizer_key = _validate_context_manifest(artifact.manifest)
     validate_artifact_files(artifact, [model_key, tokenizer_key])
     return _OnnxContextRuntime(
@@ -514,6 +552,7 @@ def _classifier_text(
     if input_contract_version not in {
         STRUCTURED_INPUT_CONTRACT_VERSION,
         CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
+        CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION,
     }:
         raise ValueError(
             f"unsupported context input contract version: {input_contract_version}"
@@ -578,14 +617,14 @@ def _validate_item_input_semantics(
     input_contract_version: int,
 ) -> None:
     if value is None:
-        if input_contract_version == CLAUSE_AWARE_INPUT_CONTRACT_VERSION:
+        if input_contract_version in CLAUSE_AWARE_INPUT_CONTRACT_VERSIONS:
             raise ValueError(
                 "clause-aware context items require inputSemantics"
             )
         return
     if not isinstance(value, Mapping):
         raise ValueError("context inputSemantics must be an object")
-    expected = RUNTIME_CONTEXT_INPUT_SEMANTICS
+    expected = context_input_semantics(input_contract_version)
     if any(str(value.get(key) or "") != expected_value for key, expected_value in expected.items()):
         raise ValueError(
             "context inputSemantics do not match the artifact contract"
@@ -620,7 +659,7 @@ def _validate_context_manifest(
     input_contract_version = _context_input_contract_version(manifest)
     configured_semantics = manifest.get("inputSemantics")
     if (
-        input_contract_version == CLAUSE_AWARE_INPUT_CONTRACT_VERSION
+        input_contract_version in CLAUSE_AWARE_INPUT_CONTRACT_VERSIONS
         and not isinstance(configured_semantics, Mapping)
     ):
         raise WhiteboxArtifactError(
@@ -672,20 +711,92 @@ def _context_input_contract_version(manifest: Mapping[str, Any]) -> int:
     )
     if isinstance(value, bool):
         raise WhiteboxArtifactError(
-            "context inputContractVersion must be 1, 2, or 3"
+            "context inputContractVersion must be 1, 2, 3, or 4"
         )
     try:
         parsed = int(value)
     except (TypeError, ValueError) as exc:
         raise WhiteboxArtifactError(
-            "context inputContractVersion must be 1, 2, or 3"
+            "context inputContractVersion must be 1, 2, 3, or 4"
         ) from exc
     if parsed not in {
         LEGACY_INPUT_CONTRACT_VERSION,
         STRUCTURED_INPUT_CONTRACT_VERSION,
         CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
+        CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION,
     }:
         raise WhiteboxArtifactError(
-            "context inputContractVersion must be 1, 2, or 3"
+            "context inputContractVersion must be 1, 2, 3, or 4"
         )
     return parsed
+
+
+def context_artifact_runtime_compatibility(
+    manifest: Mapping[str, Any],
+) -> dict[str, Any]:
+    try:
+        input_contract_version = _context_input_contract_version(manifest)
+    except WhiteboxArtifactError as exc:
+        return {
+            "compatible": False,
+            "reasonCode": CONTEXT_INPUT_CONTRACT_VERSION_MISMATCH,
+            "reason": str(exc),
+        }
+    if input_contract_version != RUNTIME_CONTEXT_INPUT_CONTRACT_VERSION:
+        return {
+            "compatible": False,
+            "reasonCode": CONTEXT_INPUT_CONTRACT_VERSION_MISMATCH,
+            "reason": (
+                "context artifact inputContractVersion "
+                f"{input_contract_version} does not match runtime contract "
+                f"{RUNTIME_CONTEXT_INPUT_CONTRACT_VERSION}"
+            ),
+        }
+    configured_semantics = manifest.get("inputSemantics")
+    if not isinstance(configured_semantics, Mapping):
+        return {
+            "compatible": False,
+            "reasonCode": CLAUSE_SEGMENTATION_VERSION_MISSING,
+            "reason": (
+                "context artifact inputSemantics with "
+                "clauseSegmentationVersion is missing"
+            ),
+        }
+    configured_version = str(
+        configured_semantics.get("clauseSegmentationVersion") or ""
+    ).strip()
+    if not configured_version:
+        return {
+            "compatible": False,
+            "reasonCode": CLAUSE_SEGMENTATION_VERSION_MISSING,
+            "reason": "context artifact clauseSegmentationVersion is missing",
+        }
+    if configured_version != CLAUSE_SEGMENTATION_VERSION:
+        return {
+            "compatible": False,
+            "reasonCode": CLAUSE_SEGMENTATION_VERSION_MISMATCH,
+            "reason": (
+                "context artifact clauseSegmentationVersion "
+                f"{configured_version!r} does not match runtime "
+                f"{CLAUSE_SEGMENTATION_VERSION!r}"
+            ),
+        }
+    return {
+        "compatible": True,
+        "reasonCode": None,
+        "reason": None,
+        "inputContractVersion": input_contract_version,
+        "clauseSegmentationVersion": configured_version,
+    }
+
+
+def _require_runtime_context_artifact_compatibility(
+    manifest: Mapping[str, Any],
+) -> None:
+    compatibility = context_artifact_runtime_compatibility(manifest)
+    if compatibility["compatible"]:
+        return
+    raise ContextArtifactCompatibilityError(
+        str(compatibility["reasonCode"]),
+        str(compatibility["reason"]),
+    )

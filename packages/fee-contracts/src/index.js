@@ -13,6 +13,7 @@ export const sidecarSourceSurfaceUnavailableReasons = Object.freeze([
   "timeout"
 ]);
 export {
+  CLAUSE_SEGMENTATION_VERSION,
   clinicalServiceContextCues,
   clinicalServiceContextCuesForMention,
   hasCurrentVisitClinicalServiceContext,

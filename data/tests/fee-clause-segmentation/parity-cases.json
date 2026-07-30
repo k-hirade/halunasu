@@ -1,0 +1,466 @@
+{
+  "schemaVersion": "fee-clause-segmentation-parity-v1",
+  "clauseSegmentationVersion": "fee-evidence-clause-v2",
+  "behaviorSha256": "4ea93917ccc63d68e98c360267f2bdf0e28428dc7d48fbe2584ef16d6a935018",
+  "cases": [
+    {
+      "name": "performed_with_planned_parenthetical",
+      "lineId": "L-001",
+      "text": "静脈採血を施行（HbA1c・腎機能・電解質を確認予定）",
+      "expectedClauses": [
+        {
+          "clauseId": "L-001:C001",
+          "text": "静脈採血を施行",
+          "charStart": 0,
+          "charEnd": 7,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "（"
+        },
+        {
+          "clauseId": "L-001:C002",
+          "text": "HbA1c・腎機能・電解質を確認予定",
+          "charStart": 8,
+          "charEnd": 26,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 1,
+          "separatorAfter": "）"
+        }
+      ]
+    },
+    {
+      "name": "decimal_point",
+      "lineId": "L-002",
+      "text": "複管8.0mm、カフ圧確認",
+      "expectedClauses": [
+        {
+          "clauseId": "L-002:C001",
+          "text": "複管8.0mm、",
+          "charStart": 0,
+          "charEnd": 8,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "、"
+        },
+        {
+          "clauseId": "L-002:C002",
+          "text": "カフ圧確認",
+          "charStart": 8,
+          "charEnd": 13,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": ""
+        }
+      ]
+    },
+    {
+      "name": "current_governing_prefix",
+      "lineId": "L-003",
+      "text": "本日、採血を実施",
+      "expectedClauses": [
+        {
+          "clauseId": "L-003:C001",
+          "text": "本日、採血を実施",
+          "charStart": 0,
+          "charEnd": 8,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": ""
+        }
+      ]
+    },
+    {
+      "name": "past_governing_prefix",
+      "lineId": "L-004",
+      "text": "前回、X線撮影",
+      "expectedClauses": [
+        {
+          "clauseId": "L-004:C001",
+          "text": "前回、X線撮影",
+          "charStart": 0,
+          "charEnd": 7,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": ""
+        }
+      ]
+    },
+    {
+      "name": "external_governing_prefix",
+      "lineId": "L-005",
+      "text": "他院、CT施行",
+      "expectedClauses": [
+        {
+          "clauseId": "L-005:C001",
+          "text": "他院、CT施行",
+          "charStart": 0,
+          "charEnd": 7,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": ""
+        }
+      ]
+    },
+    {
+      "name": "brought_health_check_prefix",
+      "lineId": "L-006",
+      "text": "持参、健診結果",
+      "expectedClauses": [
+        {
+          "clauseId": "L-006:C001",
+          "text": "持参、健診結果",
+          "charStart": 0,
+          "charEnd": 7,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": ""
+        }
+      ]
+    },
+    {
+      "name": "external_document_prefix",
+      "lineId": "L-007",
+      "text": "外部資料、心電図所見",
+      "expectedClauses": [
+        {
+          "clauseId": "L-007:C001",
+          "text": "外部資料、心電図所見",
+          "charStart": 0,
+          "charEnd": 10,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": ""
+        }
+      ]
+    },
+    {
+      "name": "vital_sign_list",
+      "lineId": "L-008",
+      "text": "BP 120/74、P 78 整、SpO2 98%、体温 36.5℃",
+      "expectedClauses": [
+        {
+          "clauseId": "L-008:C001",
+          "text": "BP 120/74、",
+          "charStart": 0,
+          "charEnd": 10,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "、"
+        },
+        {
+          "clauseId": "L-008:C002",
+          "text": "P 78 整、",
+          "charStart": 10,
+          "charEnd": 17,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "、"
+        },
+        {
+          "clauseId": "L-008:C003",
+          "text": "SpO2 98%、",
+          "charStart": 17,
+          "charEnd": 26,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "、"
+        },
+        {
+          "clauseId": "L-008:C004",
+          "text": "体温 36.5℃",
+          "charStart": 26,
+          "charEnd": 34,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": ""
+        }
+      ]
+    },
+    {
+      "name": "nested_parentheses",
+      "lineId": "L-009",
+      "text": "本日（左膝（内側）に注射）を実施。",
+      "expectedClauses": [
+        {
+          "clauseId": "L-009:C001",
+          "text": "本日",
+          "charStart": 0,
+          "charEnd": 2,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "（"
+        },
+        {
+          "clauseId": "L-009:C002",
+          "text": "左膝",
+          "charStart": 3,
+          "charEnd": 5,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 1,
+          "separatorAfter": "（"
+        },
+        {
+          "clauseId": "L-009:C003",
+          "text": "内側",
+          "charStart": 6,
+          "charEnd": 8,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 2,
+          "separatorAfter": "）"
+        },
+        {
+          "clauseId": "L-009:C004",
+          "text": "に注射",
+          "charStart": 9,
+          "charEnd": 12,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 1,
+          "separatorAfter": "）"
+        },
+        {
+          "clauseId": "L-009:C005",
+          "text": "を実施。",
+          "charStart": 13,
+          "charEnd": 17,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "。"
+        }
+      ]
+    },
+    {
+      "name": "mixed_width_boundaries",
+      "lineId": "L-010",
+      "text": "今回[採血、CRP測定]を実施！次回（再検）予定。",
+      "expectedClauses": [
+        {
+          "clauseId": "L-010:C001",
+          "text": "今回",
+          "charStart": 0,
+          "charEnd": 2,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "["
+        },
+        {
+          "clauseId": "L-010:C002",
+          "text": "採血、",
+          "charStart": 3,
+          "charEnd": 6,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 1,
+          "separatorAfter": "、"
+        },
+        {
+          "clauseId": "L-010:C003",
+          "text": "CRP測定",
+          "charStart": 6,
+          "charEnd": 11,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 1,
+          "separatorAfter": "]"
+        },
+        {
+          "clauseId": "L-010:C004",
+          "text": "を実施！",
+          "charStart": 12,
+          "charEnd": 16,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "！"
+        },
+        {
+          "clauseId": "L-010:C005",
+          "text": "次回",
+          "charStart": 16,
+          "charEnd": 18,
+          "sentenceIndex": 1,
+          "parentheticalDepth": 0,
+          "separatorAfter": "（"
+        },
+        {
+          "clauseId": "L-010:C006",
+          "text": "再検",
+          "charStart": 19,
+          "charEnd": 21,
+          "sentenceIndex": 1,
+          "parentheticalDepth": 1,
+          "separatorAfter": "）"
+        },
+        {
+          "clauseId": "L-010:C007",
+          "text": "予定。",
+          "charStart": 22,
+          "charEnd": 25,
+          "sentenceIndex": 1,
+          "parentheticalDepth": 0,
+          "separatorAfter": "。"
+        }
+      ]
+    },
+    {
+      "name": "crlf_and_newline",
+      "lineId": "L-011",
+      "text": "本日、採血を実施\r\n次回、MRIを予定",
+      "expectedClauses": [
+        {
+          "clauseId": "L-011:C001",
+          "text": "本日、採血を実施",
+          "charStart": 0,
+          "charEnd": 8,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "\r"
+        },
+        {
+          "clauseId": "L-011:C002",
+          "text": "次回、MRIを予定",
+          "charStart": 10,
+          "charEnd": 19,
+          "sentenceIndex": 2,
+          "parentheticalDepth": 0,
+          "separatorAfter": ""
+        }
+      ]
+    },
+    {
+      "name": "empty",
+      "lineId": "L-012",
+      "text": "",
+      "expectedClauses": []
+    },
+    {
+      "name": "punctuation_only",
+      "lineId": "L-013",
+      "text": "。、！？",
+      "expectedClauses": []
+    },
+    {
+      "name": "consecutive_sentence_boundaries",
+      "lineId": "L-014",
+      "text": "採血を実施!?次回、再検予定。",
+      "expectedClauses": [
+        {
+          "clauseId": "L-014:C001",
+          "text": "採血を実施!",
+          "charStart": 0,
+          "charEnd": 6,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "!"
+        },
+        {
+          "clauseId": "L-014:C002",
+          "text": "次回、再検予定。",
+          "charStart": 7,
+          "charEnd": 15,
+          "sentenceIndex": 2,
+          "parentheticalDepth": 0,
+          "separatorAfter": "。"
+        }
+      ]
+    },
+    {
+      "name": "sentence_boundary_in_parentheses",
+      "lineId": "L-015",
+      "text": "採血を実施（結果良好。副作用なし）帰宅。",
+      "expectedClauses": [
+        {
+          "clauseId": "L-015:C001",
+          "text": "採血を実施",
+          "charStart": 0,
+          "charEnd": 5,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "（"
+        },
+        {
+          "clauseId": "L-015:C002",
+          "text": "結果良好。",
+          "charStart": 6,
+          "charEnd": 11,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 1,
+          "separatorAfter": "。"
+        },
+        {
+          "clauseId": "L-015:C003",
+          "text": "副作用なし",
+          "charStart": 11,
+          "charEnd": 16,
+          "sentenceIndex": 1,
+          "parentheticalDepth": 1,
+          "separatorAfter": "）"
+        },
+        {
+          "clauseId": "L-015:C004",
+          "text": "帰宅。",
+          "charStart": 17,
+          "charEnd": 20,
+          "sentenceIndex": 1,
+          "parentheticalDepth": 0,
+          "separatorAfter": "。"
+        }
+      ]
+    },
+    {
+      "name": "unicode_code_point_offsets",
+      "lineId": "L-016",
+      "text": "😀本日、採血を実施。",
+      "expectedClauses": [
+        {
+          "clauseId": "L-016:C001",
+          "text": "😀本日、",
+          "charStart": 0,
+          "charEnd": 4,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "、"
+        },
+        {
+          "clauseId": "L-016:C002",
+          "text": "採血を実施。",
+          "charStart": 4,
+          "charEnd": 10,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "。"
+        }
+      ]
+    },
+    {
+      "name": "fullwidth_digits_are_not_ascii_decimal",
+      "lineId": "L-017",
+      "text": "複管８．０mm、確認",
+      "expectedClauses": [
+        {
+          "clauseId": "L-017:C001",
+          "text": "複管８．",
+          "charStart": 0,
+          "charEnd": 4,
+          "sentenceIndex": 0,
+          "parentheticalDepth": 0,
+          "separatorAfter": "．"
+        },
+        {
+          "clauseId": "L-017:C002",
+          "text": "０mm、",
+          "charStart": 4,
+          "charEnd": 8,
+          "sentenceIndex": 1,
+          "parentheticalDepth": 0,
+          "separatorAfter": "、"
+        },
+        {
+          "clauseId": "L-017:C003",
+          "text": "確認",
+          "charStart": 8,
+          "charEnd": 10,
+          "sentenceIndex": 1,
+          "parentheticalDepth": 0,
+          "separatorAfter": ""
+        }
+      ]
+    }
+  ]
+}

@@ -304,6 +304,10 @@ try {
       cloudRunRevision: actualRevision,
       extractorVersion: String(performance?.whiteboxExtraction?.extractorVersion || ""),
       whiteboxDegraded: performance?.whiteboxExtraction?.degraded === true,
+      contextCompatibilityReasonCode: String(
+        performance?.whiteboxExtraction?.runtimeDiagnostics?.context?.reasonCode
+        || ""
+      ),
       calculateRequestMs: Date.now() - calculateStartedAt,
       whiteboxSnapshot,
       whiteboxFingerprint: whiteboxDeterminismFingerprint(detail.body || {}),
@@ -464,6 +468,9 @@ function summarizeRun(result) {
     degradedRunCount: runs.filter((run) => run.whiteboxDegraded).length,
     uniqueCloudRunRevisions: uniqueStrings(runs.map((run) => run.cloudRunRevision)),
     uniqueExtractorVersions: uniqueStrings(runs.map((run) => run.extractorVersion)),
+    contextCompatibilityReasonCounts: countStringValues(
+      runs.map((run) => run.contextCompatibilityReasonCode)
+    ),
     determinism: result.determinism || summarizeWhiteboxDeterminism(runs),
     routing: summarizeWhiteboxRouting(measurementRuns),
     gateDiagnostics: summarizeGateDiagnostics(result.machinePrecheck?.cells),
@@ -1109,6 +1116,19 @@ function uniqueStrings(values) {
   return [...new Set((Array.isArray(values) ? values : [])
     .map((value) => String(value || "").trim())
     .filter(Boolean))].sort();
+}
+
+function countStringValues(values) {
+  const counts = {};
+  for (const value of Array.isArray(values) ? values : []) {
+    const normalized = String(value || "").trim();
+    if (normalized) {
+      counts[normalized] = Number(counts[normalized] || 0) + 1;
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(counts).sort(([left], [right]) => left.localeCompare(right))
+  );
 }
 
 function printHelp() {

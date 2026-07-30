@@ -15,10 +15,15 @@ from medical_fee_calculation.whitebox_artifacts import (
 )
 from medical_fee_calculation.whitebox_context import (
     CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
+    CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION,
+    CLAUSE_SEGMENTATION_VERSION_MISMATCH,
+    CLAUSE_SEGMENTATION_VERSION_MISSING,
+    CONTEXT_INPUT_CONTRACT_VERSION_MISMATCH,
     RUNTIME_CONTEXT_INPUT_SEMANTICS,
     STRUCTURED_INPUT_CONTRACT_VERSION,
     _classifier_text,
     classify_context,
+    context_artifact_runtime_compatibility,
     context_input_semantics,
     context_classifier_readiness,
 )
@@ -704,7 +709,12 @@ class WhiteboxRuntimeTest(unittest.TestCase):
             result = classify_context(
                 {
                     "manifest_path": str(manifest_path),
-                    "items": [{"lineId": "O-001", "spanId": "s1", "text": "処置した"}],
+                    "items": [{
+                        "lineId": "O-001",
+                        "spanId": "s1",
+                        "text": "処置した",
+                        "inputSemantics": RUNTIME_CONTEXT_INPUT_SEMANTICS,
+                    }],
                 },
                 classifier=lambda items: [{"axes": CURRENT_AXES} for _ in items],
             )
@@ -776,16 +786,62 @@ class WhiteboxRuntimeTest(unittest.TestCase):
             marked,
         )
 
-    def test_context_v3_rejects_runtime_payload_with_wrong_semantics(self) -> None:
+    def test_context_v4_compatibility_reason_priority_is_fixed(self) -> None:
+        self.assertEqual(
+            context_artifact_runtime_compatibility({
+                "inputContractVersion": 1,
+            })["reasonCode"],
+            CONTEXT_INPUT_CONTRACT_VERSION_MISMATCH,
+        )
+        self.assertEqual(
+            context_artifact_runtime_compatibility({
+                "inputContractVersion": CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION,
+            })["reasonCode"],
+            CLAUSE_SEGMENTATION_VERSION_MISSING,
+        )
+        self.assertEqual(
+            context_artifact_runtime_compatibility({
+                "inputContractVersion": CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION,
+                "inputSemantics": {
+                    **RUNTIME_CONTEXT_INPUT_SEMANTICS,
+                    "clauseSegmentationVersion": "fee-evidence-clause-v1",
+                },
+            })["reasonCode"],
+            CLAUSE_SEGMENTATION_VERSION_MISMATCH,
+        )
+        self.assertTrue(
+            context_artifact_runtime_compatibility({
+                "inputContractVersion": CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION,
+                "inputSemantics": RUNTIME_CONTEXT_INPUT_SEMANTICS,
+            })["compatible"]
+        )
+
+    def test_historical_wx3_artifact_is_rejected_by_contract_before_runtime_load(self) -> None:
+        repository_root = Path(__file__).resolve().parents[2]
+        manifest = json.loads(
+            (
+                repository_root
+                / "python/data/whitebox/context-wx3-multilingual-minilm-l12-v3/manifest.json"
+            ).read_text(encoding="utf-8")
+        )
+        compatibility = context_artifact_runtime_compatibility(manifest)
+
+        self.assertFalse(compatibility["compatible"])
+        self.assertEqual(
+            compatibility["reasonCode"],
+            CONTEXT_INPUT_CONTRACT_VERSION_MISMATCH,
+        )
+
+    def test_context_v4_rejects_runtime_payload_with_wrong_semantics(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             path = Path(root)
             manifest_path = self._write_manifest(
                 path,
                 self._manifest(
                     "fee_context_classifier",
-                    inputContractVersion=CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
+                    inputContractVersion=CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION,
                     inputSemantics=context_input_semantics(
-                        CLAUSE_AWARE_INPUT_CONTRACT_VERSION
+                        CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION
                     ),
                 ),
             )
@@ -830,6 +886,7 @@ class WhiteboxRuntimeTest(unittest.TestCase):
                         "spanText": "採血",
                         "charStart": 2,
                         "charEnd": 4,
+                        "inputSemantics": RUNTIME_CONTEXT_INPUT_SEMANTICS,
                     }],
                 },
                 classifier=lambda items: [{"axes": CURRENT_AXES} for _ in items],
@@ -1039,6 +1096,31 @@ class WhiteboxRuntimeTest(unittest.TestCase):
             self.assertFalse(result["available"])
             self.assertIn("semantic probe", result["reason"])
 
+    def test_context_readiness_reports_contract_mismatch_without_loading_onnx(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)
+            axes = clinical_axis_values()
+            manifest_path = self._write_runtime_manifest(
+                path,
+                "fee_context_classifier",
+                backend="onnx_multi_axis",
+                inputContractVersion=1,
+                inputSemantics=None,
+                axisLabels={key: list(value) for key, value in axes.items()},
+                outputNames={key: f"{key}_logits" for key in axes},
+            )
+            with patch(
+                "medical_fee_calculation.whitebox_context._load_onnx_context_runtime"
+            ) as runtime_loader:
+                result = context_classifier_readiness(manifest_path)
+
+            self.assertFalse(result["available"])
+            self.assertEqual(
+                result["reasonCode"],
+                CONTEXT_INPUT_CONTRACT_VERSION_MISMATCH,
+            )
+            runtime_loader.assert_not_called()
+
     def test_linker_readiness_rejects_encoder_index_dimension_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             path = Path(root)
@@ -1082,7 +1164,7 @@ class WhiteboxRuntimeTest(unittest.TestCase):
 
     @staticmethod
     def _manifest(artifact_type: str, **extra):
-        return {
+        manifest = {
             "schemaVersion": 1,
             "artifactType": artifact_type,
             "artifactVersion": "artifact-v1",
@@ -1091,8 +1173,14 @@ class WhiteboxRuntimeTest(unittest.TestCase):
             "license": WhiteboxRuntimeTest._license(),
             "backend": "test-injected",
             "files": {},
-            **extra,
         }
+        if artifact_type == "fee_context_classifier":
+            manifest.update({
+                "inputContractVersion": CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION,
+                "inputSemantics": RUNTIME_CONTEXT_INPUT_SEMANTICS,
+            })
+        manifest.update(extra)
+        return manifest
 
     @staticmethod
     def _license():

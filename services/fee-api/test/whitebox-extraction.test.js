@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   aggregateLineContext,
@@ -14,10 +14,14 @@ import {
   prepareAuxiliaryCoverageSignals,
   prepareWhiteboxExtraction,
   splitWhiteboxEvidenceClauses,
+  contextArtifactRuntimeCompatibility,
+  WHITEBOX_CONTEXT_COMPATIBILITY_REASONS,
+  WHITEBOX_CONTEXT_INPUT_CONTRACT_VERSION,
   WHITEBOX_CONTEXT_INPUT_SEMANTICS,
   WHITEBOX_CONTEXT_REASON_DISPOSITIONS,
   whiteboxEncounterSetting,
   whiteboxMentionType,
+  whiteboxRuntimeDiagnostics,
   whiteboxRuntimeModes,
   whiteboxThresholds
 } from "../src/whitebox-extraction.js";
@@ -38,6 +42,18 @@ const DIAGNOSTIC_SHADOW_THRESHOLDS_PATH = fileURLToPath(new URL(
   "../../../python/data/whitebox/routing-thresholds-wx-v3-diagnostic-shadow.json",
   import.meta.url
 ));
+const CONTEXT_MANIFEST_DIRECTORY = mkdtempSync(
+  join(tmpdir(), "halunasu-context-contract-v4-")
+);
+const CONTEXT_MANIFEST_PATH = join(
+  CONTEXT_MANIFEST_DIRECTORY,
+  "manifest.json"
+);
+writeFileSync(CONTEXT_MANIFEST_PATH, JSON.stringify({
+  inputContractVersion: WHITEBOX_CONTEXT_INPUT_CONTRACT_VERSION,
+  inputSemantics: WHITEBOX_CONTEXT_INPUT_SEMANTICS
+}));
+after(() => rmSync(CONTEXT_MANIFEST_DIRECTORY, { force: true, recursive: true }));
 
 test("whitebox modes are fail-safe off for missing and invalid values", () => {
   assert.deepEqual(whiteboxRuntimeModes({}), {
@@ -48,13 +64,61 @@ test("whitebox modes are fail-safe off for missing and invalid values", () => {
   assert.deepEqual(whiteboxRuntimeModes({
     FEE_LINKER_MODE: "propose",
     FEE_CONTEXT_CLASSIFIER_MODE: "assist",
-    FEE_SPAN_DETECTOR_MODE: "route"
+    FEE_SPAN_DETECTOR_MODE: "route",
+    FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH: CONTEXT_MANIFEST_PATH
   }), {
     linker: "propose",
     context: "assist",
     span: "route"
   });
   assert.equal(whiteboxRuntimeModes({ FEE_SPAN_DETECTOR_MODE: "unsafe" }).span, "off");
+});
+
+test("context lane degrades before activation when the artifact contract is incompatible", () => {
+  assert.deepEqual(
+    contextArtifactRuntimeCompatibility({
+      inputContractVersion: 1
+    }).reasonCode,
+    WHITEBOX_CONTEXT_COMPATIBILITY_REASONS.contractVersionMismatch
+  );
+  assert.deepEqual(
+    contextArtifactRuntimeCompatibility({
+      inputContractVersion: WHITEBOX_CONTEXT_INPUT_CONTRACT_VERSION
+    }).reasonCode,
+    WHITEBOX_CONTEXT_COMPATIBILITY_REASONS.clauseSegmentationVersionMissing
+  );
+  assert.deepEqual(
+    contextArtifactRuntimeCompatibility({
+      inputContractVersion: WHITEBOX_CONTEXT_INPUT_CONTRACT_VERSION,
+      inputSemantics: {
+        ...WHITEBOX_CONTEXT_INPUT_SEMANTICS,
+        clauseSegmentationVersion: "fee-evidence-clause-v1"
+      }
+    }).reasonCode,
+    WHITEBOX_CONTEXT_COMPATIBILITY_REASONS.clauseSegmentationVersionMismatch
+  );
+  assert.equal(
+    contextArtifactRuntimeCompatibility({
+      inputContractVersion: WHITEBOX_CONTEXT_INPUT_CONTRACT_VERSION,
+      inputSemantics: WHITEBOX_CONTEXT_INPUT_SEMANTICS
+    }).compatible,
+    true
+  );
+
+  const historicalManifestPath = fileURLToPath(new URL(
+    "../../../python/data/whitebox/context-wx3-multilingual-minilm-l12-v3/manifest.json",
+    import.meta.url
+  ));
+  const diagnostics = whiteboxRuntimeDiagnostics({
+    FEE_CONTEXT_CLASSIFIER_MODE: "shadow",
+    FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH: historicalManifestPath
+  });
+  assert.equal(diagnostics.requestedModes.context, "shadow");
+  assert.equal(diagnostics.effectiveModes.context, "off");
+  assert.equal(
+    diagnostics.context.reasonCode,
+    WHITEBOX_CONTEXT_COMPATIBILITY_REASONS.contractVersionMismatch
+  );
 });
 
 test("auxiliary coverage uses only threshold-passing Span signals without raw text", async () => {
@@ -2035,7 +2099,8 @@ function routeEnv() {
   return {
     FEE_LINKER_MODE: "propose",
     FEE_CONTEXT_CLASSIFIER_MODE: "assist",
-    FEE_SPAN_DETECTOR_MODE: "route"
+    FEE_SPAN_DETECTOR_MODE: "route",
+    FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH: CONTEXT_MANIFEST_PATH
   };
 }
 
@@ -2045,7 +2110,7 @@ function shadowEnv() {
     FEE_CONTEXT_CLASSIFIER_MODE: "shadow",
     FEE_SPAN_DETECTOR_MODE: "shadow",
     FEE_LINKER_MANIFEST_PATH: "/app/python/data/whitebox/linker-v1/manifest.json",
-    FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH: "/app/python/data/whitebox/context-v1/manifest.json",
+    FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH: CONTEXT_MANIFEST_PATH,
     FEE_SPAN_DETECTOR_MANIFEST_PATH: "/app/python/data/whitebox/span-v1/manifest.json"
   };
 }

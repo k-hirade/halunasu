@@ -4,6 +4,8 @@ export function normalizeClinicalPredicateText(value = "") {
     .replace(/\s+/gu, "");
 }
 
+export const CLAUSE_SEGMENTATION_VERSION = "fee-evidence-clause-v2";
+
 const CLINICAL_SENTENCE_BOUNDARY_PATTERN = /[。．.!！?？；;\n\r]/u;
 const CLINICAL_CLAUSE_BOUNDARY_PATTERN = /[、，,]/u;
 const CLINICAL_OPEN_PAREN_PATTERN = /[（(【［\[]/u;

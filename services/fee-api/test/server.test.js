@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   CSRF_COOKIE_NAME,
   SESSION_COOKIE_NAME
@@ -100,6 +101,25 @@ test("readyz exposes deployed extraction feature flags and revision", async () =
       context: "off",
       span: "off"
     },
+    whiteboxExtractionDiagnostics: {
+      requestedModes: {
+        linker: "off",
+        context: "off",
+        span: "off"
+      },
+      effectiveModes: {
+        linker: "off",
+        context: "off",
+        span: "off"
+      },
+      context: {
+        compatible: true,
+        reasonCode: null,
+        reason: null,
+        requestedMode: "off",
+        effectiveMode: "off"
+      }
+    },
     extractionFeedbackMode: "off",
     extractionFeedback: {
       mode: "off",
@@ -109,6 +129,41 @@ test("readyz exposes deployed extraction feature flags and revision", async () =
       reason: null
     }
   });
+});
+
+test("readyz degrades only an incompatible context lane with an explicit reason", async () => {
+  const historicalManifestPath = fileURLToPath(new URL(
+    "../../../python/data/whitebox/context-wx3-multilingual-minilm-l12-v3/manifest.json",
+    import.meta.url
+  ));
+  const response = await request(createStores(), "GET", "/readyz", undefined, {}, {
+    env: "stg",
+    processEnv: {
+      FEE_LINKER_MODE: "shadow",
+      FEE_CONTEXT_CLASSIFIER_MODE: "shadow",
+      FEE_SPAN_DETECTOR_MODE: "shadow",
+      FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH: historicalManifestPath
+    }
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.body.runtimeFeatures.whiteboxExtraction, {
+    linker: "shadow",
+    context: "off",
+    span: "shadow"
+  });
+  assert.equal(
+    response.body.runtimeFeatures.whiteboxExtractionDiagnostics.context.reasonCode,
+    "context_input_contract_version_mismatch"
+  );
+  assert.equal(
+    response.body.runtimeFeatures.whiteboxExtractionDiagnostics.context.requestedMode,
+    "shadow"
+  );
+  assert.equal(
+    response.body.runtimeFeatures.whiteboxExtractionDiagnostics.context.effectiveMode,
+    "off"
+  );
 });
 
 test("readyz propagates strict fee master content failures as unavailable", async () => {

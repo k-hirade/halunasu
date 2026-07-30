@@ -5,6 +5,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from medical_fee_calculation.whitebox_context import (
+    CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
+    CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION,
+)
 from scripts.whitebox_training_common import (
     WhiteboxTrainingError,
     assert_no_counterexample_training_leakage,
@@ -201,6 +205,39 @@ class WhiteboxTrainingCommonTest(unittest.TestCase):
             )],
             ["前回CTを確認し、", "本日は採血を実施。", "次回MRIを予定。"],
         )
+
+    def test_context_contract_3_preserves_legacy_splitter_while_contract_4_uses_v2(
+        self,
+    ) -> None:
+        text = "O）採血を実施、結果を説明。"
+        start = text.index("結果")
+        case = {
+            "caseId": "historical-contract",
+            "specialty": "internal_medicine",
+            "encounterSetting": "outpatient",
+            "clinicalText": text,
+        }
+        span = {
+            "text": "結果",
+            "charStart": start,
+            "charEnd": start + 2,
+        }
+
+        legacy = context_classifier_item_for_span(
+            case,
+            span,
+            input_contract_version=CLAUSE_AWARE_INPUT_CONTRACT_VERSION,
+        )
+        current = context_classifier_item_for_span(
+            case,
+            span,
+            input_contract_version=CLAUSE_AWARE_V2_INPUT_CONTRACT_VERSION,
+        )
+
+        self.assertEqual(legacy["clauseText"], text)
+        self.assertEqual(legacy["inputSemantics"]["clauseSegmentationVersion"], "fee-evidence-clause-v1")
+        self.assertEqual(current["clauseText"], "結果を説明。")
+        self.assertEqual(current["inputSemantics"]["clauseSegmentationVersion"], "fee-evidence-clause-v2")
 
     def test_context_input_regressions_freeze_safe_semantic_outcomes(self) -> None:
         root = Path(__file__).resolve().parents[2]

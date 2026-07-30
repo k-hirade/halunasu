@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
+  CLAUSE_SEGMENTATION_VERSION,
   clinicalServiceContextCues,
   splitClinicalEvidenceClauses
 } from "../../../packages/fee-contracts/src/index.js";
@@ -8,13 +9,20 @@ import {
 export const WHITEBOX_LINKER_MODES = Object.freeze(["off", "shadow", "propose"]);
 export const WHITEBOX_CONTEXT_MODES = Object.freeze(["off", "shadow", "assist"]);
 export const WHITEBOX_SPAN_MODES = Object.freeze(["off", "shadow", "route"]);
+export const WHITEBOX_CONTEXT_INPUT_CONTRACT_VERSION = 4;
 export const WHITEBOX_CONTEXT_INPUT_SEMANTICS = Object.freeze({
   schemaVersion: "fee-context-input-semantics-v1",
   textScope: "line_with_governing_clause",
   offsetBasis: "line_and_clause",
   offsetUnit: "unicode_code_point",
   normalizationVersion: "fee-clinical-canonical-v1",
-  clauseSegmentationVersion: "fee-evidence-clause-v1"
+  clauseSegmentationVersion: CLAUSE_SEGMENTATION_VERSION
+});
+export const WHITEBOX_CONTEXT_COMPATIBILITY_REASONS = Object.freeze({
+  contractVersionMismatch: "context_input_contract_version_mismatch",
+  clauseSegmentationVersionMissing: "clause_segmentation_version_missing",
+  clauseSegmentationVersionMismatch: "clause_segmentation_version_mismatch",
+  manifestUnavailable: "context_artifact_manifest_unavailable"
 });
 
 export const DEFAULT_WHITEBOX_THRESHOLDS = Object.freeze({
@@ -97,6 +105,7 @@ const MEDICATION_BILLING_ACT_PATTERN = /(?:処方箋|処方料|調剤料|一般�
 const DRUG_PRODUCT_PATTERN = /(?:錠|カプセル|散|顆粒|細粒|シロップ|液|軟膏|クリーム|ゲル|テープ|パッチ|坐剤|注射液|点眼|点鼻|吸入|mg|μg|mcg|mL|％|%)/iu;
 const MAX_REVIEWABLE_LINKER_FAMILY_SIZE = 25;
 const NON_BLOCKING_LINKER_REASON_CODES = new Set(["linker_family_identified"]);
+const contextManifestCompatibilityCache = new Map();
 export const WHITEBOX_CONTEXT_REASON_DISPOSITIONS = Object.freeze({
   classifier_only: "diagnostic",
   classifier_predicate_agree: "diagnostic",
@@ -212,10 +221,162 @@ function whiteboxClauseForSpan(clauses = [], span = {}) {
 }
 
 export function whiteboxRuntimeModes(env = process.env) {
+  return whiteboxRuntimeState(env).modes;
+}
+
+export function whiteboxRuntimeDiagnostics(env = process.env) {
+  const state = whiteboxRuntimeState(env);
   return {
+    requestedModes: state.requestedModes,
+    effectiveModes: state.modes,
+    context: state.contextCompatibility
+  };
+}
+
+export function whiteboxRuntimeState(env = process.env) {
+  const requestedModes = {
     linker: enumMode(env.FEE_LINKER_MODE, WHITEBOX_LINKER_MODES, "off"),
     context: enumMode(env.FEE_CONTEXT_CLASSIFIER_MODE, WHITEBOX_CONTEXT_MODES, "off"),
     span: enumMode(env.FEE_SPAN_DETECTOR_MODE, WHITEBOX_SPAN_MODES, "off")
+  };
+  const contextCompatibility = requestedModes.context === "off"
+    ? {
+        compatible: true,
+        reasonCode: null,
+        reason: null,
+        requestedMode: "off",
+        effectiveMode: "off"
+      }
+    : contextManifestCompatibilityFromEnv(env, requestedModes.context);
+  return {
+    requestedModes,
+    modes: {
+      ...requestedModes,
+      context: contextCompatibility.compatible
+        ? requestedModes.context
+        : "off"
+    },
+    contextCompatibility
+  };
+}
+
+export function contextArtifactRuntimeCompatibility(manifest = {}) {
+  const contractVersion = Number(manifest?.inputContractVersion);
+  if (
+    !Number.isInteger(contractVersion)
+    || contractVersion !== WHITEBOX_CONTEXT_INPUT_CONTRACT_VERSION
+  ) {
+    return {
+      compatible: false,
+      reasonCode: WHITEBOX_CONTEXT_COMPATIBILITY_REASONS.contractVersionMismatch,
+      reason: [
+        "context artifact inputContractVersion",
+        Number.isFinite(contractVersion) ? contractVersion : "missing",
+        "does not match runtime contract",
+        WHITEBOX_CONTEXT_INPUT_CONTRACT_VERSION
+      ].join(" "),
+      inputContractVersion: Number.isInteger(contractVersion)
+        ? contractVersion
+        : null,
+      clauseSegmentationVersion: null
+    };
+  }
+  const semantics = manifest?.inputSemantics;
+  if (!semantics || typeof semantics !== "object" || Array.isArray(semantics)) {
+    return {
+      compatible: false,
+      reasonCode: WHITEBOX_CONTEXT_COMPATIBILITY_REASONS.clauseSegmentationVersionMissing,
+      reason: "context artifact inputSemantics with clauseSegmentationVersion is missing",
+      inputContractVersion: contractVersion,
+      clauseSegmentationVersion: null
+    };
+  }
+  const clauseSegmentationVersion = String(
+    semantics.clauseSegmentationVersion || ""
+  ).trim();
+  if (!clauseSegmentationVersion) {
+    return {
+      compatible: false,
+      reasonCode: WHITEBOX_CONTEXT_COMPATIBILITY_REASONS.clauseSegmentationVersionMissing,
+      reason: "context artifact clauseSegmentationVersion is missing",
+      inputContractVersion: contractVersion,
+      clauseSegmentationVersion: null
+    };
+  }
+  if (clauseSegmentationVersion !== CLAUSE_SEGMENTATION_VERSION) {
+    return {
+      compatible: false,
+      reasonCode: WHITEBOX_CONTEXT_COMPATIBILITY_REASONS.clauseSegmentationVersionMismatch,
+      reason: [
+        "context artifact clauseSegmentationVersion",
+        JSON.stringify(clauseSegmentationVersion),
+        "does not match runtime",
+        JSON.stringify(CLAUSE_SEGMENTATION_VERSION)
+      ].join(" "),
+      inputContractVersion: contractVersion,
+      clauseSegmentationVersion
+    };
+  }
+  const semanticsMatch = Object.entries(WHITEBOX_CONTEXT_INPUT_SEMANTICS)
+    .every(([key, expected]) => String(semantics[key] || "") === expected);
+  if (!semanticsMatch) {
+    return {
+      compatible: false,
+      reasonCode: WHITEBOX_CONTEXT_COMPATIBILITY_REASONS.contractVersionMismatch,
+      reason: "context artifact inputSemantics do not match runtime contract 4",
+      inputContractVersion: contractVersion,
+      clauseSegmentationVersion
+    };
+  }
+  return {
+    compatible: true,
+    reasonCode: null,
+    reason: null,
+    inputContractVersion: contractVersion,
+    clauseSegmentationVersion
+  };
+}
+
+function contextManifestCompatibilityFromEnv(env, requestedMode) {
+  const manifestPath = String(
+    env.FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH || ""
+  ).trim();
+  if (!manifestPath) {
+    return {
+      compatible: false,
+      reasonCode: WHITEBOX_CONTEXT_COMPATIBILITY_REASONS.manifestUnavailable,
+      reason: "FEE_CONTEXT_CLASSIFIER_MANIFEST_PATH is not configured",
+      requestedMode,
+      effectiveMode: "off",
+      manifestPath: null,
+      inputContractVersion: null,
+      clauseSegmentationVersion: null
+    };
+  }
+  let compatibility = contextManifestCompatibilityCache.get(manifestPath);
+  if (!compatibility) {
+    try {
+      compatibility = contextArtifactRuntimeCompatibility(
+        JSON.parse(readFileSync(manifestPath, "utf8"))
+      );
+    } catch (error) {
+      compatibility = {
+        compatible: false,
+        reasonCode: WHITEBOX_CONTEXT_COMPATIBILITY_REASONS.manifestUnavailable,
+        reason: `context artifact manifest is unavailable: ${String(
+          error?.message || error
+        ).slice(0, 300)}`,
+        inputContractVersion: null,
+        clauseSegmentationVersion: null
+      };
+    }
+    contextManifestCompatibilityCache.set(manifestPath, compatibility);
+  }
+  return {
+    ...compatibility,
+    requestedMode,
+    effectiveMode: compatibility.compatible ? requestedMode : "off",
+    manifestPath
   };
 }
 
@@ -541,7 +702,15 @@ export async function prepareWhiteboxExtraction({
   env = process.env,
   strategy = "whitebox_experiment"
 } = {}) {
-  const modes = whiteboxRuntimeModes(env);
+  const runtimeState = whiteboxRuntimeState(env);
+  const modes = runtimeState.modes;
+  const contextCompatibilityDegraded = (
+    runtimeState.requestedModes.context !== "off"
+    && runtimeState.contextCompatibility.compatible !== true
+  );
+  const contextCompatibilityReason = contextCompatibilityDegraded
+    ? runtimeState.contextCompatibility.reasonCode
+    : null;
   const lines = Array.isArray(preprocessing?.lines) ? preprocessing.lines : [];
   const setting = whiteboxEncounterSetting(session);
   const specialty = whiteboxSpecialty(session);
@@ -552,9 +721,11 @@ export async function prepareWhiteboxExtraction({
   const thresholdConfigValid = !thresholds.degradedReason;
   const base = {
     modes,
+    requestedModes: runtimeState.requestedModes,
+    contextCompatibility: runtimeState.contextCompatibility,
     thresholds,
     status: "off",
-    degraded: false,
+    degraded: contextCompatibilityDegraded,
     extractorVersion: null,
     lineRoutes: [],
     llmLines: lines,
@@ -570,7 +741,11 @@ export async function prepareWhiteboxExtraction({
       thresholdCells: thresholds.thresholdCells,
       specialty,
       encounterSetting: setting,
-      degraded: false
+      degraded: contextCompatibilityDegraded,
+      degradedReasons: contextCompatibilityReason
+        ? [contextCompatibilityReason]
+        : [],
+      contextCompatibility: runtimeState.contextCompatibility
     },
     trace: []
   };
@@ -590,7 +765,17 @@ export async function prepareWhiteboxExtraction({
     };
   }
   if (!base.metrics.enabled) {
-    return base;
+    return contextCompatibilityDegraded
+      ? {
+          ...base,
+          status: "degraded",
+          trace: [{
+            stage: "whitebox_router",
+            outcome: "context_lane_degraded",
+            reasonCode: contextCompatibilityReason
+          }]
+        }
+      : base;
   }
   if (!base.metrics.eligible) {
     return {
@@ -1079,9 +1264,14 @@ export async function prepareWhiteboxExtraction({
       mode: routeReady ? "route" : "shadow",
       degraded,
       degradedReasons: [
+        ...(contextCompatibilityReason ? [contextCompatibilityReason] : []),
         ...(thresholdConfigValid ? [] : ["threshold_config_invalid"]),
         ...(linkerEnvelope?.status !== "complete" ? ["linker_unavailable"] : []),
-        ...(contextEnvelope?.status !== "complete" ? ["context_classifier_unavailable"] : [])
+        ...(
+          modes.context !== "off" && contextEnvelope?.status !== "complete"
+            ? ["context_classifier_unavailable"]
+            : []
+        )
       ],
       safetyFallbackReasons: fullLlmRequired
         ? ["visit_facts_sensitive_change"]
@@ -1182,6 +1372,7 @@ export async function prepareWhiteboxExtraction({
       spanDetectorStatus: spanEnvelope.status,
       linkerStatus: linkerEnvelope.status,
       contextClassifierStatus: contextEnvelope.status,
+      contextCompatibilityReasonCode: contextCompatibilityReason,
       contextClassifierCalls: contextEnvelope?.status === "complete" && spans.length ? 1 : 0,
       contextClassifierOverrides: contextOverrideCount,
       contextClassifierDisagreements: contextDisagreementCount,
@@ -2908,6 +3099,8 @@ function whiteboxExtractorVersion({
       || contextEnvelope.artifactVersion
       || contextEnvelope.modelVersion
       || "unavailable",
+    contextInputContractVersion: WHITEBOX_CONTEXT_INPUT_CONTRACT_VERSION,
+    clauseSegmentationVersion: CLAUSE_SEGMENTATION_VERSION,
     thresholds: thresholds.version || thresholdDigest(thresholds)
   };
   return `whitebox-v1:${crypto.createHash("sha256")
